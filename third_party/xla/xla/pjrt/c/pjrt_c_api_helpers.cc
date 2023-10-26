@@ -44,6 +44,8 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace pjrt {
@@ -574,11 +576,15 @@ static std::string StructSizeErrorMsg(absl::string_view struct_name,
   return error_msg;
 }
 
-xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
-                                     size_t expected_size, size_t actual_size) {
-  if (expected_size != actual_size) {
+xla::Status ActualStructSizeIsGreaterOrEqual(absl::string_view struct_name,
+                                             size_t expected_size,
+                                             size_t actual_size) {
+  if (actual_size < expected_size) {
     return tsl::errors::InvalidArgument(
         StructSizeErrorMsg(struct_name, expected_size, actual_size));
+  }
+  if (actual_size > expected_size) {
+    VLOG(2) << StructSizeErrorMsg(struct_name, expected_size, actual_size);
   }
   return tsl::OkStatus();
 }

@@ -23,6 +23,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/compile_only_client.h"
 #include "xla/xla_data.pb.h"
+#include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/graph/graph.h"
@@ -41,6 +44,16 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 namespace {
+
+// For stateless RNGs ops, they are pure but device-dependent. Those ops are not
+// constant-foldable.
+// TODO(b/305092010) Use the operations' TF_NoConstantFold attribute instead.
+static absl::flat_hash_set<std::string>* kBlockList =
+    new absl::flat_hash_set<std::string>({
+        "StatelessRandomUniform",
+        "StatelessRandomNormal",
+        "StatelessTruncatedNormal",
+    });
 
 std::string CoreDevice(int core) {
   return strings::StrCat("/device:", DEVICE_TPU_REPLICATED_CORE, ":", core);
@@ -165,6 +178,15 @@ void ConvertGraphShapeInfoToShapeMap(
   }
 }
 
+bool DoNotConsiderOpsInBlockList(const Node* n) {
+  if (kBlockList->contains(n->type_string())) {
+    VLOG(2) << "Skip node [" << n->DebugString()
+            << "] for constant folding, it is in constant folding block list";
+    return false;
+  }
+  return true;
+}
+
 // Optimizes `graph`, given the argument descriptions in `metadata` and
 // `arg_shapes`.
 Status OptimizeGraph(const tpu::TPUCompileMetadataProto& metadata,
@@ -190,6 +212,7 @@ Status OptimizeGraph(const tpu::TPUCompileMetadataProto& metadata,
     optimizer_opts.inline_multi_device_functions = true;
     optimizer_opts.inline_impl_selection_group_functions = true;
     optimizer_opts.inline_with_single_device_body_placer = true;
+    optimizer_opts.cf_consider_fn = DoNotConsiderOpsInBlockList;
     // Infer shapes for each node in the computation. Shape inference can help
     // skip constant folding of large shapes.
     GraphShapeInfo shape_info;
@@ -212,6 +235,7 @@ Status OptimizeGraph(const tpu::TPUCompileMetadataProto& metadata,
     ConvertGraphShapeInfoToShapeMap(**graph, shape_info, &shape_map);
     GraphOptimizer::Options optimizer_opts;
     optimizer_opts.shape_map = &shape_map;
+    optimizer_opts.cf_consider_fn = DoNotConsiderOpsInBlockList;
     optimizer.Optimize(flr, flr->env(), flr->device(), graph, optimizer_opts);
   }
 

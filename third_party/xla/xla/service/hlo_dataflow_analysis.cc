@@ -24,11 +24,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -86,11 +89,12 @@ absl::flat_hash_map<HloInstruction*, int64_t> CalculatePostOrderSchedule(
 using absl::StrAppend;
 using absl::StrCat;
 
-HloDataflowAnalysis::HloDataflowAnalysis(const HloModule& module, bool ssa_form,
-                                         bool bitcast_defines_value,
-                                         const CanShareBuffer& can_share_buffer,
-                                         const ForwardsValue& forwards_value)
+HloDataflowAnalysis::HloDataflowAnalysis(
+    const HloModule& module, bool ssa_form, bool bitcast_defines_value,
+    const CanShareBuffer& can_share_buffer, const ForwardsValue& forwards_value,
+    absl::flat_hash_set<absl::string_view> execution_threads)
     : module_(module),
+      execution_threads_(std::move(execution_threads)),
       ssa_form_(ssa_form),
       bitcast_defines_value_(bitcast_defines_value),
       call_graph_(CallGraph::Build(&module)),
@@ -366,6 +370,10 @@ std::string HloDataflowAnalysis::ToString() const {
       StrCat("HloDataflowAnalysis, module ", module_.name(), "\n");
   StrAppend(&out, "  Instruction value sets:\n");
   for (const HloComputation* computation : module_.computations()) {
+    if (!HloInstruction::IsThreadIncluded(computation->execution_thread(),
+                                          execution_threads_)) {
+      continue;
+    }
     for (const HloInstruction* instruction : computation->instructions()) {
       StrAppend(&out, "Instruction: \n  ", instruction->name(), ":\n");
       if (instruction->shape().IsTuple()) {
@@ -572,20 +580,6 @@ bool HloDataflowAnalysis::UpdateBitcastValueSet(HloInstruction* bitcast) {
   return false;
 }
 
-bool HloDataflowAnalysis::UpdateSetDimensionSizeValueSet(
-    HloInstruction* set_dimension_size) {
-  CHECK_EQ(set_dimension_size->opcode(), HloOpcode::kSetDimensionSize);
-  const InstructionValueSet& operand_set =
-      GetInstructionValueSet(set_dimension_size->operand(0));
-  InstructionValueSet& set_dimension_size_set =
-      GetInstructionValueSet(set_dimension_size);
-  if (operand_set != set_dimension_size_set) {
-    set_dimension_size_set = operand_set;
-    return true;
-  }
-  return false;
-}
-
 bool HloDataflowAnalysis::UpdateSendValueSet(HloInstruction* send) {
   CHECK_EQ(send->opcode(), HloOpcode::kSend);
   bool changed = false;
@@ -632,6 +626,10 @@ bool HloDataflowAnalysis::UpdateAsyncStartValueSet(
           }
         });
   }
+  if (!HloInstruction::IsThreadIncluded(async_start->async_execution_thread(),
+                                        execution_threads_)) {
+    return changed;
+  }
   // AsyncStart forwards the async wrapped computation root values to element
   // {1} of its output.
   HloInstruction* root =
@@ -661,7 +659,10 @@ bool HloDataflowAnalysis::UpdateAsyncUpdateValueSet(
   CHECK_EQ(async_update->shape(), async_update->operand(0)->shape());
   bool changed = false;
   HloInstruction* root =
-      async_update->async_wrapped_computation()->root_instruction();
+      HloInstruction::IsThreadIncluded(async_update->async_execution_thread(),
+                                       execution_threads_)
+          ? async_update->async_wrapped_computation()->root_instruction()
+          : nullptr;
   // AsyncUpdate forwards all of the operand values to corresponding elements of
   // its output.
   ShapeUtil::ForEachSubshape(
@@ -680,13 +681,16 @@ bool HloDataflowAnalysis::UpdateAsyncUpdateValueSet(
             value_set = operand_value_set;
             changed = true;
           }
-        } else {
+        } else if (root != nullptr) {
           // If this subshape is an output (index {1}), we need to create the
           // union with the async wrapped computation root.
           ShapeIndex root_index(index.begin() + 1, index.end());
           const HloValueSet& root_value_set = GetValueSet(root, root_index);
           changed |=
               value_set.AssignUnionOf({&operand_value_set, &root_value_set});
+        } else if (value_set != operand_value_set) {
+          value_set = operand_value_set;
+          changed = true;
         }
       });
   return changed;
@@ -696,7 +700,10 @@ bool HloDataflowAnalysis::UpdateAsyncDoneValueSet(HloInstruction* async_done) {
   CHECK_EQ(async_done->opcode(), HloOpcode::kAsyncDone);
   bool changed = false;
   HloInstruction* root =
-      async_done->async_wrapped_computation()->root_instruction();
+      HloInstruction::IsThreadIncluded(async_done->async_execution_thread(),
+                                       execution_threads_)
+          ? async_done->async_wrapped_computation()->root_instruction()
+          : nullptr;
   // AsyncDone creates a union of the operand values at {1} and the async
   // wrapped computation root to element {} of its output.
   ShapeUtil::ForEachSubshape(
@@ -710,9 +717,14 @@ bool HloDataflowAnalysis::UpdateAsyncDoneValueSet(HloInstruction* async_done) {
 
         ShapeIndex output_index(index.begin() + 1, index.end());
         HloValueSet& value_set = GetValueSet(async_done, output_index);
-        const HloValueSet& root_value_set = GetValueSet(root, output_index);
-        changed |=
-            value_set.AssignUnionOf({&operand_value_set, &root_value_set});
+        if (root != nullptr) {
+          const HloValueSet& root_value_set = GetValueSet(root, output_index);
+          changed |=
+              value_set.AssignUnionOf({&operand_value_set, &root_value_set});
+        } else if (value_set != operand_value_set) {
+          value_set = operand_value_set;
+          changed = true;
+        }
       });
   return changed;
 }
@@ -1179,10 +1191,6 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       changed = UpdateBitcastValueSet(instruction);
       break;
     }
-    case HloOpcode::kSetDimensionSize: {
-      changed = UpdateSetDimensionSizeValueSet(instruction);
-      break;
-    }
     case HloOpcode::kDomain: {
       changed = UpdateDomainValueSet(instruction);
       break;
@@ -1287,6 +1295,10 @@ void HloDataflowAnalysis::Propagate() {
 
   auto comps = module_.MakeComputationPostOrder();
   for (HloComputation* computation : comps) {
+    if (!HloInstruction::IsThreadIncluded(computation->execution_thread(),
+                                          execution_threads_)) {
+      continue;
+    }
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       add_to_worklist(instruction);
@@ -1296,12 +1308,6 @@ void HloDataflowAnalysis::Propagate() {
 
   while (!worklist.empty()) {
     HloInstruction* instruction = worklist.top().second;
-    auto add_to_worklist = [&](HloInstruction* todo) {
-      if (workset.insert(todo).second) {
-        VLOG(1) << "  Adding todo : " << todo->name();
-        worklist.emplace(priority_map[todo], todo);
-      }
-    };
     worklist.pop();
 
     workset.erase(workset.find(instruction));
@@ -1341,18 +1347,25 @@ void HloDataflowAnalysis::Propagate() {
         }
       } else if (user->opcode() == HloOpcode::kAsyncUpdate ||
                  user->opcode() == HloOpcode::kAsyncDone) {
-        // For async update and async done, we cannot distinguish which
-        // parameter needs to be updated so add all to the worklist.
-        for (int64_t parameter_number = 0;
-             parameter_number <
-             user->async_wrapped_computation()->num_parameters();
-             ++parameter_number) {
-          add_to_worklist(
-              user->async_wrapped_computation()->parameter_instruction(
-                  parameter_number));
+        if (HloInstruction::IsThreadIncluded(user->async_execution_thread(),
+                                             execution_threads_)) {
+          // For async update and async done, we cannot distinguish which
+          // parameter needs to be updated so add all to the worklist.
+          for (int64_t parameter_number = 0;
+               parameter_number <
+               user->async_wrapped_computation()->num_parameters();
+               ++parameter_number) {
+            add_to_worklist(
+                user->async_wrapped_computation()->parameter_instruction(
+                    parameter_number));
+          }
         }
       } else {
         for (HloComputation* called_computation : user->called_computations()) {
+          if (!HloInstruction::IsThreadIncluded(
+                  called_computation->execution_thread(), execution_threads_)) {
+            continue;
+          }
           const CallGraphNode& call_graph_node =
               call_graph_->GetNode(called_computation);
           if (call_graph_node.context() == CallContext::kControlFlow) {
@@ -1399,6 +1412,10 @@ InstructionValueSet& HloDataflowAnalysis::GetInstructionValueSet(
 
 Status HloDataflowAnalysis::InitializeInstructionValueSets() {
   for (const HloComputation* computation : module_.MakeComputationSorted()) {
+    if (!HloInstruction::IsThreadIncluded(computation->execution_thread(),
+                                          execution_threads_)) {
+      continue;
+    }
     const CallGraphNode& call_graph_node = call_graph_->GetNode(computation);
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
@@ -1445,7 +1462,6 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
             define_all_values();
           }
           break;
-        case HloOpcode::kSetDimensionSize:
         case HloOpcode::kAddDependency:
         case HloOpcode::kWhile:
         case HloOpcode::kCall:
@@ -1483,16 +1499,22 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           // values flow from their operands.
           define_value_at(/*index=*/{});
           break;
-        case HloOpcode::kAsyncStart:
+        case HloOpcode::kAsyncStart: {
           // AsyncStart produces a tuple of {{aliased operands}, {destination},
           // contexts}. It defines all of the tuple-shaped values and the
           // contexts.
+          // If the thread is excluded, then we don't track the contained
+          // dataflow, and define the destination values too.
+          bool thread_included = HloInstruction::IsThreadIncluded(
+              instruction->async_execution_thread(), execution_threads_);
           define_all_values([&](const ShapeIndex& index) {
             return ShapeUtil::GetSubshape(instruction->shape(), index)
                        .IsTuple() ||
-                   index.front() > 1;
+                   (!thread_included && index.front() == 1) ||
+                   (index.front() > 1);
           });
           break;
+        }
         case HloOpcode::kAsyncUpdate:
           // AsyncUpdate produces a tuple of {{aliased operands}, {destination},
           // contexts} where all of the array-typed values alias with the
@@ -1607,6 +1629,10 @@ void HloDataflowAnalysis::OptimizePhiValues() {
   XLA_VLOG_LINES(1, phi_graph_.ToString());
 
   for (const HloComputation* computation : module_.computations()) {
+    if (!HloInstruction::IsThreadIncluded(computation->execution_thread(),
+                                          execution_threads_)) {
+      continue;
+    }
     for (HloInstruction* instruction : computation->instructions()) {
       InstructionValueSet& instruction_value_set =
           GetInstructionValueSet(instruction);
@@ -1636,14 +1662,14 @@ void HloDataflowAnalysis::OptimizePhiValues() {
 /* static */
 StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
     const HloModule& module, bool ssa_form, bool bitcast_defines_value,
-    const CanShareBuffer& can_share_buffer,
-    const ForwardsValue& forwards_value) {
+    const CanShareBuffer& can_share_buffer, const ForwardsValue& forwards_value,
+    absl::flat_hash_set<absl::string_view> execution_threads) {
   VLOG(1) << "HloDataflowAnalysis::Run on module " << module.name();
   XLA_VLOG_LINES(2, module.ToString());
 
-  auto dataflow_analysis = absl::WrapUnique(
-      new HloDataflowAnalysis(module, ssa_form, bitcast_defines_value,
-                              can_share_buffer, forwards_value));
+  auto dataflow_analysis = absl::WrapUnique(new HloDataflowAnalysis(
+      module, ssa_form, bitcast_defines_value, can_share_buffer, forwards_value,
+      execution_threads));
 
   TF_RETURN_IF_ERROR(dataflow_analysis->InitializeInstructionValueSets());
   dataflow_analysis->Propagate();
@@ -1659,6 +1685,10 @@ StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
   std::vector<std::vector<HloPosition>> value_positions(
       dataflow_analysis->next_value_id_);
   for (const HloComputation* computation : module.computations()) {
+    if (!HloInstruction::IsThreadIncluded(computation->execution_thread(),
+                                          execution_threads)) {
+      continue;
+    }
     for (HloInstruction* instruction : computation->instructions()) {
       for (const auto& pair :
            dataflow_analysis->GetInstructionValueSet(instruction)) {
@@ -1708,6 +1738,10 @@ Status HloDataflowAnalysis::Verify() const {
   // For each value in each value set, verify that the value set's position
   // appears in the value's positions().
   for (const auto& computation : module_.computations()) {
+    if (!HloInstruction::IsThreadIncluded(computation->execution_thread(),
+                                          execution_threads_)) {
+      continue;
+    }
     for (const auto& instruction : computation->instructions()) {
       for (const auto& pair : GetInstructionValueSet(instruction)) {
         const ShapeIndex& index = pair.first;
@@ -1958,6 +1992,14 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(
       }
     }
     return in_place_pairs;
+  } else if (instruction->opcode() == HloOpcode::kSetDimensionSize) {
+    int64_t dimension = instruction->dimension();
+    std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs;
+    if (instruction->shape().is_dynamic_dimension(dimension) ==
+        instruction->shape().is_dynamic_dimension(dimension)) {
+      in_place_pairs.push_back({HloOperandIndex{0, {}}, {}});
+    }
+    return in_place_pairs;
   }
 
   return {};
@@ -2074,7 +2116,8 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
 
   if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||
       user->opcode() == HloOpcode::kScatter ||
-      user->opcode() == HloOpcode::kTriangularSolve) {
+      user->opcode() == HloOpcode::kTriangularSolve ||
+      user->opcode() == HloOpcode::kSetDimensionSize) {
     // We eliminated other users in HloOrdering::LiveRangeStrictlyBefore
     // so here we just need to check that the use is at the right operand index.
     const auto operand_indices = user->OperandIndices(operand);

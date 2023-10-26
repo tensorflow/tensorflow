@@ -1061,6 +1061,16 @@ func.func @test_reshape_dynamic(%arg0: tensor<13x21x?xf32>) -> tensor<*xf32> {
 
 // -----
 
+// CHECK-LABEL: test_reshape_dynamic_ranked_output
+// CHECK: %[[VAR0:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 1, -1, 2>}
+func.func @test_reshape_dynamic_ranked_output(%arg0: tensor<?x52x52x2xf32>) -> tensor<1x?x2xf32> {
+  %cst = arith.constant dense<[1, -1, 2]> : tensor<3xi32>
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<?x52x52x2xf32>, tensor<3xi32>) -> tensor<1x?x2xf32>
+  func.return %0 : tensor<1x?x2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_transpose
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<[2, 0, 1]> : tensor<3xi32>}>
 // CHECK: %[[VAR1:.*]] = tosa.transpose %arg0, %[[VAR0]]
@@ -2429,32 +2439,32 @@ func.func @sparse_to_dense(%arg0 : tensor<?x2xi64>, %arg1 : tensor<?xi64>) -> (t
 // -----
 
 // CHECK-LABEL: @test_arg_max
-func.func @test_arg_max(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
+func.func @test_arg_max(%arg0: tensor<13x21x3xf32>) -> tensor<*xi32> {
   // CHECK: %[[ARGMAX:.+]] = tosa.argmax %arg0 {axis = 1 : i32}
   %0 = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-  %1 = "tfl.arg_max"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<i32>) -> tensor<*xf32>
-  func.return %1 : tensor<*xf32>
+  %1 = "tfl.arg_max"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<i32>) -> tensor<*xi32>
+  func.return %1 : tensor<*xi32>
 }
 
 // -----
 
 // CHECK-LABEL: @test_arg_max_negative_dim
-func.func @test_arg_max_negative_dim(%arg0: tensor<13x21x3xf32>) -> tensor<13x21xf32> {
+func.func @test_arg_max_negative_dim(%arg0: tensor<13x21x3xf32>) -> tensor<13x21xi32> {
   // CHECK: %[[ARGMAX:.+]] = tosa.argmax %arg0 {axis = 2 : i32}
   %0 = "tfl.pseudo_const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
-  %1 = "tfl.arg_max"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<i32>) -> tensor<13x21xf32>
-  func.return %1 : tensor<13x21xf32>
+  %1 = "tfl.arg_max"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<i32>) -> tensor<13x21xi32>
+  func.return %1 : tensor<13x21xi32>
 }
 
 // -----
 
 // CHECK-LABEL: @test_arg_min_f32
-func.func @test_arg_min_f32(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
+func.func @test_arg_min_f32(%arg0: tensor<13x21x3xf32>) -> tensor<*xi32> {
   // CHECK: %[[NEG:.+]] = tosa.negate %arg0 : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   // CHECK: tosa.argmax %[[NEG]] {axis = 1 : i32}
   %0 = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-  %1 = "tfl.arg_min"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<i32>) -> tensor<*xf32>
-  func.return %1 : tensor<*xf32>
+  %1 = "tfl.arg_min"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<i32>) -> tensor<*xi32>
+  func.return %1 : tensor<*xi32>
 }
 
 // -----
@@ -2840,7 +2850,7 @@ func.func @test_squared_difference_f32(%arg0: tensor<1x197x768xf32>, %arg1: tens
 // -----
 
 // CHECK-LABEL: test_broadcast_to_f32
-// CHECK: %[[VAL_0:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<3x3x13x7xf32>}
+// CHECK: %[[VAL_0:.*]] = "tosa.const"() <{value = dense<-0.000000e+00> : tensor<3x3x13x7xf32>}
 // CHECK: %[[VAL_1:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 1, 1, 13, 1>} : (tensor<13x1xf32>)
 // CHECK: %[[VAL_2:.*]] = tosa.add %[[VAL_1]], %[[VAL_0]] : (tensor<1x1x13x1xf32>, tensor<3x3x13x7xf32>) -> tensor<3x3x13x7xf32>
 // CHECK: return %[[VAL_2]] : tensor<3x3x13x7xf32>

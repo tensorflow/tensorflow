@@ -123,7 +123,7 @@ tf_python_pybind_extension(
 
 py_strict_library(
     name = "client",
-    deprecation = "This target has been split. Depend on the sub-targets instead.",
+    srcs = ["client_lib.py"],
     srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
@@ -131,9 +131,14 @@ py_strict_library(
         "//third_party/py/tf_slim:__subpackages__",
     ],
     deps = [
-        ":client_lib",
-        ":device_lib_py",
-        ":timeline_py",
+        ":_pywrap_device_lib",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:build_info",
+        "//tensorflow/python/platform:tf_logging",
     ],
 )
 
@@ -148,7 +153,7 @@ tf_py_strict_test(
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:tf_record",
         "//tensorflow/python/platform:test",
         "//tensorflow/python/util:compat",
     ],
@@ -160,6 +165,7 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
+        "//third_party/mlperf/submissions/training/v0_7/models:__subpackages__",
         "//third_party/py/cleverhans:__subpackages__",
     ],
     deps = [
@@ -195,7 +201,7 @@ cuda_py_strict_test(
     ],
     python_version = "PY3",
     deps = [
-        ":device_lib_py",
+        ":device_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
@@ -295,6 +301,7 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/platform:build_info",
         "//tensorflow/python/platform:tf_logging",
     ],
@@ -330,13 +337,13 @@ tf_py_strict_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:function",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
@@ -453,7 +460,7 @@ cuda_py_strict_test(
     xla_enable_strict_auto_jit = False,  # Graph structure is different with autojit
     deps = [
         ":session",
-        ":timeline_py",
+        ":timeline",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
@@ -503,49 +510,5 @@ cuda_py_strict_test(
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/training:server_lib",
         "//third_party/py/numpy",
-    ],
-)
-
-py_strict_library(
-    name = "client_lib",
-    srcs = ["client_lib.py"],
-    visibility = [
-        "//tensorflow:internal",
-        "//third_party/mlperf:__subpackages__",
-        "//third_party/py/tf_slim:__subpackages__",
-    ],
-    deps = [
-        ":session",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:ops",
-    ],
-)
-
-py_strict_library(
-    name = "device_lib_py",
-    srcs = ["device_lib.py"],
-    visibility = [
-        "//tensorflow:internal",
-        "//third_party/mlperf:__subpackages__",
-        "//third_party/py/tf_slim:__subpackages__",
-    ],
-    deps = [
-        ":_pywrap_device_lib",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:pywrap_tensorflow",
-    ],
-)
-
-py_strict_library(
-    name = "timeline_py",
-    srcs = ["timeline.py"],
-    visibility = [
-        "//tensorflow:internal",
-        "//third_party/mlperf:__subpackages__",
-        "//third_party/py/tf_slim:__subpackages__",
-    ],
-    deps = [
-        "//tensorflow/python/platform:build_info",
-        "//tensorflow/python/platform:tf_logging",
     ],
 )

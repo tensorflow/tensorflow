@@ -282,8 +282,10 @@ class WrappedFunction(function.ConcreteFunction):
     flat_feeds = [self.graph.as_graph_element(t) for t in flat_feeds]
     for f in flat_feeds:
       if not isinstance(f, tensor_lib.Tensor):
-        raise ValueError("All memebers of argument `feeds` must be tensors. "
-                         f"Got {f} with type {type(f)}.")
+        raise ValueError(
+            "All members of argument `feeds` must be tensors. "
+            f"Got {f} with type {type(f)}."
+        )
 
     # Ignoring all feeds that are captures allows prune to be called
     # using wrapped_func.inputs even when it uses variables

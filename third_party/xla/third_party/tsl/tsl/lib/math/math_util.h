@@ -16,10 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_LIB_MATH_MATH_UTIL_H_
 #define TENSORFLOW_TSL_LIB_MATH_MATH_UTIL_H_
 
-#include <limits>
+#include <type_traits>
 
-#include "tsl/platform/logging.h"
-#include "tsl/platform/types.h"
+#include "absl/base/macros.h"
 
 namespace tsl {
 
@@ -48,22 +47,22 @@ class MathUtil {
   // In cases where an alternative technique is correct, performance measurement
   // showed the provided implementation is faster.
   template <typename IntegralType>
-  static IntegralType CeilOfRatio(IntegralType numerator,
-                                  IntegralType denominator) {
+  static constexpr IntegralType CeilOfRatio(IntegralType numerator,
+                                            IntegralType denominator) {
     return CeilOrFloorOfRatio<IntegralType, true>(numerator, denominator);
   }
   template <typename IntegralType>
-  static IntegralType FloorOfRatio(IntegralType numerator,
-                                   IntegralType denominator) {
+  static constexpr IntegralType FloorOfRatio(IntegralType numerator,
+                                             IntegralType denominator) {
     return CeilOrFloorOfRatio<IntegralType, false>(numerator, denominator);
   }
 
   template <typename IntegralType, bool ceil>
-  static IntegralType CeilOrFloorOfRatio(IntegralType numerator,
-                                         IntegralType denominator);
+  static constexpr IntegralType CeilOrFloorOfRatio(IntegralType numerator,
+                                                   IntegralType denominator);
 
   template <typename IntegralType>
-  static IntegralType GCD(IntegralType x, IntegralType y);
+  static constexpr IntegralType GCD(IntegralType x, IntegralType y);
 
   // ----------------------------------------------------------------------
   // IPow<T>
@@ -83,7 +82,7 @@ class MathUtil {
   //
   // Input validity is DCHECKed.
   template <typename T>
-  static T IPow(T base, int exp);
+  static constexpr T IPow(T base, int exp);
 };
 
 // ---- CeilOrFloorOfRatio ----
@@ -95,9 +94,9 @@ class MathUtil {
 // There's a bunch of 'recipes' to compute a integer ceil (or floor) on the web,
 // and most of them are incorrect.
 template <typename IntegralType, bool ceil>
-IntegralType MathUtil::CeilOrFloorOfRatio(IntegralType numerator,
-                                          IntegralType denominator) {
-  DCHECK_NE(0, denominator) << "Division by zero is not supported.";
+constexpr IntegralType MathUtil::CeilOrFloorOfRatio(IntegralType numerator,
+                                                    IntegralType denominator) {
+  ABSL_ASSERT(denominator != 0);
 
   const IntegralType rounded_toward_zero = numerator / denominator;
   const IntegralType intermediate_product = rounded_toward_zero * denominator;
@@ -133,9 +132,8 @@ IntegralType MathUtil::CeilOrFloorOfRatio(IntegralType numerator,
 }
 
 template <typename IntegralType>
-IntegralType MathUtil::GCD(IntegralType x, IntegralType y) {
-  static_assert(std::is_unsigned<IntegralType>::value,
-                "signed GCD not supported!");
+constexpr IntegralType MathUtil::GCD(IntegralType x, IntegralType y) {
+  static_assert(std::is_unsigned_v<IntegralType>, "signed GCD not supported!");
   while (y != 0) {
     IntegralType r = x % y;
     x = y;
@@ -149,8 +147,8 @@ IntegralType MathUtil::GCD(IntegralType x, IntegralType y) {
 //
 // Note that "exp >>= 1" is faster than "exp /= 2" on at least one platform.
 template <typename T>
-T MathUtil::IPow(T base, int exp) {
-  DCHECK_GE(exp, 0);
+constexpr T MathUtil::IPow(T base, int exp) {
+  ABSL_ASSERT(exp >= 0);
   for (T result(1);; base *= base) {
     if ((exp & 1) != 0) result *= base;
     exp >>= 1;

@@ -52,6 +52,7 @@ cc_library(
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_value",
+        "//xla/service:time_utils",
         "//xla/service:tuple_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",

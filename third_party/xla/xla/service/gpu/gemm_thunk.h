@@ -39,8 +39,8 @@ class GemmThunk : public Thunk {
   GemmThunk& operator=(const GemmThunk&) = delete;
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
-  Status Initialize(const GpuExecutable& executable,
-                    se::StreamExecutor* executor) override;
+  Status Initialize(se::StreamExecutor* executor,
+                    ExecutableSource src) override;
 
  private:
   const GemmConfig config_;

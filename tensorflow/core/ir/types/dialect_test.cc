@@ -44,13 +44,14 @@ TEST(TFTypesDialect, TestFuncAttrSubElement) {
   Builder b(&context);
   StringAttr baz = b.getStringAttr("baz");
   ASSERT_TRUE(succeeded(SymbolTable::replaceAllSymbolUses(
-      b.getStringAttr("foo"), baz, &test_op)));
+      b.getStringAttr("foo"), baz, test_op.getParentRegion())));
 
   auto func_attr = test_op.getAttr("func").dyn_cast<tf_type::FuncAttr>();
   ASSERT_TRUE(func_attr);
   auto sym_ref = FlatSymbolRefAttr::get(baz);
   EXPECT_TRUE(func_attr.getName() == sym_ref);
-  EXPECT_TRUE(func_attr.getAttrs().get("bar") == sym_ref);
+  auto bar_ref = func_attr.getAttrs().get("bar");
+  EXPECT_TRUE(bar_ref == sym_ref);
 }
 
 }  // namespace

@@ -131,7 +131,9 @@ std::optional<DcnHostEvent> DcnHostEventList::pop(const Timespan& timespan) {
     events_.pop_front();
   }
 
-  if (!events_.empty() && timespan.Includes(events_.front().timespan)) {
+  if (!events_.empty() &&
+      (timespan.Includes(events_.front().timespan.begin_ps()) ||
+       events_.front().timespan.Includes(timespan.begin_ps()))) {
     DcnHostEvent front = events_.front();
     events_.pop_front();
     return front;
@@ -327,10 +329,11 @@ void DcnTracker::SummarizeDcnSlackAnalysis() {
           analysis.mutable_host_graph_execution();
       host_graph_execution->set_start_time_ps(host_event->timespan.begin_ps());
       host_graph_execution->set_duration_ps(host_event->timespan.duration_ps());
-
-      s.set_host_stall_us(((int64_t)host_event->timespan.end_ps() -
-                           (int64_t)analysis.recv_done().start_time_ps()) /
-                          1E6);
+      s.set_host_stall_us(s.host_stall_us() +
+                          (((int64_t)host_event->timespan.end_ps() -
+                            (int64_t)analysis.recv_done().start_time_ps()) /
+                           1E6));
+      s.set_host_events_count(s.host_events_count() + 1);
     }
   }
 
@@ -345,7 +348,7 @@ void DcnTracker::SummarizeDcnSlackAnalysis() {
         SafeDivide(s.recv_done_duration_us(), s.occurrences()));
     s.set_send_duration_us(SafeDivide(s.send_duration_us(), s.occurrences()));
     s.set_recv_duration_us(SafeDivide(s.recv_duration_us(), s.occurrences()));
-    s.set_host_stall_us(SafeDivide(s.host_stall_us(), s.occurrences()));
+    s.set_host_stall_us(SafeDivide(s.host_stall_us(), s.host_events_count()));
     *slack_analysis_.add_dcn_slack_summary() = s;
   }
 }

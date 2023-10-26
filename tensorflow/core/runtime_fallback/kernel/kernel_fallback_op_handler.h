@@ -19,8 +19,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_KERNEL_FALLBACK_OP_HANDLER_H_
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_KERNEL_FALLBACK_OP_HANDLER_H_
 
+#include "llvm/Support/Error.h"
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/core_runtime/op_handler.h"  // from @tf_runtime
+#include "tfrt/host_context/device.h"  // from @tf_runtime
+#include "tfrt/support/ref_count.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {

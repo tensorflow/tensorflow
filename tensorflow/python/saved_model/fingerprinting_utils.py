@@ -124,20 +124,20 @@ def singleprint_from_saved_model(export_dir):
   # try generating the singleprint from `fingerprint.pb`
   try:
     return singleprint_from_fingerprint_proto(export_dir)
-  except FingerprintException:
+  except ValueError:
     pass
 
   # try creating `fingerprint.pb`, then generating the singleprint
   try:
     write_fingerprint(export_dir)
     return singleprint_from_fingerprint_proto(export_dir)
-  except FingerprintException:
+  except ValueError:
     pass
 
   # try generating the singleprint from `saved_model.pb`
   try:
     return singleprint_from_saved_model_proto(export_dir)
-  except FingerprintException as e:
+  except ValueError as e:
     raise ValueError(e) from None
 
 

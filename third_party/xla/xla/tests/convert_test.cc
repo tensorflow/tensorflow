@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/float8.h"
 #include "tsl/platform/test.h"
@@ -534,6 +535,70 @@ XLA_TEST_F(ConvertTest, ConvertS64U64) {
   ConvertElementType(ConstantR1<int64_t>(&builder, signed_x), U64);
   std::vector<uint64_t> unsigned_x = {{42, UINT64_MAX, IPow<uint64_t>(2, 63)}};
   ComputeAndCompareR1<uint64_t>(&builder, unsigned_x, {});
+}
+
+TEST_F(ConvertTest, ConvertR1S4ToR1S8) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR1<s4>(&builder, {s4(0), s4(1), s4(2), s4(-8)});
+  ConvertElementType(a, S8);
+
+  std::vector<int8_t> expected = {0, 1, 2, -8};
+  ComputeAndCompareR1<int8_t>(&builder, expected, {});
+}
+
+TEST_F(ConvertTest, ConvertR1S4ParameterToR1S8) {
+  XlaBuilder builder(TestName());
+  Literal arg_literal =
+      LiteralUtil::CreateR1<s4>({s4(0), s4(1), s4(2), s4(-8)});
+  auto arg_param = Parameter(&builder, 0, arg_literal.shape(), "arg_param");
+  std::unique_ptr<GlobalData> arg_data =
+      client_->TransferToServer(arg_literal).value();
+
+  ConvertElementType(arg_param, S8);
+
+  std::vector<int8_t> expected = {0, 1, 2, -8};
+  ComputeAndCompareR1<int8_t>(&builder, expected, {arg_data.get()});
+}
+
+TEST_F(ConvertTest, ConvertR1U4ToR1U8) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR1<u4>(&builder, {u4(0), u4(1), u4(2), u4(15)});
+  ConvertElementType(a, U8);
+
+  std::vector<uint8_t> expected = {0, 1, 2, 15};
+  ComputeAndCompareR1<uint8_t>(&builder, expected, {});
+}
+
+TEST_F(ConvertTest, ConvertR1U4ParameterToR1U8) {
+  XlaBuilder builder(TestName());
+  Literal arg_literal =
+      LiteralUtil::CreateR1<u4>({u4(0), u4(1), u4(2), u4(15)});
+  auto arg_param = Parameter(&builder, 0, arg_literal.shape(), "arg_param");
+  std::unique_ptr<GlobalData> arg_data =
+      client_->TransferToServer(arg_literal).value();
+
+  ConvertElementType(arg_param, U8);
+
+  std::vector<uint8_t> expected = {0, 1, 2, 15};
+  ComputeAndCompareR1<uint8_t>(&builder, expected, {arg_data.get()});
+}
+
+TEST_F(ConvertTest, ConvertR1S8ToR1S4) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR1<int8_t>(&builder, {0, 1, 2, -8});
+  ConvertElementType(a, S4);
+
+  std::vector<s4> expected = {s4(0), s4(1), s4(2), s4(-8)};
+  ComputeAndCompareR1<s4>(&builder, expected, {});
+}
+
+TEST_F(ConvertTest, ConvertR1U8ToR1U4) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR1<uint8_t>(&builder, {0, 1, 2, 15});
+  ConvertElementType(a, U4);
+
+  std::vector<u4> expected = {u4(0), u4(1), u4(2), u4(15)};
+  ComputeAndCompareR1<u4>(&builder, expected, {});
 }
 
 XLA_TEST_F(ConvertTest, ConvertBF16F32) {

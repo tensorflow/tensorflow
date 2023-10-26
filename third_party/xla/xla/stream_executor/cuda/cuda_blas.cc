@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -179,6 +180,8 @@ static const char *const kCublasNotInitializedExplanation =
     "not built with support for the GPU in your machine.";
 
 bool CUDABlas::Init() {
+  absl::MutexLock lock(&mu_);
+
   gpu::ScopedActivateExecutorContext sac{parent_};
   cublasStatus_t ret = cublasCreate(&blas_);
   if (ret != CUBLAS_STATUS_SUCCESS) {
@@ -187,6 +190,26 @@ bool CUDABlas::Init() {
         ret == CUBLAS_STATUS_ALLOC_FAILED) {
       LOG(ERROR) << kCublasNotInitializedExplanation;
     }
+    return false;
+  }
+
+  // TODO(b/307832648): Workspace must be explicit for all cuBLAS operations.
+  //
+  // Use workspace size recommended in cuBLAS documentation:
+  // https://docs.nvidia.com/cuda/cublas/#cublassetworkspace
+  int64_t workspace_size = parent_->cc_major() >= 9
+                               ? 32 * 1024 * 1024 /*32 MiB*/
+                               : 4 * 1024 * 1024 /*4 MiB*/;
+
+  workspace_ = parent_->Allocate(workspace_size, 0);
+  if (workspace_.opaque() == nullptr) {
+    LOG(ERROR) << "failed to allocate workspace fo cuBLAS calls";
+    return false;
+  }
+
+  ret = cublasSetWorkspace(blas_, workspace_.opaque(), workspace_.size());
+  if (ret != CUBLAS_STATUS_SUCCESS) {
+    LOG(ERROR) << "failed to set workspace fo cuBLAS calls: " << ToString(ret);
     return false;
   }
 
@@ -211,6 +234,7 @@ CUDABlas::CUDABlas(gpu::GpuExecutor *parent)
 }
 
 CUDABlas::~CUDABlas() {
+  parent_->Deallocate(&workspace_);
   if (blas_ != nullptr) {
     gpu::ScopedActivateExecutorContext sac{parent_};
     cublasDestroy(blas_);
@@ -222,9 +246,17 @@ bool CUDABlas::SetStream(Stream *stream) {
   CHECK(AsGpuStreamValue(stream) != nullptr);
   CHECK(blas_ != nullptr);
   gpu::ScopedActivateExecutorContext sac{parent_};
+
   cublasStatus_t ret = cublasSetStream(blas_, AsGpuStreamValue(stream));
   if (ret != CUBLAS_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to set stream for cuBLAS calls: " << ToString(ret);
+    return false;
+  }
+
+  // TODO(b/307832648): Workspace must be explicit for all cuBLAS operations.
+  ret = cublasSetWorkspace(blas_, workspace_.opaque(), workspace_.size());
+  if (ret != CUBLAS_STATUS_SUCCESS) {
+    LOG(ERROR) << "failed to set workspace fo cuBLAS calls: " << ToString(ret);
     return false;
   }
 

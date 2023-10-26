@@ -279,10 +279,10 @@ struct AutoShardingOption {
                        "device_mesh_shape=",
                        absl::StrJoin(device_mesh_shape, ",")));
     }
-    if (spmd::VectorGreaterThanOneElementCount(device_mesh_shape) > 2) {
+    if (spmd::VectorGreaterThanOneElementCount(device_mesh_shape) > 3) {
       return absl::OutOfRangeError(
           absl::StrCat("the auto-sharding pass currently does not support ",
-                       "more than two shardable dims: device_mesh_shape=",
+                       "more than three shardable dims: device_mesh_shape=",
                        absl::StrJoin(device_mesh_shape, ",")));
     }
 

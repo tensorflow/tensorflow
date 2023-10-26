@@ -32,7 +32,8 @@ Despecializer::Despecializer() : pipeline_("despecializer") {
   pipeline_.AddPass<ControlDepRemover>();
   pipeline_.AddPass<Defuser>();
   pipeline_.AddPass<BFloat16MixedPrecisionRemoval>();
-  pipeline_.AddPass<SubByteNormalization>();
+  pipeline_.AddPass<SubByteNormalization>(
+      SubByteNormalization::REMOVE_ELEMENT_SIZE);
 }
 
 void Despecializer::AddReduceWindowToReduceBroadcastDeconstruct() {

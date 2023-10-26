@@ -19,9 +19,11 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/IRBuilder.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/llvm_ir/dynamic_update_slice_util.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
+#include "xla/service/llvm_ir/ir_array.h"
 
 namespace xla {
 namespace gpu {
@@ -35,10 +37,9 @@ StatusOr<LaunchDimensions> InPlaceDynamicUpdateSliceEmitter::launch_dimensions(
 
 Status InPlaceDynamicUpdateSliceEmitter::EmitKernel(
     IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
-    mlir::lmhlo::FusionOp fusion_op, const HloFusionInstruction& fusion,
-    const LaunchDimensions& launch_dims, std::vector<llvm_ir::IrArray> inputs,
-    std::vector<llvm_ir::IrArray> outputs, llvm::IRBuilder<>* builder,
-    int kernel_index) const {
+    const HloFusionInstruction& fusion, const LaunchDimensions& launch_dims,
+    std::vector<llvm_ir::IrArray> inputs, std::vector<llvm_ir::IrArray> outputs,
+    llvm::IRBuilder<>* builder, int kernel_index) const {
   // In case a dynamic slice update's output is bitcasted, we need to ensure we
   // write to the output array using the shape and layout of the dynamic slice
   // update. This cast is known to be safe to do iff, in the case the output of

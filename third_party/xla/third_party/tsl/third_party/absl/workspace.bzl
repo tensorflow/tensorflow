@@ -44,7 +44,7 @@ def repo():
         system_link_files = SYS_LINKS,
         # This patch pulls in a fix for designated initializers that MSVC
         # complains about. It shouldn't be necessary at the next LTS release.
-        patch_file = ["//third_party/absl:absl_designated_initializers.patch", "//third_party/absl:invert_the_is_inline_bin.patch"],
+        patch_file = ["//third_party/absl:absl_designated_initializers.patch"],
         strip_prefix = "abseil-cpp-{commit}".format(commit = ABSL_COMMIT),
         urls = tf_mirror_urls("https://github.com/abseil/abseil-cpp/archive/{commit}.tar.gz".format(commit = ABSL_COMMIT)),
     )

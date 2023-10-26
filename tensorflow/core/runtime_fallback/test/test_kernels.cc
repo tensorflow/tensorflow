@@ -52,10 +52,6 @@ using ::tfrt::StringHostTensor;
 using ::tfrt::TensorHandle;
 using ::tfrt::TensorMetadata;
 
-static tensorflow::Tensor TestSyncCreateTFTensorI32(Attribute<int> val) {
-  return tensorflow::Tensor(*val);
-}
-
 static void CreateTensorHandleWithDelayedAsyncTensor(
     RemainingArguments inputs, RemainingResults output_tensors,
     const ExecutionContext& exec_ctx) {
@@ -83,8 +79,6 @@ static void CreateTensorHandleWithDelayedAsyncTensor(
 }  // namespace
 
 void RegisterTestKernels(KernelRegistry* registry) {
-  registry->AddSyncKernel("tfrt_fallback_test.sync_create_tf_tensor.i32",
-                          TFRT_SYNC_KERNEL(TestSyncCreateTFTensorI32));
   registry->AddKernel(
       "tfrt_fallback_test.create_tensorhandle_with_delayed_async_tensor",
       TFRT_KERNEL(CreateTensorHandleWithDelayedAsyncTensor));

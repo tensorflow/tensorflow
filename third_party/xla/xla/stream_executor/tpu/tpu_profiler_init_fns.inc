@@ -13,6 +13,11 @@ tsl::Status SetTpuProfilerApiFns(void* library_handle) {  // TENSORFLOW_STATUS_O
   TFTPU_SET_FN(profiler_api_fn, TpuProfiler_Start);
   TFTPU_SET_FN(profiler_api_fn, TpuProfiler_Stop);
   TFTPU_SET_FN(profiler_api_fn, TpuProfiler_CollectData);
+
+  TFTPU_SET_FN(profiler_api_fn, TpuStatus_New);
+  TFTPU_SET_FN(profiler_api_fn, TpuStatus_Free);
+  TFTPU_SET_FN(profiler_api_fn, TpuStatus_Message);
+  TFTPU_SET_FN(profiler_api_fn, TpuStatus_Code);
   return tsl::OkStatus();
 }
 

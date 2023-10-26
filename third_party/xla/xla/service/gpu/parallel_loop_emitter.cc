@@ -72,11 +72,12 @@ ParallelLoopEmitter::EmitLinearBaseAndThreadIdx(llvm::Type* index_type,
                             static_cast<llvm::Instruction*>(thread_id_x));
   thread_id_x = b_->CreateZExtOrTrunc(thread_id_x, index_type, "thread_id_x");
 
-  llvm::Value* linear_index_base = b_->CreateMul(
-      block_id,
-      llvm::ConstantInt::get(index_type, launch_dimensions_.total_nb_threads()),
-      "",
-      /*HasNUW=*/true, /*HasNSW=*/true);
+  llvm::Value* linear_index_base =
+      b_->CreateMul(block_id,
+                    llvm::ConstantInt::get(
+                        index_type, launch_dimensions_.num_threads_per_block()),
+                    "",
+                    /*HasNUW=*/true, /*HasNSW=*/true);
 
   if (launch_dimensions_.thread_counts_per_block().y > 1) {
     llvm::Value* thread_id_y =
@@ -112,7 +113,7 @@ ParallelLoopEmitter::EmitLinearBaseAndThreadIdx(llvm::Type* index_type,
       {b_->CreateICmpULT(
           linear_index_base,
           llvm::ConstantInt::get(index_type,
-                                 launch_dimensions_.total_nb_threads() *
+                                 launch_dimensions_.num_threads_per_block() *
                                      launch_dimensions_.block_counts().x),
           "linear_index_in_range")},
       {}, b_);

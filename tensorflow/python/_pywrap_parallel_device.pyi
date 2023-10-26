@@ -13,6 +13,4 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import List
-
-def GetParallelDeviceCapsules(arg0: str, arg1: List[str]) -> object: ...
+def GetParallelDeviceCapsules(arg0: str, arg1: list[str]) -> object: ...

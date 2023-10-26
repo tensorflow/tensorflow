@@ -261,7 +261,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   tsl::StatusOr<std::unique_ptr<internal::CommandBufferInterface>>
   GetCommandBufferImplementation(CommandBuffer::Mode mode) override;
 
-  void* GpuContextHack() override;
+  void* platform_specific_context() override;
 
   GpuContext* gpu_context();
 
@@ -287,6 +287,9 @@ class GpuExecutor : public internal::StreamExecutorInterface {
     }
     return it->second;
   }
+
+  int cc_major() const { return cc_major_; }
+  int cc_minor() const { return cc_minor_; }
 
  private:
   // Host callback landing routine invoked by CUDA.

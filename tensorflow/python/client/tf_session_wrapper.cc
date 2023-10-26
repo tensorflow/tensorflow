@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/python_api.h"
 #include "tensorflow/c/safe_ptr.h"
+#include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/framework/full_type.pb.h"
@@ -1703,6 +1704,25 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
             tensorflow::make_safe(TF_NewStatus());
         auto output = TF_GraphImportGraphDefWithResults(
             graph->tf_graph(), graph_def, options, status.get());
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        return output;
+      },
+      py::return_value_policy::reference);
+
+  m.def(
+      "TF_GraphImportGraphDefWithResultsNoSerialization",
+      [](PyGraph* graph, const tensorflow::GraphDef* graph_def,
+         const TF_ImportGraphDefOptions* options) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        TF_ImportGraphDefResults* output;
+        {
+          TF_Buffer graph_def_buffer;
+          graph_def_buffer.data = reinterpret_cast<const void*>(graph_def);
+          graph_def_buffer.length = sizeof(tensorflow::GraphDef*);
+          output = TF_GraphImportGraphDefWithResultsNoSerialization(
+              graph->tf_graph(), &graph_def_buffer, options, status.get());
+        }
         tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         return output;
       },

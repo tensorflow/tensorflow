@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/flatten_call_graph.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
@@ -90,7 +91,6 @@ Status PeelInstructionsForOddTripCount(HloModule* module,
   HloComputation* while_body = while_instr->while_body();
   HloInstruction* input_parameter = while_body->parameter_instruction(0);
   HloInstruction* input_tuple = while_instr->mutable_operand(0);
-  CHECK(input_tuple->opcode() == HloOpcode::kTuple);
 
   auto old_loop_roots = while_body->root_instruction()->mutable_operands();
   HloComputation* parent_comp = while_instr->parent();
@@ -174,7 +174,6 @@ StatusOr<bool> LoopDoubleBufferTransformer::Run(
 
     HloComputation* while_body = while_instr->while_body();
 
-    CHECK(while_body->root_instruction()->opcode() == HloOpcode::kTuple);
     VLOG(2) << "Processing root " << while_body->root_instruction()->ToString();
 
     auto old_loop_roots = while_body->root_instruction()->mutable_operands();
@@ -242,12 +241,14 @@ StatusOr<bool> LoopDoubleBufferTransformer::Run(
     }
     for (HloInstruction* input_consumer : input_parameter->users()) {
       for (HloInstruction* old_input : input_consumer->users()) {
-        HloInstruction* new_input = old_to_new_map[old_input];
-        if (skip_control_dep_injection.find(old_input) ==
-                skip_control_dep_injection.end() &&
-            !IsCollective(old_input)) {
-          for (HloInstruction* old_root : old_loop_roots) {
-            TF_RETURN_IF_ERROR(old_root->AddControlDependencyTo(new_input));
+        if (old_to_new_map.find(old_input) != old_to_new_map.end()) {
+          HloInstruction* new_input = old_to_new_map[old_input];
+          if (skip_control_dep_injection.find(old_input) ==
+                  skip_control_dep_injection.end() &&
+              !IsCollective(old_input)) {
+            for (HloInstruction* old_root : old_loop_roots) {
+              TF_RETURN_IF_ERROR(old_root->AddControlDependencyTo(new_input));
+            }
           }
         }
       }
@@ -259,6 +260,16 @@ StatusOr<bool> LoopDoubleBufferTransformer::Run(
   }
 
   VLOG(2) << "LoopDoubleBufferTransformer output: " << module->ToString();
+
+  // Run necessary cleanup to ensure LoopDoubleBufferTransformer behaves
+  // correctly.
+  if (changed) {
+    // The call graph will not be flat if one of the loops that was unrolled
+    // contains any kind of call to another computation---since the call will
+    // be duplicated, thereby adding a second callsite for that computation.
+    TF_RETURN_IF_ERROR(
+        FlattenCallGraph().Run(module, execution_threads).status());
+  }
 
   return changed;
 }

@@ -292,7 +292,7 @@ def assert_meta_graph_protos_equal(tester, a, b):
         b_proto.ParseFromString(b_value_item)
         tester.assertProtoEquals(a_proto, b_proto)
     else:
-      tester.assertEquals(a_value, b_value)
+      tester.assertEqual(a_value, b_value)
   # Compared the fields directly, remove their raw values from the
   # proto comparison below.
   a.ClearField("collection_def")

@@ -41,6 +41,7 @@ load(
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
+    "if_rocm_hipblaslt",
 )
 
 # Description:
@@ -556,7 +557,7 @@ tf_cuda_library(
         "@local_xla//xla/stream_executor/gpu:redzone_allocator",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
-        "@local_xla//xla/stream_executor:tf_allocator_adapter",
+        "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
     ]),
 )
 
@@ -3471,16 +3472,18 @@ tf_kernel_library(
         ":loose_headers",
         "@local_tsl//tsl/framework/contraction:eigen_contraction_kernel",
     ] + mkl_deps() + if_cuda([
-        ":matmul_util",
         "@local_xla//xla/stream_executor/cuda:cublas_plugin",
-        "@local_xla//xla/stream_executor/gpu:gpu_asm_opts",
-        "@local_xla//xla/stream_executor/gpu:redzone_allocator",
-        "@local_xla//xla/stream_executor:tf_allocator_adapter",
-        "//tensorflow/core/profiler/lib:scoped_annotation",
+    ]) + if_rocm_hipblaslt([
+        "@local_xla//xla/stream_executor/rocm:hipblas_lt_header",
     ]) + if_cuda_or_rocm([
         ":conv_ops_gpu_hdrs",
         ":gpu_utils",
         ":conv_ops",
+        ":matmul_util",
+        "@local_xla//xla/stream_executor/gpu:gpu_asm_opts",
+        "@local_xla//xla/stream_executor/gpu:redzone_allocator",
+        "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
+        "//tensorflow/core/profiler/lib:scoped_annotation",
         ":numeric_options_utils",
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/util/autotune_maps:conv_parameters",
@@ -3490,9 +3493,10 @@ tf_kernel_library(
 
 cc_library(
     name = "matmul_util",
-    srcs = if_cuda(["matmul_util.cc"]),
-    hdrs = if_cuda(["matmul_util.h"]),
-    deps = if_cuda([
+    srcs = ["matmul_util.cc"],
+    hdrs = ["matmul_util.h"],
+    local_defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
+    deps = if_cuda_or_rocm([
         "@com_google_absl//absl/container:flat_hash_map",
         "@local_xla//xla:status_macros",
         "@local_xla//xla/stream_executor/cuda:cublas_plugin",
@@ -3500,7 +3504,11 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:tensor_float_32_hdr_lib",
         "//tensorflow/core/util:env_var",
+    ]) + if_cuda([
         "@local_xla//xla/stream_executor/cuda:cublas_lt_header",
+    ]) + if_rocm([
+        "@local_xla//xla/stream_executor/platform:dso_loader",
+        "@local_xla//xla/stream_executor/rocm:hipblas_lt_header",
     ]) + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
 )
 
@@ -3585,58 +3593,6 @@ tf_kernel_library(
     deps = MATH_DEPS,
 )
 
-# This wrapper library requires special build flags, so must
-# by compiled separately.
-cc_library(
-    name = "fft_impl",
-    srcs = ["fft_impl.cc"],
-    hdrs = ["fft_impl.h"],
-    # DUCC requires exceptions and RTTI.
-    copts = [
-        "-fexceptions",
-        "-frtti",
-    ],
-    features = ["-use_header_modules"],
-    deps = [
-        "//tensorflow/core:framework",
-        "@com_google_absl//absl/status",
-        "@ducc//:fft",
-        "@eigen_archive//:eigen3",
-    ],
-)
-
-# This wrapper library requires special build flags, so must
-# by compiled separately.  This version is specific to "portable"
-# ops, where we have different linking requirements.
-cc_library(
-    name = "portable_fft_impl",
-    srcs = if_mobile([
-        "fft_impl.cc",
-        "@ducc//:mobile_srcs_no_runtime",
-    ]),
-    hdrs = ["fft_impl.h"],
-    copts = [
-        # DUCC requires exceptions and RTTI.
-        "-fexceptions",
-        "-frtti",
-        # DUCC custom threading.
-        "-DDUCC0_CUSTOM_LOWLEVEL_THREADING=1",
-        # Required for relative includes in the DUCC library.
-        "-Ithird_party/ducc/src",
-        "-Ithird_party/ducc/google",
-        # Required for relative includes in OSS builds.
-        "-Iexternal",
-        "-Iexternal/ducc/src",
-        "-Iexternal/ducc/google",
-    ],
-    features = ["-use_header_modules"],
-    deps = [
-        "//tensorflow/core:portable_tensorflow_lib_lite",
-        "@com_google_absl//absl/status",
-        "@eigen_archive//:eigen3",
-    ],
-)
-
 tf_kernel_library(
     name = "fft_ops",
     prefix = "fft_ops",
@@ -3644,7 +3600,7 @@ tf_kernel_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/core/platform:stream_executor",
         "@local_xla//xla/stream_executor/cuda:cufft_plugin",
-    ]) + [":fft_impl"],
+    ]) + ["@ducc//:fft_wrapper"],
 )
 
 tf_kernel_library(
@@ -3824,7 +3780,6 @@ tf_cuda_cc_test(
 
 tf_cuda_cc_test(
     name = "matmul_op_test",
-    size = "small",
     srcs = ["matmul_op_test.cc"],
     tags = [
         "no_arm64",  # b/282068262
@@ -3847,6 +3802,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -4077,7 +4034,7 @@ tf_kernel_library(
         "@local_xla//xla/stream_executor/cuda:cublas_plugin",
         "@local_xla//xla/stream_executor/cuda:cudnn_plugin",
         "@local_xla//xla/stream_executor/gpu:gpu_asm_opts",
-        "@local_xla//xla/stream_executor:tf_allocator_adapter",
+        "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
         "@local_xla//xla/stream_executor",
         "//tensorflow/core/platform:stream_executor",
     ]) + if_cuda_or_rocm([
@@ -6966,8 +6923,6 @@ filegroup(
             "decode_proto_op.cc",
             "encode_proto_op.cc",
             "sobol_op.cc",
-            # Excluded because require special build rules:
-            "fft_impl.cc",  # Must instead link in ":portable_fft_impl".
             # Excluded due to experimental status:
             "debug_ops.*",
             "mutex_ops.*",
@@ -7032,7 +6987,6 @@ cc_library(
     textual_hdrs = ANDROID_TEXTUAL_HDRS,
     visibility = ["//visibility:public"],
     deps = [
-        ":portable_fft_impl",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -7064,6 +7018,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf",
+        "@ducc//:fft_wrapper",
         "@eigen_archive//:eigen3",
         "@fft2d",
         "@gemmlowp",

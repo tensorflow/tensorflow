@@ -294,6 +294,21 @@ class MIOpenSupport : public dnn::DnnSupport {
       bool is_training, ScratchAllocator* reserve_space_allocator,
       ScratchAllocator* workspace_allocator) override;
 
+  bool DoBatchNormalizationForward(
+      Stream* stream, const DeviceMemory<Eigen::bfloat16>& x,
+      const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
+      const DeviceMemory<float>& estimated_mean,
+      const DeviceMemory<float>& estimated_variance,
+      const DeviceMemory<Eigen::bfloat16>& side_input,
+      const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      const double exponential_average_factor,
+      dnn::ActivationMode activation_mode, DeviceMemory<Eigen::bfloat16>* y,
+      DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
+      DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
+      bool is_training, ScratchAllocator* reserve_space_allocator,
+      ScratchAllocator* workspace_allocator) override;
+
   bool DoBatchNormalizationBackward(
       Stream* stream, const DeviceMemory<float>& y_backprop,
       const DeviceMemory<float>& x, const DeviceMemory<float>& scale,
@@ -319,6 +334,21 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
       DeviceMemory<Eigen::half>* side_input_backprop,
       DeviceMemory<uint8>* reserve_space_data,
+      ScratchAllocator* workspace_allocator) override;
+
+  bool DoBatchNormalizationBackward(
+      Stream* stream, const DeviceMemory<Eigen::bfloat16>& y_backprop,
+      const DeviceMemory<Eigen::bfloat16>& x, const DeviceMemory<float>& scale,
+      const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
+      const DeviceMemory<float>& inv_var,
+      const DeviceMemory<Eigen::bfloat16>& y,
+      const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      dnn::ActivationMode activation_mode,
+      DeviceMemory<Eigen::bfloat16>* x_backprop,
+      DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+      DeviceMemory<Eigen::bfloat16>* side_input_backprop,
+      DeviceMemory<uint8_t>* reserve_space_data,
       ScratchAllocator* workspace_allocator) override;
 
   tsl::Status DoConvolve(
@@ -586,7 +616,8 @@ class MIOpenSupport : public dnn::DnnSupport {
                         const MIOpenRnnStateTensorDescriptor& output_c_desc,
                         DeviceMemory<T>* output_c_data, bool is_training,
                         ScratchAllocator* reserve_space_allocator,
-                        ScratchAllocator* workspace_allocator);
+                        ScratchAllocator* workspace_allocator,
+                        dnn::ProfileResult* output_profile_result);
   template <class T>
   bool DoRnnBackwardImpl(Stream* stream, const MIOpenRnnDescriptor& rnn_desc,
                          const MIOpenRnnSequenceTensorDescriptor& input_desc,
@@ -610,7 +641,8 @@ class MIOpenSupport : public dnn::DnnSupport {
                          DeviceMemory<T>* input_c_backprop_data,
                          DeviceMemory<T>* params_backprop_data,
                          DeviceMemory<uint8>* reserve_space_data,
-                         ScratchAllocator* workspace_allocator);
+                         ScratchAllocator* workspace_allocator,
+                         dnn::ProfileResult* output_profile_result);
 
   tsl::Status DoPrepareForConvolution(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
@@ -669,6 +701,16 @@ class MIOpenSupport : public dnn::DnnSupport {
   MIOpenSupport(const MIOpenSupport&) = delete;
   void operator=(const MIOpenSupport&) = delete;
 };
+
+// A helper function for the front frameworks.
+// e.g., TF(tensorflow/core/kernels/conv_ops.cc, fused_batch_norm_op.cc
+// and tensorflow/core/grappler/optimizers/generic_layout_optimizer.cc)
+// This will decide whether to use NHWC in Convolution/Batchnorm.
+// This mode can be faster in in FP16 workloads on gfx908 and beyond.
+// Requires ROCm 5.0+.
+// TODO (ROCm): Use autotune to choose between this mode and NCHW
+// when MIOpen has more optimized kernels.
+bool UseNhwcLayoutForRocm();
 
 }  // namespace gpu
 }  // namespace stream_executor

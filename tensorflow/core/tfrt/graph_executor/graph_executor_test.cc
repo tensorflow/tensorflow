@@ -96,7 +96,7 @@ TEST_P(GraphExecutorTest, Vanilla) {
   auto resource_context = std::make_unique<tfrt::ResourceContext>();
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_executor,
-      GraphExecutor::Create(std::move(options), *fallback_state,
+      GraphExecutor::Create(std::move(options), std::move(fallback_state),
                             std::move(resource_context), graph_def,
                             GetKernelRegistry()));
 
@@ -136,7 +136,7 @@ TEST_P(GraphExecutorTest, OnlineCostAnalysisOptionsOverrideToOnce) {
   auto resource_context = std::make_unique<tfrt::ResourceContext>();
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_executor_base,
-      GraphExecutor::Create(std::move(options), *fallback_state,
+      GraphExecutor::Create(std::move(options), std::move(fallback_state),
                             std::move(resource_context), graph_def,
                             GetKernelRegistry()));
   auto graph_executor = std::unique_ptr<GraphExecutorForTestingCostAnalysis>(
@@ -190,7 +190,7 @@ TEST_P(GraphExecutorTest, OnlineCostAnalysisEveryTime) {
   auto resource_context = std::make_unique<tfrt::ResourceContext>();
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_executor_base,
-      GraphExecutor::Create(std::move(options), *fallback_state,
+      GraphExecutor::Create(std::move(options), std::move(fallback_state),
                             std::move(resource_context), graph_def,
                             GetKernelRegistry()));
   auto graph_executor = std::unique_ptr<GraphExecutorForTestingCostAnalysis>(
@@ -234,7 +234,7 @@ TEST_P(GraphExecutorTest, OnlineCostAnalysisDisabled) {
   auto resource_context = std::make_unique<tfrt::ResourceContext>();
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_executor_base,
-      GraphExecutor::Create(std::move(options), *fallback_state,
+      GraphExecutor::Create(std::move(options), std::move(fallback_state),
                             std::move(resource_context), graph_def,
                             GetKernelRegistry()));
   auto graph_executor = std::unique_ptr<GraphExecutorForTestingCostAnalysis>(
@@ -273,7 +273,7 @@ TEST_P(GraphExecutorTest, OnlineCostAnalysisPeriodic) {
   auto resource_context = std::make_unique<tfrt::ResourceContext>();
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_executor_base,
-      GraphExecutor::Create(std::move(options), *fallback_state,
+      GraphExecutor::Create(std::move(options), std::move(fallback_state),
                             std::move(resource_context), graph_def,
                             GetKernelRegistry()));
   auto graph_executor = std::unique_ptr<GraphExecutorForTestingCostAnalysis>(
@@ -402,7 +402,7 @@ TEST_P(GraphExecutorTest, Cancellation) {
   auto resource_context = std::make_unique<tfrt::ResourceContext>();
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_executor,
-      GraphExecutor::Create(std::move(options), *fallback_state,
+      GraphExecutor::Create(std::move(options), std::move(fallback_state),
                             std::move(resource_context), graph_def,
                             GetKernelRegistry()));
   {
@@ -458,7 +458,7 @@ TEST_F(GraphExecutorTest, Extend) {
   auto resource_context = std::make_unique<tfrt::ResourceContext>();
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_executor,
-      GraphExecutor::Create(std::move(options), *fallback_state,
+      GraphExecutor::Create(std::move(options), std::move(fallback_state),
                             std::move(resource_context), graph_def,
                             GetKernelRegistry()));
 
@@ -503,7 +503,7 @@ TEST_F(GraphExecutorTest, DisableCompilation) {
   auto resource_context = std::make_unique<tfrt::ResourceContext>();
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_executor,
-      GraphExecutor::Create(std::move(options), *fallback_state,
+      GraphExecutor::Create(std::move(options), std::move(fallback_state),
                             std::move(resource_context), graph_def,
                             GetKernelRegistry()));
 
@@ -550,7 +550,7 @@ TEST_F(GraphExecutorTest, SyncExecute) {
   auto resource_context = std::make_unique<tfrt::ResourceContext>();
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_executor,
-      GraphExecutor::Create(std::move(options), *fallback_state,
+      GraphExecutor::Create(std::move(options), std::move(fallback_state),
                             std::move(resource_context), graph_def,
                             GetKernelRegistry()));
 

@@ -20,6 +20,7 @@ import itertools
 import re
 import threading
 import traceback
+from typing import Sequence
 import unittest
 
 from absl import flags
@@ -505,6 +506,80 @@ def TestFactory(xla_backend,
           c, arguments=[arg0, arg1], expected=[arg1 - arg0])
 
   tests.append(ParametersTest)
+
+  class LayoutsTest(ComputationTest):
+    """Tests related to getting and setting on-device memory layouts."""
+
+    @unittest.skipIf(pathways, "not implemented")
+    @unittest.skipIf(pathways_ifrt, "check fails")
+    def testGetArgumentLayouts(self):
+      # Create computation with a few parameters.
+      c = self._NewComputation()
+      param_count = 0
+
+      def MakeArg(shape, dtype):
+        nonlocal param_count
+        shape = xla_client.Shape.array_shape(np.dtype(dtype), shape)
+        param = ops.Parameter(c, param_count, shape)
+        param_count += 1
+        return param
+
+      p0 = MakeArg((2, 3, 4), np.float32)
+      MakeArg((3, 2), np.int32)
+      MakeArg((), np.float64)
+
+      ops.Add(p0, ops.Constant(c, np.ones((2, 3, 4), np.float32)))
+      executable = self.backend.compile(
+          xla_computation_to_mlir_module(c.build()))
+
+      # Test that compiled executable returns plausible layouts.
+      layouts: Sequence[xla_client.Layout] = executable.get_parameter_layouts()
+      self.assertLen(layouts, 3)
+      self.assertLen(layouts[0].minor_to_major(), 3)
+      self.assertLen(layouts[1].minor_to_major(), 2)
+      self.assertEmpty(layouts[2].minor_to_major())
+
+    @unittest.skipIf(pathways, "not implemented")
+    def testSetArgumentLayouts(self):
+      # Create computation with custom input layouts.
+      c = self._NewComputation()
+      param_count = 0
+
+      def MakeArg(shape, dtype, layout):
+        nonlocal param_count
+        arr = np.arange(np.prod(shape), dtype=dtype).reshape(shape)
+        param = ops.Parameter(c, param_count,
+                              xla_client.shape_from_pyval(arr, layout))
+        param_count += 1
+        shape = xla_client.Shape.array_shape(np.dtype(dtype), shape, layout)
+        return arr, param, shape
+
+      arg0, p0, shape0 = MakeArg((2, 3, 4), np.float32, (1, 2, 0))
+      arg1, p1, shape1 = MakeArg((3, 2), np.int32, (0, 1))
+      arg2, p2, shape2 = MakeArg((), np.float64, ())
+
+      ops.Tuple(c, [
+          ops.Add(p0, ops.Constant(c, np.ones(arg0.shape, arg0.dtype))),
+          ops.Add(p1, ops.Constant(c, np.ones(arg1.shape, arg1.dtype))),
+          ops.Add(p2, ops.Constant(c, np.ones(arg2.shape, arg2.dtype))),
+      ])
+
+      # We also need to set the input layouts in the compile options.
+      options = xla_client.CompileOptions()
+      options.argument_layouts = [shape0, shape1, shape2]
+      executable = self.backend.compile(
+          xla_computation_to_mlir_module(c.build()), compile_options=options)
+
+      # Test that compiled executable has expected layouts.
+      expected_layouts: Sequence[xla_client.Shape] = [shape0, shape1, shape2]
+      actual_layouts: Sequence[xla_client.Layout] = (
+          executable.get_parameter_layouts())
+      self.assertEqual(len(actual_layouts), len(expected_layouts))
+      for actual, expected in zip(actual_layouts, expected_layouts):
+        self.assertEqual(actual.minor_to_major(),
+                         expected.layout().minor_to_major())
+
+  tests.append(LayoutsTest)
 
   class BufferTest(ComputationTest):
     """Tests focusing on execution with Buffers."""
@@ -2309,17 +2384,15 @@ def TestFactory(xla_backend,
     # pylint: disable=g-complex-comprehension
     # pyformat: disable
     @parameterized.named_parameters({
-        "testcase_name": "{}_own={}_gpu={}".format(
-            FormatShapeAndDtype(shape, dtype), take_ownership, gpu),
+        "testcase_name": "{}_gpu={}".format(
+            FormatShapeAndDtype(shape, dtype), gpu),
         "dtype": dtype,
         "shape": shape,
-        "take_ownership": take_ownership,
         "gpu": gpu
     } for dtype in dlpack_dtypes for shape in testcase_shapes
-                                    for take_ownership in [False, True]
                                     for gpu in [False, True])
     # pyformat: enable
-    def testRoundTrip(self, dtype, shape, take_ownership, gpu):
+    def testRoundTrip(self, dtype, shape, gpu):
       if gpu and self.gpu_backend is None:
         raise unittest.SkipTest("Test not running with GPU support")
       backend = self.gpu_backend if gpu else self.cpu_backend
@@ -2328,8 +2401,7 @@ def TestFactory(xla_backend,
       else:
         x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
       buffer = backend.buffer_from_pyval(x)
-      dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(
-          buffer, take_ownership=take_ownership)
+      dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(buffer)
       del buffer  # Free "buffer" to make sure dlt retains ownership.
       self.assertEqual(type(dlt).__name__, "PyCapsule")
       y = xla_client._xla.dlpack_managed_tensor_to_buffer(
@@ -2340,8 +2412,7 @@ def TestFactory(xla_backend,
     def testTensorsCanBeConsumedOnceOnly(self):
       x = np.array(np.random.rand(3, 4, 5, 6), dtype=np.float32)
       buffer = self.backend.buffer_from_pyval(x)
-      dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(
-          buffer, take_ownership=True)
+      dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(buffer)
 
       def ConsumeDLPackTensor():
         _ = xla_client._xla.dlpack_managed_tensor_to_buffer(
@@ -2353,25 +2424,11 @@ def TestFactory(xla_backend,
           RuntimeError, ".*a DLPack tensor may be consumed at most once.*",
           ConsumeDLPackTensor)
 
-    def testTensorsCanBeOwnedOnceOnly(self):
-      x = np.array(np.random.rand(3, 4, 5, 6), dtype=np.float32)
-      buffer = self.backend.buffer_from_pyval(x)
-      _ = xla_client._xla.buffer_to_dlpack_managed_tensor(
-          buffer, take_ownership=True)
-      self.assertTrue(buffer.is_deleted())
-      with self.assertRaisesRegex(
-          RuntimeError,
-          "Cannot convert deleted/invalid buffer to DLPack tensor.*"):
-        _ = xla_client._xla.buffer_to_dlpack_managed_tensor(
-            buffer, take_ownership=True)
-
     def testNonOwnedDlpackCanBeViewedTwice(self):
       x = np.array(np.random.rand(3, 4, 5, 6), dtype=np.float32)
       buffer = self.backend.buffer_from_pyval(x)
-      d1 = xla_client._xla.buffer_to_dlpack_managed_tensor(
-          buffer, take_ownership=False)
-      d2 = xla_client._xla.buffer_to_dlpack_managed_tensor(
-          buffer, take_ownership=False)
+      d1 = xla_client._xla.buffer_to_dlpack_managed_tensor(buffer)
+      d2 = xla_client._xla.buffer_to_dlpack_managed_tensor(buffer)
 
       y = xla_client._xla.dlpack_managed_tensor_to_buffer(
           d1, self.cpu_backend, self.gpu_backend)

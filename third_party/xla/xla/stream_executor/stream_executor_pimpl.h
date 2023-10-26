@@ -46,10 +46,6 @@ limitations under the License.
 #include "tsl/platform/threadpool.h"
 #include "tsl/protobuf/dnn.pb.h"
 
-// TODO(ezhulenev): Remove include of internal header. Currently we have too
-// many targets depending on transitive dependencies.
-#include "xla/stream_executor/stream_executor_internal.h"
-
 namespace stream_executor {
 
 class Stream;
@@ -77,12 +73,23 @@ class ScopedTracer;
 // StreamExecutor interface should not be invoked from a signal handler.
 class StreamExecutor {
  public:
+  // Platform specific handle to the underlying resources behind an executor
+  // implementation (e.g. it gives access to CUcontext for CUDA platform).
+  struct PlatformSpecificHandle {
+    void* context = nullptr;  // will be nullptr if not supported
+  };
+
   StreamExecutor(
       const Platform* platform,
       std::unique_ptr<internal::StreamExecutorInterface> implementation,
       int device_ordinal);
 
   ~StreamExecutor();
+
+  // TODO(ezhulenev): Consider removing this platform-specific accessor and
+  // forward all users to platform-specific headers, however it requires careful
+  // build rules set up to avoid leaking even more implementation details.
+  PlatformSpecificHandle platform_specific_handle() const;
 
   tsl::Status Init();
   tsl::Status Init(DeviceOptions device_options);

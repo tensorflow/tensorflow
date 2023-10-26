@@ -171,12 +171,6 @@ std::string FindCudaExecutable(const std::string& binary_name,
       new absl::flat_hash_map<std::pair<std::string, std::string>,
                               std::string>();
 
-#if defined(PLATFORM_WINDOWS)
-  const std::string binary_filename = binary_name + ".exe";
-#else
-  const std::string& binary_filename = binary_name;
-#endif
-
   auto cache_key = std::make_pair(binary_name, preferred_cuda_dir);
 
   absl::MutexLock lock(&mu);
@@ -186,11 +180,10 @@ std::string FindCudaExecutable(const std::string& binary_name,
   }
 
   // Try searching in the default PATH first if applicable.
-  if (tsl::PreferPtxasFromPath() &&
-      GetToolVersionString(binary_filename).ok()) {
-    VLOG(2) << "Using " << binary_filename;
-    seen_binary_paths->emplace(std::move(cache_key), binary_filename);
-    return binary_filename;
+  if (tsl::PreferPtxasFromPath() && GetToolVersionString(binary_name).ok()) {
+    VLOG(2) << "Using " << binary_name;
+    seen_binary_paths->emplace(std::move(cache_key), binary_name);
+    return binary_name;
   }
 
   // Search in cuda root candidates.
@@ -198,8 +191,8 @@ std::string FindCudaExecutable(const std::string& binary_name,
   std::string binary_path;
   for (const std::string& cuda_root :
        tsl::CandidateCudaRoots(preferred_cuda_dir)) {
-    binary_path = tsl::io::JoinPath(cuda_root, "bin", binary_filename);
-    VLOG(2) << "Looking for " << binary_filename << " at " << binary_path;
+    binary_path = tsl::io::JoinPath(cuda_root, "bin", binary_name);
+    VLOG(2) << "Looking for " << binary_name << " at " << binary_path;
     if (env->FileExists(binary_path).ok() &&
         GetToolVersionString(binary_path).ok()) {
       break;
@@ -210,9 +203,9 @@ std::string FindCudaExecutable(const std::string& binary_name,
     // binary. This won't work, in all probability, given we already tried that
     // above, but it's the best we can do.
     VLOG(2) << "Unable to find " << binary_name;
-    binary_path = binary_filename;
+    binary_path = binary_name;
   }
-  VLOG(2) << "Using " << binary_filename << " at " << binary_path;
+  VLOG(2) << "Using " << binary_name << " at " << binary_path;
   seen_binary_paths->emplace(std::move(cache_key), binary_path);
   return binary_path;
 }

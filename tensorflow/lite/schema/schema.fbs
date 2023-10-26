@@ -465,7 +465,7 @@ enum BuiltinOperator : int32 {
   STABLEHLO_REDUCE_WINDOW = 198, // WARNING: No runtime support
   STABLEHLO_SORT = 199, // WARNING: No runtime support
   STABLEHLO_WHILE = 200, // WARNING: No runtime support
-  STABLEHLO_GATHER = 201, // WARNING: No runtime support
+  STABLEHLO_GATHER = 201,
   STABLEHLO_TRANSPOSE = 202, // WARNING: No runtime support
   DILATE = 203,
   STABLEHLO_RNG_BIT_GENERATOR = 204,

@@ -18,31 +18,41 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/log/log.h"
+#include "absl/types/span.h"
 #include "xla/backends/interpreter/executable.h"
-#include "xla/service/algebraic_simplifier.h"
+#include "xla/backends/interpreter/platform_id.h"
+#include "xla/hlo/evaluator/hlo_evaluator.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/literal.h"
 #include "xla/service/batchnorm_expander.h"
 #include "xla/service/cholesky_expander.h"
 #include "xla/service/comparison_expander.h"
+#include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/service/dynamic_dimension_inference.h"
 #include "xla/service/dynamic_index_splitter.h"
 #include "xla/service/eigh_expander.h"
-#include "xla/service/flatten_call_graph.h"
-#include "xla/service/hlo_constant_folding.h"
-#include "xla/service/hlo_cse.h"
-#include "xla/service/hlo_dce.h"
-#include "xla/service/hlo_pass_fix.h"
+#include "xla/service/executable.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/layout_assignment.h"
-#include "xla/service/map_inliner.h"
 #include "xla/service/qr_expander.h"
-#include "xla/service/reshape_mover.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/service/triangular_solve_expander.h"
-#include "xla/service/while_loop_simplifier.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
+#include "xla/statusor.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace interpreter {
@@ -114,8 +124,13 @@ StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
 
   VLOG(1) << "Run backend " << hlo_module->name();
 
-  TF_ASSIGN_OR_RETURN(DynamicDimensionInference dynamic_dimension_inference,
-                      DynamicDimensionInference::Run(hlo_module.get()));
+  TF_ASSIGN_OR_RETURN(
+      DynamicDimensionInference dynamic_dimension_inference,
+      DynamicDimensionInference::Run(
+          hlo_module.get(),
+          /*op_supports_dynamism_handler=*/[&](HloInstruction* hlo) {
+            return OpDynamismSupport::kOptional;
+          }));
 
   auto evaluator = std::make_unique<HloEvaluator>();
   evaluator->set_use_fast_path(

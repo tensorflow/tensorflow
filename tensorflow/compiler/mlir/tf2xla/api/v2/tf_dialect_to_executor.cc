@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -31,9 +32,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/logging_hooks.h"
+#include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 #include "tsl/lib/monitoring/counter.h"
+#include "tsl/platform/error_logging.h"
 #include "tsl/platform/status.h"
 
 namespace tensorflow {
@@ -93,6 +96,30 @@ void AddTfDialectToExecutorPasses(OpPassManager &pm) {
   pm.addPass(mlir::TF::CreateVerifySuitableForExportPass());
 }
 
+tensorflow::Status RecordStatusIfError(absl::Status status) {
+  if (status.ok()) {
+    return absl::OkStatus();
+  }
+
+  tf_dialect_to_executor_dialect_status->GetCell(kExportFailed)->IncrementBy(1);
+  VLOG(1) << "Failed to export from TF Dialect to TF Executor Dialect. "
+          << status;
+
+  constexpr char bridge_subcomponent[] =
+      "TFXLA_TF_FUNCTIONAL_TO_EXECUTOR_EXPORT_v2";
+  constexpr char kBridgeComponent[] = "TFXLABridge";
+
+  tsl::OkOrSetErrorCounterPayload(
+      tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_1,
+      status);
+
+  tsl::error_logging::Log(kBridgeComponent, bridge_subcomponent,
+                          status.ToString())
+      .IgnoreError();
+
+  return status;
+}
+
 }  // namespace
 
 tensorflow::Status ExportFromTensorflowDialectToExecutor(
@@ -106,13 +133,14 @@ tensorflow::Status ExportFromTensorflowDialectToExecutor(
     ::tensorflow::DumpMlirOpToFile(
         DEBUG_DATA_DUMPER()->GetDumpFilename(
             module_name.str(), kDebugGroupMain,
-            "tfxla_bridge_tfdialect_to_executor_before"),
+            "tfxla_bridge_v2_tfdialect_to_executor_before"),
         module, llvm::StringRef(), &tf_to_executor);
 
-    if (VLOG_IS_ON(2) || DEBUG_DATA_DUMPER()->ShouldDump(
-                             module_name.str(), kDebugGroupBridgePhase1)) {
-      internal::EnablePassIRPrinting(tf_to_executor, kDebugGroupBridgePhase1,
-                                     module_name);
+    if (VLOG_IS_ON(2) ||
+        DEBUG_DATA_DUMPER()->ShouldDump(
+            module_name.str(), kDebugGroupBridgePhase1ExecutorExport)) {
+      internal::EnablePassIRPrinting(
+          tf_to_executor, kDebugGroupBridgePhase1ExecutorExport, module_name);
     }
   }
 
@@ -123,16 +151,14 @@ tensorflow::Status ExportFromTensorflowDialectToExecutor(
     ::tensorflow::DumpMlirOpToFile(
         DEBUG_DATA_DUMPER()->GetDumpFilename(
             module_name.str(), kDebugGroupMain,
-            "tfxla_bridge_tfdialect_to_executor_after"),
+            "tfxla_bridge_v2_tfdialect_to_executor_after"),
         module, llvm::StringRef(), &tf_to_executor);
   }
 
-  if (!result.succeeded()) {
-    tf_dialect_to_executor_dialect_status->GetCell(kExportFailed)
-        ->IncrementBy(1);
-
-    return absl::InternalError(
-        "Failed to export from TF Dialect to TF Executor Dialect.");
+  if (result.failed()) {
+    return RecordStatusIfError(
+        absl::InternalError("Failed to export from TF Dialect to TF Executor "
+                            "Dialect. Read LLVM Pipeline Error"));
   }
 
   tf_dialect_to_executor_dialect_status->GetCell(kExportSuccess)

@@ -1119,6 +1119,22 @@ TEST(FunctionLibraryDefinitionTest, AddFunctionDef) {
   TF_EXPECT_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
 }
 
+TEST(FunctionLibraryDefinitionTest, AddFunctionDefMove) {
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
+  FunctionDef fdef = test::function::XTimesTwo();
+  EXPECT_GT(fdef.node_def_size(), 0);
+  TF_CHECK_OK(lib_def.AddFunctionDef(std::move(fdef)));
+  // The protobuf move constructor will empty the node defs from the function.
+  EXPECT_EQ(fdef.node_def_size(), 0);  // NOLINT
+
+  // Test lookup of existing function.
+  const OpDef* op_def;
+  TF_EXPECT_OK(lib_def.LookUpOpDef("XTimesTwo", &op_def));
+  ASSERT_NE(op_def, nullptr);
+  EXPECT_EQ(op_def->DebugString(),
+            test::function::XTimesTwo().signature().DebugString());
+}
+
 TEST(FunctionLibraryDefinitionTest, AddGradientDef) {
   // AddGradientDef() doesn't check that functions referenced exist (yet?)
   FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());

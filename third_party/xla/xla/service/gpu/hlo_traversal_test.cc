@@ -311,6 +311,38 @@ TEST_F(HloTraversalTest, FuseFusionConsumerAndProducer) {
   EXPECT_THAT(params, ElementsAre("negate", "p0"));
 }
 
+TEST_F(HloTraversalTest, SingleInstructionFusionOfFusion) {
+  auto module = ParseAndReturnVerifiedModule(kTwoFusions).value();
+  auto* fusion =
+      module->entry_computation()->GetInstructionWithName("fusion.1");
+
+  auto boundary = MakeSingleInstructionFusion(*fusion);
+  std::vector<std::string> nodes;
+  HloBfsConsumersFirstTraversal({fusion}, boundary,
+                                [&](const HloInstruction& node) {
+                                  nodes.emplace_back(node.name());
+                                  return TraversalResult::kVisitOperands;
+                                });
+
+  EXPECT_THAT(nodes,
+              ElementsAre("fusion.1", "reduce.1", "mul", "p0.1", "p1.1"));
+}
+
+TEST_F(HloTraversalTest, SingleInstructionFusionOfInstruction) {
+  auto module = ParseAndReturnVerifiedModule(kTwoFusions).value();
+  auto* negate = module->entry_computation()->GetInstructionWithName("negate");
+
+  auto boundary = MakeSingleInstructionFusion(*negate);
+  std::vector<std::string> nodes;
+  HloBfsConsumersFirstTraversal({negate}, boundary,
+                                [&](const HloInstruction& node) {
+                                  nodes.emplace_back(node.name());
+                                  return TraversalResult::kVisitOperands;
+                                });
+
+  EXPECT_THAT(nodes, ElementsAre("negate"));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

@@ -137,8 +137,7 @@ class ClusterEnvironment {
                                            const HloSharding& src_spec,
                                            const HloSharding& dst_spec) const;
 
-  double DotCost(const Shape& lhs_shape, const Shape& rhs_shape,
-                 const DotDimensionNumbers& dot_dnums) const;
+  double DotCost(const Shape& lhs_shape, const Shape& rhs_shape) const;
 
   // This function attempts to overestimate the cost of replicating a tensor of
   // shape `shape` sharded according to `src_spec`.

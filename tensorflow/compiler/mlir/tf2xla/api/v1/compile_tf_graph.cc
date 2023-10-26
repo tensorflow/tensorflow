@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/compile_only_client.h"
+#include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
@@ -210,6 +211,7 @@ tsl::Status CompileTensorflowGraphToHlo(
 
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
+  mlir::mhlo::registerAllMhloDialects(registry);
   mlir::MLIRContext context(registry);
 
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module;

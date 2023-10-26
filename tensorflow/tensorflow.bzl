@@ -88,7 +88,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.15.0"
+VERSION = "2.16.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "manual", "no_pip"]
 
@@ -1407,7 +1407,11 @@ def tf_gen_op_wrapper_py(
             is invalid to specify both "hidden" and "op_allowlist".
         cc_linkopts: Optional linkopts to be added to tf_cc_binary that contains the
             specified ops.
-        api_def_srcs: undocumented.
+        api_def_srcs: a list of targets that defines the attributes of API endpoints
+            for this target. For an api_def file to take effect it must be included
+            (transitively) from this list.
+            For example, `visibility: HIDDEN` in the api_def hides the Op from
+            the tf.* namespace.
         compatible_with: undocumented.
         testonly: undocumented.
         copts: undocumented.
@@ -1722,7 +1726,8 @@ def tf_gpu_only_cc_test(
         size = "medium",
         args = [],
         kernels = [],
-        linkopts = []):
+        linkopts = [],
+        features = []):
     tags = tags + tf_gpu_tests_tags()
 
     gpu_lib_name = "%s%s" % (name, "_gpu_lib")
@@ -1731,12 +1736,13 @@ def tf_gpu_only_cc_test(
         srcs = srcs + tf_binary_additional_srcs(),
         deps = deps,
         testonly = 1,
+        features = features,
     )
     cc_test(
         name = "%s%s" % (name, "_gpu"),
         size = size,
         args = args,
-        features = if_cuda(["-use_header_modules"]),
+        features = features + if_cuda(["-use_header_modules"]),
         data = data + tf_binary_dynamic_kernel_dsos(),
         deps = [":" + gpu_lib_name],
         linkopts = if_not_windows(["-lpthread", "-lm"]) + linkopts + _rpath_linkopts(name),
@@ -3324,6 +3330,7 @@ def tf_python_pybind_extension_opensource(
         static_deps = [],
         compatible_with = None,
         copts = [],
+        data = [],
         defines = [],
         enable_stub_generation = False,
         additional_stubgen_deps = [],
@@ -3351,6 +3358,7 @@ def tf_python_pybind_extension_opensource(
         deps = extended_deps,
         compatible_with = compatible_with,
         copts = copts,
+        data = data,
         defines = defines,
         enable_stub_generation = enable_stub_generation,
         additional_stubgen_deps = additional_stubgen_deps,

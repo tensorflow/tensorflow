@@ -87,11 +87,9 @@ class OwnedGpuGraphExec
   OwnedGpuGraphExec(OwnedGpuGraphExec&&) = default;
   OwnedGpuGraphExec& operator=(OwnedGpuGraphExec&&) = default;
 
-  enum class UpdateResult { kSuccess, kFallback };
-
   // Updates executable graph instance with a newly captured graph. Returns an
   // error if the new graph is not compatible (see `cudaGraphExecUpdate`).
-  tsl::StatusOr<UpdateResult> Update(OwnedGpuGraph graph);
+  tsl::Status Update(OwnedGpuGraph graph);
 
   // Launches captured graph on a given stream.
   tsl::Status Launch(stream_executor::Stream* stream);

@@ -46,7 +46,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
+#include "tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -111,6 +111,11 @@ class PjRtExecutable final
   std::optional<std::vector<OpSharding>> GetOutputShardings() const override {
     DCHECK(this);
     return pjrt_executable_->GetOutputShardings();
+  }
+
+  StatusOr<std::vector<Layout>> GetParameterLayouts() const override {
+    DCHECK(this);
+    return pjrt_executable_->GetParameterLayouts();
   }
 
   StatusOr<std::optional<std::string>> Fingerprint() const override;
@@ -211,6 +216,11 @@ class PjRtLoadedExecutable final
   std::optional<std::vector<OpSharding>> GetOutputShardings() const override {
     DCHECK(this);
     return pjrt_loaded_executable_->GetOutputShardings();
+  }
+
+  StatusOr<std::vector<Layout>> GetParameterLayouts() const override {
+    DCHECK(this);
+    return pjrt_loaded_executable_->GetParameterLayouts();
   }
 
   StatusOr<std::optional<std::string>> Fingerprint() const override;

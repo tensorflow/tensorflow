@@ -1140,6 +1140,19 @@ StatusOr<std::string> PjRtCApiExecutable::SerializeExecutable() const {
   return std::string(ser_args.serialized_bytes, ser_args.serialized_bytes_size);
 }
 
+StatusOr<std::string> PjRtCApiExecutable::FingerprintExecutable() const {
+  PJRT_Executable_Fingerprint_Args args;
+  args.struct_size = PJRT_Executable_Fingerprint_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = c_executable();
+
+  RETURN_STATUS_IF_PJRT_ERROR(c_api_->PJRT_Executable_Fingerprint(&args),
+                              c_api_);
+
+  return std::string(args.executable_fingerprint,
+                     args.executable_fingerprint_size);
+}
+
 // ------------------------ Loaded Executables ---------------------------------
 
 PjRtCApiLoadedExecutable::PjRtCApiLoadedExecutable(

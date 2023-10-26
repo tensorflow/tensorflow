@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logger.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/util/proto/proto_utils.h"
 
@@ -169,8 +171,7 @@ StatusOr<AutotuneResult> GetBestAlgorithm(
   LOG(WARNING) << "Failed to find best cuBLAS algorithm, GEMM performance "
                   "might be suboptimal: "
                << best.status();
-  best->clear_gemm();
-  return best;
+  return AutotuneResult{};
 }
 
 // Select the best algorithm using information from a Blas instruction.
@@ -193,25 +194,25 @@ StatusOr<AutotuneResult> GetBestBlasAlgorithm(
 
 namespace {
 
-StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
+StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
     GemmBackendConfig_Epilogue epilogue) {
   switch (epilogue) {
     case GemmBackendConfig::DEFAULT:
-      return se::cuda::BlasLt::Epilogue::kDefault;
+      return se::gpu::BlasLt::Epilogue::kDefault;
     case GemmBackendConfig::RELU:
-      return se::cuda::BlasLt::Epilogue::kReLU;
+      return se::gpu::BlasLt::Epilogue::kReLU;
     case GemmBackendConfig::GELU:
-      return se::cuda::BlasLt::Epilogue::kGELU;
+      return se::gpu::BlasLt::Epilogue::kGELU;
     case GemmBackendConfig::GELU_AUX:
-      return se::cuda::BlasLt::Epilogue::kGELUWithAux;
+      return se::gpu::BlasLt::Epilogue::kGELUWithAux;
     case GemmBackendConfig::BIAS:
-      return se::cuda::BlasLt::Epilogue::kBias;
+      return se::gpu::BlasLt::Epilogue::kBias;
     case GemmBackendConfig::BIAS_RELU:
-      return se::cuda::BlasLt::Epilogue::kBiasThenReLU;
+      return se::gpu::BlasLt::Epilogue::kBiasThenReLU;
     case GemmBackendConfig::BIAS_GELU:
-      return se::cuda::BlasLt::Epilogue::kBiasThenGELU;
+      return se::gpu::BlasLt::Epilogue::kBiasThenGELU;
     case GemmBackendConfig::BIAS_GELU_AUX:
-      return se::cuda::BlasLt::Epilogue::kBiasThenGELUWithAux;
+      return se::gpu::BlasLt::Epilogue::kBiasThenGELUWithAux;
     default:
       return InternalError("Unsupported Epilogue.");
   }
@@ -262,17 +263,18 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
       AutotunerUtil::CreateBuffer(buffer_allocator, output_shape,
                                   autotune_config, rng_state));
 
-  HloModuleConfig& hlo_module_config = gemm->GetModule()->config();
+  HloModuleConfig& hlo_module_config = gemm->GetModule()->mutable_config();
   AutotuneResult best_algorithm;
   if (IsCublasLtMatmul(*gemm)) {
     bool has_matrix_bias = config.beta != 0.;
 
-    TF_ASSIGN_OR_RETURN(bool has_vector_bias, cublas_lt::EpilogueAddsVectorBias(
-                                                  gemm_config.epilogue()));
-
     TF_ASSIGN_OR_RETURN(
-        bool has_aux_output,
-        cublas_lt::EpilogueHasAuxiliaryOutput(gemm_config.epilogue()));
+        bool has_vector_bias,
+        xla::gpu::gpublas_lt::EpilogueAddsVectorBias(gemm_config.epilogue()));
+
+    TF_ASSIGN_OR_RETURN(bool has_aux_output,
+                        xla::gpu::gpublas_lt::EpilogueHasAuxiliaryOutput(
+                            gemm_config.epilogue()));
 
     TF_ASSIGN_OR_RETURN(auto epilogue,
                         AsBlasLtEpilogue(gemm_config.epilogue()));
@@ -296,24 +298,23 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
                                                   autotune_config, rng_state));
     }
 
-    TF_ASSIGN_OR_RETURN(auto plan,
-                        cublas_lt::MatmulPlan::From(config, epilogue));
     TF_ASSIGN_OR_RETURN(
-        std::vector<se::cuda::BlasLt::MatmulAlgorithm> algorithms,
-        plan.GetAlgorithms(stream));
+        auto plan, se::gpu::BlasLt::GetMatmulPlan(stream, config, epilogue));
+
+    TF_ASSIGN_OR_RETURN(auto algorithms, plan->GetAlgorithms());
 
     TF_ASSIGN_OR_RETURN(
         best_algorithm,
-        GetBestAlgorithm<se::cuda::BlasLt::MatmulAlgorithm>(
+        GetBestAlgorithm<se::gpu::BlasLt::MatmulAlgorithm>(
             stream, buffer_allocator, gemm->ToString(), autotune_config,
             lhs_buffer, rhs_buffer, output_buffer, algorithms, output_shape,
             hlo_module_config, gemm_config.beta(),
-            [&](const se::cuda::BlasLt::MatmulAlgorithm& algorithm)
+            [&](const se::gpu::BlasLt::MatmulAlgorithm& algorithm)
                 -> StatusOr<se::blas::ProfileResult> {
               se::OwningScratchAllocator<> scratch_allocator(
                   stream->parent()->device_ordinal(), allocator);
               se::blas::ProfileResult profile_result;
-              TF_RETURN_IF_ERROR(plan.ExecuteOnStream(
+              TF_RETURN_IF_ERROR(plan->ExecuteOnStream(
                   stream, lhs_buffer, rhs_buffer, output_buffer, output_buffer,
                   bias_buffer, aux_buffer, a_scale_buffer, b_scale_buffer,
                   c_scale_buffer, d_scale_buffer, d_amax_buffer, algorithm,
@@ -324,28 +325,27 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
     std::vector<se::blas::AlgorithmType> algorithms;
     TF_RET_CHECK(stream->parent()->GetBlasGemmAlgorithms(stream, &algorithms));
 
-    TF_ASSIGN_OR_RETURN(best_algorithm,
-                        GetBestBlasAlgorithm(
-                            stream, buffer_allocator, gemm->ToString(),
-                            autotune_config, lhs_buffer, rhs_buffer,
-                            output_buffer, algorithms, output_shape,
-                            hlo_module_config, gemm_config.beta(),
-                            [&](const se::blas::AlgorithmType& algorithm)
-                                -> StatusOr<se::blas::ProfileResult> {
-                              se::blas::ProfileResult profile_result;
-                              // We expect GemmWithAlgorithm to fail sometimes
-                              // -- in fact, it will fail for all algorithms if
-                              // we're targeting < sm_50.  But because we pass a
-                              // non-null ProfileResult, DoGemmWithAlgorithm
-                              // should always return true, and the actual
-                              // success-ness is returned in
-                              // ProfileResult::is_valid.
-                              TF_RETURN_IF_ERROR(
-                                  RunGemm(config, lhs_buffer, rhs_buffer,
-                                          output_buffer, deterministic_ops,
-                                          stream, algorithm, &profile_result));
-                              return std::move(profile_result);
-                            }));
+    TF_ASSIGN_OR_RETURN(
+        best_algorithm,
+        GetBestBlasAlgorithm(
+            stream, buffer_allocator, gemm->ToString(), autotune_config,
+            lhs_buffer, rhs_buffer, output_buffer, algorithms, output_shape,
+            hlo_module_config, gemm_config.beta(),
+            [&](const se::blas::AlgorithmType& algorithm)
+                -> StatusOr<se::blas::ProfileResult> {
+              se::blas::ProfileResult profile_result;
+              // We expect GemmWithAlgorithm to fail sometimes
+              // -- in fact, it will fail for all algorithms if
+              // we're targeting < sm_50.  But because we pass a
+              // non-null ProfileResult, DoGemmWithAlgorithm
+              // should always return true, and the actual
+              // success-ness is returned in
+              // ProfileResult::is_valid.
+              TF_RETURN_IF_ERROR(RunGemm(config, lhs_buffer, rhs_buffer,
+                                         output_buffer, deterministic_ops,
+                                         stream, algorithm, &profile_result));
+              return std::move(profile_result);
+            }));
     if (best_algorithm.has_gemm()) {
       int alg_idx = best_algorithm.gemm().algorithm();
       best_algorithm.mutable_gemm()->set_algorithm(algorithms[alg_idx]);
@@ -354,7 +354,7 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
   return best_algorithm;
 }
 
-#endif
+#endif  // (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 
 // Do Gemm Autotune without stream executor. Use results from autotune cache
 // only.

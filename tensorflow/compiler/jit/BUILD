@@ -26,6 +26,7 @@ package_group(
     packages = [
         "//tensorflow/c/...",
         "//tensorflow/compiler/tests/...",
+        "//tensorflow/core/tfrt/saved_model/...",
         "//tensorflow/python/...",
     ],
 )
@@ -288,7 +289,7 @@ XLA_DEVICE_DEPS = [
     "//tensorflow/core/kernels/data:options_dataset_op",
     "//tensorflow/core/profiler/lib:traceme",
     "//tensorflow/core/tfrt/common:async_value_tensor",
-    "@local_xla//xla/stream_executor:tf_allocator_adapter",
+    "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
     "@local_xla//xla/stream_executor/platform",
 ]
 

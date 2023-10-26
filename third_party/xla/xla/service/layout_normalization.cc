@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/layout_util.h"
 #include "xla/permutation_util.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/shape_inference.h"
@@ -67,6 +68,12 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     const Shape& shape = hlo->shape();
     Shape normalized_shape = Normalize(shape);
     *literal.mutable_shape_do_not_use() = normalized_shape;
+    // Ensure element_size_in_bits of literal is 0, because literals do not
+    // support packed values.
+    literal.mutable_shape_do_not_use()
+        ->mutable_layout()
+        ->set_element_size_in_bits(0);
+
     HloInstruction* bc_to_orig = MakeBitcastHlo(hlo, shape);
     *hlo->mutable_shape() = normalized_shape;
     TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWithDifferentShape(bc_to_orig));
@@ -257,7 +264,8 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     auto operand_shape = operand->shape();
 
     // Precondition: elementwise unary leaves layout intact.
-    TF_RET_CHECK(s.layout() == operand_shape.layout())
+    TF_RET_CHECK(
+        Layout::Equal().IgnoreElementSize()(s.layout(), operand_shape.layout()))
         << "Unexpected non-layout preserving elementwise unary: "
         << hlo->ToString();
     TF_ASSIGN_OR_RETURN(auto normalized_input, GetNormalizedInput(operand));
@@ -631,8 +639,9 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
         << "Unexpected HLO input: " << hlo->ToString();
     auto input = hlo->mutable_operand(0);
     auto input_shape = input->shape();
-    TF_RET_CHECK(input_shape.layout() ==
-                 LayoutUtil::GetDefaultLayoutForShape(input_shape));
+    TF_RET_CHECK(Layout::Equal().IgnoreElementSize()(
+        input_shape.layout(),
+        LayoutUtil::GetDefaultLayoutForShape(input_shape)));
     return input;
   }
 

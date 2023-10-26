@@ -201,13 +201,14 @@ fused_computation {
   param_1.1 = f32[2,3]{1,0} parameter(1)
   neg = f32[2,3]{1,0} negate(param_1.1)
   mul = f32[2,3]{1,0} multiply(param_0.1, neg)
-  ROOT tuple = (f32[2,3]{1,0}, f32[2,3]{1,0}) tuple(mul, neg)
+  transpose = f32[3,2]{1,0} transpose(neg), dimensions={1,0}
+  ROOT tuple = (f32[2,3]{1,0}, f32[2,3]{1,0}, f32[3,2]{1,0}) tuple(mul, neg, transpose)
 }
 
 ENTRY main {
   param_0 = f32[2,3]{1,0} parameter(0)
   param_1 = f32[2,3]{1,0} parameter(1)
-  ROOT fusion = (f32[2,3]{1,0}, f32[2,3]{1,0}) fusion(param_0, param_1), kind=kLoop, calls=fused_computation
+  ROOT fusion = (f32[2,3]{1,0}, f32[2,3]{1,0}, f32[3,2]{1,0}) fusion(param_0, param_1), kind=kLoop, calls=fused_computation
 }
 )";
 
@@ -216,13 +217,126 @@ ENTRY main {
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalTrue(FusionCanShareBufferHint(fusion, fusion->operand(0), {0}));
   // The second operand cannot share the buffer with the second fusion output,
-  // because the 'neg' op is also used on the path to the first fusion output.
+  // because the 'neg' op is also used by a non-elementwise op.
   ExpectOptionalFalse(
       FusionCanShareBufferHint(fusion, fusion->operand(1), {1}));
   // The first operand cannot share the buffer with the second fusion output,
   // because there is no path between them.
   ExpectOptionalFalse(
       FusionCanShareBufferHint(fusion, fusion->operand(0), {1}));
+}
+
+TEST_F(FusionCanShareBufferHintTest, BufferCanBeSharedReductionEmitter) {
+  constexpr char kModuleString[] = R"(
+HloModule TestModule
+
+%maximum {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %res = f32[] maximum(%lhs, %rhs)
+}
+
+%fused_computation {
+  %lhs = f32[3,40] parameter(0)
+  %rhs = f32[3,40] parameter(1)
+  %add = f32[3,40] add(%lhs, %rhs)
+  %bc = f32[120] bitcast(%add)
+  %init = f32[] constant(-inf)
+  %max = f32[] reduce(%bc, %init), dimensions={0}, to_apply=%maximum
+  ROOT %result = (f32[], f32[3,40]) tuple(%max, %add)
+}
+
+ENTRY %main {
+  %lhs = f32[3,40] parameter(0)
+  %rhs = f32[3,40] parameter(1)
+  ROOT %fusion = (f32[], f32[3,40]) fusion(%lhs, %rhs),
+      kind=kLoop, calls=%fused_computation
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalTrue(FusionCanShareBufferHint(fusion, fusion->operand(0), {1}));
+}
+
+TEST_F(FusionCanShareBufferHintTest, BufferCanBeSharedScatterFusion) {
+  const char* const kModuleString = R"(
+    HloModule fusion
+
+    add {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    fused_computation {
+      p0 = s32[3,3] parameter(0)
+      p1 = s32[3] parameter(1)
+      indices = s32[3] add(p1, p1)
+      p2 = s32[3,3] parameter(2)
+      updates = s32[3,3] add(p2, p2)
+      ROOT scatter = s32[3,3] scatter(p0, indices, updates),
+          to_apply=add,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    }
+
+    ENTRY main {
+      parameter0 = s32[3,3] parameter(0)
+      parameter1 = s32[3] parameter(1)
+      parameter2 = s32[3,3] parameter(2)
+      ROOT fusion = s32[3,3] fusion(parameter0, parameter1, parameter2), kind=kInput, calls=fused_computation
+    }
+    )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalTrue(FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
+  ExpectOptionalFalse(FusionCanShareBufferHint(fusion, fusion->operand(1), {}));
+  ExpectOptionalFalse(FusionCanShareBufferHint(fusion, fusion->operand(2), {}));
+}
+
+TEST_F(FusionCanShareBufferHintTest, BufferCannotBeSharedScatterFusion) {
+  // This is a fusion that we would normally not create because it cannot be
+  // emitted in-place. Still check whether buffer sharing logic would handle it
+  // correctly.
+  const char* const kModuleString = R"(
+    HloModule fusion
+
+    add {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    fused_computation {
+      p0 = s32[3,3] parameter(0)
+      p1 = s32[3] parameter(1)
+      indices = s32[3] add(p1, p1)
+      updates = s32[3,3] add(p0, p0)
+      ROOT scatter = s32[3,3] scatter(p0, indices, updates),
+          to_apply=add,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    }
+
+    ENTRY main {
+      parameter0 = s32[3,3] parameter(0)
+      parameter1 = s32[3] parameter(1)
+      ROOT fusion = s32[3,3] fusion(parameter0, parameter1), kind=kInput, calls=fused_computation
+    }
+    )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalFalse(FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
+  ExpectOptionalFalse(FusionCanShareBufferHint(fusion, fusion->operand(1), {}));
 }
 
 TEST_F(FusionCanShareBufferHintTest,

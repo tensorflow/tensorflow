@@ -26,7 +26,7 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
      name = "interpreter_ops",
      srcs = [
          "stablehlo/reference/InterpreterOps.cpp",
-@@ -763,6 +781,7 @@
+@@ -780,6 +798,7 @@
      deps = [
          ":base",
          ":chlo_ops",
@@ -980,11 +980,99 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo
 +}  // namespace mlir
 +
 +#endif  // STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
-diff --ruN a/stablehlo/stablehlo/tests/print_stablehlo.mlir b/stablehlo/stablehlo/tests/print_stablehlo.mlir
---- stablehlo/stablehlo/tests/print_stablehlo.mlir
-+++ stablehlo/stablehlo/tests/print_stablehlo.mlir
-@@ -292,21 +292,21 @@
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -1543,6 +1543,7 @@
+     p << " across dimensions = [";
+     llvm::interleaveComma(getDimensions().getValues<int64_t>(), p);
+     p << "]";
++    p.printOptionalAttrDict(getOperation()->getAttrs(), {"dimensions"});
+     p << " : ";
+     p.printFunctionalType(*this);
+   } else {
+@@ -1705,6 +1706,7 @@
+   if (parser.parseKeyword("across") || parser.parseKeyword("dimensions") ||
+       parser.parseEqual() ||
+       parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, parseDim) ||
++      parser.parseOptionalAttrDict(result.attributes) ||
+       parser.parseColon() || parser.parseType(reduceOpFnType) ||
+       parser.parseOptionalLocationSpecifier(explicitLoc))
+     return failure();
+diff --ruN a/stablehlo/stablehlo/tests/infer_stablehlo.mlir b/stablehlo/stablehlo/tests/infer_stablehlo.mlir
+--- stablehlo/stablehlo/tests/infer_stablehlo.mlir
++++ stablehlo/stablehlo/tests/infer_stablehlo.mlir
+@@ -732,7 +732,7 @@
+ //===----------------------------------------------------------------------===//
+ 
+ #CSR = #sparse_tensor.encoding<{
+-  lvlTypes = ["dense", "compressed"]
++  map = (d0, d1) -> (d0 : dense, d1 : compressed)
+ }>
+ 
+ // CHECK-LABEL: @tanh_sparsity
+@@ -746,7 +746,7 @@
+ // -----
+ 
+ #CSR = #sparse_tensor.encoding<{
+-  lvlTypes = ["dense", "compressed"]
++  map = (d0, d1) -> (d0 : dense, d1 : compressed)
+ }>
+ 
+ // CHECK-LABEL: @abs_sparsity
+@@ -760,7 +760,7 @@
+ // -----
+ 
+ #CSR = #sparse_tensor.encoding<{
+-  lvlTypes = ["dense", "compressed"]
++  map = (d0, d1) -> (d0 : dense, d1 : compressed)
+ }>
+ 
+ // CHECK-LABEL: @real_sparsity
+@@ -774,7 +774,7 @@
+ // -----
+ 
+ #CSR = #sparse_tensor.encoding<{
+-  lvlTypes = ["dense", "compressed"]
++  map = (d0, d1) -> (d0 : dense, d1 : compressed)
+ }>
+ 
+ // CHECK-LABEL: @imag_sparsity
+@@ -788,7 +788,7 @@
+ // -----
+ 
+ #CSR = #sparse_tensor.encoding<{
+-  lvlTypes = ["dense", "compressed"]
++  map = (d0, d1) -> (d0 : dense, d1 : compressed)
+ }>
+ 
+ // CHECK-LABEL: @complex_sparsity
+diff --ruN a/stablehlo/stablehlo/tests/legalize_stablehlo_to_vhlo_invalid.mlir b/stablehlo/stablehlo/tests/legalize_stablehlo_to_vhlo_invalid.mlir
+--- stablehlo/stablehlo/tests/legalize_stablehlo_to_vhlo_invalid.mlir
++++ stablehlo/stablehlo/tests/legalize_stablehlo_to_vhlo_invalid.mlir
+@@ -14,9 +14,9 @@
+ // GH Issue: https://github.com/openxla/stablehlo/issues/907
+ 
+ // expected-error @+1 {{failed to legalize operation 'func.func' that was explicitly marked illegal}}
+-func.func @type_sparsity(%arg0: tensor<16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<16xf32> {
+-  // CHECK_DISABLED: "vhlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> !vhlo.tensor<tensor<16xf32>>
+-  %0 = "stablehlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<16xf32>
++func.func @type_sparsity(%arg0: tensor<16xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> tensor<16xf32> {
++  // CHECK_DISABLED: "vhlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> !vhlo.tensor<tensor<16xf32>>
++  %0 = "stablehlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> tensor<16xf32>
+   func.return %0 : tensor<16xf32>
  }
+ // CHECK-DISABLED-LABEL: "type_sparsity"
+diff --ruN a/stablehlo/stablehlo/tests/ops_sparse.mlir b/stablehlo/stablehlo/tests/ops_sparse.mlir
+--- stablehlo/stablehlo/tests/ops_sparse.mlir
++++ stablehlo/stablehlo/tests/ops_sparse.mlir
+@@ -6,15 +6,15 @@
+ // output types), dense or sparse ops are semantically equivalent.
+ 
+ #SV = #sparse_tensor.encoding<{
+-  lvlTypes = ["compressed"]
++  map = (d0) -> (d0 : compressed)
+ }>
  
  #CSR = #sparse_tensor.encoding<{
 -  lvlTypes = ["dense", "compressed"]
@@ -996,22 +1084,38 @@ diff --ruN a/stablehlo/stablehlo/tests/print_stablehlo.mlir b/stablehlo/stablehl
 +  map = (d0, d1) -> (d0 : compressed, d1 : compressed)
  }>
  
- // CHECK-LABEL: func @encodings
- func.func @encodings(%arg0: tensor<10x20xf32, #CSR>,
-                      %arg1: tensor<10x20xf32, #DCSR>) -> tensor<10x20xf32> {
--  // CHECK:      %0 = stablehlo.add %arg0, %arg1 : (tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed" ] }>>) -> tensor<10x20xf32>
--  // CHECK-NEXT: %1 = stablehlo.add %arg1, %arg1 : tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed" ] }>>
--  // CHECK-NEXT: %2 = stablehlo.abs %arg0 : (tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>) -> tensor<10x20xf32>
--  // CHECK-NEXT: %3 = stablehlo.abs %arg0 : tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>
--  // CHECK-NEXT: %4 = stablehlo.complex %arg0, %arg0 : (tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>) -> tensor<10x20xcomplex<f32>>
-+  // CHECK:      %0 = stablehlo.add %arg0, %arg1 : (tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : compressed, d1 : compressed) }>>) -> tensor<10x20xf32>
-+  // CHECK-NEXT: %1 = stablehlo.add %arg1, %arg1 : tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : compressed, d1 : compressed) }>>
-+  // CHECK-NEXT: %2 = stablehlo.abs %arg0 : (tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>>) -> tensor<10x20xf32>
-+  // CHECK-NEXT: %3 = stablehlo.abs %arg0 : tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>>
-+  // CHECK-NEXT: %4 = stablehlo.complex %arg0, %arg0 : (tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>>) -> tensor<10x20xcomplex<f32>>
-   %0 = "stablehlo.add"(%arg0, %arg1) : (tensor<10x20xf32, #CSR>,
-                                    tensor<10x20xf32, #DCSR>) -> tensor<10x20xf32>
-   %1 = "stablehlo.add"(%arg1, %arg1) : (tensor<10x20xf32, #DCSR>,
+ //
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
+@@ -5469,7 +5469,7 @@
+ 
+ 
+ #SV = #sparse_tensor.encoding<{
+-  lvlTypes = ["compressed"]
++  map = (d0) -> (d0 : compressed)
+ }>
+ 
+ func.func @is_compatible_sparse_mix_non_sparse(%arg0: tensor<1xf32>, %arg1: tensor<1xf32, #SV>) {
+diff --ruN a/stablehlo/stablehlo/tests/print_reduce.mlir b/stablehlo/stablehlo/tests/print_reduce.mlir
+--- stablehlo/stablehlo/tests/print_reduce.mlir
++++ stablehlo/stablehlo/tests/print_reduce.mlir
+@@ -168,3 +168,15 @@
+ 
+   func.return %0: tensor<4xf32>
+ }
++
++// The test case makes sure any custom attrs set on the reduce-op are
++// printed/parsed when pretty-printed.
++
++// CHECK-LABEL:  func @pretty_print_with_custom_attr
++// CHECK:          applies stablehlo.add across dimensions = [1] {custom_user_attr = 1 : i64}
++
++func.func @pretty_print_with_custom_attr(%arg0: tensor<2x64x13xf32>) -> tensor<2x13xf32> {
++  %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
++  %1 = stablehlo.reduce(%arg0 init: %0) applies stablehlo.add across dimensions = [1] {custom_user_attr = 1 : i64} : (tensor<2x64x13xf32>, tensor<f32>) -> tensor<2x13xf32>
++  return %1 : tensor<2x13xf32>
++}
 diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 --- stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 +++ stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir

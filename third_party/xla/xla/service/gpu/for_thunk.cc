@@ -34,9 +34,9 @@ ForThunk::ForThunk(ThunkInfo thunk_info, const int64_t loop_limit,
           // this ForThunk, and shouldn't be profiled separately from it.
           ThunkInfo(thunk_info.op), std::move(*body_thunk_sequence))) {}
 
-Status ForThunk::Initialize(const GpuExecutable& executable,
-                            se::StreamExecutor* executor) {
-  TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(executable, executor));
+Status ForThunk::Initialize(se::StreamExecutor* executor,
+                            ExecutableSource src) {
+  TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(executor, src));
   return OkStatus();
 }
 

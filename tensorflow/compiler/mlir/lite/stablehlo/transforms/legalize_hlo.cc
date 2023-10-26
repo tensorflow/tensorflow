@@ -2122,7 +2122,7 @@ class ConvertReduceOpToTfAny
   }
 };
 
-template <typename TfReduce, typename TfArgReduce>
+template <typename TfReduce, typename TfArgReduce, typename TfBooleanReduce>
 class ConvertReduceOpToTfArgMinMax
     : public OpConversionPattern<mhlo::ReduceOp> {
  public:
@@ -2166,15 +2166,32 @@ class ConvertReduceOpToTfArgMinMax
     // Generate a Max and an ArgMax of as the mhlo op returns both while in TF
     // we have separate ops for them. If only one of them is used then the other
     // one will be garbage collected later.
-    auto tf_reduce_op = rewriter.create<TfReduce>(
-        reduce_op.getLoc(), reduce_op->getResult(0).getType(), operand,
-        reduction_indices,
-        /*keep_dim=*/rewriter.getBoolAttr(false));
-    auto tf_argreduce_op = rewriter.create<TfArgReduce>(
-        reduce_op.getLoc(), reduce_op->getResult(1).getType(), operand,
-        reduction_indices);
+    if (!operand.getType().isa<ShapedType>()) return failure();
+    auto operand_type = operand.getType().cast<ShapedType>();
+    if (operand_type.getElementType().isInteger(1)) {
+      // TF does not support min or max on boolean (int1) arguments.
+      // Use AnyOp for MaxOp and AllOp for MinOp.
+      auto tf_reduce_op = rewriter.create<TfBooleanReduce>(
+          reduce_op.getLoc(), reduce_op->getResult(0).getType(), operand,
+          reduction_indices,
+          /*keep_dim=*/rewriter.getBoolAttr(false));
+      auto tf_argreduce_op = rewriter.create<TfArgReduce>(
+          reduce_op.getLoc(), reduce_op->getResult(1).getType(), operand,
+          reduction_indices);
 
-    rewriter.replaceOp(reduce_op, {tf_reduce_op, tf_argreduce_op});
+      rewriter.replaceOp(reduce_op, {tf_reduce_op, tf_argreduce_op});
+    } else {
+      auto tf_reduce_op = rewriter.create<TfReduce>(
+          reduce_op.getLoc(), reduce_op->getResult(0).getType(), operand,
+          reduction_indices,
+          /*keep_dim=*/rewriter.getBoolAttr(false));
+
+      auto tf_argreduce_op = rewriter.create<TfArgReduce>(
+          reduce_op.getLoc(), reduce_op->getResult(1).getType(), operand,
+          reduction_indices);
+
+      rewriter.replaceOp(reduce_op, {tf_reduce_op, tf_argreduce_op});
+    }
     return success();
   }
 
@@ -2275,7 +2292,7 @@ class ConvertReduceOpToTfArgMinMax
 };
 
 class ConvertReduceOpToTfArgmax
-    : public ConvertReduceOpToTfArgMinMax<TF::MaxOp, TF::ArgMaxOp> {
+    : public ConvertReduceOpToTfArgMinMax<TF::MaxOp, TF::ArgMaxOp, TF::AnyOp> {
  public:
   using ConvertReduceOpToTfArgMinMax::ConvertReduceOpToTfArgMinMax;
 
@@ -2284,12 +2301,14 @@ class ConvertReduceOpToTfArgmax
   }
   bool IsValueInitValue(const DenseElementsAttr& attr) const override {
     auto element_type = attr.getType().getElementType();
-    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat() ||
-        element_type.isInteger(1))
+    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
       return false;
     if (element_type.isa<FloatType>()) {
       auto value = *attr.value_begin<APFloat>();
       return value.isNegative() && value.isInfinity();
+    } else if (element_type.isInteger(1)) {
+      auto value = *attr.value_begin<APInt>();
+      return value.isZero();
     } else {
       auto value = *attr.value_begin<APInt>();
       return element_type.isUnsignedInteger() ? value.isMinValue()
@@ -2299,7 +2318,7 @@ class ConvertReduceOpToTfArgmax
 };
 
 class ConvertReduceOpToTfArgmin
-    : public ConvertReduceOpToTfArgMinMax<TF::MinOp, TF::ArgMinOp> {
+    : public ConvertReduceOpToTfArgMinMax<TF::MinOp, TF::ArgMinOp, TF::AllOp> {
  public:
   using ConvertReduceOpToTfArgMinMax::ConvertReduceOpToTfArgMinMax;
 
@@ -2308,12 +2327,14 @@ class ConvertReduceOpToTfArgmin
   }
   bool IsValueInitValue(const DenseElementsAttr& attr) const override {
     auto element_type = attr.getType().getElementType();
-    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat() ||
-        element_type.isInteger(1))
+    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
       return false;
     if (element_type.isa<FloatType>()) {
       auto value = *attr.value_begin<APFloat>();
       return !value.isNegative() && value.isInfinity();
+    } else if (element_type.isInteger(1)) {
+      auto value = *attr.value_begin<APInt>();
+      return value.isZero();
     } else {
       auto value = *attr.value_begin<APInt>();
       return element_type.isUnsignedInteger() ? value.isMaxValue()

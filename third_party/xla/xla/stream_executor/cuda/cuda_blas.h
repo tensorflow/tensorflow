@@ -25,6 +25,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/cuda/cuda_blas_lt.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 
@@ -60,7 +61,7 @@ class CUDABlas : public blas::BlasSupport {
 
   TENSORFLOW_STREAM_EXECUTOR_GPU_BLAS_SUPPORT_OVERRIDES
 
-  BlasLt &blas_lt() { return blas_lt_; }
+  BlasLt *GetBlasLt() override { return &blas_lt_; }
 
  private:
   // Tells cuBLAS to enqueue the BLAS operation onto a particular Stream.
@@ -116,10 +117,24 @@ class CUDABlas : public blas::BlasSupport {
   // Immutable post-initialization.
   gpu::GpuExecutor *parent_;
 
+  // TODO(b/307832648): We use a per-device workspace for all cuBLAS operations.
+  // In general this is unsafe, however we rely on the fact that XLA uses a
+  // single compute stream, and today it's guaranteed that all cuBLAS operations
+  // (as any other kernels launched on Gpu device) will have a well defined
+  // total order, either because they run on the main stream or have explicit
+  // events that synchronize them with a main stream.
+  //
+  // This is not true inside CUDA graphs with non-linear DAG, however today this
+  // is not enabled by default. This is a short term solution, and should be
+  // replaced with an explicit workspace allocation at HLO level.
+  //
+  // See: https://docs.nvidia.com/cuda/cublas/#cublassetworkspace
+  DeviceMemoryBase workspace_;  // owned
+
   // cuBLAS library handle on the device.
   cublasHandle_t blas_ ABSL_GUARDED_BY(mu_);
 
-  BlasLt blas_lt_;
+  cuda::BlasLt blas_lt_;
 
   CUDABlas(const CUDABlas &) = delete;
   void operator=(const CUDABlas &) = delete;

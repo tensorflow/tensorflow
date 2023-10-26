@@ -41,6 +41,15 @@ struct PJRT_Error {
   xla::Status status;
 };
 
+struct PJRT_TopologyDescription {
+  std::unique_ptr<xla::PjRtTopologyDescription> topology;
+  std::vector<std::unique_ptr<const xla::PjRtDeviceDescription>>
+      cpp_descriptions;
+  std::vector<PJRT_DeviceDescription> descriptions;
+  std::vector<PJRT_DeviceDescription*> description_pointers;
+  std::vector<PJRT_NamedValue> attributes;
+};
+
 struct PJRT_Client {
   std::unique_ptr<xla::PjRtClient> client;
   std::vector<PJRT_Device> owned_devices;
@@ -92,6 +101,8 @@ struct PJRT_Memory {
 struct PJRT_Executable {
   // Must be shared_ptr so that we can share with PJRT_LoadedExecutable.
   std::shared_ptr<xla::PjRtExecutable> executable;
+
+  xla::StatusOr<std::string> fingerprint;
 
   // Used to synchronize concurrent setting of cached values.
   mutable absl::Mutex mutex;
@@ -169,15 +180,6 @@ struct PJRT_SerializedExecutable {
 
 struct PJRT_SerializedTopology {
   std::string serialized;
-};
-
-struct PJRT_TopologyDescription {
-  std::unique_ptr<xla::PjRtTopologyDescription> topology;
-  std::vector<std::unique_ptr<const xla::PjRtDeviceDescription>>
-      cpp_descriptions;
-  std::vector<PJRT_DeviceDescription> descriptions;
-  std::vector<PJRT_DeviceDescription*> description_pointers;
-  std::vector<PJRT_NamedValue> attributes;
 };
 
 struct PJRT_TransferMetadata {
@@ -262,6 +264,7 @@ PJRT_Error* PJRT_LoadedExecutable_AddressableDevices(
 PJRT_Error* PJRT_Executable_NumOutputs(PJRT_Executable_NumOutputs_Args* args);
 PJRT_Error* PJRT_Executable_SizeOfGeneratedCodeInBytes(
     PJRT_Executable_SizeOfGeneratedCodeInBytes_Args* args);
+PJRT_Error* PJRT_Executable_Fingerprint(PJRT_Executable_Fingerprint_Args* args);
 PJRT_Error* PJRT_Executable_GetCostAnalysis(
     PJRT_Executable_GetCostAnalysis_Args* args);
 PJRT_Error* PJRT_Executable_OutputElementTypes(
@@ -286,6 +289,8 @@ PJRT_Error* PJRT_Executable_DeserializeAndLoad(
     PJRT_Executable_DeserializeAndLoad_Args* args);
 PJRT_Error* PJRT_LoadedExecutable_GetExecutable(
     PJRT_LoadedExecutable_GetExecutable_Args* args);
+// TODO: b/306669267 - this method is deprecated. When can we return
+// unimplemented?
 PJRT_Error* PJRT_LoadedExecutable_Fingerprint(
     PJRT_LoadedExecutable_Fingerprint_Args* args);
 
@@ -563,6 +568,7 @@ constexpr PJRT_Api CreatePjrtApi(
       pjrt::PJRT_Buffer_CopyToMemory,
       /*PJRT_Client_CreateViewOfDeviceBuffer=*/
       pjrt::PJRT_Client_CreateViewOfDeviceBuffer,
+      /*PJRT_Executable_Fingerprint=*/pjrt::PJRT_Executable_Fingerprint,
   };
 }
 
