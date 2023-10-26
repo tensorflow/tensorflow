@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/types/span.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -80,6 +81,11 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   }
 
  private:
+  // TODO(ezhulenev): Currently we serialize all Gpu nodes by adding a
+  // dependency between all nodes added to a command buffer. We need a concept
+  // of a barrier at a command buffer level.
+  absl::Span<GpuGraphNodeHandle> GetDependencies();
+
   // Returns OK status if command buffer is not finalized and it is still
   // possible to add new commands to it, otherwise returns internal error.
   tsl::Status CheckNotFinalized();
