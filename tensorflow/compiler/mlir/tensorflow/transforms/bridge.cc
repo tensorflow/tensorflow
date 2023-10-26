@@ -88,9 +88,5 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
   return diag_handler.ConsumeStatus();
 }
 
-void CreateTFXLABridgePipeline(OpPassManager &pm) {
-  tensorflow::tf2xla::internal::AddNonTPUBridgeClusteringPipelinePasses(pm);
-}
-
 }  // namespace TF
 }  // namespace mlir

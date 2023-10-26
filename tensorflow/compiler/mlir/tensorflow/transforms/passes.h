@@ -318,10 +318,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreatePrintPass(
 // Moves TPUCompileMlir ops as far to the front as possible.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateMoveTpuCompileToFrontPass();
 
-// Populates the supplied passmanager with the passes required to run the
-// CPU/GPU bridge.
-void CreateTFXLABridgePipeline(OpPassManager& pm);
-
 //===----------------------------------------------------------------------===//
 // XlaCallModule
 //===----------------------------------------------------------------------===//
