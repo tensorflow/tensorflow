@@ -147,7 +147,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
 #include "xla/service/gpu/cub_sort_thunk.h"
-#include "xla/service/gpu/cublas_lt_matmul_thunk.h"
+#include "xla/service/gpu/gpublas_lt_matmul_thunk.h"
 #include "xla/service/gpu/ir_emitter_triton.h"
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
 

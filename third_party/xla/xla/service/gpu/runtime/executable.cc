@@ -33,12 +33,12 @@ limitations under the License.
 #include "xla/service/gpu/runtime/conv.h"
 #include "xla/service/gpu/runtime/conv_reorder.h"
 #include "xla/service/gpu/runtime/cub_sort.h"
-#include "xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "xla/service/gpu/runtime/custom_call.h"
 #include "xla/service/gpu/runtime/custom_call_registry.h"
 #include "xla/service/gpu/runtime/fft.h"
 #include "xla/service/gpu/runtime/fused_attention.h"
 #include "xla/service/gpu/runtime/gemm.h"
+#include "xla/service/gpu/runtime/gpublas_lt_matmul.h"
 #include "xla/service/gpu/runtime/graph_launch.h"
 #include "xla/service/gpu/runtime/io_feed.h"
 #include "xla/service/gpu/runtime/memcpy.h"
@@ -407,7 +407,7 @@ Status GpuRuntimeExecutable::Execute(
   FftPlans::Snapshot fft_plans = fft_plans_.snapshot();
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
-  MatmulPlans::Snapshot matmul_plans = cublas_lt_matmul_plans_.snapshot();
+  MatmulPlans::Snapshot matmul_plans = gpublas_lt_matmul_plans_.snapshot();
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

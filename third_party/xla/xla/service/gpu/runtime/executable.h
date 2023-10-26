@@ -31,10 +31,10 @@ limitations under the License.
 #include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "xla/service/gpu/runtime/collectives.h"
 #include "xla/service/gpu/runtime/conv.h"
-#include "xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "xla/service/gpu/runtime/fft.h"
 #include "xla/service/gpu/runtime/fused_attention.h"
 #include "xla/service/gpu/runtime/gemm.h"
+#include "xla/service/gpu/runtime/gpublas_lt_matmul.h"
 #include "xla/service/gpu/runtime/graph_launch.h"
 #include "xla/service/gpu/runtime/kernel_launch.h"
 #include "xla/service/service_executable_run_options.h"
@@ -179,7 +179,7 @@ class GpuRuntimeExecutable {
   FftPlans fft_plans_;
 
 #if GOOGLE_CUDA || TF_HIPBLASLT  // Keep matmul execution plans.
-  MatmulPlans cublas_lt_matmul_plans_;
+  MatmulPlans gpublas_lt_matmul_plans_;
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

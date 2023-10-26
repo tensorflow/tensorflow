@@ -25,6 +25,18 @@ limitations under the License.
 
 #if TF_HIPBLASLT
 
+#if TF_ROCM_VERSION < 50700
+#define hipblasltDatatype_t hipblasDatatype_t
+#define HIPBLASLT_R_16F HIPBLAS_R_16F
+#define HIPBLASLT_R_16B HIPBLAS_R_16B
+#define HIPBLASLT_R_32F HIPBLAS_R_32F
+#define HIPBLASLT_R_64F HIPBLAS_R_64F
+#define HIPBLASLT_R_8I HIPBLAS_R_8I
+#define HIPBLASLT_R_32I HIPBLAS_R_32I
+#define HIPBLASLT_C_32F HIPBLAS_C_32F
+#define HIPBLASLT_C_64F HIPBLAS_C_64F
+#endif
+
 namespace stream_executor {
 namespace rocm {
 
@@ -32,7 +44,7 @@ namespace rocm {
   TF_RETURN_IF_ERROR(::stream_executor::rocm::ToStatus(expr, #expr))
 
 tsl::Status ToStatus(hipblasStatus_t status, const char* prefix);
-hipblasDatatype_t AsHipblasDataType(blas::DataType type);
+hipblasltDatatype_t AsHipblasDataType(blas::DataType type);
 hipblasLtComputeType_t AsHipblasComputeType(blas::ComputationType type);
 hipblasOperation_t AsHipblasOperation(blas::Transpose trans);
 

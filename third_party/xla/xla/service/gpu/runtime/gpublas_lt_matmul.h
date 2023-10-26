@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_RUNTIME_CUBLAS_LT_MATMUL_H_
-#define XLA_SERVICE_GPU_RUNTIME_CUBLAS_LT_MATMUL_H_
+#ifndef XLA_SERVICE_GPU_RUNTIME_GPUBLAS_LT_MATMUL_H_
+#define XLA_SERVICE_GPU_RUNTIME_GPUBLAS_LT_MATMUL_H_
 
 #include "xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "xla/runtime/custom_call_registry.h"
@@ -43,4 +43,4 @@ class MatmulPlans
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_RUNTIME_CUBLAS_LT_MATMUL_H_
+#endif  // XLA_SERVICE_GPU_RUNTIME_GPUBLAS_LT_MATMUL_H_

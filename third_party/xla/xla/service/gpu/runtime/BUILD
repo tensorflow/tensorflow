@@ -252,12 +252,12 @@ cc_library(
         ":conv",
         ":conv_reorder",
         ":cub_sort",
-        ":cublas_lt_matmul",
         ":custom_call",
         ":custom_call_registry",
         ":fft",
         ":fused_attention",
         ":gemm",
+        ":gpublas_lt_matmul",
         ":graph_launch",
         ":io_feed",
         ":kernel_launch",
@@ -568,9 +568,9 @@ cc_library(
 )
 
 cc_library(
-    name = "cublas_lt_matmul",
-    srcs = ["cublas_lt_matmul.cc"],
-    hdrs = ["cublas_lt_matmul.h"],
+    name = "gpublas_lt_matmul",
+    srcs = ["gpublas_lt_matmul.cc"],
+    hdrs = ["gpublas_lt_matmul.h"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM"]),
     visibility = ["//visibility:public"],
     deps = [
@@ -585,7 +585,6 @@ cc_library(
         "//xla/service:executable",
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor",
-        "//xla/stream_executor/cuda:cublas_lt_header",
         "@local_tsl//tsl/platform:status",
     ] + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",

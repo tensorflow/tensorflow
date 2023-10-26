@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/cublas_lt_matmul_thunk.h"
+#include "xla/service/gpu/gpublas_lt_matmul_thunk.h"
 
 #include <memory>
 #include <utility>

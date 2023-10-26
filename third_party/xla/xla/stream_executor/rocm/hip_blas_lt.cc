@@ -21,8 +21,6 @@ limitations under the License.
 #include "rocm/rocm_config.h"
 #include "xla/primitive_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/rocm/hip_blas_utils.h"
 #include "xla/util.h"
 
 #if TF_HIPBLASLT
@@ -137,13 +135,13 @@ tsl::Status BlasLt::Init() {
                              ? m.num_cols
                              : m.num_rows;
   }
-
+  auto hipblas_data_type_ = AsHipblasDataType(type);
   hipblasLtMatrixLayout_t hip_layout;
   SE_HIPBLAS_RETURN_IF_ERROR(wrap::hipblasLtMatrixLayoutCreate(
-      &hip_layout, AsHipblasDataType(type), m.num_rows, m.num_cols,
+      &hip_layout, hipblas_data_type_, m.num_rows, m.num_cols,
       *leading_dim_stride));
   // Wrap hipblas handle immediately, so it is cleaned up if an error occurs.
-  BlasLt::MatrixLayout layout(hip_layout);
+  BlasLt::MatrixLayout layout(hip_layout, hipblas_data_type_);
   if (m.order != gpu::MatrixLayout::Order::kColumnMajor)
     return tsl::errors::Internal(
         "HipblasLT does not support row-major matrices");
@@ -167,14 +165,16 @@ tsl::Status BlasLt::Init() {
   VLOG(2) << "BlasLt::MatmulDesc::Create compute_type" << int(compute_type)
           << " scale_type " << int(scale_type) << " epilogue " << int(epilogue)
           << " pointer_mode " << int(pointer_mode);
+  auto hip_scale_type = AsHipblasDataType(scale_type);
+  auto hip_compute_type = AsHipblasComputeType(compute_type);
   SE_HIPBLAS_RETURN_IF_ERROR(wrap::hipblasLtMatmulDescCreate(
-      &hip_desc, AsHipblasComputeType(compute_type),
-      AsHipblasDataType(scale_type)));
+      &hip_desc, hip_compute_type, hip_scale_type));
   // Wrap hipblas handle immediately, so it is cleaned up if an error occurs.
-  BlasLt::MatmulDesc desc(hip_desc);
+  BlasLt::MatmulDesc desc(hip_desc, hip_compute_type, hip_scale_type);
   if (pointer_mode != PointerMode::kHost) {
     return tsl::errors::Internal("hipblaslt does not support device pointers");
   }
+
   TF_RETURN_IF_ERROR(SetAttr(hip_desc, HIPBLASLT_MATMUL_DESC_TRANSA,
                              AsHipblasOperation(trans_a)));
   TF_RETURN_IF_ERROR(SetAttr(hip_desc, HIPBLASLT_MATMUL_DESC_TRANSB,
@@ -421,39 +421,31 @@ tsl::Status BlasLt::MatmulPlan::DoMatmul(
 
 namespace {
 
-using cudaDataType_t = hipblasDatatype_t;
-#define CUDA_R_16BF HIPBLAS_R_16B
-#define CUDA_R_16F HIPBLAS_R_16F
-#define CUDA_R_32F HIPBLAS_R_32F
-#define CUDA_R_64F HIPBLAS_R_64F
-#define CUDA_C_32F HIPBLAS_C_32F
-#define CUDA_C_64F HIPBLAS_C_64F
-
-template <cudaDataType_t CudaT>
-struct CudaToNativeT;
+template <hipblasltDatatype_t>
+struct HipToNativeT;
 
 template <>
-struct CudaToNativeT<CUDA_R_16BF> {
+struct HipToNativeT<HIPBLASLT_R_16B> {
   using type = Eigen::bfloat16;
 };
 template <>
-struct CudaToNativeT<CUDA_R_16F> {
+struct HipToNativeT<HIPBLASLT_R_16F> {
   using type = Eigen::half;
 };
 template <>
-struct CudaToNativeT<CUDA_R_32F> {
+struct HipToNativeT<HIPBLASLT_R_32F> {
   using type = float;
 };
 template <>
-struct CudaToNativeT<CUDA_R_64F> {
+struct HipToNativeT<HIPBLASLT_R_64F> {
   using type = double;
 };
 template <>
-struct CudaToNativeT<CUDA_C_32F> {
+struct HipToNativeT<HIPBLASLT_C_32F> {
   using type = complex64;
 };
 template <>
-struct CudaToNativeT<CUDA_C_64F> {
+struct HipToNativeT<HIPBLASLT_C_64F> {
   using type = complex128;
 };
 
@@ -473,25 +465,33 @@ tsl::Status BlasLt::MatmulPlan::ExecuteOnStream(
   std::tuple operand_types{a_desc_.type(), b_desc_.type(), c_desc_.type(),
                            d_desc_.type()};
 
-#define TYPED_MATMUL(SCALENTYPE, ATYPE, BTYPE, CTYPE, DTYPE)                \
-  if (operand_types == std::make_tuple(ATYPE, BTYPE, CTYPE, DTYPE)) {       \
-    return gpu::BlasLt::MatmulPlan::DoMatmul<                               \
-        SCALENTYPE, CudaToNativeT<ATYPE>::type, CudaToNativeT<BTYPE>::type, \
-        CudaToNativeT<CTYPE>::type, CudaToNativeT<DTYPE>::type>(            \
-        stream, alpha_, a, b, beta_, c, d, bias, aux, a_scale, b_scale,     \
-        c_scale, d_scale, d_amax, algorithm, scratch_allocator,             \
-        profile_result);                                                    \
+#define TYPED_MATMUL(SCALENTYPE, ATYPE, BTYPE, CTYPE, DTYPE)              \
+  if (operand_types == std::make_tuple(ATYPE, BTYPE, CTYPE, DTYPE)) {     \
+    return gpu::BlasLt::MatmulPlan::DoMatmul<                             \
+        SCALENTYPE, HipToNativeT<ATYPE>::type, HipToNativeT<BTYPE>::type, \
+        HipToNativeT<CTYPE>::type, HipToNativeT<DTYPE>::type>(            \
+        stream, alpha_, a, b, beta_, c, d, bias, aux, a_scale, b_scale,   \
+        c_scale, d_scale, d_amax, algorithm, scratch_allocator,           \
+        profile_result);                                                  \
   }
 
   // Other data types:
-  TYPED_MATMUL(float, CUDA_R_16BF, CUDA_R_16BF, CUDA_R_16BF, CUDA_R_16BF)
-  TYPED_MATMUL(float, CUDA_R_16F, CUDA_R_16F, CUDA_R_16F, CUDA_R_16F)
-  TYPED_MATMUL(float, CUDA_R_16BF, CUDA_R_16BF, CUDA_R_32F, CUDA_R_32F)
-  TYPED_MATMUL(float, CUDA_R_16F, CUDA_R_16F, CUDA_R_32F, CUDA_R_32F)
-  TYPED_MATMUL(float, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F)
-  TYPED_MATMUL(double, CUDA_R_64F, CUDA_R_64F, CUDA_R_64F, CUDA_R_64F)
-  TYPED_MATMUL(complex64, CUDA_C_32F, CUDA_C_32F, CUDA_C_32F, CUDA_C_32F)
-  TYPED_MATMUL(complex128, CUDA_C_64F, CUDA_C_64F, CUDA_C_64F, CUDA_C_64F)
+  TYPED_MATMUL(float, HIPBLASLT_R_16B, HIPBLASLT_R_16B, HIPBLASLT_R_16B,
+               HIPBLASLT_R_16B)
+  TYPED_MATMUL(float, HIPBLASLT_R_16F, HIPBLASLT_R_16F, HIPBLASLT_R_16F,
+               HIPBLASLT_R_16F)
+  TYPED_MATMUL(float, HIPBLASLT_R_16B, HIPBLASLT_R_16B, HIPBLASLT_R_32F,
+               HIPBLASLT_R_32F)
+  TYPED_MATMUL(float, HIPBLASLT_R_16F, HIPBLASLT_R_16F, HIPBLASLT_R_32F,
+               HIPBLASLT_R_32F)
+  TYPED_MATMUL(float, HIPBLASLT_R_32F, HIPBLASLT_R_32F, HIPBLASLT_R_32F,
+               HIPBLASLT_R_32F)
+  TYPED_MATMUL(double, HIPBLASLT_R_64F, HIPBLASLT_R_64F, HIPBLASLT_R_64F,
+               HIPBLASLT_R_64F)
+  TYPED_MATMUL(complex64, HIPBLASLT_C_32F, HIPBLASLT_C_32F, HIPBLASLT_C_32F,
+               HIPBLASLT_C_32F)
+  TYPED_MATMUL(complex128, HIPBLASLT_C_64F, HIPBLASLT_C_64F, HIPBLASLT_C_64F,
+               HIPBLASLT_C_64F)
 
 #undef TYPED_MATMUL
 
