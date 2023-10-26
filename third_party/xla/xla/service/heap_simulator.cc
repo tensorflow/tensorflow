@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/map_util.h"
 #include "xla/service/memory_space_assignment/repacking.h"
+#include "xla/service/time_utils.h"
 #include "xla/status.h"
 #include "xla/util.h"
 
@@ -927,14 +928,27 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedBufferInterval::Slice(
 
 template <typename BufferType>
 void GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedBufferInterval::
-    UpdateSliceStartTimes(const std::vector<int64_t>& start_times) {
-  CHECK_EQ(start_times.size(), num_slices());
+    UpdateExclusiveSliceStartTimes(
+        const std::vector<int64_t>& exclusive_start_times) {
+  std::vector<int64_t> inclusive_start_times = exclusive_start_times;
+  absl::c_for_each(inclusive_start_times,
+                   [](int64_t& t) { t = ExclusiveToInclusiveStartTime(t); });
+  UpdateInclusiveSliceStartTimes(inclusive_start_times);
+}
+
+template <typename BufferType>
+void GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedBufferInterval::
+    UpdateInclusiveSliceStartTimes(
+        const std::vector<int64_t>& inclusive_start_times) {
+  CHECK_EQ(inclusive_start_times.size(), num_slices());
   CHECK(mutable_full_buffer_interval_ != nullptr);
-  mutable_full_buffer_interval_->start = start_times.front();
+  mutable_full_buffer_interval_->start = inclusive_start_times.front();
   for (size_t slice_time = 0; slice_time < num_slices(); ++slice_time) {
-    make_free_chunks_intervals_[slice_time].start = start_times[slice_time];
+    make_free_chunks_intervals_[slice_time].start =
+        inclusive_start_times[slice_time];
     if (slice_time != num_slices() - 1) {
-      make_free_chunks_intervals_[slice_time].end = start_times[slice_time + 1];
+      make_free_chunks_intervals_[slice_time].end =
+          ExclusiveToInclusiveEndTime(inclusive_start_times[slice_time + 1]);
     } else {
       make_free_chunks_intervals_[slice_time].end = full_buffer_interval_.end;
     }
