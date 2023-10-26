@@ -881,3 +881,82 @@ func.func @testPassThroughCond(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> te
   ) { is_stateless = false, _attr0 = false, attr1 = "hello"} : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
   func.return %0#0 : tensor<*xf32>
 }
+
+// -----
+
+func.func @init(%arg0: tensor<4xf32>) -> tensor<7xf32> {
+  %0 = builtin.unrealized_conversion_cast to tensor<7xf32>
+  return %0 : tensor<7xf32>
+}
+func.func @next(%arg0: tensor<7xf32>, %arg1: tensor<3xf32>) -> tensor<6xf32> {
+  %0 = builtin.unrealized_conversion_cast to tensor<6xf32>
+  return %0 : tensor<6xf32>
+}
+func.func @finalize(%arg0: tensor<6xf32>, %arg1: tensor<2xf32>) -> tensor<5xf32> {
+  %0 = builtin.unrealized_conversion_cast to tensor<5xf32>
+  return %0 : tensor<5xf32>
+}
+
+// CHECK-LABEL: testGeneratorDatasetRegion
+func.func @testGeneratorDatasetRegion(%arg0: tensor<4xf32>, %arg1: tensor<3xf32>, %arg2: tensor<!tf_type.resource>, %arg3: tensor<2xf32>) {
+  // CHECK: "tf.GeneratorDataset"
+  // CHECK-DAG: @init
+  // CHECK-DAG: @next
+  // CHECK-DAG: @finalize
+  // CHECK: return
+  %0 = "tf.GeneratorDatasetRegion"(%arg0, %arg1, %arg2, %arg3) ({
+  ^bb0(%arg4: tensor<4xf32>):
+    %1 = func.call @init(%arg4) : (tensor<4xf32>) -> tensor<7xf32>
+    "tf.Yield"(%1) : (tensor<7xf32>) -> ()
+  }, {
+  ^bb0(%arg4: tensor<7xf32>, %arg5: tensor<3xf32>):
+    %1 = func.call @next(%arg4, %arg5) : (tensor<7xf32>, tensor<3xf32>) -> tensor<6xf32>
+    "tf.Yield"(%1) : (tensor<6xf32>) -> ()
+  }, {
+  ^bb0(%arg4: tensor<6xf32>, %arg5: tensor<2xf32>):
+    %1 = func.call @finalize(%arg4, %arg5) : (tensor<6xf32>, tensor<2xf32>) -> tensor<5xf32>
+    "tf.Yield"(%1) : (tensor<5xf32>) -> ()
+  }) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", metadata = "", operandSegmentSizes = array<i32: 1, 2, 1>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string]} : (tensor<4xf32>, tensor<3xf32>, tensor<!tf_type.resource>, tensor<2xf32>) -> tensor<!tf_type.variant>
+  return
+}
+
+// -----
+
+func.func @init(%arg0: tensor<4xf32>) -> tensor<7xf32> {
+  %0 = builtin.unrealized_conversion_cast to tensor<7xf32>
+  return %0 : tensor<7xf32>
+}
+func.func @next(%arg0: tensor<3xf32>, %arg1: tensor<7xf32>) -> tensor<6xf32> {
+  %0 = builtin.unrealized_conversion_cast to tensor<6xf32>
+  return %0 : tensor<6xf32>
+}
+func.func @finalize(%arg0: tensor<6xf32>, %arg1: tensor<2xf32>) -> tensor<5xf32> {
+  %0 = builtin.unrealized_conversion_cast to tensor<5xf32>
+  return %0 : tensor<5xf32>
+}
+
+// CHECK-LABEL: testGeneratorDatasetRegionWithComplexBlocks
+func.func @testGeneratorDatasetRegionWithComplexBlocks(%arg0: tensor<4xf32>, %arg1: tensor<3xf32>, %arg2: tensor<!tf_type.resource>, %arg3: tensor<2xf32>) {
+  // CHECK: "tf.GeneratorDataset"
+  // CHECK-NOT: @init
+  // CHECK-NOT: @next
+  // CHECK-NOT: @finalize
+  // CHECK: -> tensor<!tf_type.variant>
+  // CHECK: return
+  %0 = "tf.GeneratorDatasetRegion"(%arg0, %arg1, %arg2, %arg3) ({
+  ^bb0(%arg4: tensor<4xf32>):
+    %sum = "tf.Add"(%arg4, %arg4) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+    %1 = func.call @init(%sum) : (tensor<4xf32>) -> tensor<7xf32>
+    "tf.Yield"(%1) : (tensor<7xf32>) -> ()
+  }, {
+  ^bb0(%arg4: tensor<7xf32>, %arg5: tensor<3xf32>):
+    %1 = func.call @next(%arg5, %arg4) : (tensor<3xf32>, tensor<7xf32>) -> tensor<6xf32>
+    "tf.Yield"(%1) : (tensor<6xf32>) -> ()
+  }, {
+  ^bb0(%arg4: tensor<6xf32>, %arg5: tensor<2xf32>):
+    %1 = func.call @finalize(%arg4, %arg5) : (tensor<6xf32>, tensor<2xf32>) -> tensor<5xf32>
+    %sum = "tf.Add"(%1, %1) : (tensor<5xf32>, tensor<5xf32>) -> tensor<5xf32>
+    "tf.Yield"(%sum) : (tensor<5xf32>) -> ()
+  }) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", metadata = "", operandSegmentSizes = array<i32: 1, 2, 1>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string]} : (tensor<4xf32>, tensor<3xf32>, tensor<!tf_type.resource>, tensor<2xf32>) -> tensor<!tf_type.variant>
+  return
+}
