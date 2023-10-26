@@ -1277,11 +1277,6 @@ class FeatureConfig:
       raise ValueError(
           f"Argument `max_sequence_length` must be an int and must be >= 0. "
           f"Received: {max_sequence_length}")
-    if name is None:
-      logging.warning(
-          "Name of the Feature config must be specified for running on"
-          " SparseCore. Different feature configs must have unique names."
-      )
 
     self.table = table
     self.max_sequence_length = max_sequence_length
