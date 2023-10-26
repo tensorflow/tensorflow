@@ -51,10 +51,6 @@ class StreamExecutorGraphInstances;  // Forward declare
 class CapturedFunctionExecutionCount
     : public runtime::StateVector<std::unique_ptr<std::atomic<uint64_t>>> {};
 
-// Create the i-th value if the capture function with ordinal i causes graph
-// update failure.
-class OrdinalToFallback : public runtime::StateVector<std::monostate> {};
-
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // A state vector that owns all instantiated GPU graphs. Graph capture function
@@ -117,7 +113,6 @@ class GraphInstances {
       const BufferAllocations& buffer_allocations,
       absl::Span<const int64_t> buffer_sizes,
       absl::Span<const std::vector<int64_t>> allocation_indices,
-      OrdinalToFallback::Snapshot* ordinal_to_fallback,
       std::optional<uint64_t> eviction_timeout_seconds = std::nullopt);
 
   // Returns true if all Gpu graphs were already instantiated.

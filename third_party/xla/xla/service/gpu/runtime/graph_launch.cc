@@ -275,7 +275,6 @@ Status GraphInstances::InstantiateAllGraphs(
     const BufferAllocations& buffer_allocations,
     absl::Span<const int64_t> buffer_sizes,
     absl::Span<const std::vector<int64_t>> allocation_indices,
-    OrdinalToFallback::Snapshot* ordinal_to_fallback,
     std::optional<uint64_t> eviction_timeout_seconds) {
   // We have only "main" function in the executable.
   if (executable.num_functions() == 1) return OkStatus();
@@ -307,9 +306,6 @@ Status GraphInstances::InstantiateAllGraphs(
     if (!absl::StartsWith(executable.function_name(ordinal),
                           "xla.gpu.graph.capture"))
       continue;
-
-    StatusOr<std::monostate*> fallback = ordinal_to_fallback->Get(ordinal);
-    if (fallback.ok()) continue;
 
     VLOG(3) << "Instantiate Gpu graph defined by capture function @"
             << executable.function_name(ordinal) << " (ordinal = " << ordinal
@@ -571,7 +567,6 @@ static absl::Status LaunchGraph(
     StreamExecutorConvRunners::Snapshot* convs,
     StreamExecutorGraphInstances::Snapshot* instances,
     CapturedFunctionExecutionCount::Snapshot* counts,
-    OrdinalToFallback::Snapshot* ordinal_to_fallback,
     GemmConfigs::Snapshot* gemm_config, runtime::Executable* executable,
     NonAtomicallyUpgradeableRWLock* gpu_lock,
     ConcurrentRegionStatus* region_status, CustomCall::RemainingArgs fwd_args,
@@ -605,10 +600,7 @@ static absl::Status LaunchGraph(
   // work around disable graph execution and run everything in op-by-op mode.
   bool is_profiling = tsl::profiler::ProfilerLock::HasActiveSession();
 
-  StatusOr<std::monostate*> fallback =
-      ordinal_to_fallback->Get(capture.ordinal);
-
-  if (count < num_runs_to_instantiate || is_profiling || fallback.ok()) {
+  if (count < num_runs_to_instantiate || is_profiling) {
     VLOG(3) << "Run gpu graph in op-by-op mode: ordinal = " << capture.ordinal;
     return RunGraphOpByOp(run_options, function_ref, fwd_args, user_data());
   }
@@ -708,7 +700,6 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .UserData<StreamExecutorConvRunners::Snapshot*>()
         .UserData<StreamExecutorGraphInstances::Snapshot*>()
         .UserData<CapturedFunctionExecutionCount::Snapshot*>()
-        .UserData<OrdinalToFallback::Snapshot*>()
         .UserData<GemmConfigs::Snapshot*>()
         .UserData<Executable*>()
         .UserData<NonAtomicallyUpgradeableRWLock*>()
