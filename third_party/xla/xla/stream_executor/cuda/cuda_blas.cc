@@ -234,11 +234,11 @@ CUDABlas::CUDABlas(gpu::GpuExecutor *parent)
 }
 
 CUDABlas::~CUDABlas() {
-  parent_->Deallocate(&workspace_);
   if (blas_ != nullptr) {
     gpu::ScopedActivateExecutorContext sac{parent_};
     cublasDestroy(blas_);
   }
+  parent_->Deallocate(&workspace_);
 }
 
 bool CUDABlas::SetStream(Stream *stream) {
