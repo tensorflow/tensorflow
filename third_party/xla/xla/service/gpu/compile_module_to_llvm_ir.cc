@@ -209,9 +209,12 @@ StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
                             module_str);
   }
 
+  // Collect allocation indices for handling graph capture functions.
+  auto allocation_indices = GetAllocationIndices(mlir_module);
+
   return std::make_unique<GpuRuntimeProgram>(
       entry_function_name.str(), std::move(module_str), buffer_sizes.vec(),
-      module_config.debug_options());
+      std::move(allocation_indices), module_config.debug_options());
 }
 
 StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(

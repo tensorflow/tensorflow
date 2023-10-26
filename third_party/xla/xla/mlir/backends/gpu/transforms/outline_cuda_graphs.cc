@@ -365,6 +365,10 @@ static LogicalResult Outline(unsigned ordinal,
   // If an argument to parent_func has the "lmhlo.constant_name" attribute and
   // is passed to the graph capture function, we propagate the attribute the
   // graph capture function.
+  //
+  // We also annotate all arguments with "rt.allocation_index" attribute that
+  // allows us to forward correct arguments to graph capture function during
+  // Gpu executable initialization (see `InstantiateAllGraphs` implementation).
   for (unsigned i = 0; i < args.size(); ++i) {
     Value arg = args[i];
 
@@ -375,6 +379,12 @@ static LogicalResult Outline(unsigned ordinal,
     auto block_arg = cast<BlockArgument>(arg);
     Block* parent_block = block_arg.getParentBlock();
     if (!parent_block->isEntryBlock()) continue;
+
+    // If this is an argument to the entry block of the parent function, it
+    // means that it's the XLA allocation, and we forward index to the capture
+    // function.
+    func.setArgAttr(i, "rt.allocation_index",
+                    b.getIndexAttr(block_arg.getArgNumber()));
 
     // Check that the parent_block is in the SSACFG region of parent_func.
     Region& parent_func_region = parent_func.getRegion();

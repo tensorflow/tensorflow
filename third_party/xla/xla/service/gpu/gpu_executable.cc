@@ -1023,6 +1023,32 @@ static StatusOr<std::vector<int64_t>> GetBufferSizes(runtime::FunctionType& f) {
   return buffer_sizes;
 }
 
+// TODO(ezhulenev): This is a copy of `GetAllocationIndices` from
+// `mlir/backends/gpu/transforms/passes.h`. We can't depend on that file because
+// of a dependency cycle, and this is a short term work around the cuda graph
+// capture bug. This code should not survive beyond Q1 2024.
+static std::vector<std::vector<int64_t>> GetAllocationIndices(
+    mlir::ModuleOp module) {
+  std::vector<std::vector<int64_t>> res;
+
+  mlir::SymbolTable sym_table(module);
+  for (auto op : module.getOps<runtime::ExportOp>()) {
+    unsigned ordinal = *op.ordinal();
+    if (ordinal >= res.size()) res.resize(ordinal + 1);
+
+    auto func = sym_table.lookup<mlir::func::FuncOp>(op.getFunctionRef());
+    res[ordinal].resize(func.getNumArguments(), -1);
+
+    for (unsigned i = 0; i < func.getNumArguments(); ++i) {
+      auto idx =
+          func.getArgAttrOfType<mlir::IntegerAttr>(i, "rt.allocation_index");
+      if (idx) res[ordinal][i] = idx.getInt();
+    }
+  }
+
+  return res;
+}
+
 StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
     std::shared_ptr<HloModule> hlo_module, absl::string_view obj_file,
     absl::string_view mlir_module,
@@ -1053,6 +1079,9 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   TF_ASSIGN_OR_RETURN(std::vector<int64_t> buffer_sizes,
                       GetBufferSizes(functions[0].signature));
 
+  // Get allocation indices from graph capture functions.
+  auto allocation_indices = GetAllocationIndices(*module);
+
   // Get the XLA module entrypoint function.
   auto func = mlir::cast<mlir::func::FuncOp>(module->lookupSymbol(entry));
 
@@ -1082,8 +1111,9 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   // Move runtime::Executable ownership to the GpuRuntimeExecutable.
   TF_ASSIGN_OR_RETURN(auto gpu_runtime_executable,
                       GpuRuntimeExecutable::Create(
-                          hlo_module->name(), buffer_sizes,
-                          std::move(*executable), std::move(debug_options)));
+                          hlo_module->name(), std::move(buffer_sizes),
+                          std::move(allocation_indices), std::move(*executable),
+                          std::move(debug_options)));
 
   // Construct GpuExecutable for the loaded XLA Runtime executable.
   std::string name = hlo_module->name();

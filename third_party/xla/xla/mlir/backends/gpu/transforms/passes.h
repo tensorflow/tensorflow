@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -41,6 +42,19 @@ namespace gpu {
 #include "xla/mlir/backends/gpu/transforms/passes.h.inc"
 
 class ThunkSequence;  // forward declare
+
+// Collects `rt.allocation_index` attributes from all exported functions.
+//
+//   auto result = GetAllocationIndices();
+//   result[ordinal][argument_index] == allocation_index;
+//
+// Returns `-1` for all arguments that do not have `rt.allocation_index`
+// attribute.
+//
+// TODO(ezhulenev): This is a very ugly hack for graph capture integration, but
+// given that we are moving towards a new runtime and command buffers, it's
+// supposed to be a very short lived hack.
+std::vector<std::vector<int64_t>> GetAllocationIndices(mlir::ModuleOp module);
 
 struct GpuPipelineOpts {
   // Enable experimental pass that outlines parts of the XLA computation into

@@ -31,8 +31,10 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/runtime/custom_call.h"
 #include "xla/runtime/executable.h"
+#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "xla/service/gpu/runtime/concurrent_region.h"
 #include "xla/service/gpu/runtime/conv.h"
@@ -270,7 +272,10 @@ bool GraphInstances::InstantiatedAllGraphs(
 Status GraphInstances::InstantiateAllGraphs(
     const ServiceExecutableRunOptions* run_options,
     const Executable& executable, const CustomCall::UserData& user_data,
-    void* ptr, OrdinalToFallback::Snapshot* ordinal_to_fallback,
+    const BufferAllocations& buffer_allocations,
+    absl::Span<const int64_t> buffer_sizes,
+    absl::Span<const std::vector<int64_t>> allocation_indices,
+    OrdinalToFallback::Snapshot* ordinal_to_fallback,
     std::optional<uint64_t> eviction_timeout_seconds) {
   // We have only "main" function in the executable.
   if (executable.num_functions() == 1) return OkStatus();
@@ -320,6 +325,12 @@ Status GraphInstances::InstantiateAllGraphs(
     assert(signature.num_results() == 0 && "unexpected number of results");
     Arguments<MemrefDesc> args(signature.num_operands());
 
+    // Mapping from graph capture argument to buffer allocation index.
+    absl::Span<const int64_t> capture_allocs = allocation_indices[ordinal];
+    if (capture_allocs.size() != signature.num_operands())
+      return absl::InternalError(
+          "Invalid number of allocation indices for a graph capture function");
+
     // Prepare arguments for the graph capture function.
     for (size_t j = 0; j < signature.num_operands(); ++j) {
       auto* memref = llvm::dyn_cast<MemrefType>(signature.operand(j));
@@ -336,8 +347,11 @@ Status GraphInstances::InstantiateAllGraphs(
       std::array<int64_t, 1> sizes = {memref->size(0)};
       std::array<int64_t, 1> strides = {1};
 
-      args.emplace_back<MemrefDesc>(memref->element_type(), ptr,
-                                    /*offset=*/0, sizes, strides);
+      int64_t allocation_index = capture_allocs[j];
+      args.emplace_back<MemrefDesc>(
+          memref->element_type(),
+          buffer_allocations.GetDeviceAddress(allocation_index).opaque(),
+          /*offset=*/0, sizes, strides);
     }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
