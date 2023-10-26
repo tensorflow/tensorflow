@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_ONEDNN_MATMUL_REWRITER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_ONEDNN_MATMUL_REWRITER_H_
+#ifndef XLA_SERVICE_CPU_ONEDNN_MATMUL_REWRITER_H_
+#define XLA_SERVICE_CPU_ONEDNN_MATMUL_REWRITER_H_
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 
 #include <optional>
@@ -45,4 +45,4 @@ class OneDnnMatMulRewriter : public HloModulePass {
 }  // namespace xla
 
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_ONEDNN_MATMUL_REWRITER_H_
+#endif  // XLA_SERVICE_CPU_ONEDNN_MATMUL_REWRITER_H_
