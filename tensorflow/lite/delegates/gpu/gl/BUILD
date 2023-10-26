@@ -1,14 +1,43 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
 )
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gpu_delegate_linkopts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
+)
+
+cc_library(
+    name = "android_sync",
+    srcs = ["android_sync.cc"],
+    hdrs = ["android_sync.h"],
+    linkopts = gpu_delegate_linkopts(),
+    deps = [
+        ":portable",
+        "//tensorflow/lite/delegates/gpu/common:status",
+    ],
+)
+
+cc_test(
+    name = "android_sync_test",
+    srcs = ["android_sync_test.cc"],
+    linkopts = gpu_delegate_linkopts(),
+    tags = tf_gpu_tests_tags() + [
+        "local",
+        "nobuilder",
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":android_sync",
+        ":egl_environment",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(
@@ -213,6 +242,7 @@ cc_test(
     linkopts = [
         "-lEGL",
         "-lGLESv2",
+        "-lm",
     ],
     tags = tf_gpu_tests_tags() + [
         "local",
@@ -446,6 +476,9 @@ cc_library(
 cc_test(
     name = "serialization_test",
     srcs = ["serialization_test.cc"],
+    linkopts = [
+        "-lm",
+    ],
     tags = [
         "local",
         "nobuilder",

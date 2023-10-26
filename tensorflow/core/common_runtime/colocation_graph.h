@@ -384,7 +384,8 @@ class ColocationGraph {
   const bool allow_soft_placement_;
   const bool log_device_placement_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ColocationGraph);
+  ColocationGraph(const ColocationGraph&) = delete;
+  void operator=(const ColocationGraph&) = delete;
 };
 
 }  // namespace tensorflow

@@ -30,8 +30,6 @@ namespace tflite {
 class BaseOperator;
 
 // Return a map contained all know TF Lite Operators, keyed by their names.
-// TODO(ycling): The pattern to propagate parameters (e.g. enable_select_tf_ops)
-// is ugly here. Consider refactoring.
 std::map<std::string, std::unique_ptr<BaseOperator>> BuildOperatorByNameMap(
     bool enable_select_tf_ops = false);
 

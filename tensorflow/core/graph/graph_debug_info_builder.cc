@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stack_frame.h"
-#include "tensorflow/tsl/platform/path.h"
+#include "tsl/platform/path.h"
 
 namespace tensorflow {
 

@@ -7,6 +7,7 @@ load(
     "@llvm-project//mlir:tblgen.bzl",
     "gentbl_cc_library",
 )
+# copybara:uncomment load("//tools/build_defs/proto/cpp:cc_proto_library.bzl", "cc_proto_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -315,7 +316,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",

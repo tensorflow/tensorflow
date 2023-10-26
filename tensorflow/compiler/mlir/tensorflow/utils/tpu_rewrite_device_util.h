@@ -25,10 +25,11 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -284,6 +285,16 @@ bool TypeValidForXLA(const mlir::Type& type);
 mlir::LogicalResult GetDeviceToHostMap(
     mlir::tf_device::ClusterOp cluster,
     llvm::SmallVector<std::string, 8>& core_to_host);
+
+// Returns the first TPU device, for use in the non-replicated case. The list of
+// TPU devices is retrived from `op`'s module ancestor.
+mlir::LogicalResult GetNonReplicatedTPU0(mlir::Operation* op,
+                                         std::string* tpu0_device);
+
+// Returns the CPU of the first TPU device, for use in the non-replicated case.
+// The list of devices is retrived from `op`'s module ancestor.
+mlir::LogicalResult GetNonReplicatedCPU0(mlir::Operation* op,
+                                         std::string* cpu0_device);
 
 }  // namespace tensorflow
 

@@ -29,7 +29,7 @@ gen_op_libraries(
 
 tf_py_strict_test(
     name = "pad_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["pad_ops_test.py"],
     data = [":pad_ops_mlir"],
     python_version = "PY3",
@@ -43,7 +43,7 @@ tf_py_strict_test(
         ":pad_ops_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/mlir/tfr:test_utils",
-        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:load_library",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],

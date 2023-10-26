@@ -245,5 +245,8 @@ INSTANTIATE_TEST_SUITE_P(Hybrid4BitFullyConnectedVsReferenceOpTests,
                              std::make_tuple(5, 1, 38),
                              std::make_tuple(5, 4, 72),
                              std::make_tuple(5, 6, 130),
+                             std::make_tuple(4, 1, 56),
+                             std::make_tuple(4, 1, 48),
+                             std::make_tuple(4, 1, 120),
                          }));
 }  // namespace tflite

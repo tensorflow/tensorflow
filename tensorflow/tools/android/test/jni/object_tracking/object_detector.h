@@ -180,7 +180,8 @@ class ObjectDetectorBase {
   const ImageData* image_data_;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ObjectDetectorBase);
+  ObjectDetectorBase(const ObjectDetectorBase&) = delete;
+  void operator=(const ObjectDetectorBase&) = delete;
 };
 
 template <typename ModelType>
@@ -222,7 +223,8 @@ class ObjectDetector : public ObjectDetectorBase {
   std::map<std::string, ModelType*> object_models_;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ObjectDetector);
+  ObjectDetector(const ObjectDetector&) = delete;
+  void operator=(const ObjectDetector&) = delete;
 };
 
 }  // namespace tf_tracking

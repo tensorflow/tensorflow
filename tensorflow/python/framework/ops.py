@@ -21,7 +21,8 @@ import re
 import sys
 import threading
 import types
-from typing import Any, AnyStr, Callable, List, NoReturn, Pattern, Tuple, Union, Optional
+from typing import Any, AnyStr, Callable, List, NoReturn, Optional, Pattern, Sequence, Tuple, Union
+
 from absl import app
 import numpy as np
 
@@ -1442,7 +1443,7 @@ class Operation(pywrap_tf_session.PyOperation):
     raise TypeError("can't convert Operation '{}' to Tensor".format(self.name))
 
   @property
-  def inputs(self):
+  def inputs(self) -> Sequence[tensor_lib.Tensor]:
     """The sequence of `Tensor` objects representing the data inputs of this op."""
     if self._inputs_val is None:
       # pylint: disable=protected-access
@@ -2051,10 +2052,6 @@ class Graph(pywrap_tf_session.PyGraph):
 
     # Cache for OpDef protobufs retrieved via the C API.
     self._op_def_cache = {}
-    # Cache for constant results of `broadcast_gradient_args()`. The keys are
-    # tuples of fully-defined shapes: (x_shape_tuple, y_shape_tuple), and the
-    # values are tuples of reduction indices: (rx, ry).
-    self._bcast_grad_args_cache = {}
     # Cache for constant results of `reduced_shape()`. The keys are pairs of
     # tuples: (input_shape_tuple, reduction_indices_tuple), and the values
     # are pairs of tuples: (output_shape_kept_dims, tile_scaling).

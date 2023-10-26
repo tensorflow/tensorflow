@@ -209,7 +209,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
       std::max(graph_info_->num_execution_nodes(), (size_t)1), {});
 
   // Keeps track of references to each tensor.
-  refcounts_.resize(num_tensors, 0);
+  refcounts_.assign(num_tensors, 0);
 
   auto allocate = [this](int node, int tensor) -> TfLiteStatus {
     if (alloc_node_[tensor] != kNodeNotAssigned) {

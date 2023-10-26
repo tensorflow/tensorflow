@@ -42,7 +42,7 @@ limitations under the License.
 #if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
 #include "tensorflow/core/platform/mutex.h"
 #endif
-#include "tensorflow/tsl/util/onednn_threadpool.h"
+#include "tsl/util/onednn_threadpool.h"
 
 using dnnl::engine;
 using dnnl::memory;
@@ -332,7 +332,8 @@ class MklDnnShape {
   }
 
   ~MklDnnShape() {}
-  TF_DISALLOW_COPY_AND_ASSIGN(MklDnnShape);  // Cannot copy
+  MklDnnShape(const MklDnnShape&) = delete;
+  void operator=(const MklDnnShape&) = delete;  // Cannot copy
 
   /// Equality function for MklDnnShape objects
   /// @return true if both are equal; false otherwise.

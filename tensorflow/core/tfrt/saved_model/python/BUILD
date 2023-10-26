@@ -37,7 +37,11 @@ package_group(
 tf_python_pybind_extension(
     name = "_pywrap_saved_model_aot_compile",
     srcs = ["saved_model_aot_compile_wrapper.cc"],
+    enable_stub_generation = True,
     module_name = "_pywrap_saved_model_aot_compile",
+    pytype_srcs = [
+        "_pywrap_saved_model_aot_compile.pyi",
+    ],
     deps = [
         "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
         "//tensorflow/core/tfrt/runtime",
@@ -69,10 +73,10 @@ cc_library(
         "//tensorflow/core/tfrt/saved_model",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
-        "//tensorflow/tsl/platform:casts",
-        "//tensorflow/tsl/platform:refcount",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:casts",
+        "@local_tsl//tsl/platform:refcount",
         "@tf_runtime//:hostcontext",
     ],
 )
@@ -80,7 +84,11 @@ cc_library(
 tf_python_pybind_extension(
     name = "_pywrap_saved_model",
     srcs = ["saved_model_load_and_run_wrapper.cc"],
+    enable_stub_generation = True,
     module_name = "_pywrap_saved_model",
+    pytype_srcs = [
+        "_pywrap_saved_model.pyi",
+    ],
     deps = [
         ":saved_model_load_and_run",
         "//tensorflow/core/tfrt/graph_executor:graph_execution_options",

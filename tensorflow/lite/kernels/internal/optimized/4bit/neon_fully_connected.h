@@ -39,8 +39,8 @@ inline void PackInner(const int8_t* src, uint8_t* box, int src_rows,
                 outer_cols, inner_rows, inner_cols);
 }
 
-// Prepack lhs matrix, and allocate destination pointer.
-inline void Prepack(uint8_t** dest, const int8_t* tensor, int layout_rows,
+// Prepack lhs matrix into dest.
+inline void Prepack(uint8_t* dest, const int8_t* tensor, int layout_rows,
                     int layout_cols, int src_rows, int src_cols, int width,
                     int depth) {
   NeonPrepack(dest, tensor, layout_rows, layout_cols, src_rows, src_cols, width,
@@ -153,7 +153,7 @@ inline void RunKernel<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
 #endif
 
 // Compute sum of lhs * rhs columnwise and write output to output_ptr.
-inline void RunAndUnpack(int rhs_width, const uint8_t* lhs, int8_t* rhs,
+inline void RunAndUnpack(int rhs_width, const uint8_t* lhs, const int8_t* rhs,
                          int32_t* dst, int output_depth, int batch_size,
                          int lhs_layout_rows, int lhs_layout_cols,
                          int rhs_layout_rows, int rhs_layout_cols,

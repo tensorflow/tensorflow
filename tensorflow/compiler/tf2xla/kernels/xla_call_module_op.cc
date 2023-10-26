@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -45,20 +46,20 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
-#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
-#include "tensorflow/compiler/xla/util.h"
+#include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/shape_util.h"
+#include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
+#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/util.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -137,6 +138,9 @@ class XlaCallModuleOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("Tout", &expected_output_dtypes));
     std::vector<string> dim_args_spec;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dim_args_spec", &dim_args_spec));
+    OP_REQUIRES(ctx, dim_args_spec.empty(),
+                absl::UnimplementedError(
+                    "dim_args_spec attribute is no longer supported"));
     OP_REQUIRES(ctx,
                 expected_output_shapes.size() == expected_output_dtypes.size(),
                 absl::InvalidArgumentError(absl::StrCat(
@@ -147,7 +151,30 @@ class XlaCallModuleOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("disabled_checks", &disabled_checks));
     std::vector<string> platforms;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("platforms", &platforms));
+    // TODO(necula): change this to OP_REQUIRES_OK when 6 months have passed
+    // since we added the function_list and has_token_input_output
+    // attributes (May 25, 2023).
+    if (!ctx->GetAttr("has_token_input_output", &module_has_token_input_output_)
+             .ok()) {
+      module_has_token_input_output_ = false;
+    }
+    if (!ctx->GetAttr("function_list", &function_list_).ok()) {
+      function_list_.clear();
+    }
 
+    if (VLOG_IS_ON(3)) {
+      VLOG(3) << "Initializing XlaCallModuleOp (version = " << version
+              << ", platforms = [" << absl::StrJoin(platforms, ", ")
+              << "], has_token_input_output = "
+              << module_has_token_input_output_ << ", disabled_checks = ["
+              << absl::StrJoin(disabled_checks, ", ") << "], "
+              << "function_list = ["
+              << absl::StrJoin(function_list_, ",",
+                               [](std::string *out, NameAttrList x) {
+                                 absl::StrAppend(out, x.name());
+                               })
+              << "])";
+    }
     string loading_device_type = ctx->device_type().type_string();
     string loading_platform = "";
     if (loading_device_type == DEVICE_CPU_XLA_JIT) {
@@ -168,25 +195,18 @@ class XlaCallModuleOp : public XlaOpKernel {
                   absl::UnimplementedError(absl::StrCat(
                       "Unexpected device type ", loading_device_type)));
     }
-    VLOG(3) << "Initialized XlaCallModuleOp on " << loading_platform;
-    if (!ctx->GetAttr("has_token_input_output", &module_has_token_input_output_)
-             .ok()) {
-      module_has_token_input_output_ = false;
-    }
+    VLOG(3) << "Initializing XlaCallModuleOp on " << loading_platform;
+
     {
       auto loader = XlaCallModuleLoader::Create(
-          &context_, version, std::move(module_str), std::move(dim_args_spec),
-          std::move(disabled_checks), std::move(platforms), loading_platform,
+          &context_, version, std::move(module_str), std::move(disabled_checks),
+          std::move(platforms), loading_platform,
           /*num_invocation_args=*/ctx->num_inputs(),
           module_has_token_input_output_);
       OP_REQUIRES_OK(ctx, loader.status());
       loader_ = *std::move(loader);
     }
     OP_REQUIRES_OK(ctx, loader_->ValidateDialect());
-
-    if (!ctx->GetAttr("function_list", &function_list_).ok()) {
-      function_list_.clear();
-    }
 
     if (!ctx->GetAttr(kXlaTokenInputNodesAttrName, &token_input_nodes_).ok()) {
       token_input_nodes_.clear();

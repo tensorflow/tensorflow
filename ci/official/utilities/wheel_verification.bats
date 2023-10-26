@@ -16,10 +16,16 @@
 # directory, or whatever path is set as $TF_WHEEL.
 
 setup_file() {
-    python3 -m venv "$BATS_FILE_TMPDIR/venv"
     cd build
     if [[ -z "$TF_WHEEL" ]]; then
         export TF_WHEEL=$(find build -iname "*.whl")
+    fi
+
+    # Setup the env for the python import testing
+    if [[ $TF_WHEEL == *"aarch64.whl" ]]; then
+        python${TFCI_PYTHON_VERSION} -m venv "$BATS_FILE_TMPDIR/venv"
+    else
+        python3 -m venv "$BATS_FILE_TMPDIR/venv"
     fi
 }
 
@@ -29,7 +35,12 @@ teardown_file() {
 
 @test "Wheel is manylinux2014 (manylinux_2_17) compliant" {
     python3 -m auditwheel show "$TF_WHEEL" > audit.txt
-    grep --quiet 'This constrains the platform tag to "manylinux_2_17_x86_64"' audit.txt
+    # Verify wheel based upon name/architecture, fallback to x86
+    if [[ $TF_WHEEL == *"aarch64.whl" ]]; then
+        grep --quiet -zoP 'is consistent with the following platform tag:\n"manylinux_2_17_aarch64"\.' audit.txt
+    else
+        grep --quiet 'This constrains the platform tag to "manylinux_2_17_x86_64"' audit.txt
+    fi
 }
 
 @test "Wheel conforms to upstream size limitations" {
@@ -68,7 +79,7 @@ teardown_file() {
 # Is this still useful?
 @test "TensorFlow has Keras" {
     source "$BATS_FILE_TMPDIR/venv/bin/activate"
-    python3 -c 'import sys; import tensorflow as tf; sys.exit(0 if "_v2.keras" in tf.keras.__name__ else 1)'
+    python3 -c 'import sys; import tensorflow as tf; sys.exit(0 if "keras" in tf.keras.__name__ else 1)'
 }
 
 # Is this still useful?

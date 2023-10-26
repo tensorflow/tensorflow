@@ -14,6 +14,7 @@ def tflite_copts():
     """Defines common compile time flags for TFLite libraries."""
     copts = [
         "-DFARMHASH_NO_CXX_STRING",
+        "-DEIGEN_ALLOW_UNALIGNED_SCALARS",  # TODO(b/296071640): Remove when underlying bugs are fixed.
     ] + select({
         clean_dep("//tensorflow:android_arm"): [
             "-mfpu=neon",
@@ -62,6 +63,9 @@ def tflite_copts():
         "//conditions:default": [],
     }) + select({
         clean_dep("//tensorflow/lite/delegates:tflite_debug_delegate"): ["-DTFLITE_DEBUG_DELEGATE"],
+        "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow/lite:tflite_mmap_disabled"): ["-DTFLITE_MMAP_DISABLED"],
         "//conditions:default": [],
     })
 
@@ -684,15 +688,21 @@ def tflite_custom_c_library(
             "//tensorflow/lite/c:c_api_experimental.h",
             "//tensorflow/lite/c:c_api_opaque.h",
         ]
-        experimental_deps = [
+        deps = [
             "//tensorflow/lite/c:c_api_experimental_without_op_resolver_without_alwayslink",
             "//tensorflow/lite/core/c:private_c_api_experimental_without_op_resolver_without_alwayslink",
+            "//tensorflow/lite/c:c_api_opaque_without_op_resolver_without_alwayslink",
+            "//tensorflow/lite/core/c:private_c_api_opaque_without_op_resolver_without_alwayslink",
         ]
     else:
         hdrs = [
             "//tensorflow/lite/c:c_api.h",
+            "//tensorflow/lite/c:c_api_opaque.h",
         ]
-        experimental_deps = []
+        deps = [
+            "//tensorflow/lite/c:c_api_opaque_without_op_resolver_without_alwayslink",
+            "//tensorflow/lite/core/c:private_c_api_opaque_without_op_resolver_without_alwayslink",
+        ]
     native.cc_library(
         name = name,
         hdrs = hdrs,
@@ -706,7 +716,7 @@ def tflite_custom_c_library(
             "//tensorflow/lite/core/c:private_c_api_without_op_resolver_without_alwayslink",
             "//tensorflow/lite/core/c:private_common",
             "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-        ] + experimental_deps,
+        ] + deps,
         **kwargs
     )
 

@@ -56,8 +56,8 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/thread_annotations.h"
 
 // Polymorphic datasets should support all primitive TensorFlow
 // types. Use this macro to expand `m(T)` once for each primitive type
@@ -514,7 +514,8 @@ class MemoryCheckpoint : public IteratorStateWriter {
  private:
   explicit MemoryCheckpoint(std::shared_ptr<IdRegistry> registry, bool is_root)
       : is_root_(is_root), id_registry_(registry) {}
-  TF_DISALLOW_COPY_AND_ASSIGN(MemoryCheckpoint);
+  MemoryCheckpoint(const MemoryCheckpoint&) = delete;
+  void operator=(const MemoryCheckpoint&) = delete;
 
   Status status_ = OkStatus();
   // Only set to true for the checkpoint in IteratorResource.
@@ -618,7 +619,8 @@ class SerializationContext {
  private:
   Params params_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SerializationContext);
+  SerializationContext(const SerializationContext&) = delete;
+  void operator=(const SerializationContext&) = delete;
 };
 
 // Specifies the tf.data pipeline run mode.
@@ -648,6 +650,7 @@ class IteratorContext {
           interleave_depth(ctx->interleave_depth()),
           is_restoring(ctx->is_restoring()),
           model(ctx->model()),
+          ram_budget_manager(ctx->ram_budget_manager()),
           resource_mgr(ctx->resource_mgr()),
           runner(*(ctx->runner())),
           runner_threadpool_size(ctx->runner_threadpool_size()),
@@ -716,6 +719,9 @@ class IteratorContext {
 
     // If non-null, identifies the object used for performance modeling.
     std::shared_ptr<model::Model> model = nullptr;
+
+    // Manager for the ram budget when using autotune.
+    std::shared_ptr<model::RamBudgetManager> ram_budget_manager = nullptr;
 
     // The input pipeline options.
     const Options* options = nullptr;
@@ -813,6 +819,10 @@ class IteratorContext {
 
   const std::shared_ptr<model::Model>& model() const { return params_.model; }
 
+  const std::shared_ptr<model::RamBudgetManager>& ram_budget_manager() {
+    return params_.ram_budget_manager;
+  }
+
   ResourceMgr* resource_mgr() { return params_.resource_mgr; }
 
   std::function<void(std::function<void()>)>* runner() {
@@ -838,6 +848,8 @@ class IteratorContext {
   thread::ThreadPoolInterface* thread_pool() { return params_.thread_pool; }
 
   bool warm_start() { return params_.warm_start; }
+
+  RunMode run_mode() { return params_.run_mode; }
 
   std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
                                                        int num_threads) {

@@ -16,10 +16,9 @@ limitations under the License.
 #include "tensorflow/lite/core/interpreter.h"
 
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 
-#include <algorithm>
-#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -32,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/signature_runner.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/minimal_logging.h"
@@ -520,6 +520,31 @@ void Interpreter::AddProfiler(std::unique_ptr<Profiler> profiler) {
   }
   root_profiler_->AddProfiler(std::move(profiler));
   SetSubgraphProfiler();
+}
+
+impl::SignatureRunner* Interpreter::GetSignatureRunner(
+    const char* signature_key) {
+  auto iter = signature_runner_map_.find(signature_key);
+  if (iter != signature_runner_map_.end()) {
+    return &(iter->second);
+  }
+
+  // Default delegates are applied once for all subgraphs. Only returns error
+  // when the status is kTfLiteError. For other statuses, it will fall back to
+  // the default implementation.
+  if (ApplyLazyDelegateProviders() == kTfLiteError) {
+    return nullptr;
+  }
+
+  for (const auto& signature : signature_defs_) {
+    if (signature.signature_key == signature_key) {
+      auto status = signature_runner_map_.insert(
+          {signature_key,
+           SignatureRunner(&signature, subgraph(signature.subgraph_index))});
+      return &(status.first->second);
+    }
+  }
+  return nullptr;
 }
 
 }  // namespace tflite

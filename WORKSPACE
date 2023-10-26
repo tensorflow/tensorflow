@@ -14,10 +14,14 @@ http_archive(
 
 http_archive(
     name = "rules_python",
-    sha256 = "84aec9e21cc56fbc7f1335035a71c850d1b9b5cc6ff497306f84cced9a769841",
-    strip_prefix = "rules_python-0.23.1",
-    url = "https://github.com/bazelbuild/rules_python/releases/download/0.23.1/rules_python-0.23.1.tar.gz",
+    sha256 = "9d04041ac92a0985e344235f5d946f71ac543f1b1565f2cdbc9a2aaee8adf55b",
+    strip_prefix = "rules_python-0.26.0",
+    url = "https://github.com/bazelbuild/rules_python/releases/download/0.26.0/rules_python-0.26.0.tar.gz",
 )
+
+load("@rules_python//python:repositories.bzl", "py_repositories")
+
+py_repositories()
 
 load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 load(
@@ -27,12 +31,12 @@ load(
 
 python_repository(name = "python_version_repo")
 
-load("@python_version_repo//:py_version.bzl", "HERMETIC_PYTHON_VERSION")
+load("@python_version_repo//:py_version.bzl", "TF_PYTHON_VERSION")
 
 python_register_toolchains(
     name = "python",
     ignore_root_user_error = True,
-    python_version = HERMETIC_PYTHON_VERSION,
+    python_version = TF_PYTHON_VERSION,
 )
 
 load("@python//:defs.bzl", "interpreter")
@@ -58,7 +62,7 @@ pip_parse(
     name = "pypi",
     annotations = NUMPY_ANNOTATIONS,
     python_interpreter_target = interpreter,
-    requirements = "//:requirements_lock_" + HERMETIC_PYTHON_VERSION.replace(".", "_") + ".txt",
+    requirements = "//:requirements_lock_" + TF_PYTHON_VERSION.replace(".", "_") + ".txt",
 )
 
 load("@pypi//:requirements.bzl", "install_deps")

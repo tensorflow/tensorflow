@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -57,9 +57,9 @@ using stream_executor::dnn::DimIndex;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "xla/stream_executor/gpu/redzone_allocator.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
 namespace {
@@ -247,7 +247,8 @@ class Conv3DBackpropInputOp : public OpKernel {
   TensorFormat data_format_;
   bool takes_shape_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Conv3DBackpropInputOp);
+  Conv3DBackpropInputOp(const Conv3DBackpropInputOp&) = delete;
+  void operator=(const Conv3DBackpropInputOp&) = delete;
 };
 
 // Custom backprop for input that explicitly does the work sharding and calls
@@ -598,7 +599,8 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
   TensorFormat data_format_;
   bool takes_shape_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Conv3DCustomBackpropInputOp);
+  Conv3DCustomBackpropInputOp(const Conv3DCustomBackpropInputOp&) = delete;
+  void operator=(const Conv3DCustomBackpropInputOp&) = delete;
 };
 
 // Custom backrop input kernel is 30% - 4x faster when compiled with AVX2 than

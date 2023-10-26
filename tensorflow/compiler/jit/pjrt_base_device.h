@@ -58,7 +58,8 @@ class PjRtBaseDevice : public LocalDevice {
     std::vector<XlaShapeLayoutHelpers::ShapeDeterminationFns>
         shape_determination_fns_;
 
-    TF_DISALLOW_COPY_AND_ASSIGN(Metadata);
+    Metadata(const Metadata&) = delete;
+    void operator=(const Metadata&) = delete;
   };
 
   struct Options {

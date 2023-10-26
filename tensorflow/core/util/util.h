@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/cpu_info.h"
 
 namespace tensorflow {
 
@@ -60,6 +61,9 @@ std::string SliceDebugString(const TensorShape& shape, int64_t flat);
 
 // Check if MKL is enabled in runtime
 bool IsMKLEnabled();
+
+// Check if BF16 is supported
+bool IsBF16SupportedByOneDNNOnThisCPU();
 
 }  // namespace tensorflow
 

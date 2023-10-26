@@ -251,6 +251,8 @@ class SliceTest(test.TestCase):
           np.complex64,
           np.complex128,
           dtypes.bfloat16.as_numpy_dtype,
+          dtypes.float8_e5m2.as_numpy_dtype,
+          dtypes.float8_e4m3fn.as_numpy_dtype,
       ]:
         inp = np.random.rand(4, 4).astype(dtype)
         a = constant_op.constant(

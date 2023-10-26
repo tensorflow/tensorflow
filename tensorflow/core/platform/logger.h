@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "google/protobuf/any.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/tsl/platform/logger.h"
+#include "tsl/platform/logger.h"
 
 namespace tensorflow {
 using tsl::Logger;  // NOLINT

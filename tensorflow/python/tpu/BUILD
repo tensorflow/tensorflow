@@ -1,12 +1,12 @@
-# Placeholder: load py_proto_library
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
-
 # Description: Operations defined for Cloud TPUs
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+
+# Placeholder: load py_proto_library
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/python/tpu:tpu.bzl", "internal_create_sanitizer_settings", "tpu_py_strict_test")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 # Do not add anymore paths here. You do not need to be in the visibility list
 # to use TPU symbols. They are accessible from tf.contrib.tpu in TF 1.x and
@@ -37,12 +37,19 @@ bzl_library(
     srcs = ["tpu_test_wrapper.bzl"],
 )
 
+py_strict_library(
+    name = "tpu_test_wrapper",
+    srcs = ["tpu_test_wrapper.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/platform:flags",
+        "//tensorflow/python/util:tf_decorator",
+    ],
+)
+
 py_strict_test(
     name = "tpu_test_wrapper_test",
-    srcs = [
-        "tpu_test_wrapper.py",
-        "tpu_test_wrapper_test.py",
-    ],
+    srcs = ["tpu_test_wrapper_test.py"],
     main = "tpu_test_wrapper_test.py",
     python_version = "PY3",
     srcs_version = "PY3",
@@ -51,9 +58,9 @@ py_strict_test(
         "no_pip",
     ],
     deps = [
+        ":tpu_test_wrapper",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:flags",
-        "//tensorflow/python/util:tf_decorator",
         "@absl_py//absl/testing:flagsaver",
     ],
 )
@@ -70,8 +77,8 @@ pytype_strict_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:meta_graph",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/saved_model:pywrap_saved_model",
         "//tensorflow/python/training",
@@ -99,7 +106,7 @@ tpu_py_strict_test(
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:metrics",
         "//tensorflow/python/ops:variable_scope",
@@ -243,6 +250,7 @@ py_strict_library(
         ":tpu_embedding_v1",
         ":tpu_embedding_v2",
         ":tpu_embedding_v2_utils",
+        ":tpu_embedding_v3",
         ":tpu_hardware_feature",
         ":tpu_lib",
         ":tpu_py",
@@ -258,15 +266,15 @@ pytype_strict_library(
         ":tpu_replication",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:monitoring",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/framework:function",
+        "//tensorflow/python/framework:graph_io",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_stack",
         "//tensorflow/python/ops:cond",
@@ -460,9 +468,7 @@ pytype_strict_library(
         "datasets.py",
     ],
     srcs_version = "PY3",
-    visibility = visibility + [
-        "//tensorflow_models/official/recommendation:__pkg__",
-    ],
+    visibility = visibility,
     deps = [
         "//tensorflow/python/data/experimental/ops:interleave_ops",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -492,7 +498,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:python_io",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:compat",
@@ -513,9 +519,9 @@ tf_py_strict_test(
         ":tpu_py",
         ":tpu_replication",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/layers",
         "//tensorflow/python/ops:array_ops",
@@ -610,10 +616,6 @@ pytype_strict_library(
     name = "tpu_strategy_util",
     srcs = ["tpu_strategy_util.py"],
     visibility = [
-        "//learning/brain:__subpackages__",
-        "//learning/deepmind:__subpackages__",
-        "//learning/serving:__subpackages__",
-        "//research/graph:__subpackages__",
         "//tensorflow:__subpackages__",
         "//third_party/py/tensorflow_numerics/extensions:__pkg__",
     ],
@@ -750,9 +752,12 @@ pytype_strict_library(
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/framework:device_spec",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:init_ops_v2",
+        "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/tpu/ops",
         "//tensorflow/python/types:core",
@@ -827,6 +832,7 @@ pytype_strict_library(
         ":tpu_embedding_v2_utils",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
@@ -838,6 +844,7 @@ pytype_strict_library(
         "//tensorflow/python/ops:sparse_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/trackable:base",
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
@@ -931,7 +938,7 @@ tpu_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:tf_record",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/ops:gradients_impl",
@@ -981,5 +988,69 @@ tf_proto_library(
 #     deps = [":tensor_tracer_proto"],
 # )
 # copybara:uncomment_end
+
+tf_python_pybind_extension(
+    name = "_pywrap_tpu_embedding",
+    srcs = ["pywrap_tpu_embedding.cc"],
+    enable_stub_generation = True,
+    features = ["-layering_check"],
+    pytype_srcs = [
+        "_pywrap_tpu_embedding.pyi",
+    ],
+    deps = [
+        "//tensorflow/core/tpu/kernels:sparse_core_ops_utils",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "//tensorflow/python/lib/core:pybind11_status_headers",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
+        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
+    ],
+)
+
+py_strict_library(
+    name = "tpu_embedding_v3",
+    srcs = ["tpu_embedding_v3.py"],
+    deps = [
+        ":_pywrap_tpu_embedding",
+        ":tpu_embedding_base",
+        ":tpu_embedding_v2_utils",
+        ":tpu_replication",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/checkpoint:saveable_compat",
+        "//tensorflow/python/distribute:device_util",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute:tpu_util",
+        "//tensorflow/python/distribute:tpu_values",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/distribute:values_util",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:device",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:collective_ops_gen",
+        "//tensorflow/python/ops:cond",
+        "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:resource_variable_ops_gen",
+        "//tensorflow/python/ops:variable_scope",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/tpu/ops:gen_xla_ops",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/training/saving:saveable_object",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
+        "@absl_py//absl/logging",
+    ],
+)
 
 internal_create_sanitizer_settings()

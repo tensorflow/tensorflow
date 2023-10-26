@@ -37,9 +37,7 @@ tflite_cc_library_with_c_headers_test(
     name = "delegate_plugin",
     hdrs = ["delegate_plugin.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ] + delegate_plugin_visibility_allowlist(),
+    visibility = delegate_plugin_visibility_allowlist(),
     deps = [
         "//tensorflow/lite/core/acceleration/configuration/c:delegate_plugin",
     ],
@@ -48,9 +46,7 @@ tflite_cc_library_with_c_headers_test(
 tflite_cc_library_with_c_headers_test(
     name = "gpu_plugin",
     hdrs = ["gpu_plugin.h"],
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ] + gpu_plugin_visibility_allowlist(),
+    visibility = gpu_plugin_visibility_allowlist(),
     deps = [
         "//tensorflow/lite/core/acceleration/configuration/c:gpu_plugin",
     ],
@@ -67,9 +63,7 @@ tflite_cc_library_with_c_headers_test(
 tflite_cc_library_with_c_headers_test(
     name = "xnnpack_plugin",
     hdrs = ["xnnpack_plugin.h"],
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ] + xnnpack_plugin_visibility_allowlist(),
+    visibility = xnnpack_plugin_visibility_allowlist(),
     deps = [
         "//tensorflow/lite/core/acceleration/configuration/c:xnnpack_plugin",
     ],

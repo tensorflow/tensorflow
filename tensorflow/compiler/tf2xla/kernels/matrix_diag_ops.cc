@@ -22,10 +22,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/matrix.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/lib/matrix.h"
+#include "xla/client/xla_builder.h"
+#include "xla/primitive_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -540,7 +540,8 @@ class MatrixSetDiagOp : public XlaOpKernel {
   bool left_align_superdiagonal_ = true;
   bool left_align_subdiagonal_ = true;
   static constexpr int kNumV1Inputs = 2;
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixSetDiagOp);
+  MatrixSetDiagOp(const MatrixSetDiagOp&) = delete;
+  void operator=(const MatrixSetDiagOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("MatrixSetDiag"), MatrixSetDiagOp);

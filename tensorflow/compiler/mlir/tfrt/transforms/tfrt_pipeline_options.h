@@ -144,12 +144,6 @@ struct TfrtPipelineOptions
           "cheap, and then whether it can be executed inline."),
       llvm::cl::init(1)};
 
-  Option<int64_t> upper_cost_threshold{
-      *this, "tfrt-upper-cost-threshold",
-      llvm::cl::desc(
-          "The threshold to limit the merging of dependent sequence."),
-      llvm::cl::init(-1)};
-
   Option<bool> merge_inter_dependent_streams{
       *this, "tfrt-merge-inter-dependent-streams",
       llvm::cl::desc("If true, streams with inter data depenedencies will be "

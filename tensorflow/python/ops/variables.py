@@ -352,7 +352,7 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
         variable and return the Tensor for the projected value (which must have
         the same shape). Constraints are not safe to use when doing asynchronous
         distributed training.
-      synchronization: Indicates when a distributed a variable will be
+      synchronization: Indicates when a distributed variable will be
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses when to
@@ -1115,7 +1115,7 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
     """
     raise NotImplementedError
 
-  def get_shape(self):
+  def get_shape(self) -> tensor_shape.TensorShape:
     """Alias of `Variable.shape`."""
     return self.shape
 
@@ -1637,7 +1637,7 @@ class PartitionedVariable:
     # NOTE(yuefengz): Today, no partitioned variables in a distribute strategy.
     return None
 
-  def get_shape(self):
+  def get_shape(self) -> tensor_shape.TensorShape:
     return self._shape
 
   def _get_variable_list(self):

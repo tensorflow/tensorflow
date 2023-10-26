@@ -630,9 +630,19 @@ class StridedSliceChecker(object):
 
 
 STRIDED_SLICE_TYPES = [
-    dtypes.int32, dtypes.int64, dtypes.int16, dtypes.int8, dtypes.uint8,
-    dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128,
-    dtypes.bool, dtypes.bfloat16
+    dtypes.int32,
+    dtypes.int64,
+    dtypes.int16,
+    dtypes.int8,
+    dtypes.uint8,
+    dtypes.float32,
+    dtypes.float64,
+    dtypes.complex64,
+    dtypes.complex128,
+    dtypes.bool,
+    dtypes.bfloat16,
+    dtypes.float8_e5m2,
+    dtypes.float8_e4m3fn,
 ]
 
 
@@ -690,9 +700,9 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
   @test_util.assert_no_new_pyobjects_executing_eagerly
   @test_util.assert_no_garbage_created
   def testVariableSliceEagerMemory(self):
-    if sys.version_info.major == 3 and sys.version_info.minor == 11:
+    if sys.version_info.major == 3 and sys.version_info.minor in (11, 12):
       # TODO(b/265082239)
-      self.skipTest("Not working in Python 3.11")
+      self.skipTest("Not working in Python 3.11+")
     with context.eager_mode():
       v = variables.Variable([1., 2.])
       v[0]  # pylint: disable=pointless-statement

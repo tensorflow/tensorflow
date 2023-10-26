@@ -21,9 +21,14 @@ cc_library(
         "//tensorflow/lite:array",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:optimized_base",
+        "//tensorflow/lite/kernels/internal:runtime_shape",
+        "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:tensor_ctypes",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -45,6 +50,7 @@ cc_library(
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
@@ -127,6 +133,88 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "list_length_test",
+    srcs = ["list_kernels/list_length_test.cc"],
+    deps = [
+        ":list_ops_lib",
+        ":tensor_array",
+        ":test_util",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "list_element_shape_test",
+    srcs = ["list_kernels/list_element_shape_test.cc"],
+    deps = [
+        ":list_ops_lib",
+        ":tensor_array",
+        ":test_util",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "list_pop_back_test",
+    srcs = ["list_kernels/list_pop_back_test.cc"],
+    deps = [
+        ":list_ops_lib",
+        ":tensor_array",
+        ":test_util",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/kernels/internal:tensor_ctypes",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "variant_add_n_test",
+    srcs = ["list_kernels/variant_add_n_test.cc"],
+    deps = [
+        ":list_ops_lib",
+        ":tensor_array",
+        ":test_util",
+        "//tensorflow/lite:type_to_tflitetype",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "list_push_back_test",
+    srcs = ["list_kernels/list_push_back_test.cc"],
+    deps = [
+        ":list_ops_lib",
+        ":tensor_array",
+        ":test_util",
+        "//tensorflow/lite:type_to_tflitetype",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "list_ops_util",
     srcs = ["list_ops_util.cc"],
@@ -202,7 +290,7 @@ cc_library(
     srcs = ["tensor_array.cc"],
     hdrs = ["tensor_array.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//tensorflow/lite/kernels/variants:__subpackages__"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:common",

@@ -1,4 +1,4 @@
-load("//tensorflow:py.default.bzl", "py_binary")
+load("//tensorflow:strict.default.bzl", "py_strict_binary")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_binary")
 
 package(
@@ -6,7 +6,7 @@ package(
     licenses = ["notice"],
 )
 
-py_binary(
+py_strict_binary(
     name = "build_py_api_docs",
     srcs = ["build_py_api_docs.py"],
     python_version = "PY3",

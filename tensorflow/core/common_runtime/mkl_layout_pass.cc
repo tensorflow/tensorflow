@@ -1070,6 +1070,17 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
       reason = "User has assigned a device that is not CPU.";
     }
 
+    const string& type_attr = "T";
+    if (HasNodeAttr(n->def(), type_attr)) {
+      const auto& attr = n->def().attr().at(type_attr);
+      DataType dtype = attr.type();
+      if (dtype == DT_BFLOAT16 && !IsBF16SupportedByOneDNNOnThisCPU()) {
+        mkl_op_registry::BF16UnsupportedWarning();
+        result = false;
+        reason = "Intel oneDNN with bfloat16 is not supported.";
+      }
+    }
+
     if (result == false) {
       VLOG(1) << "MklLayoutRewritePass: Skipping rewriting of the node "
               << n->type_string() << ", reason: " << reason;
@@ -1575,7 +1586,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // impact.
     TF_CHECK_OK(GetNodeAttr(n->def(), "transpose_a", &trans_a));
 
-    return !trans_a;
+    // Only rewrite float and bfloat16.
+    DataType T_m;
+    TF_CHECK_OK(GetNodeAttr(n->def(), "T", &T_m));
+
+    return !trans_a && (T_m == DT_FLOAT || T_m == DT_BFLOAT16);
   }
 
   // Check if we are performing pooling on depth or batch. If it is, then we

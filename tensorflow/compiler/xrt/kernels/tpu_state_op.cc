@@ -17,7 +17,7 @@ limitations under the License.
 // that refer to them.
 
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
+#include "xla/client/local_client.h"
 #include "tensorflow/compiler/xrt/kernels/xrt_state_ops.h"
 #include "tensorflow/compiler/xrt/xrt_tpu_device.h"
 #include "tensorflow/core/tpu/tpu_defs.h"

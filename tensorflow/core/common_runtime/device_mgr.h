@@ -83,7 +83,8 @@ class DeviceMgr {
   virtual Device* LookupStream(const Device* device,
                                const int stream_id) const = 0;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DeviceMgr);
+  DeviceMgr(const DeviceMgr&) = delete;
+  void operator=(const DeviceMgr&) = delete;
 };
 
 
@@ -182,7 +183,8 @@ class DynamicDeviceMgr : public DeviceMgr {
   int stream_group_count_;
   std::unordered_map<const Device*, std::vector<Device*>> stream_device_map_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DynamicDeviceMgr);
+  DynamicDeviceMgr(const DynamicDeviceMgr&) = delete;
+  void operator=(const DynamicDeviceMgr&) = delete;
 };
 
 // TODO(b/183966398): Remove StaticDeviceMgr since there's no usage.

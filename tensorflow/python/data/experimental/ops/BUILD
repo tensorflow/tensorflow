@@ -375,7 +375,7 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:experimental_dataset_ops_gen",
         "//tensorflow/python/ops:io_ops",
         "//tensorflow/python/platform:gfile",

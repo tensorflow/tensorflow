@@ -31,7 +31,11 @@ extern "C" {
 /// These APIs are accessors for TFLite Opaque Types.  These APIs are primarily
 /// intended to be used by delegates and custom OP implementations.
 ///
-/// WARNING: This is an experimental API and subject to change.
+/// This API is part of the TensorFlow Lite Extension APIs.
+/// We reserve the right to make changes to this API in future releases,
+/// potentially including non-backwards-compatible changes, on a different
+/// schedule than for the other TensorFlow Lite APIs. See
+/// https://www.tensorflow.org/guide/versions#separate_version_number_for_tensorflow_lite_extension_apis.
 
 /** \addtogroup c_api_opaque tensorflow/lite/c/c_api_opaque.h
  *  @{
@@ -91,6 +95,26 @@ TFL_CAPI_EXPORT extern void* TfLiteOpaqueTensorData(
 /// Returns the 'opaque_tensor's allocation type.
 TFL_CAPI_EXPORT extern TfLiteAllocationType TfLiteOpaqueTensorGetAllocationType(
     const TfLiteOpaqueTensor* opaque_tensor);
+
+/// Returns a tensor data allocation strategy.
+TFL_CAPI_EXPORT extern TfLiteAllocationStrategy
+TfLiteOpaqueTensorGetAllocationStrategy(const TfLiteOpaqueTensor* t);
+
+/// Returns how stable a tensor data buffer address is across runs.
+TFL_CAPI_EXPORT extern TfLiteRunStability
+TfLiteOpaqueTensorGetBufferAddressStability(const TfLiteOpaqueTensor* t);
+
+/// Returns how stable a tensor data values are across runs.
+TFL_CAPI_EXPORT extern TfLiteRunStability TfLiteOpaqueTensorGetDataStability(
+    const TfLiteOpaqueTensor* t);
+
+/// Returns the operation step when the data of a tensor is populated.
+TFL_CAPI_EXPORT extern TfLiteRunStep TfLiteOpaqueTensorGetDataKnownStep(
+    const TfLiteOpaqueTensor* t);
+
+/// Returns the operation step when the shape of a tensor is computed.
+TFL_CAPI_EXPORT extern TfLiteRunStep TfLiteOpaqueTensorGetShapeKnownStep(
+    const TfLiteOpaqueTensor* t);
 
 /// Returns the (null-terminated) name of the tensor.
 TFL_CAPI_EXPORT extern const char* TfLiteOpaqueTensorName(
@@ -172,6 +196,48 @@ TfLiteStatus TfLiteOpaqueTensorWriteStrings(TfLiteOpaqueTensor* tensor,
 // calling 'TfLiteOpaqueTensorWriteStrings' with an array of a single string.
 TfLiteStatus TfLiteOpaqueTensorWriteString(TfLiteOpaqueTensor* tensor,
                                            const char* str, int len);
+
+// An opaque type to create a tensor.
+typedef struct TfLiteOpaqueTensorBuilder TfLiteOpaqueTensorBuilder;
+
+// Creates an opaque tensor builder object.
+TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderCreate();
+
+// Deletes an opaque tensor builder object.
+void TfLiteOpaqueTensorBuilderDelete(TfLiteOpaqueTensorBuilder* builder);
+
+// Sets the 'TfLiteType' of the provided 'builder' to the provided 'type'.
+// Returns the address of the provided 'builder', so that builder calls can be
+// chained together.
+TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetType(
+    TfLiteOpaqueTensorBuilder* builder, TfLiteType type);
+
+// Sets the raw data of the provided 'builder' to the provided 'data'. Returns
+// the address of the provided 'builder', so that builder calls can be chained
+// together.
+TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetData(
+    TfLiteOpaqueTensorBuilder* builder, void* data);
+
+// Sets the allocation type of the provided 'builder' to the provided
+// 'allocation_type'.  The 'allocation_type' must be one of the following:
+// 'kTfLiteDynamic', 'kTfLiteArenaRw' or 'kTfLiteArenaRwPersistent'.  If the
+// provided 'allocation_type' is not one of those values then
+// 'TfLiteOpaqueContextAddTensor' will return an error. Returns the address of
+// the provided 'builder', so that builder calls can be chained together.
+TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetAllocationType(
+    TfLiteOpaqueTensorBuilder* builder, TfLiteAllocationType allocation_type);
+
+// Sets the quantization params of the provided 'builder' to the provided
+// 'params'. Returns the address of the provided 'builder', so that builder
+// calls can be chained together.
+TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetQuantizationParams(
+    TfLiteOpaqueTensorBuilder* builder, TfLiteQuantizationParams params);
+
+// Sets the quantization of the provided 'builder' to the provided
+// 'quantization'. Returns the address of the provided 'builder', so that
+// builder calls can be chained together.
+TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetQuantization(
+    TfLiteOpaqueTensorBuilder* builder, TfLiteQuantization quantization);
 
 // --------------------------------------------------------------------------
 // Accessors for TfLiteOpaqueNode.
@@ -330,7 +396,6 @@ TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueContextGetNodeAndRegistration(
     TfLiteOpaqueNode** node,
     TfLiteRegistrationExternal** registration_external);
 
-/// WARNING: This is an experimental API and subject to change.
 /// Entry point for C API ReplaceNodeSubsetsWithDelegateKernels
 ///
 /// Replaces the specified `nodes_to_replace` that are associated with the
@@ -518,16 +583,15 @@ TfLiteStatus TfLiteOpaqueContextGetNodeInitDataMmapInfo(
     int64_t* custom_initial_data_offset_in_file,
     int64_t* custom_initial_data_size);
 
-// Add 'tensors_to_add' tensors, preserving pre-existing Tensor entries.  If
-// non-null, the value pointed to by 'first_new_tensor_index' will be set to
-// the index of the first new tensor.  Returns 'kTfLiteOk' when the tensors have
-// been added successfully.  Returns 'kTfLiteError' in case of failure. Suppling
-// a value equal to or smaller than 0 for 'tensors_to_add' will result in
-// 'kTfLiteError' being returned.
+// Adds an additional tensor and configures its properties based on the provided
+// 'builder', preserving pre-existing Tensor entries.  If non-null, the value
+// pointed to by 'new_tensor_index' will be set to the index of the
+// new tensor.  Returns 'kTfLiteOk' when the tensor has been added
+// successfully.  Returns 'kTfLiteError' in case of failure.
 TFL_CAPI_EXPORT
-TfLiteStatus TfLiteOpaqueContextAddTensors(TfLiteOpaqueContext* context,
-                                           int tensors_to_add,
-                                           int* first_new_tensor_index);
+TfLiteStatus TfLiteOpaqueContextAddTensor(TfLiteOpaqueContext* context,
+                                          TfLiteOpaqueTensorBuilder* builder,
+                                          int* new_tensor_index);
 
 // Populates the size in bytes of a provide 'type' into 'bytes'.  Returns
 // 'kTfLiteOk' for valid types, and 'kTfLiteError' otherwise.

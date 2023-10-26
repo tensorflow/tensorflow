@@ -21,7 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"

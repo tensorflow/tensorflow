@@ -1,12 +1,16 @@
 path: "tensorflow.__internal__.function.Function"
 tf_class {
   is_instance: "<class \'tensorflow.python.eager.polymorphic_function.polymorphic_function.Function\'>"
-  is_instance: "<class \'tensorflow.python.types.core.GenericFunction\'>"
+  is_instance: "<class \'tensorflow.python.types.core.PolymorphicFunction\'>"
   is_instance: "<class \'tensorflow.python.types.core.Callable\'>"
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "function_spec"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "function_type"
     mtype: "<type \'property\'>"
   }
   member {

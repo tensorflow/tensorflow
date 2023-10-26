@@ -24,10 +24,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/matrix.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/lib/matrix.h"
+#include "xla/client/xla_builder.h"
+#include "xla/literal_util.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -66,7 +66,8 @@ class ConvOp : public XlaOpKernel {
   ConvOpAttrs attrs_;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ConvOp);
+  ConvOp(const ConvOp&) = delete;
+  void operator=(const ConvOp&) = delete;
 };
 
 class ConvNDOp : public XlaOpKernel {
@@ -202,7 +203,8 @@ class ConvBackpropInputOp : public XlaOpKernel {
   ConvOpAttrs attrs_;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ConvBackpropInputOp);
+  ConvBackpropInputOp(const ConvBackpropInputOp&) = delete;
+  void operator=(const ConvBackpropInputOp&) = delete;
 };
 
 class Conv2DBackpropInputOp : public ConvBackpropInputOp {
@@ -262,7 +264,8 @@ class ConvBackpropFilterOp : public XlaOpKernel {
   ConvOpAttrs attrs_;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ConvBackpropFilterOp);
+  ConvBackpropFilterOp(const ConvBackpropFilterOp&) = delete;
+  void operator=(const ConvBackpropFilterOp&) = delete;
 };
 
 class Conv2DBackpropFilterOp : public ConvBackpropFilterOp {

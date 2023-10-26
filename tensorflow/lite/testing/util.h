@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/string_type.h"
-#include "tensorflow/tsl/platform/logging.h"
+#include "tsl/platform/logging.h"
 
 namespace tflite {
 

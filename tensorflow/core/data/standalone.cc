@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -48,11 +49,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/refcount.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/refcount.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -206,7 +207,10 @@ Status Dataset::MakeIterator(
             std::back_inserter(params.split_providers));
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
-  params.model = std::make_shared<model::Model>();
+  // The model should only be created if autotuning is on.
+  if (ShouldUseAutotuning(finalized_dataset_->options())) {
+    params.model = std::make_shared<model::Model>();
+  }
   params.run_mode = RunMode::STANDALONE;
   ctx = std::make_unique<IteratorContext>(std::move(params));
   SerializationContext::Params serialization_params(&op_ctx);

@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 
 #include <cstdint>
+#include <string>
 
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
@@ -79,8 +80,17 @@ monitoring::GaugeCell<std::function<std::string()>>* GetTFDataModelGauge(
 // Records the number of bytes fetched from tf.data.Dataset iterator.
 void RecordTFDataBytesFetched(int64_t num_bytes);
 
-// Records the number of times tf.data experiment is applied to input pipelines.
+// Records the number of times a tf.data experiment was applied.
 void RecordTFDataExperiment(const string& name);
+
+// Records the number of times a tf.data experiment could have been applied.
+void RecordTFDataExperimentLive(const string& name);
+
+// Records the number of times a tf.data experiment was opted into.
+void RecordTFDataExperimentOptIn(const string& experiment_name);
+
+// Records the number of times a tf.data experiment was opted out of.
+void RecordTFDataExperimentOptOut(const string& experiment_name);
 
 // Records the time (in microseconds) spent generating an element and
 // transferring it over the network for the given protocol.
@@ -109,6 +119,10 @@ void RecordTFDataFingerprint(const string& name);
 // Records the event of a tf.data service pipeline getting a runtime
 // compression decision.
 void RecordTFDataServiceRuntimeCompressionDecision(bool compression_decision);
+
+// Records the event of a tf.data service pipeline making the compression
+// related action.
+void RecordTFDataServiceCompressionAction(const string& action);
 
 // Records the time (in microseconds) during which `IteratorResource` was busy
 // processing at least one `GetNext()` request.
@@ -167,8 +181,12 @@ void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit);
 // Records tf.data service cross-trainer cache memory usage in bytes.
 void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes);
 
-// Records distributed tf.data snapshot bytes committed.
+// Records tf.data distributed snapshot bytes committed.
 void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes);
+
+// Records tf.data distributed snapshot save/load ops.
+void RecordTFDataServiceSnapshotOp(const std::string& path,
+                                   const std::string& op);
 
 // Records the current estimated optimal number of tf.data service workers.
 void RecordTFDataServiceOptimalNumberOfWorkers(int64_t number_of_workers);

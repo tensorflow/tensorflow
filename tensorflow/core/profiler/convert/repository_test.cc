@@ -23,7 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -39,6 +39,15 @@ TEST(Repository, GetHostName) {
   TF_CHECK_OK(session_snapshot_or.status());
   EXPECT_THAT(session_snapshot_or.value().GetHostname(0), Eq("hostname0"));
   EXPECT_THAT(session_snapshot_or.value().GetHostname(1), Eq("hostname1"));
+  EXPECT_TRUE(session_snapshot_or.value().HasAccessibleRunDir());
+}
+
+TEST(Repository, GetHostNameWithPeriods) {
+  auto session_snapshot_or =
+      SessionSnapshot::Create({"log/plugins/profile/127.0.0.1_6009.xplane.pb"},
+                              /*xspaces=*/std::nullopt);
+  TF_CHECK_OK(session_snapshot_or.status());
+  EXPECT_THAT(session_snapshot_or.value().GetHostname(0), Eq("127.0.0.1_6009"));
   EXPECT_TRUE(session_snapshot_or.value().HasAccessibleRunDir());
 }
 

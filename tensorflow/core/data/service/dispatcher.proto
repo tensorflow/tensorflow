@@ -299,25 +299,14 @@ message GetSnapshotStreamsResponse {
   repeated SnapshotStreamInfo streams = 1;
 }
 
-// Next tag: 4
+// Next tag: 5
 message DisableCompressionAtRuntimeRequest {
   string dataset_id = 1;
 
-  // Information about the calling trainer. If the dispatcher has already
-  // decided whether or not to disable compression at runtime for `dataset_id`,
-  // this information is ignored. If the dispatcher has not yet decided, this
-  // information is used to decide.
-  oneof trainer_info {
-    // If set, the calling trainer is eligible for runtime compression
-    // disabling, and its host has properties described by this field, which
-    // will be used by the dispatcher to decide whether or not to disable
-    // compression.
-    string trainer_compression_info = 2;
+  // If `true`, compression should be disabled at runtime.
+  bool disable_compression_at_runtime = 4;
 
-    // If `true`, the calling trainer is ineligible for runtime compression, and
-    // the dispatcher will decide to not disable compression.
-    bool trainer_is_ineligible = 3;
-  }
+  reserved 2, 3;
 }
 
 // Next tag: 4
@@ -330,14 +319,12 @@ message DisableCompressionAtRuntimeResponse {
     // registration time.
     bool compression_disabled_at_runtime = 1;
 
-    // If `true`, the dispatcher has not yet made a decision as to whether or
-    // not to disable compression at runtime.
-    bool not_enough_information = 2;
-
     // If `true`, compression was not specified at registration time, so there
     // is no runtime compression disabling decision to make.
     bool no_compression_to_disable = 3;
   }
+
+  reserved 2;
 }
 
 service DispatcherService {

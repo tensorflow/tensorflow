@@ -221,7 +221,8 @@ class CTCLossOp : public OpKernel {
   bool ctc_merge_repeated_;
   bool ignore_longer_outputs_than_inputs_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CTCLossOp<T>);
+  CTCLossOp<T>(const CTCLossOp<T>&) = delete;
+  void operator=(const CTCLossOp<T>&) = delete;
 };
 
 #define REGISTER_CPU(T)                                          \
@@ -371,7 +372,8 @@ class CTCLossOpGPU : public OpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CTCLossOpGPU);
+  CTCLossOpGPU(const CTCLossOpGPU&) = delete;
+  void operator=(const CTCLossOpGPU&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("CTCLossV2")

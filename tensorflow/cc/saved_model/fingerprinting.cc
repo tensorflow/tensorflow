@@ -25,8 +25,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/cc/saved_model/constants.h"
-// Placeholder for protosplitter riegeli includes.
-#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/regularization/simple_delete.h"
 #include "tensorflow/core/graph/regularization/util.h"
@@ -34,18 +32,31 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
-// Placeholder for protosplitter util include.
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+// b/291933687, b/291001524
+#if !defined(PLATFORM_WINDOWS) && !defined(__APPLE__)
+#include "tensorflow/cc/saved_model/fingerprinting_utils.h"
+#include "tensorflow/tools/proto_splitter/cc/util.h"
+#endif
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
+// IWYU pragma: no_include "third_party/protobuf/io/coded_stream.h"
+// IWYU pragma: no_include "third_party/protobuf/io/zero_copy_stream_impl_lite.h"
 
 namespace tensorflow::saved_model::fingerprinting {
 
 namespace {
+
+using ::tensorflow::protobuf::Map;
+// NOLINTNEXTLINE: clang-tidy missing-includes false positive
+using ::tensorflow::protobuf::io::CodedOutputStream;
+// NOLINTNEXTLINE: clang-tidy missing-includes false positive
+using ::tensorflow::protobuf::io::StringOutputStream;
 
 // TODO(b/290063184): remove when USM is GA
 uint64_t HashCheckpointIndexFile(absl::string_view model_dir) {
@@ -68,8 +79,8 @@ uint64_t HashSavedModel(const SavedModel& saved_model) {
     // serialization determinism).
     // Unfortunately the saving process itself isn't deterministic, so the
     // checksum may still change since the saved_model proto may be different.
-    tsl::protobuf::io::StringOutputStream stream(&saved_model_serialized);
-    tsl::protobuf::io::CodedOutputStream output(&stream);
+    StringOutputStream stream(&saved_model_serialized);
+    CodedOutputStream output(&stream);
     output.SetSerializationDeterministic(true);
     saved_model.SerializeToCodedStream(&output);
   }
@@ -77,7 +88,7 @@ uint64_t HashSavedModel(const SavedModel& saved_model) {
 }
 
 uint64_t RegularizeAndHashSignatureDefs(
-    const google::protobuf::Map<std::string, SignatureDef>& signature_def_map) {
+    const Map<std::string, SignatureDef>& signature_def_map) {
   // Sort `signature_def_map`, which is an unordered map from string keys to
   // SignatureDefs.
   absl::btree_map<std::string, SignatureDef> sorted_signature_defs;
@@ -89,8 +100,8 @@ uint64_t RegularizeAndHashSignatureDefs(
         FingerprintCat64(result_hash, tensorflow::Fingerprint64(item.first));
     std::string signature_def_serialized;
     {
-      tsl::protobuf::io::StringOutputStream stream(&signature_def_serialized);
-      tsl::protobuf::io::CodedOutputStream output(&stream);
+      StringOutputStream stream(&signature_def_serialized);
+      CodedOutputStream output(&stream);
       output.SetSerializationDeterministic(true);
       item.second.SerializeToCodedStream(&output);
     }
@@ -124,9 +135,8 @@ absl::StatusOr<uint64_t> RegularizeAndHashSavedObjectGraph(
     // Hash the serialized concrete function.
     std::string concrete_function_serialized;
     {
-      tsl::protobuf::io::StringOutputStream stream(
-          &concrete_function_serialized);
-      tsl::protobuf::io::CodedOutputStream output(&stream);
+      StringOutputStream stream(&concrete_function_serialized);
+      CodedOutputStream output(&stream);
       output.SetSerializationDeterministic(true);
       object_graph_def.concrete_functions()
           .at(function_name)
@@ -182,9 +192,17 @@ absl::StatusOr<FingerprintDef> CreateFingerprintDef(
     absl::string_view export_dir) {
   std::string prefix = io::JoinPath(export_dir, kSavedModelFilenamePrefix);
 
-  return CreateFingerprintDefPb(export_dir, absl::StrCat(prefix, ".pb"));
+#if !defined(PLATFORM_WINDOWS) && !defined(__APPLE__)
+  TF_ASSIGN_OR_RETURN(bool only_contains_pb,
+                      tools::proto_splitter::OnlyContainsPb(prefix));
+  if (only_contains_pb) {
+    return CreateFingerprintDefPb(export_dir, absl::StrCat(prefix, ".pb"));
+  }
 
-  return absl::PermissionDeniedError("Chunked proto format is not available in OSS.");
+  return CreateFingerprintDefCpb(export_dir, absl::StrCat(prefix, ".cpb"));
+#else
+  return CreateFingerprintDefPb(export_dir, absl::StrCat(prefix, ".pb"));
+#endif
 }
 
 absl::StatusOr<FingerprintDef> ReadSavedModelFingerprint(

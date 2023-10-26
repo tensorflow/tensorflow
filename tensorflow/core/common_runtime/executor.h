@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool_interface.h"
+#include "tensorflow/core/platform/error_logging.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
@@ -128,7 +129,13 @@ class Executor {
     TensorHolder* tensor_holder = nullptr;
   };
   typedef std::function<void(const Status&)> DoneCallback;
-  virtual void RunAsync(const Args& args, DoneCallback done) = 0;
+
+  void RunAsync(const Args& args, DoneCallback done) {
+    RunAsyncInternal(args, [done = std::move(done)](const Status& s) {
+      if (!s.ok()) Log("TFExecutor", "Run", s.message()).IgnoreError();
+      done(s);
+    });
+  }
 
   // Synchronous wrapper for RunAsync().
   virtual Status Run(const Args& args) {
@@ -141,6 +148,9 @@ class Executor {
     n.WaitForNotification();
     return ret;
   }
+
+ private:
+  virtual void RunAsyncInternal(const Args& args, DoneCallback done) = 0;
 };
 
 // Creates an Executor that computes the given "graph".
@@ -235,7 +245,8 @@ class ExecutorBarrier {
     }
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExecutorBarrier);
+  ExecutorBarrier(const ExecutorBarrier&) = delete;
+  void operator=(const ExecutorBarrier&) = delete;
 };
 
 // A few helpers to facilitate create/delete kernels.

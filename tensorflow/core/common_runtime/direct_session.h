@@ -445,7 +445,8 @@ class DirectSession : public Session {
 
   std::unique_ptr<ServingDeviceSelector> stream_selector_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
+  DirectSession(const DirectSession&) = delete;
+  void operator=(const DirectSession&) = delete;
 
   // EXPERIMENTAL: debugger (tfdbg) related
   friend class DebugGateway;

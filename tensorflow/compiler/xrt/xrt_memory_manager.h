@@ -19,11 +19,11 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/xla/service/backend.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/service/backend.h"
+#include "xla/statusor.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/compiler/xrt/xrt_refptr.h"
 #include "tensorflow/compiler/xrt/xrt_state.h"
 #include "tensorflow/core/framework/resource_mgr.h"

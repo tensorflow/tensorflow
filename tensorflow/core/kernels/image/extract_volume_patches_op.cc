@@ -149,7 +149,8 @@ class ExtractVolumePatchesOp : public UnaryOp<T> {
 
   Padding padding_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExtractVolumePatchesOp);
+  ExtractVolumePatchesOp(const ExtractVolumePatchesOp&) = delete;
+  void operator=(const ExtractVolumePatchesOp&) = delete;
 };
 
 // Registration of the CPU implementations.

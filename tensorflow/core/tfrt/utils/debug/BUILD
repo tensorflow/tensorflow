@@ -16,10 +16,10 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf:for_core_protos_cc",
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -58,9 +58,9 @@ cc_library(
 #         "//tensorflow/core/tfrt/saved_model:saved_model_cpu",
 #         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
 #         "//tensorflow/python/framework:test_ops_kernels",
-#         "//tensorflow/tsl/platform:path",
-#         "//tensorflow/tsl/platform:statusor",
-#         "//tensorflow/tsl/platform:test",
+#         "@local_tsl//tsl/platform:path",
+#         "@local_tsl//tsl/platform:statusor",
+#         "@local_tsl//tsl/platform:test",
 #     ],
 # )
 # copybara:uncomment_end

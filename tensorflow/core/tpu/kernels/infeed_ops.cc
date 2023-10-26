@@ -22,21 +22,20 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/xla/layout.h"
-#include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/noncopyable_buffer.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_api.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
+#include "xla/literal.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/tpu/c_api_conversions.h"
+#include "xla/stream_executor/tpu/c_api_decl.h"
+#include "xla/stream_executor/tpu/noncopyable_buffer.h"
+#include "xla/stream_executor/tpu/tpu_executor_api.h"
+#include "xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -54,8 +53,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {

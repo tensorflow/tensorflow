@@ -59,7 +59,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 #include "tensorflow/dtensor/mlir/value_utils.h"
-#include "tensorflow/tsl/util/env_var.h"
+#include "tsl/util/env_var.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -77,6 +77,8 @@ namespace internal {
 
 namespace ops_util = ::mlir::TF::collection_ops_util;
 constexpr int32 kUninitializedGroupKey = 0;
+constexpr char kCpuDevice[] = "/device:CPU:0";
+constexpr char kDeviceAttr[] = "device";
 
 std::atomic<int32> tf_collective_instance_key_base{0};
 
@@ -255,6 +257,7 @@ mlir::Operation* EmitCollectiveReduce(
       /*final_op=*/builder.getStringAttr(is_mean_op ? "Div" : "Id"),
       /*communication_hint=*/builder.getStringAttr(""),
       /*timeout_seconds=*/builder.getF32FloatAttr(0.),
+      /*is_stateless=*/builder.getBoolAttr(false),
       /*max_subdivs_per_device=*/builder.getI64IntegerAttr(16));
   SetSingleLayoutOnOp(collective_reduce, Layout::Empty());
   return collective_reduce;
@@ -310,6 +313,7 @@ mlir::Operation* EmitCollectiveReduceScatter(
                                                              // this shouldn't
                                                              // be needed
       /*timeout_seconds=*/builder.getF32FloatAttr(0.),
+      /*is_stateless=*/builder.getBoolAttr(false),
       /*max_subdivs_per_device=*/builder.getI64IntegerAttr(16));
   SetSingleLayoutOnOp(collective_reduce_scatter, Layout::Empty());
   if (need_transpose) {
@@ -423,7 +427,8 @@ mlir::Operation* EmitCollectiveAllToAll(
       group_size_scalar, group_key_scalar, instance_key_scalar,
       /*ordering_token=*/mlir::ValueRange({}),
       /*communication_hint=*/builder.getStringAttr(""),
-      /*timeout_seconds=*/builder.getF32FloatAttr(0.));
+      /*timeout_seconds=*/builder.getF32FloatAttr(0.),
+      /*is_stateless=*/builder.getBoolAttr(false));
   SetSingleLayoutOnOp(collective_alltoall, Layout::Empty());
   mlir::Value prev_op = collective_alltoall->getResult(0);
 
@@ -493,7 +498,8 @@ mlir::Operation* EmitCollectiveGather(
       group_key_scalar, instance_key_scalar,
       /*ordering_token=*/mlir::ValueRange({}),
       /*communication_hint=*/builder.getStringAttr(""),
-      /*timeout_seconds=*/builder.getF32FloatAttr(0.));
+      /*timeout_seconds=*/builder.getF32FloatAttr(0.),
+      /*is_stateless=*/builder.getBoolAttr(false));
   SetSingleLayoutOnOp(collective_gather, Layout::Empty());
   collective_gather.getData().setType(output_type);
 
@@ -1139,6 +1145,13 @@ mlir::LogicalResult LowerAllScatterOp(
       mlir::RankedTensorType::get({1, original_layout.rank()},
                                   builder.getIntegerType(32)),
       mesh_coordinates, matrix_value);
+
+  // We need to softly place the DT_INT32 MatMulOp for GPUs.
+  if (original_layout.mesh().is_gpu_mesh() ||
+      desired_layout.mesh().is_gpu_mesh()) {
+    // TODO(b/303662238): See whether we can replicate soft placement here.
+    offset->setAttr(kDeviceAttr, builder.getStringAttr(kCpuDevice));
+  }
 
   // Input to slice needs to be rank 1, so we need to squeeze it.
   mlir::TF::SqueezeOp offset_squeezed = builder.create<mlir::TF::SqueezeOp>(

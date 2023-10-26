@@ -79,7 +79,7 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:init_ops",
         "//tensorflow/python/ops:io_ops_gen",
@@ -112,6 +112,7 @@ tf_py_strict_test(
         "no_windows",  # TODO(b/201457117)
     ],
     deps = [
+        ":async_checkpoint_helper",
         ":checkpoint",
         ":checkpoint_management",
         ":checkpoint_options",
@@ -472,10 +473,11 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/checkpoint:checkpoint_options",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training:checkpoint_state_py",
@@ -501,7 +503,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",

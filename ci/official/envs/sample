@@ -1,0 +1,32 @@
+# Sample of a local build environment.
+#
+# Copy this file into your own location (tensorflow/build_output is a good one)
+# and change "your_choice_here" to one of the official enviroments you want to
+# replicate. Then you can change additional settings below.
+# Afterwards, run "export TFCI=$(realpath path-to-your-env-file)" and execute
+# a build script to run it with your custom settings.
+# TFCI_GIT_DIR is set automatically by tensorflow/ci/official/utilities/setup.sh
+# "set +u ... set -u" ignores unknown CI variables, like $KOKORO_XYZ, since
+# they'll be overwritten anyway.
+set +u; source ci/official/envs/your_choice_here; set -u
+
+# Reset bazel common options. This combines a local disk cache and
+# TensorFlow's remote cache to speed up your builds. The "nightly" branch has
+# the most content cached. TFCI_BAZEL_COMMON_ARGS is also where we target
+# different Python versions. You can add e.g. "--repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION"
+# to change the Python version to anything available (including the default) in
+# tensorflow/tools/toolchains/python/python_repo.bzl.
+TFCI_BAZEL_COMMON_ARGS=(--config tf_public_cache --disk_cache=build_output/cache)
+
+# Disable all CI-specific behavior. You never need any of these if you are
+# running a script locally.
+TFCI_INDEX_HTML_ENABLE=
+source ci/official/envs/disable_all_uploads
+
+# You can add other custom settings below.
+# 
+# Just for reference, you can dump the resolved contents of an env with
+# something like the following:
+# 
+# cd tensorflow_root_directory
+# bash -c "set -a; set -o posix; source ci/official/envs/MYENV; set" | grep TFCI

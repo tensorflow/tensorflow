@@ -69,8 +69,8 @@ cc_library(
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
-        "//tensorflow/tsl/distributed_runtime:pywrap_required_hdrs",
-        "//tensorflow/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
+        "@local_tsl//tsl/distributed_runtime:pywrap_required_hdrs",
+        "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
     ],
 )
 
@@ -102,9 +102,14 @@ tf_cc_test(
 tf_python_pybind_extension(
     name = "runtime_client_pybind",
     srcs = ["runtime_client_pybind.cc"],
+    data = [
+        "runtime_client_pybind.pyi",
+    ],
+    enable_stub_generation = True,
     deps = [
         ":runtime_client_headers",
         "//tensorflow/python/lib/core:pybind11_status",
+        "@com_google_absl//absl/status",
         "@pybind11",
     ] + if_static(
         extra_deps = [
@@ -112,14 +117,14 @@ tf_python_pybind_extension(
             "//tensorflow/core/protobuf:eager_service_proto_cc",
             "//tensorflow/core/protobuf:master_proto_cc",
             "//tensorflow/core/protobuf:worker_proto_cc",
-            "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
+            "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
         ],
         otherwise = [
             "//tensorflow/core/framework:function_proto_cc_headers_only",
             "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:master_proto_cc_headers_only",
             "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
-            "//tensorflow/tsl/protobuf:coordination_service_proto_cc_headers_only",
+            "@local_tsl//tsl/protobuf:coordination_service_proto_cc_headers_only",
         ],
     ),
 )

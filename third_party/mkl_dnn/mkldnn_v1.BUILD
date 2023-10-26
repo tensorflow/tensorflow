@@ -1,4 +1,4 @@
-load("@org_tensorflow//tensorflow/tsl:tsl.bzl", "tf_openmp_copts")
+load("@local_tsl//tsl:tsl.bzl", "tf_openmp_copts")
 load("@org_tensorflow//third_party/mkl:build_defs.bzl", "if_mkl")
 load("@org_tensorflow//third_party/mkl_dnn:build_defs.bzl", "if_mkldnn_openmp")
 load("@org_tensorflow//third_party/mkl:build_defs.bzl", "if_mkl_ml")
@@ -25,6 +25,12 @@ _CMAKE_COMMON_LIST = {
     "#cmakedefine01 BUILD_CONVOLUTION": "#define BUILD_CONVOLUTION 0",
     "#cmakedefine01 BUILD_DECONVOLUTION": "#define BUILD_DECONVOLUTION 0",
     "#cmakedefine01 BUILD_ELTWISE": "#define BUILD_ELTWISE 0",
+    "#cmakedefine01 BUILD_GEMM_KERNELS_ALL": "#define BUILD_GEMM_KERNELS_ALL 1",
+    "#cmakedefine01 BUILD_GEMM_KERNELS_NONE": "#define BUILD_GEMM_KERNELS_NONE 0",
+    "#cmakedefine01 BUILD_GEMM_SSE41": "#define BUILD_GEMM_SSE41 1",
+    "#cmakedefine01 BUILD_GEMM_AVX2": "#define BUILD_GEMM_AVX2 1",
+    "#cmakedefine01 BUILD_GEMM_AVX512": "#define BUILD_GEMM_AVX512 1",
+    "#cmakedefine01 BUILD_GROUP_NORMALIZATION": "#define BUILD_GROUP_NORMALIZATION 1",
     "#cmakedefine01 BUILD_INNER_PRODUCT": "#define BUILD_INNER_PRODUCT 0",
     "#cmakedefine01 BUILD_LAYER_NORMALIZATION": "#define BUILD_LAYER_NORMALIZATION 0",
     "#cmakedefine01 BUILD_LRN": "#define BUILD_LRN 0",
@@ -88,7 +94,7 @@ expand_template(
     out = "include/oneapi/dnnl/dnnl_version.h",
     substitutions = {
         "@DNNL_VERSION_MAJOR@": "3",
-        "@DNNL_VERSION_MINOR@": "2",
+        "@DNNL_VERSION_MINOR@": "3",
         "@DNNL_VERSION_PATCH@": "0",
         "@DNNL_VERSION_HASH@": "N/A",
     },
@@ -96,7 +102,7 @@ expand_template(
 )
 
 _COPTS_LIST = select({
-    "@org_tensorflow//tensorflow/tsl:windows": [],
+    "@local_tsl//tsl:windows": [],
     "//conditions:default": ["-fexceptions"],
 }) + [
     "-UUSE_MKL",
@@ -165,9 +171,9 @@ cc_library(
     includes = _INCLUDES_LIST,
     # TODO(penpornk): Use lrt_if_needed from tensorflow.bzl instead.
     linkopts = select({
-        "@org_tensorflow//tensorflow/tsl:linux_aarch64": ["-lrt"],
-        "@org_tensorflow//tensorflow/tsl:linux_x86_64": ["-lrt"],
-        "@org_tensorflow//tensorflow/tsl:linux_ppc64le": ["-lrt"],
+        "@local_tsl//tsl:linux_aarch64": ["-lrt"],
+        "@local_tsl//tsl:linux_x86_64": ["-lrt"],
+        "@local_tsl//tsl:linux_ppc64le": ["-lrt"],
         "//conditions:default": [],
     }),
     textual_hdrs = _TEXTUAL_HDRS_LIST,

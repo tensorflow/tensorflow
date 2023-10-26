@@ -29,9 +29,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/client_library.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -312,6 +312,26 @@ TEST_F(XlaCompilerOptionsTest, TfRtTpuOptions) {
   EXPECT_EQ(options.graph_def_version, TF_GRAPH_DEF_VERSION);
   EXPECT_FALSE(options.allow_cpu_custom_calls);
   EXPECT_FALSE(options.alias_passthrough_params);
+}
+
+TEST_F(XlaCompilerOptionsTest, GenerateCompileOptions) {
+  XlaCompiler::CompileOptions option1 = GenerateCompileOptions(
+      /*has_ref_vars=*/false, /*may_alias_resource_update=*/false);
+  EXPECT_TRUE(option1.is_entry_computation);
+  EXPECT_FALSE(option1.always_return_tuple);
+  EXPECT_FALSE(option1.alias_resource_update);
+
+  XlaCompiler::CompileOptions option2 = GenerateCompileOptions(
+      /*has_ref_vars=*/false, /*may_alias_resource_update=*/true);
+  EXPECT_TRUE(option2.alias_resource_update);
+
+  XlaCompiler::CompileOptions option3 = GenerateCompileOptions(
+      /*has_ref_vars=*/true, /*may_alias_resource_update=*/false);
+  EXPECT_FALSE(option3.alias_resource_update);
+
+  XlaCompiler::CompileOptions option4 = GenerateCompileOptions(
+      /*has_ref_vars=*/true, /*may_alias_resource_update=*/true);
+  EXPECT_FALSE(option4.alias_resource_update);
 }
 
 }  // namespace

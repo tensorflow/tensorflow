@@ -28,7 +28,7 @@ limitations under the License.
 #define GEN_PASS_DECL_TFKERNELTOLLVMPASS
 #define GEN_PASS_DECL_EMBEDTFFRAMEWORKPASS
 #define GEN_PASS_DECL_REWRITETFFRAMEWORKASSERT
-#define GEN_PASS_DECL_TFTOJITINVOCATIONPASS
+#define GEN_PASS_DECL_FUNCTOJITINVOCATIONPASS
 #define GEN_PASS_DECL_BUFFERREUSEPASS
 #define GEN_PASS_DECL_SHAPETODESCRIPTORSPASS
 #define GEN_PASS_DECL_KERNELGENFINALBUFFERIZEPASS
@@ -62,9 +62,9 @@ namespace transforms {
 // Pass to find and annotate candidates for buffer reuse.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateBufferReusePass();
 
-// Pass to rewrite all TF operations to JIT invocations through the TF
+// Pass to rewrite all functions to JIT invocations through the TF
 // framework.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateTFToJITInvocationPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateFuncToJITInvocationPass(
     llvm::ArrayRef<int64_t> tile_sizes = {},
     llvm::ArrayRef<int64_t> unroll_factors = {}, int64_t max_supported_rank = 5,
     bool enable_ftz = false, bool index_64bit = false, bool cpu_codegen = false,
