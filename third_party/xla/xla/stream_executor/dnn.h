@@ -1699,32 +1699,6 @@ class DnnSupport {
   // Returns a list of supported rnn algorithms.
   virtual bool GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms);
 
-  // Version of DoConvolve that uses pre-quantized 8 bit coefficients.
-  // coefficient_scales specifies the scaling of each column of coefficients:
-  // original float coefficient[row * num_columns + column] =
-  //     quantized coefficient[row * num_columns + column] *
-  //     coefficient_scales[column].
-  virtual bool DoConvolveQuantized(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<float>& input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<int8_t>& filter_coefficients,
-      const DeviceMemory<float>& coefficient_scales,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data) = 0;
-
-  // Same as DoConvolveQuantized above, but int8 filter coefficients.
-  virtual bool DoConvolveQuantized(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<float>& input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<int16>& filter_coefficients,
-      const DeviceMemory<float>& coefficient_scales,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data) = 0;
-
   // Variation of the above with the weight matrix split into two matrices.
   // first_weights: Coefficients of the first matrix.
   // second_weights: Coefficients of the second matrix.

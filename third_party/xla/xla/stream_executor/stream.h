@@ -316,16 +316,6 @@ class Stream {
                        const dnn::BatchDescriptor &output_descriptor,
                        DeviceMemory<float> *output);
 
-  Stream &ThenConvolveQuantized(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<float> &input_data,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<int8_t> &filter_coefficients,
-      const DeviceMemory<float> &coefficient_scales,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> *output_data);
-
   template <typename InputType, typename OutputType>
   tsl::Status ConvolveWithAlgorithm(
       dnn::ConvolutionKind kind, const dnn::BatchDescriptor &input_descriptor,
