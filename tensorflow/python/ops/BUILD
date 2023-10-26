@@ -1637,6 +1637,7 @@ py_strict_library(
         ":math_ops",
         ":nccl_ops",
         ":optional_grad",
+        ":parsing_grad",
         ":proto_ops",
         ":random_grad",
         ":rnn_grad",
@@ -2318,6 +2319,7 @@ py_strict_library(
         ":control_flow_ops",
         ":math_ops",
         ":parsing_config",
+        ":parsing_grad",
         ":parsing_ops_gen",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
@@ -2325,6 +2327,12 @@ py_strict_library(
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
     ],
+)
+
+py_strict_library(
+    name = "parsing_grad",
+    srcs = ["parsing_grad.py"],
+    deps = ["//tensorflow/python/framework:ops"],
 )
 
 py_strict_library(
