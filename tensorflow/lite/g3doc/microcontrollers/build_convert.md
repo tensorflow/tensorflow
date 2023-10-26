@@ -10,9 +10,9 @@ microcontrollers. It also outlines the supported operations and gives some
 guidance on designing and training a model to fit in limited memory.
 
 For an end-to-end, runnable example of building and converting a model, see the
-following Colab which is part of the *Hello World* example:
+[Hello World](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/examples/hello_world#hello-world-example)
+example.
 
-<a class="button button-primary" href="https://colab.research.google.com/github/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/hello_world/train/train_hello_world_model.ipynb">train_hello_world_model.ipynb</a>
 
 ## Model conversion
 
@@ -54,7 +54,7 @@ important to change the array declaration to `const` for better memory
 efficiency on embedded platforms.
 
 For an example of how to include and use a model in your program, see
-[`evaluate_test.cc`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/hello_world/evaluate_test.cc)
+[`hello_world_test.cc`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/hello_world/hello_world_test.cc)
 in the *Hello World* example.
 
 ## Model architecture and training
