@@ -362,6 +362,15 @@ StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
                                 const AutotuneConfig& config) {
   VLOG(3) << "Loading the autotune result of GemmThunk " << gemm->ToString();
 
+  GemmBackendConfig gemm_config =
+      gemm->backend_config<GemmBackendConfig>().value();
+  // Degenerate gemms replaced with memzero operation, no need to auto tune it.
+  if (gemm_config.alpha_real() == 0.0 && gemm_config.alpha_imag() == 0.0 &&
+      gemm_config.beta() == 0.0) {
+    VLOG(3) << "Skip degenerate gemm instruction auto tuning";
+    return false;
+  }
+
   AutotuneCacheKey key(config.GetModelStr(), *gemm);
 
   TF_ASSIGN_OR_RETURN(AutotuneResult algorithm,
@@ -370,8 +379,6 @@ StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
                       }));
 
   se::CudaComputeCapability capability = config.GetCudaComputeCapability();
-  GemmBackendConfig gemm_config =
-      gemm->backend_config<GemmBackendConfig>().value();
   GemmBackendConfig updated_config = gemm_config;
 
   // We only set the 'algorithm' field on non-Ampere architectures, as for

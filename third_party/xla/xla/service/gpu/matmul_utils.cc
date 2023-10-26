@@ -605,6 +605,13 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
   std::tuple<PrimitiveType, PrimitiveType, PrimitiveType> operand_types{
       lhs_layout.dtype, rhs_layout.dtype, output_layout.dtype};
 
+  // Skip degenerate gemm with memzero.
+  if (config.alpha.real() == 0.0 && config.alpha.imag() == 0.0 &&
+      config.beta == 0.0) {
+    stream->ThenMemZero(&output_buffer, output_buffer.size());
+    return tsl::OkStatus();
+  }
+
 #define TYPED_GEMM(SCALENTYPE, ATYPE, BTYPE, CTYPE)                         \
   if (operand_types == std::make_tuple(ATYPE, BTYPE, CTYPE)) {              \
     using NativeScaleType =                                                 \
