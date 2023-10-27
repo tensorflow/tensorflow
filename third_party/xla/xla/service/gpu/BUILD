@@ -1115,10 +1115,10 @@ cc_library(
 
 cc_library(
     name = "cub_sort_thunk",
-    srcs = if_gpu_is_configured(["cub_sort_thunk.cc"]),
-    hdrs = if_gpu_is_configured(["cub_sort_thunk.h"]),
+    srcs = if_cuda_is_configured(["cub_sort_thunk.cc"]),
+    hdrs = if_cuda_is_configured(["cub_sort_thunk.h"]),
     visibility = ["//visibility:public"],
-    deps = if_gpu_is_configured([
+    deps = if_cuda_is_configured([
         ":buffer_allocations",
         ":thunk",
         "@com_google_absl//absl/log:check",
@@ -1127,16 +1127,19 @@ cc_library(
         "//xla:shape_util",
         "//xla/stream_executor:device_memory",
         "//xla:status",
+        "//xla:statusor",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
+        "@local_tsl//tsl/platform:errors",
     ] + [":cub_sort_kernel_" + suffix for suffix in get_cub_sort_kernel_types()]),
 )
 
 build_cub_sort_kernels(
     name = "cub_sort_kernel",
-    srcs = if_gpu_is_configured(["cub_sort_kernel.cu.cc"]),
-    hdrs = if_gpu_is_configured(["cub_sort_kernel.h"]),
+    srcs = if_cuda_is_configured(["cub_sort_kernel.cu.cc"]),
+    hdrs = if_cuda_is_configured(["cub_sort_kernel.h"]),
     types = get_cub_sort_kernel_types(),
-    deps = if_gpu_is_configured([
+    deps = if_cuda_is_configured([
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ] + xla_cub_deps()),
@@ -1764,6 +1767,30 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_sort_rewriter",
+    srcs = if_cuda_is_configured(["gpu_sort_rewriter.cc"]),
+    hdrs = if_cuda_is_configured(["gpu_sort_rewriter.h"]),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cub_sort_thunk",
+        ":cublas_cudnn",
+        "//xla:comparison_util",
+        "//xla:shape_util",
+        "//xla:statusor",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "move_copy_to_users",
     srcs = ["move_copy_to_users.cc"],
     hdrs = ["move_copy_to_users.h"],
@@ -1809,6 +1836,27 @@ xla_cc_test(
         "//xla/service:shape_inference",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+xla_test(
+    name = "gpu_sort_rewriter_test",
+    srcs = if_cuda_is_configured(["gpu_sort_rewriter_test.cc"]),
+    backends = ["gpu"],
+    tags = ["no_oss"],
+    deps = [
+        ":cublas_cudnn",
+        ":gpu_sort_rewriter",
+        "//xla:statusor",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:pattern_matcher",
+        "//xla/service:pattern_matcher_gmock",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
     ],
 )
@@ -2771,6 +2819,7 @@ cc_library(
     ]) + xla_export_hlo_deps() + [
         ":fusion_pipeline",
         ":prepare_hlo_for_ir_emitting_pipeline",
+        "//xla:status",
         "@local_tsl//tsl/lib/monitoring:counter",
     ],
 )
@@ -2855,6 +2904,7 @@ cc_library(
         ":gpu_conv_rewriter",
         ":gpu_executable",
         ":gpu_layout_assignment",
+        ":gpu_sort_rewriter",
         ":ir_emission_utils",
         ":metrics",
         ":target_constants",

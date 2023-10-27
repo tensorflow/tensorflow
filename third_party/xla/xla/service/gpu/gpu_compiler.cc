@@ -789,6 +789,9 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
       pipeline.AddPass<AllReduceContiguous>();
     }
 
+    TF_RETURN_IF_ERROR(
+        AddCustomKernelReplacementPasses(&pipeline, debug_options));
+
     int32_t blueconnect_num_devices_per_host =
         debug_options.xla_gpu_all_reduce_blueconnect_num_devices_per_host();
     if (blueconnect_num_devices_per_host > 0) {
