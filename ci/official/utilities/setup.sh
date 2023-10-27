@@ -57,6 +57,16 @@ else
   echo 'If you have not, you will see a lot of undefined variable errors.'
 fi
 
+# Force-disable uploads if the job initiator is not Kokoro
+# This is temporary: it's currently standard practice for employees to
+# run nightly jobs for testing purposes. We're aiming to move away from
+# this with more convenient methods, but as long as it's possible to do,
+# we want to make sure those extra jobs don't upload anything.
+# TODO(angerson) Remove this once it's no longer relevant
+if [[ "${KOKORO_BUILD_INITIATOR:-}" != "kokoro" ]]; then
+  source ./ci/official/envs/disable_all_uploads
+fi
+
 # Create and expand to the full path of TFCI_OUTPUT_DIR
 export TFCI_OUTPUT_DIR=$(realpath "$TFCI_OUTPUT_DIR")
 mkdir -p "$TFCI_OUTPUT_DIR"
