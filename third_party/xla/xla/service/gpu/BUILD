@@ -2396,6 +2396,7 @@ cc_library(
     hdrs = ["gpu_all_gather_optimizer.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//xla:shape_util",
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/service:collective_ops_utils",
