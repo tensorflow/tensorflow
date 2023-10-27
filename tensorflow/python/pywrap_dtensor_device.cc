@@ -567,14 +567,16 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       .def(
           "global_shape_from_local_shape",
           [](const Layout& layout, std::vector<int64_t> local_shape) {
-            return layout.GlobalShapeFromLocalShape(local_shape);
+            return py::tuple(
+                py::cast(layout.GlobalShapeFromLocalShape(local_shape)));
           },
           py::arg("local_shape"),
           "Returns the global shape computed from this local shape.")
       .def(
           "local_shape_from_global_shape",
           [](const Layout& layout, std::vector<int64_t> global_shape) {
-            return layout.LocalShapeFromGlobalShape(global_shape);
+            return py::tuple(
+                py::cast(layout.LocalShapeFromGlobalShape(global_shape)));
           },
           py::arg("global_shape"),
           "Returns the local shape computed from this global shape.");

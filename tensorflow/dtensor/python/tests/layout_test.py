@@ -398,7 +398,7 @@ class LayoutTest(test_util.DTensorBaseTest, parameterized.TestCase):
         tensor_layout.global_shape_from_local_shape(
             tensor_shape.TensorShape((1, 3, 5))
         ),
-        [2, 6, 5],
+        (2, 6, 5),
     )
 
   def test_local_shape_from_global_shape(self):
@@ -410,7 +410,7 @@ class LayoutTest(test_util.DTensorBaseTest, parameterized.TestCase):
         tensor_layout.local_shape_from_global_shape(
             tensor_shape.TensorShape((2, 6, 5))
         ),
-        [1, 3, 5],
+        (1, 3, 5),
     )
 
   def test_single_device_layout(self):
