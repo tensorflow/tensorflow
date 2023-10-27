@@ -1404,7 +1404,7 @@ def _populate_quantization_options_default_values(
       quantization_options.min_num_elements_for_weights = (
           _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS
       )
-      logging.warn(
+      logging.warning(
           (
               'QuantizationOptions.min_num_elements_for_weights is not set (0).'
               ' Setting to the default value: %d.'
@@ -1412,15 +1412,23 @@ def _populate_quantization_options_default_values(
           _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS,
       )
 
-  # TODO(b/281595329): Implement static range quantization per-channel support
+  # TODO: b/307900054 - Set the per-channel quantization by default.
   if quantization_options.enable_per_channel_quantization and not (
-      quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
-      or quantization_options.quantization_method.preset_method
-      == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
+      (
+          quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
+          or quantization_options.quantization_method.preset_method
+          == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
+      )
+      or (
+          quantization_options.op_set == quant_opts_pb2.OpSet.XLA
+          and quantization_options.quantization_method.preset_method
+          == _PresetMethod.METHOD_STATIC_RANGE_INT8
+      )
   ):
     raise ValueError(
-        'Currently, per-channel quantization is supported for Uniform '
-        'Quantized opset and Weight-only.'
+        'Currently, per-channel quantization is supported for Uniform Quantized'
+        ' opset, weight only quantization, or XLA opset with static range'
+        ' quantization.'
     )
 
   if (

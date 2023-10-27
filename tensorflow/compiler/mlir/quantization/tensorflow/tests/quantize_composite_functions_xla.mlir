@@ -1,4 +1,5 @@
 // RUN: tf-quant-opt %s -split-input-file -quant-insert-quantized-functions -quant-quantize-composite-functions='target-opset=XLA' | FileCheck %s
+// RUN: tf-quant-opt %s -split-input-file -quant-insert-quantized-functions -quant-quantize-composite-functions='target-opset=XLA enable-per-channel-quantization=true' | FileCheck --check-prefix=PerChannel %s
 
 module {
   func.func @conv_with_single_layer(%arg0: tensor<1x2x2x3xf32>) -> (tensor<*xf32>) {
@@ -297,7 +298,7 @@ module {
     func.return %2 : tensor<*xf32>
   }
 
-// CHECK-LABE: @conv_with_dump
+// CHECK-LABEL: func @conv_with_dump
 // CHECK-DAG: %[[w0_float:.*]] = "tf.Const"() {value = dense<{{\[\[\[\[}}-0.282878935, -0.211567819
 // CHECK-DAG: %[[b0_float:.*]] = "tf.Const"() {value = dense<[-0.0192535277, -5.998660e-03]> : tensor<2xf32>} : () -> tensor<2xf32>
 // CHECK-DAG: %[[w1_float:.*]] = "tf.Const"() {value = dense<{{\[\[\[\[}}0.208403707, 0.478067577
@@ -327,4 +328,64 @@ module {
 // CHECK-DAG: "tf.DumpTensor"(%[[conv1_dequantized]]) {device = "", enabled = true, file_name = "quantized_tensor_data.pb", func_name = "conv_with_dump", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}
 // CHECK-DAG: "tf.DumpTensor"(%[[conv1_float]]) {device = "", enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "conv_with_dump", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}
 // CHECK-DAG: return %[[identity]]
+
+// PerChannel-LABEL: func @conv_with_dump
+// PerChannel-DAG: %[[PerChannel_w0_float:.*]] = "tf.Const"() {value = dense<{{\[\[\[\[}}-0.282878935, -0.211567819
+// PerChannel-DAG: %[[b0_float:.*]] = "tf.Const"() {value = dense<[-0.0192535277, -5.998660e-03]> : tensor<2xf32>} : () -> tensor<2xf32>
+// PerChannel-DAG: %[[w1_float:.*]] = "tf.Const"() {value = dense<{{\[\[\[\[}}0.208403707, 0.478067577
+// PerChannel-DAG: %[[b1_float:.*]] = "tf.Const"() {value = dense<[-0.0291469581, 0.0106381178]> : tensor<2xf32>} : () -> tensor<2xf32>
+// PerChannel-DAG: %[[w0_quantized:.*]] = "tf.Const"() {value = dense<{{\[\[\[\[}}-59, -77
+// PerChannel-DAG: %[[b0_quantized:.*]] = "tf.Const"() {value = dense<[-1040, -561]> : tensor<2xi32>} : () -> tensor<2xi32>
+// PerChannel-DAG: %[[w1_quantized:.*]] = "tf.Const"() {value = dense<{{\[\[\[\[}}45, 100
+// PerChannel-DAG: %[[b1_quantized:.*]] = "tf.Const"() {value = dense<[-4411, 1574]> : tensor<2xi32>} : () -> tensor<2xi32>
+// PerChannel-DAG: %[[in_scale:.*]] = "tf.Const"() {value = dense<0.00387597573> : tensor<f32>} : () -> tensor<f32>
+// PerChannel-DAG: %[[in_out_zp:.*]] = "tf.Const"() {value = dense<-128> : tensor<i32>} : () -> tensor<i32>
+// PerChannel-DAG: %[[w0_scale:.*]] = "tf.Const"() {value = dense<[0.00477493973, 0.00275693159]> : tensor<2xf32>} : () -> tensor<2xf32>
+// PerChannel-DAG: %[[w_b_zp:.*]]  = "tf.Const"() {value = dense<0> : tensor<2xi32>} : () -> tensor<2xi32>
+// PerChannel-DAG: %[[b0_scale:.*]] = "tf.Const"() {value = dense<[1.85075514E-5, 1.06858006E-5]> : tensor<2xf32>} : () -> tensor<2xf32>
+// PerChannel-DAG: %[[mid_scale:.*]] = "tf.Const"() {value = dense<0.00141507247> : tensor<f32>} : () -> tensor<f32>
+// PerChannel-DAG: %[[w1_scale:.*]] = "tf.Const"() {value = dense<[0.00467005931, 0.00477652298]> : tensor<2xf32>} : () -> tensor<2xf32>
+// PerChannel-DAG: %[[b1_scale:.*]] = "tf.Const"() {value = dense<[6.60847217E-6, 6.75912588E-6]> : tensor<2xf32>} : () -> tensor<2xf32>
+// PerChannel-DAG: %[[out_scale:.*]] = "tf.Const"() {value = dense<7.24974147E-4> : tensor<f32>} : () -> tensor<f32>
+}
+
+// -----
+
+module {
+  func.func @conv_with_per_channel_and_tensor_weight(%arg0: tensor<1x3x4x3xf32>) -> tensor<1x3x4x2xf32> {
+    %cst = "tf.Const"() {device = "", value = dense<[7.11401462, 7.05456924]> : tensor<2xf32>} : () -> tensor<2xf32>
+    %cst_0 = "tf.Const"() {device = "", value = dense<[[[[-0.630731344, 0.277245104], [0.54962182, 0.927732646], [0.180364341, 1.90948534]], [[-0.764542698, -0.287541777], [-0.211145893, -1.59367061], [-0.708605706, 1.79999375]], [[-0.954062759, 0.197947085], [-0.614013135, -0.966769516], [0.612640202, -1.45540595]]], [[[-0.418223292, 0.234433219], [5.057390e-01, 1.86747122], [0.899269938, 0.145780042]], [[0.335351914, 1.02572429], [0.084816426, 1.79729116], [-0.664676845, 0.310017586]], [[-0.795477629, -7.709830e-01], [0.581315517, 0.740075528], [0.921566545, 1.85318887]]]]> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>
+    %0 = "quantfork.stats"(%arg0) {layerStats = dense<[4.6128589E-5, 0.999998927]> : tensor<2xf32>} : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3xf32>
+    %1 = "tf.PartitionedCall"(%0, %cst_0, %cst) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", device = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_1} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>, tensor<2xf32>) -> tensor<1x3x4x2xf32>
+    %2 = "quantfork.stats"(%1) {layerStats = dense<[3.50919247, 6.000000e+00]> : tensor<2xf32>} : (tensor<1x3x4x2xf32>) -> tensor<1x3x4x2xf32>
+    %3 = "tf.Identity"(%2) {device = ""} : (tensor<1x3x4x2xf32>) -> tensor<1x3x4x2xf32>
+    %4 = "quantfork.stats"(%3) {layerStats = dense<[3.50919247, 6.000000e+00]> : tensor<2xf32>} : (tensor<1x3x4x2xf32>) -> tensor<1x3x4x2xf32>
+    func.return %4 : tensor<1x3x4x2xf32>
+  }
+  func.func private @composite_conv2d_with_bias_and_relu6_fn_1(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x2xf32>, %arg2: tensor<2xf32>) -> tensor<1x3x4x2xf32> attributes {tf._original_func_name = "composite_conv2d_with_bias_and_relu6_fn_1", tf.tf_quant.composite_function} {
+    %0 = "tf.Conv2D"(%arg0, %arg1) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<1x3x4x2xf32>
+    %1 = "tf.BiasAdd"(%0, %arg2) {data_format = "NHWC", device = ""} : (tensor<1x3x4x2xf32>, tensor<2xf32>) -> tensor<1x3x4x2xf32>
+    %2 = "tf.Relu6"(%1) {device = ""} : (tensor<1x3x4x2xf32>) -> tensor<1x3x4x2xf32>
+    func.return %2 : tensor<1x3x4x2xf32>
+  }
+
+// CHECK-LABEL: func @conv_with_per_channel_and_tensor_weight
+// CHECK-DAG: %[[b0_quantized:.*]] = "tf.Const"() {value = dense<[120654, 119646]> : tensor<2xi32>} : () -> tensor<2xi32>
+// CHECK-DAG: %[[w0_quantized:.*]] = "tf.Const"() {value = dense<{{\[\[\[\[}}-42, 18
+// CHECK-DAG: %[[in_scale:.*]] = "tf.Const"() {value = dense<0.0039215642> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG: %[[in_out_zp:.*]] = "tf.Const"() {value = dense<-128> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG: %[[w0_scale:.*]] = "tf.Const"() {value = dense<0.0150353173> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG: %[[w_b_zp:.*]]  = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG: %[[b0_scale:.*]] = "tf.Const"() {value = dense<5.89619667E-5> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG: %[[mid_scale:.*]] = "tf.Const"() {value = dense<0.0235294122> : tensor<f32>} : () -> tensor<f32>
+
+// PerChannel-LABEL: func @conv_with_per_channel_and_tensor_weight
+// PerChannel-DAG: %[[b0_quantized:.*]] = "tf.Const"() {value = dense<[241481, 119646]> : tensor<2xi32>} : () -> tensor<2xi32>
+// PerChannel-DAG: %[[w0_quantized:.*]] = "tf.Const"() {value = dense<{{\[\[\[\[}}-84, 18
+// PerChannel-DAG: %[[in_scale:.*]] = "tf.Const"() {value = dense<0.0039215642> : tensor<f32>} : () -> tensor<f32>
+// PerChannel-DAG: %[[in_out_zp:.*]] = "tf.Const"() {value = dense<-128> : tensor<i32>} : () -> tensor<i32>
+// PerChannel-DAG: %[[w0_scale:.*]] = "tf.Const"() {value = dense<[0.0075123054, 0.0150353173]> : tensor<2xf32>} : () -> tensor<2xf32>
+// PerChannel-DAG: %[[w_b_zp:.*]]  = "tf.Const"() {value = dense<0> : tensor<2xi32>} : () -> tensor<2xi32>
+// PerChannel-DAG: %[[b0_scale:.*]] = "tf.Const"() {value = dense<[2.94599886E-5, 5.89619667E-5]> : tensor<2xf32>} : () -> tensor<2xf32>
+// PerChannel-DAG: %[[mid_scale:.*]] = "tf.Const"() {value = dense<0.0235294122> : tensor<f32>} : () -> tensor<f32>
 }
