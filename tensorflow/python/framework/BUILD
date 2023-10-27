@@ -532,9 +532,16 @@ py_strict_library(
     ],
 )
 
+tf_cc_binary(
+    name = "_native_proto_caster",
+    linkshared = True,
+    deps = ["@pybind11_protobuf//pybind11_protobuf:native_proto_caster"],
+)
+
 py_strict_library(
     name = "function",
     srcs = ["function.py"],
+    data = [":_native_proto_caster"],  # copybara:comment
     srcs_version = "PY3",
     visibility = visibility + [
         "//smartass/brain:__subpackages__",
@@ -558,6 +565,7 @@ py_strict_library(
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:function_utils",
         "//tensorflow/python/util:tf_decorator",
+        # copybara:uncomment "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
 )
 

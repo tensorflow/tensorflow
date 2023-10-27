@@ -1868,6 +1868,25 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
       },
       py::return_value_policy::reference);
 
+  m.def(
+      "TF_FunctionImportFunctionDefNoSerialization",
+      [](tensorflow::FunctionDef fdef) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+
+        // Release GIL.
+        py::gil_scoped_release release;
+        TF_Function* func = new TF_Function();
+        func->record =
+            new tensorflow::FunctionRecord(std::move(fdef), {}, false);
+        status.get()->status = ::tensorflow::OkStatus();
+        // Acquire GIL for returning output returning.
+        pybind11::gil_scoped_acquire acquire;
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        return func;
+      },
+      py::return_value_policy::reference);
+
   m.def("EqualAttrValueWrapper", tensorflow::EqualAttrValueWrapper,
         py::call_guard<py::gil_scoped_release>());
 
