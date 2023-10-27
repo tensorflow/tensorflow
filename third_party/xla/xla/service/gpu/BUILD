@@ -4347,12 +4347,14 @@ cc_library(
         ":gpu_constants",
         ":ir_emission_utils",
         "//xla:shape_util",
+        "//xla:status",
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo:lhlo",
         "//xla/service:buffer_assignment",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 

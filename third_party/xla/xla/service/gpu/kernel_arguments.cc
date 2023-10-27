@@ -25,7 +25,10 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
@@ -67,13 +70,22 @@ StatusOr<KernelArguments> KernelArguments::Create(
   for (const HloInstruction* operand : fusion->operands()) {
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                         buffer_assignment.GetUniqueSlice(operand, {}));
-    kernel_arguments.emplace_back(
-        KernelArgument(nullptr, operand->shape(), slice, false));
+    kernel_arguments.emplace_back(KernelArgument(
+        /*value=*/nullptr, operand->shape(), slice, /*written=*/false));
   }
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                      buffer_assignment.GetUniqueSlice(fusion, {}));
-  kernel_arguments.emplace_back(
-      KernelArgument(nullptr, fusion->shape(), slice, true));
+
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      fusion->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (!subshape.IsArray()) {
+          return OkStatus();
+        }
+        TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                            buffer_assignment.GetUniqueSlice(fusion, index));
+        kernel_arguments.emplace_back(KernelArgument(
+            /*value=*/nullptr, subshape, slice, /*written=*/true));
+        return OkStatus();
+      }));
+
   return KernelArguments{std::move(kernel_arguments)};
 }
 
