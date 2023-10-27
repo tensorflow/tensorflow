@@ -51,9 +51,8 @@ namespace tensorflow {
 namespace mlrt_compiler {
 
 StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
-    const TfrtCompileOptions& options,
-    const tfrt_stub::FallbackState& fallback_state, mlir::ModuleOp module,
-    tfrt_stub::ModelRuntimeContext& model_context,
+    const TfrtCompileOptions& options, tfrt_stub::FallbackState& fallback_state,
+    mlir::ModuleOp module, tfrt_stub::ModelRuntimeContext& model_context,
     mlir::OwningOpRef<mlir::ModuleOp>* module_with_op_keys,
     std::vector<std::string>* added_xla_function_names) {
   mlrt::bc::Buffer bytecode_buffer;
@@ -130,7 +129,7 @@ StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
         bytecode_buffer = std::move(*statusor);
         return OkStatus();
       },
-      model_context, /*fallback_state=*/nullptr, added_xla_function_names));
+      model_context, &fallback_state, added_xla_function_names));
   return bytecode_buffer;
 }
 
