@@ -607,7 +607,11 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
   std::tuple<PrimitiveType, PrimitiveType, PrimitiveType> operand_types{
       lhs_layout.dtype, rhs_layout.dtype, output_layout.dtype};
 
-  // Skip degenerate gemm with memzero.
+  // Skip degenerate gemm with memzero. In general this is not safe, because it
+  // will suppress NaN propagation, however cuBLAS internally has exactly the
+  // same optimization for compatibility with NETLIB implementation, so we are
+  // not making things worse (and cuBLAS optimization is incompatible with CUDA
+  // graphs, so we are making sure we do not trigger it).
   if (config.alpha.real() == 0.0 && config.alpha.imag() == 0.0 &&
       config.beta == 0.0) {
     stream->ThenMemZero(&output_buffer, output_buffer.size());
