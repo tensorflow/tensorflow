@@ -485,16 +485,21 @@ Value EmitConstant(ImplicitLocOpBuilder& b, const HloInstruction& constant) {
   return CreateConst(b, ty, ScalarConstantValue<double>(constant, F64));
 }
 
+// Grouped properties of tiled dimensions used to generate block pointers.
 struct DimProperties {
-  DimProperties(int64_t index, Value offset, int block_size, int split_value)
+  DimProperties(int64_t index, Value pid, int block_size, int split_value)
       : index(index),
-        offset(offset),
+        pid(pid),
         block_size(block_size),
         split_value(split_value) {}
 
+  // Logical index of the dimension at the tiling-defining operation.
   int64_t index;
-  Value offset;
+  // Block program ID corresponding to this dimension.
+  Value pid;
+  // Elements of the dimension to process per block program.
   int block_size;
+  // Size of the major part of the dimension if it's split into two parts.
   int split_value;
 };
 
@@ -1141,7 +1146,6 @@ class MatMulEmitterHelper {
       if (spec == nullptr) {
         return;
       }
-      const int64_t stride = spec->at(0).stride;
       int64_t count = spec->at(0).count;
       if (side.scope == TritonFusionAnalysis::Scope::OUTPUT &&
           properties.index == dims_.out_lhs_noncontracting_dim_idx &&
@@ -1154,8 +1158,9 @@ class MatMulEmitterHelper {
         boundary_checks.push_back(bounds.size());
       }
       bounds.push_back(Cst64(count));
-      strides.push_back(Cst64(stride));
-      block_offsets.push_back(properties.offset);
+      strides.push_back(Cst64(spec->at(0).stride));
+      block_offsets.push_back(
+          b_.create<ma::MulIOp>(properties.pid, Cst32(properties.block_size)));
       tensor_offsets.push_back(Cst32(spec->at(0).slice_start));
       block_dims.push_back(properties.block_size);
       dim_order.emplace(dim_order.begin(), dim_order.size());
@@ -1205,9 +1210,9 @@ class MatMulEmitterHelper {
           TritonFusionAnalysis::Scope::OUTPUT, hlo, *dims_.out_split_k_dim_idx);
       if (spec != nullptr) {
         int64_t stride_split_k = spec->at(0).stride;
-        Value offset_split_k =
-            b_.create<ma::MulIOp>(ConvertScalar(pid_k), Cst(stride_split_k));
-        base = AddPtr(b_, base, offset_split_k);
+        base = AddPtr(
+            b_, base,
+            b_.create<ma::MulIOp>(ConvertScalar(pid_k), Cst(stride_split_k)));
       }
     }
 
@@ -1322,13 +1327,8 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
 
   auto pid_m = b.create<ma::AddIOp>(first_pid_m,
                                     b.create<ma::RemSIOp>(pid_nc, group_size));
-  auto pid_m_offset = b.create<ma::MulIOp>(pid_m, c32(block_m));
-
   auto pid_n = b.create<ma::DivSIOp>(b.create<ma::RemSIOp>(pid_nc, c32(width)),
                                      group_size);
-  auto pid_n_offset = b.create<ma::MulIOp>(pid_n, c32(block_n));
-
-  auto pid_k_offset = b.create<ma::MulIOp>(pid_k, c32(block_k));
 
   mlir::FloatType acc_ty = emitter.GetDotAccumulatorType();
 
@@ -1340,26 +1340,26 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
   absl::flat_hash_map<int, const HloInstruction*> iter_args_to_parameters;
   absl::flat_hash_map<int, std::vector<int32_t>> iter_args_to_boundary_checks;
 
-  Side lhs{TritonFusionAnalysis::Scope::LHS,
-           /*tiled_dims=*/
-           {DimProperties(dims.lhs_noncontracting_dim_idx, pid_m_offset,
-                          block_m, /*split_value=*/1),
-            DimProperties(dims.lhs_contracting_dim_idx, pid_k_offset, block_k,
-                          split_k)},
-           dims.lhs_batch_dim_idx};
-  Side rhs{TritonFusionAnalysis::Scope::RHS,
-           /*tiled_dims=*/
-           {DimProperties(dims.rhs_contracting_dim_idx, pid_k_offset, block_k,
-                          split_k),
-            DimProperties(dims.rhs_noncontracting_dim_idx, pid_n_offset,
-                          block_n, /*split_value=*/1)},
-           dims.rhs_batch_dim_idx};
+  Side lhs{
+      TritonFusionAnalysis::Scope::LHS,
+      /*tiled_dims=*/
+      {DimProperties(dims.lhs_noncontracting_dim_idx, pid_m, block_m,
+                     /*split_value=*/1),
+       DimProperties(dims.lhs_contracting_dim_idx, pid_k, block_k, split_k)},
+      dims.lhs_batch_dim_idx};
+  Side rhs{
+      TritonFusionAnalysis::Scope::RHS,
+      /*tiled_dims=*/
+      {DimProperties(dims.rhs_contracting_dim_idx, pid_k, block_k, split_k),
+       DimProperties(dims.rhs_noncontracting_dim_idx, pid_n, block_n,
+                     /*split_value=*/1)},
+      dims.rhs_batch_dim_idx};
   Side out{TritonFusionAnalysis::Scope::OUTPUT,
            /*tiled_dims=*/
-           {DimProperties(dims.out_lhs_noncontracting_dim_idx, pid_m_offset,
-                          block_m, /*split_value=*/1),
-            DimProperties(dims.out_rhs_noncontracting_dim_idx, pid_n_offset,
-                          block_n, /*split_value=*/1)},
+           {DimProperties(dims.out_lhs_noncontracting_dim_idx, pid_m, block_m,
+                          /*split_value=*/1),
+            DimProperties(dims.out_rhs_noncontracting_dim_idx, pid_n, block_n,
+                          /*split_value=*/1)},
            dims.out_batch_dim_idx};
 
   auto body_builder = [&](mlir::OpBuilder&, mlir::Location, Value ki,
@@ -1572,40 +1572,40 @@ Status EmitSoftMax(mlir::OpBuilder builder, absl::string_view libdevice_path,
   CHECK_EQ(reduce->dimensions()[0], reduce_input_shape.rank() - 1);
 
   int row_len = reduce_input_shape.dimensions_minor(0);
-  int block_row = 1;
+  int block_size = 1;
 
-  // block_row must be a power of two.
-  while (block_row < row_len) {
-    block_row *= 2;
+  // block_size must be a power of two.
+  while (block_size < row_len) {
+    block_size *= 2;
   }
 
-  Value row_index = b.create<ma::ExtSIOp>(
+  Value pid = b.create<ma::ExtSIOp>(
       b.getI64Type(), b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::X));
   Value row_stride = CreateConst(b, b.getI32Type(), row_len);
 
   absl::flat_hash_map<const HloInstruction*, Value> values_out;
   auto make_tensor_pointer = [&](Value base) {
     Value offset = b.create<ma::MulIOp>(
-        row_index, b.create<ma::ExtSIOp>(b.getI64Type(), row_stride));
+        pid, b.create<ma::ExtSIOp>(b.getI64Type(), row_stride));
     return b.create<mt::MakeTensorPtrOp>(
         /*base=*/AddPtr(b, base, offset),
         /*shape=*/ValueRange{CreateConst(b, b.getI64Type(), row_len)},
         /*strides=*/ValueRange{CreateConst(b, b.getI64Type(), 1)},
         /*offsets=*/ValueRange{CreateConst(b, b.getI32Type(), 0)},
-        /*tensorShape=*/std::vector<int32_t>{block_row},
+        /*tensorShape=*/std::vector<int32_t>{block_size},
         /*order=*/std::vector<int32_t>{0});
   };
 
   std::vector<int32_t> boundary_checks;
-  if (block_row != row_len) {
+  if (block_size != row_len) {
     boundary_checks.push_back(0);
   }
   values_out[computation->parameter_instruction(0)] = EmitParameterLoad(
       b, make_tensor_pointer(fn.getArgument(0)), boundary_checks);
   // Dimension 0 is the reduced one by construction and it's the only one
   // present in the tile shapes.
-  std::vector<DimProperties> tiled_dims = {
-      DimProperties(0, row_index, block_row, /*split_value=*/1)};
+  std::vector<DimProperties> tiled_dims = {DimProperties(
+      /*index=*/0, pid, block_size, /*split_value=*/1)};
   TF_ASSIGN_OR_RETURN(
       Value result,
       EmitScope(b, libdevice_path, &analysis,
