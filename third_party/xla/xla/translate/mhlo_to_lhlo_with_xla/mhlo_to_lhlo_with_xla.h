@@ -43,7 +43,8 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
  public:
   // Initializes internal data structures. It must be called before calling any
   // of the visitors.
-  tsl::Status Initialize();
+  tsl::Status Initialize(
+      std::vector<const xla::BufferAllocation*>* ordered_allocations);
 
   LhloDialectEmitter(const xla::BufferAssignment& assignment,
                      const xla::HloComputation& computation, ModuleOp module)
@@ -328,9 +329,12 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
 // `lhlo_to_hlo_map`, if non-null, is populated with a mapping from generated
 // top-level MLIR operations to the original HLO instructions. "top-level" means
 // that ops inside the bodies of fusions are not included (but all fusions are).
+// Store buffer allocations from buffer assignment in the order of inputs to the
+// LMHLO entry function.
 tsl::Status HloToLhloModule(
     const xla::BufferAssignment& assignment, const xla::HloModule& hlo_module,
     ModuleOp module,
+    std::vector<const xla::BufferAllocation*>* ordered_allocation,
     absl::flat_hash_map<const mlir::Operation*, const xla::HloInstruction*>*
         lhlo_to_hlo_map = nullptr);
 

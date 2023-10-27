@@ -18,8 +18,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
@@ -34,7 +36,7 @@ namespace xla {
 namespace gpu {
 
 StatusOr<KernelArgument> KernelArgument::Create(
-    absl::Span<const BufferAllocation> allocations, mlir::Value value,
+    absl::Span<const BufferAllocation* const> allocations, mlir::Value value,
     bool is_written) {
   TF_ASSIGN_OR_RETURN(
       auto slice, xla::gpu::GetAllocationSlice(value, allocations, nullptr));
@@ -42,7 +44,7 @@ StatusOr<KernelArgument> KernelArgument::Create(
 }
 
 StatusOr<KernelArguments> KernelArguments::Create(
-    absl::Span<const BufferAllocation> allocations,
+    absl::Span<const BufferAllocation* const> allocations,
     mlir::lmhlo::FusionOp fusion) {
   auto operands = GetHloOperands(fusion);
   auto outputs = GetHloOutputs(fusion);
@@ -149,7 +151,7 @@ std::vector<KernelArgument> KernelArguments::ProcessArguments(
 }
 
 StatusOr<KernelArguments> KernelArguments::Create(
-    absl::Span<const BufferAllocation> allocations,
+    absl::Span<const BufferAllocation* const> allocations,
     mlir::Operation* non_fusion_op, mlir::ValueRange needed_operands) {
   std::vector<KernelArgument> kernel_arguments;
   kernel_arguments.reserve(needed_operands.size());

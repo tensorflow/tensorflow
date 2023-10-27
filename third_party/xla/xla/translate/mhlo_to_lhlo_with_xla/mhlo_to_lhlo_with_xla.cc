@@ -159,8 +159,9 @@ tsl::Status ConvertHloToLmhlo(std::unique_ptr<HloModule> hlo_module,
   module.getBody()->clear();
   OpBuilder builder(module);
 
+  std::vector<const BufferAllocation*> ordered_allocations;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      HloToLhloModule(**assignment, *hlo_module, module),
+      HloToLhloModule(**assignment, *hlo_module, module, &ordered_allocations),
       "converting HLO to LHLO");
 
   return ::tsl::OkStatus();
@@ -2152,7 +2153,8 @@ tsl::Status LhloDialectEmitter::GetOrCreateView(
                              token_mode);
 }
 
-tsl::Status LhloDialectEmitter::Initialize() {
+tsl::Status LhloDialectEmitter::Initialize(
+    std::vector<const BufferAllocation*>* ordered_allocations) {
   TF_RET_CHECK(computation_.IsEntryComputation());
 
   mlir::IntegerAttr unique_id =
@@ -2178,9 +2180,11 @@ tsl::Status LhloDialectEmitter::Initialize() {
   }
   Block* block = func_op.addEntryBlock();
 
-  llvm::SmallVector<const BufferAllocation*, 8> ordered_allocations;
-  for (const BufferAllocation& alloc : assignment_.Allocations())
-    ordered_allocations.push_back(&alloc);
+  for (const BufferAllocation& alloc : assignment_.Allocations()) {
+    if (!alloc.is_thread_local()) {
+      ordered_allocations->push_back(&alloc);
+    }
+  }
 
   if (computation_.IsEntryComputation()) {
     // Sort the rather arbitrarily ordered allocations to match the input/output
@@ -2208,7 +2212,7 @@ tsl::Status LhloDialectEmitter::Initialize() {
       return false;
     };
 
-    std::stable_sort(ordered_allocations.begin(), ordered_allocations.end(),
+    std::stable_sort(ordered_allocations->begin(), ordered_allocations->end(),
                      allocation_comparator);
   }
 
@@ -2232,11 +2236,9 @@ tsl::Status LhloDialectEmitter::Initialize() {
   // - one memref for each of the parameters.
   // - one memref for each other buffer allocation.
   llvm::SmallVector<DictionaryAttr, 8> args_attrs;
-  for (const BufferAllocation* alloc : ordered_allocations) {
-    if (alloc->is_thread_local()) {
-      continue;
-    }
-
+  auto it = ordered_allocations->begin();
+  while (it != ordered_allocations->end()) {
+    const BufferAllocation* alloc = *it;
     // There are optional attributes to help the program run through XLA. XLA
     // defines ExecutionInput and ExecutionOutput structures to carry
     // input-output type and buffer information, therefore any information they
@@ -2280,6 +2282,7 @@ tsl::Status LhloDialectEmitter::Initialize() {
       const Shape* sub_shape = iter->second.first;
       const xla::ShapeIndex& shape_index = iter->second.second;
       if (!sub_shape->IsArray()) {
+        it = ordered_allocations->erase(it);
         continue;
       }
       arg_attr_list.set("lmhlo.output_index",
@@ -2296,6 +2299,7 @@ tsl::Status LhloDialectEmitter::Initialize() {
     block->addArgument(arg_type, loc);
     allocations_[alloc] = block->getArguments().back();
     args_attrs.push_back(arg_attr_list.getDictionary(builder_.getContext()));
+    it++;
   }
 
   FunctionType function_type =
@@ -2315,7 +2319,7 @@ tsl::Status LhloDialectEmitter::Initialize() {
 
 tsl::Status HloToLhloModule(
     const BufferAssignment& assignment, const HloModule& hlo_module,
-    ModuleOp module,
+    ModuleOp module, std::vector<const BufferAllocation*>* ordered_allocations,
     absl::flat_hash_map<const mlir::Operation*, const xla::HloInstruction*>*
         lhlo_to_hlo_map) {
   module.getContext()
@@ -2334,7 +2338,7 @@ tsl::Status HloToLhloModule(
   const HloComputation* computation = hlo_module.entry_computation();
 
   LhloDialectEmitter emitter(assignment, *computation, module);
-  TF_RETURN_IF_ERROR(emitter.Initialize());
+  TF_RETURN_IF_ERROR(emitter.Initialize(ordered_allocations));
 
   const xla::HloInstructionSequence* schedule =
       assignment.hlo_ordering().SequentialOrder(*computation);

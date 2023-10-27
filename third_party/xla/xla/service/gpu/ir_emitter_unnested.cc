@@ -338,10 +338,6 @@ std::unique_ptr<IrEmitterUnnested> IrEmitterUnnested::Create(
 
 StatusOr<BufferAllocation::Slice> IrEmitterUnnested::GetAllocationSlice(
     mlir::Value v) {
-  if (ir_emitter_context_->emit_ir_from_hlo()) {
-    return InternalError(
-        "Getting buffer allocation for MLIR when emitting from HLO");
-  }
   return xla::gpu::GetAllocationSlice(v, ir_emitter_context_->allocations(),
                                       nullptr);
 }
@@ -385,10 +381,14 @@ Status IrEmitterUnnested::EmitConstant(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(
         element_bytes, GetElementTypeBytes(literal.getType().getElementType()));
   }
-  ir_emitter_context_->emit_constant(
-      num_elements, element_bytes, global.getSymName(),
-      global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt(), content,
-      &b_);
+
+  int64_t arg_index =
+      global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
+  int allocation_index = ir_emitter_context_->allocations()[arg_index]->index();
+
+  ir_emitter_context_->emit_constant(num_elements, element_bytes,
+                                     global.getSymName(), allocation_index,
+                                     content, &b_);
   return OkStatus();
 }
 

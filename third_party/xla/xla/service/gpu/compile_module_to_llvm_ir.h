@@ -48,6 +48,11 @@ struct CompileModuleResults {
   absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo> output_info;
   Shape output_shape;
   std::string module_name;
+
+  // If true, the compiled module uses buffer allocations owned by
+  // buffer_assignment. Otherwise the compiled module uses buffer allocations
+  // stored in allocations.
+  bool use_original_allocations;
 };
 
 // Removes all globals from the given module that are both uninitialized and

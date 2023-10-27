@@ -1543,7 +1543,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
                             thunk_sequence.ToString());
   }
 
-  std::shared_ptr<const BufferAssignment> buffer_assignment;
+  std::shared_ptr<BufferAssignment> buffer_assignment;
   std::unique_ptr<BufferAssignmentProto> buffer_assignment_proto;
   std::function<std::string()> buffer_assignment_dumper = [] {
     return std::string();
@@ -1558,6 +1558,21 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     buffer_assignment_dumper = [buffer_assignment, max_buffers_to_show] {
       return buffer_assignment->ToVerboseString(max_buffers_to_show);
     };
+  }
+
+  std::vector<BufferAllocation> allocations;
+  if (compile_module_results.use_original_allocations) {
+    if (!options.is_autotuning_compilation) {
+      std::vector<BufferAllocation> original_allocations =
+          buffer_assignment->ReleaseAllocations();
+      allocations = std::move(original_allocations);
+    } else {
+      std::vector<BufferAllocation> original_allocations =
+          compile_module_results.buffer_assignment->ReleaseAllocations();
+      allocations = std::move(original_allocations);
+    }
+  } else {
+    allocations = std::move(compile_module_results.allocations);
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -1575,7 +1590,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           /*output_info=*/std::move(compile_module_results.output_info),
           /*module_name=*/std::move(compile_module_results.module_name),
           /*output_shape=*/std::move(compile_module_results.output_shape),
-          /*allocations=*/std::move(compile_module_results.allocations),
+          /*allocations=*/std::move(allocations),
           /*enable_persistent_temp_buffers=*/
           module->config()
               .debug_options()
