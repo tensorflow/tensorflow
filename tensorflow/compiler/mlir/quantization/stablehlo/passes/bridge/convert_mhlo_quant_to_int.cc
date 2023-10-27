@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
+#include <variant>
 
 #include "absl/algorithm/container.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -50,9 +52,6 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo {
 namespace {
-
-#define GEN_PASS_DEF_CONVERTMHLOQUANTTOINT
-#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h.inc"
 
 // This helper function create ops to requantize `input` tensor and returns the
 // output tensor. Clamping is done if output integer bit-width < 32.
@@ -126,19 +125,121 @@ Value Requantize(mlir::OpState op, Value input,
                                           output_float);
 }
 
-class ConvertMHLOQuantToInt
-    : public impl::ConvertMHLOQuantToIntBase<ConvertMHLOQuantToInt> {
- public:
-  ConvertMHLOQuantToInt() = default;
-  ConvertMHLOQuantToInt(const ConvertMHLOQuantToInt &) {}
+using QuantType =
+    std::variant<UniformQuantizedType, UniformQuantizedPerAxisType>;
+FailureOr<QuantType> GetQuantType(Type type) {
+  if (auto quant_type =
+          getElementTypeOrSelf(type).dyn_cast<UniformQuantizedType>()) {
+    return QuantType(quant_type);
+  } else if (auto quant_type = getElementTypeOrSelf(type)
+                                   .dyn_cast<UniformQuantizedPerAxisType>()) {
+    return QuantType(quant_type);
+  } else {
+    return failure();
+  }
+}
 
-  explicit ConvertMHLOQuantToInt(bool legalize_chlo) {
-    legalize_chlo_ = legalize_chlo;
+// Extract scale and zero point info from input quant type info.
+void GetQuantizationParams(OpBuilder &builder, Location loc,
+                           QuantType quant_type, Value &scales,
+                           Value &zero_points, bool output_zero_point_in_fp,
+                           DenseIntElementsAttr &broadcast_dims) {
+  // Get scales/zero points for per-tensor and per-axis quantization cases.
+  if (auto *quant_per_tensor_type =
+          std::get_if<UniformQuantizedType>(&quant_type)) {
+    scales = builder.create<mhlo::ConstantOp>(
+        loc, builder.getF32FloatAttr(quant_per_tensor_type->getScale()));
+    if (output_zero_point_in_fp) {
+      zero_points = builder.create<mhlo::ConstantOp>(
+          loc, builder.getF32FloatAttr(
+                   static_cast<float>(quant_per_tensor_type->getZeroPoint())));
+    } else {
+      zero_points = builder.create<mhlo::ConstantOp>(
+          loc, builder.getI32IntegerAttr(static_cast<int32_t>(
+                   quant_per_tensor_type->getZeroPoint())));
+    }
+  } else {
+    auto &quant_per_channel_type =
+        std::get<UniformQuantizedPerAxisType>(quant_type);
+    llvm::SmallVector<float> scales_vec;
+    for (auto scale : quant_per_channel_type.getScales())
+      scales_vec.push_back(scale);
+    scales = builder.create<mhlo::ConstantOp>(
+        loc, DenseFPElementsAttr::get(
+                 RankedTensorType::get(
+                     {static_cast<int64_t>(
+                         quant_per_channel_type.getScales().size())},
+                     builder.getF32Type()),
+                 scales_vec));
+    if (output_zero_point_in_fp) {
+      llvm::SmallVector<float> zero_points_vec;
+      for (auto zero_point : quant_per_channel_type.getZeroPoints())
+        zero_points_vec.push_back(zero_point);
+      zero_points = builder.create<mhlo::ConstantOp>(
+          loc, DenseFPElementsAttr::get(
+                   RankedTensorType::get(
+                       {static_cast<int64_t>(
+                           quant_per_channel_type.getZeroPoints().size())},
+                       builder.getF32Type()),
+                   zero_points_vec));
+    } else {
+      llvm::SmallVector<int32_t> zero_points_vec;
+      for (auto zero_point : quant_per_channel_type.getZeroPoints())
+        zero_points_vec.push_back(zero_point);
+      zero_points = builder.create<mhlo::ConstantOp>(
+          loc, DenseIntElementsAttr::get(
+                   RankedTensorType::get(
+                       {static_cast<int64_t>(
+                           quant_per_channel_type.getZeroPoints().size())},
+                       builder.getI32Type()),
+                   zero_points_vec));
+    }
+    broadcast_dims = DenseIntElementsAttr::get(
+        RankedTensorType::get({1}, builder.getI64Type()),
+        {static_cast<int64_t>(quant_per_channel_type.getQuantizedDimension())});
+  }
+}
+
+// Extract storage min/max from input quant type info.
+void GetQuantizationStorageInfo(OpBuilder &builder, Location loc,
+                                QuantType quant_type, Value &storage_min,
+                                Value &storage_max) {
+  if (auto *quant_per_tensor_type =
+          std::get_if<UniformQuantizedType>(&quant_type)) {
+    storage_min = builder.create<mhlo::ConstantOp>(
+        loc, builder.getF32FloatAttr(static_cast<float>(
+                 quant_per_tensor_type->getStorageTypeMin())));
+    storage_max = builder.create<mhlo::ConstantOp>(
+        loc, builder.getF32FloatAttr(static_cast<float>(
+                 quant_per_tensor_type->getStorageTypeMax())));
+  } else {
+    auto &quant_per_channel_type =
+        std::get<UniformQuantizedPerAxisType>(quant_type);
+    storage_min = builder.create<mhlo::ConstantOp>(
+        loc, builder.getF32FloatAttr(static_cast<float>(
+                 quant_per_channel_type.getStorageTypeMin())));
+    storage_max = builder.create<mhlo::ConstantOp>(
+        loc, builder.getF32FloatAttr(static_cast<float>(
+                 quant_per_channel_type.getStorageTypeMax())));
+  }
+}
+
+// Get storage type of a UQ type. Return original type if it is no UQ type.
+Type GetQuantStorageType(Type type) {
+  if (auto shaped = type.dyn_cast<ShapedType>()) {
+    return shaped.clone(GetQuantStorageType(shaped.getElementType()));
   }
 
-  // Performs conversion of MHLO quant ops to primitive ops.
-  void runOnOperation() override;
-};
+  if (auto element_type =
+          getElementTypeOrSelf(type).dyn_cast<UniformQuantizedType>()) {
+    return element_type.getStorageType();
+  } else if (auto element_type = getElementTypeOrSelf(type)
+                                     .dyn_cast<UniformQuantizedPerAxisType>()) {
+    return element_type.getStorageType();
+  } else {
+    return type;
+  }
+}
 
 class ConvertUniformQuantizeOp
     : public OpConversionPattern<mhlo::UniformQuantizeOp> {
@@ -148,54 +249,48 @@ class ConvertUniformQuantizeOp
   LogicalResult matchAndRewrite(
       mhlo::UniformQuantizeOp op, mhlo::UniformQuantizeOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    auto quantized_type = getElementTypeOrSelf(op.getResult().getType())
-                              .dyn_cast<UniformQuantizedType>();
-    // Currently for activation, PTQ supports per-tensor quantization only, and
-    // UniformQuantize op is only for activation.
-    if (!quantized_type) {
-      return rewriter.notifyMatchFailure(
-          op, "Legalization supports only per-tensor quantization.");
-    }
     auto input_element_type = getElementTypeOrSelf(op.getOperand().getType());
     if (input_element_type.isF32()) {
-      return matchAndRewriteQuantize(op, adaptor, rewriter, quantized_type);
+      auto quant_type = GetQuantType(op.getResult().getType());
+      if (succeeded(quant_type)) {
+        return matchAndRewriteQuantize(op, adaptor, rewriter, *quant_type);
+      }
     } else if (input_element_type.isa<UniformQuantizedType>()) {
-      return matchAndRewriteRequantize(op, adaptor, rewriter, quantized_type);
+      return matchAndRewriteRequantize(op, adaptor, rewriter);
     }
     return rewriter.notifyMatchFailure(op, "Unsupported input element type.");
   }
 
-  LogicalResult matchAndRewriteQuantize(
-      mhlo::UniformQuantizeOp op, mhlo::UniformQuantizeOpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter,
-      const UniformQuantizedType &quantized_type) const {
-    Value scale = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getF32FloatAttr(quantized_type.getScale()));
-    Value zero_point = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getF32FloatAttr(
-                          static_cast<float>(quantized_type.getZeroPoint())));
-    Value quantization_min = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getF32FloatAttr(static_cast<float>(
-                          quantized_type.getStorageTypeMin())));
-    Value quantization_max = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getF32FloatAttr(static_cast<float>(
-                          quantized_type.getStorageTypeMax())));
+  LogicalResult matchAndRewriteQuantize(mhlo::UniformQuantizeOp op,
+                                        mhlo::UniformQuantizeOpAdaptor adaptor,
+                                        ConversionPatternRewriter &rewriter,
+                                        QuantType quant_type) const {
+    Value scales, zero_points;
+    DenseIntElementsAttr broadcast_dims;
+    GetQuantizationParams(rewriter, op->getLoc(), quant_type, scales,
+                          zero_points, /*output_zero_point_in_fp=*/true,
+                          broadcast_dims);
+
+    Value quantization_min, quantization_max;
+    GetQuantizationStorageInfo(rewriter, op->getLoc(), quant_type,
+                               quantization_min, quantization_max);
 
     auto res_float_tensor_type =
         op.getOperand().getType().clone(rewriter.getF32Type());
     Value res_float = rewriter.create<chlo::BroadcastDivOp>(
-        op->getLoc(), res_float_tensor_type, adaptor.getOperand(), scale,
-        nullptr);
+        op->getLoc(), res_float_tensor_type, adaptor.getOperand(), scales,
+        broadcast_dims);
     res_float = rewriter.create<chlo::BroadcastAddOp>(
-        op->getLoc(), res_float_tensor_type, res_float, zero_point, nullptr);
+        op->getLoc(), res_float_tensor_type, res_float, zero_points,
+        broadcast_dims);
 
     res_float = rewriter.create<mhlo::ClampOp>(
         op->getLoc(), res_float_tensor_type, quantization_min, res_float,
         quantization_max);
     res_float = rewriter.create<mhlo::RoundNearestEvenOp>(
         op->getLoc(), res_float_tensor_type, res_float);
-    auto res_final_tensor_type =
-        res_float_tensor_type.clone(quantized_type.getStorageType());
+    auto res_final_tensor_type = res_float_tensor_type.clone(
+        GetQuantStorageType(op.getResult().getType().getElementType()));
     rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(op, res_final_tensor_type,
                                                  res_float);
     return success();
@@ -203,10 +298,11 @@ class ConvertUniformQuantizeOp
 
   LogicalResult matchAndRewriteRequantize(
       mhlo::UniformQuantizeOp op, mhlo::UniformQuantizeOpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter,
-      const UniformQuantizedType &output_quantized_type) const {
+      ConversionPatternRewriter &rewriter) const {
     auto input_quantized_type = getElementTypeOrSelf(op.getOperand().getType())
                                     .cast<UniformQuantizedType>();
+    auto output_quantized_type = getElementTypeOrSelf(op.getResult().getType())
+                                     .cast<UniformQuantizedType>();
     rewriter.replaceOp(
         op, Requantize(op, adaptor.getOperand(), input_quantized_type,
                        output_quantized_type,
@@ -225,19 +321,15 @@ class ConvertUniformDequantizeOp
   LogicalResult matchAndRewrite(
       mhlo::UniformDequantizeOp op, mhlo::UniformDequantizeOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    auto element_type = getElementTypeOrSelf(op.getOperand().getType())
-                            .dyn_cast<UniformQuantizedType>();
-    // Currently for activation, PTQ supports per-tensor quantization only, and
-    // UniformQuantize op is only for activation.
-    if (!element_type) {
-      return rewriter.notifyMatchFailure(
-          op, "Legalization supports only per-tensor quantization.");
+    auto quant_type = GetQuantType(op.getOperand().getType());
+    if (failed(quant_type)) {
+      return failure();
     }
-    Value scale = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getF32FloatAttr(element_type.getScale()));
-    Value zero_point = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getI32IntegerAttr(
-                          static_cast<int32_t>(element_type.getZeroPoint())));
+    Value scales, zero_points;
+    DenseIntElementsAttr broadcast_dims;
+    GetQuantizationParams(rewriter, op->getLoc(), *quant_type, scales,
+                          zero_points,
+                          /*output_zero_point_in_fp=*/false, broadcast_dims);
 
     Value input = adaptor.getOperand();
     // TODO: b/260280919 - Consider avoiding conversion to int32.
@@ -246,13 +338,14 @@ class ConvertUniformDequantizeOp
     Value res_int32 = rewriter.create<mhlo::ConvertOp>(
         op->getLoc(), res_int32_tensor_type, input);
     res_int32 = rewriter.create<chlo::BroadcastSubOp>(
-        op->getLoc(), res_int32_tensor_type, res_int32, zero_point, nullptr);
+        op->getLoc(), res_int32_tensor_type, res_int32, zero_points,
+        broadcast_dims);
     auto res_float_tensor_type =
         res_int32.getType().cast<TensorType>().clone(rewriter.getF32Type());
     Value res_float = rewriter.create<mhlo::ConvertOp>(
         op->getLoc(), res_float_tensor_type, res_int32);
     res_float = rewriter.replaceOpWithNewOp<chlo::BroadcastMulOp>(
-        op, res_float_tensor_type, res_float, scale, nullptr);
+        op, res_float_tensor_type, res_float, scales, broadcast_dims);
     return success();
   }
 };
@@ -1026,14 +1119,7 @@ class ConvertGenericOp : public ConversionPattern {
     // type otherwise.
     llvm::SmallVector<Type, 4> new_result_types;
     for (auto result_type : op->getResultTypes()) {
-      if (getElementTypeOrSelf(result_type).isa<UniformQuantizedType>()) {
-        new_result_types.push_back(result_type.cast<TensorType>().clone(
-            getElementTypeOrSelf(result_type)
-                .cast<UniformQuantizedType>()
-                .getStorageType()));
-      } else {
-        new_result_types.push_back(result_type);
-      }
+      new_result_types.push_back(GetQuantStorageType(result_type));
     }
 
     OperationState state(op->getLoc(), op->getName().getStringRef(), operands,
@@ -1048,73 +1134,78 @@ class ConvertGenericOp : public ConversionPattern {
 class UQTypeConverter : public TypeConverter {
  public:
   UQTypeConverter() {
-    addConversion([](Type type) -> Type {
-      auto to_legal_type = [](Type type) {
-        if (auto uq_type = dyn_cast<UniformQuantizedType>(type)) {
-          return uq_type.getStorageType();
-        }
-        return type;
-      };
-      if (auto shaped = type.dyn_cast<ShapedType>()) {
-        return shaped.clone(to_legal_type(shaped.getElementType()));
-      } else {
-        return to_legal_type(type);
-      }
-    });
+    addConversion([](Type type) -> Type { return GetQuantStorageType(type); });
   }
 };
 
-// Performs conversion of MHLO quant ops to primitive ops.
-void ConvertMHLOQuantToInt::runOnOperation() {
-  Operation *op = getOperation();
-  MLIRContext *context = op->getContext();
-  RewritePatternSet patterns(context);
+#define GEN_PASS_DEF_CONVERTMHLOQUANTTOINT
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h.inc"
 
-  // Populate MHLO quant ops conversion patterns.
-  patterns.add<ConvertUniformQuantizeOp, ConvertUniformDequantizeOp,
-               ConvertUniformQuantizedAddOp, ConvertUniformQuantizedDotOp,
-               ConvertUniformQuantizedDotGeneralOp,
-               ConvertUniformQuantizedConvolutionOp, ConvertGenericOp>(context);
+class ConvertMHLOQuantToInt
+    : public impl::ConvertMHLOQuantToIntBase<ConvertMHLOQuantToInt> {
+ public:
+  ConvertMHLOQuantToInt() = default;
+  ConvertMHLOQuantToInt(const ConvertMHLOQuantToInt &) {}
 
-  // uq->int convert patterns for func.func and func.return.
-  UQTypeConverter converter;
-  populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
-                                                                 converter);
-  populateReturnOpTypeConversionPattern(patterns, converter);
-
-  ConversionTarget target(*op->getContext());
-  auto is_legal = [&converter](Operation *op) { return converter.isLegal(op); };
-  target.addDynamicallyLegalDialect<mhlo::MhloDialect>(is_legal);
-  target.addDynamicallyLegalDialect<chlo::ChloDialect>(is_legal);
-  target.addDynamicallyLegalDialect<func::FuncDialect>(
-      [&converter](Operation *op) {
-        if (auto func = dyn_cast<func::FuncOp>(op)) {
-          return converter.isSignatureLegal(func.getFunctionType());
-        }
-        return converter.isLegal(op);
-      });
-
-  LogicalResult result =
-      applyPartialConversion(op, target, std::move(patterns));
-  if (failed(result)) {
-    signalPassFailure();
+  explicit ConvertMHLOQuantToInt(bool legalize_chlo) {
+    legalize_chlo_ = legalize_chlo;
   }
 
-  // Legalize CHLO if needed.
-  if (!legalize_chlo_) return;
-  RewritePatternSet patterns_2(context);
+  // Performs conversion of MHLO quant ops to primitive ops.
+  void runOnOperation() override {
+    Operation *op = getOperation();
+    MLIRContext *context = op->getContext();
+    RewritePatternSet patterns(context);
 
-  chlo::populateDecomposeChloPatterns(context, &patterns_2);
-  chlo::populateChloBroadcastingPatterns(context, &patterns_2);
+    // Populate MHLO quant ops conversion patterns.
+    patterns.add<ConvertUniformQuantizeOp, ConvertUniformDequantizeOp,
+                 ConvertUniformQuantizedAddOp, ConvertUniformQuantizedDotOp,
+                 ConvertUniformQuantizedDotGeneralOp,
+                 ConvertUniformQuantizedConvolutionOp, ConvertGenericOp>(
+        context);
 
-  ConversionTarget target_2 =
-      mhlo::GetDefaultLegalConversionTargets(*op->getContext(), legalize_chlo_);
+    // uq->int convert patterns for func.func and func.return.
+    UQTypeConverter converter;
+    populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
+                                                                   converter);
+    populateReturnOpTypeConversionPattern(patterns, converter);
 
-  result = applyPartialConversion(op, target_2, std::move(patterns_2));
-  if (failed(result)) {
-    signalPassFailure();
+    ConversionTarget target(*op->getContext());
+    auto is_legal = [&converter](Operation *op) {
+      return converter.isLegal(op);
+    };
+    target.addDynamicallyLegalDialect<mhlo::MhloDialect>(is_legal);
+    target.addDynamicallyLegalDialect<chlo::ChloDialect>(is_legal);
+    target.addDynamicallyLegalDialect<func::FuncDialect>(
+        [&converter](Operation *op) {
+          if (auto func = dyn_cast<func::FuncOp>(op)) {
+            return converter.isSignatureLegal(func.getFunctionType());
+          }
+          return converter.isLegal(op);
+        });
+
+    LogicalResult result =
+        applyPartialConversion(op, target, std::move(patterns));
+    if (failed(result)) {
+      signalPassFailure();
+    }
+
+    // Legalize CHLO if needed.
+    if (!legalize_chlo_) return;
+    RewritePatternSet patterns_2(context);
+
+    chlo::populateDecomposeChloPatterns(context, &patterns_2);
+    chlo::populateChloBroadcastingPatterns(context, &patterns_2);
+
+    ConversionTarget target_2 = mhlo::GetDefaultLegalConversionTargets(
+        *op->getContext(), legalize_chlo_);
+
+    result = applyPartialConversion(op, target_2, std::move(patterns_2));
+    if (failed(result)) {
+      signalPassFailure();
+    }
   }
-}
+};
 
 }  // namespace
 

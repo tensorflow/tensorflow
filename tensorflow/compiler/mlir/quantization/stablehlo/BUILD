@@ -189,7 +189,6 @@ cc_library(
     ],
     deps = [
         ":bridge_passes_inc_gen",
-        ":math_utils",
         ":tf_type_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
@@ -214,7 +213,6 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla:xla_data_proto_cc",
