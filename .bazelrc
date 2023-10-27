@@ -285,6 +285,7 @@ build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm --define=using_rocm_hipcc=true
 build:rocm --define=tensorflow_mkldnn_contraction_kernel=0
 build:rocm --repo_env TF_NEED_ROCM=1
+build:rocm --action_env=TF_ROCM_CLANG="1"
 
 # Options to disable default on features
 build:noaws --define=no_aws_support=true

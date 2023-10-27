@@ -28,7 +28,7 @@ build:rocm --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-16/bin/clang"
 build:rocm --copt="-Wno-error=unused-result"
 
 # Test-related settings below this point.
-test:rocmclang --test_env=HSA_TOOLS_LIB=libroctracer64.so --test_sharding_strategy=disabled
+test:rocm --test_env=HSA_TOOLS_LIB=libroctracer64.so --test_sharding_strategy=disabled
 
 # "nonpip" tests are regular py_test tests.
 # Pass --config=nonpip to run the same suite of tests. If you want to run just
