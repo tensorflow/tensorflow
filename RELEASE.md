@@ -28,6 +28,7 @@
 
 * `tf.lite`
     * Added support for `stablehlo.gather`.
+    * Added support for `stablehlo.add`.
 
 ## Keras
 
