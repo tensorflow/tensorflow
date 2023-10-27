@@ -184,7 +184,11 @@ class PjRtCApiCompiler : public PjRtCompiler {
 class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
  public:
   PjRtCApiTopologyDescription(const PJRT_Api* c_api,
-                              PJRT_TopologyDescription* c_topology);
+                              PJRT_TopologyDescription* c_topology, bool owned);
+
+  // Does not take ownership of `c_topology`.
+  PjRtCApiTopologyDescription(const PJRT_Api* c_api,
+                              const PJRT_TopologyDescription* c_topology);
 
   PjRtPlatformId platform_id() const override {
     CHECK(false) << "PJRT C API does not support platform_id.";
@@ -198,9 +202,7 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
     return compiler_.get();
   }
 
-  const PJRT_TopologyDescription* c_topology() const {
-    return c_topology_.get();
-  }
+  PJRT_TopologyDescription* c_topology() const { return c_topology_; }
 
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
       const override;
@@ -216,9 +218,12 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
  private:
   std::unique_ptr<PjRtCApiCompiler> compiler_;
   const PJRT_Api* c_api_;
+  // nullptr iff the PJRT_TopologyDescription isn't owned by this wrapper
+  // (i.e. by the caller).
   std::unique_ptr<PJRT_TopologyDescription,
                   ::pjrt::PJRT_TopologyDescriptionDeleter>
-      c_topology_;
+      owned_c_topology_;
+  PJRT_TopologyDescription* c_topology_;
   // Device specific attributes with corresponding values.
   absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
 
@@ -285,6 +290,9 @@ class PjRtCApiClient : public PjRtClient {
     return Unimplemented(
         "PJRT C API does not support CreateUninitializedBuffer");
   }
+
+  StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
+      const override;
 
   StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
@@ -413,6 +421,10 @@ class PjRtCApiClient : public PjRtClient {
   // supported.
   std::vector<PjRtMemorySpace*> addressable_memory_spaces_;
   absl::flat_hash_map<PJRT_Memory*, PjRtCApiMemorySpace*> c_to_cpp_memory_map_;
+  // There may be an error fetching the topology desc via the C API
+  // (e.g. unimplemented). Save the error during client init so we can return it
+  // from GetTopologyDescription().
+  StatusOr<const PjRtCApiTopologyDescription> topo_desc_;
 
   const std::string platform_version_;
   const std::string platform_name_;

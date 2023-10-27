@@ -612,6 +612,16 @@ absl::string_view GetPlatformName(PJRT_Client* client, const PJRT_Api* api) {
   return platform_name;
 }
 
+xla::StatusOr<const PJRT_TopologyDescription*> GetTopologyDescription(
+    PJRT_Client* client, const PJRT_Api* api) {
+  PJRT_Client_TopologyDescription_Args args;
+  args.struct_size = PJRT_Client_TopologyDescription_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.client = client;
+  RETURN_STATUS_IF_PJRT_ERROR(api->PJRT_Client_TopologyDescription(&args), api);
+  return args.topology;
+}
+
 PJRT_Chunk ConvertFromCppChunk(xla::PjRtChunk chunk) {
   // `deleter_arg` holds a copy of the original xla::PjRtChunk
   // deleter. The original xla::PjRtChunk `input` releases its ownership

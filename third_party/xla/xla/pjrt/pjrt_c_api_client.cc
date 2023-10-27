@@ -100,6 +100,14 @@ namespace xla {
 
 // ---------------------------------- Client -----------------------------------
 
+static StatusOr<const PjRtCApiTopologyDescription> InitTopologyDescription(
+    const PJRT_Api* c_api, PJRT_Client* c_client) {
+  StatusOr<const PJRT_TopologyDescription*> c_topo =
+      pjrt::GetTopologyDescription(c_client, c_api);
+  TF_RETURN_IF_ERROR(c_topo.status());
+  return PjRtCApiTopologyDescription(c_api, *c_topo);
+}
+
 PjRtCApiClient::PjRtCApiClient(
     const PJRT_Api* c_api, PJRT_Client* c_client,
     std::unique_ptr<pjrt::PJRT_KeyValueCallbackData> kv_callback_data)
@@ -107,6 +115,7 @@ PjRtCApiClient::PjRtCApiClient(
       c_client_(std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter>(
           c_client, ::pjrt::MakeClientDeleter(c_api))),
       kv_callback_data_(std::move(kv_callback_data)),
+      topo_desc_(InitTopologyDescription(c_api, c_client)),
       // Example platform version string:
       //   PJRT C API
       //   TFRT TPU v2
@@ -428,6 +437,14 @@ PjRtCApiClient::DeserializeExecutable(absl::string_view serialized,
   CHECK(c_exec != nullptr);
   return std::unique_ptr<PjRtLoadedExecutable>(
       std::make_unique<PjRtCApiLoadedExecutable>(this, c_exec));
+}
+
+StatusOr<const PjRtTopologyDescription*>
+PjRtCApiClient::GetTopologyDescription() const {
+  if (!topo_desc_.ok()) {
+    return topo_desc_.status();
+  }
+  return &(*topo_desc_);
 }
 
 StatusOr<std::uintptr_t> PjRtCApiClient::UnsafeBufferPointer(
@@ -2029,16 +2046,27 @@ PjRtCApiExternalReference::~PjRtCApiExternalReference() {
 // ------------------------------ Device Topology ------------------------------
 
 PjRtCApiTopologyDescription::PjRtCApiTopologyDescription(
-    const PJRT_Api* c_api, PJRT_TopologyDescription* c_topology)
+    const PJRT_Api* c_api, PJRT_TopologyDescription* c_topology, bool owned)
     : compiler_(std::make_unique<PjRtCApiCompiler>(c_api)),
       c_api_(c_api),
-      c_topology_(c_topology, ::pjrt::MakeTopologyDescriptionDeleter(c_api)) {
+      c_topology_(c_topology) {
+  if (owned) {
+    owned_c_topology_ = std::unique_ptr<PJRT_TopologyDescription,
+                                        pjrt::PJRT_TopologyDescriptionDeleter>(
+        c_topology, pjrt::MakeTopologyDescriptionDeleter(c_api));
+  }
   InitAttributes();
 }
 
+PjRtCApiTopologyDescription::PjRtCApiTopologyDescription(
+    const PJRT_Api* c_api, const PJRT_TopologyDescription* c_topology)
+    : PjRtCApiTopologyDescription(
+          c_api, const_cast<PJRT_TopologyDescription*>(c_topology),
+          /*owned=*/false) {}
+
 absl::string_view PjRtCApiTopologyDescription::platform_name() const {
   PJRT_TopologyDescription_PlatformName_Args args;
-  args.topology = c_topology_.get();
+  args.topology = c_topology_;
   args.struct_size = PJRT_TopologyDescription_PlatformName_Args_STRUCT_SIZE;
   args.priv = nullptr;
   pjrt::LogFatalIfPjrtError(
@@ -2050,7 +2078,7 @@ absl::string_view PjRtCApiTopologyDescription::platform_version() const {
   PJRT_TopologyDescription_PlatformVersion_Args args;
   args.struct_size = PJRT_TopologyDescription_PlatformVersion_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.topology = c_topology_.get();
+  args.topology = c_topology_;
   pjrt::LogFatalIfPjrtError(
       c_api_->PJRT_TopologyDescription_PlatformVersion(&args), c_api_);
   return absl::string_view(args.platform_version, args.platform_version_size);
@@ -2062,7 +2090,7 @@ PjRtCApiTopologyDescription::DeviceDescriptions() const {
   args.struct_size =
       PJRT_TopologyDescription_GetDeviceDescriptions_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.topology = c_topology_.get();
+  args.topology = c_topology_;
   pjrt::LogFatalIfPjrtError(
       c_api_->PJRT_TopologyDescription_GetDeviceDescriptions(&args), c_api_);
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> out;
@@ -2080,7 +2108,7 @@ StatusOr<std::string> PjRtCApiTopologyDescription::Serialize() const {
   PJRT_TopologyDescription_Serialize_Args args;
   args.struct_size = PJRT_TopologyDescription_Serialize_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.topology = c_topology_.get();
+  args.topology = c_topology_;
   RETURN_STATUS_IF_PJRT_ERROR(c_api_->PJRT_TopologyDescription_Serialize(&args),
                               c_api_);
   auto out = std::string(args.serialized_bytes, args.serialized_bytes_size);
@@ -2092,7 +2120,7 @@ void PjRtCApiTopologyDescription::InitAttributes() {
   PJRT_TopologyDescription_Attributes_Args args;
   args.struct_size = PJRT_TopologyDescription_Attributes_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.topology = c_topology_.get();
+  args.topology = c_topology_;
   pjrt::LogFatalIfPjrtError(c_api_->PJRT_TopologyDescription_Attributes(&args),
                             c_api_);
   attributes_ =
