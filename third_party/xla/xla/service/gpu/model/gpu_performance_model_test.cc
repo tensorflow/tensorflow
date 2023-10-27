@@ -364,6 +364,37 @@ ENTRY fusion {
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_fused), 1030, 10);
 }
 
+TEST_F(GpuPerformanceModelTest, FusingNonMinorTransposeIntoReduceIsFast) {
+  constexpr absl::string_view kHlo = R"(
+HloModule testmodule
+
+max {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT max = f32[] maximum(p0, p1)
+}
+
+ENTRY fusion {
+  c = f32[] constant(-inf)
+  p0 = f32[1500,32,128]{1,2,0} parameter(0)
+  transpose.1 = f32[1500,128,32]{2,0,1} transpose(p0), dimensions={0,2,1}
+  ROOT reduce.1 = f32[1500,32] reduce(transpose.1, c), dimensions={1}, to_apply=max
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  auto* producer =
+      module->entry_computation()->GetInstructionWithName("transpose.1");
+  std::vector<HloInstruction*> consumers{
+      module->entry_computation()->GetInstructionWithName("reduce.1")};
+  GpuPerformanceModel::RunTimes t =
+      GpuPerformanceModel::EstimateRunTimes(producer, &analysis_, consumers);
+
+  EXPECT_LT(t.time_fused, t.time_unfused);
+}
+
 TEST_F(GpuPerformanceModelTest, DusScalesWithUpdates) {
   constexpr absl::string_view kHlo = R"(
 HloModule testmodule

@@ -287,7 +287,7 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
   ConstHloInstructionSet consumer_operands;
   bool consumer_transposes = false;
   if (fused_consumer) {
-    consumer_transposes = IsPhysicallyTransposing(*fused_consumer);
+    consumer_transposes = TransposesMinorDimension(fused_consumer);
     producer_output_utilization = cost_analysis->operand_utilization(
         *fused_consumer, fused_consumer->operand_index(producer));
     for (const HloInstruction* op : fused_consumer->operands()) {
@@ -295,7 +295,7 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
     }
   }
 
-  bool producer_transposes = IsPhysicallyTransposing(*producer);
+  bool producer_transposes = TransposesMinorDimension(producer);
   for (int i = 0; i < producer->operand_count(); ++i) {
     // Information about data read taking into account utilization.
     // If `operand_utilization` is 0, `operand_bytes_accessed` should be also 0.
@@ -437,7 +437,7 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
     producer_output_read_time_unfused += ReadTime(
         *device_info, launch_dimensions_unfused.num_blocks(), n_bytes_net,
         n_bytes_total, fused_consumer->shape().element_type(),
-        /*coalesced=*/!IsPhysicallyTransposing(*fused_consumer));
+        /*coalesced=*/!TransposesMinorDimension(fused_consumer));
   }
 
   absl::Duration time_unfused =
