@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/device_memory.h"
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/cub_sort_thunk.h"
 #endif
 
@@ -41,7 +41,7 @@ using ::xla::runtime::FlatMemrefView;
 absl::Status CubDeviceRadixSortKeysImpl(
     const ServiceExecutableRunOptions* run_options, FlatMemrefView input_view,
     FlatMemrefView output_view, FlatMemrefView scratch_view, bool descending) {
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return RunCubSort(input_view.dtype, std::nullopt,
                     GetDeviceAddress(input_view), DeviceMemoryBase(),
                     GetDeviceAddress(output_view), DeviceMemoryBase(),
@@ -56,7 +56,7 @@ absl::Status CubDeviceRadixSortPairsImpl(
     FlatMemrefView input_keys_view, FlatMemrefView input_values_view,
     FlatMemrefView output_keys_view, FlatMemrefView output_values_view,
     FlatMemrefView scratch_view, bool descending) {
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return RunCubSort(
       input_keys_view.dtype, input_values_view.dtype,
       GetDeviceAddress(input_keys_view), GetDeviceAddress(input_values_view),

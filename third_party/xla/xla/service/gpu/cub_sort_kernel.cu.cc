@@ -20,28 +20,43 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "cub/device/device_radix_sort.cuh"
+#if GOOGLE_CUDA
+#include "xla/service/gpu/gpu_prim_cuda.h"
+#elif TENSORFLOW_USE_ROCM
+#include "xla/service/gpu/gpu_prim_rocm.h"
+#endif  // TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
 namespace {
 
+#if GOOGLE_CUDA
+#define CHK_GPU_ERR(err)                                       \
+  if (err != cudaSuccess) {                                    \
+    return absl::InvalidArgumentError(                         \
+        absl::StrCat("CUB error: ", cudaGetErrorString(err))); \
+  }
+#elif TENSORFLOW_USE_ROCM
+#define CHK_GPU_ERR(err)                                         \
+  if (err != hipSuccess) {                                       \
+    return absl::InvalidArgumentError(                           \
+        absl::StrCat("HIPCUB error: ", hipGetErrorString(err))); \
+  }
+#endif
+
 template <typename KeyT>
 absl::Status CubSortKeys(void* d_temp_storage, size_t& temp_bytes,
                          const void* d_keys_in, void* d_keys_out,
                          size_t num_items, bool descending) {
-  cudaError_t err =
+  auto err =
       descending
-          ? cub::DeviceRadixSort::SortKeysDescending<KeyT>(
+          ? gpuprim::DeviceRadixSort::SortKeysDescending<KeyT>(
                 d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
                 static_cast<KeyT*>(d_keys_out), num_items)
-          : cub::DeviceRadixSort::SortKeys<KeyT>(
+          : gpuprim::DeviceRadixSort::SortKeys<KeyT>(
                 d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
                 static_cast<KeyT*>(d_keys_out), num_items);
-  if (err != 0) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("CUB error: ", cudaGetErrorString(err)));
-  }
+  CHK_GPU_ERR(err)
   return absl::OkStatus();
 }
 
@@ -50,22 +65,19 @@ absl::Status CubSortPairs(void* d_temp_storage, size_t& temp_bytes,
                           const void* d_keys_in, void* d_keys_out,
                           const void* d_values_in, void* d_values_out,
                           size_t num_items, bool descending) {
-  cudaError_t err =
+  auto err =
       descending
-          ? cub::DeviceRadixSort::SortPairsDescending<KeyT, ValT>(
+          ? gpuprim::DeviceRadixSort::SortPairsDescending<KeyT, ValT>(
                 d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
                 static_cast<KeyT*>(d_keys_out),
                 static_cast<const ValT*>(d_values_in),
                 static_cast<ValT*>(d_values_out), num_items)
-          : cub::DeviceRadixSort::SortPairs<KeyT, ValT>(
+          : gpuprim::DeviceRadixSort::SortPairs<KeyT, ValT>(
                 d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
                 static_cast<KeyT*>(d_keys_out),
                 static_cast<const ValT*>(d_values_in),
                 static_cast<ValT*>(d_values_out), num_items);
-  if (err != 0) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("CUB error: ", cudaGetErrorString(err)));
-  }
+  CHK_GPU_ERR(err)
   return absl::OkStatus();
 }
 
@@ -91,7 +103,11 @@ absl::Status CubSortPairs(void* d_temp_storage, size_t& temp_bytes,
 
 // Floating point types.
 #ifdef CUB_TYPE_BF16
+#if GOOGLE_CUDA
 XLA_CUB_DEFINE_SORT_KEYS(bf16, __nv_bfloat16)
+#elif TENSORFLOW_USE_ROCM
+XLA_CUB_DEFINE_SORT_KEYS(bf16, hip_bfloat16)
+#endif
 #endif
 #ifdef CUB_TYPE_F16
 XLA_CUB_DEFINE_SORT_KEYS(f16, __half)

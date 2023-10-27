@@ -189,7 +189,9 @@ cc_library(
     name = "cub_sort",
     srcs = ["cub_sort.cc"],
     hdrs = ["cub_sort.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     visibility = ["//visibility:public"],
     deps = [
         ":support",
@@ -200,7 +202,7 @@ cc_library(
         "//xla/service:executable",
         "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/status",
-    ] + if_cuda_is_configured([
+    ] + if_gpu_is_configured([
         "//xla/service/gpu:cub_sort_thunk",
     ]),
 )
