@@ -193,26 +193,6 @@ bool CUDABlas::Init() {
     return false;
   }
 
-  // TODO(b/307832648): Workspace must be explicit for all cuBLAS operations.
-  //
-  // Use workspace size recommended in cuBLAS documentation:
-  // https://docs.nvidia.com/cuda/cublas/#cublassetworkspace
-  int64_t workspace_size = parent_->cc_major() >= 9
-                               ? 32 * 1024 * 1024 /*32 MiB*/
-                               : 4 * 1024 * 1024 /*4 MiB*/;
-
-  workspace_ = parent_->Allocate(workspace_size, 0);
-  if (workspace_.opaque() == nullptr) {
-    LOG(ERROR) << "failed to allocate workspace fo cuBLAS calls";
-    return false;
-  }
-
-  ret = cublasSetWorkspace(blas_, workspace_.opaque(), workspace_.size());
-  if (ret != CUBLAS_STATUS_SUCCESS) {
-    LOG(ERROR) << "failed to set workspace fo cuBLAS calls: " << ToString(ret);
-    return false;
-  }
-
 #if CUDA_VERSION >= 11000
   if (!blas_lt_.Init().ok()) {
     LOG(ERROR) << kCublasNotInitializedExplanation;
@@ -238,7 +218,6 @@ CUDABlas::~CUDABlas() {
     gpu::ScopedActivateExecutorContext sac{parent_};
     cublasDestroy(blas_);
   }
-  parent_->Deallocate(&workspace_);
 }
 
 bool CUDABlas::SetStream(Stream *stream) {
@@ -250,13 +229,6 @@ bool CUDABlas::SetStream(Stream *stream) {
   cublasStatus_t ret = cublasSetStream(blas_, AsGpuStreamValue(stream));
   if (ret != CUBLAS_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to set stream for cuBLAS calls: " << ToString(ret);
-    return false;
-  }
-
-  // TODO(b/307832648): Workspace must be explicit for all cuBLAS operations.
-  ret = cublasSetWorkspace(blas_, workspace_.opaque(), workspace_.size());
-  if (ret != CUBLAS_STATUS_SUCCESS) {
-    LOG(ERROR) << "failed to set workspace fo cuBLAS calls: " << ToString(ret);
     return false;
   }
 
