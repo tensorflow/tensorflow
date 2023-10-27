@@ -318,40 +318,39 @@ Value Compare(ImplicitLocOpBuilder& b, ValueRange values,
 Value Maximum(ImplicitLocOpBuilder& b, ValueRange values) {
   // ma::MaximumFOp seems to think that max(NaN, x) = x, so we don't use that.
   //
-  // logic: isNaN(lhs) || (!isNan(rhs) && lhs > rhs) ? lhs : rhs
+  // logic: isNaN(lhs) || (!isNan(rhs) && lhs >= rhs) ? lhs : rhs
   // See also: IEEE Std 754-2008 5.11.
   //
   // This also works, but we wanted to make it similar to minimum.
-  // logic: isNaN(lhs) || lhs > rhs ? lhs : rhs
+  // logic: isNaN(lhs) || lhs >= rhs ? lhs : rhs
   Value lhs_is_nan =
       Compare(b, {values[0], values[0]}, mlir::mhlo::ComparisonDirection::NE);
   Value rhs_is_not_nan =
       Compare(b, {values[1], values[1]}, mlir::mhlo::ComparisonDirection::EQ);
-  Value lhs_is_greater =
-      Compare(b, values, mlir::mhlo::ComparisonDirection::GT);
+  Value lhs_is_ge = Compare(b, values, mlir::mhlo::ComparisonDirection::GE);
   return b.create<ma::SelectOp>(
       b.create<ma::OrIOp>(lhs_is_nan,
-                          b.create<ma::AndIOp>(rhs_is_not_nan, lhs_is_greater)),
+                          b.create<ma::AndIOp>(rhs_is_not_nan, lhs_is_ge)),
       values[0], values[1]);
 }
 
 Value Minimum(ImplicitLocOpBuilder& b, ValueRange values) {
   // ma::MinimumFOp seems to think that min(NaN, x) = x, so we don't use that.
   //
-  // logic: isNaN(lhs) || (!isNan(rhs) && lhs < rhs) ? lhs : rhs
+  // logic: isNaN(lhs) || (!isNan(rhs) && lhs <= rhs) ? lhs : rhs
   // See also: IEEE Std 754-2008 5.11.
   //
   // This should also work, but the tests show that it doesn't work for
   // minimum(x, NaN):
-  // logic: isNaN(lhs) || lhs < rhs ? lhs : rhs
+  // logic: isNaN(lhs) || lhs <= rhs ? lhs : rhs
   Value lhs_is_nan =
       Compare(b, {values[0], values[0]}, mlir::mhlo::ComparisonDirection::NE);
   Value rhs_is_not_nan =
       Compare(b, {values[1], values[1]}, mlir::mhlo::ComparisonDirection::EQ);
-  Value lhs_is_less = Compare(b, values, mlir::mhlo::ComparisonDirection::LT);
+  Value lhs_is_le = Compare(b, values, mlir::mhlo::ComparisonDirection::LE);
   return b.create<ma::SelectOp>(
       b.create<ma::OrIOp>(lhs_is_nan,
-                          b.create<ma::AndIOp>(rhs_is_not_nan, lhs_is_less)),
+                          b.create<ma::AndIOp>(rhs_is_not_nan, lhs_is_le)),
       values[0], values[1]);
 }
 
