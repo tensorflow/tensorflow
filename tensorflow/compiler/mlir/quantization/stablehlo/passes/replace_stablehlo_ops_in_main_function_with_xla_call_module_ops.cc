@@ -103,7 +103,7 @@ std::string CreateStablehloFunctionName(const int id) {
 //
 // In Backward Liveliness analysis, the liveliness for each node above becomes:
 // live_in[5] = use[5]   U (live_out[5] - def[5])
-//            = {%3}     U {∅ - ∅}                = {%3}
+//            = {%3}     U ({∅} - {∅})            = {%3}
 // live_in[4] = use[4]   U (live_out[4] - def[4])
 //            = {%1, %2} U ({%3} - {%3})          = {%1, %2}
 // live_in[3] = use[3]   U (live_out[3] - def[3])
