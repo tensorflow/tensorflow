@@ -243,11 +243,20 @@ bool IsCrossProgramPrefetchCandidate(const HloValue& value,
          });
 }
 
+struct CrossProgramPrefetchBufferSortValues {
+  int64_t latest_use = 0;
+  int64_t use_size = 0;
+};
+
 std::vector<MemorySpaceAssignment::BufferInterval>
 FindCrossProgramPrefetchCandidates(const HloAliasAnalysis& alias_analysis,
                                    const HloLiveRange& hlo_live_range,
                                    const Options& options) {
   std::vector<MemorySpaceAssignment::BufferInterval> candidates;
+  bool use_custom_compare = !options.default_cross_program_prefetch_heuristic ||
+                            !options.buffer_interval_compare;
+  absl::flat_hash_map<const HloValue*, CrossProgramPrefetchBufferSortValues>
+      buffer_sort_values;
   for (const HloBuffer& buffer : alias_analysis.buffers()) {
     CHECK_GE(buffer.values().size(), 1);
     const HloValue* value = buffer.values().at(0);
@@ -260,33 +269,40 @@ FindCrossProgramPrefetchCandidates(const HloAliasAnalysis& alias_analysis,
       interval.need_allocation = true;
       interval.colocations = {++buffer.values().begin(), buffer.values().end()};
       candidates.emplace_back(interval);
+
+      if (!use_custom_compare || buffer_sort_values.contains(value)) {
+        continue;
+      }
+      CrossProgramPrefetchBufferSortValues& sort_values =
+          buffer_sort_values[value];
+      absl::c_for_each(value->GetUses(), [&](const HloUse& use) {
+        auto it = hlo_live_range.instruction_schedule().find(use.instruction);
+        if (it == hlo_live_range.instruction_schedule().end()) {
+          return;
+        }
+        sort_values.latest_use = std::max(sort_values.latest_use, it->second);
+        sort_values.use_size +=
+            ShapeUtil::ElementsInRecursive(use.instruction->shape());
+      });
     }
   }
 
-  // The BufferIntervalCompare function used to sort buffers implements the
-  // greater-than operator so that the most beneficial buffers are allocated
-  // first. The size_compare function below hence uses the greater-than operator
-  // to pick the largest buffer.
-  auto size_compare = [](const auto& x, const auto& y) {
-    if (x.size == y.size) {
-      // When both buffers are of same size, we prefer the one that is used to
-      // produce larger tensors in its consumer instructions.
-      auto get_use_size =
-          [](const MemorySpaceAssignment::BufferInterval& bi) -> int64_t {
-        int64_t use_size = 0;
-        for (const auto& use : bi.buffer->GetUses()) {
-          use_size += ShapeUtil::ElementsInRecursive(use.instruction->shape());
-        }
-        return use_size;
+  auto custom_compare_tuple =
+      [&buffer_sort_values](
+          const MemorySpaceAssignment::BufferInterval& buffer_interval) {
+        const CrossProgramPrefetchBufferSortValues sort_values =
+            buffer_sort_values[buffer_interval.buffer];
+        return std::make_tuple(-buffer_interval.size, -sort_values.use_size,
+                               sort_values.latest_use,
+                               buffer_interval.buffer->id());
       };
-      return get_use_size(x) > get_use_size(y);
-    }
-    return x.size > y.size;
+  auto custom_compare = [&](const MemorySpaceAssignment::BufferInterval& x,
+                            const MemorySpaceAssignment::BufferInterval& y) {
+    return custom_compare_tuple(x) < custom_compare_tuple(y);
   };
-  auto& compare = options.default_cross_program_prefetch_heuristic &&
-                          options.buffer_interval_compare
-                      ? *options.buffer_interval_compare
-                      : size_compare;
+
+  auto& compare =
+      use_custom_compare ? custom_compare : *options.buffer_interval_compare;
 
   absl::c_sort(candidates, compare);
 
