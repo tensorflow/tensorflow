@@ -170,7 +170,7 @@ class PjrtCApiTest : public PjrtCApiTestBase {
     return args.local_hardware_id;
   }
 
-  absl::Span<PJRT_Device*> GetClientDevices() const {
+  absl::Span<PJRT_Device* const> GetClientDevices() const {
     PJRT_Client_Devices_Args dev_args;
     dev_args.struct_size = PJRT_Client_Devices_Args_STRUCT_SIZE;
     dev_args.priv = nullptr;
@@ -315,7 +315,7 @@ TEST_F(PjrtCApiTest, ClientProcessIndex) {
 }
 
 TEST_F(PjrtCApiTest, ClientDevices) {
-  absl::Span<PJRT_Device*> devices = GetClientDevices();
+  absl::Span<PJRT_Device* const> devices = GetClientDevices();
 
   ASSERT_FALSE(devices.empty());
   for (auto& device : devices) {
@@ -324,14 +324,15 @@ TEST_F(PjrtCApiTest, ClientDevices) {
 }
 
 TEST_F(PjrtCApiTest, ClientAddressableDevices) {
-  absl::Span<PJRT_Device*> addressable_devices = GetClientAddressableDevices();
+  absl::Span<PJRT_Device* const> addressable_devices =
+      GetClientAddressableDevices();
 
   ASSERT_FALSE(addressable_devices.empty());
   for (auto& device : addressable_devices) {
     ASSERT_TRUE(this->IsValidDeviceId(device));
   }
 
-  absl::Span<PJRT_Device*> client_devices = GetClientDevices();
+  absl::Span<PJRT_Device* const> client_devices = GetClientDevices();
   for (auto& addressable_device : addressable_devices) {
     ASSERT_THAT(client_devices, ::testing::Contains(addressable_device));
   }

@@ -1227,7 +1227,7 @@ static std::vector<std::vector<PJRT_Buffer*>> Convert2DCppBuffersToCBuffers(
 }
 
 static std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>
-Convert2DCBuffersToCppBuffers(PJRT_Buffer*** c_lists, size_t outer_size,
+Convert2DCBuffersToCppBuffers(PJRT_Buffer** const* c_lists, size_t outer_size,
                               int inner_size, xla::PjRtCApiClient* client) {
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> ret;
   for (size_t i = 0; i < outer_size; ++i) {
@@ -2096,8 +2096,8 @@ PjRtCApiTopologyDescription::DeviceDescriptions() const {
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> out;
   out.reserve(args.num_descriptions);
   for (PJRT_DeviceDescription* device_desc :
-       absl::Span<PJRT_DeviceDescription*>(args.descriptions,
-                                           args.num_descriptions)) {
+       absl::Span<PJRT_DeviceDescription* const>(args.descriptions,
+                                                 args.num_descriptions)) {
     out.push_back(
         std::make_unique<PjRtCApiDeviceDescription>(c_api_, device_desc));
   }

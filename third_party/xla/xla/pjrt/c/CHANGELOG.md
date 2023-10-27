@@ -1,5 +1,8 @@
 # PJRT C API changelog
 
+## 0.37 (Oct 27, 2023)
+* Added const to a bunch of lists and value types.
+
 ## 0.36 (Oct 24, 2023)
 * Added PJRT_Client_TopologyDescription
 

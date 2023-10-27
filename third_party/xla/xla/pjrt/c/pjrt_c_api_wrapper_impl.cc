@@ -530,7 +530,7 @@ using ProgramVariant =
 xla::StatusOr<
     std::variant<mlir::OwningOpRef<mlir::ModuleOp>, xla::XlaComputation>>
 ParsePjrtProgram(std::optional<mlir::MLIRContext>& context,
-                 PJRT_Program* program) {
+                 const PJRT_Program* program) {
   auto format_str = absl::string_view(program->format, program->format_size);
   auto module_str = absl::string_view(program->code, program->code_size);
 
@@ -1321,7 +1321,7 @@ static void CRecvCallbackListsToCpp(
 }
 
 static std::vector<std::vector<xla::PjRtBuffer*>> Convert2DCBuffersToCppBuffers(
-    PJRT_Buffer*** c_lists, size_t outer_size, size_t inner_size) {
+    PJRT_Buffer* const* const* c_lists, size_t outer_size, size_t inner_size) {
   std::vector<std::vector<xla::PjRtBuffer*>> cpp_lists;
   cpp_lists.reserve(outer_size);
   for (int i = 0; i < outer_size; ++i) {

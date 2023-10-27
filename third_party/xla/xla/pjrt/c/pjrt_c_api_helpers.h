@@ -142,7 +142,8 @@ xla::StatusOr<std::vector<PJRT_NamedValue>> ConvertToPjRtNamedValueList(
     int api_minor_version);
 
 absl::flat_hash_map<std::string, xla::PjRtValueType>
-ConvertFromPjRtNamedValueList(PJRT_NamedValue* c_value_list, size_t list_size);
+ConvertFromPjRtNamedValueList(const PJRT_NamedValue* c_value_list,
+                              size_t list_size);
 
 // Validates that all entries in value_map have a matching name and type in
 // expected_name_and_type. expected_name_and_type may contain extra entries
@@ -176,8 +177,8 @@ xla::PjRtChunk ConvertToCppChunk(const PJRT_Chunk& chunk);
 PJRT_DeviceDescription* GetDeviceDescription(const PJRT_Api* api,
                                              PJRT_Device* device);
 
-absl::Span<PJRT_Memory*> GetAddressableMemories(const PJRT_Api* api,
-                                                PJRT_Device* device);
+absl::Span<PJRT_Memory* const> GetAddressableMemories(const PJRT_Api* api,
+                                                      PJRT_Device* device);
 
 int GetId(const PJRT_Api* api, PJRT_DeviceDescription* device_desc);
 
@@ -243,7 +244,7 @@ xla::StatusOr<xla::Shape> BuildXlaShapeFromC(PJRT_Buffer_Type element_type,
 
 absl::string_view PlatformName(const PJRT_Api* api,
                                const PJRT_TopologyDescription* topo_desc);
-absl::Span<PJRT_DeviceDescription*> DeviceDescriptions(
+absl::Span<PJRT_DeviceDescription* const> DeviceDescriptions(
     const PJRT_Api* api, const PJRT_TopologyDescription* topo_desc);
 
 }  // namespace pjrt
