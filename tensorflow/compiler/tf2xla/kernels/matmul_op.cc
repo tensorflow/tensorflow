@@ -39,6 +39,8 @@ class MatMulOp : public XlaOpKernel {
       : XlaOpKernel(ctx), is_sparse_(is_sparse) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_a", &transpose_a_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_b", &transpose_b_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("grad_a", &grad_a_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("grad_b", &grad_b_));
     if (is_sparse) {
       OP_REQUIRES_OK(ctx, ctx->GetAttr("Ta", &a_type_));
       OP_REQUIRES_OK(ctx, ctx->GetAttr("Tb", &b_type_));
@@ -96,13 +98,15 @@ class MatMulOp : public XlaOpKernel {
             ? xla::PrecisionConfig::DEFAULT
             : xla::PrecisionConfig::HIGHEST;
     ctx->SetOutput(0,
-                   xla::BatchDot(a, transpose_a_, b, transpose_b_, precision));
+                   xla::BatchDot(a, transpose_a_, b, transpose_b_, precision, std::nullopt, grad_a_, grad_b_));
   }
 
  private:
   bool is_sparse_;
   bool transpose_a_;
   bool transpose_b_;
+  bool grad_a_;
+  bool grad_b_;
   DataType a_type_;
   DataType b_type_;
 };

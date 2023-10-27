@@ -246,6 +246,7 @@ StatusOr<xla::XlaOp> MakeXlaForwardConvOp(StringPiece /*type_string*/,
   // Filter has the form [filter_rows, filter_cols, ..., in_depth, out_depth]
   TF_ASSIGN_OR_RETURN(xla::Shape filter_shape, builder->GetShape(filter));
 
+
   // For 2D convolution, there should be 4 dimensions.
   int num_dims = attrs.num_spatial_dims + 2;
   if (input_shape.dimensions_size() != num_dims) {

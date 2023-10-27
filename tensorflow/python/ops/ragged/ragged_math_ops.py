@@ -707,7 +707,8 @@ def reduce_variance(input_tensor: ragged_tensor.Ragged,
         input_tensor, name='input_tensor')
     if input_tensor.dtype.is_complex:
       raise ValueError(
-          'reduce_variance is not supported for RaggedTensors with complex dtypes.'
+          'reduce_variance is not supported for RaggedTensors with complex'
+          ' dtypes.'
       )
     square_of_input = math_ops.square(input_tensor)
     mean_of_square = reduce_mean(square_of_input, axis=axis, keepdims=keepdims)
@@ -801,6 +802,8 @@ def matmul(a: ragged_tensor.RaggedOrDense,
            a_is_sparse=False,
            b_is_sparse=False,
            output_type=None,
+           grad_a=False,
+           grad_b=False,
            name=None):
   """Multiplies matrix `a` by matrix `b`.
 
