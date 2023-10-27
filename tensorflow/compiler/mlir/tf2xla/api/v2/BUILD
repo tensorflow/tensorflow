@@ -140,6 +140,7 @@ tf_cc_test(
     data = [
         "testdata/empty_func.mlir",
         "testdata/invalid_executor.mlir",
+        "testdata/outside_compilation.mlir",
     ],
     deps = [
         ":cluster_tf",

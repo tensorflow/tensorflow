@@ -205,6 +205,7 @@ limitations under the License.
 #include "xla/service/sort_simplifier.h"
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "xla/service/stochastic_convert_decomposer.h"
+#include "xla/service/sub_byte_normalization.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/service/transpose_folding.h"
 #include "xla/service/tree_reduction_rewriter.h"
@@ -648,6 +649,16 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     TF_RETURN_IF_ERROR(sharding_removal_pipeline.Run(module).status());
   }
 
+  {
+    // Int4Packer must be run before the rest of the pipeline since it modifies
+    // the layout of the entry computation inputs/outputs, which is passed to
+    // LayoutAssignment.
+    HloPassPipeline int4_packer_pipeline("Int4Packer pipeline");
+    int4_packer_pipeline.AddPass<SubByteNormalization>(
+        SubByteNormalization::SET_ELEMENT_SIZE);
+    TF_RETURN_IF_ERROR(int4_packer_pipeline.Run(module).status());
+  }
+
   HloPassPipeline pipeline("HLO passes through layout assignment");
   AddHloVerifier(&pipeline, allow_sparse_shapes_);
 
@@ -742,8 +753,15 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicDimensionSimplifier>();
   auto dynamic_padder_options = DynamicPadderOptions();
+  // TODO(pgavin): ShapeChecks were never implemented correctly by the dynamic
+  // padder.  The mode defaults to kIgnore, and it was not overridden for nested
+  // computations (such as while bodies or conditional branches), and so cases
+  // that could not be proven would still be accepted even with compile-time
+  // checks enabled.  Recent changes to the DynamicPadder correctly
+  // override the mode.  However, some models have started to rely on the check
+  // being ignored, and they would be broken if it is enforced.
   dynamic_padder_options.shape_check_mode =
-      DynamicDimensionInference::ShapeCheckMode::kCompileTime;
+      DynamicDimensionInference::ShapeCheckMode::kIgnore;
   pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
   if (!is_mlir_compile) {
     pipeline.AddPass<SelectAndScatterExpander>();

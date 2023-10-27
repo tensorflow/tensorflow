@@ -276,6 +276,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"Hlo Proto", kHloProto},
       {"EdgeTPU Model information", kEdgeTpuModelInfo},
       {"EdgeTPU Model Profile information", kEdgeTpuModelProfileInfo},
+      {"EdgeTPU MLIR", kEdgeTpuMlir},
       // Device capability related.
       {"clock_rate", kDevCapClockRateKHz},
       {"core_count", kDevCapCoreCount},

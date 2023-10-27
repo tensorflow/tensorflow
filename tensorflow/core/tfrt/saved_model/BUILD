@@ -80,7 +80,6 @@ cc_library(
         "@local_xla//xla/pjrt/gpu:se_gpu_pjrt_client",
         "@local_xla//xla/pjrt/gpu:se_gpu_pjrt_compiler",
         "@local_xla//xla/service:compiler",
-        "@local_xla//xla/service/gpu:gpu_target_config",
         "@local_xla//xla/stream_executor/cuda:cuda_platform_id",
         "@tf_runtime//:bef",
         "@tf_runtime//:befexecutor",

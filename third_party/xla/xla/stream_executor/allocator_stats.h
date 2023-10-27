@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/types/optional.h"
 #include "xla/stream_executor/platform/port.h"
 
 namespace stream_executor {

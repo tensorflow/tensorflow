@@ -107,7 +107,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:tf_record",
         "//tensorflow/python/ops:data_flow_ops",
         "//tensorflow/python/ops:io_ops",
         "//tensorflow/python/ops:variables",
@@ -123,7 +123,7 @@ tf_py_strict_test(
     deps = [
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:tf_record",
         "//tensorflow/python/ops:data_flow_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",

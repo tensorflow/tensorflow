@@ -23,6 +23,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/strings/str_cat.h"
@@ -58,6 +59,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/primitive_util.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/dump.h"
 #include "xla/service/hlo_module_config.h"
@@ -190,7 +192,7 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
                                   llvm::Module* module) {
   switch (element_type) {
     case PRED:
-    // Int8 is used as there is no LLVM S4/U4 dtype
+    // i8 is used for S4/U4 as arrays of i4 values are not packed
     case S4:
     case U4:
     case S8:
@@ -311,10 +313,18 @@ StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
                                            llvm::Module* module) {
   const char* data = static_cast<const char*>(literal.untyped_data());
+  int64_t size_bytes = literal.size_bytes();
   CHECK_EQ(module->getDataLayout().isLittleEndian(), tsl::port::kLittleEndian);
-  return llvm::ConstantDataArray::getString(
-      module->getContext(), llvm::StringRef(data, literal.size_bytes()),
-      /*AddNull=*/false);
+  std::vector<char> packed_data;
+  if (primitive_util::Is4BitType(literal.shape().element_type())) {
+    packed_data.resize((size_bytes + 1) / 2);
+    PackInt4(absl::MakeSpan(data, size_bytes), absl::MakeSpan(packed_data));
+    data = packed_data.data();
+    size_bytes = packed_data.size();
+  }
+  return llvm::ConstantDataArray::getString(module->getContext(),
+                                            llvm::StringRef(data, size_bytes),
+                                            /*AddNull=*/false);
 }
 
 llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,

@@ -26,9 +26,24 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 
+* `tf.lite`
+    * Added support for `stablehlo.gather`.
+
 ## Keras
 
-<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+*  `keras.layers.experimental.DynamicEmbedding`
+    * Added `DynamicEmbedding` Keras layer
+    * Added 'UpdateEmbeddingCallback`
+    * `DynamicEmbedding` layer allows for the continuous updating of the
+      vocabulary and embeddings during the training process. This layer
+      maintains a hash table to track the most up-to-date vocabulary based on
+      the inputs received by the layer and the eviction policy. When this layer
+      is used with an `UpdateEmbeddingCallback`, which is a time-based callback,
+      the vocabulary lookup tensor is updated at the time interval set in the
+      `UpdateEmbeddingCallback` based on the most up-to-date vocabulary hash
+      table maintained by the layer. If this layer is not used in conjunction
+      with `UpdateEmbeddingCallback` the behavior of the layer would be same as
+      `keras.layers.Embedding`.
 
 ### Breaking Changes
 

@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/execute_options.pb.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/service/compiler.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -99,6 +100,8 @@ struct CompileOptions {
   // overriding if appropriate.
   using OptionOverride = std::variant<std::string, bool, int64_t, double>;
   std::vector<std::pair<std::string, OptionOverride>> env_option_overrides;
+
+  std::optional<xla::Compiler::TargetConfig> target_config;
 
   // Used to indicate the precision configuration.
   PrecisionConfig::Precision matrix_unit_operand_precision =

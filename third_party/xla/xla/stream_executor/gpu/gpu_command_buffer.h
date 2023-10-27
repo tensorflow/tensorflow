@@ -46,6 +46,8 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
                      const KernelBase& kernel,
                      const KernelArgsArrayBase& args) override;
 
+  tsl::Status AddNestedCommandBuffer(const CommandBuffer& nested) override;
+
   tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                    const DeviceMemoryBase& src,
                                    uint64_t size) override;
@@ -54,6 +56,7 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   tsl::Status Update() override;
 
   GpuGraphExecHandle executable() const { return exec_; }
+  GpuGraphHandle graph() const { return graph_; }
 
   CommandBuffer::Mode mode() const override { return mode_; }
   CommandBuffer::State state() const override { return state_; }
@@ -80,6 +83,10 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   // Returns OK status if command buffer is not finalized and it is still
   // possible to add new commands to it, otherwise returns internal error.
   tsl::Status CheckNotFinalized();
+
+  // Returns OK status if command buffer is primary, otherwise returns internal
+  // error.
+  tsl::Status CheckPrimary();
 
   static_assert(std::is_pointer_v<GpuGraphHandle>,
                 "GpuGraphHandle must be a pointer");

@@ -994,7 +994,7 @@ class Interpreter {
   // The flag is shared across all subgraphs in the interpreter.
   // When the application calls `Cancel`, the flag will be set to false.
   // It "resets" to true at the beginning of each `Invoke`.
-  std::atomic_flag continue_invocation_{false};
+  std::atomic_flag continue_invocation_ = ATOMIC_FLAG_INIT;
   bool cancellation_enabled_ = false;
 };
 

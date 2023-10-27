@@ -80,19 +80,20 @@ absl::Status SparseCoreLayoutStacker::AddTable(tsl::StringPiece table_name,
             << variable_shard_bytes_limit_;
   }
 
+  VLOG(1) << "Table " << table_name << ":";
   int64_t samples_per_sparse_core =
       output_samples / sparse_cores_per_partition_;
   int64_t padded_width = NextLargestMultiple(table_width, 8);
   int64_t padded_height =
       NextLargestMultiple(table_height, num_sparse_cores_ * 8);
-
+  VLOG(1) << "  Original size: " << table_height << "x" << table_width
+          << " padded size: " << padded_height << "x" << padded_width;
   // Find a stack to fit in.
   int64_t activation_mem_bytes =
       sizeof(float) * padded_width * samples_per_sparse_core;
   int64_t variable_shard_bytes =
       sizeof(float) * padded_width * padded_height / num_partitions_;
-  VLOG(1) << "Table " << table_name
-          << ": activation mem = " << activation_mem_bytes
+  VLOG(1) << "  activation mem = " << activation_mem_bytes
           << ", variable shard bytes = " << variable_shard_bytes;
 
   std::vector<TableStack> &candidate_stacks =
@@ -147,8 +148,9 @@ absl::Status SparseCoreLayoutStacker::AddTable(tsl::StringPiece table_name,
   // four. Note that the python library is currently written only to advance by
   // sparse core, so the maximum shift is bounded by the number of sparse cores,
   // not the number of rows.
-  layout.set_rotation_offset(
-      (num_tables_ * num_sparse_cores_ / num_partitions_) % num_sparse_cores_);
+  layout.set_sparse_core_shard_rotation(((stack->incomplete_tables.size() - 1) *
+                                         num_sparse_cores_ / num_partitions_) %
+                                        num_sparse_cores_);
 
   // Can't set total_rows_per_sparse_core_shard yet because we may add more
   // tables to this stack.

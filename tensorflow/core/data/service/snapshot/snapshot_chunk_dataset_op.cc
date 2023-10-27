@@ -19,15 +19,18 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/path.h"
 #include "tsl/platform/tstring.h"
 
 namespace tensorflow {
@@ -39,8 +42,15 @@ constexpr const char* const kCompression = "compression";
 constexpr const char* const kStartIndex = "start_index";
 constexpr const char* const kOutputTypes = "output_types";
 constexpr const char* const kOutputShapes = "output_shapes";
+constexpr const char* const kSnapshotChunkDataset = "SnapshotChunkDataset";
 
 constexpr int64_t kTFRecordReaderOutputBufferSize = 512 << 20;  // 512MB
+
+absl::string_view GetSnapshotPath(absl::string_view chunk_file) {
+  // Snapshot chunks are placed in snapshot_path/chunks/chunk_x.
+  absl::string_view chunk_dir = tsl::io::Dirname(chunk_file);
+  return tsl::io::Dirname(chunk_dir);
+}
 
 // A reader dataset is responsible for reading one chunk file of a snapshot.
 // TODO(b/250921378): Merge this with `snapshot_util::Reader::Dataset`.
@@ -191,9 +201,11 @@ void SnapshotChunkDatasetOp::MakeDataset(OpKernelContext* ctx,
   *output = new SnapshotChunkDatasetOp::Dataset(DatasetContext(ctx), chunk_file,
                                                 compression_, output_types_,
                                                 output_shapes_);
+  metrics::RecordTFDataServiceSnapshotOp(
+      std::string(GetSnapshotPath(chunk_file)), kSnapshotChunkDataset);
 }
 
-REGISTER_KERNEL_BUILDER(Name("SnapshotChunkDataset").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name(kSnapshotChunkDataset).Device(DEVICE_CPU),
                         SnapshotChunkDatasetOp);
 
 }  // namespace

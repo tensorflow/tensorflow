@@ -75,6 +75,13 @@ class CollectivePipeliner : public HloModulePass {
     bool process_different_sized_ops = false;
     PipeliningDirection pipelining_direction = PipeliningDirection::kForward;
     HloPredicate should_process;
+    // Filter acceptable formatting ops for for forward piplining to discard
+    // cases that pipeline formatting operations that we don't want to support.
+    HloPredicate acceptable_formatting;
+    // If the pipelined op has same input/output size the we reuse  the same
+    // buffer we are storing the value in in the output loop for forward
+    // pipelining. This function allows to not do it for certain ops.
+    HloPredicate reuse_pipelined_op_buffer;
   };
   static const char* const kInsertedByPreviousStep;
   static const char* const kSunkByPreviousStep;

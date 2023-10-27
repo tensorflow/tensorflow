@@ -656,43 +656,22 @@ static absl::Status LaunchGraph(
   TF_ASSIGN_OR_RETURN(
       auto g, CaptureGraph(run_options, function_ref, args, user_data()));
 
-  se::gpu::OwnedGpuGraphExec::UpdateResult update_result;
-  {
-    // At this point we have to grab a writer lock, because we might potentially
-    // have concurrent execution of the cached graph instance.
-    absl::WriterMutexLock lock(instance->mutex.get());
+  // At this point we have to grab a writer lock, because we might potentially
+  // have concurrent execution of the cached graph instance.
+  absl::WriterMutexLock lock(instance->mutex.get());
 
-    // Update captured graph executable.
-    TF_ASSIGN_OR_RETURN(update_result, instance->exec.Update(std::move(g)));
-  }
+  // Update captured graph executable.
+  TF_RETURN_IF_ERROR(instance->exec.Update(std::move(g)));
 
-  switch (update_result) {
-    case se::gpu::OwnedGpuGraphExec::UpdateResult::kFallback: {
-      LOG(WARNING) << "Fallback to op-by-op mode because memset node breaks "
-                      "graph update";
-      // Deallocate instance.
-      TF_RETURN_IF_ERROR(instances->Erase(capture.ordinal));
-      // Set ordinal_to_fallback to prevent future instantiation of this graph.
-      TF_ASSIGN_OR_RETURN(
-          std::monostate * fallback,
-          ordinal_to_fallback->GetOrCreate(
-              capture.ordinal,
-              []() -> StatusOr<std::monostate> { return std::monostate{}; }));
-      DCHECK(fallback);
-      return RunGraphOpByOp(run_options, function_ref, fwd_args, user_data());
-    }
-    case se::gpu::OwnedGpuGraphExec::UpdateResult::kSuccess:
-      // Update captured pointer hash.
-      absl::WriterMutexLock lock(instance->mutex.get());
-      instance->ptr_hash = ptrs_hash;
+  // Update captured pointer hash.
+  instance->ptr_hash = ptrs_hash;
 
-      TraceMe trace([&] {
-        return TraceMeEncode("gpu.graph.launch_updated",
-                             {{"ordinal", capture.ordinal}});
-      });
+  TraceMe trace([&] {
+    return TraceMeEncode("gpu.graph.launch_updated",
+                         {{"ordinal", capture.ordinal}});
+  });
 
-      return instance->exec.Launch(run_options->stream());
-  }
+  return instance->exec.Launch(run_options->stream());
 
 #else  // #if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
 

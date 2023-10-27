@@ -17,7 +17,7 @@ limitations under the License.
 #define THIRD_PARTY_DUCC_GOOGLE_THREADING_H_
 
 #include "ducc/src/ducc0/infra/threading.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/ThreadPool"
+#include "unsupported/Eigen/CXX11/ThreadPool"
 
 namespace ducc0 {
 namespace google {

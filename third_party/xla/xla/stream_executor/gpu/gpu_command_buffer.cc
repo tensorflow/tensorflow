@@ -147,6 +147,13 @@ tsl::Status GpuCommandBuffer::CheckNotFinalized() {
   return tsl::OkStatus();
 }
 
+tsl::Status GpuCommandBuffer::CheckPrimary() {
+  if (mode_ != Mode::kPrimary)
+    return absl::InternalError(
+        "Command can't be added to a non-primary command buffer");
+  return tsl::OkStatus();
+}
+
 tsl::Status GpuCommandBuffer::Launch(const ThreadDim& threads,
                                      const BlockDim& blocks,
                                      const KernelBase& kernel,
@@ -174,6 +181,21 @@ tsl::Status GpuCommandBuffer::Launch(const ThreadDim& threads,
         exec_, node, kernel.name(), gpu_func, blocks.x, blocks.y, blocks.z,
         threads.x, threads.y, threads.z, args.number_of_shared_bytes(),
         kernel_params, /*extra=*/nullptr);
+  }
+
+  return UnsupportedStateError(state_);
+}
+
+tsl::Status GpuCommandBuffer::AddNestedCommandBuffer(
+    const CommandBuffer& nested) {
+  TF_RETURN_IF_ERROR(CheckNotFinalized());
+  TF_RETURN_IF_ERROR(CheckPrimary());
+
+  // Adds a child graph node to the graph under construction.
+  if (state_ == State::kCreate) {
+    GpuGraphNodeHandle* node = &nodes_.emplace_back();
+    return GpuDriver::GraphAddChildNode(
+        node, graph_, {}, GpuCommandBuffer::Cast(&nested)->graph());
   }
 
   return UnsupportedStateError(state_);

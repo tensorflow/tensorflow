@@ -359,7 +359,9 @@ StatusOr<bool> AllReduceReassociate::Run(
       }
       if (reduce_scatter_pattern_match) {
         TF_RETURN_IF_ERROR(computation->RemoveInstruction(lhs));
-        TF_RETURN_IF_ERROR(computation->RemoveInstruction(rhs));
+        if (lhs != rhs) {
+          TF_RETURN_IF_ERROR(computation->RemoveInstruction(rhs));
+        }
       }
       TF_RETURN_IF_ERROR(computation->RemoveInstruction(ar0));
       if (ar0 != ar1) {

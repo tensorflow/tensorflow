@@ -416,6 +416,8 @@ PJRT_Error* PJRT_Client_LookupAddressableDevice(
   return nullptr;
 }
 
+// TODO: b/306669267 - this method is deprecated. When can we return
+// unimplemented?
 PJRT_Error* PJRT_LoadedExecutable_Fingerprint(
     PJRT_LoadedExecutable_Fingerprint_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -1113,6 +1115,18 @@ PJRT_Error* PJRT_Executable_OptimizedProgram(
     }
     return nullptr;
   }
+}
+
+PJRT_Error* PJRT_Executable_Fingerprint(
+    PJRT_Executable_Fingerprint_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Executable_Fingerprint_Args",
+      PJRT_Executable_Fingerprint_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_RETURN_IF_ERROR(args->executable->fingerprint.status());
+  args->executable_fingerprint = args->executable->fingerprint.value().c_str();
+  args->executable_fingerprint_size =
+      args->executable->fingerprint.value().size();
+  return nullptr;
 }
 
 PJRT_Error* PJRT_Executable_GetCostAnalysis(
@@ -2154,7 +2168,8 @@ PJRT_TopologyDescription* CreateWrapperDeviceTopology(
 
 PJRT_Executable::PJRT_Executable(
     std::shared_ptr<xla::PjRtExecutable> executable)
-    : executable(std::move(executable)) {}
+    : executable(std::move(executable)),
+      fingerprint(this->executable->FingerprintExecutable()) {}
 
 PJRT_LoadedExecutable::PJRT_LoadedExecutable(
     std::shared_ptr<xla::PjRtLoadedExecutable> executable, PJRT_Client* client)

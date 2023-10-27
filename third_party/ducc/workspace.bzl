@@ -13,7 +13,9 @@ def repo():
         build_file = "//third_party/ducc:ducc.BUILD",
         link_files = {
             "//third_party/ducc:ducc0_custom_lowlevel_threading.h": "google/ducc0_custom_lowlevel_threading.h",
-            "//third_party/ducc:threading.h": "google/threading.h",
+            "//third_party/ducc:fft.h": "google/fft.h",
+            "//third_party/ducc:fft.cc": "google/fft.cc",
             "//third_party/ducc:threading.cc": "google/threading.cc",
+            "//third_party/ducc:threading.h": "google/threading.h",
         },
     )

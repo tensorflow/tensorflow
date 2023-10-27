@@ -171,7 +171,8 @@ constexpr int kVersion = 2;
 
 bool IsTextProtoPath(absl::string_view file_path) {
   return absl::EndsWith(file_path, ".txt") ||
-         absl::EndsWith(file_path, ".textproto");
+         absl::EndsWith(file_path, ".textproto") ||
+         absl::EndsWith(file_path, ".prototxt");
 }
 
 }  // anonymous namespace
@@ -185,15 +186,13 @@ bool IsTextProtoPath(absl::string_view file_path) {
                          std::string(data), &results)             // NOLINT
                    : results.ParseFromString(std::string(data));  // NOLINT
   if (!parse_success) {
-    return Status(absl::StatusCode::kInvalidArgument,
-                  "Failed to parse autotune results string.");
+    return absl::InvalidArgumentError(
+        "Failed to parse autotune results string.");
   }
   if (results.version() != kVersion) {
-    return Status(
-        absl::StatusCode::kInvalidArgument,
-        absl::StrFormat(
-            "Version mismatch in autotune results. Expected %d but was %d",
-            kVersion, results.version()));
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Version mismatch in autotune results. Expected %d but was %d",
+        kVersion, results.version()));
   }
 
   TF_RETURN_IF_ERROR(LoadAutotuneResults(results));

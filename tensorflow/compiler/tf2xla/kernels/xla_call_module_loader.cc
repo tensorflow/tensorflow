@@ -80,7 +80,7 @@ constexpr int kVersionStartSupportCallTFGraph = 5;
 constexpr int kVersionStartSupportDisabledChecks = 6;
 constexpr int kVersionStartSupportShapeAssertions = 7;
 constexpr int kVersionStartSupportUsesShapePolymorphismAttr = 8;
-constexpr int kVersionMinimumSupported = kVersionStartSupportCallTFGraph;
+constexpr int kVersionMinimumSupported = kVersionStartStableHloCompatibility;
 
 // This should match xla.py:call_module_maximum_supported_version
 constexpr int kVersionMaximumSupported =

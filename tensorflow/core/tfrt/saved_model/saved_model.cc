@@ -580,7 +580,8 @@ SavedModelImpl::LoadSavedModel(Options options,
 
   ASSIGN_OR_RETURN_WITH_STAGE_INFO(
       "graph_executor creation", auto graph_executor,
-      GraphExecutor::Create(options.graph_execution_options, *fallback_state,
+      GraphExecutor::Create(options.graph_execution_options,
+                            std::move(fallback_state),
                             std::move(resource_context),
                             std::move(*meta_graph_def.mutable_graph_def()),
                             std::move(kernel_registry)));
@@ -610,13 +611,14 @@ SavedModelImpl::LoadSavedModel(Options options,
     RETURN_IF_ERROR_IN_INIT(RunBytecodeInitializers(
         graph_executor->options(), initializers_and_signatures,
         *loaded_executable, &graph_executor->resource_context(),
-        runner_table.get(), resource_array.get(), *fallback_state));
+        runner_table.get(), resource_array.get(),
+        graph_executor->fallback_state()));
   } else {
     DCHECK(bef_file);
     RETURN_IF_ERROR_IN_INIT(RunBefInitializers(
         graph_executor->options(), initializers_and_signatures, bef_file.get(),
         &graph_executor->resource_context(), runner_table.get(),
-        resource_array.get(), *fallback_state));
+        resource_array.get(), graph_executor->fallback_state()));
   }
 
   const auto init_duration = absl::Now() - init_start_time;
@@ -631,8 +633,8 @@ SavedModelImpl::LoadSavedModel(Options options,
       std::move(bef), std::move(bef_file), std::move(bytecode),
       std::move(loaded_executable),
       std::move(initializers_and_signatures.signature_map),
-      std::move(fallback_state), std::move(runner_table),
-      std::move(resource_array), std::move(graph_executor))};
+      std::move(runner_table), std::move(resource_array),
+      std::move(graph_executor))};
 }
 
 SavedModelImpl::SavedModelImpl(
@@ -640,8 +642,7 @@ SavedModelImpl::SavedModelImpl(
     tensorflow::MetaGraphDef meta_graph_def, tfrt::BefBuffer bef,
     tfrt::RCReference<tfrt::BEFFile> bef_file, mlrt::bc::Buffer bytecode,
     std::optional<mlrt::LoadedExecutable> loaded_executable,
-    SignatureMap signatures, std::unique_ptr<FallbackState> fallback_state,
-    std::unique_ptr<OpKernelRunnerTable> runner_table,
+    SignatureMap signatures, std::unique_ptr<OpKernelRunnerTable> runner_table,
     std::unique_ptr<tfd::FallbackResourceArray> resource_array,
     std::unique_ptr<GraphExecutor> graph_executor)
     : SavedModel(std::move(options), std::move(graph_executor)),
@@ -655,7 +656,6 @@ SavedModelImpl::SavedModelImpl(
           options_.graph_execution_options.runtime->core_runtime()
               ->GetHostContext()),
       signatures_(std::move(signatures)),
-      fallback_state_(std::move(fallback_state)),
       runner_table_(std::move(runner_table)),
       resource_array_(std::move(resource_array)) {}
 
@@ -755,7 +755,7 @@ tensorflow::Status SavedModelImpl::Run(
       options_.graph_execution_options, run_options, name, *symbol_uids, func,
       loaded_executable, inputs, outputs, resource_context,
       client_graph_resource_context, runner_table, resource_array, runtime(),
-      *fallback_state_, fallback_state_->process_function_library_runtime(),
+      fallback_state(), fallback_state().process_function_library_runtime(),
       &req_deadline_tracker_, /*stream_callback_id=*/std::nullopt);
 }
 
@@ -991,7 +991,7 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
     ASSIGN_OR_RETURN_IN_COMPILE(
         loading_result->bytecode_buffer,
         tensorflow::mlrt_compiler::ConvertTfMlirToBytecode(
-            options_.graph_execution_options.compile_options, *fallback_state_,
+            options_.graph_execution_options.compile_options, fallback_state(),
             module.get(), model_context));
     mlrt::bc::Executable executable(loading_result->bytecode_buffer.data());
     loading_result->bytecode_executable =
@@ -1002,11 +1002,11 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
         *loading_result->bytecode_executable,
         &graph_executor_->resource_context(),
         loading_result->runner_table.get(),
-        loading_result->resource_array.get(), *fallback_state_));
+        loading_result->resource_array.get(), fallback_state()));
   } else {
     TF_RETURN_IF_ERROR(tensorflow::ConvertTfMlirToBef(
         options_.graph_execution_options.compile_options, module.get(),
-        &loading_result->bef, model_context, fallback_state_.get()));
+        &loading_result->bef, model_context, &fallback_state()));
     ASSIGN_OR_RETURN_IN_COMPILE(
         loading_result->bef_file,
         tfrt::CreateBefFileFromBefBuffer(
@@ -1016,7 +1016,7 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
         /*initializers_and_signatures=*/{}, loading_result->bef_file.get(),
         &graph_executor_->resource_context(),
         loading_result->runner_table.get(),
-        loading_result->resource_array.get(), *fallback_state_));
+        loading_result->resource_array.get(), fallback_state()));
   }
   symbol_uids.tfrt_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
   loading_result->symbol_uids = std::move(symbol_uids);

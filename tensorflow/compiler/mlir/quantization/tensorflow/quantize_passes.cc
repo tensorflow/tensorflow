@@ -67,8 +67,9 @@ void AddConvertTpuToCpuModelPasses(mlir::PassManager &pm) {
 // with passes that expect TF format. This also allows the StableHLO ops to be
 // exported as a TF SavedModel.
 void AddCallModuleSerializationPasses(mlir::PassManager &pm) {
-  // TODO: b/299545836 - Include ReplaceStablehloSubgraphWithXlaCallModuleOpPass
-  // as in bug.
+  pm.addPass(
+      mlir::quant::stablehlo::
+          createReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass());
   pm.addPass(mlir::TF::CreateXlaCallModuleSerializationPass());
 }
 }  // namespace

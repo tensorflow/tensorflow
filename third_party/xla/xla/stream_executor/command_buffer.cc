@@ -31,6 +31,10 @@ limitations under the License.
 
 namespace stream_executor {
 
+CommandBuffer::~CommandBuffer() = default;
+CommandBuffer::CommandBuffer(CommandBuffer&&) = default;
+CommandBuffer& CommandBuffer::operator=(CommandBuffer&&) = default;
+
 /*static*/ tsl::StatusOr<CommandBuffer> CommandBuffer::Create(
     StreamExecutor* executor, Mode mode) {
   TF_ASSIGN_OR_RETURN(
@@ -76,6 +80,10 @@ tsl::Status CommandBuffer::Launch(const ThreadDim& threads,
                                   const KernelBase& kernel,
                                   const KernelArgsArrayBase& args) {
   return implementation_->Launch(threads, blocks, kernel, args);
+}
+
+tsl::Status CommandBuffer::AddNestedCommandBuffer(const CommandBuffer& nested) {
+  return implementation_->AddNestedCommandBuffer(nested);
 }
 
 tsl::Status CommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,

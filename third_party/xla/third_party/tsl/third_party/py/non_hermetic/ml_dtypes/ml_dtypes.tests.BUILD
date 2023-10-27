@@ -55,7 +55,7 @@ cc_test(
         "//:float8",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@org_tensorflow//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -66,6 +66,6 @@ cc_test(
     deps = [
         "//:int4",
         "@com_google_googletest//:gtest_main",
-        "@org_tensorflow//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )

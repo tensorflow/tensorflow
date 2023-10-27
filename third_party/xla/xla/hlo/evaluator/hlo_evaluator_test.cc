@@ -14,25 +14,44 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 
+#include <array>
+#include <complex>
+#include <cstdint>
 #include <initializer_list>
+#include <limits>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/array2d.h"
+#include "xla/array3d.h"
+#include "xla/array4d.h"
 #include "xla/client/xla_builder.h"
+#include "xla/comparison_util.h"
+#include "xla/debug_options_flags.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/permutation_util.h"
-#include "xla/reference_util.h"
+#include "xla/primitive_util.h"
+#include "xla/service/dynamic_dimension_inference.h"
 #include "xla/service/hlo_element_type_converter.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/shape_inference.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
-#include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
@@ -41,8 +60,8 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 
@@ -4369,7 +4388,7 @@ ENTRY main {
   
   data_dynamic = s32[<=4] set-dimension-size(data, size), dimensions={0}
 
-  sum = s32[4] add(data_dynamic, data)
+  sum = s32[<=4] add(data_dynamic, data)
 
   ROOT dynamic_size = s32[] get-dimension-size(sum), dimensions={0}
 }

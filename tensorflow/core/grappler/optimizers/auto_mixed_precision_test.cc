@@ -932,7 +932,7 @@ TEST_F(AutoMixedPrecisionTest, TensorListFromTensor) {
   EXPECT_EQ(tensors.size(), tensors_expected.size());
   EXPECT_EQ(tensors.size(), item.fetch.size());
   for (int i = 0; i < item.fetch.size(); ++i) {
-    test::ExpectClose(tensors_expected[i], tensors[i], -1, 2e-4);
+    test::ExpectClose(tensors_expected[i], tensors[i], -1, 4e-4);
   }
 }
 

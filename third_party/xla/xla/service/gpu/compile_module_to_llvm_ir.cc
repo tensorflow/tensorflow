@@ -376,6 +376,10 @@ Status CompileModuleToLlvmIrImpl(
   if (emit_ir_from_hlo) {
     TF_RET_CHECK(!IsXlaRuntimeExecutableEnabled(hlo_module->config()));
     results->allocations = results->buffer_assignment->Allocations();
+    results->output_shape = hlo_module->result_shape();
+    TF_ASSIGN_OR_RETURN(
+        results->output_info,
+        GetOutputInfo(*hlo_module, *results->buffer_assignment));
   } else {
     TF_RETURN_IF_ERROR(GetMlirAllocationInfo(
         entry_function, &results->allocations, &results->output_info,

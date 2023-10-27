@@ -820,7 +820,7 @@ LogicalResult matchAndRewriteDotLikeOp(DotLikeOp op, DotLikeOpAdaptor adaptor,
   double combined_scale_fp = lhs_element_quant_type.getScale() *
                              rhs_element_quant_type.getScale() /
                              res_element_quant_type.getScale();
-  if (std::abs(combined_scale_fp - 1.0) > 0.005) {
+  if (std::abs(combined_scale_fp - 1.0) > 0.001) {
     Value combined_scale = rewriter.create<mhlo::ConstantOp>(
         op->getLoc(), rewriter.getF32FloatAttr(combined_scale_fp));
 
