@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 35
+#define PJRT_API_MINOR 36
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -282,6 +282,7 @@ typedef struct PJRT_Client PJRT_Client;
 typedef struct PJRT_Device PJRT_Device;
 typedef struct PJRT_Memory PJRT_Memory;
 typedef struct PJRT_DeviceDescription PJRT_DeviceDescription;
+typedef struct PJRT_TopologyDescription PJRT_TopologyDescription;
 typedef struct PJRT_Executable PJRT_Executable;
 typedef struct PJRT_LoadedExecutable PJRT_LoadedExecutable;
 typedef struct PJRT_Buffer PJRT_Buffer;
@@ -417,6 +418,20 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_PlatformVersion_Args,
 // (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
 typedef PJRT_Error* PJRT_Client_PlatformVersion(
     PJRT_Client_PlatformVersion_Args* args);
+
+struct PJRT_Client_TopologyDescription_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Client* client;
+  // Is owned by and has the same lifetime as `client`.
+  PJRT_TopologyDescription* topology;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_TopologyDescription_Args, topology);
+
+// Returns the topology description of the runtime topology. The returned
+// topology is owned by the client and should not be deleted by the caller.
+typedef PJRT_Error* PJRT_Client_TopologyDescription(
+    PJRT_Client_TopologyDescription_Args* args);
 
 struct PJRT_Client_Devices_Args {
   size_t struct_size;
@@ -1829,8 +1844,6 @@ typedef PJRT_Error* PJRT_CopyToDeviceStream_CurrentBytes(
 
 // ------------------------------ Device Topology ------------------------------
 
-typedef struct PJRT_TopologyDescription PJRT_TopologyDescription;
-
 struct PJRT_TopologyDescription_Create_Args {
   size_t struct_size;
   void* priv;
@@ -2111,10 +2124,12 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateViewOfDeviceBuffer);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Fingerprint);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_TopologyDescription);
 } PJRT_Api;
 
 const size_t PJRT_Api_STRUCT_SIZE =
-    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Client_CreateViewOfDeviceBuffer);
+    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Client_TopologyDescription);
 
 #undef _PJRT_API_STRUCT_FIELD
 

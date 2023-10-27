@@ -375,6 +375,17 @@ PJRT_Error* PJRT_Client_PlatformVersion(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Client_TopologyDescription(
+    PJRT_Client_TopologyDescription_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Client_TopologyDescription_Args",
+      PJRT_Client_TopologyDescription_Args_STRUCT_SIZE, args->struct_size));
+
+  PJRT_RETURN_IF_ERROR(args->client->topology.status());
+  args->topology = args->client->topology->get();
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Client_Devices(PJRT_Client_Devices_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Client_Devices_Args", PJRT_Client_Devices_Args_STRUCT_SIZE,
@@ -2136,8 +2147,19 @@ static void AttachDevicesAndMemories(PJRT_Client* c_client) {
   }
 }
 
+static xla::StatusOr<std::unique_ptr<PJRT_TopologyDescription>>
+GetStatusOrTopologyDescription(const xla::PjRtClient& cpp_client) {
+  xla::StatusOr<const xla::PjRtTopologyDescription*> status_or_cpp_topo =
+      cpp_client.GetTopologyDescription();
+  if (!status_or_cpp_topo.ok()) {
+    return status_or_cpp_topo.status();
+  }
+  return std::unique_ptr<PJRT_TopologyDescription>(
+      CreateWrapperDeviceTopology(*status_or_cpp_topo));
+}
+
 PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client) {
-  PJRT_Client* c_client = new PJRT_Client{std::move(cpp_client)};
+  PJRT_Client* c_client = new PJRT_Client(std::move(cpp_client));
   PopulatePjrtClientDevices(c_client);
   PopulatePjrtClientMemories(c_client);
   AttachDevicesAndMemories(c_client);
@@ -2145,9 +2167,9 @@ PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client) {
 }
 
 PJRT_TopologyDescription* CreateWrapperDeviceTopology(
-    std::unique_ptr<xla::PjRtTopologyDescription> cpp_topology) {
+    const xla::PjRtTopologyDescription* cpp_topology) {
   PJRT_TopologyDescription* c_topology =
-      new PJRT_TopologyDescription{std::move(cpp_topology)};
+      new PJRT_TopologyDescription{/*owned_topology=*/nullptr, cpp_topology};
   c_topology->cpp_descriptions = c_topology->topology->DeviceDescriptions();
   c_topology->descriptions.reserve(c_topology->cpp_descriptions.size());
   c_topology->description_pointers.reserve(c_topology->cpp_descriptions.size());
@@ -2164,7 +2186,19 @@ PJRT_TopologyDescription* CreateWrapperDeviceTopology(
   return c_topology;
 }
 
+PJRT_TopologyDescription* CreateWrapperDeviceTopology(
+    std::unique_ptr<xla::PjRtTopologyDescription> cpp_topology) {
+  PJRT_TopologyDescription* topo_desc =
+      CreateWrapperDeviceTopology(cpp_topology.get());
+  topo_desc->owned_topology = std::move(cpp_topology);
+  return topo_desc;
+}
+
 }  // namespace pjrt
+
+PJRT_Client::PJRT_Client(std::unique_ptr<xla::PjRtClient> cpp_client)
+    : client(std::move(cpp_client)),
+      topology(pjrt::GetStatusOrTopologyDescription(*client)) {}
 
 PJRT_Executable::PJRT_Executable(
     std::shared_ptr<xla::PjRtExecutable> executable)

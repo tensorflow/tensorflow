@@ -42,7 +42,13 @@ struct PJRT_Error {
 };
 
 struct PJRT_TopologyDescription {
-  std::unique_ptr<xla::PjRtTopologyDescription> topology;
+  // nullptr iff the PjRtTopologyDescription isn't owned by the caller. The PJRT
+  // C API sometimes returns a topo desc that's owned by the caller and must be
+  // freed using PJRT_TopologyDescription_Destroy
+  // (e.g. PJRT_TopologyDescription_Create), and sometimes returns a topo desc
+  // that's owned by something else (e.g. PJRT_Client_TopologyDescription).
+  std::unique_ptr<xla::PjRtTopologyDescription> owned_topology;
+  const xla::PjRtTopologyDescription* topology;
   std::vector<std::unique_ptr<const xla::PjRtDeviceDescription>>
       cpp_descriptions;
   std::vector<PJRT_DeviceDescription> descriptions;
@@ -71,6 +77,9 @@ struct PJRT_Client {
   // `owned_memories`.
   absl::flat_hash_map<xla::PjRtMemorySpace*, PJRT_Memory*>
       c_memory_from_cpp_memory;
+  xla::StatusOr<std::unique_ptr<PJRT_TopologyDescription>> topology;
+
+  explicit PJRT_Client(std::unique_ptr<xla::PjRtClient> cpp_client);
 };
 
 // PJRT_DeviceDescriptions are owned by their corresponding PJRT_Device.
@@ -212,6 +221,8 @@ PJRT_Error* PJRT_Client_Destroy(PJRT_Client_Destroy_Args* args);
 PJRT_Error* PJRT_Client_PlatformName(PJRT_Client_PlatformName_Args* args);
 PJRT_Error* PJRT_Client_ProcessIndex(PJRT_Client_ProcessIndex_Args* args);
 PJRT_Error* PJRT_Client_PlatformVersion(PJRT_Client_PlatformVersion_Args* args);
+PJRT_Error* PJRT_Client_TopologyDescription(
+    PJRT_Client_TopologyDescription_Args* args);
 PJRT_Error* PJRT_Client_Devices(PJRT_Client_Devices_Args* args);
 PJRT_Error* PJRT_Client_AddressableDevices(
     PJRT_Client_AddressableDevices_Args* args);
@@ -380,10 +391,21 @@ PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 std::string ProgramFormatErrorMsg(absl::string_view program_format);
 
 // Creates a C PJRT topology from a C++ PJRT topology.
-// The returned topology is owned by the caller and
-// should be destroyed with PJRT_TopologyDescription_Destroy.
+//
+// The returned topology is owned by the caller and should be destroyed with
+// PJRT_TopologyDescription_Destroy. This can be used to implement functions
+// like PJRT_TopologyDescription_Create that return an owned topo desc.
 PJRT_TopologyDescription* CreateWrapperDeviceTopology(
     std::unique_ptr<xla::PjRtTopologyDescription> cpp_topology);
+
+// Creates a C PJRT topology from a C++ PJRT topology.
+//
+// The returned topology is *not* owned by the caller and should *not* be
+// destroyed with PJRT_TopologyDescription_Destroy. This can be used to
+// implement functions like PJRT_Client_TopologyDescription that return a topo
+// desc owned by something else.
+PJRT_TopologyDescription* CreateWrapperDeviceTopology(
+    const xla::PjRtTopologyDescription* cpp_topology);
 
 // Creates a C PJRT client from a C++ PJRT client and creates C PJRT devices
 // from cpp_client's devices. The returned client is owned by the caller and
@@ -569,6 +591,8 @@ constexpr PJRT_Api CreatePjrtApi(
       /*PJRT_Client_CreateViewOfDeviceBuffer=*/
       pjrt::PJRT_Client_CreateViewOfDeviceBuffer,
       /*PJRT_Executable_Fingerprint=*/pjrt::PJRT_Executable_Fingerprint,
+      /*PJRT_Client_TopologyDescription= */
+      pjrt::PJRT_Client_TopologyDescription,
   };
 }
 
