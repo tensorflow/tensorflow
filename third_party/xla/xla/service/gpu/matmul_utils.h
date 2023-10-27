@@ -18,10 +18,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
+#include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -164,6 +167,42 @@ StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
     mlir::lmhlo_gpu::CublasLtMatmulEpilogue epilogue);
 
 }  // namespace gpublas_lt
+
+// We should use this in code instead of AutotuneResult::TritonGemmKey.
+// This has some advantages, for example it can be used in hashmaps.
+struct TritonGemmConfig {
+  TritonGemmConfig() = default;
+  TritonGemmConfig(int block_m, int block_n, int block_k, int split_k,
+                   int num_stages, int num_warps);
+
+  int block_m = 0;
+  int block_n = 0;
+  int block_k = 0;
+  int split_k = 0;
+  int num_stages = 0;
+  int num_warps = 0;
+
+ private:
+  auto ToTuple() const {
+    return std::make_tuple(block_m, block_n, block_k, split_k, num_stages,
+                           num_warps);
+  }
+
+ public:
+  static TritonGemmConfig FromProto(const AutotuneResult::TritonGemmKey& proto);
+  AutotuneResult::TritonGemmKey ToProto() const;
+
+  std::string ToString() const;
+
+  bool operator==(const TritonGemmConfig& other) const {
+    return ToTuple() == other.ToTuple();
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const TritonGemmConfig& config) {
+    return H::combine(std::move(h), config.ToTuple());
+  }
+};
 
 }  // namespace gpu
 }  // namespace xla

@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -25,6 +26,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
@@ -726,6 +728,45 @@ StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
 }
 
 }  // namespace gpublas_lt
+
+TritonGemmConfig::TritonGemmConfig(int block_m, int block_n, int block_k,
+                                   int split_k, int num_stages, int num_warps)
+    : block_m(block_m),
+      block_n(block_n),
+      block_k(block_k),
+      split_k(split_k),
+      num_stages(num_stages),
+      num_warps(num_warps) {}
+
+/*static*/ TritonGemmConfig TritonGemmConfig::FromProto(
+    const AutotuneResult::TritonGemmKey& proto) {
+  TritonGemmConfig config;
+  config.block_m = proto.block_m();
+  config.block_n = proto.block_n();
+  config.block_k = proto.block_k();
+  config.split_k = proto.split_k();
+  config.num_stages = proto.num_stages();
+  config.num_warps = proto.num_warps();
+  return config;
+}
+
+AutotuneResult::TritonGemmKey TritonGemmConfig::ToProto() const {
+  AutotuneResult::TritonGemmKey key;
+  key.set_block_m(block_m);
+  key.set_block_n(block_n);
+  key.set_block_k(block_k);
+  key.set_split_k(split_k);
+  key.set_num_stages(num_stages);
+  key.set_num_warps(num_warps);
+  return key;
+}
+
+std::string TritonGemmConfig::ToString() const {
+  return absl::StrCat("{block_m:", block_m, ",block_n:", block_n,
+                      ",block_k:", block_k, ",split_k:", split_k,
+                      ",num_stages:", num_stages, ",num_warps:", num_warps,
+                      "}");
+}
 
 }  // namespace gpu
 }  // namespace xla

@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/instruction_fusion.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/split_k_gemm_rewriter.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo_module_config.h"
@@ -94,21 +95,6 @@ namespace gpu {
 using ProfilingOutput = AutotunerCompileUtil::ProfilingOutput;
 
 namespace {
-
-// Constructs an autotuning key for a gemm performed in Triton.
-static AutotuneResult::TritonGemmKey GemmKey(int64_t block_m, int64_t block_n,
-                                             int64_t block_k, int64_t split_k,
-                                             int64_t num_stages,
-                                             int64_t num_warps) {
-  AutotuneResult::TritonGemmKey key;
-  key.set_block_m(block_m);
-  key.set_block_n(block_n);
-  key.set_block_k(block_k);
-  key.set_split_k(split_k);
-  key.set_num_stages(num_stages);
-  key.set_num_warps(num_warps);
-  return key;
-}
 
 // Not a hard limit, just an assumption that should stay valid.
 constexpr int kMaxTileSize = 512;
@@ -157,10 +143,10 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
 
     // This cannot be the "else" branch of the previous "if".
     if (backend_config.has_triton_gemm_config()) {
-      const AutotuneResult::TritonGemmKey& tiling =
-          backend_config.triton_gemm_config();
-      if (tiling.split_k() > 1) {
-        TF_RETURN_IF_ERROR(MakeDotSplitKBatch(hlo, tiling));
+      const TritonGemmConfig config =
+          TritonGemmConfig::FromProto(backend_config.triton_gemm_config());
+      if (config.split_k > 1) {
+        TF_RETURN_IF_ERROR(MakeDotSplitKBatch(hlo, config));
       }
     }
 
@@ -174,11 +160,11 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
 
 // This contains all alternative Triton GEMM configs related to one fusion.
 struct GemmConfigSet {
-  std::vector<AutotuneResult::TritonGemmKey> configs;
+  std::vector<TritonGemmConfig> configs;
 };
 
 struct ExecutableCandidate {
-  AutotuneResult::TritonGemmKey config;
+  TritonGemmConfig config;
   // Not nullptr.
   std::unique_ptr<Executable> executable;
 };
@@ -256,9 +242,9 @@ constexpr std::array<int, 4> NUM_STAGES = {1, 2, 3, 4};
 constexpr std::array<int, 4> NUM_WARPS = {2, 4, 8, 16};
 constexpr std::array<int, 5> SPLIT_K = {1, 2, 4, 8, 16};
 
-std::vector<AutotuneResult::TritonGemmKey> GetExhaustiveMatmulAutotuneConfigs(
+std::vector<TritonGemmConfig> GetExhaustiveMatmulAutotuneConfigs(
     const se::CudaComputeCapability compute_capability, const int max_split_k) {
-  std::vector<AutotuneResult::TritonGemmKey> configs;
+  std::vector<TritonGemmConfig> configs;
   bool mma_layout_v2 =
       compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE);
   for (int num_warps : NUM_WARPS) {
@@ -278,8 +264,8 @@ std::vector<AutotuneResult::TritonGemmKey> GetExhaustiveMatmulAutotuneConfigs(
               if (split_k > max_split_k) {
                 continue;
               }
-              auto config = GemmKey(block_m, block_n, block_k, split_k,
-                                    num_stages, num_warps);
+              auto config = TritonGemmConfig(block_m, block_n, block_k, split_k,
+                                             num_stages, num_warps);
               configs.push_back(std::move(config));
             }
           }
@@ -290,54 +276,55 @@ std::vector<AutotuneResult::TritonGemmKey> GetExhaustiveMatmulAutotuneConfigs(
   return configs;
 }
 
-std::vector<AutotuneResult::TritonGemmKey> GetFixedMatmulAutotuneConfigs(
+std::vector<TritonGemmConfig> GetFixedMatmulAutotuneConfigs(
     const se::CudaComputeCapability compute_capability, const int max_split_k) {
-  std::vector<AutotuneResult::TritonGemmKey> configs = {
-      GemmKey(32, 32, 256, 1, 1, 4), GemmKey(64, 32, 32, 16, 1, 4),
-      GemmKey(32, 64, 64, 4, 1, 4),  GemmKey(128, 128, 64, 4, 1, 4),
-      GemmKey(16, 16, 256, 1, 1, 4), GemmKey(16, 128, 32, 16, 1, 4),
-      GemmKey(16, 64, 128, 1, 1, 4), GemmKey(16, 128, 32, 8, 1, 4),
-      GemmKey(16, 16, 512, 1, 1, 4), GemmKey(32, 16, 512, 1, 1, 4),
-      GemmKey(64, 32, 64, 1, 2, 8)};
+  // Shorter name for better formatting.
+  using Config = TritonGemmConfig;
+  std::vector<Config> configs = {
+      Config(32, 32, 256, 1, 1, 4), Config(64, 32, 32, 16, 1, 4),
+      Config(32, 64, 64, 4, 1, 4),  Config(128, 128, 64, 4, 1, 4),
+      Config(16, 16, 256, 1, 1, 4), Config(16, 128, 32, 16, 1, 4),
+      Config(16, 64, 128, 1, 1, 4), Config(16, 128, 32, 8, 1, 4),
+      Config(16, 16, 512, 1, 1, 4), Config(32, 16, 512, 1, 1, 4),
+      Config(64, 32, 64, 1, 2, 8)};
   if (compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
     absl::c_copy(
-        std::vector<AutotuneResult::TritonGemmKey>{
-            GemmKey(128, 256, 32, 1, 3, 8),  GemmKey(256, 128, 32, 1, 3, 8),
-            GemmKey(256, 64, 32, 1, 4, 4),   GemmKey(64, 256, 32, 1, 4, 4),
-            GemmKey(128, 64, 32, 1, 4, 4),   GemmKey(64, 128, 32, 1, 4, 4),
-            GemmKey(256, 128, 128, 1, 3, 8), GemmKey(256, 64, 128, 1, 4, 4),
-            GemmKey(64, 256, 128, 1, 4, 4),  GemmKey(128, 128, 128, 1, 4, 4),
-            GemmKey(128, 64, 64, 1, 4, 4),   GemmKey(64, 128, 64, 1, 4, 4),
-            GemmKey(128, 32, 64, 1, 4, 4),   GemmKey(64, 32, 64, 1, 4, 4),
-            GemmKey(32, 128, 32, 1, 4, 4),   GemmKey(128, 128, 32, 1, 4, 4),
-            GemmKey(16, 16, 256, 1, 3, 4),   GemmKey(128, 128, 64, 2, 1, 8),
-            GemmKey(64, 64, 64, 1, 2, 4),    GemmKey(16, 64, 256, 8, 1, 4),
-            GemmKey(256, 256, 128, 1, 3, 8)},
+        std::vector<Config>{
+            Config(128, 256, 32, 1, 3, 8),  Config(256, 128, 32, 1, 3, 8),
+            Config(256, 64, 32, 1, 4, 4),   Config(64, 256, 32, 1, 4, 4),
+            Config(128, 64, 32, 1, 4, 4),   Config(64, 128, 32, 1, 4, 4),
+            Config(256, 128, 128, 1, 3, 8), Config(256, 64, 128, 1, 4, 4),
+            Config(64, 256, 128, 1, 4, 4),  Config(128, 128, 128, 1, 4, 4),
+            Config(128, 64, 64, 1, 4, 4),   Config(64, 128, 64, 1, 4, 4),
+            Config(128, 32, 64, 1, 4, 4),   Config(64, 32, 64, 1, 4, 4),
+            Config(32, 128, 32, 1, 4, 4),   Config(128, 128, 32, 1, 4, 4),
+            Config(16, 16, 256, 1, 3, 4),   Config(128, 128, 64, 2, 1, 8),
+            Config(64, 64, 64, 1, 2, 4),    Config(16, 64, 256, 8, 1, 4),
+            Config(256, 256, 128, 1, 3, 8)},
         std::back_inserter(configs));
   }
   if (compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER)) {
     configs.erase(
         std::remove_if(configs.begin(), configs.end(),
-                       [](const AutotuneResult::TritonGemmKey& config) {
-                         return (config.block_m() * config.block_n() / 256) %
-                                    config.num_warps() !=
+                       [](const Config& config) {
+                         return (config.block_m * config.block_n / 256) %
+                                    config.num_warps !=
                                 0;
                        }),
         configs.end());
   }
-  configs.erase(
-      std::remove_if(configs.begin(), configs.end(),
-                     [&](const AutotuneResult::TritonGemmKey& config) {
-                       return config.split_k() > max_split_k;
-                     }),
-      configs.end());
+  configs.erase(std::remove_if(configs.begin(), configs.end(),
+                               [&](const Config& config) {
+                                 return config.split_k > max_split_k;
+                               }),
+                configs.end());
   return configs;
 }
 
 int GetLogEveryN() { return VLOG_IS_ON(3) ? 100 : 1000; }
 
 StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
-    const AutotuneResult::TritonGemmKey& key,
+    const TritonGemmConfig& config,
     const se::DeviceDescription& gpu_device_info,
     const HloFusionInstruction* fusion, DebugOptions debug_opts) {
   std::unique_ptr<HloModule> new_module =
@@ -351,11 +338,11 @@ StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
 
   TF_ASSIGN_OR_RETURN(auto backend_config,
                       cloned_dot_fusion->backend_config<FusionBackendConfig>());
-  *backend_config.mutable_triton_gemm_config() = key;
+  *backend_config.mutable_triton_gemm_config() = config.ToProto();
   TF_RETURN_IF_ERROR(cloned_dot_fusion->set_backend_config(backend_config));
 
-  if (key.split_k() > 1) {
-    TF_RETURN_IF_ERROR(MakeDotSplitKBatch(cloned_dot_fusion, key));
+  if (config.split_k > 1) {
+    TF_RETURN_IF_ERROR(MakeDotSplitKBatch(cloned_dot_fusion, config));
     GpuFloatSupport bf16_support(BF16);
     FloatNormalization float_normalization(&bf16_support);
     TF_RETURN_IF_ERROR(float_normalization.Run(new_module.get()).status());
@@ -440,12 +427,11 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
   };
 
   // Returns true on success.
-  auto compile =
-      [&](const HloFusionInstruction* fusion,
-          const AutotuneResult::TritonGemmKey& conf) -> StatusOr<bool> {
-    CHECK(conf.block_m() <= kMaxTileSize);
-    CHECK(conf.block_n() <= kMaxTileSize);
-    CHECK(conf.block_k() <= kMaxTileSize);
+  auto compile = [&](const HloFusionInstruction* fusion,
+                     const TritonGemmConfig& conf) -> StatusOr<bool> {
+    CHECK_LE(conf.block_m, kMaxTileSize);
+    CHECK_LE(conf.block_n, kMaxTileSize);
+    CHECK_LE(conf.block_k, kMaxTileSize);
     // TODO(b/296884861): Reenable GPU runtime, when it will have much smaller
     // memory overhead (regarding the size of the executables).
     // We can also remove the force_disable_gpu_runtime argument at that
@@ -506,13 +492,12 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
       const HloFusionInstruction* fusion = key_value.first;
       const GemmConfigSet& gemm_config_set = key_value.second;
 
-      for (const AutotuneResult::TritonGemmKey& conf :
-           gemm_config_set.configs) {
+      for (const TritonGemmConfig& conf : gemm_config_set.configs) {
         thread_pool->Schedule([&, fusion] {
           StatusOr<bool> has_executable = compile(fusion, conf);
           TF_CHECK_OK(has_executable.status())
               << "Failure occured when compiling fusion " << fusion->name()
-              << " with config '" << conf.ShortDebugString()
+              << " with config '" << conf.ToString()
               << "'\nFused HLO computation:\n"
               << fusion->fused_instructions_computation()->ToString();
           log(has_executable.value());
@@ -543,8 +528,7 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
       const HloFusionInstruction* fusion = key_value.first;
       const GemmConfigSet& gemm_config_set = key_value.second;
 
-      for (const AutotuneResult::TritonGemmKey& gemm_config :
-           gemm_config_set.configs) {
+      for (const TritonGemmConfig& gemm_config : gemm_config_set.configs) {
         TF_ASSIGN_OR_RETURN(bool has_executable, compile(fusion, gemm_config));
         log(has_executable);
       }
@@ -636,10 +620,10 @@ StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
   VLOG(2) << "Running " << executable_count << " configs for " << fusion->name()
           << ".";
   for (const ExecutableCandidate& candidate : executable_set.candidates) {
-    VLOG(5) << "Trying triton tiling: " << candidate.config.ShortDebugString();
+    VLOG(5) << "Trying triton tiling: " << candidate.config.ToString();
 
     AutotuneResult res;
-    *res.mutable_triton() = candidate.config;
+    *res.mutable_triton() = candidate.config.ToProto();
 
     TF_ASSIGN_OR_RETURN(std::optional<ProfilingOutput> profiling_output,
                         util.ProfileExecutable(candidate.executable.get(),
@@ -659,7 +643,7 @@ StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
     if (profiling_output->duration >= absl::Seconds(1)) {
       LOG(WARNING) << "Slow kernel for " << fusion->name()
                    << " took: " << profiling_output->duration
-                   << ". config: " << candidate.config.ShortDebugString();
+                   << ". config: " << candidate.config.ToString();
     }
     *res.mutable_run_time() =
         tsl::proto_utils::ToDurationProto(profiling_output->duration);
@@ -730,7 +714,7 @@ Status DumpAutotunedFusions(const AutotuneConfig& config,
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       util.ExtractModule([&](const DebugOptions& debug_opts) {
                         return TritonGemmAutotuneExtractor(
-                            result.triton(),
+                            TritonGemmConfig::FromProto(result.triton()),
                             config.GetExecutor()->GetDeviceDescription(),
                             fusion, debug_opts);
                       }));
@@ -788,7 +772,7 @@ Status Autotune(const AutotuneConfig& config, AutotunerCompileUtil& util,
 
 }  // anonymous namespace
 
-std::vector<AutotuneResult::TritonGemmKey> GetPossibleMatmulAutotuneConfigs(
+std::vector<TritonGemmConfig> GetPossibleMatmulAutotuneConfigs(
     const HloDotInstruction& dot,
     const se::CudaComputeCapability compute_capability,
     const DebugOptions& debug_options, bool exhaustive_tiling_search) {
@@ -796,7 +780,7 @@ std::vector<AutotuneResult::TritonGemmKey> GetPossibleMatmulAutotuneConfigs(
   constexpr int kMinGemmElements = 32 * 32;
   if (ShapeUtil::ElementsIn(dot.operand(0)->shape()) <= kMinGemmElements &&
       ShapeUtil::ElementsIn(dot.operand(1)->shape()) <= kMinGemmElements) {
-    return {GemmKey(32, 32, 32, 1, 1, 4)};
+    return {TritonGemmConfig(32, 32, 32, 1, 1, 4)};
   }
   // Split-K optimization enables more even utilization of a GPU in cases
   // where tiling just the non-contracting dimensions of a GEMM does not create

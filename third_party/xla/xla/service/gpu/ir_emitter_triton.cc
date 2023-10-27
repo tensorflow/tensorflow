@@ -851,8 +851,7 @@ const TensorIterationSpec::DimIterationSpec* GetLhsNoncontractingSplitSpec(
 //   split-K, batch, non-contracting LHS, non-contracting RHS,
 // where split-K and batch are optional.
 struct MatMulDims {
-  MatMulDims(const AutotuneResult::TritonGemmKey& config,
-             const HloDotInstruction& dot,
+  MatMulDims(const TritonGemmConfig& config, const HloDotInstruction& dot,
              const TritonFusionAnalysis& analysis);
 
   std::optional<int> out_split_k_dim_idx = std::nullopt;
@@ -880,7 +879,7 @@ struct MatMulDims {
 
 // Structure for parameters relating to the MatMul launch grid.
 struct MatMulLaunchConfig {
-  explicit MatMulLaunchConfig(const AutotuneResult::TritonGemmKey& config,
+  explicit MatMulLaunchConfig(const TritonGemmConfig& config,
                               const HloDotInstruction& dot,
                               const MatMulDims& dims);
 
@@ -891,15 +890,15 @@ struct MatMulLaunchConfig {
   mt::ProgramIDDim noncontracting_program_id_dim;
 };
 
-MatMulDims::MatMulDims(const AutotuneResult::TritonGemmKey& config,
+MatMulDims::MatMulDims(const TritonGemmConfig& config,
                        const HloDotInstruction& dot,
                        const TritonFusionAnalysis& analysis) {
-  if (config.split_k() > 1) {
+  if (config.split_k > 1) {
     // split-k is always the first logical dimension.
     out_split_k_dim_idx = 0;
   }
 
-  int64_t num_split_k_dims = config.split_k() > 1 ? 1 : 0;
+  int64_t num_split_k_dims = config.split_k > 1 ? 1 : 0;
   const auto& dims = dot.dot_dimension_numbers();
   lhs_contracting_dim_idx = dims.lhs_contracting_dimensions(0);
   lhs_noncontracting_dim_idx =
@@ -935,7 +934,7 @@ MatMulDims::MatMulDims(const AutotuneResult::TritonGemmKey& config,
           ->at(0)
           .count;
   // Contracting dimension length.
-  if (config.split_k() > 1 &&
+  if (config.split_k > 1 &&
       dot.operand(0)->operand(0)->opcode() == HloOpcode::kPad) {
     // Unpadded LHS shape:  [..., k, ...]
     // Padded LHS shape:    [..., padded_k, ...]
@@ -946,7 +945,7 @@ MatMulDims::MatMulDims(const AutotuneResult::TritonGemmKey& config,
     k = unpadded_lhs_shape.dimensions(dims.lhs_contracting_dimensions(0) - 1);
   } else {
     k = dot.operand(0)->shape().dimensions(dims.lhs_contracting_dimensions(0)) *
-        config.split_k();
+        config.split_k;
   }
 
   auto* lhs_noncontracting_split_spec =
@@ -972,11 +971,11 @@ MatMulDims::MatMulDims(const AutotuneResult::TritonGemmKey& config,
   CHECK_GE(n, 1);
 }
 
-MatMulLaunchConfig::MatMulLaunchConfig(
-    const AutotuneResult::TritonGemmKey& config, const HloDotInstruction& dot,
-    const MatMulDims& dims)
-    : grid_m((dims.m + config.block_m() - 1) / config.block_m()),
-      grid_n((dims.n + config.block_n() - 1) / config.block_n()) {
+MatMulLaunchConfig::MatMulLaunchConfig(const TritonGemmConfig& config,
+                                       const HloDotInstruction& dot,
+                                       const MatMulDims& dims)
+    : grid_m((dims.m + config.block_m - 1) / config.block_m),
+      grid_n((dims.n + config.block_n - 1) / config.block_n) {
   int64_t batch_size = dims.lhs_noncontracting_split.value_or(
       dims.out_batch_dim_idx.has_value()
           ? dot.shape().dimensions(*dims.out_batch_dim_idx)
@@ -994,29 +993,29 @@ MatMulLaunchConfig::MatMulLaunchConfig(
   if (large_batch) {
     batch_program_id_dim = mt::ProgramIDDim::X;
     noncontracting_program_id_dim = mt::ProgramIDDim::Y;
-    launch_dims = {{batch_size, grid_m * grid_n, config.split_k()},
-                   {config.num_warps() * WarpSize(), 1, 1}};
+    launch_dims = {{batch_size, grid_m * grid_n, config.split_k},
+                   {config.num_warps * WarpSize(), 1, 1}};
   } else {
     batch_program_id_dim = mt::ProgramIDDim::Y;
     noncontracting_program_id_dim = mt::ProgramIDDim::X;
     launch_dims =
-        LaunchDimensions{{grid_m * grid_n, batch_size, config.split_k()},
-                         {config.num_warps() * WarpSize(), 1, 1}};
+        LaunchDimensions{{grid_m * grid_n, batch_size, config.split_k},
+                         {config.num_warps * WarpSize(), 1, 1}};
   }
 }
 
-void ValidateMatMulConfig(const AutotuneResult::TritonGemmKey& config,
+void ValidateMatMulConfig(const TritonGemmConfig& config,
                           const HloDotInstruction& dot) {
-  CHECK_GE(config.split_k(), 1);
-  CHECK_GE(config.block_m(), 16);
-  CHECK_GE(config.block_k(), 16);
-  CHECK_GE(config.block_n(), 16);
+  CHECK_GE(config.split_k, 1);
+  CHECK_GE(config.block_m, 16);
+  CHECK_GE(config.block_k, 16);
+  CHECK_GE(config.block_n, 16);
 
   const auto& dims = dot.dot_dimension_numbers();
   int num_batch_dims =
-      dims.lhs_batch_dimensions_size() - (config.split_k() > 1 ? 1 : 0);
+      dims.lhs_batch_dimensions_size() - (config.split_k > 1 ? 1 : 0);
   CHECK_LE(num_batch_dims, 1);
-  if (config.split_k() > 1) {
+  if (config.split_k > 1) {
     // Split-K dimension has to be the first batch one and have an index
     // just before the contracting one.
     const int lhs_split_k_dim_idx = dims.lhs_contracting_dimensions(0) - 1;
@@ -1024,9 +1023,9 @@ void ValidateMatMulConfig(const AutotuneResult::TritonGemmKey& config,
     // Size of this dimension has to match the split_k value.
     CHECK_EQ(dims.lhs_batch_dimensions(0), lhs_split_k_dim_idx);
     CHECK_EQ(dims.rhs_batch_dimensions(0), rhs_split_k_dim_idx);
-    CHECK_EQ(config.split_k(),
+    CHECK_EQ(config.split_k,
              dot.operand(0)->shape().dimensions(lhs_split_k_dim_idx));
-    CHECK_EQ(config.split_k(),
+    CHECK_EQ(config.split_k,
              dot.operand(1)->shape().dimensions(rhs_split_k_dim_idx));
   }
 
@@ -1036,7 +1035,7 @@ void ValidateMatMulConfig(const AutotuneResult::TritonGemmKey& config,
   CHECK_EQ(dims.rhs_contracting_dimensions_size(), 1);
 
   CHECK_EQ(dot.operand(0)->shape().rank(),
-           2 + (config.split_k() > 1 ? 1 : 0) + num_batch_dims);
+           2 + (config.split_k > 1 ? 1 : 0) + num_batch_dims);
 }
 
 struct Side {
@@ -1254,8 +1253,7 @@ class MatMulEmitterHelper {
 LaunchDimensions GetMatMulLaunchDimensions(
     const TritonFusionAnalysis& analysis,
     absl::Span<const HloInstruction* const> roots,
-    const FusionBoundaryFn& fusion_boundary,
-    const AutotuneResult::TritonGemmKey& config) {
+    const FusionBoundaryFn& fusion_boundary, const TritonGemmConfig& config) {
   const auto* dot = static_cast<const HloDotInstruction*>(
       HloFindIf(roots, fusion_boundary, [](const HloInstruction& node) {
         return node.opcode() == HloOpcode::kDot;
@@ -1270,8 +1268,7 @@ LaunchDimensions GetMatMulLaunchDimensions(
 Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
                   const TritonFusionAnalysis& analysis,
                   const HloComputation* computation, mlir::triton::FuncOp fn,
-                  const AutotuneResult::TritonGemmKey& config,
-                  int shmem_budget) {
+                  const TritonGemmConfig& config, int shmem_budget) {
   const HloDotInstruction* dot_instr = DynCast<HloDotInstruction>(
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot));
   // Use 32-bit indexing if addressing any of the inputs or the output (which
@@ -1280,7 +1277,7 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
   bool use_64bit_indexing =
       ShapeUtil::ElementsIn(dot_instr->operand(0)->shape()) > INT_MAX ||
       ShapeUtil::ElementsIn(dot_instr->operand(1)->shape()) > INT_MAX ||
-      ShapeUtil::ElementsIn(dot_instr->shape()) * config.split_k() > INT_MAX;
+      ShapeUtil::ElementsIn(dot_instr->shape()) * config.split_k > INT_MAX;
   Type index_ty = builder.getIntegerType(use_64bit_indexing ? 64 : 32);
 
   const HloInstruction* root = dot_instr->parent()->root_instruction();
@@ -1294,10 +1291,10 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
   Type i32_ty = b.getI32Type();
 
   ValidateMatMulConfig(config, *dot_instr);
-  const int split_k = config.split_k();
-  const int block_m = config.block_m();
-  const int block_k = config.block_k();
-  const int block_n = config.block_n();
+  const int split_k = config.split_k;
+  const int block_m = config.block_m;
+  const int block_k = config.block_k;
+  const int block_n = config.block_n;
 
   const MatMulDims dims(config, *dot_instr, analysis);
   const MatMulLaunchConfig launch_config(config, *dot_instr, dims);
@@ -1525,8 +1522,7 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
 
 LaunchDimensions GetSoftMaxLaunchDimensions(
     absl::Span<const HloInstruction* const> roots,
-    const FusionBoundaryFn& fusion_boundary,
-    const AutotuneResult::TritonGemmKey& config) {
+    const FusionBoundaryFn& fusion_boundary, const TritonGemmConfig& config) {
   const HloInstruction* reduce =
       HloFindIf(roots, fusion_boundary, [](const HloInstruction& node) {
         return node.opcode() == HloOpcode::kReduce;
@@ -1539,13 +1535,13 @@ LaunchDimensions GetSoftMaxLaunchDimensions(
     num_rows *= reduce_input_shape.dimensions_minor(minor_axis);
   }
 
-  return {{num_rows, 1, 1}, {config.num_warps() * WarpSize(), 1, 1}};
+  return {{num_rows, 1, 1}, {config.num_warps * WarpSize(), 1, 1}};
 }
 
 Status EmitSoftMax(mlir::OpBuilder builder, absl::string_view libdevice_path,
                    const TritonFusionAnalysis& analysis,
                    const HloComputation* computation, mlir::triton::FuncOp fn,
-                   const AutotuneResult::TritonGemmKey& config, int) {
+                   const TritonGemmConfig& config, int) {
   const HloInstruction* root = computation->root_instruction();
   auto loc = mlir::NameLoc::get(builder.getStringAttr(root->name()));
   ImplicitLocOpBuilder b(loc, builder);
@@ -1669,9 +1665,8 @@ std::string GetLibdevicePath(const HloComputation* hlo_computation) {
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
     const HloComputation* hlo_computation,
-    const se::DeviceDescription& device_info,
-    const AutotuneResult::TritonGemmKey& config, TritonIrEmitter ir_emitter,
-    mlir::MLIRContext& mlir_context) {
+    const se::DeviceDescription& device_info, const TritonGemmConfig& config,
+    TritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context) {
   mlir_context.loadDialect<mt::TritonDialect>();
   mlir::OpBuilder b(&mlir_context);
   auto loc = mlir::NameLoc::get(b.getStringAttr(hlo_computation->name()));
@@ -1722,9 +1717,9 @@ StatusOr<TritonWrapperResult> TritonWrapper(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
     const HloComputation* hlo_computation, absl::string_view fusion_kind,
     const se::CudaComputeCapability& cc,
-    const se::DeviceDescription& device_info,
-    const AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
-    TritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context) {
+    const se::DeviceDescription& device_info, const TritonGemmConfig& config,
+    llvm::Module* llvm_module, TritonIrEmitter ir_emitter,
+    mlir::MLIRContext& mlir_context) {
   if (fusion_kind == kTritonGemmFusionKind) {
     // This is a heuristic that serves as a proxy for register usage and code
     // size.
@@ -1751,9 +1746,9 @@ StatusOr<TritonWrapperResult> TritonWrapper(
     // See go/tiling-heuristic for more details.
     constexpr int64_t kComplexityHeuristicLimit = 9000;
     int64_t complexity_heuristic_value =
-        (config.block_m() * config.block_n() +
-         (config.block_m() + config.block_n()) * config.block_k()) /
-        config.num_warps();
+        (config.block_m * config.block_n +
+         (config.block_m + config.block_n) * config.block_k) /
+        config.num_warps;
     VLOG(2) << "Complexity heuristic: " << complexity_heuristic_value;
     if (complexity_heuristic_value > kComplexityHeuristicLimit) {
       return ResourceExhausted("Tiling complexity heuristic exceeded: %d > %d",
@@ -1768,7 +1763,7 @@ StatusOr<TritonWrapperResult> TritonWrapper(
                          config, ir_emitter, mlir_context));
 
   VLOG(3) << hlo_computation->ToString(HloPrintOptions::ShortParsable());
-  VLOG(2) << config.ShortDebugString();
+  VLOG(2) << config.ToString();
 
   // Compile Triton kernel to LLVM.
   std::optional<llvm::raw_fd_ostream> log_stream;
@@ -1814,7 +1809,7 @@ StatusOr<TritonWrapperResult> TritonWrapper(
     }
   }
 
-  CreateTritonPipeline(pm, cc, config.num_warps(), config.num_stages());
+  CreateTritonPipeline(pm, cc, config.num_warps, config.num_stages);
   if (log_stream.has_value()) {
     pm.printAsTextualPipeline(log_stream.value());
     log_stream->write("\n\n", 2);
