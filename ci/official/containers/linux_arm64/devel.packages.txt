@@ -3,6 +3,7 @@ autoconf
 automake
 build-essential
 ca-certificates
+cmake
 llvm-17
 clang-17
 clang-format-12
