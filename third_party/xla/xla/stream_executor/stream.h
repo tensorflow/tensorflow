@@ -617,18 +617,6 @@ class Stream {
       absl::Span<const DeviceMemory<float> *const> input_data,
       DeviceMemory<float> *output_data);
 
-  // Depth to space takes an X by Y image with depth D*M² and changes it to an
-  // MX x MY image with depth D. Each input location (x,y) with depth D*M² in
-  // the input image is changed to an MxM contiguous area in the output image,
-  // with the values being laid out in raster order specified by
-  // DepthToSpaceLayout, and will have a new depth of D.
-  // See the DoDepthToSpace comment for more information.
-  Stream &ThenDepthToSpace(const dnn::BatchDescriptor &input_dimensions,
-                           const DeviceMemory<float> &input_data,
-                           const dnn::DepthToSpaceLayout &depth_to_space_layout,
-                           const int sqrt_depth_reduction,
-                           DeviceMemory<float> *output_data);
-
   Stream &ThenElementwiseOperate(
       dnn::ElementwiseOperation operation,
       absl::Span<const dnn::BatchDescriptor> input_dimensions,

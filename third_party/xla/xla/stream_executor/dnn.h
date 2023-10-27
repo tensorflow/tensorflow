@@ -146,15 +146,6 @@ enum class RnnDirectionMode {
   kRnnBidirectional = 1,
 };
 
-// Relevant to DepthToSpace and SpaceToDepth. This is the write layout when
-// performing depth to space and the read layout when performing space to depth.
-// It's specified with most-major dimension first and most-minor dimension last.
-// In DepthToSpace, the D*M^2 values are read in and then, for DepthHeightWidth,
-// written out to the output patch, by varying first width, then height, then
-// depth. In C array format, it looks like [depth][height][width]. See
-// DepthToSpace comment for more information.
-enum class DepthToSpaceLayout { DepthHeightWidth };
-
 class TensorDescriptor {
  public:
   TensorDescriptor() = default;
@@ -1941,35 +1932,6 @@ class DnnSupport {
       Stream* stream, absl::Span<const dnn::BatchDescriptor> input_dimensions,
       absl::Span<const DeviceMemory<float>* const> input_data,
       DeviceMemory<float>* output_data) = 0;
-
-  // Depth to space takes an X by Y image with depth D*M^2 and changes it to an
-  // MX x MY image with depth D. Each input location (x,y) with depth D*M^2 in
-  // the input image is changed to an MxM contiguous area in the output image,
-  // with the values being laid out in the raster order by DepthToSpaceLayout,
-  // and will have a new depth of D.
-  //
-  // Example.
-  // M=2, Din =8, Xin=2, Yin=2. Xout=4, Yout=4,  Dout=2
-  // DepthHeightWidth layout
-  // Values within a 'cell' are at different depths and same x & y.
-  // Input:
-  // abcdefgh  ijklmnop
-  // qrstuvwx  yz012345
-  // Output:
-  // ae bf im jn
-  // cg dh ko lp
-  // qu rv y2 z3
-  // sw tx 04 15
-  //
-  // sqrt_depth_reduction: 'M' in the comment above
-  virtual bool DoDepthToSpace(Stream* stream,
-                              const dnn::BatchDescriptor& input_dimensions,
-                              const DeviceMemory<float>& input_data,
-                              const DepthToSpaceLayout& depth_to_space_layout,
-                              const int& sqrt_depth_reduction,
-                              DeviceMemory<float>* output_data) {
-    return false;
-  }
 
   // Computes the specified operation (e.g. addition or multiplication)
   // between corresponding elements in the inputs and stores the result in the

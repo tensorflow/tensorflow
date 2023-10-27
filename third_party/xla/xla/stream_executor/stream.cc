@@ -180,14 +180,6 @@ std::string ToVlogString(absl::Span<T> elements) {
   return ToVlogString(absl::Span<const T>(elements));
 }
 
-std::string ToVlogString(dnn::DepthToSpaceLayout depth_to_space_layout) {
-  switch (depth_to_space_layout) {
-    case dnn::DepthToSpaceLayout::DepthHeightWidth:
-      return "DepthToSpaceLayout::DepthHeightWidth";
-  }
-  return "unknown DepthToSpaceLayout";
-}
-
 std::string ToVlogString(dnn::DataType data_type) {
   switch (data_type) {
     case dnn::DataType::kFloat:
@@ -714,25 +706,6 @@ Stream &Stream::ThenDepthConcatenate(
   if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
     CheckError(dnn->DoDepthConcatenate(this, input_dimensions, input_data,
                                        output_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenDepthToSpace(
-    const dnn::BatchDescriptor &input_dimensions,
-    const DeviceMemory<float> &input_data,
-    const dnn::DepthToSpaceLayout &depth_to_space_layout,
-    const int sqrt_depth_reduction, DeviceMemory<float> *output_data) {
-  VLOG_CALL(PARAM(input_dimensions), PARAM(input_data),
-            PARAM(depth_to_space_layout), PARAM(sqrt_depth_reduction),
-            PARAM(output_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoDepthToSpace(this, input_dimensions, input_data,
-                                   depth_to_space_layout, sqrt_depth_reduction,
-                                   output_data));
   } else {
     SetErrorAndLogNoDnnSupport();
   }
