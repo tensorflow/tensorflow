@@ -6277,9 +6277,15 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Evict(
   CHECK_GT(request.allocation_value->allocation_sequence()->size(), 0);
   MemorySpaceAssignment::Allocation* prev_allocation =
       request.allocation_value->allocation_sequence()->back().get();
-  // TODO(b/306478911): prev_allocation can never be a prefetch, or we would be
-  // using an incorrect start time (we would need to wait until the copies
-  // finish)
+  // We do not ever expect an Evict() to be immediately proceeded by a prefetch.
+  // If that case ever occurs, the eviction_exclusive_start_time below will be
+  // calculated incorrectly, as it will need to come after the prefetch finishes
+  // coping data.
+  CHECK(!prev_allocation->is_copy_like_allocation())
+      << "Evict has been given copy-like previous allocation.\nEvict "
+         "candidate:\n"
+      << request.allocation_value->ToString() << "\nPrevious allocation:\n"
+      << prev_allocation->ToString();
 
   // The previous allocation's inclusive start time is the eviction's exclusive
   // start time to ensure that the value is created before we start copying
