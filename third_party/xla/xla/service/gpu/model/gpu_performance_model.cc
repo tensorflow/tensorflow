@@ -649,7 +649,7 @@ GpuPerformanceWithCollectiveModel::ComputeCollectiveTime(
 
   if (HloDataflowAnalysis::IsAsynchronousOperationDone(instr.opcode())) {
     VLOG(8) << "Returning 0 cost for async done op " << instr.name();
-    return absl::Microseconds(0);
+    return absl::ZeroDuration();
   }
   switch (instr.opcode()) {
     case HloOpcode::kAllReduce:
