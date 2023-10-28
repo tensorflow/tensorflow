@@ -70,7 +70,7 @@ class Handler;
 
 class Ffi {
  public:
-  static Binding<> Binding();
+  static Binding<> Bind();
 
   virtual ~Ffi() = default;
   virtual XLA_FFI_Error* Call(const XLA_FFI_CallFrame* call_frame) const = 0;
@@ -163,7 +163,7 @@ class Binding {
   std::vector<std::string> attrs_;  // names of bound attributes
 };
 
-inline Binding<> Ffi::Binding() { return xla::ffi::Binding<>(); }
+inline Binding<> Ffi::Bind() { return xla::ffi::Binding<>(); }
 
 //===----------------------------------------------------------------------===//
 // Arguments decoding implementation

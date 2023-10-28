@@ -30,7 +30,7 @@ namespace xla::ffi {
 
 TEST(FfiTest, ForwardError) {
   auto call_frame = CallFrameBuilder().Build(GetXlaFfiApi(), /*ctx=*/nullptr);
-  auto handler = Ffi::Binding().To([] { return absl::AbortedError("Ooops!"); });
+  auto handler = Ffi::Bind().To([] { return absl::AbortedError("Ooops!"); });
   auto status = Unwrap(handler->Call(call_frame.call_frame()));
   ASSERT_EQ(status.message(), "Ooops!");
 }
@@ -40,7 +40,7 @@ TEST(FfiTest, WrongNumArgs) {
   builder.AddBufferArg(se::DeviceMemoryBase(nullptr), PrimitiveType::F32, {});
   auto call_frame = builder.Build(GetXlaFfiApi(), /*ctx=*/nullptr);
 
-  auto handler = Ffi::Binding().Arg<Buffer>().Arg<Buffer>().To(
+  auto handler = Ffi::Bind().Arg<Buffer>().Arg<Buffer>().To(
       [](Buffer, Buffer) { return absl::OkStatus(); });
 
   auto status = Unwrap(handler->Call(call_frame.call_frame()));
@@ -54,7 +54,7 @@ TEST(FfiTest, WrongNumAttrs) {
   builder.AddF32Attr("f32", 42.0f);
   auto call_frame = builder.Build(GetXlaFfiApi(), /*ctx=*/nullptr);
 
-  auto handler = Ffi::Binding().Attr<int32_t>("i32").To(
+  auto handler = Ffi::Bind().Attr<int32_t>("i32").To(
       [](int32_t) { return absl::OkStatus(); });
 
   auto status = Unwrap(handler->Call(call_frame.call_frame()));
@@ -76,7 +76,7 @@ TEST(FfiTest, BuiltinAttributes) {
     return absl::OkStatus();
   };
 
-  auto handler = Ffi::Binding()
+  auto handler = Ffi::Bind()
                      .Attr<int32_t>("i32")
                      .Attr<float>("f32")
                      .Attr<std::string_view>("str")
@@ -95,7 +95,7 @@ TEST(FfiTest, DecodingErrors) {
 
   auto fn = [](int32_t, float, std::string_view) { return absl::OkStatus(); };
 
-  auto handler = Ffi::Binding()
+  auto handler = Ffi::Bind()
                      .Attr<int32_t>("not_i32_should_fail")
                      .Attr<float>("f32")
                      .Attr<std::string_view>("not_str_should_fail")
@@ -122,7 +122,7 @@ TEST(FfiTest, BufferArgument) {
     return absl::OkStatus();
   };
 
-  auto handler = Ffi::Binding().Arg<Buffer>().To(fn);
+  auto handler = Ffi::Bind().Arg<Buffer>().To(fn);
   auto status = Unwrap(handler->Call(call_frame.call_frame()));
   TF_ASSERT_OK(status);
 }
