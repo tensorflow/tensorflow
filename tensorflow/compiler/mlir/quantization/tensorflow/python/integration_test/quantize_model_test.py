@@ -2531,7 +2531,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     expected_outputs = model.matmul(input_data)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
-      for _ in range(5):
+      for _ in range(100):
         yield {
             'input_tensor': rng.uniform(
                 low=0.0, high=1.0, size=static_input_shape
@@ -2563,8 +2563,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     # Tests that the quantized graph outputs similar values. The rtol value is
     # arbitrary.
-    # TODO: b/308056437 - rtol of 0.3 is too large. Minimize the numeric error.
-    self.assertAllClose(new_outputs, expected_outputs, rtol=0.3)
+    self.assertAllClose(new_outputs, expected_outputs, rtol=0.02)
 
   @parameterized.named_parameters(
       {
