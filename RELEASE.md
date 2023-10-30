@@ -1,3 +1,9 @@
+# Release 2.14.1
+
+## Security
+
+*   Updates `curl` to `8.4.0` to handle [CVE-2023-38545](https://curl.se/docs/CVE-2023-38545.html) and [CVE-2023-38546](https://curl.se/docs/CVE-2023-38546.html).
+
 # Release 2.14.0
 
 ## Tensorflow
