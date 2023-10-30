@@ -457,7 +457,8 @@ class Stream {
       std::optional<dnn::TensorDescriptor> activation_descriptor,
       std::optional<dnn::TensorDescriptor> mask_descriptor,
       std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed) {
+      std::optional<double> dropout_rate, std::optional<int64_t> seed,
+      bool is_flash_attention, bool is_causal_mask) {
     dnn::DnnSupport *dnn_support = parent_->AsDnn();
     if (!dnn_support) {
       return absl::UnimplementedError("DNN library is not found.");
@@ -466,7 +467,8 @@ class Stream {
         this, algorithm_desc, kind, bmm1_lhs_descriptor, bmm1_rhs_descriptor,
         bmm2_rhs_descriptor, intermediate_bmm2_lhs_descriptor,
         output_descriptor, activation_descriptor, mask_descriptor,
-        bias_descriptor, scale, dropout_rate, seed);
+        bias_descriptor, scale, dropout_rate, seed, is_flash_attention,
+        is_causal_mask);
   }
 
   tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABackwardRunner>>
@@ -480,10 +482,13 @@ class Stream {
       const dnn::TensorDescriptor &d_bmm1_lhs_descriptor,
       const dnn::TensorDescriptor &d_bmm1_rhs_descriptor,
       const dnn::TensorDescriptor &d_bmm2_rhs_descriptor,
-      const dnn::TensorDescriptor &d_s_descriptor,
+      std::optional<dnn::TensorDescriptor> d_s_descriptor,
       std::optional<dnn::TensorDescriptor> mask_descriptor,
-      std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed) {
+      std::optional<dnn::TensorDescriptor> d_bias_descriptor,
+      std::optional<dnn::TensorDescriptor> fwd_output_descriptor,
+      std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed,
+      bool is_flash_attention, bool is_causal_mask) {
     dnn::DnnSupport *dnn_support = parent_->AsDnn();
     if (!dnn_support) {
       return absl::UnimplementedError("DNN library is not found.");
@@ -493,8 +498,9 @@ class Stream {
         bmm1_grad_gemm2_rhs_descriptor, bmm2_grad_gemm1_lhs_descriptor,
         bmm2_grad_gemm2_rhs_descriptor, d_output_descriptor,
         d_bmm1_lhs_descriptor, d_bmm1_rhs_descriptor, d_bmm2_rhs_descriptor,
-        d_s_descriptor, mask_descriptor, d_bias_descriptor, scale, dropout_rate,
-        seed);
+        d_s_descriptor, mask_descriptor, d_bias_descriptor,
+        fwd_output_descriptor, bias_descriptor, scale, dropout_rate, seed,
+        is_flash_attention, is_causal_mask);
   }
 
   Stream &ThenSeparableConvolve(

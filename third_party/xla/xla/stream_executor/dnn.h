@@ -995,8 +995,11 @@ using FusedMHABackwardSignature = void(
     DeviceMemoryBase /* d_output_data */,
     DeviceMemoryBase /* d_BMM1_inputA_data */,
     DeviceMemoryBase /* d_BMM1_inputB_data */,
-    DeviceMemoryBase /* d_BMM2_inputB_data */, DeviceMemoryBase /* d_s_data */,
-    DeviceMemoryBase /* mask_data */, DeviceMemoryBase /* d_bias_data */);
+    DeviceMemoryBase /* d_BMM2_inputB_data */, DeviceMemoryBase /* d_S_data */,
+    DeviceMemoryBase /* softmax_sum_data */,
+    DeviceMemoryBase /* d_Q_accum_data */, DeviceMemoryBase /* mask_data */,
+    DeviceMemoryBase /* d_bias_data */, DeviceMemoryBase /* fwd_output_data */,
+    DeviceMemoryBase /* bias_data */);
 using FusedMHABackwardRunner = OpRunner<FusedMHABackwardSignature>;
 
 // Describes the configuration for the algorithms that will used.
@@ -1657,7 +1660,8 @@ class DnnSupport {
       std::optional<dnn::TensorDescriptor> activation_descriptor,
       std::optional<dnn::TensorDescriptor> mask_descriptor,
       std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed);
+      std::optional<double> dropout_rate, std::optional<int64_t> seed,
+      bool is_flash_attention, bool is_causal_mask);
 
   virtual tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABackwardRunner>>
   FusedMHABackwardRunnerFromDesc(
@@ -1671,10 +1675,13 @@ class DnnSupport {
       const TensorDescriptor& d_bmm1_lhs_descriptor,
       const TensorDescriptor& d_bmm1_rhs_descriptor,
       const TensorDescriptor& d_bmm2_rhs_descriptor,
-      const TensorDescriptor& d_s_descriptor,
+      std::optional<dnn::TensorDescriptor> d_s_descriptor,
       std::optional<dnn::TensorDescriptor> mask_descriptor,
-      std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed);
+      std::optional<dnn::TensorDescriptor> d_bias_descriptor,
+      std::optional<dnn::TensorDescriptor> fwd_output_descriptor,
+      std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed,
+      bool is_flash_attention, bool is_causal_mask);
 
   virtual bool GetMIOpenConvolveAlgorithms(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
