@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string_view>
 
 // IWYU pragma: begin_exports
 #include "xla/ffi/api/api.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/status.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
@@ -83,6 +85,14 @@ struct ResultEncoding<Status> {
 // Unwraps XLA FFI error and returns an underlying status.
 // Note: if not null, `error` is freed.
 Status Unwrap(XLA_FFI_Error* error);
+
+//===----------------------------------------------------------------------===//
+// XLA FFI registry
+//===----------------------------------------------------------------------===//
+
+// Returns registered FFI handler for a given name, or an error if it's not
+// found in the static registry.
+StatusOr<XLA_FFI_Handler*> FindHandler(std::string_view name);
 
 //===----------------------------------------------------------------------===//
 // XLA FFI Api Implementation

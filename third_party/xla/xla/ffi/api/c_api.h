@@ -208,8 +208,25 @@ struct XLA_FFI_CallFrame {
 
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_CallFrame, attrs);
 
+//===----------------------------------------------------------------------===//
+// FFI handler
+//===----------------------------------------------------------------------===//
+
 // External functions registered with XLA as FFI handlers.
 typedef XLA_FFI_Error* XLA_FFI_Handler(XLA_FFI_CallFrame* call_frame);
+
+struct XLA_FFI_Handler_Register_Args {
+  size_t struct_size;
+  void* priv;
+
+  const char* name;  // null terminated
+  XLA_FFI_Handler* handler;
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Handler_Register_Args, handler);
+
+typedef XLA_FFI_Error* XLA_FFI_Handler_Register(
+    XLA_FFI_Handler_Register_Args* args);
 
 //===----------------------------------------------------------------------===//
 // API access
@@ -224,11 +241,12 @@ struct XLA_FFI_Api {
   XLA_FFI_InternalApi* internal_api;
 
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_Create);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Handler_Register);
 };
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Api, XLA_FFI_Error_Create);
-
 #undef _XLA_FFI_API_STRUCT_FIELD
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Api, XLA_FFI_Handler_Register);
 
 #ifdef __cplusplus
 }

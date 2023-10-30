@@ -28,6 +28,16 @@ limitations under the License.
 
 namespace xla::ffi {
 
+TEST(FfiTest, StaticRegistration) {
+  static constexpr auto* noop = +[] { return absl::OkStatus(); };
+
+  XLA_FFI_DEFINE_HANDLER(NoOp, noop, Ffi::Bind());
+  XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "no-op", NoOp);
+
+  auto handler = FindHandler("no-op");
+  TF_ASSERT_OK(handler.status());
+}
+
 TEST(FfiTest, ForwardError) {
   auto call_frame = CallFrameBuilder().Build(GetXlaFfiApi(), /*ctx=*/nullptr);
   auto handler = Ffi::Bind().To([] { return absl::AbortedError("Ooops!"); });

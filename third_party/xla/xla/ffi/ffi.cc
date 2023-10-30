@@ -20,10 +20,13 @@ limitations under the License.
 #include <string_view>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
+#include "xla/status.h"
+#include "xla/statusor.h"
 #include "tsl/platform/logging.h"
 
 //===----------------------------------------------------------------------===//
@@ -31,18 +34,46 @@ limitations under the License.
 //===----------------------------------------------------------------------===//
 
 struct XLA_FFI_Error {
-  absl::Status status;
+  xla::Status status;
 };
 
 //===----------------------------------------------------------------------===//
 
 namespace xla::ffi {
 
-absl::Status Unwrap(XLA_FFI_Error* error) {
+Status Unwrap(XLA_FFI_Error* error) {
   if (error == nullptr) return absl::OkStatus();
-  absl::Status status = std::move(error->status);
+  Status status = std::move(error->status);
   delete error;
   return status;
+}
+
+//===----------------------------------------------------------------------===//
+// XLA FFI registry
+//===----------------------------------------------------------------------===//
+
+// TODO(ezhulenev): We have to support platform-specific handler registration.
+using HandlerRegistry = absl::flat_hash_map<std::string, XLA_FFI_Handler*>;
+
+static HandlerRegistry& GetHandlerRegistry() {
+  static auto* registry = new HandlerRegistry();
+  return *registry;
+}
+
+static Status RegisterHandler(std::string_view name, XLA_FFI_Handler* handler) {
+  auto emplaced = GetHandlerRegistry().try_emplace(std::string(name), handler);
+  if (!emplaced.second)
+    return absl::InvalidArgumentError(
+        absl::StrCat("Duplicate FFI handler registration for ", name));
+  return OkStatus();
+}
+
+StatusOr<XLA_FFI_Handler*> FindHandler(std::string_view name) {
+  auto it = GetHandlerRegistry().find(name);
+  if (it == GetHandlerRegistry().end())
+    return absl::NotFoundError(
+        absl::StrCat("No FFI handler registered for ", name));
+  return it->second;
 }
 
 //===----------------------------------------------------------------------===//
@@ -50,23 +81,21 @@ absl::Status Unwrap(XLA_FFI_Error* error) {
 //===----------------------------------------------------------------------===//
 
 static std::string StructSizeErrorMsg(std::string_view struct_name,
-                                      size_t expected_size,
-                                      size_t actual_size) {
-  return absl::StrCat("Unexpected ", struct_name, " size: expected ",
-                      expected_size, ", got ", actual_size,
-                      ". Check installed software versions. ",
+                                      size_t expected, size_t actual) {
+  return absl::StrCat("Unexpected ", struct_name, " size: expected ", expected,
+                      ", got ", actual, ". Check installed software versions. ",
                       "The framework XLA FFI API version is ",
                       XLA_FFI_API_MAJOR, ".", XLA_FFI_API_MINOR, ".");
 }
 
-static absl::Status ActualStructSizeIsGreaterOrEqual(
-    std::string_view struct_name, size_t expected_size, size_t actual_size) {
-  if (actual_size < expected_size) {
+static Status ActualStructSizeIsGreaterOrEqual(std::string_view struct_name,
+                                               size_t expected, size_t actual) {
+  if (actual < expected) {
     return absl::InvalidArgumentError(
-        StructSizeErrorMsg(struct_name, expected_size, actual_size));
+        StructSizeErrorMsg(struct_name, expected, actual));
   }
-  if (actual_size > expected_size) {
-    VLOG(2) << StructSizeErrorMsg(struct_name, expected_size, actual_size);
+  if (actual > expected) {
+    VLOG(2) << StructSizeErrorMsg(struct_name, expected, actual);
   }
   return absl::OkStatus();
 }
@@ -110,7 +139,7 @@ static absl::StatusCode ToStatusCode(XLA_FFI_Error_Code errc) {
 
 #define XLA_FFI_RETURN_IF_ERROR(expr)                                   \
   do {                                                                  \
-    absl::Status _status = (expr);                                      \
+    Status _status = (expr);                                            \
     if (!_status.ok()) {                                                \
       XLA_FFI_Error* _c_status = new XLA_FFI_Error{std::move(_status)}; \
       return _c_status;                                                 \
@@ -122,12 +151,23 @@ static XLA_FFI_Error* XLA_FFI_Error_Create(XLA_FFI_Error_Create_Args* args) {
       "XLA_FFI_Error_Create", XLA_FFI_Error_Create_Args_STRUCT_SIZE,
       args->struct_size));
 
-  return new XLA_FFI_Error{
-      absl::Status(ToStatusCode(args->errc), args->message)};
+  return new XLA_FFI_Error{Status(ToStatusCode(args->errc), args->message)};
+}
+
+static XLA_FFI_Error* XLA_FFI_Handler_Register(
+    XLA_FFI_Handler_Register_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_Handler_Register", XLA_FFI_Handler_Register_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  if (auto status = RegisterHandler(args->name, args->handler); !status.ok()) {
+    return new XLA_FFI_Error{std::move(status)};
+  }
+  return nullptr;
 }
 
 static XLA_FFI_Error* XLA_FFI_Error_Forward(void* status) {
-  return new XLA_FFI_Error{std::move(*reinterpret_cast<absl::Status*>(status))};
+  return new XLA_FFI_Error{std::move(*reinterpret_cast<Status*>(status))};
 }
 
 //===----------------------------------------------------------------------===//
@@ -144,8 +184,8 @@ static XLA_FFI_Api api = {
 
     &internal_api,
 
-    // Error reporting API
-    XLA_FFI_Error_Create,
+    XLA_FFI_Error_Create,      // creates error
+    XLA_FFI_Handler_Register,  // registers handler
 };
 
 XLA_FFI_Api* GetXlaFfiApi() { return &api; }
