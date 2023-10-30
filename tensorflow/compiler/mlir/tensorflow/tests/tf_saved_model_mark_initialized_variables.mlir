@@ -15,14 +15,14 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
     func.return %4 : tensor<100x50xf32>
   }
   // CHECK: "tf.VarHandleOp"
-  // CHECK-SAME: _is_initialized = true
   // CHECK-SAME: shared_name = "var1"
-  // CHECK: "tf.VarHandleOp"
   // CHECK-SAME: _is_initialized = true
-  // CHECK-SAME: shared_name = "var2"
   // CHECK: "tf.VarHandleOp"
-  // CHECK-SAME: _is_initialized = false
+  // CHECK-SAME: shared_name = "var2"
+  // CHECK-SAME: _is_initialized = true
+  // CHECK: "tf.VarHandleOp"
   // CHECK-SAME: shared_name = "var3"
+  // CHECK-SAME: _is_initialized = false
 
   // INVALID-NOT: _is_initialized
 }

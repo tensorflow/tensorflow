@@ -1715,9 +1715,10 @@ void ConstOp::build(OpBuilder& builder, OperationState& result, Type type,
 
 LogicalResult ConstOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
+    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  auto value = attributes.get("value");
+  ConstOpAdaptor adaptor(operands, attributes, properties, regions);
+  auto value = adaptor.getValue();
   if (!value) return emitOptionalError(location, "missing attribute 'value'");
   if (auto elem_attr = value.dyn_cast<ElementsAttr>()) {
     inferredReturnTypes.assign({elem_attr.getType()});
@@ -1958,13 +1959,13 @@ static LogicalResult inferConvReturnTypeComponents(
 
 LogicalResult Conv2DOp::inferReturnTypeComponents(
     MLIRContext* context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
-    RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes,
+    OpaqueProperties properties, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-  Conv2DOpAdaptor op(operands.getValues(), attributes);
+  Conv2DOpAdaptor op(operands.getValues(), attributes, properties, regions);
   ArrayRef<Attribute> explicit_padding;
   ArrayAttr explicit_pad =
-      attributes.get("explicit_paddings").dyn_cast_or_null<::mlir::ArrayAttr>();
+      op.getExplicitPaddings().dyn_cast_or_null<::mlir::ArrayAttr>();
   if (!explicit_pad) {
     explicit_pad = ::mlir::Builder(context).getI64ArrayAttr({});
   }
@@ -2157,17 +2158,12 @@ StringRef Conv2DBackpropInputOp::GetOptimalLayout(
 
 LogicalResult Conv3DOp::inferReturnTypeComponents(
     MLIRContext* context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
-    RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes,
+    OpaqueProperties properties, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-  Conv3DOpAdaptor op(operands.getValues(), attributes);
-  ArrayRef<Attribute> explicit_padding;
-  ArrayAttr explicit_pad =
-      attributes.get("explicit_paddings").dyn_cast_or_null<::mlir::ArrayAttr>();
-  if (!explicit_pad) {
-    explicit_pad = ::mlir::Builder(context).getI64ArrayAttr({});
-  }
-  explicit_padding = explicit_pad.getValue();
+  Conv3DOpAdaptor op(operands.getValues(), attributes, properties, regions);
+  ArrayAttr explicit_pad = ::mlir::Builder(context).getI64ArrayAttr({});
+  ArrayRef<Attribute> explicit_padding = explicit_pad.getValue();
 
   return inferConvReturnTypeComponents(location, op, explicit_padding,
                                        inferredReturnShapes);

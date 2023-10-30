@@ -80,7 +80,7 @@ func.func @incorrect_control_deps_replaced_with_correct_controls(%arg0: tensor<*
 // CHECK:   %[[GRAPH:.*]]:2 = tf_executor.graph {
 // CHECK:     %[[ADD1:.*]], %[[ADD1_control:.*]] = tf_executor.island wraps "tf.Add"(%arg0, %arg1)
 // CHECK:     %[[ADD2:.*]], %[[ADD2_control:.*]] = tf_executor.island wraps "tf.Add"(%[[ADD1]], %arg1)
-// CHECK:     %[[PRINT:.*]], %[[PRINT_control:.*]] = tf_executor.island wraps "tf.Print"(%[[ADD2]]) {message = "add2 result"}
+// CHECK:     %[[PRINT:.*]], %[[PRINT_control:.*]] = tf_executor.island wraps "tf.Print"(%[[ADD2]]) <{message = "add2 result"}>
 // CHECK:     tf_executor.fetch %[[ADD1]], %[[ADD2]], %[[PRINT_control]] :
 // CHECK:   }
 // CHECK:  return %[[GRAPH]]#0, %[[GRAPH]]#1
@@ -99,7 +99,7 @@ func.func @trailing_print(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*
 // CHECK:   %[[GRAPH:.*]]:2 = tf_executor.graph {
 // CHECK:     %[[ADD1:.*]], %[[ADD1_control:.*]] = tf_executor.island wraps "tf.Add"(%arg0, %arg1)
 // CHECK:     %[[ADD2:.*]], %[[ADD2_control:.*]] = tf_executor.island wraps "tf.Add"(%[[ADD1]], %arg1)
-// CHECK:     %[[PRINT:.*]], %[[PRINT_control:.*]] = tf_executor.island wraps "tf.Print"(%[[ADD2]]) {message = "add2 result"}
+// CHECK:     %[[PRINT:.*]], %[[PRINT_control:.*]] = tf_executor.island wraps "tf.Print"(%[[ADD2]]) <{message = "add2 result"}>
 // CHECK:     tf_executor.fetch %[[ADD1]], %[[ADD2]], %[[PRINT_control]] :
 // CHECK:   }
 // CHECK:  return %[[GRAPH]]#0, %[[GRAPH]]#1
@@ -127,7 +127,7 @@ func.func @non_aliasing_reads_writes(
 // CHECK-DAG:   %[[READ0:.*]], %[[READ0_CONTROL:.*]] = tf_executor.island wraps "tf.ReadVariableOp"(%arg0)
 // CHECK-DAG:   %[[ASSIGN0_CONTROL:.*]] = tf_executor.island(%[[READ0_CONTROL]]) wraps "tf.AssignVariableOp"(%arg0, %arg2)
 // CHECK-DAG:   %[[READ1:.*]], %[[READ1_CONTROL:.*]] = tf_executor.island wraps "tf.ReadVariableOp"(%arg1)
-// CHECK:   %[[VH0:.*]], %[[VH0_CONTROL:.*]] = tf_executor.island wraps "tf.VarHandleOp"() {container = "c", shared_name = "v0"}
+// CHECK:   %[[VH0:.*]], %[[VH0_CONTROL:.*]] = tf_executor.island wraps "tf.VarHandleOp"() <{container = "c", shared_name = "v0"}>
 // CHECK:   %[[READ2:.*]], %[[READ2_CONTROL:.*]] = tf_executor.island wraps "tf.ReadVariableOp"(%[[VH0]])
 // CHECK:   %[[ASSIGN1_CONTROL:.*]] = tf_executor.island(%[[READ1_CONTROL]]) wraps "tf.AssignVariableOp"(%arg1, %[[READ0]])
 // CHECK:   %[[ASSIGN2_CONTROL:.*]] = tf_executor.island(%[[ASSIGN0_CONTROL]]) wraps "tf.AssignVariableOp"(%arg0, %[[READ2]])
@@ -151,8 +151,8 @@ func.func @unknown_side_effecting_op(%arg0: tensor<32xf32>) {
 }
 // CHECK-LABEL: func @unknown_side_effecting_op
 // CHECK: tf_executor.graph {
-// CHECK:   %[[VH0:.*]], %[[VH0_CONTROL:.*]] = tf_executor.island wraps "tf.VarHandleOp"() {container = "c", shared_name = "v0"}
-// CHECK:   %[[VH1:.*]], %[[VH1_CONTROL:.*]] = tf_executor.island wraps "tf.VarHandleOp"() {container = "c", shared_name = "v1"}
+// CHECK:   %[[VH0:.*]], %[[VH0_CONTROL:.*]] = tf_executor.island wraps "tf.VarHandleOp"() <{container = "c", shared_name = "v0"}>
+// CHECK:   %[[VH1:.*]], %[[VH1_CONTROL:.*]] = tf_executor.island wraps "tf.VarHandleOp"() <{container = "c", shared_name = "v1"}>
 // CHECK:   %[[READ0:.*]], %[[READ0_CONTROL:.*]] = tf_executor.island wraps "tf.ReadVariableOp"(%[[VH0]])
 // CHECK:   %[[ASSIGN0_CONTROL:.*]] = tf_executor.island wraps "tf.AssignVariableOp"(%[[VH1]], %arg0)
 // CHECK:   %[[UNKNOWN_CONTROL:.*]] = tf_executor.island(%[[READ0_CONTROL]], %[[ASSIGN0_CONTROL]]) wraps "tf._UnknownSideEffectingOp_"()
@@ -170,7 +170,7 @@ func.func @single_op_island_forward_block_arg(%arg0: tensor<?x?x?x?xbf16>) -> (t
 }
 // CHECK-LABEL: func @single_op_island_forward_block_arg
 // CHECK: tf_executor.graph {
-// CHECK:   %[[outputs:.*]], %[[control:.*]] = tf_executor.island wraps "tf.Const"() {value = dense<0.000000e+00> : tensor<2048xf32>} : () -> tensor<2048xf32>
+// CHECK:   %[[outputs:.*]], %[[control:.*]] = tf_executor.island wraps "tf.Const"() <{value = dense<0.000000e+00> : tensor<2048xf32>}> : () -> tensor<2048xf32>
 // CHECK:   tf_executor.fetch %[[outputs]], %arg0 : tensor<2048xf32>, tensor<?x?x?x?xbf16>
 
 func.func @tpu_load_embedding_ops_sink_controls(%arg0: tensor<*x!tf_type.resource<tensor<8xf32>>>, %arg1: tensor<*x!tf_type.resource<tensor<8xf32>>>, %arg2: tensor<*x!tf_type.resource<tensor<8xf32>>>, %arg3: tensor<*x!tf_type.resource<tensor<8xf32>>>) {
@@ -194,13 +194,13 @@ func.func @tpu_load_embedding_ops_sink_controls(%arg0: tensor<*x!tf_type.resourc
 // CHECK:    %[[outputs:.*]], %[[control:.*]] = tf_executor.island wraps "tf.ReadVariableOp"(%arg0) {device = ""} : (tensor<*x!tf_type.resource<tensor<8xf32>>>) -> tensor<8xf32>
 // CHECK:    %[[outputs_0:.*]], %[[control_1:.*]] = tf_executor.island wraps "tf.ReadVariableOp"(%arg1) {device = ""} : (tensor<*x!tf_type.resource<tensor<8xf32>>>) -> tensor<8xf32>
 // CHECK:    %[[outputs_2:.*]], %[[control_3:.*]] = tf_executor.island wraps "tf.ReadVariableOp"(%arg2) {device = ""} : (tensor<*x!tf_type.resource<tensor<8xf32>>>) -> tensor<8xf32>
-// CHECK:    %[[control_4:.*]] = tf_executor.island wraps "tf.LoadTPUEmbeddingAdagradParameters"(%[[outputs]], %[[outputs_0]]) {config = "", num_shards = 1 : i64, shard_id = 0 : i64, table_id = -1 : i64, table_name = "table1"} : (tensor<8xf32>, tensor<8xf32>) -> ()
+// CHECK:    %[[control_4:.*]] = tf_executor.island wraps "tf.LoadTPUEmbeddingAdagradParameters"(%[[outputs]], %[[outputs_0]]) <{config = "", num_shards = 1 : i64, shard_id = 0 : i64, table_id = -1 : i64, table_name = "table1"}> : (tensor<8xf32>, tensor<8xf32>) -> ()
 // CHECK:    %[[outputs_5:.*]], %[[control_6:.*]] = tf_executor.island wraps "tf.ReadVariableOp"(%arg3) {device = ""} : (tensor<*x!tf_type.resource<tensor<8xf32>>>) -> tensor<8xf32>
-// CHECK:    %[[control_7:.*]] = tf_executor.island wraps "tf.LoadTPUEmbeddingAdagradParameters"(%[[outputs_2]], %[[outputs_5]]) {config = "", num_shards = 1 : i64, shard_id = 0 : i64, table_id = -1 : i64, table_name = "table2"} : (tensor<8xf32>, tensor<8xf32>) -> ()
+// CHECK:    %[[control_7:.*]] = tf_executor.island wraps "tf.LoadTPUEmbeddingAdagradParameters"(%[[outputs_2]], %[[outputs_5]]) <{config = "", num_shards = 1 : i64, shard_id = 0 : i64, table_id = -1 : i64, table_name = "table2"}> : (tensor<8xf32>, tensor<8xf32>) -> ()
 // CHECK:    %[[control_8:.*]] = tf_executor.island(%[[control]], %[[control_1]], %[[control_3]], %[[control_4]], %[[control_6]], %[[control_7]]) wraps "tf.UnknownOp"() : () -> ()
 // CHECK:    %[[control_9:.*]] = tf_executor.island(%[[control_8]]) wraps "tf.UnknownOp"() : () -> ()
-// CHECK:    %[[control_10:.*]] = tf_executor.island(%[[control_9]]) wraps "tf.LoadTPUEmbeddingAdagradParameters"(%[[outputs]], %[[outputs_0]]) {config = "", num_shards = 1 : i64, shard_id = 0 : i64, table_id = -1 : i64, table_name = "table3"} : (tensor<8xf32>, tensor<8xf32>) -> ()
-// CHECK:    %[[control_11:.*]] = tf_executor.island(%[[control_9]]) wraps "tf.LoadTPUEmbeddingAdagradParameters"(%[[outputs_2]], %[[outputs_5]]) {config = "", num_shards = 1 : i64, shard_id = 0 : i64, table_id = -1 : i64, table_name = "table4"} : (tensor<8xf32>, tensor<8xf32>) -> ()
+// CHECK:    %[[control_10:.*]] = tf_executor.island(%[[control_9]]) wraps "tf.LoadTPUEmbeddingAdagradParameters"(%[[outputs]], %[[outputs_0]]) <{config = "", num_shards = 1 : i64, shard_id = 0 : i64, table_id = -1 : i64, table_name = "table3"}> : (tensor<8xf32>, tensor<8xf32>) -> ()
+// CHECK:    %[[control_11:.*]] = tf_executor.island(%[[control_9]]) wraps "tf.LoadTPUEmbeddingAdagradParameters"(%[[outputs_2]], %[[outputs_5]]) <{config = "", num_shards = 1 : i64, shard_id = 0 : i64, table_id = -1 : i64, table_name = "table4"}> : (tensor<8xf32>, tensor<8xf32>) -> ()
 // CHECK:    tf_executor.fetch %[[control_10]], %[[control_11]] : !tf_executor.control, !tf_executor.control
 
 // -----

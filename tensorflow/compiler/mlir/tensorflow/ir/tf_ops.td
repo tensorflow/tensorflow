@@ -506,9 +506,7 @@ def TF_ParseExampleOp : TF_Op<"ParseExample",
     Variadic<TF_StrTensor>:$dense_keys,
     Variadic<TensorOf<[TF_Float32, TF_Int64, TF_Str]>>:$dense_defaults,
 
-    TF_ShapeAttrArray:$dense_shapes,
-    DenseI32ArrayAttr:$resultSegmentSizes,
-    DenseI32ArrayAttr:$operandSegmentSizes
+    TF_ShapeAttrArray:$dense_shapes
   );
 
   let results = (outs
@@ -542,8 +540,7 @@ def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
     Variadic<TensorOf<[TF_Float32, TF_Int64, TF_Str]>>:$dense_defaults,
 
     ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_sparse,
-    TF_ShapeAttrArray:$dense_shapes,
-    DenseI32ArrayAttr:$resultSegmentSizes
+    TF_ShapeAttrArray:$dense_shapes
   );
 
   let results = (outs

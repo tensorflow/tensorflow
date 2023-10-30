@@ -149,13 +149,13 @@ func.func @main(%arg0: tensor<i32>) {
   // CHECK:         "tf.A"
   // CHECK-NEXT:    "tf.Yield"
   // CHECK:         ^bb0(%[[BARG0:.*]]: tensor<4xf32>, %[[BARG1:.*]]: tensor<i32>)
-  // CHECK:          %[[INPUT0:.*]] = "tf.Const"() {value = dense<0> : tensor<4xi32>} : () -> tensor<4xi32>
-  // CHECK-NEXT:     %[[GROUP:.*]] = "tf.Const"() {value = dense<0> : tensor<2x64xi32>} : () -> tensor<2x64xi32>
+  // CHECK:          %[[INPUT0:.*]] = "tf.Const"() <{value = dense<0> : tensor<4xi32>}> : () -> tensor<4xi32>
+  // CHECK-NEXT:     %[[GROUP:.*]] = "tf.Const"() <{value = dense<0> : tensor<2x64xi32>}> : () -> tensor<2x64xi32>
   // CHECK-NEXT:     %[[CAST_OUT:.*]] = "tf.Cast"(%[[INPUT0]])
   // CHECK-NEXT:     %[[ADD_OUT:.*]] = "tf.AddV2"(%[[CAST_OUT]], %[[BARG0]])
   // CHECK-NEXT:     %[[OUT:.*]] = "tf.Identity"(%[[ADD_OUT]])
   // CHECK-NEXT:     "tf.Yield"
-  // CHECK:      %[[NEW_GROUP_ASSIGN:.*]] = "tf.Const"() {value = dense<0> : tensor<2x64xi32>} : () -> tensor<2x64xi32>
+  // CHECK:      %[[NEW_GROUP_ASSIGN:.*]] = "tf.Const"() <{value = dense<0> : tensor<2x64xi32>}> : () -> tensor<2x64xi32>
   // CHECK:      %[[ALL_REDUCE_OUT:.*]] = "tf.DTensorAllReduce"(%[[WHILE_OUT]]#0, %[[NEW_GROUP_ASSIGN]])
   %0 = "tf.Const"() {value = dense<0.0> : tensor<4xf32>} : () -> tensor<4xf32>
   %2 = "tf.Identity"(%0) : (tensor<4xf32>) -> tensor<4xf32>

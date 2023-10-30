@@ -73,7 +73,7 @@ module attributes {tf_saved_model.semantics} {
 // CHECK-LABEL: func.func private @not_quantized_without_stats
 // CHECK-SAME: (%[[ARG_1:.*]]: tensor<1x3xf32>) -> tensor<1x3xf32> attributes {tf._original_func_name = "main_0"}
 // CHECK: %[[CONST_0:.*]] = stablehlo.constant dense<3.000000e-01> : tensor<3x3xf32>
-// CHECK: %[[XLA_CALL_MODULE_0:.*]] = "tf.XlaCallModule"(%[[ARG_1]], %[[CONST_0]]) {{{.*_entry_function = @composite_dot_general_fn.*}}} : (tensor<1x3xf32>, tensor<3x3xf32>) -> tensor<1x3xf32>
+// CHECK: %[[XLA_CALL_MODULE_0:.*]] = "tf.XlaCallModule"(%[[ARG_1]], %[[CONST_0]]) <{{{.*}}}> {{{.*_entry_function = @composite_dot_general_fn.*}}} : (tensor<1x3xf32>, tensor<3x3xf32>) -> tensor<1x3xf32>
 // CHECK: return %[[XLA_CALL_MODULE_0]]
 
   func.func private @composite_dot_general_fn(%arg0: tensor<1x3xf32>, %arg1: tensor<3x3xf32>) -> tensor<1x3xf32> attributes {_from_xla_call_module} {
