@@ -891,8 +891,8 @@ tf_xla_py_strict_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:resource_variable_ops",
+        "//tensorflow/python/ops:training_ops_gen",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/training:training_ops",
         "//third_party/py/numpy",
     ],
 )
