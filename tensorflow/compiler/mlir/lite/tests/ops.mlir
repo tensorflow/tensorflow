@@ -410,7 +410,7 @@ func.func @add_with_i32_five_dim_broadcasting(tensor<1x1x1x1x1xi32>, tensor<1xi3
 
 func.func @add_with_quantized_i16_broadcasting(tensor<2x2xf32>, tensor<1xf32>) -> tensor<2x2x!quant.any<i16:f32>> {
 ^bb0(%arg0: tensor<2x2xf32>, %arg1: tensor<1xf32>):
-  // expected-error @+1 {{Operands do not have valid shapes}}
+  // expected-error @+1 {{Operands should have valid shapes and element type needs to match}}
   %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<2x2xf32>, tensor<1xf32>) -> tensor<2x2x!quant.any<i16:f32>>
   func.return %0#0 : tensor<2x2x!quant.any<i16:f32>>
 }
