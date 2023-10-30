@@ -43,22 +43,6 @@ limitations under the License.
 #include "tsl/platform/error_logging.h"
 
 namespace mlir {
-namespace TFTPU {
-
-constexpr char kBridgeComponent[] = "TFXLABridge";
-
-void CreateTPUBridgePipeline(OpPassManager &pm, llvm::StringRef module_name) {
-  pm.addPass(CreateTPUValidateInputsPass());
-  pm.addNestedPass<func::FuncOp>(
-      TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
-  tensorflow::tf2xla::internal::AddBridgeClusteringPipelinePasses(pm,
-                                                                  module_name);
-  tensorflow::tfrt_compiler::AddTPULowerClusterToRuntimeOpsPassPipeline(
-      pm, module_name);
-}
-
-}  // namespace TFTPU
-
 namespace TF {
 
 tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
@@ -74,11 +58,12 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
       module.getContext(), /*propagate=*/false,
       /*filter_stack=*/!VLOG_IS_ON(1));
 
+  constexpr char kBridgeComponent[] = "TFXLABridge";
   if (enable_logging || VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile(kStandardPipelineBefore, module, "", &bridge);
     if (VLOG_IS_ON(2)) {
-      tensorflow::tf2xla::internal::EnablePassIRPrinting(
-          bridge, TFTPU::kBridgeComponent);
+      tensorflow::tf2xla::internal::EnablePassIRPrinting(bridge,
+                                                         kBridgeComponent);
     }
   }
   LogicalResult result = bridge.run(module);

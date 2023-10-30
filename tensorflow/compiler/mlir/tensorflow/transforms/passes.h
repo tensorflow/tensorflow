@@ -623,11 +623,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateTPUDevicePropagationPass();
 // Create a pass that colocates each `Split` with its predecessor.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTPUColocateSplitsPass();
 
-// Populates the supplied passmanager with the passes required to run the
-// bridge.
-void CreateTPUBridgePipeline(OpPassManager& pm,
-                             llvm::StringRef module_name = llvm::StringRef());
-
 // Creates a pass that replicates the tf._TPUCompileMlir op on each host that
 // needs the compiled program. It helps avoid transferring the compiled binary
 // between hosts.

@@ -982,22 +982,6 @@ cc_library(
 )
 
 cc_library(
-    name = "bridge_pass_test_pipeline_registration",
-    testonly = True,  # Ensure alwayslink does not leak in the codebase.
-    srcs = [
-        "bridge_pass.cc",
-    ],
-    deps = [
-        ":bridge",
-        ":tensorflow_passes",
-        "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Transforms",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "tensorflow_test_passes",
     testonly = True,  # Ensure alwayslink does not leak in the codebase.
     srcs = [

@@ -54,7 +54,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration",
         "//tensorflow/compiler/mlir/tensorflow:mlprogram_util",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:bridge_pass_test_pipeline_registration",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_test_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_graph_optimization_pass",

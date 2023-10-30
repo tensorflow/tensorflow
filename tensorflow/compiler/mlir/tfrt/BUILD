@@ -495,7 +495,6 @@ cc_library(
         "//tensorflow/compiler/mlir:passes",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:bridge_pass_test_pipeline_registration",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:lower_cluster_to_runtime_ops",
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_async_opdefs",
