@@ -16,7 +16,7 @@ limitations under the License.
 
 void NoiseReductionWriteMemmapPreamble(
     FILE* fp, const struct NoiseReductionState* state) {
-  fprintf(fp, "static uint32_t noise_reduction_estimate[%zu];\n",
+  fprintf(fp, "static uint32_t noise_reduction_estimate[%d];\n",
           state->num_channels);
   fprintf(fp, "\n");
 }
