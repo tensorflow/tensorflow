@@ -824,12 +824,43 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
+    name = "tpu_embedding_v3_utils",
+    srcs = ["tpu_embedding_v3_utils.py"],
+    deps = [
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:manip_ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/trackable:base",
+    ],
+)
+
+tf_py_strict_test(
+    name = "tpu_embedding_v3_utils_test",
+    srcs = ["tpu_embedding_v3_utils_test.py"],
+    deps = [
+        ":tpu_embedding_v3_utils",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+pytype_strict_library(
     name = "tpu_embedding_for_serving",
     srcs = ["tpu_embedding_for_serving.py"],
     srcs_version = "PY3",
     deps = [
         ":tpu_embedding_base",
         ":tpu_embedding_v2_utils",
+        ":tpu_embedding_v3_utils",
+        "//tensorflow/core/tpu/kernels:sparse_core_layout_proto_py",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/framework:constant_op",
@@ -844,7 +875,6 @@ pytype_strict_library(
         "//tensorflow/python/ops:sparse_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//tensorflow/python/trackable:base",
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
