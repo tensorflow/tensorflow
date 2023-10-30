@@ -94,6 +94,12 @@ message GemmBackendConfig {
   }
 
   Epilogue epilogue = 13;
+
+  optional int64 lhs_stride = 14;
+  optional int64 rhs_stride = 15;
+
+  optional bool grad_x = 16;
+  optional bool grad_y = 17;
 }
 
 // Backend config for bitcast operation generated from MLIR MHLO dialect.

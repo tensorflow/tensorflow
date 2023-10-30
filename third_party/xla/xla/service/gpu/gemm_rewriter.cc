@@ -11,7 +11,8 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-==============================================================================*/
+=
+=============================================================================*/
 
 #include "xla/service/gpu/gemm_rewriter.h"
 
@@ -486,6 +487,22 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     *gemm_backend_config.mutable_dot_dimension_numbers() =
         instr->dot_dimension_numbers();
     *gemm_backend_config.mutable_precision_config() = instr->precision_config();
+
+    HloInstruction *lhs = instr->mutable_operand(0);
+    HloInstruction *rhs = instr->mutable_operand(1);
+    auto attributes = instr->frontend_attributes().map();
+    gemm_backend_config.set_grad_x(attributes["grad_x"] == "true");
+    gemm_backend_config.set_grad_y(attributes["grad_y"] == "true");
+
+    int64_t lhs_batch_dims_size =
+        instr->dot_dimension_numbers().lhs_batch_dimensions_size();
+    int64_t lhs_stride = lhs->shape().dimensions(lhs_batch_dims_size) *
+                         lhs->shape().dimensions(lhs_batch_dims_size + 1);
+    int64_t rhs_stride = rhs->shape().dimensions(lhs_batch_dims_size) *
+                         rhs->shape().dimensions(lhs_batch_dims_size + 1);
+
+    gemm_backend_config.set_lhs_stride(lhs_stride);
+    gemm_backend_config.set_rhs_stride(rhs_stride);
 
     // First try to match the fp8 gemm pattern.
     TF_ASSIGN_OR_RETURN(bool supported_by_cublaslt,
@@ -1799,7 +1816,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
             dot_dims.rhs_contracting_dimensions(),
             /*output_shape=*/instr.shape(), gemm_backend_config.alpha_real(),
             gemm_backend_config.alpha_imag(), gemm_backend_config.beta(),
-            /*algorithm*/ std::nullopt, se::blas::kDefaultComputePrecision));
+            /*algorithm*/ std::nullopt, se::blas::kDefaultComputePrecision,
+            gemm_backend_config.grad_x(), gemm_backend_config.grad_y()));
 
     if (matrix_name == "lhs" || matrix_name == "a") {
       return gemm_config.lhs_layout.order == MatrixLayout::Order::kColumnMajor;

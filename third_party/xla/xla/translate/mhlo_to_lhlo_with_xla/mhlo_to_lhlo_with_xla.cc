@@ -701,6 +701,8 @@ void SetMatmulAttributes(OpT op, const xla::gpu::GemmBackendConfig& config,
   }
   op.setPrecisionConfigAttr(
       xla::ConvertPrecisionConfig(&config.precision_config(), &builder));
+  op.setGradXAttr(builder.getBoolAttr(config.grad_x()));
+  op.setGradYAttr(builder.getBoolAttr(config.grad_y()));
 }
 
 tsl::StatusOr<lmhlo_gpu::CublasLtMatmulEpilogue> AsLhloEpilogue(
