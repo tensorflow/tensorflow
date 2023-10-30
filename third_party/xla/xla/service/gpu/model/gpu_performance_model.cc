@@ -239,7 +239,8 @@ LaunchDimensions EstimateFusionLaunchDimensions(
 
 /*static*/ EstimateRunTimeData
 GpuPerformanceModel::EstimateRunTimeForInstruction(
-    const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis) {
+    const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis,
+    const GpuPerformanceModelOptions& config) {
   const se::DeviceDescription* device_info = cost_analysis->device_info_;
 
   int64_t flops = cost_analysis->flop_count(*instr);
@@ -255,7 +256,7 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
   absl::Duration compute_time = ComputeTime(*device_info, flops, num_threads);
   absl::Duration read_time = ProducerInputAccessTime(
       cost_analysis, *device_info, launch_dimensions.num_blocks(),
-      /*producer=*/instr, fusion_analysis);
+      /*producer=*/instr, fusion_analysis, config);
   absl::Duration write_time =
       absl::Seconds(1.0f * bytes_written / device_info->memory_bandwidth());
   absl::Duration exec_time = std::max(compute_time, read_time + write_time);
@@ -281,6 +282,7 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
     const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
     const HloInstruction* producer,
     std::optional<HloFusionAnalysis>& fusion_analysis,
+    const GpuPerformanceModelOptions& config,
     const HloInstruction* fused_consumer) {
   absl::Duration ret = absl::ZeroDuration();
   float producer_output_utilization = 1.f;
@@ -357,7 +359,8 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
     float n_bytes_total = operand_bytes_accessed *
                           (producer_output_utilization - common_utilization);
     ret += ReadTime(gpu_device_info, num_blocks, /*n_bytes_net=*/n_bytes_net,
-                    n_bytes_total, operand_shape.element_type(), coalesced);
+                    n_bytes_total, operand_shape.element_type(),
+                    coalesced || !config.consider_coalescing);
   }
   return ret;
 }
@@ -375,6 +378,7 @@ absl::Duration GpuPerformanceModel::ComputeTime(
 
 GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
     const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
+    const GpuPerformanceModelOptions& config,
     std::vector<HloInstruction*> fused_consumers, bool multi_output) {
   VLOG(8) << "Producer: " << producer->name();
   if (producer->opcode() == HloOpcode::kFusion) {
@@ -384,7 +388,7 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
   const se::DeviceDescription* device_info = cost_analysis->device_info_;
 
   EstimateRunTimeData producer_data =
-      EstimateRunTimeForInstruction(producer, cost_analysis);
+      EstimateRunTimeForInstruction(producer, cost_analysis, config);
 
   int64_t fused_consumer_count = fused_consumers.size();
   float total_producer_utilization = 0;
@@ -425,7 +429,7 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
     // don't currently have an analysis that is able to detect these cases.
     absl::Duration input_access_time_by_this_consumer = ProducerInputAccessTime(
         cost_analysis, *device_info, launch_dimensions_fused.num_blocks(),
-        producer, analysis_fused, fused_consumer);
+        producer, analysis_fused, config, fused_consumer);
 
     exec_time_fused += std::max(compute_time_by_this_consumer,
                                 input_access_time_by_this_consumer);
@@ -464,12 +468,13 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
 }
 
 void GpuPerformanceModel::RecordEstimatedRunTime(
-    HloInstruction* instruction, const GpuHloCostAnalysis* cost_analysis) {
+    HloInstruction* instruction, const GpuHloCostAnalysis* cost_analysis,
+    const GpuPerformanceModelOptions& config) {
   DCHECK(Cast<const HloFusionInstruction>(instruction)) << "expected fusion";
   DCHECK(cost_analysis != nullptr) << "expected cost analysis";
 
   EstimateRunTimeData data =
-      EstimateRunTimeForInstruction(instruction, cost_analysis);
+      EstimateRunTimeForInstruction(instruction, cost_analysis, config);
   double cycles = absl::ToDoubleNanoseconds(data.exec_time) *
                   cost_analysis->device_info_->clock_rate_ghz();
 
