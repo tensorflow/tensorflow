@@ -153,6 +153,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_lhs_enable_gpu_async_tracker(true);
   opts.set_xla_gpu_enable_analytical_latency_estimator(false);
   opts.set_xla_gpu_pgle_profile_file_or_directory_path("");
+  opts.set_xla_gpu_memory_limit_slop_factor(95);
   opts.set_xla_gpu_enable_highest_priority_async_stream(true);
 
   opts.set_xla_gpu_enable_pipelined_collectives(false);
@@ -1178,6 +1179,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_lhs_enable_gpu_async_tracker),
       debug_options->xla_gpu_lhs_enable_gpu_async_tracker(),
       "Enable GPU async tracker for latency-hiding scheduler in XLA:GPU"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_memory_limit_slop_factor",
+      int32_setter_for(&DebugOptions::set_xla_gpu_memory_limit_slop_factor),
+      debug_options->xla_gpu_memory_limit_slop_factor(),
+      "Slop factor for memory limits in XLA:GPU"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_highest_priority_async_stream",
       bool_setter_for(

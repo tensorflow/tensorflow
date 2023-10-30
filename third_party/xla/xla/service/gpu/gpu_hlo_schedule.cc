@@ -755,7 +755,10 @@ int64_t GetSchedulerMemoryLimit(const HloModule* module,
         total_io_size -= GetSizeOfShape(subshape, pointer_size);
       });
 
-  return (base_limit - total_io_size) * 95 / 100;
+  int64_t limit =
+      (base_limit - total_io_size) *
+      module->config().debug_options().xla_gpu_memory_limit_slop_factor() / 100;
+  return limit;
 }
 
 }  // namespace gpu

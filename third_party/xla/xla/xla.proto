@@ -555,6 +555,7 @@ message DebugOptions {
 
   bool xla_gpu_lhs_enable_gpu_async_tracker = 204;
   string xla_gpu_pgle_profile_file_or_directory_path = 210;
+  int32 xla_gpu_memory_limit_slop_factor = 260;
 
   bool xla_gpu_enable_pipelined_collectives = 239;
   bool xla_gpu_enable_pipelined_all_reduce = 217;
@@ -654,7 +655,7 @@ message DebugOptions {
   // Enable radix sort using CUB.
   bool xla_gpu_enable_cub_radix_sort = 259;
 
-  // Next id: 260
+  // Next id: 261
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
