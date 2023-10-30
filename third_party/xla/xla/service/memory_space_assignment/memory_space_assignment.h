@@ -38,6 +38,8 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/utils/hlo_live_range.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -48,8 +50,8 @@ limitations under the License.
 #include "xla/statusor.h"
 
 namespace xla {
-
 namespace memory_space_assignment {
+
 // Forward Declaration of Options.
 class Options;
 
@@ -573,6 +575,39 @@ class MemorySpaceAssignment {
           std::pair<int, ShapeIndex>>& /*operands_in_alternate_memory*/,
       const absl::flat_hash_set<ShapeIndex>& /*outputs_in_alternate_memory*/)>;
   using UpdateLayoutFunction = std::function<void(Shape*)>;
+
+  // The BufferInterval sorting interface that MemorySpaceAssignment expects.
+  class BufferIntervalComparator {
+   public:
+    using BufferInterval = MemorySpaceAssignment::BufferInterval;
+
+    virtual ~BufferIntervalComparator() = default;
+
+    // A logging string explaining the sorting criteria. E.g., [ -size, offset ]
+    // indicates we sort (desc) size, then (asc) offset.
+    virtual std::string DescribeComparisonCriteria() const = 0;
+
+    // A logging string containing the values used to sort buffer_interval.
+    // E.g., we might return [ -1024, 100 ], if the criteria is [ -size,
+    // offset ].
+    virtual std::string CriteriaToString(
+        const BufferInterval& buffer_interval) = 0;
+
+    // comparator.LessThan(lhs, rhs) will be used for BufferIntervalCompare.
+    virtual bool LessThan(const BufferInterval& lhs,
+                          const BufferInterval& rhs) = 0;
+
+    // Used to create a functor that can be passed to a method like std::sort.
+    // E.g., absl::c_sort(v, comparator.GetComparisonFunctor());
+    BufferIntervalCompare GetComparisonFunctor() {
+      return [this](const BufferInterval& lhs, const BufferInterval& rhs) {
+        return LessThan(lhs, rhs);
+      };
+    }
+
+   protected:
+    BufferIntervalComparator() = default;
+  };
 
   // MemorySpaceAssignment uses a notion of a slow and large default memory
   // space and a fast and small alternate memory space.
@@ -1187,10 +1222,6 @@ class MemorySpaceAssignment {
   // Calculates asynchronous copy statistics.
   StatusOr<AsyncCopyStats> CalculateAsyncCopyStats() const;
 
-  static BufferIntervalCompare GetMemoryBoundednessBufferIntervalCompare(
-      const MemorySpaceAssignmentCostAnalysis& cost_analysis,
-      MemorySpaceAssignmentCostAnalysis::Cache* cache = nullptr);
-
   // Verify that the memory space assignment is free of overlapping buffers and
   // export heap simulator trace to be used by buffer_assignment.
   Status VerifyAndExportHeapSimulatorTrace();
@@ -1277,6 +1308,69 @@ class MemorySpaceAssignment {
   // to modify and fix the schedule.
   absl::flat_hash_map<int64_t, std::vector<HloInstruction*>> schedule_after_;
   absl::flat_hash_map<int64_t, std::vector<HloInstruction*>> schedule_before_;
+};
+
+// A BufferIntervalComparator that utilizes MemoryBoundedness as its primary
+// sorting criteria.
+//
+// This comparator caches HloValues -> latest use time.
+class MemoryBoundednessBufferIntervalComparator
+    : public MemorySpaceAssignment::BufferIntervalComparator {
+ public:
+  MemoryBoundednessBufferIntervalComparator(
+      const MemorySpaceAssignmentCostAnalysis& cost_analysis,
+      MemorySpaceAssignmentCostAnalysis::Cache* cost_analysis_cache);
+
+  ~MemoryBoundednessBufferIntervalComparator() override = default;
+
+  std::string DescribeComparisonCriteria() const override;
+  std::string CriteriaToString(const BufferInterval& buffer_interval) override;
+  bool LessThan(const BufferInterval& lhs, const BufferInterval& rhs) override;
+
+ private:
+  // See the value returned by DescribeComparisonCriteria() for the meaning of
+  // each tuple element.
+  using ComparisonTuple =
+      std::tuple<float, int64_t, int64_t, int64_t, int64_t, BufferValue::Id>;
+
+  ComparisonTuple GetTuple(const BufferInterval& buffer_interval);
+
+  absl::flat_hash_map<const HloValue*, int64_t> buffer_to_latest_use_;
+  const MemorySpaceAssignmentCostAnalysis& cost_analysis_;
+  MemorySpaceAssignmentCostAnalysis::Cache* cost_analysis_cache_;
+};
+
+// The default BufferIntervalComparator used for cross-program prefetching.
+//
+// This class caches HloValue -> {latest use, cumulative use size }.
+class DefaultCrossProgramPrefetchBufferIntervalComparator
+    : public MemorySpaceAssignment::BufferIntervalComparator {
+ public:
+  explicit DefaultCrossProgramPrefetchBufferIntervalComparator(
+      const HloLiveRange& hlo_live_range);
+
+  ~DefaultCrossProgramPrefetchBufferIntervalComparator() override = default;
+
+  std::string DescribeComparisonCriteria() const override;
+  std::string CriteriaToString(const BufferInterval& buffer_interval) override;
+  bool LessThan(const BufferInterval& lhs, const BufferInterval& rhs) override;
+
+ private:
+  // See the value returned by DescribeComparisonCriteria() for the meaning of
+  // each tuple element.
+  using ComparisonTuple =
+      std::tuple<int64_t, int64_t, int64_t, BufferValue::Id>;
+
+  struct AdditionalSortData {
+    int64_t latest_use = 0;
+    int64_t cumulative_use_size = 0;
+  };
+
+  ComparisonTuple GetTuple(const BufferInterval& buffer_interval);
+
+  absl::flat_hash_map<const HloValue*, AdditionalSortData>
+      additional_sort_data_;
+  const HloLiveRange& hlo_live_range_;
 };
 
 // Filters prefetches by matching against multiple filters and overrides the
@@ -1372,10 +1466,10 @@ struct Options {
   // Memory alignment of the alternate memory space.
   int64_t alignment_in_bytes = 1;
 
-  // If provided, we sort the buffers using this comparison function
-  // otherwise, we use GlobalDecreasingSizeBestFitHeap::kSpatial.
-  std::optional<MemorySpaceAssignment::BufferIntervalCompare>
-      buffer_interval_compare = std::nullopt;
+  // If provided, we sort the buffers using this comparator. Otherwise, we use
+  // GlobalDecreasingSizeBestFitHeap::kSpatial.
+  MemorySpaceAssignment::BufferIntervalComparator* buffer_interval_comparator =
+      nullptr;
 
   // This object determines how early and how late prefetches can occur.
   PrefetchIntervalPicker* prefetch_interval_picker = nullptr;
