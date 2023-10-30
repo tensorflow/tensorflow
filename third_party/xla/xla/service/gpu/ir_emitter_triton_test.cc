@@ -158,7 +158,6 @@ CHECK-DAG:  %[[NUM_TILES_M:.*]] = arith.constant 5 : i32
 CHECK-DAG:  %[[GROUP_M:.*]] = arith.constant 8 : i32
 CHECK-DAG:  %[[WIDTH:.*]] = arith.constant 24 : i32
 CHECK:      %[[PID_NC:.*]] = tt.get_program_id x
-CHECK:      %[[PID_K:.*]] = tt.get_program_id z
 CHECK:      %[[GROUP_ID:.*]] = arith.divsi %[[PID_NC]], %[[WIDTH]]
 CHECK:      %[[FIRST_PID_M:.*]] = arith.muli %[[GROUP_ID]], %[[GROUP_M]]
 CHECK:      %[[MAX_M:.*]] = arith.subi %[[NUM_TILES_M]], %[[FIRST_PID_M]]
@@ -169,13 +168,11 @@ CHECK:      %[[TILE_INDEX_M:.*]] = arith.addi %[[FIRST_PID_M]], %[[PID_M]] : i32
 CHECK:      %[[TMP:.*]] = arith.remsi %[[PID_NC]], %[[WIDTH]] : i32
 CHECK:      %[[TILE_INDEX_N:.*]] = arith.divsi %[[TMP]], %[[GROUP_SIZE]] : i32
 CHECK:      %[[TILE_OFFSET_M_LHS:.*]] = arith.muli %[[TILE_INDEX_M]], %[[TILE_SIZE_M]]
-CHECK:      %[[TILE_OFFSET_K_LHS:.*]] = arith.muli %[[PID_K]], %[[TILE_SIZE_K]]
 CHECK:      %[[LHS_PTR:.*]] = tt.make_tensor_ptr %[[LHS]]
-CHECK:      %[[LHS_TILE_PTR:.*]] = tt.advance %[[LHS_PTR]], [%[[TILE_OFFSET_M_LHS]], %[[TILE_OFFSET_K_LHS]]]
-CHECK:      %[[TILE_OFFSET_K_RHS:.*]] = arith.muli %[[PID_K]], %[[TILE_SIZE_K]]
+CHECK:      %[[LHS_TILE_PTR:.*]] = tt.advance %[[LHS_PTR]], [%[[TILE_OFFSET_M_LHS]], %[[C0]]]
 CHECK:      %[[TILE_OFFSET_N_RHS:.*]] = arith.muli %[[TILE_INDEX_N]], %[[TILE_SIZE_N]]
 CHECK:      %[[RHS_PTR:.*]] = tt.make_tensor_ptr %[[RHS]]
-CHECK:      %[[RHS_TILE_PTR:.*]] = tt.advance %[[RHS_PTR]], [%[[TILE_OFFSET_K_RHS]], %[[TILE_OFFSET_N_RHS]]]
+CHECK:      %[[RHS_TILE_PTR:.*]] = tt.advance %[[RHS_PTR]], [%[[C0]], %[[TILE_OFFSET_N_RHS]]]
 CHECK:        %[[FOR:.*]]:3 = scf.for %[[BLOCK_K:.*]] = %[[C0]] to %[[SIZE_K]] step %[[TILE_SIZE_K]]
 CHECK-SAME:       iter_args(%[[LHS_ITER_PTR:.*]] = %[[LHS_TILE_PTR]], %[[RHS_ITER_PTR:.*]] = %[[RHS_TILE_PTR]], %[[ACC:.*]] = %[[ZERO_MN]])
 CHECK:        %[[LHS_TILE:.*]] = tt.load %[[LHS_ITER_PTR]] {boundaryCheck = array<i32: 1>
@@ -184,16 +181,13 @@ CHECK:        %[[RHS_TILE:.*]] = tt.load %[[RHS_ITER_PTR]] {boundaryCheck = arra
 CHECK:        %[[RHS_ITER_PTR_NEXT:.*]] = tt.advance %[[RHS_ITER_PTR]], [%[[TILE_SIZE_K]], %[[C0]]]
 CHECK:        %[[CONVERTED:.*]] = arith.sitofp %[[LHS_TILE]] : tensor<16x32xi8> to tensor<16x32xf32>
 CHECK:        %[[TILE_K_LIMIT:.*]] = arith.subi %[[SIZE_K]], %[[BLOCK_K]] : i32
-CHECK:        %[[K_OFFSET:.*]] = arith.muli %[[PID_K]], %[[TILE_SIZE_K]] : i32
-CHECK:        %[[K_OFFSET_SPLAT_K:.*]] = tt.splat %[[K_OFFSET]] : (i32) -> tensor<32xi32>
 CHECK:        %[[K_TILE_IOTA:.*]] = tt.make_range {end = 32 : i32, start = 0 : i32} : tensor<32xi32>
-CHECK:        %[[K_OFFSETS:.*]] = arith.addi %[[K_OFFSET_SPLAT_K]], %[[K_TILE_IOTA]] : tensor<32xi32>
-CHECK:        %[[K_OFFSETS_1K:.*]] = tt.expand_dims %[[K_OFFSETS]] {axis = 0 : i32} : (tensor<32xi32>) -> tensor<1x32xi32>
+CHECK:        %[[K_OFFSETS_1K:.*]] = tt.expand_dims %[[K_TILE_IOTA]] {axis = 0 : i32} : (tensor<32xi32>) -> tensor<1x32xi32>
 CHECK:        %[[TILE_K_LIMIT_1K:.*]] = tt.splat %[[TILE_K_LIMIT]] : (i32) -> tensor<1x32xi32>
 CHECK:        %[[LHS_INBOUNDS_1K:.*]] = arith.cmpi slt, %[[K_OFFSETS_1K]], %[[TILE_K_LIMIT_1K]] : tensor<1x32xi32>
 CHECK:        %[[LHS_INBOUNDS_MK:.*]] = tt.broadcast %[[LHS_INBOUNDS_1K]] : (tensor<1x32xi1>) -> tensor<16x32xi1>
 CHECK:        %[[LHS_MASKED:.*]] = arith.select %[[LHS_INBOUNDS_MK]], %[[CONVERTED]], %[[ZERO_MK]]
-CHECK:        %[[K_OFFSETS_K1:.*]] = tt.expand_dims %[[K_OFFSETS]] {axis = 1 : i32} : (tensor<32xi32>) -> tensor<32x1xi32>
+CHECK:        %[[K_OFFSETS_K1:.*]] = tt.expand_dims %[[K_TILE_IOTA]] {axis = 1 : i32} : (tensor<32xi32>) -> tensor<32x1xi32>
 CHECK:        %[[TILE_K_LIMIT_K1:.*]] = tt.splat %[[TILE_K_LIMIT]] : (i32) -> tensor<32x1xi32>
 CHECK:        %[[RHS_INBOUNDS_K1:.*]] = arith.cmpi slt, %[[K_OFFSETS_K1]], %[[TILE_K_LIMIT_K1]] : tensor<32x1xi32>
 CHECK:        %[[RHS_INBOUNDS_KN:.*]] = tt.broadcast %[[RHS_INBOUNDS_K1]] : (tensor<32x1xi1>) -> tensor<32x64xi1>

@@ -1160,7 +1160,10 @@ class MatMulEmitterHelper {
       bounds.push_back(Cst64(count));
       strides.push_back(Cst64(spec->at(0).stride));
       block_offsets.push_back(
-          b_.create<ma::MulIOp>(properties.pid, Cst32(properties.block_size)));
+          (properties.pid == nullptr)
+              ? Cst32(0)
+              : b_.create<ma::MulIOp>(properties.pid,
+                                      Cst32(properties.block_size)));
       tensor_offsets.push_back(Cst32(spec->at(0).slice_start));
       block_dims.push_back(properties.block_size);
       dim_order.emplace(dim_order.begin(), dim_order.size());
@@ -1209,10 +1212,10 @@ class MatMulEmitterHelper {
       const TensorIterationSpec::DimIterationSpec* spec = analysis_.IterSpec(
           TritonFusionAnalysis::Scope::OUTPUT, hlo, *dims_.out_split_k_dim_idx);
       if (spec != nullptr) {
-        int64_t stride_split_k = spec->at(0).stride;
-        base = AddPtr(
-            b_, base,
-            b_.create<ma::MulIOp>(ConvertScalar(pid_k), Cst(stride_split_k)));
+        CHECK(pid_k != nullptr);
+        base = AddPtr(b_, base,
+                      b_.create<ma::MulIOp>(ConvertScalar(pid_k),
+                                            Cst(spec->at(0).stride)));
       }
     }
 
@@ -1315,7 +1318,9 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
 
   auto pid_nc =
       b.create<mt::GetProgramIdOp>(launch_config.noncontracting_program_id_dim);
-  auto pid_k = b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::Z);
+  Value pid_k = (split_k > 1)
+                    ? b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::Z)
+                    : Value{};
 
   auto group_id = b.create<ma::DivSIOp>(pid_nc, c32(width));
   ma::ConstantOp group_m_op = c32(group_m);
@@ -1415,10 +1420,14 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
     if (need_masking) {
       auto elements_in_tile =
           b.create<ma::SubIOp>(CreateConst(b, i32_ty, dims.k), ki);
-      auto range_k = b.create<ma::AddIOp>(
-          Splat(b, b.create<ma::MulIOp>(pid_k, CreateConst(b, i32_ty, block_k)),
-                block_k),
-          Range(b, block_k));
+      auto range_k = Range(b, block_k);
+      if (pid_k != nullptr) {
+        range_k = b.create<ma::AddIOp>(
+            range_k,
+            Splat(b,
+                  b.create<ma::MulIOp>(pid_k, CreateConst(b, i32_ty, block_k)),
+                  block_k));
+      }
       auto apply_mask = [&](int64_t dim, Value input) {
         auto ty = input.getType().cast<mlir::RankedTensorType>();
         TensorValue range_expanded = b.create<mt::ExpandDimsOp>(range_k, dim)
