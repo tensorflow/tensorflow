@@ -75,6 +75,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
+#include "tsl/lib/core/bits.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
@@ -96,6 +97,8 @@ using ProfilingOutput = AutotunerCompileUtil::ProfilingOutput;
 
 namespace {
 
+// Currently supported minimum tile size.
+constexpr int kMinTileSize = 16;
 // Not a hard limit, just an assumption that should stay valid.
 constexpr int kMaxTileSize = 512;
 
@@ -277,6 +280,7 @@ std::vector<TritonGemmConfig> GetExhaustiveMatmulAutotuneConfigs(
 }
 
 std::vector<TritonGemmConfig> GetFixedMatmulAutotuneConfigs(
+    const HloDotInstruction& dot,
     const se::CudaComputeCapability compute_capability, const int max_split_k) {
   // Shorter name for better formatting.
   using Config = TritonGemmConfig;
@@ -318,6 +322,45 @@ std::vector<TritonGemmConfig> GetFixedMatmulAutotuneConfigs(
                                  return config.split_k > max_split_k;
                                }),
                 configs.end());
+
+  // This is not a sharp upper limit, the actual m value can be much smaller
+  // based on how much of the m dimension is physically contiguous.
+  // TODO(tdanyluk): Get the exact m value by running a TritonFusionAnalysis.
+  const int64_t m = dot.operand(0)->shape().dimensions(
+      NonContractingDimensionIndex(dot, /*operand_number=*/0));
+  // Theoretically the same is true as for m, but that is not possible in
+  // practice with the current implementation.
+  const int64_t n = dot.operand(1)->shape().dimensions(
+      NonContractingDimensionIndex(dot, /*operand_number=*/1));
+  // This is before doing the split-k transform.
+  const int64_t k = dot.operand(0)->shape().dimensions(
+      ContractingDimensionIndex(dot, /*operand_number=*/0));
+  const int64_t block_m_limit =
+      std::max<int64_t>(tsl::NextPowerOfTwoS64(m), kMinTileSize);
+  const int64_t block_n_limit =
+      std::max<int64_t>(tsl::NextPowerOfTwoS64(n), kMinTileSize);
+  const int64_t block_k_limit =
+      std::max<int64_t>(tsl::NextPowerOfTwoS64(k), kMinTileSize);
+
+  // Decrease the block sizes and split_k if they are unnecessarily big.
+  for (TritonGemmConfig& config : configs) {
+    config.block_m = std::min<int64_t>(config.block_m, block_m_limit);
+    config.block_n = std::min<int64_t>(config.block_n, block_n_limit);
+    config.block_k = std::min<int64_t>(config.block_k, block_k_limit);
+
+    const int64_t split_k_limit =
+        std::max<int64_t>(block_k_limit / config.block_k, 1);
+    config.split_k = std::min<int64_t>(config.split_k, split_k_limit);
+  }
+
+  // Remove duplicates.
+  absl::flat_hash_set<TritonGemmConfig> configs_so_far;
+  configs.erase(std::remove_if(configs.begin(), configs.end(),
+                               [&](const TritonGemmConfig& config) {
+                                 return !configs_so_far.insert(config).second;
+                               }),
+                configs.end());
+  CHECK(!configs.empty());
   return configs;
 }
 
@@ -809,10 +852,10 @@ std::vector<TritonGemmConfig> GetPossibleMatmulAutotuneConfigs(
                                       kMaxTileSize /
                                       ShapeUtil::ElementsIn(dot.shape()))
           : 1;
-  return exhaustive_tiling_search
-             ? GetExhaustiveMatmulAutotuneConfigs(compute_capability,
-                                                  max_split_k)
-             : GetFixedMatmulAutotuneConfigs(compute_capability, max_split_k);
+  return exhaustive_tiling_search ? GetExhaustiveMatmulAutotuneConfigs(
+                                        compute_capability, max_split_k)
+                                  : GetFixedMatmulAutotuneConfigs(
+                                        dot, compute_capability, max_split_k);
 }
 
 StatusOr<bool> TritonAutotuner::Run(
