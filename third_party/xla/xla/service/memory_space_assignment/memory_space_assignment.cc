@@ -3188,8 +3188,8 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
       std::make_unique<MemorySpaceAssignment::CopyAllocation>(
           *value->allocations.back(),
           MemorySpaceAssignment::MemorySpace::kAlternate, std::nullopt,
-          ((*copy_start_time - 1) + loop_size_) % loop_size_,
-          last_use_idx_sentinel, first_use_idx));
+          ((*copy_start_time - 1) + loop_size_) % loop_size_, first_use_idx,
+          last_use_idx_sentinel));
   AddAllLoopPositionsAndUses(*value, /*allocate_next_iteration_uses=*/true);
 
   // Account for the additional memory used by early forcing the already
@@ -6009,8 +6009,9 @@ void AlternateMemoryBestFitHeap::AddAsyncCopy(
 
   allocations->push_back(
       std::make_unique<MemorySpaceAssignment::CopyAllocation>(
-          prev_allocation, memory_space, chunk, exclusive_start_time, end_time,
-          copy_done_schedule_before_time, cross_program_prefetch_index));
+          prev_allocation, memory_space, chunk, exclusive_start_time,
+          copy_done_schedule_before_time, end_time,
+          cross_program_prefetch_index));
 
   // Register the additional async copy with the interval tree to keep track of
   // the limit at any given time.
@@ -6088,8 +6089,8 @@ void AlternateMemoryBestFitHeap::AddAsyncSlicesForPrefetch(
   allocations->push_back(
       std::make_unique<MemorySpaceAssignment::SlicedCopyAllocation>(
           prev_allocation, MemorySpaceAssignment::MemorySpace::kAlternate,
-          slice_decisions_sorted_by_start_time, allocation_end_time,
-          prefetch_end_time, options_.update_layout_fn));
+          slice_decisions_sorted_by_start_time, prefetch_end_time,
+          allocation_end_time, options_.update_layout_fn));
 
   // Register the additional async copy with the interval tree to keep track of
   // the limit at any given time.
@@ -7739,7 +7740,7 @@ int64_t GetSlicedCopyAllocationExclusiveStartTime(
 MemorySpaceAssignment::SlicedCopyAllocation::SlicedCopyAllocation(
     const Allocation& prev_allocation, MemorySpace memory_space,
     std::vector<SliceDecision> slice_decisions_sorted_by_exclusive_start_time,
-    int64_t end_time, int64_t copy_done_schedule_before_time,
+    int64_t copy_done_schedule_before_time, int64_t end_time,
     absl::FunctionRef<void(Shape*)> update_layout_fn)
     : Allocation(
           /*defining_position=*/{nullptr, {}}, memory_space,
@@ -8000,7 +8001,7 @@ std::string MemorySpaceAssignment::ParentAllocation::ToString() const {
 MemorySpaceAssignment::CopyAllocation::CopyAllocation(
     Allocation& prev_allocation, MemorySpace memory_space,
     std::optional<Chunk> chunk, int64_t copy_start_schedule_after_time,
-    int64_t end_time, int64_t copy_done_schedule_before_time,
+    int64_t copy_done_schedule_before_time, int64_t end_time,
     std::optional<int64_t> cross_program_prefetch_index)
     : Allocation(/*defining_position=*/{nullptr, {}}, memory_space, chunk,
                  // Allocation uses an inclusive start time

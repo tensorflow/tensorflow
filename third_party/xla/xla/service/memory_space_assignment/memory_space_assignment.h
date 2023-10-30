@@ -762,7 +762,7 @@ class MemorySpaceAssignment {
     CopyAllocation(
         Allocation& prev_allocation, MemorySpace memory_space,
         std::optional<Chunk> chunk, int64_t copy_start_schedule_after_time,
-        int64_t end_time, int64_t copy_done_schedule_before_time,
+        int64_t copy_done_schedule_before_time, int64_t end_time,
         std::optional<int64_t> cross_program_prefetch_index = std::nullopt);
 
     bool is_copy_allocation() const override { return true; }
@@ -945,7 +945,7 @@ class MemorySpaceAssignment {
     SlicedCopyAllocation(
         const Allocation& prev_allocation, MemorySpace memory_space,
         std::vector<SliceDecision> slice_decisions_sorted_by_start_time,
-        int64_t end_time, int64_t copy_done_schedule_before_time,
+        int64_t copy_done_schedule_before_time, int64_t end_time,
         absl::FunctionRef<void(Shape*)> update_layout_fn);
 
     bool is_sliced_copy_allocation() const override { return true; }
