@@ -24,7 +24,6 @@ import numpy as np
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import forwardprop
 from tensorflow.python.eager import forwardprop_util
@@ -440,20 +439,14 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       return math_ops.reduce_prod(
           pointwise + math_ops.reduce_sum(pointwise), axis=1)
 
-    if (context.run_eager_op_as_function_enabled() and
-        test_util.is_xla_enabled()):
-      # Autoclustering kicks in when eager_op_as_function is enabled.
-      # Under XLA the symbolic tolerances are less than under TF.
-      # Ref: b/202559426
-      _test_gradients(
-          self,
-          f, [constant_op.constant([[2.0, 3.0], [1.0, 4.0]])],
-          order=3,
-          srtol=1e-6,
-          satol=1e-3)
-    else:
-      _test_gradients(
-          self, f, [constant_op.constant([[2.0, 3.0], [1.0, 4.0]])], order=3)
+    _test_gradients(
+        self,
+        f,
+        [constant_op.constant([[2.0, 3.0], [1.0, 4.0]])],
+        order=3,
+        srtol=1e-6,
+        satol=1e-3,
+    )
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testNumericHigherOrderFloat64(self):

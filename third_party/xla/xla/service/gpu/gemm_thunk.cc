@@ -41,10 +41,13 @@ GemmThunk::GemmThunk(ThunkInfo thunk_info, GemmConfig config,
 Status GemmThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Running GEMM thunk";
   const BufferAllocations& allocs = *params.buffer_allocations;
+  // TODO(ezhulenev): Pass a correct workspace. For now we ignore it as Thunks
+  // are disabled by default, and they do not interact with CUDA graphs.
+  se::DeviceMemoryBase workspace(nullptr, 0);
   return RunGemm(config_, allocs.GetDeviceAddress(lhs_buffer_),
                  allocs.GetDeviceAddress(rhs_buffer_),
-                 allocs.GetDeviceAddress(output_buffer_), deterministic_,
-                 params.stream);
+                 allocs.GetDeviceAddress(output_buffer_), workspace,
+                 deterministic_, params.stream);
 }
 
 Status GemmThunk::Initialize(se::StreamExecutor* executor,

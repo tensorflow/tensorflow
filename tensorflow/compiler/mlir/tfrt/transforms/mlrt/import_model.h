@@ -33,10 +33,10 @@ namespace mlrt_compiler {
 //
 // This is for initial conversion.
 StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
-    const TfrtCompileOptions& options,
-    const tfrt_stub::FallbackState& fallback_state, mlir::ModuleOp module,
-    tfrt_stub::ModelRuntimeContext& model_context,
-    mlir::OwningOpRef<mlir::ModuleOp>* module_with_op_keys = nullptr);
+    const TfrtCompileOptions& options, tfrt_stub::FallbackState& fallback_state,
+    mlir::ModuleOp module, tfrt_stub::ModelRuntimeContext& model_context,
+    mlir::OwningOpRef<mlir::ModuleOp>* module_with_op_keys = nullptr,
+    std::vector<std::string>* added_xla_function_names = nullptr);
 
 // Converts an MLIR `module_with_op_keys` in TF dialect to MLRT's bytecode
 // format, with op costs from `cost_recorder`.

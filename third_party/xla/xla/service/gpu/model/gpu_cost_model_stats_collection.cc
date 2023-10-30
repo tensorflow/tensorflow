@@ -39,8 +39,9 @@ StatusOr<bool> GpuCostModelStatsCollection::Run(
     for (auto* fusion_instr : computation->instructions()) {
       if (fusion_instr->opcode() != HloOpcode::kFusion) continue;
 
-      GpuPerformanceModel::RecordEstimatedRunTime(fusion_instr,
-                                                  &cost_analysis_);
+      GpuPerformanceModel::RecordEstimatedRunTime(
+          fusion_instr, &cost_analysis_,
+          GpuPerformanceModelOptions::ForModule(module));
     }
   }
   return false;

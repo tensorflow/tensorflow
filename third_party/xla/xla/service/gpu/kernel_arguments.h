@@ -34,7 +34,7 @@ namespace gpu {
 class KernelArgument {
  public:
   static StatusOr<KernelArgument> Create(
-      absl::Span<const BufferAllocation> allocations, mlir::Value value,
+      absl::Span<const BufferAllocation* const> allocations, mlir::Value value,
       bool is_written);
 
   mlir::Value value() const { return value_; }
@@ -68,7 +68,7 @@ class KernelArgument {
 class KernelArguments {
  public:
   static StatusOr<KernelArguments> Create(
-      absl::Span<const BufferAllocation> allocations,
+      absl::Span<const BufferAllocation* const> allocations,
       mlir::lmhlo::FusionOp fusion);
 
   static StatusOr<KernelArguments> Create(
@@ -76,7 +76,7 @@ class KernelArguments {
       const HloFusionInstruction* fusion);
 
   static StatusOr<KernelArguments> Create(
-      absl::Span<const BufferAllocation> allocations,
+      absl::Span<const BufferAllocation* const> allocations,
       mlir::Operation* non_fusion_op, mlir::ValueRange needed_operands);
 
   const std::vector<KernelArgument>& args() const { return args_; }

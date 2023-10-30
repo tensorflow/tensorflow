@@ -1,6 +1,7 @@
 // RUN: stablehlo-quant-opt %s -split-input-file -stablehlo-prepare-quantize=bit-width=4 -verify-diagnostics | FileCheck %s
 
 // CHECK-LABEL: func @dot_int4
+// CHECK-SAME: (%[[ARG_0:.*]]: tensor<?x3xf32>) -> tensor<?x2xf32>
 func.func @dot_int4(%arg0: tensor<?x3xf32>) -> tensor<?x2xf32> {
   // CHECK: %[[cst:.*]] = stablehlo.constant
   // CHECK: %[[q1:.*]] = "quantfork.qcast"(%[[cst]])
@@ -8,7 +9,7 @@ func.func @dot_int4(%arg0: tensor<?x3xf32>) -> tensor<?x2xf32> {
   // CHECK: %[[dq1:.*]] = "quantfork.dcast"(%[[q1]])
   // CHECK-SAME: quant.uniform<i8:f32, 0.0040316890267764818:127>
   %cst = stablehlo.constant dense<[[-0.960978984, -0.390246302], [-0.790828585, -0.601039409], [-1.0280807, -1.02731466]]> : tensor<3x2xf32>
-  // CHECK: %[[q2:.*]] = "quantfork.qcast"(%arg0)
+  // CHECK: %[[q2:.*]] = "quantfork.qcast"(%[[ARG_0]])
   // CHECK-SAME: quant.uniform<i4:f32, 0.13329366842905679:-1>
   // CHECK: %[[dq2:.*]] = "quantfork.dcast"(%[[q2]])
   // CHECK-SAME: quant.uniform<i4:f32, 0.13329366842905679:-1>

@@ -522,6 +522,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":constant_value",
+        ":hlo_dce",
         ":hlo_pass",
         ":value_range",
         "//xla:comparison_util",
@@ -574,6 +575,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -1675,6 +1677,7 @@ cc_library(
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -1774,6 +1777,7 @@ cc_library(
         ":hlo_dataflow_analysis",
         ":hlo_ordering",
         ":hlo_proto_cc",
+        ":time_utils",
         ":tuple_points_to_analysis",
         "//xla:comparison_util",
         "//xla:status",
@@ -5411,6 +5415,7 @@ xla_test(
     ],
     deps = [
         ":hlo_parser",
+        "//xla:error_spec",
         "//xla:execution_options_util",
         "//xla:status_macros",
         "//xla:test",
@@ -5418,6 +5423,7 @@ xla_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -7405,4 +7411,12 @@ cc_library(
         "//xla:xla_proto_cc",
         "@local_tsl//tsl/platform:protobuf",
     ],
+)
+
+cc_library(
+    name = "time_utils",
+    srcs = ["time_utils.cc"],
+    hdrs = ["time_utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [],
 )

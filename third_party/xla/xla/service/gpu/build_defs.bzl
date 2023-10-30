@@ -2,9 +2,13 @@
 """
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
+<<<<<<< HEAD
 load("@local_config_rocm//rocm:build_defs.bzl",
     "rocm_copts", 
 )
+=======
+load("@local_config_rocm//rocm:build_defs.bzl", "rocm_copts")  # copybara:comment
+>>>>>>> upstream/master
 
 def get_cub_sort_kernel_types(name = ""):
     """ List of supported types for CUB sort kernels.
@@ -32,13 +36,18 @@ def get_cub_sort_kernel_types(name = ""):
         "u64_b64",
     ]
 
-def build_cub_sort_kernels(name, types, **kwargs):
+def build_cub_sort_kernels(name, types, local_defines = [], **kwargs):
     """ Create build rules for all CUB sort kernels.
     """
     for suffix in types:
         cuda_library(
             name = name + "_" + suffix,
+<<<<<<< HEAD
             local_defines = ["CUB_TYPE_" + suffix.upper()],
             copts = rocm_copts(),
+=======
+            local_defines = local_defines + ["CUB_TYPE_" + suffix.upper()],
+            copts = rocm_copts(),  # copybara:comment
+>>>>>>> upstream/master
             **kwargs
         )

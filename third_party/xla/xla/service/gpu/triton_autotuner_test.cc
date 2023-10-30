@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
+#include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/pattern_matcher.h"
@@ -247,15 +248,14 @@ ENTRY e {
                                                   .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::VOLTA, /*minor=*/0};
-  const std::vector<AutotuneResult::TritonGemmKey> configs =
+  const std::vector<TritonGemmConfig> configs =
       GetPossibleMatmulAutotuneConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           compute_capability, GetDebugOptionsForTest());
-  EXPECT_FALSE(std::any_of(configs.begin(), configs.end(),
-                           [](const AutotuneResult::TritonGemmKey& key) {
-                             return key.num_stages() > 2;
-                           }));
+  EXPECT_FALSE(std::any_of(
+      configs.begin(), configs.end(),
+      [](const TritonGemmConfig& config) { return config.num_stages > 2; }));
 }
 
 TEST_F(TritonAutotunerTest, AmpereUsesMoreThanTwoStages) {
@@ -269,15 +269,14 @@ ENTRY e {
                                                   .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
-  const std::vector<AutotuneResult::TritonGemmKey> configs =
+  const std::vector<TritonGemmConfig> configs =
       GetPossibleMatmulAutotuneConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           compute_capability, GetDebugOptionsForTest());
-  EXPECT_TRUE(std::any_of(configs.begin(), configs.end(),
-                          [](const AutotuneResult::TritonGemmKey& key) {
-                            return key.num_stages() > 2;
-                          }));
+  EXPECT_TRUE(std::any_of(
+      configs.begin(), configs.end(),
+      [](const TritonGemmConfig& config) { return config.num_stages > 2; }));
 }
 
 TEST_F(TritonAutotunerTest, SmallOutputCanUseLargeSplitK) {
@@ -291,15 +290,14 @@ ENTRY e {
                                                   .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
-  const std::vector<AutotuneResult::TritonGemmKey> configs =
+  const std::vector<TritonGemmConfig> configs =
       GetPossibleMatmulAutotuneConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           compute_capability, GetDebugOptionsForTest());
-  EXPECT_TRUE(std::any_of(configs.begin(), configs.end(),
-                          [](const AutotuneResult::TritonGemmKey& key) {
-                            return key.split_k() >= 16;
-                          }));
+  EXPECT_TRUE(std::any_of(
+      configs.begin(), configs.end(),
+      [](const TritonGemmConfig& config) { return config.split_k >= 16; }));
 }
 
 TEST_F(TritonAutotunerTest, LargeOutputDoesNotUseLargeSplitK) {
@@ -313,15 +311,14 @@ ENTRY e {
                                                   .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
-  const std::vector<AutotuneResult::TritonGemmKey> configs =
+  const std::vector<TritonGemmConfig> configs =
       GetPossibleMatmulAutotuneConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           compute_capability, GetDebugOptionsForTest());
-  EXPECT_FALSE(std::any_of(configs.begin(), configs.end(),
-                           [](const AutotuneResult::TritonGemmKey& key) {
-                             return key.split_k() > 1;
-                           }));
+  EXPECT_FALSE(std::any_of(
+      configs.begin(), configs.end(),
+      [](const TritonGemmConfig& config) { return config.split_k > 1; }));
 }
 
 TEST_F(TritonAutotunerTest, Int8FusedGemm) {
@@ -677,15 +674,14 @@ ENTRY e {
                                                   .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
-  const std::vector<AutotuneResult::TritonGemmKey> configs =
+  const std::vector<TritonGemmConfig> configs =
       GetPossibleMatmulAutotuneConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           compute_capability, GetDebugOptionsForTest());
-  EXPECT_TRUE(std::all_of(configs.begin(), configs.end(),
-                          [](const AutotuneResult::TritonGemmKey& key) {
-                            return key.split_k() == 1;
-                          }));
+  EXPECT_TRUE(std::all_of(
+      configs.begin(), configs.end(),
+      [](const TritonGemmConfig& config) { return config.split_k == 1; }));
 }
 
 }  // namespace

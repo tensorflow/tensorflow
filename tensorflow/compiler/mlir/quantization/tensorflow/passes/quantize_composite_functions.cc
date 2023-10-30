@@ -144,7 +144,7 @@ class QuantizeCompositeFunctionsPass
                      "drq", "Post-training dynamic-range quantizaiton"),
           clEnumValN(tensorflow::quantization::QuantizationMethod::
                          METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8,
-                     "weight_only", "Post-training weight-only quantizaiton"))};
+                     "weight_only", "Post-training weight-only quantization"))};
 
   Option<OpSet> target_opset_{
       *this, "target-opset", llvm::cl::init(OpSet::TF),
@@ -1283,9 +1283,7 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
       ctx, target_opset_);
   patterns_2.add<QuantizeConstPattern>(ctx, target_opset_);
 
-  if (target_opset_ == OpSet::XLA && enable_per_channel_quantization_ &&
-      quantization_method_ == tensorflow::quantization::QuantizationMethod::
-                                  METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8) {
+  if (target_opset_ == OpSet::XLA && enable_per_channel_quantization_) {
     patterns_2.add<RestoreWeightShapePattern>(ctx);
   }
 

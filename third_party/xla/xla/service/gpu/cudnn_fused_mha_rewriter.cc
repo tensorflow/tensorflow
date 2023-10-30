@@ -1315,19 +1315,14 @@ bool IsDbiasOnlyUserBesidesGradGemm(HloInstruction* d_intermediate,
       dbias_user = user;
     }
   }
-  HloInstruction* reduce;
   auto ConsumeExtraConvert = [](HloInstruction** instr) {
     Match((*instr)->users()[0], m::Convert(instr, m::Op()).WithOneUse());
     return true;
   };
   // user_count == 1 && (reduce-> {convert} ->bitcast)
   return user_count == 1 &&
-         Match(dbias_user, m::Reduce(&reduce, m::Op(), m::Op()).WithOneUse()) &&
-         ConsumeExtraConvert(&reduce) &&
-         Match(reduce->users()[0],
-               m::AnyOf<HloInstruction>(m::Reshape(dbias, m::Op()),
-                                        m::Bitcast(dbias, m::Op()))
-                   .WithOneUse());
+         Match(dbias_user, m::Reduce(dbias, m::Op(), m::Op()).WithOneUse()) &&
+         (*dbias)->shape().rank() == 3 && ConsumeExtraConvert(dbias);
 }
 
 StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
@@ -1459,12 +1454,24 @@ StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
   output_shapes.push_back(ShapeUtil::MakeShape(U8, {0}));
 
   HloInstruction* dbias = nullptr;
-  if (d_intermediate &&
-      IsDbiasOnlyUserBesidesGradGemm(d_intermediate, bmm_1_grad_1, bmm_1_grad_2,
-                                     &dbias)) {
-    output_shapes.push_back(dbias->shape());
+  if (d_intermediate) {
+    if (IsDbiasOnlyUserBesidesGradGemm(d_intermediate, bmm_1_grad_1,
+                                       bmm_1_grad_2, &dbias)) {
+      // Cudnn kernel only outputs dbias in this shape [1, num_heads, seq, seq],
+      // so we add a dimension of 1 to existing dbias' shape.
+      std::vector<int64_t> dbias_shape_vector =
+          SpanToVector(dbias->shape().dimensions());
+      dbias_shape_vector.insert(dbias_shape_vector.begin(), 1);
+      Shape cudnn_dbias_shape = ShapeUtil::MakeShape(
+          dbias->shape().element_type(), dbias_shape_vector);
+      output_shapes.push_back(cudnn_dbias_shape);
+    } else {
+      VLOG(2) << "Intermediate gradient has other users outside of gradient "
+                 "gemms and dbias"
+              << " which is not supported by CUDNN for now. Skipping.";
+      return false;
+    }
   }
-
   Shape call_shape = ShapeUtil::MakeTupleShape(output_shapes);
   HloInstruction* fmha_bwd_call =
       comp->AddInstruction(HloInstruction::CreateCustomCall(
@@ -1485,12 +1492,23 @@ StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
   TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
       bmm_2_grad_1, HloInstruction::CreateGetTupleElement(bmm_2_grad_1->shape(),
                                                           fmha_bwd_call, 2)));
-  // d_intermediate tensor
+
   if (dbias) {
-    // does not really need d_intermediate
-    TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
-        dbias, HloInstruction::CreateGetTupleElement(dbias->shape(),
-                                                     fmha_bwd_call, 5)));
+    // Reshape fmha dbias output to original user's input shape.
+    // If the reshape doesn't involve physical data movement,
+    // algebraic simplifer can change it to a no-op bitcast.
+    Shape original_shape = dbias->shape();
+    HloInstruction* dbias_user = dbias->users()[0];
+    HloInstruction* cudnn_dbias_output =
+        comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+            output_shapes.back(), fmha_bwd_call, 5));
+    HloInstruction* reshape_dbias = comp->AddInstruction(
+        HloInstruction::CreateReshape(original_shape, cudnn_dbias_output));
+    TF_RETURN_IF_ERROR(dbias_user->ReplaceOperandWith(
+        dbias_user->operand_index(dbias), reshape_dbias));
+
+    TF_RETURN_IF_ERROR(
+        comp->ReplaceInstructionWithDifferentShape(dbias, cudnn_dbias_output));
   }
   return true;
 }

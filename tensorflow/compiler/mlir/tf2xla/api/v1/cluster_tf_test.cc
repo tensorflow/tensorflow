@@ -88,18 +88,6 @@ TEST_F(SessionClusterTensorflowDialectTest, ClustersTf) {
       compilation_status.Delta("tpu", "v1", "fallback_disabled", "success"), 1);
 }
 
-// Required for now due to the Bridge API, but this should be separated out
-// later.
-TEST_F(SessionClusterTensorflowDialectTest,
-       RunsTensorflowDialectToTensorflowExecutor) {
-  TF_ASSERT_OK(CreateMlirModule("invalid_executor.mlir"));
-
-  EXPECT_FALSE(
-      RunSessionTf2xlaClusteringBridge(*mlir_module_,
-                                       /*is_in_fallback_enabled_mode=*/false)
-          .ok());
-}
-
 TEST_F(SessionClusterTensorflowDialectTest, FailsWithMultipleSubmodules) {
   CellReader<int64_t> compilation_status(kCompilationStreamz);
 

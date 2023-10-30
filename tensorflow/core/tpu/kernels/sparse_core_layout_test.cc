@@ -89,7 +89,7 @@ TEST(SparseCoreLayoutStacker, RespectsDisableStacking) {
 
 TEST(SparseCoreLayoutStacker, RespectsActivationMemLimit) {
   SparseCoreLayoutStacker stacker(2);
-  stacker.SetActivationMemoryBytesLimit(16384);
+  stacker.SetActivationMemoryBytesLimit(16384 + 1);
 
   // Here there are several identical tables with an activation memory limit of
   //    sizeof (float) * 8 * 1024 = 8192 per table.
@@ -111,7 +111,7 @@ TEST(SparseCoreLayoutStacker, RespectsActivationMemLimit) {
 
 TEST(SparseCoreLayoutStacker, RespectsVariableShardLimit) {
   SparseCoreLayoutStacker stacker(2);
-  stacker.SetVariableShardBytesLimit(4096);
+  stacker.SetVariableShardBytesLimit(4096 + 1);
 
   // Here there are several identical tables that contribute
   //    sizeof (float) * 8 * 128 / 2 = 2048 bytes to each shard.
@@ -129,6 +129,35 @@ TEST(SparseCoreLayoutStacker, RespectsVariableShardLimit) {
         tables { table_name: 'table4' stacked_table_name: 'table3_table4' }
         tables { table_name: 'table5' stacked_table_name: 'table5' }
       )pb"))));
+}
+
+TEST(SparseCoreLayoutStacker, RespectsRowLimit) {
+  SparseCoreLayoutStacker stacker(2);
+  // Disable the other limits.
+  stacker.SetActivationMemoryBytesLimit(0);
+  stacker.SetVariableShardBytesLimit(0);
+
+  // Here there are several identical tables that contribute 2^30 rows. Since
+  // the default row limit is 2^31-1, they should not be able to stack.
+  ASSERT_OK(stacker.AddTable("table1", 1 << 29, 8, "stack1", 1024));
+  ASSERT_OK(stacker.AddTable("table2", 1 << 29, 8, "stack1", 1024));
+  ASSERT_OK(stacker.AddTable("table3", 1 << 29, 8, "stack1", 1024));
+  ASSERT_OK(stacker.AddTable("table4", 1 << 29, 8, "stack1", 1024));
+  EXPECT_THAT(stacker.GetLayouts(), IsOkAndHolds(Partially(EqualsProto(R"pb(
+                tables {
+                  table_name: 'table1'
+                  stacked_table_name: 'table1_table2_table3'
+                }
+                tables {
+                  table_name: 'table2'
+                  stacked_table_name: 'table1_table2_table3'
+                }
+                tables {
+                  table_name: 'table3'
+                  stacked_table_name: 'table1_table2_table3'
+                }
+                tables { table_name: 'table4' stacked_table_name: 'table4' }
+              )pb"))));
 }
 
 }  // namespace

@@ -1257,7 +1257,7 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
 
   bool changed = false;
   for (auto [result, type] :
-       llvm::zip(op.getResults(), loader->output_types())) {
+       llvm::zip(op.getResults(), loader->OutputTypes())) {
     auto ranked = type.dyn_cast<RankedTensorType>();
     if (ranked == nullptr) {
       LLVM_DEBUG(llvm::dbgs()

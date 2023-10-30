@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
 
+#include <cstdint>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -132,13 +133,6 @@ TEST_F(FunctionClusterTensorflowDialectTest, ClustersTFCPU) {
   FuncOp main = mlir_module_->lookupSymbol<mlir::func::FuncOp>("main");
   ASSERT_TRUE(main);
 
-  bool has_graph_op = false;
-  main.walk([&](mlir::tf_executor::GraphOp graph) {
-    has_graph_op = true;
-    return WalkResult::advance();
-  });
-
-  EXPECT_TRUE(has_graph_op);
   EXPECT_EQ(
       compilation_status.Delta("cpu/gpu", "v2", "fallback_disabled", "success"),
       1);
@@ -155,14 +149,6 @@ TEST_F(FunctionClusterTensorflowDialectTest, ClustersTFGPU) {
 
   FuncOp main = mlir_module_->lookupSymbol<mlir::func::FuncOp>("main");
   ASSERT_TRUE(main);
-
-  bool has_graph_op = false;
-  main.walk([&](mlir::tf_executor::GraphOp graph) {
-    has_graph_op = true;
-    return WalkResult::advance();
-  });
-
-  EXPECT_TRUE(has_graph_op);
 
   EXPECT_EQ(
       compilation_status.Delta("cpu/gpu", "v2", "fallback_disabled", "success"),

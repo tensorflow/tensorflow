@@ -54,6 +54,27 @@ struct EstimateRunTimeData {
   absl::Duration exec_time;
 };
 
+struct GpuPerformanceModelOptions {
+  // Whether to attempt to model the effect of uncoalesced reads.
+  bool consider_coalescing = false;
+
+  static GpuPerformanceModelOptions Default() {
+    return GpuPerformanceModelOptions();
+  }
+
+  static GpuPerformanceModelOptions PriorityFusion() {
+    GpuPerformanceModelOptions config;
+    config.consider_coalescing = true;
+    return config;
+  }
+
+  static GpuPerformanceModelOptions ForModule(const HloModule* module) {
+    return module->config().debug_options().xla_gpu_enable_priority_fusion()
+               ? PriorityFusion()
+               : Default();
+  }
+};
+
 class GpuPerformanceModel {
  public:
   struct RunTimes {
@@ -62,16 +83,19 @@ class GpuPerformanceModel {
   };
 
   static EstimateRunTimeData EstimateRunTimeForInstruction(
-      const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis);
+      const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis,
+      const GpuPerformanceModelOptions& config);
 
   static RunTimes EstimateRunTimes(
       const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
+      const GpuPerformanceModelOptions& config,
       std::vector<HloInstruction*> fused_consumers = {},
       bool multi_output = false);
 
   // Writes estimated execution time to FusionBackendConfig.reification_cost.
   static void RecordEstimatedRunTime(HloInstruction* instruction,
-                                     const GpuHloCostAnalysis* cost_analysis);
+                                     const GpuHloCostAnalysis* cost_analysis,
+                                     const GpuPerformanceModelOptions& config);
   static absl::Duration ComputeTime(
       const se::DeviceDescription& gpu_device_info, int64_t flops,
       int64_t num_threads);
@@ -81,6 +105,7 @@ class GpuPerformanceModel {
       const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
       const HloInstruction* producer,
       std::optional<HloFusionAnalysis>& fusion_analysis,
+      const GpuPerformanceModelOptions& config,
       const HloInstruction* fused_consumer = nullptr);
 };
 

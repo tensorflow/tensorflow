@@ -268,10 +268,10 @@ func.func @device_ordinals() {
   func.return
 }
 
-// CHECK: tf_executor.island wraps "tf.Const"() {_parallel_execution_ids = "r0:0", value = dense<1> : tensor<i64>}
-// CHECK: tf_executor.island wraps "tf.Const"() {_parallel_execution_ids = "r0:0", value = dense<3> : tensor<i64>}
-// CHECK: tf_executor.island wraps "tf.Const"() {_parallel_execution_ids = "r0:1", value = dense<2> : tensor<i64>}
-// CHECK: tf_executor.island wraps "tf.Const"() {_parallel_execution_ids = "r0:1", value = dense<4> : tensor<i64>}
+// CHECK: tf_executor.island wraps "tf.Const"() <{value = dense<1> : tensor<i64>}> {_parallel_execution_ids = "r0:0"}
+// CHECK: tf_executor.island wraps "tf.Const"() <{value = dense<3> : tensor<i64>}> {_parallel_execution_ids = "r0:0"}
+// CHECK: tf_executor.island wraps "tf.Const"() <{value = dense<2> : tensor<i64>}> {_parallel_execution_ids = "r0:1"}
+// CHECK: tf_executor.island wraps "tf.Const"() <{value = dense<4> : tensor<i64>}> {_parallel_execution_ids = "r0:1"}
 
 // -----
 // Tests parallel_execute nested inside replicate

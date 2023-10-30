@@ -200,19 +200,6 @@ tensorflow::Status RunNonTPUBridge(ModuleOp module,
                                          is_in_fallback_enabled_mode,
                                          device_type, clustering_status));
 
-  Status runtime_lowering_status =
-      tensorflow::tfrt_compiler::RunLowerClusterToRuntimeOpsPassPipeline(
-          module, tsl::DeviceType("XLA_GPU_JIT"), module_name);
-  TF_RETURN_IF_ERROR(RecordIfErrorStatus(/*error_prefix=*/"runtime_lowering_v2",
-                                         is_in_fallback_enabled_mode,
-                                         device_type, runtime_lowering_status));
-
-  Status export_status =
-      tensorflow::tf2xla::v2::ExportFromTensorflowDialectToExecutor(
-          module, module_name);
-  TF_RETURN_IF_ERROR(RecordIfErrorStatus(/*error_prefix=*/"export_to_executor",
-                                         is_in_fallback_enabled_mode,
-                                         device_type, export_status));
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       device_type, /*bridge_version=*/"v2", is_in_fallback_enabled_mode,
       /*result=*/"success");

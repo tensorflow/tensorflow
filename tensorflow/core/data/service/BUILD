@@ -1100,6 +1100,7 @@ cc_library(
         "//tensorflow/core/data/service/snapshot:snapshot_stream_writer",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",

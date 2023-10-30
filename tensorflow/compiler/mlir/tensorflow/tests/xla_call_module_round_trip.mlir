@@ -13,12 +13,12 @@ module {
   func.func @main(%arg0: tensor<10xi32>, %arg1: tensor<10xi32>) -> tensor<10xi32> {
     // CHECK:      %[[RESULT:.*]] = "tf.XlaCallModule"(%[[ARG0]], %[[ARG1]])
     // CHECK-SAME:   Sout = [#tf_type.shape<?>]
-    // CHECK-SAME:   _entry_function = @main0
-    // CHECK-SAME:   _stablehlo_module_attrs = {}
     // CHECK-NOT:    function_list
     // CHECK-SAME:   module = ""
     // CHECK-SAME:   platforms = []
     // CHECK-SAME:   version = 5
+    // CHECK-SAME:   _entry_function = @main0
+    // CHECK-SAME:   _stablehlo_module_attrs = {}
 
     %0 = "tf.XlaCallModule"(%arg0, %arg1) {Sout = [#tf_type.shape<?>], dim_args_spec = [], _entry_function = @main0, module = "", platforms = [], version = 5 : i64} : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32>
     // CHECK: return %[[RESULT]]

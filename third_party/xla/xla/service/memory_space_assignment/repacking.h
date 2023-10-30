@@ -43,15 +43,16 @@ class MemorySpaceAssignmentRepacker {
   struct Slice {
     int64_t size;
     int64_t offset;
-    int64_t start_time;
+    int64_t inclusive_start_time;
 
     std::string ToString() const {
       return absl::StrCat("{ size: ", size, ", offset: ", offset,
-                          ", start_time: ", start_time, " }");
+                          ", inclusive_start_time: ", inclusive_start_time,
+                          " }");
     }
 
     std::tuple<int64_t, int64_t, int64_t> ToTuple() const {
-      return std::make_tuple(size, offset, start_time);
+      return std::make_tuple(size, offset, inclusive_start_time);
     }
 
     bool operator==(const Slice& rhs) const {
@@ -73,15 +74,15 @@ class MemorySpaceAssignmentRepacker {
       return sizes_sorted_by_offset;
     }
 
-    std::vector<int64_t> SortedStartTimes() const {
-      std::vector<int64_t> sorted_start_times;
-      sorted_start_times.reserve(slices_sorted_by_offset.size());
-      absl::c_for_each(slices_sorted_by_offset,
-                       [&sorted_start_times](const Slice& slice) {
-                         sorted_start_times.push_back(slice.start_time);
-                       });
-      absl::c_sort(sorted_start_times);
-      return sorted_start_times;
+    std::vector<int64_t> SortedInclusiveStartTimes() const {
+      std::vector<int64_t> sorted_inclusive_start_times;
+      sorted_inclusive_start_times.reserve(slices_sorted_by_offset.size());
+      absl::c_for_each(slices_sorted_by_offset, [&sorted_inclusive_start_times](
+                                                    const Slice& slice) {
+        sorted_inclusive_start_times.push_back(slice.inclusive_start_time);
+      });
+      absl::c_sort(sorted_inclusive_start_times);
+      return sorted_inclusive_start_times;
     }
 
     std::string ToString() const {
@@ -113,7 +114,7 @@ class MemorySpaceAssignmentRepacker {
   // the information in the original_slice_data field to achieve an even more
   // efficient repacking.
   struct AllocationBlock {
-    int64_t start_time;
+    int64_t inclusive_start_time;
     int64_t end_time;
     int64_t size;
     int64_t offset;
@@ -137,8 +138,8 @@ class MemorySpaceAssignmentRepacker {
         repacked_slicing_str = absl::StrCat("; repacked_slice_data: ",
                                             repacked_slice_data->ToString());
       }
-      return absl::StrCat("[", start_time, ", ", end_time, "]; size: ", size,
-                          "; offset: ", offset,
+      return absl::StrCat("[", inclusive_start_time, ", ", end_time,
+                          "]; size: ", size, "; offset: ", offset,
                           "; initial offset: ", initial_offset,
                           "; # colocations: ", colocations.size(),
                           original_slicing_str, repacked_slicing_str);

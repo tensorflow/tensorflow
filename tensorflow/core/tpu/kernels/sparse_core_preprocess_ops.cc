@@ -28,9 +28,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "highway/hwy/base.h"  // from @com_google_highway
-#include "highway/hwy/contrib/sort/order.h"  // from @com_google_highway
-#include "highway/hwy/contrib/sort/vqsort.h"  // from @com_google_highway
+#include "hwy/base.h"  // from @com_google_highway
+#include "hwy/contrib/sort/order.h"  // from @com_google_highway
+#include "hwy/contrib/sort/vqsort.h"  // from @com_google_highway
 #include "xla/stream_executor/tpu/tpu_api.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "xla/util.h"

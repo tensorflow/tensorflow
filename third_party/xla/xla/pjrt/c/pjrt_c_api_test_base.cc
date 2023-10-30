@@ -68,7 +68,8 @@ void PjrtCApiTestBase::destroy_client(PJRT_Client* client) {
   CHECK_EQ(error, nullptr);
 }
 
-absl::Span<PJRT_Device*> PjrtCApiTestBase::GetClientAddressableDevices() const {
+absl::Span<PJRT_Device* const> PjrtCApiTestBase::GetClientAddressableDevices()
+    const {
   PJRT_Client_AddressableDevices_Args addr_args;
   addr_args.struct_size = PJRT_Client_AddressableDevices_Args_STRUCT_SIZE;
   addr_args.priv = nullptr;

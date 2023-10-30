@@ -755,7 +755,12 @@ GpuDriver::GraphNodeGetType(hipGraphNode_t node) {
           << " and add it to " << graph << "; deps: " << deps.size();
 
   RETURN_IF_ROCM_ERROR(
+<<<<<<< HEAD
       wrap::hipGraphAddChildGraphNode(node, graph, deps.data(), deps.size(), child),
+=======
+      wrap::hipGraphAddChildGraphNode(node, graph, deps.data(), deps.size(),
+                                      child),
+>>>>>>> upstream/master
       "Failed to create a child graph node and add it to a HIP graph");
 }
 

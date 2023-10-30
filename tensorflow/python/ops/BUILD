@@ -1631,11 +1631,13 @@ py_strict_library(
         ":linalg_grad",
         ":linalg_ops",
         ":logging_ops",
+        ":lookup_grad",
         ":manip_grad",
         ":math_grad",
         ":math_ops",
         ":nccl_ops",
         ":optional_grad",
+        ":parsing_grad",
         ":proto_ops",
         ":random_grad",
         ":rnn_grad",
@@ -1963,6 +1965,7 @@ py_strict_library(
     deps = [
         ":array_ops",
         ":control_flow_ops",
+        ":lookup_grad",
         ":lookup_ops_gen",
         ":math_ops",
         ":string_ops",
@@ -1984,6 +1987,14 @@ py_strict_library(
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
+    name = "lookup_grad",
+    srcs = ["lookup_grad.py"],
+    deps = [
+        "//tensorflow/python/framework:ops",
     ],
 )
 
@@ -2308,6 +2319,7 @@ py_strict_library(
         ":control_flow_ops",
         ":math_ops",
         ":parsing_config",
+        ":parsing_grad",
         ":parsing_ops_gen",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
@@ -2315,6 +2327,12 @@ py_strict_library(
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
     ],
+)
+
+py_strict_library(
+    name = "parsing_grad",
+    srcs = ["parsing_grad.py"],
+    deps = ["//tensorflow/python/framework:ops"],
 )
 
 py_strict_library(

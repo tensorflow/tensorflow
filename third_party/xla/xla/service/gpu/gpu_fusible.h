@@ -70,9 +70,24 @@ int64_t ReductionProjectedShmemUsageBytes(
 
 inline constexpr int64_t MaxOperandsAndOutputsPerFusion() { return 64; }
 
-// Whether the op tranposes the physical data layout. Fusing such ops may lead
+// Whether the op transposes the physical data layout. Fusing such ops may lead
 // to uncoalesced data access and may thus not be beneficial.
 bool IsPhysicallyTransposing(const HloInstruction& instr);
+
+// Whether the op transposes the minor-most dimension. In the case of fusions,
+// whether the fusion contains some op that does this.
+// If the minor-most dimension is transposed, this results in uncoalesced memory
+// accesses in untiled code generators. If some other dimension is transposed,
+// this just results in additional index computations.
+// Note that this function makes several simplifying assumptions:
+// - For non-fusion instructions, we assume the output is materialized as is.
+//   For internal instructions, this may not be the case.
+// - For fusions, it simply checks the output of this function for each
+//   instruction in the fusion's computation.
+// - There's no way to tell which parameters of the fusion are transposed.
+// TODO(jreiffers): Take into account the size of the transposed dimension as
+// well.
+bool TransposesMinorDimension(const HloInstruction* instr);
 
 // Note that reduction ops are lowered in different ways. Reduce input fusions
 // are lowered by IrEmitterUnnested::EmitReductionToVector and must be rooted at

@@ -81,9 +81,13 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
-/** \addtogroup c_api tensorflow/lite/c/c_api.h
+// clang-format off
+// NOLINTBEGIN(whitespace/line_length)
+/** \defgroup c_api tensorflow/lite/c/c_api.h
  *  @{
  */
+// NOLINTEND(whitespace/line_length)
+// clang-format on
 
 // This header should be valid in both C (e.g. C99) and C++,
 // so 'void' in parameters is not redundant.

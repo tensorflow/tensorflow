@@ -75,8 +75,8 @@ ENTRY e {
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
-  GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis_);
+  GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
+      root, &analysis_, GpuPerformanceModelOptions::Default());
   // Dominated by the DRAM bandwidth.
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 57, 10);
 }
@@ -102,12 +102,13 @@ ENTRY e {
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(root->Accept(&analysis_));
 
-  GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis_);
+  GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
+      root, &analysis_, GpuPerformanceModelOptions::Default());
   // Dominated by the kernel launch overhead.
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 5, 1);
 
-  GpuPerformanceModel::RecordEstimatedRunTime(root, &analysis_);
+  GpuPerformanceModel::RecordEstimatedRunTime(
+      root, &analysis_, GpuPerformanceModelOptions::Default());
   double recorded_cycles = root->backend_config<FusionBackendConfig>()
                                ->reification_cost()
                                .end_to_end_cycles();
@@ -135,12 +136,13 @@ ENTRY e {
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(root->Accept(&analysis_));
 
-  GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis_);
+  GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
+      root, &analysis_, GpuPerformanceModelOptions::Default());
   // Dominated by the DRAM bandwidth.
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 175, 30);
 
-  GpuPerformanceModel::RecordEstimatedRunTime(root, &analysis_);
+  GpuPerformanceModel::RecordEstimatedRunTime(
+      root, &analysis_, GpuPerformanceModelOptions::Default());
   double recorded_cycles = root->backend_config<FusionBackendConfig>()
                                ->reification_cost()
                                .end_to_end_cycles();
@@ -170,8 +172,8 @@ ENTRY e {
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(root->Accept(&analysis_));
 
-  GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis_);
+  GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
+      root, &analysis_, GpuPerformanceModelOptions::Default());
   // Parameter 0 read is accelerated by L1 cache even though the total data
   // volume is the same as in the test LargeReadWrite above.
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 118, 12);
@@ -200,8 +202,8 @@ ENTRY e {
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(root->Accept(&analysis_));
 
-  GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis_);
+  GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
+      root, &analysis_, GpuPerformanceModelOptions::Default());
   // Parameter 0 read is accelerated by L2 cache (does not fit in L1).
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 123, 12);
 }
@@ -233,8 +235,8 @@ TEST_F(GpuPerformanceModelTest, UnusedParameter) {
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
-  GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis_);
+  GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
+      root, &analysis_, GpuPerformanceModelOptions::Default());
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 5, 1);
 }
 
@@ -316,8 +318,8 @@ ENTRY fusion {
     std::vector<HloInstruction*> consumers{
         module->entry_computation()->GetInstructionWithName("reduce.2")};
 
-    return GpuPerformanceModel::EstimateRunTimes(producer, &analysis,
-                                                 consumers);
+    return GpuPerformanceModel::EstimateRunTimes(
+        producer, &analysis, GpuPerformanceModelOptions::Default(), consumers);
   };
 
   TF_ASSERT_OK_AND_ASSIGN(auto large_small_reduce_runtime,
@@ -357,11 +359,43 @@ ENTRY fusion {
       module->entry_computation()->GetInstructionWithName("transpose.1");
   std::vector<HloInstruction*> consumers{
       module->entry_computation()->GetInstructionWithName("reduce.1")};
-  GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(producer, &analysis_, consumers);
+  GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
+      producer, &analysis_, GpuPerformanceModelOptions::PriorityFusion(),
+      consumers);
 
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 105, 10);
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_fused), 1030, 10);
+}
+
+TEST_F(GpuPerformanceModelTest, FusingNonMinorTransposeIntoReduceIsFast) {
+  constexpr absl::string_view kHlo = R"(
+HloModule testmodule
+
+max {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT max = f32[] maximum(p0, p1)
+}
+
+ENTRY fusion {
+  c = f32[] constant(-inf)
+  p0 = f32[1500,32,128]{1,2,0} parameter(0)
+  transpose.1 = f32[1500,128,32]{2,0,1} transpose(p0), dimensions={0,2,1}
+  ROOT reduce.1 = f32[1500,32] reduce(transpose.1, c), dimensions={1}, to_apply=max
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  auto* producer =
+      module->entry_computation()->GetInstructionWithName("transpose.1");
+  std::vector<HloInstruction*> consumers{
+      module->entry_computation()->GetInstructionWithName("reduce.1")};
+  GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
+      producer, &analysis_, GpuPerformanceModelOptions::Default(), consumers);
+
+  EXPECT_LT(t.time_fused, t.time_unfused);
 }
 
 TEST_F(GpuPerformanceModelTest, DusScalesWithUpdates) {
@@ -410,9 +444,11 @@ ENTRY main {
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
   GpuPerformanceModel::RunTimes t1 = GpuPerformanceModel::EstimateRunTimes(
-      module->entry_computation()->root_instruction()->operand(0), &analysis_);
+      module->entry_computation()->root_instruction()->operand(0), &analysis_,
+      GpuPerformanceModelOptions::Default());
   GpuPerformanceModel::RunTimes t2 = GpuPerformanceModel::EstimateRunTimes(
-      module->entry_computation()->root_instruction()->operand(1), &analysis_);
+      module->entry_computation()->root_instruction()->operand(1), &analysis_,
+      GpuPerformanceModelOptions::Default());
 
   // DUS scales with the size of the updates, so these two fusions should have
   // the same cost.
