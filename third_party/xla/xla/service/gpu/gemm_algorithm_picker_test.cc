@@ -93,7 +93,7 @@ ENTRY main {
   SCOPED_TRACE(m->ToString());
   HloInstruction* dot;
   ASSERT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::CustomCall(&dot)));
+              GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
 
   TF_ASSERT_OK_AND_ASSIGN(GemmBackendConfig config,
                           dot->backend_config<GemmBackendConfig>());
@@ -163,7 +163,7 @@ ENTRY main {
   SCOPED_TRACE(m->ToString());
   HloInstruction* dot;
   ASSERT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::CustomCall(&dot)));
+              GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
 
   TF_ASSERT_OK_AND_ASSIGN(GemmBackendConfig config,
                           dot->backend_config<GemmBackendConfig>());

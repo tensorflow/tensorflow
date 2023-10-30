@@ -68,6 +68,18 @@ struct CudaComputeCapability {
     return !(*this < CudaComputeCapability{other_major, other_minor});
   }
 
+  bool IsAtLeastVolta() const {
+    return major >= CudaComputeCapabilities::VOLTA;
+  }
+
+  bool IsAtLeastAmpere() const {
+    return major >= CudaComputeCapabilities::AMPERE;
+  }
+
+  bool IsAtLeastHopper() const {
+    return major >= CudaComputeCapabilities::HOPPER;
+  }
+
   bool operator<(const CudaComputeCapability &other) const {
     return ToPair() < other.ToPair();
   }

@@ -146,6 +146,7 @@ xla_cc_test(
     deps = [
         ":gpu_codegen_test",
         "//xla:statusor",
+        "//xla:test",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:gpu_plugin",

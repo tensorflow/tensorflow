@@ -456,6 +456,7 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:errors",
     ] + if_cuda_is_configured([
         "//xla/service/gpu:gemm_algorithm_picker",
         "//xla/stream_executor/gpu:redzone_allocator",

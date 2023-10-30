@@ -18,8 +18,10 @@ limitations under the License.
 #include <complex>
 #include <cstdint>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "third_party/gpus/cuda/include/cublas_v2.h"
@@ -360,6 +362,18 @@ tsl::Status CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
   CHECK(blas_ != nullptr);
   if (!SetStream(stream)) {
     return tsl::errors::Internal("Failed setting stream");
+  }
+
+  // Set workspace to a user-owned buffer, otherwise cuBlas will use its own
+  // memory pool, and it's not compatible with CUDA graphs.
+  if (auto *workspace = GetWorkspace();
+      workspace && workspace->opaque() && workspace->size() > 0) {
+    cublasStatus_t ret =
+        cublasSetWorkspace(blas_, workspace->opaque(), workspace->size());
+    if (ret != CUBLAS_STATUS_SUCCESS) {
+      return absl::InternalError(
+          absl::StrCat("Failed setting cuBlas workspace: ", ToString(ret)));
+    }
   }
 
   ScopedCublasMathMode math_mode{blas_};

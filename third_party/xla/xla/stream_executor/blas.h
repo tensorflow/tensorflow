@@ -494,12 +494,44 @@ class BlasSupport {
                                  DeviceMemory<std::complex<double> *> *bs,
                                  int ldb, int batch_count) = 0;
 
+  // TODO(ezhulenev): We should never pass ScratchAllocator to any of the APIs
+  // in this file, because it makes them incompatible with command buffers (CUDA
+  // graphs). We should pass workspace memory explicitly to all APIs. However
+  // this is a giant change, so currently we work around it by setting a thread
+  // local workspace and rely on `ScopedBlasWorkspace` RAII helper to reset it.
+  //
+  // APIs that get ScratchAllocator ignore this workspace, and continue
+  // allocating scratch memory on demand.
+  class ScopedWorkspace {
+   public:
+    ScopedWorkspace(BlasSupport *blas, DeviceMemoryBase *workspace);
+    ~ScopedWorkspace();
+
+   private:
+    BlasSupport *blas_;
+  };
+
   virtual tsl::Status GetVersion(std::string *version) = 0;
 
  protected:
+  DeviceMemoryBase *GetWorkspace();
+
   BlasSupport() {}
 
  private:
+  // Workspace memory pointer is thread local, once it is set all Blas
+  // operations issued from a caller thread might use it if it has large enough
+  // size. It's a user responsibility to make sure that workspace will outlive
+  // all issued BLAS operations.
+  //
+  // TODO(ezhulenev): This is a giant footgun! We have to remove it and use
+  // explicit workspace memory argument for all BLAS operations.
+  void SetWorkspace(DeviceMemoryBase *workspace);
+
+  // Resets user-defined workspace memory, so that Blas operations can use their
+  // own memory pool for allocating workspace.
+  void ResetWorkspace();
+
   BlasSupport(const BlasSupport &) = delete;
   void operator=(const BlasSupport &) = delete;
 };

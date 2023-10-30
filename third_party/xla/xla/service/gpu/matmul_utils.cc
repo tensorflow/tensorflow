@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/blas.h"
@@ -517,16 +518,14 @@ MatrixDescriptor GetMatrixDesc(const MatrixLayout& layout,
 }
 
 template <typename Scale, typename Input, typename Output>
-Status DoGemmWithAlgorithm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
-                           const MatrixDescriptor& lhs,
-                           const MatrixDescriptor& rhs,
-                           const MatrixDescriptor& output, Scale alpha,
-                           Scale beta, se::Stream* stream,
-                           se::blas::AlgorithmType algorithm,
-                           se::blas::ComputePrecision compute_precision,
-                           const se::NumericOptions& numeric_options,
-                           se::blas::ProfileResult* profile_result,
-                           se::blas::CallContext context) {
+Status DoGemmWithAlgorithm(
+    int64_t batch_size, int64_t m, int64_t n, int64_t k,
+    const MatrixDescriptor& lhs, const MatrixDescriptor& rhs,
+    const MatrixDescriptor& output, se::DeviceMemoryBase workspace, Scale alpha,
+    Scale beta, se::Stream* stream, se::blas::AlgorithmType algorithm,
+    se::blas::ComputePrecision compute_precision,
+    const se::NumericOptions& numeric_options,
+    se::blas::ProfileResult* profile_result, se::blas::CallContext context) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
   PrimitiveType lhs_type = primitive_util::NativeToPrimitiveType<Input>();
   PrimitiveType output_type = primitive_util::NativeToPrimitiveType<Output>();
@@ -534,6 +533,10 @@ Status DoGemmWithAlgorithm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
                       se::gpu::GetBlasComputationType(lhs_type, output_type,
                                                       compute_precision));
   se::DeviceMemory<Output> output_data(output.data);
+
+  // Set a workspace for all Blas operations launched below.
+  se::blas::BlasSupport::ScopedWorkspace scoped_workspace(
+      stream->parent()->AsBlas(), &workspace);
 
   if (batch_size != 1) {
     return stream->ThenBlasGemmStridedBatchedWithAlgorithm(
@@ -554,8 +557,8 @@ Status DoGemmWithAlgorithm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
 template <typename Scale, typename Input, typename Output>
 Status DoGemm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
               const MatrixDescriptor& lhs, const MatrixDescriptor& rhs,
-              const MatrixDescriptor& output, Scale alpha, Scale beta,
-              se::Stream* stream,
+              const MatrixDescriptor& output, se::DeviceMemoryBase workspace,
+              Scale alpha, Scale beta, se::Stream* stream,
               std::optional<se::blas::AlgorithmType> algorithm,
               se::blas::ComputePrecision compute_precision,
               const se::NumericOptions& numeric_options,
@@ -564,11 +567,16 @@ Status DoGemm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
   se::DeviceMemory<Output> output_data(output.data);
 
+  // Set a workspace for all Blas operations launched below.
+  se::blas::BlasSupport::ScopedWorkspace scoped_workspace(
+      stream->parent()->AsBlas(), &workspace);
+
 #if GOOGLE_CUDA
   if (algorithm) {
     return DoGemmWithAlgorithm<Scale, Input, Output>(
-        batch_size, m, n, k, lhs, rhs, output, alpha, beta, stream, *algorithm,
-        compute_precision, numeric_options, profile_result, context);
+        batch_size, m, n, k, lhs, rhs, output, workspace, alpha, beta, stream,
+        *algorithm, compute_precision, numeric_options, profile_result,
+        context);
   }
 #endif
 
@@ -591,7 +599,8 @@ Status DoGemm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
 
 Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
                se::DeviceMemoryBase rhs_buffer,
-               se::DeviceMemoryBase output_buffer, bool deterministic_ops,
+               se::DeviceMemoryBase output_buffer,
+               se::DeviceMemoryBase workspace_buffer, bool deterministic_ops,
                se::Stream* stream,
                std::optional<se::blas::AlgorithmType> algorithm,
                se::blas::ProfileResult* profile_result) {
@@ -650,7 +659,7 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
     using NativeAType = primitive_util::PrimitiveTypeToNative<ATYPE>::type;  \
     using NativeCType = primitive_util::PrimitiveTypeToNative<CTYPE>::type;  \
     return DoGemm<NativeScaleType, NativeAType, NativeCType>(                \
-        batch_size, m, n, k, lhs, rhs, output,                               \
+        batch_size, m, n, k, lhs, rhs, output, workspace_buffer,             \
         static_cast<NativeScaleType>(config.alpha.real()),                   \
         static_cast<NativeScaleType>(config.beta), stream, algorithm,        \
         config.compute_precision, numeric_options, profile_result, context); \
@@ -663,7 +672,7 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
     using NativeAType = primitive_util::PrimitiveTypeToNative<ATYPE>::type;  \
     using NativeCType = primitive_util::PrimitiveTypeToNative<CTYPE>::type;  \
     return DoGemm<NativeScaleType, NativeAType, NativeCType>(                \
-        batch_size, m, n, k, lhs, rhs, output,                               \
+        batch_size, m, n, k, lhs, rhs, output, workspace_buffer,             \
         static_cast<NativeScaleType>(config.alpha),                          \
         static_cast<NativeScaleType>(config.beta), stream, algorithm,        \
         config.compute_precision, numeric_options, profile_result, context); \
@@ -672,7 +681,7 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
   if (output_layout.dtype == S32) {
     if (!algorithm) algorithm = se::blas::kDefaultGemmAlgo;
     return DoGemmWithAlgorithm<int32_t, int8_t, int32_t>(
-        batch_size, m, n, k, lhs, rhs, output,
+        batch_size, m, n, k, lhs, rhs, output, workspace_buffer,
         static_cast<int32_t>(config.alpha.real()),
         static_cast<int32_t>(config.beta), stream, *algorithm,
         se::blas::kDefaultComputePrecision, numeric_options, profile_result,
@@ -696,7 +705,7 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
       primitive_util::LowercasePrimitiveTypeName(lhs_layout.dtype),
       primitive_util::LowercasePrimitiveTypeName(rhs_layout.dtype),
       primitive_util::LowercasePrimitiveTypeName(output_layout.dtype));
-}
+}  // namespace gpu
 
 namespace gpublas_lt {
 

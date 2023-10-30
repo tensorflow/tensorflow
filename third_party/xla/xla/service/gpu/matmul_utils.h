@@ -88,6 +88,14 @@ struct MatrixLayout : public se::gpu::MatrixLayout {
 };
 
 struct GemmConfig : public se::gpu::GemmConfig {
+  // For legacy Gemm operations XLA:GPU allocates its own workspace and passes
+  // it to all BLAS API calls.
+  //
+  // Size of the workspace based on NVIDIA recommendation:
+  // https://docs.nvidia.com/cuda/cublas/#cublassetworkspace
+  static constexpr int64_t kHopperWorkspace = 32 * 1024 * 1024;  // 32 MiB
+  static constexpr int64_t kDefaultWorkspace = 4 * 1024 * 1024;  // 4 MiB
+
   static StatusOr<GemmConfig> For(const HloInstruction* gemm);
   static StatusOr<GemmConfig> For(mlir::lmhlo_gpu::GEMMOp op);
 
@@ -155,7 +163,8 @@ struct GemmConfig : public se::gpu::GemmConfig {
 // If `algorithm` is provided, it overrides the one specified in `config`.
 Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
                se::DeviceMemoryBase rhs_buffer,
-               se::DeviceMemoryBase output_buffer, bool deterministic_ops,
+               se::DeviceMemoryBase output_buffer,
+               se::DeviceMemoryBase workspace_buffer, bool deterministic_ops,
                se::Stream* stream,
                std::optional<se::blas::AlgorithmType> algorithm = std::nullopt,
                se::blas::ProfileResult* profile_result = nullptr);

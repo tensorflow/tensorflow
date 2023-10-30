@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/gemm_algorithm_picker.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <optional>
@@ -263,6 +264,16 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
       AutotunerUtil::CreateBuffer(buffer_allocator, output_shape,
                                   autotune_config, rng_state));
 
+  int64_t workspace_size =
+      autotune_config.GetCudaComputeCapability().IsAtLeastHopper()
+          ? GemmConfig::kHopperWorkspace
+          : GemmConfig::kDefaultWorkspace;
+  TF_ASSIGN_OR_RETURN(
+      se::DeviceMemoryBase workspace_buffer,
+      AutotunerUtil::CreateBuffer(buffer_allocator,
+                                  ShapeUtil::MakeShape(S8, {workspace_size}),
+                                  autotune_config, rng_state));
+
   HloModuleConfig& hlo_module_config = gemm->GetModule()->mutable_config();
   AutotuneResult best_algorithm;
   if (IsCublasLtMatmul(*gemm)) {
@@ -342,8 +353,9 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
               // success-ness is returned in
               // ProfileResult::is_valid.
               TF_RETURN_IF_ERROR(RunGemm(config, lhs_buffer, rhs_buffer,
-                                         output_buffer, deterministic_ops,
-                                         stream, algorithm, &profile_result));
+                                         output_buffer, workspace_buffer,
+                                         deterministic_ops, stream, algorithm,
+                                         &profile_result));
               return std::move(profile_result);
             }));
     if (best_algorithm.has_gemm()) {
