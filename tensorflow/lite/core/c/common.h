@@ -54,9 +54,13 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
-/** \addtogroup common tensorflow/lite/c/common.h
+// clang-format off
+// NOLINTBEGIN(whitespace/line_length)
+/** \defgroup common tensorflow/lite/c/common.h
  *  @{
  */
+// NOLINTEND(whitespace/line_length)
+// clang-format on
 
 /// The list of external context types known to TF Lite. This list exists solely
 /// to avoid conflicts and to ensure ops can share the external contexts they

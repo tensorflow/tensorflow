@@ -39,10 +39,13 @@ limitations under the License.
 extern "C" {
 #endif
 
-/** \addtogroup gpu_plugin
- * tensorflow/lite/acceleration/configuration/c/gpu_plugin.h
+// clang-format off
+// NOLINTBEGIN(whitespace/line_length)
+/** \defgroup gpu_plugin tensorflow/lite/acceleration/configuration/c/gpu_plugin.h
  *  @{
  */
+// NOLINTEND(whitespace/line_length)
+// clang-format on
 
 /// C API for the GPU delegate plugin.
 /// Returns a pointer to a statically allocated table of function pointers.

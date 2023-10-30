@@ -30,10 +30,13 @@ limitations under the License.
 extern "C" {
 #endif
 
-/** \addtogroup delegate_plugin
- * tensorflow/lite/acceleration/configuration/c/delegate_plugin.h
+// clang-format off
+// NOLINTBEGIN(whitespace/line_length)
+/** \defgroup delegate_plugin tensorflow/lite/acceleration/configuration/c/delegate_plugin.h
  *  @{
  */
+// NOLINTEND(whitespace/line_length)
+// clang-format on
 
 /// Type of delegate creation function used to allocate and construct a
 /// delegate.

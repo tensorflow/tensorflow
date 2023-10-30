@@ -39,10 +39,13 @@ limitations under the License.
 extern "C" {
 #endif
 
-/** \addtogroup xnnpack_plugin
- * tensorflow/lite/acceleration/configuration/c/xnnpack_plugin.h
+// clang-format off
+// NOLINTBEGIN(whitespace/line_length)
+/** \defgroup xnnpack_plugin tensorflow/lite/acceleration/configuration/c/xnnpack_plugin.h
  *  @{
  */
+// NOLINTEND(whitespace/line_length)
+// clang-format on
 
 /// C API for the XNNPACK delegate plugin.
 /// Returns a pointer to a statically allocated table of function pointers.
