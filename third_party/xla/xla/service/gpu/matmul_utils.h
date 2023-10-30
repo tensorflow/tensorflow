@@ -200,6 +200,10 @@ struct TritonGemmConfig {
     return ToTuple() == other.ToTuple();
   }
 
+  bool operator<(const TritonGemmConfig& other) const {
+    return ToTuple() < other.ToTuple();
+  }
+
   template <typename H>
   friend H AbslHashValue(H h, const TritonGemmConfig& config) {
     return H::combine(std::move(h), config.ToTuple());

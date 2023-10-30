@@ -744,6 +744,17 @@ Status Autotune(const AutotuneConfig& config, AutotunerCompileUtil& util,
       executable_sets,
       CompileMany(config, util, thread_pool, debug_opts, gemm_config_sets));
 
+  // Sort the candidates to make their execution order well-defined for each
+  // fusion.
+  for (auto& key_value : executable_sets) {
+    ExecutableSet& executable_set = key_value.second;
+    std::vector<ExecutableCandidate>& candidates = executable_set.candidates;
+    absl::c_sort(candidates, [](const ExecutableCandidate& a,
+                                const ExecutableCandidate& b) {
+      return a.config < b.config;
+    });
+  }
+
   for (const auto& key_value : executable_sets) {
     const HloFusionInstruction* fusion = key_value.first;
     const ExecutableSet& executable_set = key_value.second;
