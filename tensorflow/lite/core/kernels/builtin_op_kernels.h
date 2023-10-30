@@ -206,9 +206,9 @@ TfLiteRegistration* Register_STABLEHLO_ADD();
 TfLiteRegistration*
 Register_STABLEHLO_DIVIDE();  // WARNING: not implemented, using this op will
                               // crash the runtime
-TfLiteRegistration*
-Register_STABLEHLO_MULTIPLY();  // WARNING: not implemented, using this op will
-                                // crash the runtime
+
+TfLiteRegistration* Register_STABLEHLO_MULTIPLY();
+
 TfLiteRegistration*
 Register_STABLEHLO_MAXIMUM();  // WARNING: not implemented, using this op will
                                // crash the runtime

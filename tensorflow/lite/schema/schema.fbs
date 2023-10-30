@@ -429,7 +429,7 @@ enum BuiltinOperator : int32 {
   STABLEHLO_LOGISTIC = 162, // WARNING: Do not have runtime support
   STABLEHLO_ADD = 163,
   STABLEHLO_DIVIDE = 164, // WARNING: No runtime support yet
-  STABLEHLO_MULTIPLY = 165, // WARNING: No runtime support yet
+  STABLEHLO_MULTIPLY = 165,
   STABLEHLO_MAXIMUM = 166, // WARNING: No runtime support yet
   STABLEHLO_RESHAPE = 167, // WARNING: No runtime support yet
   STABLEHLO_CLAMP = 168, // WARNING: No runtime support

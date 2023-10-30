@@ -190,6 +190,7 @@ TfLiteRegistration* Register_STABLEHLO_RNG_BIT_GENERATOR();
 TfLiteRegistration* Register_REDUCE_WINDOW();
 TfLiteRegistration* Register_STABLEHLO_GATHER();
 TfLiteRegistration* Register_STABLEHLO_ADD();
+TfLiteRegistration* Register_STABLEHLO_MULTIPLY();
 
 namespace {
 
@@ -544,6 +545,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_RIGHT_SHIFT, Register_RIGHT_SHIFT());
   AddBuiltin(BuiltinOperator_STABLEHLO_SCATTER, Register_STABLEHLO_SCATTER());
   AddBuiltin(BuiltinOperator_STABLEHLO_ADD, Register_STABLEHLO_ADD());
+  AddBuiltin(BuiltinOperator_STABLEHLO_MULTIPLY, Register_STABLEHLO_MULTIPLY());
   AddBuiltin(BuiltinOperator_DILATE, Register_DILATE());
   AddBuiltin(BuiltinOperator_STABLEHLO_RNG_BIT_GENERATOR,
              Register_STABLEHLO_RNG_BIT_GENERATOR());

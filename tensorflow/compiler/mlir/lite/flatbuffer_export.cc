@@ -1644,18 +1644,16 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       return BuildStablehloOperatorwithoutOptions(
           inst, operands, results, tflite::BuiltinOperator_STABLEHLO_ADD);
     }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::MulOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_MULTIPLY);
+    }
     // for ops don't have kernels, only serialize when conversion is set to true
     if (convert_stablehlo_) {
       if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::LogisticOp>(inst)) {
         return BuildStablehloOperatorwithoutOptions(
             inst, operands, results,
             tflite::BuiltinOperator_STABLEHLO_LOGISTIC);
-      }
-
-      if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::MulOp>(inst)) {
-        return BuildStablehloOperatorwithoutOptions(
-            inst, operands, results,
-            tflite::BuiltinOperator_STABLEHLO_MULTIPLY);
       }
 
       if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::DivOp>(inst)) {
