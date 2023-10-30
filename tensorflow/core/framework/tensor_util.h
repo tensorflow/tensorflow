@@ -66,7 +66,7 @@ Status Split(const Tensor& tensor, const gtl::ArraySlice<int64_t>& sizes,
              std::vector<Tensor>* result) TF_MUST_USE_RESULT;
 
 namespace internal {
-void SetTensorProtoShape(std::vector<size_t> shape,
+void SetTensorProtoShape(absl::Span<const size_t> shape,
                          TensorShapeProto* shape_proto);
 
 template <typename Type>
@@ -265,29 +265,56 @@ class TensorProtoHelper<string> : public std::true_type {
   }
 };
 
-}  // namespace internal
-
-// Creates a 'TensorProto' with specified shape and values.
-// The dtype and a field to represent data values of the returned 'TensorProto'
-// are determined based on type of the 'values' parameter.
-template <typename Type>
+template <typename Type, typename IterType>
 typename std::enable_if<internal::TensorProtoHelper<Type>::value,
                         TensorProto>::type
-CreateTensorProto(const std::vector<Type>& values,
-                  const std::vector<size_t>& shape) {
+CreateTensorProto(IterType values_begin, IterType values_end,
+                  const size_t values_size,
+                  const absl::Span<const size_t> shape) {
   TensorProto tensor;
   TensorShapeProto tensor_shape_proto;
   internal::SetTensorProtoShape(shape, &tensor_shape_proto);
-  if (TensorShape(tensor_shape_proto).num_elements() != values.size()) {
-    LOG(ERROR) << "Shape and number of values (" << values.size()
+  if (TensorShape(tensor_shape_proto).num_elements() != values_size) {
+    LOG(ERROR) << "Shape and number of values (" << values_size
                << ") are incompatible.";
     return tensor;
   }
   using TypeHelper = internal::TensorProtoHelper<Type>;
   tensor.set_dtype(TypeHelper::GetDataType());
-  tensor.mutable_tensor_shape()->Swap(&tensor_shape_proto);
-  TypeHelper::AddValues(values.begin(), values.end(), &tensor);
+  *tensor.mutable_tensor_shape() = std::move(tensor_shape_proto);
+  TypeHelper::AddValues(values_begin, values_end, &tensor);
   return tensor;
+}
+
+}  // namespace internal
+
+// Creates a 'TensorProto' with the specified shape and values. The dtype and a
+// field to represent data values of the returned 'TensorProto' are determined
+// based on Type. Note that unless the argument provided to `values` is already
+// an absl::Span, `Type` will need to be provided as a template parameter--the
+// compiler can't infer it:
+//   auto proto = CreateTensorProtoSpan<float>(my_array, shape);
+template <typename Type>
+typename std::enable_if<internal::TensorProtoHelper<Type>::value,
+                        TensorProto>::type
+CreateTensorProtoSpan(const absl::Span<const Type> values,
+                      const absl::Span<const size_t> shape) {
+  return internal::CreateTensorProto<Type>(values.begin(), values.end(),
+                                           values.size(), shape);
+}
+
+// Version of the above that's more convenient if `values` is an std::vector, in
+// which case Type can automatically be inferred:
+//   auto proto = CreateTensorProto(my_vector, shape);
+template <typename Type>
+typename std::enable_if<internal::TensorProtoHelper<Type>::value,
+                        TensorProto>::type
+CreateTensorProto(const std::vector<Type>& values,
+                  const absl::Span<const size_t> shape) {
+  // This awkward iterator passing is essentially just to support vector<bool>,
+  // otherwise we could just represent the vector as a Span.
+  return internal::CreateTensorProto<Type>(values.begin(), values.end(),
+                                           values.size(), shape);
 }
 
 // Converts values in tensor to run-length encoded compressed form.
