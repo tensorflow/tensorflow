@@ -93,6 +93,7 @@ set(TEST_FRAMEWORK_SRC
   ${TFLITE_SOURCE_DIR}/tools/optimize/quantization_utils.cc
   ${TFLITE_SOURCE_DIR}/tools/tool_params.cc
   ${TFLITE_SOURCE_DIR}/tools/versioning/op_version.cc
+  ${TSL_SOURCE_DIR}/tsl/platform/logging.cc
   ${TSL_SOURCE_DIR}/tsl/platform/default/env_time.cc
   ${TSL_SOURCE_DIR}/tsl/platform/default/logging.cc
   ${TSL_SOURCE_DIR}/tsl/platform/default/mutex.cc

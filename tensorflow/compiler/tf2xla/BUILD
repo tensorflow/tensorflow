@@ -354,7 +354,6 @@ cc_library(
 #         "@local_tsl//tsl/platform/default:types",
 #         "@local_tsl//tsl/platform/google:cord",
 #         "@local_tsl//tsl/platform/google:env_time",
-#         "@local_tsl//tsl/platform/google:logging",
 #         "@local_tsl//tsl/platform/google:mutex",
 #         "@local_tsl//tsl/platform/google:types",
 #         "@local_tsl//tsl/platform/windows:env_time",

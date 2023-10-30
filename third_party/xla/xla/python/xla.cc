@@ -88,7 +88,6 @@ limitations under the License.
 #include "xla/python/custom_call_sharding.h"
 #include "xla/python/dlpack.h"
 #include "xla/python/jax_jit.h"
-#include "xla/python/logging.h"  // IWYU pragma: keep
 #include "xla/python/mlir.h"
 #include "xla/python/nb_absl_flat_hash_map.h"  // IWYU pragma: keep
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
@@ -165,11 +164,6 @@ bool IsSanitized() { return IsAsan() || IsMsan() || IsTsan(); }
 }  // namespace
 
 NB_MODULE(xla_extension, m_nb) {
-  // Initialize ABSL logging because code within XLA uses it.
-#ifndef PLATFORM_GOOGLE
-  InitializeAbslLogging();
-#endif  // PLATFORM_GOOGLE
-
   // We seem to get a fair number of leak warnings from nanobind. It's unclear
   // whether these are false positives or not.
   nb::set_leak_warnings(false);

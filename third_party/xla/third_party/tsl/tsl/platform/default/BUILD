@@ -260,22 +260,19 @@ cc_library(
 cc_library(
     name = "logging",
     srcs = ["logging.cc"],
-    hdrs = ["//tsl/platform:logging.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    textual_hdrs = ["logging.h"],
+    hdrs = ["logging.h"],
     deps = [
-        "//tsl/platform",
-        "//tsl/platform:env_time",
-        "//tsl/platform:macros",
-        "//tsl/platform:mutex",
-        "//tsl/platform:types",
-        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log:globals",
+        "@com_google_absl//absl/log:initialize",
+        "@com_google_absl//absl/log:log_entry",
+        "@com_google_absl//absl/log:log_sink",
+        "@com_google_absl//absl/log:log_sink_registry",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
     ],
+    # Must be linked to call absl::InitializeLog.
+    alwayslink = True,
 )
 
 filegroup(

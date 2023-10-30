@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "xla/python/gpu_support.h"
-#include "xla/python/logging.h"
 #include "xla/python/py_client.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -28,11 +27,6 @@ namespace nb = nanobind;
 }  // namespace
 
 NB_MODULE(xla_gpu_extension, m_nb) {
-  // Initialize ABSL logging because code within XLA uses it.
-#ifndef PLATFORM_GOOGLE
-  InitializeAbslLogging();
-#endif  // PLATFORM_GOOGLE
-
   // We seem to get a fair number of leak warnings from nanobind. It's unclear
   // whether these are false positives or not.
   nb::set_leak_warnings(false);

@@ -366,9 +366,8 @@ void FollowArrayOrTokenStrategyGroup(
 
 std::unique_ptr<StrategyGroup> HandlePartialReduce(
     const HloInstruction* ins, const size_t instruction_id,
-    const bool have_memory_cost, StrategyGroups& strategy_groups,
-    const ClusterEnvironment& cluster_env, StrategyMap& strategy_map,
-    const CallGraph& call_graph) {
+    StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
+    StrategyMap& strategy_map, const CallGraph& call_graph) {
   absl::StatusOr<int64_t> reduction_dim = GetPartialReduceReductionDim(ins);
   CHECK_OK(reduction_dim);
   const Shape& shape = ins->shape();
@@ -1642,14 +1641,14 @@ void CheckMemoryCosts(StrategyGroup* strategy_group, const Shape& shape) {
   }
 }
 
-void RemoveInvalidShardingsWithShapes(
+void RemoveShardingsWhereSmallDimsShardedAcrossManyDevices(
     const Shape& shape, StrategyGroup* strategy_group,
     const bool instruction_has_user_sharding) {
   if (strategy_group->is_tuple) {
     for (size_t i = 0; i < strategy_group->childs.size(); i++) {
-      RemoveInvalidShardingsWithShapes(shape.tuple_shapes().at(i),
-                                       strategy_group->childs[i].get(),
-                                       instruction_has_user_sharding);
+      RemoveShardingsWhereSmallDimsShardedAcrossManyDevices(
+          shape.tuple_shapes().at(i), strategy_group->childs[i].get(),
+          instruction_has_user_sharding);
     }
   } else {
     if (instruction_has_user_sharding &&

@@ -1,12 +1,199 @@
-diff --git a/src/ortools/base/file.cc b/src/ortools/base/file.cc
+diff --git a/cmake/glop.cmake b/cmake/glop.cmake
+index 33f4c2c0e6..50e36cbab7 100644
+--- a/cmake/glop.cmake
++++ b/cmake/glop.cmake
+@@ -89,8 +89,6 @@ target_sources(glop PRIVATE
+   ortools/base/sysinfo.h
+   ortools/base/version.cc
+   ortools/base/version.h
+-  ortools/base/vlog_is_on.cc
+-  ortools/base/vlog_is_on.h
+   ortools/glop/basis_representation.cc
+   ortools/glop/basis_representation.h
+   ortools/glop/dual_edge_norms.cc
+@@ -308,7 +306,6 @@ install(FILES
+   ortools/base/recordio.h
+   ortools/base/sysinfo.h
+   ortools/base/timer.h
+-  ortools/base/vlog_is_on.h
+   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ortools/base
+   COMPONENT Devel)
+ install(FILES
+diff --git a/ortools/base/BUILD.bazel b/ortools/base/BUILD.bazel
+index 965f9f82fd..bdc341003a 100644
+--- a/ortools/base/BUILD.bazel
++++ b/ortools/base/BUILD.bazel
+@@ -312,7 +312,6 @@ cc_library(
+     hdrs = ["logging.h"],
+     deps = [
+         ":macros",
+-        ":vlog",
+         "@com_google_absl//absl/base:log_severity",
+         "@com_google_absl//absl/flags:flag",
+         "@com_google_absl//absl/flags:usage",
+@@ -329,21 +328,6 @@ cc_library(
+     ],
+ )
+ 
+-cc_library(
+-    name = "vlog",
+-    srcs = ["vlog_is_on.cc"],
+-    hdrs = [
+-        "vlog.h",
+-        "vlog_is_on.h",
+-    ],
+-    deps = [
+-        ":integral_types",
+-        "@com_google_absl//absl/flags:flag",
+-        "@com_google_absl//absl/log",
+-        "@com_google_absl//absl/log:check",
+-    ],
+-)
+-
+ cc_library(
+     name = "macros",
+     hdrs = ["macros.h"],
+diff --git a/ortools/base/file.cc b/ortools/base/file.cc
+index fa627c9393..f73ce96bda 100644
 --- a/ortools/base/file.cc
 +++ b/ortools/base/file.cc
-@@ -186,7 +186,7 @@
+@@ -186,7 +186,7 @@ absl::Status GetContents(const absl::string_view& filename, std::string* output,
    }
  #endif  // _MSC_VER
  
 -  file->Close(flags);  // Even if ReadToString() fails!
-+  static_cast<void>(file->Close(flags));  // Even if ReadToString() fails!
++  file->Close(flags).IgnoreError();
    return absl::Status(absl::StatusCode::kInvalidArgument,
                        absl::StrCat("Could not read from '", filename, "'."));
  }
+diff --git a/ortools/base/logging.h b/ortools/base/logging.h
+index 7f570f969e..aab2c2d9c7 100644
+--- a/ortools/base/logging.h
++++ b/ortools/base/logging.h
+@@ -14,21 +14,19 @@
+ #ifndef OR_TOOLS_BASE_LOGGING_H_
+ #define OR_TOOLS_BASE_LOGGING_H_
+ 
+-#define ABSL_LOG_INTERNAL_CONDITION_DFATAL ABSL_LOG_INTERNAL_CONDITION_ERROR
+-#define kLogDebugFatal LogSeverity::kError
+-#define kDebugFatal kError
+-
+ #include "absl/base/log_severity.h"
+ #include "absl/flags/declare.h"
++#include "absl/log/check.h"
+ #include "absl/log/die_if_null.h"
++#include "absl/log/globals.h"
+ #include "absl/log/log.h"
++#include "absl/log/vlog_is_on.h"
+ #include "absl/memory/memory.h"
+ #include "absl/status/status.h"
+ #include "absl/strings/str_cat.h"
+ #include "absl/strings/string_view.h"
+ #include "google/protobuf/message.h"
+ #include "ortools/base/macros.h"
+-#include "ortools/base/vlog.h"
+ 
+ // Compatibility layer for glog/previous logging code.
+ ABSL_DECLARE_FLAG(bool, logtostderr);
+@@ -42,25 +40,4 @@ void FixFlagsAndEnvironmentForSwig();
+ 
+ }  // namespace operations_research
+ 
+-// Compatibility layer for SCIP
+-namespace google {
+-enum LogSeverity {
+-  GLOG_INFO = static_cast<int>(absl::LogSeverity::kInfo),
+-  GLOG_WARNING = static_cast<int>(absl::LogSeverity::kWarning),
+-  GLOG_ERROR = static_cast<int>(absl::LogSeverity::kError),
+-  GLOG_FATAL = static_cast<int>(absl::LogSeverity::kFatal),
+-};
+-}  // namespace google
+-
+-// Implementation of the `AbslStringify` interface. This adds `DebugString()`
+-// to the sink. Do not rely on exact format.
+-namespace google {
+-namespace protobuf {
+-template <typename Sink>
+-void AbslStringify(Sink& sink, const Message& msg) {
+-  sink.Append(msg.DebugString());
+-}
+-}  // namespace protobuf
+-}  // namespace google
+-
+ #endif  // OR_TOOLS_BASE_LOGGING_H_
+diff --git a/ortools/linear_solver/highs_interface.cc b/ortools/linear_solver/highs_interface.cc
+index 3dd533fae6..59b3713403 100644
+--- a/ortools/linear_solver/highs_interface.cc
++++ b/ortools/linear_solver/highs_interface.cc
+@@ -151,7 +151,7 @@ MPSolver::ResultStatus HighsInterface::Solve(const MPSolverParameters& param) {
+   sync_status_ = SOLUTION_SYNCHRONIZED;
+   result_status_ = static_cast<MPSolver::ResultStatus>(response->status());
+   LOG_IF(ERROR, DEBUG_MODE && !response->has_solver_specific_info())
+-    << *response;
++    << response->DebugString();
+   // if (!solve_log_.ParseFromString(response->solver_specific_info())) {
+   //   LOG(DFATAL) << "Unable to parse Highs's SolveLog from
+   //   solver_specific_info";
+diff --git a/ortools/linear_solver/pdlp_interface.cc b/ortools/linear_solver/pdlp_interface.cc
+index 166c8082c6..0fd8ae31bc 100644
+--- a/ortools/linear_solver/pdlp_interface.cc
++++ b/ortools/linear_solver/pdlp_interface.cc
+@@ -152,7 +152,7 @@ MPSolver::ResultStatus PdlpInterface::Solve(const MPSolverParameters& param) {
+   // The solution must be marked as synchronized even when no solution exists.
+   sync_status_ = SOLUTION_SYNCHRONIZED;
+   result_status_ = static_cast<MPSolver::ResultStatus>(response->status());
+-  LOG_IF(DFATAL, !response->has_solver_specific_info()) << *response;
++  LOG_IF(DFATAL, !response->has_solver_specific_info()) << response->DebugString();
+   if (!solve_log_.ParseFromString(response->solver_specific_info())) {
+     LOG(DFATAL) << "Unable to parse PDLP's SolveLog from solver_specific_info";
+   }
+diff --git a/ortools/sat/lp_utils.cc b/ortools/sat/lp_utils.cc
+index 4d828fcad1..7b298622e1 100644
+--- a/ortools/sat/lp_utils.cc
++++ b/ortools/sat/lp_utils.cc
+@@ -892,7 +892,7 @@ bool ConvertMPModelProtoToCpModelProto(const SatParameters& params,
+     // post-solve.
+     if (mp_var.lower_bound() > static_cast<double>(kMaxVariableBound) ||
+         mp_var.upper_bound() < static_cast<double>(-kMaxVariableBound)) {
+-      SOLVER_LOG(logger, "Error: variable ", mp_var,
++      SOLVER_LOG(logger, "Error: variable ", mp_var.DebugString(),
+                  " is outside [-mip_max_bound..mip_max_bound]");
+       return false;
+     }
+diff --git a/ortools/util/BUILD.bazel b/ortools/util/BUILD.bazel
+index d2a5241f5f..363cd92e62 100644
+--- a/ortools/util/BUILD.bazel
++++ b/ortools/util/BUILD.bazel
+@@ -242,6 +242,7 @@ cc_library(
+         "//ortools/base",
+         "//ortools/base:sysinfo",
+         "//ortools/base:timer",
++        "@com_google_absl//absl/flags:flag",
+         "@com_google_absl//absl/container:flat_hash_map",
+         "@com_google_absl//absl/memory",
+         "@com_google_absl//absl/strings",
+diff --git a/ortools/util/logging.h b/ortools/util/logging.h
+index 3649b63b56..189070656c 100644
+--- a/ortools/util/logging.h
++++ b/ortools/util/logging.h
+@@ -18,6 +18,8 @@
+ #include <string>
+ #include <vector>
+ 
++#include "absl/strings/str_cat.h"
++
+ namespace operations_research {
+ 
+ // Custom logger class. It allows passing callbacks to process log messages.
+diff --git a/ortools/util/time_limit.h b/ortools/util/time_limit.h
+index f97cfd9ed1..ae552eb893 100644
+--- a/ortools/util/time_limit.h
++++ b/ortools/util/time_limit.h
+@@ -25,6 +25,7 @@
+ #include "absl/base/port.h"
+ #include "absl/container/flat_hash_map.h"
+ #include "absl/flags/declare.h"
++#include "absl/flags/flag.h"
+ #include "absl/synchronization/mutex.h"
+ #include "absl/time/clock.h"
+ #include "ortools/base/logging.h"

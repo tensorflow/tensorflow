@@ -91,6 +91,7 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 

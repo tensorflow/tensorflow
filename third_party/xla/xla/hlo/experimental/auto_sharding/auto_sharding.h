@@ -295,7 +295,7 @@ std::unique_ptr<StrategyGroup> HandleManuallyShardedInstruction(
     StrategyGroups& strategy_groups, StrategyMap& strategy_map);
 
 std::unique_ptr<StrategyGroup> HandlePartialReduce(
-    const HloInstruction* ins, size_t instruction_id, bool have_memory_cost,
+    const HloInstruction* ins, size_t instruction_id,
     StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
     StrategyMap& strategy_map, const CallGraph& call_graph);
 
@@ -365,9 +365,9 @@ std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
     const StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map);
 
-void RemoveInvalidShardingsWithShapes(const Shape& shape,
-                                      StrategyGroup* strategy_group,
-                                      bool instruction_has_user_sharding);
+void RemoveShardingsWhereSmallDimsShardedAcrossManyDevices(
+    const Shape& shape, StrategyGroup* strategy_group,
+    bool instruction_has_user_sharding);
 
 void ScaleCostsWithExecutionCounts(StrategyGroup* strategy_group,
                                    int64_t execution_count);

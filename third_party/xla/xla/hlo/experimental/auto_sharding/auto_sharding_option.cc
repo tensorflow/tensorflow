@@ -139,6 +139,10 @@ std::string AutoShardingOption::ToString() const {
   lines.push_back(absl::StrCat("generate_windowed_einsum_strategies: ",
                                generate_windowed_einsum_strategies));
 
+  lines.push_back(
+      absl::StrCat("allow_shardings_small_dims_across_many_devices: ",
+                   allow_shardings_small_dims_across_many_devices));
+
   return absl::StrJoin(lines, "\n");
 }
 

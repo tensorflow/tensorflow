@@ -373,7 +373,6 @@ cc_library(
         "//tensorflow/lite:error_reporter",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core/api",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 

@@ -792,9 +792,9 @@ BuildStrategyAndCost(
         } else if (IsTopKCustomCall(ins)) {
           generate_non_following_strategies(false, {0});
         } else if (IsPartialReduceCustomCall(ins)) {
-          strategy_group = HandlePartialReduce(
-              ins, instruction_id, /* have_memory_cost */ true, strategy_groups,
-              cluster_env, strategy_map, call_graph);
+          strategy_group =
+              HandlePartialReduce(ins, instruction_id, strategy_groups,
+                                  cluster_env, strategy_map, call_graph);
         } else if (OutputInputSameShapes(ins)) {
           auto* partitioner =
               GetCustomCallPartitioner(ins->custom_call_target());
@@ -921,9 +921,11 @@ BuildStrategyAndCost(
         }
       }
     }
-    RemoveInvalidShardingsWithShapes(
-        ins->shape(), strategy_group.get(),
-        /* instruction_has_user_sharding */ ins->has_sharding());
+    if (option.allow_shardings_small_dims_across_many_devices) {
+      RemoveShardingsWhereSmallDimsShardedAcrossManyDevices(
+          ins->shape(), strategy_group.get(),
+          /* instruction_has_user_sharding */ ins->has_sharding());
+    }
 
     if (instruction_execution_counts.contains(ins)) {
       ScaleCostsWithExecutionCounts(strategy_group.get(),

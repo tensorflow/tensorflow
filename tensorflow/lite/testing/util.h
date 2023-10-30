@@ -19,7 +19,9 @@ limitations under the License.
 
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/string_type.h"
-#include "tsl/platform/logging.h"
+#ifdef PLATFORM_GOOGLE
+#include "base/commandlineflags.h"
+#endif
 
 namespace tflite {
 

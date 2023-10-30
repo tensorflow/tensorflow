@@ -1218,15 +1218,6 @@ cc_library(
 )
 
 cc_library(
-    name = "logging",
-    srcs = ["logging.cc"],
-    hdrs = ["logging.h"],
-    deps = [
-        "@com_google_absl//absl/log:initialize",
-    ],
-)
-
-cc_library(
     name = "gpu_support",
     srcs = ["gpu_support.cc"],
     hdrs = ["gpu_support.h"],
@@ -1264,7 +1255,6 @@ tsl_pybind_extension(
     visibility = ["//visibility:public"],
     deps = [
         ":gpu_support",
-        ":logging",
         ":py_client",
         # placeholder for index annotation deps
         "//third_party/nanobind",
@@ -1308,7 +1298,6 @@ tsl_pybind_extension(
         ":custom_call_sharding",
         ":dlpack",
         ":jax_jit",
-        ":logging",
         ":mlir",
         ":nb_absl_flat_hash_map",
         ":nb_absl_span",

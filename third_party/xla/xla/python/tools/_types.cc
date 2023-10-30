@@ -26,7 +26,6 @@ limitations under the License.
 #include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
 #include "xla/literal.h"
 #include "xla/pjrt/status_casters.h"
-#include "xla/python/logging.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/python/types.h"
 #include "xla/xla_data.pb.h"
@@ -79,12 +78,6 @@ py::dtype EtypeToDtype(xla::PrimitiveType p) {
 // with nanobind modules; therefore, we define our extension as a pybind11
 // module so that we can use `pybind11::module_::def`.
 PYBIND11_MODULE(_types, py_m) {
-  // Initialize ABSL logging because code within XLA uses it.
-  // (As per `xla::Init` in "xla.cc"; though we don't need it ourselves.)
-#ifndef PLATFORM_GOOGLE
-  xla::InitializeAbslLogging();
-#endif  // PLATFORM_GOOGLE
-
   // Normally this would happen at the start of NB_MODULE, but since
   // this is a pybind11 module we have to do this ourselves.
   // (As per `xla::Init` in "xla.cc".)

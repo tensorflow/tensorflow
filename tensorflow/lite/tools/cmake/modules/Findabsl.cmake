@@ -34,6 +34,7 @@ if(abseil-cpp_POPULATED)
     bits
     btree
     btree_test_common
+    check
     city
     civil_time
     compare
@@ -98,7 +99,9 @@ if(abseil-cpp_POPULATED)
     leak_check_api_disabled_for_testing
     leak_check_api_enabled_for_testing
     leak_check_disable
+    log
     log_severity
+    log_sync_registry
     main_lib
     malloc_internal
     memory

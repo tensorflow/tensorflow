@@ -670,8 +670,11 @@ target_include_directories(tensorflow-lite
 target_link_libraries(tensorflow-lite
   PUBLIC
     Eigen3::Eigen
+    absl::check
     absl::flags
     absl::hash
+    absl::log
+    absl::log_sink_registry
     absl::status
     absl::strings
     absl::synchronization

@@ -92,7 +92,7 @@ class StatusLogSink : public TFLogSink {
     if (entry.log_severity() < absl::LogSeverity::kWarning) return;
 
     mutex_lock lock(mu_);
-    messages_.emplace_back(entry.ToString());
+    messages_.emplace_back(entry.text_message_with_prefix());
     if (messages_.size() > static_cast<size_t>(num_messages_)) {
       messages_.pop_front();
     }
