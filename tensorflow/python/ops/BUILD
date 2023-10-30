@@ -1284,6 +1284,7 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:keras_deps",
         "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -1303,7 +1304,6 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":control_flow_util",
-        ":control_flow_util_v2",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_export",
@@ -1317,7 +1317,6 @@ tf_py_strict_test(
     python_version = "PY3",
     deps = [
         ":control_flow_util_v2",
-        ":control_flow_v2_toggles",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
     ],
