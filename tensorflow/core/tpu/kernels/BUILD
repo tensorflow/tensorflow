@@ -55,6 +55,7 @@ tf_kernel_library(
         ":outfeed_ops",
         ":replication_ops",
         ":sharding_util_ops",
+        ":sparse_core_ops",
         ":topk_ops",
         ":tpu_compile_op",
         ":tpu_configuration_ops",
@@ -1469,7 +1470,6 @@ cc_library(
     deps = [
         ":sparse_core_preprocess_ops",
         "//tensorflow/compiler/jit:xla_device",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
