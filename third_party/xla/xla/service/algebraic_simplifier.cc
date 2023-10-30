@@ -7405,16 +7405,19 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(HloInstruction* hlo) {
 
 Status AlgebraicSimplifierVisitor::HandleSelect(HloInstruction* select) {
   // select(x, y, y) -> y.
-  if (select->operand(1) == select->operand(2)) {
-    return ReplaceInstruction(select, select->mutable_operand(1));
+  if (select->operand(1) == select->operand(2) &&
+      ReplaceInstructionIfCompatible(select, select->mutable_operand(1))) {
+    return OkStatus();
   }
   // select(true, x, y) -> x.
-  if (IsAll(select->operand(0), true)) {
-    return ReplaceInstruction(select, select->mutable_operand(1));
+  if (IsAll(select->operand(0), true) &&
+      ReplaceInstructionIfCompatible(select, select->mutable_operand(1))) {
+    return OkStatus();
   }
   // select(false, x, y) -> y.
-  if (IsAll(select->operand(0), false)) {
-    return ReplaceInstruction(select, select->mutable_operand(2));
+  if (IsAll(select->operand(0), false) &&
+      ReplaceInstructionIfCompatible(select, select->mutable_operand(2))) {
+    return OkStatus();
   }
   // select(not(pred), a, b) -> select(pred, b, a)
   if (HloOpcode::kNot == select->operand(0)->opcode()) {

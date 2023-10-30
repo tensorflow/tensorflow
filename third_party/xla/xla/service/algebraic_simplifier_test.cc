@@ -554,6 +554,28 @@ TEST_F(AlgebraicSimplifierTest, SelectTrue) {
   EXPECT_EQ(computation->root_instruction(), param0);
 }
 
+// Test that select(true, a, b) is not simplified to a when mixed precision
+TEST_F(AlgebraicSimplifierTest, SelectTrueMixedPrecision) {
+  Shape r0bf16 = ShapeUtil::MakeShape(BF16, {});
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0bf16, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32, "param1"));
+  HloInstruction* one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+  builder.AddInstruction(HloInstruction::CreateTernary(
+      r0f32, HloOpcode::kSelect, one, param0, param1));
+
+  auto module = CreateNewVerifiedModule();
+  auto computation = module->AddEntryComputationWithLayouts(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kSelect);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_FALSE(simplifier.Run(module.get()).value());
+}
+
 // Test that select(false, a, b) is simplified to b
 TEST_F(AlgebraicSimplifierTest, SelectFalse) {
   Shape r0s32 = ShapeUtil::MakeShape(S32, {});
@@ -576,6 +598,28 @@ TEST_F(AlgebraicSimplifierTest, SelectFalse) {
   EXPECT_EQ(computation->root_instruction(), param1);
 }
 
+// Test that select(false a, b) is not simplified to a when mixed precision
+TEST_F(AlgebraicSimplifierTest, SelectFalseMixedPrecision) {
+  Shape r0bf16 = ShapeUtil::MakeShape(BF16, {});
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0bf16, "param1"));
+  HloInstruction* one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+  builder.AddInstruction(HloInstruction::CreateTernary(
+      r0f32, HloOpcode::kSelect, one, param0, param1));
+
+  auto module = CreateNewVerifiedModule();
+  auto computation = module->AddEntryComputationWithLayouts(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kSelect);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_FALSE(simplifier.Run(module.get()).value());
+}
+
 // Test that select(a, b, b) is simplified to b
 TEST_F(AlgebraicSimplifierTest, SelectIdentical) {
   Shape r0s32 = ShapeUtil::MakeShape(S32, {});
@@ -594,6 +638,27 @@ TEST_F(AlgebraicSimplifierTest, SelectIdentical) {
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_EQ(computation->root_instruction(), param1);
+}
+
+// Test that select(a, b, b) is not simplified to a when mixed precision
+TEST_F(AlgebraicSimplifierTest, SelectIdenticalMixedPrecision) {
+  Shape r0bf16 = ShapeUtil::MakeShape(BF16, {});
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  Shape r0pred = ShapeUtil::MakeShape(PRED, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0pred, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0bf16, "param1"));
+  builder.AddInstruction(HloInstruction::CreateTernary(
+      r0f32, HloOpcode::kSelect, param0, param1, param1));
+
+  auto module = CreateNewVerifiedModule();
+  auto computation = module->AddEntryComputationWithLayouts(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kSelect);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_FALSE(simplifier.Run(module.get()).value());
 }
 
 // Test that select(not(pred), a, b) is simplified to select(pred, b, a)
