@@ -26,7 +26,9 @@ namespace internal {
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateVerifyClusteringPass();
 
+#define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_VERIFYCLUSTERINGPASS
+#include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
 
 }  // namespace internal
 }  // namespace tf2xla
