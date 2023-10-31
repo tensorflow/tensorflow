@@ -201,12 +201,12 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
 
 // Check whether value is true, and if not return kTfLiteError from
 // the current function (and report the error string msg).
-#define TF_LITE_ENSURE_MSG(context, value, msg)        \
-  do {                                                 \
-    if (!(value)) {                                    \
-      TF_LITE_KERNEL_LOG((context), __FILE__ " " msg); \
-      return kTfLiteError;                             \
-    }                                                  \
+#define TF_LITE_ENSURE_MSG(context, value, ...)                \
+  do {                                                         \
+    if (!(value)) {                                            \
+      TF_LITE_KERNEL_LOG((context), __FILE__ " " __VA_ARGS__); \
+      return kTfLiteError;                                     \
+    }                                                          \
   } while (0)
 
 // Check whether the value `a` is true, and if not return kTfLiteError from
