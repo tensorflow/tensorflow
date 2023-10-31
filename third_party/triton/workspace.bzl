@@ -18,5 +18,6 @@ def repo():
             "//third_party/triton:cl568176943.patch",
             "//third_party/triton:b304456327.patch",
             "//third_party/triton:cl576548341.patch",
+            "//third_party/triton:cl577369732.patch",
         ],
     )

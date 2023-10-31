@@ -243,7 +243,7 @@ LogicalResult hoistTensorExtractFromForOp(scf::ForOp forOp,
       dyn_cast<RankedTensorType>(iterOperand.get().getType());
   if (!iterArgTensorTy || !hasSingleElement(iterArgTensorTy)) return failure();
 
-  Value bbArg = forOp.getRegionIterArgForOpOperand(iterOperand);
+  Value bbArg = forOp.getTiedLoopRegionIterArg(&iterOperand);
 
   if (!bbArg.hasOneUse()) return failure();
 
