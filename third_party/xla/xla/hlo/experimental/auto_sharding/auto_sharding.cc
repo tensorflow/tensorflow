@@ -4190,11 +4190,11 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
   solver_option.override_reduce_scatter_cost = false;
   solver_option.override_all_to_all_cost = false;
 
-  if (option_.force_all_gather_cost) {
+  if (option_.force_override_all_gather_cost) {
     solver_option.override_all_gather_cost = true;
     solver_option.all_gather_cost = option_.all_gather_cost;
   }
-  if (option_.force_all_to_all_cost) {
+  if (option_.force_override_all_to_all_cost) {
     solver_option.override_all_to_all_cost = true;
     solver_option.all_to_all_cost = option_.all_to_all_cost;
   }
@@ -4355,7 +4355,7 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     spmd::ProfilingResult prof_result;
     spmd::ClusterEnvironment cluster_env(
         original_device_mesh, device_mesh, option_.device_mesh_alpha,
-        option_.device_mesh_beta, prof_result, solver_option);
+        option_.device_mesh_beta, prof_result, option_);
 
     XLA_VLOG_LINES(3, module->ToString());
     int64_t memory_lower_bound = spmd::MemoryBudgetLowerBound(

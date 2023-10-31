@@ -42,17 +42,31 @@ std::string AutoShardingOption::ToString() const {
   }
   lines.push_back(
       absl::StrCat("try_multiple_mesh_shapes: ", try_multiple_mesh_shapes));
-  lines.push_back(
-      absl::StrCat("force_all_gather_cost: ", force_all_gather_cost));
 
-  if (force_all_gather_cost) {
+  lines.push_back(absl::StrCat("force_override_all_gather_cost: ",
+                               force_override_all_gather_cost));
+  if (force_override_all_gather_cost) {
     lines.push_back(absl::StrCat("all_gather_cost: ", all_gather_cost));
   }
-  lines.push_back(
-      absl::StrCat("force_all_to_all_cost: ", force_all_to_all_cost));
-  if (force_all_to_all_cost) {
+
+  lines.push_back(absl::StrCat("force_override_all_to_all_cost: ",
+                               force_override_all_to_all_cost));
+  if (force_override_all_to_all_cost) {
     lines.push_back(absl::StrCat("all_to_all_cost: ", all_to_all_cost));
   }
+
+  lines.push_back(absl::StrCat("force_override_all_reduce_cost: ",
+                               force_override_all_reduce_cost));
+  if (force_override_all_reduce_cost) {
+    lines.push_back(absl::StrCat("all_reduce_cost: ", all_reduce_cost));
+  }
+
+  lines.push_back(absl::StrCat("force_override_reduce_scatter_cost: ",
+                               force_override_reduce_scatter_cost));
+  if (force_override_reduce_scatter_cost) {
+    lines.push_back(absl::StrCat("reduce_scatter_cost: ", reduce_scatter_cost));
+  }
+
   lines.push_back(absl::StrCat("force_batch_dim_to_mesh_dim: ",
                                force_batch_dim_to_mesh_dim));
   lines.push_back(absl::StrCat("allow_replicated_parameters: ",

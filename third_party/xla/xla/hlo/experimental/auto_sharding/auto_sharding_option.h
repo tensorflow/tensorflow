@@ -64,12 +64,20 @@ struct AutoShardingOption {
   float memory_budget_ratio = 1.1;
 
   // Overwrite the all gather cost with the input all reduce cost.
-  bool force_all_gather_cost = false;
-  double all_gather_cost;
+  bool force_override_all_gather_cost = false;
+  double all_gather_cost = 0;
 
   // Overwrite the all gather cost with the input all reduce cost.
-  bool force_all_to_all_cost = false;
-  double all_to_all_cost;
+  bool force_override_all_to_all_cost = false;
+  double all_to_all_cost = 0;
+
+  // Overwrite the all gather cost with the input all reduce cost.
+  bool force_override_all_reduce_cost = false;
+  double all_reduce_cost = 0;
+
+  // Overwrite the all gather cost with the input all reduce cost.
+  bool force_override_reduce_scatter_cost = false;
+  double reduce_scatter_cost = 0;
 
   // Forcibly split the batch dimension and map it to a mesh dimension.
   // This can force the auto-sharding pass to generate the data parallel
@@ -80,7 +88,7 @@ struct AutoShardingOption {
   bool allow_replicated_parameters = true;
 
   // If true, prefer reduce-scatter + all-gather over all-reduce.
-  // A post process will be applied to replace all-reduce with reduce-scater +
+  // A post process will be applied to replace all-reduce with reduce-scatter +
   // all-gather if no communication overhead is introduced.
   bool prefer_reduce_scatter = false;
 
@@ -174,7 +182,7 @@ struct AutoShardingOption {
   // Used for debug printing
   std::string ToString() const;
 
-  // Initializes unintialized fields with default values, as well as checks the
+  // Initializes uninitialized fields with default values, as well as checks the
   // consistency of different options.
   absl::Status CheckAndSetup();
 };
