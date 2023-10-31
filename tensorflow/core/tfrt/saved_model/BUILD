@@ -18,6 +18,7 @@ package_group(
         # copybara:uncomment "//learning/pathways/serving/runtime/...",
         "//tensorflow/core/runtime_fallback/...",
         "//tensorflow/core/tfrt/mlrt/application/tensorflow/tests/...",
+        "//tensorflow/compiler/mlir/tfrt/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow_serving/...",
         "//tensorflow/core/tfrt/saved_model/python/...",
