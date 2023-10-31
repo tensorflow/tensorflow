@@ -107,12 +107,12 @@ void GetReachableNodesAndVariables(
   while (!nodes_to_visit.empty()) {
     const string node_name = nodes_to_visit.front();
     nodes_to_visit.pop();
-    if (reachable_node_names->find(node_name) != reachable_node_names->end()) {
+    if (reachable_node_names->count(node_name) != 0) {
       continue;
     }
     reachable_node_names->insert(node_name);
     NodeDef* node = name_to_node_map.at(node_name);
-    if (kVariableTypes->find(node->op()) != kVariableTypes->end()) {
+    if (kVariableTypes.count(node->op()) != 0) {
       variable_node_names->insert(node->name());
     }
     for (const string& input_tensor_name : node->input()) {
