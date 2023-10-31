@@ -1503,7 +1503,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
-        "//tensorflow/python/ops:variable_scope",
+        "//tensorflow/python/ops:resource_variables_toggle",
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops:while_loop",
