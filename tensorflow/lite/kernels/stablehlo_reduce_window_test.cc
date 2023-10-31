@@ -359,14 +359,13 @@ class ReduceWindowOpModel : public SingleOpModel {
 };
 
 template <class StorageType>
-class ReduceWindowTest : public testing::Test {};
+class StablehloReduceWindowTest : public testing::Test {};
 
 using TestList =
     testing::Types<int8_t, int16_t, int32_t, int64_t, uint8_t, float, double>;
+TYPED_TEST_SUITE(StablehloReduceWindowTest, TestList);
 
-TYPED_TEST_SUITE(ReduceWindowTest, TestList);
-
-TYPED_TEST(ReduceWindowTest, Identity) {
+TYPED_TEST(StablehloReduceWindowTest, Identity) {
   ReduceWindowOpModel<TypeParam> model;
   model.SetInput(/*shape=*/{3, 3});
   model.SetBaseDilations({1, 1});
@@ -382,7 +381,7 @@ TYPED_TEST(ReduceWindowTest, Identity) {
   EXPECT_THAT(model.GetOutputData(), ElementsAre(1, 2, 3, 4, 5, 6, 7, 8, 9));
 }
 
-TYPED_TEST(ReduceWindowTest, Dilate) {
+TYPED_TEST(StablehloReduceWindowTest, Dilate) {
   ReduceWindowOpModel<TypeParam> model;
   model.SetInput(/*shape=*/{3, 3});
   model.SetBaseDilations({2, 2});
@@ -400,7 +399,7 @@ TYPED_TEST(ReduceWindowTest, Dilate) {
                                 0, 6, 0, 0, 0, 0, 0, 7, 0, 8, 0, 9}));
 }
 
-TYPED_TEST(ReduceWindowTest, IdentityPadTop) {
+TYPED_TEST(StablehloReduceWindowTest, IdentityPadTop) {
   ReduceWindowOpModel<TypeParam> model;
   model.SetInput(/*shape=*/{3, 3});
   model.SetBaseDilations({1, 1});
@@ -417,7 +416,7 @@ TYPED_TEST(ReduceWindowTest, IdentityPadTop) {
               ElementsAreArray({0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9}));
 }
 
-TYPED_TEST(ReduceWindowTest, IdentityPadBottom) {
+TYPED_TEST(StablehloReduceWindowTest, IdentityPadBottom) {
   ReduceWindowOpModel<TypeParam> model;
   model.SetInput(/*shape=*/{3, 3});
   model.SetBaseDilations({1, 1});
@@ -434,7 +433,7 @@ TYPED_TEST(ReduceWindowTest, IdentityPadBottom) {
               ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0}));
 }
 
-TYPED_TEST(ReduceWindowTest, IdentityPadLeft) {
+TYPED_TEST(StablehloReduceWindowTest, IdentityPadLeft) {
   ReduceWindowOpModel<TypeParam> model;
   model.SetInput(/*shape=*/{3, 3});
   model.SetBaseDilations({1, 1});
@@ -451,7 +450,7 @@ TYPED_TEST(ReduceWindowTest, IdentityPadLeft) {
               ElementsAreArray({0, 1, 2, 3, 0, 4, 5, 6, 0, 7, 8, 9}));
 }
 
-TYPED_TEST(ReduceWindowTest, IdentityPadRight) {
+TYPED_TEST(StablehloReduceWindowTest, IdentityPadRight) {
   ReduceWindowOpModel<TypeParam> model;
   model.SetInput(/*shape=*/{3, 3});
   model.SetBaseDilations({1, 1});
@@ -468,7 +467,7 @@ TYPED_TEST(ReduceWindowTest, IdentityPadRight) {
               ElementsAreArray({1, 2, 3, 0, 4, 5, 6, 0, 7, 8, 9, 0}));
 }
 
-TYPED_TEST(ReduceWindowTest, IdentityPadAll) {
+TYPED_TEST(StablehloReduceWindowTest, IdentityPadAll) {
   ReduceWindowOpModel<TypeParam> model;
   model.SetInput(/*shape=*/{3, 3});
   model.SetBaseDilations({1, 1});
@@ -486,7 +485,7 @@ TYPED_TEST(ReduceWindowTest, IdentityPadAll) {
                                 6, 0, 0, 7, 8, 9, 0, 0, 0, 0, 0, 0}));
 }
 
-TYPED_TEST(ReduceWindowTest, IdentityCropTop) {
+TYPED_TEST(StablehloReduceWindowTest, IdentityCropTop) {
   ReduceWindowOpModel<TypeParam> model;
   model.SetInput(/*shape=*/{3, 3});
   model.SetBaseDilations({1, 1});
@@ -502,7 +501,7 @@ TYPED_TEST(ReduceWindowTest, IdentityCropTop) {
   EXPECT_THAT(model.GetOutputData(), ElementsAreArray({4, 5, 6, 7, 8, 9}));
 }
 
-TYPED_TEST(ReduceWindowTest, IdentityCropBottom) {
+TYPED_TEST(StablehloReduceWindowTest, IdentityCropBottom) {
   ReduceWindowOpModel<TypeParam> model;
   model.SetInput(/*shape=*/{3, 3});
   model.SetBaseDilations({1, 1});
@@ -518,7 +517,7 @@ TYPED_TEST(ReduceWindowTest, IdentityCropBottom) {
   EXPECT_THAT(model.GetOutputData(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
 
-TYPED_TEST(ReduceWindowTest, IdentityCropLeft) {
+TYPED_TEST(StablehloReduceWindowTest, IdentityCropLeft) {
   ReduceWindowOpModel<TypeParam> model;
   model.SetInput(/*shape=*/{3, 3});
   model.SetBaseDilations({1, 1});
@@ -534,7 +533,7 @@ TYPED_TEST(ReduceWindowTest, IdentityCropLeft) {
   EXPECT_THAT(model.GetOutputData(), ElementsAreArray({2, 3, 5, 6, 8, 9}));
 }
 
-TYPED_TEST(ReduceWindowTest, IdentityCropRight) {
+TYPED_TEST(StablehloReduceWindowTest, IdentityCropRight) {
   ReduceWindowOpModel<TypeParam> model;
   model.SetInput(/*shape=*/{3, 3});
   model.SetBaseDilations({1, 1});
@@ -550,7 +549,7 @@ TYPED_TEST(ReduceWindowTest, IdentityCropRight) {
   EXPECT_THAT(model.GetOutputData(), ElementsAreArray({1, 2, 4, 5, 7, 8}));
 }
 
-TYPED_TEST(ReduceWindowTest, IdentityCropAll) {
+TYPED_TEST(StablehloReduceWindowTest, IdentityCropAll) {
   ReduceWindowOpModel<TypeParam> model;
   model.SetInput(/*shape=*/{3, 3});
   model.SetBaseDilations({1, 1});
@@ -566,7 +565,7 @@ TYPED_TEST(ReduceWindowTest, IdentityCropAll) {
   EXPECT_THAT(model.GetOutputData(), ElementsAre(5));
 }
 
-TYPED_TEST(ReduceWindowTest, ReduceWindowFullWindow) {
+TYPED_TEST(StablehloReduceWindowTest, ReduceWindowFullWindow) {
   ReduceWindowOpModel<TypeParam> model;
   model.SetInput(/*shape=*/{3, 3});
   model.SetBaseDilations({1, 1});
@@ -582,7 +581,7 @@ TYPED_TEST(ReduceWindowTest, ReduceWindowFullWindow) {
   EXPECT_THAT(model.GetOutputData(), ElementsAre(45));
 }
 
-TYPED_TEST(ReduceWindowTest, ReduceWindowNoDilation) {
+TYPED_TEST(StablehloReduceWindowTest, ReduceWindowNoDilation) {
   ReduceWindowOpModel<TypeParam> model;
   model.SetInput(/*shape=*/{3, 3});
   model.SetBaseDilations({1, 1});
@@ -598,7 +597,7 @@ TYPED_TEST(ReduceWindowTest, ReduceWindowNoDilation) {
   EXPECT_THAT(model.GetOutputData(), ElementsAre(12, 16, 24, 28));
 }
 
-TYPED_TEST(ReduceWindowTest, ReduceWindowFullWindowWithDilation) {
+TYPED_TEST(StablehloReduceWindowTest, ReduceWindowFullWindowWithDilation) {
   ReduceWindowOpModel<TypeParam> model;
   model.SetInput(/*shape=*/{3, 3});
   model.SetBaseDilations({1, 1});
@@ -614,7 +613,7 @@ TYPED_TEST(ReduceWindowTest, ReduceWindowFullWindowWithDilation) {
   EXPECT_THAT(model.GetOutputData(), ElementsAre(20));
 }
 
-TYPED_TEST(ReduceWindowTest, ReduceWindowWithDilation) {
+TYPED_TEST(StablehloReduceWindowTest, ReduceWindowWithDilation) {
   ReduceWindowOpModel<TypeParam> model;
   model.SetInput(/*shape=*/{4, 4});
   model.SetBaseDilations({1, 1});
@@ -630,7 +629,7 @@ TYPED_TEST(ReduceWindowTest, ReduceWindowWithDilation) {
   EXPECT_THAT(model.GetOutputData(), ElementsAre(24, 28, 40, 44));
 }
 
-TYPED_TEST(ReduceWindowTest, ReduceWindowWithStrides) {
+TYPED_TEST(StablehloReduceWindowTest, ReduceWindowWithStrides) {
   ReduceWindowOpModel<TypeParam> model;
   model.SetInput(/*shape=*/{4, 4});
   model.SetBaseDilations({1, 1});
@@ -646,7 +645,7 @@ TYPED_TEST(ReduceWindowTest, ReduceWindowWithStrides) {
   EXPECT_THAT(model.GetOutputData(), ElementsAre(14, 22, 46, 54));
 }
 
-TYPED_TEST(ReduceWindowTest, ReduceWindowWithDilationAndStrides) {
+TYPED_TEST(StablehloReduceWindowTest, ReduceWindowWithDilationAndStrides) {
   ReduceWindowOpModel<TypeParam> model;
   model.SetInput(/*shape=*/{5, 5});
   model.SetBaseDilations({1, 1});
@@ -662,7 +661,8 @@ TYPED_TEST(ReduceWindowTest, ReduceWindowWithDilationAndStrides) {
   EXPECT_THAT(model.GetOutputData(), ElementsAre(30, 38, 70, 78));
 }
 
-TYPED_TEST(ReduceWindowTest, ReduceWindowOutputShapeRoundingIsCorrect) {
+TYPED_TEST(StablehloReduceWindowTest,
+           ReduceWindowOutputShapeRoundingIsCorrect) {
   ReduceWindowOpModel<TypeParam> model;
   model.SetInput(/*shape=*/{1, 64, 114, 114});
   model.SetBaseDilations({1, 1, 1, 1});
@@ -739,7 +739,7 @@ struct Body {
   BodyFunction func;
 };
 
-TYPED_TEST(ReduceWindowTest, FuzzyTest) {
+TYPED_TEST(StablehloReduceWindowTest, FuzzyTest) {
   absl::BitGen bitgen;
 
   for (size_t iteration = 0; iteration < 1000; ++iteration) {
