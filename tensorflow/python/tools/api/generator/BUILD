@@ -42,17 +42,12 @@ py_strict_library(
 
 py_strict_test(
     name = "create_python_api_test",
-    srcs = [
-        "create_python_api.py",
-        "create_python_api_test.py",
-    ],
+    srcs = ["create_python_api_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        ":doc_srcs",
-        "//tensorflow/python/eager:wrap_function",
+        ":create_python_api",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
     ],
 )
