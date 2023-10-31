@@ -53,6 +53,10 @@ class Flags {
                   "Enable a graph optimization pass that replicate each small "
                   "constant to its successors' devices. This can decrease "
                   "message passing.");
+  TF_DECLARE_FLAG(publish_function_graphs, true,
+                  "Enables the publication of partitioned function graphs "
+                  "via StatsPublisherInterface. Disabling this flag can "
+                  "reduce memory consumption.");
   // LINT.ThenChange(//tensorflow/core/config/flags_api_wrapper.cc)
 };
 

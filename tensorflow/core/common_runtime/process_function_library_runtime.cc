@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/replicate_per_replica_nodes.h"
 #include "tensorflow/core/common_runtime/single_threaded_executor.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
+#include "tensorflow/core/config/flag_defs.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -746,16 +747,22 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   TF_RETURN_IF_ERROR(group.as_summary_status());
 
   std::vector<core::RefCountPtr<FunctionRecord>> function_records;
-  for (const auto& pair : *subgraphs) {
-    ComponentFunctionData* comp_data = &data->glue_[pair.first];
-    function_records.push_back(data_lib_def->FindRecord(comp_data->name));
+  const bool should_publish_function_graphs =
+      flags::Global().publish_function_graphs.value();
+  if (should_publish_function_graphs) {
+    for (const auto& pair : *subgraphs) {
+      ComponentFunctionData* comp_data = &data->glue_[pair.first];
+      function_records.push_back(data_lib_def->FindRecord(comp_data->name));
+    }
   }
 
   *handle = AddMultiDeviceHandle(std::move(data), function_key);
   VLOG(1) << "Instantiated MultiDevice function \"" << function_name
           << "\" with handle " << *handle;
 
-  PublishSubgraphs(function_name, std::move(function_records));
+  if (should_publish_function_graphs) {
+    PublishSubgraphs(function_name, std::move(function_records));
+  }
   return OkStatus();
 }
 
