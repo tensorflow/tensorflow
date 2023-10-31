@@ -301,9 +301,9 @@ Register_STABLEHLO_IOTA();  // WARNING: not implemented, using this
 TfLiteRegistration*
 Register_STABLEHLO_DOT_GENERAL();  // WARNING: not implemented, using this
                                    // op will crash the runtime
-TfLiteRegistration*
-Register_STABLEHLO_REDUCE_WINDOW();  // WARNING: not implemented, using this
-                                     // op will crash the runtime
+
+TfLiteRegistration* Register_STABLEHLO_REDUCE_WINDOW();
+
 TfLiteRegistration*
 Register_STABLEHLO_SORT();  // WARNING: not implemented, using this
                             // op will crash the runtime

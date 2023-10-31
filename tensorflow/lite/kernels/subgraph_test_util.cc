@@ -582,6 +582,22 @@ void SubgraphBuilder::BuildMinimumSubgraph(Subgraph* subgraph,
                         /*output_type=*/operand_type);
 }
 
+void SubgraphBuilder::BuildLogicalOrSubgraph(Subgraph* subgraph) {
+  BuildBinaryOpSubgraph(subgraph, ops::builtin::Register_LOGICAL_OR,
+                        kTfLiteBuiltinLogicalOr, /*params=*/nullptr,
+                        /*input1_type=*/kTfLiteBool,
+                        /*input2_type=*/kTfLiteBool,
+                        /*output_type=*/kTfLiteBool);
+}
+
+void SubgraphBuilder::BuildLogicalAndSubgraph(Subgraph* subgraph) {
+  BuildBinaryOpSubgraph(subgraph, ops::builtin::Register_LOGICAL_AND,
+                        kTfLiteBuiltinLogicalAnd, /*params=*/nullptr,
+                        /*input1_type=*/kTfLiteBool,
+                        /*input2_type=*/kTfLiteBool,
+                        /*output_type=*/kTfLiteBool);
+}
+
 void SubgraphBuilder::BuildOutputIsSecondInputSubgraph(Subgraph* subgraph) {
   const int kInput1 = 0;
   const int kInput2 = 1;

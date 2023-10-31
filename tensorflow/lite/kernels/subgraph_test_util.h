@@ -117,6 +117,14 @@ class SubgraphBuilder {
   void BuildMinimumSubgraph(Subgraph* subgraph,
                             TfLiteType operand_type = kTfLiteInt32);
 
+  // Build a subgraph with a single LogicalOr op.
+  // 2 inputs. 1 output.
+  void BuildLogicalOrSubgraph(Subgraph* subgraph);
+
+  // Build a subgraph with a single LogicalAnd op.
+  // 2 inputs. 1 output.
+  void BuildLogicalAndSubgraph(Subgraph* subgraph);
+
   // Build a subgraph with no ops inside.
   // 2 inputs. 1 output. Routes the second input to the output.
   void BuildOutputIsSecondInputSubgraph(Subgraph* subgraph);

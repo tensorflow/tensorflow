@@ -436,7 +436,8 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
            {{BuiltinOperator_REDUCE_WINDOW, 1}, "2.15.0"},
            {{BuiltinOperator_STABLEHLO_GATHER, 1}, "2.16.0"},
            {{BuiltinOperator_STABLEHLO_ADD, 1}, "2.16.0"},
-           {{BuiltinOperator_STABLEHLO_MULTIPLY, 1}, "2.16.0"}});
+           {{BuiltinOperator_STABLEHLO_MULTIPLY, 1}, "2.16.0"},
+           {{BuiltinOperator_STABLEHLO_REDUCE_WINDOW, 1}, "2.16.0"}});
 
   std::pair<BuiltinOperator, int> version_key = {op_code, op_version};
   auto it = op_version_map->find(version_key);
@@ -463,8 +464,8 @@ void UpdateMinimumRuntimeVersionForModel(uint8_t* model_buffer_pointer) {
         continue;
       }
       if (CompareRuntimeVersion(model_min_version, runtime_version)) {
-        // Current min model runtime version should be bumped if we see a higher
-        // op version.
+        // Current min model runtime version should be bumped if we see a
+        // higher op version.
         model_min_version = runtime_version;
       }
     }

@@ -462,14 +462,14 @@ enum BuiltinOperator : int32 {
   STABLEHLO_PAD = 195, // WARNING: No runtime support
   STABLEHLO_IOTA = 196, // WARNING: No runtime support
   STABLEHLO_DOT_GENERAL = 197, // WARNING: No runtime support
-  STABLEHLO_REDUCE_WINDOW = 198, // WARNING: No runtime support
+  STABLEHLO_REDUCE_WINDOW = 198,
   STABLEHLO_SORT = 199, // WARNING: No runtime support
   STABLEHLO_WHILE = 200, // WARNING: No runtime support
   STABLEHLO_GATHER = 201,
   STABLEHLO_TRANSPOSE = 202, // WARNING: No runtime support
   DILATE = 203,
   STABLEHLO_RNG_BIT_GENERATOR = 204,
-  REDUCE_WINDOW = 205,
+  REDUCE_WINDOW = 205 (deprecated),
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -626,7 +626,7 @@ union BuiltinOptions2{
   StablehloTransposeOptions,
   DilateOptions,
   StablehloRngBitGeneratorOptions,
-  ReduceWindowOptions,
+  ReduceWindowOptions (deprecated),
 }
 
 table StablehloGatherOptions{
@@ -1458,7 +1458,7 @@ enum ReduceWindowFunction : int {
   ANY,
 }
 
-table ReduceWindowOptions{
+table ReduceWindowOptions (deprecated) {
   reduce_function: ReduceWindowFunction;
 }
 

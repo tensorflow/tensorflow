@@ -191,6 +191,7 @@ TfLiteRegistration* Register_REDUCE_WINDOW();
 TfLiteRegistration* Register_STABLEHLO_GATHER();
 TfLiteRegistration* Register_STABLEHLO_ADD();
 TfLiteRegistration* Register_STABLEHLO_MULTIPLY();
+TfLiteRegistration* Register_STABLEHLO_REDUCE_WINDOW();
 
 namespace {
 
@@ -550,6 +551,8 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_STABLEHLO_RNG_BIT_GENERATOR,
              Register_STABLEHLO_RNG_BIT_GENERATOR());
   AddBuiltin(BuiltinOperator_REDUCE_WINDOW, Register_REDUCE_WINDOW());
+  AddBuiltin(BuiltinOperator_STABLEHLO_REDUCE_WINDOW,
+             Register_STABLEHLO_REDUCE_WINDOW());
   AddBuiltin(BuiltinOperator_STABLEHLO_GATHER, Register_STABLEHLO_GATHER());
   AddCustom("NumericVerify",
             tflite::ops::custom::Register_NUMERIC_VERIFY_REF());
