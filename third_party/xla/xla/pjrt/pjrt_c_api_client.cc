@@ -100,12 +100,12 @@ namespace xla {
 
 // ---------------------------------- Client -----------------------------------
 
-static StatusOr<const PjRtCApiTopologyDescription> InitTopologyDescription(
+static StatusOr<const PjRtCApiTopologyDescription> InitClientTopoDesc(
     const PJRT_Api* c_api, PJRT_Client* c_client) {
-  StatusOr<const PJRT_TopologyDescription*> c_topo =
+  StatusOr<PJRT_TopologyDescription*> c_topo =
       pjrt::GetTopologyDescription(c_client, c_api);
   TF_RETURN_IF_ERROR(c_topo.status());
-  return PjRtCApiTopologyDescription(c_api, *c_topo);
+  return PjRtCApiTopologyDescription(c_api, *c_topo, /*owned=*/false);
 }
 
 PjRtCApiClient::PjRtCApiClient(
@@ -115,7 +115,7 @@ PjRtCApiClient::PjRtCApiClient(
       c_client_(std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter>(
           c_client, ::pjrt::MakeClientDeleter(c_api))),
       kv_callback_data_(std::move(kv_callback_data)),
-      topo_desc_(InitTopologyDescription(c_api, c_client)),
+      topo_desc_(InitClientTopoDesc(c_api, c_client)),
       // Example platform version string:
       //   PJRT C API
       //   TFRT TPU v2
@@ -2058,12 +2058,6 @@ PjRtCApiTopologyDescription::PjRtCApiTopologyDescription(
   InitAttributes();
 }
 
-PjRtCApiTopologyDescription::PjRtCApiTopologyDescription(
-    const PJRT_Api* c_api, const PJRT_TopologyDescription* c_topology)
-    : PjRtCApiTopologyDescription(
-          c_api, const_cast<PJRT_TopologyDescription*>(c_topology),
-          /*owned=*/false) {}
-
 absl::string_view PjRtCApiTopologyDescription::platform_name() const {
   PJRT_TopologyDescription_PlatformName_Args args;
   args.topology = c_topology_;
@@ -2261,7 +2255,8 @@ StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
       c_api->PJRT_TopologyDescription_Create(&init_args), c_api);
   PJRT_TopologyDescription* c_topology = init_args.topology;
   return std::unique_ptr<PjRtTopologyDescription>(
-      std::make_unique<PjRtCApiTopologyDescription>(c_api, c_topology));
+      std::make_unique<PjRtCApiTopologyDescription>(c_api, c_topology,
+                                                    /*owned=*/true));
 }
 
 }  // namespace xla

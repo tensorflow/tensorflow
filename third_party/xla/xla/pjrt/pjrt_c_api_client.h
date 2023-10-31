@@ -183,12 +183,12 @@ class PjRtCApiCompiler : public PjRtCompiler {
 
 class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
  public:
+  // `owned` indicates whether this PjRtCApiTopologyDescription should take
+  // ownership of `c_topology`, i.e., if owned is true,
+  // PJRT_TopologyDescription_Destroy will be called on `c_topology` when this
+  // PjRtCApiTopologyDescription is destroyed.
   PjRtCApiTopologyDescription(const PJRT_Api* c_api,
                               PJRT_TopologyDescription* c_topology, bool owned);
-
-  // Does not take ownership of `c_topology`.
-  PjRtCApiTopologyDescription(const PJRT_Api* c_api,
-                              const PJRT_TopologyDescription* c_topology);
 
   PjRtPlatformId platform_id() const override {
     CHECK(false) << "PJRT C API does not support platform_id.";
