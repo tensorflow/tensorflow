@@ -138,6 +138,7 @@ cc_library(
 
 cc_library(
     name = "auto_sharding_option",
+    srcs = ["auto_sharding_option.cc"],
     hdrs = ["auto_sharding_option.h"],
     visibility = ["//visibility:public"],
     deps = [
