@@ -816,4 +816,43 @@ void ResizeBilinearGradOp::Compile(XlaOpKernelContext* ctx) {
 
 REGISTER_XLA_OP(Name("ResizeBilinearGrad"), ResizeBilinearGradOp);
 
+ResizeNearestNeighborGradOp::ResizeNearestNeighborGradOp(
+    OpKernelConstruction* ctx)
+    : XlaOpKernel(ctx) {
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
+  OP_REQUIRES(ctx, !half_pixel_centers_ || !align_corners_,
+              errors::Unimplemented("If half_pixel_centers is True, "
+                                    "align_corners must be False."));
+}
+
+void ResizeNearestNeighborGradOp::Compile(XlaOpKernelContext* ctx) {
+  std::vector<int64_t> in_size;
+  OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &in_size));
+  OP_REQUIRES(ctx, in_size.size() == 2,
+              errors::InvalidArgument("input size must be length 2, got ",
+                                      in_size.size()));
+  OP_REQUIRES(ctx, in_size[0] > 0 && in_size[1] > 0,
+              errors::InvalidArgument("input size must be positive, got [",
+                                      in_size[0], ",", in_size[1], "]"));
+
+  TensorShape grad_shape = ctx->InputShape(0);
+  OP_REQUIRES(ctx, grad_shape.dims() == 4,
+              errors::InvalidArgument("gradient must be 4-dimensional",
+                                      grad_shape.DebugString()));
+  const int64_t grad_batch = grad_shape.dim_size(0);
+  const std::vector<int64_t> grad_size = {grad_shape.dim_size(1),
+                                          grad_shape.dim_size(2)};
+  const int64_t grad_channels = grad_shape.dim_size(3);
+  OP_REQUIRES(ctx, grad_size[0] > 0 && grad_size[1] > 0,
+              errors::InvalidArgument("gradient size must be positive, got [",
+                                      grad_size[0], ",", grad_size[1], "]"));
+
+  GeneralCompileGrad(ctx, align_corners_, half_pixel_centers_,
+                     /*is_kernel_bilinear=*/false, grad_batch, in_size,
+                     grad_channels, grad_size);
+}
+
+REGISTER_XLA_OP(Name("ResizeNearestNeighborGrad"), ResizeNearestNeighborGradOp);
+
 }  // namespace tensorflow

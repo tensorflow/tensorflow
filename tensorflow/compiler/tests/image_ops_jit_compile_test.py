@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for tensorflow.ops.array_ops.repeat."""
 
+from absl.testing import parameterized
+
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
@@ -21,14 +23,18 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import image_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-class ImageOpsTest(xla_test.XLATestCase):
+class ImageOpsTest(xla_test.XLATestCase, parameterized.TestCase):
 
-  def testGradImageResize(self):
+  @parameterized.named_parameters(
+      ("bilinear", image_ops.ResizeMethod.BILINEAR),
+      ("nearest", image_ops.ResizeMethod.NEAREST_NEIGHBOR))
+  def testGradImageResize(self, resize_method):
     """Tests that the gradient of image.resize is compilable."""
     with ops.device("device:{}:0".format(self.device)):
       img_width = 2048
@@ -39,7 +45,7 @@ class ImageOpsTest(xla_test.XLATestCase):
         x = image_ops.resize_images(
             x,
             size=[img_width, img_width],
-            method=image_ops.ResizeMethod.BILINEAR)
+            method=resize_method)
         return x
 
       def train(x, y):
@@ -50,9 +56,10 @@ class ImageOpsTest(xla_test.XLATestCase):
         return grads
 
       compiled_train = def_function.function(train, jit_compile=True)
-      x = array_ops.zeros((1, img_width // 2, img_width // 2, 1),
-                          dtype=dtypes.float32)
-      y = array_ops.zeros((1, img_width, img_width, 1), dtype=dtypes.float32)
+      x = random_ops.random_uniform((1, img_width // 2, img_width // 2, 1),
+                                    dtype=dtypes.float32)
+      y = random_ops.random_uniform((1, img_width, img_width, 1),
+                                    dtype=dtypes.float32)
       self.assertAllClose(train(x, y), compiled_train(x, y))
 
 
