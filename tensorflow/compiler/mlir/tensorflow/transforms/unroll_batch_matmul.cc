@@ -117,28 +117,15 @@ std::vector<Value> ConvertTFBatchMatMulOp<BatchMatMulOpType>::sliceInput(
     auto reshape_op = createReshapeOp(value, {batch_size, num_rows, num_cols},
                                       element_type, loc, rewriter);
 
-    // Create a constant op for the split axis (=0)
-    auto split_dimension_type =
-        RankedTensorType::get({}, rewriter.getIntegerType(32));
-    auto split_dimension_attr = DenseElementsAttr::get(split_dimension_type, 0);
-    auto split_dimension_op = rewriter.create<TF::ConstOp>(
-        loc, split_dimension_type, split_dimension_attr);
-
-    // Split along each batch.
-    SmallVector<int64_t, 3> slice_size = {1, num_rows, num_cols};
+    // Unpack along each batch.
+    SmallVector<int64_t, 3> slice_size = {num_rows, num_cols};
     Type slice_result_type = RankedTensorType::get(slice_size, element_type);
     llvm::SmallVector<Type, 4> output_types(batch_size, slice_result_type);
-    auto split_op = rewriter.create<TF::SplitOp>(loc, output_types,
-                                                 split_dimension_op.getOutput(),
-                                                 reshape_op.getOutput());
+    auto unpack_op = rewriter.create<TF::UnpackOp>(
+        loc, output_types, reshape_op.getOutput(), /*axis=*/0);
 
-    // Squeeze each batch, i.e. reshape
-    // [1, num_rows, num_cols] -> [num_rows, num_cols]
-    for (const auto& split_value : split_op.getOutput()) {
-      auto reshape_op = createReshapeOp(split_value, {num_rows, num_cols},
-                                        element_type, loc, rewriter);
-
-      sliced.emplace_back(reshape_op.getOutput());
+    for (const auto& unpack_value : unpack_op.getOutput()) {
+      sliced.emplace_back(unpack_value);
     }
   }
   return sliced;
