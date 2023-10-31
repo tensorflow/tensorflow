@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "pybind11/gil.h"  // from @pybind11
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_executable.h"
 #include "xla/python/py_array.h"
@@ -134,6 +135,7 @@ class PyLoadedExecutable
   }
 
   StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {
+    pybind11::gil_scoped_release scope;
     return ifrt_loaded_executable_->GetCompiledMemoryStats();
   }
 
