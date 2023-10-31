@@ -322,23 +322,26 @@ Status MlirBridgePass::Run(const std::string& function_name,
 
     TF_RETURN_IF_ERROR(
         tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
-            module, tf2xla::v2::DeviceType::XLA_TPU_JIT, fallback_enabled));
+            module, tf2xla::v2::DeviceType::XLA_TPU_JIT, fallback_enabled,
+            function_name));
 
     TF_RETURN_IF_ERROR(
         tensorflow::tfrt_compiler::RunLowerClusterToRuntimeOpsPassPipeline(
-            module, tsl::DeviceType(DEVICE_TPU_XLA_JIT)));
+            module, tsl::DeviceType(DEVICE_TPU_XLA_JIT), function_name));
   } else {
     VLOG(1) << "Running GPU/CPU Bridge";
     TF_RETURN_IF_ERROR(
         tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
-            module, tf2xla::v2::DeviceType::XLA_GPU_JIT, fallback_enabled));
+            module, tf2xla::v2::DeviceType::XLA_GPU_JIT, fallback_enabled,
+            function_name));
 
     TF_RETURN_IF_ERROR(
         tensorflow::tfrt_compiler::RunLowerClusterToRuntimeOpsPassPipeline(
-            module, tsl::DeviceType(DEVICE_GPU_XLA_JIT)));
+            module, tsl::DeviceType(DEVICE_GPU_XLA_JIT), function_name));
   }
 
-  return tensorflow::tf2xla::v2::ExportFromTensorflowDialectToExecutor(module);
+  return tensorflow::tf2xla::v2::ExportFromTensorflowDialectToExecutor(
+      module, function_name);
 }
 
 MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
