@@ -43,14 +43,36 @@ cd "$TFCI_GIT_DIR"
 # relevant variables in their environment. Because of 'set -o allexport' above
 # (which is equivalent to "set -a"), every variable in the file is exported
 # for other files to use.
+#
+# Separately, if TFCI is set *and* there are also additional TFCI_ variables
+# set in the shell environment, those variables will be restored after the
+# TFCI env has been loaded. This is useful for e.g. on-demand "generic" jobs
+# where the user may wish to change just one option. Conveniently, this method
+# even works for arrays; e.g. TFCI_SOME_ARRAY="(--array --contents)" ends up
+# as TFCI_SOME_ARRAY=(--array --contents) in the storage file and is thus
+# loaded as an array when sourced.
 if [[ -n "${TFCI:-}" ]]; then
-  # Sourcing this twice, the first time with "-u" unset, means that variable
+  FROM_ENV=$(mktemp)
+  # Piping into cat means grep won't abort the process if no errors are found.
+  env | grep TFCI_ | cat > "$FROM_ENV"
+
+  # Sourcing TFCI twice, the first time with "-u" unset, means that variable
   # order does not matter. i.e. "TFCI_BAR=$TFCI_FOO; TFCI_FOO=true" will work.
   # TFCI_FOO is only valid the second time through.
   set +u
   source "$TFCI"
   set -u
   source "$TFCI"
+
+  # Load those stored pre-existing TFCI_ vars, if any
+  if [[ -s "$FROM_ENV" ]]; then
+    echo '==TFCI==: NOTE: Loading the following env parameters, which were'
+    echo 'already set in the shell environment. If you want to disable this'
+    echo 'behavior, create a new shell.'
+    cat "$FROM_ENV"
+    source "$FROM_ENV"
+    rm "$FROM_ENV"
+  fi
 else
   echo '==TFCI==: The $TFCI variable is not set. This is fine as long as you'
   echo 'already sourced a TFCI env file with "set -a; source <path>; set +a".'
