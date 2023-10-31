@@ -76,6 +76,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_util.h"
+#include "tensorflow/core/tfrt/saved_model/utils/serialize_utils.h"
 #include "tensorflow/core/tfrt/stubs/model_config_stub.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
@@ -577,6 +578,11 @@ SavedModelImpl::LoadSavedModel(Options options,
       RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
           options.graph_execution_options.compile_options, mlir_module.get(),
           &bef, model_context, fallback_state.get()));
+      if (options.graph_execution_options.compile_options
+              .serialize_bef_to_aot_packages) {
+        TF_RETURN_IF_ERROR(SerializeBEF(
+            bef, options.graph_execution_options.compile_options.aot_bef_file));
+      }
     }
   }
 

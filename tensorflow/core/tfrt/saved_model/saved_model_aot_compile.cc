@@ -230,6 +230,10 @@ Status AotCompileSavedModelAndSaveResult(absl::string_view input_model_dir,
         .serialize_mlir_module_to_aot_packages = true;
     graph_execution_options.compile_options.aot_mlir_module_file =
         io::JoinPath(aot_directory, kMLIRModuleFilename);
+    graph_execution_options.compile_options.serialize_bef_to_aot_packages =
+        true;
+    graph_execution_options.compile_options.aot_bef_file =
+        GetBEFFilePath(aot_directory);
     graph_execution_options.enable_mlrt = false;
     aot_options.graph_execution_options =
         std::make_shared<GraphExecutionOptions>(graph_execution_options);
