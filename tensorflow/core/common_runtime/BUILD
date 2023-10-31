@@ -907,10 +907,10 @@ cc_library(
     hdrs = ["function_body.h"],
     copts = tf_copts(),
     deps = [
-        ":device",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:refcount",
     ],
 )
 
@@ -1243,6 +1243,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:refcount",
         "@com_google_absl//absl/algorithm:container",
     ],
 )
@@ -1527,6 +1528,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:refcount",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
+#include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/gradients.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -437,7 +439,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   // FunctionLibraryDefinition.
   Status CreateKernel(const std::shared_ptr<const NodeProperties>& props,
                       FunctionLibraryRuntime* flr, OpKernel** kernel);
-  Status FunctionDefToBody(const FunctionDef& fdef, AttrSlice attrs,
+  Status FunctionDefToBody(core::RefCountPtr<FunctionRecord>&& record,
+                           AttrSlice attrs,
                            const FunctionLibraryDefinition* lib_def,
                            std::unique_ptr<FunctionBody>* fbody);
   Status CreateItem(Item** item);
@@ -666,7 +669,7 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
   // Constructs a CallOp kernel for running the instantiated function.
   auto device_type = DeviceType(device_->attributes().device_type());
   auto new_props = std::make_shared<NodeProperties>(
-      &fbody->fdef.signature(), props->node_def, fbody->arg_types,
+      &fbody->record->fdef().signature(), props->node_def, fbody->arg_types,
       fbody->ret_types);
   OpKernelConstruction construction(
       device_type, device_, device_->GetAllocator(AllocatorAttributes()), flr,
@@ -679,16 +682,18 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
 }
 
 Status FunctionLibraryRuntimeImpl::FunctionDefToBody(
-    const FunctionDef& fdef, AttrSlice attrs,
+    core::RefCountPtr<FunctionRecord>&& record, AttrSlice attrs,
     const FunctionLibraryDefinition* lib_def,
     std::unique_ptr<FunctionBody>* fbody) {
   if (lib_def == base_lib_def_) {
-    return FunctionDefToBodyHelper(fdef, attrs, lib_def, get_func_sig_, fbody);
+    return FunctionDefToBodyHelper(std::move(record), attrs, lib_def,
+                                   get_func_sig_, fbody);
   } else {
     auto get_func_sig = [lib_def](const string& op, const OpDef** sig) {
       return lib_def->LookUpOpDef(op, sig);
     };
-    return FunctionDefToBodyHelper(fdef, attrs, lib_def, get_func_sig, fbody);
+    return FunctionDefToBodyHelper(std::move(record), attrs, lib_def,
+                                   get_func_sig, fbody);
   }
 }
 
@@ -708,8 +713,10 @@ Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
     // TODO(josh11b): Should filter out the attrs from func that aren't used
     // by the gradient function.
     TF_RETURN_IF_ERROR(creator(AttrSlice(&func.attr()), &grad_fdef));
-    TF_RETURN_IF_ERROR(
-        FunctionDefToBody(grad_fdef, AttrSlice(&func.attr()), lib_def, g_body));
+    core::RefCountPtr<FunctionRecord> record(
+        new FunctionRecord(std::move(grad_fdef), {}, true));
+    TF_RETURN_IF_ERROR(FunctionDefToBody(
+        std::move(record), AttrSlice(&func.attr()), lib_def, g_body));
   } else {
     // f is a user-defined function.
     InstantiateOptions options;
@@ -805,11 +812,12 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
     }
     TF_RETURN_IF_ERROR(InstantiateSymbolicGradient(func, lib_def, &fbody));
   } else {
-    const FunctionDef* fdef = lib_def->Find(function_name);
+    core::RefCountPtr<FunctionRecord> fdef = lib_def->FindRecord(function_name);
     if (fdef == nullptr) {
       return errors::NotFound("Function ", function_name, " is not defined.");
     }
-    TF_RETURN_IF_ERROR(FunctionDefToBody(*fdef, attrs, lib_def, &fbody));
+    TF_RETURN_IF_ERROR(
+        FunctionDefToBody(std::move(fdef), attrs, lib_def, &fbody));
     Int32FulltypePass int32_fulltype("FunctionLibraryRuntime::Instantiate");
     TF_RETURN_IF_ERROR(
         int32_fulltype.ProcessGraph(fbody->graph, /*ints_on_device=*/false));
@@ -945,7 +953,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   auto g = std::make_unique<Graph>(lib_def);
   CopyGraph(*fbody->graph, g.get());
 
-  PruneFunctionBody(fbody->fdef, g.get());
+  PruneFunctionBody(fbody->record->fdef(), g.get());
   optimizer_.Optimize(this, env(), device(), &g, GraphOptimizer::Options());
   TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device()->device_type()),
                                        device()->name(), g.get()));
@@ -1448,7 +1456,10 @@ void SymbolicGradientHelper::Copy(FunctionBody* gbody) {
 
   // Copy just the fdef attributes (copy '_noinline' and other similar flags to
   // the gradient function body).
-  *(gbody->fdef.mutable_attr()) = fbody_->fdef.attr();
+  FunctionDef fdef;
+  *(fdef.mutable_attr()) = fbody_->record->fdef().attr();
+  gbody->record = core::RefCountPtr<FunctionRecord>(
+      new FunctionRecord(std::move(fdef), {}, true));
 
   // Copy the nodes.
   node_map[src.source_node()->id()] = dst->source_node();
