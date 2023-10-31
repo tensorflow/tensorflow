@@ -840,6 +840,12 @@ BUILTIN_KERNEL_DEPS = [
 }) + select({
     "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
     "//conditions:default": [
+        "@pthreadpool",
+    ],
+}) + select({
+    "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
+    "//tensorflow/lite:tflite_kernel_use_xnnpack_false": [],
+    "//conditions:default": [
         "@XNNPACK",
     ],
 }) + select({
