@@ -403,7 +403,6 @@ tf_cc_test(
         "//tensorflow/core/common_runtime:no_op_cost_measurement",
         "//tensorflow/core/common_runtime:request_cost",
         "//tensorflow/core/framework:types_proto_cc",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",

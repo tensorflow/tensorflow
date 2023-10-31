@@ -21,7 +21,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/common_runtime/cost_measurement.h"

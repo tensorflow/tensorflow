@@ -49,7 +49,9 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/percentile_sampler.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
+#include "tensorflow/core/lib/monitoring/types.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/util/incremental_barrier.h"
@@ -832,8 +834,7 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
   Status status;
   bool cleanup_done = false;
   int64_t processed_size = batch->size();
-  auto cleanup_fn = [&cleanup_done, &batch, &processed_size,
-                     &batch_cost_measurements](const Status& status) {
+  auto cleanup_fn = [&](const Status& status) {
     if (cleanup_done) {
       return;
     }
@@ -1055,10 +1056,11 @@ Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
 }
 
 void BatchResourceBase::SplitBatchCostsAndRecordMetrics(
-    std::vector<std::unique_ptr<CostMeasurement>>& batch_cost_measurements,
+    const std::vector<std::unique_ptr<CostMeasurement>>&
+        batch_cost_measurements,
     const int64_t processed_size, BatchT& batch) {
   // 1. Split the batch costs to each task.
-  for (auto& batch_cost_measurement : batch_cost_measurements) {
+  for (const auto& batch_cost_measurement : batch_cost_measurements) {
     if (batch_cost_measurement->GetTotalCost() <= absl::ZeroDuration()) {
       continue;
     }
