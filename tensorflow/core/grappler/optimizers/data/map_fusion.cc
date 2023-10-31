@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -141,6 +142,12 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
   GraphDef sorted_old_graph = item.graph;
   TF_RETURN_IF_ERROR(TopologicalSort(&sorted_old_graph));
   *output = sorted_old_graph;
+
+  if (!autotune_) {
+    VLOG(1) << "The optimization map_fusion is not applied if "
+               "autotune is off.";
+    return OkStatus();
+  }
 
   MutableGraphView graph(output);
   absl::flat_hash_set<string> nodes_to_delete;

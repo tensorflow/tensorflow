@@ -871,13 +871,14 @@ Status CopyBatch(CopyBatchParams params,
 absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
   absl::flat_hash_set<tstring> configs;
   const auto& autotune_options = options.autotune_options();
-  std::array<tstring, 9> autotune_only_optimizations = {
+  std::array<tstring, 10> autotune_only_optimizations = {
       kAutotuneBufferSizesOpt,
       kBatchParallelizationOpt,
       kDisablePrefetchLegacyAutotuneOpt,
       kEnableGradientDescentOpt,
       kFilterParallelizationOpt,
       kMapParallelizationOpt,
+      kMapFusionOpt,
       kInjectPrefetchOpt,
       kInjectIoPrefetchEligibleOpt,
       kInjectIoPrefetchOpt};
@@ -1006,6 +1007,8 @@ REGISTER_DATASET_EXPERIMENT("inject_io_prefetch", RandomJobSamplePercentage<0>,
                             AllTasks);
 REGISTER_DATASET_EXPERIMENT("reduce_array_record_dataset_memory_usage",
                             RandomJobSamplePercentage<0>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("map_fusion", RandomJobSamplePercentage<0>,
+                            AllTasks);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow
