@@ -741,6 +741,11 @@ class Translator {
       const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
+  std::optional<BufferOffset<tflite::Operator>> BuildStablehloReduceWindowOp(
+      mlir::stablehlo::ReduceWindowOp reduce_window_op,
+      const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results);
+
   std::optional<BufferOffset<tflite::Operator>> BuildStablehloRngBitGeneratorOp(
       mlir::stablehlo::RngBitGeneratorOp rng_op,
       const std::vector<int32_t>& operands,
@@ -1531,6 +1536,46 @@ Translator::BuildStablehloScatterOp(mlir::stablehlo::ScatterOp scatter_op,
 }
 
 std::optional<BufferOffset<tflite::Operator>>
+Translator::BuildStablehloReduceWindowOp(
+    mlir::stablehlo::ReduceWindowOp reduce_window_op,
+    const std::vector<int32_t>& operands, const std::vector<int32_t>& results) {
+  std::string op_name =
+      reduce_window_op.getOperation()->getName().getStringRef().str();
+  uint32_t opcode_index =
+      GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_REDUCE_WINDOW);
+
+  auto window_dimensions = builder_.CreateVector(
+      mlir::GetVector<int64_t>(reduce_window_op.getWindowDimensions()));
+  auto window_strides = builder_.CreateVector(
+      mlir::GetOptionalVector<int64_t>(reduce_window_op.getWindowStrides()));
+  auto base_dilations = builder_.CreateVector(
+      mlir::GetOptionalVector<int64_t>(reduce_window_op.getBaseDilations()));
+  auto window_dilations = builder_.CreateVector(
+      mlir::GetOptionalVector<int64_t>(reduce_window_op.getWindowDilations()));
+  auto padding = builder_.CreateVector(
+      mlir::GetOptionalVector<int64_t>(reduce_window_op.getPadding()));
+
+  auto& body = reduce_window_op.getBody();
+  int32_t subgraph_index = UnnamedRegionToSubgraph(
+      &body, tflite::BuiltinOperator_STABLEHLO_REDUCE_WINDOW);
+  if (subgraph_index < 0) return std::nullopt;
+
+  auto reduce_window_option = tflite::CreateStablehloReduceWindowOptions(
+      builder_, window_dimensions, window_strides, base_dilations,
+      window_dilations, padding, subgraph_index);
+
+  return tflite::CreateOperator(
+      builder_, opcode_index, /*inputs=*/builder_.CreateVector(operands),
+      /*outputs=*/builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
+      /*builtin_options=*/0, /*custom_options=*/0,
+      tflite::CustomOptionsFormat_FLEXBUFFERS, /*mutating_variable_inputs=*/0,
+      /*intermediates=*/0, /*large_custom_options_offset=*/0,
+      /*large_custom_options_size=*/0,
+      tflite::BuiltinOptions2_StablehloReduceWindowOptions,
+      reduce_window_option.Union());
+}
+
+std::optional<BufferOffset<tflite::Operator>>
 Translator::BuildStablehloRngBitGeneratorOp(
     mlir::stablehlo::RngBitGeneratorOp rng_op,
     const std::vector<int32_t>& operands, const std::vector<int32_t>& results) {
@@ -1647,6 +1692,9 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::MulOp>(inst)) {
       return BuildStablehloOperatorwithoutOptions(
           inst, operands, results, tflite::BuiltinOperator_STABLEHLO_MULTIPLY);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ReduceWindowOp>(inst)) {
+      return BuildStablehloReduceWindowOp(shlo_op, operands, results);
     }
     // for ops don't have kernels, only serialize when conversion is set to true
     if (convert_stablehlo_) {
@@ -2073,39 +2121,6 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
             tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
             tflite::BuiltinOptions2_StablehloDotGeneralOptions,
             dot_geneoral_option.Union());
-      }
-      if (auto shlo_op =
-              llvm::dyn_cast<mlir::stablehlo::ReduceWindowOp>(inst)) {
-        std::string op_name = inst->getName().getStringRef().str();
-        uint32_t opcode_index = GetOpcodeIndex(
-            op_name, tflite::BuiltinOperator_STABLEHLO_REDUCE_WINDOW);
-
-        auto window_dimensions = builder_.CreateVector(
-            mlir::GetOptionalVector<int64_t>(shlo_op.getWindowDimensions()));
-        auto window_strides = builder_.CreateVector(
-            mlir::GetOptionalVector<int64_t>(shlo_op.getWindowStrides()));
-        auto base_dilations = builder_.CreateVector(
-            mlir::GetOptionalVector<int64_t>(shlo_op.getBaseDilations()));
-        auto window_dilations = builder_.CreateVector(
-            mlir::GetOptionalVector<int64_t>(shlo_op.getWindowDilations()));
-        auto padding = builder_.CreateVector(
-            mlir::GetOptionalVector<int64_t>(shlo_op.getPadding()));
-
-        auto& body = shlo_op.getBody();
-        int32_t subgraph_index = UnnamedRegionToSubgraph(
-            &body, tflite::BuiltinOperator_STABLEHLO_REDUCE_WINDOW);
-        if (subgraph_index < 0) return std::nullopt;
-
-        auto reduce_window_option = tflite::CreateStablehloReduceWindowOptions(
-            builder_, window_dimensions, window_strides, base_dilations,
-            window_dilations, padding, subgraph_index);
-
-        return tflite::CreateOperator(
-            builder_, opcode_index, builder_.CreateVector(operands),
-            builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
-            tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
-            tflite::BuiltinOptions2_StablehloReduceWindowOptions,
-            reduce_window_option.Union());
       }
       if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::SortOp>(inst)) {
         std::string op_name = inst->getName().getStringRef().str();

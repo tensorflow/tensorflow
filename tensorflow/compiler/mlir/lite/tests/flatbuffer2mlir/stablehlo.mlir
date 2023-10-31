@@ -355,7 +355,7 @@ func.func @reduce_window(%arg0: tensor<1x160x1xf32>, %arg1: tensor<f32>) -> tens
     ^bb0(%arg23: tensor<f32>, %arg24: tensor<f32>):
       %1112 = stablehlo.add %arg23, %arg24 : tensor<f32>
       stablehlo.return %1112 : tensor<f32>
-    }) {padding = dense<[[0, 0], [159, 0], [0, 0]]> : tensor<3x2xi64>, window_dimensions = dense<[1, 160, 1]> : tensor<3xi64>, window_strides = dense<1> : tensor<3xi64>} : (tensor<1x160x1xf32>, tensor<f32>) -> tensor<1x160x1xf32>
+    }) {base_dilations = dense<1> : tensor<3xi64>, padding = dense<[[0, 0], [159, 0], [0, 0]]> : tensor<3x2xi64>, window_dilations = dense<1> : tensor<3xi64>, window_dimensions = dense<[1, 160, 1]> : tensor<3xi64>, window_strides = dense<1> : tensor<3xi64>} : (tensor<1x160x1xf32>, tensor<f32>) -> tensor<1x160x1xf32>
   return %0 : tensor<1x160x1xf32>
 }
 
@@ -364,7 +364,7 @@ func.func @reduce_window(%arg0: tensor<1x160x1xf32>, %arg1: tensor<f32>) -> tens
 //CHECK-NEXT:  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
 //CHECK-NEXT:   %1 = stablehlo.add %arg2, %arg3 : tensor<f32>
 //CHECK-NEXT:   stablehlo.return %1 : tensor<f32>
-//CHECK-NEXT{LITERAL}:  }) {padding = dense<[[0, 0], [159, 0], [0, 0]]> : tensor<3x2xi64>, window_dimensions = dense<[1, 160, 1]> : tensor<3xi64>, window_strides = dense<1> : tensor<3xi64>} : (tensor<1x160x1xf32>, tensor<f32>) -> tensor<1x160x1xf32>
+//CHECK-NEXT{LITERAL}:  }) {base_dilations = dense<1> : tensor<3xi64>, padding = dense<[[0, 0], [159, 0], [0, 0]]> : tensor<3x2xi64>, window_dilations = dense<1> : tensor<3xi64>, window_dimensions = dense<[1, 160, 1]> : tensor<3xi64>, window_strides = dense<1> : tensor<3xi64>} : (tensor<1x160x1xf32>, tensor<f32>) -> tensor<1x160x1xf32>
 //CHECK-NEXT: return %0 : tensor<1x160x1xf32>
 //CHECK-NEXT:}
 
