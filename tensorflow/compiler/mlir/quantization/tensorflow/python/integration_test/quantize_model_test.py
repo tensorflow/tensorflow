@@ -785,6 +785,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             dilations=[1, 1, 1, 1],
             padding='SAME',
             data_format='NHWC',
+            name='sample/conv2d',
         )
         if has_bias:
           out = nn_ops.bias_add(out, bias, data_format='NHWC')
@@ -870,7 +871,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     graphdef = loader.get_meta_graph_def_from_tags(tags).graph_def
     if target_opset == quant_opts_pb2.XLA:
-      self.assertTrue(self._contains_op(graphdef, 'XlaConvV2'))
+      self.assertTrue(
+          self._contains_op(graphdef, 'XlaConvV2', node_name='sample/conv2d.*')
+      )
 
     new_outputs = converted_model.signatures[signature_key](
         input=ops.convert_to_tensor(input_data)
@@ -2486,9 +2489,19 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     loader = saved_model_loader.SavedModelLoader(self._output_saved_model_path)
     output_graphdef = loader.get_meta_graph_def_from_tags(tags).graph_def
     if target_opset == quant_opts_pb2.XLA:
-      self.assertTrue(self._contains_op(output_graphdef, 'XlaDotV2'))
+      self.assertTrue(
+          self._contains_op(
+              output_graphdef, 'XlaDotV2', node_name='sample/matmul.*'
+          )
+      )
     elif target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
-      self.assertTrue(self._contains_op(output_graphdef, 'UniformQuantizedDot'))
+      self.assertTrue(
+          self._contains_op(
+              output_graphdef,
+              'UniformQuantizedDot',
+              node_name='sample/matmul.*',
+          )
+      )
 
     new_outputs = converted_model.signatures['serving_default'](
         input_tensor=ops.convert_to_tensor(input_data)
