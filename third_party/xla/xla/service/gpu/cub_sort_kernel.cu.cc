@@ -14,40 +14,23 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/service/gpu/cub_sort_kernel.h"
-#include "xla/service/gpu/gpu_prim.h"
 
 #include <cstddef>
 #include <cstdint>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-<<<<<<< HEAD
-=======
 #if GOOGLE_CUDA
 #include "xla/service/gpu/gpu_prim_cuda.h"
 #elif TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/gpu_prim_rocm.h"
 #endif  // TENSORFLOW_USE_ROCM
->>>>>>> upstream/master
 
 namespace xla {
 namespace gpu {
 namespace {
 
 #if GOOGLE_CUDA
-<<<<<<< HEAD
-#define CHK_GPU_ERR(err) if(err != cudaSuccess) { \
-      return absl::InvalidArgumentError(  \
-        absl::StrCat("CUB error: ", cudaGetErrorString(err))); \
-    }
-#elif TENSORFLOW_USE_ROCM
-#define CHK_GPU_ERR(err) if(err != hipSuccess) { \
-      return absl::InvalidArgumentError(  \
-        absl::StrCat("HIPCUB error: ", hipGetErrorString(err))); \
-    }
-#endif        
-
-=======
 #define CHK_GPU_ERR(err)                                       \
   if (err != cudaSuccess) {                                    \
     return absl::InvalidArgumentError(                         \
@@ -60,18 +43,13 @@ namespace {
         absl::StrCat("HIPCUB error: ", hipGetErrorString(err))); \
   }
 #endif
->>>>>>> upstream/master
 
 template <typename KeyT>
 absl::Status CubSortKeys(void* d_temp_storage, size_t& temp_bytes,
                          const void* d_keys_in, void* d_keys_out,
                          size_t num_items, bool descending) {
-<<<<<<< HEAD
-  auto err = descending
-=======
   auto err =
       descending
->>>>>>> upstream/master
           ? gpuprim::DeviceRadixSort::SortKeysDescending<KeyT>(
                 d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
                 static_cast<KeyT*>(d_keys_out), num_items)
@@ -87,12 +65,8 @@ absl::Status CubSortPairs(void* d_temp_storage, size_t& temp_bytes,
                           const void* d_keys_in, void* d_keys_out,
                           const void* d_values_in, void* d_values_out,
                           size_t num_items, bool descending) {
-<<<<<<< HEAD
-  auto err = descending
-=======
   auto err =
       descending
->>>>>>> upstream/master
           ? gpuprim::DeviceRadixSort::SortPairsDescending<KeyT, ValT>(
                 d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
                 static_cast<KeyT*>(d_keys_out),

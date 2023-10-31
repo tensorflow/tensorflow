@@ -88,24 +88,6 @@ ENTRY main {
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
 // CHECK: HloModule bitcast_to_smaller, entry_computation_layout={(s64[10]{0})->s32[10,2]{1,0}}
 // CHECK: %xla.bitcast_convert_s64_10__2_s32_10_2_.17 (a.1: s64[10]) -> s32[10,2] {
-<<<<<<< HEAD
-// CHECK:   %a.1 = s64[10]{0} parameter(0)
-// CHECK:   %reshape.2 = s64[10,1]{1,0} reshape(s64[10]{0} %a.1)
-// CHECK:   %broadcast.3 = s64[10,1]{1,0} broadcast(s64[10,1]{1,0} %reshape.2), dimensions={0,1}
-// CHECK:   %reshape.4 = s64[10]{0} reshape(s64[10,1]{1,0} %broadcast.3)
-// CHECK:   %broadcast.5 = s64[10,2]{1,0} broadcast(s64[10]{0} %reshape.4), dimensions={0}
-// CHECK:   %bitcast-convert.6 = u64[10,2]{1,0} bitcast-convert(s64[10,2]{1,0} %broadcast.5)
-// CHECK:   %constant.8 = u64[] constant(32)
-// CHECK:   %broadcast.9 = u64[10,2]{1,0} broadcast(u64[] %constant.8), dimensions={}
-// CHECK:   %iota.7 = u64[10,2]{1,0} iota(), iota_dimension=1
-// CHECK:   %multiply.10 = u64[10,2]{1,0} multiply(u64[10,2]{1,0} %broadcast.9, u64[10,2]{1,0} %iota.7)
-// CHECK:   %shift-right-logical{{\.?[0-9]*}} = u64[10,2]{1,0} shift-right-logical(u64[10,2]{1,0} %bitcast-convert.6, u64[10,2]{1,0} %multiply.10)
-// CHECK:   %constant{{\.?[0-9]*}} = u64[] constant(4294967295)
-// CHECK:   %broadcast.13 = u64[10,2]{1,0} broadcast(u64[] %constant{{\.?[0-9]*}}), dimensions={}
-// CHECK:   %and.14 = u64[10,2]{1,0} and(u64[10,2]{1,0} %shift-right-logical{{\.?[0-9]*}}, u64[10,2]{1,0} %broadcast.13)
-// CHECK:   %convert.15 = u32[10,2]{1,0} convert(u64[10,2]{1,0} %and.14)
-// CHECK:   ROOT %bitcast-convert.16 = s32[10,2]{1,0} bitcast-convert(u32[10,2]{1,0} %convert.15)
-=======
 // CHECK:   %[[VAL_0:.*]] = s64[10]{0} parameter(0)
 // CHECK:   %[[VAL_1:.*]] = s64[10,1]{1,0} reshape(s64[10]{0} %[[VAL_0]])
 // CHECK:   %[[VAL_2:.*]] = s64[10,1]{1,0} broadcast(s64[10,1]{1,0} %[[VAL_1]]), dimensions={0,1}
@@ -122,7 +104,6 @@ ENTRY main {
 // CHECK:   %[[VAL_13:.*]] = u64[10,2]{1,0} and(u64[10,2]{1,0} %[[VAL_10]], u64[10,2]{1,0} %[[VAL_12]])
 // CHECK:   %[[VAL_14:.*]] = u32[10,2]{1,0} convert(u64[10,2]{1,0} %[[VAL_13]])
 // CHECK:   ROOT %[[VAL_15:.*]] = s32[10,2]{1,0} bitcast-convert(u32[10,2]{1,0} %[[VAL_14]])
->>>>>>> upstream/master
 // CHECK: }
 // CHECK: ENTRY %main (p: s64[10]) -> s32[10,2] {
 // CHECK:   %[[VAL_16:.*]] = s64[10]{0} parameter(0)

@@ -191,14 +191,9 @@ cc_library(
     name = "cub_sort",
     srcs = ["cub_sort.cc"],
     hdrs = ["cub_sort.h"],
-<<<<<<< HEAD
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + 
-                    if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
-=======
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
->>>>>>> upstream/master
     visibility = ["//visibility:public"],
     deps = [
         ":support",

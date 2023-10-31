@@ -27,11 +27,7 @@ limitations under the License.
 
 #if TF_HIPBLASLT
 
-<<<<<<< HEAD
 #if TF_ROCM_VERSION < 60000
-=======
-#if TF_ROCM_VERSION < 50700
->>>>>>> upstream/master
 #define hipblasltDatatype_t hipblasDatatype_t
 #define HIPBLASLT_R_16F HIPBLAS_R_16F
 #define HIPBLASLT_R_16B HIPBLAS_R_16B

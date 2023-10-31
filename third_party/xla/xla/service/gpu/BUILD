@@ -261,17 +261,11 @@ cc_library(
     name = "ir_emitter_unnested",
     srcs = ["ir_emitter_unnested.cc"],
     hdrs = ["ir_emitter_unnested.h"],
-<<<<<<< HEAD
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + 
-                    if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]) + 
-                    if_rocm_hipblaslt(["TF_HIPBLASLT=1"]),
-=======
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]) + if_rocm_hipblaslt([
         "TF_HIPBLASLT=1",
     ]),
->>>>>>> upstream/master
     visibility = ["//visibility:public"],
     deps = [
         ":backend_configs_cc",
@@ -1158,17 +1152,10 @@ cc_library(
         "TENSORFLOW_USE_ROCM=1",
     ]),
     visibility = ["//visibility:public"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
     deps = if_gpu_is_configured([
         ":buffer_allocations",
         ":thunk",
         "@com_google_absl//absl/log:check",
-<<<<<<< HEAD
-        ":gpu_prim_hdrs",
-=======
->>>>>>> upstream/master
         "//xla/service:buffer_assignment",
         "//xla:shape_util",
         "//xla/stream_executor:device_memory",
@@ -1180,20 +1167,6 @@ cc_library(
     ] + [":cub_sort_kernel_" + suffix for suffix in get_cub_sort_kernel_types()]),
 )
 
-cc_library(
-    name = "gpu_prim_hdrs",
-    hdrs = ["gpu_prim.h"],
-    deps = [
-        "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:bfloat16",
-    ] +    
-    if_cuda_is_configured([
-        "@local_config_cuda//cuda:cub_headers",
-    ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocprim",
-    ]),
-)
-
 build_cub_sort_kernels(
     name = "cub_sort_kernel",
     srcs = if_gpu_is_configured(["cub_sort_kernel.cu.cc"]),
@@ -1202,37 +1175,10 @@ build_cub_sort_kernels(
         "TENSORFLOW_USE_ROCM=1",
     ]),
     types = get_cub_sort_kernel_types(),
-    deps = if_cuda_is_configured([
+    deps = if_gpu_is_configured([
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-<<<<<<< HEAD
-        ":gpu_prim_hdrs",
-    ]),
-)
-
-cc_library(
-    name = "fft_thunk",
-    srcs = ["fft_thunk.cc"],
-    hdrs = ["fft_thunk.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":buffer_allocations",
-        ":thunk",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:buffer_assignment",
-        "//xla/stream_executor",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
-    ],
-=======
     ]) + if_cuda_is_configured([":gpu_prim_cuda"]) + if_rocm_is_configured([":gpu_prim_rocm"]),
->>>>>>> upstream/master
 )
 
 cc_library(

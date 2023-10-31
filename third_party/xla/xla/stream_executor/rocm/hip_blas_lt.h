@@ -43,19 +43,6 @@ class BlasLt : public gpu::BlasLt {
   struct MatrixLayout {
     static tsl::StatusOr<MatrixLayout> Create(const gpu::MatrixLayout& m);
 
-<<<<<<< HEAD
-    hipblasltDatatype_t type() const { return hipblas_lt_datatype_; }
-    hipblasLtMatrixLayout_t get() const { return handle_.get(); }
-
-   private:
-    explicit MatrixLayout(hipblasLtMatrixLayout_t handle,
-                 hipblasltDatatype_t hipblas_lt_datatype)
-        : handle_(handle, wrap::hipblasLtMatrixLayoutDestroy),
-          hipblas_lt_datatype_(hipblas_lt_datatype) {}
-
-    Owned<hipblasLtMatrixLayout_t> handle_;
-    hipblasltDatatype_t hipblas_lt_datatype_;
-=======
     hipblasltDatatype_t type() const { return datatype_; }
     hipblasLtMatrixLayout_t get() const { return handle_.get(); }
 
@@ -66,7 +53,6 @@ class BlasLt : public gpu::BlasLt {
 
     Owned<hipblasLtMatrixLayout_t> handle_;
     hipblasltDatatype_t datatype_;
->>>>>>> upstream/master
   };
 
   class MatmulDesc {
@@ -78,30 +64,14 @@ class BlasLt : public gpu::BlasLt {
         Epilogue epilogue = Epilogue::kDefault,
         PointerMode pointer_mode = PointerMode::kHost);
 
-<<<<<<< HEAD
-    hipblasLtComputeType_t compute_type() const {
-      return HIPBLASLT_COMPUTE_F32;
-    }
-    hipblasltDatatype_t scale_type() const { return hipblas_lt_datatype_; }
-=======
     hipblasLtComputeType_t compute_type() const { return compute_type_; }
     hipblasltDatatype_t scale_type() const { return datatype_; }
->>>>>>> upstream/master
     hipblasPointerMode_t pointer_mode() const {
       return HIPBLAS_POINTER_MODE_HOST;
     }
     hipblasLtMatmulDesc_t get() const { return handle_.get(); }
 
    private:
-<<<<<<< HEAD
-    explicit MatmulDesc(hipblasLtMatmulDesc_t handle, 
-                        hipblasltDatatype_t hipblas_lt_datatype)
-        : handle_(handle, wrap::hipblasLtMatmulDescDestroy),
-        hipblas_lt_datatype_(hipblas_lt_datatype) {}
-
-    Owned<hipblasLtMatmulDesc_t> handle_;
-    hipblasltDatatype_t hipblas_lt_datatype_;
-=======
     MatmulDesc(hipblasLtMatmulDesc_t handle,
                hipblasLtComputeType_t compute_type,
                hipblasltDatatype_t datatype)
@@ -112,7 +82,6 @@ class BlasLt : public gpu::BlasLt {
     Owned<hipblasLtMatmulDesc_t> handle_;
     hipblasLtComputeType_t compute_type_;
     hipblasltDatatype_t datatype_;
->>>>>>> upstream/master
   };
 
   struct MatmulPlan : public gpu::BlasLt::MatmulPlan {
