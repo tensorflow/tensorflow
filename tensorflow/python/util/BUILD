@@ -817,8 +817,10 @@ tf_py_strict_test(
     python_version = "PY3",
     deps = [
         ":lazy_loader",
+        ":tf_inspect",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:tf_logging",
     ],
 )
 
