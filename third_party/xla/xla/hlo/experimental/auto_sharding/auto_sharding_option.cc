@@ -99,6 +99,12 @@ std::string AutoShardingOption::ToString() const {
                                  "]"));
   }
 
+  lines.push_back(absl::StrCat("only_allow_divisible_input_output: ",
+                               only_allow_divisible_input_output));
+
+  lines.push_back(absl::StrCat("only_allow_divisible_intermediate: ",
+                               only_allow_divisible_intermediate));
+
   lines.push_back(absl::StrCat("device_mesh_shape: [",
                                absl::StrJoin(device_mesh_shape, ","), "]"));
   lines.push_back(absl::StrCat("device_mesh_alpha: [",
@@ -116,6 +122,9 @@ std::string AutoShardingOption::ToString() const {
 }
 
 absl::Status AutoShardingOption::CheckAndSetup() {
+  only_allow_divisible_input_output = true;
+  only_allow_divisible_intermediate = false;
+
   if (device_mesh_shape.empty()) {
     return absl::OutOfRangeError(
         "device_mesh_shape is empty and it needs to be specified.");

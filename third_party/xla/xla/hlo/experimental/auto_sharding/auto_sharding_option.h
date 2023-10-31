@@ -134,6 +134,11 @@ struct AutoShardingOption {
   std::vector<int64_t> force_strategy_inst_indices;
   std::vector<std::string> force_strategy_stra_names;
 
+  // Whether or not we allow sharding strategies where the tensor dim is
+  // indivisible by the #tiles in that dimension.
+  bool only_allow_divisible_input_output = true;
+  bool only_allow_divisible_intermediate = false;
+
   // Device mesh shape.
   std::vector<int64_t> device_mesh_shape;
   // Device IDs in the mesh.
@@ -179,7 +184,7 @@ struct AutoShardingOption {
   // a simple replicated default.
   bool use_sharding_propagation_for_default_shardings = true;
 
-  // Used for debug printing
+  // Prints a debug string.
   std::string ToString() const;
 
   // Initializes uninitialized fields with default values, as well as checks the
