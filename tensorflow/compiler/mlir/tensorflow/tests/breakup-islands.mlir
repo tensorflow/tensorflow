@@ -544,16 +544,17 @@ func.func @island_not_direct_parent_of_user() -> () {
       tf_executor.yield %0 : tensor<i64>
     }
     // CHECK: "tf_device.launch"()
+    // CHECK-SAME: <{device = "/job:worker/replica:0/task:0/device:CPU:0"}>
     // CHECK:   "tf.OpC"(%[[VAL_0]]) : (tensor<i64>) -> ()
     // CHECK:   "tf.OpD"() : () -> ()
     // CHECK:   tf_device.return
-    // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
+    // CHECK: }) : () -> ()
     %island2 = tf_executor.island {
-      "tf_device.launch"() ({
+      "tf_device.launch"() <{device = "/job:worker/replica:0/task:0/device:CPU:0"}> ({
         "tf.OpC"(%island1#0) : (tensor<i64>) -> ()
         "tf.OpD"() : () -> ()
         tf_device.return
-      }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
+      }) : () -> ()
       tf_executor.yield
     }
     // CHECK: tf_executor.fetch

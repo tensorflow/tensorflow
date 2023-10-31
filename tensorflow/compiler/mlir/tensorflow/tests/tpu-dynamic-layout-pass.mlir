@@ -429,9 +429,9 @@ func.func @parallel_execute(%arg0: tensor<*x!tf_type.resource> {tf.device = "/de
     // CHECK-NEXT: %[[COPY0:.*]] = "tf.TPUCopyWithLayout"(%[[ITER]]#0, %[[LAYOUT0]])
     // CHECK-SAME: device = "/device:TPU:0"
     // CHECK-NEXT: "tf_device.launch"
+    // CHECK-SAME: device = "/device:TPU:0"
     // CHECK-NEXT: "tf.TPUExecute"(%[[COPY0]], %[[COMPILE]]#1)
     // CHECK-NEXT: tf_device.return
-    // CHECK-NEXT: device = "/device:TPU:0"
     "tf_device.launch"() ({
       "tf.TPUExecute"(%2#0, %compile#1) : (tensor<128xf32>, tensor<2x!tf_type.string>) -> ()
       tf_device.return
@@ -442,9 +442,9 @@ func.func @parallel_execute(%arg0: tensor<*x!tf_type.resource> {tf.device = "/de
     // CHECK: %[[COPY1:.*]] = "tf.TPUCopyWithLayout"(%[[ITER]]#1, %[[LAYOUT1]])
     // CHECK-SAME: device = "/device:TPU:1"
     // CHECK-NEXT: "tf_device.launch"
+    // CHECK-SAME: device = "/device:TPU:1"
     // CHECK-NEXT: "tf.TPUExecute"(%[[COPY1]], %[[COMPILE]]#2)
     // CHECK-NEXT: tf_device.return
-    // CHECK-NEXT: device = "/device:TPU:1"
     "tf_device.launch"() ({
       "tf.TPUExecute"(%2#1, %compile#2) : (tensor<128xf32>, tensor<2x!tf_type.string>) -> ()
       tf_device.return
@@ -501,9 +501,10 @@ func.func @replicated_parallel_execute(%arg0: tensor<*x!tf_type.resource> {tf.de
   tf_device.replicate([%2#0, %3#0] as %r0: tensor<128xf32>, [%2#1, %3#1] as %r1: tensor<128xf32>) {n = 2 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/device:TPU:0", "/device:TPU:1"], TPU_REPLICATED_CORE_1 = ["/device:TPU:2", "/device:TPU:3"]}} {
     // CHECK: "tf_device.parallel_execute"
     "tf_device.parallel_execute"() ({
+      // CHECK: "tf_device.launch"
+      // CHECK-SAME: device = "TPU_REPLICATED_CORE_0"
       // CHECK: "tf.TPUExecute"(%[[R0]], %[[COMPILE]]#1)
       // CHECK-NEXT: tf_device.return
-      // CHECK-NEXT: device = "TPU_REPLICATED_CORE_0"
       "tf_device.launch"() ({
         "tf.TPUExecute"(%r0, %compile#1) : (tensor<128xf32>, tensor<2x!tf_type.string>) -> ()
         tf_device.return
@@ -511,9 +512,10 @@ func.func @replicated_parallel_execute(%arg0: tensor<*x!tf_type.resource> {tf.de
       tf_device.return
     },
     {
+      // CHECK: "tf_device.launch"
+      // CHECK-SAME: device = "TPU_REPLICATED_CORE_1"
       // CHECK: "tf.TPUExecute"(%[[R1]], %[[COMPILE]]#2)
       // CHECK-NEXT: tf_device.return
-      // CHECK-NEXT: device = "TPU_REPLICATED_CORE_1"
       "tf_device.launch"() ({
         "tf.TPUExecute"(%r1, %compile#2) : (tensor<128xf32>, tensor<2x!tf_type.string>) -> ()
         tf_device.return

@@ -6,10 +6,10 @@ module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:COMPOSI
   // CHECK-LABEL: func @valid_copy_op_in_replicated_host
 
   // CHECK: "tf_device.launch"
-  // CHECK: "TPU_REPLICATED_HOST_0"
+  // CHECK-SAME: "TPU_REPLICATED_HOST_0"
   // CHECK: "tf_device.launch"
+  // CHECK-SAME: "TPU_REPLICATED_CORE_0"
   // CHECK: "tf.TPUCopyWithDynamicShape"
-  // CHECK: "TPU_REPLICATED_CORE_0"
   func.func @valid_copy_op_in_replicated_host(
     %arg0: tensor<2048xi64> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"},
     %arg1: tensor<2048xi64> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"}) -> (tensor<2048xi32>, tensor<2048xi32>) {
@@ -26,10 +26,10 @@ module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:COMPOSI
   // CHECK-LABEL: func @valid_copy_op_in_non_replicated_host
 
   // CHECK: "tf_device.launch"
-  // CHECK: "/job:localhost/replica:0/task:0/device:CPU:0"
+  // CHECK-SAME: "/job:localhost/replica:0/task:0/device:CPU:0"
   // CHECK: "tf_device.launch"
+  // CHECK-SAME: "/job:localhost/replica:0/task:0/device:TPU:0"
   // CHECK: "tf.TPUCopyWithDynamicShape"
-  // CHECK: "/job:localhost/replica:0/task:0/device:TPU:0"
   func.func @valid_copy_op_in_non_replicated_host(
     %arg0: tensor<2048xi64> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"},
     %arg1: tensor<2048xi64> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"}) -> (tensor<2048xi32>, tensor<2048xi32>) {
