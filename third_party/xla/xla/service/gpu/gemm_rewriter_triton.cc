@@ -760,8 +760,6 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
 
   const HloInstruction* src =
       (direction == TransformDirection::kOutputToInput) ? hlo : hlo->operand(0);
-  const HloInstruction* dst =
-      (direction == TransformDirection::kOutputToInput) ? hlo->operand(0) : hlo;
   // Note: copying instead of using a const reference because
   // some operations (slice) will modify fragment properties in-place.
   Fragments src_fragments_order = dim_orders.at(src).TensorFragmentsOrder();
@@ -769,14 +767,6 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
       ShapeUtil::IsEffectiveScalar(hlo->shape())) {
     return FusionDecision("Slice to scalar is not implemented yet.");
   }
-  DimOrderUpdates result;
-  if (hlo->opcode() == HloOpcode::kReduce || hlo->opcode() == HloOpcode::kPad) {
-    // Operand 1 (the neutral value or padding value) has to be a scalar.
-    result.map.insert({hlo->operand(1), DimensionOrder()});
-  }
-  DimensionOrder& dst_dim_order =
-      result.map.insert({dst, DimensionOrder()}).first->second;
-  Fragments& dst_fragments_order = dst_dim_order.TensorFragmentsOrder();
   // Every HLO dimension can correspond to a group of subdimensions in
   // dim_order_. For the easier handling of permutations: group dim_order_ by
   // dimension, apply permutations, then finally remove the grouping.
@@ -798,136 +788,157 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
     CHECK_EQ(subdim_size_accumulator, dim_size);
     src_physical.push_back(subdim_group);
   }
+
   // Source physical -> source logical.
   std::vector<std::vector<Fragment*>> src_logical;
   src_logical.resize(src_physical.size());
   for (int i = 0; i < src_physical.size(); ++i) {
     src_logical[src->shape().layout().minor_to_major(i)] = src_physical[i];
   }
-  // Source logical -> destination logical.
-  std::vector<std::vector<Fragment*>> dst_logical;
-  if (hlo->opcode() == HloOpcode::kTranspose) {
-    const auto* transpose = Cast<HloTransposeInstruction>(hlo);
-    std::vector<int64_t> permutation(transpose->dimensions().cbegin(),
-                                     transpose->dimensions().cend());
-    if (direction == TransformDirection::kInputToOutput) {
-      permutation = InversePermutation(permutation);
-    }
-    dst_logical.resize(permutation.size());
-    for (int i = 0; i < permutation.size(); ++i) {
-      dst_logical[permutation[i]] = src_logical[i];
-    }
-  } else if (hlo->opcode() == HloOpcode::kBroadcast) {
-    const auto* broadcast = Cast<HloBroadcastInstruction>(hlo);
-    dst_logical.resize(broadcast->dimensions().size());
-    for (int i = 0; i < broadcast->dimensions().size(); ++i) {
-      dst_logical[i] = src_logical[broadcast->dimensions()[i]];
-    }
-  } else if (hlo->opcode() == HloOpcode::kReduce) {
-    const auto* reduce = Cast<HloReduceInstruction>(hlo);
-    dst_logical.resize(src_logical.size() + reduce->dimensions().size());
-    if (reduce->dimensions().size() != 1) {
-      return FusionDecision("Unsupported reduction.");
-    }
-    for (int i = 0; i < dst_logical.size(); ++i) {
-      if (i == reduce->dimensions().front()) {
-        // This way to assign the reduction dimension will only work for
-        // softmax fusions with known patterns for now. Generally a reduction
-        // should create a new tiled dimension.
-        dst_logical[i] = {&new_fragments.emplace_back(
-            std::get<SoftmaxProperties>(properties_)
-                .softmax_reduction_dimension,
-            reduce->operand(0)->shape().dimensions(i))};
-      } else {
-        dst_logical[i] = src_logical[i];
-      }
-    }
-  } else if (hlo->opcode() == HloOpcode::kCopy) {
-    // Copy preserves the logical shape, just permutes the layout.
-    CHECK(ShapeUtil::SameDimensions(src->shape(), dst->shape()));
-    dst_logical = src_logical;
-  } else if (hlo->opcode() == HloOpcode::kPad) {
-    const auto* pad = Cast<HloPadInstruction>(hlo);
-    dst_logical.resize(src_logical.size());
-    for (int i = 0; i < src_logical.size(); ++i) {
-      // This only handles the padding added by PadDotOperandsIfNeededForSplitK,
-      // which sets only edge_padding_high.
-      const int padding =
-          pad->padding_config().dimensions(i).edge_padding_high();
-      CHECK_EQ(pad->padding_config().dimensions(i).edge_padding_low(), 0);
-      CHECK_EQ(pad->padding_config().dimensions(i).interior_padding(), 0);
-      if (padding == 0) {
-        dst_logical[i] = src_logical[i];
-      } else {
-        // This case is executed for the contracting dimension when we run the
-        // TritonFusionAnalysis after the padding and the split-k transform are
-        // applied.
-        const std::vector<Fragment*>& fragments = src_logical[i];
-        // We must have 2 fragments at this point.
-        CHECK_EQ(fragments.size(), 2);
-        // The dst_dim_numbers must be the same for the 2 fragments of the
-        // contracting dimension after applying split-k.
-        CHECK_EQ(fragments[0]->dst_dim_number(),
-                 fragments[1]->dst_dim_number());
 
-        new_fragments.emplace_back(
-            fragments[0]->dst_dim_number(),
-            fragments[0]->full_size() * fragments[1]->full_size() - padding);
-        dst_logical[i] = {&new_fragments.back()};
+  HloInstruction::InstructionVector output;
+  output.push_back(const_cast<HloInstruction*>(hlo));
+  DimOrderUpdates result;
+  for (const HloInstruction* dst :
+       (direction == TransformDirection::kInputToOutput) ? output
+                                                         : hlo->operands()) {
+    DimensionOrder& dst_dim_order =
+        result.map.insert({dst, DimensionOrder()}).first->second;
+    // Source logical -> destination logical.
+    std::vector<std::vector<Fragment*>> dst_logical;
+    if (hlo->opcode() == HloOpcode::kTranspose) {
+      const auto* transpose = Cast<HloTransposeInstruction>(hlo);
+      std::vector<int64_t> permutation(transpose->dimensions().cbegin(),
+                                       transpose->dimensions().cend());
+      if (direction == TransformDirection::kInputToOutput) {
+        permutation = InversePermutation(permutation);
       }
-    }
-  } else if (hlo->opcode() == HloOpcode::kSlice) {
-    const auto slice = Cast<HloSliceInstruction>(hlo);
-    dst_logical.resize(src_logical.size());
-    for (int dim = 0; dim < src_logical.size(); ++dim) {
-      dst_logical[dim] = src_logical[dim];
-      if (slice->slice_limits(dim) - slice->slice_starts(dim) !=
-          dst->shape().dimensions(dim)) {
-        if (dst_logical[dim].size() > 1) {
-          return FusionDecision("Slicing of fragmented dimension.");
-        }
-        dst_logical[dim].front()->set_size(dst->shape().dimensions(dim));
-        dst_logical[dim].front()->set_slice(slice->slice_starts(dim),
-                                            slice->slice_limits(dim));
+      dst_logical.resize(permutation.size());
+      for (int i = 0; i < permutation.size(); ++i) {
+        dst_logical[permutation[i]] = src_logical[i];
       }
-    }
-  } else {
-    return FusionDecision("Function called on a wrong instruction.");
-  }
-  // Destination logical -> destination physical and ungroup subdimensions.
-  // Map original fragments to the resulting ones to derive their new
-  // logical ordering within each dimension.
-  absl::flat_hash_map<const Fragment*, int> src_to_dst;
-  FragmentOrders& dst_dim_fragments_order = dst_dim_order.DimFragmentsOrders();
-  // Remember which dimensions are present before a broadcast;
-  // skip cases when already present dimension is being expanded.
-  absl::flat_hash_set<int> dim_numbers_present_in_dst;
-  for (const int64_t dim_idx : dst->shape().layout().minor_to_major()) {
-    for (const Fragment* subdim : dst_logical[dim_idx]) {
-      dst_fragments_order.push_back(*subdim);
-      src_to_dst[subdim] = dst_fragments_order.size() - 1;
-      dim_numbers_present_in_dst.insert(subdim->dst_dim_number());
-      if (std::holds_alternative<SoftmaxProperties>(properties_) &&
-          subdim->dst_dim_number() == std::get<SoftmaxProperties>(properties_)
-                                          .softmax_reduction_dimension) {
-        dst_dim_fragments_order[subdim->dst_dim_number()].push_back(
-            dst_fragments_order.size() - 1);
+    } else if (hlo->opcode() == HloOpcode::kBroadcast) {
+      const auto* broadcast = Cast<HloBroadcastInstruction>(hlo);
+      dst_logical.resize(broadcast->dimensions().size());
+      for (int i = 0; i < broadcast->dimensions().size(); ++i) {
+        dst_logical[i] = src_logical[broadcast->dimensions()[i]];
       }
-    }
-  }
-  for (const auto& [dim_index, dim_sequence] :
-       dim_orders.at(src).DimFragmentsOrders()) {
-    for (const int fragment_number : dim_sequence) {
-      const auto it = src_to_dst.find(&src_fragments_order[fragment_number]);
-      if (it == src_to_dst.cend()) {
-        if (hlo->opcode() == HloOpcode::kBroadcast &&
-            src_fragments_order[fragment_number].full_size() > 1 &&
-            dim_numbers_present_in_dst.contains(dim_index)) {
-          return FusionDecision("Unsupported broadcast");
-        }
+    } else if (hlo->opcode() == HloOpcode::kReduce) {
+      // Operand 1 (the neutral value) has to be a scalar.
+      if (dst != hlo && hlo->operand_index(dst) == 1) {
         continue;
       }
-      dst_dim_fragments_order[dim_index].push_back(it->second);
+      const auto* reduce = Cast<HloReduceInstruction>(hlo);
+      dst_logical.resize(src_logical.size() + reduce->dimensions().size());
+      if (reduce->dimensions().size() != 1) {
+        return FusionDecision("Unsupported reduction.");
+      }
+      for (int i = 0; i < dst_logical.size(); ++i) {
+        if (i == reduce->dimensions().front()) {
+          // This way to assign the reduction dimension will only work for
+          // softmax fusions with known patterns for now. Generally a reduction
+          // should create a new tiled dimension.
+          dst_logical[i] = {&new_fragments.emplace_back(
+              std::get<SoftmaxProperties>(properties_)
+                  .softmax_reduction_dimension,
+              reduce->operand(0)->shape().dimensions(i))};
+        } else {
+          dst_logical[i] = src_logical[i];
+        }
+      }
+    } else if (hlo->opcode() == HloOpcode::kCopy) {
+      // Copy preserves the logical shape, just permutes the layout.
+      CHECK(ShapeUtil::SameDimensions(src->shape(), dst->shape()));
+      dst_logical = src_logical;
+    } else if (hlo->opcode() == HloOpcode::kPad) {
+      // Operand 1 (the padding value) has to be a scalar.
+      if (dst != hlo && hlo->operand_index(dst) == 1) {
+        continue;
+      }
+      const auto* pad = Cast<HloPadInstruction>(hlo);
+      dst_logical.resize(src_logical.size());
+      for (int i = 0; i < src_logical.size(); ++i) {
+        // This only handles the padding added by
+        // PadDotOperandsIfNeededForSplitK, which sets only edge_padding_high.
+        const int padding =
+            pad->padding_config().dimensions(i).edge_padding_high();
+        CHECK_EQ(pad->padding_config().dimensions(i).edge_padding_low(), 0);
+        CHECK_EQ(pad->padding_config().dimensions(i).interior_padding(), 0);
+        if (padding == 0) {
+          dst_logical[i] = src_logical[i];
+        } else {
+          // This case is executed for the contracting dimension when we run the
+          // TritonFusionAnalysis after the padding and the split-k transform
+          // are applied.
+          const std::vector<Fragment*>& fragments = src_logical[i];
+          // We must have 2 fragments at this point.
+          CHECK_EQ(fragments.size(), 2);
+          // The dst_dim_numbers must be the same for the 2 fragments of the
+          // contracting dimension after applying split-k.
+          CHECK_EQ(fragments[0]->dst_dim_number(),
+                   fragments[1]->dst_dim_number());
+
+          new_fragments.emplace_back(
+              fragments[0]->dst_dim_number(),
+              fragments[0]->full_size() * fragments[1]->full_size() - padding);
+          dst_logical[i] = {&new_fragments.back()};
+        }
+      }
+    } else if (hlo->opcode() == HloOpcode::kSlice) {
+      const auto slice = Cast<HloSliceInstruction>(hlo);
+      dst_logical.resize(src_logical.size());
+      for (int dim = 0; dim < src_logical.size(); ++dim) {
+        dst_logical[dim] = src_logical[dim];
+        if (slice->slice_limits(dim) - slice->slice_starts(dim) !=
+            dst->shape().dimensions(dim)) {
+          if (dst_logical[dim].size() > 1) {
+            return FusionDecision("Slicing of fragmented dimension.");
+          }
+          dst_logical[dim].front()->set_size(dst->shape().dimensions(dim));
+          dst_logical[dim].front()->set_slice(slice->slice_starts(dim),
+                                              slice->slice_limits(dim));
+        }
+      }
+    } else {
+      return FusionDecision("Function called on a wrong instruction.");
+    }
+    // Destination logical -> destination physical and ungroup subdimensions.
+    // Map original fragments to the resulting ones to derive their new
+    // logical ordering within each dimension.
+    absl::flat_hash_map<const Fragment*, int> src_to_dst;
+    Fragments& dst_fragments_order = dst_dim_order.TensorFragmentsOrder();
+    FragmentOrders& dst_dim_fragments_order =
+        dst_dim_order.DimFragmentsOrders();
+    // Remember which dimensions are present before a broadcast;
+    // skip cases when already present dimension is being expanded.
+    absl::flat_hash_set<int> dim_numbers_present_in_dst;
+    for (const int64_t dim_idx : dst->shape().layout().minor_to_major()) {
+      for (const Fragment* subdim : dst_logical[dim_idx]) {
+        dst_fragments_order.push_back(*subdim);
+        src_to_dst[subdim] = dst_fragments_order.size() - 1;
+        dim_numbers_present_in_dst.insert(subdim->dst_dim_number());
+        if (std::holds_alternative<SoftmaxProperties>(properties_) &&
+            subdim->dst_dim_number() == std::get<SoftmaxProperties>(properties_)
+                                            .softmax_reduction_dimension) {
+          dst_dim_fragments_order[subdim->dst_dim_number()].push_back(
+              dst_fragments_order.size() - 1);
+        }
+      }
+    }
+    for (const auto& [dim_index, dim_sequence] :
+         dim_orders.at(src).DimFragmentsOrders()) {
+      for (const int fragment_number : dim_sequence) {
+        const auto it = src_to_dst.find(&src_fragments_order[fragment_number]);
+        if (it == src_to_dst.cend()) {
+          if (hlo->opcode() == HloOpcode::kBroadcast &&
+              src_fragments_order[fragment_number].full_size() > 1 &&
+              dim_numbers_present_in_dst.contains(dim_index)) {
+            return FusionDecision("Unsupported broadcast");
+          }
+          continue;
+        }
+        dst_dim_fragments_order[dim_index].push_back(it->second);
+      }
     }
   }
   return result;
