@@ -66527,6 +66527,20 @@ op {
     type: DT_FLOAT
   }
   attr {
+    name: "clip_weight_min"
+    type: "float"
+    default_value {
+      f: -inf
+    }
+  }
+  attr {
+    name: "clip_weight_max"
+    type: "float"
+    default_value {
+      f: inf
+    }
+  }
+  attr {
     name: "table_name"
     type: "string"
   }
@@ -66606,6 +66620,20 @@ op {
     type: "float"
   }
   attr {
+    name: "clip_weight_min"
+    type: "float"
+    default_value {
+      f: -inf
+    }
+  }
+  attr {
+    name: "clip_weight_max"
+    type: "float"
+    default_value {
+      f: inf
+    }
+  }
+  attr {
     name: "table_name"
     type: "string"
   }
@@ -66679,6 +66707,20 @@ op {
   attr {
     name: "epsilon"
     type: "float"
+  }
+  attr {
+    name: "clip_weight_min"
+    type: "float"
+    default_value {
+      f: -inf
+    }
+  }
+  attr {
+    name: "clip_weight_max"
+    type: "float"
+    default_value {
+      f: inf
+    }
   }
   attr {
     name: "table_name"
@@ -66760,6 +66802,20 @@ op {
     type: "float"
   }
   attr {
+    name: "clip_weight_min"
+    type: "float"
+    default_value {
+      f: -inf
+    }
+  }
+  attr {
+    name: "clip_weight_max"
+    type: "float"
+    default_value {
+      f: inf
+    }
+  }
+  attr {
     name: "table_name"
     type: "string"
   }
@@ -66801,6 +66857,20 @@ op {
   output_arg {
     name: "updated_embedding_table"
     type: DT_FLOAT
+  }
+  attr {
+    name: "clip_weight_min"
+    type: "float"
+    default_value {
+      f: -inf
+    }
+  }
+  attr {
+    name: "clip_weight_max"
+    type: "float"
+    default_value {
+      f: inf
+    }
   }
   attr {
     name: "table_name"
