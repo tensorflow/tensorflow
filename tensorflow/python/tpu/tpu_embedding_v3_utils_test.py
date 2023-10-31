@@ -91,7 +91,7 @@ class TpuEmbeddingV3UtilsTest(test.TestCase, parameterized.TestCase):
   def test_unshuffle_stacking_basic(self):
     num_sc = 4
     ta = TestTable(vocab=12, dim=4, shift=0)
-    tb = TestTable(vocab=32, dim=4, shift=2)
+    tb = TestTable(vocab=32, dim=4, shift=1)
     x, x_shards = create_test_table_shards(ta, num_sc)
     y, y_shards = create_test_table_shards(tb, num_sc)
     stacked_shards = [
@@ -117,6 +117,106 @@ class TpuEmbeddingV3UtilsTest(test.TestCase, parameterized.TestCase):
             shard_rotation=tb.shift,
         ),
         y,
+    )
+
+  def test_unshuffle_stacking_many_tables(self):
+    num_sc = 4
+    tables = [
+        TestTable(vocab=12, dim=4, shift=0),
+        TestTable(vocab=32, dim=4, shift=1),
+        TestTable(vocab=32, dim=4, shift=2),
+        TestTable(vocab=32, dim=4, shift=3),
+        TestTable(vocab=32, dim=4, shift=4),
+        TestTable(vocab=32, dim=4, shift=5),
+    ]
+    u, u_shards = create_test_table_shards(tables[0], num_sc)
+    v, v_shards = create_test_table_shards(tables[1], num_sc)
+    w, w_shards = create_test_table_shards(tables[2], num_sc)
+    x, x_shards = create_test_table_shards(tables[3], num_sc)
+    y, y_shards = create_test_table_shards(tables[4], num_sc)
+    z, z_shards = create_test_table_shards(tables[5], num_sc)
+    stacked_shards = [
+        array_ops.concat([i, j, k, l, m, n], axis=0)
+        for i, j, k, l, m, n in zip(
+            u_shards, v_shards, w_shards, x_shards, y_shards, z_shards
+        )
+    ]
+    stacked = array_ops.concat(stacked_shards, axis=0)
+    self.assertAllEqual(
+        v3_utils.unshuffle_from_sc_to_cpu(
+            t=stacked,
+            num_sparse_cores=num_sc,
+            offset_in_shard=0,
+            size_in_shard=tables[0].vocab // num_sc,
+            shard_rotation=tables[0].shift,
+        ),
+        u,
+    )
+    self.assertAllEqual(
+        v3_utils.unshuffle_from_sc_to_cpu(
+            t=stacked,
+            num_sparse_cores=num_sc,
+            offset_in_shard=tables[0].vocab // num_sc,
+            size_in_shard=tables[1].vocab // num_sc,
+            shard_rotation=tables[1].shift,
+        ),
+        v,
+    )
+    self.assertAllEqual(
+        v3_utils.unshuffle_from_sc_to_cpu(
+            t=stacked,
+            num_sparse_cores=num_sc,
+            offset_in_shard=(tables[0].vocab + tables[1].vocab) // num_sc,
+            size_in_shard=tables[2].vocab // num_sc,
+            shard_rotation=tables[2].shift,
+        ),
+        w,
+    )
+    self.assertAllEqual(
+        v3_utils.unshuffle_from_sc_to_cpu(
+            t=stacked,
+            num_sparse_cores=num_sc,
+            offset_in_shard=(
+                tables[0].vocab + tables[1].vocab + tables[2].vocab
+            )
+            // num_sc,
+            size_in_shard=tables[3].vocab // num_sc,
+            shard_rotation=tables[3].shift,
+        ),
+        x,
+    )
+    self.assertAllEqual(
+        v3_utils.unshuffle_from_sc_to_cpu(
+            t=stacked,
+            num_sparse_cores=num_sc,
+            offset_in_shard=(
+                tables[0].vocab
+                + tables[1].vocab
+                + tables[2].vocab
+                + tables[3].vocab
+            )
+            // num_sc,
+            size_in_shard=tables[4].vocab // num_sc,
+            shard_rotation=tables[4].shift,
+        ),
+        y,
+    )
+    self.assertAllEqual(
+        v3_utils.unshuffle_from_sc_to_cpu(
+            t=stacked,
+            num_sparse_cores=num_sc,
+            offset_in_shard=(
+                tables[0].vocab
+                + tables[1].vocab
+                + tables[2].vocab
+                + tables[3].vocab
+                + tables[4].vocab
+            )
+            // num_sc,
+            size_in_shard=tables[5].vocab // num_sc,
+            shard_rotation=tables[5].shift,
+        ),
+        z,
     )
 
 
