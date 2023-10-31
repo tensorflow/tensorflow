@@ -2217,6 +2217,8 @@ def TF_XlaSparseDenseMatmulGradWithSgdAndCsrInputOp : TF_Op<"XlaSparseDenseMatmu
     TF_Float32Tensor:$embedding_table,
     TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
 
+    F32Attr:$clip_weight_min,
+    F32Attr:$clip_weight_max,
     StrAttr:$table_name
   );
 
@@ -2239,6 +2241,8 @@ def XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp : TF_Op<"XlaSparseDenseMatm
     TF_Float32Tensor:$accumulator,
     TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
 
+    F32Attr:$clip_weight_min,
+    F32Attr:$clip_weight_max,
     StrAttr:$table_name
   );
 
@@ -2268,6 +2272,8 @@ def XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInputOp : TF_Op<"XlaSparseD
     F32Attr:$beta1,
     F32Attr:$beta2,
     F32Attr:$epsilon,
+    F32Attr:$clip_weight_min,
+    F32Attr:$clip_weight_max,
     StrAttr:$table_name
   );
 
@@ -2297,6 +2303,8 @@ def XlaSparseDenseMatmulGradWithAdamAndCsrInputOp : TF_Op<"XlaSparseDenseMatmulG
     F32Attr:$beta1,
     F32Attr:$beta2,
     F32Attr:$epsilon,
+    F32Attr:$clip_weight_min,
+    F32Attr:$clip_weight_max,
     StrAttr:$table_name
   );
 
@@ -2327,6 +2335,8 @@ def XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp : TF_Op<"XlaSparseDenseMatmulG
     F32Attr:$learning_rate_power,
     F32Attr:$l1_regularization_strength,
     F32Attr:$l2_regularization_strength,
+    F32Attr:$clip_weight_min,
+    F32Attr:$clip_weight_max,
     StrAttr:$table_name
   );
 
