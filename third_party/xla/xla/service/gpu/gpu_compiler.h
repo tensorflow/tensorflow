@@ -108,7 +108,11 @@ class GpuCompiler : public LLVMCompiler {
 
   // An attached device is passed in via stream_exec. We get GPU configuration
   // from the attached device. GemmAlgorithmPicker and GpuConvAlgorithmPicker
-  // can run on the attached device.
+  // can run on the attached device. If you call this directly, follow it with
+  // RunBackend rather than Compile. To compile without an attached device,
+  // pass a nullptr stream_exec and set a TargetConfig in the CompileOptions,
+  // and then call CompileAheadOfTime. See service/xla_compile_main.cc for an
+  // example.
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
