@@ -140,7 +140,8 @@ class GpuPriorityFusionQueue : public FusionQueue {
                            HloInstruction* original_producer,
                            HloInstruction* original_consumer) override {
     if (fusion_process_dump_) {
-      auto* fusion_step = fusion_process_dump_->add_fusion_steps();
+      auto* fusion_step =
+          fusion_process_dump_->add_fusion_steps()->mutable_fusion();
 
       // Explicit std::string is needed for OSS proto implementation.
       fusion_step->set_fusion_name(std::string(fusion->name()));
@@ -238,6 +239,12 @@ class GpuPriorityFusionQueue : public FusionQueue {
     // Don't fuse if we can't fuse in all users.
     if (auto fusion_decision = CanFuseWithAllUsers(producer);
         !fusion_decision) {
+      if (fusion_process_dump_) {
+        auto* step = fusion_process_dump_->add_fusion_steps()
+                         ->mutable_producer_ineligible();
+        step->set_producer_name(std::string(producer->name()));
+        step->set_reason(fusion_decision.Explain());
+      }
       return std::numeric_limits<Priority>::min();
     }
 
@@ -245,6 +252,16 @@ class GpuPriorityFusionQueue : public FusionQueue {
         GpuPerformanceModel::EstimateRunTimes(
             producer, &cost_analysis_,
             GpuPerformanceModelOptions::PriorityFusion(), producer->users());
+    if (fusion_process_dump_) {
+      auto* step =
+          fusion_process_dump_->add_fusion_steps()->mutable_update_priority();
+      step->set_producer_name(std::string(producer->name()));
+      for (auto* consumer : producer->users()) {
+        step->add_consumer_names(std::string(consumer->name()));
+      }
+      step->set_us_fused(absl::ToDoubleMicroseconds(run_times.time_fused));
+      step->set_us_unfused(absl::ToDoubleMicroseconds(run_times.time_unfused));
+    }
     return absl::ToInt64Nanoseconds(run_times.time_unfused -
                                     run_times.time_fused);
   }
