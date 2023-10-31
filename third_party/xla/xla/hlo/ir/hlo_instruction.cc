@@ -3203,11 +3203,29 @@ bool HloInstruction::IsElementwiseImpl(
 }
 
 bool HloInstruction::IsCrossModuleAllReduce() const {
-  return opcode() == HloOpcode::kAllReduce && channel_id();
+  if (opcode() == HloOpcode::kAllReduce ||
+      opcode() == HloOpcode::kAllReduceStart) {
+    return channel_id() != std::nullopt;
+  } else if (opcode() == HloOpcode::kAllReduceDone) {
+    CHECK_EQ(operand_count(), 1);
+    const HloInstruction* operand = this->operand(0);
+    CHECK_EQ(operand->opcode(), HloOpcode::kAllReduceStart);
+    return operand->channel_id() != std::nullopt;
+  }
+  return false;
 }
 
 bool HloInstruction::IsCrossReplicaAllReduce() const {
-  return opcode() == HloOpcode::kAllReduce && !channel_id();
+  if (opcode() == HloOpcode::kAllReduce ||
+      opcode() == HloOpcode::kAllReduceStart) {
+    return channel_id() == std::nullopt;
+  } else if (opcode() == HloOpcode::kAllReduceDone) {
+    CHECK_EQ(operand_count(), 1);
+    const HloInstruction* operand = this->operand(0);
+    CHECK_EQ(operand->opcode(), HloOpcode::kAllReduceStart);
+    return operand->channel_id() == std::nullopt;
+  }
+  return false;
 }
 
 void HloInstruction::PrintWithCanonicalNameMap(
