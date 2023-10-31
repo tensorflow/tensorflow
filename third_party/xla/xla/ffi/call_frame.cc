@@ -54,10 +54,7 @@ void CallFrameBuilder::AddStringAttr(std::string name, std::string value) {
   attrs_.try_emplace(std::move(name), value);
 }
 
-CallFrame CallFrameBuilder::Build(XLA_FFI_Api* api,
-                                  XLA_FFI_ExecutionContext* ctx) {
-  return CallFrame(api, ctx, args_, attrs_);
-}
+CallFrame CallFrameBuilder::Build() { return CallFrame(args_, attrs_); }
 
 // ------------------------    !!! !!! !!!     ------------------------------ //
 
@@ -136,14 +133,18 @@ struct CallFrame::Attributes {
 // CallFrame
 //===----------------------------------------------------------------------===//
 
-CallFrame::CallFrame(XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
-                     absl::Span<const CallFrameBuilder::Buffer> args,
+CallFrame::CallFrame(absl::Span<const CallFrameBuilder::Buffer> args,
                      const CallFrameBuilder::AttributesMap& attrs)
-    : arguments_(InitArgs(args)), attributes_(InitAttrs(attrs)) {
-  call_frame_.api = api;
-  call_frame_.ctx = ctx;
-  call_frame_.args = arguments_->ffi_args;
-  call_frame_.attrs = attributes_->ffi_attrs;
+    : arguments_(InitArgs(args)), attributes_(InitAttrs(attrs)) {}
+
+XLA_FFI_CallFrame CallFrame::Build(XLA_FFI_Api* api,
+                                   XLA_FFI_ExecutionContext* ctx) {
+  XLA_FFI_CallFrame call_frame = {XLA_FFI_CallFrame_STRUCT_SIZE, nullptr};
+  call_frame.api = api;
+  call_frame.ctx = ctx;
+  call_frame.args = arguments_->ffi_args;
+  call_frame.attrs = attributes_->ffi_attrs;
+  return call_frame;
 }
 
 CallFrame::~CallFrame() = default;

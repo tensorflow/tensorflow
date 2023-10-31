@@ -31,6 +31,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
+#include "xla/ffi/call_frame.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
@@ -68,6 +70,21 @@ struct ArgDecoding<Buffer> {
 };
 
 //===----------------------------------------------------------------------===//
+// Context decoding
+//===----------------------------------------------------------------------===//
+
+template <>
+struct CtxDecoding<ServiceExecutableRunOptions> {
+  using Type = const ServiceExecutableRunOptions*;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx) {
+    void* ptr = api->internal_api->XLA_FFI_ServiceExecutableRunOptions_Get(ctx);
+    return reinterpret_cast<Type>(ptr);
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // Result encoding
 //===----------------------------------------------------------------------===//
 
@@ -82,9 +99,16 @@ struct ResultEncoding<Status> {
 // Result encoding
 //===----------------------------------------------------------------------===//
 
-// Unwraps XLA FFI error and returns an underlying status.
-// Note: if not null, `error` is freed.
-Status Unwrap(XLA_FFI_Error* error);
+// Takes ownership of the XLA FFI error and returns underlying status. Frees
+// `error` if it's not nullptr; returns OK status otherwise.
+Status TakeStatus(XLA_FFI_Error* error);
+
+struct CallOptions {
+  const ServiceExecutableRunOptions* run_options = nullptr;
+};
+
+Status Call(Ffi& handler, CallFrame& call_frame,
+            const CallOptions& options = {});
 
 //===----------------------------------------------------------------------===//
 // XLA FFI registry

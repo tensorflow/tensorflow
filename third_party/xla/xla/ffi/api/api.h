@@ -154,6 +154,10 @@ namespace internal {
 template <typename T>
 struct AttrTag {};
 
+// A type tag to distinguish arguments extracted from an execution context.
+template <typename T>
+struct CtxTag {};
+
 }  // namespace internal
 
 //===----------------------------------------------------------------------===//
@@ -165,6 +169,11 @@ class Binding {
  public:
   template <typename T>
   Binding<Ts..., T> Arg() && {
+    return {std::move(*this)};
+  }
+
+  template <typename T>
+  Binding<Ts..., internal::CtxTag<T>> Ctx() && {
     return {std::move(*this)};
   }
 
@@ -233,6 +242,28 @@ struct ArgDecoding;
 //
 template <typename T>
 struct AttrDecoding;
+
+//===----------------------------------------------------------------------===//
+// Context decoding implementation
+//===----------------------------------------------------------------------===//
+
+// XLA FFI execution context decoding must be defined by specializing this
+// template.
+//
+// Example: decoding for the `MyType` context
+//
+//   template <>
+//   struct CtxDecoding<MyType> {
+//    using Type = <handler argument type for context type MyType>;
+//    static std::optional<Type> Decode(const XLA_FFI_Api* api,
+//                                      XLA_FFI_ExecutionContext* ctx);
+//   }
+//
+// TODO(ezhulenev): Add an example for decoding opaque data passed together with
+// a handler registration (not yet implemented). Today this is only used as
+// internal implementation detail of builtin FFI handlers.
+template <typename T>
+struct CtxDecoding;
 
 //===----------------------------------------------------------------------===//
 // Result encoding implementation
@@ -306,6 +337,15 @@ struct Decode<internal::AttrTag<T>> {
   }
 };
 
+template <typename T>
+struct Decode<internal::CtxTag<T>> {
+  using R = typename CtxDecoding<T>::Type;
+
+  static std::optional<R> call(DecodingOffsets& offsets, DecodingContext& ctx) {
+    return CtxDecoding<T>::Decode(ctx.call_frame->api, ctx.call_frame->ctx);
+  }
+};
+
 }  // namespace internal
 
 //===----------------------------------------------------------------------===//
@@ -326,11 +366,19 @@ struct FnArgType<internal::AttrTag<T>> {
   using Type = T;
 };
 
+// Extracts the underlying type from the context type tag.
+template <typename T>
+struct FnArgType<internal::CtxTag<T>> {
+  using Type = typename CtxDecoding<T>::Type;
+};
+
 // A template for checking if type is a wrapped attribute or user data.
 template <typename>
 struct IsWrapped : std::false_type {};
 template <typename T>
 struct IsWrapped<AttrTag<T>> : std::true_type {};
+template <typename T>
+struct IsWrapped<CtxTag<T>> : std::true_type {};
 
 // A template for counting regular arguments in the Ts pack.
 template <typename... Ts>

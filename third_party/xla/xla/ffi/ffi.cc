@@ -25,6 +25,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
+#include "xla/ffi/call_frame.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "tsl/platform/logging.h"
@@ -37,15 +39,25 @@ struct XLA_FFI_Error {
   xla::Status status;
 };
 
+struct XLA_FFI_ExecutionContext {
+  const xla::ServiceExecutableRunOptions* run_options;
+};
+
 //===----------------------------------------------------------------------===//
 
 namespace xla::ffi {
 
-Status Unwrap(XLA_FFI_Error* error) {
+Status TakeStatus(XLA_FFI_Error* error) {
   if (error == nullptr) return absl::OkStatus();
   Status status = std::move(error->status);
   delete error;
   return status;
+}
+
+Status Call(Ffi& handler, CallFrame& call_frame, const CallOptions& options) {
+  XLA_FFI_ExecutionContext ctx = {options.run_options};
+  XLA_FFI_CallFrame ffi_call_frame = call_frame.Build(GetXlaFfiApi(), &ctx);
+  return TakeStatus(handler.Call(&ffi_call_frame));
 }
 
 //===----------------------------------------------------------------------===//
@@ -166,8 +178,17 @@ static XLA_FFI_Error* XLA_FFI_Handler_Register(
   return nullptr;
 }
 
+//===----------------------------------------------------------------------===//
+// XLA FFI Internal Api Implementation
+//===----------------------------------------------------------------------===//
+
 static XLA_FFI_Error* XLA_FFI_Error_Forward(void* status) {
   return new XLA_FFI_Error{std::move(*reinterpret_cast<Status*>(status))};
+}
+
+static void* XLA_FFI_ServiceExecutableRunOptions_Get(
+    XLA_FFI_ExecutionContext* ctx) {
+  return const_cast<ServiceExecutableRunOptions*>(ctx->run_options);
 }
 
 //===----------------------------------------------------------------------===//
@@ -176,6 +197,7 @@ static XLA_FFI_Error* XLA_FFI_Error_Forward(void* status) {
 
 static XLA_FFI_InternalApi internal_api = {
     XLA_FFI_Error_Forward,
+    XLA_FFI_ServiceExecutableRunOptions_Get,
 };
 
 static XLA_FFI_Api api = {

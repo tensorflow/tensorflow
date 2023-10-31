@@ -42,7 +42,7 @@ class CallFrame;  // forward declare
 
 class CallFrameBuilder {
  public:
-  CallFrame Build(XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx);
+  CallFrame Build();
 
   void AddBufferArg(se::DeviceMemoryBase memory, PrimitiveType type,
                     absl::Span<const int64_t> dims);
@@ -75,7 +75,8 @@ class CallFrame {
  public:
   ~CallFrame();
 
-  const XLA_FFI_CallFrame* call_frame() const { return &call_frame_; }
+  // Builds an XLA_FFI_CallFrame from owned arguments and attributes.
+  XLA_FFI_CallFrame Build(XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx);
 
  private:
   friend class CallFrameBuilder;
@@ -89,8 +90,7 @@ class CallFrame {
 
   using Attribute = std::variant<int32_t, float, String>;
 
-  CallFrame(XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
-            absl::Span<const CallFrameBuilder::Buffer> args,
+  CallFrame(absl::Span<const CallFrameBuilder::Buffer> args,
             const CallFrameBuilder::AttributesMap& attrs);
 
   static std::unique_ptr<Arguments> InitArgs(
@@ -103,8 +103,6 @@ class CallFrame {
 
   std::unique_ptr<Arguments> arguments_;
   std::unique_ptr<Attributes> attributes_;
-
-  XLA_FFI_CallFrame call_frame_ = {XLA_FFI_CallFrame_STRUCT_SIZE, nullptr};
 
   // Declare implementation detail structs to grant access to private members.
   struct ConvertAttribute;
