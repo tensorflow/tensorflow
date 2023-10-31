@@ -6305,9 +6305,8 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Evict(
   eviction_mem_interval.start = eviction_end_time + 1;
   eviction_mem_interval.end = preferred_eviction_end_time;
   int64_t preferred_offset = prev_allocation->chunk().offset;
-  VLOG(3) << "Eviction (" << eviction_exclusive_start_time << ", "
-          << eviction_end_time
-          << ") preferred end time = " << eviction_mem_interval.end;
+  VLOG(3) << "Considering eviction after" << eviction_exclusive_start_time
+          << ", with preferred end time = " << eviction_mem_interval.end;
 
   for (; eviction_mem_interval.end > eviction_end_time;
        --eviction_mem_interval.end) {
