@@ -93,3 +93,45 @@ filegroup(
         "@llvm-project//llvm:FileCheck",
     ],
 )
+
+cc_library(
+    name = "dialect_to_executor_passes",
+    srcs = [
+        "dialect_to_executor_passes.h",
+    ],
+    textual_hdrs = [
+        "dialect_to_executor_passes.h.inc",
+    ],
+    deps = [
+        ":dialect_to_executor_passes_inc_gen",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/transforms/toposort:Pass",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+gentbl_cc_library(
+    name = "dialect_to_executor_passes_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=TFXLABridge",
+            ],
+            "dialect_to_executor_passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "dialect_to_executor_passes.td",
+    deps = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
