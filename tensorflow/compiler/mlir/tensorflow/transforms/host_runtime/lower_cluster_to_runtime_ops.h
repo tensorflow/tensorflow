@@ -42,19 +42,6 @@ tensorflow::Status RunLowerClusterToRuntimeOpsPassPipeline(
     mlir::ModuleOp module, tsl::DeviceType xla_device_type,
     llvm::StringRef module_name = llvm::StringRef());
 
-// TODO(b/305738491): Remove these exposed runtime passes.
-ABSL_DEPRECATED(
-    "Temporary placeholder that will be deleted. Used as a temporary migration "
-    "hack.")
-void AddTPULowerClusterToRuntimeOpsPassPipeline(
-    mlir::OpPassManager& pm, llvm::StringRef module_name = llvm::StringRef());
-
-ABSL_DEPRECATED(
-    "Temporary placeholder that will be deleted. Used as a temporary migration "
-    "hack.")
-void AddNonTPULowerClusterToRuntimeOpsPassPipeline(
-    mlir::OpPassManager& pm, llvm::StringRef module_name = llvm::StringRef());
-
 // The same API as RunLowerClusterToRuntimeOpsPassPipeline but as an MLIR pass
 // pipeline.
 void RegisterTPULowerClusterToRuntimeOpsPassPipeline();
