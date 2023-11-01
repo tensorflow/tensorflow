@@ -666,6 +666,7 @@ cc_library(
         ":dot_as_convolution_util",
         ":hlo_graph_dumper",
         ":hlo_pass",
+        "//xla:array",
         "//xla:protobuf_util",
         "//xla:shape_tree",
         "//xla:shape_util",
