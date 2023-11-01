@@ -138,7 +138,7 @@ class SnapshotChunkDatasetOp::Dataset : public DatasetBase {
                                  bool* end_of_sequence) override {
       *end_of_sequence = false;
       absl::Status status = reader_->ReadTensors(out_tensors);
-      if (errors::IsOutOfRange(status)) {
+      if (absl::IsOutOfRange(status)) {
         *end_of_sequence = true;
         return absl::OkStatus();
       }
