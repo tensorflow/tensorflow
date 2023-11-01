@@ -430,7 +430,7 @@ enum BuiltinOperator : int32 {
   STABLEHLO_ADD = 163,
   STABLEHLO_DIVIDE = 164, // WARNING: No runtime support yet
   STABLEHLO_MULTIPLY = 165,
-  STABLEHLO_MAXIMUM = 166, // WARNING: No runtime support yet
+  STABLEHLO_MAXIMUM = 166,
   STABLEHLO_RESHAPE = 167, // WARNING: No runtime support yet
   STABLEHLO_CLAMP = 168, // WARNING: No runtime support
   STABLEHLO_CONCATENATE = 169, // WARNING: No runtime support
@@ -445,7 +445,7 @@ enum BuiltinOperator : int32 {
   STABLEHLO_EXPONENTIAL = 178, // WARNING: No runtime support
   STABLEHLO_FLOOR = 179, // WARNING: No runtime support
   STABLEHLO_LOG = 180, // WARNING: No runtime support
-  STABLEHLO_MINIMUM = 181, // WARNING: No runtime support
+  STABLEHLO_MINIMUM = 181,
   STABLEHLO_NEGATE = 182, // WARNING: No runtime support
   STABLEHLO_OR = 183, // WARNING: No runtime support
   STABLEHLO_POWER = 184, // WARNING: No runtime support

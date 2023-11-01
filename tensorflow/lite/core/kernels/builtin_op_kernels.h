@@ -209,9 +209,10 @@ Register_STABLEHLO_DIVIDE();  // WARNING: not implemented, using this op will
 
 TfLiteRegistration* Register_STABLEHLO_MULTIPLY();
 
-TfLiteRegistration*
-Register_STABLEHLO_MAXIMUM();  // WARNING: not implemented, using this op will
-                               // crash the runtime
+TfLiteRegistration* Register_STABLEHLO_MAXIMUM();
+
+TfLiteRegistration* Register_STABLEHLO_MINIMUM();
+
 TfLiteRegistration*
 Register_STABLEHLO_RESHAPE();  // WARNING: not implemented, using this op will
                                // crash the runtime
@@ -254,9 +255,7 @@ Register_STABLEHLO_FLOOR();  // WARNING: not implemented, using this
 TfLiteRegistration*
 Register_STABLEHLO_LOG();  // WARNING: not implemented, using this
                            // op will crash the runtime
-TfLiteRegistration*
-Register_STABLEHLO_MINIMUM();  // WARNING: not implemented, using this
-                               // op will crash the runtime
+
 TfLiteRegistration*
 Register_STABLEHLO_NEGATE();  // WARNING: not implemented, using this
                               // op will crash the runtime

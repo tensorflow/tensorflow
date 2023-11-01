@@ -1696,6 +1696,14 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ReduceWindowOp>(inst)) {
       return BuildStablehloReduceWindowOp(shlo_op, operands, results);
     }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::MaxOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_MAXIMUM);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::MinOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_MINIMUM);
+    }
     // for ops don't have kernels, only serialize when conversion is set to true
     if (convert_stablehlo_) {
       if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::LogisticOp>(inst)) {
@@ -1707,10 +1715,6 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::DivOp>(inst)) {
         return BuildStablehloOperatorwithoutOptions(
             inst, operands, results, tflite::BuiltinOperator_STABLEHLO_DIVIDE);
-      }
-      if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::MaxOp>(inst)) {
-        return BuildStablehloOperatorwithoutOptions(
-            inst, operands, results, tflite::BuiltinOperator_STABLEHLO_MAXIMUM);
       }
       if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ReshapeOp>(inst)) {
         return BuildStablehloOperatorwithoutOptions(
@@ -1748,10 +1752,6 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::LogOp>(inst)) {
         return BuildStablehloOperatorwithoutOptions(
             inst, operands, results, tflite::BuiltinOperator_STABLEHLO_LOG);
-      }
-      if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::MinOp>(inst)) {
-        return BuildStablehloOperatorwithoutOptions(
-            inst, operands, results, tflite::BuiltinOperator_STABLEHLO_MINIMUM);
       }
       if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::NegOp>(inst)) {
         return BuildStablehloOperatorwithoutOptions(

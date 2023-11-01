@@ -768,6 +768,7 @@ BUILTIN_KERNEL_SRCS = [
     "stablehlo_add.cc",
     "stablehlo_multiply.cc",
     "stablehlo_reduce_window.cc",
+    "stablehlo_min_max.cc",
     "stablehlo_scatter.cc",
     "sign.cc",
     "skip_gram.cc",
@@ -3200,6 +3201,22 @@ cc_test(
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "stablehlo_min_max_test",
+    size = "small",
+    srcs = ["stablehlo_min_max_test.cc"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/log:absl_log",
         "@com_google_googletest//:gtest_main",
     ],
 )
