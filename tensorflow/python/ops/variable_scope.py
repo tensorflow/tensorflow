@@ -49,16 +49,6 @@ __all__ = [
 ]
 
 
-_DEFAULT_USE_RESOURCE = resource_variables_toggle._DEFAULT_USE_RESOURCE  # pylint: disable=protected-access,unused-private-name
-enable_resource_variables = resource_variables_toggle.enable_resource_variables
-disable_resource_variables = (
-    resource_variables_toggle.disable_resource_variables
-)
-resource_variables_enabled = (
-    resource_variables_toggle.resource_variables_enabled
-)
-
-
 class _PartitionInfo:
   """Holds partition info used by initializer functions."""
 
