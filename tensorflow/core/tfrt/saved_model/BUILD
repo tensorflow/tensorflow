@@ -45,6 +45,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/compiler/mlir/tfrt:import_model",
+        "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
         "//tensorflow/compiler/mlir/tfrt:tfrt_pipeline_options",
         "//tensorflow/compiler/mlir/tfrt/transforms/mlrt:import_model",
         "//tensorflow/compiler/tf2xla:xla_compiler",

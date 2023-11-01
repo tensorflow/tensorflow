@@ -231,16 +231,16 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
 }
 
 std::string GetAotPackagePath(absl::string_view saved_model_dir) {
-  return tsl::io::JoinPath(std::string(saved_model_dir), kAoTPackagesDirectory);
+  return tsl::io::JoinPath(std::string(saved_model_dir), kAotPackagesDirectory);
 }
 
-std::string GetBEFFilePath(std::string aot_package_directory) {
+std::string GetBefFilePath(std::string aot_package_directory) {
   return tsl::io::JoinPath(aot_package_directory,
                            std::string(kBefBufferFileName));
 }
 
 std::string GetMlirFilePath(const std::string& aot_package_directory) {
-  return tsl::io::JoinPath(aot_package_directory, kMLIRModuleFilename);
+  return tsl::io::JoinPath(aot_package_directory, kMlirModuleFilename);
 }
 
 absl::StatusOr<tfrt::BefBuffer> LoadBefAndMlir(
@@ -249,7 +249,7 @@ absl::StatusOr<tfrt::BefBuffer> LoadBefAndMlir(
     tfrt_stub::FallbackState* fallback_state) {
   const std::string aot_package_directory = GetAotPackagePath(saved_model_dir);
   const std::string bef_file_path =
-      tfrt_stub::GetBEFFilePath(aot_package_directory);
+      tfrt_stub::GetBefFilePath(aot_package_directory);
   TF_ASSIGN_OR_RETURN(tfrt::BefBuffer bef, DeserializeBEFBuffer(bef_file_path));
 
   if (bef.empty()) {
