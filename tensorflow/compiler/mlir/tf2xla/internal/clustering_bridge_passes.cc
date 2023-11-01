@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -160,6 +161,9 @@ void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
   pm.addPass(mlir::TFTPU::CreateTPUAnnotateDynamicShapeInputsPass());
   pm.addNestedPass<FuncOp>(
       mlir::TF::CreateHoistReplicateInvariantResourceWritesPass());
+  // Verifies clustering has conformed with the expected invariants
+  pm.addNestedPass<FuncOp>(
+      tensorflow::tf2xla::internal::CreateVerifyClusteringPass());
 }
 
 void NoCanonicalization(OpPassManager& pm) {}
@@ -223,6 +227,9 @@ void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
   }
   // Outline clusters into cluster functions.
   pm.addPass(mlir::TFDevice::CreateClusterOutliningPass());
+  // Verifies clustering has conformed with the expected invariants
+  pm.addNestedPass<FuncOp>(
+      tensorflow::tf2xla::internal::CreateVerifyClusteringPass());
 }
 
 };  // namespace internal

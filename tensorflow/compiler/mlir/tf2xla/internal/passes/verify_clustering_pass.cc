@@ -38,7 +38,8 @@ class VerifyClusteringPass
 };
 
 void VerifyClusteringPass::runOnOperation() {
-  std::set<std::string> valid_namespaces = {"tf", "func", "return"};
+  std::set<std::string> valid_namespaces = {"tf", "func", "return", "tf_device",
+                                            "builtin"};
   mlir::Operation* func_op = getOperation();
 
   auto walk_result = func_op->walk([&](mlir::Operation* op) {
