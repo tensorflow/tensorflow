@@ -1149,7 +1149,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
-        ":platform",
+        "@com_google_absl//absl/base:prefetch",
     ],
 )
 
