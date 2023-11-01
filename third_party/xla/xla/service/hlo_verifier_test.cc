@@ -1620,7 +1620,7 @@ TEST_F(HloVerifierTest, AllReduceDoneWithoutStart) {
   ENTRY entry {
     p0 = f32[2,3] parameter(0)
     p1 = u32[] parameter(1)
-    tuple = (f32[2,3], f32[2,3]) tuple(p0, p0, p1, p1)
+    tuple = (f32[2,3], f32[2,3], u32[], u32[]) tuple(p0, p0, p1, p1)
     ROOT done = f32[2,3] all-reduce-done(tuple)
   }
   )";
