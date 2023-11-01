@@ -35,7 +35,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-namespace {
 
 bool IsSingleInstructionFusion(mlir::lmhlo::FusionOp fusion) {
   bool seen_instruction = false;
@@ -50,8 +49,6 @@ bool IsSingleInstructionFusion(mlir::lmhlo::FusionOp fusion) {
   }
   return seen_instruction;
 }
-
-}  // namespace
 
 std::optional<std::unique_ptr<FusionInterface>> GetFusionEmitter(
     HloFusionAnalysis& analysis,
