@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -80,15 +81,23 @@ ENTRY %TupleCreate.v4 (v1: f32[], v2: f32[3], v3: f32[2,3]) -> (f32[], f32[3], f
 )";
 
 class TestCApiFactory {
+ private:
+  mutable absl::Mutex mu_;
+  std::function<const PJRT_Api*()> factory_ ABSL_GUARDED_BY(mu_);
+  std::string platform_name_ ABSL_GUARDED_BY(mu_);
+  std::optional<ExpectedOutputs> expected_outputs_ ABSL_GUARDED_BY(mu_);
+
  public:
   void Register(std::function<const PJRT_Api*()> factory,
-                absl::string_view platform_name) {
+                absl::string_view platform_name,
+                std::optional<ExpectedOutputs> expected_outputs) {
     absl::MutexLock lock(&mu_);
     CHECK(!factory_);
     factory_ = std::move(factory);
     CHECK(platform_name_.empty()) << "Platform name already provided";
     CHECK(!platform_name.empty()) << "Provided platform name is empty";
-    platform_name_ = platform_name;
+    platform_name_ = std::string(platform_name);
+    expected_outputs_ = expected_outputs;
   }
 
   std::function<const PJRT_Api*()> Get() const {
@@ -104,10 +113,10 @@ class TestCApiFactory {
     return platform_name_;
   }
 
- private:
-  mutable absl::Mutex mu_;
-  std::function<const PJRT_Api*()> factory_ ABSL_GUARDED_BY(mu_);
-  std::string platform_name_;
+  std::optional<ExpectedOutputs> GetExpectedOutputs() const {
+    absl::MutexLock lock(&mu_);
+    return expected_outputs_;
+  }
 };
 
 TestCApiFactory& GetGlobalTestCApiFactory() {
@@ -121,19 +130,25 @@ std::string GetPlatformName() {
   return GetGlobalTestCApiFactory().GetPlatformName();
 }
 
+std::optional<ExpectedOutputs> GetExpectedOutputs() {
+  return GetGlobalTestCApiFactory().GetExpectedOutputs();
+}
+
 }  // namespace
 
-void RegisterPjRtCApiTestFactory(std::function<const PJRT_Api*()> factory,
-                                 absl::string_view platform_name) {
-  GetGlobalTestCApiFactory().Register(std::move(factory), platform_name);
+void RegisterPjRtCApiTestFactory(
+    std::function<const PJRT_Api*()> factory, absl::string_view platform_name,
+    std::optional<ExpectedOutputs> expected_outputs) {
+  GetGlobalTestCApiFactory().Register(std::move(factory), platform_name,
+                                      expected_outputs);
 }
 
 namespace {
-
 class PjrtCApiTest : public PjrtCApiTestBase {
  protected:
   PjrtCApiTest() : PjrtCApiTestBase(GetCApi()) {}
   std::string platform_name_ = GetPlatformName();
+  std::optional<ExpectedOutputs> expected_outputs_ = GetExpectedOutputs();
 };
 
 // -------------------------------- API Version --------------------------------
@@ -486,6 +501,49 @@ TEST_F(PjrtCApiTest, CompileInvalidProgramFormat) {
 
 // --------------------------------- Devices -----------------------------------
 
+TEST_F(PjrtCApiTest, DeviceKind) {
+  PJRT_DeviceDescription_Kind_Args args = PJRT_DeviceDescription_Kind_Args{
+      .struct_size = PJRT_DeviceDescription_Kind_Args_STRUCT_SIZE,
+      .extension_start = nullptr,
+      .device_description =
+          ::pjrt::GetDeviceDescription(api_, GetClientDevices()[0]),
+  };
+  PJRT_Error* error = api_->PJRT_DeviceDescription_Kind(&args);
+  ASSERT_EQ(error, nullptr);
+  const std::string device_kind(args.device_kind, args.device_kind_size);
+  CHECK_STREQ(args.device_kind, device_kind.c_str());
+}
+
+TEST_F(PjrtCApiTest, DeviceDebugString) {
+  if (expected_outputs_ == std::nullopt) {
+    GTEST_SKIP();
+  }
+  PJRT_DeviceDescription_DebugString_Args args;
+  args.device_description =
+      ::pjrt::GetDeviceDescription(api_, GetClientDevices()[0]);
+  args.struct_size = PJRT_DeviceDescription_DebugString_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.debug_string = nullptr;
+  PJRT_Error* error = api_->PJRT_DeviceDescription_DebugString(&args);
+  ASSERT_EQ(error, nullptr);
+  CHECK_EQ(expected_outputs_->device_debug_string, args.debug_string);
+}
+
+TEST_F(PjrtCApiTest, DeviceToString) {
+  if (expected_outputs_ == std::nullopt) {
+    GTEST_SKIP();
+  }
+  PJRT_DeviceDescription_ToString_Args args;
+  args.device_description =
+      ::pjrt::GetDeviceDescription(api_, GetClientDevices()[0]);
+  args.struct_size = PJRT_DeviceDescription_ToString_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.to_string = nullptr;
+  PJRT_Error* error = api_->PJRT_DeviceDescription_ToString(&args);
+  ASSERT_EQ(error, nullptr);
+  CHECK_EQ(expected_outputs_->device_to_string, args.to_string);
+}
+
 TEST_F(PjrtCApiTest, DeviceId) {
   auto* device = GetClientDevices()[0];
 
@@ -548,8 +606,8 @@ class PjrtCApiBufferTest : public PjrtCApiTest {
   void TearDown() override {
     // event_ need to complete before the client is destroyed; otherwise there
     // is a data race between destroying the client and trying to access the
-    // host context in the client for the callback after host to device transfer
-    // is completed.
+    // host context in the client for the callback after host to device
+    // transfer is completed.
     TF_CHECK_OK(event_.Await());
     // buffer_ must be destroyed before the client is destroyed or else the
     // unique_ptr for buffer_ will go out of scope causing heap-use-after-free
