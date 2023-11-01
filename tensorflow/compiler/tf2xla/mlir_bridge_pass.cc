@@ -287,7 +287,10 @@ Status MlirBridgePass::Run(const std::string& function_name,
   }
 
   if (HasTPUPartitionedCallOpInModule(module)) {
-    VLOG(1) << "This is an inference module.";
+    VLOG(1) << "Skipping MLIR TF2XLA Bridge. This is an inference graph, "
+               "Session V1 Bridge should be used during execution of "
+               "TPUPartitionedCall.";
+    return OkStatus();
   }
 
   // TODO(b/241853328): Add caching of pass state and call logging/metrics
