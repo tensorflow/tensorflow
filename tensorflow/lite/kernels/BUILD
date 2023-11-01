@@ -12,6 +12,14 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = ["op_macros.h"],
+    visibility = [
+        "//tensorflow/lite:__pkg__",
+    ],
+)
+
 # Enables usage of ruy exclusively as the GEMM backend in TFLite kernels.
 # This will cause TFLite to build with ruy only, providing a smaller binary.
 # WARNING: This build flag is experimental and subject to change.

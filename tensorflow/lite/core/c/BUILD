@@ -48,6 +48,18 @@ filegroup(
     ],
 )
 
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = [
+        "builtin_op_data.h",
+        "common.cc",
+        "common.h",
+    ],
+    visibility = [
+        "//tensorflow/lite:__pkg__",
+    ],
+)
+
 tflite_cc_library_with_c_headers_test(
     name = "c_api",
     hdrs = [
