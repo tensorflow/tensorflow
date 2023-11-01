@@ -127,12 +127,11 @@ typedef enum {
   kTfLiteInt4 = 18,
 } TfLiteType;
 
-/// Legacy. Will be deprecated in favor of TfLiteAffineQuantization.
+/// Legacy. Will be deprecated in favor of `TfLiteAffineQuantization`.
 /// If per-layer quantization is specified this field will still be populated in
-/// addition to TfLiteAffineQuantization.
+/// addition to `TfLiteAffineQuantization`.
 /// Parameters for asymmetric quantization. Quantized values can be converted
-/// back to float using:
-///     real_value = scale * (quantized_value - zero_point)
+/// back to float using: `real_value = scale * (quantized_value - zero_point)`
 typedef struct TfLiteQuantizationParams {
   float scale;
   int32_t zero_point;
@@ -160,6 +159,7 @@ typedef struct TfLiteDelegate TfLiteDelegate;
 /// This is an abstract type that is intended to have the same
 /// role as TfLiteDelegate, but without exposing the implementation
 /// details of how delegates are implemented.
+///
 /// WARNING: This is an experimental type and subject to change.
 typedef struct TfLiteOpaqueDelegateStruct TfLiteOpaqueDelegateStruct;
 
@@ -167,6 +167,7 @@ typedef struct TfLiteOpaqueDelegateStruct TfLiteOpaqueDelegateStruct;
 /// TfLiteDelegate; allows delegation of nodes to alternative backends.
 /// For TF Lite in Play Services, this is an opaque type,
 /// but for regular TF Lite, this is just a typedef for TfLiteDelegate.
+///
 /// WARNING: This is an experimental type and subject to change.
 #if TFLITE_WITH_STABLE_ABI || TFLITE_USE_OPAQUE_DELEGATE
 typedef TfLiteOpaqueDelegateStruct TfLiteOpaqueDelegate;

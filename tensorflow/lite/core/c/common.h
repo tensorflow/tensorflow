@@ -18,15 +18,15 @@ limitations under the License.
 /// delegates can be defined using C++, but the interface between the
 /// interpreter and the operations are C.
 ///
-/// Summary of abstractions
-/// TF_LITE_ENSURE - Self-sufficient error checking
-/// TfLiteStatus - Status reporting
-/// TfLiteIntArray - stores tensor shapes (dims),
-/// TfLiteContext - allows an op to access the tensors
-/// TfLiteTensor - tensor (a multidimensional array)
-/// TfLiteNode - a single node or operation
-/// TfLiteRegistration - the implementation of a conceptual operation.
-/// TfLiteDelegate - allows delegation of nodes to alternative backends.
+/// Summary of abstractions:
+/// * `TF_LITE_ENSURE` - self-sufficient error checking
+/// * `TfLiteStatus` - status reporting
+/// * `TfLiteIntArray` - stores tensor shapes (dims),
+/// * `TfLiteContext` - allows an op to access the tensors
+/// * `TfLiteTensor` - tensor (a multidimensional array)
+/// * `TfLiteNode` - a single node or operation
+/// * `TfLiteRegistration` - the implementation of a conceptual operation.
+/// * `TfLiteDelegate` - allows delegation of nodes to alternative backends.
 ///
 /// Some abstractions in this file are created and managed by Interpreter.
 ///
@@ -199,8 +199,8 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
 #define TF_LITE_MAYBE_KERNEL_LOG(context, ...) ARGS_UNUSED(__VA_ARGS__)
 #endif  // TF_LITE_STRIP_ERROR_STRINGS
 
-// Check whether value is true, and if not return kTfLiteError from
-// the current function (and report the error string msg).
+/// Check whether value is true, and if not return kTfLiteError from
+/// the current function (and report the error string msg).
 #define TF_LITE_ENSURE_MSG(context, value, ...)                \
   do {                                                         \
     if (!(value)) {                                            \
@@ -209,8 +209,8 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                                                          \
   } while (0)
 
-// Check whether the value `a` is true, and if not return kTfLiteError from
-// the current function, while also reporting the location of the error.
+/// Check whether the value `a` is true, and if not return kTfLiteError from
+/// the current function, while also reporting the location of the error.
 #define TF_LITE_ENSURE(context, a)                                      \
   do {                                                                  \
     if (!(a)) {                                                         \
@@ -228,11 +228,12 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                            \
   } while (0)
 
-// Check whether the value `a == b` is true, and if not return kTfLiteError from
-// the current function, while also reporting the location of the error.
-// `a` and `b` may be evaluated more than once, so no side effects or
-// extremely expensive computations should be done.
-// NOTE: Use TF_LITE_ENSURE_TYPES_EQ if comparing TfLiteTypes.
+/// Check whether the value `a == b` is true, and if not return kTfLiteError
+/// from the current function, while also reporting the location of the error.
+/// `a` and `b` may be evaluated more than once, so no side effects or
+/// extremely expensive computations should be done.
+///
+/// NOTE: Use TF_LITE_ENSURE_TYPES_EQ if comparing TfLiteTypes.
 #define TF_LITE_ENSURE_EQ(context, a, b)                                   \
   do {                                                                     \
     if ((a) != (b)) {                                                      \
@@ -314,7 +315,7 @@ typedef struct TfLiteQuantization {
 /// correspond to.
 /// For a particular value in quantized_dimension, quantized values can be
 /// converted back to float using:
-///     real_value = scale * (quantized_value - zero_point)
+///     `real_value = scale * (quantized_value - zero_point)`
 typedef struct TfLiteAffineQuantization {
   TfLiteFloatArray* scale;
   TfLiteIntArray* zero_point;
@@ -324,8 +325,8 @@ typedef struct TfLiteAffineQuantization {
 /// A union of pointers that points to memory for a given tensor.
 ///
 /// Do not access these members directly, if possible, use
-/// GetTensorData<TYPE>(tensor) instead, otherwise only access .data, as other
-/// members are deprecated.
+/// `GetTensorData<TYPE>(tensor)` instead, otherwise only access `.data`, as
+/// other members are deprecated.
 typedef union TfLitePtrUnion {
   int32_t* i32;
   uint32_t* u32;
@@ -348,19 +349,20 @@ typedef union TfLitePtrUnion {
 } TfLitePtrUnion;
 
 /// Memory allocation strategies.
-///  * kTfLiteMmapRo: Read-only memory-mapped data, or data externally
+///  * `kTfLiteMmapRo`: Read-only memory-mapped data, or data externally
 ///        allocated.
-///  * kTfLiteArenaRw: Arena allocated with no guarantees about persistence,
+///  * `kTfLiteArenaRw`: Arena allocated with no guarantees about persistence,
 ///        and available during eval.
-///  * kTfLiteArenaRwPersistent: Arena allocated but persistent across eval, and
-///        only available during eval.
-///  * kTfLiteDynamic: Allocated during eval, or for string tensors.
-///  * kTfLitePersistentRo: Allocated and populated during prepare. This is
+///  * `kTfLiteArenaRwPersistent`: Arena allocated but persistent across eval,
+///  and only available during eval.
+///  * `kTfLiteDynamic`: Allocated during eval, or for string tensors.
+///  * `kTfLitePersistentRo`: Allocated and populated during prepare. This is
 ///        useful for tensors that can be computed during prepare and treated
 ///        as constant inputs for downstream ops (also in prepare).
-///  * kTfLiteCustom: Custom memory allocation provided by the user. See
+///  * `kTfLiteCustom`: Custom memory allocation provided by the user. See
 ///        TfLiteCustomAllocation below.
-///  * kTfLiteVariantObject: Allocation is an arbitrary type-erased C++ object.
+///  * `kTfLiteVariantObject`: Allocation is an arbitrary type-erased C++
+///  object.
 ///        Allocation and deallocation are done through `new` and `delete`.
 typedef enum TfLiteAllocationType {
   kTfLiteMemNone = 0,
@@ -437,7 +439,7 @@ typedef struct TfLiteSparsity {
 /// Defines a custom memory allocation not owned by the runtime.
 /// `data` should be aligned to kDefaultTensorAlignment defined in
 /// lite/util.h. (Currently 64 bytes)
-/// NOTE: See Interpreter.SetCustomAllocationForTensor for details on usage.
+/// NOTE: See `Interpreter::SetCustomAllocationForTensor` for details on usage.
 typedef struct TfLiteCustomAllocation {
   void* data;
   size_t bytes;
@@ -694,19 +696,19 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
                        const void* allocation, bool is_variable,
                        TfLiteTensor* tensor);
 
-/// Copies the contents of 'src' in 'dst'.
-/// Function does nothing if either 'src' or 'dst' is passed as nullptr and
-/// return kTfLiteOk.
-/// Returns kTfLiteError if 'src' and 'dst' doesn't have matching data size.
+/// Copies the contents of `src` in `dst`.
+/// Function does nothing if either `src` or `dst` is passed as nullptr and
+/// return `kTfLiteOk`.
+/// Returns `kTfLiteError` if `src` and `dst` doesn't have matching data size.
 /// Note function copies contents, so it won't create new data pointer
 /// or change allocation type.
-/// All Tensor related properties will be copied from 'src' to 'dst' like
+/// All Tensor related properties will be copied from `src` to `dst` like
 /// quantization, sparsity, ...
 TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst);
 
 /// Change the size of the memory block owned by `tensor` to `num_bytes`.
 /// Tensors with allocation types other than `kTfLiteDynamic` will be ignored
-/// and a kTfLiteOk will be returned. `tensor`'s internal data buffer will be
+/// and a `kTfLiteOk` will be returned. `tensor`'s internal data buffer will be
 /// assigned a pointer which can safely be passed to free or realloc if
 /// `num_bytes` is zero. If `preserve_data` is true, tensor data will be
 /// unchanged in the range from the start of the region up to the minimum of the
@@ -716,13 +718,12 @@ TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
                                          bool preserve_data);
 
 /// Change the size of the memory block owned by `tensor` to `num_bytes`.
-/// Tensors with allocation types other than kTfLiteDynamic will be ignored and
-/// a kTfLiteOk will be returned.
-/// `tensor`'s internal data buffer will be assigned a pointer
-/// which can safely be passed to free or realloc if `num_bytes` is zero.
-/// Tensor data will be unchanged in the range from the start of the region up
-/// to the minimum of the old and new sizes. In the case of NULL tensor, or an
-/// error allocating new memory, returns `kTfLiteError`.
+/// Tensors with allocation types other than `kTfLiteDynamic` will be ignored
+/// and a `kTfLiteOk` will be returned. `tensor`'s internal data buffer will be
+/// assigned a pointer which can safely be passed to free or realloc if
+/// `num_bytes` is zero. Tensor data will be unchanged in the range from the
+/// start of the region up to the minimum of the old and new sizes. In the case
+/// of NULL tensor, or an error allocating new memory, returns `kTfLiteError`.
 TfLiteStatus TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
 #endif  // TF_LITE_STATIC_MEMORY
 
@@ -756,6 +757,19 @@ typedef struct TfLiteOpaqueDelegateParams {
   TfLiteIntArray* output_tensors;
 } TfLiteOpaqueDelegateParams;
 
+/// `TfLiteContext` allows an op to access the tensors.
+///
+/// `TfLiteContext` is a struct that is created by the TF Lite runtime
+/// and passed to the "methods" (C function pointers) in the
+/// `TfLiteRegistration` struct that are used to define custom ops and custom
+/// delegate kernels. It contains information and methods (C function pointers)
+/// that can be called by the code implementing a custom op or a custom delegate
+/// kernel. These methods provide access to the context in which that custom op
+/// or custom delegate kernel occurs, such as access to the input and output
+/// tensors for that op, as well as methods for allocating memory buffers
+/// and intermediate tensors, etc.
+///
+/// See also `TfLiteOpaqueContext`, which is an more ABI-stable equivalent.
 typedef struct TfLiteContext {
   /// Number of tensors in the context.
   size_t tensors_size;
@@ -770,8 +784,9 @@ typedef struct TfLiteContext {
   ///
   ///     TfLiteIntArray* execution_plan;
   ///     TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context,
-  ///     &execution_plan)); for (int exec_index = 0; exec_index <
-  ///     execution_plan->size; exec_index++) {
+  ///                                                     &execution_plan));
+  ///     for (int exec_index = 0; exec_index < execution_plan->size;
+  ///           exec_index++) {
   ///        int node_index = execution_plan->data[exec_index];
   ///        TfLiteNode* node;
   ///        TfLiteRegistration* reg;
@@ -864,9 +879,9 @@ typedef struct TfLiteContext {
   void* profiler;
 
   /// Allocate persistent buffer which has the same life time as the
-  /// interpreter. Returns nullptr on failure. The memory is allocated from heap
-  /// for TFL, and from tail in TFLM. This method is only available in Init or
-  /// Prepare stage.
+  /// interpreter. Returns `nullptr` on failure. The memory is allocated from
+  /// heap for TFL, and from tail in TFLM. This method is only available in
+  /// `Init` or `Prepare` stage.
   ///
   /// WARNING: This is an experimental interface that is subject
   /// to change.
@@ -876,7 +891,7 @@ typedef struct TfLiteContext {
   /// The memory is allocated from heap in TFL, and from volatile arena in TFLM.
   /// This method is only available in invoke stage.
   ///
-  /// NOTE: If possible use RequestScratchBufferInArena method to avoid memory
+  /// NOTE: If possible use `RequestScratchBufferInArena` method to avoid memory
   /// allocation during inference time.
   ///
   /// WARNING: This is an experimental interface that is subject to change.
@@ -884,9 +899,9 @@ typedef struct TfLiteContext {
                                         void** ptr);
 
   /// Request a scratch buffer in the arena through static memory planning.
-  /// This method is only available in Prepare stage and the buffer is allocated
-  /// by the interpreter between Prepare and Eval stage. In Eval stage,
-  /// GetScratchBuffer API can be used to fetch the address.
+  /// This method is only available in `Prepare` stage and the buffer is
+  /// allocated by the interpreter between Prepare and Eval stage. In `Eval`
+  /// stage, `GetScratchBuffer` API can be used to fetch the address.
   ///
   /// WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus (*RequestScratchBufferInArena)(struct TfLiteContext* ctx,
@@ -911,15 +926,16 @@ typedef struct TfLiteContext {
   /// TfLiteDelegateParams in the referenced array corresponds to one instance
   /// of the delegate kernel. Example usage:
   ///
-  /// TfLiteIntArray* nodes_to_replace = ...;
-  /// TfLiteDelegateParams* params_array;
-  /// int num_partitions = 0;
-  /// TF_LITE_ENSURE_STATUS(context->PreviewDelegatePartitioning(
-  ///    context, delegate, nodes_to_replace, &params_array, &num_partitions));
-  /// for (int idx = 0; idx < num_partitions; idx++) {
-  ///    const auto& partition_params = params_array[idx];
-  ///    ...
-  /// }
+  ///     TfLiteIntArray* nodes_to_replace = ...;
+  ///     TfLiteDelegateParams* params_array;
+  ///     int num_partitions = 0;
+  ///     TF_LITE_ENSURE_STATUS(context->PreviewDelegatePartitioning(
+  ///        context, delegate, nodes_to_replace, &params_array,
+  ///        &num_partitions));
+  ///     for (int idx = 0; idx < num_partitions; idx++) {
+  ///        const auto& partition_params = params_array[idx];
+  ///        ...
+  ///     }
   ///
   /// NOTE: The context owns the memory referenced by partition_params_array. It
   /// will be cleared with another call to PreviewDelegatePartitioning, or after
@@ -1047,17 +1063,24 @@ typedef enum {
 /// The number of shareable inputs supported.
 static const int kTfLiteMaxSharableOpInputs = 3;
 
+/// `TfLiteRegistration` defines the implementation of an operation
+/// (a built-in op, custom op, or custom delegate kernel).
+///
+/// It is a struct containing "methods" (C function pointers) that will be
+/// invoked by the TF Lite runtime to evaluate instances of the operation.
+///
+/// See also `TfLiteRegistrationExternal` which is a more ABI-stable equivalent.
 typedef struct TfLiteRegistration {
   /// Initializes the op from serialized data.
   /// Called only *once* for the lifetime of the op, so any one-time allocations
   /// should be made here (unless they depend on tensor sizes).
   ///
-  /// If a built-in op:
-  ///   `buffer` is the op's params data (TfLiteLSTMParams*).
-  ///   `length` is zero.
-  /// If custom op:
-  ///   `buffer` is the op's `custom_options`.
-  ///   `length` is the size of the buffer.
+  /// * If a built-in op:
+  ///       * `buffer` is the op's params data (TfLiteLSTMParams*).
+  ///       * `length` is zero.
+  /// * If custom op:
+  ///       * `buffer` is the op's `custom_options`.
+  ///       * `length` is the size of the buffer.
   ///
   /// Returns a type-punned (i.e. void*) opaque data (e.g. a primitive pointer
   /// or an instance of a struct).
@@ -1075,18 +1098,20 @@ typedef struct TfLiteRegistration {
   void (*free)(TfLiteContext* context, void* buffer);
 
   /// prepare is called when the inputs this node depends on have been resized.
-  /// context->ResizeTensor() can be called to request output tensors to be
+  /// `context->ResizeTensor()` can be called to request output tensors to be
   /// resized.
   /// Can be called multiple times for the lifetime of the op.
   ///
-  /// Returns kTfLiteOk on success.
+  /// Returns `kTfLiteOk` on success.
   TfLiteStatus (*prepare)(TfLiteContext* context, TfLiteNode* node);
 
-  /// Execute the node (should read node->inputs and output to node->outputs).
-  /// Returns kTfLiteOk on success.
+  /// Execute the node (should read `node->inputs` and output to
+  /// `node->outputs`).
+  ///
+  /// Returns `kTfLiteOk` on success.
   TfLiteStatus (*invoke)(TfLiteContext* context, TfLiteNode* node);
 
-  /// profiling_string is called during summarization of profiling information
+  /// `profiling_string` is called during summarization of profiling information
   /// in order to group executions together. Providing a value here will cause a
   /// given op to appear multiple times is the profiling report. This is
   /// particularly useful for custom ops that can perform significantly
@@ -1102,7 +1127,7 @@ typedef struct TfLiteRegistration {
   /// properly.
   int32_t builtin_code;
 
-  /// Custom op name. If the op is a builtin, this will be null.
+  /// Custom op name. If the op is a builtin, this will be `null`.
   ///
   /// Note: It is the responsibility of the registration binder to set this
   /// properly.
@@ -1140,16 +1165,16 @@ typedef struct TfLiteRegistration {
 } TfLiteRegistration;
 
 /// \private
-// Old version of `TfLiteRegistration` to maintain binary backward
-// compatibility.
-// The legacy registration type must be a POD struct type whose field types must
-// be a prefix of the field types in TfLiteRegistration, and offset of the first
-// field in TfLiteRegistration that is not present in the legacy registration
-// type must be greater than or equal to the size of the legacy registration
-// type.
-//
-// WARNING: This structure is deprecated / not an official part of the
-// API. It should be only used for binary backward compatibility.
+/// Old version of `TfLiteRegistration` to maintain binary backward
+/// compatibility.
+/// The legacy registration type must be a POD struct type whose field types
+/// must be a prefix of the field types in TfLiteRegistration, and offset of the
+/// first field in TfLiteRegistration that is not present in the legacy
+/// registration type must be greater than or equal to the size of the legacy
+/// registration type.
+///
+/// WARNING: This structure is deprecated / not an official part of the
+/// API. It should be only used for binary backward compatibility.
 typedef struct TfLiteRegistration_V3 {
   void* (*init)(TfLiteContext* context, const char* buffer, size_t length);
   void (*free)(TfLiteContext* context, void* buffer);
@@ -1166,16 +1191,16 @@ typedef struct TfLiteRegistration_V3 {
 } TfLiteRegistration_V3;
 
 /// \private
-// Old version of `TfLiteRegistration` to maintain binary backward
-// compatibility.
-// The legacy registration type must be a POD struct type whose field types must
-// be a prefix of the field types in TfLiteRegistration, and offset of the first
-// field in TfLiteRegistration that is not present in the legacy registration
-// type must be greater than or equal to the size of the legacy registration
-// type.
-//
-// WARNING: This structure is deprecated / not an official part of the
-// API. It should be only used for binary backward compatibility.
+/// Old version of `TfLiteRegistration` to maintain binary backward
+/// compatibility.
+/// The legacy registration type must be a POD struct type whose field types
+/// must be a prefix of the field types in TfLiteRegistration, and offset of the
+/// first field in TfLiteRegistration that is not present in the legacy
+/// registration type must be greater than or equal to the size of the legacy
+/// registration type.
+///
+/// WARNING: This structure is deprecated / not an official part of the
+/// API. It should be only used for binary backward compatibility.
 typedef struct TfLiteRegistration_V2 {
   void* (*init)(TfLiteContext* context, const char* buffer, size_t length);
   void (*free)(TfLiteContext* context, void* buffer);
@@ -1190,16 +1215,16 @@ typedef struct TfLiteRegistration_V2 {
 } TfLiteRegistration_V2;
 
 /// \private
-// Old version of `TfLiteRegistration` to maintain binary backward
-// compatibility.
-// The legacy registration type must be a POD struct type whose field types must
-// be a prefix of the field types in TfLiteRegistration, and offset of the first
-// field in TfLiteRegistration that is not present in the legacy registration
-// type must be greater than or equal to the size of the legacy registration
-// type.
-//
-// WARNING: This structure is deprecated / not an official part of the
-// API. It should be only used for binary backward compatibility.
+/// Old version of `TfLiteRegistration` to maintain binary backward
+/// compatibility.
+/// The legacy registration type must be a POD struct type whose field types
+/// must be a prefix of the field types in TfLiteRegistration, and offset of the
+/// first field in TfLiteRegistration that is not present in the legacy
+/// registration type must be greater than or equal to the size of the legacy
+/// registration type.
+///
+/// WARNING: This structure is deprecated / not an official part of the
+/// API. It should be only used for binary backward compatibility.
 typedef struct TfLiteRegistration_V1 {
   void* (*init)(TfLiteContext* context, const char* buffer, size_t length);
   void (*free)(TfLiteContext* context, void* buffer);
@@ -1249,9 +1274,9 @@ typedef enum TfLiteDelegateFlags {
   /// This flag can be used by delegates to request per-operator profiling. If a
   /// node is a delegate node, this flag will be checked before profiling. If
   /// set, then the node will not be profiled. The delegate will then add per
-  /// operator information using Profiler::EventType::OPERATOR_INVOKE_EVENT and
-  /// the results will appear in the operator-wise Profiling section and not in
-  /// the Delegate internal section.
+  /// operator information using `Profiler::EventType::OPERATOR_INVOKE_EVENT`
+  /// and the results will appear in the operator-wise Profiling section and not
+  /// in the Delegate internal section.
   kTfLiteDelegateFlagsPerOperatorProfiling = 4
 } TfLiteDelegateFlags;
 
@@ -1262,24 +1287,25 @@ typedef struct TfLiteDelegate {
   /// responsible for deallocating this when it is destroyed.
   void* data_;
 
-  /// Invoked by ModifyGraphWithDelegate. This prepare is called, giving the
-  /// delegate a view of the current graph through TfLiteContext*. It typically
-  /// will look at the nodes and call ReplaceNodeSubsetsWithDelegateKernels()
-  /// to ask the TensorFlow lite runtime to create macro-nodes to represent
-  /// delegated subgraphs of the original graph.
+  /// Invoked by `ModifyGraphWithDelegate`. This prepare is called, giving the
+  /// delegate a view of the current graph through `TfLiteContext*`. It
+  /// typically will look at the nodes and call
+  /// `ReplaceNodeSubsetsWithDelegateKernels()` to ask the TensorFlow lite
+  /// runtime to create macro-nodes to represent delegated subgraphs of the
+  /// original graph.
   TfLiteStatus (*Prepare)(TfLiteContext* context,
                           struct TfLiteDelegate* delegate);
 
   /// Copy the data from delegate buffer handle into raw memory of the given
-  /// 'tensor'. Note that the delegate is allowed to allocate the raw bytes as
-  /// long as it follows the rules for kTfLiteDynamic tensors, in which case
+  /// `tensor`. Note that the delegate is allowed to allocate the raw bytes as
+  /// long as it follows the rules for `kTfLiteDynamic` tensors, in which case
   /// this cannot be null.
   TfLiteStatus (*CopyFromBufferHandle)(TfLiteContext* context,
                                        struct TfLiteDelegate* delegate,
                                        TfLiteBufferHandle buffer_handle,
                                        TfLiteTensor* tensor);
 
-  /// Copy the data from raw memory of the given 'tensor' to delegate buffer
+  /// Copy the data from raw memory of the given `tensor` to delegate buffer
   /// handle. This can be null if the delegate doesn't use its own buffer.
   TfLiteStatus (*CopyToBufferHandle)(TfLiteContext* context,
                                      struct TfLiteDelegate* delegate,
@@ -1299,16 +1325,16 @@ typedef struct TfLiteDelegate {
 
   /// The opaque delegate builder associated with this object.  If set then the
   /// TF Lite runtime will give precedence to this field.  E.g. instead of
-  /// invoking 'Prepare' via the function pointer inside the 'TfLiteDelegate'
+  /// invoking `Prepare` via the function pointer inside the `TfLiteDelegate`
   /// object, the runtime will first check if the corresponding function
-  /// pointer inside 'opaque_delegate_builder' is set and if so invoke that.
+  /// pointer inside `opaque_delegate_builder` is set and if so invoke that.
   ///
-  /// If this field is non-null, then the 'Prepare' field (of the
-  /// 'TfLiteDelegate') should be null.
+  /// If this field is non-null, then the `Prepare` field (of the
+  /// `TfLiteDelegate`) should be null.
   struct TfLiteOpaqueDelegateBuilder* opaque_delegate_builder;
 } TfLiteDelegate;
 
-/// Build a 'null' delegate, with all the fields properly set to their default
+/// Build a `null` delegate, with all the fields properly set to their default
 /// values.
 TfLiteDelegate TfLiteDelegateCreate(void);
 
@@ -1328,20 +1354,21 @@ typedef struct TfLiteOpaqueDelegateBuilder {
   /// responsible for deallocating this when it is destroyed.
   void* data;
   /// Invoked by ModifyGraphWithDelegate. This prepare is called, giving the
-  /// delegate a view of the current graph through TfLiteContext*. It typically
-  /// will look at the nodes and call ReplaceNodeSubsetsWithDelegateKernels()
-  /// to ask the TensorFlow lite runtime to create macro-nodes to represent
-  /// delegated subgraphs of the original graph.
+  /// delegate a view of the current graph through `TfLiteContext*`. It
+  /// typically will look at the nodes and call
+  /// `ReplaceNodeSubsetsWithDelegateKernels()` to ask the TensorFlow lite
+  /// runtime to create macro-nodes to represent delegated subgraphs of the
+  /// original graph.
   TfLiteStatus (*Prepare)(TfLiteOpaqueContext* context,  // NOLINT
                           TfLiteOpaqueDelegate* delegate, void* data);
   /// Copies the data from delegate buffer handle into raw memory of the given
-  /// 'tensor'. Note that the delegate is allowed to allocate the raw bytes as
+  /// `tensor`. Note that the delegate is allowed to allocate the raw bytes as
   /// long as it follows the rules for kTfLiteDynamic tensors, in which case
   /// this cannot be null.
   TfLiteStatus (*CopyFromBufferHandle)(  // NOLINT
       TfLiteOpaqueContext* context, TfLiteOpaqueDelegate* delegate, void* data,
       TfLiteBufferHandle buffer_handle, TfLiteOpaqueTensor* tensor);
-  /// Copies the data from raw memory of the given 'tensor' to delegate buffer
+  /// Copies the data from raw memory of the given `tensor` to delegate buffer
   /// handle. This can be null if the delegate doesn't use its own buffer.
   TfLiteStatus (*CopyToBufferHandle)(  // NOLINT
       TfLiteOpaqueContext* context, TfLiteOpaqueDelegate* delegate, void* data,
@@ -1359,36 +1386,36 @@ typedef struct TfLiteOpaqueDelegateBuilder {
 
 #ifndef TF_LITE_STATIC_MEMORY
 /// Creates an opaque delegate and returns its address.  The opaque delegate
-/// will behave according to the provided 'opaque_delegate_builder'.  The
+/// will behave according to the provided `opaque_delegate_builder`.  The
 /// lifetime of the objects pointed to by any of the fields within the
-/// 'opaque_delegate_builder' must outlive the returned
-/// 'TfLiteOpaqueDelegate' and any 'TfLiteInterpreter',
-/// 'TfLiteInterpreterOptions', 'tflite::Interpreter', or
-/// 'tflite::InterpreterBuilder' that the delegate is added to.  The returned
-/// address should be passed to 'TfLiteOpaqueDelegateDelete' for deletion.  If
-/// 'opaque_delegate_builder' is a null pointer, then a null pointer will be
+/// `opaque_delegate_builder` must outlive the returned
+/// `TfLiteOpaqueDelegate` and any `TfLiteInterpreter`,
+/// `TfLiteInterpreterOptions`, `tflite::Interpreter`, or
+/// `tflite::InterpreterBuilder` that the delegate is added to.  The returned
+/// address should be passed to `TfLiteOpaqueDelegateDelete` for deletion.  If
+/// `opaque_delegate_builder` is a null pointer, then a null pointer will be
 /// returned.
 TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
     const TfLiteOpaqueDelegateBuilder* opaque_delegate_builder);
 
-/// Deletes the provided opaque 'delegate'.  This function has no effect if the
-/// 'delegate' is a null pointer.
+/// Deletes the provided opaque `delegate`.  This function has no effect if the
+/// `delegate` is a null pointer.
 void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* delegate);
 #endif  // TF_LITE_STATIC_MEMORY
 
 /// Returns a pointer to the data associated with the provided opaque
-/// 'delegate'.
+/// `delegate`.
 ///
 /// A null pointer will be returned when:
-/// - The 'delegate' is null.
-/// - The 'data' field of the 'TfLiteOpaqueDelegateBuilder' used to construct
-///   the 'delegate' was null.
+/// - The `delegate` is null.
+/// - The `data` field of the `TfLiteOpaqueDelegateBuilder` used to construct
+///   the `delegate` was null.
 /// - Or in case of any other error.
-/// - The 'delegate' has been constructed via a 'TfLiteOpaqueDelegateBuilder',
-///   but the 'data' field of the 'TfLiteOpaqueDelegateBuilder' is null.
+/// - The `delegate` has been constructed via a `TfLiteOpaqueDelegateBuilder`,
+///   but the `data` field of the `TfLiteOpaqueDelegateBuilder` is null.
 ///
-///  The data_ field of 'delegate' will be returned if the
-///  'opaque_delegate_builder' field is null.
+///  The data_ field of `delegate` will be returned if the
+///  `opaque_delegate_builder` field is null.
 void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate);
 
 /// Returns a tensor data allocation strategy.

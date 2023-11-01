@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/c_api_types.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/c/registration_external.h"  // IWYU pragma: export
 
-/// C API for TensorFlow Lite:
+/// C API for TensorFlow Lite.
 ///
 /// The API leans towards simplicity and uniformity instead of convenience, as
 /// most usage will be by language-specific wrappers. It provides largely the
