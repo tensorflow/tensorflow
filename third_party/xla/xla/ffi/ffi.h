@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/call_frame.h"
+#include "xla/runtime/memref_view.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
@@ -49,6 +50,12 @@ struct Buffer {
   PrimitiveType primitive_type;
   se::DeviceMemoryBase data;
   absl::Span<const int64_t> dimensions;
+
+  // TODO(ezhulenev): Remove this implicit conversion once we'll migrate to FFI
+  // handlers from runtime custom calls.
+  operator runtime::MemrefView() {  // NOLINT
+    return runtime::MemrefView{primitive_type, data.opaque(), dimensions};
+  }
 };
 
 //===----------------------------------------------------------------------===//
@@ -108,6 +115,9 @@ struct CallOptions {
 };
 
 Status Call(Ffi& handler, CallFrame& call_frame,
+            const CallOptions& options = {});
+
+Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
             const CallOptions& options = {});
 
 //===----------------------------------------------------------------------===//

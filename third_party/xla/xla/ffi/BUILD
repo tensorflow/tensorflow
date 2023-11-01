@@ -44,6 +44,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/ffi/api:c_api",
         "//xla/ffi/api:c_api_internal",
+        "//xla/runtime:memref_view",
         "//xla/service:executable",
         "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/container:flat_hash_map",

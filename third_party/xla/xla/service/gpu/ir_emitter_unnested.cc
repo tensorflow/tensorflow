@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -70,6 +71,8 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
+#include "xla/ffi/api/c_api.h"
+#include "xla/ffi/ffi.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -83,6 +86,7 @@ limitations under the License.
 #include "xla/mlir_hlo/transforms/gpu_passes.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/conditional_thunk.h"
@@ -1460,72 +1464,94 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
   auto custom_call = mlir::cast<mlir::lmhlo::CustomCallOp>(op);
   const std::string call_target_name = custom_call.getCallTargetName().str();
 
-  void* call_target = CustomCallTargetRegistry::Global()->Lookup(
-      call_target_name, std::string(platform_name()));
-
-  // Typed custom calls only are supported by XLA runtime. It's ok to emit a
-  // thunk with an unresolved custom call target, as we'll never execute it.
-  bool is_typed_custom_call =
+  // Typed FFI custom calls is a replacement for legacy custom calls with
+  // a rich type safe API. It's under construction and not fully supported.
+  bool is_ffi_custom_call =
       custom_call.getApiVersion() ==
       mlir::mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI;
 
-  if (!call_target && !is_typed_custom_call) {
-    if (ir_emitter_context_->debug_options().xla_gpu_mock_custom_calls()) {
-      // Don't run anything on custom call.
+  void* call_target = CustomCallTargetRegistry::Global()->Lookup(
+      call_target_name, std::string(platform_name()));
+
+  StatusOr<XLA_FFI_Handler*> handler = ffi::FindHandler(call_target_name);
+
+  // At least one implementation should be available at run time.
+  bool found_custom_call = !is_ffi_custom_call && call_target != nullptr;
+  bool found_ffi_handler = is_ffi_custom_call && handler.ok();
+
+  if (!found_custom_call && !found_ffi_handler) {
+    auto& debug_options = ir_emitter_context_->debug_options();
+
+    // If true, then all custom calls that are not found in custom call or FFI
+    // registries will become no-op (we don't emit any thunks for them).
+    if (debug_options.xla_gpu_mock_custom_calls()) {
       return OkStatus();
     }
-    return Unimplemented(
-        "No registered implementation for custom call to \"%s\" for platform "
-        "\"%s\"",
-        call_target_name, platform_name());
+
+    // TODO(ezhulenev): Custom calls registered with an XLA runtime are not part
+    // of a legacy registry, or an FFI registry. For now we simply ignore them.
+    if (debug_options.xla_gpu_enable_xla_runtime_executable()) {
+      return OkStatus();
+    }
+
+    return absl::UnimplementedError(
+        absl::StrCat("No registered implementation for custom call to ",
+                     call_target_name, " for platform ", platform_name()));
   }
 
-  std::vector<CustomCallThunk::OptionalSlice> operands;
-  std::vector<CustomCallThunk::OptionalSlice> results;
-  if (custom_call.getTargetArgMapping()) {
-    auto values_to_slices_with_token_holes =
-        [&](mlir::ValueRange operands,
-            mlir::ArrayRef<int64_t> op_to_target_mapping, int64_t num_target)
-        -> StatusOr<std::vector<CustomCallThunk::OptionalSlice>> {
-      std::vector<CustomCallThunk::OptionalSlice> slices(num_target);
-      for (auto index_and_value_it :
-           llvm::zip(op_to_target_mapping, operands)) {
-        int64_t index = std::get<0>(index_and_value_it);
-        mlir::Value value = std::get<1>(index_and_value_it);
-        TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                            GetAllocationSlice(value));
-        slices[index] = slice;
-      }
-      return slices;
-    };
+  using Slices = std::vector<std::optional<CustomCallThunk::Slice>>;
 
-    mlir::lmhlo::CustomCallTargetArgMappingAttr target_mapping =
-        *custom_call.getTargetArgMapping();
-    TF_ASSIGN_OR_RETURN(operands, values_to_slices_with_token_holes(
-                                      custom_call.getArgs(),
-                                      target_mapping.getArgsToTargetArgs(),
-                                      target_mapping.getNumArgs()));
-    TF_ASSIGN_OR_RETURN(results, values_to_slices_with_token_holes(
-                                     custom_call.getOutput(),
-                                     target_mapping.getResultsToTargetResults(),
-                                     target_mapping.getNumResults()));
+  // Initialize slices and shapes from the value range.
+  auto init_from_values = [&](mlir::ValueRange values, Slices* slices) {
+    for (mlir::Value value : values) {
+      TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSlice(value));
+      slices->push_back(CustomCallThunk::Slice{slice, GetShape(value)});
+    }
+    return OkStatus();
+  };
+
+  // Initialize slices and shapes from the value range with token holes.
+  auto init_from_mapped_values = [&](mlir::ValueRange values,
+                                     absl::Span<const int64_t> target_mapping,
+                                     int64_t target_size, Slices* slices) {
+    slices->resize(target_size);
+    for (auto [index, value] : llvm::zip(target_mapping, values)) {
+      TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSlice(value));
+      (*slices)[index] = CustomCallThunk::Slice{slice, GetShape(value)};
+    }
+    return OkStatus();
+  };
+
+  Slices operands, results;
+
+  // If we have a target mapping, than the number of operands and results of a
+  // custom call handler can be more than a number of operands and results in
+  // the IR. These holes are coming from the HLO token operands and results.
+  if (auto target_mapping = custom_call.getTargetArgMapping()) {
+    auto arg_mapping = target_mapping->getArgsToTargetArgs();
+    auto res_mapping = target_mapping->getResultsToTargetResults();
+
+    TF_RETURN_IF_ERROR(
+        init_from_mapped_values(custom_call.getArgs(), arg_mapping,
+                                target_mapping->getNumArgs(), &operands));
+    TF_RETURN_IF_ERROR(
+        init_from_mapped_values(custom_call.getOutput(), res_mapping,
+                                target_mapping->getNumResults(), &results));
+
   } else {
-    auto values_to_slices = [&](mlir::ValueRange values)
-        -> StatusOr<std::vector<CustomCallThunk::OptionalSlice>> {
-      std::vector<CustomCallThunk::OptionalSlice> slices;
-      for (mlir::Value value : values) {
-        TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                            GetAllocationSlice(value));
-        slices.push_back(slice);
-      }
-      return slices;
-    };
-
-    TF_ASSIGN_OR_RETURN(operands, values_to_slices(custom_call.getArgs()));
-    TF_ASSIGN_OR_RETURN(results, values_to_slices(custom_call.getOutput()));
+    TF_RETURN_IF_ERROR(init_from_values(custom_call.getArgs(), &operands));
+    TF_RETURN_IF_ERROR(init_from_values(custom_call.getOutput(), &results));
   }
 
+  // For legacy custom calls we convert all API versions into the the latest
+  // status-returning one and pass backend config as an opaque string.
   CustomCallThunk::CustomCallTarget custom_call_target;
+  std::string opaque;
+
+  // For XLA FFI handlers we decode opaque backend config into attributes map
+  // at IR emission time, so that we do not need to parse MLIR at run time. For
+  // FFI handlers backend config must be a compatible MLIR dictionary.
+  CustomCallThunk::AttributesMap attributes;
 
   // For information about this calling convention, see
   // xla/g3doc/custom_call.md.
@@ -1553,29 +1579,58 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
           reinterpret_cast<status_returning_call_type>(call_target);
       break;
     case mlir::mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI:
-      custom_call_target = [](CustomCallThunk::Stream, void**, const char*,
-                              size_t, XlaCustomCallStatus*) {
-        LOG(FATAL) << "Typed FFI custom call must be called by XLA runtime";
-      };
+      // We already checked `handler` above.
       break;
     default:
       return InternalError("Unknown custom-call API version enum value: %d",
                            custom_call.getApiVersion());
   }
 
-  // Thunks support only user-encoded string backend config.
-  std::string backend_config;
-  if (auto str = custom_call.getBackendConfig()
-                     .value_or(mlir::Attribute())
-                     .dyn_cast_or_null<mlir::StringAttr>()) {
-    backend_config = str.str();
+  auto backend_config =
+      custom_call.getBackendConfig().value_or(mlir::Attribute());
+
+  switch (custom_call.getApiVersion()) {
+    case mlir::mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL:
+    case mlir::mhlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
+    case mlir::mhlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
+      if (auto str = backend_config.dyn_cast_or_null<mlir::StringAttr>()) {
+        opaque = str.str();
+        break;
+      }
+      return absl::InternalError(
+          "Unsupported backend config. Expected a string attribute");
+
+    case mlir::mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI:
+      if (auto dict = backend_config.dyn_cast_or_null<mlir::DictionaryAttr>()) {
+        // TODO(ezhulenev): Convert custom call dictionary attribute to custom
+        // call attributes map.
+        if (!dict.empty())
+          return absl::UnimplementedError("FFI attributes are not implemented");
+        break;
+      }
+      return absl::InternalError(
+          "Unsupported backend config. Expected a dictionary attribute");
+
+    default:
+      return InternalError("Unknown custom-call API version enum value: %d",
+                           custom_call.getApiVersion());
   }
 
-  auto thunk = std::make_unique<CustomCallThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(op),
-      std::move(custom_call_target), std::move(operands), std::move(results),
-      backend_config);
-  AddThunkToThunkSequence(std::move(thunk));
+  auto ffi_thunk = [&] {
+    return std::make_unique<CustomCallThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(op), *handler,
+        std::move(operands), std::move(results), std::move(attributes));
+  };
+
+  auto legacy_thunk = [&] {
+    return std::make_unique<CustomCallThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(op),
+        std::move(custom_call_target), std::move(operands), std::move(results),
+        std::move(opaque));
+  };
+
+  AddThunkToThunkSequence(found_ffi_handler ? ffi_thunk() : legacy_thunk());
+
   return OkStatus();
 }
 

@@ -60,6 +60,13 @@ Status Call(Ffi& handler, CallFrame& call_frame, const CallOptions& options) {
   return TakeStatus(handler.Call(&ffi_call_frame));
 }
 
+Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
+            const CallOptions& options) {
+  XLA_FFI_ExecutionContext ctx = {options.run_options};
+  XLA_FFI_CallFrame ffi_call_frame = call_frame.Build(GetXlaFfiApi(), &ctx);
+  return TakeStatus((*handler)(&ffi_call_frame));
+}
+
 //===----------------------------------------------------------------------===//
 // XLA FFI registry
 //===----------------------------------------------------------------------===//
