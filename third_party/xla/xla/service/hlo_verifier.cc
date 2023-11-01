@@ -2881,14 +2881,18 @@ StatusOr<bool> HloVerifier::Run(
       TF_RETURN_IF_ERROR(module->schedule().Verify());
     }
 
-    TF_RETURN_IF_ERROR(module->input_output_alias_config().Verify(
-        *module, [this](const Shape& shape) -> int64_t {
-          if (target_metadata_->GetVerifierOpts().IsLayoutSensitive()) {
-            return target_metadata_->GetVerifierOpts().ShapeSize(shape);
-          } else {
-            return 0;
-          }
-        }));
+    if (HloInstruction::IsThreadIncluded(
+            module->entry_computation()->execution_thread(),
+            execution_threads)) {
+      TF_RETURN_IF_ERROR(module->input_output_alias_config().Verify(
+          *module, [this](const Shape& shape) -> int64_t {
+            if (target_metadata_->GetVerifierOpts().IsLayoutSensitive()) {
+              return target_metadata_->GetVerifierOpts().ShapeSize(shape);
+            } else {
+              return 0;
+            }
+          }));
+    }
 
     TF_RETURN_IF_ERROR(module->buffer_donor_config().Verify(*module));
     TF_RETURN_IF_ERROR(VerifyLayoutConstrainedAllReduce(*module));
