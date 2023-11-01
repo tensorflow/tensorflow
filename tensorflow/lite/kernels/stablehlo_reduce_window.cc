@@ -529,7 +529,12 @@ struct OpData {
     TF_LITE_ENSURE_OK(context,
                       GetSizeOfType(context, type, &unsigned_element_size));
     TF_LITE_ENSURE_MSG(
-        context, unsigned_element_size <= std::numeric_limits<int64_t>::max(),
+        context,
+        // Directly comparing the unsigned_element_size to the max value of
+        // int64_t fails the -Wtautological-constant-out-of-range-compare
+        // warning when building on 32 bit targets.
+        sizeof(unsigned_element_size) < sizeof(int64_t) ||
+            unsigned_element_size <= std::numeric_limits<int64_t>::max(),
         "The element size cannot be contained in an int64_t value.");
     element_size = unsigned_element_size;
     return kTfLiteOk;
