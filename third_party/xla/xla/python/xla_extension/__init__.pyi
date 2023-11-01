@@ -167,6 +167,9 @@ class HloPrintOptions:
   indent_amount: int
   is_in_nested_computation: bool
 
+class HloComputation:
+  def render_html(self) -> None: ...
+
 class HloModule:
   spmd_output_sharding: Optional[OpSharding]
   spmd_parameters_shardings: Optional[List[OpSharding]]
@@ -177,6 +180,7 @@ class HloModule:
   @staticmethod
   def from_serialized_hlo_module_proto(
     serialized_hlo_module_proto: bytes) -> HloModule: ...
+  def computations(self) -> List[HloComputation]: ...
 
 class HloModuleGroup:
   def __init__(self, name: str, modules: List[HloModule]) -> None: ...
