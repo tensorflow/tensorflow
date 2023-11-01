@@ -104,6 +104,9 @@ Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
 }
 
 Status CustomCallThunk::ExecuteFfiHandler(const ExecuteParams& params) {
+  // TODO(ezhulenev): This is not the most optimal approach, as we'll be doing
+  // a lot of extra allocation on every call. We have to keep attributes
+  // separate from arguments, as they do not change after thunk is constructed.
   CallFrameBuilder builder;
 
   for (auto& slices : {operands_, results_}) {
@@ -122,7 +125,7 @@ Status CustomCallThunk::ExecuteFfiHandler(const ExecuteParams& params) {
     }
   }
 
-  // TODO(ezhulenev): Add support for passing attributes to handlers.
+  builder.AddAttributes(attributes_);
   CallFrame call_frame = builder.Build();
 
   // TODO(ezhulenev): Remove `ServiceExecutableRunOptions` from FFI handler

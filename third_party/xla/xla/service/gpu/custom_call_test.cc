@@ -13,8 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <sstream>
 #include <string>
+
+#include "absl/strings/str_cat.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -349,8 +352,8 @@ TEST_F(CustomCallTest, WithStatusFailed) {
 
 // (1) Declare custom call implementations as static functions.
 
-static absl::Status AlwaysFailImpl(runtime::MemrefView arg) {
-  return absl::InternalError("Uh oh, too bad");
+static absl::Status AlwaysFailImpl(runtime::MemrefView arg, int32_t value) {
+  return absl::InternalError(absl::StrCat("Uh oh, wrong value: ", value));
 }
 
 static absl::Status MemcpyImpl(const ServiceExecutableRunOptions* run_options,
@@ -372,6 +375,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
     AlwaysFail, AlwaysFailImpl, runtime::CustomCall::RuntimeChecks::kDefault,
     runtime::CustomCall::Bind("__gpu$xla.gpu.ext.always_fail")
         .Arg<runtime::MemrefView>()  // arg
+        .Attr<int32_t>("value")      // value
 );
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
@@ -391,7 +395,10 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 // example, once it's fully supported.
 
 namespace impl {
-static Status AlwaysFail(ffi::Buffer arg) { return AlwaysFailImpl(arg); }
+static Status AlwaysFail(ffi::Buffer arg, int32_t value) {
+  return AlwaysFailImpl(arg, value);
+}
+
 static Status Memcpy(const ServiceExecutableRunOptions* run_options,
                      ffi::Buffer src, ffi::Buffer dst) {
   return MemcpyImpl(run_options, src, dst);
@@ -399,13 +406,17 @@ static Status Memcpy(const ServiceExecutableRunOptions* run_options,
 }  // namespace impl
 
 XLA_FFI_DEFINE_HANDLER(kAlwaysFail, impl::AlwaysFail,
-                       ffi::Ffi::Bind().Arg<ffi::Buffer>());
+                       ffi::Ffi::Bind()
+                           .Arg<ffi::Buffer>()      // arg
+                           .Attr<int32_t>("value")  // value
+);
 
 XLA_FFI_DEFINE_HANDLER(kMemcpy, impl::Memcpy,
                        ffi::Ffi::Bind()
                            .Ctx<ServiceExecutableRunOptions>()
-                           .Arg<ffi::Buffer>()
-                           .Arg<ffi::Buffer>());
+                           .Arg<ffi::Buffer>()  // src
+                           .Arg<ffi::Buffer>()  // dst
+);
 
 // (4) Register custom calls handlers with XLA runtime.
 
@@ -426,14 +437,14 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__gpu$xla.gpu.ext.memcpy",
 TEST_F(CustomCallTest, RuntimeCustomCallAlwaysFail) {
   XlaBuilder b(TestName());
   CustomCall(&b, "__gpu$xla.gpu.ext.always_fail", /*operands=*/{},
-             ShapeUtil::MakeShape(F32, {}), /*opaque=*/"",
+             ShapeUtil::MakeShape(F32, {}), /*opaque=*/"{value = 42 : i32}",
              /*has_side_effect=*/false,
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
   auto status = Execute(&b, {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
-  EXPECT_THAT(status.message(), ::testing::HasSubstr("Uh oh, too bad"));
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("Uh oh, wrong value: 42"));
 }
 
 TEST_F(CustomCallTest, ExportedFfiMemcpy) {

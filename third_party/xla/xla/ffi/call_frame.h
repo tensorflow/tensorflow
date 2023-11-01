@@ -42,6 +42,9 @@ class CallFrame;  // forward declare
 
 class CallFrameBuilder {
  public:
+  using Attribute = std::variant<int32_t, float, std::string>;
+  using AttributesMap = absl::flat_hash_map<std::string, Attribute>;
+
   CallFrame Build();
 
   void AddBufferArg(se::DeviceMemoryBase memory, PrimitiveType type,
@@ -51,11 +54,11 @@ class CallFrameBuilder {
   void AddF32Attr(std::string name, float value);
   void AddStringAttr(std::string name, std::string value);
 
+  void AddAttribute(std::string name, Attribute attr);
+  void AddAttributes(const AttributesMap& attrs);
+
  private:
   friend class CallFrame;
-
-  using Attribute = std::variant<int32_t, float, std::string>;
-  using AttributesMap = absl::flat_hash_map<std::string, Attribute>;
 
   struct Buffer {
     se::DeviceMemoryBase memory;
@@ -98,8 +101,6 @@ class CallFrame {
 
   static std::unique_ptr<Attributes> InitAttrs(
       const CallFrameBuilder::AttributesMap& attrs);
-
-  static void FixupString(CallFrame::String& str);
 
   std::unique_ptr<Arguments> arguments_;
   std::unique_ptr<Attributes> attributes_;

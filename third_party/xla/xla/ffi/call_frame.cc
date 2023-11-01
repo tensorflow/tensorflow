@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -52,6 +53,14 @@ void CallFrameBuilder::AddF32Attr(std::string name, float value) {
 
 void CallFrameBuilder::AddStringAttr(std::string name, std::string value) {
   attrs_.try_emplace(std::move(name), value);
+}
+
+void CallFrameBuilder::AddAttribute(std::string name, Attribute attr) {
+  attrs_.try_emplace(std::move(name), attr);
+}
+
+void CallFrameBuilder::AddAttributes(const AttributesMap& attrs) {
+  attrs_.insert(attrs.begin(), attrs.end());
 }
 
 CallFrame CallFrameBuilder::Build() { return CallFrame(args_, attrs_); }
@@ -191,11 +200,6 @@ CallFrame::~CallFrame() = default;
 // Call frame attributes
 //===----------------------------------------------------------------------===//
 
-/*static*/ void CallFrame::FixupString(CallFrame::String& str) {
-  str.span.ptr = str.value.data();
-  str.span.len = str.value.size();
-}
-
 // An std::visit overload set for converting CallFrameBuilder::Attribute to
 // CallFrame::Attribute.
 struct CallFrame::ConvertAttribute {
@@ -215,7 +219,10 @@ struct CallFrame::FixupAttribute {
   template <typename T>
   void operator()(T& value) {}
 
-  void operator()(CallFrame::String& str) { FixupString(str); }
+  void operator()(CallFrame::String& str) {
+    str.span.ptr = str.value.data();
+    str.span.len = str.value.size();
+  }
 };
 
 // An std::visit overload set to get CallFrame::Attribute XLA FFI type.
@@ -257,7 +264,7 @@ struct CallFrame::AttributeStorage {
 
   // Fix up XLA FFI structs to point to correct storage.
   for (NamedAttribute& attr : res->attributes) {
-    FixupString(attr.name);
+    std::invoke(FixupAttribute{}, attr.name);
     std::visit(FixupAttribute{}, attr.value);
   }
 
