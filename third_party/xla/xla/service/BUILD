@@ -11,6 +11,7 @@ load(
     "xla_cc_test",
     "xla_py_proto_library",
     "xla_py_test_deps",
+    "xla_symbol_repository_deps",
 )
 load("//xla/service:xla_compile.bzl", "xla_aot_compile_cpu", "xla_aot_compile_gpu", "xla_aot_compile_gpu_runtime_autotuning")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
@@ -7209,6 +7210,8 @@ xla_cc_binary(
     deps = [
         ":compiler",
         ":executable",
+        ":hlo_module_config",
+        ":symbol_repository",
         "//xla:autotune_results_proto_cc",
         "//xla:debug_options_flags",
         "//xla:statusor",
@@ -7219,9 +7222,13 @@ xla_cc_binary(
         "//xla/service:cpu_plugin",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:cpu_executable",
+        "//xla/service/gpu:autotuner_util",
+        "//xla/service/gpu:gpu_symbol_repository",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/tools:hlo_module_loader",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -7251,7 +7258,7 @@ xla_cc_binary(
         "//xla/stream_executor/cuda:cublas_plugin",
     ]) + if_rocm([
         "//xla/stream_executor/rocm:rocblas_plugin",
-    ]),
+    ]) + xla_symbol_repository_deps(),
 )
 
 # A simple test of xla_aot_compile which generates an output file from an mhlo file.
@@ -7423,6 +7430,24 @@ cc_library(
         ":compilation_environments",
         "//xla:xla_proto_cc",
         "@local_tsl//tsl/platform:protobuf",
+    ],
+)
+
+cc_library(
+    name = "symbol_repository",
+    hdrs = ["symbol_repository.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":compiler",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/stream_executor:device_description_proto_cc",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 

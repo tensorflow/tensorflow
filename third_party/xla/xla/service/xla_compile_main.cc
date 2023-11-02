@@ -21,9 +21,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "xla/autotune_results.pb.h"
@@ -35,6 +39,8 @@ limitations under the License.
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/executable.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/symbol_repository.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
@@ -48,8 +54,10 @@ limitations under the License.
 #include "tsl/util/command_line_flags.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/gpu_compiler.h"
+#include "xla/service/gpu/gpu_symbol_repository.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #endif
 #if GOOGLE_CUDA
@@ -74,8 +82,13 @@ const char kUsageHeader[] =
     "a simulated device, set --gpu_target_config to a textproto file "
     "containing a GpuTargetConfigProto forthe device you wish to simulate. To "
     "use the attached GPU, do not set this flag. When compiling with the "
-    "attached device, --output_file will contain a serialized CUDA or ROCM "
-    "executable in HLO form instead of an AotCompilationResult."
+    "attached device, --output_file will contain a text-format HLO module "
+    "instead of an AotCompilationResult."
+    "\n"
+    "HLO may also be looked up in a symbol repository (see symbol_repository.h"
+    ") by passing --symbol_repository to a linked-in symbol repository "
+    "implementation and setting --symbol_reference to a reference of a symbol "
+    "understood by that repository."
     "\n";
 
 StatusOr<std::string> AotCompileCpuExecutable(
@@ -185,13 +198,32 @@ xla::StatusOr<std::unique_ptr<HloModule>> LoadModule(
   return HloModule::CreateFromProto(hlo_module_proto, config);
 }
 
-xla::Status XlaCompileMain(const std::string& module_path,
-                           const std::string& output_path,
-                           const std::string& platform,
-                           const std::string& gpu_target_config_path,
-                           const std::string& autotune_results_path) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                      LoadModule(module_path));
+Status XlaCompileMain(
+    const std::string& module_path, const std::string& output_path,
+    const std::string& platform, const std::string& gpu_target_config_path,
+    const std::string& autotune_results_path, const std::string& symbol_repo,
+    const std::string& symbol_id, const bool use_attached_device) {
+  std::unique_ptr<HloModule> hlo_module;
+  std::unique_ptr<Compiler::TargetConfig> target_config;
+  if (!symbol_id.empty()) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModuleAndMetadata> mod,
+        LookupSymbolInRepository(symbol_repo, symbol_id, BackendType::kGpu));
+    if (mod == nullptr) {
+      return absl::NotFoundError(
+          absl::StrCat("Could not find ", symbol_id, " in ", symbol_repo));
+    }
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    if (auto* data = static_cast<gpu::GpuBackendSpecificData*>(
+            mod->backend_specific_data.get());
+        data != nullptr) {
+      target_config = std::move(mod->target_config);
+    }
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    hlo_module = std::move(mod->hlo_module);
+  } else {
+    TF_ASSIGN_OR_RETURN(hlo_module, LoadModule(module_path));
+  }
 
   // Run AOT compilation.
   std::string result;
@@ -212,19 +244,20 @@ xla::Status XlaCompileMain(const std::string& module_path,
         return FailedPrecondition("Failed to parse GpuTargetConfigProto");
       }
 
-      Compiler::TargetConfig gpu_target_config(gpu_target_config_proto);
+      target_config =
+          std::make_unique<Compiler::TargetConfig>(gpu_target_config_proto);
 
       if (!autotune_results_path.empty()) {
         TF_RETURN_IF_ERROR(gpu::AutotunerUtil::LoadAutotuneResultsFromFile(
             autotune_results_path));
       }
-
-      TF_ASSIGN_OR_RETURN(result, CompileGpuExecutable(std::move(hlo_module),
-                                                       gpu_target_config));
-    } else {
-      TF_ASSIGN_OR_RETURN(
-          result, CompileGpuExecutable(std::move(hlo_module), std::nullopt));
     }
+
+    std::optional<Compiler::TargetConfig> cfg =
+        (use_attached_device) ? std::nullopt
+                              : std::make_optional(*std::move(target_config));
+    TF_ASSIGN_OR_RETURN(result,
+                        CompileGpuExecutable(std::move(hlo_module), cfg));
 #endif
   } else {
     return Unimplemented("platform %s not supported", platform);
@@ -246,6 +279,9 @@ int main(int argc, char* argv[]) {
   std::string platform;
   std::string gpu_target_config_path;
   std::string autotune_results_path;
+  std::string symbol_repository;
+  std::string symbol_id;
+  bool use_attached_device = false;
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("module_file", &module_path,
                 "The path to the HLO, MHLO or StableHLO file"),
@@ -258,6 +294,18 @@ int main(int argc, char* argv[]) {
       tsl::Flag("autotune_results", &autotune_results_path,
                 "The path to AutotuneResults, optional when compiling for"
                 " GPU"),
+      tsl::Flag("symbol_repo", &symbol_repository,
+                "Which SymbolRepository to look up --symbol_reference in. If "
+                "the repository contains a GpuTargetConfig, "
+                "--gpu_target_config will take precedence if it is also set."),
+      tsl::Flag("symbol_reference", &symbol_id,
+                "Symbol ID to look up in a SymbolRepository. Overrides "
+                "--module_file."),
+      tsl::Flag("use_attached_device", &use_attached_device,
+                "Whether to use the attached GPU or not. Overrides the "
+                "AOT-vs-device-backed inference based on the presence of "
+                "--gpu_target_config, which is relevant when a GpuTargetConfig "
+                "can be found in the symbol repository."),
   };
 
   tsl::string usage = xla::xla_compile::kUsageHeader;
@@ -274,7 +322,7 @@ int main(int argc, char* argv[]) {
 
   xla::Status result = xla::xla_compile::XlaCompileMain(
       module_path, output_path, platform, gpu_target_config_path,
-      autotune_results_path);
+      autotune_results_path, symbol_repository, symbol_id, use_attached_device);
   if (!result.ok()) {
     LOG(ERROR) << "Compilation failed: " << result;
     return 1;

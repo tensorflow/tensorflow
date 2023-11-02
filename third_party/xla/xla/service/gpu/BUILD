@@ -4618,3 +4618,13 @@ xla_cc_test(
         "@local_tsl//tsl/platform:statusor",
     ],
 )
+
+cc_library(
+    name = "gpu_symbol_repository",
+    hdrs = ["gpu_symbol_repository.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:xla_proto_cc",
+        "//xla/service:symbol_repository",
+    ],
+)
