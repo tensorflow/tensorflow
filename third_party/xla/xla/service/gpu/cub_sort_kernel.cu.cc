@@ -18,8 +18,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #if GOOGLE_CUDA
 #include "xla/service/gpu/gpu_prim_cuda.h"
 #elif TENSORFLOW_USE_ROCM
@@ -31,23 +29,21 @@ namespace gpu {
 namespace {
 
 #if GOOGLE_CUDA
-#define CHK_GPU_ERR(err)                                       \
-  if (err != cudaSuccess) {                                    \
-    return absl::InvalidArgumentError(                         \
-        absl::StrCat("CUB error: ", cudaGetErrorString(err))); \
+#define CHK_GPU_ERR(err)            \
+  if (err != cudaSuccess) {         \
+    return cudaGetErrorString(err); \
   }
 #elif TENSORFLOW_USE_ROCM
-#define CHK_GPU_ERR(err)                                         \
-  if (err != hipSuccess) {                                       \
-    return absl::InvalidArgumentError(                           \
-        absl::StrCat("HIPCUB error: ", hipGetErrorString(err))); \
+#define CHK_GPU_ERR(err)           \
+  if (err != hipSuccess) {         \
+    return hipGetErrorString(err); \
   }
 #endif
 
 template <typename KeyT>
-absl::Status CubSortKeys(void* d_temp_storage, size_t& temp_bytes,
-                         const void* d_keys_in, void* d_keys_out,
-                         size_t num_items, bool descending) {
+const char* CubSortKeys(void* d_temp_storage, size_t& temp_bytes,
+                        const void* d_keys_in, void* d_keys_out,
+                        size_t num_items, bool descending) {
   auto err =
       descending
           ? gpuprim::DeviceRadixSort::SortKeysDescending<KeyT>(
@@ -57,14 +53,14 @@ absl::Status CubSortKeys(void* d_temp_storage, size_t& temp_bytes,
                 d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
                 static_cast<KeyT*>(d_keys_out), num_items);
   CHK_GPU_ERR(err)
-  return absl::OkStatus();
+  return nullptr;
 }
 
 template <typename KeyT, typename ValT>
-absl::Status CubSortPairs(void* d_temp_storage, size_t& temp_bytes,
-                          const void* d_keys_in, void* d_keys_out,
-                          const void* d_values_in, void* d_values_out,
-                          size_t num_items, bool descending) {
+const char* CubSortPairs(void* d_temp_storage, size_t& temp_bytes,
+                         const void* d_keys_in, void* d_keys_out,
+                         const void* d_values_in, void* d_values_out,
+                         size_t num_items, bool descending) {
   auto err =
       descending
           ? gpuprim::DeviceRadixSort::SortPairsDescending<KeyT, ValT>(
@@ -78,21 +74,21 @@ absl::Status CubSortPairs(void* d_temp_storage, size_t& temp_bytes,
                 static_cast<const ValT*>(d_values_in),
                 static_cast<ValT*>(d_values_out), num_items);
   CHK_GPU_ERR(err)
-  return absl::OkStatus();
+  return nullptr;
 }
 
 }  // namespace
 
-#define XLA_CUB_DEFINE_SORT_KEYS(suffix, type)                                \
-  absl::Status CubSortKeys_##suffix(void* d_temp_storage, size_t& temp_bytes, \
-                                    const void* d_keys_in, void* d_keys_out,  \
-                                    size_t num_items, bool descending) {      \
-    return CubSortKeys<type>(d_temp_storage, temp_bytes, d_keys_in,           \
-                             d_keys_out, num_items, descending);              \
+#define XLA_CUB_DEFINE_SORT_KEYS(suffix, type)                               \
+  const char* CubSortKeys_##suffix(void* d_temp_storage, size_t& temp_bytes, \
+                                   const void* d_keys_in, void* d_keys_out,  \
+                                   size_t num_items, bool descending) {      \
+    return CubSortKeys<type>(d_temp_storage, temp_bytes, d_keys_in,          \
+                             d_keys_out, num_items, descending);             \
   }
 
 #define XLA_CUB_DEFINE_SORT_PAIRS(suffix, type1, type2)                      \
-  absl::Status CubSortPairs_##suffix(                                        \
+  const char* CubSortPairs_##suffix(                                         \
       void* d_temp_storage, size_t& temp_bytes, const void* d_keys_in,       \
       void* d_keys_out, const void* d_values_in, void* d_values_out,         \
       size_t num_items, bool descending) {                                   \

@@ -1184,10 +1184,7 @@ build_cub_sort_kernels(
         "TENSORFLOW_USE_ROCM=1",
     ]),
     types = get_cub_sort_kernel_types(),
-    deps = if_gpu_is_configured([
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-    ]) + if_cuda_is_configured([
+    deps = if_cuda_is_configured([
         ":gpu_prim_cuda",
     ]) + if_rocm_is_configured([
         ":gpu_prim_rocm",
