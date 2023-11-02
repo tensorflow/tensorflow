@@ -17,7 +17,7 @@ py_strict_library(
     name = "public_api",
     srcs = ["public_api.py"],
     srcs_version = "PY3",
-    deps = ["//tensorflow/python/util:tf_decorator"],
+    deps = ["//tensorflow/python/util:tf_inspect"],
 )
 
 py_strict_test(
@@ -40,7 +40,7 @@ py_strict_library(
     name = "traverse",
     srcs = ["traverse.py"],
     srcs_version = "PY3",
-    deps = ["//tensorflow/python/util:tf_decorator"],
+    deps = ["//tensorflow/python/util:tf_inspect"],
 )
 
 py_strict_test(
