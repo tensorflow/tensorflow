@@ -219,6 +219,59 @@ class TpuEmbeddingV3UtilsTest(test.TestCase, parameterized.TestCase):
         z,
     )
 
+  def test_index_mapping_one_table(self):
+    num_sc = 4
+    x, shards = create_test_table_shards(
+        TestTable(vocab=12, dim=4, shift=0), num_sc
+    )
+    indices = tf_constant([1, 2, 5, 7, 9])
+    shard_idx, position_in_shard = v3_utils.map_indices_in_shard(
+        num_sparse_cores=num_sc,
+        offset_in_shard=0,
+        shard_rotation=0,
+        row_indices=indices,
+    )
+    self.assertAllEqual(
+        shard_idx,
+        indices % num_sc,
+    )
+    self.assertAllEqual(
+        [x[i] for i in indices],
+        [shards[j][k] for j, k in zip(shard_idx, position_in_shard)],
+    )
+
+  def test_index_mapping_stacked_tables(self):
+    num_sc = 4
+    ta = TestTable(vocab=12, dim=4, shift=0)
+    tb = TestTable(vocab=32, dim=4, shift=1)
+    x, x_shards = create_test_table_shards(ta, num_sc)
+    y, y_shards = create_test_table_shards(tb, num_sc, table_data_start=100)
+    stacked_shards = [
+        array_ops.concat([i, j], axis=0) for i, j in zip(x_shards, y_shards)
+    ]
+    indices_ta = tf_constant([1, 2, 7, 9, 11])
+    shard_idx, position_in_shard = v3_utils.map_indices_in_shard(
+        num_sparse_cores=num_sc,
+        offset_in_shard=0,
+        shard_rotation=ta.shift,
+        row_indices=indices_ta,
+    )
+    self.assertAllEqual(
+        [x[i] for i in indices_ta],
+        [stacked_shards[j][k] for j, k in zip(shard_idx, position_in_shard)],
+    )
+    indices_tb = tf_constant([1, 2, 7, 9, 15, 27])
+    shard_idx, position_in_shard = v3_utils.map_indices_in_shard(
+        num_sparse_cores=num_sc,
+        offset_in_shard=ta.vocab // num_sc,
+        shard_rotation=tb.shift,
+        row_indices=indices_tb,
+    )
+    self.assertAllEqual(
+        [y[i] for i in indices_tb],
+        [stacked_shards[j][k] for j, k in zip(shard_idx, position_in_shard)],
+    )
+
 
 if __name__ == "__main__":
   v2_compat.enable_v2_behavior()

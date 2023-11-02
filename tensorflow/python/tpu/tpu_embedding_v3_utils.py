@@ -107,6 +107,35 @@ def remove_padding_from_sc(
   return array_ops.slice(value_in_checkpoint, begin=begin, size=variable_shape)
 
 
+def map_indices_in_shard(
+    num_sparse_cores: int,
+    offset_in_shard: int,
+    shard_rotation: int,
+    row_indices: tensor.Tensor,
+) -> tuple[tensor.Tensor, tensor.Tensor]:
+  """Maps a row of a given table to its sparse core shard and position.
+
+  Maps a given a row index of a logical table and its layout in sparse core,
+  returns the index of the shard where the row is placed and its relative
+  position within
+  that sparse core shard.
+  Args:
+    num_sparse_cores: The number of sparsecores, this determines the number of
+      shards present.
+    offset_in_shard: Offset within a shard where the queried table starts.
+    shard_rotation: The rotation of this table's shards.
+    row_indices: row indices of the embedding table being looked up.
+
+  Returns:
+    A Tuple representing shard_index and position of the row in that shard.
+  """
+  shard_index = (
+      (row_indices % num_sparse_cores) + shard_rotation
+  ) % num_sparse_cores
+  position_in_shard = offset_in_shard + row_indices // num_sparse_cores
+  return (shard_index, position_in_shard)
+
+
 class SparseCoreLayoutsTrackable(trackable_base.Trackable):
   """Trackable for sparsecore layouts used in training."""
 
