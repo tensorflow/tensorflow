@@ -79,6 +79,7 @@ cc_test(
     deps = [
         ":delegate_loader",
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/acceleration/configuration/c:stable_delegate",
         "//tensorflow/lite/delegates/utils/experimental/sample_stable_delegate",
         "@com_google_googletest//:gtest_main",
     ],
