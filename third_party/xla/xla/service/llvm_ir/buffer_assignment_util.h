@@ -38,6 +38,10 @@ std::string ConstantBufferAllocationToGlobalName(
 // Returns the Literal corresponding to `allocation`, which must be a constant
 // allocation.
 const Literal& LiteralForConstantAllocation(const BufferAllocation& allocation);
+// Returns the constant HloInstruction corresponding to `allocation`, which must
+// be a constant allocation.
+const HloInstruction& InstrForConstantBufferAllocation(
+    const BufferAllocation& allocation);
 }  // namespace llvm_ir
 }  // namespace xla
 
