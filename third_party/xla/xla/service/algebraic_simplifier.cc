@@ -4605,6 +4605,28 @@ Status AlgebraicSimplifierVisitor::HandleCompare(HloInstruction* compare) {
         return ReplaceInstruction(compare, MakeScalarLike(compare, true));
     }
   }
+  if (ShapeUtil::HasPrimitiveType(lhs->shape(), xla::PRED) &&
+      ShapeUtil::HasPrimitiveType(rhs->shape(), xla::PRED)) {
+    if (compare->comparison_direction() == ComparisonDirection::kNe) {
+      // A != false -> A
+      if (IsAll(rhs, false)) {
+        return ReplaceInstruction(compare, lhs);
+      }
+      // false != A -> A
+      if (IsAll(lhs, false)) {
+        return ReplaceInstruction(compare, rhs);
+      }
+    } else if (compare->comparison_direction() == ComparisonDirection::kEq) {
+      // A == true -> A
+      if (IsAll(rhs, true)) {
+        return ReplaceInstruction(compare, lhs);
+      }
+      // true == A -> A
+      if (IsAll(lhs, true)) {
+        return ReplaceInstruction(compare, rhs);
+      }
+    }
+  }
   return OkStatus();
 }
 

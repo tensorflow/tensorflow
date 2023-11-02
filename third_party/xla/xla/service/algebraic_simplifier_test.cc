@@ -8009,6 +8009,90 @@ TEST_F(AlgebraicSimplifierTest, CompareSimplifiedReversed) {
                      .WithComparisonDirection(ComparisonDirection::kLt)));
 }
 
+// Test that A != False is simplified to A
+TEST_F(AlgebraicSimplifierTest, NeFalse) {
+  auto m = CreateNewVerifiedModule();
+  Shape r0pred = ShapeUtil::MakeShape(PRED, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0pred, "param0"));
+  HloInstruction* const_false = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+  builder.AddInstruction(HloInstruction::CreateCompare(
+      r0pred, param0, const_false, ComparisonDirection::kNe));
+
+  auto computation = m->AddEntryComputationWithLayouts(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kCompare);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, param0);
+}
+
+// Test that False != A is simplified to A
+TEST_F(AlgebraicSimplifierTest, NeFalse2) {
+  auto m = CreateNewVerifiedModule();
+  Shape r0pred = ShapeUtil::MakeShape(PRED, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0pred, "param0"));
+  HloInstruction* const_false = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+  builder.AddInstruction(HloInstruction::CreateCompare(
+      r0pred, const_false, param0, ComparisonDirection::kNe));
+
+  auto computation = m->AddEntryComputationWithLayouts(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kCompare);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, param0);
+}
+
+// Test that A == True is simplified to A
+TEST_F(AlgebraicSimplifierTest, EqTrue) {
+  auto m = CreateNewVerifiedModule();
+  Shape r0pred = ShapeUtil::MakeShape(PRED, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0pred, "param0"));
+  HloInstruction* const_true = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+  builder.AddInstruction(HloInstruction::CreateCompare(
+      r0pred, param0, const_true, ComparisonDirection::kEq));
+
+  auto computation = m->AddEntryComputationWithLayouts(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kCompare);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, param0);
+}
+
+// Test that True == A is simplified to A
+TEST_F(AlgebraicSimplifierTest, EqTrue2) {
+  auto m = CreateNewVerifiedModule();
+  Shape r0pred = ShapeUtil::MakeShape(PRED, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0pred, "param0"));
+  HloInstruction* const_true = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+  builder.AddInstruction(HloInstruction::CreateCompare(
+      r0pred, const_true, param0, ComparisonDirection::kEq));
+
+  auto computation = m->AddEntryComputationWithLayouts(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kCompare);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, param0);
+}
+
 TEST_F(AlgebraicSimplifierTest, CanDisableDotToMultiplyRewrite) {
   // Some backends may have better performance by treating an outer product as a
   // Dot, rather than a broadcast Multiply
