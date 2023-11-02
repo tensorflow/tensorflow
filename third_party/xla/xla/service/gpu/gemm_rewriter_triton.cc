@@ -917,12 +917,6 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
         dst_fragments_order.push_back(*subdim);
         src_to_dst[subdim] = dst_fragments_order.size() - 1;
         dim_numbers_present_in_dst.insert(subdim->dst_dim_number());
-        if (std::holds_alternative<SoftmaxProperties>(properties_) &&
-            subdim->dst_dim_number() == std::get<SoftmaxProperties>(properties_)
-                                            .softmax_reduction_dimension) {
-          dst_dim_fragments_order[subdim->dst_dim_number()].push_back(
-              dst_fragments_order.size() - 1);
-        }
       }
     }
     for (const auto& [dim_index, dim_sequence] :
