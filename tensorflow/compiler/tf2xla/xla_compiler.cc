@@ -444,7 +444,6 @@ Status BuildComputation(
 
 }  // namespace
 
-
 string XlaCompiler::Argument::HumanString() const {
   string common;
   if (!name.empty()) {
@@ -954,6 +953,15 @@ Status XlaCompiler::XLAShapeForArgument(
         TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
             arg_sharding, /*use_fast_memory=*/false,
             options_.shape_determination_fns, xla_shape));
+        // If the arg is dynamic then we update the shape to reflect that. The
+        // arg's value_dynamism is a Tensor of bools set to the dynamism of each
+        // dimension.
+        if (arg.value_dynamism.has_value()) {
+          auto dynamism = arg.value_dynamism.value().vec<bool>();
+          for (int i = 0; i < dynamism.size(); ++i) {
+            xla_shape->set_dynamic_dimension(i, dynamism(i));
+          }
+        }
       } else {
         if (absl::holds_alternative<xla::Shape>(arg.shape)) {
           *xla_shape = std::get<xla::Shape>(arg.shape);
@@ -1427,10 +1435,11 @@ class DummyStackTrace : public AbstractStackTrace {
       StackFrame({"dummy_file_name", 10, "dummy_function_name"})};
 };
 
-Status XlaCompiler::CompileGraph(
-    const XlaCompiler::CompileOptions& options, string const& name,
-    std::unique_ptr<Graph> graph, absl::Span<const XlaCompiler::Argument> args,
-    CompilationResult* result) {
+Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
+                                 string const& name,
+                                 std::unique_ptr<Graph> graph,
+                                 absl::Span<const XlaCompiler::Argument> args,
+                                 CompilationResult* result) {
   VLOG(1) << "Executing graph symbolically to populate XlaBuilder.: " << name;
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileGraph: "
