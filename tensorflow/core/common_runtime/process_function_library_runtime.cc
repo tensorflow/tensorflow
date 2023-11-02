@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "tensorflow/core/common_runtime/build_graph_options.h"
@@ -57,6 +58,7 @@ limitations under the License.
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
@@ -597,15 +599,15 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
 
   auto data = std::make_unique<MultiDeviceFunctionData>(
       function_name, function_key, optimized_graph_info->num_return_nodes,
-      std::move(optimized_graph_info->lib_def),
       std::move(optimized_graph_info->ret_types));
 
   int i = 0;
+  FunctionLibraryDefinition data_lib_def =
+      std::move(optimized_graph_info->lib_def);
   // Generate a random function_name to avoid one function reuse the partition
   // function instantiated by another function.
-  FunctionLibraryDefinition* data_lib_def = &data->lib_def_;
   FunctionNameGenerator name_generator(
-      data_lib_def, absl::StrCat(function_name, "_", random::New64()));
+      &data_lib_def, absl::StrCat(function_name, "_", random::New64()));
   const int num_subgraphs = subgraphs->size();
   gtl::InlinedVector<Status, 4> instantiate_status(num_subgraphs);
   BlockingCounter counter(static_cast<int>(num_subgraphs));
@@ -641,7 +643,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     Status* status = &instantiate_status[i];
     ComponentFunctionData* comp_data = &data->glue_[pair.first];
     comp_data->name = name_generator.GetName();
-    runner([this, &pair, dev_set, comp_data, data_lib_def, &control_ret,
+    runner([this, &pair, dev_set, comp_data, &data_lib_def, &control_ret,
             &options, status, &counter, &data] {
       const string& target = pair.first;
 
@@ -681,7 +683,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       // before the move in case `GraphToFunctionDef()` changes in future.
       AttrValueMap attrs(shard.attr());
 
-      status->Update(data_lib_def->AddFunctionDef(std::move(shard)));
+      status->Update(data_lib_def.AddFunctionDef(std::move(shard)));
       if (!status->ok()) {
         counter.DecrementCount();
         return;
@@ -689,7 +691,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       FunctionLibraryRuntime::InstantiateOptions opts;
       opts.executor_type = options.executor_type;
       opts.target = target;
-      opts.lib_def = data_lib_def;
+      opts.lib_def = &data_lib_def;
       opts.create_kernels_eagerly = options.create_kernels_eagerly;
       opts.state_handle = options.state_handle;
       opts.allow_small_function_optimizations = data->enable_sync_execution;
@@ -752,7 +754,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   if (should_publish_function_graphs) {
     for (const auto& pair : *subgraphs) {
       ComponentFunctionData* comp_data = &data->glue_[pair.first];
-      function_records.push_back(data_lib_def->FindRecord(comp_data->name));
+      function_records.push_back(data_lib_def.FindRecord(comp_data->name));
     }
   }
 

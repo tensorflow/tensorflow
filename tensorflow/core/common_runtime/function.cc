@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 
 #include <deque>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -56,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tsl/platform/statusor.h"
 
 // See core/kernels/function_ops.cc for related kernels.
 
@@ -154,8 +156,8 @@ static Node* AddRet(Graph* g, Endpoint input, int index) {
 class FunctionLibraryRuntimeOverlay : public FunctionLibraryRuntime {
  public:
   FunctionLibraryRuntimeOverlay(FunctionLibraryRuntime* base_flr,
-                                const FunctionLibraryDefinition* lib_def)
-      : base_flr_(base_flr), lib_def_(lib_def) {}
+                                FunctionLibraryDefinition lib_def)
+      : base_flr_(base_flr), lib_def_(std::move(lib_def)) {}
   ~FunctionLibraryRuntimeOverlay() override;
 
   Status Instantiate(const string& function_name, AttrSlice attrs,
@@ -205,7 +207,7 @@ class FunctionLibraryRuntimeOverlay : public FunctionLibraryRuntime {
 
  private:
   FunctionLibraryRuntime* base_flr_;          // not owned
-  const FunctionLibraryDefinition* lib_def_;  // not owned
+  const FunctionLibraryDefinition lib_def_;
 };
 
 FunctionLibraryRuntimeOverlay::~FunctionLibraryRuntimeOverlay() = default;
@@ -215,9 +217,9 @@ Status FunctionLibraryRuntimeOverlay::Instantiate(
     const InstantiateOptions& options, Handle* handle) {
   // We automatically set the `lib_def` option for all instantiations, if the
   // caller doesn't set this option explicitly.
-  if (!options.lib_def && lib_def_) {
+  if (!options.lib_def) {
     InstantiateOptions options_copy = options;
-    options_copy.lib_def = lib_def_;
+    options_copy.lib_def = &lib_def_;
     return base_flr_->Instantiate(function_name, attrs, options_copy, handle);
   } else {
     return base_flr_->Instantiate(function_name, attrs, options, handle);
@@ -278,7 +280,7 @@ bool FunctionLibraryRuntimeOverlay::IsStateful(
     const string& function_name) const {
   // Important: we do not forward lookup to the base FLR.
   const OpDef* op_def;
-  const Status s = lib_def_->LookUpOpDef(function_name, &op_def);
+  const Status s = lib_def_.LookUpOpDef(function_name, &op_def);
   return s.ok() && op_def->is_stateful();
 }
 
@@ -305,7 +307,7 @@ const DeviceMgr* FunctionLibraryRuntimeOverlay::device_mgr() const {
 
 const FunctionLibraryDefinition*
 FunctionLibraryRuntimeOverlay::GetFunctionLibraryDefinition() const {
-  return lib_def_ ? lib_def_ : base_flr_->GetFunctionLibraryDefinition();
+  return &lib_def_;
 }
 
 string FunctionLibraryRuntimeOverlay::DebugString(Handle handle) {
@@ -841,8 +843,11 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
       item->allow_control_flow_sync_execution =
           options.allow_control_flow_sync_execution;
       if (options.lib_def) {
-        item->overlay_flr.reset(
-            new FunctionLibraryRuntimeOverlay(this, options.lib_def));
+        TF_ASSIGN_OR_RETURN(
+            FunctionLibraryDefinition reachable_lib_def,
+            options.lib_def->ReachableDefinitions(function_name));
+        item->overlay_flr.reset(new FunctionLibraryRuntimeOverlay(
+            this, std::move(reachable_lib_def)));
       }
       local_handle = next_handle_++;
       items_->emplace(local_handle, std::unique_ptr<Item>(item));
