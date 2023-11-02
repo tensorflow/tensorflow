@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -35,6 +36,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/AtomicOrdering.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -54,6 +56,7 @@ limitations under the License.
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/kernel_thunk.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
+#include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
@@ -324,21 +327,21 @@ Status EmitExtraOutputsForReduce(llvm::IRBuilder<>* builder,
 }
 
 StatusOr<std::unique_ptr<Thunk>> BuildFusedInitializerThunk(
-    IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion,
-    const HloComputation* fused_computation,
-    ElementalIrEmitter& elemental_emitter, KernelReuseCache& kernel_cache,
-    int output_index, llvm::IRBuilder<>* builder) {
-  auto reduce = mlir::dyn_cast_or_null<mlir::mhlo::ReduceOp>(
-      fusion.getFusionRoots()[output_index]);
-
+    IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
+    mlir::lmhlo::FusionOp fusion_op, const HloComputation* fused_computation,
+    const HloInstruction* fusion_root, ElementalIrEmitter& elemental_emitter,
+    KernelReuseCache& kernel_cache, int output_index,
+    llvm::IRBuilder<>* builder) {
+  const HloReduceInstruction* reduce =
+      DynCast<HloReduceInstruction>(fusion_root);
   TF_RET_CHECK(reduce);
-  TF_RET_CHECK(reduce.getNumResults() == 1);
 
-  mlir::Value init_value = reduce.getInitValues()[0];
-  mlir::Value dest = fusion.getOutputBuffers()[output_index];
-  TF_ASSIGN_OR_RETURN(std::optional<std::unique_ptr<Thunk>> constant_init_thunk,
-                      BuildConstantInitializerThunk(ir_emitter_context, fusion,
-                                                    init_value, dest));
+  const HloInstruction* init_value = reduce->init_values()[0];
+  mlir::Value dest = fusion_op.getOutputBuffers()[output_index];
+  TF_ASSIGN_OR_RETURN(
+      std::optional<std::unique_ptr<Thunk>> constant_init_thunk,
+      BuildConstantInitializerThunk(ir_emitter_context, fusion_op, &fusion,
+                                    init_value, dest));
   if (constant_init_thunk) {
     return *std::move(constant_init_thunk);
   }
@@ -370,11 +373,11 @@ StatusOr<std::unique_ptr<Thunk>> BuildFusedInitializerThunk(
                         fused_emitter.GetGenerator(*instr->operand(1)));
     TF_RETURN_IF_ERROR(ParallelLoopEmitter(generator, {outputs[output_index]},
                                            launch_dimensions, builder)
-                           .EmitLoop(GetIrNameFromLoc(fusion.getLoc())));
+                           .EmitLoop(fusion.name()));
     return OkStatus();
   };
 
-  return BuildKernelThunkForFusion(ir_emitter_context, kernel_cache, fusion,
+  return BuildKernelThunkForFusion(ir_emitter_context, kernel_cache, fusion_op,
                                    fused_computation, launch_dimensions,
                                    /*discriminator=*/
                                    absl::StrCat("init_", output_index),
@@ -975,12 +978,13 @@ StatusOr<FusionEmissionResult> ReductionFusion::Emit(
     absl::Span<const HloInstruction* const> fusion_roots =
         analysis_.fusion_roots();
     for (int i = 0; i < fusion_roots.size(); ++i) {
-      if (IsReductionFromOrToContiguousDimensions(*fusion_roots[i])) {
+      const HloInstruction* fusion_root = fusion_roots[i];
+      if (IsReductionFromOrToContiguousDimensions(*fusion_root)) {
         TF_ASSIGN_OR_RETURN(
             result.thunks.emplace_back(),
-            BuildFusedInitializerThunk(ir_emitter_context, fusion_op,
-                                       fused_computation, elemental_emitter,
-                                       kernel_cache, i, builder));
+            BuildFusedInitializerThunk(
+                ir_emitter_context, fusion, fusion_op, fused_computation,
+                fusion_root, elemental_emitter, kernel_cache, i, builder));
       }
     }
   }

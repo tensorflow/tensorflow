@@ -398,8 +398,9 @@ class IrEmitterUnnested : public IrEmitter {
                                  mlir::ValueRange needed_operands,
                                  const LaunchDimensions& launch_dimensions);
 
-  Status BuildInitializerThunk(mlir::Operation* op, mlir::Value init_value,
-                               mlir::Value dest);
+  Status BuildInitializerThunk(mlir::Operation* op, const HloInstruction* instr,
+                               const HloInstruction* init_value,
+                               mlir::Value init_value_mlir, mlir::Value dest);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction 'hlo'.
