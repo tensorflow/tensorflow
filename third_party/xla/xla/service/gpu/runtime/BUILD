@@ -86,6 +86,7 @@ cc_library(
         "//xla/runtime:custom_call",
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
+        "//xla/service:collective_ops_utils",
         "//xla/service:computation_placer_hdr",
         "//xla/service:executable",
         "//xla/service:global_device_id",
