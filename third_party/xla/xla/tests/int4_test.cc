@@ -73,5 +73,16 @@ XLA_TEST_F(HloTestBase, NonMajorToMinorLayout) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
+XLA_TEST_F(HloTestBase, Int4Output2d) {
+  // Tests outputting a 2D int4 array.
+  const std::string hlo_text = R"(
+  HloModule Int4Output2d
+  ENTRY main {
+    x = s8[2,2] parameter(0)
+    ROOT y = s4[2,2] convert(x)
+  })";
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
+}
+
 }  // namespace
 }  // namespace xla
