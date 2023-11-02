@@ -689,6 +689,52 @@ TEST_F(AlgebraicSimplifierTest, SelectWithNotPred) {
   EXPECT_EQ(operands[2], param1);
 }
 
+// Test that select(a, true, false) is simplified to a
+TEST_F(AlgebraicSimplifierTest, SelectPredPred) {
+  Shape r0pred = ShapeUtil::MakeShape(PRED, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0pred, "param0"));
+  HloInstruction* one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+  HloInstruction* zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+  builder.AddInstruction(HloInstruction::CreateTernary(
+      r0pred, HloOpcode::kSelect, param0, one, zero));
+
+  auto module = CreateNewVerifiedModule();
+  auto computation = module->AddEntryComputationWithLayouts(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kSelect);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
+  EXPECT_EQ(computation->root_instruction(), param0);
+}
+
+// Test that select(a, false, true) is simplified to not(a)
+TEST_F(AlgebraicSimplifierTest, SelectPredPred2) {
+  auto m = CreateNewVerifiedModule();
+  Shape r0pred = ShapeUtil::MakeShape(PRED, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0pred, "param0"));
+  HloInstruction* zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+  HloInstruction* one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+  builder.AddInstruction(HloInstruction::CreateTernary(
+      r0pred, HloOpcode::kSelect, param0, zero, one));
+
+  auto module = CreateNewVerifiedModule();
+  auto computation = module->AddEntryComputationWithLayouts(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kSelect);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Not(m::Parameter(0))));
+}
+
 // Test that select(pred, xs, dynamic_update_slice(xs, x, i)) is simplified
 // to dynamic_update_slice(xs, select(pred, dynamic_slice(xs, i), x), i)
 TEST_F(AlgebraicSimplifierTest, SelectDUSWithShapedPred) {

@@ -7451,6 +7451,20 @@ Status AlgebraicSimplifierVisitor::HandleSelect(HloInstruction* select) {
         HloInstruction::CreateTernary(select->shape(), HloOpcode::kSelect,
                                       pred_operand, on_false, on_true));
   }
+  // select(PRED, PRED, PRED)
+  if (ShapeUtil::HasPrimitiveType(select->shape(), xla::PRED)) {
+    // select(a, true, false) -> a
+    if (IsAll(select->operand(1), true) && IsAll(select->operand(2), false)) {
+      return ReplaceInstruction(select, select->mutable_operand(0));
+    }
+    // select(a, false, true) -> not(a)
+    if (IsAll(select->operand(1), false) && IsAll(select->operand(2), true)) {
+      return ReplaceWithNewInstruction(
+          select, HloInstruction::CreateUnary(
+                      select->mutable_operand(0)->shape(), HloOpcode::kNot,
+                      select->mutable_operand(0)));
+    }
+  }
 
   // select(pred, xs, dynamic_update_slice(xs, x, i))
   //     -> dynamic_update_slice(xs, select(pred, dynamic_slice(xs, i), x), i)
