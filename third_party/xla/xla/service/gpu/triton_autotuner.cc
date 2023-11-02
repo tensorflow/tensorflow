@@ -396,11 +396,16 @@ int GetLogEveryN() { return VLOG_IS_ON(3) ? 100 : 1000; }
 StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     const TritonGemmConfig& config,
     const se::DeviceDescription& gpu_device_info,
-    const HloFusionInstruction* fusion, DebugOptions debug_opts) {
+    const HloFusionInstruction* fusion, DebugOptions debug_opts,
+    bool allow_filtering_kernels_spilling_registers) {
   std::unique_ptr<HloModule> new_module =
       AutotunerUtil::ExtractInstructionIntoNewModule(*fusion);
   // Reduce memory usage during compilation by disabling GPU runtime.
   debug_opts.set_xla_gpu_enable_xla_runtime_executable(false);
+  if (!allow_filtering_kernels_spilling_registers) {
+    debug_opts.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
+        false);
+  }
   new_module->mutable_config().set_debug_options(debug_opts);
 
   HloComputation* entry_computation = new_module->entry_computation();
@@ -458,6 +463,11 @@ StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
   return new_module;
 }
 
+bool ShouldAllowFilteringKernelsSpillingRegisters(
+    const GemmConfigSet& gemm_config_set) {
+  return gemm_config_set.configs.size() > 1;
+}
+
 StatusOr<absl::flat_hash_map<const HloFusionInstruction*, ExecutableSet>>
 CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
             tsl::thread::ThreadPool* thread_pool,
@@ -497,8 +507,9 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
   };
 
   // Returns true on success.
-  auto compile = [&](const HloFusionInstruction* fusion,
-                     const TritonGemmConfig& conf) -> StatusOr<bool> {
+  auto compile =
+      [&](const HloFusionInstruction* fusion, const TritonGemmConfig& conf,
+          bool allow_filtering_kernels_spilling_registers) -> StatusOr<bool> {
     CHECK_LE(conf.block_m, kMaxTileSize);
     CHECK_LE(conf.block_n, kMaxTileSize);
     CHECK_LE(conf.block_k, kMaxTileSize);
@@ -509,7 +520,8 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                         util.Compile([&](const DebugOptions& opts) {
                           return TritonGemmAutotuneExtractor(
-                              conf, gpu_device_info, fusion, opts);
+                              conf, gpu_device_info, fusion, opts,
+                              allow_filtering_kernels_spilling_registers);
                         }));
 
     if (executable != nullptr) {
@@ -564,7 +576,9 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
 
       for (const TritonGemmConfig& conf : gemm_config_set.configs) {
         thread_pool->Schedule([&, fusion] {
-          StatusOr<bool> has_executable = compile(fusion, conf);
+          StatusOr<bool> has_executable = compile(
+              fusion, conf,
+              ShouldAllowFilteringKernelsSpillingRegisters(gemm_config_set));
           TF_CHECK_OK(has_executable.status())
               << "Failure occured when compiling fusion " << fusion->name()
               << " with config '" << conf.ToString()
@@ -599,7 +613,11 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
       const GemmConfigSet& gemm_config_set = key_value.second;
 
       for (const TritonGemmConfig& gemm_config : gemm_config_set.configs) {
-        TF_ASSIGN_OR_RETURN(bool has_executable, compile(fusion, gemm_config));
+        TF_ASSIGN_OR_RETURN(
+            bool has_executable,
+            compile(
+                fusion, gemm_config,
+                ShouldAllowFilteringKernelsSpillingRegisters(gemm_config_set)));
         log(has_executable);
       }
 
@@ -781,13 +799,14 @@ Status DumpAutotunedFusions(const AutotuneConfig& config,
                             AutotunerCompileUtil& util,
                             const AutotuneResult result,
                             const HloFusionInstruction* fusion, int fusion_id) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      util.ExtractModule([&](const DebugOptions& debug_opts) {
-                        return TritonGemmAutotuneExtractor(
-                            TritonGemmConfig::FromProto(result.triton()),
-                            config.GetExecutor()->GetDeviceDescription(),
-                            fusion, debug_opts);
-                      }));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> module,
+      util.ExtractModule([&](const DebugOptions& debug_opts) {
+        return TritonGemmAutotuneExtractor(
+            TritonGemmConfig::FromProto(result.triton()),
+            config.GetExecutor()->GetDeviceDescription(), fusion, debug_opts,
+            /*allow_filtering_kernels_spilling_registers=*/true);
+      }));
   module->set_name(std::string(fusion->name()));
   // Using the original module for its debug info and name in the first
   // parameter. It's better to include the name of both the original module
