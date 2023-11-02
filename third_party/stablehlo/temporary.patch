@@ -181,6 +181,18 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
  
  #-------------------------------------------------------------------------------
  # Directory setup
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/BUILD.bazel b/stablehlo/stablehlo/conversions/tosa/tests/BUILD.bazel
+--- stablehlo/stablehlo/conversions/tosa/tests/BUILD.bazel
++++ stablehlo/stablehlo/conversions/tosa/tests/BUILD.bazel
+@@ -29,7 +29,7 @@
+         "@LLVM_TOOLS_DIR@": package_path("@llvm-project//llvm:BUILD"),
+         "\"@STABLEHLO_TOOLS_DIR@\"": "os.path.join(os.environ['TEST_SRCDIR'], 'stablehlo')",
+         "\"@STABLEHLO_SOURCE_DIR@\"": "os.path.join(os.environ['TEST_SRCDIR'], 'stablehlo')",
+-    },
++     },
+     template = "lit.site.cfg.py.in",
+ )
+ 
 diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
 --- stablehlo/stablehlo/dialect/Base.cpp
 +++ stablehlo/stablehlo/dialect/Base.cpp
@@ -999,104 +1011,6 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
        parser.parseColon() || parser.parseType(reduceOpFnType) ||
        parser.parseOptionalLocationSpecifier(explicitLoc))
      return failure();
-diff --ruN a/stablehlo/stablehlo/tests/infer_stablehlo.mlir b/stablehlo/stablehlo/tests/infer_stablehlo.mlir
---- stablehlo/stablehlo/tests/infer_stablehlo.mlir
-+++ stablehlo/stablehlo/tests/infer_stablehlo.mlir
-@@ -732,7 +732,7 @@
- //===----------------------------------------------------------------------===//
- 
- #CSR = #sparse_tensor.encoding<{
--  lvlTypes = ["dense", "compressed"]
-+  map = (d0, d1) -> (d0 : dense, d1 : compressed)
- }>
- 
- // CHECK-LABEL: @tanh_sparsity
-@@ -746,7 +746,7 @@
- // -----
- 
- #CSR = #sparse_tensor.encoding<{
--  lvlTypes = ["dense", "compressed"]
-+  map = (d0, d1) -> (d0 : dense, d1 : compressed)
- }>
- 
- // CHECK-LABEL: @abs_sparsity
-@@ -760,7 +760,7 @@
- // -----
- 
- #CSR = #sparse_tensor.encoding<{
--  lvlTypes = ["dense", "compressed"]
-+  map = (d0, d1) -> (d0 : dense, d1 : compressed)
- }>
- 
- // CHECK-LABEL: @real_sparsity
-@@ -774,7 +774,7 @@
- // -----
- 
- #CSR = #sparse_tensor.encoding<{
--  lvlTypes = ["dense", "compressed"]
-+  map = (d0, d1) -> (d0 : dense, d1 : compressed)
- }>
- 
- // CHECK-LABEL: @imag_sparsity
-@@ -788,7 +788,7 @@
- // -----
- 
- #CSR = #sparse_tensor.encoding<{
--  lvlTypes = ["dense", "compressed"]
-+  map = (d0, d1) -> (d0 : dense, d1 : compressed)
- }>
- 
- // CHECK-LABEL: @complex_sparsity
-diff --ruN a/stablehlo/stablehlo/tests/legalize_stablehlo_to_vhlo_invalid.mlir b/stablehlo/stablehlo/tests/legalize_stablehlo_to_vhlo_invalid.mlir
---- stablehlo/stablehlo/tests/legalize_stablehlo_to_vhlo_invalid.mlir
-+++ stablehlo/stablehlo/tests/legalize_stablehlo_to_vhlo_invalid.mlir
-@@ -14,9 +14,9 @@
- // GH Issue: https://github.com/openxla/stablehlo/issues/907
- 
- // expected-error @+1 {{failed to legalize operation 'func.func' that was explicitly marked illegal}}
--func.func @type_sparsity(%arg0: tensor<16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<16xf32> {
--  // CHECK_DISABLED: "vhlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> !vhlo.tensor<tensor<16xf32>>
--  %0 = "stablehlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<16xf32>
-+func.func @type_sparsity(%arg0: tensor<16xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> tensor<16xf32> {
-+  // CHECK_DISABLED: "vhlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> !vhlo.tensor<tensor<16xf32>>
-+  %0 = "stablehlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> tensor<16xf32>
-   func.return %0 : tensor<16xf32>
- }
- // CHECK-DISABLED-LABEL: "type_sparsity"
-diff --ruN a/stablehlo/stablehlo/tests/ops_sparse.mlir b/stablehlo/stablehlo/tests/ops_sparse.mlir
---- stablehlo/stablehlo/tests/ops_sparse.mlir
-+++ stablehlo/stablehlo/tests/ops_sparse.mlir
-@@ -6,15 +6,15 @@
- // output types), dense or sparse ops are semantically equivalent.
- 
- #SV = #sparse_tensor.encoding<{
--  lvlTypes = ["compressed"]
-+  map = (d0) -> (d0 : compressed)
- }>
- 
- #CSR = #sparse_tensor.encoding<{
--  lvlTypes = ["dense", "compressed"]
-+  map = (d0, d1) -> (d0 : dense, d1 : compressed)
- }>
- 
- #DCSR = #sparse_tensor.encoding<{
--  lvlTypes = ["compressed", "compressed"]
-+  map = (d0, d1) -> (d0 : compressed, d1 : compressed)
- }>
- 
- //
-diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
---- stablehlo/stablehlo/tests/ops_stablehlo.mlir
-+++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
-@@ -5469,7 +5469,7 @@
- 
- 
- #SV = #sparse_tensor.encoding<{
--  lvlTypes = ["compressed"]
-+  map = (d0) -> (d0 : compressed)
- }>
- 
- func.func @is_compatible_sparse_mix_non_sparse(%arg0: tensor<1xf32>, %arg1: tensor<1xf32, #SV>) {
 diff --ruN a/stablehlo/stablehlo/tests/print_reduce.mlir b/stablehlo/stablehlo/tests/print_reduce.mlir
 --- stablehlo/stablehlo/tests/print_reduce.mlir
 +++ stablehlo/stablehlo/tests/print_reduce.mlir
