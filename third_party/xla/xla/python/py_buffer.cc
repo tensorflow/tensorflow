@@ -29,6 +29,7 @@ limitations under the License.
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/primitive_util.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
@@ -151,8 +152,10 @@ pybind11::dtype IfrtHelpers::python_dtype(ifrt::Array* ifrt_array) {
   if (arr != nullptr) {
     auto* pjrt_buffer = arr->pjrt_buffers().front().get();
     TF_RET_CHECK(!pjrt_buffer->IsTuple());
-    // On CPU, we can return the value in a zero-copy way.
-    if (pjrt_buffer->IsOnCpu()) {
+    // On CPU for non-int4 values, we can return the value in a zero-copy way.
+    // For int4 values, we must copy in order to unpack the array.
+    if (pjrt_buffer->IsOnCpu() &&
+        !primitive_util::Is4BitType(pjrt_buffer->element_type())) {
       TF_ASSIGN_OR_RETURN(
           const auto* shape,
           IfrtHelpers::xla_dynamic_shape(ifrt_array, dynamic_shape_holder));
@@ -203,7 +206,8 @@ pybind11::dtype IfrtHelpers::python_dtype(ifrt::Array* ifrt_array) {
   auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array);
   if (arr != nullptr) {
     auto* pjrt_buffer = arr->pjrt_buffers().front().get();
-    if (pjrt_buffer->IsOnCpu()) {
+    if (pjrt_buffer->IsOnCpu() &&
+        !primitive_util::Is4BitType(pjrt_buffer->element_type())) {
       return OkStatus();
     }
   }
