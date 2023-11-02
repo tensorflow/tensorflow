@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// Implementation of the pointer-to-implementation wrapper for the data-parallel
+// kernel abstraction. KernelBase just delegates to the internal
+// platform-specific implementation instance.
+
 #include "xla/stream_executor/kernel.h"
 
-#include <cstdint>
-#include <optional>
 #include <string>
 #include <utility>
 
@@ -29,20 +31,32 @@ limitations under the License.
 
 namespace stream_executor {
 
-std::optional<int64_t> KernelMetadata::registers_per_thread() const {
-  return registers_per_thread_;
-}
+bool KernelMetadata::registers_per_thread(int *registers_per_thread) const {
+  if (has_registers_per_thread_) {
+    *registers_per_thread = registers_per_thread_;
+    return true;
+  }
 
-std::optional<int64_t> KernelMetadata::shared_memory_bytes() const {
-  return shared_memory_bytes_;
+  return false;
 }
 
 void KernelMetadata::set_registers_per_thread(int registers_per_thread) {
   registers_per_thread_ = registers_per_thread;
+  has_registers_per_thread_ = true;
+}
+
+bool KernelMetadata::shared_memory_bytes(int *shared_memory_bytes) const {
+  if (has_shared_memory_bytes_) {
+    *shared_memory_bytes = shared_memory_bytes_;
+    return true;
+  }
+
+  return false;
 }
 
 void KernelMetadata::set_shared_memory_bytes(int shared_memory_bytes) {
   shared_memory_bytes_ = shared_memory_bytes;
+  has_shared_memory_bytes_ = true;
 }
 
 KernelBase::KernelBase(KernelBase &&from)

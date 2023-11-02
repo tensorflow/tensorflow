@@ -73,7 +73,6 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <memory>
-#include <optional>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -82,6 +81,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/platform/port.h"
 
 namespace stream_executor {
 
@@ -93,10 +93,6 @@ class StreamExecutor;
 namespace internal {
 class KernelInterface;
 }  // namespace internal
-
-//===----------------------------------------------------------------------===//
-// Kernel cache config
-//===----------------------------------------------------------------------===//
 
 // This enum represents potential configurations of L1/shared memory when
 // running a particular kernel. These values represent user preference, and
@@ -115,10 +111,6 @@ enum class KernelCacheConfig {
   kPreferEqual,
 };
 
-//===----------------------------------------------------------------------===//
-// Kernel metadata
-//===----------------------------------------------------------------------===//
-
 // KernelMetadata holds runtime-queryable attributes of a loaded kernel, such as
 // registers allocated, shared memory used, etc.
 // Not all platforms support reporting of all information, so each accessor
@@ -126,27 +118,33 @@ enum class KernelCacheConfig {
 // platform.
 class KernelMetadata {
  public:
-  KernelMetadata() = default;
+  KernelMetadata()
+      : has_registers_per_thread_(false), has_shared_memory_bytes_(false) {}
 
   // Returns the number of registers used per thread executing this kernel.
-  std::optional<int64_t> registers_per_thread() const;
+  bool registers_per_thread(int *registers_per_thread) const;
+
+  // Sets the number of registers used per thread executing this kernel.
+  void set_registers_per_thread(int registers_per_thread);
 
   // Returns the amount of [static] shared memory used per block executing this
   // kernel. Note that dynamic shared memory allocations are not (and can not)
   // be reported here (since they're not specified until kernel launch time).
-  std::optional<int64_t> shared_memory_bytes() const;
+  bool shared_memory_bytes(int *shared_memory_bytes) const;
 
-  void set_registers_per_thread(int registers_per_thread);
+  // Sets the amount of [static] shared memory used per block executing this
+  // kernel.
   void set_shared_memory_bytes(int shared_memory_bytes);
 
  private:
-  std::optional<int64_t> registers_per_thread_;
-  std::optional<int64_t> shared_memory_bytes_;
-};
+  // Holds the value returned by registers_per_thread above.
+  bool has_registers_per_thread_;
+  int registers_per_thread_;
 
-//===----------------------------------------------------------------------===//
-// Kernel
-//===----------------------------------------------------------------------===//
+  // Holds the value returned by shared_memory_bytes above.
+  bool has_shared_memory_bytes_;
+  int64_t shared_memory_bytes_;
+};
 
 // A data-parallel kernel (code entity) for launching via the StreamExecutor,
 // analogous to a void* device function pointer. See TypedKernel for the typed

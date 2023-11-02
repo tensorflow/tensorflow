@@ -444,10 +444,13 @@ void GpuExecutor::VlogOccupancyInfo(const KernelBase& kernel,
   VLOG(2) << "Thread dimensions (" << thread_dims.x << ", " << thread_dims.y
           << ", " << thread_dims.z << ")";
 
-  auto regs_per_thread = kernel.metadata().registers_per_thread();
-  auto smem_per_block = kernel.metadata().shared_memory_bytes();
+  int regs_per_thread;
+  if (!kernel.metadata().registers_per_thread(&regs_per_thread)) {
+    return;
+  }
 
-  if (!regs_per_thread && !smem_per_block) {
+  int smem_per_block;
+  if (!kernel.metadata().shared_memory_bytes(&smem_per_block)) {
     return;
   }
 
@@ -457,13 +460,13 @@ void GpuExecutor::VlogOccupancyInfo(const KernelBase& kernel,
   const GpuKernel* cuda_kernel = AsGpuKernel(&kernel);
   CUfunction cufunc = cuda_kernel->AsGpuFunctionHandle();
 
-  int blocks_per_sm = CalculateOccupancy(device_description, *regs_per_thread,
-                                         *smem_per_block, thread_dims, cufunc);
+  int blocks_per_sm = CalculateOccupancy(device_description, regs_per_thread,
+                                         smem_per_block, thread_dims, cufunc);
   VLOG(2) << "Resident blocks per SM is " << blocks_per_sm;
 
   int suggested_threads =
-      CompareOccupancy(&blocks_per_sm, device_description, *regs_per_thread,
-                       *smem_per_block, thread_dims, cufunc);
+      CompareOccupancy(&blocks_per_sm, device_description, regs_per_thread,
+                       smem_per_block, thread_dims, cufunc);
   if (suggested_threads != 0) {
     VLOG(2) << "The cuda occupancy calculator recommends using "
             << suggested_threads

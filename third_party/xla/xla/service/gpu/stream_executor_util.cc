@@ -342,7 +342,8 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
 Status ExecuteKernelOnStream(const se::KernelBase& kernel,
                              absl::Span<const se::DeviceMemoryBase> args,
                              const LaunchDimensions& dims, se::Stream* stream) {
-  int shared_mem_bytes = kernel.metadata().shared_memory_bytes().value_or(0);
+  int shared_mem_bytes = 0;
+  kernel.metadata().shared_memory_bytes(&shared_mem_bytes);
   static constexpr int kKernelArgsLimit = 1024;
   std::unique_ptr<se::KernelArgsArrayBase> kernel_args;
   // The KernelArgsArray structure requires at a minimum 48 * args.size()
