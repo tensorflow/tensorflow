@@ -139,6 +139,18 @@ struct AutoShardingOption {
   bool only_allow_divisible_input_output = true;
   bool only_allow_divisible_intermediate = false;
 
+  // If true, strictly limit the following iterations to use the same number of
+  // shards for sharded tensor dimensions; if false, the following iterations
+  // can choose different number of shards for sharded tensor dimensions.
+  // Enabling it can hurt the performance of dot ops, but can make the search
+  // space more scalable. Therefore leaving it as an option.
+  bool nd_sharding_iteratively_strict_search_space = false;
+
+  // Whether or not to generate replicated strategies for dot/conv
+  // ops. Generating these seems to be beneficial for LLM serving models, but
+  // can increase the search space, so this feature is exposed as an option.
+  bool allow_replicated_strategy_for_dot_and_conv = true;
+
   // Device mesh shape.
   std::vector<int64_t> device_mesh_shape;
   // Device IDs in the mesh.
@@ -162,11 +174,6 @@ struct AutoShardingOption {
 
   // Static estimate for iteration count of a while loop, used in the cost model
   int64_t loop_iteration_count_estimate = 100;
-
-  // Whether or not to generate replicated strategies for dot/conv
-  // ops. Generating these seems to be beneficial for LLM serving models, but
-  // can increase the search space, so this feature is exposed as an option.
-  bool allow_replicated_strategy_for_dot_and_conv = true;
 
   // Allows the conversion of aliases to followers if their pairwise strategy
   // compatibilities are embodied by the identity matrix (which makes for a
