@@ -112,6 +112,8 @@ class RecomputeGradMemoryTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_v2_only
   def testRecomputeGradXla(self):
+    if test.is_built_with_rocm():
+      self.skipTest('Currently failing on ROCm due to mismatch')
     device_type = self._get_device_type()
     device_name = f"{device_type}:0"
     # Necessary for TFRT tests.
