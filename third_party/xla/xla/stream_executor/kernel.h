@@ -81,7 +81,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/kernel_cache_config.h"
 #include "xla/stream_executor/platform/port.h"
 
 namespace stream_executor {
@@ -94,6 +93,23 @@ class StreamExecutor;
 namespace internal {
 class KernelInterface;
 }  // namespace internal
+
+// This enum represents potential configurations of L1/shared memory when
+// running a particular kernel. These values represent user preference, and
+// the runtime is not required to respect these choices.
+enum class KernelCacheConfig {
+  // Indicates no preference for device L1/shared memory configuration.
+  kNoPreference,
+
+  // Indicates a preference for more shared memory than L1 cache.
+  kPreferShared,
+
+  // Indicates a preference for more L1 cache than shared memory.
+  kPreferL1,
+
+  // Indicates a preference for equal amounts of L1 cache and shared memory.
+  kPreferEqual,
+};
 
 // KernelMetadata holds runtime-queryable attributes of a loaded kernel, such as
 // registers allocated, shared memory used, etc.

@@ -65,7 +65,6 @@ filegroup(
         "event.h",
         "executor_cache.h",
         "kernel.h",
-        "kernel_cache_config.h",
         "kernel_spec.h",
         "launch_dim.h",
         "module_spec.h",
