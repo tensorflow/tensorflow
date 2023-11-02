@@ -102,6 +102,7 @@ cc_library(
     deps = [
         ":saved_model_util",
         "//tensorflow/cc/saved_model:reader",
+        "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",

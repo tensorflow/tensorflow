@@ -131,11 +131,11 @@ absl::StatusOr<tfrt::BefBuffer> LoadBefAndMlir(
     const std::string& saved_model_dir,
     tfrt_stub::FallbackState* fallback_state);
 
-absl::Status DeserializeAoTMlirModule(
+absl::Status DeserializeAotMlirModule(
     absl::string_view saved_model_dir, mlir::MLIRContext* context,
     mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
 
-void RegisterTFRTDialectsForAoT(mlir::DialectRegistry& registry);
+void RegisterTfrtDialectsForAot(mlir::DialectRegistry& registry);
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

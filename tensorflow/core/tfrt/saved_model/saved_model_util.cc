@@ -263,7 +263,7 @@ absl::StatusOr<tfrt::BefBuffer> LoadBefAndMlir(
   return bef;
 }
 
-absl::Status DeserializeAoTMlirModule(
+absl::Status DeserializeAotMlirModule(
     absl::string_view saved_model_dir, mlir::MLIRContext* context,
     mlir::OwningOpRef<mlir::ModuleOp>* mlir_module) {
   const std::string aot_package_directory = GetAotPackagePath(saved_model_dir);
@@ -276,7 +276,7 @@ absl::Status DeserializeAoTMlirModule(
   return absl::OkStatus();
 }
 
-void RegisterTFRTDialectsForAoT(mlir::DialectRegistry& registry) {
+void RegisterTfrtDialectsForAot(mlir::DialectRegistry& registry) {
   tfrt::RegisterTFRTDialects(registry);
   registry.insert<tfrt::fallback::FallbackDialect>();
   registry.insert<tfrt::fallback_async::FallbackAsyncDialect>();

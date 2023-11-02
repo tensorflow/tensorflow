@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/reader.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
@@ -448,11 +449,12 @@ SavedModelImpl::LoadSavedModel(Options options,
   options.graph_execution_options.compile_options.saved_model_dir =
       saved_model_dir;
 
+  const bool aot_exist = AotPackageExists(saved_model_dir);
   // Register TFRT dialects
   mlir::DialectRegistry registry;
-  if (AotPackageExists(saved_model_dir)) {
+  if (aot_exist) {
     LOG(INFO) << "Found AoT package. Register required dialects.";
-    RegisterTFRTDialectsForAoT(registry);
+    RegisterTfrtDialectsForAot(registry);
   }
   RegisterMlirDialect(registry);
   mlir::MLIRContext context(registry);
@@ -489,11 +491,11 @@ SavedModelImpl::LoadSavedModel(Options options,
   }
 
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module;
-  if (AotPackageExists(saved_model_dir)) {
+  if (aot_exist) {
     LOG(INFO) << "Found AoT package. Load and deserialize MLIR module.";
 
     TF_RETURN_IF_ERROR(
-        DeserializeAoTMlirModule(saved_model_dir, &context, &mlir_module));
+        DeserializeAotMlirModule(saved_model_dir, &context, &mlir_module));
   } else {
     ASSIGN_OR_RETURN_IN_IMPORT(
         mlir_module,
@@ -553,7 +555,7 @@ SavedModelImpl::LoadSavedModel(Options options,
 
   mlrt::bc::Buffer bytecode;
   tfrt::BefBuffer bef;
-  if (AotPackageExists(saved_model_dir)) {
+  if (aot_exist) {
     LOG(INFO) << "Found AoT package. Load and deserialize BEF.";
     if (options.graph_execution_options.enable_mlrt) {
       // TODO(b/303504882): Add deserialization for mlrt path
@@ -634,6 +636,19 @@ SavedModelImpl::LoadSavedModel(Options options,
       ->Set(absl::ToInt64Seconds(init_duration));
   LOG(INFO) << "TFRT finished initializing savedmodel. Took "
             << absl::ToInt64Milliseconds(init_duration) << " ms.";
+
+  if (aot_exist) {
+    // Set persistent cache directory so that the binaries can be loaded from
+    // the AOT directory.
+    const std::string persistent_cache_directory =
+        GetAotPackagePath(saved_model_dir);
+    tensorflow::GetMarkForCompilationPassFlags()
+        ->tf_xla_persistent_cache_directory = persistent_cache_directory;
+    tensorflow::GetMarkForCompilationPassFlags()
+        ->tf_xla_persistent_cache_read_only = true;
+    LOG(INFO) << "Set persistent cache directory to "
+              << persistent_cache_directory << ", and set it to read-only.";
+  }
 
   // Finally, create the saved model.
   return {std::make_unique<SavedModelImpl>(
