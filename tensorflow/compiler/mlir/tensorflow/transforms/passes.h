@@ -463,11 +463,6 @@ CreateAnnotateParameterReplicationPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateMarkOpsForOutsideCompilationPass();
 
-// Creates a pass that extracts outside compilation (Host ops inside device
-// cluster) at head/tail of Device cluster to run before/after XLA computation.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateExtractHeadTailOutsideCompilationPass();
-
 // Creates a pass that extract outside compilation (Host ops inside cevice
 // cluster) ops to a separate parallel_execute region to run on CPU.
 std::unique_ptr<OperationPass<ModuleOp>> CreateExtractOutsideCompilationPass();
@@ -711,7 +706,6 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_TPUCOLOCATECOMPOSITERESOURCEOPSPASS
 #define GEN_PASS_DECL_TPUDEVICEPROPAGATIONPASS
 #define GEN_PASS_DECL_TPUDYNAMICLAYOUTPASS
-#define GEN_PASS_DECL_TPUEXTRACTHEADTAILOUTSIDECOMPILATIONPASS
 #define GEN_PASS_DECL_TPUEXTRACTOUTSIDECOMPILATIONPASS
 #define GEN_PASS_DECL_TPUHOSTCOMPUTATIONEXPANSIONPASS
 #define GEN_PASS_DECL_TPUIDENTITYPRUNINGPASS

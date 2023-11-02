@@ -1956,48 +1956,6 @@ def TPUCleanupClusterAttributesPass : Pass<"tf-tpu-cleanup-cluster-attributes", 
   let constructor = "TFTPU::CreateTPUClusterCleanupAttributesPass()";
 }
 
-def ExtractHeadTailOutsideCompilationPass : Pass<"tf-extract-head-tail-outside-compilation", "ModuleOp"> {
-  let summary = "Extracts head or tail outside compilation to separate host launches before/after device cluster.";
-
-  let description = [{
-    This pass extracts a CPU computation cluster with `_xla_outside_compilation`
-    annotation from the head or tail of a Device cluster.
-
-    For example:
-
-    ```mlir
-      %cluster = "tf_device.cluster"() ( {
-        %a = "tf.A"(%arg0) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> tensor<i32>
-        %b = "tf.B"(%a) : (tensor<i32>) -> tensor<i32>
-        %c = "tf.C"(%b) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> tensor<i32>
-        tf_device.return %c : tensor<i32>
-      }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> tensor<i32>
-      return %cluster : tensor<i32>
-    ```
-
-    becomes:
-
-    ```mlir
-    %0 = "tf_device.launch"() ( {
-      %3 = "tf.A"(%arg0) : (tensor<i32>) -> tensor<i32>
-      tf_device.return %3 : tensor<i32>
-    }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> tensor<i32>
-    %1 = "tf_device.cluster"() ( {
-      %3 = "tf.B"(%0) : (tensor<i32>) -> tensor<i32>
-      tf_device.return %3 : tensor<i32>
-    }) {device_assignment = [], num_cores_per_replica = 1 : i64, padding_map = [], step_marker_location = "", topology = ""} : () -> tensor<i32>
-    %2 = "tf_device.launch"() ( {
-      %3 = "tf.C"(%1) : (tensor<i32>) -> tensor<i32>
-      tf_device.return %3 : tensor<i32>
-    }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> tensor<i32>
-    return %2 : tensor<i32>
-
-    ```
-  }];
-
-  let constructor = "TFDevice::CreateExtractHeadTailOutsideCompilationPass()";
-}
-
 def TPUSpaceToDepthPass : Pass<"tf-tpu-space-to-depth-pass", "ModuleOp"> {
   let summary = "Applies automatic space to depth transform for the first or frontier convolutions consume host inputs on TPU.";
 

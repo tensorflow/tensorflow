@@ -144,7 +144,8 @@ void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
   pm.addPass(mlir::TFDevice::CreateHostLaunchToOutsideCompiledPass());
 
   pm.addPass(mlir::TFDevice::CreateMarkOpsForOutsideCompilationPass());
-  pm.addPass(mlir::TFDevice::CreateExtractHeadTailOutsideCompilationPass());
+  pm.addPass(tensorflow::tf2xla::internal::
+                 CreateExtractHeadTailOutsideCompilationPass());
   pm.addPass(mlir::TFDevice::CreateExtractOutsideCompilationPass());
   pm.addNestedPass<FuncOp>(
       mlir::TFDevice::CreateVerifyNoOutsideCompilationMarkersPass());
@@ -223,7 +224,8 @@ void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
   if (tensorflow::GetMlirCommonFlags()
           ->tf_mlir_enable_generic_outside_compilation) {
     pm.addPass(mlir::TFDevice::CreateMarkOpsForOutsideCompilationPass());
-    pm.addPass(mlir::TFDevice::CreateExtractHeadTailOutsideCompilationPass());
+    pm.addPass(tensorflow::tf2xla::internal::
+                   CreateExtractHeadTailOutsideCompilationPass());
     pm.addPass(mlir::TFDevice::CreateExtractOutsideCompilationPass());
   }
   // Outline clusters into cluster functions.

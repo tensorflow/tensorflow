@@ -32,8 +32,14 @@ CreateVerifyClusteringPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateTPUClusterFormationPass(bool strict_clusters = false);
 
+// Creates a pass that extracts outside compilation (Host ops inside device
+// cluster) at head/tail of Device cluster to run before/after XLA computation.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateExtractHeadTailOutsideCompilationPass();
+
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_TPUCLUSTERFORMATIONPASS
+#define GEN_PASS_DECL_TPUEXTRACTHEADTAILOUTSIDECOMPILATIONPASS
 #define GEN_PASS_DECL_VERIFYCLUSTERINGPASS
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
 
