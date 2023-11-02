@@ -70,7 +70,8 @@ void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
   // preserved and the sequencing rewrite will trigger.
   pm.addPass(mlir::TFDevice::CreateEmbeddingPipeliningPass());
   pm.addPass(mlir::TFDevice::CreateEmbeddingSequencingPass());
-  pm.addPass(mlir::TFTPU::CreateTPUClusterFormationPass(strict_clusters));
+  pm.addPass(tensorflow::tf2xla::internal::CreateTPUClusterFormationPass(
+      strict_clusters));
   // CreateEmbeddingPipeliningPass may have created more functions, but
   // TPUClusterCleanup and OutsideCompiledToHostLaunch need every function to be
   // only called from one cluster. Here, we choose to fix the all-funcs-one-use

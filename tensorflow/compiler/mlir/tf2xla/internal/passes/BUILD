@@ -7,7 +7,9 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
+        "//learning/pathways/serving/transforms:__pkg__",
         "//tensorflow/compiler/mlir:__pkg__",
+        "//tensorflow/compiler/mlir/tensorflow:__pkg__",
         "//tensorflow/compiler/mlir/tf2xla/internal:__subpackages__",
     ],
     licenses = ["notice"],
@@ -26,9 +28,15 @@ cc_library(
     ],
     deps = [
         ":clustering_passes_inc_gen",
+        ":tpu_cluster_formation",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
+        "//tensorflow/compiler/mlir/tensorflow:string_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
+        "//tensorflow/compiler/mlir/tensorflow:tpu_rewrite_device_util",
         "//tensorflow/core:framework",
         "//tensorflow/core/transforms/toposort:Pass",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -91,6 +99,33 @@ filegroup(
     data = [
         "//tensorflow/compiler/mlir:tf-opt",
         "@llvm-project//llvm:FileCheck",
+    ],
+)
+
+cc_library(
+    name = "tpu_cluster_formation",
+    srcs = ["tpu_cluster_formation.cc"],
+    textual_hdrs = [
+        "clustering_passes.h.inc",
+    ],
+    deps = [
+        ":clustering_passes_inc_gen",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
+        "//tensorflow/compiler/mlir/tensorflow:string_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
+        "//tensorflow/compiler/mlir/tensorflow:tpu_rewrite_device_util",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_pass_inc_gen",
+        "//tensorflow/core:framework",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )
 

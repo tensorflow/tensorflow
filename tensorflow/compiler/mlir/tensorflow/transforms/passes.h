@@ -530,11 +530,6 @@ CreateConvertToLegacyCompileAndReplicateAttributesPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUPartitionedOpConversionPass();
 
-// Creates a pass that forms clusters from operations of the same
-// `_replication_info` attribute.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass(
-    bool strict_clusters = false);
-
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUValidateInputsPass();
 
 // Creates a pass that cleans up `_replication_info` attribute on operations

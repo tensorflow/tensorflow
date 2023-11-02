@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace tensorflow {
@@ -26,7 +27,13 @@ namespace internal {
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateVerifyClusteringPass();
 
+// Creates a pass that forms clusters from operations of the same
+// `_replication_info` attribute.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateTPUClusterFormationPass(bool strict_clusters = false);
+
 #define GEN_PASS_REGISTRATION
+#define GEN_PASS_DECL_TPUCLUSTERFORMATIONPASS
 #define GEN_PASS_DECL_VERIFYCLUSTERINGPASS
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
 

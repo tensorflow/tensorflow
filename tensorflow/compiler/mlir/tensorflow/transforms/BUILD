@@ -577,7 +577,6 @@ cc_library(
         ":tf_pass_inc_gen",
         ":tf_savedmodel_pass_inc_gen",
         ":tfe_legalize_tfg",
-        ":tpu_cluster_formation",
         ":unroll_batch_matmul_pass",
         ":verify_no_outside_compilation_markers_pass",
         ":xla_cluster_formation",
@@ -677,31 +676,6 @@ cc_library(
         "@stablehlo//:stablehlo_portable_api",
         "@stablehlo//:stablehlo_serialization",
         "@stablehlo//:vhlo_ops",
-    ],
-)
-
-cc_library(
-    name = "tpu_cluster_formation",
-    srcs = ["tpu_cluster_formation.cc"],
-    textual_hdrs = [
-        "tf_passes.h.inc",
-    ],
-    deps = [
-        ":tf_pass_inc_gen",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
-        "//tensorflow/compiler/mlir/tensorflow:string_util",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
-        "//tensorflow/compiler/mlir/tensorflow:tpu_rewrite_device_util",
-        "//tensorflow/core:framework",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
     ],
 )
 
