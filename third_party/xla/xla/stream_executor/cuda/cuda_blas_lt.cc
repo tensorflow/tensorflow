@@ -191,7 +191,8 @@ cudaDataType_t BlasLt::MatrixLayout::type() const {
 /*static*/ tsl::StatusOr<BlasLt::MatmulDesc> BlasLt::MatmulDesc::Create(
     blas::ComputationType compute_type, blas::DataType scale_type,
     blas::Transpose trans_a, blas::Transpose trans_b,
-    gpu::BlasLt::Epilogue epilogue, PointerMode pointer_mode) {
+    gpu::BlasLt::Epilogue epilogue, bool enable_fast_accum,
+    PointerMode pointer_mode) {
   VLOG(2) << "MatmulDesc::Create: compute_type: " << (int)compute_type
           << " scale:" << (int)scale_type << " trans a/b: " << (int)trans_a
           << "," << (int)trans_b << " epilogue:" << (int)epilogue
@@ -210,6 +211,8 @@ cudaDataType_t BlasLt::MatrixLayout::type() const {
                              AsCublasOperation(trans_b)));
   TF_ASSIGN_OR_RETURN(cublasLtEpilogue_t epi, AsCublasLtEpilogue(epilogue));
   TF_RETURN_IF_ERROR(SetAttr(cu_desc, CUBLASLT_MATMUL_DESC_EPILOGUE, epi));
+  TF_RETURN_IF_ERROR(SetAttr(cu_desc, CUBLASLT_MATMUL_DESC_FAST_ACCUM,
+                             static_cast<int8_t>(enable_fast_accum)));
   return std::move(desc);
 }
 
@@ -315,11 +318,17 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg,
                                           cfg.compute_precision));
   }
 
+  // FP8 matmuls have a fast accumulation mode that is less precise than the
+  // default accumulation mode. Use the fast accumulation mode if the compute
+  // precision is DEFAULT.
+  bool enable_fast_accum = (xla::primitive_util::IsF8Type(lhs_layout.dtype) ||
+                            xla::primitive_util::IsF8Type(rhs_layout.dtype)) &&
+                           cfg.compute_precision == 0;
   TF_ASSIGN_OR_RETURN(
       auto op_desc,
       MatmulDesc::Create(*compute_type,
                          gpu::GetScaleType(output_dtype, *compute_type),
-                         trans_a, trans_b, epilogue));
+                         trans_a, trans_b, epilogue, enable_fast_accum));
 
   TF_ASSIGN_OR_RETURN(auto a_desc, MatrixLayout::Create(lhs_layout));
   TF_ASSIGN_OR_RETURN(auto b_desc, MatrixLayout::Create(rhs_layout));
