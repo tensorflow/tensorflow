@@ -20,7 +20,9 @@ limitations under the License.
 #include <queue>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -93,8 +95,11 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
   HloInstruction* fusion_param =
       user->fused_parameter(user->operand_index(operand));
   HloInstruction* output = user->fused_expression_root();
-  for (int64_t o : user_index) {
-    output = output->mutable_operand(o);
+  // We don't support nested tuples on GPU.
+  CHECK_LT(user_index.size(), 2);
+  if (output->opcode() == HloOpcode::kTuple) {
+    CHECK(!user_index.empty());
+    output = output->mutable_operand(user_index[0]);
   }
   const HloInstruction* non_bitcast_root = output;
   if (non_bitcast_root->opcode() == HloOpcode::kBitcast) {
@@ -109,6 +114,9 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
   while (!q.empty()) {
     HloInstruction* hlo_operand = q.front();
     q.pop();
+    if (hlo_operand->IsRoot()) {
+      ++reached_root;
+    }
     if (hlo_operand == output) {
       found_path_to_output = true;
       // We still need to process the users of 'hlo_operand'. There can be other
@@ -126,11 +134,15 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
       if (visited.insert(hlo).second) {
         q.push(hlo);
       }
-      // For scatter, we can share the buffer if the path goes through the first
-      // operand.
-      if (hlo == non_bitcast_root && hlo->opcode() == HloOpcode::kScatter &&
-          hlo->operand_index(hlo_operand) == 0) {
-        continue;
+      // For scatter, we can share the buffer if the path goes through one of
+      // the scatter inputs.
+      if (hlo == non_bitcast_root && hlo->opcode() == HloOpcode::kScatter) {
+        int64_t num_scatter_inputs =
+            hlo->shape().IsTuple() ? hlo->shape().tuple_shapes_size() : 1;
+        if (hlo->operand_index(hlo_operand) < num_scatter_inputs &&
+            absl::c_count(hlo->operands(), hlo_operand) == 1) {
+          continue;
+        }
       }
       if (non_bitcast_root->opcode() == HloOpcode::kDynamicUpdateSlice &&
           hlo->opcode() == HloOpcode::kDynamicSlice &&
@@ -174,12 +186,9 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
           return false;
         }
       }
-      if (hlo->IsRoot()) {
-        ++reached_root;
-      }
     }
   }
-  return found_path_to_output && (user_index.empty() || reached_root == 1);
+  return found_path_to_output && reached_root == 1;
 }
 
 std::optional<bool> CanShareBufferHint(const HloInstruction* user,
