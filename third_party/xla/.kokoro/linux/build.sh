@@ -85,9 +85,7 @@ docker exec xla bazel --bazelrc=$RC_FILE \
 
 # Print build time statistics, including critical path.
 docker exec xla bazel analyze-profile "/tf/pkg/profile.json.gz"
-# TODO(ddunleavy): enable once container has clang-tidy
-# docker exec xla git config --global --add safe.directory /tf/xla
-# docker exec xla bash -c "bazel aquery --output=jsonproto \"mnemonic(CppCompile, //xla/...)\" | PYTHONPATH=.. python3 build_tools/lint/clang_tidy.py --changed_lines_only"
+
 # Stop container
 docker stop xla
 
