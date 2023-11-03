@@ -28,33 +28,47 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/call_once.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/variant.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/transforms/hlo_constant_splitter.h"
 #include "xla/mlir/backends/gpu/transforms/passes.h"
 #include "xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
+#include "xla/mlir/runtime/transforms/compilation_pipeline_options.h"
+#include "xla/runtime/compiler.h"
+#include "xla/runtime/executable.h"
 #include "xla/runtime/jit_executable.h"
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/all_gather_broadcast_reorder.h"
@@ -69,11 +83,13 @@ limitations under the License.
 #include "xla/service/bitcast_dtypes_expander.h"
 #include "xla/service/broadcast_canonicalizer.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/collective_permute_decomposer.h"
 #include "xla/service/collective_pipeliner.h"
 #include "xla/service/collectives_schedule_linearizer.h"
 #include "xla/service/comparison_expander.h"
+#include "xla/service/compiler.h"
 #include "xla/service/conditional_canonicalizer.h"
 #include "xla/service/conditional_simplifier.h"
 #include "xla/service/convert_mover.h"
@@ -84,6 +100,7 @@ limitations under the License.
 #include "xla/service/dot_decomposer.h"
 #include "xla/service/dot_merger.h"
 #include "xla/service/dump.h"
+#include "xla/service/dynamic_dimension_inference.h"
 #include "xla/service/dynamic_dimension_simplifier.h"
 #include "xla/service/dynamic_index_splitter.h"
 #include "xla/service/dynamic_padder.h"
@@ -134,6 +151,7 @@ limitations under the License.
 #include "xla/service/gpu/reduction_layout_normalizer.h"
 #include "xla/service/gpu/reduction_splitter.h"
 #include "xla/service/gpu/reduction_utils.h"
+#include "xla/service/gpu/runtime/executable.h"
 #include "xla/service/gpu/runtime_intrinsics.h"
 #include "xla/service/gpu/scatter_slice_simplifier.h"
 #include "xla/service/gpu/softmax_rewriter_triton.h"
@@ -143,16 +161,20 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_computation_deduplicator.h"
 #include "xla/service/hlo_constant_folding.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_ordering.h"
 #include "xla/service/hlo_pass_fix.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/hlo_rematerialization.h"
 #include "xla/service/hlo_verifier.h"
+#include "xla/service/layout_assignment.h"
 #include "xla/service/layout_normalization.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/service/logical_buffer.h"
 #include "xla/service/logistic_expander.h"
 #include "xla/service/loop_schedule_linearizer.h"
 #include "xla/service/operand_upcaster.h"
@@ -167,6 +189,7 @@ limitations under the License.
 #include "xla/service/result_caster.h"
 #include "xla/service/rng_bit_generator_expander.h"
 #include "xla/service/rng_expander.h"
+#include "xla/service/scatter_expander.h"
 #include "xla/service/scatter_simplifier.h"
 #include "xla/service/sharding_propagation.h"
 #include "xla/service/sharding_remover.h"
@@ -187,7 +210,11 @@ limitations under the License.
 #include "xla/service/while_loop_simplifier.h"
 #include "xla/service/while_loop_trip_count_annotator.h"
 #include "xla/service/zero_sized_hlo_elimination.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -201,6 +228,7 @@ limitations under the License.
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/numbers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -229,6 +257,11 @@ StatusOr<AutotuneConfig> GetAutotuneConfig(
                      debug_options};
   return deviceless_config;
 }
+
+se::GpuComputeCapability GetGpuVersion(se::StreamExecutor* stream_exec) {
+  return stream_exec->GetDeviceDescription().gpu_compute_capability();
+}
+
 }  // end anonymous namespace
 
 StatusOr<std::unique_ptr<Executable>>
@@ -244,8 +277,6 @@ GpuXlaRuntimeAotCompilationResult::LoadExecutable(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProto(xla_runtime_executable.hlo_module_proto(),
                                  hlo_module_config));
-  auto gpu_compiler = tensorflow::down_cast<GpuCompiler*>(compiler);
-
   std::vector<GpuExecutable::ConstantInfo> constants;
   for (auto& cst : xla_runtime_gpu_executable_.constants()) {
     GpuExecutable::ConstantInfo constant = {
@@ -261,7 +292,7 @@ GpuXlaRuntimeAotCompilationResult::LoadExecutable(
       xla_runtime_gpu_executable_.entry_func_attrs(),
       GetDebugOptionsFromFlags(), xla_runtime_gpu_executable_.gpu_asm_text(),
       xla_runtime_gpu_executable_.gpu_binary(), std::move(constants),
-      gpu_compiler->GetGpuVersion(executor), executor);
+      GetGpuVersion(executor), executor);
 }
 
 GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
@@ -1066,15 +1097,43 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   return OkStatus();
 }
 
+// Get the target config for compilation. Returns std::nullopt if no deviceless
+// target config is specified: in this case, device is used.
+static StatusOr<std::optional<Compiler::TargetConfig>>
+GetDevicelessTargetConfig(const Compiler::CompileOptions& options,
+                          const DebugOptions& debug_opts) {
+  if (options.target_config.has_value()) {
+    return *options.target_config;
+  }
+  if (!debug_opts.xla_gpu_target_config_filename().empty()) {
+    std::string gpu_target_config_string;
+    TF_RETURN_IF_ERROR(tsl::ReadFileToString(
+        tsl::Env::Default(), debug_opts.xla_gpu_target_config_filename(),
+        &gpu_target_config_string));
+    stream_executor::GpuTargetConfigProto gpu_target_config_proto;
+    if (!tsl::protobuf::TextFormat::ParseFromString(gpu_target_config_string,
+                                                    &gpu_target_config_proto)) {
+      return FailedPrecondition("Failed to parse GpuTargetConfigProto");
+    }
+
+    return Compiler::TargetConfig{gpu_target_config_proto};
+  }
+  return std::nullopt;
+}
+
 StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
   TF_RETURN_IF_ERROR(
       LoadAutotuneResultsFromFile(module->config().debug_options()));
 
-  bool is_deviceless = options.target_config.has_value();
+  TF_ASSIGN_OR_RETURN(
+      std::optional<TargetConfig> forced_target_config,
+      GetDevicelessTargetConfig(options, module->config().debug_options()));
+
+  bool is_deviceless = forced_target_config.has_value();
   TargetConfig gpu_target_config =
-      is_deviceless ? *options.target_config : GetGpuTargetConfig(stream_exec);
+      is_deviceless ? *forced_target_config : TargetConfig{stream_exec};
   const std::optional<std::string> unoptimized_fingerprint =
       MaybeUploadUnoptimizedGpuSymbols(module.get(),
                                        gpu_target_config.ToProto());
@@ -1458,6 +1517,13 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
 StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
+  TF_ASSIGN_OR_RETURN(
+      std::optional<TargetConfig> forced_target_config,
+      GetDevicelessTargetConfig(options, module->config().debug_options()));
+  bool is_deviceless = forced_target_config.has_value();
+  TargetConfig gpu_target_config =
+      is_deviceless ? *forced_target_config : TargetConfig{stream_exec};
+
   if (!options.is_autotuning_compilation) {
     VLOG(1) << "Starting to compile HLO module " << module->name();
   }
@@ -1482,17 +1548,14 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     }
   }
 
-  TF_RET_CHECK(stream_exec != nullptr);
-
   llvm::LLVMContext llvm_context;
-
   const se::DeviceDescription& gpu_device_info =
-      stream_exec->GetDeviceDescription();
+      gpu_target_config.device_description;
 
   if (module->config().hlo_profiling_enabled() || VLOG_IS_ON(1)) {
     HloCostAnalysis::Options cost_analysis_options{ShapeSizeBytesFunction()};
     cost_analysis_options.set_bytes_per_second(
-        stream_exec->GetDeviceDescription().memory_bandwidth());
+        gpu_device_info.memory_bandwidth());
     GpuHloCostAnalysis cost_analysis(cost_analysis_options, &gpu_device_info);
     TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
     if (!options.is_autotuning_compilation) {
@@ -1512,12 +1575,15 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   TF_RETURN_IF_ERROR(
       RunPostSchedulingPipelines(module.get(), scheduler_mem_limit));
 
+  TF_ASSIGN_OR_RETURN(se::Platform * platform,
+                      se::MultiPlatformManager::PlatformWithId(PlatformId()));
+
   CompileModuleResults compile_module_results;
+
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       module.get(), &llvm_context, target_triple_, data_layout_,
-      stream_exec->platform()->Name(), stream_exec->platform()->id(),
-      gpu_device_info, GetCanShareBuffer(), BufferSizeBytesFunction(),
-      &compile_module_results, stream_exec));
+      platform->Name(), platform->id(), gpu_device_info, GetCanShareBuffer(),
+      BufferSizeBytesFunction(), &compile_module_results));
 
   if (user_pre_optimization_hook_) {
     user_pre_optimization_hook_(*compile_module_results.llvm_module);
@@ -1537,9 +1603,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   std::vector<uint8_t> binary;
   TF_ASSIGN_OR_RETURN(
       std::tie(asm_text, binary),
-      CompileToTargetBinary(
-          module->config(), std::move(compile_module_results.llvm_module),
-          GetGpuVersion(stream_exec), stream_exec, options, module.get()));
+      CompileToTargetBinary(module->config(),
+                            std::move(compile_module_results.llvm_module),
+                            gpu_device_info.gpu_compute_capability(),
+                            stream_exec, options, module.get()));
   RecordXlaDeviceBinarySize(binary.size());
 
   if (DumpingEnabledForHloModule(*module) &&
@@ -1591,7 +1658,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
               ? std::string()
               : std::move(asm_text),
           /*binary=*/std::move(binary),
-          /*gpu_version=*/GetGpuVersion(stream_exec),
+          /*gpu_version=*/gpu_device_info.gpu_compute_capability(),
           /*executable=*/std::move(compile_module_results.executable),
           /*entry_func_attrs=*/
           std::move(compile_module_results.entry_func_attrs),
@@ -1834,11 +1901,6 @@ Status GpuCompiler::RunPostSchedulingPipelines(
     TF_RETURN_IF_ERROR(pipeline.Run(module).status());
   }
   return OkStatus();
-}
-
-se::GpuComputeCapability GpuCompiler::GetGpuVersion(
-    se::StreamExecutor* stream_exec) {
-  return stream_exec->GetDeviceDescription().gpu_compute_capability();
 }
 
 Status GpuCompiler::LoadAutotuneResultsFromFile(

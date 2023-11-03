@@ -16,31 +16,40 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_COMPILER_H_
 #define XLA_SERVICE_GPU_GPU_COMPILER_H_
 
+#include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/types/span.h"
+#include "llvm/IR/Module.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/buffer_sharing.h"
 #include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_dataflow_analysis.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/llvm_compiler.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {
@@ -107,24 +116,15 @@ class GpuCompiler : public LLVMCompiler {
   using LLVMCompiler::Compile;
 
   // An attached device is passed in via stream_exec. We get GPU configuration
-  // from the attached device. GemmAlgorithmPicker and GpuConvAlgorithmPicker
-  // can run on the attached device. If you call this directly, follow it with
-  // RunBackend rather than Compile. To compile without an attached device,
-  // pass a nullptr stream_exec and set a TargetConfig in the CompileOptions,
-  // and then call CompileAheadOfTime. See service/xla_compile_main.cc for an
-  // example.
+  // from the attached device OR from the `options` struct (in which case the
+  // attached device is ignored during the compilation).
+  // If you call this directly, follow it with RunBackend rather than Compile.
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
 
   StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
       HloModule* hlo_module, se::StreamExecutor* stream_exec) override;
-
-  se::GpuComputeCapability GetGpuVersion(se::StreamExecutor* stream_exec);
-
-  TargetConfig GetGpuTargetConfig(se::StreamExecutor* stream_exec) {
-    return TargetConfig(stream_exec);
-  }
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,

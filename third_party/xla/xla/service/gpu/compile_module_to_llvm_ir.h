@@ -77,7 +77,7 @@ Status CompileModuleToLlvmIrImpl(
     const se::DeviceDescription& gpu_device_info,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
     const BufferValue::SizeFunction& buffer_size_bytes_function,
-    CompileModuleResults* results, se::StreamExecutor* stream_exec = nullptr);
+    CompileModuleResults* results);
 
 }  // namespace gpu
 }  // namespace xla

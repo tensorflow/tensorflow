@@ -2348,6 +2348,7 @@ xla_cc_test(
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/gpu:gpu_compiler",
         "//xla/stream_executor",
+        "//xla/stream_executor/cuda:cuda_platform_id",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test_main",
     ]),

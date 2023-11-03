@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/test_helpers.h"
@@ -36,7 +37,6 @@ namespace xla {
 namespace gpu {
 
 // Creating dummy data structure needed to initialize a GpuDummyCompiler
-PLATFORM_DEFINE_ID(kDummyTestId);
 constexpr char kDummyTriple[] = "dummy-triple";
 constexpr char kDummyLayout[] = "e";
 
@@ -44,7 +44,8 @@ constexpr char kDummyLayout[] = "e";
 // test only
 class GpuDummyCompiler : public GpuCompiler {
  public:
-  GpuDummyCompiler() : GpuCompiler(kDummyTestId, kDummyTriple, kDummyLayout) {}
+  GpuDummyCompiler()
+      : GpuCompiler(se::cuda::kCudaPlatformId, kDummyTriple, kDummyLayout) {}
 
   Status OptimizeHloConvolutionCanonicalization(
       HloModule* hlo_module, se::GpuComputeCapability gpu_version,

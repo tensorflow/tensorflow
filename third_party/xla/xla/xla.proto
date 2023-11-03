@@ -602,6 +602,11 @@ message DebugOptions {
   // CUDA.
   string xla_gpu_load_autotune_results_from = 223;
 
+  // Description of the target platform in GpuTargetConfigProto format; if
+  // provided, deviceless compilation is assumed, and the current device is
+  // ignored.
+  string xla_gpu_target_config_filename = 261;
+
   // Memory budget in GB per device for AutoSharding.
   int32 xla_gpu_auto_spmd_partitioning_memory_budget_gb = 224;
 
@@ -655,7 +660,7 @@ message DebugOptions {
   // Enable radix sort using CUB.
   bool xla_gpu_enable_cub_radix_sort = 259;
 
-  // Next id: 261
+  // Next id: 262
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

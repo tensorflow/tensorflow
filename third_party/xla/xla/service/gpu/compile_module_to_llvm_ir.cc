@@ -316,7 +316,7 @@ Status CompileModuleToLlvmIrImpl(
     const se::DeviceDescription& gpu_device_info,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
     const BufferValue::SizeFunction& buffer_size_bytes_function,
-    CompileModuleResults* results, se::StreamExecutor* stream_exec) {
+    CompileModuleResults* results) {
   results->llvm_module = std::make_unique<llvm::Module>("", *llvm_context);
   results->llvm_module->setTargetTriple(target_triple);
   results->llvm_module->setDataLayout(data_layout);

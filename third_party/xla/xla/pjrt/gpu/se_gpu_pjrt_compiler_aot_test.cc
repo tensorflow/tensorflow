@@ -119,8 +119,8 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileXlaAndLoad) {
   auto se_client = absl::WrapUnique(
       tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
   auto gpu_compiler = gpu::NVPTXCompiler();
-  Compiler::TargetConfig gpu_target_config = gpu_compiler.GetGpuTargetConfig(
-      se_client->client()->backend().default_stream_executor());
+  Compiler::TargetConfig gpu_target_config{
+      se_client->client()->backend().default_stream_executor()};
   StreamExecutorGpuCompiler compiler;
 
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation,
