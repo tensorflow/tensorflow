@@ -84,5 +84,17 @@ XLA_TEST_F(HloTestBase, Int4Output2d) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
+XLA_TEST_F(HloTestBase, TupleOutput) {
+  // Tests tuple output with an int4 array
+  const std::string hlo_text = R"(
+  HloModule TupleOutput
+  ENTRY main {
+    x = s4[2,2] parameter(0)
+    y = s8[2,2] convert(x)
+    ROOT t = (s4[2,2], s8[2,2]) tuple(x, y)
+  })";
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
+}
+
 }  // namespace
 }  // namespace xla
