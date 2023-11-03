@@ -64,15 +64,25 @@ def _get_decoders():
 
 
 def _map_structure(pyobj, coders):
-  # Iterate through the codecs in the reverse order they were registered in,
-  #   as the most specific codec should be checked first.
-  for can, do in reversed(coders):
-    if can(pyobj):
-      recursion_fn = functools.partial(_map_structure, coders=coders)
-      return do(pyobj, recursion_fn)
-  raise NotEncodableError(
-      f"No encoder for object {str(pyobj)} of type {type(pyobj)}.")
+    for can, do in reversed(coders):
+        if can(pyobj):
+            recursion_fn = functools.partial(_map_structure, coders=coders)
+            return do(pyobj, recursion_fn)
+    raise NotEncodableError(
+        f"No encoder for object {str(pyobj)} of type {type(pyobj)}.")
 
+# Define a custom type checker for custom types based on tf.experimental.ExtensionType
+def can_handle_extension_type(pyobj):
+    return isinstance(pyobj, tf.experimental.ExtensionType)
+
+# Define a function to handle custom types based on tf.experimental.ExtensionType
+def handle_extension_type(pyobj, recursion_fn):
+    # Modify this function to handle custom types as needed
+    # For example, you can add specific logic to handle custom types here
+    return pyobj
+
+# Register your custom type checker and handler
+tf.nest.register_structure_coder(tf.experimental.ExtensionType, can_handle_extension_type, handle_extension_type)
 
 @tf_export("__internal__.saved_model.encode_structure", v1=[])
 def encode_structure(nested_structure):
