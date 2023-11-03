@@ -44,7 +44,7 @@ cc_library(
 
 xla_test(
     name = "command_buffer_cmd_test",
-    srcs = ["command_buffer_cmd_test.cc"],
+    srcs = if_gpu_is_configured(["command_buffer_cmd_test.cc"]),
     backends = ["gpu"],
     deps = [
         ":command_buffer_cmd",
@@ -115,7 +115,7 @@ cc_library(
 
 xla_test(
     name = "command_buffer_thunk_test",
-    srcs = ["command_buffer_thunk_test.cc"],
+    srcs = if_gpu_is_configured(["command_buffer_thunk_test.cc"]),
     backends = ["gpu"],
     deps = [
         ":command_buffer_cmd",

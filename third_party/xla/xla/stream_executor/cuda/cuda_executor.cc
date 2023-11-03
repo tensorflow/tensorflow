@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
+#include "xla/stream_executor/gpu/gpu_runtime.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/platform.h"
@@ -186,6 +187,7 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     const char* cubin = spec.cuda_cubin_in_memory().bytes();
     TF_RETURN_IF_ERROR(LoadModuleFromCuBin(cubin, &module));
     kernel_to_gpu_binary_[kernel] = cubin;
+
   } else if (spec.has_cuda_ptx_in_memory()) {
     kernel_name = &spec.cuda_ptx_in_memory().kernel_name();
 
@@ -204,12 +206,30 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     absl::MutexLock lock{&in_memory_modules_mu_};
     TF_RETURN_IF_ERROR(LoadModuleFromPtx(ptx, &module));
     kernel_to_gpu_binary_[kernel] = ptx;
+
+  } else if (spec.has_in_process_symbol()) {
+    kernel_name = &spec.in_process_symbol().kernel_name();
+    void* symbol = spec.in_process_symbol().symbol();
+
+    VLOG(2) << "Resolve CUDA kernel " << *kernel_name
+            << " from symbol pointer: " << symbol;
+    TF_ASSIGN_OR_RETURN(
+        GpuFunctionHandle function,
+        GpuRuntime::GetFuncBySymbol(spec.in_process_symbol().symbol()));
+    *cuda_kernel->gpu_function_ptr() = function;
+
   } else {
     return tsl::errors::Internal("No method of loading CUDA kernel provided");
   }
-  VLOG(2) << "getting function " << *kernel_name << " from module " << module;
-  TF_RETURN_IF_ERROR(GpuDriver::GetModuleFunction(
-      context_, module, kernel_name->c_str(), cuda_kernel->gpu_function_ptr()));
+
+  // If we resolved kernel from a symbol pointer, there is no need to load it
+  // from a module, as CUDA runtime did that automatically for us.
+  if (!spec.has_in_process_symbol()) {
+    VLOG(2) << "getting function " << *kernel_name << " from module " << module;
+    TF_RETURN_IF_ERROR(
+        GpuDriver::GetModuleFunction(context_, module, kernel_name->c_str(),
+                                     cuda_kernel->gpu_function_ptr()));
+  }
 
   // We have to trust the kernel loader spec arity because there doesn't appear
   // to be a way to reflect on the number of expected arguments w/the CUDA API.
@@ -245,9 +265,11 @@ void GpuExecutor::UnloadKernel(const KernelBase* kernel) {
   absl::MutexLock lock{&in_memory_modules_mu_};
   auto gpu_binary_it = kernel_to_gpu_binary_.find(kernel);
   if (kernel_to_gpu_binary_.end() == gpu_binary_it) {
+    // We might never see kernel being explicitly loaded if it was resolved from
+    // in process symbol pointer (CUDA C++ device function pointer).
     VLOG(3) << "Kernel " << kernel << " : " << kernel->name()
             << " has never been loaded.";
-    return;  // We've never seen this kernel.
+    return;
   }
   VLOG(3) << "Kernel " << kernel << " : " << kernel->name()
           << " has loaded GPU code " << gpu_binary_it->second;

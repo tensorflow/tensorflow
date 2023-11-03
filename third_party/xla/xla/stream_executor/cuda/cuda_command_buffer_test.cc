@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
@@ -46,10 +47,10 @@ TEST(CudaCommandBufferTest, LaunchSingleKernel) {
   ASSERT_TRUE(stream.ok());
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
+  spec.AddInProcessSymbol(internal::GetAddI32CudaKernel(), "add");
 
   AddI32Kernel add(executor);
-  ASSERT_TRUE(executor->GetKernel(spec, &add).ok());
+  TF_ASSERT_OK(executor->GetKernel(spec, &add));
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
@@ -65,10 +66,10 @@ TEST(CudaCommandBufferTest, LaunchSingleKernel) {
 
   // Create a command buffer with a single kernel launch.
   auto cmd_buffer = CommandBuffer::Create(executor).value();
-  ASSERT_TRUE(cmd_buffer.Launch(add, ThreadDim(), BlockDim(4), a, b, c).ok());
-  ASSERT_TRUE(cmd_buffer.Finalize().ok());
+  TF_ASSERT_OK(cmd_buffer.Launch(add, ThreadDim(), BlockDim(4), a, b, c));
+  TF_ASSERT_OK(cmd_buffer.Finalize());
 
-  ASSERT_TRUE(executor->Submit(&stream, cmd_buffer).ok());
+  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
 
   // Copy `c` data back to host.
   std::vector<int32_t> dst(4, 42);
@@ -82,11 +83,11 @@ TEST(CudaCommandBufferTest, LaunchSingleKernel) {
   stream.ThenMemZero(&d, byte_length);
 
   // Update command buffer to write into `d` buffer.
-  ASSERT_TRUE(cmd_buffer.Update().ok());
-  ASSERT_TRUE(cmd_buffer.Launch(add, ThreadDim(), BlockDim(4), a, b, d).ok());
-  ASSERT_TRUE(cmd_buffer.Finalize().ok());
+  TF_ASSERT_OK(cmd_buffer.Update());
+  TF_ASSERT_OK(cmd_buffer.Launch(add, ThreadDim(), BlockDim(4), a, b, d));
+  TF_ASSERT_OK(cmd_buffer.Finalize());
 
-  ASSERT_TRUE(executor->Submit(&stream, cmd_buffer).ok());
+  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
 
   // Copy `d` data back to host.
   std::fill(dst.begin(), dst.end(), 42);
@@ -106,7 +107,7 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
   spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
 
   AddI32Kernel add(executor);
-  ASSERT_TRUE(executor->GetKernel(spec, &add).ok());
+  TF_ASSERT_OK(executor->GetKernel(spec, &add));
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
@@ -125,8 +126,8 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
     return stream->ThenLaunch(ThreadDim(), BlockDim(4), add, a, b, c);
   });
 
-  ASSERT_TRUE(cmd_buffer.ok());
-  ASSERT_TRUE(executor->Submit(&stream, *cmd_buffer).ok());
+  TF_ASSERT_OK(cmd_buffer.status());
+  TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
 
   // Copy data back to host.
   std::vector<int32_t> dst(4, 42);
@@ -148,7 +149,7 @@ TEST(CudaCommandBufferTest, LaunchNestedCommandBuffer) {
   spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
 
   AddI32Kernel add(executor);
-  ASSERT_TRUE(executor->GetKernel(spec, &add).ok());
+  TF_ASSERT_OK(executor->GetKernel(spec, &add));
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
@@ -163,15 +164,13 @@ TEST(CudaCommandBufferTest, LaunchNestedCommandBuffer) {
   stream.ThenMemZero(&c, byte_length);
 
   // Create a command buffer with a single kernel launch.
-  auto primary_cmd_buffer = CommandBuffer::Create(executor).value();
-  auto nested_cmd_buffer = CommandBuffer::Create(executor, nested).value();
-  ASSERT_TRUE(
-      nested_cmd_buffer.Launch(add, ThreadDim(), BlockDim(4), a, b, c).ok());
-  ASSERT_TRUE(
-      primary_cmd_buffer.AddNestedCommandBuffer(nested_cmd_buffer).ok());
-  ASSERT_TRUE(primary_cmd_buffer.Finalize().ok());
+  auto primary_cmd = CommandBuffer::Create(executor).value();
+  auto nested_cmd = CommandBuffer::Create(executor, nested).value();
+  TF_ASSERT_OK(nested_cmd.Launch(add, ThreadDim(), BlockDim(4), a, b, c));
+  TF_ASSERT_OK(primary_cmd.AddNestedCommandBuffer(nested_cmd));
+  TF_ASSERT_OK(primary_cmd.Finalize());
 
-  ASSERT_TRUE(executor->Submit(&stream, primary_cmd_buffer).ok());
+  TF_ASSERT_OK(executor->Submit(&stream, primary_cmd));
 
   // Copy `c` data back to host.
   std::vector<int32_t> dst(4, 42);
