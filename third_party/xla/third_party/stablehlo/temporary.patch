@@ -181,56 +181,25 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
  
  #-------------------------------------------------------------------------------
  # Directory setup
-diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/BUILD.bazel b/stablehlo/stablehlo/conversions/tosa/tests/BUILD.bazel
---- stablehlo/stablehlo/conversions/tosa/tests/BUILD.bazel
-+++ stablehlo/stablehlo/conversions/tosa/tests/BUILD.bazel
-@@ -29,7 +29,7 @@
-         "@LLVM_TOOLS_DIR@": package_path("@llvm-project//llvm:BUILD"),
-         "\"@STABLEHLO_TOOLS_DIR@\"": "os.path.join(os.environ['TEST_SRCDIR'], 'stablehlo')",
-         "\"@STABLEHLO_SOURCE_DIR@\"": "os.path.join(os.environ['TEST_SRCDIR'], 'stablehlo')",
--    },
-+     },
-     template = "lit.site.cfg.py.in",
- )
- 
 diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
 --- stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
 +++ stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
-@@ -17,7 +17,8 @@
- 
- // CHECK-LABEL: @iota_dimension_0
+@@ -19,6 +19,7 @@
  func.func @iota_dimension_0() -> tensor<4x8xf32> {
--  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<4xf32>}>
-+  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"()
-+  // CHECK-SAME{LITERAL}: <{value = dense<[[0.000000e+00], [1.000000e+00], [2.000000e+00], [3.000000e+00]]> : tensor<4x1xf32>}>
-   // CHECK-DAG: %[[VAR1:.*]] = tosa.tile %[[VAR0]] {multiples = array<i64: 1, 8>}
+   // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"()
+   // CHECK-SAME{LITERAL}: <{value = dense<[[0.000000e+00], [1.000000e+00], [2.000000e+00], [3.000000e+00]]> : tensor<4x1xf32>}>
++  // CHECK-DAG: %[[VAR1:.*]] = tosa.tile %[[VAR0]] {multiples = array<i64: 1, 8>}
    %0 = "stablehlo.iota"() {iota_dimension = 0 : i64} : () -> (tensor<4x8xf32>)
    return %0 : tensor<4x8xf32>
-@@ -25,7 +26,8 @@
- 
- // CHECK-LABEL: @iota_dimension_1
+ }
+@@ -27,6 +28,7 @@
  func.func @iota_dimension_1() -> tensor<4x8xi32> {
--  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<[0, 1, 2, 3, 4, 5, 6, 7]> : tensor<8xi32>}>
-+  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"()
-+  // CHECK-SAME{LITERAL}: <{value = dense<[[0, 1, 2, 3, 4, 5, 6, 7]]> : tensor<1x8xi32>}>
-   // CHECK-DAG: %[[VAR1:.*]] = tosa.tile %[[VAR0]] {multiples = array<i64: 4, 1>}
+   // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"()
+   // CHECK-SAME{LITERAL}: <{value = dense<[[0, 1, 2, 3, 4, 5, 6, 7]]> : tensor<1x8xi32>}>
++  // CHECK-DAG: %[[VAR1:.*]] = tosa.tile %[[VAR0]] {multiples = array<i64: 4, 1>}
    %0 = "stablehlo.iota"() {iota_dimension = 1 : i64} : () -> (tensor<4x8xi32>)
    return %0 : tensor<4x8xi32>
-diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
---- stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
-+++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
-@@ -213,8 +213,9 @@
-       }
-     }
- 
--    RankedTensorType constType =
--        RankedTensorType::get(iotaArrayLength, elementType);
-+    llvm::SmallVector<int64_t, 4> constShape(resultShape.size(), 1);
-+    constShape[iotaDimension] = resultShape[iotaDimension];
-+    RankedTensorType constType = RankedTensorType::get(constShape, elementType);
-     auto constOp = rewriter.create<tosa::ConstOp>(
-         op.getLoc(), constType, DenseElementsAttr::get(constType, constValues));
- 
+ }
 diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
 --- stablehlo/stablehlo/dialect/Base.cpp
 +++ stablehlo/stablehlo/dialect/Base.cpp
