@@ -47,6 +47,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":create_python_api",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:tf_export",
     ],
@@ -64,6 +65,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":doc_srcs",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python:no_contrib",
         "//tensorflow/python/platform:client_testlib",
     ],
@@ -85,6 +87,7 @@ py_strict_test(
         "no_pip",
     ],
     deps = [
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/dtensor/python:dtensor",
         "//tensorflow/lite/python:analyzer",
         "//tensorflow/lite/python:lite",

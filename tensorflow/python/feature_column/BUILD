@@ -299,6 +299,7 @@ py_strict_test(
     deps = [
         ":feature_column_v2",
         ":sequence_feature_column",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/ops:parsing_ops",
         "//tensorflow/python/platform:client_testlib",

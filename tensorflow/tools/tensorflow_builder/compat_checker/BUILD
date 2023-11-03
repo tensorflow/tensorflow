@@ -32,6 +32,7 @@ py_strict_test(
     tags = ["no_pip"],
     deps = [
         ":compat_checker",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/platform:test",
     ],
 )

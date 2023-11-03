@@ -61,6 +61,7 @@ py_strict_test(
     visibility = ["//visibility:private"],
     deps = [
         ":saved_model_utils",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/lib/io:file_io",
@@ -135,6 +136,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":freeze_graph_lib",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:dtypes",
@@ -219,6 +221,7 @@ py_strict_test(
     tags = ["notap"],
     deps = [
         ":strip_unused_lib",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:constant_op",
@@ -279,6 +282,8 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":optimize_for_inference_lib",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
+        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -292,7 +297,6 @@ py_strict_test(
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:nn_ops_gen",
         "//tensorflow/python/platform:client_testlib",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -339,6 +343,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":selective_registration_header_lib",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",
@@ -426,6 +431,8 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":saved_model_cli_lib",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
+        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/debug/wrappers:local_cli_wrapper",
         "//tensorflow/python/eager:def_function",
@@ -440,7 +447,6 @@ py_strict_test(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/trackable:autotrackable",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )
