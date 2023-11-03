@@ -1526,8 +1526,9 @@ cuda_py_strict_test(
     size = "small",
     srcs = ["config_vgpu_test.py"],
     python_version = "PY3",
-    shard_count = 10,  # use a large number to ensure no 2 tests run in the same process.
+    shard_count = 5,
     tags = [
+        "gpu",
         "multi_gpu",
         "no_pip",
     ],  # test_ops are not available in pip.
