@@ -110,13 +110,13 @@ static bool IsInBounds(Index<IndexType> index, RuntimeShape shape) {
 
 static ComputationType OpCodeToComputationType(int op_code) {
   switch (op_code) {
-    case kTfLiteBuiltinAdd:
+    case kTfLiteBuiltinStablehloAdd:
       return ComputationType::kAdd;
-    case kTfLiteBuiltinMul:
+    case kTfLiteBuiltinStablehloMultiply:
       return ComputationType::kMultiply;
-    case kTfLiteBuiltinMaximum:
+    case kTfLiteBuiltinStablehloMaximum:
       return ComputationType::kMaximum;
-    case kTfLiteBuiltinMinimum:
+    case kTfLiteBuiltinStablehloMinimum:
       return ComputationType::kMinimum;
     default:
       return ComputationType::kOther;

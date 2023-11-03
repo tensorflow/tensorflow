@@ -3795,6 +3795,18 @@ bool IsTFStyleBroadcast(DenseIntElementsAttr broadcast_dimensions,
           output_rank - input_rank);
 }
 
+// Returns true if the operation producing the provided result (`op_result`)
+// is within an op region of an operation of type `ParentType`.
+template <typename ParentType>
+bool IsWithinOpRegion(mlir::OpResult op_result) {
+  mlir::Operation* parent_op = op_result.getDefiningOp()->getParentOp();
+
+  if (llvm::dyn_cast<ParentType>(parent_op)) {
+    return true;
+  }
+  return false;
+}
+
 // Returns the intermediate shape that input tensor should be reshaped to during
 // legalization of BroadcastInDimOp.
 arith::ConstantOp ExpandedShape(PatternRewriter& rewriter, Value input,
