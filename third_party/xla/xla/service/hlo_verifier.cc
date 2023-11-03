@@ -2773,7 +2773,9 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         }
       }
     }
-    TF_RETURN_IF_ERROR(VerifyS4U4Usage(instruction));
+    if (opts_.verify_s4_u4_usage) {
+      TF_RETURN_IF_ERROR(VerifyS4U4Usage(instruction));
+    }
 
     return OkStatus();
   }

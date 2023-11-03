@@ -87,6 +87,11 @@ struct HloVerifierOpts {
     return std::move(*this);
   }
 
+  HloVerifierOpts&& WithVerifyS4U4Usage(bool verify) {
+    verify_s4_u4_usage = verify;
+    return std::move(*this);
+  }
+
   bool IsLayoutSensitive() const { return layout_sensitive; }
 
   bool AllowMixedPrecision() const { return allow_mixed_precision; }
@@ -126,6 +131,9 @@ struct HloVerifierOpts {
 
   // Whether bitcast should have the same size, including all paddings.
   bool allow_bitcast_to_have_different_size = false;
+
+  // Whether to verify S4/U4 usages belong to allowed ops.
+  bool verify_s4_u4_usage = true;
 
   HloPredicate instruction_can_change_layout;
 
