@@ -1733,7 +1733,8 @@ def TestFactory(xla_backend,
       c = self._NewComputation()
       ops.Fft(ops.Constant(c, a), xla_client.FftType.IRFFT, [3, 4, 8])
       self._ExecuteAndCompareClose(
-          c, expected=[np.fft.irfftn(a, axes=(1, 2, 3))], rtol=1e-4)
+          c, expected=[np.fft.irfftn(a, axes=(1, 2, 3))], rtol=2e-4
+      )
 
     def testNextAfter(self):
       c = self._NewComputation()

@@ -293,6 +293,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "@ducc//:fft_wrapper",
         "@eigen_archive//:eigen3",
         "@local_xla//xla:empty",
         "//tensorflow/core/framework:numeric_types",

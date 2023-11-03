@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
+#include "xla/literal_util.h"
 #include "xla/map_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
@@ -1107,9 +1109,19 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(fft));
 
   const std::vector<int64_t>& fft_length = fft->fft_length();
+  const int fft_rank = fft_length.size();
+
+  // Flatten operand batches.
+  absl::InlinedVector<int64_t, 4> operand_shape_flat(fft_rank + 1);
   int64_t input_batch = 1;
-  for (int i = 0; i < fft->shape().dimensions_size() - fft_length.size(); i++) {
-    input_batch *= fft->shape().dimensions(i);
+  int64_t input_batch_length = fft->shape().dimensions_size() - fft_rank;
+  for (int i = 0; i < input_batch_length; i++) {
+    input_batch *= operand->shape().dimensions(i);
+  }
+  operand_shape_flat[0] = input_batch;
+  for (int i = 0; i < fft_rank; ++i) {
+    operand_shape_flat[i + 1] =
+        operand->shape().dimensions(i + input_batch_length);
   }
 
   // Args have been computed, make the call.
@@ -1117,9 +1129,12 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
   bool multi_threaded_eigen =
       hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
   const char* fn_name = multi_threaded_eigen
-                            ? runtime::kEigenFftSymbolName
-                            : runtime::kEigenSingleThreadedFftSymbolName;
-  const int fft_rank = fft_length.size();
+                            ? runtime::kDuccFftSymbolName
+                            : runtime::kDuccSingleThreadedFftSymbolName;
+  auto* fft_lengths =
+      EmitGlobalForLiteral(LiteralUtil::CreateR1<int64_t>(fft_length));
+  auto* input_shape =
+      EmitGlobalForLiteral(LiteralUtil::CreateR1<int64_t>(operand_shape_flat));
   EmitCallToFunc(
       fn_name,
       {GetExecutableRunOptionsArgument(),
@@ -1127,10 +1142,7 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
        BitCast(operand_address, int8_ptr_type), b_.getInt32(fft->fft_type()),
        b_.getInt32(operand->shape().element_type() == F64 ||
                    operand->shape().element_type() == C128),
-       b_.getInt32(fft_rank), b_.getInt64(input_batch),
-       b_.getInt64(fft_rank > 0 ? fft_length[0] : 0),
-       b_.getInt64(fft_rank > 1 ? fft_length[1] : 0),
-       b_.getInt64(fft_rank > 2 ? fft_length[2] : 0)},
+       b_.getInt32(fft_rank), input_shape, fft_lengths},
       b_.getVoidTy(), /*does_not_throw=*/true,
       /*only_accesses_arg_memory=*/false,
       /*only_accesses_inaccessible_mem_or_arg_mem=*/true);
