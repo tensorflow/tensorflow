@@ -110,6 +110,17 @@ def CublasLtMatmulEpilogue: I32EnumAttr<"CublasLtMatmulEpilogue",
 
 def CublasLtMatmulEpilogueAttr : EnumAttr<LmhloGpuDialect, CublasLtMatmulEpilogue, "epilogue">;
 
+def NormAlgorithmConfigAttr : AttrDef<
+  LmhloGpuDialect, "NormAlgorithmConfig"> {
+  let mnemonic = "norm_algorithm_config";
+  let parameters = (ins
+  "int64_t":$algorithm,
+  "int64_t":$workspace_size
+ );
+  let assemblyFormat = "`<` struct(params) `>`";
+ let summary = "GPU Norm Algorithm configuration";
+}
+
 def FusedMHAAlgorithmConfigAttr : AttrDef<
   LmhloGpuDialect, "FusedMHAAlgorithmConfig"> {
   let mnemonic = "fHMA_algorithm_config";

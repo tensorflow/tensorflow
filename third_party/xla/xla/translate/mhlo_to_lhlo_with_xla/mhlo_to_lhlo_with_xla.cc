@@ -564,6 +564,11 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
   if (xla::gpu::IsCudnnConvolutionReorder(*instr)) {
     return EmitDnnConvolutionReorderVectorized(custom_call_instr);
   }
+
+  if (xla::gpu::IsCustomCallToDnnNorm(*instr)) {
+    return EmitDnnNorm(custom_call_instr);
+  }
+
   if (xla::gpu::IsFwdCustomCallTofMHA(*instr)) {
     return EmitDnnfMHA(custom_call_instr);
   }
@@ -1150,15 +1155,56 @@ LhloDialectEmitter::EmitDnnConvolutionReorderVectorized(
   }
 }
 
-xla::StatusOr<Operation*> LhloDialectEmitter::EmitCubDeviceRadixSort(
-    const xla::HloCustomCallInstruction* custom_call) {
+tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnNorm(
+    const HloCustomCallInstruction* custom_call) {
   TF_ASSIGN_OR_RETURN(
-      auto radix_sort_op,
-      CreateOpWithoutAttrs<lmhlo_gpu::RadixSortOp>(custom_call));
-  TF_ASSIGN_OR_RETURN(xla::SortOptions options,
-                      custom_call->backend_config<xla::SortOptions>());
-  radix_sort_op.setDescendingAttr(builder_.getBoolAttr(options.descending()));
-  return radix_sort_op.getOperation();
+      auto const backend_config,
+      custom_call->backend_config<xla::gpu::CudnnNormBackendConfig>());
+
+  llvm::SmallVector<Value, 7> operands;
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(0), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(1), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(2), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
+
+  auto norm =
+      CreateOpWithoutAttrs<lmhlo_gpu::CudnnNormOp>(custom_call, operands);
+  norm.setEpsilonAttr(builder_.getF64FloatAttr(backend_config.epsilon()));
+
+  const auto& algorithm = backend_config.algorithm();
+  auto norm_algo_config = mlir::lmhlo_gpu::NormAlgorithmConfigAttr::get(
+      builder_.getContext(), algorithm.algo_id(),
+      algorithm.has_workspace_size() ? algorithm.workspace_size().value() : -1);
+  norm.setAlgorithmConfigAttr(norm_algo_config);
+
+  std::vector<int64_t> operand_minor_to_major;
+
+  auto get_minor_to_major =
+      [&operand_minor_to_major](const xla::Layout& layout) -> void {
+    std::vector<int64_t> minor_to_major(layout.minor_to_major_size());
+    absl::c_transform(layout.minor_to_major(), minor_to_major.begin(),
+                      [](int64_t x) { return static_cast<int64_t>(x); });
+    operand_minor_to_major.insert(operand_minor_to_major.end(),
+                                  minor_to_major.begin(), minor_to_major.end());
+  };
+
+  // Store the layout information of all operands and outputs.
+  for (HloInstruction* operand : custom_call->operands()) {
+    get_minor_to_major(operand->shape().layout());
+  }
+  for (int i = 0; i < custom_call->shape().tuple_shapes_size() - 1; ++i) {
+    get_minor_to_major(custom_call->shape().tuple_shapes(i).layout());
+  }
+
+  norm.setOperandLayoutsAttr(builder_.getI64ArrayAttr(llvm::ArrayRef<int64_t>{
+      operand_minor_to_major.data(), operand_minor_to_major.size()}));
+
+  bool has_aux_outputs = custom_call->shape().tuple_shapes_size() == 4;
+  int32_t operand_sizes[] = {1, 1, 1, 1, has_aux_outputs, has_aux_outputs, 1};
+  norm->setAttr(norm.getOperandSegmentSizeAttr(),
+                builder_.getDenseI32ArrayAttr(operand_sizes));
+
+  return norm.getOperation();
 }
 
 tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHA(
@@ -1410,6 +1456,17 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHABackward(
     default:
       return xla::InternalError("Unknown backward fused MHA call.");
   }
+}
+
+xla::StatusOr<Operation*> LhloDialectEmitter::EmitCubDeviceRadixSort(
+    const xla::HloCustomCallInstruction* custom_call) {
+  TF_ASSIGN_OR_RETURN(
+      auto radix_sort_op,
+      CreateOpWithoutAttrs<lmhlo_gpu::RadixSortOp>(custom_call));
+  TF_ASSIGN_OR_RETURN(xla::SortOptions options,
+                      custom_call->backend_config<xla::SortOptions>());
+  radix_sort_op.setDescendingAttr(builder_.getBoolAttr(options.descending()));
+  return radix_sort_op.getOperation();
 }
 
 // Convert an XLA HLO constant to a global_memref + get_global_memref pair.

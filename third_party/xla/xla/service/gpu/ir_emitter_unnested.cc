@@ -106,6 +106,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_fused_mha_runner.h"
+#include "xla/service/gpu/gpu_norm_runner.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/infeed_thunk.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -120,6 +121,7 @@ limitations under the License.
 #include "xla/service/gpu/nccl_all_to_all_thunk.h"
 #include "xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/service/gpu/norm_thunk.h"
 #include "xla/service/gpu/outfeed_thunk.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/gpu/replica_id_thunk.h"
@@ -1046,6 +1048,60 @@ Status IrEmitterUnnested::EmitConvolutionReorderThunk(mlir::Operation* op) {
       std::move(operand_slices), std::move(result_slices));
 
   AddThunkToThunkSequence(std::move(thunk));
+  return OkStatus();
+}
+
+Status IrEmitterUnnested::EmitNormThunk(mlir::Operation* op) {
+  auto norm = mlir::dyn_cast<mlir::lmhlo_gpu::CudnnNormOp>(op);
+  TF_RET_CHECK(norm != nullptr);
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice input_slice,
+                      GetAllocationSlice(norm.getInput()));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scale_slice,
+                      GetAllocationSlice(norm.getScale()));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bias_slice,
+                      GetAllocationSlice(norm.getBias()));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+                      GetAllocationSlice(norm.getOutput()));
+
+  int64_t num_operands = op->getNumOperands();
+  std::optional<BufferAllocation::Slice> expectation_slice, norm_factor_slice;
+  if (num_operands == 7) {
+    TF_ASSIGN_OR_RETURN(expectation_slice,
+                        GetAllocationSlice(norm.getExpectation()));
+    TF_ASSIGN_OR_RETURN(norm_factor_slice,
+                        GetAllocationSlice(norm.getNormFactor()));
+  }
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
+                      GetAllocationSlice(norm.getScratch()));
+
+  GpuNormDescriptor descriptor;
+  auto* algorithm = descriptor.backend_config.mutable_algorithm();
+  algorithm->set_algo_id(norm.getAlgorithmConfig().getAlgorithm());
+  algorithm->set_is_cudnn_frontend(true);
+  auto workspace_size = norm.getAlgorithmConfig().getWorkspaceSize();
+  algorithm->mutable_workspace_size()->set_value(workspace_size);
+
+  descriptor.input_shape = GetShape(norm->getOperand(0));
+  descriptor.scale_shape = GetShape(norm->getOperand(1));
+  descriptor.bias_shape = GetShape(norm->getOperand(2));
+  descriptor.output_shape = GetShape(norm->getOperand(3));
+  if (num_operands == 7) {
+    descriptor.expectation_shape = GetShape(norm->getOperand(4));
+    descriptor.norm_factor_shape = GetShape(norm->getOperand(5));
+  }
+  descriptor.backend_config.set_epsilon(norm.getEpsilon().convertToDouble());
+
+  TF_ASSIGN_OR_RETURN(GpuNormConfig config, GpuNormConfig::For(descriptor));
+
+  auto thunk = std::make_unique<NormThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(op), std::move(config),
+      input_slice, scale_slice, bias_slice, output_slice, expectation_slice,
+      norm_factor_slice, scratch_slice);
+
+  AddThunkToThunkSequence(std::move(thunk));
+
   return OkStatus();
 }
 
@@ -3162,6 +3218,9 @@ Status IrEmitterUnnested::EmitOp(
   if (mlir::isa<mlir::lmhlo_gpu::CudnnConvReorderFilterOp,
                 mlir::lmhlo_gpu::CudnnConvReorderFilterAndBiasOp>(op)) {
     return EmitConvolutionReorderThunk(op);
+  }
+  if (mlir::isa<mlir::lmhlo_gpu::CudnnNormOp>(op)) {
+    return EmitNormThunk(op);
   }
   if (mlir::isa<mlir::lmhlo_gpu::fusedMHAOp>(op)) {
     return EmitFusedMHAThunk(op);

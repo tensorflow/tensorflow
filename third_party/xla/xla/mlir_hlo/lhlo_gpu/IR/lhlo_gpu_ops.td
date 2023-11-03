@@ -329,6 +329,21 @@ def LHLOGPU_AllToAllDoneOp: LHLOGPU_Op<"all_to_all_done"> {
   let arguments = (ins MHLO_Token:$token);
 }
 
+def LHLOGPU_CudnnNormOp : LHLOGPU_Op<"Norm", [AttrSizedOperandSegments]> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$input,
+    Arg<LHLO_Buffer, "", [MemRead]>:$scale,
+    Arg<LHLO_Buffer, "", [MemRead]>:$bias,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$expectation,
+    Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$norm_factor,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$scratch,
+    NormAlgorithmConfigAttr:$algorithm_config,
+    F64Attr:$epsilon,
+    I64ArrayAttr:$operand_layouts
+    );
+}
+
 def LHLOGPU_fusedMHAOp : LHLOGPU_Op<"fMHA", [AttrSizedOperandSegments]> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$lhs_bmm1,

@@ -446,6 +446,24 @@ class Stream {
         convolution_descriptor, activation_mode);
   }
 
+  tsl::StatusOr<std::unique_ptr<const dnn::NormRunner>> NormRunnerFromDesc(
+      const dnn::AlgorithmDesc &algorithm_desc, double epsilon,
+      const dnn::TensorDescriptor &input_descriptor,
+      const dnn::TensorDescriptor &scale_descriptor,
+      const dnn::TensorDescriptor &bias_descriptor,
+      const dnn::TensorDescriptor &output_descriptor,
+      std::optional<dnn::TensorDescriptor> expectation_descriptor,
+      std::optional<dnn::TensorDescriptor> norm_factor_descriptor) {
+    dnn::DnnSupport *dnn_support = parent_->AsDnn();
+    if (!dnn_support) {
+      return absl::UnimplementedError("DNN library is not found.");
+    }
+    return dnn_support->NormRunnerFromDesc(
+        this, algorithm_desc, epsilon, input_descriptor, scale_descriptor,
+        bias_descriptor, output_descriptor, expectation_descriptor,
+        norm_factor_descriptor);
+  }
+
   tsl::StatusOr<std::unique_ptr<const dnn::FusedMHARunner>>
   FusedMHARunnerFromDesc(
       const dnn::AlgorithmDesc &algorithm_desc, dnn::FusedMHAKind kind,

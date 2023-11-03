@@ -146,6 +146,47 @@ cc_library(
 )
 
 cc_library(
+    name = "conv_reorder",
+    srcs = ["conv_reorder.cc"],
+    hdrs = ["conv_reorder.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":support",
+        "//xla:xla_proto_cc",
+        "//xla/runtime:custom_call",
+        "//xla/runtime:custom_call_registry",
+        "//xla/runtime:executable",
+        "//xla/service:executable",
+    ],
+)
+
+cc_library(
+    name = "norm",
+    srcs = ["norm.cc"],
+    hdrs = ["norm.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":support",
+        "//xla:status",
+        "//xla:xla_proto_cc",
+        "//xla/mlir/runtime/transforms:custom_call_encoding",
+        "//xla/runtime:custom_call",
+        "//xla/runtime:custom_call_registry",
+        "//xla/runtime:executable",
+        "//xla/service:executable",
+        "//xla/service/gpu:gpu_asm_opts_util",
+        "//xla/service/gpu:gpu_norm_runner",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_memory_allocator",
+        "//xla/translate/mhlo_to_hlo:attribute_exporter",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/synchronization",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "fused_attention",
     srcs = ["fused_attention.cc"],
     hdrs = ["fused_attention.h"],
@@ -168,21 +209,6 @@ cc_library(
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Support",
-    ],
-)
-
-cc_library(
-    name = "conv_reorder",
-    srcs = ["conv_reorder.cc"],
-    hdrs = ["conv_reorder.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":support",
-        "//xla:xla_proto_cc",
-        "//xla/runtime:custom_call",
-        "//xla/runtime:custom_call_registry",
-        "//xla/runtime:executable",
-        "//xla/service:executable",
     ],
 )
 
@@ -266,6 +292,7 @@ cc_library(
         ":kernel_launch",
         ":memcpy",
         ":memset",
+        ":norm",
         ":send_recv",
         ":stream_synchronization",
         ":support",
