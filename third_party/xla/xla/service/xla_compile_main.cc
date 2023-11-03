@@ -192,7 +192,7 @@ xla::StatusOr<std::unique_ptr<HloModule>> LoadModule(
   HloModuleProto hlo_module_proto = xla_computation.proto();
 
   TF_ASSIGN_OR_RETURN(ProgramShape shape, xla_computation.GetProgramShape());
-  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
   HloModuleConfig config(shape);
   config.set_debug_options(debug_options);
   return HloModule::CreateFromProto(hlo_module_proto, config);
