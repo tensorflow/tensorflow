@@ -267,6 +267,10 @@ class GpuPriorityFusionQueue : public FusionQueue {
   }
 
   FusionDecision CanFuseWithAllUsers(HloInstruction* producer) const {
+    if (producer->users().size() == 0) {
+      return "No users to fuse";
+    }
+
     FusionDecision result;
     for (const auto& user : producer->users()) {
       if (auto fusion_decision = can_fuse_(user, user->operand_index(producer));
