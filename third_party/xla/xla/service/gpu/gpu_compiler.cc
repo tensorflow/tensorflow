@@ -640,8 +640,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
           /*pipelining_direction=*/
           CollectivePipeliner::PipeliningDirection::kForward,
           /*should_process=*/HloPredicateIsOp<HloOpcode::kAllReduce>,
-          /*acceptable_formatting*/ [](const HloInstruction*) { return true; },
-          /*reuse_pipelined_op_buffer*/
+          /*acceptable_formatting=*/[](const HloInstruction*) { return true; },
+          /*reuse_pipelined_op_buffer=*/
           [](const HloInstruction*) { return false; }};
       collectives_pipeline.AddPass<CollectivePipeliner>(config);
     }
@@ -656,8 +656,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
           /*pipelining_direction=*/
           CollectivePipeliner::PipeliningDirection::kBackward,
           /*should_process=*/HloPredicateIsOp<HloOpcode::kAllGather>,
-          /*acceptable_formatting*/ [](const HloInstruction*) { return true; },
-          /*reuse_pipelined_op_buffer*/
+          /*acceptable_formatting=*/[](const HloInstruction*) { return true; },
+          /*reuse_pipelined_op_buffer=*/
           [](const HloInstruction*) { return false; }};
       collectives_pipeline.AddPass<CollectivePipeliner>(config);
     }
@@ -672,8 +672,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
           /*pipelining_direction=*/
           CollectivePipeliner::PipeliningDirection::kForward,
           /*should_process=*/HloPredicateIsOp<HloOpcode::kReduceScatter>,
-          /*acceptable_formatting*/ [](const HloInstruction*) { return true; },
-          /*reuse_pipelined_op_buffer*/
+          /*acceptable_formatting=*/[](const HloInstruction*) { return true; },
+          /*reuse_pipelined_op_buffer=*/
           [](const HloInstruction*) { return false; }};
       collectives_pipeline.AddPass<CollectivePipeliner>(config);
     }
