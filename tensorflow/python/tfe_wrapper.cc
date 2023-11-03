@@ -17,6 +17,8 @@ limitations under the License.
 
 // Must be included first
 // clang-format off
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "pybind11/attr.h"  // from @pybind11
 #include "tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
@@ -54,6 +56,13 @@ limitations under the License.
 #include "tensorflow/python/lib/core/pybind11_status.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tensorflow/python/util/util.h"
+
+// TODO(b/309152522): Remove this switch once it works on Windows.
+#define IS_OSS true
+
+#if !IS_OSS
+#include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
+#endif
 
 namespace py = pybind11;
 
@@ -837,6 +846,37 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
                                     function_name, &buf, status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         });
+// TODO(b/309152522): Remove the switch once it works on Windows.
+#if !IS_OSS
+  pybind11_protobuf::ImportNativeProtoCasters();
+  m.def("TFE_ContextGetFunctionDefNoSerialization",
+        [](py::handle& ctx,
+           const char* function_name) -> tensorflow::FunctionDef {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          const tensorflow::FunctionDef* ctx_function_def =
+              tensorflow::unwrap(tensorflow::InputTFE_Context(ctx))
+                  ->FindFunctionDef(function_name);
+          if (ctx_function_def == nullptr) {
+            status->status = absl::NotFoundError(absl::StrCat(
+                "Unable to find FunctionDef with name: ", function_name));
+            tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+            tensorflow::FunctionDef function_def;
+            return function_def;
+          }
+          status->status = ::tensorflow::OkStatus();
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return *ctx_function_def;
+        });
+#else
+  // Defining this function to make type checker happy, as there's an entry in
+  // _pywrap_tfe.pyi.
+  m.def("TFE_ContextGetFunctionDefNoSerialization",
+        [](py::handle& ctx, const char* function_name) -> int {
+          LOG(FATAL) << "This function cannot be called.";
+          return -1;
+        });
+#endif
   m.def("TFE_ContextGetGraphDebugInfo",
         [](py::handle& ctx, const char* function_name, TF_Buffer& buf) {
           tensorflow::Safe_TF_StatusPtr status =
