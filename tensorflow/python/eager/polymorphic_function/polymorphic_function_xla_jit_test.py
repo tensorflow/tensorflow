@@ -229,9 +229,6 @@ class FunctionTest(xla_test.XLATestCase):
       self._compareTwoMethodsCompilerIROutput(fn, [inputs], {})
 
   def testCollectiveReduceGroupAssignment(self):
-    if not test_util.is_mlir_bridge_enabled():
-      self.skipTest('AssignGroup is only supported in the MLIR bridge.')
-
     with ops.device('device:{}:0'.format(self.device)):
 
       @polymorphic_function.function(jit_compile=True)

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -95,18 +96,6 @@ class CollectiveReduceV2Op : public XlaOpKernel {
   void operator=(const CollectiveReduceV2Op&) = delete;
 };
 
-class CollectiveAssignGroupV2Op : public XlaOpKernel {
- public:
-  explicit CollectiveAssignGroupV2Op(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx) {}
-
-  void Compile(XlaOpKernelContext* ctx) override {
-    OP_REQUIRES(
-        ctx, false,
-        errors::InvalidArgument("CollectiveAssignGroupV2 is unsupported in the "
-                                "legacy TF2XLA bridge"));
-  }
-};
 
 REGISTER_XLA_OP(Name("CollectiveReduceV2")
                     .CompileTimeConstantInput("group_key")
@@ -115,6 +104,6 @@ REGISTER_XLA_OP(Name("CollectiveReduceV2")
 
 REGISTER_XLA_OP(Name("CollectiveAssignGroupV2")
                     .CompileTimeConstantInput("group_assignment"),
-                CollectiveAssignGroupV2Op);
+                MlirXlaOpKernel);
 
 }  // namespace tensorflow
