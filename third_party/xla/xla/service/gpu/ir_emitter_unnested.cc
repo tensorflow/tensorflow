@@ -2145,12 +2145,11 @@ Status IrEmitterUnnested::EmitSelectAndScatter(
 
   std::string name = GetIrNameFromLoc(select_and_scatter_op.getLoc());
 
-  const HloInstruction* init_value = select_and_scatter->operand(2);
   // IrEmitterUnnested implements kSelectAndScatter as a SequentialThunk
   // consisting of two thunks, an initializer KernelThunk that initializes
   // the output and another KernelThunk that accumulates the scattered
   // elements.
-  TF_RETURN_IF_ERROR(BuildInitializerThunk(op, select_and_scatter, init_value,
+  TF_RETURN_IF_ERROR(BuildInitializerThunk(op,
                                            select_and_scatter_op.getInitValue(),
                                            select_and_scatter_op.getOut()));
 
@@ -2966,16 +2965,16 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
                                         launch_dimensions);
 }
 
-Status IrEmitterUnnested::BuildInitializerThunk(
-    mlir::Operation* op, const HloInstruction* instr,
-    const HloInstruction* init_value, mlir::Value init_value_mlir,
-    mlir::Value dest) {
+Status IrEmitterUnnested::BuildInitializerThunk(mlir::Operation* op,
+                                                mlir::Value init_value,
+                                                mlir::Value dest) {
   // initial value must be a scalar memref.
-  TF_RET_CHECK(init_value->shape().rank() == 0);
+  auto init_type = init_value.getType().dyn_cast<mlir::MemRefType>();
+  TF_RET_CHECK(init_type.getRank() == 0);
 
   TF_ASSIGN_OR_RETURN(std::optional<std::unique_ptr<Thunk>> constant_init_thunk,
                       BuildConstantInitializerThunk(*ir_emitter_context_, op,
-                                                    instr, init_value, dest));
+                                                    init_value, dest));
   if (constant_init_thunk) {
     AddThunkToThunkSequence(*std::move(constant_init_thunk));
     return OkStatus();
@@ -2989,8 +2988,8 @@ Status IrEmitterUnnested::BuildInitializerThunk(
                       CalculateLaunchDimensions(
                           dest_shape, ir_emitter_context_->gpu_device_info()));
   TF_ASSIGN_OR_RETURN(auto ir_arrays,
-                      BuildKernelThunkForNonFusionOp(
-                          op, {init_value_mlir, dest}, launch_dimensions));
+                      BuildKernelThunkForNonFusionOp(op, {init_value, dest},
+                                                     launch_dimensions));
   auto& [inputs, outputs] = ir_arrays;
   auto init_array = inputs[0];
 
