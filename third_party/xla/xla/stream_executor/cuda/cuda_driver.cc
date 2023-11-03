@@ -697,6 +697,13 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
   return ::tsl::OkStatus();
 }
 
+/* static */ tsl::Status GpuDriver::DeviceGraphMemTrim(CUdevice device) {
+  VLOG(2) << "Trim CUDA device graph memory " << device;
+  RETURN_IF_CUDA_RES_ERROR(cuDeviceGraphMemTrim(device),
+                           "Failed to trim device graph memory");
+  return tsl::OkStatus();
+}
+
 /* static */ tsl::StatusOr<bool> GpuDriver::StreamIsCapturing(CUstream stream) {
   VLOG(2) << "Checking if stream " << stream << " is capturing";
 

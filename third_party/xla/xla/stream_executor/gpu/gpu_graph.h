@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -53,6 +54,8 @@ class GpuGraphSupport {
 
   static size_t allocated_gpu_graph_execs();
   static size_t alive_gpu_graph_execs();
+
+  static void TrimDeviceMemory(StreamExecutor* executor);
 
  private:
   // Global counters for the total number of allocated and alive gpu graph

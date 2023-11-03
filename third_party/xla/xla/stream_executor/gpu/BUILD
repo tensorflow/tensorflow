@@ -141,6 +141,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":gpu_kernel_header",
+        ":gpu_types_header",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor:stream_executor_internal",
@@ -444,6 +445,7 @@ cc_library(
         ":gpu_driver_header",
         ":gpu_kernel_header",
         ":gpu_types_header",
+        ":gpu_executor_header",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/status:statusor",

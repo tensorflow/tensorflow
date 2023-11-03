@@ -419,6 +419,11 @@ class GpuDriver {
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#stream-management
   static tsl::StatusOr<bool> StreamIsCapturing(GpuStreamHandle stream);
 
+  // Free unused memory that was cached on the specified device for use with
+  // graphs back to the OS.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g57c87f4ba6af41825627cdd4e5a8c52b
+  static tsl::Status DeviceGraphMemTrim(GpuDeviceHandle device);
+
   // Creates a kernel execution node and adds it to a graph.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g50d871e3bd06c1b835e52f2966ef366b
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management

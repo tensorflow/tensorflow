@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
+#include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -288,6 +289,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
     return it->second;
   }
 
+  GpuDeviceHandle device() const { return device_; }
   int cc_major() const { return cc_major_; }
   int cc_minor() const { return cc_minor_; }
 
