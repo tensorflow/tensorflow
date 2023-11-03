@@ -76,6 +76,42 @@ class ShardingCallback:
     return hash((callback_hash, self.description))
 
 
+class ShardByDevicePolicy(ShardingCallback):
+  """Policy that splits tensors into shards based on their device spec."""
+
+  def __init__(self):
+    def device_callback_impl(shardable_tensors):
+      """Callback to split tensors into shards based on their device spec.
+
+      Args:
+        shardable_tensors: A list of ShardableTensors.
+
+      Returns:
+        List of shard dicts containing tensors.
+          [ {checkpoint key: {slice_spec: tensor} } ]
+      """
+      tensors_by_device = {}
+
+      for shardable_tensor in shardable_tensors:
+        tensor = shardable_tensor.tensor
+        checkpoint_key = shardable_tensor.checkpoint_key
+        slice_spec = shardable_tensor.slice_spec
+        device = saveable_object_util.set_cpu0(shardable_tensor.device)
+
+        (tensors_by_device
+         .setdefault(device, {})
+         .setdefault(checkpoint_key, {})[slice_spec]) = tensor
+
+      return list(tensors_by_device.values())
+
+    super().__init__(
+        device_callback_impl,
+        "Split tensors into shards based on their device spec.")
+
+  def __call__(self, shardable_tensors):
+    return self.callback(shardable_tensors)  # pylint: disable=no-value-for-parameter
+
+
 class _SingleDeviceSaver(object):
   """Saves and restores checkpoints from the current device."""
 
