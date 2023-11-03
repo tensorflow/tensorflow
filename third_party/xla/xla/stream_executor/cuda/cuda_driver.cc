@@ -20,32 +20,38 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstring>
-#include <map>
-#include <set>
 #include <string>
-#include <utility>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/base/const_init.h"
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/debugging/leak_check.h"
-#include "absl/memory/memory.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
-#include "xla/stream_executor/cuda/cuda_diagnostics.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
+#include "xla/stream_executor/device_options.h"
+#include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
-#include "xla/stream_executor/platform/port.h"
+#include "xla/stream_executor/platform.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/macros.h"
+#include "tsl/platform/numbers.h"
 #include "tsl/platform/stacktrace.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 
 static constexpr bool FLAGS_gpuexec_cuda_driver_inject_init_error = false;
