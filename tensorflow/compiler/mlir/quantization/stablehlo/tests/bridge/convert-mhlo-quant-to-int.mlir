@@ -1191,6 +1191,46 @@ func.func @conv2d_static_padding(
 
 // -----
 
+// CHECK-LABEL: func @conv2d_per_channel
+func.func @conv2d_per_channel(
+    %arg0: tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>,
+    %arg1: tensor<3x3x1x2x!quant.uniform<i8:f32:3, {2.000000e+00:0, 1.000000e+00:0}>>
+  ) -> tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:0}>> {
+  // CHECK: %[[CONV:.*]] = mhlo.convolution(%arg0, %arg1)
+  // CHECK-SAME: dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+  // CHECK-SAME: window = {stride = [1, 1], pad = {{\[}}[0, 0], [0, 0]],
+  // CHECK-SAME: lhs_dilate = [1, 1], rhs_dilate = [1, 1]
+  // CHECK-SAME: {batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+  // CHECK-SAME: (tensor<128x28x28x1xi8>, tensor<3x3x1x2xi8>) -> tensor<128x26x26x2xi32>
+
+  // CHECK: %[[RHS:.*]] = mhlo.convert %arg1 : (tensor<3x3x1x2xi8>) -> tensor<3x3x1x2xi32>
+  // CHECK: %[[REDUCE:.*]] = mhlo.reduce(%[[RHS]]
+  // CHECK-SAME: applies mhlo.add across dimensions = [0, 1, 2]
+  // CHECK: %[[LHS_ZP:.*]] = mhlo.constant dense<4> : tensor<i32>
+  // CHECK: %[[ZP_OFFSET:.*]] = chlo.broadcast_multiply %[[REDUCE]], %[[LHS_ZP]]
+  // CHECK: %[[ZP_OFFSET_BCAST:.*]] = "mhlo.broadcast_in_dim"(%[[ZP_OFFSET]])
+  // CHECK: %[[RES_ZP:.*]] = mhlo.constant dense<0> : tensor<i32>
+  // CHECK: %[[ZP_OFFSET_TOTAL:.*]] = chlo.broadcast_subtract %[[RES_ZP:.*]], %[[ZP_OFFSET_BCAST]]
+  // CHECK: chlo.broadcast_add %[[CONV]], %[[ZP_OFFSET_TOTAL]]
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {
+      stride = [1, 1], pad = [[0, 0], [0, 0]],
+      lhs_dilate = [1, 1],
+      rhs_dilate = [1, 1]
+    }
+    {
+      batch_group_count = 1 : i64,
+      feature_group_count = 1 : i64
+    } : (
+      tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>,
+      tensor<3x3x1x2x!quant.uniform<i8:f32:3, {2.000000e+00:0, 1.000000e+00:0}>>)
+    -> tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:0}>>
+  return %0 : tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:0}>>
+}
+
+// -----
+
 // CHECK-LABEL: func @conv3d_static
 func.func @conv3d_static(
     %arg0: tensor<128x28x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>,
@@ -1227,7 +1267,7 @@ func.func @conv3d_static(
 func.func @conv3d_rhs_zp_not_zero(
     %arg0: tensor<128x28x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>,
     %arg1: tensor<3x3x3x1x128x!quant.uniform<i8:f32, 3.000000e+00:-2>>) {
-  // expected-error@+2 {{RHS UQ type must have zero zp}}
+  // expected-error@+2 {{RHS/result UQ type must have zero zp}}
   // expected-error@+1 {{failed to legalize operation 'mhlo.convolution' that was explicitly marked illegal}}
   %0 = mhlo.convolution(%arg0, %arg1)
     dim_numbers = [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, 0, 1, 2, f],
@@ -1308,6 +1348,154 @@ func.func @conv2d_non_nhwc(
     } : (tensor<128x1x28x28x!quant.uniform<i8:f32, 2.000000e+00:4>>, tensor<3x3x1x128x!quant.uniform<i8:f32, 3.000000e+00:0>>)
     -> tensor<128x128x26x26x!quant.uniform<i32:f32, 1.000000e+00:5>>
   return
+}
+
+// -----
+
+func.func @conv2d_per_channel_rhs_zp_not_zero(
+    %arg0: tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>,
+    %arg1: tensor<3x3x1x2x!quant.uniform<i8:f32:3, {2.000000e+00:0, 1.000000e+00:10}>>
+  ) -> tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:0}>> {
+  // expected-error@+2 {{RHS/result UQ type must have zero zp.}}
+  // expected-error@+1 {{failed to legalize operation 'mhlo.convolution' that was explicitly marked illegal}}
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {
+      stride = [1, 1], pad = [[0, 0], [0, 0]],
+      lhs_dilate = [1, 1],
+      rhs_dilate = [1, 1]
+    }
+    {
+      batch_group_count = 1 : i64,
+      feature_group_count = 1 : i64
+    } : (
+      tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>,
+      tensor<3x3x1x2x!quant.uniform<i8:f32:3, {2.000000e+00:0, 1.000000e+00:10}>>)
+    -> tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:0}>>
+  return %0 : tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:0}>>
+}
+
+// -----
+
+func.func @conv2d_per_channel_res_zp_not_zero(
+    %arg0: tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>,
+    %arg1: tensor<3x3x1x2x!quant.uniform<i8:f32:3, {2.000000e+00:0, 1.000000e+00:0}>>
+  ) -> tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:3}>> {
+  // expected-error@+2 {{RHS/result UQ type must have zero zp.}}
+  // expected-error@+1 {{failed to legalize operation 'mhlo.convolution' that was explicitly marked illegal}}
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {
+      stride = [1, 1], pad = [[0, 0], [0, 0]],
+      lhs_dilate = [1, 1],
+      rhs_dilate = [1, 1]
+    }
+    {
+      batch_group_count = 1 : i64,
+      feature_group_count = 1 : i64
+    } : (
+      tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>,
+      tensor<3x3x1x2x!quant.uniform<i8:f32:3, {2.000000e+00:0, 1.000000e+00:0}>>)
+    -> tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:3}>>
+  return %0 : tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:3}>>
+}
+
+// -----
+
+func.func @conv2d_per_channel_rhs_only(
+    %arg0: tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>,
+    %arg1: tensor<3x3x1x2x!quant.uniform<i8:f32:3, {2.000000e+00:0, 1.000000e+00:0}>>
+  ) -> tensor<128x26x26x2x!quant.uniform<i32:f32, 4.000000e+00:0>> {
+  // expected-error@+2 {{Invalid input/output type for Dot/Convolution op}}
+  // expected-error@+1 {{failed to legalize operation 'mhlo.convolution' that was explicitly marked illegal}}
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {
+      stride = [1, 1], pad = [[0, 0], [0, 0]],
+      lhs_dilate = [1, 1],
+      rhs_dilate = [1, 1]
+    }
+    {
+      batch_group_count = 1 : i64,
+      feature_group_count = 1 : i64
+    } : (
+      tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>,
+      tensor<3x3x1x2x!quant.uniform<i8:f32:3, {2.000000e+00:0, 1.000000e+00:0}>>)
+    -> tensor<128x26x26x2x!quant.uniform<i32:f32, 4.000000e+00:0>>
+  return %0 : tensor<128x26x26x2x!quant.uniform<i32:f32, 4.000000e+00:0>>
+}
+
+// -----
+
+func.func @conv2d_per_channel_res_only(
+    %arg0: tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>,
+    %arg1: tensor<3x3x1x2x!quant.uniform<i8:f32, 2.000000e+00:0>>
+  ) -> tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:0}>> {
+  // expected-error@+2 {{Invalid input/output type for Dot/Convolution op}}
+  // expected-error@+1 {{failed to legalize operation 'mhlo.convolution' that was explicitly marked illegal}}
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {
+      stride = [1, 1], pad = [[0, 0], [0, 0]],
+      lhs_dilate = [1, 1],
+      rhs_dilate = [1, 1]
+    }
+    {
+      batch_group_count = 1 : i64,
+      feature_group_count = 1 : i64
+    } : (
+      tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>,
+      tensor<3x3x1x2x!quant.uniform<i8:f32, 2.000000e+00:0>>)
+    -> tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:0}>>
+  return %0 : tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:0}>>
+}
+
+// -----
+
+func.func @conv2d_per_channel_unsupported_channel(
+    %arg0: tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>,
+    %arg1: tensor<3x3x1x2x!quant.uniform<i8:f32:2, {2.000000e+00:0, 1.000000e+00:0}>>
+  ) -> tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:0}>> {
+  // expected-error@+2 {{Conv quantized axis must be out channel axis}}
+  // expected-error@+1 {{failed to legalize operation 'mhlo.convolution' that was explicitly marked illegal}}
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {
+      stride = [1, 1], pad = [[0, 0], [0, 0]],
+      lhs_dilate = [1, 1],
+      rhs_dilate = [1, 1]
+    }
+    {
+      batch_group_count = 1 : i64,
+      feature_group_count = 1 : i64
+    } : (tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>, tensor<3x3x1x2x!quant.uniform<i8:f32:2, {2.000000e+00:0, 1.000000e+00:0}>>)
+    -> tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:0}>>
+  return %0 : tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:0}>>
+}
+
+// -----
+
+func.func @conv2d_per_channel_rhs_result_scale_ratio_different(
+    %arg0: tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>,
+    %arg1: tensor<3x3x1x2x!quant.uniform<i8:f32:3, {2.000000e+00:0, 1.000000e+00:0}>>
+  ) -> tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.200000e+00:0}>> {
+  // expected-error@+2 {{Per-channel quantizated Conv must have same RHS/Result scale ratio for each channel}}
+  // expected-error@+1 {{failed to legalize operation 'mhlo.convolution' that was explicitly marked illegal}}
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {
+      stride = [1, 1], pad = [[0, 0], [0, 0]],
+      lhs_dilate = [1, 1],
+      rhs_dilate = [1, 1]
+    }
+    {
+      batch_group_count = 1 : i64,
+      feature_group_count = 1 : i64
+    } : (
+      tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>,
+      tensor<3x3x1x2x!quant.uniform<i8:f32:3, {2.000000e+00:0, 1.000000e+00:0}>>)
+    -> tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.200000e+00:0}>>
+  return %0 : tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.200000e+00:0}>>
 }
 
 // -----
