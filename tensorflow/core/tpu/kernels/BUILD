@@ -3,6 +3,7 @@
 # Placeholder: load py_proto_library
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_google",
     "if_libtpu",
     "if_oss",
     "tf_cc_test",
@@ -33,15 +34,25 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//tensorflow/compiler/mlir/quantization:__subpackages__",
-        "//tensorflow/compiler/mlir/tf2xla:__subpackages__",
-        "//tensorflow/compiler/xrt/kernels:__subpackages__",
-        "//tensorflow/core/tpu:__subpackages__",
-        "//tensorflow/dtensor:__subpackages__",
-        "//third_party/py/jax_tpu_embedding:__subpackages__",
-    ],
+    default_visibility = [":friends"],
     licenses = ["notice"],
+)
+
+package_group(
+    name = "friends",
+    includes = [] + if_google([
+        "//learning/brain/google/xla:friends",
+    ]),
+    packages = [
+        "//tensorflow/compiler/mlir/quantization/...",
+        "//tensorflow/compiler/mlir/tf2xla/...",
+        "//tensorflow/compiler/xrt/kernels/...",
+        "//tensorflow/core/tpu/...",
+        "//tensorflow/dtensor/...",
+        "//third_party/py/jax_tpu_embedding/...",
+    ] + if_google([
+        "//learning/brain/google/xla/...",
+    ]),
 )
 
 tf_kernel_library(
@@ -374,6 +385,10 @@ cc_library(
     name = "tpu_compile_op_support",
     srcs = ["tpu_compile_op_support.cc"],
     hdrs = ["tpu_compile_op_support.h"],
+    visibility = [
+        ":friends",
+        "//tensorflow/compiler/mlir/tfrt:__subpackages__",
+    ],
     deps = [
         ":tpu_compile_proto_cc",
         "//tensorflow/compiler/tf2xla:xla_compiler",

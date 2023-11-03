@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_IFRT_IFRT_MODEL_CONTEXT_H_
 #define TENSORFLOW_CORE_TFRT_IFRT_IFRT_MODEL_CONTEXT_H_
 
+#include <memory>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "xla/python/ifrt/client.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
 
 namespace tensorflow {
@@ -27,16 +30,42 @@ namespace ifrt_serving {
 
 inline constexpr absl::string_view kIfrtModelContextName = "IfrtModelContext";
 
+// Device specific configuration not available through ifrt. This should be
+// rare.
+struct DeviceConfig {
+  tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn =
+      tensorflow::IdentityShapeRepresentationFn();
+};
+
 // The runtime context for ifrt to be used in TFRT serving.
 //
 // This class is thread compatible.
 class IfrtModelContext {
  public:
+  explicit IfrtModelContext(std::shared_ptr<xla::ifrt::Client> client)
+      : client_(std::move(client)) {}
+  IfrtModelContext(
+      std::shared_ptr<xla::ifrt::Client> client,
+      tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn)
+      : client_(std::move(client)),
+        shape_representation_fn_(shape_representation_fn) {}
+
   void RegisterHandle(ServingExecutableRegistry::Handle handle) {
     handles_.push_back(std::move(handle));
   }
 
+  std::shared_ptr<xla::ifrt::Client> GetClient() const { return client_; }
+
+  const tensorflow::XlaHelpers::ShapeRepresentationFn&
+  GetShapeRepresentationFn() const {
+    return shape_representation_fn_;
+  }
+
  private:
+  std::shared_ptr<xla::ifrt::Client> client_;
+  tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_ =
+      tensorflow::IdentityShapeRepresentationFn();
+
   std::vector<ServingExecutableRegistry::Handle> handles_;
 };
 

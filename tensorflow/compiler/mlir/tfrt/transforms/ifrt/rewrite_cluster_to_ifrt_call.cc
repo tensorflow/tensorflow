@@ -157,7 +157,6 @@ class RewriteClusterToIfrtCallPass
     callee_func.cloneInto(cloned_ifrt_program, mapper);
 
     cloned_ifrt_program.setName(ifrt_program_name);
-    cloned_ifrt_program.setPublic();
 
     int64_t program_id = NewProgramId();
     cloned_ifrt_program->setAttr("tfrt_ifrt_serving.program_id",

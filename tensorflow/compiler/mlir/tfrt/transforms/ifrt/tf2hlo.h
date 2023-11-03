@@ -1,4 +1,3 @@
-
 /* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,25 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_serving_executable.h"
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_IFRT_TF2HLO_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_IFRT_TF2HLO_H_
 
-#include <vector>
-
-#include "absl/log/check.h"
-#include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "xla/python/ifrt/compiler.h"
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
 
-// Executes the computation.
-absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
-    absl::Span<const tensorflow::Tensor> inputs) {
-  return absl::UnimplementedError("Not implemented");
-}
+// A class that convert tf module to hlo
+// TODO(b/304839793): provide wrap persistent compilation cache.
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CompileTfToHlo(
+    mlir::ModuleOp module, absl::Span<const tensorflow::Tensor> inputs,
+    absl::string_view entry_function_name, xla::ifrt::Compiler* ifrt_compiler,
+    tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn);
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_IFRT_TF2HLO_H_

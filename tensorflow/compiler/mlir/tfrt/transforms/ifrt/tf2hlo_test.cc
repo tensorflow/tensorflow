@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_backend_compiler.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
 
 #include <memory>
 #include <string>
-#include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
@@ -29,28 +29,26 @@ limitations under the License.
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
-#include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
-#include "tensorflow/core/tfrt/runtime/runtime.h"
-#include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
-#include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace ifrt_serving {
 namespace {
 
-TEST(IfrtBackendCompilerTest, Basic) {
+TEST(Tf2HloTest, Basic) {
   // Create test input module
   constexpr absl::string_view kDataDirectory =
       "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
   std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
-      absl::StrCat(kDataDirectory, "/ifrt_cluster.mlir"));
+      absl::StrCat(kDataDirectory, "/tf2hlo_empty.mlir"));
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
@@ -64,24 +62,46 @@ TEST(IfrtBackendCompilerTest, Basic) {
   ASSERT_TRUE(mlir_module);
   ASSERT_TRUE(mlir_module.get() != nullptr);
 
-  // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
-  IfrtModelContext model_context(client);
 
-  std::unique_ptr<tensorflow::tfrt_stub::Runtime> runtime =
-      tensorflow::tfrt_stub::DefaultTfrtRuntime(/*num_threads=*/1);
-  tensorflow::tfrt_stub::GraphExecutionOptions graph_execution_options(
-      runtime.get());
-  tfrt::ResourceContext resource_context;
-  tensorflow::tfrt_stub::ModelRuntimeContext runtime_context(
-      &graph_execution_options, /*export_dir=*/"", &resource_context);
+  auto result = CompileTfToHlo(mlir_module.get(), {}, "main",
+                               client->GetDefaultCompiler(),
+                               tensorflow::IdentityShapeRepresentationFn());
 
-  runtime_context.resource_context().CreateResource<IfrtModelContext>(
-      "IfrtModelContext", std::move(model_context));
+  TF_ASSERT_OK(result.status());
+}
 
-  IfrtBackendCompiler compiler;
-  TF_ASSERT_OK(compiler.CompileTensorflow(runtime_context, mlir_module.get()));
+TEST(Tf2HloTest, 1in1out) {
+  // Create test input module
+  constexpr absl::string_view kDataDirectory =
+      "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
+  std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
+      absl::StrCat(kDataDirectory, "/tf2hlo_1in1out.mlir"));
+
+  mlir::DialectRegistry registry;
+  mlir::registerAllDialects(registry);
+  mlir::RegisterAllTensorFlowDialects(registry);
+
+  mlir::MLIRContext context(registry);
+
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
+      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context);
+
+  ASSERT_TRUE(mlir_module);
+  ASSERT_TRUE(mlir_module.get() != nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
+                          xla::ifrt::test_util::GetClient());
+
+  std::vector<tensorflow::Tensor> tensors;
+  tensorflow::Tensor x(DT_INT32, tensorflow::TensorShape({1, 3}));
+  tensors.push_back(x);
+  auto result = CompileTfToHlo(mlir_module.get(), tensors, "main",
+                               client->GetDefaultCompiler(),
+                               tensorflow::IdentityShapeRepresentationFn());
+
+  TF_ASSERT_OK(result.status());
 }
 
 }  // namespace

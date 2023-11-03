@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_IFRT_IFRT_SERVING_EXECUTABLE_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_IFRT_IFRT_SERVING_EXECUTABLE_H_
+#ifndef TENSORFLOW_CORE_TFRT_IFRT_IFRT_SERVING_EXECUTABLE_H_
+#define TENSORFLOW_CORE_TFRT_IFRT_IFRT_SERVING_EXECUTABLE_H_
 
 #include <memory>
 #include <string>
@@ -22,31 +22,35 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
-#include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/executable.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tsl/concurrency/ref_count.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
 
 class IfrtServingExecutable {
  public:
-  static std::unique_ptr<IfrtServingExecutable> Create(
+  IfrtServingExecutable(
       absl::string_view model_name, absl::string_view signature_name,
-      mlir::OwningOpRef<mlir::ModuleOp> module) {
-    VLOG(1) << "Creating IfrtServingExecutable";
-    std::string serialized_mlir_module =
-        tensorflow::SerializeMlirModule(*module);
-
-    return absl::WrapUnique(new IfrtServingExecutable(
-        model_name, signature_name, std::move(serialized_mlir_module)));
-  }
+      mlir::OwningOpRef<mlir::ModuleOp> module,
+      std::shared_ptr<xla::ifrt::Client> client,
+      tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn)
+      : model_name_(std::string(model_name)),
+        signature_name_(std::string(signature_name)),
+        module_(std::move(module)),
+        ifrt_client_(std::move(client)),
+        shape_representation_fn_(std::move(shape_representation_fn)) {}
 
   // Movable but not copyable.
   IfrtServingExecutable(IfrtServingExecutable&& other) = default;
@@ -65,17 +69,20 @@ class IfrtServingExecutable {
   std::string model_name_;
   std::string signature_name_;
 
-  std::string serialized_mlir_module_;
+  std::unique_ptr<mlir::MLIRContext> context_;
+  mlir::OwningOpRef<mlir::ModuleOp> module_;
 
-  explicit IfrtServingExecutable(absl::string_view model_name,
-                                 absl::string_view signature_name,
-                                 std::string serialized_mlir_module)
-      : model_name_(std::string(model_name)),
-        signature_name_(std::string(signature_name)),
-        serialized_mlir_module_(std::move(serialized_mlir_module)) {}
+  std::shared_ptr<xla::ifrt::Client> ifrt_client_;
+
+  tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
+
+  std::unique_ptr<xla::ifrt::LoadedExecutable> ifrt_executable_;
+
+  absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> ConvertTensorToArray(
+      const tensorflow::Tensor& tensor);
 };
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_IFRT_IFRT_SERVING_EXECUTABLE_H_
+#endif  // TENSORFLOW_CORE_TFRT_IFRT_IFRT_SERVING_EXECUTABLE_H_

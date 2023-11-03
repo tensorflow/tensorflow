@@ -40,11 +40,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/visitor.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
-#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_serving_executable.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf_ifrt_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -52,10 +52,11 @@ limitations under the License.
 
 namespace tensorflow {
 namespace ifrt_serving {
-
+namespace {
 absl::StatusOr<std::vector<ServingExecutableRegistry::Handle>>
-IfrtBackendCompiler::CompileAndRegisterIfrtPrograms(
-    absl::string_view model_name, mlir::ModuleOp module) const {
+CompileAndRegisterIfrtPrograms(absl::string_view model_name,
+                               mlir::ModuleOp module,
+                               IfrtModelContext& ifrt_model_context) {
   std::vector<ServingExecutableRegistry::Handle> handles;
 
   // Compile Ifrt programs and register the executables. Outlined Ifrt
@@ -64,25 +65,36 @@ IfrtBackendCompiler::CompileAndRegisterIfrtPrograms(
     int64_t program_id;
     if (auto attr = func->getAttrOfType<mlir::IntegerAttr>(
             "tfrt_ifrt_serving.program_id")) {
-      DCHECK(attr.getType().isSignlessInteger());
       program_id = attr.getInt();
     } else {
       continue;
     }
 
     mlir::StatusScopedDiagnosticHandler diag_handler(module->getContext());
-
     auto entry_function_name = func.getSymName();
     auto submodule = mlir::TF::CreatePrunedModule(module, entry_function_name);
     if (mlir::failed(submodule)) {
       return diag_handler.ConsumeStatus();
     }
 
-    auto executable = IfrtServingExecutable::Create(
-        model_name, entry_function_name, *std::move(submodule));
+    // Remove the attribute inherited from saved model loading. They impose
+    // additional constraint on public functions that are not necessary.
+    submodule->get()->removeAttr("tf_saved_model.semantics");
+    submodule->get().walk([&](mlir::func::FuncOp func) {
+      if (func.getSymName() == entry_function_name) {
+        func.setName("main");
+        func.setSymName("main");
+        func.setPublic();
+      }
+    });
+
+    auto executable = std::make_unique<IfrtServingExecutable>(
+        model_name, entry_function_name.str(), *std::move(submodule),
+        ifrt_model_context.GetClient(),
+        ifrt_model_context.GetShapeRepresentationFn());
 
     // Register the Ifrt program to `ServingExecutableRegistry` so that
-    // the client TF program can invoke them via `IfrtProgramCall` ops.
+    // the client TF program can invoke them via `IfrtCall` op.
     TF_ASSIGN_OR_RETURN(auto handle, ServingExecutableRegistry::Register(
                                          program_id, std::move(executable)));
 
@@ -92,17 +104,18 @@ IfrtBackendCompiler::CompileAndRegisterIfrtPrograms(
   return handles;
 }
 
-absl::Status IfrtBackendCompiler::CompileTensorflowForIfrtServing(
+absl::Status CompileTensorflowForIfrtServing(
     absl::string_view model_name, IfrtModelContext& ifrt_model_context,
-    mlir::ModuleOp module) const {
+    mlir::ModuleOp module) {
   tsl::profiler::TraceMe trace_me("CompileTensorflowForIfrtServing");
   mlir::Builder builder(module.getContext());
 
   TF_RETURN_IF_ERROR(
       RunClusterToIfrtRuntimeOpsPassPipeline(module, model_name));
 
-  TF_ASSIGN_OR_RETURN(auto handles,
-                      CompileAndRegisterIfrtPrograms(model_name, module));
+  TF_ASSIGN_OR_RETURN(
+      auto handles,
+      CompileAndRegisterIfrtPrograms(model_name, module, ifrt_model_context));
 
   for (auto& handle : handles) {
     ifrt_model_context.RegisterHandle(std::move(handle));
@@ -110,6 +123,8 @@ absl::Status IfrtBackendCompiler::CompileTensorflowForIfrtServing(
 
   return absl::OkStatus();
 }
+
+}  // namespace
 
 // Compile ifrt programs in TF dialect into ifrt executables.
 // Remove ifrt programs afterwards.

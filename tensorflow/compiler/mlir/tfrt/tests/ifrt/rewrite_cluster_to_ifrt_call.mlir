@@ -13,7 +13,7 @@
 // CHECK-NEXT:    %3 = "tf.add"(%0, %2) : (tensor<1x1xf32>, tensor<1x1xf32>) -> tensor<1x1xf32>
 // CHECK:    return
 //
-// CHECK:  func.func @_ifrt_program__func(%arg0: tensor<1x3xf32>, %arg1: tensor<3x1xf32>) -> tensor<1x1xf32> 
+// CHECK:  func.func private @_ifrt_program__func(%arg0: tensor<1x3xf32>, %arg1: tensor<3x1xf32>) -> tensor<1x1xf32> 
 // CHECK-SAME:      attributes {tfrt_ifrt_serving.program_id = [[PROGRAM_ID]] : i64
 // CHECK-NEXT:     %0 = "tf.MatMul"(%arg0, %arg1)
 // CHECK:          return

@@ -16,15 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_IFRT_IFRT_BACKEND_COMPILER_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_IFRT_IFRT_BACKEND_COMPILER_H_
 
-#include <vector>
 
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/backend_compiler.h"
-#include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
-#include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 
 namespace tensorflow {
@@ -38,15 +33,6 @@ class IfrtBackendCompiler : public tensorflow::BackendCompiler {
   absl::Status CompileTensorflow(
       tensorflow::tfrt_stub::ModelRuntimeContext& model_context,
       mlir::ModuleOp module) const override;
-
- private:
-  absl::Status CompileTensorflowForIfrtServing(
-      absl::string_view model_name, IfrtModelContext& ifrt_model_context,
-      mlir::ModuleOp module) const;
-
-  absl::StatusOr<std::vector<ServingExecutableRegistry::Handle>>
-  CompileAndRegisterIfrtPrograms(absl::string_view model_name,
-                                 mlir::ModuleOp module) const;
 };
 
 }  // namespace ifrt_serving
