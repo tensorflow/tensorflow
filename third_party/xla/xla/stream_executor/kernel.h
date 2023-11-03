@@ -261,63 +261,6 @@ struct KernelArg {
   size_t size;
 };
 
-// An iterator for traversing all the arguments of a KernelArgsArray.
-class KernelArgIterator {
- public:
-  KernelArgIterator(int number_of_argument_addresses,
-                    int number_of_shared_memory_arguments,
-                    const void *const *arg_addresses_data,
-                    const size_t *arg_sizes_data,
-                    const size_t *shmem_bytes_data,
-                    const size_t *shmem_indices_data)
-      : arg_index_(0),
-        number_of_arguments_(number_of_argument_addresses +
-                             number_of_shared_memory_arguments),
-        arg_address_iter_(arg_addresses_data),
-        arg_size_iter_(arg_sizes_data),
-        shmem_bytes_iter_(shmem_bytes_data),
-        shmem_indices_iter_(shmem_indices_data),
-        shmem_indices_end_(shmem_indices_data +
-                           number_of_shared_memory_arguments) {}
-
-  // Returns true if another argument is present in the iterator.
-  bool has_next() { return arg_index_ < number_of_arguments_; }
-
-  // Returns the next argument in the iterator.
-  //
-  // Returns a default-constructed KernelArg if there is no next argument.
-  KernelArg next() {
-    KernelArg result = {};
-    if (!has_next()) {
-      return result;
-    } else if ((shmem_indices_iter_ != shmem_indices_end_) &&
-               (arg_index_ == *shmem_indices_iter_)) {
-      result.is_shared = true;
-      result.address = nullptr;
-      result.size = *shmem_bytes_iter_;
-      ++shmem_indices_iter_;
-      ++shmem_bytes_iter_;
-    } else {
-      result.is_shared = false;
-      result.address = *arg_address_iter_;
-      result.size = *arg_size_iter_;
-      ++arg_address_iter_;
-      ++arg_size_iter_;
-    }
-    ++arg_index_;
-    return result;
-  }
-
- private:
-  size_t arg_index_;
-  size_t number_of_arguments_;
-  const void *const *arg_address_iter_;
-  const size_t *arg_size_iter_;
-  const size_t *shmem_bytes_iter_;
-  const size_t *shmem_indices_iter_;
-  const size_t *const shmem_indices_end_;
-};
-
 // Base class for KernelArgsArray.
 //
 // Supports all the getter methods that do not depend on the compile-time number
@@ -348,9 +291,6 @@ class KernelArgsArrayBase {
 
   // Gets the list of argument addresses.
   virtual absl::Span<const void *const> argument_addresses() const = 0;
-
-  // Gets an iterator to the arguments in the array.
-  virtual KernelArgIterator arg_iterator() const = 0;
 };
 
 // A list of arguments for a kernel call.
@@ -438,14 +378,6 @@ class KernelArgsArray : public KernelArgsArrayBase {
                                          number_of_argument_addresses_);
   }
 
-  // Gets an iterator to the arguments in the array.
-  KernelArgIterator arg_iterator() const override {
-    return KernelArgIterator(
-        number_of_argument_addresses_, number_of_shared_memory_arguments_,
-        argument_addresses_.data(), argument_sizes_.data(),
-        shared_memory_bytes_.data(), shared_memory_indices_.data());
-  }
-
  private:
   // A place to store copies of opaque pointers from device memory arguments.
   std::array<const void *, kNumArgs> device_memory_opaque_pointers_;
@@ -492,6 +424,10 @@ std::unique_ptr<KernelArgsArrayBase> MakeKernelArgs(
   }
   return kernel_args;
 }
+
+//===----------------------------------------------------------------------===//
+// Typed kernel
+//===----------------------------------------------------------------------===//
 
 // Typed variant of KernelBase, like a typed device function pointer. See the
 // file comment for details and example usage.
