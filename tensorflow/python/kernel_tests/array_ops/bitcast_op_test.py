@@ -32,10 +32,13 @@ class BitcastTest(test.TestCase):
     with test_util.use_gpu():
       tf_ans = array_ops.bitcast(x, datatype)
       out = self.evaluate(tf_ans)
-      buff_after = memoryview(out).tobytes()
-      buff_before = memoryview(x).tobytes()
       if sys.byteorder == 'little' :
-        self.assertEqual(buff_before, buff_after)
+        buff_after = memoryview(out).tobytes()
+        buff_before = memoryview(x).tobytes()
+      else:
+        buff_after = memoryview(out.byteswap()).tobytes()
+        buff_before = memoryview(x.byteswap()).tobytes()
+      self.assertEqual(buff_before, buff_after)
       self.assertEqual(tf_ans.get_shape(), shape)
       self.assertEqual(tf_ans.dtype, datatype)
 
