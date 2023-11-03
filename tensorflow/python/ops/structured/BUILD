@@ -32,13 +32,9 @@ py_strict_library(
 
 py_strict_library(
     name = "structured_tensor",
-    srcs = [
-        "structured_array_ops.py",
-        "structured_tensor.py",
-    ],
+    srcs = ["structured_tensor.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/core/config:flags_py",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:extension_type",
@@ -50,14 +46,11 @@ py_strict_library(
         "//tensorflow/python/ops:check_ops",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops/ragged:dynamic_ragged_shape",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:row_partition",
         "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",

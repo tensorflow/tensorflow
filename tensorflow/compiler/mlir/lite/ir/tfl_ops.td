@@ -385,20 +385,21 @@ class TFL_TCopVTEtAreSameAt<int i, int j, int num=8> : Or<[
 //===----------------------------------------------------------------------===//
 // TFL op common constraints.
 //===----------------------------------------------------------------------===//
+def OperandsSameElementTypeConstraintBasePred :
+  Or<[TCopVTEtIsSameAs<0, 1>,
+    // Two operands' values are both quantized and their type have the same
+    // underlying storage type.
+    And<[
+      SubstLeaves<"$_self", "getElementTypeOrSelf($_op.getOperand(0))",
+        quant_QuantizedType.predicate>,
+      CPred<"quant::QuantizedType::castToStorageType("
+                "getElementTypeOrSelf($_op.getOperand(0))) == "
+            "quant::QuantizedType::castToStorageType("
+                "getElementTypeOrSelf($_op.getOperand(1)))">]>]>;
 
 class OperandsSameElementTypeConstraintBase<string op> :
   PredOpTrait<op # " operands have same element type",
-    Or<[
-      TCopVTEtIsSameAs<0, 1>,
-      // Two operands' values are both quantized and their type have the same
-      // underlying storage type.
-      And<[
-        SubstLeaves<"$_self", "getElementTypeOrSelf($_op.getOperand(0))",
-          quant_QuantizedType.predicate>,
-        CPred<"quant::QuantizedType::castToStorageType("
-                  "getElementTypeOrSelf($_op.getOperand(0))) == "
-              "quant::QuantizedType::castToStorageType("
-                  "getElementTypeOrSelf($_op.getOperand(1)))">]>]>>;
+    OperandsSameElementTypeConstraintBasePred>;
 
 // This is a constraint for most of the binary ops, e.g., add, mul, div, etc.
 // Binary ops lhs & rhs should have the same value type, and is capable to
@@ -538,8 +539,9 @@ def TFL_DilateOp : TFL_Op<"dilate", [
 }
 
 def TFL_AddOp : TFL_Op<"add", [
-    TFL_RuntimePredOpTrait<"Operands do not have valid shapes",
-      CPred<"TFL::VerifyAddOpShapeConstraints(llvm::cast<AddOp>($_op))">>,
+    TFL_RuntimePredOpTrait<"Operands should have valid shapes and element type needs to match",
+      And<[CPred<"TFL::VerifyAddOpShapeConstraints(llvm::cast<AddOp>($_op))">,
+           OperandsSameElementTypeConstraintBasePred]>>,
     ResultsBroadcastableShape,
     Pure,
     Commutative,

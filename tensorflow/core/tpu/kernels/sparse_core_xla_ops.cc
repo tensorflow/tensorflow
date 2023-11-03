@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -337,6 +338,15 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
   explicit XlaSparseDenseMatmulGradWithCsrInputBase(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("table_name", &table_name_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("clip_weight_min", &clip_weight_min_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("clip_weight_max", &clip_weight_max_));
+
+    OP_REQUIRES(ctx, clip_weight_min_ <= clip_weight_max_,
+                absl::InvalidArgumentError(
+                    absl::StrCat("clip_weight_min must be smaller or equal to "
+                                 "clip_weight_max but got clip_weight_min as ",
+                                 clip_weight_min_, " and clip_weight_max as ",
+                                 clip_weight_max_, ".")));
   }
 
   ~XlaSparseDenseMatmulGradWithCsrInputBase() override = default;
@@ -349,6 +359,15 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
   virtual xla::XlaOp get_hyperparameters_input(XlaOpKernelContext* ctx) = 0;
 
   virtual xla::Shape get_tables_shape(xla::Shape embedding_table_shape) = 0;
+
+  xla::XlaOp apply_weight_clipping_to_table(xla::XlaBuilder* builder,
+                                            xla::XlaOp table) {
+    xla::XlaOp clip_weight_min = xla::ConstantR0(builder, clip_weight_min_);
+    xla::XlaOp clip_weight_max = xla::ConstantR0(builder, clip_weight_max_);
+    xla::XlaOp clipped_table =
+        xla::Clamp(clip_weight_min, table, clip_weight_max);
+    return clipped_table;
+  }
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* builder = ctx->builder();
@@ -451,6 +470,10 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
     builder->SetFrontendAttributes(original_frontend_attributes);
   }
 
+ protected:
+  float clip_weight_min_;
+  float clip_weight_max_;
+
  private:
   std::string table_name_;
 
@@ -497,8 +520,12 @@ class XlaSparseDenseMatmulGradWithSgdAndCsrInputOp
           xla::GetTupleElement(tables, 0) -
           xla::GetTupleElement(hyperparameters, 0) * gradient;
 
+      // Apply the weight clipping.
+      xla::XlaOp clipped_embedding_table = apply_weight_clipping_to_table(
+          sgd_optimizer_builder.get(), updated_embedding_table);
+
       xla::XlaOp updated_tables =
-          xla::Tuple(sgd_optimizer_builder.get(), {updated_embedding_table});
+          xla::Tuple(sgd_optimizer_builder.get(), {clipped_embedding_table});
 
       return sgd_optimizer_builder->Build(updated_tables).value();
     }();
@@ -574,9 +601,13 @@ class XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp
           embedding_table -
           learning_rate * gradient / xla::Sqrt(new_accumulator);
 
+      // Apply the weight clipping.
+      xla::XlaOp clipped_embedding_table = apply_weight_clipping_to_table(
+          adagrad_optimizer_builder.get(), updated_embedding_table);
+
       xla::XlaOp updated_tables =
           xla::Tuple(adagrad_optimizer_builder.get(),
-                     {updated_embedding_table, new_accumulator});
+                     {clipped_embedding_table, new_accumulator});
       return adagrad_optimizer_builder->Build(updated_tables).value();
     }();
 
@@ -699,9 +730,13 @@ class XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInputOp
         updated_embedding_table = embedding_table - learning_rate * new_momenta;
       }
 
+      // Apply the weight clipping.
+      xla::XlaOp clipped_embedding_table = apply_weight_clipping_to_table(
+          adagrad_momentum_optimizer_builder.get(), updated_embedding_table);
+
       xla::XlaOp updated_tables =
           xla::Tuple(adagrad_momentum_optimizer_builder.get(),
-                     {updated_embedding_table, new_accumulator, new_momenta});
+                     {clipped_embedding_table, new_accumulator, new_momenta});
       return adagrad_momentum_optimizer_builder->Build(updated_tables).value();
     }();
 
@@ -768,7 +803,6 @@ class XlaSparseDenseMatmulGradWithAdamAndCsrInputOp
 
       xla::XlaOp gradient = xla::Parameter(adam_optimizer_builder.get(), 0,
                                            per_row_shape, "gradient");
-
       xla::XlaOp tables =
           xla::Parameter(adam_optimizer_builder.get(), 1,
                          xla::ShapeUtil::MakeTupleShape(
@@ -814,9 +848,13 @@ class XlaSparseDenseMatmulGradWithAdamAndCsrInputOp
           embedding_table -
           learning_rate * new_momenta / (xla::Sqrt(new_velocity + e1) + e2);
 
+      // Apply the weight clipping.
+      xla::XlaOp clipped_embedding_table = apply_weight_clipping_to_table(
+          adam_optimizer_builder.get(), updated_embedding_table);
+
       xla::XlaOp updated_tables =
           xla::Tuple(adam_optimizer_builder.get(),
-                     {updated_embedding_table, new_momenta, new_velocity});
+                     {clipped_embedding_table, new_momenta, new_velocity});
       return adam_optimizer_builder->Build(updated_tables).value();
     }();
 
@@ -973,9 +1011,13 @@ class XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp
       }
       xla::XlaOp updated_embedding_table = numer / denom;
 
+      // Apply the weight clipping.
+      xla::XlaOp clipped_embedding_table = apply_weight_clipping_to_table(
+          ftrl_optimizer_builder.get(), updated_embedding_table);
+
       xla::XlaOp updated_tables =
           xla::Tuple(ftrl_optimizer_builder.get(),
-                     {updated_embedding_table, new_accumulator, new_linear});
+                     {clipped_embedding_table, new_accumulator, new_linear});
       return ftrl_optimizer_builder->Build(updated_tables).value();
     }();
 

@@ -29,6 +29,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
+#include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/hlo_verifier.h"
+#include "xla/service/layout_assignment.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape_util.h"
@@ -90,15 +93,9 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(16);
-  key.set_block_k(16);
-  key.set_split_k(4);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
-  TF_EXPECT_OK(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+  TritonGemmConfig config(16, 16, 16, 4, 1, 4);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
   EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
             HloOpcode::kReduce);
 }
@@ -127,15 +124,9 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(16);
-  key.set_block_k(16);
-  key.set_split_k(4);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
-  TF_EXPECT_OK(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+  TritonGemmConfig config(16, 16, 16, 4, 1, 4);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
   EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
             HloOpcode::kReduce);
 }
@@ -161,19 +152,13 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(16);
-  key.set_block_k(16);
-  key.set_split_k(4);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
-  EXPECT_THAT(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key),
-      tsl::testing::StatusIs(
-          tsl::error::CANCELLED,
-          absl::StrFormat(
-              "Operation non-distributive over addition after dot.")));
+  TritonGemmConfig config(16, 16, 16, 4, 1, 4);
+  EXPECT_THAT(MakeDotSplitKBatch(
+                  module->entry_computation()->root_instruction(), config),
+              tsl::testing::StatusIs(
+                  tsl::error::CANCELLED,
+                  absl::StrFormat(
+                      "Operation non-distributive over addition after dot.")));
 }
 
 TEST_F(SplitKTest, MakeSplitKWithNonDivisibleDimensionSize) {
@@ -198,15 +183,9 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
-  AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(16);
-  key.set_block_k(16);
-  key.set_split_k(2);
-  key.set_num_stages(1);
-  key.set_num_warps(2);
-  TF_EXPECT_OK(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+  TritonGemmConfig config(16, 16, 16, 2, 1, 2);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
 }
 
 TEST_F(SplitKTest, AvoidSplitKWithSlicedContractingDimension) {
@@ -227,19 +206,13 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(16);
-  key.set_block_k(16);
-  key.set_split_k(2);
-  key.set_num_stages(1);
-  key.set_num_warps(2);
-  EXPECT_THAT(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key),
-      tsl::testing::StatusIs(
-          tsl::error::CANCELLED,
-          absl::StrFormat(
-              "Sliced contracting dimension is not supported yet.")));
+  TritonGemmConfig config(16, 16, 16, 2, 1, 2);
+  EXPECT_THAT(MakeDotSplitKBatch(
+                  module->entry_computation()->root_instruction(), config),
+              tsl::testing::StatusIs(
+                  tsl::error::CANCELLED,
+                  absl::StrFormat(
+                      "Sliced contracting dimension is not supported yet.")));
 }
 
 TEST_F(SplitKTest, MakeSplitKWithNonStandardOutputLayout) {
@@ -265,16 +238,10 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
-  AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(16);
-  key.set_block_k(16);
-  key.set_split_k(4);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
+  TritonGemmConfig config(16, 16, 16, 4, 1, 4);
 
-  TF_EXPECT_OK(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
 
   EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
             HloOpcode::kReduce);
@@ -306,15 +273,9 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  AutotuneResult::TritonGemmKey key;
-  key.set_block_m(32);
-  key.set_block_n(64);
-  key.set_block_k(64);
-  key.set_split_k(8);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
-  TF_EXPECT_OK(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+  TritonGemmConfig config(32, 64, 64, 8, 1, 4);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
   EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
             HloOpcode::kReduce);
 }
@@ -342,15 +303,9 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
-  AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(16);
-  key.set_block_k(16);
-  key.set_split_k(4);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
-  TF_EXPECT_OK(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+  TritonGemmConfig config(16, 16, 16, 4, 1, 4);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
 }
 
 TEST_F(SplitKTest, SupportsIndivisibleSimpleSplitK4) {
@@ -373,15 +328,41 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
-  AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(16);
-  key.set_block_k(16);
-  key.set_split_k(4);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
-  TF_EXPECT_OK(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+  TritonGemmConfig config(16, 16, 16, 4, 1, 4);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
+}
+
+TEST_F(SplitKTest, SupportsIndivisibleWithCustomLayout) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+triton_gemm_dot {
+  parameter_0 = s8[480,129]{0,1} parameter(0)
+  convert_0 = bf16[480,129]{0,1} convert(parameter_0)
+  parameter_1 = bf16[16,129]{0,1} parameter(1)
+  ROOT dot.0 = bf16[480,16]{1,0} dot(convert_0, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = s8[480,129]{0,1} parameter(0)
+  p1 = bf16[16,129]{0,1} parameter(1)
+  ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+
+  constexpr TritonGemmConfig kConfig(16, 16, 16, 4, 1, 4);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), kConfig));
+
+  TF_EXPECT_OK(HloVerifier(/*layout_sensitive=*/true,
+                           /*allow_mixed_precision=*/true,
+                           LayoutAssignment::InstructionCanChangeLayout)
+                   .Run(module.get())
+                   .status());
 }
 
 TEST_F(SplitKTest, SupportsIndivisibleSimpleSplitK16) {
@@ -404,15 +385,9 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
-  AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(16);
-  key.set_block_k(16);
-  key.set_split_k(16);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
-  TF_EXPECT_OK(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+  TritonGemmConfig config(16, 16, 16, 16, 1, 4);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
 }
 
 TEST_F(SplitKTest, SupportsIndivisibleWithTranspose) {
@@ -436,15 +411,9 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
-  AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(16);
-  key.set_block_k(16);
-  key.set_split_k(16);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
-  TF_EXPECT_OK(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+  TritonGemmConfig config(16, 16, 16, 16, 1, 4);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
 }
 
 TEST_F(SplitKTest, SupportIndivisibleWithBroadcast) {
@@ -468,15 +437,9 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
-  AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(16);
-  key.set_block_k(16);
-  key.set_split_k(16);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
-  TF_EXPECT_OK(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+  TritonGemmConfig config(16, 16, 16, 16, 1, 4);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
 }
 
 TEST_F(SplitKTest, SupportsIndivisibleWithBitcast) {
@@ -500,15 +463,9 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
-  AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(16);
-  key.set_block_k(16);
-  key.set_split_k(16);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
-  TF_EXPECT_OK(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+  TritonGemmConfig config(16, 16, 16, 16, 1, 4);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
 }
 
 TEST_F(SplitKTest, SkipSmallK) {
@@ -534,18 +491,12 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(16);
-  key.set_block_k(128);
-  key.set_split_k(4);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
-  EXPECT_THAT(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key),
-      tsl::testing::StatusIs(
-          tsl::error::CANCELLED,
-          "Too small divisible part of the contracting dimension."));
+  TritonGemmConfig config(16, 16, 128, 4, 1, 4);
+  EXPECT_THAT(MakeDotSplitKBatch(
+                  module->entry_computation()->root_instruction(), config),
+              tsl::testing::StatusIs(
+                  tsl::error::CANCELLED,
+                  "Too small divisible part of the contracting dimension."));
 }
 
 TEST_F(SplitKTest, FragmentedKSupported) {
@@ -570,24 +521,19 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
 
-  AutotuneResult::TritonGemmKey key;
-  key.set_block_m(32);
-  key.set_block_n(32);
-  key.set_block_k(16);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
-
+  TritonGemmConfig config(32, 32, 16, 1, 1, 4);
   // 5 divides the contracting dimension, but not its major subdimensions.
-  key.set_split_k(5);
+  config.split_k = 5;
   EXPECT_THAT(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key),
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                         config),
       tsl::testing::StatusIs(tsl::error::CANCELLED,
                              "Contracting dimension is too fragmented."));
 
   // 8 fits the constraints.
-  key.set_split_k(8);
-  TF_EXPECT_OK(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+  config.split_k = 8;
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kReduce);
   const HloComputation* dot_computation = module->entry_computation()
@@ -597,7 +543,7 @@ ENTRY e {
   const HloInstruction* p0 = dot_computation->parameter_instruction(0);
   TF_ASSERT_OK_AND_ASSIGN(
       const auto analysis,
-      TritonFusionAnalysis::Execute(*dot_computation, key.split_k()));
+      TritonFusionAnalysis::Execute(*dot_computation, config.split_k));
   EXPECT_EQ(dot_computation->root_instruction()->shape(),
             ShapeUtil::MakeShapeWithDescendingLayout(F16, {8, 7, 5}));
   EXPECT_THAT(
@@ -628,16 +574,11 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
 
-  AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(16);
-  key.set_block_k(16);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
-  key.set_split_k(4);
+  TritonGemmConfig config(16, 16, 16, 4, 1, 4);
   // Because HasDivisibleSuffixAllowingSplit({128, 3}, 4) == false.
   EXPECT_THAT(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key),
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                         config),
       tsl::testing::StatusIs(tsl::error::CANCELLED,
                              "Contracting dimension is too fragmented."));
 }
@@ -661,15 +602,9 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
-  AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(16);
-  key.set_block_k(16);
-  key.set_split_k(2);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
-  TF_EXPECT_OK(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+  TritonGemmConfig config(16, 16, 16, 2, 1, 4);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
   EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
             HloOpcode::kReduce);
   const HloComputation* dot_computation = module->entry_computation()
@@ -716,15 +651,9 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
 
-  AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(16);
-  key.set_block_k(16);
-  key.set_split_k(4);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
-  TF_EXPECT_OK(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+  TritonGemmConfig config(16, 16, 16, 4, 1, 4);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Convert(m::Reduce(m::Fusion(), m::Constant()))));
@@ -754,15 +683,9 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(16);
-  key.set_block_k(16);
-  key.set_split_k(4);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
-  TF_EXPECT_OK(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+  TritonGemmConfig config(16, 16, 16, 4, 1, 4);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Convert(m::Reduce(m::Fusion(), m::Constant()))));
 }
@@ -786,15 +709,9 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(128);
-  key.set_block_k(32);
-  key.set_split_k(8);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
-  TF_EXPECT_OK(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+  TritonGemmConfig config(16, 128, 32, 8, 1, 4);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
   const auto* transpose =
       Cast<HloTransposeInstruction>(module->entry_computation()
                                         ->root_instruction()

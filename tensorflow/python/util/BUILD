@@ -84,6 +84,10 @@ tf_python_pybind_extension(
     name = "_pywrap_utils",
     srcs = ["util_wrapper.cc"],
     hdrs = ["util.h"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_utils.pyi",
+    ],
     deps = [
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/python/lib/core:pybind11_lib",
@@ -96,6 +100,10 @@ tf_python_pybind_extension(
     name = "_pywrap_nest",
     srcs = ["nest_wrapper.cc"],
     hdrs = ["nest.h"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_nest.pyi",
+    ],
     deps = [
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
@@ -348,7 +356,37 @@ pytype_strict_library(
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
-        ":tf_decorator",
+        ":tf_decorator_py",
+        ":tf_inspect",
+    ],
+)
+
+py_strict_library(
+    name = "tf_contextlib",
+    srcs = ["tf_contextlib.py"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//learning/brain/analytics:__subpackages__",
+        "//learning/deepmind/research/language/translation/lm:__subpackages__",
+        "//tensorflow:__pkg__",
+        "//tensorflow:__subpackages__",
+        "//third_party/py/tensorflow_core:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
+    deps = [":tf_decorator_py"],
+)
+
+py_strict_library(
+    name = "tf_decorator_py",
+    srcs = ["tf_decorator.py"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//learning/brain/analytics:__subpackages__",
+        "//learning/deepmind/research/language/translation/lm:__subpackages__",
+        "//tensorflow:__pkg__",
+        "//tensorflow:__subpackages__",
+        "//third_party/py/tensorflow_core:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
     ],
 )
 
@@ -357,7 +395,7 @@ tf_py_strict_test(
     srcs = ["tf_export_test.py"],
     python_version = "PY3",
     deps = [
-        ":tf_decorator",
+        ":tf_decorator_py",
         ":tf_export",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:tf_logging",
@@ -379,12 +417,8 @@ tf_py_strict_test(
 # TODO(mdan): Move this utility outside of TF.
 py_strict_library(
     name = "tf_decorator",
-    srcs = [
-        "tf_contextlib.py",
-        "tf_decorator.py",
-        "tf_inspect.py",
-    ],
     compatible_with = get_compatible_with_portable(),
+    deprecation = "This target has been split. Depend on the sub-targets instead.",
     srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
@@ -396,7 +430,9 @@ py_strict_library(
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
-        "@six_archive//:six",
+        ":tf_contextlib",
+        ":tf_decorator_py",
+        ":tf_inspect",
     ],
 )
 
@@ -615,7 +651,9 @@ tf_py_strict_test(
     srcs = ["tf_contextlib_test.py"],
     python_version = "PY3",
     deps = [
-        ":tf_decorator",
+        ":tf_contextlib",
+        ":tf_decorator_py",
+        ":tf_inspect",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -626,7 +664,8 @@ tf_py_strict_test(
     srcs = ["tf_decorator_test.py"],
     python_version = "PY3",
     deps = [
-        ":tf_decorator",
+        ":tf_decorator_py",
+        ":tf_inspect",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:tf_logging",
     ],
@@ -637,7 +676,7 @@ py_strict_library(
     srcs = ["tf_should_use.py"],
     srcs_version = "PY3",
     deps = [
-        ":tf_decorator",
+        ":tf_decorator_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:tf_logging",
@@ -666,7 +705,8 @@ tf_py_strict_test(
     srcs = ["tf_inspect_test.py"],
     python_version = "PY3",
     deps = [
-        ":tf_decorator",
+        ":tf_decorator_py",
+        ":tf_inspect",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:tf_logging",
     ],
@@ -691,13 +731,15 @@ py_strict_library(
     deps = [
         ":decorator_utils",
         ":is_in_graph_mode",
+        ":tf_contextlib",
+        ":tf_decorator_py",
+        ":tf_inspect",
         "//tensorflow/python/framework:strict_mode",
         "//tensorflow/python/platform:tf_logging",
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
-        ":tf_decorator",
         "//tensorflow/tools/docs:doc_controls",
     ],
 )
@@ -741,11 +783,11 @@ py_strict_library(
     compatible_with = get_compatible_with_portable(),
     visibility = util_subpackage_visibility,
     deps = [
+        ":tf_decorator_py",
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
-        ":tf_decorator",
         "@six_archive//:six",
     ],
 )
@@ -783,8 +825,10 @@ tf_py_strict_test(
     python_version = "PY3",
     deps = [
         ":lazy_loader",
+        ":tf_inspect",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:tf_logging",
     ],
 )
 
@@ -900,11 +944,11 @@ py_strict_library(
     compatible_with = get_compatible_with_portable(),
     visibility = util_subpackage_visibility,
     deps = [
+        ":tf_decorator_py",
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
-        ":tf_decorator",
         ":tf_export",
     ],
 )
@@ -928,13 +972,14 @@ py_strict_library(
     visibility = util_subpackage_visibility,
     deps = [
         ":__init__",
+        ":tf_decorator_py",
+        ":tf_inspect",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/platform:tf_logging",
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
-        ":tf_decorator",
         "//tensorflow/tools/compatibility:all_renames_v2",
         ":fast_module_type",
     ],
@@ -945,6 +990,8 @@ py_strict_library(
     srcs = ["function_utils.py"],
     visibility = util_subpackage_visibility,
     deps = [
+        ":tf_decorator_py",
+        ":tf_inspect",
         "//tensorflow/core:protos_all_py",
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
@@ -986,6 +1033,8 @@ py_strict_library(
     srcs = ["dispatch.py"],
     visibility = util_subpackage_visibility,
     deps = [
+        ":tf_decorator_py",
+        ":tf_inspect",
         ":traceback_utils",
         ":type_annotations",
         "//tensorflow/python/framework:_pywrap_python_api_dispatcher",
@@ -994,7 +1043,6 @@ py_strict_library(
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
-        ":tf_decorator",
         ":tf_export",
     ],
 )
@@ -1051,11 +1099,11 @@ py_strict_library(
     compatible_with = get_compatible_with_portable(),
     visibility = util_subpackage_visibility,
     deps = [
+        ":tf_inspect",
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
-        ":tf_decorator",
     ],
 )
 
@@ -1212,7 +1260,7 @@ py_strict_library(
     name = "tf_decorator_export",
     srcs = ["tf_decorator_export.py"],
     deps = [
-        ":tf_decorator",
+        ":tf_decorator_py",
         ":tf_export",
     ],
 )

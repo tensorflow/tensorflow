@@ -346,10 +346,7 @@ py_strict_library(
 tf_py_strict_test(
     name = "build_info_test",
     size = "small",
-    srcs = [
-        "build_info.py",
-        "build_info_test.py",
-    ],
+    srcs = ["build_info_test.py"],
     main = "build_info_test.py",
     python_version = "PY3",
     tags = [
@@ -366,26 +363,16 @@ tf_py_strict_test(
 tf_py_strict_test(
     name = "benchmark_test",
     size = "small",
-    srcs = [
-        "benchmark.py",
-        "benchmark_test.py",
-    ],
+    srcs = ["benchmark_test.py"],
     main = "benchmark_test.py",
     python_version = "PY3",
     tags = [
         "no_pip",
     ],
     deps = [
+        ":benchmark",
         ":client_testlib",
-        ":gfile",
-        ":tf_logging",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/client",
-        "//tensorflow/python/client:timeline",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:tf_export",
-        "//tensorflow/python/util:tf_inspect",
-        "@absl_py//absl:app",
     ],
 )
 

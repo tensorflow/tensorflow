@@ -711,7 +711,8 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                     static_cast<Coefficient>(1.0), b_ptrs,
                     adj_y || trans_y ? k : n, a_ptrs, adj_x || trans_x ? m : k,
                     static_cast<Coefficient>(0.0), c_ptrs, n, batch_size,
-                    GetNumericOptions(), &scratch_allocator)
+                    GetNumericOptions(), &scratch_allocator,
+                    se::blas::CallContext::kNone)
                 .ok();
         if (!blas_launch_status) {
           context->SetStatus(errors::Internal(
@@ -805,20 +806,22 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
           }
         }
 
-        OP_REQUIRES_OK(context, stream->ThenBlasGemm(
-                                    blas_transpose_b, blas_transpose_a, n, m, k,
-                                    *(b_ptrs[0]), adj_y || trans_y ? k : n,
-                                    *(a_ptrs[0]), adj_x || trans_x ? m : k,
-                                    c_ptrs[0], n, GetNumericOptions()));
+        OP_REQUIRES_OK(context,
+                       stream->ThenBlasGemm(
+                           blas_transpose_b, blas_transpose_a, n, m, k,
+                           *(b_ptrs[0]), adj_y || trans_y ? k : n, *(a_ptrs[0]),
+                           adj_x || trans_x ? m : k, c_ptrs[0], n,
+                           GetNumericOptions(), se::blas::CallContext::kNone));
       } else if (use_strided_batched) {
         OP_REQUIRES_OK(
-            context, stream->ThenBlasGemmStridedBatched(
-                         blas_transpose_b, blas_transpose_a, n, m, k,
-                         static_cast<Coefficient>(1.0), *b_ptrs[0],
-                         adj_y || trans_y ? k : n, b_stride, *a_ptrs[0],
-                         adj_x || trans_x ? m : k, a_stride,
-                         static_cast<Coefficient>(0.0), c_ptrs[0], n, c_stride,
-                         batch_size, GetNumericOptions()));
+            context,
+            stream->ThenBlasGemmStridedBatched(
+                blas_transpose_b, blas_transpose_a, n, m, k,
+                static_cast<Coefficient>(1.0), *b_ptrs[0],
+                adj_y || trans_y ? k : n, b_stride, *a_ptrs[0],
+                adj_x || trans_x ? m : k, a_stride,
+                static_cast<Coefficient>(0.0), c_ptrs[0], n, c_stride,
+                batch_size, GetNumericOptions(), se::blas::CallContext::kNone));
       } else {
         BlasScratchAllocator scratch_allocator(context);
         bool blas_launch_status =
@@ -828,7 +831,8 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                     static_cast<Coefficient>(1.0), b_ptrs,
                     adj_y || trans_y ? k : n, a_ptrs, adj_x || trans_x ? m : k,
                     static_cast<Coefficient>(0.0), c_ptrs, n, batch_size,
-                    GetNumericOptions(), &scratch_allocator)
+                    GetNumericOptions(), &scratch_allocator,
+                    se::blas::CallContext::kNone)
                 .ok();
         if (!blas_launch_status) {
           context->SetStatus(errors::Internal(

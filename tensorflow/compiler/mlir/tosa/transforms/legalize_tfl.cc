@@ -1929,7 +1929,7 @@ LogicalResult ConvertTFLBatchMatMulOp::matchAndRewrite(
   }
 
   auto batch_dims = lhs_ty.getShape().drop_back(2);
-  if (batch_dims.size() > 1) {
+  if (batch_dims.size() != 1) {
     int64_t N = 1;
     for (auto d : batch_dims) {
       N = N < 0 || d < 0 ? -1 : N * d;
@@ -2008,7 +2008,7 @@ LogicalResult ConvertTFLBatchMatMulOp::matchAndRewrite(
 
   // Conditionally reshape rank back to expected rank.
   auto matmul_ty = matmul.getType().cast<RankedTensorType>();
-  if (batch_dims.size() > 1) {
+  if (batch_dims.size() != 1) {
     llvm::SmallVector<int64_t> new_shape{};
     for (auto d : batch_dims) {
       new_shape.push_back(d);

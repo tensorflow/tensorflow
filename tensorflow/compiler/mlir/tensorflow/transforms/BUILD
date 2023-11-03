@@ -566,7 +566,6 @@ cc_library(
         ":cluster_formation",
         ":decompose_resource_ops",
         ":decompose_resource_ops_inc_gen",
-        ":extract_head_tail_outside_compilation",
         ":extract_outside_compilation",
         ":lower_tf_lib",
         ":mark_ops_for_outside_compilation",
@@ -577,7 +576,6 @@ cc_library(
         ":tf_pass_inc_gen",
         ":tf_savedmodel_pass_inc_gen",
         ":tfe_legalize_tfg",
-        ":tpu_cluster_formation",
         ":unroll_batch_matmul_pass",
         ":verify_no_outside_compilation_markers_pass",
         ":xla_cluster_formation",
@@ -681,31 +679,6 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_cluster_formation",
-    srcs = ["tpu_cluster_formation.cc"],
-    textual_hdrs = [
-        "tf_passes.h.inc",
-    ],
-    deps = [
-        ":tf_pass_inc_gen",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
-        "//tensorflow/compiler/mlir/tensorflow:string_util",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
-        "//tensorflow/compiler/mlir/tensorflow:tpu_rewrite_device_util",
-        "//tensorflow/core:framework",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-    ],
-)
-
-cc_library(
     name = "cluster_formation",
     srcs = ["cluster_formation.cc"],
     textual_hdrs = [
@@ -759,39 +732,6 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-    ],
-)
-
-cc_library(
-    name = "extract_head_tail_outside_compilation",
-    srcs = ["extract_head_tail_outside_compilation.cc"],
-    textual_hdrs = [
-        "tf_passes.h.inc",
-    ],
-    deps = [
-        ":lower_tf_lib",
-        ":tf_pass_inc_gen",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
-        "//tensorflow/compiler/mlir/tensorflow:device_util",
-        "//tensorflow/compiler/mlir/tensorflow:string_util",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "//tensorflow/compiler/mlir/tensorflow:tpu_rewrite_device_util",
-        "//tensorflow/compiler/mlir/tf2xla/transforms:legalization_op_config",
-        "//tensorflow/compiler/mlir/tf2xla/transforms:legalize_tf",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
@@ -979,22 +919,6 @@ cc_library(
         "@local_xla//xla/translate/hlo_to_mhlo:hlo_utils",
         "@local_xla//xla/translate/mhlo_to_hlo:type_to_shape",
     ],
-)
-
-cc_library(
-    name = "bridge_pass_test_pipeline_registration",
-    testonly = True,  # Ensure alwayslink does not leak in the codebase.
-    srcs = [
-        "bridge_pass.cc",
-    ],
-    deps = [
-        ":bridge",
-        ":tensorflow_passes",
-        "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Transforms",
-    ],
-    alwayslink = 1,
 )
 
 cc_library(

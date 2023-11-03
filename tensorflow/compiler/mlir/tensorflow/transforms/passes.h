@@ -463,11 +463,6 @@ CreateAnnotateParameterReplicationPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateMarkOpsForOutsideCompilationPass();
 
-// Creates a pass that extracts outside compilation (Host ops inside device
-// cluster) at head/tail of Device cluster to run before/after XLA computation.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateExtractHeadTailOutsideCompilationPass();
-
 // Creates a pass that extract outside compilation (Host ops inside cevice
 // cluster) ops to a separate parallel_execute region to run on CPU.
 std::unique_ptr<OperationPass<ModuleOp>> CreateExtractOutsideCompilationPass();
@@ -529,11 +524,6 @@ CreateConvertToLegacyCompileAndReplicateAttributesPass();
 // Creates a pass that converts all TPUPartitionedInput to TPUPartitionedInputV2
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUPartitionedOpConversionPass();
-
-// Creates a pass that forms clusters from operations of the same
-// `_replication_info` attribute.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass(
-    bool strict_clusters = false);
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUValidateInputsPass();
 
@@ -622,11 +612,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateTPUDevicePropagationPass();
 
 // Create a pass that colocates each `Split` with its predecessor.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTPUColocateSplitsPass();
-
-// Populates the supplied passmanager with the passes required to run the
-// bridge.
-void CreateTPUBridgePipeline(OpPassManager& pm,
-                             llvm::StringRef module_name = llvm::StringRef());
 
 // Creates a pass that replicates the tf._TPUCompileMlir op on each host that
 // needs the compiled program. It helps avoid transferring the compiled binary
@@ -721,7 +706,6 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_TPUCOLOCATECOMPOSITERESOURCEOPSPASS
 #define GEN_PASS_DECL_TPUDEVICEPROPAGATIONPASS
 #define GEN_PASS_DECL_TPUDYNAMICLAYOUTPASS
-#define GEN_PASS_DECL_TPUEXTRACTHEADTAILOUTSIDECOMPILATIONPASS
 #define GEN_PASS_DECL_TPUEXTRACTOUTSIDECOMPILATIONPASS
 #define GEN_PASS_DECL_TPUHOSTCOMPUTATIONEXPANSIONPASS
 #define GEN_PASS_DECL_TPUIDENTITYPRUNINGPASS

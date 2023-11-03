@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <deque>
-#include <iterator>
 #include <memory>
 #include <string>
 #include <utility>
@@ -149,7 +148,7 @@ BuildXlaCompilerArgumentFromTensorSpec(
     absl::Span<VariableInfo const> variable_args,
     absl::Span<const ArgShapeAndDType> flat_arg_shape_and_dtype) {
   TF_RET_CHECK(fbody != nullptr);
-  auto& input_args = fbody->fdef.signature().input_arg();
+  auto& input_args = fbody->record->fdef().signature().input_arg();
   int input_arg_size = input_args.size();
   std::vector<XlaCompiler::Argument> args;
   args.reserve(input_arg_size);
@@ -259,7 +258,7 @@ StatusOr<std::string> GetCompilerIr(
       flr, function, &fbody, &constant_arg_indices, &resource_arg_indices));
 
   // `input_args` includes both concrete_fn input args and captured_input here.
-  auto& input_args = fbody->fdef.signature().input_arg();
+  auto& input_args = fbody->record->fdef().signature().input_arg();
   // Here input_arg_size = len(flat_args) + len(captured_input)
   int input_arg_size = input_args.size();
 

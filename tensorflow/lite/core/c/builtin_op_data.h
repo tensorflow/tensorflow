@@ -34,6 +34,7 @@ extern "C" {
 #define TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT 8
 #define TFLITE_STABLEHLO_SCATTER_PARAMS_MAX_DIMENSION_COUNT 8
 #define TFLITE_STABLEHLO_GATHER_PARAMS_MAX_DIMENSION_COUNT 8
+#define TFLITE_STABLEHLO_REDUCE_WINDOW_PARAMS_MAX_DIMENSION_COUNT 8
 
 // TODO(aselle): Consider using "if this then that" for testing.
 
@@ -604,6 +605,22 @@ typedef struct {
   int num_slice_sizes;
   bool indices_are_sorted;
 } TfLiteStablehloGatherParams;
+
+typedef struct {
+  // See the stablehlo spec for the explanation of the attributes:
+  // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#reduce_window
+  int64_t window_dimensions
+      [TFLITE_STABLEHLO_REDUCE_WINDOW_PARAMS_MAX_DIMENSION_COUNT];
+  int64_t
+      window_strides[TFLITE_STABLEHLO_REDUCE_WINDOW_PARAMS_MAX_DIMENSION_COUNT];
+  int64_t
+      base_dilations[TFLITE_STABLEHLO_REDUCE_WINDOW_PARAMS_MAX_DIMENSION_COUNT];
+  int64_t window_dilations
+      [TFLITE_STABLEHLO_REDUCE_WINDOW_PARAMS_MAX_DIMENSION_COUNT];
+  int64_t
+      padding[2 * TFLITE_STABLEHLO_REDUCE_WINDOW_PARAMS_MAX_DIMENSION_COUNT];
+  int body_subgraph_index;
+} TfLiteStablehloReduceWindowParams;
 
 enum TfLiteReduceWindowFunction {
   TfLiteReduceWindowFunctionUnsupported,

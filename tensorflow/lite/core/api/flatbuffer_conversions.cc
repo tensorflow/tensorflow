@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -881,6 +882,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_STABLEHLO_GATHER: {
       return ParseStablehloGather(op, error_reporter, allocator, builtin_data);
     }
+    case BuiltinOperator_STABLEHLO_REDUCE_WINDOW: {
+      return ParseStablehloReduceWindow(op, error_reporter, allocator,
+                                        builtin_data);
+    }
     case BuiltinOperator_REDUCE_WINDOW: {
       auto params = safe_allocator.Allocate<TfLiteReduceWindowParams>();
       TF_LITE_ENSURE(error_reporter, params != nullptr);
@@ -949,7 +954,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_STABLEHLO_CONVERT:
     case BuiltinOperator_STABLEHLO_PAD:
     case BuiltinOperator_STABLEHLO_DOT_GENERAL:
-    case BuiltinOperator_STABLEHLO_REDUCE_WINDOW:
     case BuiltinOperator_STABLEHLO_SORT:
     case BuiltinOperator_STABLEHLO_WHILE:
     case BuiltinOperator_STABLEHLO_TRANSPOSE:
@@ -2094,6 +2098,98 @@ TfLiteStatus ParseResizeNearestNeighbor(const Operator* op,
 
   *builtin_data = params.release();
   return kTfLiteOk;
+}
+
+TfLiteStatus ParseStablehloReduceWindow(const Operator* op,
+                                        ErrorReporter* error_reporter,
+                                        BuiltinDataAllocator* allocator,
+                                        void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  auto params = safe_allocator.Allocate<TfLiteStablehloReduceWindowParams>();
+
+  const StablehloReduceWindowOptions* schema_params =
+      op->builtin_options_2_as_StablehloReduceWindowOptions();
+  if (schema_params) {
+    if (!schema_params->window_dimensions() ||
+        schema_params->window_dimensions()->size() == 0) {
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "'window_dimensions' attribute is not optional for "
+                           "'stablehlo.reduce_window' and cannot be empty.");
+      return kTfLiteError;
+    }
+
+    const size_t rank = schema_params->window_dimensions()->size();
+
+    auto LoadAttr = [&error_reporter](
+                        auto& params_array, auto* const flatbuffer_vector,
+                        const char* attr_name, const size_t expected_size,
+                        const int64_t fill_value) -> TfLiteStatus {
+      if (flatbuffer_vector && flatbuffer_vector->size()) {
+        if (expected_size != 0 && flatbuffer_vector->size() != expected_size) {
+          TF_LITE_REPORT_ERROR(
+              error_reporter,
+              "'%s' attribute of 'stablehlo.reduce_window' does not have the "
+              "expected size (%llu != %llu).",
+              attr_name, flatbuffer_vector->size(), expected_size);
+          return kTfLiteError;
+        }
+        TfLiteStatus status = FlatBufferIntVectorToArray(
+            sizeof(params_array), flatbuffer_vector, params_array,
+            error_reporter, "stablehlo.reduce_window");
+        if (status != kTfLiteOk) {
+          TF_LITE_REPORT_ERROR(error_reporter, "Check the '%s' attribute.",
+                               attr_name);
+          return status;
+        }
+      } else {
+        std::fill_n(params_array,
+                    TFLITE_STABLEHLO_REDUCE_WINDOW_PARAMS_MAX_DIMENSION_COUNT,
+                    fill_value);
+      }
+      return kTfLiteOk;
+    };
+
+    if (TfLiteStatus status = LoadAttr(
+            params->window_dimensions, schema_params->window_dimensions(),
+            "window_dimensions", /*expected_size=*/rank, /*fill_value=*/1);
+        status != kTfLiteOk) {
+      return status;
+    }
+    if (TfLiteStatus status = LoadAttr(
+            params->window_strides, schema_params->window_strides(),
+            "window_strides", /*expected_size=*/rank, /*fill_value=*/1);
+        status != kTfLiteOk) {
+      return status;
+    }
+    if (TfLiteStatus status = LoadAttr(
+            params->base_dilations, schema_params->base_dilations(),
+            "base_dilations", /*expected_size=*/rank, /*fill_value=*/1);
+        status != kTfLiteOk) {
+      return status;
+    }
+    if (TfLiteStatus status = LoadAttr(
+            params->window_dilations, schema_params->window_dilations(),
+            "window_dilations", /*expected_size=*/rank, /*fill_value=*/1);
+        status != kTfLiteOk) {
+      return status;
+    }
+    if (TfLiteStatus status =
+            LoadAttr(params->padding, schema_params->padding(), "padding",
+                     /*expected_size=*/2 * rank, /*fill_value=*/0);
+        status != kTfLiteOk) {
+      return status;
+    }
+
+    params->body_subgraph_index = schema_params->body_subgraph_index();
+    *builtin_data = params.release();
+    return kTfLiteOk;
+  }
+  TF_LITE_REPORT_ERROR(
+      error_reporter,
+      "Could not get 'stablehlo.reduce_window' operation parameters.");
+  return kTfLiteError;
 }
 
 TfLiteStatus ParseStablehloScatter(const Operator* op,

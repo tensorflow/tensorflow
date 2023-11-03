@@ -410,8 +410,16 @@ Status EinsumDepthAnalysis::HandleConditional(HloInstruction* conditional) {
   auto depth_iter = einsum_depth_map_.find(conditional);
   CHECK(depth_iter != einsum_depth_map_.end());
   const ShapeTree<int> depth_tree = depth_iter->second;
-  return HandleCalledComputation(*conditional->called_computations()[0],
-                                 depth_tree, conditional->operands());
+  // Conditionals have one more operand than the number of branches. The first
+  // operand is the pred.
+  TF_RETURN_IF_ERROR(
+      SetInstructionDepth(conditional->operands()[0], depth_tree));
+  for (int i = 0; i < conditional->branch_count(); ++i) {
+    TF_RETURN_IF_ERROR(
+        HandleCalledComputation(*conditional->called_computations()[i],
+                                depth_tree, {conditional->operands()[i + 1]}));
+  }
+  return OkStatus();
 }
 
 Status EinsumDepthAnalysis::HandleCalledComputation(
@@ -615,6 +623,7 @@ void HloValueSemanticsAnalysis::AnnotateWeights() {
     value_semantics_[parameter] = std::move(semantics_shape_tree);
   }
 }
+
 Status HloValueSemanticsAnalysis::RunOnComputation(
     const HloComputation& computation,
     absl::Span<const HloInstruction* const> operands) {
@@ -1154,8 +1163,9 @@ Status HloValueSemanticsPropagation::HandleCustomCall(
 Status HloValueSemanticsPropagation::HandleConditional(
     HloInstruction* conditional) {
   for (int i = 0; i < conditional->called_computations().size(); ++i) {
-    TF_RETURN_IF_ERROR(analysis_->RunOnComputation(
-        *conditional->called_computations()[i], conditional->operands()));
+    TF_RETURN_IF_ERROR(
+        analysis_->RunOnComputation(*conditional->called_computations()[i],
+                                    {conditional->operands()[i + 1]}));
   }
   HloComputation* computation = conditional->called_computations()[0];
   const ShapeTree<const HloValueSemantics*>& root_semantics =

@@ -1955,7 +1955,10 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
                                      to_apply.value(), is_stable.value()));
     }
     case HloOpcode::kTuple: {
-      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
+      if ((!preset_operands &&
+           !(shape.has_value()
+                 ? ParseOperands(&operands, builder, shape->tuple_shapes_size())
+                 : ParseOperands(&operands, builder))) ||
           !ParseAttributes(attrs, allow_attributes)) {
         return nullptr;
       }

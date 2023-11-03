@@ -71,7 +71,7 @@ bool HasInfinity(PrimitiveType type);
 // Returns the XLA primitive type (eg, F32) corresponding to the given
 // template parameter native type (eg, float).
 template <typename NativeT>
-PrimitiveType NativeToPrimitiveType() {
+constexpr PrimitiveType NativeToPrimitiveType() {
   // Make the expression depend on the template parameter NativeT so
   // that this compile-time error only appears if this function is
   // instantiated with some concrete type that is not specialized
@@ -82,119 +82,118 @@ PrimitiveType NativeToPrimitiveType() {
 }
 
 // Declarations of specializations for each native type which correspond to a
-// XLA primitive type.  As an optimization, these are declared inline in the
-// header.
+// XLA primitive type.
 template <>
-inline PrimitiveType NativeToPrimitiveType<bool>() {
+constexpr PrimitiveType NativeToPrimitiveType<bool>() {
   return PRED;
 }
 
 // Unsigned integer
 template <>
-inline PrimitiveType NativeToPrimitiveType<u4>() {
+constexpr PrimitiveType NativeToPrimitiveType<u4>() {
   return U4;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<uint8_t>() {
+constexpr PrimitiveType NativeToPrimitiveType<uint8_t>() {
   return U8;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<uint16_t>() {
+constexpr PrimitiveType NativeToPrimitiveType<uint16_t>() {
   return U16;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<uint32_t>() {
+constexpr PrimitiveType NativeToPrimitiveType<uint32_t>() {
   return U32;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<uint64_t>() {
+constexpr PrimitiveType NativeToPrimitiveType<uint64_t>() {
   return U64;
 }
 
 // Signed integer
 template <>
-inline PrimitiveType NativeToPrimitiveType<s4>() {
+constexpr PrimitiveType NativeToPrimitiveType<s4>() {
   return S4;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<int8_t>() {
+constexpr PrimitiveType NativeToPrimitiveType<int8_t>() {
   return S8;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<int16_t>() {
+constexpr PrimitiveType NativeToPrimitiveType<int16_t>() {
   return S16;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<int32_t>() {
+constexpr PrimitiveType NativeToPrimitiveType<int32_t>() {
   return S32;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<int64_t>() {
+constexpr PrimitiveType NativeToPrimitiveType<int64_t>() {
   return S64;
 }
 
 // Floating point
 template <>
-inline PrimitiveType NativeToPrimitiveType<float>() {
+constexpr PrimitiveType NativeToPrimitiveType<float>() {
   return F32;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<double>() {
+constexpr PrimitiveType NativeToPrimitiveType<double>() {
   return F64;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<half>() {
+constexpr PrimitiveType NativeToPrimitiveType<half>() {
   return F16;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<bfloat16>() {
+constexpr PrimitiveType NativeToPrimitiveType<bfloat16>() {
   return BF16;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<tsl::float8_e5m2>() {
+constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e5m2>() {
   return F8E5M2;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3fn>() {
+constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3fn>() {
   return F8E4M3FN;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3b11>() {
+constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3b11>() {
   return F8E4M3B11FNUZ;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<tsl::float8_e5m2fnuz>() {
+constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e5m2fnuz>() {
   return F8E5M2FNUZ;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3fnuz>() {
+constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3fnuz>() {
   return F8E4M3FNUZ;
 }
 
 // Complex
 template <>
-inline PrimitiveType NativeToPrimitiveType<complex64>() {
+constexpr PrimitiveType NativeToPrimitiveType<complex64>() {
   return C64;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<complex128>() {
+constexpr PrimitiveType NativeToPrimitiveType<complex128>() {
   return C128;
 }
 

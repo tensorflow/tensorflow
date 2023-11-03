@@ -18,7 +18,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
     ],
 )
 

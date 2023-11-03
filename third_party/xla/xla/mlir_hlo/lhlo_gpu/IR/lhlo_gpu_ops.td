@@ -165,12 +165,15 @@ def LHLOGPU_GEMMOp : LHLOGPU_Op<"gemm"> {
     Arg<LHLO_Buffer, "", [MemRead]>:$a,
     Arg<LHLO_Buffer, "", [MemRead]>:$b,
     Arg<LHLO_Buffer, "", [MemRead, MemWrite]>:$c,
+    Arg<Optional<LHLO_Buffer>, "", [MemRead, MemWrite]>:$workspace,
     MHLO_DotDimensionNumbers:$dot_dimension_numbers,
     MHLO_PrecisionConfigAttr:$precision_config,
     F64Attr:$alpha_real,
     F64Attr:$alpha_imag,
     F64Attr:$beta,
-    OptionalAttr<I64Attr>:$algorithm);
+    OptionalAttr<I64Attr>:$algorithm,
+    OptionalAttr<BoolAttr>:$grad_x,
+    OptionalAttr<BoolAttr>:$grad_y);
 }
 
 def LHLOGPU_CublasLtMatmulOp : LHLOGPU_Op<"cublas.lt.matmul", [AttrSizedOperandSegments]> {
@@ -187,7 +190,9 @@ def LHLOGPU_CublasLtMatmulOp : LHLOGPU_Op<"cublas.lt.matmul", [AttrSizedOperandS
     F64Attr:$alpha_imag,
     F64Attr:$beta,
     CublasLtMatmulEpilogueAttr:$epilogue,
-    I64Attr:$algorithm);
+    I64Attr:$algorithm,
+    OptionalAttr<BoolAttr>:$grad_x,
+    OptionalAttr<BoolAttr>:$grad_y);
 }
 
 def LHLOGPU_CublasLtMatmulF8Op : LHLOGPU_Op<"cublas.lt.matmul.f8", [AttrSizedOperandSegments]> {
@@ -208,7 +213,9 @@ def LHLOGPU_CublasLtMatmulF8Op : LHLOGPU_Op<"cublas.lt.matmul.f8", [AttrSizedOpe
     F64Attr:$alpha_imag,
     F64Attr:$beta,
     CublasLtMatmulEpilogueAttr:$epilogue,
-    I64Attr:$algorithm);
+    I64Attr:$algorithm,
+    OptionalAttr<BoolAttr>:$grad_x,
+    OptionalAttr<BoolAttr>:$grad_y);
 }
 
 def LHLOGPU_CholeskyOp : LHLOGPU_Op<"cholesky"> {

@@ -75,20 +75,14 @@ def TF_IfrtCallOp : TF_Op<"IfrtCall", []> {
     that the outlined function is compiled into an executable and is available
     for lookup from `IfrtCall` TF ops.
 
-    Ifrt program execution is encapsulated by `ServingExecutable`
-    abstraction, which takes named arguments and returns named results. Thus,
-    this op takes `arg_names` and `result_names` attributes to convert between
-    positional arguments/results of the `tf.IfrtCall` op and named ones for
-    invoking `ServingExecutable`. This op also takes `variable_names` attribute
-    to bind the variables (weights).
+    This op also takes `variable_names` attribute to bind the variables (weights)
+    by names.
   }];
 
   let arguments = (ins
     Variadic<TF_Tensor> : $args,
     I64Attr : $program_id,
-    StrArrayAttr : $arg_names,
-    StrArrayAttr : $variable_names,
-    StrArrayAttr : $result_names
+    StrArrayAttr : $variable_names
   );
 
   let results = (outs Variadic<TF_Tensor> : $results);

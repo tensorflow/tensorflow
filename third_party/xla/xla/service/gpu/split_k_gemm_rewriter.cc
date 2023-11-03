@@ -110,11 +110,11 @@ Status UncompilableMatmul(absl::string_view explanation) {
 
 StatusOr<HloInstruction*> MakeSplitKOperand(
     HloInstruction& dot, const TritonFusionAnalysis& analysis,
-    const AutotuneResult::TritonGemmKey& tiling,
-    const int64_t contracting_dim_idx, const int operand_number) {
+    const TritonGemmConfig& config, const int64_t contracting_dim_idx,
+    const int operand_number) {
   HloInstruction* operand = dot.mutable_operand(operand_number);
   const int64_t k = operand->shape().dimensions(contracting_dim_idx);
-  const bool need_padding = k % tiling.split_k() != 0;
+  const bool need_padding = k % config.split_k != 0;
 
   TritonFusionAnalysis::Scope scope = (operand_number == 0)
                                           ? TritonFusionAnalysis::Scope::LHS
@@ -136,10 +136,10 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
           "Sliced contracting dimension is not supported yet.");
     }
     if (check_divisibility && !HasDivisibleSuffixAllowingSplit(
-                                  fragment.subfragments, tiling.split_k())) {
+                                  fragment.subfragments, config.split_k)) {
       return UncompilableMatmul("Contracting dimension is too fragmented.");
     }
-    if (tiling.split_k() > ceil(1.0 * fragment.count / tiling.block_k())) {
+    if (config.split_k > ceil(1.0 * fragment.count / config.block_k)) {
       return UncompilableMatmul(
           "Too small divisible part of the contracting dimension.");
     }
@@ -169,11 +169,14 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
 
     PaddingConfig padding_config = MakeNoPaddingConfig(operand->shape().rank());
     padding_config.mutable_dimensions(contracting_dim_idx)
-        ->set_edge_padding_high(tiling.split_k() - k % tiling.split_k());
+        ->set_edge_padding_high(config.split_k - k % config.split_k);
 
-    TF_ASSIGN_OR_RETURN(operand, MakePadHlo(operand, zero, padding_config));
+    TF_ASSIGN_OR_RETURN(HloInstruction * pad,
+                        MakePadHlo(operand, zero, padding_config));
+    *pad->mutable_shape()->mutable_layout() = operand->shape().layout();
+    operand = pad;
   }
-  CHECK_GE(operand->shape().dimensions(contracting_dim_idx), tiling.split_k());
+  CHECK_GE(operand->shape().dimensions(contracting_dim_idx), config.split_k);
 
   // Add bitcast.
   const Shape& shape = operand->shape();
@@ -182,8 +185,8 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
   for (int i = 0; i < shape.rank(); ++i) {
     const int64_t dimension_size = shape.dimensions(i);
     if (i == contracting_dim_idx) {
-      new_shape.add_dimensions(tiling.split_k());
-      new_shape.add_dimensions(dimension_size / tiling.split_k());
+      new_shape.add_dimensions(config.split_k);
+      new_shape.add_dimensions(dimension_size / config.split_k);
     } else {
       new_shape.add_dimensions(dimension_size);
     }
@@ -206,11 +209,12 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
   return MakeBitcastHlo(operand, new_shape);
 }
 
-// Apply split K configuration from the tiling to the fused dot() computation:
-// bitcast the operands, change the output shape and the dot dimensions.
-Status MakeDotComputationSplitKBatch(
-    HloComputation* computation, const AutotuneResult::TritonGemmKey& tiling,
-    bool disable_reduced_precision_reduction) {
+// Apply split K configuration from the tiling config to the fused dot()
+// computation: bitcast the operands, change the output shape and the dot
+// dimensions.
+Status MakeDotComputationSplitKBatch(HloComputation* computation,
+                                     const TritonGemmConfig& config,
+                                     bool disable_reduced_precision_reduction) {
   HloInstruction* dot =
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
   TF_ASSIGN_OR_RETURN(const auto analysis,
@@ -268,10 +272,10 @@ Status MakeDotComputationSplitKBatch(
     if (current == dot) {
       TF_ASSIGN_OR_RETURN(
           HloInstruction * lhs,
-          MakeSplitKOperand(*dot, analysis, tiling, lhs_contracting_idx, 0));
+          MakeSplitKOperand(*dot, analysis, config, lhs_contracting_idx, 0));
       TF_ASSIGN_OR_RETURN(
           HloInstruction * rhs,
-          MakeSplitKOperand(*dot, analysis, tiling, rhs_contracting_idx, 1));
+          MakeSplitKOperand(*dot, analysis, config, rhs_contracting_idx, 1));
       if (lhs->operand(0)->opcode() == HloOpcode::kPad) {
         CHECK_EQ(rhs->operand(0)->opcode(), HloOpcode::kPad);
         did_pad = true;
@@ -290,9 +294,8 @@ Status MakeDotComputationSplitKBatch(
       expanded->mutable_shape()->mutable_layout()->add_minor_to_major(0);
       dot->SetupDerivedInstruction(expanded);
     } else {
-      expanded = computation->AddInstruction(
-          current->CloneWithNewShape(ShapeUtil::PrependMajorDimension(
-              tiling.split_k(), current->shape())));
+      expanded = computation->AddInstruction(current->CloneWithNewShape(
+          ShapeUtil::PrependMajorDimension(config.split_k, current->shape())));
       if (expanded->opcode() == HloOpcode::kTranspose) {
         const auto* old_transpose = Cast<HloTransposeInstruction>(current);
         auto* new_transpose = Cast<HloTransposeInstruction>(expanded);
@@ -320,7 +323,7 @@ Status MakeDotComputationSplitKBatch(
         TF_RETURN_IF_ERROR(expanded->ReplaceOperandWithDifferentShape(
             i, MakeBroadcastHlo(operand, broadcast_dimensions,
                                 ShapeUtil::PrependMajorDimension(
-                                    tiling.split_k(), operand->shape()))));
+                                    config.split_k, operand->shape()))));
       }
     }
   }
@@ -342,14 +345,14 @@ Status MakeDotComputationSplitKBatch(
     // For the case without padding, we already checked this in
     // MakeSplitKOperand with the divisibility check.
     TF_RETURN_IF_ERROR(
-        TritonFusionAnalysis::Execute(*computation, tiling.split_k()).status());
+        TritonFusionAnalysis::Execute(*computation, config.split_k).status());
   }
 
   return OkStatus();
 }
 
 Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
-                          const AutotuneResult::TritonGemmKey& tiling) {
+                          const TritonGemmConfig& config) {
   CHECK_EQ(dot_fusion->opcode(), HloOpcode::kFusion);
 
   if (dot_fusion->shape().IsTuple()) {
@@ -365,7 +368,7 @@ Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
   const Layout output_layout = dot_fusion->shape().layout();
 
   TF_RETURN_IF_ERROR(MakeDotComputationSplitKBatch(
-      dot_fusion->fused_instructions_computation(), tiling,
+      dot_fusion->fused_instructions_computation(), config,
       disable_reduced_precision_reduction));
   const HloInstruction* root = dot_fusion->fused_expression_root();
 

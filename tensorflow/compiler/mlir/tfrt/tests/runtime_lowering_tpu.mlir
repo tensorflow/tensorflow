@@ -4,7 +4,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
   // CHECK-LABEL: @converts_cluster
   func.func @converts_cluster() {
-    // CHECK: %0:2 = "tf_device.launch"() ({
+    // CHECK: %0:2 = "tf_device.launch"() <{{.*}}> ({
     // CHECK: %compilation_status, %program = "tf._TPUCompileMlir"()
     "tf_device.cluster_func"() {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
     func.return

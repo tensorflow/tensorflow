@@ -18,6 +18,7 @@ package_group(
         "//learning/serving/contrib/tfrt/mlir/saved_model_analysis",
         "//tensorflow/compiler/mlir/tfrt",
         "//tensorflow/compiler/tf2xla",
+        "//tensorflow/compiler/mlir",
         # Legacy due to where the bridge currently runs. This should go away.
         "//tensorflow/compiler/mlir/tensorflow/transforms",
     ],

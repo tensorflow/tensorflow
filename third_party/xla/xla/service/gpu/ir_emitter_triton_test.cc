@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/gpu/gemm_rewriter_triton.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
@@ -87,13 +88,13 @@ class TritonGemmTestWithoutTritonGemmAny : public TritonGemmTest {
 class TritonFilecheckTest : public TritonGemmTest {
  public:
   StatusOr<bool> CreateTritonIrAndFileCheck(
-      absl::string_view hlo_text, const AutotuneResult::TritonGemmKey& config,
+      absl::string_view hlo_text, const TritonGemmConfig& config,
       TritonIrEmitter emitter, absl::string_view triton_fusion_name,
       absl::string_view filecheck_pattern);
 };
 
 StatusOr<bool> TritonFilecheckTest::CreateTritonIrAndFileCheck(
-    absl::string_view hlo_text, const AutotuneResult::TritonGemmKey& config,
+    absl::string_view hlo_text, const TritonGemmConfig& config,
     TritonIrEmitter emitter, absl::string_view triton_fusion_name,
     absl::string_view filecheck_pattern) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> verified_module,
@@ -138,12 +139,7 @@ ENTRY e {
     calls=triton_gemm_r,
     backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,"split_k":1,"num_stages":1,"num_warps":2}}
 })";
-  AutotuneResult::TritonGemmKey config;
-  config.set_split_k(1);
-  config.set_block_m(16);
-  config.set_block_k(32);
-  config.set_block_n(64);
-
+  TritonGemmConfig config(16, 64, 32, 1, 1, 1);
   ASSERT_THAT(CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul,
                                          "triton_gemm_r", R"(
 CHECK:    tt.func @triton_fn(%[[LHS:.*]]: !tt.ptr<i8, 1> {tt.divisibility = 16 : i32}, %[[RHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[OUT:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}) {
@@ -162,7 +158,6 @@ CHECK-DAG:  %[[NUM_TILES_M:.*]] = arith.constant 5 : i32
 CHECK-DAG:  %[[GROUP_M:.*]] = arith.constant 8 : i32
 CHECK-DAG:  %[[WIDTH:.*]] = arith.constant 24 : i32
 CHECK:      %[[PID_NC:.*]] = tt.get_program_id x
-CHECK:      %[[PID_K:.*]] = tt.get_program_id z
 CHECK:      %[[GROUP_ID:.*]] = arith.divsi %[[PID_NC]], %[[WIDTH]]
 CHECK:      %[[FIRST_PID_M:.*]] = arith.muli %[[GROUP_ID]], %[[GROUP_M]]
 CHECK:      %[[MAX_M:.*]] = arith.subi %[[NUM_TILES_M]], %[[FIRST_PID_M]]
@@ -170,15 +165,14 @@ CHECK:      %[[CMP:.*]] = arith.cmpi slt, %[[MAX_M]], %[[GROUP_M]]
 CHECK:      %[[GROUP_SIZE:.*]] = arith.select %[[CMP]], %[[MAX_M]], %[[GROUP_M]]
 CHECK:      %[[PID_M:.*]] = arith.remsi %[[PID_NC]], %[[GROUP_SIZE]]
 CHECK:      %[[TILE_INDEX_M:.*]] = arith.addi %[[FIRST_PID_M]], %[[PID_M]] : i32
-CHECK:      %[[TILE_OFFSET_M:.*]] = arith.muli %[[TILE_INDEX_M]], %[[TILE_SIZE_M]]
 CHECK:      %[[TMP:.*]] = arith.remsi %[[PID_NC]], %[[WIDTH]] : i32
 CHECK:      %[[TILE_INDEX_N:.*]] = arith.divsi %[[TMP]], %[[GROUP_SIZE]] : i32
-CHECK:      %[[TILE_OFFSET_N:.*]] = arith.muli %[[TILE_INDEX_N]], %[[TILE_SIZE_N]]
-CHECK:      %[[TILE_OFFSET_K:.*]] = arith.muli %[[PID_K]], %[[TILE_SIZE_K]]
+CHECK:      %[[TILE_OFFSET_M_LHS:.*]] = arith.muli %[[TILE_INDEX_M]], %[[TILE_SIZE_M]]
 CHECK:      %[[LHS_PTR:.*]] = tt.make_tensor_ptr %[[LHS]]
-CHECK:      %[[LHS_TILE_PTR:.*]] = tt.advance %[[LHS_PTR]], [%[[TILE_OFFSET_M]], %[[TILE_OFFSET_K]]]
+CHECK:      %[[LHS_TILE_PTR:.*]] = tt.advance %[[LHS_PTR]], [%[[TILE_OFFSET_M_LHS]], %[[C0]]]
+CHECK:      %[[TILE_OFFSET_N_RHS:.*]] = arith.muli %[[TILE_INDEX_N]], %[[TILE_SIZE_N]]
 CHECK:      %[[RHS_PTR:.*]] = tt.make_tensor_ptr %[[RHS]]
-CHECK:      %[[RHS_TILE_PTR:.*]] = tt.advance %[[RHS_PTR]], [%[[TILE_OFFSET_K]], %[[TILE_OFFSET_N]]]
+CHECK:      %[[RHS_TILE_PTR:.*]] = tt.advance %[[RHS_PTR]], [%[[C0]], %[[TILE_OFFSET_N_RHS]]]
 CHECK:        %[[FOR:.*]]:3 = scf.for %[[BLOCK_K:.*]] = %[[C0]] to %[[SIZE_K]] step %[[TILE_SIZE_K]]
 CHECK-SAME:       iter_args(%[[LHS_ITER_PTR:.*]] = %[[LHS_TILE_PTR]], %[[RHS_ITER_PTR:.*]] = %[[RHS_TILE_PTR]], %[[ACC:.*]] = %[[ZERO_MN]])
 CHECK:        %[[LHS_TILE:.*]] = tt.load %[[LHS_ITER_PTR]] {boundaryCheck = array<i32: 1>
@@ -187,16 +181,13 @@ CHECK:        %[[RHS_TILE:.*]] = tt.load %[[RHS_ITER_PTR]] {boundaryCheck = arra
 CHECK:        %[[RHS_ITER_PTR_NEXT:.*]] = tt.advance %[[RHS_ITER_PTR]], [%[[TILE_SIZE_K]], %[[C0]]]
 CHECK:        %[[CONVERTED:.*]] = arith.sitofp %[[LHS_TILE]] : tensor<16x32xi8> to tensor<16x32xf32>
 CHECK:        %[[TILE_K_LIMIT:.*]] = arith.subi %[[SIZE_K]], %[[BLOCK_K]] : i32
-CHECK:        %[[K_OFFSET:.*]] = arith.muli %[[PID_K]], %[[TILE_SIZE_K]] : i32
-CHECK:        %[[K_OFFSET_SPLAT_K:.*]] = tt.splat %[[K_OFFSET]] : (i32) -> tensor<32xi32>
 CHECK:        %[[K_TILE_IOTA:.*]] = tt.make_range {end = 32 : i32, start = 0 : i32} : tensor<32xi32>
-CHECK:        %[[K_OFFSETS:.*]] = arith.addi %[[K_OFFSET_SPLAT_K]], %[[K_TILE_IOTA]] : tensor<32xi32>
-CHECK:        %[[K_OFFSETS_1K:.*]] = tt.expand_dims %[[K_OFFSETS]] {axis = 0 : i32} : (tensor<32xi32>) -> tensor<1x32xi32>
+CHECK:        %[[K_OFFSETS_1K:.*]] = tt.expand_dims %[[K_TILE_IOTA]] {axis = 0 : i32} : (tensor<32xi32>) -> tensor<1x32xi32>
 CHECK:        %[[TILE_K_LIMIT_1K:.*]] = tt.splat %[[TILE_K_LIMIT]] : (i32) -> tensor<1x32xi32>
 CHECK:        %[[LHS_INBOUNDS_1K:.*]] = arith.cmpi slt, %[[K_OFFSETS_1K]], %[[TILE_K_LIMIT_1K]] : tensor<1x32xi32>
 CHECK:        %[[LHS_INBOUNDS_MK:.*]] = tt.broadcast %[[LHS_INBOUNDS_1K]] : (tensor<1x32xi1>) -> tensor<16x32xi1>
 CHECK:        %[[LHS_MASKED:.*]] = arith.select %[[LHS_INBOUNDS_MK]], %[[CONVERTED]], %[[ZERO_MK]]
-CHECK:        %[[K_OFFSETS_K1:.*]] = tt.expand_dims %[[K_OFFSETS]] {axis = 1 : i32} : (tensor<32xi32>) -> tensor<32x1xi32>
+CHECK:        %[[K_OFFSETS_K1:.*]] = tt.expand_dims %[[K_TILE_IOTA]] {axis = 1 : i32} : (tensor<32xi32>) -> tensor<32x1xi32>
 CHECK:        %[[TILE_K_LIMIT_K1:.*]] = tt.splat %[[TILE_K_LIMIT]] : (i32) -> tensor<32x1xi32>
 CHECK:        %[[RHS_INBOUNDS_K1:.*]] = arith.cmpi slt, %[[K_OFFSETS_K1]], %[[TILE_K_LIMIT_K1]] : tensor<32x1xi32>
 CHECK:        %[[RHS_INBOUNDS_KN:.*]] = tt.broadcast %[[RHS_INBOUNDS_K1]] : (tensor<32x1xi1>) -> tensor<32x64xi1>
@@ -204,8 +195,10 @@ CHECK:        %[[RHS_MASKED:.*]] = arith.select %[[RHS_INBOUNDS_KN]], %[[RHS_TIL
 CHECK:        %[[ACC_NEXT:.*]] = tt.dot %[[LHS_MASKED]], %[[RHS_MASKED]], %[[ACC]]
 CHECK:        scf.yield %[[LHS_ITER_PTR_NEXT]], %[[RHS_ITER_PTR_NEXT]], %[[ACC_NEXT]] : !tt.ptr<tensor<16x32xi8>, 1>, !tt.ptr<tensor<32x64xf32>, 1>, tensor<16x64xf32>
 CHECK:      }
+CHECK:      %[[TILE_OFFSET_M_OUT:.*]] = arith.muli %[[TILE_INDEX_M]], %[[TILE_SIZE_M]]
+CHECK:      %[[TILE_OFFSET_N_OUT:.*]] = arith.muli %[[TILE_INDEX_N]], %[[TILE_SIZE_N]]
 CHECK:      %[[OUT_PTR:.*]] = tt.make_tensor_ptr %[[OUT]], [%[[C80]], %[[SIZE_M]]], [%[[SIZE_M]], %[[C1]]], [%[[C0]], %[[C0]]] {order = array<i32: 1, 0>} : <tensor<16x64xf32>, 1>
-CHECK:      %[[OUT_OFFSET:.*]] = tt.advance %[[OUT_PTR]], [%[[TILE_OFFSET_M]], %[[TILE_OFFSET_N]]] : <tensor<16x64xf32>, 1>
+CHECK:      %[[OUT_OFFSET:.*]] = tt.advance %[[OUT_PTR]], [%[[TILE_OFFSET_M_OUT]], %[[TILE_OFFSET_N_OUT]]] : <tensor<16x64xf32>, 1>
 CHECK:      tt.store %[[OUT_OFFSET]], %[[FOR]]#2 {boundaryCheck = array<i32: 1>, cache = 1 : i32, evict = 1 : i32} : !tt.ptr<tensor<16x64xf32>, 1>, tensor<16x64xf32>
 CHECK:      tt.return
 CHECK:    }
@@ -334,13 +327,7 @@ ENTRY entry {
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
 
-  AutotuneResult::TritonGemmKey config;
-  config.set_block_m(16);
-  config.set_block_n(32);
-  config.set_block_k(512);
-  config.set_split_k(1);
-  config.set_num_stages(4);
-  config.set_num_warps(8);
+  TritonGemmConfig config(16, 32, 512, 1, 4, 8);
   EXPECT_THAT(
       TritonWrapper(*TritonFusionAnalysis::Execute(*triton_dot_computation),
                     "test_fn", triton_dot_computation, kTritonGemmFusionKind,
@@ -350,10 +337,10 @@ ENTRY entry {
       tsl::testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
                              "Shared memory size limit exceeded."));
 
-  config.set_block_m(64);
-  config.set_block_n(128);
-  config.set_block_k(128);
-  config.set_num_stages(1);
+  config.block_m = 64;
+  config.block_n = 128;
+  config.block_k = 128;
+  config.num_stages = 1;
   TF_ASSERT_OK_AND_ASSIGN(
       const auto result,
       TritonWrapper(*TritonFusionAnalysis::Execute(*triton_dot_computation),
@@ -792,13 +779,7 @@ ENTRY entry {
   mlir::MLIRContext mlir_context;
 
   // Fails if the tiling is too complex.
-  AutotuneResult::TritonGemmKey config;
-  config.set_block_m(512);
-  config.set_block_n(512);
-  config.set_block_k(32);
-  config.set_split_k(1);
-  config.set_num_stages(1);
-  config.set_num_warps(2);
+  TritonGemmConfig config(512, 512, 32, 1, 1, 2);
   EXPECT_THAT(
       TritonWrapper(*TritonFusionAnalysis::Execute(*triton_dot_computation),
                     "test_fn", triton_dot_computation, kTritonGemmFusionKind,
@@ -810,9 +791,9 @@ ENTRY entry {
           "Tiling complexity heuristic exceeded: 147456 > 9000"));
 
   // Succeeds if the tiling is not too complex.
-  config.set_block_m(32);
-  config.set_block_n(32);
-  config.set_block_k(32);
+  config.block_m = 32;
+  config.block_n = 32;
+  config.block_k = 32;
   TF_CHECK_OK(
       TritonWrapper(*TritonFusionAnalysis::Execute(*triton_dot_computation),
                     "test_fn", triton_dot_computation, kTritonGemmFusionKind,
@@ -1824,9 +1805,10 @@ HloModule r
 ENTRY e {
   arg0 = f16[5,7] parameter(0)
   arg1 = f16[7,33] parameter(1)
-  ROOT custom-call = f16[5,33] custom-call(arg0, arg1),
+  gemm = (f16[5,33], s8[0]{0}) custom-call(arg0, arg1),
     custom_call_target="__cublas$gemm",
     backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
+  ROOT get-tuple-element = f16[5,33]{1,0} get-tuple-element((f16[5,33]{1,0}, s8[0]{0}) gemm), index=0
 }
 )";
 
@@ -1860,9 +1842,10 @@ HloModule r
 ENTRY e {
   arg0 = f32[5,7] parameter(0)
   arg1 = f32[7,33] parameter(1)
-  ROOT custom-call = f32[5,33] custom-call(arg0, arg1),
+  gemm = (f32[5,33], s8[0]{0}) custom-call(arg0, arg1),
     custom_call_target="__cublas$gemm",
     backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
+  ROOT get-tuple-element = f32[5,33]{1,0} get-tuple-element((f32[5,33]{1,0}, s8[0]{0}) gemm), index=0
 }
 )";
 
@@ -1901,9 +1884,10 @@ HloModule r
 ENTRY e {
   arg0 = bf16[512,16]{1,0} parameter(0)
   arg1 = bf16[512,256]{1,0} parameter(1)
-  ROOT custom-call = bf16[16,256]{1,0} custom-call(arg0, arg1),
+  gemm = (bf16[16,256]{1,0}, s8[0]{0}) custom-call(arg0, arg1),
     custom_call_target="__cublas$gemm",
     backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[0],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
+  ROOT get-tuple-element = bf16[16,256]{1,0} get-tuple-element((bf16[16,256]{1,0}, s8[0]{0}) gemm), index=0
 }
 )";
 
@@ -1979,8 +1963,8 @@ ENTRY e {
       TritonWrapper(*TritonFusionAnalysis::Execute(*triton_dot_computation),
                     "test_fn", triton_dot_computation, kTritonGemmFusionKind,
                     GetCudaComputeCapability(), dev_info,
-                    config.triton_gemm_config(), &llvm_module, &EmitMatMul,
-                    mlir_context));
+                    TritonGemmConfig::FromProto(config.triton_gemm_config()),
+                    &llvm_module, &EmitMatMul, mlir_context));
   // The config is chosen so that the used memory size is slightly above the
   // 48 kB boundary of standard / optin shared memory so that any GPU that
   // has the optin one should be able to execute the test.
@@ -2018,9 +2002,10 @@ HloModule r
 ENTRY e {
   arg0 = f16[128,32]{1,0} parameter(0)
   arg1 = f16[64,32]{1,0} parameter(1)
-  ROOT custom-call = f16[128,64]{1,0} custom-call(arg0, arg1),
+  gemm = (f16[128,64]{1,0}, s8[0]{0}) custom-call(arg0, arg1),
     custom_call_target="__cublas$gemm",
     backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[1],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
+  ROOT get-tuple-element = f16[128,64]{1,0} get-tuple-element((f16[128,64]{1,0}, s8[0]{0}) gemm), index=0
 }
 )";
 
@@ -2054,9 +2039,10 @@ HloModule r
 ENTRY e {
   arg0 = f32[64,128]{1,0} parameter(0)
   arg1 = f32[1024,64]{1,0} parameter(1)
-  ROOT custom-call = f32[128,1024]{1,0} custom-call(arg0, arg1),
+  gemm = (f32[128,1024]{1,0}, s8[0]{0}) custom-call(arg0, arg1),
     custom_call_target="__cublas$gemm",
     backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[0],"rhs_contracting_dimensions":[1],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
+  ROOT get-tuple-element = f32[128,1024]{1,0} get-tuple-element((f32[128,1024]{1,0}, s8[0]{0}) gemm), index=0
 }
 )";
 
@@ -2100,9 +2086,10 @@ ENTRY e {
   p0 = s8[144,256]{1,0} parameter(0)
   fusion = bf16[144,256]{1,0} fusion(p0), kind=kInput, calls=fused_computation
   p1 = bf16[256,122]{1,0} parameter(1)
-  ROOT custom-call = bf16[144,122]{1,0} custom-call(fusion, p1),
+  gemm = (bf16[144,122]{1,0}, s8[0]{0}) custom-call(fusion, p1),
     custom_call_target="__cublas$gemm",
     backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
+  ROOT get-tuple-element = bf16[144,122]{1,0} get-tuple-element((bf16[144,122]{1,0}, s8[0]{0}) gemm), index=0
 }
 )";
 
@@ -2640,9 +2627,10 @@ ENTRY e {
   constant_2 = f32[] constant(321)
   parameter_0 = f32[92,11]{1,0} parameter(0)
   broadcast.2 = f32[11,63]{1,0} broadcast(constant_2), dimensions={}
-  ROOT custom-call = f32[63,92]{1,0} custom-call(broadcast.2, parameter_0),
+  gemm = (f32[63,92]{1,0}, s8[0]{0}) custom-call(broadcast.2, parameter_0),
     custom_call_target="__cublas$gemm",
     backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["1"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
+  ROOT get-tuple-element = f32[63,92]{1,0} get-tuple-element((f32[63,92]{1,0}, s8[0]{0}) gemm), index=0
 })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
@@ -2680,9 +2668,10 @@ ENTRY triton_gemm___computation {
   constant = f32[] constant(123)
   broadcast = f32[11,63]{1,0} broadcast(constant), dimensions={}
   broadcast.1 = f32[63,45]{1,0} broadcast(constant_1), dimensions={}
-  ROOT custom-call = f32[11,45]{1,0} custom-call(broadcast, broadcast.1),
+  gemm = (f32[11,45]{1,0}, s8[0]{0}) custom-call(broadcast, broadcast.1),
     custom_call_target="__cublas$gemm",
     backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
+  ROOT get-tuple-element = f32[11,45]{1,0} get-tuple-element((f32[11,45]{1,0}, s8[0]{0}) gemm), index=0
 })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
@@ -2785,9 +2774,10 @@ ENTRY e {
   tmp_1 = pred[3,32]{1,0} parameter(0)
   fusion.1 = f32[3,32]{1,0} fusion(tmp_7, tmp_5, tmp_1, tmp_2, tmp_3), kind=kLoop, calls=fused_computation.1
   fusion = f32[3,57]{1,0} fusion(tmp_18, tmp_14, tmp_15, tmp_16, tmp_12, /*index=5*/tmp_9, tmp_10), kind=kLoop, calls=fused_computation
-  ROOT custom-call = f32[32,57]{0,1} custom-call(fusion.1, fusion),
+  gemm = (f32[32,57]{0,1}, s8[0]{0}) custom-call(fusion.1, fusion),
     custom_call_target="__cublas$gemm",
     backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
+  ROOT get-tuple-element = f32[32,57]{0,1} get-tuple-element((f32[32,57]{0,1}, s8[0]{0}) gemm), index=0
 })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
@@ -2840,13 +2830,14 @@ ENTRY e {
   p1 = s32[11,63]{1,0} parameter(1)
   p0 = bf16[92,11]{1,0} parameter(0)
   fusion = bf16[11,63]{1,0} fusion(p1, p2), kind=kLoop, calls=fused_computation
-  ROOT custom-call = bf16[92,63]{1,0} custom-call(p0, fusion),
+  gemm = (bf16[92,63]{1,0}, s8[0]{0}) custom-call(p0, fusion),
     custom_call_target="__cublas$gemm",
     backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
       "alpha_imag":0,"precision_config":
       {"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
+  ROOT get-tuple-element = bf16[92,63]{1,0} get-tuple-element((bf16[92,63]{1,0}, s8[0]{0}) gemm), index=0
 })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,

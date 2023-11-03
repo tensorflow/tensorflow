@@ -357,6 +357,67 @@ TEST_F(CommandBufferSchedulingTest, BuildComputation) {
   EXPECT_EQ(inst_to_tuple_index_map[instructions[4]], 2);
 }
 
+TEST_F(CommandBufferSchedulingTest, RelayControlDependencies) {
+  const char* hlo = R"(
+      HloModule TestModule, is_scheduled=true
+
+      %fused_computation (param_0: s32[], param_1: s32[]) -> s32[] {
+        %p0 = s32[] parameter(0)
+        %p1 = s32[] parameter(1)
+        ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
+      }
+
+      %fused_computation.1 (param_0: s32[], param_1: s32[]) -> s32[] {
+        %p0 = s32[] parameter(0)
+        %p1 = s32[] parameter(1)
+        ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
+      }
+
+      %fused_computation.2 (param_0: s32[], param_1: s32[]) -> s32[] {
+        %p0 = s32[] parameter(0)
+        %p1 = s32[] parameter(1)
+        ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
+      }
+
+      ENTRY %main (a: s32[], b: s32[]) -> s32[] {
+        %a = s32[] parameter(0)
+        %b = s32[] parameter(1)
+        %custom-call = s32[] custom-call(), custom_call_target="some target"
+        %fusion = s32[] fusion(s32[] %a, s32[] %b), kind=kLoop, calls=%fused_computation, control-predecessors={%custom-call}
+        %fusion.1 = s32[] fusion(s32[] %a, s32[] %b), kind=kLoop, calls=%fused_computation.1, control-predecessors={%fusion}
+        %custom-call.1 = s32[] custom-call(), custom_call_target="some target"
+        %fusion.2 = s32[] fusion(s32[] %a, s32[] %b), kind=kLoop, calls=%fused_computation.2, control-predecessors={%fusion.1}
+        ROOT %custom-call.2 = s32[] custom-call(), custom_call_target="some target"
+      })";
+
+  const char* expected = R"(
+// CHECK: %command_buffer (param: s32[], param.1: s32[]) -> (s32[], s32[]) {
+// CHECK:   %param = s32[] parameter(0)
+// CHECK:   %param.1 = s32[] parameter(1)
+// CHECK:   %fusion.3 = s32[] fusion(%param, %param.1), kind=kLoop, calls=%fused_computation
+// CHECK:   %fusion.4 = s32[] fusion(%param, %param.1), kind=kLoop, calls=%fused_computation.1, control-predecessors={%fusion.3}
+// CHECK:   ROOT %tuple = (s32[], s32[]) tuple(%fusion.3, %fusion.4)
+// CHECK: }
+//
+// CHECK: ENTRY %main (a: s32[], b: s32[]) -> s32[] {
+// CHECK:   %a = s32[] parameter(0)
+// CHECK:   %b = s32[] parameter(1)
+// CHECK:   %custom-call = s32[] custom-call(), custom_call_target="some target"
+// CHECK:   %call = (s32[], s32[]) call(%a, %b), to_apply=%command_buffer, control-predecessors={%custom-call}
+// CHECK:   %get-tuple-element = s32[] get-tuple-element(%call), index=0
+// CHECK:   %get-tuple-element.1 = s32[] get-tuple-element(%call), index=1
+// CHECK:   %custom-call.1 = s32[] custom-call(), custom_call_target="some target"
+// CHECK:   %fusion.2 = s32[] fusion(%a, %b), kind=kLoop, calls=%fused_computation.2, control-predecessors={%call}
+// CHECK:   ROOT %custom-call.2 = s32[] custom-call(), custom_call_target="some target"
+// CHECK: })";
+
+  RunAndFilecheckHloRewrite(hlo, CommandBufferScheduling(), expected,
+                            [](HloModule* module) {
+                              EXPECT_TRUE(module->has_schedule());
+                              TF_CHECK_OK(module->schedule().Verify());
+                            });
+}
+
 }  // namespace
 
 }  // namespace xla::gpu

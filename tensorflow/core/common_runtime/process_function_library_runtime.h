@@ -292,12 +292,10 @@ class ProcessFunctionLibraryRuntime {
   struct MultiDeviceFunctionData {
     MultiDeviceFunctionData(const string& function_name,
                             const string& function_key, int num_outputs,
-                            FunctionLibraryDefinition&& lib_def,
                             DataTypeVector ret_types)
         : function_name_(function_name),
           function_key_(function_key),
           instantiation_counter_(1),
-          lib_def_(std::move(lib_def)),
           num_outputs_(num_outputs),
           ret_types_(std::move(ret_types)),
           is_cross_process_(false),
@@ -306,9 +304,6 @@ class ProcessFunctionLibraryRuntime {
     const string function_name_;
     const string function_key_;
     uint64 instantiation_counter_;
-    // A library that contains definitions of component functions and their
-    // transitive dependencies.
-    FunctionLibraryDefinition lib_def_;
     // Stored here to resize the output tensor vector when function is run.
     const int num_outputs_;
     DataTypeVector ret_types_;

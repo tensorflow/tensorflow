@@ -1,6 +1,6 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/*Copyright 2022 The TensorFlow Authors.All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
+Licensed under the Apache License, Version 2.0(the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
-#include "xla/hlo/experimental/auto_sharding/auto_sharding_solver_option.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 #include "xla/hlo/experimental/auto_sharding/cluster_environment.h"
@@ -58,14 +58,13 @@ class HandlerBase {
               StrategyMap& strategy_map, const HloInstruction* ins,
               const ClusterEnvironment& cluster_env,
               const InstructionBatchDimMap& batch_map,
-              const AutoShardingSolverOption& solver_option,
-              const CallGraph& call_graph)
+              const AutoShardingOption& option, const CallGraph& call_graph)
       : strategies_(strategies),
         strategy_map_(strategy_map),
         ins_(ins),
         cluster_env_(cluster_env),
         batch_map_(batch_map),
-        solver_option_(solver_option),
+        option_(option),
         call_graph_(call_graph),
         device_mesh_(cluster_env.device_mesh_),
         device_mesh_1d_(cluster_env.device_mesh_1d_),
@@ -101,7 +100,7 @@ class HandlerBase {
       auto shape_dim = ins->shape().dimensions().at(tensor_dim);
       auto device_mesh_dim = device_mesh_.dim(mesh_dim);
       if (shape_dim < device_mesh_dim) return false;
-      if (solver_option_.only_allow_divisible_intermediate &&
+      if (option_.only_allow_divisible_intermediate &&
           !IsDivisible(shape_dim, device_mesh_dim))
         return false;
     }
@@ -174,7 +173,7 @@ class HandlerBase {
   const HloInstruction* ins_;
   const ClusterEnvironment& cluster_env_;
   const InstructionBatchDimMap& batch_map_;
-  const AutoShardingSolverOption& solver_option_;
+  const AutoShardingOption& option_;
   const CallGraph& call_graph_;
 
   const Array<int64_t>& device_mesh_;
@@ -189,10 +188,9 @@ class DotHandler : public HandlerBase {
              StrategyMap& strategy_map, const HloInstruction* ins,
              const ClusterEnvironment& cluster_env,
              const InstructionBatchDimMap& batch_map,
-             const AutoShardingSolverOption& solver_option,
-             const CallGraph& call_graph)
+             const AutoShardingOption& option, const CallGraph& call_graph)
       : HandlerBase(strategies, strategy_map, ins, cluster_env, batch_map,
-                    solver_option, call_graph),
+                    option, call_graph),
         space_base_dim_(
             ins->dot_dimension_numbers().lhs_batch_dimensions_size()),
         lhs_con_dims_(
@@ -455,7 +453,7 @@ class DotHandler : public HandlerBase {
         if (lhs_->shape().dimensions(lhs_space_dims_[i]) < num_devices) {
           continue;
         }
-        if (solver_option_.only_allow_divisible_intermediate &&
+        if (option_.only_allow_divisible_intermediate &&
             !IsDivisible(lhs_->shape().dimensions(lhs_space_dims_[i]),
                          num_devices)) {
           continue;
@@ -473,7 +471,7 @@ class DotHandler : public HandlerBase {
         if (lhs_->shape().dimensions(lhs_con_dims_[i]) < num_devices) {
           continue;
         }
-        if (solver_option_.only_allow_divisible_intermediate &&
+        if (option_.only_allow_divisible_intermediate &&
             !IsDivisible(lhs_->shape().dimensions(lhs_con_dims_[i]),
                          num_devices)) {
           continue;
@@ -544,12 +542,11 @@ class DotHandler : public HandlerBase {
     RecomputeSplitBothContract();
 
     // Add 1d data parallel in multi-dimensional mesh
-    if (solver_option_.allow_mixed_mesh_shape) {
+    if (option_.allow_mixed_mesh_shape) {
       Add1DDataParallel();
     }
 
-    if (solver_option_.batch_matmul_always_split_batch &&
-        !lhs_batch_dims_.empty() &&
+    if (option_.batch_matmul_always_split_batch && !lhs_batch_dims_.empty() &&
         cluster_env_.non_zero_mesh_dims_.size() > 1) {
       // If there is a batch dim and the device mesh is multi-dimensional,
       // always split on batch dim. Clear all old strategies.
@@ -572,7 +569,7 @@ class DotHandler : public HandlerBase {
     // Split batch dim and contracting dim
     SplitBatchDimBothContract();
 
-    if (solver_option_.batch_matmul_always_split_batch &&
+    if (option_.batch_matmul_always_split_batch &&
         lhs_batch_dims_.size() == 2 &&
         absl::c_count_if(device_mesh_.dimensions(),
                          [](int64_t size) { return size > 1; }) > 1) {
@@ -585,17 +582,16 @@ class DotHandler : public HandlerBase {
     // Split batch dims.
     SplitTwoBatchDims();
 
-    if (solver_option_.allow_mixed_mesh_shape) {
+    if (option_.allow_mixed_mesh_shape) {
       Add1DBatchSplit();
     }
 
     // If force_batch_dim_to_mesh_dim is set, filter out invalid strategies
     // and only keep the data parallel strategies.
-    if (solver_option_.force_batch_dim_to_mesh_dim >= 0 &&
+    if (option_.force_batch_dim_to_mesh_dim >= 0 &&
         batch_map_.contains(GetBatchDimMapKey(ins_))) {
       TF_RETURN_IF_ERROR(FilterStrategy(ins_, ins_->shape(), strategies_,
-                                        cluster_env_, batch_map_,
-                                        solver_option_));
+                                        cluster_env_, batch_map_, option_));
     }
 
     return OkStatus();
@@ -616,13 +612,13 @@ Status HandleDot(std::unique_ptr<StrategyVector>& strategies,
                  const HloInstruction* ins, size_t instruction_id,
                  const ClusterEnvironment& cluster_env,
                  const InstructionBatchDimMap& batch_map,
-                 const AutoShardingSolverOption& solver_option,
+                 const AutoShardingOption& option,
                  const CallGraph& call_graph) {
   strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
                                         leaf_strategies);
 
   DotHandler handler(strategies, strategy_map, ins, cluster_env, batch_map,
-                     solver_option, call_graph);
+                     option, call_graph);
   TF_RETURN_IF_ERROR(handler.RegisterStrategies());
   return OkStatus();
 }
@@ -633,10 +629,9 @@ class ConvHandler : public HandlerBase {
               StrategyMap& strategy_map, const HloInstruction* ins,
               const ClusterEnvironment& cluster_env,
               const InstructionBatchDimMap& batch_map,
-              const AutoShardingSolverOption& solver_option,
-              const CallGraph& call_graph)
+              const AutoShardingOption& option, const CallGraph& call_graph)
       : HandlerBase(strategies, strategy_map, ins, cluster_env, batch_map,
-                    solver_option, call_graph),
+                    option, call_graph),
         conv_dnums_(ins->convolution_dimension_numbers()) {
     lhs_batch_dim_ = conv_dnums_.input_batch_dimension();
     lhs_in_channel_dim_ = conv_dnums_.input_feature_dimension();
@@ -788,17 +783,16 @@ class ConvHandler : public HandlerBase {
     SplitRhsOutchannelBothInchannel();
 
     // Add 1d data parallel in multi-dimensional mesh
-    if (solver_option_.allow_mixed_mesh_shape) {
+    if (option_.allow_mixed_mesh_shape) {
       Add1DDataParallel();
     }
 
     // If force_batch_dim_to_mesh_dim is set, filter out invalid strategies
     // and only keep the data parallel strategies.
-    if (solver_option_.force_batch_dim_to_mesh_dim >= 0 &&
+    if (option_.force_batch_dim_to_mesh_dim >= 0 &&
         batch_map_.contains(GetBatchDimMapKey(ins_))) {
       TF_RETURN_IF_ERROR(FilterStrategy(ins_, ins_->shape(), strategies_,
-                                        cluster_env_, batch_map_,
-                                        solver_option_));
+                                        cluster_env_, batch_map_, option_));
     }
 
     return OkStatus();
@@ -817,13 +811,13 @@ Status HandleConv(std::unique_ptr<StrategyVector>& strategies,
                   const HloInstruction* ins, size_t instruction_id,
                   const ClusterEnvironment& cluster_env,
                   const InstructionBatchDimMap& batch_map,
-                  const AutoShardingSolverOption& solver_option,
+                  const AutoShardingOption& option,
                   const CallGraph& call_graph) {
   strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
                                         leaf_strategies);
 
   ConvHandler handler(strategies, strategy_map, ins, cluster_env, batch_map,
-                      solver_option, call_graph);
+                      option, call_graph);
   TF_RETURN_IF_ERROR(handler.RegisterStrategies());
   return OkStatus();
 }

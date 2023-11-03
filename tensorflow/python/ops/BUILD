@@ -620,8 +620,10 @@ tf_gen_op_strict_wrapper_private_py(
 tf_gen_op_strict_wrapper_private_py(
     name = "training_ops_gen",
     visibility = [
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/opt:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/eager/polymorphic_function:__pkg__",
         "//tensorflow/python/training:__pkg__",
     ],
 )
@@ -1284,6 +1286,7 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:keras_deps",
         "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -1303,7 +1306,6 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":control_flow_util",
-        ":control_flow_util_v2",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_export",
@@ -1317,7 +1319,6 @@ tf_py_strict_test(
     python_version = "PY3",
     deps = [
         ":control_flow_util_v2",
-        ":control_flow_v2_toggles",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
     ],
@@ -3099,11 +3100,10 @@ py_strict_library(
         ":array_ops",
         ":init_ops",
         ":resource_variable_ops",
+        ":resource_variables_toggle",
         ":variables",
-        "//tensorflow/python:tf2",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
@@ -3112,9 +3112,21 @@ py_strict_library(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:function_utils",
         "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
+    name = "resource_variables_toggle",
+    srcs = ["resource_variables_toggle.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:tf2",
+        "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -3156,6 +3168,7 @@ py_strict_library(
         ":array_ops",
         ":array_ops_gen",
         ":resource_variable_ops",
+        ":resource_variables_toggle",
         ":state_ops",
         ":state_ops_gen",
         ":variable_scope",

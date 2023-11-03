@@ -23,7 +23,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_GPU_GPU_KERNEL_H_
 
 #include "xla/stream_executor/gpu/gpu_driver.h"
-#include "xla/stream_executor/kernel_cache_config.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/logging.h"

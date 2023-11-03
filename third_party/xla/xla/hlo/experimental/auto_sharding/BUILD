@@ -138,6 +138,7 @@ cc_library(
 
 cc_library(
     name = "auto_sharding_option",
+    srcs = ["auto_sharding_option.cc"],
     hdrs = ["auto_sharding_option.h"],
     visibility = ["//visibility:public"],
     deps = [
@@ -194,7 +195,7 @@ cc_library(
     hdrs = ["cluster_environment.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":auto_sharding_solver_option",
+        ":auto_sharding_option",
         ":auto_sharding_strategy",
         ":auto_sharding_util",
         ":profiling_result",

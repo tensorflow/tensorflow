@@ -854,7 +854,7 @@ def validate_cuda_config(environ_cp):
 
   find_cuda_script = os.path.join(
       pathlib.Path(__file__).parent.resolve(),
-      'third_party/gpus/find_cuda_config.py',
+      'third_party/tsl/third_party/gpus/find_cuda_config.py',
   )
   if not os.path.isfile(find_cuda_script):
     raise FileNotFoundError(

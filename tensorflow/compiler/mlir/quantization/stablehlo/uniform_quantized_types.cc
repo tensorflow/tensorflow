@@ -37,6 +37,17 @@ UniformQuantizedType CreateI8F32UniformQuantizedType(const Location loc,
       /*storageTypeMin=*/llvm::minIntN(8), /*storageTypeMax=*/llvm::maxIntN(8));
 }
 
+UniformQuantizedType CreateI32F32UniformQuantizedType(
+    const Location loc, MLIRContext& context, const float scale,
+    const int32_t zero_point) {
+  return UniformQuantizedType::getChecked(
+      loc, /*flags=*/QuantizationFlags::Signed,
+      /*storageType=*/IntegerType::get(&context, /*width=*/32),
+      /*expressedType=*/FloatType::getF32(&context), scale, zero_point,
+      /*storageTypeMin=*/llvm::minIntN(32),
+      /*storageTypeMax=*/llvm::maxIntN(32));
+}
+
 UniformQuantizedPerAxisType CreateI8F32UniformQuantizedPerAxisType(
     const Location loc, MLIRContext& context, const ArrayRef<float> scales,
     const ArrayRef<int8_t> zero_points, const int quantization_dimension) {

@@ -11,8 +11,10 @@ package_group(
     packages = [
         # Authorized users go here.
         "//tensorflow/core/tfrt/saved_model/...",
+        "//tensorflow/compiler/mlir/tensorflow/...",
         "//learning/brain/tfrt/cpp_tests/gpu_inference/...",
         "//tensorflow/compiler/mlir/tfrt/...",
+        "//tensorflow/compiler/mlir/tfrt/translate/...",
     ],
 )
 

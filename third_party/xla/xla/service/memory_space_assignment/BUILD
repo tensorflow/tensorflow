@@ -48,6 +48,7 @@ cc_library(
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",
+        "//xla/service:buffer_value",
         "//xla/service:heap_simulator",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_proto_cc",

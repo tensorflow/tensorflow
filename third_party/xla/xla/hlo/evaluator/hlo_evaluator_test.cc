@@ -4359,14 +4359,19 @@ ENTRY main {
   c2 = s32[] constant(-2147483648)  // -2^31
   sub = s32[] subtract(c2, c1)  // -2^31 - 2^30, underflows
 
+  c3 = u32[] constant(4294967295)
+  c4 = u32[] constant(33)
+
   mul = s32[] multiply(c1, c1)
-  ROOT tuple = (s32[], s32[], s32[]) tuple(sum, sub, mul)
+
+  pow = u32[] power(c3, c4)
+  ROOT tuple = (s32[], s32[], s32[], u32[]) tuple(sum, sub, mul, pow)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
   TF_ASSERT_OK_AND_ASSIGN(auto literal, Evaluate({}));
   std::vector<Literal> actual = literal.DecomposeTuple();
-  ASSERT_EQ(actual.size(), 3);
+  ASSERT_EQ(actual.size(), 4);
 
   uint32_t pow30 = uint32_t{1} << 30;
   uint32_t pow31 = uint32_t{1} << 31;
@@ -4375,6 +4380,7 @@ ENTRY main {
             static_cast<int32_t>(-(pow31 + pow30)));
   EXPECT_EQ(actual[2].GetFirstElement<int32_t>(),
             static_cast<int32_t>(pow31 * pow31));
+  EXPECT_EQ(actual[3].GetFirstElement<uint32_t>(), uint32_t{4294967295});
 }
 
 TEST_F(HloEvaluatorTest, GetDimensionSize) {

@@ -1,0 +1,58 @@
+op 	 {
+  name: "XlaSparseDenseMatmul"
+  input_arg {
+    name: "row_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "col_ids"
+    type: DT_UINT32
+  }
+  input_arg {
+    name: "values"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "offsets"
+    type: DT_UINT32
+  }
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "activations"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "sorted_embedding_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "max_ids_per_partition"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "max_unique_ids_per_partition"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "input_size"
+    type: "int"
+    has_minimum: true
+  }
+}

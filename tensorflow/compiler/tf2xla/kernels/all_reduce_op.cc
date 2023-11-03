@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -75,8 +77,12 @@ class CollectiveReduceV2Op : public XlaOpKernel {
     xla::ChannelHandle channel_handle;
     channel_handle.set_type(xla::ChannelHandle::DEVICE_TO_DEVICE);
     channel_handle.set_handle(*channel_id);
-    ctx->SetOutput(0,
-                   xla::AllReduce(ctx->Input(0), *reducer, {}, channel_handle));
+    std::vector<xla::ReplicaGroup> replica_groups(1);
+    for (int64_t i = 0; i < group_size; i++) {
+      replica_groups[0].add_replica_ids(i);
+    }
+    ctx->SetOutput(0, xla::AllReduce(ctx->Input(0), *reducer, replica_groups,
+                                     channel_handle));
   }
 
  private:

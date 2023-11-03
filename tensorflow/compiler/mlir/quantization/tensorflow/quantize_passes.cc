@@ -52,7 +52,7 @@ void AddStablehloQuantToIntPasses(mlir::PassManager &pm) {
 void AddStaticRangeQuantizationPass(
     mlir::PassManager &pm, const QuantizationOptions &quantization_options,
     std::optional<const absl::string_view> mlir_dump_file_prefix) {
-  // TODO: b/299545840 - Include QuantizeCompositeFunctionsPass as in bug.
+  pm.addPass(mlir::quant::stablehlo::createQuantizeCompositeFunctionsPass());
 }
 
 void AddConvertTpuToCpuModelPasses(mlir::PassManager &pm) {

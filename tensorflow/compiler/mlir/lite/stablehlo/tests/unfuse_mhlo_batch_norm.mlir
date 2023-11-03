@@ -132,13 +132,13 @@ func.func @batchNormInference_f16_overflow(
 func.func @batchNormTraining_4D_middle_features(
     %x: tensor<3x4x256x6xf32>, %scale: tensor<256xf32>, %offset: tensor<256xf32>)
     -> (tensor<3x4x256x6xf32>) {
-  // CHECK-DAG: %[[CST_AXIS:.+]] = "tf.Const"() {value = dense<[0, 1, 3]> : tensor<3xi32>} : () -> tensor<3xi32>
+  // CHECK-DAG: %[[CST_AXIS:.+]] = "tf.Const"() <{value = dense<[0, 1, 3]> : tensor<3xi32>}> : () -> tensor<3xi32>
   // CHECK-DAG: %[[X_SHAPE:.+]] = shape.const_shape [3, 4, 256, 6] : tensor<4xindex>
   // CHECK-DAG: %[[EPS:.+]] = mhlo.constant dense<1.000000e+00> : tensor<256xf32>
-  // CHECK-DAG: %[[MEAN:.+]] = "tf.Mean"(%arg0, %[[CST_AXIS]]) {keep_dims = false} : (tensor<3x4x256x6xf32>, tensor<3xi32>) -> tensor<256xf32>
+  // CHECK-DAG: %[[MEAN:.+]] = "tf.Mean"(%arg0, %[[CST_AXIS]]) <{keep_dims = false}> : (tensor<3x4x256x6xf32>, tensor<3xi32>) -> tensor<256xf32>
   // CHECK-DAG: %[[MEAN_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[MEAN]], %[[X_SHAPE]]) {broadcast_dimensions = dense<2> : tensor<1xi64>} : (tensor<256xf32>, tensor<4xindex>) -> tensor<3x4x256x6xf32>
   // CHECK-DAG: %[[SQ_DIFF:.+]] = "tf.SquaredDifference"(%arg0, %[[MEAN_BCAST]]) : (tensor<3x4x256x6xf32>, tensor<3x4x256x6xf32>) -> tensor<3x4x256x6xf32>
-  // CHECK-DAG: %[[VARIANCE:.+]] = "tf.Mean"(%[[SQ_DIFF]], %[[CST_AXIS]]) {keep_dims = false} : (tensor<3x4x256x6xf32>, tensor<3xi32>) -> tensor<256xf32>
+  // CHECK-DAG: %[[VARIANCE:.+]] = "tf.Mean"(%[[SQ_DIFF]], %[[CST_AXIS]]) <{keep_dims = false}> : (tensor<3x4x256x6xf32>, tensor<3xi32>) -> tensor<256xf32>
   // CHECK-DAG: %[[VARIANCE_EPS:.+]] = mhlo.add %[[VARIANCE]], %[[EPS]] : tensor<256xf32>
   // CHECK-DAG: %[[VARIANCE_EPS_RSQRT:.+]] = mhlo.rsqrt %[[VARIANCE_EPS]] : tensor<256xf32>
   // CHECK-DAG: %[[MULTIPLIER:.+]] = mhlo.multiply %[[VARIANCE_EPS_RSQRT]], %[[SCALE]] : tensor<256xf32>

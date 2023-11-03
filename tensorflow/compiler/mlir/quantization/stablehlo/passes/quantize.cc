@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -136,5 +137,10 @@ void QuantizePass::runOnOperation() {
 }
 
 }  // namespace
+
+std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
+    const QuantizationSpecs& quantization_specs) {
+  return std::make_unique<QuantizePass>(quantization_specs);
+}
 
 }  // namespace mlir::quant::stablehlo

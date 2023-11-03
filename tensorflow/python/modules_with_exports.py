@@ -91,7 +91,6 @@ from tensorflow.python.lib.io import python_io
 from tensorflow.python.module import module
 
 # Ops
-from tensorflow.python.ops.standard_ops import *  # pylint: disable=redefined-builtin
 from tensorflow.python.ops.random_crop_ops import *
 from tensorflow.python.ops import bincount_ops
 from tensorflow.python.ops import bitwise_ops as bitwise

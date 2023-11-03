@@ -94,6 +94,9 @@ cc_library(
 xla_cc_test(
     name = "hlo_evaluator_test",
     srcs = ["hlo_evaluator_test.cc"],
+    tags = [
+        "noasan",  # times out
+    ],
     deps = [
         ":hlo_evaluator",
         "//xla:array2d",

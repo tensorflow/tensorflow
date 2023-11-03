@@ -80,11 +80,11 @@ constexpr int kVersionStartSupportCallTFGraph = 5;
 constexpr int kVersionStartSupportDisabledChecks = 6;
 constexpr int kVersionStartSupportShapeAssertions = 7;
 constexpr int kVersionStartSupportUsesShapePolymorphismAttr = 8;
+constexpr int kVersionStartSupportEffects = 9;
 constexpr int kVersionMinimumSupported = kVersionStartStableHloCompatibility;
 
 // This should match xla.py:call_module_maximum_supported_version
-constexpr int kVersionMaximumSupported =
-    kVersionStartSupportUsesShapePolymorphismAttr;
+constexpr int kVersionMaximumSupported = kVersionStartSupportEffects;
 
 constexpr llvm::StringRef kDisabledCheckPlatform = "platform";
 
@@ -140,6 +140,11 @@ tsl::Status SetPlatformIndex(mlir::func::FuncOp main, int platform_index) {
 }
 
 }  // namespace
+
+bool IsTokenType(mlir::Type type) {
+  return type.isa<mlir::stablehlo::TokenType>() ||
+         type.isa<mlir::mhlo::TokenType>();
+}
 
 tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> XlaCallModuleLoader::Create(
     mlir::MLIRContext *context, int version, std::string module_str,
@@ -236,7 +241,8 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
   // Refine 'main' argument types to use static input types instead. The main
   // arguments may occur as return values, or as inputs to called functions,
   // and changing their types may invalidate the module. To prevent this
-  // we insert dummy conversion ops as the sole uses of the main arguments.
+  // we insert dummy conversion ops as the sole uses of the main arguments, for
+  // the arguments that are not tokens and have dynamic shape.
   // If we use stablehlo.convert, we end up with "convert 3xf32 -> *xf32"
   // after we set the static shapes for the main arguments. The "convert"
   // op does not support unranked result for ranked inputs. So, we use
@@ -246,9 +252,16 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
   op_builder.setInsertionPointToStart(&main_body);
   for (auto i = 0; i < main_body.getNumArguments(); ++i) {
     mlir::BlockArgument arg = main_body.getArgument(i);
-    auto convert_op = op_builder.create<mlir::stablehlo::BitcastConvertOp>(
-        arg.getLoc(), arg.getType(), arg);
-    arg.replaceAllUsesExcept(convert_op, convert_op);
+    mlir::Type arg_type = arg.getType();
+    if (IsTokenType(arg_type)) {
+      continue;
+    }
+    auto ranked_arg_type = arg_type.dyn_cast<mlir::RankedTensorType>();
+    if (!ranked_arg_type || !ranked_arg_type.hasStaticShape()) {
+      auto convert_op = op_builder.create<mlir::stablehlo::BitcastConvertOp>(
+          arg.getLoc(), arg_type, arg);
+      arg.replaceAllUsesExcept(convert_op, convert_op);
+    }
   }
 
   auto static_array_output_types = llvm::to_vector(main_.getResultTypes());
@@ -376,7 +389,19 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
   }
 
   mlir::Block &main_body = main_.front();
-  int nr_token_arguments = main_has_token_input_output ? 1 : 0;
+
+  int nr_token_arguments = llvm::count_if(InputTypes(), IsTokenType);
+  if (version < kVersionStartSupportEffects) {
+    bool has_token_at_start = (nr_token_arguments == 1 &&
+                               IsTokenType(main_.getArgument(0).getType()));
+    if (main_has_token_input_output != has_token_at_start) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Expected a token at start iff main_has_token_input_output. ",
+          "Found main function type ",
+          mlir::debugString(main_.getFunctionType()),
+          " and main_has_token_input_output = ", main_has_token_input_output));
+    }
+  }
   int nr_platform_args = (platform_index_ >= 0 ? 1 : 0);
   if (num_invocation_args != main_body.getNumArguments() - nr_token_arguments) {
     return absl::InvalidArgumentError(absl::StrCat(

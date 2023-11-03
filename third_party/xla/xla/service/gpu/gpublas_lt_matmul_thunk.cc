@@ -55,11 +55,7 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
 
 Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(auto plan, GetMatmulPlan(params.stream));
-  if (!algorithm_) {
-    TF_ASSIGN_OR_RETURN(auto algorithms, plan->GetAlgorithms());
-    TF_RET_CHECK(algorithm_idx_ >= 0 && algorithm_idx_ < algorithms.size());
-    algorithm_ = algorithms[algorithm_idx_];
-  }
+  TF_ASSIGN_OR_RETURN(auto algorithm, GetMatmulAlgorithm(plan));
 
   VLOG(3) << "Running cublas_lt matmul thunk";
   const BufferAllocations& allocs = *params.buffer_allocations;
@@ -95,7 +91,7 @@ Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
       params.stream, allocs.GetDeviceAddress(a_buffer_),
       allocs.GetDeviceAddress(b_buffer_), allocs.GetDeviceAddress(c_buffer_),
       allocs.GetDeviceAddress(d_buffer_), bias, aux, a_scale, b_scale, c_scale,
-      d_scale, d_amax, *algorithm_, scratch_allocator);
+      d_scale, d_amax, *algorithm, scratch_allocator);
 }
 
 StatusOr<se::gpu::BlasLt::MatmulPlan*> CublasLtMatmulThunk::GetMatmulPlan(
@@ -108,6 +104,20 @@ StatusOr<se::gpu::BlasLt::MatmulPlan*> CublasLtMatmulThunk::GetMatmulPlan(
     it = matmul_plans_cache_.emplace(stream, std::move(plan)).first;
   }
   return it->second.get();
+}
+
+StatusOr<std::optional<se::gpu::BlasLt::MatmulAlgorithm> >
+CublasLtMatmulThunk::GetMatmulAlgorithm(
+    const se::gpu::BlasLt::MatmulPlan* plan) {
+  absl::MutexLock lock(&matmul_algorithm_cache_mutex_);
+  auto it = matmul_algorithm_cache_.find(plan);
+  if (it == matmul_algorithm_cache_.end()) {
+    TF_ASSIGN_OR_RETURN(auto algorithms, plan->GetAlgorithms());
+    TF_RET_CHECK(algorithm_idx_ >= 0 && algorithm_idx_ < algorithms.size());
+    auto algorithm = algorithms[algorithm_idx_];
+    it = matmul_algorithm_cache_.emplace(plan, algorithm).first;
+  }
+  return it->second;
 }
 
 }  // namespace gpu

@@ -210,13 +210,14 @@ ENTRY e {
   p1 = $0[33,68]{1,0} parameter(1)
   p0 = f32[15,33]{1,0} parameter(0)
   fusion = f32[33,68]{1,0} fusion(p1), kind=kLoop, calls=fused_computation
-  ROOT custom-call = f32[15,68]{1,0} custom-call(p0, fusion),
+  gemm = (f32[15,68]{1,0}, s8[0]{0}) custom-call(p0, fusion),
     custom_call_target="__cublas$$gemm",
     backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
       "alpha_imag":0,"precision_config":
       {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}
+   ROOT get-tuple-element = f32[15,68]{1,0} get-tuple-element((f32[15,68]{1,0}, s8[0]{0}) gemm), index=0
 })";
   const std::string hlo_ref = absl::Substitute(
       kHloRefTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
@@ -322,13 +323,14 @@ ENTRY e {
   p1 = $0[11,63]{1,0} parameter(1)
   p0 = f32[92,11]{1,0} parameter(0)
   fusion = f32[11,63]{1,0} fusion(p1, p2), kind=kLoop, calls=fused_computation
-  ROOT custom-call = f32[92,63]{1,0} custom-call(p0, fusion),
+  gemm = (f32[92,63]{1,0}, s8[0]{0}) custom-call(p0, fusion),
     custom_call_target="__cublas$$gemm",
     backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
       "alpha_imag":0,"precision_config":
       {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}
+  ROOT get-tuple-element = f32[92,63]{1,0} get-tuple-element((f32[92,63]{1,0}, s8[0]{0}) gemm), index=0
 })";
   const std::string hlo_ref = absl::Substitute(
       kHloRefTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
@@ -448,13 +450,14 @@ ENTRY e {
   p1 = $0[11,63]{1,0} parameter(1)
   p0 = f32[92,11]{1,0} parameter(0)
   fusion = f32[11,63]{1,0} fusion(p1, p2), kind=kLoop, calls=fused_computation
-  ROOT custom-call = f32[92,63]{1,0} custom-call(p0, fusion),
+  gemm = (f32[92,63]{1,0}, s8[0]{0}) custom-call(p0, fusion),
     custom_call_target="__cublas$$gemm",
     backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
       "alpha_imag":0,"precision_config":
       {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}
+  ROOT get-tuple-element = f32[92,63]{1,0} get-tuple-element((f32[92,63]{1,0}, s8[0]{0}) gemm), index=0
 })";
   const std::string hlo_ref = absl::Substitute(
       kHloRefTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
@@ -555,13 +558,14 @@ ENTRY e {
   p0 = $1[92,11]{1,0} parameter(0)
   fusion = $1[11,63]{1,0} fusion(p1, p2, p3), kind=kLoop,
     calls=fused_computation
-  ROOT custom-call = $1[92,63]{1,0} custom-call(p0, fusion),
+  gemm = ($1[92,63]{1,0}, s8[0]{0}) custom-call(p0, fusion),
     custom_call_target="__cublas$$gemm",
     backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
       "alpha_imag":0,"precision_config":
       {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}
+  ROOT get-tuple-element = $1[92,63]{1,0} get-tuple-element(($1[92,63]{1,0}, s8[0]{0}) gemm), index=0
 })";
   const std::string hlo_ref = absl::Substitute(
       kHloRefTemplate, primitive_util::LowercasePrimitiveTypeName(data_type1),
@@ -668,13 +672,14 @@ ENTRY e {
   p0 = f32[92,11]{1,0} parameter(0)
   fusion = f32[11,63]{1,0} fusion(p1), kind=kLoop,
     calls=fused_computation
-  ROOT custom-call = f32[92,63]{1,0} custom-call(p0, fusion),
+  gemm = (f32[92,63]{1,0}, s8[0]{0}) custom-call(p0, fusion),
     custom_call_target="__cublas$$gemm",
     backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
       "alpha_imag":0,"precision_config":
       {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}
+  ROOT get-tuple-element = f32[92,63]{1, 0} get-tuple-element((f32[92,63]{1, 0}, s8[0]{0}) gemm), index=0
 })";
   const std::string hlo_ref = absl::Substitute(
       kHloRefTemplate, primitive_util::LowercasePrimitiveTypeName(data_type));

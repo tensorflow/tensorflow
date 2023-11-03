@@ -28,6 +28,10 @@
 
 * `tf.lite`
     * Added support for `stablehlo.gather`.
+    * Added support for `stablehlo.add`.
+    * Added support for `stablehlo.multiply`.
+    * Added support for `stablehlo.maximum`.
+    * Added support for `stablehlo.minimum`.
 
 ## Keras
 

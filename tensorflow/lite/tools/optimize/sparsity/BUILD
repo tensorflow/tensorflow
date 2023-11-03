@@ -16,6 +16,10 @@ pybind_extension(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
+    data = [
+        "format_converter_wrapper_pybind11.pyi",
+    ],
+    enable_stub_generation = True,
     features = ["-use_header_modules"],
     deps = [
         "//tensorflow/lite/core/c:common",

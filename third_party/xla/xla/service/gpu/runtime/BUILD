@@ -86,6 +86,7 @@ cc_library(
         "//xla/runtime:custom_call",
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
+        "//xla/service:collective_ops_utils",
         "//xla/service:computation_placer_hdr",
         "//xla/service:executable",
         "//xla/service:global_device_id",
@@ -189,7 +190,9 @@ cc_library(
     name = "cub_sort",
     srcs = ["cub_sort.cc"],
     hdrs = ["cub_sort.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     visibility = ["//visibility:public"],
     deps = [
         ":support",
@@ -200,7 +203,7 @@ cc_library(
         "//xla/service:executable",
         "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/status",
-    ] + if_cuda_is_configured([
+    ] + if_gpu_is_configured([
         "//xla/service/gpu:cub_sort_thunk",
     ]),
 )
@@ -454,6 +457,7 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:errors",
     ] + if_cuda_is_configured([
         "//xla/service/gpu:gemm_algorithm_picker",
         "//xla/stream_executor/gpu:redzone_allocator",

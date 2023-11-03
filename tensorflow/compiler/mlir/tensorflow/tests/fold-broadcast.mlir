@@ -48,7 +48,7 @@ func.func @broadcast_eq(%arg0: tensor<5x7xf32>, %arg1: tensor<7xf32>) -> tensor<
   %0 = "tf.BroadcastTo"(%arg1, %cst) : (tensor<7xf32>, tensor<2xi32>) -> tensor<5x7xf32>
   %1 = "tf.Equal"(%arg0, %0) {incompatible_shape_error = true} : (tensor<5x7xf32>, tensor<5x7xf32>) -> tensor<5x7xi1>
   func.return %1 : tensor<5x7xi1>
-  // CHECK: %[[V0:.*]] = "tf.Equal"(%arg0, %arg1) {incompatible_shape_error = true} : (tensor<5x7xf32>, tensor<7xf32>) -> tensor<5x7xi1>
+  // CHECK: %[[V0:.*]] = "tf.Equal"(%arg0, %arg1) <{incompatible_shape_error = true}> : (tensor<5x7xf32>, tensor<7xf32>) -> tensor<5x7xi1>
   // CHECK: %[[V0]] : tensor<5x7xi1>
 }
 
@@ -58,7 +58,7 @@ func.func @broadcast_neq(%arg0: tensor<5x7xf32>, %arg1: tensor<7xf32>) -> tensor
   %0 = "tf.BroadcastTo"(%arg1, %cst) : (tensor<7xf32>, tensor<2xi32>) -> tensor<5x7xf32>
   %1 = "tf.NotEqual"(%arg0, %0) {incompatible_shape_error = true} : (tensor<5x7xf32>, tensor<5x7xf32>) -> tensor<5x7xi1>
   func.return %1 : tensor<5x7xi1>
-  // CHECK: %[[V0:.*]] = "tf.NotEqual"(%arg0, %arg1) {incompatible_shape_error = true} : (tensor<5x7xf32>, tensor<7xf32>) -> tensor<5x7xi1>
+  // CHECK: %[[V0:.*]] = "tf.NotEqual"(%arg0, %arg1) <{incompatible_shape_error = true}> : (tensor<5x7xf32>, tensor<7xf32>) -> tensor<5x7xi1>
   // CHECK: %[[V0]] : tensor<5x7xi1>
 }
 
@@ -79,7 +79,7 @@ func.func @broadcast_batch_matmul_v2_rhs(%arg0: tensor<17x17x17xf32>, %arg1: ten
   %0 = "tf.BroadcastTo"(%arg1, %cst) : (tensor<17x24xf32>, tensor<3xi64>) -> tensor<17x17x24xf32>
   %1 = "tf.BatchMatMulV2"(%arg0, %0) {adj_x = false, adj_y = false} : (tensor<17x17x17xf32>, tensor<17x17x24xf32>) -> tensor<17x17x24xf32>
   func.return %1 : tensor<17x17x24xf32>
-  // CHECK: %[[V0:.*]] = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<17x17x17xf32>, tensor<17x24xf32>) -> tensor<17x17x24xf32>
+  // CHECK: %[[V0:.*]] = "tf.BatchMatMulV2"(%arg0, %arg1) <{adj_x = false, adj_y = false}> : (tensor<17x17x17xf32>, tensor<17x24xf32>) -> tensor<17x17x24xf32>
   // CHECK: %[[V0]] : tensor<17x17x24xf32>
 }
 
@@ -89,7 +89,7 @@ func.func @broadcast_batch_matmul_v2_lhs(%arg0: tensor<17x17xf32>, %arg1: tensor
   %0 = "tf.BroadcastTo"(%arg0, %cst) : (tensor<17x17xf32>, tensor<3xi64>) -> tensor<17x17x17xf32>
   %1 = "tf.BatchMatMulV2"(%0, %arg1) {adj_x = false, adj_y = false} : (tensor<17x17x17xf32>, tensor<17x17x24xf32>) -> tensor<17x17x24xf32>
   func.return %1 : tensor<17x17x24xf32>
-  // CHECK: %[[V0:.*]] = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<17x17xf32>, tensor<17x17x24xf32>) -> tensor<17x17x24xf32>
+  // CHECK: %[[V0:.*]] = "tf.BatchMatMulV2"(%arg0, %arg1) <{adj_x = false, adj_y = false}> : (tensor<17x17xf32>, tensor<17x17x24xf32>) -> tensor<17x17x24xf32>
   // CHECK: %[[V0]] : tensor<17x17x24xf32>
 }
 
@@ -108,6 +108,6 @@ func.func @broadcast_splat_operand() -> tensor<5x5xi64> {
   %cst = arith.constant dense<5> : tensor<2xi64>
   %0 = "tf.BroadcastTo"(%cst, %cst) : (tensor<2xi64>, tensor<2xi64>) -> tensor<5x5xi64>
   func.return %0 : tensor<5x5xi64>
-  // CHECK: %[[V0:.*]] = "tf.Const"() {value = dense<5> : tensor<5x5xi64>} : () -> tensor<5x5xi64>
+  // CHECK: %[[V0:.*]] = "tf.Const"() <{value = dense<5> : tensor<5x5xi64>}> : () -> tensor<5x5xi64>
   // CHECK: %[[V0]] : tensor<5x5xi64>
 }

@@ -281,6 +281,7 @@ cc_library(
     hdrs = ["buffer_assignment_util.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "@com_google_absl//absl/strings",
     ],

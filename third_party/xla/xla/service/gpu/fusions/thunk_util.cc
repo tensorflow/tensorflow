@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/thunk_util.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -23,6 +25,11 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/literal.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/memset_thunk.h"
@@ -80,36 +87,24 @@ std::optional<std::unique_ptr<Thunk>> BuildConstantInitializerThunk(
 
 StatusOr<std::optional<std::unique_ptr<Thunk>>> BuildConstantInitializerThunk(
     IrEmitterContext& ir_emitter_context, mlir::Operation* op,
-    mlir::Value init_value, mlir::Value dest) {
-  mlir::DenseElementsAttr const_init;
-  if (auto get_global_memref =
-          mlir::dyn_cast_or_null<mlir::memref::GetGlobalOp>(
-              init_value.getDefiningOp())) {
-    auto global_memref =
-        mlir::SymbolTable::lookupNearestSymbolFrom<mlir::memref::GlobalOp>(
-            get_global_memref, get_global_memref.getNameAttr());
-    if (global_memref.getConstant() && global_memref.getInitialValue()) {
-      // If the initial value happens to be a constant, generate a specialized
-      // thunk.
-      const_init = global_memref.getInitialValue()
-                       .value()
-                       .cast<mlir::DenseElementsAttr>();
-    }
-  } else if (auto constant = mlir::dyn_cast_or_null<mlir::mhlo::ConstantOp>(
-                 init_value.getDefiningOp())) {
-    const_init = constant.getValue().dyn_cast<mlir::DenseElementsAttr>();
-  }
-
-  if (const_init) {
+    const HloInstruction* instr, const HloInstruction* init_value,
+    mlir::Value dest) {
+  if (const HloConstantInstruction* constant =
+          DynCast<HloConstantInstruction>(init_value)) {
+    const Literal& literal = constant->literal();
+    const uint8_t* data = static_cast<const uint8_t*>(literal.untyped_data());
     std::vector<uint8_t> literal_bytes;
-    TF_RETURN_IF_ERROR(
-        CopyDenseElementsDataToXlaFormat(const_init, &literal_bytes));
+    for (int i = 0; i < literal.size_bytes(); i++) {
+      literal_bytes.push_back(static_cast<uint8_t>(data[i]));
+    }
 
     TF_ASSIGN_OR_RETURN(
-        auto dest_slice,
-        GetAllocationSlice(dest, ir_emitter_context.allocations()));
+        BufferAllocation::Slice dest_slice,
+        ir_emitter_context.emit_ir_from_hlo()
+            ? ir_emitter_context.buffer_assignment().GetUniqueSlice(instr, {})
+            : GetAllocationSlice(dest, ir_emitter_context.allocations()));
 
-    const Shape dest_shape = GetShape(dest);
+    const Shape dest_shape = instr->shape();
     return BuildConstantInitializerThunk(op, literal_bytes, dest, dest_slice,
                                          dest_shape);
   }

@@ -687,6 +687,7 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler/utils:topological_sort",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -706,6 +707,9 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/kernels:control_flow_ops",
+        "//tensorflow/core/platform:status",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 

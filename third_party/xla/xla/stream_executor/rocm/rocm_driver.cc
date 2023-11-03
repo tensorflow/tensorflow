@@ -748,6 +748,18 @@ GpuDriver::GraphNodeGetType(hipGraphNode_t node) {
                      "hipDrvGraphAddMemcopyNode is not available on ROCm yet"};
 }
 
+/* static */ tsl::Status GpuDriver::GraphAddChildNode(
+    hipGraphNode_t* node, hipGraph_t graph, absl::Span<hipGraphNode_t> deps,
+    hipGraph_t child) {
+  VLOG(2) << "Create a new node by cloning the child graph " << child
+          << " and add it to " << graph << "; deps: " << deps.size();
+
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipGraphAddChildGraphNode(node, graph, deps.data(), deps.size(),
+                                      child),
+      "Failed to create a child graph node and add it to a HIP graph");
+}
+
 /* static */ tsl::Status GpuDriver::LaunchKernel(
     GpuContext* context, absl::string_view kernel_name, hipFunction_t function,
     unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,

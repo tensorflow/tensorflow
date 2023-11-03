@@ -66,6 +66,12 @@ class ModelRuntimeContext {
     flib_def_ = flib_def;
   }
 
+  bool is_local_session() const { return is_local_session_; }
+
+  void set_is_local_session(bool is_local_session) {
+    is_local_session_ = is_local_session;
+  }
+
   tfrt::ResourceContext& resource_context() { return *resource_context_; }
 
   const GraphExecutionOptions& graph_execution_options() const {
@@ -81,6 +87,8 @@ class ModelRuntimeContext {
   tfrt::ResourceContext* resource_context_ = nullptr;
 
   FunctionLibraryDefinition* flib_def_ = nullptr;
+
+  bool is_local_session_ = false;
 };
 
 // This defines the runtime abstraction in tensorflow for TFRT. It is supposed

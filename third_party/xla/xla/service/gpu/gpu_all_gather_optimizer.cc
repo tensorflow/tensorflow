@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/shape_util.h"
 #include "xla/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -65,6 +66,12 @@ StatusOr<bool> AllGatherOptimizer::Run(
                               left_all_gather->replica_groups())) {
         VLOG(2) << "The right and left all-gather ops are not compatible "
                    "to merge. ";
+        continue;
+      }
+
+      if (!ShapeUtil::Equal(left_all_gather->operand(0)->shape(),
+                            right_all_gather->operand(0)->shape())) {
+        VLOG(2) << "all-gather operands have different shapes";
         continue;
       }
 

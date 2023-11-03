@@ -58,6 +58,12 @@ string DumpGraphToFile(const string& name, Graph const& graph,
 string DumpFunctionDefToFile(const string& name, FunctionDef const& fdef,
                              const string& dirname = "");
 
+// Similar to DumpGraphDefToFile, but dumps a proto of any type. Returns the
+// file name chosen.
+string DumpProtoToFile(const string& name,
+                       tensorflow::protobuf::Message const& proto,
+                       const string& dirname = "");
+
 // Sets a custom Graph dumper. If set, this dumper will be used to dump graphs
 // instead via DumpGraphToFile. As the custom dumper may not produce protobufs,
 // allow specifying a file suffix/extension too.

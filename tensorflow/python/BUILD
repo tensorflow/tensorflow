@@ -528,12 +528,17 @@ tf_python_pybind_extension(
         "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
         "//tensorflow:windows": [],
     }),
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_py_exception_registry.pyi",
+    ],
     static_deps = tf_python_pybind_static_deps(),
     # Do not sort: core:py_exception_registry must come before platform:status
     deps = [
         "@com_google_absl//absl/container:fixed_array",
         "@pybind11",
         "//third_party/python_runtime:headers",
+        "//tensorflow/c:tf_status_headers",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:py_exception_registry",
         "//tensorflow/core/platform:status",
@@ -1082,6 +1087,10 @@ tf_python_pybind_extension(
         "//tensorflow/compiler/mlir/python:pywrap_mlir_hdrs",
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
     ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_mlir.pyi",
+    ],
     deps = [
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
@@ -1335,6 +1344,10 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_dtensor_device",
     srcs = ["pywrap_dtensor_device.cc"],
+    data = [
+        "_pywrap_dtensor_device.pyi",
+    ],
+    enable_stub_generation = True,
     features = ["-layering_check"],
     deps = [
         ":pywrap_densor_device_headers",

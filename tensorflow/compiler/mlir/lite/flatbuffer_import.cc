@@ -1904,6 +1904,11 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
                     mlir::UnitAttr::get(builder.getContext()));
   }
 
+  if (!model->metadata_buffer.empty()) {
+    module->setAttr("tfl.metadata_buffer",
+                    builder.getI32ArrayAttr(model->metadata_buffer));
+  }
+
   if (use_stablehlo_constant) {
     module->setAttr("tfl.metadata",
                     builder.getDictionaryAttr(builder.getNamedAttr(

@@ -752,6 +752,42 @@ ENTRY e {
             nullptr);
 }
 
+TEST_F(TritonSoftmaxAnalysisTest, BroadcastIntoBatchDimensionIsSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+c {
+  p1 = f32[127]{0} parameter(0)
+  ROOT b = f32[125,127]{1,0} broadcast(p1), dimensions={1}
+}
+
+ENTRY e {
+  p0 = f32[127]{0} parameter(0)
+  ROOT t = f32[125,127]{1,0} fusion(p0), kind=kCustom, calls=c
+})"));
+  const HloComputation* computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
+                          TritonFusionAnalysis::Execute(*computation));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
+                                 computation->root_instruction(), 0),
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/127,
+                                    /*slice_start=*/0, /*slice_limit=*/127,
+                                    /*subfragments=*/ElementsAre(127))));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
+                                 computation->root_instruction(), 1),
+              ElementsAre(FieldsAre(/*stride=*/127, /*count=*/125,
+                                    /*slice_start=*/0, /*slice_limit=*/125,
+                                    /*subfragments=*/ElementsAre(125))));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
+                                 computation->parameter_instruction(0), 0),
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/127,
+                                    /*slice_start=*/0, /*slice_limit=*/127,
+                                    /*subfragments=*/ElementsAre(127))));
+  EXPECT_EQ(analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
+                              computation->parameter_instruction(0), 1),
+            nullptr);
+}
+
 TEST_F(GemmRewriterTritonTest, HandleDotIfCublasRequiresPadding) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(

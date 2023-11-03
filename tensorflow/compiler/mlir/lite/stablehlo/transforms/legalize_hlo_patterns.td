@@ -33,6 +33,9 @@ def ShapeToConst : NativeCodeCall<"ShapeToConst($_builder, $0)">;
 def IsTFStyleBroadcast : Constraint<CPred<"IsTFStyleBroadcast($0, $1)">,
     "new dimensions are added as prefix">;
 
+def IsNotWithinScatterRegion : Constraint<CPred<"!IsWithinOpRegion<mhlo::ScatterOp>($0)">,
+    "binary ops within scatter regions are not converted">;
+
 // Check if broadcast dimensions do not match Tensorflow convention.
 def IsNotTFStyleBroadcast : Constraint<Neg<CPred<"IsTFStyleBroadcast($0, $1)">>,
     "new dimensions are inserted in intermediate positions">;
@@ -60,7 +63,9 @@ foreach fromToBinPair = [[MHLO_AddOp, CHLO_BroadcastAddOp, TF_AddV2Op],
                          [MHLO_PowOp, CHLO_BroadcastPowOp, TF_PowOp],
                          [MHLO_SubtractOp, CHLO_BroadcastSubOp, TF_SubOp],
                          [MHLO_Atan2Op, CHLO_BroadcastAtan2Op, TF_Atan2Op]] in {
-  def : Pat<(fromToBinPair[0] $l, $r), (fromToBinPair[2] $l, $r)>;
+  def : Pat<(fromToBinPair[0]:$result $l, $r),
+            (fromToBinPair[2] $l, $r),
+            [(IsNotWithinScatterRegion $result)]>;
   def : Pat<(fromToBinPair[1] $l, $r, $broadcast_dimensions),
             (fromToBinPair[2] $l, $r),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
