@@ -49,13 +49,13 @@ XLA_TEST_F(HloTestBase, Reshape) {
 
 XLA_TEST_F(HloTestBase, Slice) {
   // Tests indexing s4 arrays in the presence of a slice instruction. On
-  // CPUs/GPUs, the slice is fused with the s4 array
+  // CPUs/GPUs, the slice is fused with the s4 array.
   const std::string hlo_text = R"(
   HloModule Slice
   ENTRY main {
-    x = s4[4,5] parameter(0)
-    y = s8[4,5] convert(x)
-    ROOT s = s8[3,2] slice(y), slice={[0:3],[2:4]}
+    x = s4[5,5] parameter(0)
+    y = s8[5,5] convert(x)
+    ROOT s = s8[3,3] slice(y), slice={[0:3],[1:4]}
   }
 )";
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
@@ -93,6 +93,18 @@ XLA_TEST_F(HloTestBase, TupleOutput) {
     y = s8[2,2] convert(x)
     ROOT t = (s4[2,2], s8[2,2]) tuple(x, y)
   })";
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
+}
+
+XLA_TEST_F(HloTestBase, OddNumberOfElements) {
+  // Tests writing to s4 arrays with an odd number of elements
+  const std::string hlo_text = R"(
+  HloModule OddNumberOfElements
+  ENTRY main {
+    x = s8[3,5] parameter(0)
+    ROOT y = s4[3,5] convert(x)
+  }
+)";
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
