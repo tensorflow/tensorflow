@@ -116,10 +116,8 @@ TEST(PjRtCApiClientTest, EmptyExecutableFingerprint) {
   std::unique_ptr<PjRtLoadedExecutable> executable =
       client->Compile(computation, CompileOptions()).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::optional<std::string> fingerprint,
-                          client->ExecutableFingerprint(*executable));
-
-  EXPECT_FALSE(fingerprint.has_value());
+  // Empty executable should return an error status.
+  EXPECT_FALSE(executable->FingerprintExecutable().ok());
 }
 
 TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {

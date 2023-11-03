@@ -313,35 +313,6 @@ StatusOr<DeviceAssignment> PjRtCApiClient::GetDefaultDeviceAssignment(
                                     param);
 }
 
-StatusOr<std::optional<std::string>> PjRtCApiClient::ExecutableFingerprint(
-    const PjRtLoadedExecutable& executable) const {
-  PJRT_LoadedExecutable_Fingerprint_Args args;
-  args.struct_size = PJRT_LoadedExecutable_Fingerprint_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  args.executable =
-      tensorflow::down_cast<const PjRtCApiLoadedExecutable*>(&executable)
-          ->c_loaded_executable();
-  std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> error(
-      c_api_->PJRT_LoadedExecutable_Fingerprint(&args),
-      pjrt::MakeErrorDeleter(c_api_));
-
-  if (error && pjrt::GetErrorCode(error.get(), c_api_) ==
-                   PJRT_Error_Code_UNIMPLEMENTED) {
-    return {std::nullopt};
-  }
-  if (error) {
-    xla::Status s = ::pjrt::PjrtErrorToStatus(error.get(), c_api_);
-    return s;
-  }
-  if (args.executable_fingerprint == nullptr ||
-      args.executable_fingerprint_size == 0) {
-    return {std::nullopt};
-  }
-  std::string fingerprint = std::string(args.executable_fingerprint,
-                                        args.executable_fingerprint_size);
-  return {fingerprint};
-}
-
 StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(int device_id) const {
   PJRT_Client_LookupDevice_Args args;
   args.struct_size = PJRT_Client_LookupDevice_Args_STRUCT_SIZE;
@@ -1672,6 +1643,10 @@ bool PjRtCApiLoadedExecutable::IsDeleted() {
   pjrt::LogFatalIfPjrtError(c_api->PJRT_LoadedExecutable_IsDeleted(&args),
                             c_api);
   return args.is_deleted;
+}
+
+StatusOr<std::string> PjRtCApiLoadedExecutable::FingerprintExecutable() const {
+  return executable_->FingerprintExecutable();
 }
 
 // ---------------------------------- Buffers ----------------------------------

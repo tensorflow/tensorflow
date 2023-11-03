@@ -174,6 +174,10 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
     return wrapped_->GetCompileOptions();
   }
 
+  StatusOr<std::string> FingerprintExecutable() const override {
+    return wrapped_->FingerprintExecutable();
+  }
+
  private:
   TfPjRtClient* client_;
   std::unique_ptr<PjRtLoadedExecutable> wrapped_;
@@ -239,10 +243,6 @@ class TfPjRtClient : public PjRtClient {
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) override {
     return WrapExecutable(wrapped_->Compile(std::move(module), options));
-  }
-  StatusOr<std::optional<std::string>> ExecutableFingerprint(
-      const PjRtLoadedExecutable& executable) const override {
-    return wrapped_->ExecutableFingerprint(UnwrapExecutable(executable));
   }
 
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(

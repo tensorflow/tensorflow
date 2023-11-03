@@ -277,9 +277,6 @@ class PjRtCApiClient : public PjRtClient {
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) override;
 
-  StatusOr<std::optional<std::string>> ExecutableFingerprint(
-      const PjRtLoadedExecutable& executable) const override;
-
   // `PjRtCApiClient::DeserializeExecutable()` ignores `CompileOptions` arg
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
       absl::string_view serialized,
@@ -699,6 +696,10 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
       PJRT_Chunk*, PJRT_CallbackError*, size_t, bool)>;
   // std::function version of PJRT_RecvCallback
   using RecvCallbackFunction = std::function<void(PJRT_CopyToDeviceStream*)>;
+
+  // Override to call FingerprintExecutable through the wrapped
+  // PjRtCApiExecutable.
+  StatusOr<std::string> FingerprintExecutable() const override;
 
  private:
   // Groups data needed to support send/recv execution callbacks.
