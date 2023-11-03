@@ -299,7 +299,6 @@ xla_cc_test(
     deps = [
         ":se_gpu_pjrt_client",
         ":se_gpu_pjrt_compiler",
-        "//tensorflow/core/platform:path",
         "//third_party/protobuf",
         "//xla:literal",
         "//xla:literal_util",
