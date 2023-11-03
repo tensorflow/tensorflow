@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/executable.h"
+#include "xla/service/export_hlo.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/symbol_repository.h"
 #include "xla/statusor.h"
@@ -202,7 +203,8 @@ Status XlaCompileMain(
     const std::string& module_path, const std::string& output_path,
     const std::string& platform, const std::string& gpu_target_config_path,
     const std::string& autotune_results_path, const std::string& symbol_repo,
-    const std::string& symbol_id, const bool use_attached_device) {
+    const std::string& symbol_id, const bool use_attached_device,
+    const bool wait_for_uploads) {
   std::unique_ptr<HloModule> hlo_module;
   std::unique_ptr<Compiler::TargetConfig> target_config;
   if (!symbol_id.empty()) {
@@ -265,6 +267,10 @@ Status XlaCompileMain(
 
   TF_RETURN_IF_ERROR(
       tsl::WriteStringToFile(tsl::Env::Default(), output_path, result));
+
+  if (wait_for_uploads) {
+    MaybeWaitForUploads();
+  }
   return OkStatus();
 }
 
@@ -282,6 +288,7 @@ int main(int argc, char* argv[]) {
   std::string symbol_repository;
   std::string symbol_id;
   bool use_attached_device = false;
+  bool wait_for_uploads = false;
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("module_file", &module_path,
                 "The path to the HLO, MHLO or StableHLO file"),
@@ -306,6 +313,9 @@ int main(int argc, char* argv[]) {
                 "AOT-vs-device-backed inference based on the presence of "
                 "--gpu_target_config, which is relevant when a GpuTargetConfig "
                 "can be found in the symbol repository."),
+      tsl::Flag("wait_for_uploads", &wait_for_uploads,
+                "Whether to wait for uploads to a symbol repository to "
+                "complete. See export_hlo.h for more on uploads."),
   };
 
   tsl::string usage = xla::xla_compile::kUsageHeader;
@@ -322,7 +332,8 @@ int main(int argc, char* argv[]) {
 
   xla::Status result = xla::xla_compile::XlaCompileMain(
       module_path, output_path, platform, gpu_target_config_path,
-      autotune_results_path, symbol_repository, symbol_id, use_attached_device);
+      autotune_results_path, symbol_repository, symbol_id, use_attached_device,
+      wait_for_uploads);
   if (!result.ok()) {
     LOG(ERROR) << "Compilation failed: " << result;
     return 1;
