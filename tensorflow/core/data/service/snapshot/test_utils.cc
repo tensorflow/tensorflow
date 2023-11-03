@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
@@ -31,17 +32,14 @@ limitations under the License.
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
 namespace testing {
 namespace {
 
-tsl::StatusOr<std::string> CreateTmpDirectory() {
+absl::StatusOr<std::string> CreateTmpDirectory() {
   std::string snapshot_path;
   if (!Env::Default()->LocalTempFilename(&snapshot_path)) {
     return absl::FailedPreconditionError(
@@ -52,7 +50,7 @@ tsl::StatusOr<std::string> CreateTmpDirectory() {
   return snapshot_path;
 }
 
-tsl::StatusOr<int64_t> CommittedChunkIndex(const std::string& chunk_file) {
+absl::StatusOr<int64_t> CommittedChunkIndex(const std::string& chunk_file) {
   std::vector<std::string> tokens = absl::StrSplit(chunk_file, '_');
   int64_t result = 0;
   if (tokens.size() != 4 || !absl::SimpleAtoi(tokens[2], &result)) {
@@ -61,7 +59,7 @@ tsl::StatusOr<int64_t> CommittedChunkIndex(const std::string& chunk_file) {
   return result;
 }
 
-tsl::StatusOr<int64_t> CheckpointIndex(const std::string& checkpoint_file) {
+absl::StatusOr<int64_t> CheckpointIndex(const std::string& checkpoint_file) {
   std::vector<std::string> tokens = absl::StrSplit(checkpoint_file, '_');
   int64_t result = 0;
   if (tokens.size() != 3 || !absl::SimpleAtoi(tokens[1], &result)) {
@@ -85,7 +83,7 @@ PartialSnapshotWriter::PartialSnapshotWriter(const DatasetDef& dataset,
       max_chunk_size_bytes_(max_chunk_size_bytes),
       checkpoint_interval_(checkpoint_interval) {}
 
-tsl::StatusOr<PartialSnapshotWriter> PartialSnapshotWriter::Create(
+absl::StatusOr<PartialSnapshotWriter> PartialSnapshotWriter::Create(
     const DatasetDef& dataset, const std::string& snapshot_path,
     int64_t stream_index, const std::string& compression,
     int64_t max_chunk_size_bytes, absl::Duration checkpoint_interval) {
@@ -96,7 +94,7 @@ tsl::StatusOr<PartialSnapshotWriter> PartialSnapshotWriter::Create(
   return writer;
 }
 
-tsl::Status PartialSnapshotWriter::Initialize() {
+absl::Status PartialSnapshotWriter::Initialize() {
   TF_ASSIGN_OR_RETURN(tmp_snapshot_path_, CreateTmpDirectory());
   // Each chunk contains one record.
   SnapshotWriterParams writer_params{tmp_snapshot_path_,
@@ -112,7 +110,7 @@ tsl::Status PartialSnapshotWriter::Initialize() {
   return snapshot_writer.Wait().status();
 }
 
-tsl::Status PartialSnapshotWriter::WriteCommittedChunks(
+absl::Status PartialSnapshotWriter::WriteCommittedChunks(
     const absl::flat_hash_set<int64_t>& committed_chunk_indexes) const {
   std::string tmp_chunks_directory =
       CommittedChunksDirectory(tmp_snapshot_path_);
@@ -135,10 +133,10 @@ tsl::Status PartialSnapshotWriter::WriteCommittedChunks(
           Env::Default()->CopyFile(tmp_chunk_path, committed_chunk_path));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-tsl::Status PartialSnapshotWriter::WriteUncommittedChunks(
+absl::Status PartialSnapshotWriter::WriteUncommittedChunks(
     const absl::flat_hash_set<int64_t>& uncommitted_chunk_indexes) const {
   std::string tmp_chunks_directory =
       CommittedChunksDirectory(tmp_snapshot_path_);
@@ -162,10 +160,10 @@ tsl::Status PartialSnapshotWriter::WriteUncommittedChunks(
           Env::Default()->CopyFile(tmp_chunk_path, uncommitted_chunk_path));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-tsl::Status PartialSnapshotWriter::WriteCheckpoints(
+absl::Status PartialSnapshotWriter::WriteCheckpoints(
     const absl::flat_hash_set<int64_t>& checkpoint_indexes) const {
   std::string tmp_checkpoints_directory =
       CheckpointsDirectory(tmp_snapshot_path_, stream_index_);
@@ -189,10 +187,10 @@ tsl::Status PartialSnapshotWriter::WriteCheckpoints(
           Env::Default()->CopyFile(tmp_checkpoint_path, checkpoint_path));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-tsl::StatusOr<std::unique_ptr<StandaloneTaskIterator>> TestIterator(
+absl::StatusOr<std::unique_ptr<StandaloneTaskIterator>> TestIterator(
     const DatasetDef& dataset_def) {
   std::unique_ptr<standalone::Dataset> dataset;
   TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
