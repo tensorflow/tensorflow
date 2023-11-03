@@ -116,10 +116,6 @@ void ReplicateToEachDevice(
 
 Status ReplicateConstantsPass::Run(
     const GraphOptimizationPassOptions& options) {
-  if (!flags::Global().replicate_small_constants.value()) {
-    VLOG(1) << "replicate_constants_pass not enabled";
-    return OkStatus();
-  }
   VLOG(1) << "replicate_constants_pass will replicate constants with "
              "number-of-elements <= "
           << kMaxSize;
