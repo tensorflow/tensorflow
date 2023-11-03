@@ -2432,97 +2432,6 @@ Status IrEmitterUnnested::EmitRngGetAndUpdateState(mlir::Operation* op) {
 }
 
 Status IrEmitterUnnested::EmitScatter(
-    mlir::Operation* op,
-    const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
-        hlo_for_lmhlo) {
-  auto scatter_op = mlir::cast<mlir::lmhlo::ScatterOp>(op);
-
-  TF_ASSIGN_OR_RETURN(auto operand_buffer,
-                      GetAllocationSlice(scatter_op.getOperand()));
-  TF_ASSIGN_OR_RETURN(auto output_buffer,
-                      GetAllocationSlice(scatter_op.getOutput()));
-
-  // Copy the operand into the output if it's not the same buffer already.
-  if (operand_buffer != output_buffer) {
-    AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
-        Thunk::ThunkInfo(op),
-        /*source_buffer=*/operand_buffer,
-        /*destination_buffer=*/output_buffer,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(GetShape(scatter_op.getOutput())),
-        /*source_value=*/scatter_op.getOperand(),
-        /*destination_value=*/scatter_op.getOutput()));
-  }
-
-  const Shape& data_shape = GetShape(scatter_op.getUpdates());
-  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
-                      CalculateLaunchDimensions(
-                          data_shape, ir_emitter_context_->gpu_device_info()));
-
-  // Create kernel thunk for all operands except the first one (`operand`). The
-  // code generated for scatter below assumes that the input operand is already
-  // copied into the output, so does not use it in codegen.
-  TF_ASSIGN_OR_RETURN(auto ir_arrays,
-                      BuildKernelThunkForNonFusionOp(
-                          scatter_op, scatter_op.getOperands().drop_front(),
-                          launch_dimensions));
-  auto& [inputs, outputs] = ir_arrays;
-
-  CHECK_EQ(inputs.size(), 3);
-  CHECK_EQ(outputs.size(), 0);
-  const llvm_ir::IrArray& scatter_indices = inputs[0];
-  const llvm_ir::IrArray& updates = inputs[1];
-  const llvm_ir::IrArray& output = inputs[2];
-
-  auto get_index_type = [&](int64_t launch_size) {
-    return GetIndexTypeForKernel(scatter_op, launch_size, &b_);
-  };
-
-  TF_RETURN_IF_ERROR(EmitScatter(
-      scatter_op, launch_dimensions, output,
-      /*scatter_indices_gen=*/
-      [&](const llvm_ir::IrArray::Index& index) {
-        return scatter_indices.EmitReadArrayElement(index, &b_,
-                                                    "scatter_index");
-      },
-      /*updates_gen=*/
-      [&](const llvm_ir::IrArray::Index& index) {
-        return updates.EmitReadArrayElement(index, &b_, "update");
-      },
-      get_index_type, hlo_for_lmhlo));
-
-  return OkStatus();
-}
-
-Status IrEmitterUnnested::EmitScatter(
-    mlir::lmhlo::ScatterOp scatter, const LaunchDimensions& launch_dimensions,
-    const llvm_ir::IrArray& output,
-    const llvm_ir::ElementGenerator& scatter_indices_gen,
-    const llvm_ir::ElementGenerator& updates_gen,
-    std::function<llvm::Type*(int64_t)> get_index_type,
-    const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
-        hlo_for_lmhlo) {
-  const Shape operand_shape = GetShape(scatter.getOperand());
-  CHECK(ShapeUtil::Equal(GetShape(scatter.getOutput()), operand_shape));
-
-  auto* hlo_scatter =
-      Cast<HloScatterInstruction>(hlo_for_lmhlo.at(scatter.getOperation()));
-
-  ScatterDescriptor desc;
-  desc.name = GetIrNameFromLoc(scatter.getLoc());
-  desc.operand_shape = operand_shape;
-  desc.scatter_indices_shape = GetShape(scatter.getScatterIndices());
-  desc.updates_shape = GetShape(scatter.getUpdates());
-  desc.dim_numbers = scatter.getScatterDimensionNumbers();
-  desc.unique_indices = scatter.getUniqueIndices();
-  desc.update_computation = hlo_scatter->called_computations().front();
-  desc.output = output;
-  desc.scatter_indices_gen = scatter_indices_gen;
-  desc.updates_gen = updates_gen;
-  desc.get_index_type = get_index_type;
-  return EmitScatter(desc, launch_dimensions);
-}
-
-Status IrEmitterUnnested::EmitScatter(
     const ScatterDescriptor& desc, const LaunchDimensions& launch_dimensions) {
   auto loop_body_emitter = [&](const llvm_ir::IrArray::Index& index) -> Status {
     std::vector<llvm::Value*> raw_window_multidim;
@@ -3327,10 +3236,6 @@ Status IrEmitterUnnested::EmitOp(
 
   if (mlir::isa<mlir::lmhlo::RngGetAndUpdateStateOp>(op)) {
     return EmitRngGetAndUpdateState(op);
-  }
-
-  if (mlir::isa<mlir::lmhlo::ScatterOp>(op)) {
-    return EmitScatter(op, hlo_for_lmhlo);
   }
 
   if (mlir::isa<mlir::lmhlo::SortOp>(op)) {
