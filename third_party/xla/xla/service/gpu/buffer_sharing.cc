@@ -95,12 +95,11 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
   HloInstruction* fusion_param =
       user->fused_parameter(user->operand_index(operand));
   HloInstruction* output = user->fused_expression_root();
-  // We don't support nested tuples on GPU.
-  CHECK_LT(user_index.size(), 2);
   if (output->opcode() == HloOpcode::kTuple) {
     CHECK(!user_index.empty());
     output = output->mutable_operand(user_index[0]);
   }
+  CHECK_NE(output->opcode(), HloOpcode::kTuple);
   const HloInstruction* non_bitcast_root = output;
   if (non_bitcast_root->opcode() == HloOpcode::kBitcast) {
     non_bitcast_root = non_bitcast_root->operand(0);
