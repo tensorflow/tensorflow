@@ -64,12 +64,14 @@ def _get_decoders():
 
 
 def _map_structure(pyobj, coders):
-    for can, do in reversed(coders):
-        if can(pyobj):
-            recursion_fn = functools.partial(_map_structure, coders=coders)
-            return do(pyobj, recursion_fn)
-    raise NotEncodableError(
-        f"No encoder for object {str(pyobj)} of type {type(pyobj)}.")
+  # Iterate through the codecs in the reverse order they were registered in,
+  #   as the most specific codec should be checked first.
+  for can, do in reversed(coders):
+    if can(pyobj):
+      recursion_fn = functools.partial(_map_structure, coders=coders)
+      return do(pyobj, recursion_fn)
+  raise NotEncodableError(
+      f"No encoder for object {str(pyobj)} of type {type(pyobj)}.")
 
 # Define a custom type checker for custom types based on tf.experimental.ExtensionType
 def can_handle_extension_type(pyobj):
