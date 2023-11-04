@@ -248,11 +248,15 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
 
   xla::LocalClientOptions client_options;
   client_options.set_platform(platform.value());
-  client_options.set_intra_op_parallelism_threads(
-      device->tensorflow_cpu_worker_threads()->num_threads);
+  if (device != nullptr) {
+    client_options.set_intra_op_parallelism_threads(
+        device->tensorflow_cpu_worker_threads()->num_threads);
+  }
 
-  TF_ASSIGN_OR_RETURN(auto allowed_gpus, GetAllowedGpus(flr));
-  client_options.set_allowed_devices(allowed_gpus);
+  if (flr != nullptr) {
+    TF_ASSIGN_OR_RETURN(auto allowed_gpus, GetAllowedGpus(flr));
+    client_options.set_allowed_devices(allowed_gpus);
+  }
 
   auto client = xla::ClientLibrary::GetOrCreateLocalClient(client_options);
   if (!client.ok()) {

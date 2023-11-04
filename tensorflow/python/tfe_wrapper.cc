@@ -429,7 +429,8 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
                                    const char* concrete_function_name,
                                    const char* stage, const char* device_name,
                                    py::handle& flat_arg_inputs,
-                                   py::handle& captured_inputs) {
+                                   py::handle& captured_inputs,
+                                   const char* platform_name) {
   EagerContext* context = ContextFromInterface(
       reinterpret_cast<ImmediateExecutionContext*>(InputTFE_Context(ctx)));
 
@@ -520,20 +521,28 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
             .c_str());
   }
 
-  std::vector<Device*> devices = context->local_device_mgr()->ListDevices();
-  auto selected_device = absl::c_find_if(devices, [&](const Device* d) {
-    return DeviceNameUtils::AreCompatibleDevNames(input_device_name,
-                                                  d->parsed_name());
-  });
-  if (selected_device == devices.end()) {
-    ThrowValueError(
-        absl::StrFormat("No matching device found for '%s'", device_name)
-            .c_str());
-  }
+  StatusOr<std::string> hlo_str;
+  if (platform_name != nullptr) {
+    hlo_str = GetCompilerIr(
+        selected_stage, context->pflr(), concrete_function_name, platform_name,
+        context, flat_args, captured_input_handles, compiler_arg_source);
+  } else {
+    std::vector<Device*> devices = context->local_device_mgr()->ListDevices();
+    auto selected_device = absl::c_find_if(devices, [&](const Device* d) {
+      return DeviceNameUtils::AreCompatibleDevNames(input_device_name,
+                                                    d->parsed_name());
+    });
+    if (selected_device == devices.end()) {
+      ThrowValueError(
+          absl::StrFormat("No matching device found for '%s'", device_name)
+              .c_str());
+    }
 
-  StatusOr<std::string> hlo_str = GetCompilerIr(
-      selected_stage, context->pflr(), concrete_function_name, *selected_device,
-      context, flat_args, captured_input_handles, compiler_arg_source);
+    hlo_str =
+        GetCompilerIr(selected_stage, context->pflr(), concrete_function_name,
+                      *selected_device, context, flat_args,
+                      captured_input_handles, compiler_arg_source);
+  }
 
   if (!hlo_str.ok()) {
     ThrowValueError(absl::StrFormat("Failed getting HLO text: '%s'",

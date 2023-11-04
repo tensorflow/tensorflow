@@ -1869,11 +1869,29 @@ class Context:
   def get_compiler_ir(
       self,
       device_name,
+      platform_name,
       function_name,
       flat_args,
       captured_inputs,
       stage="hlo",
   ):
+    """Get the compiler IR bytes.
+
+    Args:
+      device_name: The name of the device with the form as
+        "/job:localhost/replica:0/task:0/device:CPU:0", "/device:TPU:0" etc.
+        When this is used, actual device is needed for getting the compiler IR.
+      platform_name: The name of the platform, e.g. "TPU". When this is used, no
+        actual device is needed but the compiler IR is obtained as if using that
+        device. The scenarios supported are more limited.
+      function_name: The name of the function to get the compiler IR.
+      flat_args: The flat argument inputs.
+      captured_inputs: The inputs that are captured.
+      stage: The exported stage for the given function.
+
+    Returns:
+      The compiler IR bytes.
+    """
     return pywrap_tfe.TF_GetCompilerIr(
         self._context_handle,
         function_name,
@@ -1881,6 +1899,7 @@ class Context:
         device_name,
         flat_args,
         captured_inputs,
+        platform_name,
     )
 
   @deprecated(

@@ -1,15 +1,15 @@
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
 load("//tensorflow:tensorflow.bzl", "check_deps")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_python_pybind_extension")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_additional_rpc_deps",
+)
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
     "tf_py_logged_benchmark",
-)
-load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_additional_rpc_deps",
 )
 
 package(
@@ -295,6 +295,25 @@ cuda_py_strict_test(
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
         "@local_xla//xla/service:hlo_proto_py",
+    ],
+)
+
+cuda_py_strict_test(
+    name = "context_cross_platform_test",
+    size = "small",
+    srcs = ["context_cross_platform_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_oss",
+    ],
+    tpu_ops_enabled = True,
+    xla_enabled = True,
+    deps = [
+        ":def_function",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
