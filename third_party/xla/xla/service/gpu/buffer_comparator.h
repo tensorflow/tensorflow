@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
@@ -44,6 +45,16 @@ class BufferComparator {
                               se::DeviceMemoryBase expected) const;
 
  private:
+  // Returns a pointer to CUDA C++ device function implementing comparison.
+  static void* fp8_e4m3fn_comparison();
+  static void* fp8_e5m2_comparison();
+  static void* fp16_comparison();
+  static void* bf16_comparison();
+  static void* fp32_comparison();
+  static void* fp64_comparison();
+  static void* int8_comparison();
+  static void* int32_comparison();
+
   Shape shape_;
   HloModuleConfig config_;
 };

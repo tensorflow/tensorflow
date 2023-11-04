@@ -3469,9 +3469,12 @@ xla_cc_test(
     ],
 )
 
-cc_library(
+cuda_library(
     name = "buffer_comparator",
-    srcs = if_cuda_is_configured(["buffer_comparator.cc"]),
+    srcs = if_cuda_is_configured([
+        "buffer_comparator.cc",
+        "buffer_comparator.cu.cc",
+    ]),
     hdrs = if_cuda_is_configured(["buffer_comparator.h"]),
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
@@ -3484,8 +3487,10 @@ cc_library(
         "//xla:util",
         "//xla/service:hlo_module_config",
         "//xla/stream_executor",
+        "//xla:statusor",
         "//xla/stream_executor/gpu:asm_compiler",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:errors",
     ]),
 )
 

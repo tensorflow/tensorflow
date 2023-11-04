@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/allocator_stats.h"
@@ -382,18 +383,21 @@ class StreamExecutor {
   // Returns a borrowed pointer to the underlying StreamExecutor implementation.
   internal::StreamExecutorInterface* implementation();
 
-  // Creates a kernel which can be launched with stream.ThenLaunch, such that
-  // the types of the arguments provided for launch would have to match
-  // types of the arguments provided at creation time.
-  //
-  // The kernel has a name kernel_name, and is based from provided PTX in ptx,
-  // and (optional) compiled PTX in cubin_data.
-  // The canonical storage for both ptx and cubin_data should outlive the
+  // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from a
+  // PTX (and optional CUBIN), such that the types of the arguments provided for
+  // launch would have to match types of the arguments provided at creation
+  // time. The canonical storage for both ptx and cubin_data should outlive the
   // lifetime of the kernel.
   template <typename... Args>
   tsl::StatusOr<std::unique_ptr<TypedKernel<Args...>>> CreateTypedKernel(
       absl::string_view kernel_name, absl::string_view ptx,
       absl::Span<const uint8_t> cubin_data);
+
+  // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from
+  // an in-process symbol pointer.
+  template <typename... Args>
+  tsl::StatusOr<std::unique_ptr<TypedKernel<Args...>>> CreateTypedKernel(
+      absl::string_view kernel_name, void* symbol);
 
   // Warning: use Stream::ThenLaunch instead, this method is not for general
   // consumption. However, this is the only way to launch a kernel for which
@@ -703,6 +707,17 @@ StreamExecutor::CreateTypedKernel(absl::string_view kernel_name,
     loader_spec.AddCudaCubinInMemory(
         reinterpret_cast<const char*>(cubin_data.data()), kernel_name);
   }
+
+  TF_RETURN_IF_ERROR(GetKernel(loader_spec, kernel_base.get()));
+  return std::move(kernel_base);
+}
+
+template <typename... Args>
+inline tsl::StatusOr<std::unique_ptr<TypedKernel<Args...>>>
+StreamExecutor::CreateTypedKernel(absl::string_view kernel_name, void* symbol) {
+  auto kernel_base = std::make_unique<TypedKernel<Args...>>(this);
+  MultiKernelLoaderSpec loader_spec(kernel_base->kNumberOfParameters);
+  loader_spec.AddInProcessSymbol(symbol, kernel_name);
 
   TF_RETURN_IF_ERROR(GetKernel(loader_spec, kernel_base.get()));
   return std::move(kernel_base);
