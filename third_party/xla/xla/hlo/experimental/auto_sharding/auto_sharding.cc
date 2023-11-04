@@ -49,7 +49,6 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
-#include "xla/hlo/experimental/auto_sharding/auto_sharding_solver_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 #include "xla/hlo/experimental/auto_sharding/cluster_environment.h"
@@ -3488,14 +3487,11 @@ void FindReplicateSet(
 }
 
 // Substitute all-reduce strategies with their reduce-scatter variants.
-void GenerateReduceScatter(const HloInstructionSequence& sequence,
-                           const AliasMap& alias_map,
-                           const InstructionDepthMap& depth_map,
-                           const StrategyMap& strategy_map,
-                           const CostGraph& cost_graph,
-                           absl::Span<const NodeStrategyIdx> s_val,
-                           const ClusterEnvironment& cluster_env,
-                           const AutoShardingSolverOption& solver_option) {
+void GenerateReduceScatter(
+    const HloInstructionSequence& sequence, const AliasMap& alias_map,
+    const InstructionDepthMap& depth_map, const StrategyMap& strategy_map,
+    const CostGraph& cost_graph, absl::Span<const NodeStrategyIdx> s_val,
+    const ClusterEnvironment& cluster_env, const AutoShardingOption& option) {
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
 
   // Propagation ends at output
@@ -3520,8 +3516,7 @@ void GenerateReduceScatter(const HloInstructionSequence& sequence,
   // in our current system. So we generate a gradient-accumulation-friendly
   // all-reduce + all-gather, which has the same memory consumption but with 50%
   // communication overhead.
-  bool use_all_reduce_for_grad_acc =
-      solver_option.reduce_scatter_grad_acc_friendly;
+  bool use_all_reduce_for_grad_acc = option.reduce_scatter_grad_acc_friendly;
 
   std::vector<HloInstruction*> insert_all_gather;
   StableHashSet<const HloInstruction*> modified;
@@ -3659,7 +3654,7 @@ void GenerateReduceScatter(const HloInstructionSequence& sequence,
         SetSharding(to_split, output_spec, inst, transpose_inst, modified);
       }
 
-      if (!solver_option.reduce_scatter_aggressive_partition) {
+      if (!option.reduce_scatter_aggressive_partition) {
         // The normal case
         for (HloInstruction* to_split : need_all_gather) {
           SetSharding(to_split, output_spec, inst, transpose_inst, modified);
@@ -4173,48 +4168,6 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
   bool module_is_changed = false;
 
   bool set_to_memory_lower_bound = (option_.memory_budget_per_device == 0);
-  // ----- Set options for this pass -----
-  spmd::AutoShardingSolverOption solver_option;
-  solver_option.override_all_gather_cost = false;
-  solver_option.override_all_reduce_cost = false;
-  solver_option.override_reduce_scatter_cost = false;
-  solver_option.override_all_to_all_cost = false;
-
-  if (option_.force_override_all_gather_cost) {
-    solver_option.override_all_gather_cost = true;
-    solver_option.all_gather_cost = option_.all_gather_cost;
-  }
-  if (option_.force_override_all_to_all_cost) {
-    solver_option.override_all_to_all_cost = true;
-    solver_option.all_to_all_cost = option_.all_to_all_cost;
-  }
-  solver_option.force_batch_dim_to_mesh_dim =
-      option_.force_batch_dim_to_mesh_dim;
-  solver_option.allow_replicated_parameters =
-      option_.allow_replicated_parameters;
-  solver_option.prefer_reduce_scatter = option_.prefer_reduce_scatter;
-  solver_option.reduce_scatter_grad_acc_friendly =
-      option_.reduce_scatter_grad_acc_friendly;
-  solver_option.reduce_scatter_aggressive_partition =
-      option_.reduce_scatter_aggressive_partition;
-  solver_option.batch_matmul_always_split_batch =
-      option_.batch_matmul_always_split_batch;
-  solver_option.allow_recompute_heavy_op = option_.allow_recompute_heavy_op;
-  solver_option.allow_mixed_mesh_shape = option_.allow_mixed_mesh_shape;
-  solver_option.grad_acc_num_micro_batches = option_.grad_acc_num_micro_batches;
-  solver_option.load_solution_vector = option_.load_solution_vector;
-  solver_option.force_simple_heuristic = option_.force_simple_heuristic;
-  solver_option.force_strategy = option_.force_strategy;
-  solver_option.force_strategy_inst_indices =
-      option_.force_strategy_inst_indices;
-  solver_option.force_strategy_stra_names = option_.force_strategy_stra_names;
-  solver_option.only_allow_divisible_input_output = true;
-  solver_option.only_allow_divisible_intermediate = false;
-  solver_option.nd_sharding_iteratively_strict_search_space = false;
-  solver_option.allow_replicated_strategy_for_dot_and_conv =
-      option_.allow_replicated_strategy_for_dot_and_conv;
-  solver_option.allow_alias_to_follower_conversion =
-      option_.allow_alias_to_follower_conversion;
 
   // Remove CustomCalls with custom_call_target="Sharding" and move their
   // shardings to their input ops.
@@ -4377,9 +4330,9 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
                 << option_.memory_budget_per_device;
     }
 
-    if (!solver_option.force_simple_heuristic.empty()) {
+    if (!option_.force_simple_heuristic.empty()) {
       AnnotateShardingWithSimpleHeuristic(
-          module, solver_option.force_simple_heuristic, alias_map, cluster_env);
+          module, option_.force_simple_heuristic, alias_map, cluster_env);
       return AutoShardingResult::kModuleChangedShardingPerformed;
     }
 
@@ -4430,7 +4383,7 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     std::vector<spmd::NodeStrategyIdx> s_val;
     std::vector<spmd::EdgeStrategyIdx> e_val;
     double objective = -1.0;
-    if (!solver_option.load_solution_vector) {
+    if (!option_.load_solution_vector) {
       auto solver_result = Solve(
           *hlo_live_range, liveness_node_set, strategy_map, leaf_strategies,
           cost_graph, alias_set, option_, sharding_propagation_solution);
@@ -4456,9 +4409,9 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
                                                cost_graph, s_val));
 
     // ----- Substitute all-reduce with reduce-scatter -----
-    if (solver_option.prefer_reduce_scatter) {
+    if (option_.prefer_reduce_scatter) {
       GenerateReduceScatter(sequence, alias_map, ins_depth_map, strategy_map,
-                            cost_graph, s_val, cluster_env, solver_option);
+                            cost_graph, s_val, cluster_env, option_);
     }
     // ----- Set Sharding -----
     SetHloSharding(sequence, strategy_map, cost_graph, s_val,
