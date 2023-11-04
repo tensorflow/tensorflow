@@ -816,10 +816,7 @@ def depthwise_conv2d_v2(input,
                                 strides[2] * j + dilations[1] * dj, k]
 
   Must have `strides[0] = strides[3] = 1`.  For the most common case of the
-  same horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
-  If any value in `dilations` is greater than 1, we perform atrous depthwise
-  convolution, in which case all values in the `strides` tensor must be equal
-  to 1.
+  same horizontal and vertical strides, `strides = [1, stride, stride, 1]`. Please note that if any value in `dilations` is greater than 1, we perform atrous depthwise convolution, in which case all values in the `strides` tensor must be equal to 1.
 
   Usage Example:
 
@@ -837,17 +834,17 @@ def depthwise_conv2d_v2(input,
     array([[[[10., 14.],
              [14., 20.]],
             [[18., 26.],
-             [22., 32.]]]], dtype=float32)
+             [22., 32.]]]], dtype float32)
 
   >>> tf.nn.depthwise_conv2d(x, kernel, strides=[1, 1, 1, 1],
   ...                        padding=[[0, 0], [1, 0], [1, 0], [0, 0]]).numpy()
     array([[[[ 0.,  0.],
              [ 3.,  4.],
-             [ 6.,  8.]],
+             [ 6., 8.]],
             [[ 0.,  0.],
              [10., 14.],
              [14., 20.]],
-            [[ 0.,  0.],
+            [[ 0., 0.],
              [18., 26.],
              [22., 32.]]]], dtype=float32)
 
@@ -856,7 +853,7 @@ def depthwise_conv2d_v2(input,
     filter: 4-D with shape
       `[filter_height, filter_width, in_channels, channel_multiplier]`.
     strides: 1-D of size 4.  The stride of the sliding window for each
-      dimension of `input`.
+      dimension of `input`. Must have `strides[0] = strides[3] = 1`, and for the most common case of the same horizontal and vertical strides, use `strides = [1, stride, stride, 1]`.
     padding: Controls how to pad the image before applying the convolution. Can
       be the string `"SAME"` or `"VALID"` indicating the type of padding
       algorithm to use, or a list indicating the explicit paddings at the start
