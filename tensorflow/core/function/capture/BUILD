@@ -34,7 +34,7 @@ py_strict_test(
     ],
     deps = [
         ":free_vars_detect",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

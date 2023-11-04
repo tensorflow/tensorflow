@@ -25,7 +25,7 @@ py_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         ":doc_srcs",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -49,6 +49,7 @@ py_strict_test(
         ":create_python_api",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -95,7 +96,7 @@ py_strict_test(
         "//tensorflow/python:modules_with_exports",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
     ],
 )
 

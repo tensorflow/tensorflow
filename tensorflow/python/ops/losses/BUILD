@@ -27,7 +27,7 @@ py_strict_library(
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/ops:confusion_matrix",
         "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_contextlib",
         "//tensorflow/python/util:tf_export",
     ],
 )

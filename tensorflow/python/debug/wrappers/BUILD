@@ -112,7 +112,7 @@ py_strict_test(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:test",
         "//tensorflow/python/training:monitored_session",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
     ],
 )
 
