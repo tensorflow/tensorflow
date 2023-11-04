@@ -117,15 +117,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "id_assigner",
-    hdrs = ["id_assigner.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
-    ],
-)
-
 pytype_strict_library(
     name = "calibration_algorithm",
     srcs = ["calibration_algorithm.py"],

@@ -15,7 +15,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <unordered_set>
-#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -24,7 +23,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/detail/common.h"  // from @pybind11
-#include "pybind11/detail/descr.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11  // IWYU pragma: keep
@@ -34,9 +32,10 @@ limitations under the License.
 #include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/id_assigner.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/quantize_model.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/type_casters.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
@@ -44,28 +43,14 @@ namespace {
 
 using ::tensorflow::calibrator::CalibrationStatistics;
 using ::tensorflow::calibrator::CalibratorSingleton;
-using ::tensorflow::quantization::CustomAggregatorIdAssigner;
 using ::tensorflow::quantization::ExportedModel;
+using ::tensorflow::quantization::PyFunctionLibrary;
 using ::tensorflow::quantization::QuantizationOptions;
 using ::tensorflow::quantization::QuantizePtqDynamicRange;
 using ::tensorflow::quantization::QuantizePtqModelPostCalibration;
 using ::tensorflow::quantization::QuantizePtqModelPreCalibration;
 using ::tensorflow::quantization::QuantizeQatModel;
 using ::tensorflow::quantization::QuantizeWeightOnly;
-
-// Serializes an ExportedModel. Raises python ValueError if serialization fails.
-std::string Serialize(const ExportedModel& exported_model) {
-  const std::string exported_model_serialized =
-      exported_model.SerializeAsString();
-
-  // Empty string means it failed to serialize the protobuf with an error. See
-  // the docstring for SerializeAsString for details.
-  if (exported_model_serialized.empty()) {
-    throw py::value_error("Failed to serialize ExportedModel.");
-  }
-
-  return exported_model_serialized;
-}
 
 // Retrieves collected statistics of a `CustomAggregator` node from the
 // singleton. `id` is the identifier of the `CustomAggregator`.
@@ -85,98 +70,11 @@ CalibrationStatistics GetStatisticsFromCalibrator(const absl::string_view id) {
 
 }  // namespace
 
-namespace pybind11 {
-namespace detail {
-
-// Handles `ExportedModel` (c++) <-> `bytes` (python) conversion. The `bytes`
-// object in the python layer is a serialization of `ExportedModel`.
-//
-// See https://pybind11.readthedocs.io/en/stable/advanced/cast/custom.html for
-// further details on how custom type conversions work for pybind11.
-template <>
-struct type_caster<ExportedModel> {
- public:
-  PYBIND11_TYPE_CASTER(ExportedModel, const_name("ExportedModel"));
-
-  // Loads an `ExportedModel` instance from a python `bytes` object (`src`).
-  bool load(handle src, const bool convert) {
-    auto caster = make_caster<absl::string_view>();
-    // Make sure the user passed a valid python string.
-    if (!caster.load(src, convert)) {
-      return false;
-    }
-
-    const absl::string_view exported_model_serialized =
-        cast_op<absl::string_view>(std::move(caster));
-
-    // NOLINTNEXTLINE: Explicit std::string conversion required for OSS.
-    return value.ParseFromString(std::string(exported_model_serialized));
-  }
-
-  // Constructs a `bytes` object after serializing `src`.
-  static handle cast(ExportedModel&& src, return_value_policy policy,
-                     handle parent) {
-    // release() prevents the reference count from decreasing upon the
-    // destruction of py::bytes and returns a raw python object handle.
-    return py::bytes(Serialize(src)).release();
-  }
-
-  // Constructs a `bytes` object after serializing `src`.
-  static handle cast(const ExportedModel& src, return_value_policy policy,
-                     handle parent) {
-    // release() prevents the reference count from decreasing upon the
-    // destruction of py::bytes and returns a raw python object handle.
-    return py::bytes(Serialize(src)).release();
-  }
-};
-
-// Python -> cpp conversion for `QuantizationOptions`. Accepts a serialized
-// protobuf string and deserializes into an instance of `QuantizationOptions`.
-template <>
-struct type_caster<QuantizationOptions> {
- public:
-  PYBIND11_TYPE_CASTER(QuantizationOptions, const_name("QuantizationOptions"));
-
-  bool load(handle src, const bool convert) {
-    auto caster = make_caster<absl::string_view>();
-    // The user should have passed a valid python string.
-    if (!caster.load(src, convert)) {
-      return false;
-    }
-
-    const absl::string_view quantization_opts_serialized =
-        cast_op<absl::string_view>(std::move(caster));
-
-    // NOLINTNEXTLINE: Explicit std::string conversion required for OSS.
-    return value.ParseFromString(std::string(quantization_opts_serialized));
-  }
-};
-
-}  // namespace detail
-}  // namespace pybind11
-
-namespace {
-
-// A "trampoline" class that redirects virtual function calls to the python
-// implementation.
-//
-// Reference:
-// https://pybind11.readthedocs.io/en/stable/advanced/classes.html#overriding-virtual-functions-in-python
-class CustomAggregatorIdAssignerTrampoline : public CustomAggregatorIdAssigner {
- public:
-  using CustomAggregatorIdAssigner::CustomAggregatorIdAssigner;
-
-  ExportedModel AssignIds(const ExportedModel& exported_model) const override {
-    PYBIND11_OVERRIDE_PURE(ExportedModel, CustomAggregatorIdAssigner,
-                           assign_ids, exported_model);
-  }
-};
-
-}  // namespace
-
 PYBIND11_MODULE(pywrap_quantize_model, m) {
   // Supports absl::StatusOr<T> type conversions.
   pybind11::google::ImportStatusModule();
+  // TODO - b/308532051: Make protobuf objects work without serialization
+  // overhead.
   pybind11_protobuf::ImportNativeProtoCasters();
 
   // Calibrator related functions.
@@ -200,14 +98,6 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       R"pbdoc(
       Returns the proto CalibrationStatistics given id from calibrator.
     )pbdoc");
-
-  // Exports `CustomAggregatorIdAssigner` class. A pure virtual member function
-  // `AssignIds` is mapped to `assign_ids` in python, which is expected to be
-  // inherited and overridden.
-  py::class_<CustomAggregatorIdAssigner, CustomAggregatorIdAssignerTrampoline>(
-      m, "CustomAggregatorIdAssigner")
-      .def(py::init<>())
-      .def("assign_ids", &CustomAggregatorIdAssigner::AssignIds);
 
   // Quantization functions.
   m.def(
@@ -272,7 +162,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const std::unordered_set<std::string>& tags,
          const QuantizationOptions& quant_opts,
          const absl::flat_hash_map<std::string, std::string>& function_aliases,
-         const CustomAggregatorIdAssigner& custom_aggregator_id_assigner)
+         const PyFunctionLibrary& py_function_lib)
           -> absl::StatusOr<ExportedModel> {
         const absl::StatusOr<ExportedModel> exported_model =
             QuantizePtqModelPreCalibration(saved_model_path, signature_keys,
@@ -281,7 +171,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
           return exported_model.status();
         }
 
-        return custom_aggregator_id_assigner.AssignIds(*exported_model);
+        return py_function_lib.AssignIdsToCustomAggregatorOps(*exported_model);
       },
       R"pbdoc(
       Returns serialized ExportedModel that contains the model's GraphDef and

@@ -97,6 +97,73 @@ cc_library(
     ],
 )
 
+pytype_strict_library(
+    name = "py_function_lib_py",
+    srcs = ["py_function_lib.py"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":pywrap_function_lib",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_py",
+        "@pypi_typing_extensions//:pkg",
+    ],
+)
+
+tf_py_strict_test(
+    name = "py_function_lib_py_test",
+    srcs = ["py_function_lib_test.py"],
+    main = "py_function_lib_test.py",
+    deps = [
+        ":py_function_lib_py",
+        ":pywrap_function_lib",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_py",
+        "//tensorflow/python/platform:client_testlib",
+    ],
+)
+
+cc_library(
+    name = "type_casters",
+    hdrs = ["type_casters.h"],
+    copts = ["-fexceptions"],  # Required for pybind11.
+    # Required for pybind11.
+    features = [
+        "-use_header_modules",
+        "-parse_headers",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//third_party/python_runtime:headers",  # build_cleaner: keep; Required for pybind11.
+        "@com_google_absl//absl/strings:string_view",
+        "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
+    ],
+)
+
+cc_library(
+    name = "py_function_lib",
+    hdrs = ["py_function_lib.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "pywrap_function_lib",
+    srcs = ["pywrap_function_lib.cc"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":py_function_lib",
+        ":type_casters",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "@pybind11",
+    ],
+)
+
 # Exports python symbols via pybind11.
 tf_python_pybind_extension(
     name = "pywrap_quantize_model",
@@ -104,11 +171,12 @@ tf_python_pybind_extension(
     hdrs = ["quantize_model.h"],
     # All deps must be header-only.
     deps = [
+        ":py_function_lib",
+        ":type_casters",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibrator_singleton",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:id_assigner",
         "//tensorflow/python/lib/core:pybind11_lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
@@ -164,6 +232,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        ":py_function_lib_py",
         ":pywrap_quantize_model",
         ":representative_dataset",
         ":save_model",
