@@ -674,7 +674,7 @@ class HloModule {
     autofdo_fingerprint_ = std::string(fingerprint);
   }
 
-  absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
+  std::string autofdo_fingerprint() const { return autofdo_fingerprint_; }
 
   CompilationEnvironments& comp_envs() const { return *comp_envs_; }
 
