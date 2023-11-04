@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_compiler.h"
 
 #include <algorithm>
-#include <any>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -1758,12 +1757,12 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       module_group->ConsumeModules();
   std::vector<std::unique_ptr<AotCompilationResult>> results;
 
-  std::any target_config = options.target_config();
-  auto* gpu_target_config = std::any_cast<TargetConfig>(&target_config);
-  CHECK(gpu_target_config != nullptr || options.executor() != nullptr);
+  const std::optional<Compiler::TargetConfig>& target_config =
+      options.target_config();
+  CHECK(target_config.has_value() || options.executor() != nullptr);
   const se::DeviceDescription& gpu_device_info =
-      gpu_target_config != nullptr ? gpu_target_config->device_description
-                                   : options.executor()->GetDeviceDescription();
+      target_config.has_value() ? target_config->device_description
+                                : options.executor()->GetDeviceDescription();
   for (const auto& module : modules) {
     llvm::LLVMContext llvm_context;
 
@@ -1777,11 +1776,11 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     // Compile the module
     CompileModuleResults compile_module_results;
 
-    if (gpu_target_config) {
+    if (target_config.has_value()) {
       TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
           module.get(), &llvm_context, target_triple_, data_layout_,
-          gpu_target_config->platform_name, options.PlatformId(),
-          gpu_target_config->device_description, GetCanShareBuffer(),
+          target_config->platform_name, options.PlatformId(),
+          target_config->device_description, GetCanShareBuffer(),
           BufferSizeBytesFunction(), &compile_module_results));
     } else {
       CHECK(options.executor() != nullptr);
@@ -1798,12 +1797,12 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
     using BackendCompileResult = std::pair<std::string, std::vector<uint8_t>>;
     BackendCompileResult backend_result;
-    if (gpu_target_config) {
+    if (target_config.has_value()) {
       TF_ASSIGN_OR_RETURN(
           backend_result,
           CompileToTargetBinary(
               module->config(), std::move(compile_module_results.llvm_module),
-              gpu_target_config->device_description.gpu_compute_capability(),
+              target_config->device_description.gpu_compute_capability(),
               options.executor(), {options.device_allocator()}, module.get()));
     } else {
       TF_ASSIGN_OR_RETURN(

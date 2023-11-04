@@ -361,9 +361,9 @@ class DeviceDescription {
   static const char *kUndefinedString;
 
  private:
-  friend class internal::DeviceDescriptionBuilder;
-
   DeviceDescription();
+
+  friend class internal::DeviceDescriptionBuilder;
 
   // For description of the following members, see the corresponding accessor
   // above.
