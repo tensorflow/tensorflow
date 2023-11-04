@@ -29,7 +29,9 @@ limitations under the License.
 #include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/xla.pb.h"
@@ -59,6 +61,12 @@ class GemmRewriterTritonTest : public HloTestBase {
 
   se::GpuComputeCapability gpu_version_{
       se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0}};
+
+  void MatchHloModule(HloModule& module, absl::string_view pattern) {
+    TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                            RunFileCheck(module.ToString(), pattern));
+    EXPECT_TRUE(filecheck_result);
+  }
 };
 
 TEST_F(GemmRewriterTritonTest, TransposeSubdimensionGroup) {
@@ -875,7 +883,15 @@ ENTRY e {
 }
 )"));
   const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
-  EXPECT_FALSE(GemmRewriterTriton(cc).Run(module.get()).value());
+
+  ASSERT_TRUE(GemmRewriterTriton(cc).Run(module.get()).value());
+
+  // Slice is not fused.
+  MatchHloModule(*module, R"(
+; CHECK-NOT: slice
+; CHECK: ENTRY
+; CHECK: slice
+)");
 }
 
 TEST_F(GemmRewriterTritonTest, MultipleUsesAreHandled) {

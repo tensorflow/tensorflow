@@ -1372,10 +1372,13 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
   if (dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any()) {
     return FusionDecision{};
   }
+  // Only fuse if this is not a "pure" matmul.
   for (const auto& iter : old_to_new_mapping) {
-    if (iter.second->opcode() == HloOpcode::kConvert ||
-        iter.second->opcode() == HloOpcode::kSlice ||
-        iter.second->opcode() == HloOpcode::kTranspose) {
+    static constexpr std::array<HloOpcode, 4> kPureOpcodes = {
+        HloOpcode::kBitcast, HloOpcode::kDot, HloOpcode::kParameter,
+        HloOpcode::kReshape};
+    const HloOpcode opcode = iter.second->opcode();
+    if (absl::c_find(kPureOpcodes, opcode) == kPureOpcodes.end()) {
       return FusionDecision{};
     }
   }
