@@ -1168,6 +1168,13 @@ std::optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
       break;
     }
   }
+  // The value is used as a variable if produced by an op with "tfl.is_variable"
+  // attribute. This provides a hook for the user to represent the variable
+  // tensor in the MLIR level.
+  if (auto* inst = value.getDefiningOp();
+      inst && inst->hasAttr("tfl.is_variable")) {
+    is_variable = true;
+  }
 
   bool has_rank = type.hasRank();
 
