@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_wrapper.h"
 #include "xla/hlo/experimental/auto_sharding/cluster_environment.h"
 #include "xla/hlo/experimental/auto_sharding/matrix.h"
 #include "xla/hlo/experimental/auto_sharding/metrics.h"
@@ -70,6 +71,7 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_memory_scheduler.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/sharding_propagation.h"
@@ -1703,6 +1705,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                      const AliasMap& alias_map,
                      const ClusterEnvironment& cluster_env,
                      AutoShardingOption& option, const CallGraph& call_graph,
+                     const HloCostAnalysis& hlo_cost_analysis,
                      bool trying_multiple_mesh_shapes) {
   const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
   const Array<int64_t>& device_mesh_1d = cluster_env.device_mesh_1d_;
@@ -1751,6 +1754,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
     } else {
       only_allow_divisible = option.only_allow_divisible_intermediate;
     }
+
     switch (opcode) {
       case HloOpcode::kParameter:
       case HloOpcode::kRngBitGenerator:
@@ -2161,8 +2165,10 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                                      ins, instruction_id, cluster_env,
                                      batch_dim_map, option, call_graph));
         if (option.allow_replicated_strategy_for_dot_and_conv) {
-          AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
-                                strategies, 0);
+          AddReplicatedStrategy(
+              ins, ins->shape(), cluster_env, strategy_map, strategies,
+              GetDotConvReplicationPenalty(ins, instruction_id, /* window */ 10,
+                                           sequence, hlo_cost_analysis));
         }
         break;
       }
@@ -2171,8 +2177,10 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                                       ins, instruction_id, cluster_env,
                                       batch_dim_map, option, call_graph));
         if (option.allow_replicated_strategy_for_dot_and_conv) {
-          AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
-                                strategies, 0);
+          AddReplicatedStrategy(
+              ins, ins->shape(), cluster_env, strategy_map, strategies,
+              GetDotConvReplicationPenalty(ins, instruction_id, /* window */ 10,
+                                           sequence, hlo_cost_analysis));
         }
         break;
       }
@@ -4267,6 +4275,11 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
 
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
 
+  HloCostAnalysis::Options hlo_cost_analysis_options{
+      .shape_size = [](const Shape& shape) { return spmd::GetBytes(shape); }};
+  HloCostAnalysis hlo_cost_analysis(hlo_cost_analysis_options);
+  CHECK_OK(module->entry_computation()->Accept(&hlo_cost_analysis));
+
   for (size_t mesh_idx = 0; mesh_idx < partial_mesh_shapes.size(); ++mesh_idx) {
     // Adjust existing shardings with current partial mesh shapes;
     std::vector<int64_t> mesh_shape = partial_mesh_shapes[mesh_idx];
@@ -4300,7 +4313,7 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
         original_device_mesh, device_mesh, option_.device_mesh_alpha,
         option_.device_mesh_beta, prof_result, option_);
 
-    XLA_VLOG_LINES(3, module->ToString());
+    XLA_VLOG_LINES(6, module->ToString());
     int64_t memory_lower_bound = spmd::MemoryBudgetLowerBound(
         *module, liveness_set, alias_analysis.get(),
         device_mesh.num_elements());
@@ -4352,10 +4365,10 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
 
     TF_ASSIGN_OR_RETURN(
         std::tie(strategy_map, leaf_strategies, associative_dot_pairs),
-        BuildStrategyAndCost(sequence, module, instruction_execution_counts,
-                             ins_depth_map, batch_dim_map, alias_map,
-                             cluster_env, option_, *call_graph,
-                             option_.try_multiple_mesh_shapes));
+        BuildStrategyAndCost(
+            sequence, module, instruction_execution_counts, ins_depth_map,
+            batch_dim_map, alias_map, cluster_env, option_, *call_graph,
+            hlo_cost_analysis, option_.try_multiple_mesh_shapes));
     spmd::AliasSet alias_set = spmd::BuildAliasSet(module, strategy_map);
     CheckAliasSetCompatibility(alias_set, leaf_strategies, sequence);
     XLA_VLOG_LINES(8, PrintStrategyMap(strategy_map, sequence));

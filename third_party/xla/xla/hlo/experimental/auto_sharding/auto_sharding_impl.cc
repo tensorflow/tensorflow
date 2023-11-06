@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
@@ -22,7 +23,9 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_wrapper.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
+#include "xla/service/hlo_cost_analysis.h"
 
 namespace xla {
 namespace spmd {
@@ -45,6 +48,13 @@ AutoShardingSolverResult Solve(
 void PopulateTemporalValues(const CostGraph& cost_graph,
                             AutoShardingSolverRequest& request) {
   // TODO(moffitt): Implement this.
+}
+
+double GetDotConvReplicationPenalty(const HloInstruction* inst,
+                                    size_t instruction_id, size_t window,
+                                    const HloInstructionSequence& sequence,
+                                    const HloCostAnalysis& hlo_cost_analysis) {
+  return 0;
 }
 
 }  // namespace spmd
