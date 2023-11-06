@@ -263,10 +263,13 @@ function prepare_src() {
       chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
     else
       chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      chmod +rw ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_function_lib.so
       chmod +rw ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so
       patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so):\$ORIGIN/../../tensorflow/tsl/python/lib/core ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_function_lib.so):\$ORIGIN/../../../../../python ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_function_lib.so
       patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so):\$ORIGIN/../../../../../python ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so
       patchelf --shrink-rpath ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      patchelf --shrink-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_function_lib.so
       patchelf --shrink-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so
     fi
     mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
