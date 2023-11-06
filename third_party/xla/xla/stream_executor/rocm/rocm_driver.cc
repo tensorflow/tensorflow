@@ -744,8 +744,18 @@ GpuDriver::GraphNodeGetType(hipGraphNode_t node) {
     GpuContext* context, hipGraphNode_t* node, hipGraph_t graph,
     absl::Span<hipGraphNode_t> deps, hipDeviceptr_t gpu_dst,
     hipDeviceptr_t gpu_src, uint64_t size) {
-  return tsl::Status{absl::StatusCode::kInternal,
-                     "hipDrvGraphAddMemcopyNode is not available on ROCm yet"};
+  VLOG(2) << "Add memcpy d2d node to a graph " << graph
+          << "; dst: " << reinterpret_cast<void*>(gpu_dst)
+          << "; src: " << reinterpret_cast<void*>(gpu_src) << "; size: " << size
+          << "; context: " << context->context() << "; deps: " << deps.size();
+
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipGraphAddMemcpyNode1D(
+          node, graph, deps.data(), deps.size(),
+          reinterpret_cast<void*>(gpu_dst), reinterpret_cast<void*>(gpu_src),
+          static_cast<size_t>(size), hipMemcpyDeviceToDevice),
+      "Failed to add memcpy d2d node to a HIP graph");
+  return tsl::OkStatus();
 }
 
 /* static */ tsl::Status GpuDriver::GraphAddChildNode(
@@ -758,6 +768,7 @@ GpuDriver::GraphNodeGetType(hipGraphNode_t node) {
       wrap::hipGraphAddChildGraphNode(node, graph, deps.data(), deps.size(),
                                       child),
       "Failed to create a child graph node and add it to a HIP graph");
+  return tsl::OkStatus();
 }
 
 /* static */ tsl::Status GpuDriver::LaunchKernel(
