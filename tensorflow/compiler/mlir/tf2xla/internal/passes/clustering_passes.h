@@ -37,9 +37,15 @@ CreateTPUClusterFormationPass(bool strict_clusters = false);
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateExtractHeadTailOutsideCompilationPass();
 
+// Creates a pass that extract outside compilation (Host ops inside cevice
+// cluster) ops to a separate parallel_execute region to run on CPU.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateExtractOutsideCompilationPass();
+
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_TPUCLUSTERFORMATIONPASS
 #define GEN_PASS_DECL_TPUEXTRACTHEADTAILOUTSIDECOMPILATIONPASS
+#define GEN_PASS_DECL_TPUEXTRACTOUTSIDECOMPILATIONPASS
 #define GEN_PASS_DECL_VERIFYCLUSTERINGPASS
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
 

@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <deque>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -34,32 +34,64 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/string_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
-namespace mlir {
-namespace TFDevice {
+namespace tensorflow {
+namespace tf2xla {
+namespace internal {
 
 namespace {
+
+using llvm::ArrayRef;
+using llvm::SmallVector;
+using mlir::Block;
+using mlir::BlockArgument;
+using mlir::DenseIntElementsAttr;
+using mlir::IRMapping;
+using mlir::Location;
+using mlir::LogicalResult;
+using mlir::ModuleOp;
+using mlir::OpBuilder;
+using mlir::Operation;
+using mlir::OperationPass;
+using mlir::OpOperand;
+using mlir::OpResult;
+using mlir::OwningOpRef;
+using mlir::RankedTensorType;
+using mlir::StringAttr;
+using mlir::StringRef;
+using mlir::SymbolTable;
+using mlir::Type;
+using mlir::TypeRange;
+using mlir::Value;
+using mlir::ValueRange;
+using mlir::WalkResult;
+using mlir::func::FuncOp;
+using mlir::func::ReturnOp;
 
 constexpr char kDeviceAttr[] = "device";
 constexpr char kHostFunctionAttr[] = "host_func";
@@ -68,7 +100,7 @@ constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 constexpr char kNoReplicationCluster[] = "__no_replication_cluster";
 
 #define GEN_PASS_DEF_EXTRACTOUTSIDECOMPILATIONPASS
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+#include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
 
 struct ExtractOutsideCompilation
     : public impl::ExtractOutsideCompilationPassBase<
@@ -79,9 +111,9 @@ struct ExtractOutsideCompilation
 // Build a function containing `ops` with `inputs` and `outputs` using
 // `builder`.  The `ops` are cloned and modified to use the function arguments
 // as inputs.
-func::FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
-                           llvm::ArrayRef<Value> inputs,
-                           llvm::ArrayRef<Value> outputs, OpBuilder* builder) {
+FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
+                     llvm::ArrayRef<Value> inputs,
+                     llvm::ArrayRef<Value> outputs, OpBuilder* builder) {
   llvm::SmallVector<Type, 4> operand_types;
   operand_types.reserve(inputs.size());
   for (Value v : inputs) operand_types.emplace_back(v.getType());
@@ -91,8 +123,8 @@ func::FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
 
   auto func_type = builder->getFunctionType(operand_types, output_types);
 
-  func::FuncOp outlined_func =
-      func::FuncOp::create(ops.front()->getLoc(), kHostFunctionAttr, func_type);
+  FuncOp outlined_func =
+      FuncOp::create(ops.front()->getLoc(), kHostFunctionAttr, func_type);
 
   // Create function body.
   Block* outlined_func_block = outlined_func.addEntryBlock();
@@ -111,13 +143,13 @@ func::FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
     results_after_mapping.push_back(mapping.lookupOrDefault(result));
   }
 
-  builder->create<func::ReturnOp>(ops.front()->getLoc(), results_after_mapping);
+  builder->create<ReturnOp>(ops.front()->getLoc(), results_after_mapping);
   return outlined_func;
 }
 
 // Encapsulates `func` in a module and serializes that module.
 // `serialized_func_module` is set to the serialized module.
-void EncapsulateFuncAndSerialize(func::FuncOp func,
+void EncapsulateFuncAndSerialize(FuncOp func,
                                  std::string* serialized_func_module) {
   // Create a new module to hold func and all referenced functions.
   OwningOpRef<mlir::ModuleOp> module_for_func =
@@ -175,14 +207,14 @@ Operation* CreateSendFromHostOp(OpBuilder& builder, Location loc,
                                 llvm::StringRef communication_key) {
   if (device_ordinal)
     return ApplyXlaHostTransferAttr(
-        builder.create<TF::_XlaSendFromHostV2Op>(
+        builder.create<mlir::TF::_XlaSendFromHostV2Op>(
             loc, inputs,
             /*dynamic_key=*/compilation_key, device_ordinal,
             builder.getStringAttr(communication_key), device_type_attr),
         builder);
 
   return ApplyXlaHostTransferAttr(
-      builder.create<TF::_XlaSendFromHostOp>(
+      builder.create<mlir::TF::_XlaSendFromHostOp>(
           loc, inputs,
           /*dynamic_key=*/compilation_key,
           builder.getStringAttr(communication_key),
@@ -200,13 +232,13 @@ Operation* CreateRecvAtHostOp(OpBuilder& builder, Location loc,
                               llvm::StringRef communication_key) {
   if (device_ordinal)
     return ApplyXlaHostTransferAttr(
-        builder.create<TF::_XlaRecvAtHostV2Op>(
+        builder.create<mlir::TF::_XlaRecvAtHostV2Op>(
             loc, output_types, /*dynamic_key=*/compilation_key, device_ordinal,
             builder.getStringAttr(communication_key), device_type_attr),
         builder);
 
   return ApplyXlaHostTransferAttr(
-      builder.create<TF::_XlaRecvAtHostOp>(
+      builder.create<mlir::TF::_XlaRecvAtHostOp>(
           loc, output_types, /*dynamic_key=*/compilation_key,
           builder.getStringAttr(communication_key),
           /*device_ordinal=*/builder.getI64IntegerAttr(default_device_ordinal),
@@ -216,10 +248,10 @@ Operation* CreateRecvAtHostOp(OpBuilder& builder, Location loc,
 
 // Clones an IfRegionOp 'if_region' and attributes and creates then/else regions
 // with yield op and an empty block.
-TF::IfRegionOp CloneEmptyIfWithPredicate(TF::IfRegionOp if_region,
-                                         OpBuilder& builder) {
+mlir::TF::IfRegionOp CloneEmptyIfWithPredicate(mlir::TF::IfRegionOp if_region,
+                                               OpBuilder& builder) {
   // Mark op as stateful due to side-effecting communication ops added later.
-  auto host_side_if = builder.create<TF::IfRegionOp>(
+  auto host_side_if = builder.create<mlir::TF::IfRegionOp>(
       if_region.getLoc(), llvm::SmallVector<Type, 4>{}, if_region.getCond(),
       /*is_stateless=*/false, if_region.get_thenFuncNameAttr(),
       if_region.get_elseFuncNameAttr());
@@ -228,23 +260,23 @@ TF::IfRegionOp CloneEmptyIfWithPredicate(TF::IfRegionOp if_region,
   auto& then_branch = host_side_if.getThenBranch();
   then_branch.push_back(new Block);
   builder.setInsertionPointToEnd(&then_branch.front());
-  builder.create<TF::YieldOp>(if_region.getLoc(),
-                              /*operands=*/ArrayRef<Value>{});
+  builder.create<mlir::TF::YieldOp>(if_region.getLoc(),
+                                    /*operands=*/ArrayRef<Value>{});
 
   // Create empty else branch region.
   auto& else_branch = host_side_if.getElseBranch();
   else_branch.push_back(new Block);
   builder.setInsertionPointToEnd(&else_branch.front());
-  builder.create<TF::YieldOp>(if_region.getLoc(),
-                              /*operands=*/ArrayRef<Value>{});
+  builder.create<mlir::TF::YieldOp>(if_region.getLoc(),
+                                    /*operands=*/ArrayRef<Value>{});
   return host_side_if;
 }
 // Creates a WhileRegionOp cond and body regions with yield op and
 // an empty body.
-TF::WhileRegionOp CloneEmptyWhile(uint64_t parallel_iterations, Location loc,
-                                  OpBuilder& builder) {
+mlir::TF::WhileRegionOp CloneEmptyWhile(uint64_t parallel_iterations,
+                                        Location loc, OpBuilder& builder) {
   // Mark op as stateful due to side-effecting communication ops added later.
-  auto host_side_while = builder.create<TF::WhileRegionOp>(
+  auto host_side_while = builder.create<mlir::TF::WhileRegionOp>(
       loc, /*output=*/ArrayRef<Type>{}, /*input=*/ArrayRef<Value>{},
       parallel_iterations, /*is_stateless=*/false, /*shape_invariant=*/false);
 
@@ -252,7 +284,7 @@ TF::WhileRegionOp CloneEmptyWhile(uint64_t parallel_iterations, Location loc,
   auto& body = host_side_while.getBody();
   body.push_back(new Block);
   builder.setInsertionPointToEnd(&body.front());
-  builder.create<TF::YieldOp>(loc, /*operands=*/ArrayRef<Value>{});
+  builder.create<mlir::TF::YieldOp>(loc, /*operands=*/ArrayRef<Value>{});
   return host_side_while;
 }
 
@@ -261,16 +293,16 @@ TF::WhileRegionOp CloneEmptyWhile(uint64_t parallel_iterations, Location loc,
 // _XlaSendFromHost but the _XlaCompileMlir has not yet been created for device
 // cluster that contains the outside compiled ops. This placeholder should be
 // replaced by the TPU cluster _XlaCompileMlir in a subsequent pass.
-TF::_XlaCompileMlirPlaceholderProgramKeyOp CreateCompilationKeyPlaceholder(
-    Location loc, OpBuilder& builder) {
+mlir::TF::_XlaCompileMlirPlaceholderProgramKeyOp
+CreateCompilationKeyPlaceholder(Location loc, OpBuilder& builder) {
   auto result_type =
-      RankedTensorType::get({3}, builder.getType<TF::StringType>());
-  return builder.create<TF::_XlaCompileMlirPlaceholderProgramKeyOp>(
+      RankedTensorType::get({3}, builder.getType<mlir::TF::StringType>());
+  return builder.create<mlir::TF::_XlaCompileMlirPlaceholderProgramKeyOp>(
       loc, /*program=*/result_type, llvm::ArrayRef<Value>{});
 }
 
 // Creates a `tf_device.launch` to wrap cluster ops.
-tf_device::LaunchOp CreateLaunchOpForOutsideCluster(
+mlir::tf_device::LaunchOp CreateLaunchOpForOutsideCluster(
     OpBuilder& builder, Operation* loc_op, llvm::StringRef host_device,
     llvm::SmallVector<Value, 4>& return_value_from_host) {
   llvm::SmallVector<Type, 4> host_result_types;
@@ -281,20 +313,21 @@ tf_device::LaunchOp CreateLaunchOpForOutsideCluster(
   // An empty string placeholder is used for the device as that will be later
   // populated with the device of the associated Device op.
   // For TPU case, it is TPUReplicateMetadata op.
-  auto launch_op = builder.create<tf_device::LaunchOp>(
+  auto launch_op = builder.create<mlir::tf_device::LaunchOp>(
       loc_op->getLoc(), builder.getStringAttr(host_device),
       /*result_types=*/host_result_types);
 
   launch_op.getBody().push_back(new Block);
   builder.setInsertionPointToEnd(&launch_op.GetBody());
-  builder.create<tf_device::ReturnOp>(loc_op->getLoc(), return_value_from_host);
+  builder.create<mlir::tf_device::ReturnOp>(loc_op->getLoc(),
+                                            return_value_from_host);
   return launch_op;
 }
 
 // Returns true if `op` has non-static shaped outputs.
 bool HasDynamicOutputs(Operation* op) {
   for (Value v : op->getResults()) {
-    if (TF::CanBeRefined(v.getType())) return true;
+    if (mlir::TF::CanBeRefined(v.getType())) return true;
   }
   return false;
 }
@@ -307,7 +340,7 @@ bool HasDynamicOutputs(const llvm::SmallSetVector<Operation*, 4>& cluster_ops) {
       if (cluster_ops.count(use.getOwner())) {
         continue;
       }
-      if (TF::CanBeRefined(use.get().getType())) return true;
+      if (mlir::TF::CanBeRefined(use.get().getType())) return true;
     }
   }
   return false;
@@ -317,7 +350,7 @@ bool HasDynamicExternalValues(Operation* op) {
   return op
       ->walk([](Operation* walked_op) {
         for (Value v : walked_op->getOperands()) {
-          if (TF::CanBeRefined(v.getType())) {
+          if (mlir::TF::CanBeRefined(v.getType())) {
             return WalkResult::interrupt();
           }
         }
@@ -330,14 +363,14 @@ bool HasDynamicExternalValues(Operation* op) {
 // communicated from device->host. This is for the case when all operands have a
 // static shape.
 llvm::SmallSetVector<Value, 4> GetStaticExternalOperands(
-    tf_device::ClusterOp device_cluster,
+    mlir::tf_device::ClusterOp device_cluster,
     const llvm::SmallSetVector<Operation*, 4>& cluster_ops) {
   llvm::SmallSetVector<Value, 4> external_values;
   for (Operation* op : cluster_ops) {
     op->walk([&](Operation* walked_op) {
-      if (llvm::isa<TF::_XlaRecvAtHostOp, TF::_XlaRecvAtHostV2Op,
-                    TF::_XlaSendFromHostOp, TF::_XlaSendFromHostV2Op>(
-              walked_op))
+      if (llvm::isa<mlir::TF::_XlaRecvAtHostOp, mlir::TF::_XlaRecvAtHostV2Op,
+                    mlir::TF::_XlaSendFromHostOp,
+                    mlir::TF::_XlaSendFromHostV2Op>(walked_op))
         return WalkResult::advance();
       for (Value v : walked_op->getOperands()) {
         if (!tensorflow::TypeValidForXLA(v.getType())) continue;
@@ -347,8 +380,8 @@ llvm::SmallSetVector<Value, 4> GetStaticExternalOperands(
               !HasOutsideCompilationAncestor(defining_op) &&
               // Ignore operands that have already been received by a previously
               // created cluster.
-              !llvm::isa<TF::_XlaRecvAtHostOp, TF::_XlaRecvAtHostV2Op>(
-                  defining_op)) {
+              !llvm::isa<mlir::TF::_XlaRecvAtHostOp,
+                         mlir::TF::_XlaRecvAtHostV2Op>(defining_op)) {
             external_values.insert(v);
           }
           continue;
@@ -385,7 +418,7 @@ llvm::SmallSetVector<Value, 4> GetAllExternalOperands(
 // Returns a SmallSetVector containing all of the operands that need to be
 // communicated from device->host.
 llvm::SmallSetVector<Value, 4> GetExternalOperands(
-    tf_device::ClusterOp device_cluster,
+    mlir::tf_device::ClusterOp device_cluster,
     const llvm::SmallSetVector<Operation*, 4>& cluster_ops) {
   // If there are any dynamic outputs, get all of the operands which are defined
   // external to `cluster_ops`.
@@ -418,9 +451,11 @@ void GetExternalOutputs(const llvm::SmallSetVector<Operation*, 4>& cluster_ops,
         if (!user_set.insert(user).second) continue;
         for (Value v : user->getOperands()) {
           if (tensorflow::TypeValidForXLA(v.getType()) &&
-              v.getDefiningOp() == op && !isa<tf_device::ReturnOp>(user))
+              v.getDefiningOp() == op &&
+              !llvm::isa<mlir::tf_device::ReturnOp>(user))
             external_outputs.insert(v);
-          if (v.getDefiningOp() == op && isa<tf_device::ReturnOp>(user))
+          if (v.getDefiningOp() == op &&
+              llvm::isa<mlir::tf_device::ReturnOp>(user))
             tmp_host_outputs.push_back(v);
         }
       }
@@ -464,7 +499,7 @@ LogicalResult GetShardShapedType(Operation* context_op,
     shape.push_back(in_shape[i]);
   }
   shard_type = RankedTensorType::Builder(ranked_type).setShape(shape);
-  return success();
+  return mlir::success();
 }
 
 // Output `sharding`, which is the sharding of `val`. `context_op` is used for
@@ -483,7 +518,7 @@ LogicalResult GetShardingOfValue(Operation* context_op, Value val,
            << "A map_outside_compilation op's input should have an explicit "
               "sharding. There is no _XlaSharding attribute on the input op.";
   sharding = sharding_attr.str();
-  return success();
+  return mlir::success();
 }
 
 // Create an `_XlaHostComputeMlir` for the map_outside_compilation case. Inputs
@@ -508,7 +543,7 @@ LogicalResult CreateHostComputeMap(
     Type shard_type;
     if (failed(GetShardShapedType(original_op, num_cores_per_replica,
                                   output.getType(), shard_type)))
-      return failure();
+      return mlir::failure();
     shard_output_types.push_back(shard_type);
     full_output_types.push_back(output.getType());
   }
@@ -522,10 +557,10 @@ LogicalResult CreateHostComputeMap(
     Type shard_type;
     if (failed(GetShardShapedType(original_op, num_cores_per_replica,
                                   in.getType(), shard_type)))
-      return failure();
+      return mlir::failure();
     std::string in_sharding;
     if (failed(GetShardingOfValue(original_op, in, in_sharding)))
-      return failure();
+      return mlir::failure();
     if (common_split_sharding.empty()) {
       common_split_sharding = std::move(in_sharding);
     } else {
@@ -534,14 +569,14 @@ LogicalResult CreateHostComputeMap(
                << "All inputs and outputs of map_outside_compilation should "
                   "have the same sharding.";
     }
-    auto in_manual = builder.create<TF::XlaSpmdFullToShardShapeOp>(
+    auto in_manual = builder.create<mlir::TF::XlaSpmdFullToShardShapeOp>(
         loc, shard_type, in, common_split_sharding, /*dim=*/-1,
         /*unspecified_dims=*/builder.getI64ArrayAttr({}));
     manual_inputs.push_back(in_manual);
   }
 
   // Create the _XlaHostComputeMlirOp
-  auto host_compute = builder.create<TF::_XlaHostComputeMlirOp>(
+  auto host_compute = builder.create<mlir::TF::_XlaHostComputeMlirOp>(
       loc, shard_output_types, manual_inputs,
       /*send_key=*/builder.getStringAttr(args_communication_key),
       /*recv_key=*/builder.getStringAttr(retvals_communication_key),
@@ -556,7 +591,7 @@ LogicalResult CreateHostComputeMap(
     if (!full_type_ranked)
       return original_op->emitOpError()
              << "map_outside_compilation must have ranked outputs";
-    auto out_full = builder.create<TF::XlaSpmdShardToFullShapeOp>(
+    auto out_full = builder.create<mlir::TF::XlaSpmdShardToFullShapeOp>(
         loc, full_type, out, common_split_sharding, full_type_ranked.getShape(),
         /*dim=*/-1,
         /*unspecified_dims=*/builder.getI64ArrayAttr({}));
@@ -564,7 +599,7 @@ LogicalResult CreateHostComputeMap(
     full_outputs.push_back(out_full);
   }
 
-  return success();
+  return mlir::success();
 }
 
 // Create the _XlaHostComputeMlir with `inputs` and `outputs` for the ordinary
@@ -581,7 +616,7 @@ void CreateHostComputeNotMap(OpBuilder& builder, Location loc,
   llvm::SmallVector<Type, 4> device_output_types;
   for (const auto& output : outputs)
     device_output_types.push_back(output.getType());
-  auto host_compute = builder.create<TF::_XlaHostComputeMlirOp>(
+  auto host_compute = builder.create<mlir::TF::_XlaHostComputeMlirOp>(
       loc, device_output_types, inputs,
       builder.getStringAttr(args_communication_key),
       builder.getStringAttr(retvals_communication_key),
@@ -612,7 +647,7 @@ LogicalResult CreateHostCompute(
                             args_communication_key, retvals_communication_key,
                             serialized_func_module, full_outputs,
                             host_compute_out_ops);
-    return success();
+    return mlir::success();
   }
 }
 
@@ -630,17 +665,18 @@ bool ShouldCloseCluster(llvm::ArrayRef<Value> outputs) {
   bool has_dynamic_output = false;
   bool has_nonxla_output = false;
   for (Value v : outputs) {
-    if (TF::CanBeRefined(v.getType())) {
+    if (mlir::TF::CanBeRefined(v.getType())) {
       has_dynamic_output = true;
       for (Operation* user : v.getUsers()) {
         if (!HasOutsideCompilationAncestor(user) &&
-            !isa<tf_device::ReturnOp>(user))
+            !llvm::isa<mlir::tf_device::ReturnOp>(user))
           return true;
       }
     }
     if (!tensorflow::TypeValidForXLA(v.getType()))
       for (const Operation* user : v.getUsers())
-        if (!isa<tf_device::ReturnOp>(user)) has_nonxla_output = true;
+        if (!llvm::isa<mlir::tf_device::ReturnOp>(user))
+          has_nonxla_output = true;
   }
 
   return !has_nonxla_output && !has_dynamic_output;
@@ -656,7 +692,7 @@ void ReplaceExternalOperandUsage(ArrayRef<Value> external_operands,
                                  Operation* insertion_point,
                                  Block* original_op_block) {
   auto replace_operand_usage = [&](OpOperand& operand) {
-    if (TF::CanBeRefined(operand.get().getType()) ||
+    if (mlir::TF::CanBeRefined(operand.get().getType()) ||
         HasDynamicOutputs(operand.getOwner())) {
       return insertion_point->getParentRegion()->isAncestor(
           operand.getOwner()->getParentRegion());
@@ -675,7 +711,7 @@ void ReplaceExternalOperandUsage(ArrayRef<Value> external_operands,
 
 bool HasDynamicOutputs(llvm::ArrayRef<Value> outputs) {
   for (Value v : outputs) {
-    if (TF::CanBeRefined(v.getType())) {
+    if (mlir::TF::CanBeRefined(v.getType())) {
       return true;
     }
   }
@@ -723,7 +759,7 @@ std::pair<std::string, std::string> MakeCommunicationKeys(
 
   // Use a unique name when sending just the IfRegion predicate.  This is
   // for readable and to match the key in the TF2XLA bridge.
-  if (clustered_ops.size() == 1 && llvm::isa<TF::IfRegionOp>(op) &&
+  if (clustered_ops.size() == 1 && llvm::isa<mlir::TF::IfRegionOp>(op) &&
       external_operands.size() == 1) {
     args_communication_key =
         llvm::formatv("if_predicate_channel_{0}", (communication_key_index))
@@ -786,20 +822,21 @@ void CloneFirstHost(llvm::SmallVector<IRMapping>& core_to_mapping,
       builder.setInsertionPoint(core_to_host_insertion_point[core]);
       Operation* clone = builder.clone(*op, core_to_mapping[core]);
       core_to_mapping[core].map(op, clone);
-      if (auto recv_at_host = llvm::dyn_cast<TF::_XlaRecvAtHostOp>(clone)) {
+      if (auto recv_at_host =
+              llvm::dyn_cast<mlir::TF::_XlaRecvAtHostOp>(clone)) {
         recv_at_host.setDeviceOrdinal(core);
         clone->setOperand(0, core_to_compilation_key[core]);
       } else if (auto send_from_host =
-                     llvm::dyn_cast<TF::_XlaSendFromHostOp>(clone)) {
+                     llvm::dyn_cast<mlir::TF::_XlaSendFromHostOp>(clone)) {
         send_from_host.setDeviceOrdinal(core);
         clone->setOperand(1, core_to_compilation_key[core]);
       } else if (auto recv_at_host =
-                     llvm::dyn_cast<TF::_XlaRecvAtHostV2Op>(clone)) {
+                     llvm::dyn_cast<mlir::TF::_XlaRecvAtHostV2Op>(clone)) {
         recv_at_host.setOperand(0, core_to_compilation_key[core]);
         builder.setInsertionPoint(recv_at_host);
         recv_at_host.setOperand(1, core_to_device_ordinal[core]);
       } else if (auto send_from_host =
-                     llvm::dyn_cast<TF::_XlaSendFromHostV2Op>(clone)) {
+                     llvm::dyn_cast<mlir::TF::_XlaSendFromHostV2Op>(clone)) {
         send_from_host.setOperand(1, core_to_compilation_key[core]);
         builder.setInsertionPoint(send_from_host);
         send_from_host.setOperand(2, core_to_device_ordinal[core]);
@@ -830,8 +867,8 @@ LogicalResult MoveToHostSingleCluster(
 
   std::string serialized_func_module;
   if (HasDynamicOutputs(external_outputs)) {
-    func::FuncOp shape_op = BuildFunction(clustered_ops, external_operands,
-                                          external_outputs, &builder);
+    FuncOp shape_op = BuildFunction(clustered_ops, external_operands,
+                                    external_outputs, &builder);
     EncapsulateFuncAndSerialize(shape_op, &serialized_func_module);
   }
 
@@ -843,7 +880,7 @@ LogicalResult MoveToHostSingleCluster(
           args_communication_key, retvals_communication_key,
           serialized_func_module, is_map_oc, num_cores_per_replica,
           common_split_sharding, host_compute_outputs, host_compute_out_ops)))
-    return failure();
+    return mlir::failure();
 
   // Insert ops on the host side computation to receive data from device.
   // host0_ops are the ops that will make up the first host process. In the
@@ -881,7 +918,7 @@ LogicalResult MoveToHostSingleCluster(
     ++communication_key_index;
   }
 
-  return success();
+  return mlir::success();
 }
 
 // Update is_map_oc the true if op has attribute _xla_map_outside_compilation
@@ -903,7 +940,7 @@ LogicalResult UpdateIsMapOutsideCompilation(Operation& op, bool control_above,
     return op.emitOpError() << "map_outside_compilation inside control flow "
                                "is not implemented.";
   }
-  return success();
+  return mlir::success();
 }
 
 // Move outside compiled ops in `src` to `insertion_point` in host
@@ -920,7 +957,7 @@ LogicalResult UpdateIsMapOutsideCompilation(Operation& op, bool control_above,
 // program. Currently only map_outside_compilation-only or ordinary
 // outside_compilation only is supported.
 LogicalResult MoveToHostMultiCluster(
-    tf_device::ClusterOp device_cluster, Block* src,
+    mlir::tf_device::ClusterOp device_cluster, Block* src,
     ArrayRef<Operation*> core_to_host_insertion_point,
     ArrayRef<Value> core_to_compilation_key,
     ArrayRef<Value> core_to_device_ordinal, int default_device_ordinal,
@@ -938,8 +975,8 @@ LogicalResult MoveToHostMultiCluster(
   // single op except in the case where some of the input/output shapes are
   // non-static.
   llvm::SmallSetVector<Operation*, 4> clustered_ops;
-  auto device_type_attr =
-      device_cluster->getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr);
+  auto device_type_attr = device_cluster->getAttrOfType<StringAttr>(
+      mlir::TF::kCompileDeviceTypeAttr);
 
   for (Operation& op : llvm::make_early_inc_range(*src)) {
     if (HasOutsideCompilationAncestorExclusive(&op) ||
@@ -947,7 +984,7 @@ LogicalResult MoveToHostMultiCluster(
       continue;
 
     if (failed(UpdateIsMapOutsideCompilation(op, control_above, is_map_oc)))
-      return failure();
+      return mlir::failure();
 
     llvm::SmallSetVector<Value, 4> external_outputs;
     llvm::SmallVector<Value, 4> host_outputs;
@@ -971,7 +1008,7 @@ LogicalResult MoveToHostMultiCluster(
               core_to_device_ordinal, default_device_ordinal, device_type_attr,
               *is_map_oc, num_cores_per_replica, common_split_sharding,
               communication_key_index)))
-        return failure();
+        return mlir::failure();
       clustered_ops.clear();
     }
 
@@ -999,18 +1036,18 @@ LogicalResult MoveToHostMultiCluster(
               core_to_device_ordinal, default_device_ordinal, device_type_attr,
               *is_map_oc, num_cores_per_replica, common_split_sharding,
               communication_key_index)))
-        return failure();
+        return mlir::failure();
       clustered_ops.clear();
     }
   }
-  return success();
+  return mlir::success();
 }
 
 void GetReturnValueFromDevice(
-    tf_device::ClusterOp device_cluster,
+    mlir::tf_device::ClusterOp device_cluster,
     const llvm::SmallVector<Value, 4>& return_value_from_host,
     llvm::SmallVector<Value, 4>& return_value_from_device) {
-  if (auto return_op = llvm::dyn_cast_or_null<tf_device::ReturnOp>(
+  if (auto return_op = llvm::dyn_cast_or_null<mlir::tf_device::ReturnOp>(
           device_cluster.GetBody().getTerminator())) {
     for (auto v : return_op.getOperands()) {
       if (absl::c_count(return_value_from_host, v) == 0) {
@@ -1028,14 +1065,14 @@ void GetReturnValueFromDevice(
 // launch in tf_device.parallel_execute.  Uses `compilation_key,
 // `device_ordinal` and `communication_key_index` when creating communication
 // ops.
-LogicalResult DecomposeControlFlow(tf_device::ClusterOp device_cluster,
+LogicalResult DecomposeControlFlow(mlir::tf_device::ClusterOp device_cluster,
                                    ArrayRef<Value> core_to_compilation_key,
                                    ArrayRef<Value> core_to_device_ordinal,
                                    int default_device_ordinal,
                                    int& communication_key_index,
                                    std::optional<bool>& is_map_oc) {
   auto result = device_cluster.GetBody().walk([&](Operation* op) {
-    if (auto if_op = llvm::dyn_cast<TF::IfRegionOp>(op)) {
+    if (auto if_op = llvm::dyn_cast<mlir::TF::IfRegionOp>(op)) {
       if (!HasOutsideCompilationNested(op)) return WalkResult::advance();
       OpBuilder builder(if_op);
       auto host_if = CloneEmptyIfWithPredicate(if_op, builder);
@@ -1057,7 +1094,7 @@ LogicalResult DecomposeControlFlow(tf_device::ClusterOp device_cluster,
       if_op->setAttr("is_stateless", builder.getBoolAttr(false));
       MarkOutsideCompiled(host_if.getOperation());
     }
-    if (auto while_op = llvm::dyn_cast<TF::WhileRegionOp>(op)) {
+    if (auto while_op = llvm::dyn_cast<mlir::TF::WhileRegionOp>(op)) {
       if (!HasOutsideCompilationNested(op)) return WalkResult::advance();
       OpBuilder builder(while_op);
       auto host_while = CloneEmptyWhile(while_op.getParallelIterations(),
@@ -1071,8 +1108,8 @@ LogicalResult DecomposeControlFlow(tf_device::ClusterOp device_cluster,
       auto condition =
           while_op.getCond().front().getTerminator()->getOperand(0);
       builder.setInsertionPoint(while_op.getCond().front().getTerminator());
-      builder.create<TF::XlaSendToHostOp>(while_op.getLoc(), condition,
-                                          condition_send_recv_key);
+      builder.create<mlir::TF::XlaSendToHostOp>(while_op.getLoc(), condition,
+                                                condition_send_recv_key);
       // device_ordinal0 is the ordinal of TPU_REPLICATED_CORE_0 and is only
       // used in the replicated case.
       Value device_ordinal0 = nullptr;
@@ -1082,10 +1119,11 @@ LogicalResult DecomposeControlFlow(tf_device::ClusterOp device_cluster,
       auto recv_condition_at_host = CreateRecvAtHostOp(
           builder, while_op.getLoc(), TypeRange{condition.getType()},
           core_to_compilation_key[0], device_ordinal0, default_device_ordinal,
-          device_cluster->getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr),
+          device_cluster->getAttrOfType<StringAttr>(
+              mlir::TF::kCompileDeviceTypeAttr),
           condition_send_recv_key);
-      builder.create<TF::YieldOp>(while_op.getLoc(),
-                                  recv_condition_at_host->getResults());
+      builder.create<mlir::TF::YieldOp>(while_op.getLoc(),
+                                        recv_condition_at_host->getResults());
 
       if (failed(MoveToHostMultiCluster(
               device_cluster, &while_op.getCond().front(),
@@ -1106,14 +1144,14 @@ LogicalResult DecomposeControlFlow(tf_device::ClusterOp device_cluster,
     }
     return WalkResult::advance();
   });
-  if (result.wasInterrupted()) return failure();
-  return success();
+  if (result.wasInterrupted()) return mlir::failure();
+  return mlir::success();
 }
 
 // Removes outside compilation from all ops inside `host_launch_op`.  Should
 // only be run after all outside compiled ops have been moved to
 // `host_launch_op`.
-void RemoveOutsideCompilation(tf_device::LaunchOp host_launch_op) {
+void RemoveOutsideCompilation(mlir::tf_device::LaunchOp host_launch_op) {
   host_launch_op.GetBody().walk([&](Operation* op) {
     if (op->hasAttr(kXlaOutsideCompilationAttr)) {
       op->removeAttr(
@@ -1129,14 +1167,16 @@ void RemoveOutsideCompilation(tf_device::LaunchOp host_launch_op) {
 // if it is non replicated cluster and there is a device attr with some
 // non-empty device, then that device's ordinal (0 out of TPU:0 and
 // 1 out of TPU:1) is extracted and the default ordinal is set to this value.
-LogicalResult GetDefaultDeviceOrdinal(tf_device::ClusterOp device_cluster,
+LogicalResult GetDefaultDeviceOrdinal(mlir::tf_device::ClusterOp device_cluster,
                                       int& default_ordinal) {
-  bool has_replication = device_cluster->hasAttr(TF::kReplicationInfoAttr);
+  bool has_replication =
+      device_cluster->hasAttr(mlir::TF::kReplicationInfoAttr);
 
   std::string replication_info;
   if (has_replication) {
     replication_info =
-        device_cluster->getAttrOfType<StringAttr>(TF::kReplicationInfoAttr)
+        device_cluster
+            ->getAttrOfType<StringAttr>(mlir::TF::kReplicationInfoAttr)
             .str();
   }
   if (replication_info == kNoReplicationCluster || replication_info.empty()) {
@@ -1156,7 +1196,7 @@ LogicalResult GetDefaultDeviceOrdinal(tf_device::ClusterOp device_cluster,
              << " could not find ordinal for the given device";
     }
   }
-  return success();
+  return mlir::success();
 }
 
 // The results of parallel executes is the combination of return values from
@@ -1177,7 +1217,7 @@ llvm::SmallVector<Type, 4> GetParallelExecuteResultsTypes(
 
 // Remap the device cluster results with parallel execute op results
 llvm::SmallVector<Value, 4> GetRemappedTpuClusterResults(
-    tf_device::ClusterOp device_cluster,
+    mlir::tf_device::ClusterOp device_cluster,
     const llvm::SmallVector<Value, 4>& return_value_from_host,
     const llvm::SmallVector<Value, 4>& return_value_from_device) {
   llvm::SmallVector<Value, 4> remapped_device_cluster_results;
@@ -1187,7 +1227,7 @@ llvm::SmallVector<Value, 4> GetRemappedTpuClusterResults(
       return_value_from_host.size() + return_value_from_device.size());
 
   llvm::SmallDenseMap<Value, std::deque<int>> return_operand_map;
-  auto return_op = llvm::dyn_cast<tf_device::ReturnOp>(
+  auto return_op = llvm::dyn_cast<mlir::tf_device::ReturnOp>(
       device_cluster.GetBody().getTerminator());
 
   for (OpOperand& operand : return_op->getOpOperands()) {
@@ -1221,8 +1261,8 @@ llvm::SmallVector<Value, 4> GetRemappedTpuClusterResults(
 // Remap cluster results with parallel_execute results if user is outside of
 // parallel_execute.
 void RemapDeviceClusterResultsWithParallelExecuteResults(
-    tf_device::ClusterOp device_cluster,
-    tf_device::ParallelExecuteOp parallel_execute_op,
+    mlir::tf_device::ClusterOp device_cluster,
+    mlir::tf_device::ParallelExecuteOp parallel_execute_op,
     const llvm::SmallVector<Value, 4>& return_value_from_host,
     const llvm::SmallVector<Value, 4>& return_value_from_device) {
   llvm::SmallVector<Value, 4> remapped_device_cluster_results =
@@ -1261,7 +1301,7 @@ llvm::SmallVector<Type, 4> GetNewDeviceTypes(
 }
 
 // Move ops in old device cluster to new device cluster
-void MoveOldTpuClusterToNewTpuCluster(tf_device::ClusterOp device_cluster,
+void MoveOldTpuClusterToNewTpuCluster(mlir::tf_device::ClusterOp device_cluster,
                                       Operation* after_op_r) {
   for (Operation& op : llvm::make_early_inc_range(device_cluster.GetBody())) {
     if (&op != device_cluster.GetBody().getTerminator()) {
@@ -1271,7 +1311,7 @@ void MoveOldTpuClusterToNewTpuCluster(tf_device::ClusterOp device_cluster,
 }
 
 // Move ops in the tmp host launch op to new host launch op
-void MoveTmpLaunchOpToNewLaunchOp(tf_device::LaunchOp tmp_host_launch_op,
+void MoveTmpLaunchOpToNewLaunchOp(mlir::tf_device::LaunchOp tmp_host_launch_op,
                                   Operation* after_op_host_cluster) {
   for (Operation& op :
        llvm::make_early_inc_range(tmp_host_launch_op.GetBody())) {
@@ -1285,10 +1325,10 @@ void MoveTmpLaunchOpToNewLaunchOp(tf_device::LaunchOp tmp_host_launch_op,
 // outside compiled ops, we can create the actual parallel_execute regions.
 // Still, one region is for the host computation for outside compilation and
 // the other one is for the original Device cluster computation.
-tf_device::ParallelExecuteOp CreateFinalParallelExecuteOp(
+mlir::tf_device::ParallelExecuteOp CreateFinalParallelExecuteOp(
     OpBuilder& builder, int num_regions, ArrayRef<std::string> core_to_host,
-    tf_device::ClusterOp device_cluster,
-    ArrayRef<tf_device::LaunchOp> core_to_tmp_host_launch,
+    mlir::tf_device::ClusterOp device_cluster,
+    ArrayRef<mlir::tf_device::LaunchOp> core_to_tmp_host_launch,
     ArrayRef<Value> return_value_from_host,
     ArrayRef<Value> return_value_from_device) {
   llvm::SmallVector<Type, 4> parallel_execute_result_types =
@@ -1296,9 +1336,9 @@ tf_device::ParallelExecuteOp CreateFinalParallelExecuteOp(
                                      return_value_from_device);
 
   builder.setInsertionPoint(device_cluster);
-  auto parallel_execute_op = builder.create<tf_device::ParallelExecuteOp>(
+  auto parallel_execute_op = builder.create<mlir::tf_device::ParallelExecuteOp>(
       device_cluster.getLoc(), num_regions, parallel_execute_result_types);
-  SmallVector<tf_device::LaunchOp, 4> core_to_host_launch;
+  SmallVector<mlir::tf_device::LaunchOp, 4> core_to_host_launch;
   for (int core = 0; core < core_to_tmp_host_launch.size(); ++core) {
     Block& host_computation_block =
         parallel_execute_op.GetRegionBlockWithIndex(core);
@@ -1313,14 +1353,14 @@ tf_device::ParallelExecuteOp CreateFinalParallelExecuteOp(
     llvm::SmallVector<Value, 4> host_results;
     host_results.insert(host_results.end(), return_value_from_host.begin(),
                         return_value_from_host.end());
-    tf_device::LaunchOp host_launch_op = CreateLaunchOpForOutsideCluster(
+    mlir::tf_device::LaunchOp host_launch_op = CreateLaunchOpForOutsideCluster(
         builder, device_cluster, core_to_host[core], host_results);
     core_to_host_launch.push_back(host_launch_op);
 
     // Create a return op for host computation block
     builder.setInsertionPointToEnd(&host_computation_block);
-    builder.create<tf_device::ReturnOp>(device_cluster.getLoc(),
-                                        host_launch_op->getResults());
+    builder.create<mlir::tf_device::ReturnOp>(device_cluster.getLoc(),
+                                              host_launch_op->getResults());
   }
 
   // Move the launch body to last parallel_execute block.
@@ -1337,7 +1377,7 @@ tf_device::ParallelExecuteOp CreateFinalParallelExecuteOp(
 
   // Create a empty device cluster op with same attribute but different return
   // type
-  auto new_device_cluster = builder.create<tf_device::ClusterOp>(
+  auto new_device_cluster = builder.create<mlir::tf_device::ClusterOp>(
       device_cluster.getLoc(), device_result_types,
       /*operands=*/llvm::ArrayRef<Value>{}, device_cluster->getAttrs());
 
@@ -1345,14 +1385,14 @@ tf_device::ParallelExecuteOp CreateFinalParallelExecuteOp(
   builder.setInsertionPointToEnd(&new_device_cluster.GetBody());
 
   // Create return op for device computation region in the paralle_execute op
-  Operation* after_op_r = builder.create<tf_device::ReturnOp>(
+  Operation* after_op_r = builder.create<mlir::tf_device::ReturnOp>(
       new_device_cluster.getLoc(), device_results);
 
   builder.setInsertionPointToEnd(&parallel_execute_device_block);
 
   // Create return op for the new device cluster op
-  builder.create<tf_device::ReturnOp>(device_cluster.getLoc(),
-                                      new_device_cluster.getResults());
+  builder.create<mlir::tf_device::ReturnOp>(device_cluster.getLoc(),
+                                            new_device_cluster.getResults());
 
   MoveOldTpuClusterToNewTpuCluster(device_cluster, after_op_r);
 
@@ -1371,8 +1411,8 @@ tf_device::ParallelExecuteOp CreateFinalParallelExecuteOp(
 // a region for `device_cluster` computation by extracting outside compiled ops
 // to host computation.
 LogicalResult CreateParallelExecuteForOutsideCompilation(
-    tf_device::ClusterOp device_cluster,
-    llvm::SmallVector<tf_device::ParallelExecuteOp, 4>& ops,
+    mlir::tf_device::ClusterOp device_cluster,
+    llvm::SmallVector<mlir::tf_device::ParallelExecuteOp, 4>& ops,
     std::optional<bool>& is_map_oc, ArrayRef<std::string> core_to_host,
     bool has_tpu_device) {
   OpBuilder builder(device_cluster);
@@ -1385,10 +1425,11 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
   // `map_outside_compilation` case `num_host_regions == num_cores_per_replica`.
   const int num_host_regions = core_to_host.size();
   const int num_regions = 1 + num_host_regions;
-  auto tmp_parallel_execute_op = builder.create<tf_device::ParallelExecuteOp>(
-      device_cluster.getLoc(), num_regions, llvm::ArrayRef<Type>{});
+  auto tmp_parallel_execute_op =
+      builder.create<mlir::tf_device::ParallelExecuteOp>(
+          device_cluster.getLoc(), num_regions, llvm::ArrayRef<Type>{});
   SmallVector<Operation*, 4> core_to_host_insertion_point;
-  SmallVector<tf_device::LaunchOp, 4> core_to_tmp_launch;
+  SmallVector<mlir::tf_device::LaunchOp, 4> core_to_tmp_launch;
   SmallVector<Operation*, 4> compilation_key_ops;
   SmallVector<Value, 4> core_to_compilation_key;
   SmallVector<Operation*, 4> core_to_device_ordinal_op;
@@ -1399,13 +1440,14 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
     builder.setInsertionPointToEnd(&tmp_host_computation_block);
     // Create a single tmp launch op for all outside compiled ops.
     llvm::SmallVector<Value, 4> tmp_host_results;
-    tf_device::LaunchOp tmp_host_launch_op = CreateLaunchOpForOutsideCluster(
-        builder, device_cluster, core_to_host[core], tmp_host_results);
+    mlir::tf_device::LaunchOp tmp_host_launch_op =
+        CreateLaunchOpForOutsideCluster(builder, device_cluster,
+                                        core_to_host[core], tmp_host_results);
     core_to_tmp_launch.push_back(tmp_host_launch_op);
     // Create a tmp return op for tmp host computation block
     builder.setInsertionPointToEnd(&tmp_host_computation_block);
-    builder.create<tf_device::ReturnOp>(device_cluster.getLoc(),
-                                        llvm::ArrayRef<Value>{});
+    builder.create<mlir::tf_device::ReturnOp>(device_cluster.getLoc(),
+                                              llvm::ArrayRef<Value>{});
     core_to_host_insertion_point.push_back(
         tmp_host_launch_op.GetBody().getTerminator());
 
@@ -1418,16 +1460,17 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
     compilation_key_op =
         CreateCompilationKeyPlaceholder(device_cluster.getLoc(), builder);
     compilation_key =
-        llvm::dyn_cast<TF::_XlaCompileMlirPlaceholderProgramKeyOp>(
+        llvm::dyn_cast<mlir::TF::_XlaCompileMlirPlaceholderProgramKeyOp>(
             compilation_key_op)
             .getProgram();
     if (has_tpu_device) {
-      device_ordinal_op = builder.create<TF::_TPUDeviceOrdinalPlaceholderOp>(
-          device_cluster.getLoc(),
-          RankedTensorType::get({}, builder.getI64Type()),
-          builder.getI64IntegerAttr(core));
+      device_ordinal_op =
+          builder.create<mlir::TF::_TPUDeviceOrdinalPlaceholderOp>(
+              device_cluster.getLoc(),
+              RankedTensorType::get({}, builder.getI64Type()),
+              builder.getI64IntegerAttr(core));
     } else {
-      device_ordinal_op = builder.create<TF::ConstOp>(
+      device_ordinal_op = builder.create<mlir::TF::ConstOp>(
           device_cluster.getLoc(),
           DenseIntElementsAttr::get(
               RankedTensorType::get({}, builder.getI64Type()),
@@ -1436,7 +1479,7 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
     compilation_key_ops.push_back(compilation_key_op);
     core_to_compilation_key.push_back(compilation_key);
     core_to_device_ordinal_op.push_back(device_ordinal_op);
-    if (device_cluster->getParentOfType<tf_device::ReplicateOp>())
+    if (device_cluster->getParentOfType<mlir::tf_device::ReplicateOp>())
       core_to_device_ordinal.push_back(
           core_to_device_ordinal_op[core]->getResults()[0]);
   }
@@ -1444,7 +1487,7 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
   builder.setInsertionPoint(tmp_parallel_execute_op);
   int default_device_ordinal = 0;
   if (failed(GetDefaultDeviceOrdinal(device_cluster, default_device_ordinal))) {
-    return failure();
+    return mlir::failure();
   }
   // communication_key_index is part of the message identifier and is
   // incremented for each _XlaHostComputeMlir.
@@ -1455,7 +1498,7 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
   if (failed(DecomposeControlFlow(
           device_cluster, core_to_compilation_key, core_to_device_ordinal,
           default_device_ordinal, communication_key_index, is_map_oc)))
-    return failure();
+    return mlir::failure();
 
   // Move all outside compiled ops including control flow to tmp host launch.
   // Also set the values returned from the host when ops are moved.
@@ -1465,7 +1508,7 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
           core_to_device_ordinal, default_device_ordinal,
           /*control_above=*/false, is_map_oc, communication_key_index,
           &returns_from_host)))
-    return failure();
+    return mlir::failure();
 
   llvm::SmallVector<Value, 4> returns_from_device;
   GetReturnValueFromDevice(device_cluster, returns_from_host,
@@ -1477,10 +1520,10 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
   if (communication_key_index == 0 || core_to_device_ordinal.empty())
     for (auto op : core_to_device_ordinal_op) op->erase();
 
-  for (tf_device::LaunchOp tmp_host_launch_op : core_to_tmp_launch)
+  for (mlir::tf_device::LaunchOp tmp_host_launch_op : core_to_tmp_launch)
     RemoveOutsideCompilation(tmp_host_launch_op);
 
-  tf_device::ParallelExecuteOp parallel_execute_op =
+  mlir::tf_device::ParallelExecuteOp parallel_execute_op =
       CreateFinalParallelExecuteOp(builder, num_regions, core_to_host,
                                    device_cluster, core_to_tmp_launch,
                                    returns_from_host, returns_from_device);
@@ -1494,12 +1537,12 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
 
   device_cluster.erase();
 
-  return success();
+  return mlir::success();
 }
 
 // Check that cluster results are valid. An result is invalid when it does not
 // have a valid XLA type.
-LogicalResult CheckClusterResults(tf_device::ClusterOp cluster) {
+LogicalResult CheckClusterResults(mlir::tf_device::ClusterOp cluster) {
   for (OpResult result : cluster.getResults()) {
     if (!tensorflow::TypeValidForXLA(result.getType())) {
       return cluster.emitError()
@@ -1508,14 +1551,14 @@ LogicalResult CheckClusterResults(tf_device::ClusterOp cluster) {
              << result.getType();
     }
   }
-  return success();
+  return mlir::success();
 }
 
 // Check that op marked for outside compilation has an ancestor also marked for
 // outside compilation.
 LogicalResult CheckAncestorNotOutsideComp(Operation* op) {
   if (!op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
-    return success();
+    return mlir::success();
   Operation* iter_op = op;
   while (auto* parent_op = iter_op->getParentOp()) {
     if (parent_op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
@@ -1526,7 +1569,7 @@ LogicalResult CheckAncestorNotOutsideComp(Operation* op) {
     }
     iter_op = parent_op;
   }
-  return success();
+  return mlir::success();
 }
 
 // Check the validity of the module, pre-pass.
@@ -1535,18 +1578,18 @@ LogicalResult CheckPreconditions(ModuleOp module) {
     if (failed(CheckAncestorNotOutsideComp(op))) return WalkResult::interrupt();
     return WalkResult::advance();
   });
-  if (walk_result.wasInterrupted()) return failure();
-  return success();
+  if (walk_result.wasInterrupted()) return mlir::failure();
+  return mlir::success();
 }
 
 // Check the validity of the module, post-pass.
 LogicalResult CheckPostconditions(ModuleOp module) {
-  auto walk_result = module.walk([&](tf_device::ClusterOp cluster) {
+  auto walk_result = module.walk([&](mlir::tf_device::ClusterOp cluster) {
     if (failed(CheckClusterResults(cluster))) return WalkResult::interrupt();
     return WalkResult::advance();
   });
-  if (walk_result.wasInterrupted()) return failure();
-  return success();
+  if (walk_result.wasInterrupted()) return mlir::failure();
+  return mlir::success();
 }
 
 void ExtractOutsideCompilation::runOnOperation() {
@@ -1558,10 +1601,11 @@ void ExtractOutsideCompilation::runOnOperation() {
   if (failed(tensorflow::GetDevicesFromOp(module, &devices)))
     return signalPassFailure();
 
-  llvm::SmallVector<tf_device::ParallelExecuteOp, 4> tmp_parallel_execute_ops;
+  llvm::SmallVector<mlir::tf_device::ParallelExecuteOp, 4>
+      tmp_parallel_execute_ops;
   std::optional<bool> is_map_oc;
 
-  module.walk([&](tf_device::ClusterOp device_cluster) {
+  module.walk([&](mlir::tf_device::ClusterOp device_cluster) {
     if (HasOutsideCompilationNested(device_cluster.getOperation())) {
       SmallVector<std::string, 8> core_to_host;
       if (failed(tensorflow::GetDeviceToHostMap(device_cluster, core_to_host)))
@@ -1594,5 +1638,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateExtractOutsideCompilationPass() {
   return std::make_unique<ExtractOutsideCompilation>();
 }
 
-}  // namespace TFDevice
-}  // namespace mlir
+}  // namespace internal
+}  // namespace tf2xla
+}  // namespace tensorflow
