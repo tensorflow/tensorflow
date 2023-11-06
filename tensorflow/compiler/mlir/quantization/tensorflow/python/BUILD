@@ -154,6 +154,7 @@ cc_library(
 tf_python_pybind_extension(
     name = "pywrap_function_lib",
     srcs = ["pywrap_function_lib.cc"],
+    pytype_srcs = ["pywrap_function_lib.pyi"],
     visibility = ["//visibility:private"],
     deps = [
         ":py_function_lib",
@@ -169,6 +170,7 @@ tf_python_pybind_extension(
     name = "pywrap_quantize_model",
     srcs = ["pywrap_quantize_model.cc"],
     hdrs = ["quantize_model.h"],
+    pytype_srcs = ["pywrap_quantize_model.pyi"],
     # All deps must be header-only.
     deps = [
         ":py_function_lib",
