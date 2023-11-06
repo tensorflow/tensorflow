@@ -51,10 +51,17 @@ cd "$TFCI_GIT_DIR"
 # even works for arrays; e.g. TFCI_SOME_ARRAY="(--array --contents)" ends up
 # as TFCI_SOME_ARRAY=(--array --contents) in the storage file and is thus
 # loaded as an array when sourced.
-if [[ -n "${TFCI:-}" ]]; then
+if [[ -z "${TFCI:-}" ]]; then
+  echo '==TFCI==: The $TFCI variable is not set. This is fine as long as you'
+  echo 'already sourced a TFCI env file with "set -a; source <path>; set +a".'
+  echo 'If you have not, you will see a lot of undefined variable errors.'
+else
   FROM_ENV=$(mktemp)
   # Piping into cat means grep won't abort the process if no errors are found.
   env | grep TFCI_ | cat > "$FROM_ENV"
+
+  # Source the default ci values
+  source ./ci/official/envs/ci_default
 
   # Sourcing TFCI twice, the first time with "-u" unset, means that variable
   # order does not matter. i.e. "TFCI_BAR=$TFCI_FOO; TFCI_FOO=true" will work.
@@ -73,10 +80,6 @@ if [[ -n "${TFCI:-}" ]]; then
     source "$FROM_ENV"
     rm "$FROM_ENV"
   fi
-else
-  echo '==TFCI==: The $TFCI variable is not set. This is fine as long as you'
-  echo 'already sourced a TFCI env file with "set -a; source <path>; set +a".'
-  echo 'If you have not, you will see a lot of undefined variable errors.'
 fi
 
 # Force-disable uploads if the job initiator is not Kokoro

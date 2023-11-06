@@ -34,8 +34,10 @@ if [[ -n "${TF_ANY_SCRIPT:-}" ]]; then
   echo "source ci/official/envs/disable_all_uploads" >> any
   export TFCI=$(realpath any)
   "$TF_ANY_SCRIPT"
-else
+elif [[ -n "${TF_ANY_TARGETS:-}" ]]; then
   source "${BASH_SOURCE%/*}/utilities/setup.sh"
-  read -ra TARGETS_AS_ARRAY <<<"$TF_ANY_TARGETS"
-  tfrun bazel "${TFCI_BAZEL_BAZELRC_ARGS[@]}" "${TF_ANY_MODE:-test}" "${TFCI_BAZEL_COMMON_ARGS[@]}" "${TARGETS_AS_ARRAY[@]}"
+  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS "${TF_ANY_MODE:-test}" $TFCI_BAZEL_COMMON_ARGS $TF_ANY_TARGETS
+else
+  echo 'Looks like $TF_ANY_TARGETS are $TF_ANY_SCRIPT are both empty. That is an error.'
+  exit 1
 fi
