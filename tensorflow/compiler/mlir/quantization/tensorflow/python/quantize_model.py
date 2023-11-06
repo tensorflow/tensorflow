@@ -1431,6 +1431,17 @@ def _populate_quantization_options_default_values(
     )
 
   if quantization_options.HasField('debugger_options'):
+    # Set `force_graph_mode_calibration` to True to avoid skipping op execution,
+    # which are not connected to return ops, during calibration execution.
+    # Setting `force_graph_mode_calibration` to True enables execution of the
+    # model in graph mode (not eager mode).
+    logging.debug(
+        'Setting `force_graph_mode_calibration = True` to ensure the debugging '
+        'model is executed in graph mode during calibration, rather than eager '
+        'mode.'
+    )
+    quantization_options.force_graph_mode_calibration = True
+
     if not quantization_options.debugger_options.log_dir_path:
       quantization_options.debugger_options.log_dir_path = '/tmp/dumps'
 
