@@ -156,6 +156,7 @@ py_strict_test(
     tags = ["no_oss"],  # TODO(b/219089812)
     deps = [
         ":runtime_client_py",
+        #internal proto upb dep
         "//tensorflow/core/framework:function_proto_py",
         "//tensorflow/core/function/testing:test_pass_py",
         "//tensorflow/python:tf2",
