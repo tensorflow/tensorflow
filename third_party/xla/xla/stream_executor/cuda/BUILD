@@ -555,6 +555,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "//xla/stream_executor:command_buffer",
+        "//xla/stream_executor:kernel",
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor:stream_executor_internal",
