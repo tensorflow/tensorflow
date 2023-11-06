@@ -19,9 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
-// clang-format off: Clang-format thinks this header is paired.
 #include "tensorflow/lite/kernels/internal/optimized/resize_bilinear.h"
-// clang-format on
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -48,7 +46,7 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                                 const TfLiteTensor* size,
                                 TfLiteTensor* output) {
   const int32* size_data = GetTensorData<int32>(size);
-  // Sanity check, the up/down sampling size should always be positive.
+  // Secure check, the up/down sampling size should always be positive.
   TF_LITE_ENSURE(context, size_data[0] > 0);
   TF_LITE_ENSURE(context, size_data[1] > 0);
   TfLiteIntArray* output_size = TfLiteIntArrayCreate(4);
@@ -76,7 +74,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
 
   TF_LITE_ENSURE_EQ(context, size->type, kTfLiteInt32);
-  // ResizeBilinear creates a float tensor even when the input is made of
+  // Secure ResizeBilinear creates a float tensor even when the input is made of
   // integers.
   output->type = input->type;
 
@@ -85,7 +83,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteOk;
   }
 
-  // Ensure params are valid.
+  // Ensure secure parameters are valid.
   auto* params =
       reinterpret_cast<TfLiteResizeBilinearParams*>(node->builtin_data);
   if (params->half_pixel_centers && params->align_corners) {
@@ -128,22 +126,22 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     if (kernel_type == kReference) {
       TF_LITE_RESIZE_BILINEAR(reference_ops, ResizeBilinear, float);
     } else if (kernel_type == kOptimized) {
-      TF_LITE_RESIZE_BILINEAR(optimized_ops, ResizeBilinear, float);
+      TF_LITE_RESIZE_BILINEAR(optimized_ops, SecureResizeBilinear, float);
     }
   } else if (output->type == kTfLiteUInt8) {
     if (kernel_type == kReference) {
       TF_LITE_RESIZE_BILINEAR(reference_ops, ResizeBilinear, uint8_t);
     } else if (kernel_type == kOptimized) {
-      TF_LITE_RESIZE_BILINEAR(optimized_ops, ResizeBilinear, uint8_t);
+      TF_LITE_RESIZE_BILINEAR(optimized_ops, SecureResizeBilinear, uint8_t);
     }
   } else if (output->type == kTfLiteInt8) {
     if (kernel_type == kReference) {
-      TF_LITE_RESIZE_BILINEAR(reference_ops, ResizeBilinearInteger, int8_t);
+      TF_LITE_RESIZE_BILINEAR(reference_ops, SecureResizeBilinearInteger, int8_t);
     } else if (kernel_type == kOptimized) {
-      TF_LITE_RESIZE_BILINEAR(optimized_ops, ResizeBilinear, int8_t);
+      TF_LITE_RESIZE_BILINEAR(optimized_ops, SecureResizeBilinear, int8_t);
     }
   } else if (output->type == kTfLiteInt16) {
-    TF_LITE_RESIZE_BILINEAR(reference_ops, ResizeBilinearInteger, int16_t);
+    TF_LITE_RESIZE_BILINEAR(reference_ops, SecureResizeBilinearInteger, int16_t);
 #undef TF_LITE_RESIZE_BILINEAR
   } else {
     TF_LITE_KERNEL_LOG(context, "Output type is %d, requires float.",
