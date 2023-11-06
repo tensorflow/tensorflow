@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
+#include "tensorflow/core/data/service/dataset_store.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/test_cluster.h"
 #include "tensorflow/core/data/service/test_util.h"
@@ -36,6 +37,9 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/test.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -135,7 +139,7 @@ TEST_F(DispatcherClientTest, SnapshotAlreadyStarted) {
       dispatcher_client_->Snapshot(RangeDataset(10), directory, metadata));
   EXPECT_THAT(
       dispatcher_client_->Snapshot(RangeDataset(10), directory, metadata),
-      StatusIs(error::INVALID_ARGUMENT, HasSubstr("already started")));
+      StatusIs(error::ALREADY_EXISTS, HasSubstr("already started")));
 }
 
 TEST_F(DispatcherClientTest, GetDataServiceConfig) {
@@ -202,7 +206,8 @@ TEST_F(DispatcherClientTest, GetSnapshotSplit) {
       TF_ASSERT_OK(dispatcher_client_->GetSnapshotSplit(
           test_cluster_->WorkerAddress(0), snapshot_task.base_path(),
           snapshot_task.stream_index(),
-          /*source_index=*/0, split, local_split_index, end_of_splits));
+          /*source_index=*/0, /*repetition_index=*/0, split, local_split_index,
+          end_of_splits));
       EXPECT_EQ(local_split_index, i);
       EXPECT_FALSE(end_of_splits);
     }
@@ -230,7 +235,8 @@ TEST_F(DispatcherClientTest, GetSnapshotSplitMultipleStreams) {
       TF_ASSERT_OK(dispatcher_client_->GetSnapshotSplit(
           test_cluster_->WorkerAddress(i), snapshot_task.base_path(),
           snapshot_task.stream_index(),
-          /*source_index=*/0, split, local_split_index, end_of_splits));
+          /*source_index=*/0, /*repetition_index=*/0, split, local_split_index,
+          end_of_splits));
       EXPECT_EQ(local_split_index, 0);
       EXPECT_FALSE(end_of_splits);
     }
@@ -358,6 +364,51 @@ TEST_F(DispatcherClientTest, NamedJobsDoNotMatch) {
                      HasSubstr("Existing processing mode: <>"),
                      HasSubstr("Existing cross-trainer cache: <disabled>"))));
 }
+
+class DispatcherClientTest_DatasetId
+    : public DispatcherClientTest,
+      public ::testing::WithParamInterface<std::optional<std::string>> {};
+
+TEST_P(DispatcherClientTest_DatasetId, SyncDatasetStoreWithDispatcherState) {
+  TestCluster::Config config;
+  config.num_workers = 1;
+  config.work_dir = tsl::io::JoinPath(tsl::testing::TmpDir(), "work_dir");
+
+  test_cluster_ = std::make_unique<TestCluster>(config);
+  TF_ASSERT_OK(test_cluster_->Initialize());
+  dispatcher_client_ = std::make_unique<DataServiceDispatcherClient>(
+      test_cluster_->DispatcherAddress(), kProtocol);
+
+  DatasetDef dataset_def = RangeDataset(10);
+  std::optional<std::string> requested_dataset_id = GetParam();
+  std::string dataset_id;
+  TF_ASSERT_OK(dispatcher_client_->RegisterDataset(
+      dataset_def, GetDefaultMetadata(),
+      /*requested_dataset_id=*/std::nullopt, dataset_id));
+  EXPECT_EQ(dataset_id, "1000");
+
+  // Writes an inconsistent dataset file. It should be discarded when the user
+  // registers a new dataset.
+  std::string datasets_dir = tsl::io::JoinPath(config.work_dir, "datasets");
+  FileSystemDatasetStore dataset_store(datasets_dir);
+  TF_ASSERT_OK(dataset_store.Put("1001", dataset_def));
+  if (requested_dataset_id.has_value()) {
+    TF_ASSERT_OK(dataset_store.Put(*requested_dataset_id, dataset_def));
+  }
+
+  TF_ASSERT_OK(dispatcher_client_->RegisterDataset(
+      dataset_def, GetDefaultMetadata(),
+      /*requested_dataset_id=*/requested_dataset_id, dataset_id));
+  if (requested_dataset_id.has_value()) {
+    EXPECT_EQ(dataset_id, *requested_dataset_id);
+  } else {
+    EXPECT_EQ(dataset_id, "1001");
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(DatasetId, DispatcherClientTest_DatasetId,
+                         ::testing::Values(std::nullopt, "dataset_id"));
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

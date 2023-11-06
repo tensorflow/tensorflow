@@ -186,7 +186,7 @@ func.func @parent_is_graph() {
 func.func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
   tf_executor.graph {
     "tf_executor.island"(%arg0) ({
-// expected-error@-1 {{'tf_executor.island' op operand #0 must be control}}
+// expected-error@-1 {{'tf_executor.island' op operand #0 must be variadic of control}}
     }) : (tensor<*xf32>) -> (!tf_executor.control)
   }
   func.return

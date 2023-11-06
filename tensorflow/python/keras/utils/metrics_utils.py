@@ -24,6 +24,7 @@ from tensorflow.python.compat import compat
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils import losses_utils
@@ -148,7 +149,7 @@ def result_wrapper(result_fn):
         # Results need to be wrapped in a `tf.identity` op to ensure
         # correct execution order.
         if isinstance(raw_result,
-                      (ops.Tensor, variables_module.Variable, float, int)):
+                      (tensor.Tensor, variables_module.Variable, float, int)):
           result_t = array_ops.identity(raw_result)
         elif isinstance(raw_result, dict):
           result_t = {

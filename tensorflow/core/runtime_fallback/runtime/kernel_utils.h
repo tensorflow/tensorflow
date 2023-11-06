@@ -19,6 +19,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_KERNEL_UTILS_H_
 
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"

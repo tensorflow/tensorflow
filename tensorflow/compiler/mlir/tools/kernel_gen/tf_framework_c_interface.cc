@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/TargetSelect.h"
+#include "mlir/Dialect/MemRef/Transforms/AllocationOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/ExecutionEngine/ExecutionEngine.h"  // from @llvm-project
 #include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
@@ -28,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_jit_cache.h"
-#include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -149,6 +150,15 @@ llvm::orc::SymbolMap TFFrameworkSymbolMap(llvm::orc::MangleAndInterner mangle) {
   return symbol_map;
 }
 
+void InitializeLlvmCompiler() {
+  static const bool initialized = ([] {
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    return true;
+  })();
+  (void)initialized;
+}
+
 llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
     const std::string code, llvm::SmallVectorImpl<std::string>& architectures,
     llvm::SmallVectorImpl<int64_t>& tile_sizes,
@@ -176,13 +186,16 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
   }
 
   // Create the kernel.
-  mlir::MLIRContext context;
+  mlir::DialectRegistry registry;
+  mlir::memref::registerAllocationOpInterfaceExternalModels(registry);
+  mlir::MLIRContext context(registry);
+
   mlir::OwningOpRef<mlir::ModuleOp> module;
 
   if (item.result_module().empty()) {
     // Otherwise, compile the module now.
     tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> status_or_module =
-        tensorflow::kernel_gen::GenerateKernelForTfCode(
+        tensorflow::kernel_gen::GenerateKernelForHloCode(
             context, code, architectures, tile_sizes, unroll_factors,
             max_supported_rank,
             /*print_ptx=*/false, /*print_llvmir=*/false, enable_ftz,
@@ -190,7 +203,10 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
             /*jit_compile=*/false,
             /*jit_i64_indexed_for_large_tensors=*/false,
             /*apply_cl_options=*/false);
-    if (!status_or_module.ok()) return nullptr;
+    if (!status_or_module.ok()) {
+      LOG(ERROR) << status_or_module.status();
+      return nullptr;
+    }
     module = std::move(status_or_module.value());
 
     if (!cache_dir.empty() && tenv->RecursivelyCreateDir(cache_dir).ok()) {
@@ -211,8 +227,7 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
   }
 
   // Initialize LLVM targets.
-  llvm::InitializeNativeTarget();
-  llvm::InitializeNativeTargetAsmPrinter();
+  InitializeLlvmCompiler();
 
   // Create execution engine with an inner optimization pipeline.
   auto opt_pipeline = mlir::makeOptimizingTransformer(
@@ -221,7 +236,11 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
   engine_options.transformer = opt_pipeline;
   llvm::Expected<std::unique_ptr<ExecutionEngine>> engine =
       mlir::ExecutionEngine::create(module.get(), engine_options);
-  if (!engine) return nullptr;
+  if (!engine) {
+    LOG(ERROR) << "Failed to create ExecutionEngine: "
+               << toString(engine.takeError());
+    return nullptr;
+  }
 
   // Finally, register the missing symbols.
   engine.get()->registerSymbols(TFFrameworkSymbolMap);

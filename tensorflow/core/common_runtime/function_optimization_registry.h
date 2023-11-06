@@ -41,11 +41,21 @@ namespace tensorflow {
 // Graph and other associated arguments are performed inplace by the pass.
 class FunctionOptimizationPass {
  public:
+  // Grouped Options for the optimized function.
+  struct FunctionOptions {
+    // Specifies the compilation device type(CPU, GPU, etc)
+    // that should be used for entire function.
+    std::string xla_compile_device_type = "";
+    // Whether soft placement and outside compilation
+    // are enabled for the function.
+    bool allow_soft_placement = false;
+  };
+
   virtual ~FunctionOptimizationPass() {}
   virtual Status Run(const std::string& function_name,
                      const DeviceSet& device_set,
                      const ConfigProto& config_proto,
-                     absl::string_view xla_compile_device_type,
+                     const FunctionOptions& function_options,
                      std::unique_ptr<Graph>* graph,
                      FunctionLibraryDefinition* flib_def,
                      std::vector<std::string>* control_ret_node_names,
@@ -65,7 +75,7 @@ class FunctionOptimizationPassRegistry {
   // Runs a pass if the registry contains one.
   Status Run(const std::string& function_name, const DeviceSet& device_set,
              const ConfigProto& config_proto,
-             absl::string_view xla_compile_device_type,
+             const FunctionOptimizationPass::FunctionOptions& function_options,
              std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
              std::vector<std::string>* control_ret_node_names,
              bool* control_rets_updated);

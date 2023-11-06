@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 
+#include <iostream>
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -678,8 +683,11 @@ TEST(TensorHandle_ResourceShapeMirror, CreateAndCheckMirror) {
   TF_EXPECT_OK(h->AddResourceShapeMirror(d1, op_id, output_num, context));
   EXPECT_TRUE(h->HasResourceShapeMirror(d1, context->GetContextViewId()));
 
-  // Adding a duplicate leads to failure
-  EXPECT_THAT(h->AddResourceShapeMirror(d1, op_id, output_num, context),
+  // Adding an identical mirror is idempotent.
+  TF_EXPECT_OK(h->AddResourceShapeMirror(d1, op_id, output_num, context));
+
+  // Adding a duplicate mirror with inconsistent arguments leads to failure.
+  EXPECT_THAT(h->AddResourceShapeMirror(d1, op_id + 1, output_num, context),
               tensorflow::testing::StatusIs(tensorflow::error::INTERNAL));
   h->Unref();
   context->Unref();

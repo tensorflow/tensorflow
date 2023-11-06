@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_BATCH_KERNELS_H_
 #define TENSORFLOW_CORE_KERNELS_BATCH_KERNELS_H_
 
+#include <cstdint>
+
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
+#include "tsl/platform/types.h"
 
 namespace tensorflow {
 
@@ -33,6 +37,18 @@ ABSL_CONST_INIT extern const int64_t kMaxInflightBatches;
 namespace internal {
 class BatchFunctionKernelTestAccess;
 }
+
+// Records the usage of attribute `enable_large_batch_splitting`.
+void RecordBatchSplitUsage(
+    std::optional<bool> maybe_enable_large_batch_splitting,
+    absl::string_view model_name);
+
+// Records the number of batch threads of a model.
+void RecordBatchParamNumBatchThreads(int64_t num_batch_threads,
+                                     absl::string_view model_name);
+
+// Returns the model name from the context.
+absl::string_view GetModelName(OpKernelContext* ctx);
 
 // `BatchFunctionKernel` is the implementation of op `BatchFunction`.
 //
@@ -89,6 +105,10 @@ class BatchFunctionKernel : public AsyncOpKernel {
   int32 batch_timeout_micros_;
   int32 max_enqueued_batches_;
   std::vector<int32> allowed_batch_sizes_;
+  int32 low_priority_max_batch_size_;
+  int32 low_priority_batch_timeout_micros_;
+  int32 low_priority_max_enqueued_batches_;
+  std::vector<int32> low_priority_allowed_batch_sizes_;
   NameAttrList func_;
   absl::optional<FunctionLibraryRuntime::Handle> fhandle_ TF_GUARDED_BY(mu_);
   bool enable_large_batch_splitting_;

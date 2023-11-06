@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -37,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/test_utils.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -92,6 +94,17 @@ class FakeEagerClient : public EagerClient {
   CLIENT_METHOD(KeepAlive);
   CLIENT_METHOD(CloseContext);
 #undef CLIENT_METHOD
+
+#define CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES(method)                   \
+  void method##Async(const method##Request* request,                     \
+                     method##Response* response, StatusCallback done,    \
+                     int64_t init_timeout_in_ms, int retries) override { \
+    done(impl_->method(request, response));                              \
+  }
+
+  CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES(CreateContext);
+
+#undef CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES
 
   void EnqueueAsync(CallOptions* call_opts, const EnqueueRequest* request,
                     EnqueueResponse* response, StatusCallback done) override {
@@ -836,7 +849,8 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
   tensorflow::FunctionDef fdef_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> eager_pflr_;
   std::unique_ptr<EagerClusterFunctionLibraryRuntime> eager_cluster_flr_;
-  FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
+  FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(),
+                                          FunctionDefLibrary()};
 };
 
 // Test executes a remote function through
@@ -967,7 +981,8 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
       /*allow_control_flow_sync_execution=*/false,
       /*shape_inference_on_tfe_dialect_import=*/true,
       /*int_args_and_retvals_on_device=*/false,
-      /*xla_compile_device_type=*/std::nullopt, ctx->RendezvousFactory(),
+      /*xla_compile_device_type=*/std::nullopt,
+      /*allow_soft_placement=*/false, ctx->RendezvousFactory(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.
@@ -1021,7 +1036,8 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
       /*allow_control_flow_sync_execution=*/false,
       /*shape_inference_on_tfe_dialect_import=*/true,
       /*int_args_and_retvals_on_device=*/false,
-      /*xla_compile_device_type=*/std::nullopt, ctx->RendezvousFactory(),
+      /*xla_compile_device_type=*/std::nullopt,
+      /*allow_soft_placement=*/false, ctx->RendezvousFactory(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.

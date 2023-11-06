@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -46,11 +47,11 @@ limitations under the License.
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
-#include "tensorflow/tsl/lib/io/snappy/snappy_inputbuffer.h"
-#include "tensorflow/tsl/lib/io/snappy/snappy_outputbuffer.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/lib/io/snappy/snappy_inputbuffer.h"
+#include "tsl/lib/io/snappy/snappy_outputbuffer.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -136,11 +137,18 @@ Status Writer::Create(Env* env, const std::string& filename,
 }
 
 TFRecordWriter::TFRecordWriter(const std::string& filename,
-                               const std::string& compression_type)
-    : filename_(filename), compression_type_(compression_type) {}
+                               const std::string& compression_type,
+                               bool overwrite_existing)
+    : filename_(filename),
+      compression_type_(compression_type),
+      overwrite_existing_(overwrite_existing) {}
 
 Status TFRecordWriter::Initialize(tensorflow::Env* env) {
-  TF_RETURN_IF_ERROR(env->NewAppendableFile(filename_, &dest_));
+  if (overwrite_existing_) {
+    TF_RETURN_IF_ERROR(env->NewWritableFile(filename_, &dest_));
+  } else {
+    TF_RETURN_IF_ERROR(env->NewAppendableFile(filename_, &dest_));
+  }
 
   record_writer_ = std::make_unique<io::RecordWriter>(
       dest_.get(), io::RecordWriterOptions::CreateRecordWriterOptions(
@@ -478,12 +486,12 @@ class Reader::Dataset : public DatasetBase {
                            bool* end_of_sequence) override {
       *end_of_sequence = false;
       Status s = reader_->ReadTensors(out_tensors);
-      if (!errors::IsOutOfRange(s)) {
+      if (!absl::IsOutOfRange(s)) {
         start_index_++;
         return s;
       }
       Status status = AdvanceToNextFile(ctx->env());
-      if (errors::IsNotFound(status)) {
+      if (absl::IsNotFound(status)) {
         *end_of_sequence = true;
         return OkStatus();
       }
@@ -741,6 +749,7 @@ TFRecordReaderImpl::TFRecordReaderImpl(
     std::optional<int64_t> output_buffer_size)
     : filename_(filename),
       offset_(0),
+      bytes_read_(0),
       compression_(compression),
       output_buffer_size_(output_buffer_size) {}
 
@@ -755,12 +764,14 @@ Status TFRecordReaderImpl::Initialize(Env* env) {
   }
 #endif  // IS_SLIM_BUILD
   record_reader_ = std::make_unique<io::RecordReader>(file_.get(), options);
+  bytes_read_ = 0;
   return OkStatus();
 }
 
 StatusOr<Tensor> TFRecordReaderImpl::GetNext() {
   tstring record;
   TF_RETURN_IF_ERROR(record_reader_->ReadRecord(&offset_, &record));
+  bytes_read_ += record.size();
   return Parse(record);
 }
 
@@ -768,7 +779,7 @@ StatusOr<std::vector<Tensor>> TFRecordReaderImpl::GetTensors() {
   std::vector<Tensor> tensors;
   while (true) {
     StatusOr<Tensor> tensor = GetNext();
-    if (errors::IsOutOfRange(tensor.status())) {
+    if (absl::IsOutOfRange(tensor.status())) {
       return tensors;
     }
     TF_RETURN_IF_ERROR(tensor.status());

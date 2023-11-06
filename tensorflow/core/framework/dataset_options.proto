@@ -149,11 +149,8 @@ message OptimizationOptions {
   oneof optional_inject_prefetch {
     bool inject_prefetch = 19;
   }
-  // Whether to start background threads of asynchronous transformations upon
-  // iterator creation (as opposed to upon first call to `GetNext`).
-  oneof optional_warm_start {
-    bool warm_start = 20;
-  }
+  // NOTE: field id 20 was removed in August 2023.
+  reserved 20;
 }
 
 // next: 3
@@ -178,13 +175,13 @@ enum ExternalStatePolicy {
 // Message stored with Dataset objects to control how datasets are processed and
 // optimized.
 //
-// next: 9
+// next: 10
 message Options {
   // Whether the outputs need to be produced in deterministic order.
   oneof optional_deterministic {
     bool deterministic = 1;
   }
-  // The distribution strategy options associated with the dataset.
+  // The autotune options associated with the dataset.
   AutotuneOptions autotune_options = 7;
   // The distribution strategy options associated with the dataset.
   DistributeOptions distribute_options = 2;
@@ -220,5 +217,10 @@ message Options {
   // `map()`, are not compatible with symbolic checkpointing.
   oneof optional_symbolic_checkpoint {
     bool symbolic_checkpoint = 8;
+  }
+  // Whether to start background threads of asynchronous transformations upon
+  // iterator creation (as opposed to upon first call to `GetNext`).
+  oneof optional_warm_start {
+    bool warm_start = 9;
   }
 }

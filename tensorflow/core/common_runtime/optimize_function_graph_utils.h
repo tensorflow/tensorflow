@@ -39,15 +39,6 @@ static const char kGraphCachingEnvVariableName[] = "TF_GRAPH_CACHING";
 // Note: setting this threshold to 0 means to cache for every function.
 constexpr absl::Duration kCachingThresholdDuration = absl::Seconds(3);
 
-// Generates graph and return information given the input function name,
-// attributes and function definition.
-Status GetGraphAndArgRets(
-    const string& function_name, AttrSlice attrs, const FunctionDef* fdef,
-    const FunctionLibraryDefinition* lib_def, std::unique_ptr<Graph>* graph,
-    std::vector<Node*>* arg_nodes, std::vector<Node*>* ret_nodes,
-    std::vector<string>* ret_node_names, DataTypeVector* ret_types,
-    std::vector<string>* control_ret_node_names);
-
 // TODO(iga): Reword
 // Pins each arg that emits a `DT_RESOURCE` tensor to the device on which the
 // corresponding resource lives. This ensures that the Placer assigns ops that
@@ -93,7 +84,8 @@ PreprocessAndPartitionGraph(
     OptimizedFunctionGraphInfo& input_optimized_graph,
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
-    const std::vector<CompositeDevice*>& composite_devices, Env* env);
+    const std::vector<CompositeDevice*>& composite_devices, Device* cpu_device,
+    Env* env);
 
 }  // namespace tensorflow
 

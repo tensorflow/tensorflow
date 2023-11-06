@@ -79,7 +79,7 @@ class PyRecordReader {
     TF_RETURN_IF_ERROR(
         tensorflow::Env::Default()->NewRandomAccessFile(filename_, &file_));
     reader_ =
-        absl::make_unique<tensorflow::io::RecordReader>(file_.get(), options_);
+        std::make_unique<tensorflow::io::RecordReader>(file_.get(), options_);
     return ::tensorflow::OkStatus();
   }
 
@@ -109,7 +109,8 @@ class PyRecordReader {
   std::unique_ptr<tensorflow::RandomAccessFile> file_;
   std::unique_ptr<tensorflow::io::RecordReader> reader_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PyRecordReader);
+  PyRecordReader(const PyRecordReader&) = delete;
+  void operator=(const PyRecordReader&) = delete;
 };
 
 class PyRecordRandomReader {
@@ -123,7 +124,7 @@ class PyRecordRandomReader {
         tensorflow::io::RecordReaderOptions::CreateRecordReaderOptions("");
     options.buffer_size = kReaderBufferSize;
     auto reader =
-        absl::make_unique<tensorflow::io::RecordReader>(file.get(), options);
+        std::make_unique<tensorflow::io::RecordReader>(file.get(), options);
     *out = new PyRecordRandomReader(std::move(file), std::move(reader));
     return ::tensorflow::OkStatus();
   }
@@ -157,7 +158,8 @@ class PyRecordRandomReader {
   std::unique_ptr<tensorflow::RandomAccessFile> file_;
   std::unique_ptr<tensorflow::io::RecordReader> reader_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PyRecordRandomReader);
+  PyRecordRandomReader(const PyRecordRandomReader&) = delete;
+  void operator=(const PyRecordRandomReader&) = delete;
 };
 
 class PyRecordWriter {
@@ -170,7 +172,7 @@ class PyRecordWriter {
     TF_RETURN_IF_ERROR(
         tensorflow::Env::Default()->NewWritableFile(filename, &file));
     auto writer =
-        absl::make_unique<tensorflow::io::RecordWriter>(file.get(), options);
+        std::make_unique<tensorflow::io::RecordWriter>(file.get(), options);
     *out = new PyRecordWriter(std::move(file), std::move(writer));
     return ::tensorflow::OkStatus();
   }
@@ -223,7 +225,8 @@ class PyRecordWriter {
   std::unique_ptr<tensorflow::WritableFile> file_;
   std::unique_ptr<tensorflow::io::RecordWriter> writer_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PyRecordWriter);
+  PyRecordWriter(const PyRecordWriter&) = delete;
+  void operator=(const PyRecordWriter&) = delete;
 };
 
 PYBIND11_MODULE(_pywrap_record_io, m) {

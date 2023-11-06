@@ -18,7 +18,7 @@ cc_library(
     deps = if_oss([
         "//tensorflow/core:test_main",
     ]) + if_google([
-        "//tensorflow/tsl/platform/default/build_config:test_main",
+        "@local_tsl//tsl/platform/default/build_config:test_main",
     ]),
 )
 
@@ -60,17 +60,6 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
-        "//tensorflow/compiler/xla:cpu_function_runtime",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/client:compile_only_client",
-        "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/service:compiler",
-        "//tensorflow/compiler/xla/service/cpu:buffer_info_util",
-        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -84,6 +73,17 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
+        "@local_xla//xla:cpu_function_runtime",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:statusor",
+        "@local_xla//xla:util",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/client:client_library",
+        "@local_xla//xla/client:compile_only_client",
+        "@local_xla//xla/client:xla_computation",
+        "@local_xla//xla/service:compiler",
+        "@local_xla//xla/service/cpu:buffer_info_util",
+        "@local_xla//xla/service/cpu:cpu_compiler",
     ],
 )
 
@@ -96,8 +96,6 @@ tf_cc_test(
     ],
     deps = [
         ":tfcompile_lib",
-        "//tensorflow/compiler/xla:cpu_function_runtime",
-        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -106,6 +104,8 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",  # fixdeps: keep
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
+        "@local_xla//xla:cpu_function_runtime",
+        "@local_xla//xla:shape_util",
     ],
 )
 
@@ -143,8 +143,6 @@ cc_library(
         ":tfcompile_lib",
         "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
-        "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -153,6 +151,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla:debug_options_flags",
+        "@local_xla//xla/service:compiler",
     ],
 )
 
@@ -296,9 +296,6 @@ cc_library(
     srcs = ["embedded_protocol_buffers.cc"],
     hdrs = ["embedded_protocol_buffers.h"],
     deps = [
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service/llvm_ir:llvm_type_conversion_util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -307,6 +304,9 @@ cc_library(
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
+        "@local_xla//xla:statusor",
+        "@local_xla//xla:util",
+        "@local_xla//xla/service/llvm_ir:llvm_type_conversion_util",
     ],
 )
 

@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 
 #include <memory>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -29,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -40,7 +43,7 @@ namespace {
 
 class TestEnv {
  public:
-  TestEnv() : flib_def_(OpRegistry::Global(), {}) {
+  TestEnv() : flib_def_(OpRegistry::Global(), FunctionDefLibrary()) {
     std::vector<std::unique_ptr<Device>> devices;
     devices.push_back(
         DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
@@ -138,8 +141,8 @@ void BM_KernelAndDeviceRun(::testing::benchmark::State& state) {
   TF_CHECK_OK(k.Init({}, ndef, nullptr));
   const EagerKernelArgs args(std::move(inputs));
   for (auto s : state) {
-    TF_CHECK_OK(k.Run(nullptr, args, &outputs, nullptr, absl::nullopt,
-                      absl::nullopt, nullptr));
+    TF_CHECK_OK(k.Run(nullptr, args, &outputs, nullptr, std::nullopt,
+                      std::nullopt, nullptr));
   }
 }
 BENCHMARK(BM_KernelAndDeviceRun);

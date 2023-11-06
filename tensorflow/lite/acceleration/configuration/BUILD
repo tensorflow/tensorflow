@@ -16,12 +16,14 @@
 load("@flatbuffers//:build_defs.bzl", "DEFAULT_FLATC_ARGS", "flatbuffer_android_library", "flatbuffer_cc_library", "flatbuffer_java_library", "flatc_path")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
-load("//tensorflow/lite:special_rules.bzl", "nnapi_plugin_impl_visibility_allowlist", "tflite_portable_test_suite")
-load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite", "cc_test_with_tflite")
+
+# copybara:uncomment load("//tools/build_defs/proto/cpp:cc_proto_library.bzl", "cc_proto_library")
 load(":build_defs.bzl", "flatbuffer_schema_compat_test")
 
 # copybara:comment_begin(oss-only)
-load("//tensorflow/tsl/platform/default:build_config.bzl", "tf_proto_library_py")
+load("@local_tsl//tsl/platform/default:build_config.bzl", "tf_proto_library_py")
 # copybara:comment_end
 
 package(
@@ -115,10 +117,12 @@ proto_library(
     srcs = [
         "configuration.proto",
     ],
+    compatible_with = get_compatible_with_portable(),
 )
 
 cc_proto_library(
     name = "configuration_cc_proto",
+    compatible_with = get_compatible_with_portable(),
     deps = [":configuration_proto"],
 )
 
@@ -180,6 +184,7 @@ cc_library(
         "flatbuffer_to_proto.cc",
     ],
     hdrs = ["flatbuffer_to_proto.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":configuration_cc_proto",
         ":configuration_fbs",
@@ -224,60 +229,10 @@ cc_library_with_tflite(
     deps = ["@com_google_absl//absl/memory"],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "nnapi_plugin",
     compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":nnapi_plugin_impl",
-    ],
-)
-
-cc_library(
-    name = "nnapi_plugin_impl",
-    srcs = ["nnapi_plugin.cc"],
-    hdrs = ["nnapi_plugin.h"],
-    compatible_with = get_compatible_with_portable(),
-    visibility = nnapi_plugin_impl_visibility_allowlist() + [
-        "//tensorflow/lite/acceleration/configuration/c:__pkg__",
-        "//tensorflow/lite/core/acceleration/configuration/c:__pkg__",
-        "//tensorflow/lite/core/experimental/acceleration/configuration/c:__pkg__",
-        "//tensorflow/lite/experimental/acceleration/configuration:__pkg__",
-        "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
-    ],
-    deps = [
-        ":configuration_fbs",
-        "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
-        "//tensorflow/lite/core/acceleration/configuration/c:delegate_plugin",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-        "//tensorflow/lite/nnapi:nnapi_implementation_headers",
-        "@com_google_absl//absl/memory",
-    ],
-    alwayslink = 1,  # For registration to always run.
-)
-
-cc_test(
-    name = "nnapi_plugin_test",
-    srcs = ["nnapi_plugin_test.cc"],
-    tags = [
-        "no_mac",
-        "no_windows",
-        "tflite_not_portable_ios",
-    ],
-    deps = [
-        ":configuration_fbs",
-        ":nnapi_plugin",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/acceleration/configuration:nnapi_plugin_impl",
-        "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-        "//tensorflow/lite/delegates/nnapi:nnapi_delegate_mock_test",
-        "//tensorflow/lite/kernels:test_util",
-        "@com_google_googletest//:gtest_main",
-        "@flatbuffers",
-    ],
+    deps = ["//tensorflow/lite/core/acceleration/configuration:nnapi_plugin"],
 )
 
 cc_library(
@@ -288,7 +243,10 @@ cc_library(
         "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
         "@com_google_absl//absl/memory",
     ] + select({
-        "//tensorflow:android": [
+        "//third_party/bazel_platforms/cpu:aarch64": [
+            "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
+        ],
+        "//third_party/bazel_platforms/cpu:armv7": [
             "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
         ],
         "//conditions:default": [],
@@ -366,28 +324,53 @@ cc_test(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "xnnpack_plugin",
-    srcs = ["xnnpack_plugin.cc"],
-    deps = [
-        ":configuration_fbs",
-        "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
-        "@com_google_absl//absl/base:log_severity",
-        "@com_google_absl//absl/memory",
-    ],
-    alwayslink = 1,  # For registration to always run.
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = ["//tensorflow/lite/core/acceleration/configuration:xnnpack_plugin"],
 )
 
+cc_test_with_tflite(
+    name = "xnnpack_plugin_with_tflite_test",
+    srcs = ["xnnpack_plugin_test.cc"],
+    # The variant of this test that links against TF Lite in Play services
+    # isn't portable to iOS / Mac or Android, because it relies on a separate
+    # shared library that isn't included in the executable, and the testing
+    # infrastructure for iOS and Android doesn't propagate data dependencies
+    # to the test device.  So we disable this test on those devices.
+    # TODO(b/306161304): ideally we ought to apply these tags only to the
+    # variant for TF Lite in Play services.  In the mean time, we apply those
+    # tags to the whole test, but also duplicate the test below using cc_test
+    # without the tags.
+    tags = [
+        "no_mac",
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
+    tflite_deps = [
+        ":xnnpack_plugin",
+        "//tensorflow/lite:test_util",
+        "//tensorflow/lite/acceleration/configuration:delegate_registry",
+    ],
+    deps = [
+        ":configuration_fbs",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
+        "@pthreadpool",
+    ],
+)
+
+# This duplicates xnnnpack_plugin_with_tflite_test above, but without the tags,
+# to ensure that this test does get run on iOS and Android.
 cc_test(
     name = "xnnpack_plugin_test",
     srcs = ["xnnpack_plugin_test.cc"],
     deps = [
         ":configuration_fbs",
         ":xnnpack_plugin",
-        "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite:test_util",
+        "//tensorflow/lite/acceleration/configuration:delegate_registry",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
         "@pthreadpool",

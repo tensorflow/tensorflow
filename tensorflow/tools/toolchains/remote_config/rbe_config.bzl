@@ -144,8 +144,8 @@ def _tensorflow_rbe_win_config(name, python_bin_path, container_name = "windows-
 
     remote_python_configure(
         name = "%s_config_python" % name,
-        environ = env,
         exec_properties = exec_properties,
+        environ = env,
         platform_constraint = "@%s_config_platform//:platform_constraint" % name,
     )
 

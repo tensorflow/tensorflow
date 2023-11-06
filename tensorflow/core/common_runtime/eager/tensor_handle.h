@@ -21,6 +21,7 @@ limitations under the License.
 #include <queue>
 #include <string>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 // clang-format off
@@ -67,9 +68,9 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
 #if !defined(IS_MOBILE_PLATFORM)
   TensorHandle(int64_t op_id, int32_t output_num, const string& remote_task,
                tensorflow::DataType dtype, Device* device, EagerContext* ctx,
-               const bool unknown_device);
+               bool unknown_device);
   TensorHandle(int64_t op_id, int32_t output_num, tensorflow::DataType dtype,
-               Device* device, const bool is_ready, EagerContext* ctx);
+               Device* device, bool is_ready, EagerContext* ctx);
 #endif  // IS_MOBILE_PLATFORM
 
  public:
@@ -94,7 +95,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // count will be increased by one after a call to `CreatePackedHandle`.
   // TODO(b/170414377): Use `TensorHandlePtr` instead.
   static Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
-                                   const tensorflow::DataType dtype,
+                                   tensorflow::DataType dtype,
                                    const tensorflow::TensorShape& shape,
                                    const string& device_name, EagerContext* ctx,
                                    TensorHandle** packed_handle);
@@ -106,17 +107,19 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // An unshaped remote handle refers to a tensor on a remote worker. It's not
   // ready until the shape is set. It controls the lifetime of the remote
   // tensor.
-  static TensorHandle* CreateUnshapedRemoteHandle(
-      int64_t op_id, int32_t output_num, const string& remote_task,
-      tensorflow::DataType dtype, Device* d, EagerContext* ctx,
-      const bool unknown_device = false);
+  static TensorHandle* CreateUnshapedRemoteHandle(int64_t op_id,
+                                                  int32_t output_num,
+                                                  const string& remote_task,
+                                                  tensorflow::DataType dtype,
+                                                  Device* d, EagerContext* ctx,
+                                                  bool unknown_device = false);
   // A lazy remote handle refers to a tensor on a remote worker. The lifetime of
   // the remote tensor is controlled by the remote worker, but not by the lazy
   // remote handle. Lazy handles are normally created on a default function
   // device.
   static TensorHandle* CreateLazyRemoteHandle(int64_t op_id, int32_t output_num,
                                               tensorflow::DataType dtype,
-                                              Device* d, const bool is_ready,
+                                              Device* d, bool is_ready,
                                               EagerContext* ctx);
 #endif  // IS_MOBILE_PLATFORM
 
@@ -195,8 +198,8 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // Return the op_id and output num if the handle refers to a remote tensor.
   // If wait_until_ready is true, block until the remote tensor is ready on the
   // given remote worker.
-  Status RemoteAddress(const Device* d, const bool wait_until_ready,
-                       int64_t* op_id, int32* output_num) const;
+  Status RemoteAddress(const Device* d, bool wait_until_ready, int64_t* op_id,
+                       int32* output_num) const;
 
   // Called on an async remote tensor once it's shape has been determined. This
   // transitions the tensor handle from a non-ready to a ready state by
@@ -237,12 +240,10 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   Status CopyToDevice(const EagerContext& ctx, tensorflow::Device* d,
                       tensorflow::Tensor* output) const;
 
-  Status InferenceShape(
-      shape_inference::InferenceContext* const inference_context,
-      shape_inference::ShapeHandle* shape_handle);
-  void SetInferenceShape(
-      shape_inference::InferenceContext* const inference_context,
-      const shape_inference::ShapeHandle& shape_handle);
+  Status InferenceShape(shape_inference::InferenceContext* inference_context,
+                        shape_inference::ShapeHandle* shape_handle);
+  void SetInferenceShape(shape_inference::InferenceContext* inference_context,
+                         const shape_inference::ShapeHandle& shape_handle);
   Status CopyInferenceShape(TensorHandle* other);
 
   // dtype for the handle. It must be the same as t.dtype() once the handle is
@@ -266,7 +267,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   int NumPackedHandles() const;
   // It's called on a packed TensorHandle. Extract a handle with the given
   // index.
-  Status ExtractPackedHandle(const int index, TensorHandle** handle) const;
+  Status ExtractPackedHandle(int index, TensorHandle** handle) const;
 
   // For LLVM style RTTI.
   static bool classof(const AbstractTensorHandle* ptr) {
@@ -281,8 +282,8 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   friend class PackedTensorHandleTest;
 
   TensorHandle(std::vector<TensorHandle*>&& handles, Device* device,
-               const tensorflow::DataType dtype,
-               const tensorflow::TensorShape& shape, EagerContext* ctx);
+               tensorflow::DataType dtype, const tensorflow::TensorShape& shape,
+               EagerContext* ctx);
 
   ~TensorHandle() override;
 
@@ -324,8 +325,6 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // then.
   std::unordered_map<string, RemoteTensorHandleData> resource_shape_mirrors_
       TF_GUARDED_BY(mu_);
-  // TODO(gjn): Is std::map the most optimal choice here? Perhaps this should be
-  // a fixed size map.
   std::unordered_map<string, RemoteTensorHandleData> remote_mirrors_
       TF_GUARDED_BY(mu_);
 #endif
@@ -374,7 +373,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
     // Number of packed handles.
     int NumPackedHandles() const;
     // Extract a handle on the given index.
-    Status ExtractPackedHandle(const int index, TensorHandle** handle) const;
+    Status ExtractPackedHandle(int index, TensorHandle** handle) const;
 
    private:
     // TODO(b/170414377): Use `TensorHandlePtr` instead.
@@ -388,8 +387,8 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // Does not need synchronization because it can be accessed only after
   // WaitReady() has returned. At that point, data_ is immutable.
 #if !defined(IS_MOBILE_PLATFORM)
-  absl::variant<LocalTensorHandleData, PackedTensorHandleData,
-                RemoteTensorHandleData>
+  std::variant<LocalTensorHandleData, PackedTensorHandleData,
+               RemoteTensorHandleData>
       data_;
 #else
   absl::variant<LocalTensorHandleData, PackedTensorHandleData> data_;

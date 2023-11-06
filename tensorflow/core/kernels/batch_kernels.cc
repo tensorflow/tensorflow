@@ -16,10 +16,14 @@ limitations under the License.
 #include "tensorflow/core/kernels/batch_kernels.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/function.h"
@@ -35,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/bounded_executor.h"
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
+#include "tensorflow/core/kernels/batching_util/warmup.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -42,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/threadpool.h"
 
 namespace tensorflow {
@@ -65,38 +71,38 @@ const int64_t kInitialInflightBatches = 2;
 const int64_t kBatchesToAverageOver = 10;
 const int64_t kMaxInflightBatches = 64;
 
-auto* batch_op_split_usage = monitoring::Gauge<string, 1>::New(
-    "/tensorflow/serving/batching/enable_large_batch_splitting",
-    "Tracks the usage of attribute `enable_large_batch_splitting` for "
-    "BatchFunction kernel in a saved model.",
-    "model_name");
-
 void RecordBatchSplitUsage(
-    absl::optional<bool> maybe_enable_large_batch_splitting,
-    const string& model_name) {
+    std::optional<bool> maybe_enable_large_batch_splitting,
+    absl::string_view model_name) {
+  static auto* cell = monitoring::Gauge<std::string, 1>::New(
+      "/tensorflow/serving/batching/enable_large_batch_splitting",
+      "Tracks the usage of attribute `enable_large_batch_splitting` for "
+      "BatchFunction kernel in a saved model.",
+      "model_name");
   if (maybe_enable_large_batch_splitting.has_value()) {
     if (maybe_enable_large_batch_splitting.value()) {
-      batch_op_split_usage->GetCell(model_name)->Set("true");
+      cell->GetCell(std::string(model_name))->Set("true");
     } else {
-      batch_op_split_usage->GetCell(model_name)->Set("false");
+      cell->GetCell(std::string(model_name))->Set("false");
     }
   } else {
-    batch_op_split_usage->GetCell(model_name)->Set("unset");
+    cell->GetCell(std::string(model_name))->Set("unset");
   }
 }
 
 void RecordBatchParamNumBatchThreads(int64_t num_batch_threads,
-                                     const string& model_name) {
+                                     absl::string_view model_name) {
   static auto* cell = monitoring::Gauge<int64_t, 1>::New(
       "/tensorflow/serving/batching/num_batch_threads",
       "Tracks the number of batch threads of a model.", "model_name");
-  cell->GetCell(model_name)->Set(num_batch_threads);
+  cell->GetCell(std::string(model_name))->Set(num_batch_threads);
 }
 
-const string& GetModelName(OpKernelContext* ctx) {
-  static string* kModelNameUnset = new string("model_name_unset");
-  if (!ctx->session_metadata()) return *kModelNameUnset;
-  if (ctx->session_metadata()->name().empty()) return *kModelNameUnset;
+absl::string_view GetModelName(OpKernelContext* ctx) {
+  if (ctx->session_metadata() == nullptr ||
+      ctx->session_metadata()->name().empty()) {
+    return "model_name_unset";
+  }
   return ctx->session_metadata()->name();
 }
 
@@ -157,6 +163,27 @@ class BatchResource : public serving::BatchResourceBase {
                        const std::vector<int32>& allowed_batch_sizes,
                        bool enable_large_batch_splitting,
                        std::unique_ptr<BatchResource>* resource) {
+    return Create(has_process_batch_function, num_batch_threads,
+                  max_execution_batch_size, batch_timeout_micros,
+                  max_enqueued_batches, allowed_batch_sizes,
+                  /*low_priority_max_batch_size=*/0,
+                  /*low_priority_batch_timeout_micros=*/0,
+                  /*low_priority_max_enqueued_batches=*/0,
+                  /*low_priority_allowed_batch_sizes=*/{},
+                  enable_large_batch_splitting, resource);
+  }
+
+  static Status Create(
+      bool has_process_batch_function, int32_t num_batch_threads,
+      int32_t max_execution_batch_size, int32_t batch_timeout_micros,
+      int32_t max_enqueued_batches,
+      const std::vector<int32>& allowed_batch_sizes,
+      int32_t low_priority_max_batch_size,
+      int32_t low_priority_batch_timeout_micros,
+      int32_t low_priority_max_enqueued_batches,
+      const std::vector<int32>& low_priority_allowed_batch_sizes,
+      bool enable_large_batch_splitting,
+      std::unique_ptr<BatchResource>* resource) {
     BatcherT::Options batcher_options;
     batcher_options.num_batch_threads = num_batch_threads;
     std::shared_ptr<BatcherT> batcher;
@@ -167,7 +194,11 @@ class BatchResource : public serving::BatchResourceBase {
         GetBatcherQueueOptions(
             num_batch_threads, max_execution_batch_size, batch_timeout_micros,
             max_enqueued_batches, allowed_batch_sizes,
-            enable_large_batch_splitting, /*disable_padding=*/false),
+            enable_large_batch_splitting,
+            /*disable_padding=*/false, low_priority_max_batch_size,
+            low_priority_batch_timeout_micros,
+            low_priority_max_enqueued_batches,
+            low_priority_allowed_batch_sizes),
         allowed_batch_sizes));
     return OkStatus();
   }
@@ -256,6 +287,14 @@ BatchFunctionKernel::BatchFunctionKernel(OpKernelConstruction* c)
   OP_REQUIRES_OK(c, c->GetAttr("batch_timeout_micros", &batch_timeout_micros_));
   OP_REQUIRES_OK(c, c->GetAttr("max_enqueued_batches", &max_enqueued_batches_));
   OP_REQUIRES_OK(c, c->GetAttr("allowed_batch_sizes", &allowed_batch_sizes_));
+  OP_REQUIRES_OK(c, c->GetAttr("low_priority_max_batch_size",
+                               &low_priority_max_batch_size_));
+  OP_REQUIRES_OK(c, c->GetAttr("low_priority_batch_timeout_micros",
+                               &low_priority_batch_timeout_micros_));
+  OP_REQUIRES_OK(c, c->GetAttr("low_priority_allowed_batch_sizes",
+                               &low_priority_allowed_batch_sizes_));
+  OP_REQUIRES_OK(c, c->GetAttr("low_priority_max_enqueued_batches",
+                               &low_priority_max_enqueued_batches_));
 
   OP_REQUIRES_OK(c, c->GetAttr("f", &func_));
 
@@ -298,10 +337,9 @@ bool BatchFunctionKernel::IsExpensive() { return false; }
 
 void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
   RecordBatchSplitUsage(has_attribute_enable_large_batch_splitting_
-                            ? absl::make_optional(enable_large_batch_splitting_)
-                            : absl::nullopt,
+                            ? std::make_optional(enable_large_batch_splitting_)
+                            : std::nullopt,
                         GetModelName(c));
-  // TODO(b/173255290): Add num_batch_threads_ parameter to TFRT batch kernel.
   RecordBatchParamNumBatchThreads(num_batch_threads_, GetModelName(c));
 
   std::function<Status(BatchResource**)> creator;
@@ -309,8 +347,9 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
   FunctionLibraryRuntime::Handle handle;
   OP_REQUIRES_OK_ASYNC(c, GetOrCreateFunctionHandle(c, &handle), done);
 
-  if (adaptive_batch_scheduler_options_ != absl::nullopt) {
-    creator = [this](BatchResource** r) {
+  if (adaptive_batch_scheduler_options_ != std::nullopt) {
+    creator = [this,
+               session_metadata = c->session_metadata()](BatchResource** r) {
       serving::AdaptiveSharedBatchScheduler<
           serving::BatchResourceBase::BatchTask>::Options
           adaptive_shared_batch_scheduler_options;
@@ -371,16 +410,26 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
           adaptive_shared_batch_scheduler_options, max_batch_size_,
           batch_timeout_micros_, max_enqueued_batches_, allowed_batch_sizes_,
           &new_resource));
+      if (session_metadata) {
+        new_resource->set_session_metadata(*session_metadata);
+      }
       *r = new_resource.release();
       return OkStatus();
     };
   } else {
-    creator = [this](BatchResource** r) {
+    creator = [this,
+               session_metadata = c->session_metadata()](BatchResource** r) {
       std::unique_ptr<BatchResource> new_resource;
       TF_RETURN_IF_ERROR(BatchResource::Create(
           /*has_process_batch_function=*/true, num_batch_threads_,
           max_batch_size_, batch_timeout_micros_, max_enqueued_batches_,
-          allowed_batch_sizes_, enable_large_batch_splitting_, &new_resource));
+          allowed_batch_sizes_, low_priority_max_batch_size_,
+          low_priority_batch_timeout_micros_,
+          low_priority_max_enqueued_batches_, low_priority_allowed_batch_sizes_,
+          enable_large_batch_splitting_, &new_resource));
+      if (session_metadata) {
+        new_resource->set_session_metadata(*session_metadata);
+      }
       *r = new_resource.release();
       return OkStatus();
     };
@@ -391,13 +440,19 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
                        c->resource_manager()->LookupOrCreate(
                            container_, shared_name_, &br, creator),
                        done);
-  const Status status = br->RegisterInput(
-      random::New64(), c, batcher_queue_,
-      [handle]()
-          -> StatusOr<std::unique_ptr<serving::BatchResourceBase::BatchTask>> {
-        return {std::make_unique<BatchResource::BatchTask>(handle)};
-      },
-      done);
+  const uint64_t guid = random::New64();
+  auto create_batch_task_fn = [handle]()
+      -> StatusOr<std::unique_ptr<serving::BatchResourceBase::BatchTask>> {
+    return {std::make_unique<BatchResource::BatchTask>(handle)};
+  };
+  Status status;
+  if (serving::ShouldWarmupAllBatchSizes(c)) {
+    status = br->RegisterWarmupInputs(guid, c, batcher_queue_,
+                                      create_batch_task_fn, done);
+  } else {
+    status =
+        br->RegisterInput(guid, c, batcher_queue_, create_batch_task_fn, done);
+  }
   br->Unref();
   OP_REQUIRES_OK_ASYNC(c, status, done);
   // Assume br calls done, so nothing to do here.

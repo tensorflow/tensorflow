@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
@@ -322,7 +323,7 @@ def while_loop(cond,
 
 @ops.RegisterGradient("StatelessWhile")
 @ops.RegisterGradient("While")
-def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
+def _WhileGrad(op: ops.Operation, *grads):  # pylint: disable=invalid-name
   """The gradient of a While op produced by while_loop."""
   # Note that op is not always the same as while_op because the gradient tape,
   # for eager mode compatibility, forgets information about the proper op. Since
@@ -805,7 +806,7 @@ def _get_structured_grad_output(outputs, grads, body_grad_graph):
           dense_shape=outputs[outputs_idx + 2]))
       outputs_idx += 3
     else:
-      assert isinstance(output, ops.Tensor)
+      assert isinstance(output, tensor_lib.Tensor)
       result.append(outputs[outputs_idx])
       outputs_idx += 1
 
@@ -1386,7 +1387,7 @@ def _is_loop_invariant(tensor, inputs, outputs):
           any(tensor is t for t in outputs))
 
 
-def _set_read_only_resource_inputs_attr(op, branch_graphs):
+def _set_read_only_resource_inputs_attr(op: ops.Operation, branch_graphs):
   """Sets the list of resource inputs which are read-only.
 
   This is used by AutomaticControlDependencies.

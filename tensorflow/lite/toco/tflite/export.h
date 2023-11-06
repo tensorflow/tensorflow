@@ -49,7 +49,6 @@ tensorflow::Status Export(
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type);
 
 // This is for backward-compatibility.
-// TODO(ycling): Remove the deprecated entry functions.
 inline void Export(const Model& model, bool allow_custom_ops,
                    bool quantize_weights, std::string* output_file_contents) {
   ExportParams params;
@@ -61,7 +60,6 @@ inline void Export(const Model& model, bool allow_custom_ops,
 }
 
 // This is for backward-compatibility.
-// TODO(ycling): Remove the deprecated entry functions.
 inline void Export(
     const Model& model, bool allow_custom_ops, bool quantize_weights,
     std::string* output_file_contents,
@@ -75,7 +73,6 @@ inline void Export(
 }
 
 // This is for backward-compatibility.
-// TODO(ycling): Remove the deprecated entry functions.
 inline void Export(const Model& model, std::string* output_file_contents) {
   ExportParams params;
   params.allow_custom_ops = true;

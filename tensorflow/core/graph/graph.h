@@ -64,8 +64,9 @@ namespace tensorflow {
 class Edge;
 class EdgeSetTest;
 class Graph;
-class GraphTest;
+class GraphDebugInfo;
 class GraphDef;
+class GraphTest;
 class Node;
 struct OutputTensor;
 class VersionDef;
@@ -374,7 +375,8 @@ class Node {
   // this set.)
   WhileContext* while_ctx_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Node);
+  Node(const Node&) = delete;
+  void operator=(const Node&) = delete;
 };
 
 // Stores debug information associated with the Node.
@@ -613,6 +615,10 @@ class Graph {
   // is also updated.
   Status UpdateEdge(Node* new_src, int new_src_index, Node* dst, int dst_index);
 
+  // Add an input to dst that comes from the "src_slot" output of the
+  // node named by "src_name".
+  static void AddInput(NodeDef* dst, StringPiece src_name, int src_slot);
+
   // Like AddEdge but updates dst's NodeDef. Used to add an input edge to a
   // "While" op during gradient construction, see AddInputWhileHack in
   // python_api.h for more details.
@@ -630,9 +636,9 @@ class Graph {
   // imported function differs from an existing function or op with the same
   // name.
   Status AddFunctionLibrary(const FunctionDefLibrary& fdef_lib,
-                            const StackTracesMap& stack_traces);
+                            const FunctionDefLibraryStackTraces& stack_traces);
   Status AddFunctionLibrary(FunctionDefLibrary&& fdef_lib,
-                            const StackTracesMap& stack_traces);
+                            const FunctionDefLibraryStackTraces& stack_traces);
 
   // Adds the function definition and its stacktraces to this graph's op
   // registry. Ignores duplicate functions, and returns a bad status if an
@@ -676,8 +682,14 @@ class Graph {
   // contain references to functions whose definition is not included. It can
   // make sense to do this in cases where the caller already has a copy of the
   // function library.
+  // If `include_debug_info` is true, the `debug_info` field of the GraphDef
+  // will be populated with stack traces from the nodes and the function
+  // library. Note that if `include_debug_info` is true and `include_flib_def`
+  // is false, then `debug_info` will contain stack traces for nodes in the
+  // function library, which will not itself be included in the GraphDef.
   void ToGraphDefSubRange(GraphDef* graph_def, int from_node_id,
-                          bool include_flib_def = true) const;
+                          bool include_flib_def = true,
+                          bool include_debug_info = false) const;
 
   // Serialize to a GraphDef. `include_flib_def` indicates whether the function
   // library will be populated in the `graph_def`. `include_flib_def` should be
@@ -686,7 +698,13 @@ class Graph {
   // `graph_def` is incomplete and may contain references to functions whose
   // definition is not included. It can make sense to do this in cases where the
   // caller already has a copy of the function library.
-  void ToGraphDef(GraphDef* graph_def, bool include_flib_def = true) const;
+  // If `include_debug_info` is true, the `debug_info` field of the GraphDef
+  // will be populated with stack traces from the nodes and the function
+  // library. Note that if `include_debug_info` is true and `include_flib_def`
+  // is false, then `debug_info` will contain stack traces for nodes in the
+  // function library, which will not itself be included in the GraphDef.
+  void ToGraphDef(GraphDef* graph_def, bool include_flib_def = true,
+                  bool include_debug_info = false) const;
 
   // This version can be called from debugger to inspect the graph content.
   // Use the previous version outside debug context for efficiency reasons.
@@ -815,6 +833,12 @@ class Graph {
   // information in the map.
   void NodeType(StringPiece name, const FullTypeDef** result);
 
+  // Builds a GraphDebugInfo from the functions and nodes in this graph. Stack
+  // traces associated with function definitions will have a key of the form
+  // <node_name> '@' <function_name>. Stack traces associated with other Nodes
+  // will use the node name as the key.
+  GraphDebugInfo BuildDebugInfo() const;
+
   // TODO(josh11b): uint64 hash() const;
 
  private:
@@ -895,7 +919,8 @@ class Graph {
   // Indicates the context that this Graph instance is constructed.
   ConstructionContext construction_context_ = ConstructionContext::kNotTracked;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Graph);
+  Graph(const Graph&) = delete;
+  void operator=(const Graph&) = delete;
 };
 
 // TODO(josh11b): We may want to support keeping an index on various

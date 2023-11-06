@@ -97,6 +97,8 @@ enum Delegate {
   EDGETPU_CORAL = 6;
   // Apple CoreML.
   CORE_ML = 7;
+  // Arm NN Delegate.
+  ARMNN = 8;
 }
 
 enum NNAPIExecutionPreference {
@@ -356,6 +358,9 @@ message StableDelegateLoaderSettings {
   // The path of the stable delegate shared object file. Then the stable
   // delegate provider can dynamically load the shared object file.
   optional string delegate_path = 1;
+  // Uniquely identifies a delegate. Format (snake_case): {vendor}_{delegate}.
+  // e.g. "google_edgetpu_delegate"
+  optional string delegate_name = 2;
 }
 
 // Fields related to compilation caching.  In this context compilation caching
@@ -627,6 +632,22 @@ message CPUSettings {
   optional int32 num_threads = 1 [default = -1];
 }
 
+// Arm NN Delegate Settings.
+// More information about Arm NN delegate options can be found in
+// https://arm-software.github.io/armnn/latest/delegate.xhtml#delegateoptions
+message ArmNNSettings {
+  // A comma separated list without whitespaces of backends
+  // which should be used for execution. Falls back to next backend in list
+  // if previous does not provide support for operation.
+  optional string backends = 1;
+  // Allows the use of optimisation techniques e.g. Winograd that
+  // will reduce execution time with the possibility of a drop in accuracy.
+  optional bool fastmath = 2;
+  // Additional Arm NN delegate options. See
+  // https://arm-software.github.io/armnn/latest/delegate.xhtml#delegateoptions
+  optional string additional_parameters = 3;
+}
+
 // How to configure TFLite.
 message TFLiteSettings {
   // Which delegate to use.
@@ -681,6 +702,9 @@ message TFLiteSettings {
 
   // Compilation caching settings.
   optional CompilationCachingSettings compilation_caching_settings = 15;
+
+  // For configuring the Arm NN delegate.
+  optional ArmNNSettings armnn_settings = 16;
 }
 
 // Whether to automatically fallback to TFLite CPU path on delegation errors.

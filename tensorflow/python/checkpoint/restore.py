@@ -593,6 +593,7 @@ def _queue_children_for_restoration(checkpoint_position, visit_queue):
   """Queues the restoration of trackable's children or defers them."""
   # pylint: disable=protected-access
   trackable = checkpoint_position.trackable
+  trackable_children = trackable._trackable_children()
   for child in checkpoint_position.object_proto.children:
     # trackable._lookup_dependency can be expensive so first check if this node
     # already has an object correspondence. If so we skip this node.
@@ -602,7 +603,8 @@ def _queue_children_for_restoration(checkpoint_position, visit_queue):
     if correspondence is not None:
       continue
     child_position = checkpoint_position.create_child_position(child.node_id)
-    local_object = trackable._lookup_dependency(child.local_name)
+    local_object = trackable._lookup_dependency(child.local_name,
+                                                trackable_children)
     child_proto = child_position.object_proto
     if local_object is None:
       # We don't yet have a dependency registered with this name. Save it

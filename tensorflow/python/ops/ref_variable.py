@@ -17,6 +17,7 @@
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_conversion_registry
@@ -25,6 +26,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import resource_variables_toggle
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variable_v1
@@ -58,7 +60,7 @@ def default_variable_creator(next_creator=None, **kwargs):
   if use_resource is None:
     use_resource = variable_scope.get_variable_scope().use_resource
   if use_resource is None:
-    use_resource = variable_scope._DEFAULT_USE_RESOURCE  # pylint: disable=protected-access
+    use_resource = resource_variables_toggle.resource_variables_enabled()
   use_resource = use_resource or context.executing_eagerly()
   if use_resource:
     distribute_strategy = kwargs.get("distribute_strategy", None)
@@ -1203,7 +1205,7 @@ class RefVariable(variable_v1.VariableV1, core.Tensor):
     return self._name
 
   @property
-  def initializer(self):
+  def initializer(self) -> ops.Operation:
     """The initializer operation for this variable."""
     return self._initializer_op
 
@@ -1213,17 +1215,17 @@ class RefVariable(variable_v1.VariableV1, core.Tensor):
     return self._variable.device
 
   @property
-  def dtype(self):
+  def dtype(self) -> dtypes.DType:
     """The `DType` of this variable."""
     return self._variable.dtype
 
   @property
-  def op(self):
+  def op(self) -> ops.Operation:
     """The `Operation` of this variable."""
     return self._variable.op
 
   @property
-  def graph(self):
+  def graph(self) -> ops.Graph:
     """The `Graph` of this variable."""
     return self._variable.graph
 

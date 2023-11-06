@@ -21,7 +21,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-namespace {
 xla::CompileOptions GetPjRtCompileOptions(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result) {
@@ -29,11 +28,16 @@ xla::CompileOptions GetPjRtCompileOptions(
   pjrt_compile_options.argument_layouts = result.xla_input_shapes;
   pjrt_compile_options.executable_build_options =
       GetExecutableBuildOptions(options, result, /*default_device_ordinal=*/-1);
-  // Compile portable executable for single device compilation.
-  pjrt_compile_options.compile_portable_executable = true;
+  if (pjrt_compile_options.executable_build_options.num_replicas() > 1 ||
+      pjrt_compile_options.executable_build_options.num_partitions() > 1) {
+    // Compile executable for sharded program
+    pjrt_compile_options.compile_portable_executable = false;
+  } else {
+    // Compile portable executable for single device compilation.
+    pjrt_compile_options.compile_portable_executable = true;
+  }
   return pjrt_compile_options;
 }
-}  // namespace
 
 StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>>
 PjRtDeviceCompilerClient::BuildExecutable(

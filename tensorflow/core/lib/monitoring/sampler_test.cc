@@ -117,7 +117,7 @@ TEST(ExplicitSamplerTest, SameName) {
                                         "Sampler with one label.", "MyLabel"},
                                        Buckets::Explicit({10.0, 20.0}));
   EXPECT_TRUE(sampler_with_labels->GetStatus().ok());
-  EXPECT_FALSE(same_sampler->GetStatus().ok());
+  EXPECT_TRUE(same_sampler->GetStatus().ok());
   delete same_sampler;
 }
 

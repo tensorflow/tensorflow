@@ -55,7 +55,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/tsl/protobuf/rpc_options.pb.h"
+#include "tsl/protobuf/rpc_options.pb.h"
 
 namespace tensorflow {
 
@@ -356,7 +356,8 @@ class DeviceFinder {
     return false;
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DeviceFinder);
+  DeviceFinder(const DeviceFinder&) = delete;
+  void operator=(const DeviceFinder&) = delete;
 };
 
 void Master::CreateSession(const CreateSessionRequest* req,
@@ -637,7 +638,9 @@ void Master::CleanupWorkers(const ResetRequest& reset) {
       if (worker) {
         worker->CleanupAllAsync(
             &req, &resp[i], [this, &n, worker_name, worker, c](Status s) {
-              TF_CHECK_OK(s);
+              if (!s.ok()) {
+                LOG(ERROR) << "Worker CleanupAll failed: " << s;
+              }
               env_->worker_cache->ReleaseWorker(worker_name, worker);
               n[c].Notify();
             });

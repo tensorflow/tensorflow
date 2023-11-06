@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_service.h"
 
 #include <chrono>  // NOLINT
+#include <memory>
+#include <vector>
 
 #include "grpcpp/support/byte_buffer.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
@@ -36,7 +38,7 @@ TpuCompilationCacheService::TpuCompilationCacheService(
       cache_(cache),
       server_builder_(server_builder),
       cq_(server_builder_->AddCompletionQueue()),
-      thread_pool_(absl::make_unique<thread::ThreadPool>(
+      thread_pool_(std::make_unique<thread::ThreadPool>(
           Env::Default(), "TpuCompilationCacheService",
           kGetTpuProgramServingThreads)) {
   cache_->Ref();

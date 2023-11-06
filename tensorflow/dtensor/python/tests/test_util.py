@@ -34,6 +34,7 @@ from tensorflow.dtensor.python import numpy_util
 from tensorflow.dtensor.python.config import is_gpu_present  # pylint: disable=unused-import
 from tensorflow.dtensor.python.config import is_tpu_present  # pylint: disable=unused-import
 from tensorflow.dtensor.python.config import preferred_device_type  # pylint: disable=unused-import
+from tensorflow.dtensor.python.config import use_multi_device_mode  # pylint: disable=unused-import
 from tensorflow.dtensor.python.tests import test_backend_util
 from tensorflow.dtensor.python.tests.test_backend_name import DTENSOR_TEST_UTIL_BACKEND
 from tensorflow.dtensor.python.tests.test_backend_name import DTensorTestUtilBackend
@@ -51,7 +52,7 @@ v2_compat.enable_v2_behavior()
 
 DEFAULT_TOL = 1e-5
 
-_DEFAULT_GPU_MEMORY_LIMIT = 200  # MB
+_DEFAULT_GPU_MEMORY_LIMIT = 1024  # 1G
 
 
 def get_use_xla_spmd(device_type):
@@ -403,4 +404,5 @@ __all__ = [
     'reset_dtensor',
     'is_tpu_present',
     'is_gpu_present',
+    'use_multi_device_mode',
 ]

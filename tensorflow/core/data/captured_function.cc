@@ -14,7 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/captured_function.h"
 
+#include <functional>
+#include <map>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "absl/time/clock.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -28,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/errors.h"
@@ -294,8 +300,9 @@ class CallFrameBase : public CallFrameInterface {
 
  private:
   DataTypeSlice ret_types_;
-  std::vector<gtl::optional<Tensor>> retvals_;
-  TF_DISALLOW_COPY_AND_ASSIGN(CallFrameBase);
+  std::vector<std::optional<Tensor>> retvals_;
+  CallFrameBase(const CallFrameBase&) = delete;
+  void operator=(const CallFrameBase&) = delete;
 };
 
 class OwnedArgsCallFrame : public CallFrameBase {
@@ -417,16 +424,6 @@ Status MakeIteratorFromInputElement(
       &nested_ctx, parent, iterator_prefix, out_iterator));
   ctx->MergeCheckpoint(nested_ctx.checkpoint());
   return OkStatus();
-}
-
-IteratorContext MakeNestedIteratorContext(IteratorContext* ctx) {
-  // Strip out any split providers so that they don't apply to sub-iterators.
-  if (ctx->split_providers().empty()) {
-    return *ctx;
-  }
-  IteratorContext::Params params(ctx);
-  params.split_providers.clear();
-  return IteratorContext(std::move(params));
 }
 
 /* static */

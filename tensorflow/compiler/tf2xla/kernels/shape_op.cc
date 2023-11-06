@@ -15,6 +15,11 @@ limitations under the License.
 
 // XLA-specific Shape Ops.
 
+#include <algorithm>
+#include <unordered_set>
+#include <vector>
+
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/tf2xla/kernels/shape_util.h"
 #include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
@@ -23,10 +28,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/shape_util.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/xla_builder.h"
+#include "xla/literal.h"
+#include "xla/shape_util.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -312,7 +317,7 @@ class SqueezeOp : public XlaOpKernel {
     xla::Shape shape = input_shape.value();
     int64_t rank = shape.rank();
 
-    std::unordered_set<int32> wrapped_squeeze_dims;
+    absl::flat_hash_set<int32> wrapped_squeeze_dims;
     wrapped_squeeze_dims.reserve(squeeze_dims_.size());
     std::vector<int64_t> new_shape;
     // Validate squeeze dims against the input.
@@ -360,7 +365,7 @@ class SqueezeOp : public XlaOpKernel {
   }
 
  private:
-  std::unordered_set<int32> squeeze_dims_;
+  absl::flat_hash_set<int32> squeeze_dims_;
 };
 
 REGISTER_XLA_OP(Name("Squeeze"), SqueezeOp);

@@ -41,10 +41,49 @@ namespace cl {
   } else {                                                                     \
     function = reinterpret_cast<PFN_##function>(dlsym(libopencl, #function));  \
   }
+
+namespace {
+
+// Loads a library from Android SP-HAL namespace which includes libraries from
+// the path /vendor/lib[64] directly and several sub-folders in it.
+// First tries using dlopen(), which should work if the process is running with
+// linker namespace "sphal" (so has permissions to sphal paths).
+// If it fails, for example if process is running with linker default namespace
+// because it's a sub-process of the app, then tries loading the library using
+// a sphal helper loader function from Vendor NDK support library.
+void* AndroidDlopenSphalLibrary(const char* filename, int dlopen_flags) {
+  void* lib = dlopen(filename, dlopen_flags);
+  if (lib != nullptr) {
+    return lib;
+  }
+  static void* (*android_load_sphal_library)(const char*, int) = nullptr;
+  if (android_load_sphal_library != nullptr) {
+    return android_load_sphal_library(filename, dlopen_flags);
+  }
+  android_load_sphal_library =
+      reinterpret_cast<decltype(android_load_sphal_library)>(
+          dlsym(RTLD_NEXT, "android_load_sphal_library"));
+  if (android_load_sphal_library == nullptr) {
+    void* vndk = dlopen("libvndksupport.so", RTLD_NOW);
+    if (vndk != nullptr) {
+      android_load_sphal_library =
+          reinterpret_cast<decltype(android_load_sphal_library)>(
+              dlsym(vndk, "android_load_sphal_library"));
+    }
+    if (android_load_sphal_library == nullptr) {
+      return nullptr;
+    }
+  }
+  return android_load_sphal_library(filename, dlopen_flags);
+}
+
+}  // namespace
+
 #elif defined(__WINDOWS__)
 #define LoadFunction(function) \
   function =                   \
       reinterpret_cast<PFN_##function>(GetProcAddress(libopencl, #function));
+
 #else
 #define LoadFunction(function) \
   function = reinterpret_cast<PFN_##function>(dlsym(libopencl, #function));
@@ -72,9 +111,11 @@ absl::Status LoadOpenCL() {
   void* libopencl = nullptr;
 #ifdef __ANDROID__
   // Pixel phone or auto?
-  libopencl = dlopen("libOpenCL-pixel.so", RTLD_NOW | RTLD_LOCAL);
+  libopencl =
+      AndroidDlopenSphalLibrary("libOpenCL-pixel.so", RTLD_NOW | RTLD_LOCAL);
   if (!libopencl) {
-    libopencl = dlopen("libOpenCL-car.so", RTLD_NOW | RTLD_LOCAL);
+    libopencl =
+        AndroidDlopenSphalLibrary("libOpenCL-car.so", RTLD_NOW | RTLD_LOCAL);
   }
   if (libopencl) {
     typedef void (*enableOpenCL_t)();
@@ -91,7 +132,11 @@ absl::Status LoadOpenCL() {
 #else
   static const char* kClLibName = "libOpenCL.so";
 #endif
+#ifdef __ANDROID__
+  libopencl = AndroidDlopenSphalLibrary(kClLibName, RTLD_NOW | RTLD_LOCAL);
+#else
   libopencl = dlopen(kClLibName, RTLD_NOW | RTLD_LOCAL);
+#endif
   if (libopencl) {
     LoadOpenCLFunctions(libopencl, false);
     return absl::OkStatus();

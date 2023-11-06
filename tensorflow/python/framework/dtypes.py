@@ -15,8 +15,10 @@
 """Library of dtypes (Tensor element types)."""
 import abc
 import builtins
+import dataclasses
 from typing import Type, Sequence, Optional
 
+import ml_dtypes
 import numpy as np
 
 from tensorflow.core.framework import types_pb2
@@ -25,24 +27,25 @@ from tensorflow.core.framework import types_pb2
 # pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.framework import _dtypes
+from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.types import doc_typealias
-from tensorflow.python.lib.core import _pywrap_custom_casts
-from tensorflow.python.lib.core import _pywrap_float8
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.types import trace
 from tensorflow.core.function import trace_type
 from tensorflow.tools.docs import doc_controls
-from tensorflow.tsl.python.lib.core import pywrap_bfloat16
-from tensorflow.python.framework import cpp_shape_inference_pb2
-
-_np_bfloat16 = pywrap_bfloat16.bfloat16_type()
-_np_float8_e4m3fn = _pywrap_float8.TF_float8_e4m3fn_type()
-_np_float8_e5m2 = _pywrap_float8.TF_float8_e5m2_type()
-_pywrap_custom_casts.TF_register_custom_casts()
 
 
 class DTypeMeta(type(_dtypes.DType), abc.ABCMeta):
   pass
+
+
+@dataclasses.dataclass(frozen=True)
+class HandleData:
+  """Holds resource/variant tensor specific data."""
+  shape_inference: Optional[
+      cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData
+  ] = None
+  alias_id: Optional[int] = None
 
 
 @tf_export("dtypes.DType", "DType")
@@ -72,11 +75,8 @@ class DType(
 
     # Resource and Variant dtypes have additional handle data information that
     # is necessary for manipulating those Tensors.
-    if handle_data is not None and not isinstance(
-        handle_data,
-        cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData,
-    ):
-      raise TypeError("handle_data must be of the type HandleData proto.")
+    if handle_data is not None and not isinstance(handle_data, HandleData):
+      raise TypeError("handle_data must be of the type HandleData")
 
     self._handle_data = handle_data
 
@@ -137,20 +137,14 @@ class DType(
                       f"{'quantized type' if self.is_quantized else 'type'} "
                       f"{self.base_dtype}.")
 
-    # there is no simple way to get the min value of a dtype, we have to check
-    # float and int types separately
+    # There is no simple way to get the min value of a dtype, we have to check
+    # float and int types separately.
     try:
-      return np.finfo(self.as_numpy_dtype).min
+      return ml_dtypes.finfo(self.as_numpy_dtype).min
     except:  # bare except as possible raises by finfo not documented
       try:
-        return np.iinfo(self.as_numpy_dtype).min
+        return ml_dtypes.iinfo(self.as_numpy_dtype).min
       except:
-        if self.base_dtype == bfloat16:
-          return _np_bfloat16(float.fromhex("-0x1.FEp127"))
-        elif self.base_dtype == float8_e5m2:
-          return _np_float8_e5m2(float.fromhex("-0x1.Cp15"))
-        elif self.base_dtype == float8_e4m3fn:
-          return _np_float8_e4m3fn(float.fromhex("-0x1.Cp8"))
         raise TypeError(f"Cannot find minimum value of {self}.")
 
   @property
@@ -170,17 +164,11 @@ class DType(
     # there is no simple way to get the max value of a dtype, we have to check
     # float and int types separately
     try:
-      return np.finfo(self.as_numpy_dtype).max
+      return ml_dtypes.finfo(self.as_numpy_dtype).max
     except:  # bare except as possible raises by finfo not documented
       try:
-        return np.iinfo(self.as_numpy_dtype).max
+        return ml_dtypes.iinfo(self.as_numpy_dtype).max
       except:
-        if self.base_dtype == bfloat16:
-          return _np_bfloat16(float.fromhex("0x1.FEp127"))
-        elif self.base_dtype == float8_e5m2:
-          return _np_float8_e5m2(float.fromhex("0x1.Cp15"))
-        elif self.base_dtype == float8_e4m3fn:
-          return _np_float8_e4m3fn(float.fromhex("0x1.Cp8"))
         raise TypeError(f"Cannot find maximum value of {self}.")
 
   @property
@@ -236,8 +224,28 @@ class DType(
 
   @doc_controls.do_not_doc_inheritable
   def placeholder_value(self, placeholder_context):
-    """TensorShape does not support placeholder values."""
-    raise NotImplementedError
+    """See tf.types.experimental.TraceType base class."""
+    return super().placeholder_value(placeholder_context)
+
+  @doc_controls.do_not_doc_inheritable
+  def from_tensors(self, tensors):
+    """See tf.types.experimental.TraceType base class."""
+    return super().from_tensors(tensors)
+
+  @doc_controls.do_not_doc_inheritable
+  def to_tensors(self, value):
+    """See tf.types.experimental.TraceType base class."""
+    return super().to_tensors(value)
+
+  @doc_controls.do_not_doc_inheritable
+  def flatten(self):
+    """See tf.types.experimental.TraceType base class."""
+    return super().flatten()
+
+  @doc_controls.do_not_doc_inheritable
+  def cast(self, value, cast_context):
+    """See tf.types.experimental.TraceType base class."""
+    return super().cast(value, cast_context)
 
   @classmethod
   def experimental_type_proto(cls) -> Type[types_pb2.SerializedDType]:
@@ -458,6 +466,18 @@ tf_export("dtypes.experimental.float8_e4m3fn",
           "experimental.float8_e4m3fn").export_constant(__name__,
                                                         "float8_e4m3fn")
 
+int4 = DType(types_pb2.DT_INT4)
+doc_typealias.document(obj=int4, doc="Signed 4-bit integer.")
+tf_export("dtypes.experimental.int4", "experimental.int4").export_constant(
+    __name__, "int4"
+)
+
+uint4 = DType(types_pb2.DT_UINT4)
+doc_typealias.document(obj=uint4, doc="Unsigned 4-bit integer.")
+tf_export("dtypes.experimental.uint4", "experimental.uint4").export_constant(
+    __name__, "uint4"
+)
+
 resource_ref = DType(types_pb2.DT_RESOURCE_REF)
 variant_ref = DType(types_pb2.DT_VARIANT_REF)
 float16_ref = DType(types_pb2.DT_HALF_REF)
@@ -485,6 +505,8 @@ qint32_ref = DType(types_pb2.DT_QINT32_REF)
 bfloat16_ref = DType(types_pb2.DT_BFLOAT16_REF)
 float8_e5m2_ref = DType(types_pb2.DT_FLOAT8_E5M2_REF)
 float8_e4m3fn_ref = DType(types_pb2.DT_FLOAT8_E4M3FN_REF)
+int4_ref = DType(types_pb2.DT_INT4_REF)
+uint4_ref = DType(types_pb2.DT_UINT4_REF)
 
 # Maintain an intern table so that we don't have to create a large
 # number of small objects.
@@ -512,6 +534,8 @@ _INTERN_TABLE = {
     types_pb2.DT_BFLOAT16: bfloat16,
     types_pb2.DT_FLOAT8_E5M2: float8_e5m2,
     types_pb2.DT_FLOAT8_E4M3FN: float8_e4m3fn,
+    types_pb2.DT_INT4: int4,
+    types_pb2.DT_UINT4: uint4,
     types_pb2.DT_RESOURCE: resource,
     types_pb2.DT_VARIANT: variant,
     types_pb2.DT_HALF_REF: float16_ref,
@@ -537,6 +561,8 @@ _INTERN_TABLE = {
     types_pb2.DT_BFLOAT16_REF: bfloat16_ref,
     types_pb2.DT_FLOAT8_E5M2_REF: float8_e5m2_ref,
     types_pb2.DT_FLOAT8_E4M3FN_REF: float8_e4m3fn_ref,
+    types_pb2.DT_INT4_REF: int4_ref,
+    types_pb2.DT_UINT4_REF: uint4_ref,
     types_pb2.DT_RESOURCE_REF: resource_ref,
     types_pb2.DT_VARIANT_REF: variant_ref,
 }
@@ -566,6 +592,8 @@ _TYPE_TO_STRING = {
     types_pb2.DT_BFLOAT16: "bfloat16",
     types_pb2.DT_FLOAT8_E5M2: "float8_e5m2",
     types_pb2.DT_FLOAT8_E4M3FN: "float8_e4m3fn",
+    types_pb2.DT_INT4: "int4",
+    types_pb2.DT_UINT4: "uint4",
     types_pb2.DT_RESOURCE: "resource",
     types_pb2.DT_VARIANT: "variant",
     types_pb2.DT_HALF_REF: "float16_ref",
@@ -591,6 +619,8 @@ _TYPE_TO_STRING = {
     types_pb2.DT_BFLOAT16_REF: "bfloat16_ref",
     types_pb2.DT_FLOAT8_E5M2_REF: "float8_e5m2_ref",
     types_pb2.DT_FLOAT8_E4M3FN_REF: "float8_e4m3fn_ref",
+    types_pb2.DT_INT4_REF: "int4_ref",
+    types_pb2.DT_UINT4_REF: "uint4_ref",
     types_pb2.DT_RESOURCE_REF: "resource_ref",
     types_pb2.DT_VARIANT_REF: "variant_ref",
 }
@@ -617,7 +647,15 @@ _np_qint16 = np.dtype([("qint16", np.int16)])
 _np_quint16 = np.dtype([("quint16", np.uint16)])
 _np_qint32 = np.dtype([("qint32", np.int32)])
 
-# _np_bfloat16, _np_float8* are defined by module imports.
+# _np_bfloat16, _np_float8*, _np_(u)int4 are defined by module imports.
+_np_bfloat16 = ml_dtypes.bfloat16
+_np_float8_e4m3fn = ml_dtypes.float8_e4m3fn
+_np_float8_e4m3fnuz = ml_dtypes.float8_e4m3fnuz
+_np_float8_e4m3b11fnuz = ml_dtypes.float8_e4m3b11fnuz
+_np_float8_e5m2 = ml_dtypes.float8_e5m2
+_np_float8_e5m2fnuz = ml_dtypes.float8_e5m2fnuz
+_np_int4 = ml_dtypes.int4
+_np_uint4 = ml_dtypes.uint4
 
 # Custom struct dtype for directly-fed ResourceHandles of supported type(s).
 np_resource = np.dtype([("resource", np.ubyte)])
@@ -649,6 +687,8 @@ _NP_TO_TF = {
     _np_bfloat16: bfloat16,
     _np_float8_e5m2: float8_e5m2,
     _np_float8_e4m3fn: float8_e4m3fn,
+    _np_int4: int4,
+    _np_uint4: uint4,
 }
 
 # Map (some) NumPy platform dtypes to TF ones using their fixed-width
@@ -669,101 +709,59 @@ for pdt in [
 TF_VALUE_DTYPES = set(_NP_TO_TF.values())
 
 _TF_TO_NP = {
-    types_pb2.DT_HALF:
-        np.float16,
-    types_pb2.DT_FLOAT:
-        np.float32,
-    types_pb2.DT_DOUBLE:
-        np.float64,
-    types_pb2.DT_INT32:
-        np.int32,
-    types_pb2.DT_UINT8:
-        np.uint8,
-    types_pb2.DT_UINT16:
-        np.uint16,
-    types_pb2.DT_UINT32:
-        np.uint32,
-    types_pb2.DT_UINT64:
-        np.uint64,
-    types_pb2.DT_INT16:
-        np.int16,
-    types_pb2.DT_INT8:
-        np.int8,
+    types_pb2.DT_HALF: np.float16,
+    types_pb2.DT_FLOAT: np.float32,
+    types_pb2.DT_DOUBLE: np.float64,
+    types_pb2.DT_INT32: np.int32,
+    types_pb2.DT_UINT8: np.uint8,
+    types_pb2.DT_UINT16: np.uint16,
+    types_pb2.DT_UINT32: np.uint32,
+    types_pb2.DT_UINT64: np.uint64,
+    types_pb2.DT_INT16: np.int16,
+    types_pb2.DT_INT8: np.int8,
     # NOTE(touts): For strings we use object as it supports variable length
     # strings.
-    types_pb2.DT_STRING:
-        object,
-    types_pb2.DT_COMPLEX64:
-        np.complex64,
-    types_pb2.DT_COMPLEX128:
-        np.complex128,
-    types_pb2.DT_INT64:
-        np.int64,
-    types_pb2.DT_BOOL:
-        np.bool_,
-    types_pb2.DT_QINT8:
-        _np_qint8,
-    types_pb2.DT_QUINT8:
-        _np_quint8,
-    types_pb2.DT_QINT16:
-        _np_qint16,
-    types_pb2.DT_QUINT16:
-        _np_quint16,
-    types_pb2.DT_QINT32:
-        _np_qint32,
-    types_pb2.DT_BFLOAT16:
-        _np_bfloat16,
-    types_pb2.DT_FLOAT8_E5M2:
-        _np_float8_e5m2,
-    types_pb2.DT_FLOAT8_E4M3FN:
-        _np_float8_e4m3fn,
+    types_pb2.DT_STRING: object,
+    types_pb2.DT_COMPLEX64: np.complex64,
+    types_pb2.DT_COMPLEX128: np.complex128,
+    types_pb2.DT_INT64: np.int64,
+    types_pb2.DT_BOOL: np.bool_,
+    types_pb2.DT_QINT8: _np_qint8,
+    types_pb2.DT_QUINT8: _np_quint8,
+    types_pb2.DT_QINT16: _np_qint16,
+    types_pb2.DT_QUINT16: _np_quint16,
+    types_pb2.DT_QINT32: _np_qint32,
+    types_pb2.DT_BFLOAT16: _np_bfloat16,
+    types_pb2.DT_FLOAT8_E5M2: _np_float8_e5m2,
+    types_pb2.DT_FLOAT8_E4M3FN: _np_float8_e4m3fn,
+    types_pb2.DT_INT4: _np_int4,
+    types_pb2.DT_UINT4: _np_uint4,
     # Ref types
-    types_pb2.DT_HALF_REF:
-        np.float16,
-    types_pb2.DT_FLOAT_REF:
-        np.float32,
-    types_pb2.DT_DOUBLE_REF:
-        np.float64,
-    types_pb2.DT_INT32_REF:
-        np.int32,
-    types_pb2.DT_UINT32_REF:
-        np.uint32,
-    types_pb2.DT_UINT8_REF:
-        np.uint8,
-    types_pb2.DT_UINT16_REF:
-        np.uint16,
-    types_pb2.DT_INT16_REF:
-        np.int16,
-    types_pb2.DT_INT8_REF:
-        np.int8,
-    types_pb2.DT_STRING_REF:
-        np.object_,
-    types_pb2.DT_COMPLEX64_REF:
-        np.complex64,
-    types_pb2.DT_COMPLEX128_REF:
-        np.complex128,
-    types_pb2.DT_INT64_REF:
-        np.int64,
-    types_pb2.DT_UINT64_REF:
-        np.uint64,
-    types_pb2.DT_BOOL_REF:
-        np.bool_,
-    types_pb2.DT_QINT8_REF:
-        _np_qint8,
-    types_pb2.DT_QUINT8_REF:
-        _np_quint8,
-    types_pb2.DT_QINT16_REF:
-        _np_qint16,
-    types_pb2.DT_QUINT16_REF:
-        _np_quint16,
-    types_pb2.DT_QINT32_REF:
-        _np_qint32,
-    types_pb2.DT_BFLOAT16_REF:
-        _np_bfloat16,
-    types_pb2.DT_FLOAT8_E5M2_REF:
-        _np_float8_e5m2,
-    types_pb2.DT_FLOAT8_E4M3FN_REF:
-        _np_float8_e4m3fn,
+    types_pb2.DT_HALF_REF: np.float16,
+    types_pb2.DT_FLOAT_REF: np.float32,
+    types_pb2.DT_DOUBLE_REF: np.float64,
+    types_pb2.DT_INT32_REF: np.int32,
+    types_pb2.DT_UINT32_REF: np.uint32,
+    types_pb2.DT_UINT8_REF: np.uint8,
+    types_pb2.DT_UINT16_REF: np.uint16,
+    types_pb2.DT_INT16_REF: np.int16,
+    types_pb2.DT_INT8_REF: np.int8,
+    types_pb2.DT_STRING_REF: np.object_,
+    types_pb2.DT_COMPLEX64_REF: np.complex64,
+    types_pb2.DT_COMPLEX128_REF: np.complex128,
+    types_pb2.DT_INT64_REF: np.int64,
+    types_pb2.DT_UINT64_REF: np.uint64,
+    types_pb2.DT_BOOL_REF: np.bool_,
+    types_pb2.DT_QINT8_REF: _np_qint8,
+    types_pb2.DT_QUINT8_REF: _np_quint8,
+    types_pb2.DT_QINT16_REF: _np_qint16,
+    types_pb2.DT_QUINT16_REF: _np_quint16,
+    types_pb2.DT_QINT32_REF: _np_qint32,
+    types_pb2.DT_BFLOAT16_REF: _np_bfloat16,
+    types_pb2.DT_FLOAT8_E5M2_REF: _np_float8_e5m2,
+    types_pb2.DT_FLOAT8_E4M3FN_REF: _np_float8_e4m3fn,
+    types_pb2.DT_INT4_REF: _np_int4,
+    types_pb2.DT_UINT4_REF: _np_uint4,
 }
 
 _QUANTIZED_DTYPES_NO_REF = frozenset([qint8, quint8, qint16, quint16, qint32])

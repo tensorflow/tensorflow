@@ -52,10 +52,17 @@ TfLiteStatus CreateNewTensorWithDifferentType(TfLiteContext* context,
   return kTfLiteOk;
 }
 
-TfLiteContext* GetSubgraphContext(const struct TfLiteContext* context,
-                                  int subgraph_index) {
+TfLiteStatus AcquireSubgraphContext(const struct TfLiteContext* context,
+                                    int subgraph_index,
+                                    TfLiteContext** acquired_context) {
   return static_cast<::tflite::Subgraph*>(context->impl_)
-      ->GetSubgraphContext(subgraph_index);
+      ->AcquireSubgraphContext(subgraph_index, acquired_context);
+}
+
+TfLiteStatus ReleaseSubgraphContext(const struct TfLiteContext* context,
+                                    int subgraph_index) {
+  return static_cast<::tflite::Subgraph*>(context->impl_)
+      ->ReleaseSubgraphContext(subgraph_index);
 }
 
 TfLiteStatus MarkSubgraphAsDelegationSkippable(const TfLiteContext* context,

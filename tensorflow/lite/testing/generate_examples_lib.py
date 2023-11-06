@@ -280,8 +280,8 @@ class Options:
     self.skip_high_dimension_inputs = False
     # Whether to enable DynamicUpdateSlice op.
     self.enable_dynamic_update_slice = False
-    # Whether to disable unrolling batch matmul.
-    self.disable_batchmatmul_unfold = False
+    # Whether to unrolling batch matmul.
+    self.unfold_batchmatmul = False
     # Experimental low bit options
     self.experimental_low_bit_qat = False
 

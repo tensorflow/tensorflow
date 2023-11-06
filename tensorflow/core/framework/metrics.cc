@@ -17,13 +17,15 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
-#include "tensorflow/tsl/lib/monitoring/counter.h"
-#include "tensorflow/tsl/lib/monitoring/gauge.h"
-#include "tensorflow/tsl/lib/monitoring/sampler.h"
-#include "tensorflow/tsl/platform/types.h"
+#include "tsl/lib/monitoring/counter.h"
+#include "tsl/lib/monitoring/gauge.h"
+#include "tsl/lib/monitoring/sampler.h"
+#include "tsl/platform/types.h"
 
 namespace tensorflow {
 namespace metrics {
@@ -96,11 +98,49 @@ auto* tf_data_elements_counter = tsl::monitoring::Counter<1>::New(
 
 auto* tf_data_experiment_counter = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/experiment",
-    "The number of times tf.data experiment is applied to input pipelines.",
+    "The number of times a tf.data experiment was applied.", "name");
+
+auto* tf_data_experiment_live_counter = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/experiment_live",
+    "The number of times a tf.data experiment could have been applied.",
+    "name");
+
+auto* tf_data_experiment_opt_in_counter = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/experiment_opt_in",
+    "The number of times a tf.data experiment was opted into. Values are "
+    "either (1) the name of the experiment or (2) `\"all\"` (for all "
+    "experiments in `/tensorflow/data/experiment_live`).",
+    "name");
+
+auto* tf_data_experiment_opt_out_counter = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/experiment_opt_out",
+    "The number of times a tf.data experiment was opted out of. Values are (1) "
+    "the name of the experiment, (2) `\"all\"` (for all experiments in "
+    "`/tensorflow/data/experiment_live`), or (3) `\"all_except_opt_in\"` (for "
+    "all experiments in `/tensorflow/data/experiment_live` and not in "
+    "`/tensor/data/experiment_opt_out`).",
     "name");
 
 auto* tf_data_fingerprint_counter = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/fingerprint", "tf.data fingerprint", "name");
+
+auto* tf_data_service_compression = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/service/compression",
+    "The number of times a tf.data service pipeline performed a "
+    "compression-related action {'disabled_at_runtime', "
+    "'not_disabled_at_runtime', 'not_eligible'}.",
+    "action");
+
+auto* tf_data_service_get_element_duration_usecs_histogram =
+    tsl::monitoring::Sampler<1>::New(
+        {"/tensorflow/data/getelement_duration",
+         "Microseconds spent generating an element and transferring it over "
+         "the network for the given protocol.",
+         "data_transfer_protocol"},
+        // Power of 2 with bucket count 10 (1024 microseconds) and 10-1000 ms.
+        {tsl::monitoring::Buckets::Explicit({2., 4., 8., 16., 32., 64., 128.,
+                                             256., 512., 1024., 1e4, 1e5,
+                                             1e6})});
 
 auto* tf_data_get_next_duration_usecs_histogram =
     tsl::monitoring::Sampler<0>::New(
@@ -179,12 +219,24 @@ auto* tf_data_service_snapshot_bytes_committed =
         "/tensorflow/data/service/snapshot_bytes_committed",
         "tf.data service distributed snapshot committed bytes.");
 
+auto* tf_data_service_snapshot_ops_counter = tsl::monitoring::Counter<2>::New(
+    "/tensorflow/data/service/snapshot_ops",
+    "Number times a tf.data snapshot is saved/loaded.", "path", "op");
+
 auto* tf_data_service_data_transfer_protocol_used =
     tsl::monitoring::Counter<1>::New(
         "/tensorflow/data/service/data_transfer_protocol_used",
         "The number of tf.data service worker clients created that use this "
         "data transfer protocol.",
         "data_transfer_protocol");
+
+auto* tf_data_service_data_transfer_protocol_used_by_nature =
+    tsl::monitoring::Counter<2>::New(
+        "/tensorflow/data/service/data_transfer_protocol_used_by_nature",
+        "The number of tf.data service worker clients created that use this "
+        "data transfer protocol and the nature ('default' or 'specified') "
+        "under which this protocol was chosen.",
+        "data_transfer_protocol", "nature");
 
 auto* tf_data_service_data_transfer_protocol_fallback =
     tsl::monitoring::Counter<3>::New(
@@ -199,6 +251,12 @@ auto* tf_data_service_data_transfer_protocol_error =
         "The number of times a tf.data service worker client got this type "
         "of non-retriable error with this message when using this protocol.",
         "data_transfer_protocol", "error_type", "error_message");
+
+auto* tf_data_service_optimal_number_of_workers =
+    monitoring::Gauge<int64_t, 0>::New(
+        "/tensorflow/data/service/optimal_number_of_workers",
+        "Estimated optimal number of tf.data service workers based on the "
+        "current workload.");
 
 auto* tf_data_filename_counter = tsl::monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
@@ -232,6 +290,11 @@ auto* tf_data_autotune_stopping_criteria_counter =
         "The number of times each tf.data autotune "
         "algorithm stopping criterion is met.",
         "name");
+
+auto* tf_data_error = tsl::monitoring::Counter<2>::New(
+    "/tensorflow/data/error",
+    "The number of times an error of this type occurred with this status code.",
+    "error_type", "status_code");
 
 auto* parse_dense_feature_counter = tsl::monitoring::Counter<0>::New(
     "/tensorflow/data/dense_feature",
@@ -338,6 +401,12 @@ auto* mlir_bridge_first_phase_counter = tsl::monitoring::Counter<4>::New(
     "Tracks processing state in first phase of mlir bridge", "device",
     "version", "fallback", "result");
 
+auto* mlir_second_phase_count = tensorflow::monitoring::Counter<1>::New(
+    "/tensorflow/core/tf2xla/api/v2/phase2_compilation_status" /*metric_name*/,
+    "Counts the number of graphs that were analyzed prior deciding whether "
+    "the MLIR or the old bridge will be used" /* metric description */,
+    "status" /* metric label */);
+
 auto* tf1_features_by_graph_count = tsl::monitoring::Counter<5>::New(
     "/tensorflow/core/tf1_features_by_graph_count",
     "Marks which tf1 feature (if any) a graph contains.", "device", "context",
@@ -406,8 +475,38 @@ void RecordTFDataExperiment(const string& name) {
   tf_data_experiment_counter->GetCell(name)->IncrementBy(1);
 }
 
+void RecordTFDataExperimentLive(const string& name) {
+  tf_data_experiment_live_counter->GetCell(name)->IncrementBy(1);
+}
+
+void RecordTFDataExperimentOptIn(const string& name) {
+  tf_data_experiment_opt_in_counter->GetCell(name)->IncrementBy(1);
+}
+
+void RecordTFDataExperimentOptOut(const string& name) {
+  tf_data_experiment_opt_out_counter->GetCell(name)->IncrementBy(1);
+}
+
 void RecordTFDataFingerprint(const string& name) {
   tf_data_fingerprint_counter->GetCell(name)->IncrementBy(1);
+}
+
+void RecordTFDataServiceRuntimeCompressionDecision(bool compression_disabled) {
+  tf_data_service_compression
+      ->GetCell(compression_disabled ? "disabled_at_runtime"
+                                     : "not_disabled_at_runtime")
+      ->IncrementBy(1);
+}
+
+void RecordTFDataServiceCompressionAction(const string& action) {
+  tf_data_service_compression->GetCell(action)->IncrementBy(1);
+}
+
+void RecordTFDataServiceGetElementDuration(const string& data_transfer_protocol,
+                                           uint64 duration_us) {
+  tf_data_service_get_element_duration_usecs_histogram
+      ->GetCell(data_transfer_protocol)
+      ->Add(duration_us);
 }
 
 void RecordTFDataGetNextDuration(uint64 duration_us) {
@@ -483,8 +582,10 @@ void RecordTFDataServiceClientIterators(
 }
 
 void RecordTFDataServiceDataTransferProtocolUsed(
-    const string& data_transfer_protocol) {
-  tf_data_service_data_transfer_protocol_used->GetCell(data_transfer_protocol)
+    const string& data_transfer_protocol, bool user_specified) {
+  std::string nature = user_specified ? "specified" : "default";
+  tf_data_service_data_transfer_protocol_used_by_nature
+      ->GetCell(data_transfer_protocol, nature)
       ->IncrementBy(1);
 }
 
@@ -519,6 +620,15 @@ void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes) {
   tf_data_service_snapshot_bytes_committed->GetCell()->IncrementBy(bytes);
 }
 
+void RecordTFDataServiceSnapshotOp(const std::string& path,
+                                   const std::string& op) {
+  tf_data_service_snapshot_ops_counter->GetCell(path, op)->IncrementBy(1);
+}
+
+void RecordTFDataServiceOptimalNumberOfWorkers(int64_t number_of_workers) {
+  tf_data_service_optimal_number_of_workers->GetCell()->Set(number_of_workers);
+}
+
 void RecordTFDataFilename(const string& name, const string& filename) {
   tf_data_filename_counter->GetCell(name, filename)->IncrementBy(1);
 }
@@ -543,6 +653,10 @@ void RecordTFDataAutoShardRewriteBatchSize(
 
 void RecordTFDataAutotuneStoppingCriteria(const string& name) {
   tf_data_autotune_stopping_criteria_counter->GetCell(name)->IncrementBy(1);
+}
+
+void RecordTFDataError(const string& error_type, const string& status_code) {
+  tf_data_error->GetCell(error_type, status_code)->IncrementBy(1);
 }
 
 void RecordParseDenseFeature(int64 num_features) {
@@ -734,6 +848,40 @@ void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
       fallback_enabled ? "fallback_enabled" : "fallback_disabled";
   mlir_bridge_first_phase_counter
       ->GetCell(device_type, bridge_version, fallback_status, result)
+      ->IncrementBy(1);
+}
+
+// Records the activity of the second phase of the mlir bridge.
+void IncrementTfMlirBridgeSecondPhaseCounter(
+    MlirBridgeSecondPhaseMetric metric) {
+  static auto* mlir_bridge_second_phase_metric_names =
+      new absl::flat_hash_map<MlirBridgeSecondPhaseMetric, absl::string_view>{
+          {MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeSuccess,
+           "kMlirWithFallbackModeSuccess"},
+          {MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeFailure,
+           "kMlirWithFallbackModeFailure"},
+          {MlirBridgeSecondPhaseMetric::kMlirModeSuccess, "kMlirModeSuccess"},
+          {MlirBridgeSecondPhaseMetric::kMlirModeFailure, "kMlirModeFailure"},
+          {MlirBridgeSecondPhaseMetric::kOldBridgeMlirFilteredSuccess,
+           "kOldBridgeMlirFilteredSuccess"},
+          {MlirBridgeSecondPhaseMetric::kOldBridgeMlirFilteredFailure,
+           "kOldBridgeMlirFilteredFailure"},
+          {MlirBridgeSecondPhaseMetric::kOldBridgeWithFallbackModeSuccess,
+           "kOldBridgeWithFallbackModeSuccess"},
+          {MlirBridgeSecondPhaseMetric::kOldBridgeWithFallbackModeFailure,
+           "kOldBridgeWithFallbackModeFailure"},
+          {MlirBridgeSecondPhaseMetric::kMlirCombinedMlirSuccess,
+           "kMlirCombinedMlirSuccess"},
+          {MlirBridgeSecondPhaseMetric::kMlirCombinedMlirFailure,
+           "kMlirCombinedMlirFailure"},
+          {MlirBridgeSecondPhaseMetric::kMlirCombinedOldSuccess,
+           "kMlirCombinedOldSuccess"},
+          {MlirBridgeSecondPhaseMetric::kMlirCombinedOldFailure,
+           "kMlirCombinedOldFailure"},
+      };
+
+  mlir_second_phase_count
+      ->GetCell(std::string(mlir_bridge_second_phase_metric_names->at(metric)))
       ->IncrementBy(1);
 }
 

@@ -17,10 +17,15 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <functional>
+#include <memory>
 #include <optional>
 #include <queue>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <utility>
+#include <variant>
 #include <vector>
 
 // clang-format off
@@ -31,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/arg_ret_placement.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/small_constants_optimizer.h"
+#include "tensorflow/core/common_runtime/eager/summary_optimizer.h"
 #include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/full_type.pb.h"
@@ -73,12 +79,13 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/tsl/platform/fingerprint.h"
+#include "tsl/platform/fingerprint.h"
+#include "tsl/platform/statusor.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_copy_node.h"
-#include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
+#include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 #endif  // IS_MOBILE_PLATFORM
 #include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
@@ -378,7 +385,7 @@ Status GetDeviceForInput(const EagerOperation& op, const EagerContext& ctx,
       // to the op's device. This allows us to avoid expensive D2H copies if a
       // mirror of the tensor already exists on the op's device.
       if (!op.is_function() && device != cpu_device && !is_host_memory_arg) {
-        device = absl::get<Device*>(op.Device());
+        device = std::get<Device*>(op.Device());
       }
       *result = (device == nullptr ? cpu_device : device);
     }
@@ -1057,11 +1064,13 @@ bool IntArgsAndRetvalsOnDevice(EagerOperation* op,
 
 using BoolTensorInputs = std::vector<std::pair<std::string, bool>>;
 
-// Removes boolean tensor inputs from the EagerOperation and returns them.
-// Currently this is only useful to invoke when small_constants_optimizer is
-// enabled because the runtime will have equivalent FunctionDefs of the original
-// tf.function without the boolean tensor input.
-StatusOr<BoolTensorInputs> RemoveBoolInputs(EagerOperation* op) {
+// Identifies boolean tensor inputs from the EagerOperation and returns them. If
+// delete_inputs is set to true then it will also delete them from the
+// function's input signature. Currently this is only useful to invoke when
+// small_constants_optimizer is enabled because the runtime will have equivalent
+// FunctionDefs of the original tf.function without the boolean tensor input.
+StatusOr<BoolTensorInputs> GetBoolInputs(EagerOperation* op,
+                                         bool delete_inputs) {
   BoolTensorInputs result;
   if (!op->is_function()) return result;
   // Extract tensor inputs.
@@ -1102,12 +1111,57 @@ StatusOr<BoolTensorInputs> RemoveBoolInputs(EagerOperation* op) {
     result.emplace_back(input_arg.name(), input_value);
   }
 
+  if (!delete_inputs) return result;
   // If we were able to identify all boolean inputs, update the op's inputs.
   op->Clear();
   for (auto* input : stripped_inputs) {
     TF_RETURN_IF_ERROR(op->AddInput(input));
   }
   return result;
+}
+
+// Returns the value of the `op`'s input `arg_name`.
+// Returns `std::nullopt` by default in the following cases:
+// - `arg_name` is not a boolean tensor.
+// - `op` does nat have an input `arg_name`.
+// - `arg_name` is not on HOST.
+// - any issues with the `FunctionDef` in the `EagerContext`.
+std::optional<bool> GetBoolArgumentValue(const EagerOperation& op,
+                                         const absl::string_view arg_name) {
+  if (!op.is_function()) return std::nullopt;
+  // Extract tensor inputs.
+  const absl::InlinedVector<TensorHandle*, 4>* inputs;
+  if (!op.TensorHandleInputs(&inputs).ok()) return std::nullopt;
+  // Extract the FunctionDef.
+  const FunctionDef* fdef = op.EagerContext().GetFunctionDef(op.Name());
+  if (fdef == nullptr) return std::nullopt;
+  // Ensure the number of inputs matches the specification in the FunctionDef.
+  if (fdef->signature().input_arg_size() != inputs->size()) return std::nullopt;
+
+  // Identify the value of the boolean input.
+  for (int32_t i = 0; i < fdef->signature().input_arg_size(); ++i) {
+    const auto& input_arg = fdef->signature().input_arg(i);
+    if (input_arg.name() != arg_name) continue;
+    if (input_arg.type() != DT_BOOL) return std::nullopt;
+
+    // If the input is not on host returns std::nullopt.
+    const TensorHandle* handle = inputs->at(i);
+    Status s;
+    const char* input_device = handle->DeviceType(&s);
+    if (!s.ok() || !absl::StrContains(input_device, "CPU")) return std::nullopt;
+
+    // If there was an error reading the input value returns std::nullopt.
+    const Tensor* tensor;
+    auto read_tensor_status = handle->Tensor(&tensor);
+    if (!read_tensor_status.ok()) return std::nullopt;
+
+    // Return the input value `arg_name` passed to the `op`.
+    const bool input_value = tensor->scalar<bool>()();
+    return input_value;
+  }
+
+  // Could not find `arg_name` return std::nullopt by default.
+  return std::nullopt;
 }
 
 bool IsSmallConstantOptimizationEnabled(const EagerOperation& op) {
@@ -1117,11 +1171,24 @@ bool IsSmallConstantOptimizationEnabled(const EagerOperation& op) {
   return small_constants_optimizer::IsSmallConstantOptimizationEnabled(*fdef);
 }
 
+bool IsSummaryOptimizerEnabled(const EagerOperation* op) {
+  if (!op->is_function()) return false;
+  const FunctionDef* fdef = op->EagerContext().GetFunctionDef(op->Name());
+  if (fdef == nullptr) return false;
+  const auto include_summary_arg =
+      summary_optimizer::GetDisableSummariesInputArg(*fdef);
+  if (include_summary_arg.first.empty()) return false;
+  const auto arg_value = GetBoolArgumentValue(*op, include_summary_arg.first);
+  if (!arg_value.has_value()) return false;
+  return arg_value.value() == include_summary_arg.second;
+}
+
 StatusOr<Fprint128> GetKernelCacheKey(
     const EagerOperation& op, const Fprint128& op_cache_key,
     const std::vector<Device*>& input_device_ptrs,
     const std::unordered_map<int, DtypeAndPartialTensorShape>&
-        input_resource_variable_dtypes_and_shapes) {
+        input_resource_variable_dtypes_and_shapes,
+    bool reuse_rendezvous_for_functions) {
   EagerContext& ctx = op.EagerContext();
 
   Fprint128 cache_key = op_cache_key;
@@ -1134,11 +1201,6 @@ StatusOr<Fprint128> GetKernelCacheKey(
   VLOG(3) << "ctx.RunEagerOpAsFunction(): " << ctx.RunEagerOpAsFunction();
   cache_key = tsl::FingerprintCat128(cache_key, ctx.RunEagerOpAsFunction());
 
-  // When running in eager_op_as_function mode Send/Recv ops need to be
-  // placed on the same rendezvous to match the behaviour of eager mode.
-  bool reuse_rendezvous_for_functions =
-      (ctx.RunEagerOpAsFunction() && !op.is_function()) ||
-      ctx.GetReuseRendezvousForFunctions();
   // The launch-time rendezvous reuse setting is bundled with the kernel, so we
   // need to include it in the cache key.
   cache_key = tsl::FingerprintCat128(cache_key, reuse_rendezvous_for_functions);
@@ -1184,7 +1246,7 @@ Status ExtractFunctionInputInfo(
   Device* op_device = nullptr;
   const NodeDef* node_def = nullptr;
   if (!op->is_function()) {
-    op_device = absl::get<Device*>(op->Device());
+    op_device = std::get<Device*>(op->Device());
     node_def = &op->MutableAttrs()->BuildNodeDef();
   }
   for (int i = 0, end = inputs->size(); i < end; ++i) {
@@ -1264,18 +1326,25 @@ Status GetOrCreateKernelAndDevice(
     EagerOperation* op, TensorHandle** retvals, int* num_retvals,
     core::RefCountPtr<KernelAndDevice>* out_kernel) {
   EagerContext& ctx = op->EagerContext();
-  Device* device = absl::get<Device*>(op->Device());
+  Device* device = std::get<Device*>(op->Device());
 
   // Update the EagerOperation with information about the boolean input tensors
   // when small constant optimization is enabled.
   if (IsSmallConstantOptimizationEnabled(*op)) {
-    TF_ASSIGN_OR_RETURN(BoolTensorInputs bool_inputs, RemoveBoolInputs(op));
+    TF_ASSIGN_OR_RETURN(BoolTensorInputs bool_inputs,
+                        GetBoolInputs(op, /*delete_inputs=*/false));
     string folded_name = op->Name();
     for (const auto& [input_name, input_value] : bool_inputs) {
       folded_name = small_constants_optimizer::FoldedFunctionName(
           folded_name, input_name, input_value);
     }
     op->UpdateName(folded_name);
+  }
+
+  // Update the EagerOperation with information about the boolean input tensors
+  // when the summary_optimizer is enabled.
+  if (IsSummaryOptimizerEnabled(op)) {
+    op->UpdateName(summary_optimizer::StrippedFunctionName(op->Name()));
   }
 
   // Set the EagerOperation's device prior to extracting the input_device_ptrs
@@ -1291,14 +1360,10 @@ Status GetOrCreateKernelAndDevice(
     }
   }
 
-  // Save the original value of reuse_rendezvous_for_functions from the context.
-  bool reuse_rendezvous_for_functions_original_value =
-      ctx.GetReuseRendezvousForFunctions();
   // When running in eager_op_as_function mode Send/Recv ops need to be
   // placed on the same rendezvous to match the behaviour of eager mode.
   bool reuse_rendezvous_for_functions =
-      (ctx.RunEagerOpAsFunction() && !op->is_function()) ||
-      reuse_rendezvous_for_functions_original_value;
+      (ctx.RunEagerOpAsFunction() && !op->is_function());
 
   std::vector<Device*> input_device_ptrs;
   absl::flat_hash_map<string, const std::vector<string>*> composite_devices;
@@ -1319,7 +1384,8 @@ Status GetOrCreateKernelAndDevice(
       Fprint128 cache_key,
       GetKernelCacheKey(*op, op->MutableAttrs()->CacheKey(op->DeviceName()),
                         input_device_ptrs,
-                        input_resource_variable_dtypes_and_shapes));
+                        input_resource_variable_dtypes_and_shapes,
+                        reuse_rendezvous_for_functions));
   core::RefCountPtr<KernelAndDevice> kernel = ctx.GetCachedKernel(cache_key);
   AbstractOperationPtr wrapped_op_releaser;
   // We can eliminate some overhead by running simple functions using regular
@@ -1339,7 +1405,7 @@ Status GetOrCreateKernelAndDevice(
   //    special nodes and attributes)
   if (kernel == nullptr) {
     VLOG(2) << "Creating new kernel for " << op->Name() << " on device "
-            << DeviceNameOrUnspecified(absl::get<Device*>(op->Device()));
+            << DeviceNameOrUnspecified(std::get<Device*>(op->Device()));
 
     if (device == nullptr) {
       TF_RETURN_IF_ERROR(SetOpDevice(ctx, op, &device));
@@ -1349,7 +1415,7 @@ Status GetOrCreateKernelAndDevice(
     }
 
     bool run_function_with_flr = false;
-    absl::optional<string> xla_compile_device_type;
+    std::optional<string> xla_compile_device_type;
     if (op->is_function()) {
       bool compile_with_xla;
       // By default we should run functions with FunctionLibraryRuntime.
@@ -1451,12 +1517,8 @@ Status GetOrCreateKernelAndDevice(
       get_op_id = [&ctx]() { return ctx.RemoteMgr()->NextOpId(); };
 #endif  // IS_MOBILE_PLATFORM
 
-      ctx.reuse_rendezvous_for_functions_mu()->lock();
-      ctx.SetReuseRendezvousForFunctions(reuse_rendezvous_for_functions);
-      auto rendezvous_creator = ctx.RendezvousFactory();
-      ctx.SetReuseRendezvousForFunctions(
-          reuse_rendezvous_for_functions_original_value);
-      ctx.reuse_rendezvous_for_functions_mu()->unlock();
+      auto rendezvous_creator =
+          ctx.RendezvousFactory(reuse_rendezvous_for_functions);
       kernel.reset(new KernelAndDeviceFunc(
           flr, ctx.pflr(), std::move(input_device_ptrs),
           std::move(composite_devices),
@@ -1465,7 +1527,8 @@ Status GetOrCreateKernelAndDevice(
           function_outputs_on_op_device, allow_small_function_optimizations,
           allow_control_flow_sync_execution,
           shape_inference_on_tfe_dialect_import, int_args_and_retvals_on_device,
-          xla_compile_device_type, std::move(rendezvous_creator), get_op_id));
+          xla_compile_device_type, ctx.AllowSoftPlacement(),
+          std::move(rendezvous_creator), get_op_id));
     } else {
       VLOG(2) << "Running " << ndef.op() << " using op kernel. "
               << ". Full node_def=" << ndef.DebugString();
@@ -1477,20 +1540,29 @@ Status GetOrCreateKernelAndDevice(
     TF_RETURN_IF_ERROR(
         kernel->Init(ctx.LogDevicePlacement(), ndef, graph_collector));
 
+    // Exclude tf.data op kernels from being cached. The reason for this is
+    // that tf.data op kernels that accept a user-defined function will have a
+    // unique cache key every time they are executed (because the user-defined
+    // function is traced every time). Caching such kernels provides no
+    // benefit and in some cases results in linear memory growth of use
+    // programs that build input pipeline graphs in a loop.
+    const OpDef* op_def;
     if (op->is_function()) {
-      ctx.AddKernelToCache(cache_key, kernel.get());
-    } else {
-      // Exclude tf.data op kernels from being cached. The reason for this is
-      // that tf.data op kernels that accept a user-defined function will have a
-      // unique cache key every time they are executed (because the user-defined
-      // function is traced every time). Caching such kernels provides no
-      // benefit and in some cases results in linear memory growth of use
-      // programs that build input pipeline graphs in a loop.
-      const OpDef* op_def;
-      TF_RETURN_IF_ERROR(OpDefForOp(op->Name().data(), &op_def));
-      if (KernelCacheEnabled(*op_def)) {
-        ctx.AddKernelToCache(cache_key, kernel.get());
+      const FunctionDef* function_def =
+          op->EagerContext().FuncLibDef()->Find(op->Name());
+      if (function_def != nullptr) {
+        op_def = &(function_def->signature());
+      } else {
+        TF_RETURN_IF_ERROR(OpDefForOp(op->Name().c_str(), &op_def));
       }
+    } else {
+      TF_RETURN_IF_ERROR(OpDefForOp(op->Name().data(), &op_def));
+    }
+    if (op_def != nullptr && KernelCacheEnabled(*op_def)) {
+      // TODO(intel-tf): Implement an eviction policy to prevent potential
+      // memory growth (https://github.com/tensorflow/tensorflow/issues/58676)
+      VLOG(2) << "Caching op " << op->Name();
+      ctx.AddKernelToCache(cache_key, kernel.get());
     }
   }
 
@@ -1515,7 +1587,7 @@ Status CreateUnshapedOutput(
 #if defined(IS_MOBILE_PLATFORM)
   return errors::Unimplemented(
       "Remote outputs are not available on mobile devices.");
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
   int64_t op_id;
   if (eager_func_params.has_value()) {
     op_id = eager_func_params.value().op_id;
@@ -1551,14 +1623,14 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
     graph_collector = ctx.GetGraphCollector();
   }
   const int num_outputs = kernel->num_outputs();
-  absl::optional<EagerFunctionParams> eager_func_params =
+  std::optional<EagerFunctionParams> eager_func_params =
       op->eager_func_params();
   if (kernel->IsCrossProcess() && !eager_func_params.has_value()) {
     // Create an eager op id for a cross-process function if not exist.
 #if defined(IS_MOBILE_PLATFORM)
     return errors::Unimplemented(
         "Cross-process functions are not supported on mobile devices.");
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
     const int64_t op_id = ctx.RemoteMgr()->NextOpId();
     eager_func_params = EagerFunctionParams{
         op_id, /* is_component_function= */ false, /* step_id= */ std::nullopt};
@@ -1737,7 +1809,7 @@ void PrepareRemoteOp(eager::Operation* remote_op, EagerOperation* op) {
   remote_op->set_name(op->Name());
 
   op->Attrs().FillAttrValueMapWithoutDefaults(remote_op->mutable_attrs());
-  remote_op->set_device(absl::get<Device*>(op->Device())->name());
+  remote_op->set_device(std::get<Device*>(op->Device())->name());
   remote_op->set_is_function(op->is_function());
 }
 
@@ -1790,7 +1862,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
 
   eager::Operation* remote_op = request->add_queue()->mutable_operation();
 
-  tensorflow::Device* op_device = absl::get<Device*>(op->Device());
+  tensorflow::Device* op_device = std::get<Device*>(op->Device());
   {
     profiler::TraceMe activity("CopyInputToExpectedDevice",
                                profiler::TraceMeLevel::kInfo);
@@ -1942,7 +2014,7 @@ Status GetKernelOutputs(
       Device* output_device = ctx->CanonicalDevice(kernel->OutputDevice(i));
       if (ret.index() == 0) {
         retvals[i] = TensorHandle::CreateLocalHandle(
-            std::move(absl::get<Tensor>(ret)),
+            std::move(std::get<Tensor>(ret)),
             /* d= */ output_device,
             /* op_device= */ kernel->device(),
             /* resource_device= */ kernel->OutputResourceDevice(i), ctx);
@@ -1953,7 +2025,7 @@ Status GetKernelOutputs(
                                  eager_func_params, ctx, &retvals[i]));
 #if !defined(IS_MOBILE_PLATFORM)
         TF_RETURN_IF_ERROR(
-            retvals[i]->SetRemoteShape(absl::get<TensorShape>(ret),
+            retvals[i]->SetRemoteShape(std::get<TensorShape>(ret),
                                        output_device, ctx->GetContextViewId()));
 #endif  // IS_MOBILE_PLATFORM
       }
@@ -1974,15 +2046,15 @@ Status GetKernelOutputs(
       EagerKernelRet& ret = (*outputs)[i];
       if (ret.index() == 0) {
         TF_RETURN_IF_ERROR(retvals[i]->SetTensor(
-            std::move(absl::get<Tensor>(ret)),
+            std::move(std::get<Tensor>(ret)),
             ctx->CanonicalDevice(kernel->OutputDevice(i))));
       } else {
 #if defined(IS_MOBILE_PLATFORM)
         return errors::Unimplemented(
             "Remote outputs are not available on mobile devices.");
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
         TF_RETURN_IF_ERROR(retvals[i]->SetRemoteShape(
-            absl::get<TensorShape>(ret), retvals[i]->device(),
+            std::get<TensorShape>(ret), retvals[i]->device(),
             ctx->GetContextViewId()));
 #endif  // !IS_MOBILE_PLATFORM
       }

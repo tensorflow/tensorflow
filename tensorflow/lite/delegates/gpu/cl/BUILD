@@ -1,9 +1,9 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("//tensorflow:tensorflow.bzl", "if_google", "workspace_root")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
 )
-load("//tensorflow:tensorflow.bzl", "if_google", "workspace_root")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -36,6 +36,7 @@ cc_library(
         ":tensor",
         ":tensor_type_util",
         "//tensorflow/lite/delegates/gpu:api",
+        "//tensorflow/lite/delegates/gpu:tflite_profile",
         "//tensorflow/lite/delegates/gpu/cl/kernels:converter",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:model",
@@ -125,6 +126,7 @@ cc_test(
     deps = [
         ":buffer",
         ":cl_arguments",
+        ":cl_test",
         ":gpu_object",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "@com_google_absl//absl/strings",

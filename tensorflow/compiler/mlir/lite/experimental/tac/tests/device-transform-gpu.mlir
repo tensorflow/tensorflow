@@ -153,8 +153,8 @@ func.func @padSliceTo4D(%arg0: tensor<4x384x32xf32>) -> tensor<1x384x32xf32> {
 }
 
 // CHECK:       func @padSliceTo4D(%[[VAL_0:.*]]: tensor<4x384x32xf32>) -> tensor<1x384x32xf32> {
-// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<0> : tensor<4xi32>} : () -> tensor<4xi32>
-// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<[1, 1, 384, 32]> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() <{value = dense<0> : tensor<4xi32>}> : () -> tensor<4xi32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() <{value = dense<[1, 1, 384, 32]> : tensor<4xi32>}> : () -> tensor<4xi32>
 // CHECK-DAG:       %[[VAL_3:.*]] = arith.constant dense<[1, 4, 384, 32]> : tensor<4xi32>
 // CHECK-DAG:       %[[VAL_4:.*]] = "tfl.pseudo_const"() {value = dense<[1, 384, 32]> : tensor<3xi32>
 // CHECK:           %[[VAL_5:.*]] = "tfl.reshape"(%[[VAL_0]], %[[VAL_3]]) : (tensor<4x384x32xf32>, tensor<4xi32>) -> tensor<1x4x384x32xf32>

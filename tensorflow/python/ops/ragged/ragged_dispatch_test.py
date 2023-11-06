@@ -24,6 +24,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
@@ -62,7 +63,7 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllEqual(
           array_ops.shape(x.flat_values), array_ops.shape(y.flat_values))
     else:
-      self.assertIsInstance(y, ops.Tensor)
+      self.assertIsInstance(y, tensor.Tensor)
       self.assertAllEqual(array_ops.shape(x), array_ops.shape(y))
 
   @parameterized.parameters(

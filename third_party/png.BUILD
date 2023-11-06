@@ -33,7 +33,7 @@ cc_library(
             "intel/filter_sse2_intrinsics.c",
             "intel/intel_init.c",
         ],
-        "@org_tensorflow//tensorflow/tsl:linux_ppc64le": [
+        "@local_tsl//tsl:linux_ppc64le": [
             "powerpc/filter_vsx_intrinsics.c",
             "powerpc/powerpc_init.c",
         ],

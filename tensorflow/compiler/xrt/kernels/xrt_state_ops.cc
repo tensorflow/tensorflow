@@ -23,7 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
+#include "xla/client/local_client.h"
 #include "tensorflow/compiler/xrt/xrt_metrics.h"
 
 namespace tensorflow {

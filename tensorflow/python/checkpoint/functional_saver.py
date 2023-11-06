@@ -14,25 +14,102 @@
 # ==============================================================================
 """Saves and restore variables inside traced @tf.functions."""
 
+import dataclasses
+from typing import Callable, Dict, List
+
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device as device_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import registration
+from tensorflow.python.trackable import base
 from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
+
+
+@dataclasses.dataclass(frozen=True)
+class ShardableTensor:
+  """Tensor wrapper containing data necessary for sharding."""
+  _tensor_save_spec: saveable_object.SaveSpec
+  tensor: tensor_lib.Tensor
+  dtype: dtypes.DType
+  device: device_lib.DeviceSpec
+  name: str
+  shape: tensor_shape.TensorShape
+  slice_spec: variables.Variable.SaveSliceInfo
+  checkpoint_key: str
+  trackable: base.Trackable
+
+  def __hash__(self):
+    return hash((self.name, self.dtype, str(self.device), self.checkpoint_key))
+
+
+@dataclasses.dataclass(frozen=True)
+class ShardingCallback:
+  """Checkpoint sharding callback function, along with a text description."""
+  callback: Callable[
+      [List[ShardableTensor], ...],
+      List[Dict[str, Dict[tensor_spec.TensorSpec, saveable_object.SaveSpec]]]]
+  description: str
+
+  def __hash__(self):
+    if hasattr(self.callback, "__name__"):
+      callback_hash = hash((self.callback.__module__, self.callback.__name__))
+    else:
+      callback_hash = id(self.callback)
+    return hash((callback_hash, self.description))
+
+
+class ShardByDevicePolicy(ShardingCallback):
+  """Policy that splits tensors into shards based on their device spec."""
+
+  def __init__(self):
+    def device_callback_impl(shardable_tensors):
+      """Callback to split tensors into shards based on their device spec.
+
+      Args:
+        shardable_tensors: A list of ShardableTensors.
+
+      Returns:
+        List of shard dicts containing tensors.
+          [ {checkpoint key: {slice_spec: tensor} } ]
+      """
+      tensors_by_device = {}
+
+      for shardable_tensor in shardable_tensors:
+        tensor = shardable_tensor.tensor
+        checkpoint_key = shardable_tensor.checkpoint_key
+        slice_spec = shardable_tensor.slice_spec
+        device = saveable_object_util.set_cpu0(shardable_tensor.device)
+
+        (tensors_by_device
+         .setdefault(device, {})
+         .setdefault(checkpoint_key, {})[slice_spec]) = tensor
+
+      return list(tensors_by_device.values())
+
+    super().__init__(
+        device_callback_impl,
+        "Split tensors into shards based on their device spec.")
+
+  def __call__(self, shardable_tensors):
+    return self.callback(shardable_tensors)  # pylint: disable=no-value-for-parameter
 
 
 class _SingleDeviceSaver(object):

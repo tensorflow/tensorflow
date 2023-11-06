@@ -382,7 +382,7 @@ tf_module {
   }
   member_method {
     name: "BatchFunction"
-    argspec: "args=[\'in_tensors\', \'captured_tensors\', \'f\', \'num_batch_threads\', \'max_batch_size\', \'batch_timeout_micros\', \'Tout\', \'max_enqueued_batches\', \'allowed_batch_sizes\', \'container\', \'shared_name\', \'batching_queue\', \'enable_large_batch_splitting\', \'name\'], varargs=None, keywords=None, defaults=[\'10\', \'[]\', \'\', \'\', \'\', \'False\', \'None\'], "
+    argspec: "args=[\'in_tensors\', \'captured_tensors\', \'f\', \'num_batch_threads\', \'max_batch_size\', \'batch_timeout_micros\', \'Tout\', \'max_enqueued_batches\', \'allowed_batch_sizes\', \'container\', \'shared_name\', \'batching_queue\', \'low_priority_max_batch_size\', \'low_priority_batch_timeout_micros\', \'low_priority_allowed_batch_sizes\', \'low_priority_max_enqueued_batches\', \'enable_large_batch_splitting\', \'name\'], varargs=None, keywords=None, defaults=[\'10\', \'[]\', \'\', \'\', \'\', \'0\', \'0\', \'[]\', \'0\', \'False\', \'None\'], "
   }
   member_method {
     name: "BatchIFFT"
@@ -790,7 +790,7 @@ tf_module {
   }
   member_method {
     name: "CollectiveAllToAllV2"
-    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'communication_hint\', \'timeout_seconds\', \'is_stateless\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'False\', \'None\'], "
   }
   member_method {
     name: "CollectiveAllToAllV3"
@@ -822,7 +822,7 @@ tf_module {
   }
   member_method {
     name: "CollectiveGatherV2"
-    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'communication_hint\', \'timeout_seconds\', \'is_stateless\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'False\', \'None\'], "
   }
   member_method {
     name: "CollectiveInitializeCommunicator"
@@ -838,11 +838,11 @@ tf_module {
   }
   member_method {
     name: "CollectiveReduceScatterV2"
-    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'merge_op\', \'final_op\', \'communication_hint\', \'timeout_seconds\', \'max_subdivs_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'-1\', \'None\'], "
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'merge_op\', \'final_op\', \'communication_hint\', \'timeout_seconds\', \'is_stateless\', \'max_subdivs_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'False\', \'-1\', \'None\'], "
   }
   member_method {
     name: "CollectiveReduceV2"
-    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'merge_op\', \'final_op\', \'communication_hint\', \'timeout_seconds\', \'max_subdivs_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'-1\', \'None\'], "
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'merge_op\', \'final_op\', \'communication_hint\', \'timeout_seconds\', \'is_stateless\', \'max_subdivs_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'False\', \'-1\', \'None\'], "
   }
   member_method {
     name: "CollectiveReduceV3"
@@ -929,6 +929,10 @@ tf_module {
     argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "Conv"
+    argspec: "args=[\'input\', \'filter\', \'strides\', \'padding\', \'explicit_paddings\', \'data_format\', \'dilations\', \'batch_dims\', \'groups\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'CHANNELS_LAST\', \'[]\', \'1\', \'1\', \'None\'], "
+  }
+  member_method {
     name: "Conv2D"
     argspec: "args=[\'input\', \'filter\', \'strides\', \'padding\', \'use_cudnn_on_gpu\', \'explicit_paddings\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'[]\', \'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
   }
@@ -967,6 +971,10 @@ tf_module {
   member_method {
     name: "Conv3DBackpropInputV2"
     argspec: "args=[\'input_sizes\', \'filter\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NDHWC\', \'[1, 1, 1, 1, 1]\', \'None\'], "
+  }
+  member_method {
+    name: "ConvertToCooTensor"
+    argspec: "args=[\'indices_or_row_splits\', \'values\', \'weights\', \'sample_count\', \'combiner\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "Copy"
@@ -1377,6 +1385,10 @@ tf_module {
     argspec: "args=[\'sample_indices_or_row_splits\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'device_ordinal\', \'combiners\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
   }
   member_method {
+    name: "DynamicEnqueueTPUEmbeddingRaggedTensorBatch"
+    argspec: "args=[\'sample_splits\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'device_ordinal\', \'table_ids\', \'combiners\', \'max_sequence_lengths\', \'num_features\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'[]\', \'[]\', \'None\'], "
+  }
+  member_method {
     name: "DynamicPartition"
     argspec: "args=[\'data\', \'partitions\', \'num_partitions\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1415,6 +1427,10 @@ tf_module {
   member_method {
     name: "EmptyTensorList"
     argspec: "args=[\'element_shape\', \'max_num_elements\', \'element_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "EmptyTensorMap"
+    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "EncodeBase64"
@@ -1689,6 +1705,10 @@ tf_module {
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "FFTND"
+    argspec: "args=[\'input\', \'fft_length\', \'axes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "FIFOQueue"
     argspec: "args=[\'component_types\', \'shapes\', \'capacity\', \'container\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'-1\', \'\', \'\', \'None\'], "
   }
@@ -1731,6 +1751,10 @@ tf_module {
   member_method {
     name: "FakeQueue"
     argspec: "args=[\'resource\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "FileSystemSetConfiguration"
+    argspec: "args=[\'scheme\', \'key\', \'value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "Fill"
@@ -1889,6 +1913,14 @@ tf_module {
     argspec: "args=[\'dataset\', \'index\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "GetMinibatchSplitsWithPhysicalReplica"
+    argspec: "args=[\'program_key\', \'row_ids\', \'col_ids\', \'gains\', \'sample_count\', \'num_replica\', \'table_vocab_size\', \'feature_width\', \'num_sc_per_chip\', \'table_name\', \'mini_batch_splits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "GetMinibatchesInCsrWithPhysicalReplica"
+    argspec: "args=[\'program_key\', \'row_ids\', \'col_ids\', \'gains\', \'splits\', \'id_counts\', \'sample_count\', \'num_replica\', \'max_minibatches_per_sc\', \'max_ids_per_chip_per_sample\', \'table_vocab_size\', \'feature_width\', \'num_sc_per_chip\', \'table_name\', \'mini_batch_in_csr\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "GetOptions"
     argspec: "args=[\'input_dataset\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1957,6 +1989,10 @@ tf_module {
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "IFFTND"
+    argspec: "args=[\'input\', \'fft_length\', \'axes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "IRFFT"
     argspec: "args=[\'input\', \'fft_length\', \'Treal\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
@@ -1967,6 +2003,10 @@ tf_module {
   member_method {
     name: "IRFFT3D"
     argspec: "args=[\'input\', \'fft_length\', \'Treal\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "IRFFTND"
+    argspec: "args=[\'input\', \'fft_length\', \'axes\', \'Treal\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
     name: "Identity"
@@ -2175,6 +2215,14 @@ tf_module {
   member_method {
     name: "IteratorV2"
     argspec: "args=[\'shared_name\', \'container\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "KMC2ChainInitialization"
+    argspec: "args=[\'distances\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "KmeansPlusPlusInitialization"
+    argspec: "args=[\'points\', \'num_to_sample\', \'seed\', \'num_retries_per_sample\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "L2Loss"
@@ -2711,6 +2759,10 @@ tf_module {
   member_method {
     name: "Ndtri"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "NearestNeighbors"
+    argspec: "args=[\'points\', \'centers\', \'k\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "Neg"
@@ -3291,6 +3343,10 @@ tf_module {
   member_method {
     name: "RFFT3D"
     argspec: "args=[\'input\', \'fft_length\', \'Tcomplex\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'complex64\'>\", \'None\'], "
+  }
+  member_method {
+    name: "RFFTND"
+    argspec: "args=[\'input\', \'fft_length\', \'axes\', \'Tcomplex\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'complex64\'>\", \'None\'], "
   }
   member_method {
     name: "RGBToHSV"
@@ -4498,39 +4554,51 @@ tf_module {
   }
   member_method {
     name: "SparseSegmentMean"
-    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'sparse_gradient\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "SparseSegmentMeanGrad"
     argspec: "args=[\'grad\', \'indices\', \'segment_ids\', \'output_dim0\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "SparseSegmentMeanGradV2"
+    argspec: "args=[\'grad\', \'indices\', \'segment_ids\', \'dense_output_dim0\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "SparseSegmentMeanWithNumSegments"
-    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'num_segments\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'num_segments\', \'sparse_gradient\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "SparseSegmentSqrtN"
-    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'sparse_gradient\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "SparseSegmentSqrtNGrad"
     argspec: "args=[\'grad\', \'indices\', \'segment_ids\', \'output_dim0\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "SparseSegmentSqrtNGradV2"
+    argspec: "args=[\'grad\', \'indices\', \'segment_ids\', \'dense_output_dim0\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "SparseSegmentSqrtNWithNumSegments"
-    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'num_segments\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'num_segments\', \'sparse_gradient\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "SparseSegmentSum"
-    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'sparse_gradient\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "SparseSegmentSumGrad"
     argspec: "args=[\'grad\', \'indices\', \'segment_ids\', \'output_dim0\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "SparseSegmentSumGradV2"
+    argspec: "args=[\'grad\', \'indices\', \'segment_ids\', \'dense_output_dim0\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "SparseSegmentSumWithNumSegments"
-    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'num_segments\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'num_segments\', \'sparse_gradient\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "SparseSlice"
@@ -4825,6 +4893,10 @@ tf_module {
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "StoreMinibatchStatisticsInFdo"
+    argspec: "args=[\'program_key\', \'max_ids\', \'max_uniques\', \'sample_count\', \'num_replica\', \'feature_width\', \'num_sc_per_chip\', \'table_name\', \'mini_batch_splits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "StridedSlice"
     argspec: "args=[\'input\', \'begin\', \'end\', \'strides\', \'begin_mask\', \'end_mask\', \'ellipsis_mask\', \'new_axis_mask\', \'shrink_axis_mask\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'0\', \'0\', \'0\', \'None\'], "
   }
@@ -4925,6 +4997,10 @@ tf_module {
     argspec: "args=[\'filenames\', \'compression_type\', \'buffer_size\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
+    name: "TFRecordDatasetV2"
+    argspec: "args=[\'filenames\', \'compression_type\', \'buffer_size\', \'byte_offsets\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
+  }
+  member_method {
     name: "TFRecordReader"
     argspec: "args=[\'container\', \'shared_name\', \'compression_type\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'None\'], "
   }
@@ -4933,8 +5009,16 @@ tf_module {
     argspec: "args=[\'container\', \'shared_name\', \'compression_type\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'None\'], "
   }
   member_method {
+    name: "TPUAnnotateTensorsWithDynamicShape"
+    argspec: "args=[\'tensors\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "TPUCompilationResult"
     argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "TPUCopyWithDynamicShape"
+    argspec: "args=[\'tensors\', \'unpadded_sizes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "TPUEmbeddingActivations"
@@ -5217,6 +5301,30 @@ tf_module {
     argspec: "args=[\'input_handle\', \'element_shape\', \'element_dtype\', \'num_elements\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
   member_method {
+    name: "TensorMapErase"
+    argspec: "args=[\'input_handle\', \'key\', \'value_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "TensorMapHasKey"
+    argspec: "args=[\'input_handle\', \'key\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "TensorMapInsert"
+    argspec: "args=[\'input_handle\', \'key\', \'value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "TensorMapLookup"
+    argspec: "args=[\'input_handle\', \'key\', \'value_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "TensorMapSize"
+    argspec: "args=[\'input_handle\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "TensorMapStackKeys"
+    argspec: "args=[\'input_handle\', \'key_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "TensorScatterAdd"
     argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -5462,7 +5570,7 @@ tf_module {
   }
   member_method {
     name: "VarHandleOp"
-    argspec: "args=[\'dtype\', \'shape\', \'container\', \'shared_name\', \'allowed_devices\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'[]\', \'None\'], "
+    argspec: "args=[\'dtype\', \'shape\', \'container\', \'shared_name\', \'debug_name\', \'allowed_devices\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'[]\', \'None\'], "
   }
   member_method {
     name: "VarIsInitializedOp"
@@ -5551,6 +5659,54 @@ tf_module {
   member_method {
     name: "XlaConcatND"
     argspec: "args=[\'inputs\', \'num_concats\', \'paddings\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
+  }
+  member_method {
+    name: "XlaSparseCoreAdagrad"
+    argspec: "args=[\'indices\', \'gradient\', \'learning_rate\', \'accumulator\', \'embedding_table\', \'feature_width\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "XlaSparseCoreAdagradMomentum"
+    argspec: "args=[\'indices\', \'gradient\', \'learning_rate\', \'beta_1\', \'epsilon\', \'accumulator\', \'momentum\', \'embedding_table\', \'feature_width\', \'use_nesterov\', \'beta_2\', \'exponent\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "XlaSparseCoreAdam"
+    argspec: "args=[\'embedding_table\', \'indices\', \'gradient\', \'learning_rate\', \'momentum\', \'velocity\', \'beta_1\', \'beta_2\', \'epsilon\', \'feature_width\', \'use_sum_inside_sqrt\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "XlaSparseCoreFtrl"
+    argspec: "args=[\'embedding_table\', \'accumulator\', \'linear\', \'learning_rate\', \'indices\', \'gradient\', \'beta\', \'learning_rate_power\', \'l2_regularization_strength\', \'feature_width\', \'multiply_linear_by_learning_rate\', \'l1_regularization_strength\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "XlaSparseCoreSgd"
+    argspec: "args=[\'indices\', \'gradient\', \'learning_rate\', \'embedding_table\', \'feature_width\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "XlaSparseDenseMatmul"
+    argspec: "args=[\'row_ids\', \'col_ids\', \'values\', \'offsets\', \'embedding_table\', \'max_ids_per_partition\', \'max_unique_ids_per_partition\', \'input_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "XlaSparseDenseMatmulGradWithAdagradAndCsrInput"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'num_minibatches_per_physical_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
+  }
+  member_method {
+    name: "XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInput"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'momenta\', \'num_minibatches_per_physical_sparse_core\', \'use_nesterov\', \'exponent\', \'beta1\', \'beta2\', \'epsilon\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
+  }
+  member_method {
+    name: "XlaSparseDenseMatmulGradWithAdamAndCsrInput"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'momenta\', \'velocity\', \'num_minibatches_per_physical_sparse_core\', \'use_sum_inside_sqrt\', \'beta1\', \'beta2\', \'epsilon\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
+  }
+  member_method {
+    name: "XlaSparseDenseMatmulGradWithFtrlAndCsrInput"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'linear\', \'num_minibatches_per_physical_sparse_core\', \'multiply_linear_by_learning_rate\', \'beta\', \'learning_rate_power\', \'l1_regularization_strength\', \'l2_regularization_strength\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
+  }
+  member_method {
+    name: "XlaSparseDenseMatmulGradWithSgdAndCsrInput"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'num_minibatches_per_physical_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
+  }
+  member_method {
+    name: "XlaSparseDenseMatmulWithCsrInput"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'embedding_table\', \'num_minibatches_per_physical_sparse_core\', \'input_size\', \'quantization_config_low\', \'quantization_config_high\', \'quantization_config_num_buckets\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "XlaSplitND"

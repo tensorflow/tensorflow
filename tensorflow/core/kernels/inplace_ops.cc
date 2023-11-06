@@ -457,7 +457,10 @@ REGISTER_KERNEL_BUILDER(
     Name("InplaceUpdate").Device(DEVICE_GPU).TypeConstraint<bool>("T"),
     InplaceOp<GPUDevice, functor::I_UPDATE>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER);
+REGISTER(int8_t);
+REGISTER(uint8_t);
 REGISTER(int64_t);
+REGISTER(uint64_t);
 
 REGISTER_EMPTY(int32, GPU);
 #undef REGISTER

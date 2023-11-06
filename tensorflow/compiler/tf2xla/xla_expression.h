@@ -18,9 +18,9 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
-#include "tensorflow/compiler/xla/client/client.h"
-#include "tensorflow/compiler/xla/client/value_inference.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/client.h"
+#include "xla/client/value_inference.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -137,6 +137,7 @@ class XlaExpression {
   // The shape of a resource is the shape of a resource handle (i.e., a scalar),
   // not the shape of the resource's value.
   StatusOr<TensorShape> GetShape() const;
+  StatusOr<xla::Shape> GetXlaShape() const;
 
   // Retrieves an XlaExpression that was allocated by a previous Op.
   static const XlaExpression* CastExpressionFromTensor(const Tensor& tensor);

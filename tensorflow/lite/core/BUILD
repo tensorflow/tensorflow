@@ -39,6 +39,7 @@ cc_library(
         "macros.h",
         "model.h",
         "model_builder.h",
+        "signature_runner.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
@@ -55,12 +56,12 @@ cc_library(
         "//tensorflow/lite:macros",
         "//tensorflow/lite:memory_planner",
         "//tensorflow/lite:mutable_op_resolver",
-        "//tensorflow/lite:signature_runner",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite:string",
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/core:signature_runner",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/async:async_signature_runner",
@@ -128,12 +129,12 @@ cc_library(
         "//tensorflow/lite:memory_planner",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:optional_debug_tools",
-        "//tensorflow/lite:signature_runner",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite:string",
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/core:signature_runner",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/async:async_signature_runner",
@@ -152,8 +153,7 @@ cc_library(
     alwayslink = 1,  # TODO(b/161243354): eliminate this.
 )
 
-# TODO(b/242310498): move interpreter.cc, logger.cc and signature_runner.h from
-# tensorflow/lite/ to here.
+# TODO(b/242310498): move logger.cc from tensorflow/lite/ to here.
 cc_library(
     name = "cc_api_stable",
     srcs = [
@@ -166,6 +166,7 @@ cc_library(
         "interpreter_builder.h",
         "model.h",
         "model_builder.h",
+        "signature_runner.h",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [
@@ -183,7 +184,6 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:shared_library",
-        "//tensorflow/lite:signature_runner",
         "//tensorflow/lite:simple_memory_arena",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite:string",
@@ -192,6 +192,7 @@ cc_library(
         "//tensorflow/lite:util",
         "//tensorflow/lite:version",
         "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/core:signature_runner",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/async:async_signature_runner",
@@ -224,11 +225,7 @@ cc_library(
 alias(
     name = "cc_api",
     actual = "cc_api_experimental",
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-        "//tensorflow/lite/delegates/flex:__subpackages__",
-        "//tensorflow/lite/kernels:__subpackages__",
-    ],
+    visibility = ["//tensorflow/lite:__subpackages__"],
 )
 
 # The key parts of the C++ API, including experimental APIs.
@@ -245,6 +242,7 @@ cc_library(
         "interpreter_builder.h",
         "model.h",
         "model_builder.h",
+        "signature_runner.h",
         "subgraph.h",
     ],
     compatible_with = get_compatible_with_portable(),
@@ -263,12 +261,12 @@ cc_library(
         "//tensorflow/lite:memory_planner",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:mutable_op_resolver",
-        "//tensorflow/lite:signature_runner",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite:string",
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/core:signature_runner",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/async:async_signature_runner",
@@ -297,6 +295,7 @@ cc_library(
     copts = tflite_copts_warnings(),
     visibility = internal_visibility_allowlist(),
     deps = [
+        ":macros",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:stderr_reporter",
@@ -309,6 +308,42 @@ cc_library(
         "@flatbuffers",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "signature_runner",
+    srcs = ["signature_runner.cc"],
+    hdrs = ["signature_runner.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow/lite:__pkg__",
+        "//tensorflow/lite/c:__subpackages__",
+        "//tensorflow/lite/core:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/internal:signature_def",
+    ],
+)
+
+# Test signature runner.
+cc_test(
+    name = "signature_runner_test",
+    size = "small",
+    srcs = ["signature_runner_test.cc"],
+    data = [
+        "//tensorflow/lite:testdata/multi_signatures.bin",
+    ],
+    deps = [
+        ":framework",
+        ":signature_runner",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 # Test model framework.
@@ -339,7 +374,6 @@ cc_test(
     ],
     deps = [
         ":framework",
-        "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:interpreter_test_util",
         "//tensorflow/lite:string",
@@ -479,8 +513,8 @@ cc_test(
         ":framework_stable",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/kernels:builtin_ops",  # build_cleaner: keep
-        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
 )

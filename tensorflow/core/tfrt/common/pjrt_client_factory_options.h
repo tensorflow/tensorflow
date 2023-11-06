@@ -21,9 +21,6 @@ limitations under the License.
 #include <set>
 #include <string>
 
-#include "tensorflow/compiler/xla/pjrt/distributed/client.h"
-#include "tensorflow/compiler/xla/pjrt/gpu/gpu_helpers.h"
-
 namespace xla {
 // PjrtClientFactoryOptions store arguments to create PJRT client.
 // Caller is responsible to set option value for corresponding PJRT client
@@ -31,8 +28,6 @@ namespace xla {
 struct PjrtClientFactoryOptions {
   struct GpuClientCreateOptions {
     bool asynchronous = false;
-    xla::GpuAllocatorConfig allocator_config = {};
-    std::shared_ptr<xla::DistributedRuntimeClient> distributed_client = nullptr;
     int node_id = 0;
     std::optional<std::set<int>> allowed_devices = std::nullopt;
     std::optional<std::string> platform_name = std::nullopt;

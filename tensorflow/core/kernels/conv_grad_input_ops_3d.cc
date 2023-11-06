@@ -16,7 +16,10 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
+#include <algorithm>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -40,11 +43,12 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/cast_op.h"
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
 using stream_executor::dnn::DimIndex;
 #include "tensorflow/core/protobuf/autotuning.pb.h"
@@ -53,9 +57,9 @@ using stream_executor::dnn::DimIndex;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "xla/stream_executor/gpu/redzone_allocator.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
 namespace {
@@ -243,7 +247,8 @@ class Conv3DBackpropInputOp : public OpKernel {
   TensorFormat data_format_;
   bool takes_shape_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Conv3DBackpropInputOp);
+  Conv3DBackpropInputOp(const Conv3DBackpropInputOp&) = delete;
+  void operator=(const Conv3DBackpropInputOp&) = delete;
 };
 
 // Custom backprop for input that explicitly does the work sharding and calls
@@ -359,24 +364,27 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
     int64_t top_pad_rows, bottom_pad_rows;
     int64_t left_pad_cols, right_pad_cols;
 
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                dims.spatial_dims[0].input_size,
-                                dims.spatial_dims[0].filter_size,
-                                dims.spatial_dims[0].stride, padding_,
-                                &dims.spatial_dims[0].output_size,
-                                &top_pad_planes, &bottom_pad_planes));
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                dims.spatial_dims[1].input_size,
-                                dims.spatial_dims[1].filter_size,
-                                dims.spatial_dims[1].stride, padding_,
-                                &dims.spatial_dims[1].output_size,
-                                &top_pad_rows, &bottom_pad_rows));
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                dims.spatial_dims[2].input_size,
-                                dims.spatial_dims[2].filter_size,
-                                dims.spatial_dims[2].stride, padding_,
-                                &dims.spatial_dims[2].output_size,
-                                &left_pad_cols, &right_pad_cols));
+    OP_REQUIRES_OK(
+        context,
+        GetWindowedOutputSizeVerbose(
+            dims.spatial_dims[0].input_size, dims.spatial_dims[0].filter_size,
+            /*dilation_rate=*/1, dims.spatial_dims[0].stride, padding_,
+            &dims.spatial_dims[0].output_size, &top_pad_planes,
+            &bottom_pad_planes));
+    OP_REQUIRES_OK(
+        context,
+        GetWindowedOutputSizeVerbose(
+            dims.spatial_dims[1].input_size, dims.spatial_dims[1].filter_size,
+            /*dilation_rate=*/1, dims.spatial_dims[1].stride, padding_,
+            &dims.spatial_dims[1].output_size, &top_pad_rows,
+            &bottom_pad_rows));
+    OP_REQUIRES_OK(
+        context,
+        GetWindowedOutputSizeVerbose(
+            dims.spatial_dims[2].input_size, dims.spatial_dims[2].filter_size,
+            /*dilation_rate=*/1, dims.spatial_dims[2].stride, padding_,
+            &dims.spatial_dims[2].output_size, &left_pad_cols,
+            &right_pad_cols));
 
     // TODO(ezhulenev): Extract work size and shard estimation to shared
     // functions in conv_grad_ops, and update 2d convolution backprop.
@@ -591,7 +599,8 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
   TensorFormat data_format_;
   bool takes_shape_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Conv3DCustomBackpropInputOp);
+  Conv3DCustomBackpropInputOp(const Conv3DCustomBackpropInputOp&) = delete;
+  void operator=(const Conv3DCustomBackpropInputOp&) = delete;
 };
 
 // Custom backrop input kernel is 30% - 4x faster when compiled with AVX2 than
@@ -732,10 +741,10 @@ void LaunchConvBackpropInputOpImpl(
     auto transpose = se::blas::Transpose::kTranspose;
     auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-    OP_REQUIRES_OK(
-        context,
-        stream->ThenBlasGemm(transpose, no_transpose, n, m, k, b_ptr, k, a_ptr,
-                             k, &c_ptr, n, se::blas::kDefaultComputePrecision));
+    OP_REQUIRES_OK(context, stream->ThenBlasGemm(transpose, no_transpose, n, m,
+                                                 k, b_ptr, k, a_ptr, k, &c_ptr,
+                                                 n, GetNumericOptions(),
+                                                 se::blas::CallContext::kNone));
     return;
   } else if (!is_grouped_convolution &&
              dims.filter_size(0) == dims.input_size(0) &&
@@ -757,10 +766,10 @@ void LaunchConvBackpropInputOpImpl(
     auto transpose = se::blas::Transpose::kTranspose;
     auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-    OP_REQUIRES_OK(
-        context,
-        stream->ThenBlasGemm(transpose, no_transpose, n, m, k, b_ptr, k, a_ptr,
-                             k, &c_ptr, n, se::blas::kDefaultComputePrecision));
+    OP_REQUIRES_OK(context, stream->ThenBlasGemm(transpose, no_transpose, n, m,
+                                                 k, b_ptr, k, a_ptr, k, &c_ptr,
+                                                 n, GetNumericOptions(),
+                                                 se::blas::CallContext::kNone));
     return;
   }
 

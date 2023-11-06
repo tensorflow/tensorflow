@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -25,19 +26,28 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "xla/client/xla_computation.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
+
+bool IsTokenType(mlir::Type type);
 
 class XlaCallModuleLoader {
  public:
   static tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> Create(
       mlir::MLIRContext* context, int version, std::string module_str,
-      std::vector<std::string> dim_args_spec, int platform_index);
+      std::vector<std::string> disabled_checks,
+      std::vector<std::string> platforms, std::string loading_platform,
+      int num_invocation_args, bool main_has_token_input_output);
 
-  int nr_outputs() { return main_.getNumResults(); }
-  mlir::TypeRange output_types() { return main_.getResultTypes(); }
+  int NrInputs() { return main_.getNumArguments(); }
+  mlir::TypeRange InputTypes() { return main_.getArgumentTypes(); }
+
+  int NrOutputs() { return main_.getNumResults(); }
+  mlir::TypeRange OutputTypes() { return main_.getResultTypes(); }
 
   // Refines the dynamic module arguments based on the static argument shapes.
   // This assumes that the module has a "main" function without dimension args,
@@ -52,12 +62,25 @@ class XlaCallModuleLoader {
   // cause lifetime issues.
   tsl::Status RefineDynamicShapes(llvm::ArrayRef<xla::Shape> input_shapes);
 
-  // Validate that the module represents a statically-shaped StableHLO program,
+  // Validates that the module only contains ops from valid dialects.
+  tsl::Status ValidateDialect();
+
+  // Validates that the module represents a statically-shaped StableHLO program,
   // otherwise all sorts of weirdness might happen in the HLO exporter which is
   // much easier to detect here.
-  tsl::Status ValidateModule();
+  absl::Status ValidateStaticShapes();
 
+  // Lowers the StableHLO module to MHLO in place.
+  absl::Status LowerModuleToMhlo();
+
+  // Lowers the MHLO module to XlaComputation and returns it.
+  //
+  // REQUIRES: `LowerModuleToMhlo()` is called beforehand.
   tsl::StatusOr<xla::XlaComputation> ToXlaComputation();
+
+  // Returns the deserialized stablehlo module.
+  mlir::ModuleOp module() & { return *module_; }
+  mlir::OwningOpRef<mlir::ModuleOp> module() && { return std::move(module_); }
 
  private:
   XlaCallModuleLoader() = default;
@@ -65,8 +88,11 @@ class XlaCallModuleLoader {
   // Initializes the loader with the given serialized module string.
   tsl::Status LoadAndPreprocessModule(mlir::MLIRContext* context, int version,
                                       std::string module_str,
-                                      std::vector<std::string> dim_args_spec,
-                                      int platform_index);
+                                      std::vector<std::string> disabled_checks,
+                                      std::vector<std::string> platforms,
+                                      std::string loading_platform,
+                                      int num_invocation_args,
+                                      bool main_has_token_input_output);
 
   // Adds a wrapper for the "main" function to compute the platform index and
   // the dimension arguments.
@@ -75,8 +101,12 @@ class XlaCallModuleLoader {
   mlir::MLIRContext* context_;
   int version_;
   mlir::OwningOpRef<mlir::ModuleOp> module_;
+  // Index in platforms of the current platform, or -1 if module does not take
+  // a platform index arg.
   int platform_index_;
-  std::vector<std::string> dim_args_spec_;
+  // The disabled checks at loading time, including those from the
+  // disabled_checks attribute and the TF_XLA_FLAGS environment variable.
+  std::vector<std::string> loading_disabled_checks_;
   mlir::func::FuncOp main_;
 };
 

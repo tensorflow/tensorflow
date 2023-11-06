@@ -23,8 +23,6 @@ limitations under the License.
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/kernels/data/iterator_ops.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
@@ -49,17 +47,12 @@ class LoadDatasetOp : public DatasetOpKernel {
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override;
 
  private:
-  // Dataset classes for different formats. V1 loads the output of a
-  // `SaveDataset()`. V2 loads the output of a `DistributedSaveDataset()`.
-  // TODO(b/250921378): Unify the file format for distributed and
-  // non-distributed save so we only need to keep V2.
-  class DatasetV1;
-  class DatasetV2;
+  class Dataset;
 
   std::string compression_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  std::shared_ptr<FunctionMetadata> func_metadata_;
+  std::shared_ptr<FunctionMetadata> reader_func_metadata_;
 };
 
 }  // namespace experimental

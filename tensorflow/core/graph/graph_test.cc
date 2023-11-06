@@ -20,10 +20,12 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/benchmark_testlib.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -37,6 +39,8 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
+
+using ::testing::UnorderedElementsAre;
 
 REGISTER_OP("OneInput").Input("x: float");
 
@@ -826,6 +830,37 @@ TEST_F(GraphTest, NodeShrinkTypeInput) {
   EXPECT_EQ(ft->args(2).args(0).type_id(), TFT_INT64);
   ASSERT_EQ(ft->args(3).args_size(), 1);
   EXPECT_EQ(ft->args(3).args(0).type_id(), TFT_STRING);
+}
+
+TEST(AddInput, AddsControlSlot) {
+  auto input_name = "input-name";
+  auto expected_input_name = absl::StrCat("^", input_name);
+  NodeDef node_def;
+
+  tensorflow::Graph::AddInput(&node_def, input_name, Graph::kControlSlot);
+
+  EXPECT_EQ(node_def.input(0), expected_input_name);
+}
+
+TEST(AddInput, AddsSourceSlotZero) {
+  auto input_name = "input-name";
+  NodeDef node_def;
+
+  tensorflow::Graph::AddInput(&node_def, input_name, 0);
+
+  EXPECT_EQ(node_def.input(0), input_name);
+}
+
+TEST(AddInput, AddsOtherSlots) {
+  auto input_name = "input-name";
+  int arbitrary_slot = 37;
+  auto expected_input_name =
+      absl::StrCat(input_name, ":", arbitrary_slot);  // non-absl ok
+  NodeDef node_def;
+
+  tensorflow::Graph::AddInput(&node_def, input_name, arbitrary_slot);
+
+  EXPECT_EQ(node_def.input(0), expected_input_name);
 }
 
 void BM_InEdgeIteration(::testing::benchmark::State& state) {

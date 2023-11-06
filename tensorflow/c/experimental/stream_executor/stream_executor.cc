@@ -29,13 +29,11 @@ limitations under the License.
 #include "tensorflow/c/c_api_macros_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/compiler/xla/stream_executor/executor_cache.h"
-#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
-#include "tensorflow/compiler/xla/stream_executor/platform.h"
-#include "tensorflow/compiler/xla/stream_executor/stream.h"
-#include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
-#include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
-#include "tensorflow/compiler/xla/stream_executor/timer.h"
+#include "xla/stream_executor/executor_cache.h"
+#include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device/device_utils.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -72,16 +70,8 @@ tsl::Status ValidateSPPlatformFns(const SP_PlatformFns& platform_fns) {
   TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, destroy_device);
   TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, create_stream_executor);
   TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, destroy_stream_executor);
-  TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, create_timer_fns);
-  TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, destroy_timer_fns);
   TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, create_device_fns);
   TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, destroy_device_fns);
-  return ::tensorflow::OkStatus();
-}
-
-tsl::Status ValidateSPTimerFns(const SP_TimerFns& timer_fns) {
-  TF_VALIDATE_STRUCT_SIZE(SP_TimerFns, timer_fns, SP_TIMER_FNS_STRUCT_SIZE);
-  TF_VALIDATE_NOT_NULL(SP_TimerFns, timer_fns, nanoseconds);
   return ::tensorflow::OkStatus();
 }
 
@@ -134,10 +124,6 @@ tsl::Status ValidateSPStreamExecutor(const SP_StreamExecutor& se,
   TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, get_event_status);
   TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, record_event);
   TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, wait_for_event);
-  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, create_timer);
-  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, destroy_timer);
-  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, start_timer);
-  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, stop_timer);
   TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, memcpy_dtoh);
   TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, memcpy_htod);
   TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, sync_memcpy_dtoh);
@@ -488,44 +474,6 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     }
     return true;
   }
-  bool AllocateTimer(Timer* timer) override {
-    tsl::Status status =
-        static_cast<CTimer*>(timer->implementation())->Create();
-    // TODO(annarev): change return value of AllocateTimer
-    // to status (similar to AllocateEvent).
-    return status.ok();
-  }
-  void DeallocateTimer(Timer* timer) override {
-    static_cast<CTimer*>(timer->implementation())->Destroy();
-  }
-  bool StartTimer(Stream* stream, Timer* timer) override {
-    OwnedTFStatus c_status(TF_NewStatus());
-    SP_Stream stream_handle =
-        static_cast<CStream*>(stream->implementation())->Handle();
-    SP_Timer timer_handle =
-        static_cast<CTimer*>(timer->implementation())->Handle();
-    stream_executor_->start_timer(&device_, stream_handle, timer_handle,
-                                  c_status.get());
-    if (TF_GetCode(c_status.get()) != TF_OK) {
-      LOG(ERROR) << TF_Message(c_status.get());
-      return false;
-    }
-    return true;
-  }
-  bool StopTimer(Stream* stream, Timer* timer) override {
-    OwnedTFStatus c_status(TF_NewStatus());
-    SP_Stream stream_handle =
-        static_cast<CStream*>(stream->implementation())->Handle();
-    SP_Timer timer_handle =
-        static_cast<CTimer*>(timer->implementation())->Handle();
-    stream_executor_->stop_timer(&device_, stream_handle, timer_handle,
-                                 c_status.get());
-    if (TF_GetCode(c_status.get()) != TF_OK) {
-      LOG(ERROR) << TF_Message(c_status.get());
-      return false;
-    }
-    return true;
-  }
   tsl::Status BlockHostForEvent(Stream* stream, Event* event) {
     OwnedTFStatus c_status(TF_NewStatus());
     SP_Event event_handle =
@@ -571,7 +519,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
                                         c_status.get());
     return StatusFromTF_Status(c_status.get());
   }
-  int PlatformDeviceCount() override { return visible_device_count_; }
+
   tsl::Status EnablePeerAccessTo(StreamExecutorInterface* other) override {
     return tsl::errors::Unimplemented(
         "EnablePeerAccessTo is not supported by pluggable device.");
@@ -639,10 +587,6 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     return std::unique_ptr<internal::StreamInterface>(
         new CStream(&device_, stream_executor_));
   }
-  std::unique_ptr<internal::TimerInterface> GetTimerImplementation() override {
-    return std::unique_ptr<internal::TimerInterface>(
-        new CTimer(&device_, stream_executor_, timer_fns_));
-  }
 
  private:
   SP_Device device_;
@@ -692,13 +636,6 @@ CPlatform::DescriptionForDevice(int ordinal) const {
 tsl::StatusOr<StreamExecutor*> CPlatform::ExecutorForDevice(int ordinal) {
   stream_executor::StreamExecutorConfig config;
   config.ordinal = ordinal;
-  return GetExecutor(config);
-}
-tsl::StatusOr<StreamExecutor*> CPlatform::ExecutorForDeviceWithPluginConfig(
-    int ordinal, const PluginConfig& plugin_config) {
-  StreamExecutorConfig config;
-  config.ordinal = ordinal;
-  config.plugin_config = plugin_config;
   return GetExecutor(config);
 }
 tsl::StatusOr<StreamExecutor*> CPlatform::GetExecutor(
@@ -792,9 +729,7 @@ tsl::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
   TF_RETURN_IF_ERROR(ValidateSPStreamExecutor(se, platform));
 
   SP_TimerFns timer_fns{SP_TIMER_FNS_STRUCT_SIZE};
-  platform_fns.create_timer_fns(&platform, &timer_fns, c_status.get());
   TF_RETURN_IF_ERROR(tensorflow::StatusFromTF_Status(c_status.get()));
-  TF_RETURN_IF_ERROR(ValidateSPTimerFns(timer_fns));
 
   // Register new platform
   *device_type = std::string(platform.type);

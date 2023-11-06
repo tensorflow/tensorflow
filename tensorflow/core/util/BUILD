@@ -1,15 +1,9 @@
-load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library",
-)
-load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_library",
-)
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
     "tf_cc_test",
+    "tf_cc_test_mkl",
     "tf_cc_tests",
     "tf_copts",
     "tf_cuda_library",
@@ -19,10 +13,17 @@ load(
 )
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable", "tf_version_info_genrule")
 load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
+load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
@@ -66,7 +67,7 @@ filegroup(
         "padding.h",
         "tensor_format.cc",
         "tensor_format.h",
-        "//tensorflow/tsl/util:mobile_srcs_no_runtime",
+        "@local_tsl//tsl/util:mobile_srcs_no_runtime",
     ],
 )
 
@@ -130,8 +131,9 @@ filegroup(
         "util.h",
         "work_sharder.cc",
         "work_sharder.h",
+        "//tensorflow/core/config:mobile_srcs_only_runtime",
         "//tensorflow/core/util/quantization:mobile_srcs_only_runtime",
-        "//tensorflow/tsl/util:mobile_srcs_only_runtime",
+        "@local_tsl//tsl/util:mobile_srcs_only_runtime",
     ],
 )
 
@@ -161,7 +163,7 @@ filegroup(
         "matmul_autotune.h",
         "matmul_bcast.h",
         "mirror_pad_mode.h",
-        "mkl_threadpool.h",
+        "mkl_heuristics.h",
         "mkl_util.h",
         "onednn_env_vars.h",
         "overflow.h",
@@ -189,7 +191,7 @@ filegroup(
         "work_sharder.h",
         "xla_config_registry.h",
         "zen_util.h",
-        "//tensorflow/tsl/util:framework_internal_private_hdrs",
+        "@local_tsl//tsl/util:framework_internal_private_hdrs",
     ],
 )
 
@@ -231,7 +233,7 @@ filegroup(
         "util.cc",
         "work_sharder.cc",
         "xla_config_registry.cc",
-        "//tensorflow/tsl/util:framework_internal_impl_srcs",
+        "@local_tsl//tsl/util:framework_internal_impl_srcs",
     ],
 )
 
@@ -240,7 +242,7 @@ filegroup(
     srcs = [
         "env_var.h",
         "use_cudnn.h",
-        "//tensorflow/tsl/util:lib_internal_public_hdrs",
+        "@local_tsl//tsl/util:lib_internal_public_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -286,7 +288,7 @@ filegroup(
     testonly = 1,
     srcs = [
         "reporter.h",
-        "//tensorflow/tsl/util:test_hdrs",
+        "@local_tsl//tsl/util:test_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -294,9 +296,10 @@ filegroup(
 filegroup(
     name = "mkl_util_hdrs",
     srcs = [
-        "mkl_threadpool.h",
+        "mkl_heuristics.h",
         "mkl_util.h",
         "onednn_env_vars.h",
+        "@local_tsl//tsl/util:onednn_util_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -315,7 +318,7 @@ filegroup(
     testonly = 1,
     srcs = [
         "reporter.h",
-        "//tensorflow/tsl/util:android_test_hdrs",
+        "@local_tsl//tsl/util:android_test_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -325,7 +328,7 @@ filegroup(
     testonly = 1,
     srcs = [
         ":android_test_hdrs",
-        "//tensorflow/tsl/util:android_test_srcs",
+        "@local_tsl//tsl/util:android_test_srcs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -366,7 +369,7 @@ filegroup(
         "use_cudnn.h",
         "util.h",
         "work_sharder.h",
-        "//tensorflow/tsl/util:framework_srcs",
+        "@local_tsl//tsl/util:framework_srcs",
     ],
 )
 
@@ -421,7 +424,7 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
-        "//tensorflow/tsl/util:stats_calculator_portable",
+        "@local_tsl//tsl/util:stats_calculator_portable",
     ],
 )
 
@@ -508,7 +511,7 @@ cc_library(
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:types",
-        "//tensorflow/tsl/util:reporter",
+        "@local_tsl//tsl/util:reporter",
     ],
 )
 
@@ -563,7 +566,7 @@ tf_cuda_library(
     deps = [
         ":gpu_cuda_alias",
         "//tensorflow/core/platform:types",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -639,7 +642,7 @@ cc_library(
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
-        "//tensorflow/tsl/util:env_var",
+        "@local_tsl//tsl/util:env_var",
     ],
 )
 
@@ -664,7 +667,7 @@ cc_library(
     deps = [
         ":env_var",
         "//tensorflow/core/platform:mutex",
-        "//tensorflow/tsl/util:determinism",
+        "@local_tsl//tsl/util:determinism",
     ],
     alwayslink = 1,
 )
@@ -673,7 +676,7 @@ filegroup(
     name = "determinism_hdr",
     srcs = [
         "determinism.h",
-        "//tensorflow/tsl/util:determinism_hdr",
+        "@local_tsl//tsl/util:determinism_hdr",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//tensorflow:__subpackages__"],
@@ -683,7 +686,11 @@ cc_library(
     name = "determinism_hdr_lib",
     hdrs = [":determinism_hdr"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:private"],
+    # TODO(b/298501506): narrow this in a way that won't break TFRT
+    visibility = ["//visibility:public"],
+    deps = [
+        "@local_tsl//tsl/util:determinism_hdr_lib",
+    ],
 )
 
 # This alias should be used as a dependency for kernels which use determinism,
@@ -730,10 +737,10 @@ tf_kernel_library(
     }),
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cusolver_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@local_tsl//tsl/cuda:cusolver",
+        "@local_xla//xla/stream_executor/cuda:cublas_plugin",
     ],
 )
 
@@ -744,15 +751,15 @@ tf_kernel_library(
     compatible_with = [],
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
-        "//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
-        "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_plugin",
-        "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_wrapper",
-        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_gpu_executor",
-        "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "@local_xla//xla/stream_executor/platform:dso_loader",
+        "@local_xla//xla/stream_executor/rocm:hipsolver_wrapper",
+        "@local_xla//xla/stream_executor/rocm:rocblas_plugin",
+        "@local_xla//xla/stream_executor/rocm:rocblas_wrapper",
+        "@local_xla//xla/stream_executor/rocm:rocm_gpu_executor",
+        "@local_xla//xla/stream_executor/rocm:rocsolver_wrapper",
     ] + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),
@@ -771,14 +778,14 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ] + if_cuda([
-        "//tensorflow/compiler/xla/stream_executor/cuda:cusparse_lib",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_blas_utils",
-        "//tensorflow/compiler/xla/stream_executor:data_type",
+        "@local_xla//xla/stream_executor/cuda:cuda_blas_utils",
+        "@local_xla//xla/stream_executor",
+        "@local_tsl//tsl/cuda:cusparse",
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
-        "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
-        "//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
-        "//tensorflow/compiler/xla/stream_executor/rocm:hipsparse_wrapper",
+        "@local_xla//xla/stream_executor/rocm:rocsolver_wrapper",
+        "@local_xla//xla/stream_executor/rocm:hipsolver_wrapper",
+        "@local_xla//xla/stream_executor/rocm:hipsparse_wrapper",
     ]),
 )
 
@@ -789,7 +796,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:bounds_check",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -851,7 +858,7 @@ tf_cuda_only_cc_test(
     deps = [
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -915,11 +922,11 @@ tf_cc_tests(
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:status_matchers",
-        "//third_party/eigen3",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -956,15 +963,30 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test_mkl(
+    name = "mkl_heuristics_test",
+    size = "small",
+    srcs = ["mkl_heuristics_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/kernels:ops_testutil",
+    ],
+)
+
 # Proto libraries.
 tf_proto_library(
     name = "test_log_proto",
     srcs = ["test_log.proto"],
     make_default_target_header_only = True,
-    protodeps = ["//tensorflow/tsl/protobuf:test_log_proto"],
+    protodeps = ["@local_tsl//tsl/protobuf:test_log_proto"],
     # Not to be used outside of tensorflow/core.
     visibility = ["//tensorflow/core:__pkg__"],
-    exports = ["//tensorflow/tsl/protobuf:test_log_proto"],
+    exports = ["@local_tsl//tsl/protobuf:test_log_proto"],
 )
 
 tf_proto_library(
@@ -1029,6 +1051,6 @@ tf_proto_library(
     ],
     visibility = [
         "//tensorflow/core:__subpackages__",
-        "//tensorflow/tsl:__subpackages__",
+        "@local_tsl//tsl:__subpackages__",
     ],
 )

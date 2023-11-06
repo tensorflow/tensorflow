@@ -32,14 +32,15 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/reference/add.h"
+#include "tensorflow/lite/kernels/internal/reference/mul.h"
 #include "tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h"
 
 #if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
 #include <Accelerate/Accelerate.h>
 #endif
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "fixedpoint/fixedpoint.h"
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/core/c/common.h"
@@ -76,7 +77,7 @@ using reference_ops::Broadcast4DSlowLessEqual;
 using reference_ops::Broadcast4DSlowLessEqualWithScaling;
 using reference_ops::Broadcast4DSlowLessWithScaling;
 using reference_ops::BroadcastAdd6DSlow;
-using reference_ops::BroadcastMul4DSlow;
+using reference_ops::BroadcastMul6DSlow;
 using reference_ops::BroadcastSub16POTSlow;
 using reference_ops::BroadcastSubSlow;
 using reference_ops::Concatenation;
@@ -1994,7 +1995,7 @@ inline void MulNoActivation(const ArithmeticParams& params,
     auto scalar = input1_data[0];
     output_map.array() = scalar * input2_map.array();
   } else {
-    reference_ops::BroadcastMul4DSlow(params, input1_shape, input1_data,
+    reference_ops::BroadcastMul6DSlow(params, input1_shape, input1_data,
                                       input2_shape, input2_data, output_shape,
                                       output_data);
   }
@@ -2249,7 +2250,7 @@ inline void BroadcastMulDispatch(
     const T* input1_data, const RuntimeShape& input2_shape,
     const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
   if (params.broadcast_category == BroadcastableOpCategory::kGenericBroadcast) {
-    return BroadcastMul4DSlow(params, input1_shape, input1_data, input2_shape,
+    return BroadcastMul6DSlow(params, input1_shape, input1_data, input2_shape,
                               input2_data, output_shape, output_data);
   }
 
@@ -7956,15 +7957,13 @@ inline void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
   ArgMax(input1_shape, input1_data, input2_data, output_shape, output_data);
 }
 
-inline void Conv3D(const Conv3DParams& params, const RuntimeShape& input_shape,
-                   const float* input_data, const RuntimeShape& filter_shape,
-                   const float* filter_data, const RuntimeShape& bias_shape,
-                   const float* bias_data, const RuntimeShape& output_shape,
-                   float* output_data, const RuntimeShape& im2col_shape,
-                   float* im2col_data,
-                   const RuntimeShape& transposed_filter_shape,
-                   float* transposed_filter_data,
-                   CpuBackendContext* cpu_backend_context) {
+inline TfLiteStatus Conv3D(
+    const Conv3DParams& params, const RuntimeShape& input_shape,
+    const float* input_data, const RuntimeShape& filter_shape,
+    const float* filter_data, const RuntimeShape& bias_shape,
+    const float* bias_data, const RuntimeShape& output_shape,
+    float* output_data, const RuntimeShape& im2col_shape, float* im2col_data,
+    CpuBackendContext* cpu_backend_context) {
   const int stride_depth = params.stride_depth;
   const int stride_height = params.stride_height;
   const int stride_width = params.stride_width;
@@ -8011,24 +8010,13 @@ inline void Conv3D(const Conv3DParams& params, const RuntimeShape& input_shape,
     gemm_input_shape = &input_shape;
   }
 
-  // Transpose the filter tensor.
-  TransposeParams transpose_params;
-  transpose_params.perm_count = 5;
-  transpose_params.perm[0] = 4;
-  transpose_params.perm[1] = 0;
-  transpose_params.perm[2] = 1;
-  transpose_params.perm[3] = 2;
-  transpose_params.perm[4] = 3;
-  Transpose<float, 5>(transpose_params, filter_shape, filter_data,
-                      transposed_filter_shape, transposed_filter_data);
-
   const int gemm_input_dims = gemm_input_shape->DimensionsCount();
   int m = FlatSizeSkipDim(*gemm_input_shape, gemm_input_dims - 1);
   int n = output_shape.Dims(4);
   int k = gemm_input_shape->Dims(gemm_input_dims - 1);
 
   cpu_backend_gemm::MatrixParams<float> lhs_params;
-  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.order = cpu_backend_gemm::Order::kColMajor;
   lhs_params.rows = n;
   lhs_params.cols = k;
   cpu_backend_gemm::MatrixParams<float> rhs_params;
@@ -8043,9 +8031,10 @@ inline void Conv3D(const Conv3DParams& params, const RuntimeShape& input_shape,
   gemm_params.bias = bias_data;
   gemm_params.clamp_min = output_activation_min;
   gemm_params.clamp_max = output_activation_max;
-  cpu_backend_gemm::Gemm(lhs_params, transposed_filter_data, rhs_params,
-                         gemm_input_data, dst_params, output_data, gemm_params,
+  cpu_backend_gemm::Gemm(lhs_params, filter_data, rhs_params, gemm_input_data,
+                         dst_params, output_data, gemm_params,
                          cpu_backend_context);
+  return kTfLiteOk;
 }
 
 // Returns in 'im_data' (assumed to be zero-initialized) image patch in storage

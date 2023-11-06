@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -203,10 +204,10 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
   if (extraction_status.ok()) {
     for (const std::string& shape_and_slice : original_shape_and_slices) {
       if (!shape_and_slice.empty())
-        return absl::InvalidArgumentError(absl::StrCat(
+        return absl::InvalidArgumentError(
             absl::StrCat("DTensor SaveV2 requires shape_and_slices() field to "
                          "be empty for tensors, but get : ",
-                         shape_and_slice)));
+                         shape_and_slice));
     }
   } else {
     VLOG(2) << "Failed to extract and verify shape_and_slices() from "
@@ -392,12 +393,12 @@ StatusOr<mlir::Operation*> ExpandSaveV2Op(mlir::Operation* op) {
     // inputs. This is generic regardless whether the inputs are constants or
     // just arguments.
     int index = it.index();
-    TF_ASSIGN_OR_RETURN(absl::optional<Layout> layout,
+    TF_ASSIGN_OR_RETURN(std::optional<Layout> layout,
                         ExtractLayoutFromOperand(tensor));
     if (!layout)
-      return absl::InvalidArgumentError(absl::StrCat(
+      return absl::InvalidArgumentError(
           "layout is required when saving a DTensor but find no layout "
-          "attached"));
+          "attached");
 
     TF_ASSIGN_OR_RETURN(llvm::ArrayRef<int64_t> tensor_shape,
                         GetGlobalShapeOfValueFromDTensorLayout(it.value()));
@@ -821,6 +822,7 @@ StatusOr<llvm::SmallVector<Layout>> GetLayoutsFromAssignVariableOps(
       // an IdentityOp, CastOp, or a DTensorSend op on the path. So, skip past
       // these ops first.
       while (llvm::isa<mlir::TF::CastOp, mlir::TF::IdentityOp,
+                       mlir::TF::RelayoutOp, mlir::TF::DTensorLayout,
                        mlir::TF::DTensorSend>(consuming_op)) {
         if (auto send_op =
                 mlir::dyn_cast_or_null<mlir::TF::DTensorSend>(consuming_op)) {
@@ -891,8 +893,10 @@ SaveRestoreSPMDExpander::ComputeLayoutForward(
     // Change the mesh of each layout to `mesh` since RestoreOp always runs on
     // the CPU.
     for (int i = 0; i < layouts.size(); ++i) {
-      Layout host_mesh_layout = layouts[i];
-      host_mesh_layout.set_mesh(mesh);
+      TF_ASSIGN_OR_RETURN(
+          Layout host_mesh_layout,
+          Layout::GetLayout(Layout::LayoutType::kStatic,
+                            layouts[i].sharding_spec_strs(), mesh));
       output_layouts[i] = host_mesh_layout;
     }
     return output_layouts;

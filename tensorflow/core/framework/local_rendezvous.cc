@@ -33,7 +33,8 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/logging.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/refcount.h"
 
 namespace tensorflow {
 
@@ -135,7 +136,7 @@ LocalRendezvous::~LocalRendezvous() {
     }
   }
   if (table_not_empty) {
-    StartAbort(errors::Cancelled("LocalRendezvous deleted"));
+    DoAbort(absl::CancelledError("LocalRendezvous deleted"));
   }
 }
 
@@ -379,12 +380,28 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
   delete item;
 }
 
+mutex& LocalRendezvous::aborted_rendezs_mu_ = *new mutex();
+
+std::vector<tsl::core::RefCountPtr<Rendezvous> >&
+    LocalRendezvous::aborted_rendezs_ =
+        *new std::vector<tsl::core::RefCountPtr<Rendezvous> >();
+
 void LocalRendezvous::StartAbort(const Status& status) {
+  DoAbort(status);
+
+  if (rc_owner_) {
+    mutex_lock l(aborted_rendezs_mu_);
+    aborted_rendezs_.push_back(tsl::core::GetNewRef(rc_owner_));
+  }
+}
+
+void LocalRendezvous::DoAbort(const Status& status) {
   CHECK(!status.ok());
   {
     mutex_lock l(mu_);
     status_.Update(status);
   }
+  LOG(WARNING) << "Local rendezvous is aborting with status: " << status;
 
   // Keeps one Item to make sure the current rendezvous won't be destructed.
   std::unique_ptr<Item> to_delete;

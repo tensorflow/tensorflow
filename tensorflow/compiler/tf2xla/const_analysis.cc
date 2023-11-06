@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
@@ -65,7 +65,8 @@ Status CondConstInputIndices(
     std::vector<int>* const_input_idxs, FunctionLibraryRuntime* flib_runtime) {
   TF_RET_CHECK(!branch_bodies.empty());
   TF_RET_CHECK(branch_bodies[0] != nullptr);
-  int num_inputs = branch_bodies[0]->fdef.signature().input_arg_size();
+  int num_inputs =
+      branch_bodies[0]->record->fdef().signature().input_arg_size();
   // Stores indices of the "branch function" inputs that are expected to be
   // compile time constants.
   std::vector<bool> compile_time_const_arg_indices(num_inputs);
@@ -99,7 +100,7 @@ Status GetCompileTimeConstInputs(const NodeDef& node, const OpKernel* op_kernel,
     TF_RETURN_IF_ERROR(GetFunctionBody(flib_runtime, node, "body", &fbody));
     TF_RET_CHECK(fcond);
     TF_RET_CHECK(fbody);
-    int num_inputs = fbody->fdef.signature().input_arg_size();
+    int num_inputs = fbody->record->fdef().signature().input_arg_size();
 
     // Stores which of the loop inputs are expected to be compile time
     // constants.
@@ -151,7 +152,7 @@ Status GetCompileTimeConstInputs(const NodeDef& node, const OpKernel* op_kernel,
              node.op() == "StatefulPartitionedCall") {
     const FunctionBody* fbody;
     TF_RETURN_IF_ERROR(GetFunctionBody(flib_runtime, node, "f", &fbody));
-    int num_inputs = fbody->fdef.signature().input_arg_size();
+    int num_inputs = fbody->record->fdef().signature().input_arg_size();
     std::vector<bool> compile_time_const_arg_indices(num_inputs);
     TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
         *(fbody->graph), &compile_time_const_arg_indices,

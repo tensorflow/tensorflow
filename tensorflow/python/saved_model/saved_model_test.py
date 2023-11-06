@@ -24,13 +24,14 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variables_toggle
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -95,7 +96,7 @@ class SavedModelTestBase(test.TestCase):
     index = "0"
     if ":" in name:
       name, index = name.split(":")
-    if variable_scope.resource_variables_enabled():
+    if resource_variables_toggle.resource_variables_enabled():
       name = name + "/Read/ReadVariableOp"
     return self.evaluate(name + ":" + index)
 
@@ -198,8 +199,7 @@ class SavedModelTest(SavedModelTestBase):
     with open(path_to_pb, "w") as f:
       f.write("invalid content")
     with self.session(graph=ops.Graph()) as sess:
-      with self.assertRaisesRegex(
-          IOError, "Cannot parse file.*%s" % constants.SAVED_MODEL_FILENAME_PB):
+      with self.assertRaisesRegex(IOError, "Cannot parse file"):
         loader.load(sess, ["foo"], export_dir)
 
     # Cleanup the directory and start again.
@@ -934,13 +934,13 @@ class SavedModelTest(SavedModelTestBase):
         meta_graph_def = loader.load(sess, ["foo"], export_dir)
         self.assertEqual(3, self._eval("v1"))
         self.assertEqual(2, self._eval("v2"))
-        if variable_scope.resource_variables_enabled():
+        if resource_variables_toggle.resource_variables_enabled():
           self.assertEqual(
               loader_impl.get_train_op(meta_graph_def).type,
               "AssignAddVariableOp")
         else:
           self.assertIsInstance(
-              loader_impl.get_train_op(meta_graph_def), ops.Tensor)
+              loader_impl.get_train_op(meta_graph_def), tensor_lib.Tensor)
 
   def testTrainOpGroup(self):
     export_dir = self._get_export_dir("test_train_op_group")
@@ -990,13 +990,13 @@ class SavedModelTest(SavedModelTestBase):
 
       with self.session(graph=ops.Graph()) as sess:
         meta_graph_def = loader.load(sess, ["foo"], export_dir)
-        if variable_scope.resource_variables_enabled():
+        if resource_variables_toggle.resource_variables_enabled():
           self.assertEqual(
               loader_impl.get_train_op(meta_graph_def).type,
               "AssignAddVariableOp")
         else:
           self.assertIsInstance(
-              loader_impl.get_train_op(meta_graph_def), ops.Tensor)
+              loader_impl.get_train_op(meta_graph_def), tensor_lib.Tensor)
 
       with self.session(graph=ops.Graph()) as sess:
         loader.load(sess, ["pre_foo"], export_dir)

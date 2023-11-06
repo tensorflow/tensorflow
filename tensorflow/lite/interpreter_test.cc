@@ -29,7 +29,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -1829,7 +1829,7 @@ class TestCustomAllocation : public InterpreterTest {
   }
 
   // Actual initialized allocation is more than num_bytes, to account for
-  // required_allocation.
+  // required_alignment.
   TfLiteCustomAllocation NewCustomAlloc(size_t num_bytes,
                                         int required_alignment) {
     // Extra memory to ensure alignment.

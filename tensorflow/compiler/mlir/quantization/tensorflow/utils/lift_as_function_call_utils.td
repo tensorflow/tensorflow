@@ -17,9 +17,22 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 
+// Creates a function call with TF::PartitionedCallOp and a new function to
+// wrap the section between arguments and results.
+//
 // The `returns` number indicates the number of results the function returns.
-class LiftAsFunctionCall<string func_name, int returns = 1> :
+class LiftAsTFPartitionedCall<string func_name, int returns = 1> :
   NativeCodeCall<"LiftAsFunctionCall($_builder, $_loc, "
+                    "FunctionCallOpType::TFPartitionedCallOp, "
+                    "\""# func_name #"\", $0...)", returns>;
+
+// Creates a function call with TF::XlaCallModuleOp and a new function to wrap
+// the section between arguments and results.
+//
+// The `returns` number indicates the number of results the function returns.
+class LiftAsTFXlaCallModule<string func_name, int returns = 1> :
+  NativeCodeCall<"LiftAsFunctionCall($_builder, $_loc, "
+                    "FunctionCallOpType::TFXlaCallModuleOp, "
                     "\""# func_name #"\", $0...)", returns>;
 
 // Add the second argument to the first argument, which is expected to be an

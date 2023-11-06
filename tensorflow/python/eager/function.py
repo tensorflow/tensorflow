@@ -24,7 +24,6 @@ from tensorflow.python.eager.polymorphic_function.concrete_function import _INFE
 
 # Function Classes
 from tensorflow.python.eager.polymorphic_function.concrete_function import ConcreteFunction
-from tensorflow.python.eager.polymorphic_function.tracing_compiler import TracingCompiler as Function
 from tensorflow.python.eager.polymorphic_function.atomic_function import from_func_graph
 from tensorflow.python.eager.polymorphic_function.atomic_function import AtomicFunction
 

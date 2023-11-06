@@ -226,11 +226,23 @@ void InferenceContext::ExecutionHints::Init(const GpuInfo& gpu_info) {
 
     flush_periodically = true;
     flush_period = 24;
-  }
-  if (gpu_info.IsPowerVR()) {
+  } else if (gpu_info.IsPowerVR()) {
     need_flush = true;
     flush_periodically = true;
+    // Some Ge8xxx devices are slower without frequent periodic flushing.
+    flush_period =
+        gpu_info.powervr_info.IsBetterThan(PowerVRGpu::kRogueGm9xxx) ? 16 : 4;
+  } else if (gpu_info.IsAdreno() &&
+             !gpu_info.adreno_info.IsBetterThan(AdrenoGpu::kAdreno630)) {
+    // Adreno620 or lower devices has smaller GPU buffer.
+    flush_periodically = true;
     flush_period = 16;
+  }
+  // clvk has inside to know when to flush, do not do it at the application
+  // level.
+  if (gpu_info.IsApiOpenCl() && gpu_info.opencl_info.IsCLVK()) {
+    need_flush = false;
+    flush_periodically = false;
   }
 }
 

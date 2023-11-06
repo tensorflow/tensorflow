@@ -14,7 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/runtime/fallback_batch_kernel.h"
 
+#include <cstdint>
+#include <cstdlib>
+#include <optional>
+#include <string>
+
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/batching_util/bounded_executor.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
@@ -82,6 +91,15 @@ BatchFunctionFallbackKernelBase::BatchFunctionFallbackKernelBase(
   OP_REQUIRES_OK(c, c->GetAttr("max_enqueued_batches", &max_enqueued_batches_));
   OP_REQUIRES_OK(c, c->GetAttr("allowed_batch_sizes", &allowed_batch_sizes_));
 
+  OP_REQUIRES_OK(c, c->GetAttr("low_priority_max_batch_size",
+                               &low_priority_max_batch_size_));
+  OP_REQUIRES_OK(c, c->GetAttr("low_priority_batch_timeout_micros",
+                               &low_priority_batch_timeout_micros_));
+  OP_REQUIRES_OK(c, c->GetAttr("low_priority_allowed_batch_sizes",
+                               &low_priority_allowed_batch_sizes_));
+  OP_REQUIRES_OK(c, c->GetAttr("low_priority_max_enqueued_batches",
+                               &low_priority_max_enqueued_batches_));
+
   if (shared_name_.empty()) {
     // If shared_name is not supplied, use name instead (prevent collisions by
     // default).
@@ -96,8 +114,10 @@ BatchFunctionFallbackKernelBase::BatchFunctionFallbackKernelBase(
   if (c->HasAttr("enable_large_batch_splitting")) {
     OP_REQUIRES_OK(c, c->GetAttr("enable_large_batch_splitting",
                                  &enable_large_batch_splitting_));
+    has_attribute_enable_large_batch_splitting_ = true;
   } else {
     enable_large_batch_splitting_ = false;
+    has_attribute_enable_large_batch_splitting_ = false;
   }
 
   if (c->HasAttr("disable_padding")) {

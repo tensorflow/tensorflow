@@ -21,18 +21,18 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
-#include "tensorflow/compiler/xla/stream_executor/platform.h"
-#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/device_id_utils.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/framework/typed_allocator.h"
-#include "tensorflow/tsl/framework/device_id.h"
-#include "tensorflow/tsl/lib/gtl/inlined_vector.h"
-#include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/platform/test.h"
-#include "tensorflow/tsl/platform/types.h"
+#include "tsl/framework/device_id.h"
+#include "tsl/lib/gtl/inlined_vector.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/test.h"
+#include "tsl/platform/types.h"
 
 namespace tensorflow {
 namespace {
@@ -60,8 +60,8 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_None) {
     int64_t* gpu_array =
         TypedAllocator::Allocate<int64_t>(&a, cpu_array.size(), {});
     se::DeviceMemory<int64_t> gpu_array_ptr{se::DeviceMemoryBase{gpu_array}};
-    ASSERT_TRUE(stream_exec->SynchronousMemcpy(&gpu_array_ptr, &cpu_array[0],
-                                               s * sizeof(int64_t)));
+    TF_CHECK_OK(stream_exec->SynchronousMemcpyH2D(
+        &cpu_array[0], s * sizeof(int64_t), &gpu_array_ptr));
     EXPECT_TRUE(a.CheckHeader(gpu_array));
     EXPECT_TRUE(a.CheckFooter(gpu_array));
 
@@ -90,16 +90,16 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Header) {
 
           se::DeviceMemory<int64_t> gpu_array_ptr{
               se::DeviceMemoryBase{gpu_array}};
-          ASSERT_TRUE(stream_exec->SynchronousMemcpy(
-              &gpu_array_ptr, &cpu_array[0],
-              cpu_array.size() * sizeof(int64_t)));
+          TF_CHECK_OK(stream_exec->SynchronousMemcpyH2D(
+              &cpu_array[0], cpu_array.size() * sizeof(int64_t),
+              &gpu_array_ptr));
 
           se::DeviceMemory<int64_t> gpu_hdr_ptr{
               se::DeviceMemoryBase{gpu_array - 1}};
           // Clobber first word of the header.
           float pi = 3.1417;
-          ASSERT_TRUE(
-              stream_exec->SynchronousMemcpy(&gpu_hdr_ptr, &pi, sizeof(float)));
+          TF_CHECK_OK(stream_exec->SynchronousMemcpyH2D(&pi, sizeof(float),
+                                                        &gpu_hdr_ptr));
 
           // Expect error on free.
           a.DeallocateRaw(gpu_array);
@@ -128,16 +128,16 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Footer) {
 
           se::DeviceMemory<int64_t> gpu_array_ptr{
               se::DeviceMemoryBase{gpu_array}};
-          ASSERT_TRUE(stream_exec->SynchronousMemcpy(
-              &gpu_array_ptr, &cpu_array[0],
-              cpu_array.size() * sizeof(int64_t)));
+          TF_CHECK_OK(stream_exec->SynchronousMemcpyH2D(
+              &cpu_array[0], cpu_array.size() * sizeof(int64_t),
+              &gpu_array_ptr));
 
           // Clobber word of the footer.
           se::DeviceMemory<int64_t> gpu_ftr_ptr{
               se::DeviceMemoryBase{gpu_array + s}};
           float pi = 3.1417;
-          ASSERT_TRUE(
-              stream_exec->SynchronousMemcpy(&gpu_ftr_ptr, &pi, sizeof(float)));
+          TF_CHECK_OK(stream_exec->SynchronousMemcpyH2D(&pi, sizeof(float),
+                                                        &gpu_ftr_ptr));
 
           // Expect error on free.
           a.DeallocateRaw(gpu_array);
@@ -162,29 +162,29 @@ TEST(GPUDebugAllocatorTest, ResetToNan) {
   // Allocate 1024 floats
   float* gpu_array = TypedAllocator::Allocate<float>(&a, cpu_array.size(), {});
   se::DeviceMemory<float> gpu_array_ptr{se::DeviceMemoryBase{gpu_array}};
-  ASSERT_TRUE(stream_exec->SynchronousMemcpy(&cpu_array[0], gpu_array_ptr,
-                                             cpu_array.size() * sizeof(float)));
+  TF_CHECK_OK(stream_exec->SynchronousMemcpyD2H(
+      gpu_array_ptr, cpu_array.size() * sizeof(float), &cpu_array[0]));
   for (float f : cpu_array) {
     ASSERT_FALSE(std::isfinite(f));
   }
 
   // Set one of the fields to 1.0.
   cpu_array[0] = 1.0;
-  ASSERT_TRUE(stream_exec->SynchronousMemcpy(&gpu_array_ptr, &cpu_array[0],
-                                             cpu_array.size() * sizeof(float)));
+  TF_CHECK_OK(stream_exec->SynchronousMemcpyH2D(
+      &cpu_array[0], cpu_array.size() * sizeof(float), &gpu_array_ptr));
   // Copy the data back and verify.
-  ASSERT_TRUE(
-      stream_exec->SynchronousMemcpy(&cpu_array_result[0], gpu_array_ptr,
-                                     cpu_array_result.size() * sizeof(float)));
+  TF_CHECK_OK(stream_exec->SynchronousMemcpyD2H(
+      gpu_array_ptr, cpu_array_result.size() * sizeof(float),
+      &cpu_array_result[0]));
   ASSERT_EQ(1.0, cpu_array_result[0]);
 
   // Free the array
   a.DeallocateRaw(gpu_array);
 
   // All values should be reset to nan.
-  ASSERT_TRUE(
-      stream_exec->SynchronousMemcpy(&cpu_array_result[0], gpu_array_ptr,
-                                     cpu_array_result.size() * sizeof(float)));
+  TF_CHECK_OK(stream_exec->SynchronousMemcpyD2H(
+      gpu_array_ptr, cpu_array_result.size() * sizeof(float),
+      &cpu_array_result[0]));
   for (float f : cpu_array_result) {
     ASSERT_FALSE(std::isfinite(f));
   }
@@ -207,29 +207,29 @@ TEST(GPUDebugAllocatorTest, ResetToNanWithHeaderFooter) {
   // Allocate 1024 floats
   float* gpu_array = TypedAllocator::Allocate<float>(&a, cpu_array.size(), {});
   se::DeviceMemory<float> gpu_array_ptr{se::DeviceMemoryBase{gpu_array}};
-  ASSERT_TRUE(stream_exec->SynchronousMemcpy(&cpu_array[0], gpu_array_ptr,
-                                             cpu_array.size() * sizeof(float)));
+  TF_CHECK_OK(stream_exec->SynchronousMemcpyD2H(
+      gpu_array_ptr, cpu_array.size() * sizeof(float), &cpu_array[0]));
   for (float f : cpu_array) {
     ASSERT_FALSE(std::isfinite(f));
   }
 
   // Set one of the fields to 1.0.
   cpu_array[0] = 1.0;
-  ASSERT_TRUE(stream_exec->SynchronousMemcpy(&gpu_array_ptr, &cpu_array[0],
-                                             cpu_array.size() * sizeof(float)));
+  TF_CHECK_OK(stream_exec->SynchronousMemcpyH2D(
+      &cpu_array[0], cpu_array.size() * sizeof(float), &gpu_array_ptr));
   // Copy the data back and verify.
-  ASSERT_TRUE(
-      stream_exec->SynchronousMemcpy(&cpu_array_result[0], gpu_array_ptr,
-                                     cpu_array_result.size() * sizeof(float)));
+  TF_CHECK_OK(stream_exec->SynchronousMemcpyD2H(
+      gpu_array_ptr, cpu_array_result.size() * sizeof(float),
+      &cpu_array_result[0]));
   ASSERT_EQ(1.0, cpu_array_result[0]);
 
   // Free the array
   a.DeallocateRaw(gpu_array);
 
   // All values should be reset to nan.
-  ASSERT_TRUE(
-      stream_exec->SynchronousMemcpy(&cpu_array_result[0], gpu_array_ptr,
-                                     cpu_array_result.size() * sizeof(float)));
+  TF_CHECK_OK(stream_exec->SynchronousMemcpyD2H(
+      gpu_array_ptr, cpu_array_result.size() * sizeof(float),
+      &cpu_array_result[0]));
   for (float f : cpu_array_result) {
     ASSERT_FALSE(std::isfinite(f));
   }

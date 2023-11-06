@@ -1,6 +1,8 @@
 # Description:
 #   Contains the legacy TF layers (internal TensorFlow version).
 
+load("//tensorflow:py.default.bzl", "py_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
@@ -25,17 +27,17 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras/engine:base_layer",
         "//tensorflow/python/keras/mixed_precision:policy",
+        "//tensorflow/python/ops:variable_scope",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -46,8 +48,8 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":layers_base",
-        "//tensorflow/python:init_ops",
         "//tensorflow/python/keras/layers",
+        "//tensorflow/python/ops:init_ops",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -58,8 +60,8 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":layers_base",
-        "//tensorflow/python:init_ops",
         "//tensorflow/python/keras/layers",
+        "//tensorflow/python/ops:init_ops",
         "//tensorflow/python/util:tf_export",
     ],
 )

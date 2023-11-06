@@ -540,13 +540,16 @@ Status IteratorBase::InitializeBase(IteratorContext* ctx,
   if (parent_) {
     parent_id_ = Hash64CombineUnordered(Hash64(parent_->prefix()),
                                         reinterpret_cast<uint64>(parent_));
-  }
-  if (const auto& model = ctx->model()) {
-    auto factory = [ctx, this](model::Node::Args args) {
-      return CreateNode(ctx, std::move(args));
-    };
-    model->AddNode(std::move(factory), prefix(), parent->model_node(), &node_);
-    cleanup_fns_.push_back([this, model]() { model->RemoveNode(node_); });
+    // This block of code is executed only when `parent_` is not a `nullptr`
+    // because we do not create a `Node` in the `Model` for `RootDataset`.
+    if (const auto& model = ctx->model()) {
+      auto factory = [ctx, this](model::Node::Args args) {
+        return CreateNode(ctx, std::move(args));
+      };
+      model->AddNode(std::move(factory), prefix(), parent->model_node(),
+                     &node_);
+      cleanup_fns_.push_back([this, model]() { model->RemoveNode(node_); });
+    }
   }
   return OkStatus();
 }
@@ -1220,8 +1223,8 @@ void DatasetOpKernel::Compute(OpKernelContext* ctx) {
     if (ctx->stack_trace().has_value() && VLOG_IS_ON(4)) {
       VLOG(4) << "Dataset " << dataset->type_string()
               << " created using the following stack trace:";
-      for (const auto& stack_frame :
-           ctx->stack_trace()->ToStackFrames({}, {})) {
+      for (const auto& stack_frame : ctx->stack_trace()->ToStackFrames(
+               {}, {}, /*reverse_traversal=*/false, /*limit=*/-1)) {
         VLOG(4) << stack_frame.file_name << ":" << stack_frame.line_number
                 << " in " << stack_frame.function_name << "()";
       }
@@ -1240,8 +1243,30 @@ bool DatasetOpKernel::IsDatasetOp(const OpDef& op_def) {
   if (op_def.output_arg_size() != 1) return false;
   if (op_def.output_arg(0).type() != DT_VARIANT) return false;
   absl::string_view op_name = op_def.name();
+
+  // When running eager ops as a function, we check if the current op is a
+  // Dataset op by unwrapping it. Below are some example op names when running
+  // eager ops as a function:
+  // 1. __wrapped__MapDataset_Targuments_0_device<...>
+  // 2. __wrapped__FlatMapDataset_Targuments_0_device<...>
+  // 3. __wrapped__ParallelMapDatasetV2_Targuments_0_device<...>
+  //
+  // Below are the corresponding unwrapped op names:
+  // 1. MapDataset
+  // 2. FlatMapDataset
+  // 3. ParallelMapDatasetV2
+
+  std::vector<std::string> v1, v2;  // Declared here so that v2 outlives op_name
+  if (absl::StartsWith(op_name, "__wrapped__")) {
+    v1 = absl::StrSplit(op_name, "__wrapped__", absl::SkipEmpty());
+    if (v1.empty()) return false;
+    v2 = absl::StrSplit(v1[0], "_", absl::SkipEmpty());
+    op_name = v2.empty() ? v1[0] : v2[0];
+  }
+
   if (op_name == "DatasetFromGraph") return true;
   if (absl::EndsWith(op_name, "Dataset")) return true;
+
   // Check if the suffix matches "DatasetV[0-9]+".
   size_t index = op_name.length() - 1;
   while (index >= 0 && isdigit(op_name[index])) {

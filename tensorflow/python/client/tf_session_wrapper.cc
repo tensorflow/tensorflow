@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "Python.h"
 #include "absl/types/optional.h"
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "pybind11/attr.h"  // from @pybind11
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/chrono.h"  // from @pybind11
@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/python_api.h"
 #include "tensorflow/c/safe_ptr.h"
+#include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/framework/full_type.pb.h"
@@ -48,8 +49,8 @@ limitations under the License.
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
-#include "tensorflow/tsl/platform/mutex.h"
-#include "tensorflow/tsl/python/lib/core/numpy.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/python/lib/core/numpy.h"
 
 namespace pybind11 {
 namespace detail {
@@ -495,8 +496,24 @@ struct PyGraph {
   int version() const { return ops_by_id.size(); }
 
   py::bytes version_def() const {
-    tsl::mutex_lock l(graph->mu);
-    return py::bytes(graph->graph.versions().SerializeAsString());
+    // Potential deadlock:
+    //
+    // If different threads are building and executing the graph, there is a
+    // potential for a deadlock. This can happen if one thread holds the GIL and
+    // waits for the graph mutex, while another thread holds the graph mutex and
+    // waits for the GIL.
+    //
+    // To avoid this, the GIL must be released before acquiring the graph mutex.
+    // The graph mutex must then be held while getting the VersionDef. Finally,
+    // the GIL must be reacquired.
+    std::string versions;
+    {
+      py::gil_scoped_release release;
+      tsl::mutex_lock l(graph->mu);
+      versions = graph->graph.versions().SerializeAsString();
+    }
+    pybind11::gil_scoped_acquire acquire;
+    return py::bytes(versions);
   }
 
   tsl::StatusOr<py::bytes> _op_def_for_type(
@@ -1471,6 +1488,12 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
       },
       py::return_value_policy::reference);
 
+  m.def("TF_SetOpStackTrace",
+        [](TF_Operation* op,
+           std::shared_ptr<tensorflow::AbstractStackTrace> trace) {
+          op->node.SetStackTrace(trace);
+        });
+
   m.def("TF_OperationGetAttrInt",
         [](TF_Operation* oper, const char* attr_name) {
           tensorflow::Safe_TF_StatusPtr status =
@@ -1596,12 +1619,10 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   // Note: users should prefer using tf.cast or equivalent, and only when
   // it's infeasible to set the type via OpDef's type constructor and
   // inference function.
-  m.def("SetFullType", [](PyGraph* graph, TF_Operation* op,
-                          const std::string& serialized_full_type) {
-    tensorflow::FullTypeDef proto;
-    proto.ParseFromString(serialized_full_type);
-    tensorflow::SetFullType(graph->tf_graph(), op, proto);
-  });
+  m.def("SetFullType",
+        [](PyGraph* graph, TF_Operation* op, const TF_Buffer* full_type_proto) {
+          tensorflow::SetFullType(graph->tf_graph(), op, full_type_proto);
+        });
 
   m.def(
       "TF_LoadLibrary",
@@ -1689,6 +1710,25 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
       py::return_value_policy::reference);
 
   m.def(
+      "TF_GraphImportGraphDefWithResultsNoSerialization",
+      [](PyGraph* graph, const tensorflow::GraphDef* graph_def,
+         const TF_ImportGraphDefOptions* options) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        TF_ImportGraphDefResults* output;
+        {
+          TF_Buffer graph_def_buffer;
+          graph_def_buffer.data = reinterpret_cast<const void*>(graph_def);
+          graph_def_buffer.length = sizeof(tensorflow::GraphDef*);
+          output = TF_GraphImportGraphDefWithResultsNoSerialization(
+              graph->tf_graph(), &graph_def_buffer, options, status.get());
+        }
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        return output;
+      },
+      py::return_value_policy::reference);
+
+  m.def(
       "TF_GraphNextOperation",
       [](PyGraph* graph, size_t pos) {
         tensorflow::Safe_TF_StatusPtr status =
@@ -1731,6 +1771,21 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
         return py_list;
       },
       py::return_value_policy::reference);
+
+  m.def("TF_GraphToGraphDefPybind", [](PyGraph* graph) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    // Release GIL.
+    py::gil_scoped_release release;
+    TF_Graph* tf_graph = graph->tf_graph();
+    auto def = new tensorflow::GraphDef();
+    {
+      tensorflow::mutex_lock l(tf_graph->mu);
+      tf_graph->graph.ToGraphDef(def);
+    }
+    tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
+    return def;
+  });
 
   m.def("TF_GraphToGraphDef", [](PyGraph* graph, TF_Buffer* output_graph_def) {
     tensorflow::Safe_TF_StatusPtr status =
@@ -1810,6 +1865,25 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
         pybind11::gil_scoped_acquire acquire;
         tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         return output;
+      },
+      py::return_value_policy::reference);
+
+  m.def(
+      "TF_FunctionImportFunctionDefNoSerialization",
+      [](tensorflow::FunctionDef fdef) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+
+        // Release GIL.
+        py::gil_scoped_release release;
+        TF_Function* func = new TF_Function();
+        func->record =
+            new tensorflow::FunctionRecord(std::move(fdef), {}, false);
+        status.get()->status = ::tensorflow::OkStatus();
+        // Acquire GIL for returning output returning.
+        pybind11::gil_scoped_acquire acquire;
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        return func;
       },
       py::return_value_policy::reference);
 

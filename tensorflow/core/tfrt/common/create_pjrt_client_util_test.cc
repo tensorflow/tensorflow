@@ -16,7 +16,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace {

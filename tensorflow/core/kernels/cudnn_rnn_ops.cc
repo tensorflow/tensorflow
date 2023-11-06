@@ -24,7 +24,7 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op.h"
@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -1296,7 +1297,8 @@ class CudnnRNNKernelCommon : public OpKernel {
     auto rnn_desc_s = stream->parent()->createRnnDescriptor(
         num_layers, h_num_units, input_size, /*cell_size=*/c_num_units,
         /*batch_size=*/0, input_mode, rnn_direction_mode(), rnn_mode(),
-        ToDataType<T>::value, algo_config, dropout(), seed(),
+        ToDataType<T>::value, algo_config, GetNumericOptions(), dropout(),
+        seed(),
         /* state_allocator=*/nullptr, /*use_padded_io=*/false);
     if (!rnn_desc_s.ok()) {
       return FromExecutorStatus(rnn_desc_s);
@@ -1321,8 +1323,8 @@ class CudnnRNNKernelCommon : public OpKernel {
         model_shapes.num_layers, model_shapes.num_units,
         model_shapes.input_size, model_shapes.cell_num_units,
         model_shapes.batch_size, input_mode, rnn_direction_mode(), rnn_mode(),
-        data_type, algo_config, dropout(), seed(), dropout_state_allocator,
-        use_padded_io);
+        data_type, algo_config, GetNumericOptions(), dropout(), seed(),
+        dropout_state_allocator, use_padded_io);
     TF_RETURN_IF_ERROR(rnn_desc_s.status());
 
     *rnn_desc = std::move(rnn_desc_s).value();

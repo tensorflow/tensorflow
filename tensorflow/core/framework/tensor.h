@@ -22,7 +22,7 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -701,6 +701,7 @@ class Tensor {
   friend class TensorInterface;       // For access to set_shape.
   friend class CastOpBase;            // For access to set_dtype.
   friend class ScopedAllocator;       // For access to buf_.
+  friend class PjRtTensorBufferUtil;  // For access to buf_.
   friend Status batch_util::CopyElementToSlice(
       Tensor element, Tensor* parent,
       int64_t index);  // For access to base<T>().

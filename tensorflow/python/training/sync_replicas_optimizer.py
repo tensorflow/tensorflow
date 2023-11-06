@@ -17,6 +17,7 @@
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
@@ -277,7 +278,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           if grad is None:
             aggregated_grad.append(None)  # pass-through.
             continue
-          elif isinstance(grad, ops.Tensor):
+          elif isinstance(grad, tensor.Tensor):
             grad_accum = data_flow_ops.ConditionalAccumulator(
                 grad.dtype,
                 shape=var.get_shape(),

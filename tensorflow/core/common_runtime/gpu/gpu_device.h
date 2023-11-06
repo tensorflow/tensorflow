@@ -20,15 +20,28 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
 
+// TODO(b/282059652): Merge google internal and open-source code path once TF
+// dependency issue is resolved.
+#if (defined(PLATFORM_GOOGLE) && defined(TF_PLATFORM_LINUX_X86_64))
+#define TF_GPU_USE_PJRT
+#endif  // PLATFORM_GOOGLE && TF_PLATFORM_LINUX_X86_64
+
 #include <functional>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#ifdef TF_GPU_USE_PJRT
+#include "tensorflow/compiler/jit/pjrt_device_context.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
+#include "xla/pjrt/local_device_state.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
+#endif  // TF_GPU_USE_PJRT
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
@@ -47,7 +60,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/tsl/framework/device_id.h"
+#include "tsl/framework/device_id.h"
 
 namespace Eigen {
 class StreamInterface;
@@ -60,11 +73,11 @@ class ConcretePerOpGpuDevice : public PerOpGpuDevice {
  public:
   ConcretePerOpGpuDevice();
 
-  void Reinitialize(OpKernelContext* context, const void* gpu_stream,
+  void Reinitialize(OpKernelContext* context, void* gpu_stream,
                     tsl::TfDeviceId tf_device_id, Allocator* base_allocator,
                     char* scratch);
 
-  void Reinitialize(OpKernelContext* context, const void* gpu_stream,
+  void Reinitialize(OpKernelContext* context, void* gpu_stream,
                     tsl::PlatformDeviceId platform_device_id,
                     Allocator* base_allocator, char* scratch);
 
@@ -85,8 +98,24 @@ class BaseGPUDevice : public LocalDevice {
 
   ~BaseGPUDevice() override;
 
+  struct StreamGroup {
+    se::Stream* compute = nullptr;
+#if TENSORFLOW_USE_ROCM
+    se::Stream* nccl = nullptr;
+#endif
+    se::Stream* host_to_device = nullptr;
+    se::Stream* device_to_host = nullptr;
+    gtl::InlinedVector<se::Stream*, 4> device_to_device;
+    int priority = 0;
+  };
+
   // Initialize the device and return the status of initialization.
+#ifdef TF_GPU_USE_PJRT
+  Status Init(const SessionOptions& options,
+              xla::LocalDeviceState* xla_local_device_state);
+#else
   Status Init(const SessionOptions& options);
+#endif  // TF_GPU_USE_PJRT
 
   void Compute(OpKernel* op_kernel, OpKernelContext* context) override;
 
@@ -146,9 +175,7 @@ class BaseGPUDevice : public LocalDevice {
   // Helper method for unit tests to reset the streams. Never use in production.
   static void TestOnlyReset();
 
-  void* GetStream() {
-    return stream_->compute->implementation()->GpuStreamMemberHack();
-  }
+  se::Stream* compute_stream() { return stream_->compute; }
 
   // Given the compute stream for a GPU or virtual GPU, return the TfDeviceId
   // for the GPU or vGPU.
@@ -163,18 +190,9 @@ class BaseGPUDevice : public LocalDevice {
 
  private:
   friend class GPUDeviceTestHelper;
-  struct StreamGroup {
-    se::Stream* compute = nullptr;
-#if TENSORFLOW_USE_ROCM
-    se::Stream* nccl = nullptr;
-#endif
-    se::Stream* host_to_device = nullptr;
-    se::Stream* device_to_host = nullptr;
-    gtl::InlinedVector<se::Stream*, 4> device_to_device;
-    int priority = 0;
-  };
   class StreamGroupFactory;
 
+  core::RefCountPtr<DeviceContext> pjrt_device_context_;
   StreamGroup* stream_;
   mutex scratch_init_mutex_;
   char* scratch_ = nullptr;
@@ -387,14 +405,25 @@ class BaseGPUDeviceFactory : public DeviceFactory {
       LocalityMap* localities);
 
  private:
-  // Creates a BaseGPUDevice associated with 'tf_device_id', allocates
-  // (strictly) 'memory_limit' bytes of GPU memory to it, and adds it to the
-  // 'devices' vector.
+  // Creates a BaseGPUDevice associated with 'tf_device_id', and adds it to the
+  // 'devices' vector. The 'gpu_allocator' is created by the caller and usually
+  // preallocates a set amount of GPU memory.
+#ifdef TF_GPU_USE_PJRT
   Status CreateGPUDevice(const SessionOptions& options,
                          const std::string& name_prefix,
-                         tsl::TfDeviceId tf_device_id, int64_t memory_limit,
-                         const DeviceLocality& dev_locality, size_t num_tf_gpus,
+                         tsl::TfDeviceId tf_device_id,
+                         const DeviceLocality& dev_locality,
+                         xla::LocalDeviceState* xla_local_device_state,
+                         Allocator* gpu_allocator,
                          std::vector<std::unique_ptr<Device>>* devices);
+#else
+  Status CreateGPUDevice(const SessionOptions& options,
+                         const std::string& name_prefix,
+                         tsl::TfDeviceId tf_device_id,
+                         const DeviceLocality& dev_locality,
+                         Allocator* gpu_allocator,
+                         std::vector<std::unique_ptr<Device>>* devices);
+#endif  // TF_GPU_USE_PJRT
 
   virtual std::unique_ptr<BaseGPUDevice> CreateGPUDevice(
       const SessionOptions& options, const string& name, Bytes memory_limit,

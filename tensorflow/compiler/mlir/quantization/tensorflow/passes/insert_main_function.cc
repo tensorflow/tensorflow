@@ -96,7 +96,7 @@ bool ShouldIncludeInMainFunction(func::FuncOp func_op) {
 void SetFunctionPrivate(func::FuncOp func) {
   func.setVisibility(SymbolTable::Visibility::Private);
 
-  // The `tf_saved_model` attributes can only be appied to public functions.
+  // The `tf_saved_model` attributes can only be applied to public functions.
   for (auto& attr : func->getAttrs()) {
     StringRef attr_name = attr.getName().getValue();
     if (attr_name.startswith("tf_saved_model.")) {
@@ -136,7 +136,7 @@ struct OutputInfo {
 };
 
 // Makes input/output names across entry functions unique if necessary. If a
-// dupliated name is found, this function will add signature prefix for all the
+// duplicated name is found, this function will add signature prefix for all the
 // input/output names.
 void GetUniqueInputOutputNodeNames(ModuleOp module_op,
                                    std::vector<std::string>& input_name_vec,

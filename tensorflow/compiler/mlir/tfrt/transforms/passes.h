@@ -76,6 +76,10 @@ CreateOptimizeTfForTfrtPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateTfrtXlaRewritePass();
 
+// Create a pass to deduplicate results of tf.If ops.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDeduplicateIfResultPass();
+
 }  // namespace tfrt_compiler
 
 class CoreRTConverter;

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_KERNELS_WHILE_OP_H_
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_WHILE_OP_H_
 
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 
@@ -64,7 +66,8 @@ class XlaWhileOp : public XlaOpKernel {
   // overheads.
   bool propagate_compile_time_consts_ = false;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaWhileOp);
+  XlaWhileOp(const XlaWhileOp&) = delete;
+  void operator=(const XlaWhileOp&) = delete;
 };
 
 }  // namespace tensorflow

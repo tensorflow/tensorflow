@@ -1,7 +1,10 @@
 # Description:
 #   Utilities to perform MLIR TFG graph transformations.
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_binary",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -17,12 +20,13 @@ cc_library(
         "utils.h",
     ],
     deps = [
+        "//tensorflow/cc/saved_model/image_format:internal_api",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:status",
-        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 

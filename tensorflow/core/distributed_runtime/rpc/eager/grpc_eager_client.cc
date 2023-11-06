@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_client.h"
 
+#include <cstdint>
 #include <string>
 
 #include "grpcpp/generic/generic_stub.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tsl/distributed_runtime/call_options.h"
 
 namespace tensorflow {
 namespace eager {
@@ -147,6 +149,26 @@ class GrpcEagerClient : public EagerClient {
   CLIENT_METHOD(KeepAlive);
 
 #undef CLIENT_METHOD
+
+#define CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES(method)                       \
+  void method##Async(const method##Request* request,                         \
+                     method##Response* response, StatusCallback done,        \
+                     int64_t init_timeout_in_ms, int retries) override {     \
+    StatusCallback done_wrapped = callback_wrapper(std::move(done));         \
+    CallOptions* call_ops = nullptr;                                         \
+    if (init_timeout_in_ms > 0) {                                            \
+      call_ops = new CallOptions;                                            \
+      call_ops->SetTimeout(init_timeout_in_ms);                              \
+    }                                                                        \
+    new RPCState<protobuf::Message>(                                         \
+        &stub_, cq_, "/tensorflow.eager.EagerService/" #method, *request,    \
+        response, std::move(done_wrapped), call_ops, /*threadpool=*/nullptr, \
+        /*max_retries=*/retries, /*fail_fast=*/true, &target_);              \
+  }
+
+  CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES(CreateContext);
+
+#undef CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES
 
 #define CLIENT_CANCELABLE_METHOD(method)                                      \
   void method##Async(CallOptions* call_opts, const method##Request* request,  \

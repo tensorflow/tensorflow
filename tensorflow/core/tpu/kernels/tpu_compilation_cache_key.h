@@ -15,11 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_KEY_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_KEY_H_
 
+#include <cstdint>
 #include <functional>
 #include <string>
 
 #include "absl/strings/str_cat.h"
-#include "absl/types/optional.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -60,7 +60,7 @@ struct TpuCompilationCacheKey {
                         guaranteed_const_fingerprint());
   }
 
-  explicit TpuCompilationCacheKey() {}
+  explicit TpuCompilationCacheKey() = default;
   explicit TpuCompilationCacheKey(const std::string& p) : prefix(p) {}
 };
 

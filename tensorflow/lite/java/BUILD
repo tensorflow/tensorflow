@@ -31,7 +31,9 @@ exports_files([
     "src/testdata/uint8.bin",
     "src/testdata/with_custom_op.lite",
     "AndroidManifest.xml",
+    "AndroidManifestApi.xml",
     "AndroidManifestGpu.xml",
+    "AndroidManifestGpuApi.xml",
     "proguard.flags",
     "tflite_version_script.lds",
 ])
@@ -124,6 +126,50 @@ filegroup(
     srcs = [x for x in JAVA_SRCS if x not in JAVA_API_SRCS and x not in JAVA_EXPERIMENTAL_SRCS],
 )
 
+# C headers for the Native APIs.
+
+# TODO(b/277186081) Move this list to `../c/BUILD` when aar_with_jni supports filegroups in the headers parameter.
+# TODO(b/279573130): add `builtin_op_data.h` to this list, it will be needed for DBA delegates.
+# LINT.IfChange(TFLITE_HEADERS)
+TFLITE_HEADERS = [
+    # TODO(b/175298345): Clean up and if possible remove c:common.h and core/c:common.h here.
+    "//tensorflow/lite:builtin_ops.h",
+    "//tensorflow/lite/c:c_api.h",
+    "//tensorflow/lite/c:c_api_experimental.h",
+    "//tensorflow/lite/c:c_api_opaque.h",
+    "//tensorflow/lite/c:c_api_types.h",
+    "//tensorflow/lite/c:common.h",
+    "//tensorflow/lite/core/c:c_api.h",
+    "//tensorflow/lite/core/c:c_api_opaque.h",
+    "//tensorflow/lite/core/c:c_api_types.h",
+    "//tensorflow/lite/core/c:c_api_experimental.h",
+    "//tensorflow/lite/core/c:common.h",
+    "//tensorflow/lite/delegates/nnapi:nnapi_delegate_c_api.h",
+]
+# LINT.ThenChange(../c/BUILD:exported_headers)
+
+filegroup(
+    name = "tflite_headers",
+    srcs = TFLITE_HEADERS,
+)
+
+# LINT.IfChange(tflite_acceleration_exported_headers)
+filegroup(
+    name = "tflite_acceleration_headers",
+    srcs = [
+        "//tensorflow/lite/acceleration/configuration/c:delegate_plugin.h",
+        "//tensorflow/lite/acceleration/configuration/c:gpu_plugin.h",
+        "//tensorflow/lite/acceleration/configuration/c:xnnpack_plugin.h",
+        "//tensorflow/lite/core/acceleration/configuration/c:delegate_plugin.h",
+        "//tensorflow/lite/core/acceleration/configuration/c:gpu_plugin.h",
+        "//tensorflow/lite/core/acceleration/configuration/c:xnnpack_plugin.h",
+    ],
+)
+# LINT.ThenChange(
+#     ../acceleration/configuration/c/BUILD:tflite_acceleration_exported_headers,
+#     ../core/acceleration/configuration/c/BUILD:tflite_acceleration_exported_headers
+# )
+
 #-----------------------------------------------------------------------------
 # AAR targets.
 
@@ -136,21 +182,7 @@ filegroup(
 aar_with_jni(
     name = "tensorflow-lite",
     android_library = ":tensorflowlite",
-    headers = [
-        # TODO(b/175298345): Clean up and if possible remove c:common.h and core/c:common.h here.
-        "//tensorflow/lite:builtin_ops.h",
-        "//tensorflow/lite/c:c_api.h",
-        "//tensorflow/lite/c:c_api_experimental.h",
-        "//tensorflow/lite/c:c_api_opaque.h",
-        "//tensorflow/lite/c:c_api_types.h",
-        "//tensorflow/lite/c:common.h",
-        "//tensorflow/lite/core/c:c_api.h",
-        "//tensorflow/lite/core/c:c_api_opaque.h",
-        "//tensorflow/lite/core/c:c_api_types.h",
-        "//tensorflow/lite/core/c:c_api_experimental.h",
-        "//tensorflow/lite/core/c:common.h",
-        "//tensorflow/lite/delegates/nnapi:nnapi_delegate_c_api.h",
-    ],
+    headers = TFLITE_HEADERS,
 )
 
 # No JNI should be in this AAR. Only package in the LICENSE.
@@ -239,7 +271,7 @@ android_library_with_tflite(
 android_library(
     name = "tensorflowlite_api",
     srcs = [":java_api_srcs"],
-    manifest = "AndroidManifest.xml",
+    manifest = "AndroidManifestApi.xml",
     proguard_specs = ["proguard.flags"],
     deps = [
         "@org_checkerframework_qual",
@@ -288,7 +320,7 @@ tflite_flex_android_library(
 # EXPERIMENTAL: Android target for GPU acceleration. Note that this library
 # contains *only* the GPU delegate and its Java wrapper; clients must also
 # include the core `tensorflowlite` runtime.
-# Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
+# Note that AndroidManifestGpuApi.xml usage requires AGP 4.2.0+.
 alias(
     name = "tensorflowlite_gpu",
     actual = "tensorflowlite_gpu_impl",
@@ -297,7 +329,7 @@ alias(
 # EXPERIMENTAL: Android target for the implementation of the GPU acceleration API, including the
 # native library. Note that this library contains *only* the GPU delegate and its Java wrapper;
 # clients must also include the core `tensorflowlite` runtime.
-# Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
+# Note that AndroidManifestGpuApi.xml usage requires AGP 4.2.0+.
 android_library(
     name = "tensorflowlite_gpu_impl",
     # Note that we need to directly includes all the Java source files we intend to ship directly in
@@ -309,7 +341,7 @@ android_library(
     # Note that this uses the standard manifest and doesn't export it: the declaration is required
     # because android_library targets require a non-empty Android package in Bazel. The API target
     # exports the GPU manifest.
-    manifest = "AndroidManifest.xml",
+    manifest = "AndroidManifestGpu.xml",
     exports = [
         ":tensorflowlite_gpu_api",
         ":tensorflowlite_gpu_native",
@@ -358,12 +390,12 @@ android_library(
 # EXPERIMENTAL: Android target for GPU acceleration API, EXCLUDING implementation.
 # Note that this library contains *only* the GPU delegate API; clients must also include
 # an implementation, as well as the core `tensorflowlite` runtime.
-# Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
+# Note that AndroidManifestGpuApi.xml usage requires AGP 4.2.0+.
 android_library(
     name = "tensorflowlite_gpu_api",
     srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
     exports_manifest = 1,
-    manifest = "AndroidManifestGpu.xml",
+    manifest = "AndroidManifestGpuApi.xml",
     proguard_specs = ["proguard.flags"],
     deps = [":tensorflowlite_api"],
 )

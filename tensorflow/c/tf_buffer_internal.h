@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/c/tf_buffer.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {

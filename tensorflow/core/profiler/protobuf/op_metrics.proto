@@ -56,6 +56,11 @@ message LayoutAnalysis {
   repeated Dimension dimensions = 1;
 }
 
+// A container to serialize this repeated field in "symbolized xplane."
+message MemoryAccessBreakdown {
+  repeated OpMetrics.MemoryAccessed memory_accessed = 1;
+}
+
 // Metrics for an operation (accumulated over all occurrences).
 // Next ID: 24
 message OpMetrics {

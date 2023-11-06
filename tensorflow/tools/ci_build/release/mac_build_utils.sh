@@ -134,7 +134,7 @@ function bazel_test_wheel {
 
   # Install additional test requirements
   # TODO - Add these to setup.py test requirements
-  pip install portpicker~=1.4.0 scipy~=1.7.2
+  pip install portpicker~=1.5.2 scipy~=1.7.2
 
   PIP_TEST_PREFIX=bazel_pip
   TEST_ROOT=$(pwd)/${PIP_TEST_PREFIX}

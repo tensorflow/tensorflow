@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/kernel/tfrt_op_kernel.h"
 
+#include <memory>
 #include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
@@ -236,7 +240,7 @@ TFRTOpMeta TFRTOpMetaBuilder::BuildMeta() const {
   return TFRTOpMeta(output_types_);
 }
 
-TFRTOpMetaMap::TFRTOpMetaMap() {}
+TFRTOpMetaMap::TFRTOpMetaMap() = default;
 
 void TFRTOpMetaMap::RegisterOpMeta(const TFRTOpMetaBuilder& op_builder) {
   auto insert_result = op_metas_.insert(
@@ -264,7 +268,7 @@ llvm::ManagedStatic<TFRTOpKernelFactories> tfrt_forwarding_kernel_factories;
 // Forwarding kernel registration.
 //////////////////////////////////////////////////////////////////////
 
-TFRTOpKernelFactories::TFRTOpKernelFactories() {}
+TFRTOpKernelFactories::TFRTOpKernelFactories() = default;
 
 void TFRTOpKernelFactories::RegisterFactory(StringPiece kernel_class_name,
                                             TFRTOpKernelReg kernel_info) {

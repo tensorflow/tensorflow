@@ -1,11 +1,13 @@
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load(
     "@llvm-project//mlir:tblgen.bzl",
     "gentbl_cc_library",
 )
+# copybara:uncomment load("//tools/build_defs/proto/cpp:cc_proto_library.bzl", "cc_proto_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -18,7 +20,7 @@ package(
 flatbuffer_cc_library(
     name = "runtime_metadata_fbs",
     srcs = ["runtime_metadata.fbs"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
 )
 
 cc_library(
@@ -87,7 +89,7 @@ cc_library(
 
 gentbl_cc_library(
     name = "transform_patterns_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -119,7 +121,6 @@ cc_library(
         ":common",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:verification_utils",
         "@llvm-project//llvm:Support",
@@ -189,7 +190,6 @@ cc_library(
         ":device_transform_patterns",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/experimental/tac/hardwares:target_hardware",
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -232,6 +232,7 @@ cc_library(
         "transforms/get_alternative_subgraph.cc",
         "transforms/pick_subgraphs.cc",
         "transforms/raise_target_subgraphs.cc",
+        "transforms/tac_filter.cc",
         "transforms/target_annotation.cc",
     ],
     hdrs = [
@@ -243,6 +244,7 @@ cc_library(
         ":common",
         ":cost_model",
         ":device_transform",
+        ":tac_filter_cc_proto",
         ":tac_importer_exporter",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tf_tfl_passes",
@@ -253,6 +255,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf_headers",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
@@ -313,7 +316,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -369,7 +372,7 @@ exports_files([
     "run_lit.sh",
 ])
 
-py_library(
+py_strict_library(
     name = "tac",
     srcs = [
         "tac.py",
@@ -379,4 +382,16 @@ py_library(
     deps = [
         "//tensorflow/compiler/mlir/lite/experimental/tac/py_wrapper:_pywrap_tac_wrapper",
     ],
+)
+
+proto_library(
+    name = "tac_filter_proto",
+    srcs = ["tac_filter.proto"],
+    compatible_with = get_compatible_with_portable(),
+)
+
+cc_proto_library(
+    name = "tac_filter_cc_proto",
+    compatible_with = get_compatible_with_portable(),
+    deps = [":tac_filter_proto"],
 )

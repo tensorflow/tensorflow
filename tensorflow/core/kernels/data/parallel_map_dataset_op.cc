@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
@@ -262,12 +263,12 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(),
           [this]() { CancelThreads(/*wait=*/false); }, &deregister_fn_));
-      IteratorContext::Params params(ctx);
-      params.cancellation_manager = cancellation_manager_.get();
-      IteratorContext iter_ctx(std::move(params));
+      auto params = std::make_unique<IteratorContext::Params>(ctx);
+      params->cancellation_manager = cancellation_manager_.get();
+      auto iter_ctx = std::make_unique<IteratorContext>(*params);
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
-          &iter_ctx, this, prefix(), &input_impl_));
-      ctx->MergeCheckpoint(iter_ctx.checkpoint());
+          iter_ctx.get(), this, prefix(), &input_impl_));
+      ctx->MergeCheckpoint(iter_ctx->checkpoint());
       TF_RETURN_IF_ERROR(dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_));
       if (ctx->warm_start() && !ctx->is_restoring()) {
@@ -317,8 +318,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
       if (ctx->symbolic_checkpoint()) {
-        return writer->WriteScalar(
-            full_name(absl::StrCat(kInvocationResults, "_", kSize)), 0);
+        return OkStatus();
       }
       mutex_lock l(*mu_);
       // Wait for all in-flight calls to complete.
@@ -331,7 +331,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       }
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          full_name(absl::StrCat(kInvocationResults, "_", kSize)),
+          prefix(), absl::StrCat(kInvocationResults, "_", kSize),
           invocation_results_.size()));
       for (size_t i = 0; i < invocation_results_.size(); i++) {
         const auto& result = *(invocation_results_[i]);
@@ -357,11 +357,14 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(*mu_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+      DCHECK(invocation_results_.empty());
+      if (ctx->symbolic_checkpoint()) {
+        return OkStatus();
+      }
       int64_t invocation_results_size;
       TF_RETURN_IF_ERROR(reader->ReadScalar(
-          full_name(absl::StrCat(kInvocationResults, "_", kSize)),
+          prefix(), absl::StrCat(kInvocationResults, "_", kSize),
           &invocation_results_size));
-      DCHECK(invocation_results_.empty());
       for (size_t i = 0; i < invocation_results_size; i++) {
         invocation_results_.push_back(std::make_shared<InvocationResult>(ctx));
         auto& result = *invocation_results_.back();

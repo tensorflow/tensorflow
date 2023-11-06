@@ -31,11 +31,11 @@ limitations under the License.
 #include "tensorflow/compiler/jit/pjrt_device_compiler_client.h"
 #include "tensorflow/compiler/jit/xla_compilation_cache.pb.h"
 #include "tensorflow/compiler/jit/xla_device_compiler_client.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/executable_build_options.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
+#include "xla/client/client_library.h"
+#include "xla/client/executable_build_options.h"
+#include "xla/client/local_client.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/tfrt_cpu_pjrt_client.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status_matchers.h"
@@ -237,6 +237,28 @@ TEST_F(DeviceExecutionPersistorTest, PersistCacheDirNotSet) {
       /*persistent_cache_directory=*/"",
       /*disable_strict_signature_checks=*/false,
       /*persistence_prefix=*/"xla");
+  XlaDeviceExecutablePersistor persistor(config,
+                                         DefaultXlaOptions().device_type);
+
+  MockXlaCompilerClient mock_client;
+  TF_ASSERT_OK_AND_ASSIGN(auto executable, BuildSampleExecutable());
+  TF_EXPECT_OK(persistor.TryToPersistExecutable(
+      /*signature_hash=*/123, "signature_string", DefaultXlaOptions(),
+      compilation_result_add_, *executable, &mock_client));
+
+  auto key =
+      CreateCacheKey(/*signature_hash=*/123, compilation_result_add_,
+                     persistor.device_type(), persistor.persistence_prefix());
+  auto entry = ReadCacheEntryFromFile(key, "");
+  EXPECT_FALSE(entry.ok());
+}
+
+TEST_F(DeviceExecutionPersistorTest, PersistCacheDirReadOnly) {
+  XlaDeviceExecutablePersistor::Config config(
+      /*persistent_cache_directory=*/"cache_dir_",
+      /*disable_strict_signature_checks=*/false,
+      /*persistence_prefix=*/"xla",
+      /*persistent_cache_directory_read_only=*/true);
   XlaDeviceExecutablePersistor persistor(config,
                                          DefaultXlaOptions().device_type);
 

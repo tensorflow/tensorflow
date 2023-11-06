@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/util/debug_data_dumper.h"
 
+#include <optional>
+#include <set>
+#include <string>
+#include <vector>
+
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
@@ -30,7 +35,7 @@ DebugDataDumper* DebugDataDumper::Global() {
 DebugDataDumper::DebugDataDumper() { LoadEnvvars(); }
 
 void DebugDataDumper::LoadEnvvars() {
-  // Load TF_DUMP_GRAPH_PREFIX.
+  // Load TF_DUMP_GRAPH_WRAPPED.
   const char* dump_wrapped = getenv("TF_DUMP_GRAPH_WRAPPED");
   dump_wrapped_ = static_cast<bool>(dump_wrapped);
 

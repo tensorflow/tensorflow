@@ -27,6 +27,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
@@ -251,7 +252,7 @@ def string_input_producer(string_tensor,
   @end_compatibility
   """
   not_null_err = "string_input_producer requires a non-null input tensor"
-  if not isinstance(string_tensor, ops.Tensor) and not string_tensor:
+  if not isinstance(string_tensor, tensor_lib.Tensor) and not string_tensor:
     raise ValueError(not_null_err)
 
   with ops.name_scope(name, "input_producer", [string_tensor]) as name:

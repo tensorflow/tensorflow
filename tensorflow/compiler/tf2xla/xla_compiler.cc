@@ -16,20 +16,26 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 
 #include <algorithm>
+#include <map>
 #include <memory>
 #include <numeric>
+#include <optional>
+#include <set>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
@@ -42,12 +48,12 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/protobuf_util.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/util.h"
+#include "xla/client/client_library.h"
+#include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/protobuf_util.h"
+#include "xla/shape_util.h"
+#include "xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -438,7 +444,6 @@ Status BuildComputation(
 
 }  // namespace
 
-
 string XlaCompiler::Argument::HumanString() const {
   string common;
   if (!name.empty()) {
@@ -519,7 +524,7 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
   }
 
   local_flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(),
-                                                      FunctionDefLibrary{}));
+                                                      FunctionDefLibrary()));
   local_pflr_.reset(new ProcessFunctionLibraryRuntime(
       &device_mgr_, Env::Default(), /*config=*/nullptr,
       options.graph_def_version, local_flib_def_.get(), OptimizerOptions()));
@@ -572,7 +577,7 @@ Status XlaCompiler::FindFunctionBody(const NameAttrList& function,
   // function in flib_runtime_.
   auto status = GetFunctionBody(function, local_flib_runtime_, fbody);
   if (!status.ok()) {
-    if (!errors::IsNotFound(status)) {
+    if (!absl::IsNotFound(status)) {
       return status;
     }
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
@@ -596,7 +601,7 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   CopyGraph(*fbody->graph, graph.get());
 
   bool is_inside_mustcompile = false;
-  TryGetNodeAttr(AttrSlice(&fbody->fdef.attr()), kXlaMustCompileAttr,
+  TryGetNodeAttr(AttrSlice(&fbody->record->fdef().attr()), kXlaMustCompileAttr,
                  &is_inside_mustcompile);
 
   // Performs a first function inlining pass before shape inference, since
@@ -750,8 +755,8 @@ Status XlaCompiler::CompileSingleOp(
 
   auto compile_with_old_bridge = [&]() {
     *result = {};
-    return CompileGraph(compile_options, node_def.name(), std::move(graph),
-                        args, result);
+    return ADD_SOURCE_LOCATION(CompileGraph(compile_options, node_def.name(),
+                                            std::move(graph), args, result));
   };
 
   const ConfigProto* config = &(single_op_compile_argument.config_proto);
@@ -948,6 +953,15 @@ Status XlaCompiler::XLAShapeForArgument(
         TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
             arg_sharding, /*use_fast_memory=*/false,
             options_.shape_determination_fns, xla_shape));
+        // If the arg is dynamic then we update the shape to reflect that. The
+        // arg's value_dynamism is a Tensor of bools set to the dynamism of each
+        // dimension.
+        if (arg.value_dynamism.has_value()) {
+          auto dynamism = arg.value_dynamism.value().vec<bool>();
+          for (int i = 0; i < dynamism.size(); ++i) {
+            xla_shape->set_dynamic_dimension(i, dynamism(i));
+          }
+        }
       } else {
         if (absl::holds_alternative<xla::Shape>(arg.shape)) {
           *xla_shape = std::get<xla::Shape>(arg.shape);
@@ -1421,10 +1435,11 @@ class DummyStackTrace : public AbstractStackTrace {
       StackFrame({"dummy_file_name", 10, "dummy_function_name"})};
 };
 
-Status XlaCompiler::CompileGraph(
-    const XlaCompiler::CompileOptions& options, string const& name,
-    std::unique_ptr<Graph> graph, absl::Span<const XlaCompiler::Argument> args,
-    CompilationResult* result) {
+Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
+                                 string const& name,
+                                 std::unique_ptr<Graph> graph,
+                                 absl::Span<const XlaCompiler::Argument> args,
+                                 CompilationResult* result) {
   VLOG(1) << "Executing graph symbolically to populate XlaBuilder.: " << name;
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileGraph: "
@@ -1455,8 +1470,8 @@ Status XlaCompiler::CompileGraph(
   // FunctionalizeControlFlow may remove some nodes from the graph.
   TF_RETURN_IF_ERROR(ValidateGraph(graph.get(), *options_.flib_def,
                                    options_.device_type, name));
-  xla::XlaBuilder builder(name);
-  XlaContext* context = new XlaContext(this, &builder, graph.get());
+  auto builder = std::make_unique<xla::XlaBuilder>(name);
+  XlaContext* context = new XlaContext(this, builder.get(), graph.get());
   core::ScopedUnref context_unref(context);
 
   std::vector<XlaCompiler::Argument> real_args(args.begin(), args.end());
@@ -1478,7 +1493,7 @@ Status XlaCompiler::CompileGraph(
 
   std::vector<XlaExpression> arg_expressions;
   TF_RETURN_IF_ERROR(BuildArguments(
-      *graph, real_args, options.use_tuple_arg, &builder, context,
+      *graph, real_args, options.use_tuple_arg, builder.get(), context,
       arg_shardings, &arg_expressions, &result->input_mapping,
       &result->xla_input_shapes, options.is_entry_computation));
   context->set_args(std::move(arg_expressions));
@@ -1504,7 +1519,7 @@ Status XlaCompiler::CompileGraph(
     // Original token is manually created.
     if (HasSideEffectingNodes(*graph)) {
       TF_RETURN_IF_ERROR(
-          SetNodeToken(kXlaTokenArgNodeName, xla::CreateToken(&builder)));
+          SetNodeToken(kXlaTokenArgNodeName, xla::CreateToken(builder.get())));
     }
   }
 
@@ -1522,7 +1537,8 @@ Status XlaCompiler::CompileGraph(
       TF_RETURN_IF_ERROR(token_or.status());
       token_inputs.push_back(token_or.value());
     }
-    token_output.reset(new xla::XlaOp(xla::AfterAll(&builder, token_inputs)));
+    token_output = std::make_unique<xla::XlaOp>(
+        xla::AfterAll(builder.get(), token_inputs));
   }
   TF_RETURN_IF_ERROR(PopNodeTokenMapping());
 
@@ -1531,7 +1547,8 @@ Status XlaCompiler::CompileGraph(
   result->computation = std::make_shared<xla::XlaComputation>();
   result->outputs.resize(context->retvals().size());
   std::vector<XlaExpression> retvals = context->retvals();
-  ConvertConstantsToExpressions(&builder, absl::Span<XlaExpression>(retvals));
+  ConvertConstantsToExpressions(builder.get(),
+                                absl::Span<XlaExpression>(retvals));
   XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns{
       UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
   TF_RETURN_IF_ERROR(BuildComputation(
@@ -1542,7 +1559,7 @@ Status XlaCompiler::CompileGraph(
       options.is_entry_computation,
       options.return_updated_values_for_all_resources,
       options.always_return_tuple, options.use_tuple_arg,
-      options.alias_resource_update, &builder, result->computation.get(),
+      options.alias_resource_update, builder.get(), result->computation.get(),
       &num_computation_outputs, &num_nonconst_outputs, &result->outputs,
       &result->resource_updates, &result->xla_output_shape,
       result->input_mapping));

@@ -17,11 +17,11 @@ limitations under the License.
 
 #if CUDA_VERSION >= 10020
 
-#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/device_id_utils.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/tsl/framework/device_id.h"
+#include "tsl/framework/device_id.h"
 
 namespace tensorflow {
 namespace {
@@ -40,7 +40,7 @@ std::unique_ptr<GpuVirtualMemAllocator> CreateAllocator() {
                       se::GPUMachineManager(), gpu_id)
                       .value();
   GpuContext* gpu_context = reinterpret_cast<GpuContext*>(
-      executor->implementation()->GpuContextHack());
+      executor->platform_specific_handle().context);
   return GpuVirtualMemAllocator::Create(
              {}, {}, *gpu_context, gpu_id,
              /*virtual_address_space_size=*/4 * k2MiB, {})
@@ -53,7 +53,7 @@ TEST(GpuVirtualMemAllocatorTest, SimpleAlloc) {
                       se::GPUMachineManager(), gpu_id)
                       .value();
   GpuContext* gpu_context = reinterpret_cast<GpuContext*>(
-      executor->implementation()->GpuContextHack());
+      executor->platform_specific_handle().context);
   auto allocator = GpuVirtualMemAllocator::Create(
                        {}, {}, *gpu_context, gpu_id,
                        /*virtual_address_space_size=*/4 * k2MiB, {})

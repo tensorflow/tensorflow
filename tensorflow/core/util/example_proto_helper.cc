@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/util/example_proto_helper.h"
 
+#include <algorithm>
+#include <limits>
 #include <vector>
 
 #include "tensorflow/core/example/example.pb.h"

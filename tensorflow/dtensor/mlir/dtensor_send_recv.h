@@ -101,8 +101,8 @@ StatusOr<mlir::Operation*> GetCorrespondingDTensorSendRecvOp(
 
   if (!corresponding_op)
     return absl::InvalidArgumentError(
-        absl::StrCat("DTensorSend/DTensorRecv op must have corresponding "
-                     "DTensorRecv/DTensorSend op."));
+        "DTensorSend/DTensorRecv op must have corresponding "
+        "DTensorRecv/DTensorSend op.");
 
   return corresponding_op;
 }

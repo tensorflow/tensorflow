@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/shape_utils.h"
 
+#include <optional>
+#include <vector>
+
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project

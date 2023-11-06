@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -49,6 +49,20 @@ struct ConvOpAttrs {
 
   bool depthwise;
   int num_spatial_dims;
+  std::vector<int32> dilations;
+  std::vector<int32> strides;
+  Padding padding;
+  std::vector<int64_t> explicit_paddings;
+  TensorFormat data_format;
+};
+
+// Helper for the general Conv Op.
+struct ConvNDOpAttrs {
+  // Constructs a ConvOpAttrs, reading most of the attributes from `ctx`.
+  static StatusOr<ConvNDOpAttrs> Create(OpKernelConstruction* ctx);
+
+  int groups;
+  int batch_dims;
   std::vector<int32> dilations;
   std::vector<int32> strides;
   Padding padding;

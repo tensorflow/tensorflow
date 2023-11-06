@@ -126,6 +126,24 @@ class ElementWiseOpBoolModel : public ElementWiseOpBaseModel {
   }
 };
 
+// A LUT of 256 values is used in the int8 case. For the int16 case a 513 LUT is
+// used but as the last value is only used for interpolation we only have 512
+// quantized steps.
+template <typename T>
+inline float GetLUTTolerance(float input_min, float input_max, float output_min,
+                             float output_max) {
+  static_assert(
+      std::is_same<T, int8_t>::value || std::is_same<T, int16_t>::value,
+      "T must be an int8_t or int16_t.");
+
+  const float range_sum = (input_max - input_min) + (output_max - output_min);
+  if (std::is_same<T, int8_t>::value) {
+    return range_sum / 256.0f;
+  } else {
+    return range_sum / 512.0f;
+  }
+}
+
 template <typename T>
 float GetQuantizationStep(float min, float max) {
   const float kQuantizedStep = (max - min) / (std::numeric_limits<T>::max() -
@@ -158,6 +176,52 @@ TEST(ElementWise, Log) {
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
               ElementsAreArray(ArrayFloatNear({0, 1.14473, 0, 0})));
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
+TEST(ElementWise, LogInt8) {
+  const float input_min = 0.0f;
+  const float input_max = 13.2f;
+  const float output_min = -2.3026f;
+  const float output_max = 2.5802f;
+
+  const float kQuantizedTolerance =
+      GetLUTTolerance<int8_t>(input_min, input_max, output_min, output_max);
+
+  ElementWiseOpQuantizedModel m(
+      BuiltinOperator_LOG,
+      {TensorType_INT8, {1, 2, 2, 2}, input_min, input_max},
+      {TensorType_INT8, {}, output_min, output_max});
+  m.QuantizeAndPopulate<int8_t>(
+      m.input(), {0.1f, 0.5f, 1.0f, 1.15f, 2.3f, 5.01f, 11.0f, 13.2f});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.ExtractDequantVector<int8_t>(m.output()),
+      ElementsAreArray(ArrayFloatNear({-2.3026f, -0.6931f, 0.0f, 0.1398f,
+                                       0.8329f, 1.6114, 2.3979f, 2.5802f},
+                                      kQuantizedTolerance)));
+}
+
+TEST(ElementWise, LogInt16) {
+  const float input_min = -13.2f;
+  const float input_max = 13.2f;
+  const float output_min = -2.5802f;
+  const float output_max = 2.5802f;
+
+  const float kQuantizedTolerance =
+      GetLUTTolerance<int16_t>(input_min, input_max, output_min, output_max);
+
+  ElementWiseOpQuantizedModel m(
+      BuiltinOperator_LOG,
+      {TensorType_INT16, {1, 2, 2, 2}, input_min, input_max},
+      {TensorType_INT16, {}, output_min, output_max});
+  m.QuantizeAndPopulate<int16_t>(
+      m.input(), {0.1f, 0.5f, 1.0f, 1.15f, 2.3f, 5.01f, 11.0f, 13.2f});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.ExtractDequantVector<int16_t>(m.output()),
+      ElementsAreArray(ArrayFloatNear({-2.3026f, -0.6931f, 0.0f, 0.1398f,
+                                       0.8329f, 1.6114, 2.3979f, 2.5802f},
+                                      kQuantizedTolerance)));
 }
 
 TEST(ElementWise, Abs) {
@@ -377,6 +441,47 @@ TEST(ElementWise, RsqrtNanInt8) {
                                  {output_zero_point}});
   m.QuantizeAndPopulate<int8_t>(m.input(), data);
   EXPECT_THAT(m.Invoke(), kTfLiteError);
+}
+
+TEST(ElementWise, RsqrtInt16) {
+  const float input_min = -0.8f;
+  const float input_max = 0.8f;
+
+  const float output_min = -2.4f;
+  const float output_max = 2.4f;
+
+  const float kQuantizedTolerance =
+      GetLUTTolerance<int16_t>(input_min, input_max, output_min, output_max);
+
+  ElementWiseOpQuantizedModel m(BuiltinOperator_RSQRT,
+                                {TensorType_INT16, {1, 1, 4, 1}, -10, 10},
+                                {TensorType_INT16, {1, 1, 4, 1}, -10, 10});
+  m.QuantizeAndPopulate<int16_t>(m.input(), {1, 0.1, 4, 9});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.ExtractDequantVector<int16_t>(m.output()),
+      ElementsAreArray(ArrayFloatNear({1.00009, 3.19407, 0.500198, 0.333262},
+                                      kQuantizedTolerance)));
+}
+
+TEST(ElementWise, RsqrtNanInt16) {
+  const float input_min = -0.8f;
+  const float input_max = 0.8f;
+
+  const float output_min = -2.4f;
+  const float output_max = 2.4f;
+
+  const float kQuantizedTolerance =
+      GetLUTTolerance<int16_t>(input_min, input_max, output_min, output_max);
+
+  ElementWiseOpQuantizedModel m(BuiltinOperator_RSQRT,
+                                {TensorType_INT16, {1, 1, 4, 1}, -10, 10},
+                                {TensorType_INT16, {1, 1, 4, 1}, -10, 10});
+  m.QuantizeAndPopulate<int16_t>(m.input(), {-1, 0, -4, -9});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractDequantVector<int16_t>(m.output()),
+              ElementsAreArray(
+                  ArrayFloatNear({10, 9.82452, 10, 10}, kQuantizedTolerance)));
 }
 
 TEST(ElementWise, Square) {

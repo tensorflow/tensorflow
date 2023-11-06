@@ -18,13 +18,16 @@ limitations under the License.
 #include <ctype.h>
 
 #include <map>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
@@ -35,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -43,7 +47,9 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/equal_graph_def.h"
-#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/path.h"
 
 namespace tensorflow {
 
@@ -1218,48 +1224,17 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
   return OkStatus();
 }
 
-tensorflow::GraphDebugInfo StackTracesMapToGraphDebugInfo(
-    const tensorflow::StackTracesMap& map) {
-  tensorflow::GraphDebugInfo debug_info;
-  for (const auto& [node_name, stack_trace] : map) {
-    if (stack_trace == nullptr) continue;
-
-    tensorflow::GraphDebugInfo::StackTrace stack_trace_proto;
-    absl::flat_hash_map<string, int> file_name_to_index;
-    int new_name_index = 0;
-
-    for (const auto& stack_frame : stack_trace->GetUserFrames(-1)) {
-      auto* file_line_col = stack_trace_proto.add_file_line_cols();
-      if (file_name_to_index.contains(stack_frame.file_name)) {
-        file_line_col->set_file_index(
-            file_name_to_index[stack_frame.file_name]);
-      } else {
-        *debug_info.add_files() = stack_frame.file_name;
-        file_line_col->set_file_index(new_name_index);
-        file_name_to_index[stack_frame.file_name] = new_name_index;
-        new_name_index++;
-      }
-      file_line_col->set_line(stack_frame.line_number);
-      file_line_col->set_func(stack_frame.function_name);
-    }
-
-    (*debug_info.mutable_traces())[node_name] = std::move(stack_trace_proto);
-  }
-
-  return debug_info;
-}
-
 FunctionRecord::FunctionRecord(const FunctionDef& fdef,
                                const StackTracesMap& stack_traces,
                                bool finalized)
-    : FunctionRecord(FunctionDef(fdef), stack_traces, finalized) {}
+    : FunctionRecord(FunctionDef(fdef), StackTracesMap(stack_traces),
+                     finalized) {}
 
 FunctionRecord::FunctionRecord(FunctionDef&& fdef,
-                               const StackTracesMap& stack_traces,
-                               bool finalized)
+                               StackTracesMap&& stack_traces, bool finalized)
     : finalized_(finalized),
       fdef_(std::move(fdef)),
-      stack_traces_(stack_traces),
+      stack_traces_(std::move(stack_traces)),
       // Exact shape inference for functions is handled by ShapeRefiner.
       // Here we pass a dummy shape inference function for legacy code paths.
       op_registration_data_(fdef_.signature(), shape_inference::UnknownShape,
@@ -1307,21 +1282,19 @@ FunctionLibraryDefinition::FunctionLibraryDefinition(
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
     const OpRegistryInterface* default_registry,
-    const FunctionDefLibrary& def_lib)
-    : default_registry_(default_registry), records_(def_lib.function_size()) {
-  for (const auto& fdef : def_lib.function()) {
-    // The latter function definition wins.
-    auto iter = records_.find(fdef.signature().name());
-    if (iter != records_.end()) {
-      iter->second->Unref();
-      records_.erase(iter);
-    }
-    records_.insert(
-        {fdef.signature().name(), new FunctionRecord(fdef, {}, true)});
-  }
-  for (const auto& grad : def_lib.gradient()) {
-    func_grad_[grad.function_name()] = grad.gradient_func();
-  }
+    const FunctionDefLibrary& lib_def,
+    const FunctionDefLibraryStackTraces& library_traces)
+    : default_registry_(default_registry), records_(lib_def.function_size()) {
+  Initialize(lib_def, library_traces);
+}
+
+FunctionLibraryDefinition::FunctionLibraryDefinition(
+    const OpRegistryInterface* default_registry, const GraphDef& graph_def)
+    : default_registry_(default_registry) {
+  const FunctionDefLibrary& library = graph_def.library();
+  FunctionDefLibraryStackTraces library_traces =
+      CreateStackTracesForFunctionDefLibrary(library, graph_def.debug_info());
+  Initialize(library, library_traces);
 }
 
 FunctionLibraryDefinition::~FunctionLibraryDefinition() {
@@ -1342,6 +1315,51 @@ FunctionLibraryDefinition& FunctionLibraryDefinition::operator=(
   optimized_function_graph_map_ =
       std::move(other.optimized_function_graph_map_);
   return *this;
+}
+
+FunctionDefLibraryStackTraces
+FunctionLibraryDefinition::CreateStackTracesForFunctionDefLibrary(
+    const FunctionDefLibrary& library, const GraphDebugInfo& debug_info) {
+  FunctionDefLibraryStackTraces library_traces;
+  StackTracesMap all_traces = LoadTracesFromDebugInfo(debug_info);
+  for (const FunctionDef& fdef : library.function()) {
+    const std::string& function_name = fdef.signature().name();
+    StackTracesMap stack_traces;
+    std::string key_suffix = absl::StrCat("@", function_name);
+    for (const auto& [traces_key, stack_trace] : all_traces) {
+      if (!absl::EndsWith(traces_key, key_suffix)) continue;
+      std::string node_key =
+          std::string(absl::StripSuffix(traces_key, key_suffix));
+      stack_traces[node_key] = stack_trace;
+    }
+    if (!stack_traces.empty()) {
+      library_traces[function_name] = std::move(stack_traces);
+    }
+  }
+  return library_traces;
+}
+
+void FunctionLibraryDefinition::Initialize(
+    const FunctionDefLibrary& library,
+    const FunctionDefLibraryStackTraces& library_traces) {
+  tf_shared_lock lock(mu_);
+  for (const auto& fdef : library.function()) {
+    // The latter function definition wins.
+    auto iter = records_.find(fdef.signature().name());
+    if (iter != records_.end()) {
+      iter->second->Unref();
+      records_.erase(iter);
+    }
+    const auto& it = library_traces.find(fdef.signature().name());
+    records_.insert(
+        {fdef.signature().name(),
+         new FunctionRecord(
+             fdef, it != library_traces.end() ? it->second : StackTracesMap(),
+             true)});
+  }
+  for (const auto& grad : library.gradient()) {
+    func_grad_[grad.function_name()] = grad.gradient_func();
+  }
 }
 
 bool FunctionLibraryDefinition::Contains(const string& func) const {
@@ -1388,10 +1406,21 @@ Status FunctionLibraryDefinition::AddFunctionDef(
   return status;
 }
 
-Status FunctionLibraryDefinition::AddFunctionDefHelper(
-    FunctionDef&& fdef, const StackTracesMap& stack_traces, bool* added) {
+Status FunctionLibraryDefinition::AddFunctionDef(
+    FunctionDef&& fdef, StackTracesMap&& stack_traces) {
+  mutex_lock l(mu_);
+  bool added;
   FunctionRecord* record =
-      new FunctionRecord(std::move(fdef), stack_traces, true);
+      new FunctionRecord(std::move(fdef), std::move(stack_traces), true);
+  core::ScopedUnref scoped_unref(record);
+  Status status = AddHelper(record, &added);
+  return status;
+}
+
+Status FunctionLibraryDefinition::AddFunctionDefHelper(
+    FunctionDef&& fdef, StackTracesMap&& stack_traces, bool* added) {
+  FunctionRecord* record =
+      new FunctionRecord(std::move(fdef), std::move(stack_traces), true);
   core::ScopedUnref scoped_unref(record);
   Status status = AddHelper(record, added);
   return status;
@@ -1447,12 +1476,16 @@ Status FunctionLibraryDefinition::CopyFunctionDefFrom(
           "Cannot copy function '", name,
           "' because a different function with the same name already "
           "exists.");
+    } else {
+      return OkStatus();
     }
+  } else if (other_record->finalized()) {
+    bool added;
+    mutex_lock l(mu_);
+    return AddHelper(other_record.get(), &added);
   } else {
-    TF_RETURN_IF_ERROR(
-        AddFunctionDef(other_record->fdef(), other_record->stack_traces()));
+    return AddFunctionDef(other_record->fdef(), other_record->stack_traces());
   }
-  return OkStatus();
 }
 
 Status FunctionLibraryDefinition::AddGradientDef(const GradientDef& grad) {
@@ -1539,12 +1572,14 @@ Status FunctionLibraryDefinition::AddLibrary(FunctionDefLibrary&& lib_def) {
 }
 
 Status FunctionLibraryDefinition::AddLibrary(
-    const FunctionDefLibrary& lib_def, const StackTracesMap& stack_traces) {
-  return AddLibrary(FunctionDefLibrary(lib_def), stack_traces);
+    const FunctionDefLibrary& lib_def,
+    const FunctionDefLibraryStackTraces& library_traces) {
+  return AddLibrary(FunctionDefLibrary(lib_def), library_traces);
 }
 
 Status FunctionLibraryDefinition::AddLibrary(
-    FunctionDefLibrary&& lib_def, const StackTracesMap& stack_traces) {
+    FunctionDefLibrary&& lib_def,
+    const FunctionDefLibraryStackTraces& library_traces) {
   // Remember the funcs and grads that we added successfully so that
   // we can roll them back on error.
   mutex_lock l(mu_);
@@ -1553,8 +1588,11 @@ Status FunctionLibraryDefinition::AddLibrary(
   Status s;
   bool added;
   for (FunctionDef& fdef : *lib_def.mutable_function()) {
-    string name = fdef.signature().name();
-    s = AddFunctionDefHelper(std::move(fdef), stack_traces, &added);
+    std::string name = fdef.signature().name();
+    StackTracesMap stack_traces = library_traces.contains(name)
+                                      ? StackTracesMap(library_traces.at(name))
+                                      : StackTracesMap();
+    s = AddFunctionDefHelper(std::move(fdef), std::move(stack_traces), &added);
     if (!s.ok()) {
       Status remove_status = Remove(funcs, funcs_with_grads);
       if (!remove_status.ok()) {
@@ -1588,8 +1626,8 @@ Status FunctionLibraryDefinition::ReplaceFunction(
   mutex_lock l(mu_);
   bool added;
   TF_RETURN_IF_ERROR(RemoveFunctionHelper(func));
-  TF_RETURN_IF_ERROR(
-      AddFunctionDefHelper(FunctionDef(fdef), stack_traces, &added));
+  TF_RETURN_IF_ERROR(AddFunctionDefHelper(
+      FunctionDef(fdef), StackTracesMap(stack_traces), &added));
   return OkStatus();
 }
 
@@ -1921,6 +1959,20 @@ FunctionLibraryDefinition FunctionLibraryDefinition::ReachableDefinitions(
 FunctionLibraryDefinition FunctionLibraryDefinition::ReachableDefinitions(
     const FunctionDef& func) const {
   return ReachableFunctionLibraryDefinition(*this, func.node_def());
+}
+
+StatusOr<FunctionLibraryDefinition>
+FunctionLibraryDefinition::ReachableDefinitions(
+    const std::string& function_name) const {
+  auto* func = Find(function_name);
+  if (func) {
+    FunctionLibraryDefinition ret =
+        ReachableFunctionLibraryDefinition(*this, func->node_def());
+    TF_RETURN_IF_ERROR(ret.CopyFunctionDefFrom(function_name, *this));
+    return ret;
+  } else {
+    return absl::NotFoundError(function_name);
+  }
 }
 
 string FunctionLibraryRuntime::Options::DebugString() const {

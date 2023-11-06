@@ -17,10 +17,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_FUNCTION_H_
 
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
@@ -38,16 +40,16 @@ limitations under the License.
 #include "tensorflow/core/framework/optimized_function_graph.pb.h"
 #include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/random.h"
+#include "tensorflow/core/platform/stack_frame.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
+#include "tsl/protobuf/error_codes.pb.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 #endif  // IS_MOBILE_PLATFORM
@@ -349,49 +351,13 @@ class FunctionCallFrame : public CallFrameInterface {
   };
   gtl::InlinedVector<Retval, 4> rets_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FunctionCallFrame);
+  FunctionCallFrame(const FunctionCallFrame&) = delete;
+  void operator=(const FunctionCallFrame&) = delete;
 };
 
-// Language agnostic stack traces.
-class AbstractStackTrace {
- public:
-  struct TracePrintingOptions {
-    // Show inline the contents of each stack line.
-    bool show_line_contents = false;
-
-    // Drop the common largest prefix of all filenames in stack frames.
-    bool filter_common_prefix = false;
-
-    // Do not show internal frames.
-    bool drop_internal_frames = false;
-  };
-
-  virtual ~AbstractStackTrace() {}
-
-  // The returned span is alive as long as the AbstractStackTrace is alive.
-  virtual absl::Span<StackFrame const> ToFrames() const = 0;
-
-  // Return the frames, but without caching any of the generated data.
-  virtual std::vector<StackFrame> ToUncachedFrames() const { return {}; }
-
-  // Returns the last stack frame from user code, attempting to ignore the
-  // framework code. Returns an empty frame if no such stack frame was found.
-  virtual StackFrame LastUserFrame() const = 0;
-
-  // Returns stack trace from user code (instead of op creation ones returned in
-  // ToFrames).
-  virtual std::vector<StackFrame> GetUserFrames(int limit) const = 0;
-
-  virtual std::string ToString(const TracePrintingOptions& opts) const = 0;
-};
-
-using StackTracesMap =
-    std::unordered_map<std::string,
-                       std::shared_ptr<tensorflow::AbstractStackTrace>>;
-
-// Generates a GraphDebugInfo proto from a StackTracesMap object.
-tensorflow::GraphDebugInfo StackTracesMapToGraphDebugInfo(
-    const tensorflow::StackTracesMap& map);
+// Map of function names to StackTracesMaps.
+using FunctionDefLibraryStackTraces =
+    absl::flat_hash_map<std::string, StackTracesMap>;
 
 // Holds Function information that can be shared in multiple places.
 // FunctionRecord must be explicitly finalized before being saved in
@@ -400,7 +366,7 @@ class FunctionRecord : public core::RefCounted {
  public:
   FunctionRecord(const FunctionDef& fdef, const StackTracesMap& stack_traces,
                  bool finalized);
-  FunctionRecord(FunctionDef&& fdef, const StackTracesMap& stack_traces,
+  FunctionRecord(FunctionDef&& fdef, StackTracesMap&& stack_traces,
                  bool finalized);
 
   // Mark FunctionRecord as finalized (disable mutation).
@@ -446,8 +412,12 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Note: This constructor grabs `lib_def`'s lock in shared mode.
   FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
+  explicit FunctionLibraryDefinition(
+      const OpRegistryInterface* default_registry,
+      const FunctionDefLibrary& lib_def = {},
+      const FunctionDefLibraryStackTraces& library_traces = {});
   FunctionLibraryDefinition(const OpRegistryInterface* default_registry,
-                            const FunctionDefLibrary& lib_def = {});
+                            const GraphDef& graph_def);
   ~FunctionLibraryDefinition() override;
 
   FunctionLibraryDefinition& operator=(const FunctionLibraryDefinition&) =
@@ -480,6 +450,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // `graph` has to outlive all instantiated graphs.
   Status AddFunctionDef(const FunctionDef& fdef,
                         const StackTracesMap& stack_traces = {})
+      TF_LOCKS_EXCLUDED(mu_);
+  Status AddFunctionDef(FunctionDef&& fdef, StackTracesMap&& stack_traces = {})
       TF_LOCKS_EXCLUDED(mu_);
 
   // Adds gradient definition 'grad' to this function library.
@@ -529,9 +501,11 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Duplicate functions and gradients are ignored.
   // This operation is atomic.
   Status AddLibrary(const FunctionDefLibrary& lib_def,
-                    const StackTracesMap& stack_traces) TF_LOCKS_EXCLUDED(mu_);
+                    const FunctionDefLibraryStackTraces& library_traces)
+      TF_LOCKS_EXCLUDED(mu_);
   Status AddLibrary(FunctionDefLibrary&& lib_def,
-                    const StackTracesMap& stack_traces) TF_LOCKS_EXCLUDED(mu_);
+                    const FunctionDefLibraryStackTraces& library_traces)
+      TF_LOCKS_EXCLUDED(mu_);
 
   // If the gradient function for 'func' is specified explicitly in
   // the library, returns the gradient function name.  Otherwise,
@@ -591,6 +565,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // reachable from the nodes of `graph` or `func`.
   FunctionLibraryDefinition ReachableDefinitions(const GraphDef& graph) const;
   FunctionLibraryDefinition ReachableDefinitions(const FunctionDef& func) const;
+  StatusOr<FunctionLibraryDefinition> ReachableDefinitions(
+      const std::string& function_name) const;
 
   // Copies the function named `func` from `other` to this
   // FunctionLibraryDefinition.
@@ -632,7 +608,14 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
     return nullptr;
   }
 
+  // Creates a map of function names to stack traces for a FunctionDefLibrary.
+  static FunctionDefLibraryStackTraces CreateStackTracesForFunctionDefLibrary(
+      const FunctionDefLibrary& library, const GraphDebugInfo& debug_info);
+
  private:
+  void Initialize(const FunctionDefLibrary& library,
+                  const FunctionDefLibraryStackTraces& library_traces);
+
   core::RefCountPtr<FunctionRecord> FindHelper(const string& func) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
   std::string FindGradientHelper(const std::string& func) const
@@ -643,9 +626,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Same as AddFunctionDef/AddGradientDef except these methods set
   // `added` to true if the `fdef`/`grad` were actually added to this.
-  Status AddFunctionDefHelper(FunctionDef&& fdef,
-                              const StackTracesMap& stack_traces, bool* added)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status AddFunctionDefHelper(FunctionDef&& fdef, StackTracesMap&& stack_traces,
+                              bool* added) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status AddGradientDefHelper(const GradientDef& grad, bool* added)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
@@ -702,7 +684,7 @@ struct FunctionArgIndex {
   int sub_index = -1;
 };
 
-class FunctionLibraryRuntime {
+class FunctionLibraryRuntime : public core::WeakRefCounted {
  public:
   virtual ~FunctionLibraryRuntime() {}
 
@@ -863,6 +845,11 @@ class FunctionLibraryRuntime {
     // Instantiates the function for XLA compilation on device_type. If empty,
     // function is not compiled.
     std::string xla_compile_device_type;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // Instantiates the function enabling soft placement or outside compilation.
+    bool allow_soft_placement = false;
   };
   typedef uint64 Handle;
   virtual Status Instantiate(const std::string& function_name, AttrSlice attrs,

@@ -35,7 +35,7 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-template <typename Device, typename T, bool native_format = false>
+template <typename Device, typename T, typename U, bool native_format = false>
 class MklDequantizeOp : public OpKernel {
  public:
   explicit MklDequantizeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -47,6 +47,12 @@ class MklDequantizeOp : public OpKernel {
                     mode_string + "'"));
 
     OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range_));
+    OP_REQUIRES(
+        ctx,
+        (ctx->output_type(0) == DT_FLOAT || ctx->output_type(0) == DT_BFLOAT16),
+        errors::InvalidArgument("Output type must be float or bfloat16,"
+                                " is '" +
+                                DataTypeString(ctx->output_type(0)) + "'"));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -69,10 +75,15 @@ class MklDequantizeOp : public OpKernel {
 
       // Create reorder memory for src and dst
       MklDnnData<T> src(&cpu_engine);
-      MklDnnData<float> dst(&cpu_engine);
+      MklDnnData<U> dst(&cpu_engine);
 
       std::shared_ptr<stream> reorder_stream;
-      MklDnnThreadPool eigen_tp(ctx);
+      // Create the oneDNN wrapper over Eigen threadpool and set max threads
+      // in oneDNN.
+      Eigen::ThreadPoolInterface* eigen_interface =
+          EigenThreadPoolFromTfContext(ctx);
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       reorder_stream.reset(CreateStream(&eigen_tp, cpu_engine));
 
       memory::format_tag dst_layout_type;
@@ -111,9 +122,8 @@ class MklDequantizeOp : public OpKernel {
       MklDnnShape output_mkl_shape;
       TensorShape output_tf_shape;
       memory::desc dst_md =
-          memory::desc(src_dims, MklDnnType<float>(), dst_layout_type);
+          memory::desc(src_dims, MklDnnType<U>(), dst_layout_type);
 
-      // If input is MKL shape, output is also MKL shape.
       // If input is TF shape, output is also TF shape.
       output_mkl_shape.SetMklTensor(false);
       output_tf_shape = MklDnnDimsToTFShape(output_dims);
@@ -144,24 +154,23 @@ class MklDequantizeOp : public OpKernel {
       } else {
         scale_factor = max_range / v_max;
       }
-      std::vector<float> scales;
-      scales.push_back(scale_factor);
+      std::vector<float> scales = {scale_factor};
       primitive_attr attr;
 #ifndef ENABLE_ONEDNN_V3
       attr.set_output_scales(0, scales);
 #else
       attr.set_scales_mask(DNNL_ARG_SRC, 0);
-      auto scale_mem =
-          memory({{scales.size()}, MklDnnType<float>(), memory::format_tag::x},
-                 cpu_engine, scales.data());
+      auto scale_mem = memory({{static_cast<int64_t>(scales.size())},
+                               MklDnnType<float>(),
+                               memory::format_tag::x},
+                              cpu_engine, scales.data());
 #endif  // !ENABLE_ONEDNN_V3
-      std::vector<primitive> net;
 
       // Create reorder primitive and then execute.
       auto reorder_pd =
           ReorderPd(cpu_engine, src.GetUsrMem()->get_desc(), cpu_engine,
                     dst.GetUsrMem()->get_desc(), attr);
-      net.push_back(reorder(reorder_pd));
+      std::vector<primitive> net = {reorder(reorder_pd)};
       std::vector<std::unordered_map<int, memory>> reorder_net_args;
 #ifndef ENABLE_ONEDNN_V3
       reorder_net_args.push_back({{DNNL_ARG_FROM, *src.GetUsrMem()},
@@ -193,13 +202,27 @@ class MklDequantizeOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("_MklDequantize")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<quint8>("T")
+                            .TypeConstraint<float>("dtype")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklDequantizeOp<CPUDevice, quint8, true>);
+                        MklDequantizeOp<CPUDevice, quint8, float, true>);
 REGISTER_KERNEL_BUILDER(Name("_MklDequantize")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<qint8>("T")
+                            .TypeConstraint<float>("dtype")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklDequantizeOp<CPUDevice, qint8, true>);
+                        MklDequantizeOp<CPUDevice, qint8, float, true>);
+REGISTER_KERNEL_BUILDER(Name("_MklDequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("T")
+                            .TypeConstraint<bfloat16>("dtype")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklDequantizeOp<CPUDevice, quint8, bfloat16, true>);
+REGISTER_KERNEL_BUILDER(Name("_MklDequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint8>("T")
+                            .TypeConstraint<bfloat16>("dtype")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklDequantizeOp<CPUDevice, qint8, bfloat16, true>);
 
 }  // namespace tensorflow
 

@@ -1,0 +1,9 @@
+source ci/official/envs/ci_default
+source ci/official/envs/disable_all_uploads
+TFCI_PYTHON_VERSION=3.11
+TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=macos_arm64
+TFCI_BAZEL_COMMON_ARGS=(--config release_macos_arm64 --config tf_public_cache_push --config resultstore --repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION)
+TFCI_BUILD_PIP_PACKAGE_ARGS=(--cpu --nightly_flag)
+TFCI_DOCKER_ENABLE=0
+TFCI_NIGHTLY_UPDATE_VERSION_ENABLE=1
+TFCI_UPLOAD_WHL_GCS_ENABLE=1

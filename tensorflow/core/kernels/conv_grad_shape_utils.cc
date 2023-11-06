@@ -63,7 +63,7 @@ Status ConvBackpropExtractAndVerifyDimension(
   dim->stride = strides[spatial_dim];
   dim->dilation = dilations[spatial_dim];
   int64_t out_size = 0;
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerboseV2(
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
       dim->input_size, dim->filter_size, dim->dilation, dim->stride, padding,
       &out_size, &padding_before, &padding_after));
   if (dim->output_size != out_size) {

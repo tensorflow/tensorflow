@@ -26,7 +26,7 @@ from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_grad
+from tensorflow.python.ops import nn_fused_batch_norm_grad
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
@@ -336,8 +336,8 @@ class BatchNormalizationTest(test.TestCase):
         epsilon = y.op.get_attr('epsilon')
         data_format = y.op.get_attr('data_format')
         grad_vals = self.evaluate([grad_x, grad_scale, grad_offset])
-        grad_internal = nn_grad._BatchNormGrad(grad_y, x, scale, pop_mean,
-                                               pop_var, epsilon, data_format)
+        grad_internal = nn_fused_batch_norm_grad._BatchNormGrad(
+            grad_y, x, scale, pop_mean, pop_var, epsilon, data_format)
         grad_internal_vals = self.evaluate(list(grad_internal))
         for grad_val, grad_internal_val in zip(grad_vals, grad_internal_vals):
           self.assertAllClose(grad_val, grad_internal_val, atol=err_tolerance)
@@ -411,8 +411,6 @@ class BatchNormalizationTest(test.TestCase):
     factors = [1.0, 0.6]
     for dtype in [np.float16, np.float32, dtypes.bfloat16.as_numpy_dtype]:
       for use_gpu in use_gpu_vals:
-        if dtype == dtypes.bfloat16.as_numpy_dtype and not use_gpu:
-          continue
         for data_format in data_format_list:
           if data_format == 'NHWC' or data_format == 'NDHWC':
             scale_shape = x_shape[-1:]

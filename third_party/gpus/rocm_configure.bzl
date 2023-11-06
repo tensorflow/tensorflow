@@ -299,7 +299,8 @@ def _rocm_lib_paths(repository_ctx, lib, basedir):
 
 def _batch_files_exist(repository_ctx, libs_paths, bash_bin):
     all_paths = []
-    for _, lib_paths in libs_paths:
+    for row in libs_paths:
+        lib_paths = row[1]
         for lib_path in lib_paths:
             all_paths.append(lib_path)
     return files_exist(repository_ctx, all_paths, bash_bin)
@@ -309,7 +310,10 @@ def _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin):
 
     libs = {}
     i = 0
-    for name, lib_paths in libs_paths:
+    for row in libs_paths:
+        name = row[0]
+        lib_paths = row[1]
+        optional = (len(row) > 2 and row[2] == True)
         selected_path = None
         for path in lib_paths:
             if test_results[i] and selected_path == None:
@@ -317,7 +321,11 @@ def _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin):
                 selected_path = path
             i = i + 1
         if selected_path == None:
-            auto_configure_fail("Cannot find rocm library %s" % name)
+            if optional:
+                libs[name] = None
+                continue
+            else:
+                auto_configure_fail("Cannot find rocm library %s" % name)
 
         libs[name] = struct(file_name = selected_path.basename, path = realpath(repository_ctx, selected_path, bash_bin))
 
@@ -351,42 +359,23 @@ def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, miopen_path, rccl_
     if int(rocm_config.rocm_version_number) >= 40500:
         libs_paths.append(("hipsolver", _rocm_lib_paths(repository_ctx, "hipsolver", rocm_config.rocm_toolkit_path)))
         libs_paths.append(("hipblas", _rocm_lib_paths(repository_ctx, "hipblas", rocm_config.rocm_toolkit_path)))
+
+    # hipblaslt may be absent even in versions of ROCm where it exists
+    # (it is not installed by default in some containers). Autodetect.
+    libs_paths.append(("hipblaslt", _rocm_lib_paths(repository_ctx, "hipblaslt", rocm_config.rocm_toolkit_path), True))
     return _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin)
 
-def _exec_find_rocm_config(repository_ctx, script_path):
-    python_bin = get_python_bin(repository_ctx)
-
-    # If used with remote execution then repository_ctx.execute() can't
-    # access files from the source tree. A trick is to read the contents
-    # of the file in Starlark and embed them as part of the command. In
-    # this case the trick is not sufficient as the find_cuda_config.py
-    # script has more than 8192 characters. 8192 is the command length
-    # limit of cmd.exe on Windows. Thus we additionally need to compress
-    # the contents locally and decompress them as part of the execute().
-    compressed_contents = repository_ctx.read(script_path)
-    decompress_and_execute_cmd = (
-        "from zlib import decompress;" +
-        "from base64 import b64decode;" +
-        "from os import system;" +
-        "script = decompress(b64decode('%s'));" % compressed_contents +
-        "f = open('script.py', 'wb');" +
-        "f.write(script);" +
-        "f.close();" +
-        "system('\"%s\" script.py');" % (python_bin)
-    )
-
-    return execute(repository_ctx, [python_bin, "-c", decompress_and_execute_cmd])
-
-def find_rocm_config(repository_ctx, script_path):
+def find_rocm_config(repository_ctx):
     """Returns ROCm config dictionary from running find_rocm_config.py"""
-    exec_result = _exec_find_rocm_config(repository_ctx, script_path)
+    python_bin = get_python_bin(repository_ctx)
+    exec_result = execute(repository_ctx, [python_bin, repository_ctx.attr._find_rocm_config])
     if exec_result.return_code:
         auto_configure_fail("Failed to run find_rocm_config.py: %s" % err_out(exec_result))
 
     # Parse the dict from stdout.
     return dict([tuple(x.split(": ")) for x in exec_result.stdout.splitlines()])
 
-def _get_rocm_config(repository_ctx, bash_bin, find_rocm_config_script):
+def _get_rocm_config(repository_ctx, bash_bin):
     """Detects and returns information about the ROCm installation on the system.
 
     Args:
@@ -401,7 +390,7 @@ def _get_rocm_config(repository_ctx, bash_bin, find_rocm_config_script):
         miopen_version_number: The version of MIOpen on the system.
         hipruntime_version_number: The version of HIP Runtime on the system.
     """
-    config = find_rocm_config(repository_ctx, find_rocm_config_script)
+    config = find_rocm_config(repository_ctx)
     rocm_toolkit_path = config["rocm_toolkit_path"]
     rocm_version_number = config["rocm_version_number"]
     miopen_version_number = config["miopen_version_number"]
@@ -461,6 +450,7 @@ def _create_dummy_repository(repository_ctx):
             "%{rocm_extra_copts}": "[]",
             "%{rocm_gpu_architectures}": "[]",
             "%{rocm_version_number}": "0",
+            "%{rocm_hipblaslt}": "False",
         },
     )
     _tpl(
@@ -479,6 +469,7 @@ def _create_dummy_repository(repository_ctx):
             "%{roctracer_lib}": _lib_name("roctracer64"),
             "%{rocsolver_lib}": _lib_name("rocsolver"),
             "%{hipsolver_lib}": _lib_name("hipsolver"),
+            "%{hipblaslt_lib}": _lib_name("hipblaslt"),
             "%{copy_rules}": "",
             "%{rocm_headers}": "",
         },
@@ -495,6 +486,7 @@ def _create_dummy_repository(repository_ctx):
         "rocm:rocm_config.h",
         {
             "%{rocm_toolkit_path}": _DEFAULT_ROCM_TOOLKIT_PATH,
+            "%{hipblaslt_flag}": "0",
         },
         "rocm/rocm/rocm_config.h",
     )
@@ -550,10 +542,8 @@ def _create_local_rocm_repository(repository_ctx):
         "rocm:rocm_config.h",
     ]}
 
-    find_rocm_config_script = repository_ctx.path(Label("@org_tensorflow//third_party/gpus:find_rocm_config.py.gz.base64"))
-
     bash_bin = get_bash_bin(repository_ctx)
-    rocm_config = _get_rocm_config(repository_ctx, bash_bin, find_rocm_config_script)
+    rocm_config = _get_rocm_config(repository_ctx, bash_bin)
 
     # For ROCm 4.1 and above use hipfft, older ROCm versions use rocfft
     rocm_version_number = int(rocm_config.rocm_version_number)
@@ -572,7 +562,6 @@ def _create_local_rocm_repository(repository_ctx):
             name = "rocm-include",
             src_dir = rocm_toolkit_path + "/include",
             out_dir = "rocm/include",
-            exceptions = ["gtest", "gmock"],
         ),
     ]
 
@@ -611,8 +600,9 @@ def _create_local_rocm_repository(repository_ctx):
     rocm_lib_srcs = []
     rocm_lib_outs = []
     for lib in rocm_libs.values():
-        rocm_lib_srcs.append(lib.path)
-        rocm_lib_outs.append("rocm/lib/" + lib.file_name)
+        if lib:
+            rocm_lib_srcs.append(lib.path)
+            rocm_lib_outs.append("rocm/lib/" + lib.file_name)
     copy_rules.append(make_copy_files_rule(
         repository_ctx,
         name = "rocm-lib",
@@ -634,6 +624,8 @@ def _create_local_rocm_repository(repository_ctx):
         ],
     ))
 
+    have_hipblaslt = "1" if rocm_libs["hipblaslt"] != None else "0"
+
     # Set up BUILD file for rocm/
     repository_ctx.template(
         "rocm/build_defs.bzl",
@@ -646,6 +638,7 @@ def _create_local_rocm_repository(repository_ctx):
             ),
             "%{rocm_gpu_architectures}": str(rocm_config.amdgpu_targets),
             "%{rocm_version_number}": str(rocm_version_number),
+            "%{rocm_hipblaslt}": "True" if rocm_libs["hipblaslt"] != None else "False",
         },
     )
 
@@ -665,6 +658,9 @@ def _create_local_rocm_repository(repository_ctx):
                             hiprand_include +
                             rocrand_include),
     }
+    if rocm_libs["hipblaslt"] != None:
+        repository_dict["%{hipblaslt_lib}"] = rocm_libs["hipblaslt"].file_name
+
     if rocm_version_number >= 40500:
         repository_dict["%{hipsolver_lib}"] = rocm_libs["hipsolver"].file_name
         repository_dict["%{hipblas_lib}"] = rocm_libs["hipblas"].file_name
@@ -729,7 +725,7 @@ def _create_local_rocm_repository(repository_ctx):
         tpl_paths["crosstool:clang/bin/crosstool_wrapper_driver_rocm"],
         {
             "%{cpu_compiler}": str(cc),
-            "%{hipcc_path}": rocm_config.rocm_toolkit_path + "/hip/bin/hipcc",
+            "%{hipcc_path}": rocm_config.rocm_toolkit_path + "/bin/hipcc",
             "%{hipcc_env}": _hipcc_env(repository_ctx),
             "%{rocr_runtime_path}": rocm_config.rocm_toolkit_path + "/lib",
             "%{rocr_runtime_library}": "hsa-runtime64",
@@ -753,6 +749,7 @@ def _create_local_rocm_repository(repository_ctx):
             "%{rocm_version_number}": rocm_config.rocm_version_number,
             "%{miopen_version_number}": rocm_config.miopen_version_number,
             "%{hipruntime_version_number}": rocm_config.hipruntime_version_number,
+            "%{hipblaslt_flag}": have_hipblaslt,
         },
     )
 
@@ -826,12 +823,20 @@ remote_rocm_configure = repository_rule(
     remotable = True,
     attrs = {
         "environ": attr.string_dict(),
+        "_find_rocm_config": attr.label(
+            default = Label("@org_tensorflow//third_party/gpus:find_rocm_config.py"),
+        ),
     },
 )
 
 rocm_configure = repository_rule(
     implementation = _rocm_autoconf_impl,
     environ = _ENVIRONS + [_TF_ROCM_CONFIG_REPO],
+    attrs = {
+        "_find_rocm_config": attr.label(
+            default = Label("@org_tensorflow//third_party/gpus:find_rocm_config.py"),
+        ),
+    },
 )
 """Detects and configures the local ROCm toolchain.
 

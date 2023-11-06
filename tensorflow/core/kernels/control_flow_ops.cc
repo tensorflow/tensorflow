@@ -55,6 +55,12 @@ void SwitchNOp::Compute(OpKernelContext* context) {
 REGISTER_KERNEL_BUILDER(
     Name("Switch").Device(DEVICE_TPU_SYSTEM).HostMemory("pred"), SwitchOp);
 
+REGISTER_KERNEL_BUILDER(Name("Switch").Device(DEVICE_TPU).HostMemory("pred"),
+                        SwitchOp);
+
+REGISTER_KERNEL_BUILDER(
+    Name("_SwitchN").Device(DEVICE_TPU).HostMemory("output_index"), SwitchNOp);
+
 #define REGISTER_CPU_SWITCH(type)                         \
   REGISTER_KERNEL_BUILDER(Name("Switch")                  \
                               .Device(DEVICE_CPU)         \
@@ -241,7 +247,8 @@ class RefSelectOp : public OpKernel {
 
   ~RefSelectOp() override {}
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RefSelectOp);
+  RefSelectOp(const RefSelectOp&) = delete;
+  void operator=(const RefSelectOp&) = delete;
 
  private:
   int num_ref_inputs_;
@@ -297,6 +304,8 @@ void MergeOp::Compute(OpKernelContext* context) {
 REGISTER_KERNEL_BUILDER(Name("Merge").Device(DEVICE_CPU), MergeOp);
 REGISTER_KERNEL_BUILDER(
     Name("Merge").Device(DEVICE_TPU_SYSTEM).HostMemory("value_index"), MergeOp);
+REGISTER_KERNEL_BUILDER(
+    Name("Merge").Device(DEVICE_TPU).HostMemory("value_index"), MergeOp);
 REGISTER_KERNEL_BUILDER(Name("RefMerge").Device(DEVICE_CPU), MergeOp);
 
 #define REGISTER_GPU_KERNEL(type)                         \
@@ -405,6 +414,7 @@ void EnterOp::Compute(OpKernelContext* context) {
 }
 
 REGISTER_KERNEL_BUILDER(Name("Enter").Device(DEVICE_TPU_SYSTEM), EnterOp);
+REGISTER_KERNEL_BUILDER(Name("Enter").Device(DEVICE_TPU), EnterOp);
 REGISTER_KERNEL_BUILDER(Name("RefEnter").Device(DEVICE_CPU), EnterOp);
 
 #define REGISTER_GPU_KERNEL(type) \
@@ -502,6 +512,7 @@ void ExitOp::Compute(OpKernelContext* context) {
 }
 
 REGISTER_KERNEL_BUILDER(Name("Exit").Device(DEVICE_TPU_SYSTEM), ExitOp);
+REGISTER_KERNEL_BUILDER(Name("Exit").Device(DEVICE_TPU), ExitOp);
 REGISTER_KERNEL_BUILDER(Name("RefExit").Device(DEVICE_CPU), ExitOp);
 
 #define REGISTER_GPU_KERNEL(type) \
@@ -589,6 +600,8 @@ void NextIterationOp::Compute(OpKernelContext* context) {
 }
 
 REGISTER_KERNEL_BUILDER(Name("NextIteration").Device(DEVICE_TPU_SYSTEM),
+                        NextIterationOp);
+REGISTER_KERNEL_BUILDER(Name("NextIteration").Device(DEVICE_TPU),
                         NextIterationOp);
 REGISTER_KERNEL_BUILDER(Name("RefNextIteration").Device(DEVICE_CPU),
                         NextIterationOp);

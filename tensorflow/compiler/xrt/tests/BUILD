@@ -1,9 +1,9 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_cc_test")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -24,28 +24,35 @@ cc_library(
         "//tensorflow/cc:scope",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/client/lib:arithmetic",
-        "//tensorflow/compiler/xla/client/lib:constants",
-        "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xrt:xrt_proto_cc",
         "//tensorflow/compiler/xrt:xrt_server",
         "//tensorflow/compiler/xrt/cc:xrt_ops",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla:literal",
+        "@local_xla//xla:literal_util",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/client:client_library",
+        "@local_xla//xla/client:executable_build_options",
+        "@local_xla//xla/client:local_client",
+        "@local_xla//xla/client:padding",
+        "@local_xla//xla/client:xla_builder",
+        "@local_xla//xla/client:xla_computation",
+        "@local_xla//xla/client/lib:arithmetic",
+        "@local_xla//xla/client/lib:constants",
+        "@local_xla//xla/service:platform_util",
+        "@local_xla//xla/stream_executor:platform",
     ],
 )
 

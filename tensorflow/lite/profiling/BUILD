@@ -96,12 +96,16 @@ cc_library(
 
 cc_library(
     name = "profile_buffer",
+    srcs = [
+        "profile_buffer.cc",
+    ],
     hdrs = ["profile_buffer.h"],
     compatible_with = get_compatible_with_portable(),
     copts = common_copts,
     deps = [
         ":memory_info",
         ":time",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/api",
     ],
 )
@@ -249,7 +253,7 @@ cc_library(
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/tsl/platform:path",
+        "@local_tsl//tsl/platform:path",
     ],
 )
 

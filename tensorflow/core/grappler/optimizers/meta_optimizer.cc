@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include "absl/status/status.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -66,7 +68,7 @@ limitations under the License.
 #include "tensorflow/core/util/xla_config_registry.h"
 
 // #TODO(b/200087693): LLVM does not build on Fuchsia.
-#ifndef __Fuchsia__
+#if !NO_LLVM_SUPPORT
 #include "tensorflow/core/grappler/optimizers/tfg_optimizer_hook.h"
 #include "tensorflow/core/grappler/optimizers/tfg_passes_builder.h"
 #endif
@@ -287,11 +289,14 @@ Status MetaOptimizer::InitializeOptimizers(
   }
 
   // #TODO(b/200087693): LLVM does not build on Fuchsia.
-#ifndef __Fuchsia__
-  // Hooks the MLIR optimizer, it won't run any optimizations right now. This
-  // optimizer instance runs on functions one at a time; don't use any threads.
-  optimizers->push_back(std::make_unique<mlir::tfg::TFGGrapplerOptimizer>(
-      mlir::tfg::DefaultGrapplerPipeline));
+#if !NO_LLVM_SUPPORT
+  if (!cfg_.disable_tfg_optimizer()) {
+    // Hooks the MLIR optimizer, it won't run any optimizations right now. This
+    // optimizer instance runs on functions one at a time; don't use any
+    // threads.
+    optimizers->push_back(std::make_unique<mlir::tfg::TFGGrapplerOptimizer>(
+        mlir::tfg::DefaultGrapplerPipeline));
+  }
 #endif
 
 // A set of macro utilities which check if the toggle of an optimization.
@@ -429,11 +434,11 @@ Status MetaOptimizer::InitializeOptimizers(
         !enable_mlir_pass || USER_IS_EXPERIMENTAL_BOTH(remapping);
     if (enable_mlir_pass) {
 // #TODO(b/200087693): LLVM does not build on Fuchsia.
-#ifndef __Fuchsia__
+#if !NO_LLVM_SUPPORT
       optimizers->push_back(std::make_unique<mlir::tfg::TFGGrapplerOptimizer>(
           mlir::tfg::RemapperPassBuilder));
 #else
-      VLOG(2) << "mlir Remapper pass is not supported on Fuchsia";
+      VLOG(2) << "mlir Remapper pass is not supported on this platform";
 #endif
     }
     if (enable_grappler_pass) {
@@ -949,10 +954,11 @@ Status MetaOptimizer::RunOptimizer(
     } else if (absl::IsDeadlineExceeded(status)) {
       message =
           strings::StrCat(status.ToString(), ", time = ", duration_ms, "ms.");
-      LOG(WARNING) << optimizer->name() << " failed: " << message;
+      LOG_EVERY_N_SEC(WARNING, 60)
+          << optimizer->name() << " failed: " << message;
     } else {
       message = status.ToString();
-      LOG(ERROR) << optimizer->name() << " failed: " << message;
+      LOG_EVERY_N_SEC(ERROR, 60) << optimizer->name() << " failed: " << message;
     }
   } else {
     message = strings::StrCat(
@@ -1274,8 +1280,8 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
   // TODO(jeffniu): None of the TFG optimizations are meant to create new
   // opportunities for other optimizers; they could, but it's unclear whether
   // re-running all the other optimizers is worthwhile.
-#ifndef __Fuchsia__
-  {
+#if !NO_LLVM_SUPPORT
+  if (!cfg_.disable_tfg_optimizer()) {
     // Create a Grappler optimization pipeline with only the TFG optimizer.
     std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
     optimizers.push_back(std::make_unique<mlir::tfg::TFGGrapplerOptimizer>(
@@ -1379,6 +1385,13 @@ Status OptimizeGraph(
   tensorflow::grappler::GrapplerItem item;
   item.id = grappler_item_id;
   item.optimization_options() = optimization_options;
+  if (cpu_device && std::is_same<decltype(cpu_device), LocalDevice>::value &&
+      cpu_device->tensorflow_cpu_worker_threads() != nullptr) {
+    // Forward to the optimisation pass number of intra threads that are used to
+    // parallelise operations.
+    item.optimization_options().intra_op_parallelism_threads =
+        cpu_device->tensorflow_cpu_worker_threads()->num_threads;
+  }
 
   // Add all available devices so that inlined function can be placed.
   for (const Device* d : device_set.devices()) {

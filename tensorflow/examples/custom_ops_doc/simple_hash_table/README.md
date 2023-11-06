@@ -519,7 +519,8 @@ class SimpleHashTableCreateOpKernel : public OpKernel {
 
  private:
   // Just to be safe, avoid accidentally copying the kernel.
-  TF_DISALLOW_COPY_AND_ASSIGN(SimpleHashTableCreateOpKernel);
+  SimpleHashTableCreateOpKernel(const SimpleHashTableCreateOpKernel&) = delete;
+  void operator=(const SimpleHashTableCreateOpKernel&) = delete;
 };
 ```
 
@@ -843,7 +844,6 @@ tf_py_test(
     srcs_version = "PY3",
     tags = [
         "no_mac",  # TODO(b/216321151): Re-enable this test.
-        "no_pip",
     ],
     deps = [
         ":simple_hash_table",

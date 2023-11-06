@@ -337,7 +337,7 @@ TEST(CachedFunctionHandles, Basic) {
 }
 
 TEST(PropagateConstIntoFunctionalNodes, WhileLoopWithResourceInput) {
-  FunctionLibraryDefinition fld(OpRegistry::Global(), {});
+  FunctionLibraryDefinition fld(OpRegistry::Global(), FunctionDefLibrary());
   {
     // Cond graph & body graph.
     Scope scope = Scope::NewRootScope().ExitOnError();
@@ -369,7 +369,7 @@ TEST(PropagateConstIntoFunctionalNodes, WhileLoopWithResourceInput) {
 }
 
 TEST(PropagateConstIntoFunctionalNodes, CopiedConstNodeHasUniqueName) {
-  FunctionLibraryDefinition fld(OpRegistry::Global(), {});
+  FunctionLibraryDefinition fld(OpRegistry::Global(), FunctionDefLibrary());
   {
     // Cond graph & body graph.
     Scope scope = Scope::NewRootScope().ExitOnError();
@@ -422,7 +422,7 @@ TEST(PropagateConstIntoFunctionalNodes, CopiedConstNodeHasUniqueName) {
 }
 
 TEST(PropagateConstIntoFunctionalNodes, RewriteTensorListWithConstMember) {
-  FunctionLibraryDefinition fld(OpRegistry::Global(), {});
+  FunctionLibraryDefinition fld(OpRegistry::Global(), FunctionDefLibrary());
   {
     // Cond graph
     Scope scope = Scope::NewRootScope().ExitOnError();

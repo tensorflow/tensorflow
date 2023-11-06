@@ -266,21 +266,21 @@ class WindowDatasetOp::Dataset : public DatasetBase {
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       if (!input_impl_) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kInputImplEmpty, ""));
       } else {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
       // Save buffer.
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name(kBufferSize), buffer_.size()));
+          writer->WriteScalar(prefix(), kBufferSize, buffer_.size()));
       for (int64_t i = 0; i < buffer_.size(); i++) {
         TF_RETURN_IF_ERROR(WriteStatusLocked(writer, i, buffer_[i].status));
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix)),
+            prefix(), strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix),
             buffer_[i].result.size()));
         for (int64_t j = 0; j < buffer_[i].result.size(); j++) {
           TF_RETURN_IF_ERROR(writer->WriteTensor(
-              full_name(strings::StrCat(kBuffer, "[", i, "][", j, "]")),
+              prefix(), strings::StrCat(kBuffer, "[", i, "][", j, "]"),
               buffer_[i].result[j]));
         }
       }
@@ -290,7 +290,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      if (!reader->Contains(full_name(kInputImplEmpty))) {
+      if (!reader->Contains(prefix(), kInputImplEmpty)) {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       } else {
         input_impl_.reset();
@@ -298,20 +298,20 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       // Restore buffer.
       int64_t buffer_size = 0;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kBufferSize), &buffer_size));
+          reader->ReadScalar(prefix(), kBufferSize, &buffer_size));
       buffer_.resize(buffer_size);
       for (int64_t i = 0; i < buffer_size; i++) {
         int64_t vector_size;
         TF_RETURN_IF_ERROR(ReadStatusLocked(reader, i, &buffer_[i].status));
         TF_RETURN_IF_ERROR(reader->ReadScalar(
-            full_name(strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix)),
+            prefix(), strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix),
             &vector_size));
         buffer_[i].result.resize(vector_size);
         for (int64_t j = 0; j < vector_size; j++) {
-          TF_RETURN_IF_ERROR(reader->ReadTensor(
-              ctx->flr(),
-              full_name(strings::StrCat(kBuffer, "[", i, "][", j, "]")),
-              &buffer_[i].result[j]));
+          TF_RETURN_IF_ERROR(
+              reader->ReadTensor(ctx->flr(), prefix(),
+                                 strings::StrCat(kBuffer, "[", i, "][", j, "]"),
+                                 &buffer_[i].result[j]));
         }
       }
       return OkStatus();
@@ -335,9 +335,9 @@ class WindowDatasetOp::Dataset : public DatasetBase {
                              const Status& status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          CodeKey(index), static_cast<int64_t>(status.code())));
+          prefix(), CodeKey(index), static_cast<int64_t>(status.code())));
       if (!status.ok()) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(ErrorMessageKey(index),
+        TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), ErrorMessageKey(index),
                                                std::string(status.message())));
       }
       return OkStatus();
@@ -346,13 +346,14 @@ class WindowDatasetOp::Dataset : public DatasetBase {
     Status ReadStatusLocked(IteratorStateReader* reader, size_t index,
                             Status* status) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       int64_t code_int;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(CodeKey(index), &code_int));
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix(), CodeKey(index), &code_int));
       absl::StatusCode code = static_cast<absl::StatusCode>(code_int);
 
       if (code != absl::StatusCode::kOk) {
         tstring error_message;
-        TF_RETURN_IF_ERROR(
-            reader->ReadScalar(ErrorMessageKey(index), &error_message));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), ErrorMessageKey(index),
+                                              &error_message));
         *status = Status(code, error_message);
       } else {
         *status = OkStatus();
@@ -361,12 +362,11 @@ class WindowDatasetOp::Dataset : public DatasetBase {
     }
 
     string CodeKey(size_t index) {
-      return full_name(strings::StrCat(kBuffer, "[", index, "]", kCodeSuffix));
+      return strings::StrCat(kBuffer, "[", index, "]", kCodeSuffix);
     }
 
     string ErrorMessageKey(size_t index) {
-      return full_name(
-          strings::StrCat(kBuffer, "[", index, "]", kErrorMessage));
+      return strings::StrCat(kBuffer, "[", index, "]", kErrorMessage);
     }
 
     size_t TargetBufferSize(int64_t window_size, int64_t window_stride) {

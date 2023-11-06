@@ -47,7 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 #define DEBUG_TYPE "tf-tpu-merge-variables-with-execute"
 
@@ -65,11 +65,6 @@ constexpr char kFuncDeviceAttr[] = "tf.device";
 class TPUMergeVariablesWithExecutePass
     : public impl::TPUMergeVariablesWithExecutePassBase<
           TPUMergeVariablesWithExecutePass> {
-  void getDependentDialects(DialectRegistry& registry) const override {
-    // We need this here because at the moment we deserialize the TPUCompileMlir
-    // operation which contains annotation like `mhlo.sharding` attributes.
-    registry.insert<mhlo::MhloDialect>();
-  }
   void runOnOperation() override;
 };
 

@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/backends/profiler/gpu/cupti_collector.h"
+#include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"

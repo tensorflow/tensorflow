@@ -29,6 +29,7 @@ from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
@@ -36,6 +37,8 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
+
+is_oss = True  # updated by copybara
 
 
 # TODO(b/136040013): Drop support for Defun.
@@ -706,7 +709,7 @@ class _OverloadedFunction(object):
     args = list(args)
     for (i, x) in enumerate(args):
       x = ops.convert_to_tensor(x)
-      if not isinstance(x, ops.Tensor):
+      if not isinstance(x, tensor_lib.Tensor):
         raise ValueError(f"Expected a Tensor but got {x} with type {type(x)}.")
       input_types.append(x.dtype)
       args[i] = x
@@ -913,7 +916,7 @@ class _FuncGraph(ops.Graph):
     op = self._add_op_and_parents(tensor.op)
     return op.outputs[tensor.value_index]
 
-  def _add_op_and_parents(self, op):
+  def _add_op_and_parents(self, op: ops.Operation):
     # pylint: disable=protected-access
     op_def = graph_to_function_def._get_op_def(op)
     if op._is_stateful and op not in self._allowlisted_stateful_ops:
@@ -1048,13 +1051,13 @@ def _is_guaranteed_const(tensor):
 
   class Work(object):
 
-    def __init__(self, op, leaving):
+    def __init__(self, op: ops.Operation, leaving):
       self.op = op
       self.leaving = leaving
 
   is_guaranteed_const = lambda op: op.node_def.op == "GuaranteeConst"
   constants = set([])
-  def all_inputs_const(op):
+  def all_inputs_const(op: ops.Operation):
     # If all inputs of an op are guaranteed constants, then we can infer that
     # the op produces a constant as well.
     return op.inputs and all(inp.op in constants for inp in op.inputs)
@@ -1160,8 +1163,11 @@ def _from_definition(fdef, grad_func=None):
   result = _DefinedFunction(func, argnames, input_types, func_name, grad_func,
                             python_grad_func, out_names)
   # pylint: disable=protected-access
-  serialized = fdef.SerializeToString()
-  c_func = c_api.TF_FunctionImportFunctionDef(serialized)
+  if is_oss:
+    serialized = fdef.SerializeToString()
+    c_func = c_api.TF_FunctionImportFunctionDef(serialized)
+  else:
+    c_func = c_api.TF_FunctionImportFunctionDefNoSerialization(fdef)
   result._c_func = c_api_util.ScopedTFFunction(c_func, func_name)
   result._extra_inputs = []
   result._op_def = fdef.signature
@@ -1378,5 +1384,7 @@ _DTYPE_TO_STR = {
     dtypes.qint32: "qi32",
     dtypes.bfloat16: "b16",
     dtypes.float8_e5m2: "f8e5m2",
-    dtypes.float8_e4m3fn: "f8e4m3fn"
+    dtypes.float8_e4m3fn: "f8e4m3fn",
+    dtypes.int4: "i4",
+    dtypes.uint4: "u4",
 }

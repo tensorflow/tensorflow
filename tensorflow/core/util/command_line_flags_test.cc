@@ -303,4 +303,47 @@ TEST(CommandLineFlagsTest, UsageString) {
   usage = Flags::Usage(tool_name, {});
   ASSERT_EQ(MatchWithAnyWhitespace(usage, " usage: some_tool_name\n"), true);
 }
+
+namespace {
+template <typename T, typename ExpectationFun>
+void PrefixTestTempl(ExpectationFun expectation_fun, const T &value0,
+                     const T &value1, string str0, string str1) {
+  int argc = 3;
+  std::vector<string> argv_strings = {
+      "program_name",
+      "--hello" + str0,
+      "--hello_world" + str1,
+  };
+  std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
+
+  T hello{};
+  T hello_world{};
+  bool parsed_ok = Flags::Parse(
+      &argc, argv_array.data(),
+      {
+          Flag("hello", &hello, "usage of hello"),
+          Flag("hello_world", &hello_world, "usage of hello world"),
+      });
+
+  EXPECT_EQ(true, parsed_ok);
+  expectation_fun(value0, hello);
+  expectation_fun(value1, hello_world);
+  EXPECT_EQ(argc, 1);
+}
+}  // namespace
+
+TEST(CommandLineFlagsTest, OneArgumentIsAPrefixOfAnother) {
+  auto expect_eq = [](auto a, auto b) { EXPECT_EQ(a, b); };
+  auto expect_near = [](auto a, auto b) { EXPECT_NEAR(a, b, 1e-5f); };
+
+  PrefixTestTempl<int32_t>(expect_eq, 1, 2, "=1", "=2");
+  PrefixTestTempl<int64_t>(expect_eq, 1, 2, "=1", "=2");
+  PrefixTestTempl<bool>(expect_eq, false, true, "=false", "=true");
+  PrefixTestTempl<bool>(expect_eq, false, true, "=false", "");
+  PrefixTestTempl<bool>(expect_eq, true, false, "=true", "=false");
+  PrefixTestTempl<bool>(expect_eq, true, false, "", "=false");
+  PrefixTestTempl<string>(expect_eq, "a", "b", "=a", "=b");
+  PrefixTestTempl<float>(expect_near, 0.1f, 0.2f, "=0.1", "=0.2");
+}
+
 }  // namespace tensorflow

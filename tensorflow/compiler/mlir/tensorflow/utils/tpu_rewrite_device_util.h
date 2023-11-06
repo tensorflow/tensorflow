@@ -18,16 +18,18 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -42,7 +44,7 @@ inline constexpr absl::string_view kDeviceAssignmentAttr = "device_assignment";
 
 // A TPU device for execution alongside its associated host CPU device.
 struct TPUDeviceAndHost {
-  TPUDeviceAndHost() {}
+  TPUDeviceAndHost() = default;
   TPUDeviceAndHost(llvm::StringRef device, llvm::StringRef host)
       : device(device), host(host) {}
 
@@ -252,6 +254,10 @@ bool HasModelParallelism(mlir::tf_device::ClusterOp cluster);
 // Returns true if the devices list contain any TPU devices
 bool HasTPUDevice(const mlir::TF::RuntimeDevices& devices);
 
+// Returns the host device used for outside compilation in generic pipeline.
+mlir::LogicalResult GetHostDeviceOutsideCompilationInGenericPipeline(
+    mlir::TF::RuntimeDevices devices, std::string* host_device);
+
 // Parses XLA compilation and execution devices from a tf_device.cluster and
 // returns the host device for the head and tail computations. For TPU device,
 // if the computation is replicated, GetDeviceAliasForHostOfLogicalCore(0) is
@@ -279,6 +285,16 @@ bool TypeValidForXLA(const mlir::Type& type);
 mlir::LogicalResult GetDeviceToHostMap(
     mlir::tf_device::ClusterOp cluster,
     llvm::SmallVector<std::string, 8>& core_to_host);
+
+// Returns the first TPU device, for use in the non-replicated case. The list of
+// TPU devices is retrived from `op`'s module ancestor.
+mlir::LogicalResult GetNonReplicatedTPU0(mlir::Operation* op,
+                                         std::string* tpu0_device);
+
+// Returns the CPU of the first TPU device, for use in the non-replicated case.
+// The list of devices is retrived from `op`'s module ancestor.
+mlir::LogicalResult GetNonReplicatedCPU0(mlir::Operation* op,
+                                         std::string* cpu0_device);
 
 }  // namespace tensorflow
 

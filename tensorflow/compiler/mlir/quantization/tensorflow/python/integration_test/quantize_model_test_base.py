@@ -14,6 +14,7 @@
 # ==============================================================================
 """Base test class for quantize_model Tests."""
 import os
+import re
 from typing import Collection, Iterable, Mapping, Sequence, Tuple, Optional, Union, List
 
 from absl.testing import parameterized
@@ -40,6 +41,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop as while_loop_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -168,6 +170,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       op_name: str,
       attr_name: str,
       attr_val: _AttrValType,
+      node_name: str = '',
   ) -> bool:
     """Determine whether there is a node whose operation name matches `op_name`.
 
@@ -179,15 +182,24 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       op_name: Name of the op to match.
       attr_name: Name of the attribute of the op to match.
       attr_val: Value of the attr_name to check.
+      node_name: Name of the node to match. Accepts regex2 format.
 
     Returns:
       True if there exists a node whose name matches `op_name` and 'attr_val' if
       'attr_name' is given.
     """
+
+    def match_node_name(name):
+      if not node_name:
+        return True
+      compiled_regex = re.compile(node_name)
+      match = re.fullmatch(compiled_regex, name)
+      return match is not None
+
     return any(
         node.attr.get(attr_name) == attr_val
         for node in nodes
-        if node.op == op_name
+        if node.op == op_name and match_node_name(node.name)
     )
 
   def _contains_quantized_function_call(
@@ -222,6 +234,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       op_name: str,
       attr_name: str = '',
       attr_val: _AttrValType = None,
+      node_name: str = '',
   ) -> bool:
     """Determines if the graph def contains the given op.
 
@@ -230,6 +243,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       op_name: Name of the operation to find within the graph.
       attr_name: Name of the attribute of the op to match.
       attr_val: Value of the attr_name to check.
+      node_name: Name of the node to match. Accepts regex2 format.
 
     Returns:
       True if and only if the graph def contains an op named `op_name`. If
@@ -242,6 +256,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         op_name=op_name,
         attr_name=attr_name,
         attr_val=attr_val,
+        node_name=node_name,
     ):
       return True
 
@@ -252,6 +267,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
           op_name=op_name,
           attr_name=attr_name,
           attr_val=attr_val,
+          node_name=node_name,
       ):
         return True
     return False
@@ -907,7 +923,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       inputs: Mapping[str, core.Tensor],
       outputs: Mapping[str, core.Tensor],
       init_op: Optional[ops.Operation] = None,
-      assets_collection: Optional[Sequence[ops.Tensor]] = None,
+      assets_collection: Optional[Sequence[core.Symbol]] = None,
   ) -> None:
     """Saves a TF1 model.
 
@@ -1224,9 +1240,9 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         out = nn_ops.conv2d(
             input_tensor,
             self.filters,
-            strides=[1, 1, 2, 1],
-            dilations=[1, 1, 1, 1],
-            padding='SAME',
+            strides=strides,
+            dilations=dilations,
+            padding=padding,
             data_format='NHWC',
         )
         if has_bias:
@@ -1302,7 +1318,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         Returns:
           A map of: output key -> output result.
         """
-        out = math_ops.matmul(input_tensor, self.filters)
+        out = math_ops.matmul(input_tensor, self.filters, name='sample/matmul')
 
         if self.has_reshape():
           input_shape = input_tensor.shape
@@ -1330,7 +1346,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
 
     # Verify that when bias_size is not None, has_bias should be True.
     # And if bias_size is None, has_bias should be False using XNOR
-    assert (not ((bias_size is not None) ^ has_bias))
+    assert not ((bias_size is not None) ^ has_bias)
 
     # Verify that bias size is correct
     if bias_size:
@@ -1342,82 +1358,6 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         model,
         saved_model_path,
         signatures=model.matmul.get_concrete_function(
-            tensor_spec.TensorSpec(
-                shape=input_shape, dtype=dtypes.float32, name='input_tensor'
-            )
-        ),
-    )
-    return model
-
-  def _create_einsum_model(
-      self,
-      saved_model_path: str,
-      equation: str,
-      input_shape: Sequence[int],
-      weight_shape: Sequence[int],
-      bias_shape: Optional[Sequence[int]] = None,
-      activation_fn: Optional[ops.Operation] = None,
-  ) -> module.Module:
-    class EinsumModel(module.Module):
-      """A simple model with a single einsum.
-
-      Bias and activation function are optional.
-      """
-
-      def __init__(
-          self,
-          equation: str,
-          weight_shape: Sequence[int],
-          bias_shape: Optional[Sequence[int]] = None,
-          activation_fn: Optional[ops.Operation] = None,
-      ) -> None:
-        """Initializes a EinsumModel.
-
-        Args:
-          equation: a string describing the contraction.
-          weight_shape: Shape of the weight tensor.
-          bias_shape: Shape of the bias. This is not always 1D so Einsum ops
-            usually use Add op instead of BiasAdd.
-          activation_fn: The activation function to be used. No activation
-            function if None.
-        """
-        self.equation = equation
-        self.activation_fn = activation_fn
-        self.weight = np.random.uniform(low=-1.0, high=1.0, size=weight_shape)
-        self.bias = (
-            np.random.uniform(low=-1.0, high=1.0, size=bias_shape)
-            if bias_shape is not None
-            else None
-        )
-
-      @def_function.function
-      def einsum(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
-        """Evaluates the Einstein summation convention.
-
-        Depending on self.has_bias and self.activation_fn, it may add a bias
-        term or go through the activaction function.
-
-        Args:
-          input_tensor: Input tensor to einsum with the weight.
-
-        Returns:
-          A map of: output key -> output result.
-        """
-        out = tensorflow.einsum(self.equation, input_tensor, self.weight)
-
-        if self.bias is not None:
-          out = out + self.bias
-
-        if self.activation_fn is not None:
-          out = self.activation_fn(out)
-
-        return {'output': out}
-
-    model = EinsumModel(equation, weight_shape, bias_shape, activation_fn)
-    saved_model_save.save(
-        model,
-        saved_model_path,
-        signatures=model.einsum.get_concrete_function(
             tensor_spec.TensorSpec(
                 shape=input_shape, dtype=dtypes.float32, name='input_tensor'
             )
@@ -1452,7 +1392,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     out_labels = equation[arrow_pos + 1 :]
 
     # 2. Create sample shapes.
-    label_to_size = {'a': 2, 'b': 3, 'c': 4, 'd': 5, 'e': 6}
+    label_to_size = {'a': 4, 'b': 32, 'c': 64, 'd': 128, 'e': 8}
     x_shape = [label_to_size.get(x_label) for x_label in x_labels]
     y_shape = [label_to_size.get(y_label) for y_label in y_labels]
     bias_shape = None
@@ -1477,7 +1417,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       ]
     return x_shape, y_shape, bias_shape, x_signature, y_signature
 
-  def _create_einsum_model_with_fake_quant(
+  def _create_einsum_model(
       self,
       equation: str,
       y_shape: Sequence[int],
@@ -1485,9 +1425,10 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       y_signature: Sequence[Optional[int]],
       bias_shape: Optional[Sequence[int]] = None,
       activation_fn: Optional[ops.Operation] = None,
+      is_qat_model: bool = False,
   ) -> module.Module:
     class EinsumModel(module.Module):
-      """Einsum class with fakequants."""
+      """Einsum class."""
 
       def __init__(self):
         self._bias = None
@@ -1526,33 +1467,35 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         return self._einsum(x, y)
 
       def _einsum(self, x, y):
-        x = array_ops.fake_quant_with_min_max_vars(
-            x,
-            min=ops.convert_to_tensor(self._min[0]),
-            max=ops.convert_to_tensor(self._max[0]),
-            num_bits=8,
-            narrow_range=False,
-        )
-        y = array_ops.fake_quant_with_min_max_vars(
-            y,
-            min=ops.convert_to_tensor(self._min[1]),
-            max=ops.convert_to_tensor(self._max[1]),
-            num_bits=8,
-            narrow_range=False,
-        )
+        if is_qat_model:
+          x = array_ops.fake_quant_with_min_max_vars(
+              x,
+              min=ops.convert_to_tensor(self._min[0]),
+              max=ops.convert_to_tensor(self._max[0]),
+              num_bits=8,
+              narrow_range=False,
+          )
+          y = array_ops.fake_quant_with_min_max_vars(
+              y,
+              min=ops.convert_to_tensor(self._min[1]),
+              max=ops.convert_to_tensor(self._max[1]),
+              num_bits=8,
+              narrow_range=False,
+          )
 
         out = tensorflow.einsum(equation, x, y)
         if self._bias is not None:
           out = nn_ops.bias_add(out, self._bias)
         if activation_fn is not None:
           out = activation_fn(out)
-        out = array_ops.fake_quant_with_min_max_vars(
-            out,
-            min=ops.convert_to_tensor(self._min[2]),
-            max=ops.convert_to_tensor(self._max[2]),
-            num_bits=8,
-            narrow_range=False,
-        )
+        if is_qat_model:
+          out = array_ops.fake_quant_with_min_max_vars(
+              out,
+              min=ops.convert_to_tensor(self._min[2]),
+              max=ops.convert_to_tensor(self._max[2]),
+              num_bits=8,
+              narrow_range=False,
+          )
         return {'output': out}
 
     return EinsumModel()
@@ -1608,3 +1551,37 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       )
 
     return in_placeholder
+
+  def _create_while_model(self, input_shape: Sequence[int] = (1, 32, 32, 512)):
+    class WhileModel(module.Module):
+      """A model with a while op."""
+
+      def __init__(self):
+        w_shape = [3, 3] + [input_shape[-1], input_shape[-1]]
+        self.w = np.random.uniform(low=-2, high=2, size=w_shape).astype('f4')
+
+      @def_function.function
+      def condition(self, x, w):
+        return math_ops.reduce_sum(x, keepdims=False) < 100
+
+      @def_function.function
+      def body(self, x, w):
+        z = nn_ops.conv2d(x, w, padding='SAME')
+        return z, w
+
+      @def_function.function(
+          input_signature=[
+              tensor_spec.TensorSpec(
+                  shape=input_shape, dtype=dtypes.float32, name='input_tensor'
+              )
+          ]
+      )
+      def main(self, x):
+        x1 = nn_ops.conv2d(x, self.w, padding='SAME')
+        x2, _ = while_loop_ops.while_loop(
+            self.condition, self.body, [x, self.w]
+        )
+        result = x1 + x2
+        return {'output': result}
+
+    return WhileModel()
