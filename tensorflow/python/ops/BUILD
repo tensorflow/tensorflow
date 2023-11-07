@@ -2,6 +2,10 @@ load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_xla_deps_py")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_strict_wrapper_private_py")
+load(
+    "//tensorflow/tools/test:performance.bzl",
+    "cuda_py_benchmark_test",
+)
 
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
@@ -4033,7 +4037,7 @@ py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "accumulate_n_benchmark",
     size = "medium",
     srcs = ["accumulate_n_benchmark.py"],
@@ -4055,7 +4059,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "batch_norm_benchmark",
     srcs = ["batch_norm_benchmark.py"],
     main = "batch_norm_benchmark.py",
@@ -4077,7 +4081,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "collective_ops_benchmark",
     srcs = ["collective_ops_benchmark.py"],
     main = "collective_ops_benchmark.py",
@@ -4092,7 +4096,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "concat_benchmark",
     srcs = ["concat_benchmark.py"],
     main = "concat_benchmark.py",
@@ -4109,7 +4113,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "control_flow_ops_benchmark",
     srcs = ["control_flow_ops_benchmark.py"],
     main = "control_flow_ops_benchmark.py",
@@ -4129,7 +4133,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "conv2d_benchmark",
     size = "large",
     srcs = ["conv2d_benchmark.py"],
@@ -4150,7 +4154,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "split_benchmark",
     srcs = ["split_benchmark.py"],
     main = "split_benchmark.py",
@@ -4169,7 +4173,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "transpose_benchmark",
     size = "medium",
     srcs = ["transpose_benchmark.py"],
@@ -4187,7 +4191,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "matmul_benchmark",
     size = "medium",
     srcs = ["matmul_benchmark.py"],

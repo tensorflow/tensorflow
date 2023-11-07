@@ -59,7 +59,7 @@ def tf_cc_logged_benchmark(
     )
 
 def add_benchmark_tag_to_kwargs(kwargs):
-    """Adds the `test-benchmark` tag to the kwargs, if not already present.
+    """Adds the `benchmark-test` tag to the kwargs, if not already present.
 
     Notes:
       For benchmarks which are not technically tests, but whose class methods
@@ -67,9 +67,9 @@ def add_benchmark_tag_to_kwargs(kwargs):
     Args:
       kwargs: kwargs to be passed to a test wrapper/rule further down.
     Returns:
-      kwargs: kwargs with the tags including the `test-benchmark` tags.
+      kwargs: kwargs with the tags including the `benchmark-test` tags.
     """
-    benchmark_tag = "test-benchmark"
+    benchmark_tag = "benchmark-test"
     if "tags" in kwargs and kwargs["tags"] != None:
         if benchmark_tag not in kwargs["tags"]:
             kwargs["tags"].append(benchmark_tag)
