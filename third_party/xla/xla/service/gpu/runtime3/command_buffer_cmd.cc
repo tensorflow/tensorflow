@@ -90,21 +90,6 @@ Status LaunchCmd::Initialize(se::StreamExecutor* executor,
   return OkStatus();
 }
 
-static std::unique_ptr<se::KernelArgsArrayBase> AllocateKernelArgs(
-    absl::Span<const se::DeviceMemoryBase> args, int64_t shmem_bytes) {
-  static constexpr int kKernelArgsLimit = 1024;
-
-  // Specialize kernel arguments array for small sizes to allocate a smaller
-  // chunk of memory and hopefully hit a small allocations cache.
-  if (args.size() <= 64) {
-    return se::MakeKernelArgs<64>(args, shmem_bytes);
-  } else if (args.size() <= 256) {
-    return se::MakeKernelArgs<256>(args, shmem_bytes);
-  }
-
-  return se::MakeKernelArgs<kKernelArgsLimit>(args, shmem_bytes);
-}
-
 Status LaunchCmd::Record(const RecordParams& params,
                          se::CommandBuffer* command_buffer) {
   VLOG(5) << "LaunchCmd: kernel=" << kernel_name_
@@ -123,7 +108,8 @@ Status LaunchCmd::Record(const RecordParams& params,
     buffers.push_back(buf);
   }
 
-  auto kernel_args = AllocateKernelArgs(buffers, shmem_bytes_);
+  TF_ASSIGN_OR_RETURN(auto kernel_args,
+                      se::PackKernelArgs(buffers, shmem_bytes_));
 
   LaunchDimensions::Dim3D thread_counts = dims_.thread_counts_per_block();
   LaunchDimensions::Dim3D block_counts = dims_.block_counts();

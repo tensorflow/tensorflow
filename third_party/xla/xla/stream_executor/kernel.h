@@ -79,9 +79,12 @@ limitations under the License.
 #include <type_traits>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -349,6 +352,13 @@ class KernelArgsPackedArray : public KernelArgsPackedArrayBase {
  public:
   static constexpr int kMaxGenericArgSize = 8;
 
+  KernelArgsPackedArray() = default;
+
+  // KernelArgsPackedArray is not copyable or movable because argument addresses
+  // point to inline storage that can't be moved.
+  KernelArgsPackedArray(const KernelArgsPackedArray &) = delete;
+  KernelArgsPackedArray &operator=(const KernelArgsPackedArray &) = delete;
+
   // Do not allow casting into concrete packed array type.
   static bool classof(const KernelArgsArrayBase *args) { return false; }
 
@@ -444,7 +454,7 @@ class KernelArgsPackedArray : public KernelArgsPackedArrayBase {
 };
 
 template <int n>
-std::unique_ptr<KernelArgsArrayBase> MakeKernelArgs(
+std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
     absl::Span<const DeviceMemoryBase> args, uint32_t shared_mem_bytes) {
   auto kernel_args = std::make_unique<KernelArgsPackedArray<n>>();
   for (const DeviceMemoryBase &buf : args) {
@@ -454,6 +464,35 @@ std::unique_ptr<KernelArgsArrayBase> MakeKernelArgs(
     kernel_args->add_shared_bytes(shared_mem_bytes);
   }
   return kernel_args;
+}
+
+inline tsl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>> PackKernelArgs(
+    absl::Span<const DeviceMemoryBase> args, uint32_t shared_mem_bytes) {
+  static constexpr int kKernelArgsLimit = 1024;
+
+  if (args.size() > kKernelArgsLimit)
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Can't pack device memory arguments array of size ", args.size(),
+        " which is larger than the maximum supported size of ",
+        kKernelArgsLimit));
+
+  // Specialize kernel arguments array for small sizes to allocate a smaller
+  // chunk of memory and hopefully hit a small allocations cache.
+  //
+  // TODO(ezhulenev): Benchmark if smaller sizes make a performance difference
+  // and try to optimize arguments packing for larger number of arguments.
+  if (args.size() <= 64) {
+    return PackKernelArgs<64>(args, shared_mem_bytes);
+  } else if (args.size() <= 256) {
+    return PackKernelArgs<256>(args, shared_mem_bytes);
+  }
+
+  return PackKernelArgs<kKernelArgsLimit>(args, shared_mem_bytes);
+}
+
+inline tsl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>> PackKernelArgs(
+    absl::Span<const DeviceMemoryBase> args, const KernelMetadata &metadata) {
+  return PackKernelArgs(args, metadata.shared_memory_bytes().value_or(0));
 }
 
 //===----------------------------------------------------------------------===//
@@ -679,6 +718,22 @@ struct KernelParamsOk<TypedKernel<Params...>, Args...> {
       KernelInvocationChecker<std::tuple<Params...>,
                               std::tuple<Args...>>::CheckAllNoStaticAssert();
 };
+
+// Packs the given arguments into a KernelArgsArray with compile-time type
+// checks. se::Stream::ThenLaunch does this too except it ignores the shared
+// memory size in `kernel`.
+template <typename... Params, typename... Args>
+std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
+    const TypedKernel<Params...> &kernel, const Args &...args) {
+  KernelInvocationChecker<std::tuple<Params...>,
+                          std::tuple<Args...>>::CheckAllStaticAssert();
+  auto kernel_args = std::make_unique<KernelArgsPackedArray<sizeof...(Args)>>();
+  kernel.PackParams(kernel_args.get(), args...);
+
+  int64_t shmem_bytes = kernel.metadata().shared_memory_bytes().value_or(0);
+  if (shmem_bytes > 0) kernel_args->add_shared_bytes(shmem_bytes);
+  return kernel_args;
+}
 
 }  // namespace stream_executor
 

@@ -511,6 +511,7 @@ cc_library(
         ":stream_executor_internal",
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
