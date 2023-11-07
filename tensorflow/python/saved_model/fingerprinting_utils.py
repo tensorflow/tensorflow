@@ -32,7 +32,7 @@ from tensorflow.python.util import compat
 FingerprintException = fingerprinting_pywrap.FingerprintException
 
 
-def write_fingerprint(export_dir):
+def write_fingerprint(export_dir: str) -> None:
   """Write fingerprint protobuf, if requested.
 
   Writes a `tf.saved_model.experimental.Fingerprint` object to a
@@ -66,7 +66,7 @@ def write_fingerprint(export_dir):
                    "Model saving will continue.")
 
 
-def singleprint_from_saved_model_proto(export_dir):
+def singleprint_from_saved_model_proto(export_dir: str) -> str:
   """Returns the singleprint of `saved_model.pb` in `export_dir`.
 
   Args:
@@ -85,7 +85,7 @@ def singleprint_from_saved_model_proto(export_dir):
     raise ValueError(e) from None
 
 
-def singleprint_from_fingerprint_proto(export_dir):
+def singleprint_from_fingerprint_proto(export_dir: str) -> str:
   """Returns the singleprint of `fingerprint.pb` in `export_dir`.
 
   Args:
@@ -104,7 +104,7 @@ def singleprint_from_fingerprint_proto(export_dir):
     raise ValueError(e) from None
 
 
-def singleprint_from_saved_model(export_dir):
+def singleprint_from_saved_model(export_dir: str) -> str:
   """Returns the singleprint of the SavedModel in `export_dir`.
 
   First tries to construct the singleprint from `fingerprint.pb`, then from
@@ -141,9 +141,8 @@ def singleprint_from_saved_model(export_dir):
     raise ValueError(e) from None
 
 
-def to_proto(fingerprint):
-  if not isinstance(fingerprint, fingerprinting.Fingerprint):
-    raise TypeError("Supplied value is not a Fingerprint.")
+def to_proto(
+    fingerprint: fingerprinting.Fingerprint) -> fingerprint_pb2.FingerprintDef:
   return fingerprint_pb2.FingerprintDef(
       saved_model_checksum=fingerprint.saved_model_checksum,
       graph_def_program_hash=fingerprint.graph_def_program_hash,
