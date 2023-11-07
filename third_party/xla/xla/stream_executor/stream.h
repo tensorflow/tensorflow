@@ -1552,7 +1552,7 @@ inline tsl::Status Stream::ThenLaunch(ThreadDim thread_dims,
   // we pack the variadic parameters passed as ...args into the desired
   // tuple form and pass that packed form to the StreamExecutor::Launch()
   // implementation.
-  KernelArgsArray<sizeof...(args)> kernel_args;
+  KernelArgsPackedArray<sizeof...(args)> kernel_args;
   kernel.PackParams(&kernel_args, args...);
   TF_RETURN_IF_ERROR(
       parent_->Launch(this, thread_dims, block_dims, kernel, kernel_args));

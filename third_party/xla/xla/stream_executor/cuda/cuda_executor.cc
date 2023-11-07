@@ -441,7 +441,12 @@ tsl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
         cufunc, cuda_kernel->GetGpuCacheConfig()));
   }
 
-  void** kernel_params = const_cast<void**>(args.argument_addresses().data());
+  auto* packed_args = DynCast<KernelArgsPackedArrayBase>(&args);
+  if (!packed_args)
+    return absl::InternalError("Unsupported kernel arguments type");
+
+  void** kernel_params =
+      const_cast<void**>(packed_args->argument_addresses().data());
 
   return GpuDriver::LaunchKernel(context_, kernel.name(), cufunc, block_dims.x,
                                  block_dims.y, block_dims.z, thread_dims.x,

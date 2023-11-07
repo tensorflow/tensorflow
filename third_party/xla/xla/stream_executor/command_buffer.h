@@ -163,7 +163,7 @@ inline tsl::Status CommandBuffer::Launch(const TypedKernel<Params...>& kernel,
   KernelInvocationChecker<std::tuple<Params...>,
                           std::tuple<Args...>>::CheckAllStaticAssert();
 
-  KernelArgsArray<sizeof...(args)> kernel_args;
+  KernelArgsPackedArray<sizeof...(args)> kernel_args;
   kernel.PackParams(&kernel_args, args...);
   TF_RETURN_IF_ERROR(Launch(threads, blocks, kernel, kernel_args));
   return tsl::OkStatus();

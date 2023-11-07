@@ -254,32 +254,15 @@ static constexpr bool is_shared_device_memory_v =
 // Kernel arguments
 //===----------------------------------------------------------------------===//
 
-// Basic data about a kernel argument.
-struct KernelArg {
-  bool is_shared;
-  const void *address;
-  size_t size;
-};
-
-// Base class for KernelArgsArray.
-//
-// Supports all the getter methods that do not depend on the compile-time number
-// of arguments template parameter.
-//
-// This class exists as a way to pass kernel arguments to
-// StreamExecutorInterface::Launch. That Launch method is virtual, so it can't
-// be templated to accept any KernelArgsArray type, therefore a reference to
-// this base type is passed instead.
-//
-// Performance is not a concern here because each of these methods will be
-// called at most once per kernel launch. Past performance concerns with
-// KernelArgsArray have been in reference to the argument packing routines which
-// are called once per kernel argument. Those packing routines are now handled
-// by the templated KernelArgsArray subclass of this class where they can take
-// advantage of compile-time knowledge of the number of arguments in order to be
-// very efficient.
+// A virtual base class for passing kernel arguments to a stream executor APIs.
 class KernelArgsArrayBase {
  public:
+  template <typename T>
+  using IsKernelArgs =
+      std::enable_if_t<std::is_base_of<KernelArgsArrayBase, T>::value>;
+
+  enum class Kind { kPackedArray };
+
   virtual ~KernelArgsArrayBase() = default;
 
   // Gets the number of arguments added so far, including shared memory
@@ -289,8 +272,53 @@ class KernelArgsArrayBase {
   // Gets the total number of shared memory bytes added so far.
   virtual uint64_t number_of_shared_bytes() const = 0;
 
+  virtual Kind kind() const = 0;
+};
+
+// A small LLVM-style RTTI library for casting kernel arguments.
+template <class T, KernelArgsArrayBase::IsKernelArgs<T> * = nullptr>
+const T *Cast(const KernelArgsArrayBase *args) {
+  CHECK(T::classof(args)) << "Invalid arguments casting to a destination type: "
+                          << typeid(T).name();
+  CHECK(args != nullptr) << "Casted arguments must be not null";
+  return static_cast<const T *>(args);
+}
+
+template <class T, KernelArgsArrayBase::IsKernelArgs<T> * = nullptr>
+const T *DynCast(const KernelArgsArrayBase *args) {
+  CHECK(args != nullptr) << "Casted arguments must be not null";
+  return T::classof(args) ? static_cast<const T *>(args) : nullptr;
+}
+
+template <class T, KernelArgsArrayBase::IsKernelArgs<T> * = nullptr>
+const T *DynCastOrNull(const KernelArgsArrayBase *args) {
+  return args && T::classof(args) ? static_cast<const T *>(args) : nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// Kernel arguments packed array
+//===----------------------------------------------------------------------===//
+
+// A virtual base class for passing kernel arguments packed into a storage so
+// that we have stable addresses for all arguments. This is a low level API for
+// passing arguments in a platform-specific way that relies on the knowledge of
+// the ABI of the underlying platform.
+//
+// For example `cuLaunchKernel` accepts arguments as `void** kernelParams`, and
+// packed array base guarantees that `argument_addresses` are compatible with
+// the CUDA APIs.
+//
+// See: https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html
+class KernelArgsPackedArrayBase : public KernelArgsArrayBase {
+ public:
   // Gets the list of argument addresses.
   virtual absl::Span<const void *const> argument_addresses() const = 0;
+
+  static bool classof(const KernelArgsArrayBase *args) {
+    return args->kind() == Kind::kPackedArray;
+  }
+
+  Kind kind() const final { return Kind::kPackedArray; }
 };
 
 // A list of arguments for a kernel call.
@@ -317,9 +345,12 @@ class KernelArgsArrayBase {
 // hotspot in some real-world applications so this structure has been optimized
 // for the performance of argument adding.
 template <size_t kNumArgs>
-class KernelArgsArray : public KernelArgsArrayBase {
+class KernelArgsPackedArray : public KernelArgsPackedArrayBase {
  public:
   static constexpr int kMaxGenericArgSize = 8;
+
+  // Do not allow casting into concrete packed array type.
+  static bool classof(const KernelArgsArrayBase *args) { return false; }
 
   // Adds an argument to the list.
   template <typename T>
@@ -415,7 +446,7 @@ class KernelArgsArray : public KernelArgsArrayBase {
 template <int n>
 std::unique_ptr<KernelArgsArrayBase> MakeKernelArgs(
     absl::Span<const DeviceMemoryBase> args, uint32_t shared_mem_bytes) {
-  auto kernel_args = std::make_unique<KernelArgsArray<n>>();
+  auto kernel_args = std::make_unique<KernelArgsPackedArray<n>>();
   for (const DeviceMemoryBase &buf : args) {
     kernel_args->add_device_memory_argument(buf);
   }
@@ -463,7 +494,7 @@ class TypedKernel : public KernelBase {
   // some of the input parameters in the kernel args structure, so any params
   // passed into this method must live at least as long as the kernel args
   // structure.
-  void PackParams(KernelArgsArray<kNumberOfParameters> *args,
+  void PackParams(KernelArgsPackedArray<kNumberOfParameters> *args,
                   const Params &...params) const {
     PackOneParamFromList(args, params...);
   }
@@ -475,21 +506,22 @@ class TypedKernel : public KernelBase {
   friend class Stream;
 
   template <typename T, typename... RestOfParams>
-  void PackOneParamFromList(KernelArgsArray<kNumberOfParameters> *args,
+  void PackOneParamFromList(KernelArgsPackedArray<kNumberOfParameters> *args,
                             const T &arg, const RestOfParams &...rest) const {
     PackOneParam(args, arg);
     PackOneParamFromList(args, rest...);
   }
 
   // Base case for variadic template expansion - nothing to do!
-  void PackOneParamFromList(KernelArgsArray<kNumberOfParameters> *args) const {}
+  void PackOneParamFromList(
+      KernelArgsPackedArray<kNumberOfParameters> *args) const {}
 
   // Packs one (non-DeviceMemoryBase) parameter into the arg and sizes array.
   // The enable_if<> is for excluding DeviceMemoryBase args, which have a
   // separate implementation below.
   template <typename T>
   void PackOneParam(
-      KernelArgsArray<kNumberOfParameters> *args, const T &arg,
+      KernelArgsPackedArray<kNumberOfParameters> *args, const T &arg,
       typename std::enable_if_t<
           !is_device_memory_value_like_v<T> && !is_device_memory_pointer_v<T> &&
           !is_shared_device_memory_v<T>> * = nullptr) const {
@@ -502,7 +534,8 @@ class TypedKernel : public KernelBase {
 
   // DeviceMemoryBase family reference override.
   template <typename T>
-  void PackOneParam(KernelArgsArray<kNumberOfParameters> *args, const T &arg,
+  void PackOneParam(KernelArgsPackedArray<kNumberOfParameters> *args,
+                    const T &arg,
                     typename std::enable_if_t<is_device_memory_value_like_v<T>>
                         * = nullptr) const {
     args->add_device_memory_argument(arg);
@@ -510,7 +543,7 @@ class TypedKernel : public KernelBase {
 
   // DeviceMemoryBase family pointer override.
   template <typename T>
-  void PackOneParam(KernelArgsArray<kNumberOfParameters> *args, T arg,
+  void PackOneParam(KernelArgsPackedArray<kNumberOfParameters> *args, T arg,
                     typename std::enable_if_t<is_device_memory_pointer_v<T>> * =
                         nullptr) const {
     DeviceMemoryBase *ptr = static_cast<DeviceMemoryBase *>(arg);
@@ -520,7 +553,7 @@ class TypedKernel : public KernelBase {
   // Dynamic shared device memory has a size, but no associated allocation on
   // the host; internally, the device will allocate storage.
   template <typename T>
-  void PackOneParam(KernelArgsArray<kNumberOfParameters> *args, T arg,
+  void PackOneParam(KernelArgsPackedArray<kNumberOfParameters> *args, T arg,
                     typename std::enable_if_t<is_shared_device_memory_v<T>> * =
                         nullptr) const {
     args->add_shared_bytes(arg.size());
