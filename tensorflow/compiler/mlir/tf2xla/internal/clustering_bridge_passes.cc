@@ -193,7 +193,7 @@ void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   // Encapsulate PartitionedCall ops within a cluster so that the composite
   // resource ops can be decomposed.
-  pm.addPass(mlir::TFDevice::CreateXlaClusterFormationPass());
+  pm.addPass(tensorflow::tf2xla::internal::CreateXlaClusterFormationPass());
   // Running canonicalizer before decomposing resource ops in cluster helps the
   // latter pass to converge faster as it does not have to spend time folding
   // away dead ops.

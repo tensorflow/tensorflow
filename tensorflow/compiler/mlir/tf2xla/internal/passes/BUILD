@@ -42,6 +42,7 @@ cc_library(
         ":extract_head_tail_outside_compilation",
         ":extract_outside_compilation",
         ":tpu_cluster_formation",
+        ":xla_cluster_formation",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
         "//tensorflow/compiler/mlir/tensorflow:string_util",
@@ -255,5 +256,35 @@ gentbl_cc_library(
     td_file = "dialect_to_executor_passes.td",
     deps = [
         "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "xla_cluster_formation",
+    srcs = ["xla_cluster_formation.cc"],
+    textual_hdrs = [
+        "clustering_passes.h.inc",
+    ],
+    deps = [
+        ":clustering_passes_inc_gen",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
+        "//tensorflow/compiler/mlir/tensorflow:call_graph_util",
+        "//tensorflow/compiler/mlir/tensorflow:cluster_util",
+        "//tensorflow/compiler/mlir/tensorflow:string_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow:tpu_rewrite_device_util",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )

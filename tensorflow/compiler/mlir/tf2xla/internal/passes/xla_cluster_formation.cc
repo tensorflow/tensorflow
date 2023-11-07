@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,23 +14,47 @@ limitations under the License.
 ==============================================================================*/
 
 #include <functional>
-#include <stack>
+#include <memory>
+#include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/call_graph_util.h"
 #include "tensorflow/core/common_runtime/inline_function_utils.h"
 
-namespace mlir {
+namespace tensorflow {
+namespace tf2xla {
+namespace internal {
 
-namespace {
+using mlir::Block;
+using mlir::CallInterfaceCallable;
+using mlir::CallOpInterface;
+using mlir::ModuleOp;
+using mlir::OpBuilder;
+using mlir::Operation;
+using mlir::OperationPass;
+using mlir::SymbolTable;
+using mlir::SymbolTableCollection;
+using mlir::SymbolUserOpInterface;
+using mlir::func::FuncOp;
 
 #define GEN_PASS_DEF_XLACLUSTERFORMATIONPASS
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
+#include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
 
 constexpr char kAllowSoftPlacementAttr[] = "allow_soft_placement";
 
@@ -47,22 +71,22 @@ void CopyAttribute(const llvm::StringRef attr, Operation *src,
   }
 }
 
-std::string getClusterOutlinedFunctionName(func::FuncOp func) {
+std::string getClusterOutlinedFunctionName(FuncOp func) {
   return func.getSymName().str() + "_cluster_func";
 }
 
-void AddClusterAttributes(OpBuilder &builder, func::FuncOp entry_func,
-                          tf_device::ClusterOp cluster) {
-  TF::CopyDeviceAndUnderscoredAttributes(entry_func, cluster);
+void AddClusterAttributes(OpBuilder &builder, FuncOp entry_func,
+                          mlir::tf_device::ClusterOp cluster) {
+  mlir::TF::CopyDeviceAndUnderscoredAttributes(entry_func, cluster);
   CopyAttribute(kAllowSoftPlacementAttr, entry_func, cluster);
   cluster->setAttr(
-      TF::kClusterOutlinedFunctionNameAttr,
+      mlir::TF::kClusterOutlinedFunctionNameAttr,
       builder.getStringAttr(getClusterOutlinedFunctionName(entry_func)));
 }
 
 // Wrap the body of `func` in a device cluster. `func` must have a single
 // region and a single block.
-LogicalResult EncapsulateEntryFunctionBody(func::FuncOp entry_func) {
+mlir::LogicalResult EncapsulateEntryFunctionBody(FuncOp entry_func) {
   // We've verified the input graph has single-entry and single-block entry
   // functions. This is just in case passes in the pipeline uninteionally break
   // the assumption, and not expected to happen in practice.
@@ -70,7 +94,7 @@ LogicalResult EncapsulateEntryFunctionBody(func::FuncOp entry_func) {
     entry_func->emitError() << "TF2XLA MLIR CPU/GPU MLIR phase 1 bridge "
                                "expects single region and single "
                                "block in an entry function.";
-    return failure();
+    return mlir::failure();
   }
   std::vector<Operation *> ops_without_terminator;
   for (auto &op : entry_func.front().without_terminator()) {
@@ -79,36 +103,39 @@ LogicalResult EncapsulateEntryFunctionBody(func::FuncOp entry_func) {
   Operation *original_return_op = entry_func.front().getTerminator();
   OpBuilder builder(entry_func.getContext());
   builder.setInsertionPointToEnd(&entry_func.front());
-  auto cluster = builder.create<tf_device::ClusterOp>(
+  auto cluster = builder.create<mlir::tf_device::ClusterOp>(
       entry_func.getLoc(), entry_func.getResultTypes());
   cluster.getBody().push_back(new Block);
   for (auto &op : ops_without_terminator) {
     op->moveBefore(&cluster.GetBody(), cluster.GetBody().end());
   }
   builder.setInsertionPointToEnd(&cluster.GetBody());
-  builder.create<tf_device::ReturnOp>(original_return_op->getLoc(),
-                                      original_return_op->getResultTypes(),
-                                      original_return_op->getOperands());
+  builder.create<mlir::tf_device::ReturnOp>(
+      original_return_op->getLoc(), original_return_op->getResultTypes(),
+      original_return_op->getOperands());
   original_return_op->erase();
   builder.setInsertionPointToEnd(&entry_func.front());
-  builder.create<func::ReturnOp>(entry_func->getLoc(), cluster->getResults());
+  builder.create<mlir::func::ReturnOp>(entry_func->getLoc(),
+                                       cluster->getResults());
   AddClusterAttributes(builder, entry_func, cluster);
-  return success();
+  return mlir::success();
 }
 
-void EncapsulatePartitionedCall(Operation *call_op, StringAttr callee_name) {
+void EncapsulatePartitionedCall(Operation *call_op,
+                                mlir::StringAttr callee_name) {
   OpBuilder builder(call_op);
-  auto cluster = builder.create<tf_device::ClusterOp>(
+  auto cluster = builder.create<mlir::tf_device::ClusterOp>(
       call_op->getLoc(), call_op->getResultTypes());
   cluster.getBody().push_back(new Block);
   call_op->replaceAllUsesWith(cluster.getResults());
   call_op->moveBefore(&cluster.GetBody(), cluster.GetBody().end());
   builder.setInsertionPointToEnd(&cluster.GetBody());
-  builder.create<tf_device::ReturnOp>(call_op->getLoc(), call_op->getResults());
+  builder.create<mlir::tf_device::ReturnOp>(call_op->getLoc(),
+                                            call_op->getResults());
   // Propagate necessary attributes to the cluster so that when it's outlined,
   // the function will have correct attributes.
-  TF::CopyDeviceAndUnderscoredAttributes(call_op, cluster);
-  cluster->setAttr(TF::kClusterOutlinedFunctionNameAttr, callee_name);
+  mlir::TF::CopyDeviceAndUnderscoredAttributes(call_op, cluster);
+  cluster->setAttr(mlir::TF::kClusterOutlinedFunctionNameAttr, callee_name);
   cluster->setAttr(kAllowSoftPlacementAttr, builder.getBoolAttr(true));
 }
 
@@ -116,30 +143,31 @@ void EncapsulatePartitionedCall(Operation *call_op, StringAttr callee_name) {
 // `func` and is with compilation markers in a device cluster. For nested calls,
 // if the outermost one has the markers, encapsulates the outermost call and
 // returns. Otherwise, we'll keep going through inner calls until we found one.
-LogicalResult EncapsulateFirstXlaCompilablePartitionedCalls(
-    func::FuncOp func, SymbolTableCollection &symbol_table_collection,
+mlir::LogicalResult EncapsulateFirstXlaCompilablePartitionedCalls(
+    FuncOp func, SymbolTableCollection &symbol_table_collection,
     SymbolTable &symtab) {
   auto has_no_compile_device_type = [](SymbolUserOpInterface op) {
-    return !op->hasAttr(TF::kCompileDeviceTypeAttr);
+    return !op->hasAttr(mlir::TF::kCompileDeviceTypeAttr);
   };
 
   mlir::OpBuilder builder(func.getContext());
   auto noinline_attr_name = absl::StrCat("tf.", tensorflow::kNoInlineAttr);
   llvm::SmallVector<SymbolUserOpInterface> noinline_pcall_ops,
       outermost_pcall_ops;
-  if (failed(GetOpsOfTypeUntilMiss<TF::StatefulPartitionedCallOp,
-                                   TF::PartitionedCallOp>(
-          func, symtab, /*predicate*/ has_no_compile_device_type,
-          /*hits*/ noinline_pcall_ops,
-          /*first_misses*/ outermost_pcall_ops))) {
-    return failure();
+  if (mlir::failed(
+          mlir::GetOpsOfTypeUntilMiss<mlir::TF::StatefulPartitionedCallOp,
+                                      mlir::TF::PartitionedCallOp>(
+              func, symtab, /*predicate*/ has_no_compile_device_type,
+              /*hits*/ noinline_pcall_ops,
+              /*first_misses*/ outermost_pcall_ops))) {
+    return mlir::failure();
   }
   // Cluster outermost partitioned calls with _xla_compile_device_type
   // attribute.
   for (auto &pcall_op : outermost_pcall_ops) {
     auto call = llvm::cast<CallOpInterface>(pcall_op.getOperation());
     CallInterfaceCallable callable = call.getCallableForCallee();
-    auto sym = callable.get<SymbolRefAttr>();
+    auto sym = callable.get<mlir::SymbolRefAttr>();
     EncapsulatePartitionedCall(pcall_op, sym.getRootReference());
   }
   // Partitioned calls are executed asynchronous. The calls outside of
@@ -147,20 +175,20 @@ LogicalResult EncapsulateFirstXlaCompilablePartitionedCalls(
   // performance.
   for (auto &pcall_op : noinline_pcall_ops) {
     auto call = llvm::cast<CallOpInterface>(pcall_op.getOperation());
-    auto callee = llvm::cast<func::FuncOp>(
-        call.resolveCallable(&symbol_table_collection));
+    auto callee =
+        llvm::cast<FuncOp>(call.resolveCallable(&symbol_table_collection));
     callee->setAttr(noinline_attr_name, builder.getBoolAttr(true));
   }
-  return success();
+  return mlir::success();
 }
 
 void XlaClusterFormationPass::runOnOperation() {
   ModuleOp module = getOperation();
   SymbolTableCollection symbol_table_collection;
   SymbolTable symtab = symbol_table_collection.getSymbolTable(module);
-  llvm::SmallVector<func::FuncOp> entry_funcs = GetEntryFunctions(module);
+  llvm::SmallVector<FuncOp> entry_funcs = GetEntryFunctions(module);
   for (auto &entry_func : entry_funcs) {
-    if (entry_func->hasAttr(TF::kCompileDeviceTypeAttr)) {
+    if (entry_func->hasAttr(mlir::TF::kCompileDeviceTypeAttr)) {
       if (EncapsulateEntryFunctionBody(entry_func).failed()) {
         return signalPassFailure();
       }
@@ -172,12 +200,10 @@ void XlaClusterFormationPass::runOnOperation() {
   }
 }
 
-}  // namespace
-
-namespace TFDevice {
 std::unique_ptr<OperationPass<ModuleOp>> CreateXlaClusterFormationPass() {
   return std::make_unique<XlaClusterFormationPass>();
 }
-}  // namespace TFDevice
 
-}  // namespace mlir
+}  // namespace internal
+}  // namespace tf2xla
+}  // namespace tensorflow
