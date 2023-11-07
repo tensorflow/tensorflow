@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -40,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/replicate_per_replica_nodes.h"
 #include "tensorflow/core/common_runtime/single_threaded_executor.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
-#include "tensorflow/core/config/flag_defs.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -749,8 +749,10 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   TF_RETURN_IF_ERROR(group.as_summary_status());
 
   std::vector<core::RefCountPtr<FunctionRecord>> function_records;
-  const bool should_publish_function_graphs =
-      flags::Global().publish_function_graphs.value();
+  static bool should_publish_function_graphs = []() {
+    const char* env_var = std::getenv("TF_DISABLE_FUNCTION_GRAPH_PUBLISHING");
+    return !(env_var != nullptr && env_var[0] == '1' && env_var[1] == '\0');
+  }();
   if (should_publish_function_graphs) {
     for (const auto& pair : *subgraphs) {
       ComponentFunctionData* comp_data = &data->glue_[pair.first];
