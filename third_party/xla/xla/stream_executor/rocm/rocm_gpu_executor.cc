@@ -283,28 +283,13 @@ tsl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
         hipfunc, rocm_kernel->GetGpuCacheConfig()));
   }
 
-  // prepare kernargs
-  // KernelArgsArrayBase keeps the pointer of arguments
-  // deference them here
-  std::vector<void*> kernargs;
-  KernelArgIterator iter = args.arg_iterator();
-  while (iter.has_next()) {
-    KernelArg arg = iter.next();
-    VLOG(2) << "*(arg.address): "
-            << reinterpret_cast<void*>(
-                   *static_cast<const uint64_t*>(arg.address));
-    kernargs.push_back(
-        reinterpret_cast<void*>(*static_cast<const uint64_t*>(arg.address)));
-  }
-
-  size_t size = sizeof(void*) * kernargs.size();
-  void* config[] = {HIP_LAUNCH_PARAM_BUFFER_POINTER, kernargs.data(),
-                    HIP_LAUNCH_PARAM_BUFFER_SIZE, &size, HIP_LAUNCH_PARAM_END};
+  void** kernel_params = const_cast<void**>(args.argument_addresses().data());
+  size_t size = sizeof(void*) * args.argument_addresses().size();
 
   return GpuDriver::LaunchKernel(
       GetGpuContext(stream), kernel.name(), hipfunc, block_dims.x, block_dims.y,
       block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
-      args.number_of_shared_bytes(), hipstream, nullptr, (void**)&config);
+      args.number_of_shared_bytes(), hipstream, kernel_params, nullptr);
 }
 
 tsl::Status GpuExecutor::Submit(Stream* stream,
