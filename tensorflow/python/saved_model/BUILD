@@ -646,7 +646,7 @@ cuda_py_strict_test(
         "//tensorflow/python/trackable:resource",
         "//tensorflow/python/training:monitored_session",
         "//tensorflow/python/types:core",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
         "@absl_py//absl/testing:parameterized",
     ] + if_google([
         "//tensorflow/cc/experimental/tf2:runtime_pybind",
@@ -770,7 +770,8 @@ py_strict_library(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
+        "//tensorflow/python/util:tf_inspect",
         "@absl_py//absl/logging",
     ],
 )
