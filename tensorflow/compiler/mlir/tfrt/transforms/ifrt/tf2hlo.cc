@@ -21,10 +21,13 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -53,6 +56,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace ifrt_serving {
+
+static constexpr absl::string_view kEntryFuncName = "main";
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CompileTfToHlo(
     mlir::ModuleOp module, absl::Span<const tensorflow::Tensor> inputs,
@@ -89,7 +94,21 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CompileTfToHlo(
     // supported.
     metadata_arg1->set_kind(tpu::TPUCompileMetadataProto::Arg::PARAMETER);
   }
-  metadata.add_retvals();
+
+  auto entry_fn = module.lookupSymbol<mlir::func::FuncOp>(kEntryFuncName);
+  if (!entry_fn) {
+    return absl::InternalError("Could not find entry function in MLIR Module.");
+  }
+
+  if (inputs.size() != entry_fn.getNumArguments()) {
+    return absl::InternalError(
+        absl::StrCat("Number of inputs mismatched! Expect",
+                     entry_fn.getNumArguments(), " got", inputs.size()));
+  }
+
+  for (int i = 0; i < entry_fn.getNumResults(); i++) {
+    metadata.add_retvals();
+  }
 
   bool use_tuple_args = false;
   std::vector<tpu::ShardingAndIndex> arg_core_mapping;

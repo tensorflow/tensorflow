@@ -72,12 +72,13 @@ TEST(Tf2HloTest, Basic) {
   TF_ASSERT_OK(result.status());
 }
 
-TEST(Tf2HloTest, 1in1out) {
+// Multiple input and multiple out.
+TEST(Tf2HloTest, Tuple) {
   // Create test input module
   constexpr absl::string_view kDataDirectory =
       "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
   std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
-      absl::StrCat(kDataDirectory, "/tf2hlo_1in1out.mlir"));
+      absl::StrCat(kDataDirectory, "/tf2hlo_tuple.mlir"));
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
@@ -95,8 +96,10 @@ TEST(Tf2HloTest, 1in1out) {
                           xla::ifrt::test_util::GetClient());
 
   std::vector<tensorflow::Tensor> tensors;
-  tensorflow::Tensor x(DT_INT32, tensorflow::TensorShape({1, 3}));
+  tensorflow::Tensor x(DT_FLOAT, tensorflow::TensorShape({1, 3}));
+  tensorflow::Tensor y(DT_FLOAT, tensorflow::TensorShape({3, 1}));
   tensors.push_back(x);
+  tensors.push_back(y);
   auto result = CompileTfToHlo(mlir_module.get(), tensors, "main",
                                client->GetDefaultCompiler(),
                                tensorflow::IdentityShapeRepresentationFn());
