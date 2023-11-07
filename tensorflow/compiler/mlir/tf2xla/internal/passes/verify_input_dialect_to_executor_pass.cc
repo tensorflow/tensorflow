@@ -21,22 +21,22 @@ namespace internal {
 namespace {
 
 #define GEN_PASS_DEF_VERIFYINPUTDIALECTTOEXECUTORPASS
-#include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
+#include "tensorflow/compiler/mlir/tf2xla/internal/passes/dialect_to_executor_passes.h.inc"
 
-class VerifyInputDialectToexecutorPass
-    : public impl::VerifyInputDialectToexecutorPassBase<
-          VerifyInputDialectToexecutorPass> {
+class VerifyInputDialectToExecutorPass
+    : public impl::VerifyInputDialectToExecutorPassBase<
+          VerifyInputDialectToExecutorPass> {
  public:
   void runOnOperation() override;
 };
 
-void VerifyInputDialectToexecutorPass::runOnOperation() {}
+void VerifyInputDialectToExecutorPass::runOnOperation() {}
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateVerifyInputDialectToExecutorPass() {
-  return std::make_unique<VerifyInputDialectToexecutorPass>();
+  return std::make_unique<VerifyInputDialectToExecutorPass>();
 }
 
 }  // namespace internal

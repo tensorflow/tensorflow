@@ -17,14 +17,25 @@ package(
 
 cc_library(
     name = "clustering_passes",
-    srcs = [
-        "verify_clustering_pass.cc",
-    ],
     hdrs = [
         "clustering_passes.h",
     ],
     textual_hdrs = [
         "clustering_passes.h.inc",
+    ],
+    deps = [
+        ":tpu_cluster_formation",
+        ":verify_clustering_pass",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
+    name = "verify_clustering_pass",
+    srcs = [
+        "verify_clustering_pass.cc",
     ],
     deps = [
         ":clustering_passes_inc_gen",
@@ -57,7 +68,7 @@ gentbl_cc_library(
         (
             [
                 "-gen-pass-decls",
-                "-name=TFXLABridge",
+                "-name=TFXLABridgeClustering",
             ],
             "clustering_passes.h.inc",
         ),
@@ -75,7 +86,6 @@ tf_cc_test(
     deps = [
         ":clustering_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:test_utils",
-        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -196,11 +206,23 @@ cc_library(
 
 cc_library(
     name = "dialect_to_executor_passes",
-    srcs = [
+    hdrs = [
         "dialect_to_executor_passes.h",
     ],
     textual_hdrs = [
         "dialect_to_executor_passes.h.inc",
+    ],
+    deps = [
+        ":verify_input_dialect_to_executor_pass",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
+    name = "verify_input_dialect_to_executor_pass",
+    srcs = [
+        "verify_input_dialect_to_executor_pass.cc",
     ],
     deps = [
         ":dialect_to_executor_passes_inc_gen",
@@ -224,7 +246,7 @@ gentbl_cc_library(
         (
             [
                 "-gen-pass-decls",
-                "-name=TFXLABridge",
+                "-name=TFXLABridgeDialectToExecutor",
             ],
             "dialect_to_executor_passes.h.inc",
         ),

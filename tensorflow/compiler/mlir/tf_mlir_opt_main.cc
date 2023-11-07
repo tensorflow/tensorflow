@@ -56,7 +56,7 @@ int main(int argc, char **argv) {
   mlir::mhlo::registerLegalizeTfPasses();
   mlir::mhlo::registerTfXlaPasses();
   mlir::quant::stablehlo::registerBridgePasses();
-  tensorflow::tf2xla::internal::registerTFXLABridgePasses();
+  tensorflow::tf2xla::internal::registerTFXLABridgeClusteringPasses();
   mlir::tosa::registerLegalizeTosaPasses();
   mlir::tosa::registerTFtoTOSALegalizationPipeline();
   mlir::tosa::registerTFLtoTOSALegalizationPipeline();
