@@ -58,6 +58,10 @@ struct GpuPerformanceModelOptions {
   // Whether to attempt to model the effect of uncoalesced reads.
   bool consider_coalescing = false;
 
+  // Use better read modelling, when first read always happends from DRAM and
+  // re-reads can happen from cache.
+  bool first_read_from_dram = false;
+
   static GpuPerformanceModelOptions Default() {
     return GpuPerformanceModelOptions();
   }
@@ -65,6 +69,7 @@ struct GpuPerformanceModelOptions {
   static GpuPerformanceModelOptions PriorityFusion() {
     GpuPerformanceModelOptions config;
     config.consider_coalescing = true;
+    config.first_read_from_dram = true;
     return config;
   }
 
