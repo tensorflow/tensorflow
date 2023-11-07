@@ -16,3 +16,11 @@ class PyFunctionLibrary:
   def assign_ids_to_custom_aggregator_ops(
       self, exported_model_serialized: bytes
   ) -> bytes: ...
+  def save_exported_model(
+      self,
+      dst_saved_model_path: str,
+      exported_model_serialized: bytes,
+      src_saved_model_path: str,
+      tags: set[str],
+      serialized_signature_def_map: dict[str, bytes],
+  ) -> None: ...

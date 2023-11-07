@@ -103,8 +103,11 @@ pytype_strict_library(
     visibility = ["//visibility:private"],
     deps = [
         ":pywrap_function_lib",
+        ":save_model",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_py",
-        "@pypi_typing_extensions//:pkg",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/lib/io:file_io",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -134,9 +137,11 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; Required for pybind11.
         "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:protobuf",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
@@ -148,6 +153,9 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -160,7 +168,9 @@ tf_python_pybind_extension(
         ":py_function_lib",
         ":type_casters",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
+        "@com_google_absl//absl/strings:string_view",
         "@pybind11",
     ],
 )
@@ -179,11 +189,14 @@ tf_python_pybind_extension(
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibrator_singleton",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:env",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_abseil//pybind11_abseil:import_status_module",

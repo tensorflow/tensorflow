@@ -15,7 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_PY_FUNCTION_LIB_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_PY_FUNCTION_LIB_H_
 
+#include <string>
+#include <unordered_set>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow::quantization {
 
@@ -33,6 +39,21 @@ class PyFunctionLibrary {
   // statistics for each CustsomAggregator op.
   virtual ExportedModel AssignIdsToCustomAggregatorOps(
       const ExportedModel& exported_model) const = 0;
+
+  // Saves `exported_model` to `dst_saved_model_path` as SavedModel.
+  // `src_saved_model_path` is the path to the source SavedModel from which the
+  // exported model is produced. It is used to copy the asset files to
+  // `dst_saved_model_path`. `tags` will be attached to the saved
+  // `MetaGraphDef`. `signature_def_map` will be passed to the
+  // `add_meta_graph_and_variables` function, which is internally used to add a
+  // `MetaGraphDef` to save to the SavedModel.
+  virtual void SaveExportedModel(
+      absl::string_view dst_saved_model_path,
+      const ExportedModel& exported_model,
+      absl::string_view src_saved_model_path,
+      const std::unordered_set<std::string>& tags,
+      const absl::flat_hash_map<std::string, tensorflow::SignatureDef>&
+          signature_def_map) const = 0;
 };
 
 }  // namespace tensorflow::quantization

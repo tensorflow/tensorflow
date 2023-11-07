@@ -31,7 +31,6 @@ from tensorflow.compiler.mlir.quantization.tensorflow.python import representati
 from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import wrap_function
@@ -75,10 +74,6 @@ _SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
 # Default minimum number of elements in the weights for them to be quantized
 # during dynamic range quantization (DRQ) and weight-only quantization.
 _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS = 1024
-
-# Name of the saved model assets directory.
-_ASSETS_DIR = 'assets'
-_ASSETS_EXTRA_DIR = 'assets.extra'
 
 
 def _is_qat_saved_model(saved_model_path: str):
@@ -147,6 +142,24 @@ def _create_sample_validator(
     return sample
 
   return validator
+
+
+def _serialize_signature_def_map(
+    signature_def_map: _SignatureDefMap,
+) -> dict[str, bytes]:
+  """Serializes SignatureDef values in `signature_def_map`.
+
+  Args:
+    signature_def_map: Signature key -> SignatureDef mapping.
+
+  Returns:
+    Signature def map where the values (`SignatureDef`) are serialized.
+  """
+  signature_def_map_serialized = {}
+  for key, signature_def in signature_def_map.items():
+    signature_def_map_serialized[key] = signature_def.SerializeToString()
+
+  return signature_def_map_serialized
 
 
 def _validate_representative_dataset(
@@ -542,40 +555,6 @@ def _run_graph_for_calibration(
   logging.info('Calibration step complete.')
 
 
-def _copy_assets(src_path: str, dst_path: str) -> None:
-  """Copies the assets directory of the saved model.
-
-  Clones the contents of the assets/ directory from the source saved model
-  directory to the destination saved model directory. Nothing will be copied if
-  there are no assets directory in the source directory.
-
-  Args:
-    src_path: Source saved model directory.
-    dst_path: Destination saved model directory. This directory must exist.
-  """
-  for assets_dir_name in [_ASSETS_DIR, _ASSETS_EXTRA_DIR]:
-    src_assets_path = file_io.join(src_path, assets_dir_name)
-    if not file_io.file_exists_v2(src_assets_path):
-      # Do nothing if the source assets path does not exist.
-      continue
-
-    dst_assets_path = file_io.join(dst_path, assets_dir_name)
-    file_io.create_dir_v2(dst_assets_path)
-
-    for curr_dir, _, files in file_io.walk_v2(src_assets_path):
-      for asset_file_name in files:
-        src_asset_file = file_io.join(curr_dir, asset_file_name)
-
-        # Construct the destination assets file path.
-        curr_dst_dir = curr_dir.replace(src_assets_path, dst_assets_path)
-        dst_asset_file = file_io.join(curr_dst_dir, asset_file_name)
-
-        file_io.copy_v2(src_asset_file, dst_asset_file)
-        logging.info(
-            'Copied asset file: %s -> %s', src_asset_file, dst_asset_file
-        )
-
-
 def _run_static_range_qat(
     src_saved_model_path: str,
     dst_saved_model_path: str,
@@ -599,31 +578,15 @@ def _run_static_range_qat(
       quant_opts.tags
   ).meta_info_def.function_aliases
 
-  exported_model_serialized = pywrap_quantize_model.quantize_qat_model(
+  pywrap_quantize_model.quantize_qat_model(
       src_saved_model_path,
+      dst_saved_model_path,
       list(quant_opts.signature_keys),
-      set(quant_opts.tags),
       quant_opts.SerializeToString(),
       dict(function_aliases),
+      _serialize_signature_def_map(signature_def_map),
+      py_function_lib.PyFunctionLibrary(),
   )
-
-  exported_model = exported_model_pb2.ExportedModel.FromString(
-      exported_model_serialized
-  )
-
-  save_model.save_model_v1(
-      exported_model.graph_def,
-      dst_saved_model_path,
-      signature_def_map,
-      quant_opts.tags,
-      init_op_name=exported_model.init_node_name,
-      saver_def=_get_saver_def_or_none(exported_model),
-      checkpoint_dir=exported_model.checkpoint_dir,
-      function_aliases=exported_model.function_aliases,
-      asset_file_defs=exported_model.asset_file_defs,
-  )
-
-  _copy_assets(src_saved_model_path, dst_saved_model_path)
 
 
 def _get_min_max_from_calibrator(
@@ -724,22 +687,6 @@ def _change_dump_tensor_file_name(graph_def: graph_pb2.GraphDef) -> None:
       node_def.attr['file_name'].s = 'quantized_tensor_data.pb'.encode('utf-8')
 
 
-def _get_saver_def_or_none(
-    exported_model: exported_model_pb2.ExportedModel,
-) -> Optional[saver_pb2.SaverDef]:
-  """Returns the SaverDef from ExportedModel, None otherwise.
-
-  Args:
-    exported_model: ExportedModel to take the SaverDef from.
-
-  Returns:
-    SaverDef instance if the field `saver_def` is set. None otherwise.
-  """
-  if exported_model.HasField('saver_def'):
-    return exported_model.saver_def
-  return None
-
-
 def _run_static_range_ptq(
     src_saved_model_path: str,
     dst_saved_model_path: str,
@@ -773,35 +720,22 @@ def _run_static_range_ptq(
       quant_opts.tags
   ).meta_info_def.function_aliases
 
-  exported_model_serialized = (
+  signature_def_map_serialized = _serialize_signature_def_map(signature_def_map)
+
+  exported_model_serialized, pre_calib_output_model_path = (
       pywrap_quantize_model.quantize_ptq_model_pre_calibration(
           src_saved_model_path,
           list(quant_opts.signature_keys),
-          set(quant_opts.tags),
           quant_opts.SerializeToString(),
           dict(function_aliases),
+          signature_def_map_serialized,
           py_function_lib.PyFunctionLibrary(),
       )
   )
   exported_model = exported_model_pb2.ExportedModel.FromString(
       exported_model_serialized
   )
-
   graph_def = exported_model.graph_def
-  pre_calib_output_model_path = tempfile.mkdtemp()
-  save_model.save_model_v1(
-      graph_def,
-      pre_calib_output_model_path,
-      signature_def_map,
-      quant_opts.tags,
-      exported_model.init_node_name,
-      _get_saver_def_or_none(exported_model),
-      exported_model.checkpoint_dir,
-      exported_model.function_aliases,
-      asset_file_defs=exported_model.asset_file_defs,
-  )
-
-  _copy_assets(src_saved_model_path, pre_calib_output_model_path)
 
   # Uses the representative dataset to collect statistics for calibration.
   # Handles the graph mode execution separately in case TF2 is disabled or
@@ -817,6 +751,7 @@ def _run_static_range_ptq(
 
   _add_calibration_statistics(graph_def, quant_opts.calibration_options)
 
+  py_function_library = py_function_lib.PyFunctionLibrary()
   if quant_opts.HasField('debugger_options'):
     # Since DumpTensor was disabled by default, we need to enable them.
     _enable_dump_tensor(graph_def)
@@ -828,67 +763,37 @@ def _run_static_range_ptq(
       # TODO: b/295139417 - Remove CustomAggregator op in unquantized dump model
       # TODO: b/296916287 - Create a separate function for saving unquantized
       # dump model
-      save_model.save_model_v1(
-          graph_def,
+      py_function_library.save_exported_model(
           quant_opts.debugger_options.unquantized_dump_model_path,
-          signature_def_map,
-          quant_opts.tags,
-          exported_model.init_node_name,
-          _get_saver_def_or_none(exported_model),
-          exported_model.checkpoint_dir,
-          exported_model.function_aliases,
-          asset_file_defs=exported_model.asset_file_defs,
-      )
-
-      _copy_assets(
+          exported_model.SerializeToString(),
           src_saved_model_path,
-          quant_opts.debugger_options.unquantized_dump_model_path,
+          quant_opts.tags,
+          signature_def_map_serialized,
       )
 
       _change_dump_tensor_file_name(graph_def)
 
   calibrated_model_path = tempfile.mkdtemp()
-  save_model.save_model_v1(
-      graph_def,
+  # TODO: b/309601030 - Integrate model functionality to
+  # `quantize_ptq_model_pre_calibration`.
+  py_function_library.save_exported_model(
       calibrated_model_path,
-      signature_def_map,
+      exported_model.SerializeToString(),
+      pre_calib_output_model_path,
       quant_opts.tags,
-      exported_model.init_node_name,
-      _get_saver_def_or_none(exported_model),
-      exported_model.checkpoint_dir,
-      asset_file_defs=exported_model.asset_file_defs,
+      signature_def_map_serialized,
   )
-
-  _copy_assets(pre_calib_output_model_path, calibrated_model_path)
 
   logging.info('Running post-training quantization post-calibration step.')
-  exported_model_serialized = (
-      pywrap_quantize_model.quantize_ptq_model_post_calibration(
-          calibrated_model_path,
-          list(quant_opts.signature_keys),
-          set(quant_opts.tags),
-          quant_opts.SerializeToString(),
-          dict(exported_model.function_aliases),
-      )
-  )
-
-  exported_model = exported_model_pb2.ExportedModel.FromString(
-      exported_model_serialized
-  )
-
-  save_model.save_model_v1(
-      exported_model.graph_def,
+  pywrap_quantize_model.quantize_ptq_model_post_calibration(
+      calibrated_model_path,
       dst_saved_model_path,
-      signature_def_map,
-      quant_opts.tags,
-      init_op_name=exported_model.init_node_name,
-      saver_def=_get_saver_def_or_none(exported_model),
-      checkpoint_dir=exported_model.checkpoint_dir,
-      function_aliases=exported_model.function_aliases,
-      asset_file_defs=exported_model.asset_file_defs,
+      list(quant_opts.signature_keys),
+      quant_opts.SerializeToString(),
+      dict(exported_model.function_aliases),
+      signature_def_map_serialized,
+      py_function_lib.PyFunctionLibrary(),
   )
-
-  _copy_assets(calibrated_model_path, dst_saved_model_path)
 
 
 def _static_range_quantize(
@@ -1016,36 +921,22 @@ def _dynamic_range_quantize(
       quantization_options.tags
   ).meta_info_def.function_aliases
 
-  # Apply post-training dynamic range quantization to the model.
-  exported_model_serialized = pywrap_quantize_model.quantize_ptq_dynamic_range(
-      saved_model_path,
-      list(quantization_options.signature_keys),
-      set(quantization_options.tags),
-      quantization_options.SerializeToString(),
-      dict(function_aliases),
-  )
-
-  exported_model = exported_model_pb2.ExportedModel.FromString(
-      exported_model_serialized
-  )
   signature_def_map = save_model.get_signatures_from_saved_model(
       saved_model_path,
       quantization_options.signature_keys,
       quantization_options.tags,
   )
 
-  save_model.save_model_v1(
-      exported_model.graph_def,
+  # Apply post-training dynamic range quantization to the model.
+  pywrap_quantize_model.quantize_ptq_dynamic_range(
+      saved_model_path,
       output_directory,
-      signature_def_map,
-      quantization_options.tags,
-      init_op_name=exported_model.init_node_name,
-      saver_def=_get_saver_def_or_none(exported_model),
-      checkpoint_dir=exported_model.checkpoint_dir,
-      function_aliases=exported_model.function_aliases,
-      asset_file_defs=exported_model.asset_file_defs,
+      list(quantization_options.signature_keys),
+      quantization_options.SerializeToString(),
+      dict(function_aliases),
+      _serialize_signature_def_map(signature_def_map),
+      py_function_lib.PyFunctionLibrary(),
   )
-  _copy_assets(saved_model_path, output_directory)
 
   return saved_model_load.load(output_directory)
 
@@ -1090,33 +981,20 @@ def _weight_only_quantize(
       quantization_options.tags
   ).meta_info_def.function_aliases
 
-  exported_model_serialized = pywrap_quantize_model.quantize_weight_only(
-      saved_model_path,
-      quantization_options.SerializeToString(),
-      dict(function_aliases),
-  )
-
-  exported_model = exported_model_pb2.ExportedModel.FromString(
-      exported_model_serialized
-  )
   signature_def_map = save_model.get_signatures_from_saved_model(
       saved_model_path,
       list(quantization_options.signature_keys),
       set(quantization_options.tags),
   )
 
-  save_model.save_model_v1(
-      exported_model.graph_def,
+  pywrap_quantize_model.quantize_weight_only(
+      saved_model_path,
       output_directory,
-      signature_def_map,
-      quantization_options.tags,
-      init_op_name=exported_model.init_node_name,
-      saver_def=_get_saver_def_or_none(exported_model),
-      checkpoint_dir=exported_model.checkpoint_dir,
-      function_aliases=exported_model.function_aliases,
-      asset_file_defs=exported_model.asset_file_defs,
+      quantization_options.SerializeToString(),
+      dict(function_aliases),
+      _serialize_signature_def_map(signature_def_map),
+      py_function_lib.PyFunctionLibrary(),
   )
-  _copy_assets(saved_model_path, output_directory)
 
   return saved_model_load.load(output_directory)
 

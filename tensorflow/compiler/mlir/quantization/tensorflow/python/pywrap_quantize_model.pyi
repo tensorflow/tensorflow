@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+from typing import Any
+
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
 
@@ -21,36 +23,45 @@ def get_statistics_from_calibrator(
     id: bytes,
 ) -> calibration_statistics_pb2.CalibrationStatistics: ...
 def quantize_qat_model(
-    saved_model_path: str,
+    src_saved_model_path: str,
+    dst_saved_model_path: str,
     signature_keys: list[str],
-    tags: set[str],
     quantization_options_serialized: bytes,
     function_aliases: dict[str, str],
-) -> bytes: ...
-def quantize_ptq_dynamic_range(
-    saved_model_path: str,
-    signature_keys: list[str],
-    tags: set[str],
-    quantization_options_serialized: bytes,
-    function_aliases: dict[str, str],
-) -> bytes: ...
-def quantize_weight_only(
-    saved_model_path: str,
-    quantization_options_serialized: bytes,
-    function_aliases: dict[str, str],
-) -> bytes: ...
-def quantize_ptq_model_pre_calibration(
-    saved_model_path: str,
-    signature_keys: list[str],
-    tags: set[str],
-    quantization_options_serialized: bytes,
-    function_aliases: dict[str, str],
+    signature_def_map_serialized: dict[str, bytes],
     py_function_library: py_function_lib.PyFunctionLibrary,
-) -> bytes: ...
-def quantize_ptq_model_post_calibration(
-    saved_model_path: str,
+) -> Any: ...  # Status
+def quantize_ptq_dynamic_range(
+    src_saved_model_path: str,
+    dst_saved_model_path: str,
     signature_keys: list[str],
-    tags: set[str],
     quantization_options_serialized: bytes,
     function_aliases: dict[str, str],
-) -> bytes: ...
+    signature_def_map_serialized: dict[str, bytes],
+    py_function_library: py_function_lib.PyFunctionLibrary,
+) -> Any: ...  # Status
+def quantize_weight_only(
+    src_saved_model_path: str,
+    dst_saved_model_path: str,
+    quantization_options_serialized: bytes,
+    function_aliases: dict[str, str],
+    signature_def_map_serialized: dict[str, bytes],
+    py_function_library: py_function_lib.PyFunctionLibrary,
+) -> Any: ...  # Status
+def quantize_ptq_model_pre_calibration(
+    src_saved_model_path: str,
+    signature_keys: list[str],
+    quantization_options_serialized: bytes,
+    function_aliases: dict[str, str],
+    signature_def_map_serialized: dict[str, bytes],
+    py_function_library: py_function_lib.PyFunctionLibrary,
+) -> tuple[bytes, str]: ...
+def quantize_ptq_model_post_calibration(
+    src_saved_model_path: str,
+    dst_saved_model_path: str,
+    signature_keys: list[str],
+    quantization_options_serialized: bytes,
+    function_aliases: dict[str, str],
+    signature_def_map_serialized: dict[str, bytes],
+    py_function_library: py_function_lib.PyFunctionLibrary,
+) -> Any: ...  # Status
