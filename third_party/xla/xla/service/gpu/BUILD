@@ -319,6 +319,7 @@ cc_library(
         "//xla/service/gpu/fusions:fusion_emitter",
         "//xla/service/gpu/fusions:input_slices",
         "//xla/service/gpu/fusions:loop",
+        "//xla/service/gpu/fusions:reduction",
         "//xla/service/gpu/fusions:thunk_util",
         "//xla/service/gpu/fusions:tiling_util",
         "//xla/service/gpu/fusions:transpose",

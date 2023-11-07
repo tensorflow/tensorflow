@@ -99,6 +99,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/fusions/input_slices.h"
 #include "xla/service/gpu/fusions/loop.h"
+#include "xla/service/gpu/fusions/reduction.h"
 #include "xla/service/gpu/fusions/thunk_util.h"
 #include "xla/service/gpu/fusions/transpose.h"
 #include "xla/service/gpu/gemm_thunk.h"
@@ -2052,7 +2053,7 @@ bool IsSpecializedLoopFusion(
 
 Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
                                      HloFusionAnalysis& fusion_analysis) {
-  // TODO(anlunx): Support kReduction, kTriton, and kScatter.
+  // TODO(anlunx): Support kTriton, and kScatter.
   std::unique_ptr<FusionInterface> emitter;
   switch (fusion_analysis.GetEmitterFusionKind()) {
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
@@ -2065,13 +2066,16 @@ Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
     case HloFusionAnalysis::EmitterFusionKind::kTranspose:
       emitter = std::make_unique<TransposeFusion>(fusion_analysis);
       break;
+    case HloFusionAnalysis::EmitterFusionKind::kReduction:
+      emitter = std::make_unique<ReductionFusion>(fusion_analysis);
+      break;
     default:
       return FailedPrecondition(
           "Fusion type not supported by the HLO emitter.");
       break;
   }
 
-  TF_ASSIGN_OR_RETURN(auto emission_result,
+  TF_ASSIGN_OR_RETURN(FusionEmissionResult emission_result,
                       emitter->Emit(*ir_emitter_context_, elemental_emitter_,
                                     nullptr, *instr, kernel_reuse_cache_, &b_));
   for (auto& thunk : emission_result.thunks) {
@@ -3276,11 +3280,10 @@ Status IrEmitterUnnested::EmitOp(
                           HloFusionAnalysis::Create(instr, &device_info));
       HloFusionAnalysis::EmitterFusionKind kind =
           fusion_analysis.GetEmitterFusionKind();
-      // TODO(anlunx): Add support for emitting kTriton, kScatter, kReduction,
-      // and specialized kLoops.
+      // TODO(anlunx): Add support for emitting kTriton, kScatter, and
+      // specialized kLoops.
       if (kind != HloFusionAnalysis::EmitterFusionKind::kTriton &&
           kind != HloFusionAnalysis::EmitterFusionKind::kScatter &&
-          kind != HloFusionAnalysis::EmitterFusionKind::kReduction &&
           !IsSpecializedLoopFusion(op, ir_emitter_context_->allocations(),
                                    fusion_analysis)) {
         return EmitFusion(instr, fusion_analysis);
