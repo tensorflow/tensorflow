@@ -18,9 +18,9 @@ module {
   // CHECK-SAME:    %[[ARG0:.*]]: tensor<10xi32>, %[[ARG1:.*]]: tensor<10xi32>
   func.func @main(%arg0: tensor<10xi32>, %arg1: tensor<10xi32>) -> tensor<10xi32> {
     // CHECK:      %[[RESULT:.*]] = "tf.XlaCallModule"(%[[ARG0]], %[[ARG1]])
-    // CHECK-SAME:   _entry_function = @main0,
     // CHECK-NOT:    function_list
     // CHECK-SAME:   module = ""
+    // CHECK-SAME:   _entry_function = @main0,
 
     // `module` is stablehlo bytecode for:
     //  func.func @main(%arg0: tensor<?xi32> {jax.arg_info = "x", mhlo.sharding = "{replicated}"}, %arg1: tensor<*xi32>) -> (tensor<?xi32> {jax.result_info = ""}) {
@@ -36,9 +36,9 @@ module {
   // CHECK-SAME:    %[[ARG0:.*]]: tensor<10xi32>, %[[ARG1:.*]]: tensor<10xi32>
   func.func @foo(%arg0: tensor<10xi32>, %arg1: tensor<10xi32>) -> tensor<10xi32> {
     // CHECK:      %[[RESULT:.*]] = "tf.XlaCallModule"(%[[ARG0]], %[[ARG1]])
-    // CHECK-SAME:   _entry_function = @main1,
     // CHECK-NOT:    function_list
     // CHECK-SAME:   module = ""
+    // CHECK-SAME:   _entry_function = @main1,
 
     // `module` is stablehlo bytecode for:
     //  func.func @main(%arg0: tensor<?xi32> {jax.arg_info = "x", mhlo.sharding = "{replicated}"}, %arg1: tensor<*xi32>) -> (tensor<?xi32> {jax.result_info = ""}) {

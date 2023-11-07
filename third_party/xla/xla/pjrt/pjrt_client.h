@@ -598,7 +598,8 @@ class PjRtClient {
   // Gets the pointer to the topology description held by the client.
   virtual StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const {
-    return Unimplemented("GetTopologyDescription not supported!");
+    return Unimplemented("GetTopologyDescription not supported on platform %s",
+                         platform_name());
   }
 
   // Returns topology object for compilation based on this client's topology.

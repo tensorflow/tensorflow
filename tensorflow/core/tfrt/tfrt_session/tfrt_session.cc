@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/kernel/batch_kernel.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_concurrent_work_queue.h"
+#include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/runtime/tf_threadpool_concurrent_work_queue.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
@@ -123,12 +124,8 @@ class TfrtSession : public tensorflow::Session {
         device_target_{device_target},
         tpu_use_tpu_runner_{tpu_use_tpu_runner},
         inter_op_thread_pools_{std::move(inter_op_thread_pools)},
-        model_metadata_(options.config.experimental().session_metadata()),
-        optimize_for_static_graph_(
-            options.config.experimental().optimize_for_static_graph()),
-        disable_optimize_for_static_graph_(
-            options.config.experimental().disable_optimize_for_static_graph()),
-        enable_mlrt_(enable_mlrt) {}
+        enable_mlrt_(enable_mlrt),
+        options_{options} {}
 
   Status Create(const GraphDef& graph) override {
     return Create(GraphDef(graph));
@@ -168,10 +165,11 @@ class TfrtSession : public tensorflow::Session {
     auto session_options =
         tensorflow::tfrt_stub::CreateDefaultSessionOptions(options);
     session_options.config.mutable_experimental()
-        ->set_optimize_for_static_graph(optimize_for_static_graph_);
+        ->set_optimize_for_static_graph(
+            options_.config.experimental().optimize_for_static_graph());
     session_options.config.mutable_experimental()
         ->set_disable_optimize_for_static_graph(
-            disable_optimize_for_static_graph_);
+            options_.config.experimental().disable_optimize_for_static_graph());
     LOG_FIRST_N(INFO, 10) << "SessionOptions: "
                           << session_options.config.DebugString();
 
@@ -191,6 +189,12 @@ class TfrtSession : public tensorflow::Session {
     auto resource_context = std::make_unique<tfrt::ResourceContext>();
     tfrt_stub::ModelRuntimeContext model_context(
         &options, /*export_dir=*/"unknown_export_dir", resource_context.get());
+    MetaGraphDef meta_graph_def;
+    *meta_graph_def.mutable_graph_def() = graph;
+    model_context.set_meta_graph_def(&meta_graph_def);
+    // TODO(b/300474723): Add functionality supporting Pathways initialization
+    // through TFRT Session.
+    model_context.set_is_local_session(true);
     TF_RETURN_IF_ERROR(options.runtime->CreateRuntimeResources(model_context));
 
     // `GraphExecutor::Create()` will preprocess the graph (e.g., apply
@@ -437,7 +441,7 @@ class TfrtSession : public tensorflow::Session {
     // implementation that supports the premapped memory optimization.
     compile_options.use_tpu_host_allocator_for_inputs = tpu_use_tpu_runner_;
 
-    options.model_metadata = model_metadata_;
+    options.model_metadata = options_.config.experimental().session_metadata();
     options.enable_mlrt = enable_mlrt_;
 
     return options;
@@ -477,10 +481,8 @@ class TfrtSession : public tensorflow::Session {
   absl::flat_hash_map<CallableHandle, Callable> callables_
       TF_GUARDED_BY(callables_lock_);
 
-  const tensorflow::SessionMetadata model_metadata_;
-  const bool optimize_for_static_graph_ = true;
-  const bool disable_optimize_for_static_graph_ = false;
   bool enable_mlrt_ = false;
+  SessionOptions options_ = SessionOptions();
 };
 
 std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface>

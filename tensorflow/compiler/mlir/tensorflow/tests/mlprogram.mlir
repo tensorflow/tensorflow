@@ -123,7 +123,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
   // CHECK-LABEL @lowers_string_ops
   // CHECK-DAG: ml_program.global public @vars.Variable_1([]) : tensor<!tf_type.string>
   func.func @lowers_string_ops(%arg0: tensor<128xi32>, %arg1: tensor<128xi32>, %arg2: tensor<128x1xi32>, %arg3: tensor<128x90xi32>, %arg4: tensor<128x90xi32>, %arg5: tensor<128x90xi32>, %arg6: tensor<128x90x64xf32>, %arg7: tensor<128x90x64xf32>) -> tensor<!tf_type.string> {
-    // CHECK: %0 = ml_program.global_load @vars.Variable_1 : tensor<!tf_type.string>
+    // CHECK: %[[v0:.*]] = ml_program.global_load @vars.Variable_1 : tensor<!tf_type.string>
     %0 = tf_executor.graph {
       %outputs_4, %control_5 = tf_executor.island wraps "tf.VarHandleOp"() {container = "", shared_name = "Variable"} : () -> tensor<!tf_type.resource<tensor<!tf_type.string>>>
       %outputs_10, %control_11 = tf_executor.island wraps "tf.VarHandleOp"() {container = "", shared_name = "Variable_1"} : () -> tensor<!tf_type.resource<tensor<!tf_type.string>>>

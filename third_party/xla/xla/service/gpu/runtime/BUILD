@@ -191,8 +191,9 @@ cc_library(
     name = "cub_sort",
     srcs = ["cub_sort.cc"],
     hdrs = ["cub_sort.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + 
-                    if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     visibility = ["//visibility:public"],
     deps = [
         ":support",
@@ -255,12 +256,12 @@ cc_library(
         ":conv",
         ":conv_reorder",
         ":cub_sort",
-        ":cublas_lt_matmul",
         ":custom_call",
         ":custom_call_registry",
         ":fft",
         ":fused_attention",
         ":gemm",
+        ":gpublas_lt_matmul",
         ":graph_launch",
         ":io_feed",
         ":kernel_launch",
@@ -301,7 +302,7 @@ cc_library(
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
         "//xla/runtime:state",
-        "//xla/service/gpu:fft_thunk",
+        "//xla/service/gpu/runtime3:fft_thunk",
         "//xla/stream_executor:fft",
         "//xla/translate/mhlo_to_hlo:attribute_exporter",
     ],
@@ -457,6 +458,7 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:errors",
     ] + if_cuda_is_configured([
         "//xla/service/gpu:gemm_algorithm_picker",
         "//xla/stream_executor/gpu:redzone_allocator",
@@ -480,6 +482,7 @@ cc_library(
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
         "//xla/service:executable",
+        "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:non_atomically_upgradeable_rw_lock",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_graph",
@@ -488,6 +491,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/profiler/lib:profiler_lock",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
@@ -569,9 +573,9 @@ cc_library(
 )
 
 cc_library(
-    name = "cublas_lt_matmul",
-    srcs = ["cublas_lt_matmul.cc"],
-    hdrs = ["cublas_lt_matmul.h"],
+    name = "gpublas_lt_matmul",
+    srcs = ["gpublas_lt_matmul.cc"],
+    hdrs = ["gpublas_lt_matmul.h"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM"]),
     visibility = ["//visibility:public"],
     deps = [
@@ -586,7 +590,6 @@ cc_library(
         "//xla/service:executable",
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor",
-        "//xla/stream_executor/cuda:cublas_lt_header",
         "@local_tsl//tsl/platform:status",
     ] + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",

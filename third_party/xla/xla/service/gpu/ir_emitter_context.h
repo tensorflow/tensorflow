@@ -79,15 +79,11 @@ class IrEmitterContext {
 
   std::vector<GpuExecutable::ConstantInfo>& constants() { return constants_; }
 
-  absl::Span<const BufferAllocation> allocations() const {
-    if (buffer_assignment_) {
-      return buffer_assignment_->Allocations();
-    }
+  absl::Span<const BufferAllocation* const> allocations() const {
     return allocations_;
   }
 
-  void set_allocations(absl::Span<const BufferAllocation> allocations) {
-    CHECK_EQ(nullptr, buffer_assignment_);
+  void set_allocations(absl::Span<const BufferAllocation* const> allocations) {
     allocations_ = allocations;
   }
 
@@ -106,7 +102,12 @@ class IrEmitterContext {
  private:
   const HloModule* hlo_module_;
   const BufferAssignment* buffer_assignment_;
-  absl::Span<const BufferAllocation> allocations_;
+
+  // Stores pointer to buffer allocations in the order of the LMHLO entry args.
+  // LMHLO-based emitters need the ordering to locate the buffer allocation.
+  // This should be removed once LMHLO-based emitters are removed.
+  absl::Span<const BufferAllocation* const> allocations_;
+
   std::string platform_name_;
   const se::DeviceDescription& gpu_device_info_;
   mlir::MLIRContext* mlir_context_;

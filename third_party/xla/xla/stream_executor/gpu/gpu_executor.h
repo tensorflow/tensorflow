@@ -288,6 +288,9 @@ class GpuExecutor : public internal::StreamExecutorInterface {
     return it->second;
   }
 
+  int cc_major() const { return cc_major_; }
+  int cc_minor() const { return cc_minor_; }
+
  private:
   // Host callback landing routine invoked by CUDA.
   // data: User-provided callback provided to HostCallback() above, captured

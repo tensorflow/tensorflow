@@ -88,7 +88,6 @@ limitations under the License.
 #include "xla/service/gpu/conditional_thunk.h"
 #include "xla/service/gpu/convolution_thunk.h"
 #include "xla/service/gpu/copy_thunk.h"
-#include "xla/service/gpu/fft_thunk.h"
 #include "xla/service/gpu/for_thunk.h"
 #include "xla/service/gpu/fused_mha_thunk.h"
 #include "xla/service/gpu/fusions/fusions.h"
@@ -116,6 +115,7 @@ limitations under the License.
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/gpu/replica_id_thunk.h"
 #include "xla/service/gpu/runtime3/custom_call_thunk.h"
+#include "xla/service/gpu/runtime3/fft_thunk.h"
 #include "xla/service/gpu/sequential_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/gpu/while_thunk.h"
@@ -147,7 +147,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
 #include "xla/service/gpu/cub_sort_thunk.h"
-#include "xla/service/gpu/cublas_lt_matmul_thunk.h"
+#include "xla/service/gpu/gpublas_lt_matmul_thunk.h"
 #include "xla/service/gpu/ir_emitter_triton.h"
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
@@ -338,10 +338,6 @@ std::unique_ptr<IrEmitterUnnested> IrEmitterUnnested::Create(
 
 StatusOr<BufferAllocation::Slice> IrEmitterUnnested::GetAllocationSlice(
     mlir::Value v) {
-  if (ir_emitter_context_->emit_ir_from_hlo()) {
-    return InternalError(
-        "Getting buffer allocation for MLIR when emitting from HLO");
-  }
   return xla::gpu::GetAllocationSlice(v, ir_emitter_context_->allocations(),
                                       nullptr);
 }
@@ -385,10 +381,14 @@ Status IrEmitterUnnested::EmitConstant(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(
         element_bytes, GetElementTypeBytes(literal.getType().getElementType()));
   }
-  ir_emitter_context_->emit_constant(
-      num_elements, element_bytes, global.getSymName(),
-      global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt(), content,
-      &b_);
+
+  int64_t arg_index =
+      global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
+  int allocation_index = ir_emitter_context_->allocations()[arg_index]->index();
+
+  ir_emitter_context_->emit_constant(num_elements, element_bytes,
+                                     global.getSymName(), allocation_index,
+                                     content, &b_);
   return OkStatus();
 }
 
@@ -1760,7 +1760,7 @@ static Status ProcessFusionForConversion(mlir::Region* region,
 #if GOOGLE_CUDA
 Status IrEmitterUnnested::EmitTritonFusion(
     const HloFusionAnalysis& hlo_fusion_analysis, mlir::Operation* op,
-    const AutotuneResult::TritonGemmKey& config,
+    const TritonGemmConfig& config,
     const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
         hlo_for_lmhlo) {
   // Note: In this method we can't use `BuildKernelThunk` as usual,
@@ -1815,9 +1815,8 @@ Status IrEmitterUnnested::EmitTritonFusion(
           hlo_fusion_analysis.fusion_boundary(), config);
     } else {  // Must be a MatMul
       CHECK_EQ(fusion_kind, kTritonGemmFusionKind);
-      TF_ASSIGN_OR_RETURN(
-          auto analysis,
-          TritonFusionAnalysis::Execute(*hlo_computation, config.split_k()));
+      TF_ASSIGN_OR_RETURN(auto analysis, TritonFusionAnalysis::Execute(
+                                             *hlo_computation, config.split_k));
       TF_ASSIGN_OR_RETURN(
           triton_wrapper_result,
           TritonWrapper(analysis, impl_fn_name, hlo_computation,
@@ -1921,18 +1920,20 @@ Status IrEmitterUnnested::EmitFusion(
           triton_config.set_num_stages(1);
           triton_config.set_num_warps(2);
         }
-        return EmitTritonFusion(fusion_analysis, fusion_op,
-                                backend_config.triton_gemm_config(),
-                                hlo_for_lmhlo);
+        return EmitTritonFusion(
+            fusion_analysis, fusion_op,
+            TritonGemmConfig::FromProto(backend_config.triton_gemm_config()),
+            hlo_for_lmhlo);
       }
       if (backend_config.kind() == kTritonSoftmaxFusionKind) {
         auto& triton_config = *backend_config.mutable_triton_gemm_config();
         triton_config.set_num_stages(1);
         triton_config.set_num_warps(
             DeriveNumWarpsFromTritonSoftmaxComputation(fused_computation));
-        return EmitTritonFusion(fusion_analysis, fusion_op,
-                                backend_config.triton_gemm_config(),
-                                hlo_for_lmhlo);
+        return EmitTritonFusion(
+            fusion_analysis, fusion_op,
+            TritonGemmConfig::FromProto(backend_config.triton_gemm_config()),
+            hlo_for_lmhlo);
       }
 #endif
       LOG(FATAL) << "Unsupported fusion kind: " << backend_config.kind();

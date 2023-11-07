@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -29,10 +30,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/error_payloads.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 #include "tsl/framework/device_type.h"
+#include "tsl/platform/error_logging.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace tfrt_compiler {
@@ -111,6 +117,39 @@ void CreateNonTPULowerClusterToRuntimeOpsPassPipeline(
   AddNonTPULowerClusterToRuntimeOpsPassPipeline(pm, /*module_name=*/"");
 }
 
+// TODO(b/306728216): Move this out of the Bridge component and into a Host
+// runtime component.
+tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
+                                       tsl::DeviceType device_type,
+                                       absl::Status status) {
+  if (status.ok()) {
+    return status;
+  }
+
+  VLOG(2) << error_prefix << " " << status;
+  tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+      device_type.type_string(), /*bridge_version=*/"v2",
+      /*fallback_enabled=*/false,
+      /*result=*/"failure");
+
+  constexpr char kBridgeComponent[] = "TFXLABridge";
+  std::string bridge_subcomponent = "TFXLA_PHASE_ONE_MLIR_TPU_BRIDGE";
+
+  tsl::OkOrSetErrorCounterPayload(
+      tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_1,
+      status);
+
+  if (device_type != DeviceType(DEVICE_TPU_XLA_JIT)) {
+    bridge_subcomponent = "TFXLA_PHASE_ONE_MLIR_CPU/GPU_BRIDGE";
+  }
+
+  tsl::error_logging::Log(kBridgeComponent, bridge_subcomponent,
+                          status.ToString())
+      .IgnoreError();
+
+  return status;
+}
+
 absl::Status RunLowerClusterToRuntimeOpsPassPipeline(
     mlir::ModuleOp module, tsl::DeviceType xla_device_type,
     llvm::StringRef module_name) {
@@ -154,7 +193,12 @@ absl::Status RunLowerClusterToRuntimeOpsPassPipeline(
         module, llvm::StringRef(), &runtime_lowering);
   }
 
-  return diag_handler.ConsumeStatus();
+  auto result_status = diag_handler.ConsumeStatus();
+  TF_RETURN_IF_ERROR(
+      RecordIfErrorStatus(/*error_prefix=*/"lower_cluster_to_runtime",
+                          xla_device_type, result_status));
+
+  return absl::OkStatus();
 }
 
 // TODO(b/305211853): Unify the CPU/TPU/GPU Execution Ops and thus these two

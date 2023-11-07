@@ -30,6 +30,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "experiments-config.h"  // from @XNNPACK
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/api/profiler.h"
@@ -555,6 +556,10 @@ class Delegate {
             TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER) != 0;
   }
 
+  bool experimental_adaptive_avx_optimization() const {
+    return options_.experimental_adaptive_avx_optimization;
+  }
+
   pthreadpool_t threadpool() const {
 #if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
     return nullptr;
@@ -1016,6 +1021,9 @@ class Subgraph {
     }
     if (delegate.transient_indirection_buffer()) {
       flags |= XNN_FLAG_TRANSIENT_INDIRECTION_BUFFER;
+    }
+    if (delegate.experimental_adaptive_avx_optimization()) {
+      xnn_experiment_enable_adaptive_avx_optimization();
     }
     if (delegate.force_fp16()) {
       flags |= XNN_FLAG_FORCE_FP16_INFERENCE;

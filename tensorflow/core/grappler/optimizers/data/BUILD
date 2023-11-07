@@ -687,6 +687,7 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler/utils:topological_sort",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
     ] + tf_protos_all(),
     alwayslink = 1,
 )

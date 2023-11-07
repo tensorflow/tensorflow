@@ -191,6 +191,7 @@ StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
           config.output_descriptor,
           /* output_data = */ DeviceMemoryBase(nullptr), config.conv_desc,
           use_fallback, nullptr, numeric_options, &runners));
+
       for (auto& runner : runners) {
         TF_ASSIGN_OR_RETURN(
             auto runner_cache,
@@ -230,8 +231,9 @@ GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
       params.config->input_descriptor, params.input_buf,
       params.config->filter_descriptor, params.filter_buf,
       params.config->output_descriptor, params.output_buf,
-      params.config->conv_desc, /* use_fallback = */ false, scratch_allocator,
-      numeric_options, &runners));
+      params.config->conv_desc,
+      /* use_fallback = */ false, scratch_allocator, numeric_options,
+      &runners));
 
   return runners;
 }

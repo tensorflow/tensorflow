@@ -107,13 +107,6 @@ bool hasExperimentalFeaturesNotInStablehlo(HloOpTy hloOp) {
     // Proposal: https://github.com/openxla/stablehlo/issues/742.
     if (hasPackedNibble(hloOp.getPrecisionConfig())) return true;
   }
-  if constexpr (std::is_same<HloOpTy, mhlo::CustomCallOp>::value) {
-    // StableHLO CustomCall doesn't support API_VERSION_TYPED_FFI yet.
-    // Proposal: https://github.com/openxla/stablehlo/issues/637.
-    if (hloOp.getApiVersion() ==
-        mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI)
-      return true;
-  }
   if constexpr (std::is_same<HloOpTy, mhlo::DotGeneralOp>::value) {
     // StableHLO DotGeneral doesn't support PACKED_NIBBLE yet.
     // Proposal: https://github.com/openxla/stablehlo/issues/742.
@@ -132,12 +125,20 @@ bool hasExperimentalFeaturesNotInStablehlo(HloOpTy hloOp) {
 // frontends but are not yet part of StableHLO. Such features might be a good
 // fit for StableHLO, and are usually accompanied by a StableHLO GitHub ticket.
 template <typename HloOpTy>
-std::optional<int64_t> getPublicFeaturesNotInStablehlo(HloOpTy) {
+std::optional<int64_t> getPublicFeaturesNotInStablehlo(HloOpTy hloOp) {
   // StableHLO doesn't support TanOp yet.
   // Proposal: https://github.com/openxla/stablehlo/issues/954
   if constexpr (std::is_same<HloOpTy, mhlo::TanOp>::value) {
     // Version 1: Initial version for TanOp.
     return 1;
+  }
+  // StableHLO CustomCall doesn't support API_VERSION_TYPED_FFI yet.
+  // Proposal: https://github.com/openxla/stablehlo/issues/637.
+  if constexpr (std::is_same<HloOpTy, mhlo::CustomCallOp>::value) {
+    // Version 1: Initial version for TYPED_FFI
+    if (hloOp.getApiVersion() ==
+        mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI)
+      return 1;
   }
   return std::nullopt;
 }

@@ -789,6 +789,9 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
       pipeline.AddPass<AllReduceContiguous>();
     }
 
+    TF_RETURN_IF_ERROR(
+        AddCustomKernelReplacementPasses(&pipeline, debug_options));
+
     int32_t blueconnect_num_devices_per_host =
         debug_options.xla_gpu_all_reduce_blueconnect_num_devices_per_host();
     if (blueconnect_num_devices_per_host > 0) {
@@ -1540,7 +1543,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
                             thunk_sequence.ToString());
   }
 
-  std::shared_ptr<const BufferAssignment> buffer_assignment;
+  std::shared_ptr<BufferAssignment> buffer_assignment;
   std::unique_ptr<BufferAssignmentProto> buffer_assignment_proto;
   std::function<std::string()> buffer_assignment_dumper = [] {
     return std::string();
@@ -1555,6 +1558,21 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     buffer_assignment_dumper = [buffer_assignment, max_buffers_to_show] {
       return buffer_assignment->ToVerboseString(max_buffers_to_show);
     };
+  }
+
+  std::vector<BufferAllocation> allocations;
+  if (compile_module_results.use_original_allocations) {
+    if (!options.is_autotuning_compilation) {
+      std::vector<BufferAllocation> original_allocations =
+          buffer_assignment->ReleaseAllocations();
+      allocations = std::move(original_allocations);
+    } else {
+      std::vector<BufferAllocation> original_allocations =
+          compile_module_results.buffer_assignment->ReleaseAllocations();
+      allocations = std::move(original_allocations);
+    }
+  } else {
+    allocations = std::move(compile_module_results.allocations);
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -1572,7 +1590,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           /*output_info=*/std::move(compile_module_results.output_info),
           /*module_name=*/std::move(compile_module_results.module_name),
           /*output_shape=*/std::move(compile_module_results.output_shape),
-          /*allocations=*/std::move(compile_module_results.allocations),
+          /*allocations=*/std::move(allocations),
           /*enable_persistent_temp_buffers=*/
           module->config()
               .debug_options()
@@ -1769,7 +1787,6 @@ Status GpuCompiler::RunPostSchedulingPipelines(
         HloPredicateIsOp<HloOpcode::kParameter, HloOpcode::kConstant,
                          HloOpcode::kBitcast, HloOpcode::kGetTupleElement>;
     pipeline.AddPass<GpuConvertAsyncCollectivesToSync>(is_nop);
-    pipeline.AddPass<OptimizationBarrierExpander>();
 
     TF_RETURN_IF_ERROR(pipeline.Run(module).status());
   }
@@ -1790,6 +1807,7 @@ Status GpuCompiler::RunPostSchedulingPipelines(
         /*host_memory_offload_config=*/std::nullopt);
     HloRematerialization::RematerializationSizes sizes;
     pipeline.AddPass<HloRematerialization>(options, sizes);
+    pipeline.AddPass<OptimizationBarrierExpander>();
 
     TF_ASSIGN_OR_RETURN(bool changed, pipeline.Run(module));
     if (changed) {

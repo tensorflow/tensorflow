@@ -9,10 +9,11 @@ opaque to the frameworks.
 ## Communication channel
 
 *   Please file issues in the [OpenXla/xla repo](https://github.com/openxla/xla).
-*   Join discussion in the #pjrt-plugin channel of the [IREE discord server](https://github.com/openxla/iree/#communication-channels).
+*   Join the [pjrt-announcement maillist](https://groups.google.com/g/pjrt-announce/).
 
 ## Resources
 
-*   [OpenXLA/IREE PJRT plugin implementation](https://github.com/openxla/openxla-pjrt-plugin)
+*   [PJRT C API changelog](https://github.com/openxla/xla/blob/main/xla/pjrt/c/CHANGELOG.md)
 *   [PJRT integration guide](https://github.com/openxla/xla/blob/main/xla/pjrt/c/docs/pjrt_integration_guide.md)
 *   [PJRT Plugin Mechanism design doc](https://docs.google.com/document/d/1Qdptisz1tUPGn1qFAVgCV2omnfjN01zoQPwKLdlizas/edit)
+*   [OpenXLA/IREE PJRT plugin implementation](https://github.com/openxla/openxla-pjrt-plugin)

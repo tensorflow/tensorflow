@@ -114,7 +114,10 @@ static std::string GetSmName(se::CudaComputeCapability compute_capability) {
                  << ". Defaulting to telling LLVM that we're compiling for sm_"
                  << sm_version;
   }
-  return absl::StrCat("sm_", sm_version);
+  // If the target is sm_90, hard code it to sm_90a so that all instructions
+  // can be used. We don't need the portability that sm_90 gives.
+  std::string_view extension = sm_version == 90 ? "a" : "";
+  return absl::StrCat("sm_", sm_version, extension);
 }
 
 // Convenience function for producing a name of a temporary compilation product

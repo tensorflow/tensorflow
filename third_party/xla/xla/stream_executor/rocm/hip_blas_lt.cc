@@ -21,8 +21,6 @@ limitations under the License.
 #include "rocm/rocm_config.h"
 #include "xla/primitive_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/rocm/hip_blas_utils.h"
 #include "xla/util.h"
 
 #if TF_HIPBLASLT
@@ -167,11 +165,12 @@ tsl::Status BlasLt::Init() {
   VLOG(2) << "BlasLt::MatmulDesc::Create compute_type" << int(compute_type)
           << " scale_type " << int(scale_type) << " epilogue " << int(epilogue)
           << " pointer_mode " << int(pointer_mode);
-  auto hip_scale_type_ = AsHipblasDataType(scale_type);        
+  auto hip_scale_type = AsHipblasDataType(scale_type);
+  auto hip_compute_type = AsHipblasComputeType(compute_type);
   SE_HIPBLAS_RETURN_IF_ERROR(wrap::hipblasLtMatmulDescCreate(
-      &hip_desc, AsHipblasComputeType(compute_type), hip_scale_type_));
+      &hip_desc, hip_compute_type, hip_scale_type));
   // Wrap hipblas handle immediately, so it is cleaned up if an error occurs.
-  BlasLt::MatmulDesc desc(hip_desc, hip_scale_type_);
+  BlasLt::MatmulDesc desc(hip_desc, hip_compute_type, hip_scale_type);
   if (pointer_mode != PointerMode::kHost) {
     return tsl::errors::Internal("hipblaslt does not support device pointers");
   }
@@ -466,25 +465,33 @@ tsl::Status BlasLt::MatmulPlan::ExecuteOnStream(
   std::tuple operand_types{a_desc_.type(), b_desc_.type(), c_desc_.type(),
                            d_desc_.type()};
 
-#define TYPED_MATMUL(SCALENTYPE, ATYPE, BTYPE, CTYPE, DTYPE)                \
-  if (operand_types == std::make_tuple(ATYPE, BTYPE, CTYPE, DTYPE)) {       \
-    return gpu::BlasLt::MatmulPlan::DoMatmul<                               \
+#define TYPED_MATMUL(SCALENTYPE, ATYPE, BTYPE, CTYPE, DTYPE)              \
+  if (operand_types == std::make_tuple(ATYPE, BTYPE, CTYPE, DTYPE)) {     \
+    return gpu::BlasLt::MatmulPlan::DoMatmul<                             \
         SCALENTYPE, HipToNativeT<ATYPE>::type, HipToNativeT<BTYPE>::type, \
         HipToNativeT<CTYPE>::type, HipToNativeT<DTYPE>::type>(            \
-        stream, alpha_, a, b, beta_, c, d, bias, aux, a_scale, b_scale,     \
-        c_scale, d_scale, d_amax, algorithm, scratch_allocator,             \
-        profile_result);                                                    \
+        stream, alpha_, a, b, beta_, c, d, bias, aux, a_scale, b_scale,   \
+        c_scale, d_scale, d_amax, algorithm, scratch_allocator,           \
+        profile_result);                                                  \
   }
 
   // Other data types:
-  TYPED_MATMUL(float, HIPBLASLT_R_16B, HIPBLASLT_R_16B, HIPBLASLT_R_16B, HIPBLASLT_R_16B)
-  TYPED_MATMUL(float, HIPBLASLT_R_16F, HIPBLASLT_R_16F, HIPBLASLT_R_16F, HIPBLASLT_R_16F)
-  TYPED_MATMUL(float, HIPBLASLT_R_16B, HIPBLASLT_R_16B, HIPBLASLT_R_32F, HIPBLASLT_R_32F)
-  TYPED_MATMUL(float, HIPBLASLT_R_16F, HIPBLASLT_R_16F, HIPBLASLT_R_32F, HIPBLASLT_R_32F)
-  TYPED_MATMUL(float, HIPBLASLT_R_32F, HIPBLASLT_R_32F, HIPBLASLT_R_32F, HIPBLASLT_R_32F)
-  TYPED_MATMUL(double, HIPBLASLT_R_64F, HIPBLASLT_R_64F, HIPBLASLT_R_64F, HIPBLASLT_R_64F)
-  TYPED_MATMUL(complex64, HIPBLASLT_C_32F, HIPBLASLT_C_32F, HIPBLASLT_C_32F, HIPBLASLT_C_32F)
-  TYPED_MATMUL(complex128, HIPBLASLT_C_64F, HIPBLASLT_C_64F, HIPBLASLT_C_64F, HIPBLASLT_C_64F)
+  TYPED_MATMUL(float, HIPBLASLT_R_16B, HIPBLASLT_R_16B, HIPBLASLT_R_16B,
+               HIPBLASLT_R_16B)
+  TYPED_MATMUL(float, HIPBLASLT_R_16F, HIPBLASLT_R_16F, HIPBLASLT_R_16F,
+               HIPBLASLT_R_16F)
+  TYPED_MATMUL(float, HIPBLASLT_R_16B, HIPBLASLT_R_16B, HIPBLASLT_R_32F,
+               HIPBLASLT_R_32F)
+  TYPED_MATMUL(float, HIPBLASLT_R_16F, HIPBLASLT_R_16F, HIPBLASLT_R_32F,
+               HIPBLASLT_R_32F)
+  TYPED_MATMUL(float, HIPBLASLT_R_32F, HIPBLASLT_R_32F, HIPBLASLT_R_32F,
+               HIPBLASLT_R_32F)
+  TYPED_MATMUL(double, HIPBLASLT_R_64F, HIPBLASLT_R_64F, HIPBLASLT_R_64F,
+               HIPBLASLT_R_64F)
+  TYPED_MATMUL(complex64, HIPBLASLT_C_32F, HIPBLASLT_C_32F, HIPBLASLT_C_32F,
+               HIPBLASLT_C_32F)
+  TYPED_MATMUL(complex128, HIPBLASLT_C_64F, HIPBLASLT_C_64F, HIPBLASLT_C_64F,
+               HIPBLASLT_C_64F)
 
 #undef TYPED_MATMUL
 

@@ -6389,11 +6389,13 @@ class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {
         absl::StrAppend(&colocations_str, colocation->id, ", ");
         colocations.insert(colocation->id);
       }
-      VLOG(1) << "Alloc id: " << block->id << " time: [" << block->start_time
-              << ", " << block->end_time << "] size: " << block->size
+      VLOG(1) << "Alloc id: " << block->id << " time: ["
+              << block->inclusive_start_time << ", " << block->end_time
+              << "] size: " << block->size
               << " init offset: " << block->initial_offset << " colocations: {"
               << colocations_str << "}";
-      auto it = repack_map_.find({block->start_time, block->initial_offset});
+      auto it = repack_map_.find(
+          {block->inclusive_start_time, block->initial_offset});
       if (it != repack_map_.end()) {
         modified = true;
         block->offset = it->second;
@@ -6877,7 +6879,7 @@ TEST_P(MemorySpaceAssignmentTest, ScopedAllocationWithDifferentOffset) {
              allocations) {
         for (MemorySpaceAssignmentRepacker::AllocationBlock* block :
              allocations) {
-          if (block->start_time == block->end_time) {
+          if (block->inclusive_start_time == block->end_time) {
             EXPECT_GT(block->colocations.size(), 0);
           }
         }
@@ -8842,6 +8844,129 @@ ENTRY %main {
               op::Fusion(op::AsyncCopy(kAlternateMemorySpace,
                                        kDefaultMemorySpace, op::Parameter(0)),
                          op::Fusion()));
+}
+
+// Test description:
+// - Setup: Make sure p1 can not be prefetched to alternate memory until after
+//   instruction c. We do this by causing p0 to be prefetched to alternate
+//   memory for use in c. Since p0 is larger than 1/2 of alternate memory, we
+//   will not be able to prefetch p1 until after p0 is unallocated.
+// - Test: prefetch p1, after p0 is unallocated from alternate memory (after
+//   instruction c).
+TEST_P(MemorySpaceAssignmentTest, CopyResourceIntegration) {
+  std::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY main {
+  p0 = s32[8,8] parameter(0)
+  p1 = s32[8,8] parameter(1)
+  p2 = s32[] parameter(2)
+  a = negate(p2)
+  b = negate(a)
+  c = add(p0, p0)
+  d = negate(b)
+  e = negate(d)
+  f = add(p1, p1)
+
+  ROOT result = tuple(e,c,f)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 300;
+
+  // Setup cost analysis so it takes 2 instructions to prefetch anything.
+  HloCostAnalysis hlo_cost_analysis(ShapeSize);
+  TF_ASSERT_OK_AND_ASSIGN(auto cost_analysis,
+                          FakeMemorySpaceAssignmentCostAnalysis::Create(
+                              hlo_cost_analysis, *module, options));
+  cost_analysis->SetOverrideForGetInstructionElapsed(
+      [](const HloInstruction& instruction) -> float { return 10.0; });
+  cost_analysis->SetOverrideForGetAsyncCopyElapsed(
+      [](const Shape& shape) -> float { return 20.0; });
+  options.cost_analysis = cost_analysis.get();
+  CostAnalysisPrefetchIntervalPicker prefetch_interval_picker(
+      CostAnalysisPrefetchIntervalPicker(
+          *cost_analysis, /*min_overlap_to_async_copy_ratio=*/0.8,
+          /*preferred_overlap_to_async_copy_ratio=*/1.5,
+          /*max_overlap_to_mem_size_async_copy_ratio=*/10.0,
+          /*mem_size_bytes=*/options.max_size_in_bytes));
+
+  // p0 has the highest priority, followed by p1, followed by everything else.
+  MemorySpaceAssignment::BufferIntervalCompare compare =
+      [](const MemorySpaceAssignment::BufferInterval& lhs,
+         const MemorySpaceAssignment::BufferInterval& rhs) -> bool {
+    auto lookup = [](const MemorySpaceAssignment::BufferInterval& x) {
+      // An arbitrary value that is greater than that for p0 and p1.
+      int priority = 100;
+      if (x.buffer->instruction()->name() == "p0") {
+        priority = 0;
+      } else if (x.buffer->instruction()->name() == "p1") {
+        priority = 1;
+      }
+      return std::make_tuple(priority, x.buffer->instruction()->name());
+    };
+
+    return lookup(lhs) < lookup(rhs);
+  };
+
+  // Run test.
+  AssignMemorySpace(module.get(), options, compare, &prefetch_interval_picker);
+
+  // - Make sure the setup occurred, i.e., that p0 is prefetched to alternate
+  //   memory for use by c.
+  // - Make sure p1 is prefetched.
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Tuple(_,
+                // p0 is prefetched to alternate memory for use by c.
+                op::Add(op::AsyncCopy(kAlternateMemorySpace,
+                                      kDefaultMemorySpace, op::Parameter(0)),
+                        op::AsyncCopy(kAlternateMemorySpace,
+                                      kDefaultMemorySpace, op::Parameter(0))),
+                // p1 is prefetched to alternate memory for use by f.
+                op::Add(op::AsyncCopy(kAlternateMemorySpace,
+                                      kDefaultMemorySpace, op::Parameter(1)),
+                        op::AsyncCopy(kAlternateMemorySpace,
+                                      kDefaultMemorySpace, op::Parameter(1)))));
+
+  // Check the schedule
+  const std::vector<HloInstruction*>& schedule =
+      module->schedule().sequence(module->entry_computation()).instructions();
+  auto find_schedule_index = [&schedule](std::string_view name) -> int {
+    for (int i = 0; i < schedule.size(); ++i) {
+      if (schedule[i]->name() == name) {
+        return i;
+      }
+    }
+    LOG(FATAL) << "Unable to find index of instruction with name " << name;
+  };
+  int c_index = find_schedule_index("c");
+  int p1_copy_start = find_schedule_index(module->entry_computation()
+                                              ->root_instruction()  // result
+                                              ->operand(2)          // f
+                                              ->operand(0)          // copy done
+                                              ->operand(0)  // copy start
+                                              ->name());
+  int d_index = find_schedule_index("d");
+  int e_index = find_schedule_index("e");
+  int p1_copy_end = find_schedule_index(module->entry_computation()
+                                            ->root_instruction()  // result
+                                            ->operand(2)          // f
+                                            ->operand(0)          // copy done
+                                            ->name());
+  int f_index = find_schedule_index("f");
+  // We expect to start copying p1 after c.
+  EXPECT_EQ(p1_copy_start, c_index + 1);
+  // d and e should follow come between p1's copy start and end.
+  EXPECT_EQ(d_index, p1_copy_start + 1);
+  EXPECT_EQ(e_index, d_index + 1);
+  EXPECT_EQ(p1_copy_end, e_index + 1);
+  // f should immediately follow the end of p1's copy.
+  EXPECT_EQ(f_index, p1_copy_end + 1);
 }
 
 using CostAnalysisPrefetchIntervalPickerTest = HloTestBase;
@@ -11752,29 +11877,28 @@ ENTRY main {
                          ShapeSize(f32_16_16)}),
       })));
 
-  // Force MSA to prefer prefetching (in order) p0, p1, p2, p3, p4, and then
+  // Force MSA to prefer prefetching (in order) p1, p2, p3, p4, and then
   // anything else.
   MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
-      [](const MemorySpaceAssignment::BufferInterval& a,
-         const MemorySpaceAssignment::BufferInterval& b) {
-        auto get_priority = [](const HloInstruction* instruction) {
-          if (instruction->name() == "p1") {
-            return 1;
+      [](const MemorySpaceAssignment::BufferInterval& lhs,
+         const MemorySpaceAssignment::BufferInterval& rhs) {
+        auto lookup = [](const MemorySpaceAssignment::BufferInterval& x) {
+          // An arbitrary value that is greater than that for p1, p2, p3, and
+          // p4.
+          int priority = 100;
+          if (x.buffer->instruction()->name() == "p1") {
+            priority = 1;
+          } else if (x.buffer->instruction()->name() == "p2") {
+            priority = 2;
+          } else if (x.buffer->instruction()->name() == "p3") {
+            priority = 3;
+          } else if (x.buffer->instruction()->name() == "p4") {
+            priority = 4;
           }
-          if (instruction->name() == "p2") {
-            return 2;
-          }
-          if (instruction->name() == "p3") {
-            return 3;
-          }
-          if (instruction->name() == "p4") {
-            return 4;
-          }
-          return 100;
+          return std::make_tuple(priority, x.buffer->instruction()->name());
         };
 
-        return get_priority(a.buffer->defining_instruction()) <
-               get_priority(b.buffer->defining_instruction());
+        return lookup(lhs) < lookup(rhs);
       };
 
   // Configure MSA.
@@ -11806,9 +11930,9 @@ ENTRY main {
         for (MockRepacker::AllocationBlock* block : allocations) {
           VLOG(1) << "Allocation block: " << block->ToString();
 
-          // Move "p2" from offset 1024 -> 2048.
-          if (block->start_time == 2 && block->initial_offset == 1024 &&
-              block->size == 2048) {
+          if (block->inclusive_start_time == 3 &&
+              block->initial_offset == 1024 && block->size == 2048) {
+            // Move "p2" from offset 1024 -> 2048.
             found_p2 = true;
             block->offset = 2048;
             // We expect p2 to be sliced. Check that it has slicing information
@@ -11816,23 +11940,26 @@ ENTRY main {
             EXPECT_TRUE(block->original_slice_data.has_value());
             if (block->original_slice_data.has_value()) {
               SlicedAllocationData expected(
-                  {{Slice{1024, 1024, 2}, Slice{1024, 2048, 6}}});
+                  {{Slice{1024, 1024, /*inclusive_start_time=*/3},
+                    Slice{1024, 2048, /*inclusive_start_time=*/7}}});
               EXPECT_EQ(*block->original_slice_data, expected)
                   << "\nExpected: " << expected.ToString()
                   << "\nGot: " << block->original_slice_data->ToString();
               // Set the first slice for p2 to be place at the larger offset.
               block->repacked_slice_data = SlicedAllocationData(
-                  {{Slice{1024, 2048, 6}, Slice{1024, 3072, 2}}});
+                  {{Slice{1024, 2048, /*inclusive_start_time=*/7},
+                    Slice{1024, 3072, /*inclusive_start_time=*/3}}});
             }
-          }
-          // Move "p3" from offset 3072 -> 1024.
-          if (block->start_time == 3 && block->initial_offset == 3072 &&
-              block->size == 1024) {
+          } else if (block->inclusive_start_time == 4 &&
+                     block->initial_offset == 3072 && block->size == 1024) {
+            // Move "p3" from offset 3072 -> 1024.
             found_p3 = true;
             block->offset = 1024;
             // We do not expect p3 to be sliced. Thus, it should not have
             // slicing information in its AllocationBlock.
             EXPECT_FALSE(block->original_slice_data.has_value());
+          } else {
+            block->offset = block->initial_offset;
           }
         }
 

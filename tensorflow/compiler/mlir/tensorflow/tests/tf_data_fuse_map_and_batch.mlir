@@ -6,7 +6,7 @@ func.func @fuse_map_and_batch() -> tensor<!tf_type.variant> attributes {tf.entry
   %0 = "tf.Const"() {value = dense<5> : tensor<i64>} : () -> tensor<i64>
   %1 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
   %2 = "tf.Const"() {value = dense<[0, 1, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
-  // CHECK: %[[NPC:.*]] = "tf.Const"() {value = dense<1> : tensor<i64>}
+  // CHECK: %[[NPC:.*]] = "tf.Const"() <{value = dense<1> : tensor<i64>}>
   // CHECK: %[[TSLICE:.*]] = "tf.TensorSliceDataset"
   %3 = "tf.TensorSliceDataset"(%2) {device = "", output_shapes = [#tf_type.shape<>], metadata = ""} : (tensor<3xi32>) -> tensor<*x!tf_type.variant>
   // CHECK: "tf.MapAndBatchDataset"(%[[TSLICE]], %[[BSIZE:.*]], %[[NPC]]

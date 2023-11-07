@@ -29,7 +29,7 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 
 # CHECK-NEXT: [[R0:%.*]] = "tf.ReadVariableOp"([[ARG0]]) {{{.*}}} : (tensor<!tf_type.resource<tensor<5x3xf32>>>) -> tensor<5x3xf32>
 # CHECK-NEXT: [[R1:%.*]] = "tf.ReadVariableOp"([[ARG1]]) {{{.*}}} : (tensor<!tf_type.resource<tensor<3x5xf32>>>) -> tensor<3x5xf32>
-# CHECK-NEXT: [[R2:%.*]] = "tf.MatMul"([[R0]], [[R1]]) {{{.*}}} : (tensor<5x3xf32>, tensor<3x5xf32>) -> tensor<5x5xf32>
+# CHECK-NEXT: [[R2:%.*]] = "tf.MatMul"([[R0]], [[R1]]) <{{{.*}}}> {{{.*}}} : (tensor<5x3xf32>, tensor<3x5xf32>) -> tensor<5x5xf32>
 
 
 def Test():

@@ -99,8 +99,8 @@ namespace wrap {
   __macro(hipGetDeviceProperties)                   \
   __macro(hipGetErrorString)                        \
   __macro(hipGraphAddKernelNode)                    \
-  __macro(hipGraphAddMemcpyNode)                    \
   __macro(hipGraphAddChildGraphNode)                \
+  __macro(hipGraphAddMemcpyNode)                    \
   __macro(hipGraphCreate)                           \
   __macro(hipGraphDebugDotPrint)                    \
   __macro(hipGraphDestroy)                          \

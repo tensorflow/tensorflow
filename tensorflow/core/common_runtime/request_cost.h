@@ -50,6 +50,8 @@ class RequestCost {
     int64_t input_size = 0;
     // In this batch, the padding amount.
     int64_t padding_size = 0;
+    // Costs for processing this batch.
+    absl::flat_hash_map<std::string, absl::Duration> batch_costs;
   };
 
   // Records the metrics of a batch.

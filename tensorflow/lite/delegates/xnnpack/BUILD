@@ -236,6 +236,7 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "@XNNPACK",
+        "@XNNPACK//:experiments_config",
     ],
 )
 
@@ -270,6 +271,7 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "@XNNPACK//:XNNPACK_test_mode",
+        "@XNNPACK//:experiments_config",
     ],
 )
 

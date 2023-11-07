@@ -3,6 +3,7 @@
 // -----
 
 // CHECK-LABEL: func @dot
+// CHECK-SAME: (%[[ARG_0:.*]]: tensor<?x3xf32>) -> tensor<?x2xf32>
 func.func @dot(%arg0: tensor<?x3xf32>) -> tensor<?x2xf32> {
   // CHECK: %[[cst:.*]] = stablehlo.constant
   // CHECK: %[[q1:.*]] = "quantfork.qcast"(%[[cst]])
@@ -10,7 +11,7 @@ func.func @dot(%arg0: tensor<?x3xf32>) -> tensor<?x2xf32> {
   // CHECK: %[[dq1:.*]] = "quantfork.dcast"(%[[q1]])
   // CHECK-SAME: quant.uniform<i8:f32, 0.0040316890267764818:127>
   %cst = stablehlo.constant dense<[[-0.960978984, -0.390246302], [-0.790828585, -0.601039409], [-1.0280807, -1.02731466]]> : tensor<3x2xf32>
-  // CHECK: %[[q2:.*]] = "quantfork.qcast"(%arg0)
+  // CHECK: %[[q2:.*]] = "quantfork.qcast"(%[[ARG_0]])
   // CHECK-SAME: quant.uniform<i8:f32, 0.0078408040252386357:-1>
   // CHECK: %[[dq2:.*]] = "quantfork.dcast"(%[[q2]])
   // CHECK-SAME: quant.uniform<i8:f32, 0.0078408040252386357:-1>
@@ -29,8 +30,9 @@ func.func @dot(%arg0: tensor<?x3xf32>) -> tensor<?x2xf32> {
 // -----
 
 // CHECK-LABEL: func @duplicate_stats
+// CHECK-SAME: (%[[ARG_0:.*]]: tensor<2x3xf32>) -> tensor<2x3xf32>
 func.func @duplicate_stats(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
-  // CHECK: %[[q1:.*]] = "quantfork.qcast"(%arg0)
+  // CHECK: %[[q1:.*]] = "quantfork.qcast"(%[[ARG_0]])
   // CHECK: %[[dq1:.*]] = "quantfork.dcast"(%[[q1]])
   // CHECK: %[[q2:.*]] = "quantfork.qcast"(%[[dq1]])
   // CHECK: %[[dq2:.*]] = "quantfork.dcast"(%[[q2]])
@@ -44,6 +46,7 @@ func.func @duplicate_stats(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
 // -----
 
 // CHECK-LABEL: func @dot_redundant_stats
+// CHECK-SAME: (%[[ARG_0:.*]]: tensor<?x3xf32>) -> tensor<?x2xf32>
 func.func @dot_redundant_stats(%arg0: tensor<?x3xf32>) -> tensor<?x2xf32> {
   // CHECK: %[[cst:.*]] = stablehlo.constant
   // CHECK: %[[q1:.*]] = "quantfork.qcast"(%[[cst]])
@@ -51,7 +54,7 @@ func.func @dot_redundant_stats(%arg0: tensor<?x3xf32>) -> tensor<?x2xf32> {
   // CHECK: %[[dq1:.*]] = "quantfork.dcast"(%[[q1]])
   // CHECK-SAME: quant.uniform<i8:f32, 0.0040316890267764818:127>
   %cst = stablehlo.constant dense<[[-0.960978984, -0.390246302], [-0.790828585, -0.601039409], [-1.0280807, -1.02731466]]> : tensor<3x2xf32>
-  // CHECK: %[[q2:.*]] = "quantfork.qcast"(%arg0)
+  // CHECK: %[[q2:.*]] = "quantfork.qcast"(%[[ARG_0]])
   // CHECK-SAME: quant.uniform<i8:f32, 0.0078408040252386357:-1>
   // CHECK: %[[dq2:.*]] = "quantfork.dcast"(%[[q2]])
   // CHECK-SAME: quant.uniform<i8:f32, 0.0078408040252386357:-1>
@@ -87,10 +90,11 @@ func.func @convert_same_scale_propagate(%arg0: tensor<2x3xf32>) -> tensor<2x3xf3
 // -----
 
 // CHECK-LABEL: func @merge_consecutive_qcast
+// CHECK-SAME: (%[[ARG_0:.*]]: tensor<*xf32>, %[[ARG_1:.*]]: tensor<*xf32>, %[[ARG_2:.*]]: tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>)
 func.func @merge_consecutive_qcast(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>) {
-  // CHECK: "quantfork.qcast"(%arg1)
+  // CHECK: "quantfork.qcast"(%[[ARG_1]])
   // CHECK-SAME: -> tensor<*x!quant.uniform<i8:f32, 0.02454993117089365:-64>>
-  // CHECK: "quantfork.qcast"(%arg1)
+  // CHECK: "quantfork.qcast"(%[[ARG_1]])
   // CHECK-SAME: -> tensor<*x!quant.uniform<i8:f32, 0.013075299590241675:-64>>
   %0 = "quantfork.stats"(%arg0) {layerStats = dense<[-0.83811146, 2.4960899]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
   %1 = "quantfork.stats"(%arg1) {layerStats = dense<[-0.835039615, 1.000000e+00]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -53,7 +54,8 @@ bool IsSingleInstructionFusion(mlir::lmhlo::FusionOp fusion) {
 }  // namespace
 
 std::optional<std::unique_ptr<FusionInterface>> GetFusionEmitter(
-    HloFusionAnalysis& analysis, absl::Span<const BufferAllocation> allocations,
+    HloFusionAnalysis& analysis,
+    absl::Span<const BufferAllocation* const> allocations,
     mlir::lmhlo::FusionOp fusion_op) {
   switch (analysis.GetEmitterFusionKind()) {
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:

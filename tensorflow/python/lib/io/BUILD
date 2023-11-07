@@ -34,23 +34,6 @@ tf_python_pybind_extension(
     ],
 )
 
-py_strict_library(
-    name = "lib",
-    deprecation = "This target has been split. Depend on the sub-targets instead.",
-    srcs_version = "PY3",
-    visibility = visibility + [
-        "//tensorflow:internal",
-        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-        "//third_party/py/tf_agents:__subpackages__",
-        "//third_party/py/tf_slim:__subpackages__",
-    ],
-    deps = [
-        ":file_io",
-        ":python_io",
-        ":tf_record",
-    ],
-)
-
 tf_python_pybind_extension(
     name = "_pywrap_record_io",
     srcs = ["record_io_wrapper.cc"],

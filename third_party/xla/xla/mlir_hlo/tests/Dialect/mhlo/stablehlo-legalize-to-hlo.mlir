@@ -715,7 +715,8 @@ func.func @op_custom_call_api_version_typed_ffi(%arg0: tensor<f32>) -> tensor<f3
   // CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
   %0 = "stablehlo.custom_call"(%arg0) {
     call_target_name = "mhlo.custom_call",
-    mhlo.attributes = {api_version = 4 : i32, backend_config = {foo = "bar"}, call_target_name = "foo"}
+    mhlo.attributes = {api_version = 4 : i32, backend_config = {foo = "bar"}, call_target_name = "foo"},
+    mhlo.version = 1 : i64
   } : (tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
 }
@@ -729,7 +730,7 @@ func.func @op_custom_call_mhlo_backend_config(%arg0: tensor<16x256xbf16>) -> ten
   // CHECK-SAME: } : (tensor<16x256xbf16>) -> tensor<16x4xbf16>
   %4 = stablehlo.custom_call @foo(%arg0) {
     "mhlo.backend_config" = {aggregate_to_topk = true}
-    } : (tensor<16x256xbf16>) -> tensor<16x4xbf16>
+  } : (tensor<16x256xbf16>) -> tensor<16x4xbf16>
   return %4 : tensor<16x4xbf16>
 }
 

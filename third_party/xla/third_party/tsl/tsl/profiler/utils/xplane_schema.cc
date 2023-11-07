@@ -23,9 +23,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tsl/lib/gtl/map_util.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/regexp.h"
-#include "tsl/platform/types.h"
 #include "tsl/profiler/utils/tf_op_utils.h"
 
 namespace tsl {
@@ -70,6 +67,10 @@ constexpr int kNumHostEventTypes =
 constexpr int kNumStatTypes =
     StatType::kLastStatType - StatType::kFirstStatType + 1;
 
+constexpr int kNumMegaScaleStatTypes =
+    MegaScaleStatType::kLastMegaScaleStatType -
+    MegaScaleStatType::kFirstMegaScaleStatType + 1;
+
 constexpr int kNumLineIdTypes =
     LineIdType::kLastLineIdType - LineIdType::kFirstLineIdType + 1;
 
@@ -78,6 +79,10 @@ using HostEventTypeStrMap =
     absl::flat_hash_map<HostEventType, absl::string_view>;
 using StatTypeMap = absl::flat_hash_map<absl::string_view, StatType>;
 using StatTypeStrMap = absl::flat_hash_map<StatType, absl::string_view>;
+using MegaScaleStatTypeMap =
+    absl::flat_hash_map<absl::string_view, MegaScaleStatType>;
+using MegaScaleStatTypeStrMap =
+    absl::flat_hash_map<MegaScaleStatType, absl::string_view>;
 using LineIdTypeMap = absl::flat_hash_map<absl::string_view, LineIdType>;
 using LineIdTypeStrMap = absl::flat_hash_map<LineIdType, absl::string_view>;
 
@@ -328,6 +333,32 @@ const StatTypeMap& GetStatTypeMap() {
   return *stat_type_map;
 }
 
+const MegaScaleStatTypeMap& GetMegaScaleStatTypeMap() {
+  static auto* stat_type_map = new MegaScaleStatTypeMap({
+      {"graph_key", kMegaScaleGraphKey},
+      {"local_device_id", kMegaScaleLocalDeviceId},
+      {"num_actions", kMegaScaleNumActions},
+      {"collective_type", kMegaScaleCollectiveType},
+      {"input_size", kMegaScaleInputSize},
+      {"slack_us", kMegaScaleSlackUs},
+      {"action_type", kMegaScaleActionType},
+      {"start_end_type", kMegaScaleStartEndType},
+      {"action_index", kMegaScaleActionIndex},
+      {"action_duration_ns", kMegaScaleActionDurationNs},
+      {"action_inputs", kMegaScaleActionInputs},
+      {"transfer_source", kMegaScaleTransferSource},
+      {"transfer_destinations", kMegaScaleTransferDestinations},
+      {"buffer_sizes", kMegaScaleBufferSizes},
+      {"compute_operation", kMegaScaleComputeOperation},
+      {"chunk", kMegaScaleChunk},
+      {"launch_id", kMegaScaleLaunchId},
+      {"loop_iteration", kMegaScaleLoopIteration},
+      {"graph_protos", kMegaScaleGraphProtos},
+  });
+  DCHECK_EQ(stat_type_map->size(), kNumMegaScaleStatTypes);
+  return *stat_type_map;
+}
+
 const LineIdTypeMap& GetLineIdTypeMap() {
   static auto* line_id_type_map = new LineIdTypeMap({
       {"UnknownLineIdType", kUnknownLineIdType},
@@ -347,6 +378,12 @@ const HostEventTypeStrMap& GetHostEventTypeStrMap() {
 const StatTypeStrMap& GetStatTypeStrMap() {
   static auto* stat_type_str_map =
       new StatTypeStrMap(gtl::ReverseMap<StatTypeStrMap>(GetStatTypeMap()));
+  return *stat_type_str_map;
+}
+
+const MegaScaleStatTypeStrMap& GetMegaScaleStatTypeStrMap() {
+  static auto* stat_type_str_map = new MegaScaleStatTypeStrMap(
+      gtl::ReverseMap<MegaScaleStatTypeStrMap>(GetMegaScaleStatTypeMap()));
   return *stat_type_str_map;
 }
 
@@ -388,6 +425,17 @@ absl::string_view GetStatTypeStr(StatType stat_type) {
 
 std::optional<int64_t> FindStatType(absl::string_view stat_name) {
   if (auto stat_type = gtl::FindOrNull(GetStatTypeMap(), stat_name)) {
+    return *stat_type;
+  }
+  return std::nullopt;
+}
+
+absl::string_view GetMegaScaleStatTypeStr(MegaScaleStatType stat_type) {
+  return GetMegaScaleStatTypeStrMap().at(stat_type);
+}
+
+std::optional<int64_t> FindMegaScaleStatType(absl::string_view stat_name) {
+  if (auto stat_type = gtl::FindOrNull(GetMegaScaleStatTypeMap(), stat_name)) {
     return *stat_type;
   }
   return std::nullopt;

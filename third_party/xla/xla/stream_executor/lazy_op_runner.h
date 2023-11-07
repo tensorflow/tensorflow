@@ -244,6 +244,8 @@ struct FusedMHAOp {
     std::optional<TensorDescriptor> activation_descriptor;
     std::optional<double> dropout_rate;
     std::optional<int64_t> seed;
+    bool is_flash_attention;
+    bool is_causal_mask;
   };
 
   static tsl::StatusOr<std::unique_ptr<const OpRunner<FusedMHASignature>>>
@@ -254,7 +256,8 @@ struct FusedMHAOp {
         config.bmm1_rhs_descriptor, config.bmm2_rhs_descriptor,
         config.intermediate_bmm2_lhs_descriptor, config.output_descriptor,
         config.activation_descriptor, config.mask_descriptor,
-        config.bias_descriptor, config.scale, config.dropout_rate, config.seed);
+        config.bias_descriptor, config.scale, config.dropout_rate, config.seed,
+        config.is_flash_attention, config.is_causal_mask);
   }
 };
 
@@ -272,11 +275,15 @@ struct FusedMHABackwardOp {
     const TensorDescriptor& d_bmm1_lhs_descriptor;
     const TensorDescriptor& d_bmm1_rhs_descriptor;
     const TensorDescriptor& d_bmm2_rhs_descriptor;
-    const TensorDescriptor& d_s_descriptor;
+    std::optional<TensorDescriptor> d_s_descriptor;
     std::optional<TensorDescriptor> mask_descriptor;
     std::optional<TensorDescriptor> d_bias_descriptor;
+    std::optional<TensorDescriptor> fwd_output_descriptor;
+    std::optional<TensorDescriptor> bias_descriptor;
     std::optional<double> dropout_rate;
     std::optional<int64_t> seed;
+    bool is_flash_attention;
+    bool is_causal_mask;
   };
 
   static tsl::StatusOr<
@@ -290,8 +297,10 @@ struct FusedMHABackwardOp {
         config.bmm2_grad_gemm2_rhs_descriptor, config.d_output_descriptor,
         config.d_bmm1_lhs_descriptor, config.d_bmm1_rhs_descriptor,
         config.d_bmm2_rhs_descriptor, config.d_s_descriptor,
-        config.mask_descriptor, config.d_bias_descriptor, config.scale,
-        config.dropout_rate, config.seed);
+        config.mask_descriptor, config.d_bias_descriptor,
+        config.fwd_output_descriptor, config.bias_descriptor, config.scale,
+        config.dropout_rate, config.seed, config.is_flash_attention,
+        config.is_causal_mask);
   }
 };
 

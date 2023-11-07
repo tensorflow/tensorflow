@@ -54,6 +54,10 @@ class SparseCoreLayoutStacker {
     CHECK(stacks_by_group_.empty()) << "must call before AddTable";
     stacking_enabled_ = stacking_enabled;
   }
+  void SetStackingRowLimit(int64_t row_limit) {
+    CHECK(stacks_by_group_.empty()) << "must call before AddTable";
+    row_limit_ = row_limit;
+  }
 
   // Add a new table.  Arguments:
   //   table_name: How this table will be referred to.
@@ -102,7 +106,9 @@ class SparseCoreLayoutStacker {
   bool stacking_enabled_ = true;
   int64_t activation_mem_bytes_limit_ = 0;
   int64_t variable_shard_bytes_limit_ = 0;
-  int num_tables_ = 0;
+  // Sparse core ops use signed int for row numbers so we had better not stack
+  // beyond this limit.
+  int64_t row_limit_ = (1LL << 31) - 1;
 
   // All the stacks that we currently know about. Note that we use a btree_map
   // rather than a flat_hash_map so the resulting order is deterministic as long

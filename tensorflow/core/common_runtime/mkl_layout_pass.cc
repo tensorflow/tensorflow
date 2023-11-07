@@ -1586,11 +1586,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // impact.
     TF_CHECK_OK(GetNodeAttr(n->def(), "transpose_a", &trans_a));
 
-    // Only rewrite float and bfloat16.
-    DataType T_m;
-    TF_CHECK_OK(GetNodeAttr(n->def(), "T", &T_m));
-
-    return !trans_a && (T_m == DT_FLOAT || T_m == DT_BFLOAT16);
+    return !trans_a;
   }
 
   // Check if we are performing pooling on depth or batch. If it is, then we

@@ -202,41 +202,6 @@ absl::Status RunClusteringPipelineOnSubmodule(
   return absl::OkStatus();
 }
 
-absl::Status RunLowerToRuntimeOpsOnSubmodule(ModuleOp parent_module,
-                                             bool is_in_fallback_enabled_mode) {
-  int num_submodules = 0;
-  absl::Status runtime_lowering_status;
-  parent_module.walk([&](ModuleOp submodule) {
-    if (submodule == parent_module) return mlir::WalkResult::advance();
-    num_submodules++;
-    runtime_lowering_status =
-        tensorflow::tfrt_compiler::RunLowerClusterToRuntimeOpsPassPipeline(
-            submodule, tsl::DeviceType(DEVICE_TPU_XLA_JIT));
-    if (num_submodules > 1) {
-      return mlir::WalkResult::interrupt();
-    }
-
-    return mlir::WalkResult::advance();
-  });
-
-  if (num_submodules > 1) {
-    auto num_submodules_error = absl::InternalError(
-        "Lower to runtime has more than one submodule. Erroring out.");
-    TF_RETURN_IF_ERROR(RecordStatusIfError(
-        /*error_prefix=*/"V1 Lowering to runtime has more than one submodule:",
-        is_in_fallback_enabled_mode, num_submodules_error));
-  }
-
-  if (!runtime_lowering_status.ok()) {
-    TF_RETURN_IF_ERROR(RecordStatusIfError(
-        /*error_prefix=*/
-        "Errored running lowering cluster ops to runtime ops pipeline:",
-        is_in_fallback_enabled_mode, runtime_lowering_status));
-  }
-
-  return absl::OkStatus();
-}
-
 tensorflow::Status RunSessionTf2xlaClusteringBridge(
     ModuleOp module, bool is_in_fallback_enabled_mode) {
   VLOG(2) << "TPU Sessions Bridge called stack trace is "
@@ -254,35 +219,12 @@ tensorflow::Status RunSessionTf2xlaClusteringBridge(
   TF_RETURN_IF_ERROR(
       RunClusteringPipelineOnSubmodule(module, is_in_fallback_enabled_mode));
 
-  TF_RETURN_IF_ERROR(
-      RunLowerToRuntimeOpsOnSubmodule(module, is_in_fallback_enabled_mode));
-
-  Status export_preparation_status = RunTFXLABridge(
-      module,
-      [](OpPassManager &pm) {
-        pm.addPass(
-            mlir::tf_executor::CreateTFExecutorTPUV1IslandInliningPass());
-        // There are cases where we don't consume all compilation and
-        // replication attributes like we do for the V2 pipeline, so we need to
-        // convert them from unified to legacy attributes before they get
-        // exposed to outside of the bridge.
-        pm.addNestedPass<FuncOp>(
-            mlir::TFTPU::
-                CreateConvertToLegacyCompileAndReplicateAttributesPass());
-      },
-      /*module_name=*/"",
-      /*dump_prefix=*/"tf_xla_bridge_v1_export_preparation");
-
-  TF_RETURN_IF_ERROR(RecordStatusIfError(
-      /*error_prefix=*/"Bridge Export Preparation Failed:",
-      is_in_fallback_enabled_mode, export_preparation_status));
-
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       /*device_type=*/"tpu", /*bridge_version=*/"v1",
       /*n_fallback_enabled*/ is_in_fallback_enabled_mode,
       /*result=*/"success");
 
-  return tensorflow::tf2xla::v1::ExportFromTensorflowDialectToExecutor(module);
+  return absl::OkStatus();
 }
 
 // Registers a pipeline builder function for TF TPU V1 bridge.

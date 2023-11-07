@@ -22,8 +22,8 @@ module {
 // CHECK: %[[CONST_1:.*]] = arith.constant dense
 // CHECK-NOT: tensor<2x3x3x2xf32>
 // CHECK-SAME: tensor<2x3x1x6xf32>
-// CHECK: %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %[[CONST_1:.*]]) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_depthwise_conv2d_fn_0} : (tensor<1x3x4x3xf32>, tensor<2x3x1x6xf32>) -> tensor<*xf32>
-// CHECK: %[[BIAS_0:.*]] = "tf.BiasAdd"(%[[PARTITIONEDCALL_0]], %[[CONST_0:.*]]) {data_format = "NHWC", device = ""} : (tensor<*xf32>, tensor<6xf32>) -> tensor<*xf32>
+// CHECK: %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %[[CONST_1:.*]]) <{config = "", config_proto = "", executor_type = "", f = @composite_depthwise_conv2d_fn_0}> {_tfl_quant_trait = "fully_quantizable"} : (tensor<1x3x4x3xf32>, tensor<2x3x1x6xf32>) -> tensor<*xf32>
+// CHECK: %[[BIAS_0:.*]] = "tf.BiasAdd"(%[[PARTITIONEDCALL_0]], %[[CONST_0:.*]]) <{data_format = "NHWC"}> {device = ""} : (tensor<*xf32>, tensor<6xf32>) -> tensor<*xf32>
 // CHECK: return %[[BIAS_0:.*]] : tensor<*xf32>
 
 // CHECK-LABEL: func private @composite_depthwise_conv2d_fn(
@@ -33,7 +33,7 @@ module {
 // CHECK-LABEL: func private @composite_depthwise_conv2d_fn_0(
 // CHECK-SAME:                                             %arg0: tensor<1x3x4x3xf32>,
 // CHECK-SAME:                                             %arg1: tensor<2x3x1x6xf32>)
-// CHECK: %0 = "tf.DepthwiseConv2dNative"(%arg0, %arg1) {attr_map = "0:strides,1:padding,2:explicit_paddings,3:dilations", data_format = "NHWC", device = "",
+// CHECK: %0 = "tf.DepthwiseConv2dNative"(%arg0, %arg1) <{data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1]}> {attr_map = "0:strides,1:padding,2:explicit_paddings,3:dilations", device = ""}
 // CHECK: return %0 : tensor<*xf32>
 }
 

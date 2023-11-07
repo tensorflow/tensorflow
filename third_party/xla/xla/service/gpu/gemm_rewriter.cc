@@ -11,13 +11,15 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-==============================================================================*/
+=
+=============================================================================*/
 
 #include "xla/service/gpu/gemm_rewriter.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -42,6 +44,9 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/blas.h"
@@ -486,6 +491,22 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     *gemm_backend_config.mutable_dot_dimension_numbers() =
         instr->dot_dimension_numbers();
     *gemm_backend_config.mutable_precision_config() = instr->precision_config();
+
+    HloInstruction *lhs = instr->mutable_operand(0);
+    HloInstruction *rhs = instr->mutable_operand(1);
+    auto attributes = instr->frontend_attributes().map();
+    gemm_backend_config.set_grad_x(attributes["grad_x"] == "true");
+    gemm_backend_config.set_grad_y(attributes["grad_y"] == "true");
+
+    int64_t lhs_batch_dims_size =
+        instr->dot_dimension_numbers().lhs_batch_dimensions_size();
+    int64_t lhs_stride = lhs->shape().dimensions(lhs_batch_dims_size) *
+                         lhs->shape().dimensions(lhs_batch_dims_size + 1);
+    int64_t rhs_stride = rhs->shape().dimensions(lhs_batch_dims_size) *
+                         rhs->shape().dimensions(lhs_batch_dims_size + 1);
+
+    gemm_backend_config.set_lhs_stride(lhs_stride);
+    gemm_backend_config.set_rhs_stride(rhs_stride);
 
     // First try to match the fp8 gemm pattern.
     TF_ASSIGN_OR_RETURN(bool supported_by_cublaslt,
@@ -1799,7 +1820,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
             dot_dims.rhs_contracting_dimensions(),
             /*output_shape=*/instr.shape(), gemm_backend_config.alpha_real(),
             gemm_backend_config.alpha_imag(), gemm_backend_config.beta(),
-            /*algorithm*/ std::nullopt, se::blas::kDefaultComputePrecision));
+            /*algorithm*/ std::nullopt, se::blas::kDefaultComputePrecision,
+            gemm_backend_config.grad_x(), gemm_backend_config.grad_y()));
 
     if (matrix_name == "lhs" || matrix_name == "a") {
       return gemm_config.lhs_layout.order == MatrixLayout::Order::kColumnMajor;
@@ -1938,10 +1960,77 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   }
 };
 
+// Rewriter that adds a workspace to legacy cuBLAS custom calls. We run it
+// separately after gemm rewriter, so that we can do pattern matching without
+// having to match output tuples.
+class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
+ public:
+  explicit GemmWorkspaceRewriteVisitor(se::GpuComputeCapability gpu_version)
+      : gpu_version_(gpu_version) {}
+
+  Status HandleCustomCall(HloInstruction *instr) override {
+    if (instr->custom_call_target() != kGemmCallTarget ||
+        !instr->shape().IsArray()) {
+      return OkStatus();
+    }
+
+    auto *cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version_);
+
+    // Pass a user-managed workspace to legacy cuBLAS operations, as
+    // otherwise cuBLAS will use its own internal pool which will be competing
+    // with XLA allocator for device memory.
+    int64_t workspace = cuda_cc == nullptr ? 0
+                        : cuda_cc->IsAtLeastHopper()
+                            ? GemmConfig::kHopperWorkspace
+                            : GemmConfig::kDefaultWorkspace;
+
+    // Do not allocate workspace larger than the output size.
+    // TODO(ezhulenev): This is not based on any measurement, just a common
+    // sense, we should tweak it to find the minimal workspace size.
+    workspace = std::min(workspace, ShapeUtil::ByteSizeOf(instr->shape()));
+
+    // If CUDA graphs are disabled (command buffer implementation detail),
+    // then we reset the workspace size to 0 and rely on cuBlas to allocate
+    // workspace from its own pool.
+    //
+    // TODO(ezhulenev): Remove this work around, allocating workspace
+    // explicitly should always be better than relying on cuBlas.
+    bool cuda_graphs_disabled = instr->GetModule()
+                                    ->config()
+                                    .debug_options()
+                                    .xla_gpu_enable_command_buffer_size() == 0;
+    if (cuda_graphs_disabled) workspace = 0;
+
+    // Append workspace buffer to instruction outputs.
+    std::vector<Shape> output_shapes = {instr->shape()};
+    output_shapes.emplace_back(ShapeUtil::MakeShape(S8, {workspace}));
+    Shape output_shape = ShapeUtil::MakeTupleShape(output_shapes);
+
+    // Clone custom call with a new shape.
+    HloInstruction *new_call = instr->AddInstruction(
+        instr->CloneWithNewOperands(output_shape, instr->operands()));
+
+    // Update operand aliasing if it was a fused gemm with aliased output.
+    auto *custom_call = xla::Cast<HloCustomCallInstruction>(new_call);
+    if (!custom_call->output_to_operand_aliasing().empty()) {
+      custom_call->set_output_to_operand_aliasing({{{0}, {2, {}}}});
+    }
+
+    HloInstruction *get_output = instr->AddInstruction(
+        HloInstruction::CreateGetTupleElement(new_call, 0));
+    return ReplaceInstruction(instr, get_output);
+  }
+
+ private:
+  se::GpuComputeCapability gpu_version_;
+};
+
 StatusOr<bool> RunOnComputation(HloComputation *computation,
                                 se::GpuComputeCapability gpu_version) {
   GemmRewriterVisitor visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
+  GemmWorkspaceRewriteVisitor workspace_visitor(gpu_version);
+  TF_RETURN_IF_ERROR(computation->Accept(&workspace_visitor));
   return visitor.changed();
 }
 

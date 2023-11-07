@@ -217,7 +217,7 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
       [&](const HloInstruction& producer,
           const HloInstruction& consumer) -> FusionDecision {
         GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-            &producer, cost_analysis,
+            &producer, cost_analysis, GpuPerformanceModelOptions::Default(),
             // `EstimateRunTimes`'s interface violates const correctness, so we
             // need the const cast here.
             {const_cast<HloInstruction*>(&consumer)},

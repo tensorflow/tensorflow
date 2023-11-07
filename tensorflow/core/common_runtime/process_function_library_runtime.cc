@@ -463,44 +463,13 @@ ProcessFunctionLibraryRuntime::AsyncAttributes::Summarize(const Graph* graph) {
 
 void ProcessFunctionLibraryRuntime::PublishSubgraphs(
     const std::string& function_name,
-    std::unique_ptr<std::unordered_map<std::string, std::unique_ptr<Graph>>>
-        subgraphs) {
-  // Use shared_ptr since std::function cannot capture move-only objects
-  auto subgraphs_new =
-      std::shared_ptr<std::unordered_map<std::string, std::unique_ptr<Graph>>>(
-          subgraphs.release());
-  auto completed = std::make_unique<tsl::Notification>();
-  // Converting graphs to GraphDefs involves expensive copies. Delegate the work
-  // to a separate thread to unblock the caller.
-  std::function<void()> thread_fn = [this, function_name, n = completed.get(),
-                                     subgraphs = subgraphs_new]() {
-    std::unique_ptr<StatsPublisherInterface> stats_publisher =
-        stats_publisher_factory_(function_name, BuildGraphOptions(),
-                                 SessionOptions());
-    std::vector<GraphDef> published_graph_defs;
-    published_graph_defs.reserve(subgraphs->size());
-    for (const auto& pair : *subgraphs) {
-      Graph* subgraph = pair.second.get();
-      GraphDef gd;
-      subgraph->ToGraphDef(&gd);
-      published_graph_defs.push_back(std::move(gd));
-    }
-    stats_publisher->PublishGraphProto(std::move(published_graph_defs));
-    {
-      mutex_lock l(mu_);
-      stats_publishers_.push_back(std::move(stats_publisher));
-    }
-    n->Notify();
-  };
-  {
-    mutex_lock l(mu_);
-    stats_publisher_completed_.push_back(std::move(completed));
-  }
-  if (default_thread_pool_ != nullptr) {
-    default_thread_pool_->Schedule(std::move(thread_fn));
-  } else {
-    env_->SchedClosure(std::move(thread_fn));
-  }
+    std::vector<core::RefCountPtr<FunctionRecord>>&& function_records) {
+  std::unique_ptr<StatsPublisherInterface> stats_publisher =
+      stats_publisher_factory_(function_name, BuildGraphOptions(),
+                               SessionOptions());
+  stats_publisher->PublishGraphProto(std::move(function_records));
+  mutex_lock l(mu_);
+  stats_publishers_.push_back(std::move(stats_publisher));
 }
 
 Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
@@ -669,10 +638,10 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   // Instantiate each component function (subgraph).
   for (const auto& pair : *subgraphs) {
     Status* status = &instantiate_status[i];
-    string unique_name = name_generator.GetName();
     ComponentFunctionData* comp_data = &data->glue_[pair.first];
-    runner([this, &pair, dev_set, comp_data, unique_name, data_lib_def,
-            &control_ret, &options, status, &counter, &data] {
+    comp_data->name = name_generator.GetName();
+    runner([this, &pair, dev_set, comp_data, data_lib_def, &control_ret,
+            &options, status, &counter, &data] {
       const string& target = pair.first;
 
       const string& device_type =
@@ -699,7 +668,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       }
       FunctionDef shard;
       status->Update(
-          GraphToFunctionDef(*subgraph, unique_name, control_ret, &shard));
+          GraphToFunctionDef(*subgraph, comp_data->name, control_ret, &shard));
       if (!status->ok()) {
         counter.DecrementCount();
         return;
@@ -729,17 +698,18 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       ints_on_device_attr.set_b(options.int_args_and_retvals_on_device);
       attrs.insert(
           {FunctionLibraryDefinition::kIntsOnDeviceAttr, ints_on_device_attr});
-      VLOG(1) << "Start instantiating component function " << unique_name
+      VLOG(1) << "Start instantiating component function " << comp_data->name
               << " on device " << target;
       VLOG(4) << DebugString(shard);
 
       auto* component_handle = new FunctionLibraryRuntime::Handle;
-      auto done = [this, status, unique_name, comp_data, component_handle,
-                   &data, &counter](const Status& s) {
+      auto done = [this, status, comp_data, component_handle, &data,
+                   &counter](const Status& s) {
         status->Update(s);
 
-        VLOG(1) << "Finished instantiating component function " << unique_name
-                << " with handle " << *component_handle << " status: " << s;
+        VLOG(1) << "Finished instantiating component function "
+                << comp_data->name << " with handle " << *component_handle
+                << " status: " << s;
         if (status->ok()) {
           {
             mutex_lock l(mu_);
@@ -756,13 +726,13 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       FunctionLibraryRuntime* flr = GetFLR(opts.target);
       if (flr != nullptr) {
         // Initialize local function synchronously.
-        Status s = flr->Instantiate(unique_name, AttrSlice(&attrs), opts,
+        Status s = flr->Instantiate(comp_data->name, AttrSlice(&attrs), opts,
                                     component_handle);
         done(s);
       } else {
         opts.ret_indices = comp_data->ret_indices;
         // Initialize remote function asynchronously.
-        InstantiateRemote(unique_name, AttrSlice(&attrs), opts,
+        InstantiateRemote(comp_data->name, AttrSlice(&attrs), opts,
                           component_handle, done);
       }
     });
@@ -775,11 +745,17 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   }
   TF_RETURN_IF_ERROR(group.as_summary_status());
 
+  std::vector<core::RefCountPtr<FunctionRecord>> function_records;
+  for (const auto& pair : *subgraphs) {
+    ComponentFunctionData* comp_data = &data->glue_[pair.first];
+    function_records.push_back(data_lib_def->FindRecord(comp_data->name));
+  }
+
   *handle = AddMultiDeviceHandle(std::move(data), function_key);
   VLOG(1) << "Instantiated MultiDevice function \"" << function_name
           << "\" with handle " << *handle;
 
-  PublishSubgraphs(function_name, std::move(subgraphs));
+  PublishSubgraphs(function_name, std::move(function_records));
   return OkStatus();
 }
 

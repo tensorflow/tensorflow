@@ -4,11 +4,11 @@
 // CHECK-LABEL: func @main
 func.func @main() {
   // CHECK:      %[[VAL_1:.*]] = "tf.Const"
-  // CHECK-SAME:   {value = dense<{{.*}}> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+  // CHECK-SAME:   <{value = dense<{{.*}}> : tensor<4x4xf32>}> : () -> tensor<4x4xf32>
   // CHECK:      %[[GROUP_ASSIGNMENT:.*]] = "tf.Const"()
-  // CHECK-SAME:   {value = dense<{{.*}}> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+  // CHECK-SAME:   <{value = dense<{{.*}}> : tensor<2x2xi32>}> : () -> tensor<2x2xi32>
   // CHECK:      %[[VAL_2:.*]] = "tf.Const"
-  // CHECK-SAME:   {value = dense<{{.*}}> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+  // CHECK-SAME:   <{value = dense<{{.*}}> : tensor<4x4xf32>}> : () -> tensor<4x4xf32>
   //
   // CHECK:      %[[FILL:.*]] = "tf.Fill"
   // CHECK:      %[[FLATTEN_1:.*]] = "tf.Reshape"(%[[VAL_1]], %cst_{{[0-9]*}})
@@ -41,11 +41,11 @@ func.func @main() {
 // CHECK-LABEL: func @main
 func.func @main() {
   // CHECK:      %[[VAL_1:.*]] = "tf.Const"
-  // CHECK-SAME:   {value = dense<{{.*}}> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+  // CHECK-SAME:   <{value = dense<{{.*}}> : tensor<4x4xf32>}> : () -> tensor<4x4xf32>
   // CHECK:      %[[GROUP_ASSIGNMENT:.*]] = "tf.Const"()
-  // CHECK-SAME:   {value = dense<{{.*}}> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+  // CHECK-SAME:   <{value = dense<{{.*}}> : tensor<2x2xi32>}> : () -> tensor<2x2xi32>
   // CHECK:      %[[VAL_2:.*]] = "tf.Const"
-  // CHECK-SAME:   {value = dense<{{1.0.*}}> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+  // CHECK-SAME:   <{value = dense<{{1.0.*}}> : tensor<4x4xf32>}> : () -> tensor<4x4xf32>
   //
   //
   // CHECK:      %[[ALL_REDUCE_0:.*]] = "tf.DTensorAllReduce"(%[[VAL_2]], %[[GROUP_ASSIGNMENT]])
@@ -97,9 +97,9 @@ func.func @main() {
 // CHECK-LABEL: func @main
 func.func @main() {
   // CHECK:      %[[VAL:.*]] = "tf.Const"
-  // CHECK-SAME:   {value = dense<{{.*}}> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+  // CHECK-SAME:   <{value = dense<{{.*}}> : tensor<4x4xf32>}> : () -> tensor<4x4xf32>
   // CHECK:      %[[GROUP_ASSIGNMENT:.*]] = "tf.Const"()
-  // CHECK-SAME:   {value = dense<{{.*}}> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+  // CHECK-SAME:   <{value = dense<{{.*}}> : tensor<2x2xi32>}> : () -> tensor<2x2xi32>
   // CHECK:      %[[ALL_REDUCE_1:.*]] = "tf.DTensorAllReduce"(%[[VAL]], %[[GROUP_ASSIGNMENT]])
   // CHECK-SAME:   (tensor<4x4xf32>, tensor<2x2xi32>) -> tensor<4x4xf32>
   //

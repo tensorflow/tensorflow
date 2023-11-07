@@ -740,6 +740,38 @@ def _get_saver_def_or_none(
   return None
 
 
+class CustomAggregatorIdAssigner(
+    pywrap_quantize_model.CustomAggregatorIdAssigner
+):
+  """Python impl. of `pywrap_quantize_model.CustomAggregatorIdAssigner`.
+
+  The interface is defined in the C++ layer, exposing a pure virtual function
+  `assign_ids`.
+  """
+
+  def assign_ids(self, exported_model_serialized: bytes) -> bytes:
+    """Assigns UUIDs to each CustomAggregator op find in the graph def.
+
+    Args:
+      exported_model_serialized: Serialized `ExportedModel` instance.
+
+    Returns:
+      Serialized `ExportedModel` whose CustomAggregator ops are assigned UUIDs
+      to their `id` attributes.
+    """
+    exported_model = exported_model_pb2.ExportedModel.FromString(
+        exported_model_serialized
+    )
+
+    graph_def = exported_model.graph_def
+    for function_def in graph_def.library.function:
+      for node_def in function_def.node_def:
+        if node_def.op == 'CustomAggregator':
+          node_def.attr['id'].s = uuid.uuid4().hex.encode('ascii')
+
+    return exported_model.SerializeToString()
+
+
 def _run_static_range_ptq(
     src_saved_model_path: str,
     dst_saved_model_path: str,
@@ -780,6 +812,7 @@ def _run_static_range_ptq(
           set(quant_opts.tags),
           quant_opts.SerializeToString(),
           dict(function_aliases),
+          CustomAggregatorIdAssigner(),
       )
   )
 
@@ -788,11 +821,6 @@ def _run_static_range_ptq(
   )
 
   graph_def = exported_model.graph_def
-  for function_def in graph_def.library.function:
-    for node_def in function_def.node_def:
-      if node_def.op == 'CustomAggregator':
-        node_def.attr['id'].s = uuid.uuid4().hex.encode('ascii')
-
   pre_calib_output_model_path = tempfile.mkdtemp()
   save_model.save_model_v1(
       graph_def,
@@ -1376,7 +1404,7 @@ def _populate_quantization_options_default_values(
       quantization_options.min_num_elements_for_weights = (
           _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS
       )
-      logging.warn(
+      logging.warning(
           (
               'QuantizationOptions.min_num_elements_for_weights is not set (0).'
               ' Setting to the default value: %d.'
@@ -1384,15 +1412,23 @@ def _populate_quantization_options_default_values(
           _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS,
       )
 
-  # TODO(b/281595329): Implement static range quantization per-channel support
+  # TODO: b/307900054 - Set the per-channel quantization by default.
   if quantization_options.enable_per_channel_quantization and not (
-      quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
-      or quantization_options.quantization_method.preset_method
-      == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
+      (
+          quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
+          or quantization_options.quantization_method.preset_method
+          == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
+      )
+      or (
+          quantization_options.op_set == quant_opts_pb2.OpSet.XLA
+          and quantization_options.quantization_method.preset_method
+          == _PresetMethod.METHOD_STATIC_RANGE_INT8
+      )
   ):
     raise ValueError(
-        'Currently, per-channel quantization is supported for Uniform '
-        'Quantized opset and Weight-only.'
+        'Currently, per-channel quantization is supported for Uniform Quantized'
+        ' opset, weight only quantization, or XLA opset with static range'
+        ' quantization.'
     )
 
   if (

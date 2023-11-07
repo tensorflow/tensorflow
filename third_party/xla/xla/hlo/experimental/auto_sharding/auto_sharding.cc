@@ -2521,19 +2521,20 @@ AutoShardingSolverResult CallSolver(
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
 
   // Serialize node costs
+  int num_nodes_without_default = 0;
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes; ++node_idx) {
     const StrategyVector* strategies = leaf_strategies[node_idx];
     auto instruction_name = instructions.at(strategies->instruction_id)->name();
     request.instruction_names.push_back(
         absl::StrCat(instruction_name, " (id: ", node_idx, ")"));
     std::vector<double> ci, di, mi, pi;
-    auto default_strategy = HloSharding::Replicate();
+    std::optional<HloSharding> default_strategy;
     auto iter = sharding_propagation_solution.find(instruction_name);
     if (iter != sharding_propagation_solution.end()) {
       CHECK(iter->second->has_sharding()) << iter->second->ToString();
       default_strategy = iter->second->sharding();
       if (strategies->tuple_element_idx) {
-        const auto& tuple_elements = default_strategy.tuple_elements();
+        const auto& tuple_elements = default_strategy->tuple_elements();
         CHECK_LT(*strategies->tuple_element_idx, tuple_elements.size());
         default_strategy = tuple_elements.at(*strategies->tuple_element_idx);
       }
@@ -2545,15 +2546,20 @@ AutoShardingSolverResult CallSolver(
       di.push_back(strategy.communication_cost +
                    cost_graph.extra_node_costs_[node_idx][j]);
       mi.push_back(strategy.memory_cost);
-      // TODO(moffitt): Revisit the default strategy below, which is currently
-      // defined as the "trivial sharding" in hlo_sharding.h
-      pi.push_back(sharding == default_strategy ? 0.0 : 1.0);
+      pi.push_back(default_strategy && sharding == *default_strategy ? 0 : 1);
+    }
+    if (*std::min_element(pi.begin(), pi.end()) > 0) {
+      LOG(WARNING) << "No default strategy for {node_idx " << node_idx
+                   << ", instruction ID " << strategies->instruction_id
+                   << ", instruction name " << instruction_name << "}";
+      ++num_nodes_without_default;
     }
     request.c.push_back(ci);
     request.d.push_back(di);
     request.m.push_back(mi);
     request.p.push_back(pi);
   }
+  LOG(INFO) << "Total nodes without default: " << num_nodes_without_default;
 
   // Serialize special edges that forces a alias pair have the same sharding
   // spec
