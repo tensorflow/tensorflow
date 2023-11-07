@@ -125,11 +125,12 @@ class SnapshotChunkDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
 
+    ~Iterator() override { RecordBytesRead(); }
+
     absl::Status Initialize(IteratorContext* ctx) override {
       reader_ = std::make_unique<snapshot_util::TFRecordReader>(
           TranslateFileName(dataset()->chunk_file_), dataset()->compression_,
           dataset()->dtypes_, kTFRecordReaderOutputBufferSize);
-      bytes_read_ = 0;
       return reader_->Initialize(ctx->env());
     }
 
@@ -147,7 +148,6 @@ class SnapshotChunkDatasetOp::Dataset : public DatasetBase {
           status,
           " Failed to read tf.data snapshot file: ", dataset()->chunk_file_);
       ++start_index_;
-      RecordBytesRead();
       return status;
     }
 
@@ -180,15 +180,12 @@ class SnapshotChunkDatasetOp::Dataset : public DatasetBase {
 
     void RecordBytesRead() {
       uint64_t bytes_read = reader_->BytesRead();
-      static auto* bytes_counter =
-          metrics::GetTFDataBytesReadCounter(kSnapshotChunkDataset);
-      bytes_counter->IncrementBy(bytes_read - bytes_read_);
-      bytes_read_ = bytes_read;
+      metrics::GetTFDataBytesReadCounter(kSnapshotChunkDataset)
+          ->IncrementBy(bytes_read);
     }
 
     std::unique_ptr<snapshot_util::TFRecordReader> reader_;
     int64_t start_index_ = 0;
-    uint64_t bytes_read_ = 0;
   };
 
   const tstring chunk_file_;
