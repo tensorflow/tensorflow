@@ -406,7 +406,10 @@ tsl::StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
     llvm::SmallVector<Value, 4> output;
     TF_RETURN_IF_ERROR(GetOrCreateView(instr, &output));
     TF_RETURN_IF_ERROR(WalkTuplePostOrder(result, [&](Value v) mutable {
-      region_builder.create<memref::TensorStoreOp>(loc, v, output[i++]);
+      auto materialize_op =
+          region_builder.create<bufferization::MaterializeInDestinationOp>(
+              loc, v, output[i++]);
+      materialize_op.setWritable(true);
       return ::tsl::OkStatus();
     }));
     if (i != output.size()) {

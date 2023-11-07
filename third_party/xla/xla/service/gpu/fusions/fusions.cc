@@ -40,8 +40,8 @@ bool IsSingleInstructionFusion(mlir::lmhlo::FusionOp fusion) {
   bool seen_instruction = false;
   for (mlir::Operation& instr : fusion.getRegion().front()) {
     if (mlir::isa<mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
-                  mlir::bufferization::ToTensorOp, mlir::memref::TensorStoreOp>(
-            &instr)) {
+                  mlir::bufferization::ToTensorOp,
+                  mlir::bufferization::MaterializeInDestinationOp>(&instr)) {
       continue;
     }
     if (seen_instruction) return false;

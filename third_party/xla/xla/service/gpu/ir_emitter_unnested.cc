@@ -1865,7 +1865,7 @@ Status IrEmitterUnnested::EmitTriangularSolveCustomCall(mlir::Operation* op) {
 //     %0 = tensor_load %external_memref0
 //     %1 = tensor_load %external_memref1
 //     ...
-//     tensor_store %ret, %external_memref2
+//     materialize_in_destination %ret, %external_memref2
 //   }
 // to
 //   fusion(%external_memref0, %external_memref1) (^bb(%0, %1) {
@@ -1880,7 +1880,7 @@ static Status ProcessFusionForConversion(mlir::Region* region,
                                          std::vector<Shape>* operand_shapes,
                                          std::vector<Shape>* output_shapes) {
   std::vector<mlir::bufferization::ToTensorOp> loads;
-  std::vector<mlir::memref::TensorStoreOp> stores;
+  std::vector<mlir::bufferization::MaterializeInDestinationOp> stores;
 
   region->walk([&](mlir::bufferization::ToTensorOp load) {
     if (load.getMemref().getParentRegion() != region) {
@@ -1888,8 +1888,9 @@ static Status ProcessFusionForConversion(mlir::Region* region,
     }
   });
 
-  region->walk([&](mlir::memref::TensorStoreOp store) {
-    if (store.getMemref().getParentRegion() != region) {
+  region->walk([&](mlir::bufferization::MaterializeInDestinationOp store) {
+    if (!isa<mlir::TensorType>(store.getDest().getType())) return;
+    if (store.getDest().getParentRegion() != region) {
       stores.push_back(store);
     }
   });
@@ -1904,10 +1905,10 @@ static Status ProcessFusionForConversion(mlir::Region* region,
 
   std::vector<mlir::Value> returned_values;
   for (auto store : stores) {
-    Shape shape = GetShape(store.getMemref());
+    Shape shape = GetShape(store.getDest());
     output_shapes->push_back(shape);
 
-    returned_values.push_back(store.getTensor());
+    returned_values.push_back(store.getSource());
     store.erase();
   }
 

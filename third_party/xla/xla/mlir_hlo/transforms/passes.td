@@ -152,8 +152,9 @@ def GenericHostToLLVMPass : Pass<"generic-host-to-llvm", "ModuleOp"> {
 def UnbufferizePass : Pass<"unbufferize", "mlir::func::FuncOp"> {
   let summary = "Unbufferize partially bufferized functions.";
   let description = [{
-    Removes bufferization.to_tensor and memref.tensor_store ops that are the
-    result of XLA bufferizing during HLO to MHLO transformation.
+    Removes bufferization.to_tensor and bufferization.materialize_in_destination
+    ops that are the result of XLA bufferizing during HLO to MHLO
+    transformation.
   }];
   let constructor = "hlo::createUnbufferizePass()";
 }

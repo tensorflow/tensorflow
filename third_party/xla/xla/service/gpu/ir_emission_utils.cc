@@ -538,7 +538,7 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
       }
       dus_user = *bitcast->user_begin();
     }
-    if (!mlir::isa<mlir::memref::TensorStoreOp>(dus_user)) {
+    if (!mlir::isa<mlir::bufferization::MaterializeInDestinationOp>(dus_user)) {
       return false;
     }
     auto operand = dus.getOperand();
@@ -564,8 +564,8 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     q.push(parameter);
     visited.insert(parameter);
     // We have already checked above that the DUS only has one user: a
-    // (possibly bitcasted) TensorStoreOp. So we don't need to visit it during
-    // the breadth-first search.
+    // (possibly bitcasted) MaterializeInDestinationOp. So we don't need to
+    // visit it during the breadth-first search.
     visited.insert(dus);
     while (!q.empty()) {
       auto op = q.front();
