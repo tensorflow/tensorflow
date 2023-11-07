@@ -121,6 +121,8 @@ cuda_py_strict_test(
         "no_oss",
         "no_pip",
         "nomac",
+        # TODO(b/303453873): Re-enable tests once TensorRT has been updated
+        "notap",
     ],
     xla_enable_strict_auto_jit = False,
     deps = [

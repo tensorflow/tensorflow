@@ -93,6 +93,8 @@ base_tags = [
     "no_rocm",
     "no_windows",
     "nomac",
+    # TODO(b/303453873): Re-enable tests once TensorRT has been updated
+    "notap",
 ]
 
 cuda_py_strict_test(
