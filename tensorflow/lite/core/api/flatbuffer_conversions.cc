@@ -2123,7 +2123,8 @@ TfLiteStatus ParseStablehloReduceWindow(const Operator* op,
     const size_t rank = schema_params->window_dimensions()->size();
 
     auto LoadAttr = [&error_reporter](
-                        auto& params_array, auto* const flatbuffer_vector,
+                        int64_t* params_array, size_t params_array_size_bytes,
+                        const flatbuffers::Vector<int64_t>* flatbuffer_vector,
                         const char* attr_name, const size_t expected_size,
                         const int64_t fill_value) -> TfLiteStatus {
       if (flatbuffer_vector && flatbuffer_vector->size()) {
@@ -2136,7 +2137,7 @@ TfLiteStatus ParseStablehloReduceWindow(const Operator* op,
           return kTfLiteError;
         }
         TfLiteStatus status = FlatBufferIntVectorToArray(
-            sizeof(params_array), flatbuffer_vector, params_array,
+            params_array_size_bytes, flatbuffer_vector, params_array,
             error_reporter, "stablehlo.reduce_window");
         if (status != kTfLiteOk) {
           TF_LITE_REPORT_ERROR(error_reporter, "Check the '%s' attribute.",
@@ -2144,43 +2145,32 @@ TfLiteStatus ParseStablehloReduceWindow(const Operator* op,
           return status;
         }
       } else {
-        std::fill_n(params_array,
-                    TFLITE_STABLEHLO_REDUCE_WINDOW_PARAMS_MAX_DIMENSION_COUNT,
+        std::fill_n(params_array, params_array_size_bytes / sizeof(int64_t),
                     fill_value);
       }
       return kTfLiteOk;
     };
 
-    if (TfLiteStatus status = LoadAttr(
-            params->window_dimensions, schema_params->window_dimensions(),
-            "window_dimensions", /*expected_size=*/rank, /*fill_value=*/1);
-        status != kTfLiteOk) {
-      return status;
-    }
-    if (TfLiteStatus status = LoadAttr(
-            params->window_strides, schema_params->window_strides(),
-            "window_strides", /*expected_size=*/rank, /*fill_value=*/1);
-        status != kTfLiteOk) {
-      return status;
-    }
-    if (TfLiteStatus status = LoadAttr(
-            params->base_dilations, schema_params->base_dilations(),
-            "base_dilations", /*expected_size=*/rank, /*fill_value=*/1);
-        status != kTfLiteOk) {
-      return status;
-    }
-    if (TfLiteStatus status = LoadAttr(
-            params->window_dilations, schema_params->window_dilations(),
-            "window_dilations", /*expected_size=*/rank, /*fill_value=*/1);
-        status != kTfLiteOk) {
-      return status;
-    }
-    if (TfLiteStatus status =
-            LoadAttr(params->padding, schema_params->padding(), "padding",
-                     /*expected_size=*/2 * rank, /*fill_value=*/0);
-        status != kTfLiteOk) {
-      return status;
-    }
+    TF_LITE_ENSURE_STATUS(
+        LoadAttr(params->window_dimensions, sizeof(params->window_dimensions),
+                 schema_params->window_dimensions(), "window_dimensions",
+                 /*expected_size=*/rank, /*fill_value=*/1));
+    TF_LITE_ENSURE_STATUS(
+        LoadAttr(params->window_strides, sizeof(params->window_strides),
+                 schema_params->window_strides(), "window_strides",
+                 /*expected_size=*/rank, /*fill_value=*/1));
+    TF_LITE_ENSURE_STATUS(
+        LoadAttr(params->base_dilations, sizeof(params->base_dilations),
+                 schema_params->base_dilations(), "base_dilations",
+                 /*expected_size=*/rank, /*fill_value=*/1));
+    TF_LITE_ENSURE_STATUS(
+        LoadAttr(params->window_dilations, sizeof(params->window_dilations),
+                 schema_params->window_dilations(), "window_dilations",
+                 /*expected_size=*/rank, /*fill_value=*/1));
+    TF_LITE_ENSURE_STATUS(LoadAttr(params->padding, sizeof(params->padding),
+                                   schema_params->padding(), "padding",
+                                   /*expected_size=*/2 * rank,
+                                   /*fill_value=*/0));
 
     params->body_subgraph_index = schema_params->body_subgraph_index();
     *builtin_data = params.release();
