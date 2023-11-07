@@ -226,8 +226,7 @@ class StablehloReduceWindowFlatbufferConversionsTest
   auto EmptyAttr() { return builder_.CreateVector<int64_t>({}); }
 };
 
-TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
-       ParseStablehloReduceWindow) {
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest, Succeeds) {
   const Operator* stablehlo_reduce_window_op = BuildTestOperator(
       BuiltinOptions2_StablehloReduceWindowOptions,
       CreateStablehloReduceWindowOptions(
@@ -260,40 +259,7 @@ TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
 }
 
 TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
-       ParseStablehloReduceWindowDeathTests) {
-  const Operator* stablehlo_reduce_window_op = BuildTestOperator(
-      BuiltinOptions2_StablehloReduceWindowOptions,
-      CreateStablehloReduceWindowOptions(
-          builder_, /*window_dimensions=*/ValidAttr(),
-          /*window_strides=*/ValidAttr(),
-          /*base_dilations=*/ValidAttr(),
-          /*window_dilations=*/ValidAttr(),
-          /*padding=*/ValidPaddingAttr(), /*body_subgraph_index=*/13)
-          .Union());
-  TfLiteStablehloReduceWindowParams* output_data = nullptr;
-#ifdef NDEBUG
-  GTEST_SKIP();
-#endif
-  EXPECT_DEATH(
-      ParseOpData(nullptr, BuiltinOperator_STABLEHLO_REDUCE_WINDOW,
-                  &mock_reporter_, &mock_allocator_, (void**)&output_data),
-      "");
-  EXPECT_DEATH(ParseOpData(stablehlo_reduce_window_op,
-                           BuiltinOperator_STABLEHLO_REDUCE_WINDOW, nullptr,
-                           &mock_allocator_, (void**)&output_data),
-               "");
-  EXPECT_DEATH(ParseOpData(stablehlo_reduce_window_op,
-                           BuiltinOperator_STABLEHLO_REDUCE_WINDOW,
-                           &mock_reporter_, nullptr, (void**)&output_data),
-               "");
-  EXPECT_DEATH(ParseOpData(stablehlo_reduce_window_op,
-                           BuiltinOperator_STABLEHLO_REDUCE_WINDOW,
-                           &mock_reporter_, &mock_allocator_, nullptr),
-               "");
-}
-
-TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
-       ParseStablehloReduceWindowFailsWithNoWindowDimensions) {
+       FailsWithNoWindowDimensions) {
   TfLiteStablehloReduceWindowParams* output_data = nullptr;
   EXPECT_EQ(ParseOpData(
                 BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
@@ -315,7 +281,7 @@ TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
 }
 
 TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
-       ParseStablehloReduceWindowSucceedsWithNoWindowStrides) {
+       SucceedsWithNoWindowStrides) {
   TfLiteStablehloReduceWindowParams* output_data = nullptr;
   EXPECT_EQ(ParseOpData(
                 BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
@@ -345,7 +311,7 @@ TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
 }
 
 TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
-       ParseStablehloReduceWindowSucceedsWithNoBaseDilations) {
+       SucceedsWithNoBaseDilations) {
   TfLiteStablehloReduceWindowParams* output_data = nullptr;
   EXPECT_EQ(ParseOpData(
                 BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
@@ -375,7 +341,7 @@ TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
 }
 
 TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
-       ParseStablehloReduceWindowSucceedsWithNoWindowDilations) {
+       SucceedsWithNoWindowDilations) {
   TfLiteStablehloReduceWindowParams* output_data = nullptr;
   EXPECT_EQ(ParseOpData(
                 BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
@@ -405,8 +371,7 @@ TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
   EXPECT_THAT(output_data->body_subgraph_index, Eq(13));
 }
 
-TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
-       ParseStablehloReduceWindowSucceedsWithNoPadding) {
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest, SucceedsWithNoPadding) {
   TfLiteStablehloReduceWindowParams* output_data = nullptr;
   EXPECT_EQ(ParseOpData(
                 BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
@@ -436,7 +401,7 @@ TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
 }
 
 TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
-       ParseStablehloReduceWindowFailsWithEmptyWindowDimensions) {
+       FailsWithEmptyWindowDimensions) {
   TfLiteStablehloReduceWindowParams* output_data = nullptr;
   EXPECT_EQ(ParseOpData(
                 BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
@@ -458,7 +423,7 @@ TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
 }
 
 TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
-       ParseStablehloReduceWindowSucceedsWithEmptyWindowStrides) {
+       SucceedsWithEmptyWindowStrides) {
   TfLiteStablehloReduceWindowParams* output_data = nullptr;
   EXPECT_EQ(ParseOpData(
                 BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
@@ -488,7 +453,7 @@ TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
 }
 
 TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
-       ParseStablehloReduceWindowSucceedsWithEmptyBaseDilations) {
+       SucceedsWithEmptyBaseDilations) {
   TfLiteStablehloReduceWindowParams* output_data = nullptr;
   EXPECT_EQ(ParseOpData(
                 BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
@@ -518,7 +483,7 @@ TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
 }
 
 TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
-       ParseStablehloReduceWindowSucceedsWithEmptyWindowDilations) {
+       SucceedsWithEmptyWindowDilations) {
   TfLiteStablehloReduceWindowParams* output_data = nullptr;
   EXPECT_EQ(ParseOpData(
                 BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
@@ -549,7 +514,7 @@ TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
 }
 
 TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
-       ParseStablehloReduceWindowSucceedsWithEmptyPadding) {
+       SucceedsWithEmptyPadding) {
   TfLiteStablehloReduceWindowParams* output_data = nullptr;
   EXPECT_EQ(ParseOpData(
                 BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
@@ -579,7 +544,7 @@ TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
 }
 
 TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
-       ParseStablehloReduceWindowSucceedsWithParamsAtMaxDims) {
+       SucceedsWithParamsAtMaxDims) {
   TfLiteStablehloReduceWindowParams* output_data = nullptr;
   EXPECT_EQ(ParseOpData(
                 BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
@@ -599,7 +564,7 @@ TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
 }
 
 TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
-       ParseStablehloReduceWindowFailsWhenWindowDimensionsHasMoreThanMaxDims) {
+       FailsWhenWindowDimensionsHasMoreThanMaxDims) {
   TfLiteStablehloReduceWindowParams* output_data = nullptr;
   EXPECT_EQ(ParseOpData(
                 BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
@@ -622,7 +587,7 @@ TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
 }
 
 TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
-       ParseStablehloReduceWindowFailsWhenWindowStridesHasWrongDimCount) {
+       FailsWhenWindowStridesHasWrongDimCount) {
   TfLiteStablehloReduceWindowParams* output_data = nullptr;
   EXPECT_EQ(ParseOpData(
                 BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
@@ -645,7 +610,7 @@ TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
 }
 
 TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
-       ParseStablehloReduceWindowFailsWhenBaseDilationsHasWrongDimCount) {
+       FailsWhenBaseDilationsHasWrongDimCount) {
   TfLiteStablehloReduceWindowParams* output_data = nullptr;
   EXPECT_EQ(ParseOpData(
                 BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
@@ -668,7 +633,7 @@ TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
 }
 
 TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
-       ParseStablehloReduceWindowFailsWhenWindowDilationsHasWrongDimCount) {
+       FailsWhenWindowDilationsHasWrongDimCount) {
   TfLiteStablehloReduceWindowParams* output_data = nullptr;
   EXPECT_EQ(ParseOpData(
                 BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
@@ -692,7 +657,7 @@ TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
 }
 
 TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
-       ParseStablehloReduceWindowFailsWhenPaddingHasWrongDimCount) {
+       FailsWhenPaddingHasWrongDimCount) {
   TfLiteStablehloReduceWindowParams* output_data = nullptr;
   EXPECT_EQ(ParseOpData(
                 BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
@@ -713,8 +678,7 @@ TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
                         "not have the expected size"));
 }
 
-TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
-       ParseStablehloReduceWindowFailsWithWrongOptions) {
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest, FailsWithWrongOptions) {
   const Operator* stablehlo_reduce_window_op =
       BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions, 0);
   TfLiteStablehloReduceWindowParams* output_data = nullptr;
@@ -727,6 +691,38 @@ TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
       mock_reporter_.GetString(),
       HasSubstr(
           "Could not get 'stablehlo.reduce_window' operation parameters."));
+}
+
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest, DeathTests) {
+  const Operator* stablehlo_reduce_window_op = BuildTestOperator(
+      BuiltinOptions2_StablehloReduceWindowOptions,
+      CreateStablehloReduceWindowOptions(
+          builder_, /*window_dimensions=*/ValidAttr(),
+          /*window_strides=*/ValidAttr(),
+          /*base_dilations=*/ValidAttr(),
+          /*window_dilations=*/ValidAttr(),
+          /*padding=*/ValidPaddingAttr(), /*body_subgraph_index=*/13)
+          .Union());
+  TfLiteStablehloReduceWindowParams* output_data = nullptr;
+#ifdef NDEBUG
+  GTEST_SKIP();
+#endif
+  EXPECT_DEATH(
+      ParseOpData(nullptr, BuiltinOperator_STABLEHLO_REDUCE_WINDOW,
+                  &mock_reporter_, &mock_allocator_, (void**)&output_data),
+      "");
+  EXPECT_DEATH(ParseOpData(stablehlo_reduce_window_op,
+                           BuiltinOperator_STABLEHLO_REDUCE_WINDOW, nullptr,
+                           &mock_allocator_, (void**)&output_data),
+               "");
+  EXPECT_DEATH(ParseOpData(stablehlo_reduce_window_op,
+                           BuiltinOperator_STABLEHLO_REDUCE_WINDOW,
+                           &mock_reporter_, nullptr, (void**)&output_data),
+               "");
+  EXPECT_DEATH(ParseOpData(stablehlo_reduce_window_op,
+                           BuiltinOperator_STABLEHLO_REDUCE_WINDOW,
+                           &mock_reporter_, &mock_allocator_, nullptr),
+               "");
 }
 
 }  // namespace tflite
