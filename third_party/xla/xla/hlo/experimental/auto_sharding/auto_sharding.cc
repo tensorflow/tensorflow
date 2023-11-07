@@ -2531,7 +2531,7 @@ AutoShardingSolverResult CallSolver(
       CHECK(iter->second->has_sharding()) << iter->second->ToString();
       default_strategy = iter->second->sharding();
       if (strategies->tuple_element_idx) {
-        const auto& tuple_elements = default_strategy->tuple_elements();
+        const auto& tuple_elements = iter->second->sharding().tuple_elements();
         CHECK_LT(*strategies->tuple_element_idx, tuple_elements.size());
         default_strategy = tuple_elements.at(*strategies->tuple_element_idx);
       }
