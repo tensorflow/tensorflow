@@ -197,9 +197,8 @@ GenerateReshardingCostsAndMissingShardingsForAllOperands(
       auto operand_shape = operand->shape();
       if (ins->opcode() == HloOpcode::kGather && k == 0 &&
           is_sharding_default_replicated) {
-        LOG(INFO)
-            << "Zeroing out operand 0 resharding costs for gather sharding "
-            << output_sharding.ToString();
+        VLOG(2) << "Zeroing out operand 0 resharding costs for gather sharding "
+                << output_sharding.ToString();
         resharding_costs.push_back(
             std::vector<double>(operand_strategies->leaf_vector.size(), 0));
         input_shardings[k] = std::nullopt;
@@ -834,7 +833,6 @@ void BuildStrategyAndCostForOp(const HloInstruction* ins, const Shape& shape,
     std::tie(resharding_costs, input_shardings) =
         ReshardingCostsForTupleOperand(ins->operand(0),
                                        strategy_map.at(ins->operand(0)).get());
-    LOG(INFO) << absl::StrJoin(resharding_costs.back(), ",");
   } else {
     std::tie(resharding_costs, input_shardings) =
         GenerateReshardingCostsAndShardingsForAllOperands(
@@ -4508,7 +4506,7 @@ StatusOr<bool> AutoSharding::Run(
   if (!option_.enable) {
     return false;
   }
-  VLOG(1) << "Start auto sharding pass";
+  LOG(INFO) << "Starting the auto sharding pass";
 
   if (IsModuleManuallySharded(module)) {
     LOG(ERROR)
@@ -4528,7 +4526,7 @@ StatusOr<bool> AutoSharding::Run(
 #endif
 
   TF_RETURN_IF_ERROR(option_.CheckAndSetup());
-  VLOG(1) << "AutoShardingOptions:\n" << option_.ToString();
+  LOG(INFO) << "AutoShardingOptions:\n" << option_.ToString();
 
   absl::flat_hash_set<std::string> replicated_small_tensors;
   if (option_.small_tensor_byte_size > 0) {
@@ -4586,7 +4584,7 @@ StatusOr<bool> AutoSharding::Run(
 
     CHECK_OK(sharding_prop.Run(module_with_default_solution.get(),
                                execution_threads));
-    LOG(INFO) << module_with_default_solution->ToString();
+    VLOG(6) << module_with_default_solution->ToString();
     for (const auto computation :
          module_with_default_solution->computations()) {
       for (const auto instruction : computation->instructions()) {
