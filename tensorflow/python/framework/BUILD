@@ -19,6 +19,10 @@ load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_xla_deps_py")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
+load(
+    "//tensorflow/tools/test:performance.bzl",
+    "cuda_py_benchmark_test",
+)
 
 visibility = tf_python_framework_friends()
 
@@ -3254,7 +3258,7 @@ tf_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "graph_building_benchmark",
     size = "medium",
     srcs = ["graph_building_benchmark.py"],
