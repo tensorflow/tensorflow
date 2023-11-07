@@ -13,13 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/buffer_comparator.h"
-
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <cuda_fp8.h>
 
-namespace xla::gpu {
+namespace xla::gpu::buffer_comparator {
 
 // Comparison kernel code: compare two buffers of
 // fp8/bf16/fp16/fp32/fp64/int8_t/int32_t of length buffer_length where the
@@ -182,36 +180,36 @@ __global__ void xla_int32_comparison(int* buffer_a, int* buffer_b,
 
 }  // namespace
 
-/*static*/ void* BufferComparator::fp8_e4m3fn_comparison() {
+void* fp8_e4m3fn_comparison() {
   return reinterpret_cast<void*>(&xla_fp8_e4m3fn_comparison);
 }
 
-/*static*/ void* BufferComparator::fp8_e5m2_comparison() {
+void* fp8_e5m2_comparison() {
   return reinterpret_cast<void*>(&xla_fp8_e5m2_comparison);
 }
 
-/*static*/ void* BufferComparator::fp16_comparison() {
+void* fp16_comparison() {
   return reinterpret_cast<void*>(&xla_fp16_comparison);
 }
 
-/*static*/ void* BufferComparator::bf16_comparison() {
+void* bf16_comparison() {
   return reinterpret_cast<void*>(&xla_bf16_comparison);
 }
 
-/*static*/ void* BufferComparator::fp32_comparison() {
+void* fp32_comparison() {
   return reinterpret_cast<void*>(&xla_fp32_comparison);
 }
 
-/*static*/ void* BufferComparator::fp64_comparison() {
+void* fp64_comparison() {
   return reinterpret_cast<void*>(&xla_fp64_comparison);
 }
 
-/*static*/ void* BufferComparator::int8_comparison() {
+void* int8_comparison() {
   return reinterpret_cast<void*>(&xla_int8_comparison);
 }
 
-/*static*/ void* BufferComparator::int32_comparison() {
+void* int32_comparison() {
   return reinterpret_cast<void*>(&xla_int32_comparison);
 }
 
-}  // namespace xla::gpu
+}  // namespace xla::gpu::buffer_comparator
