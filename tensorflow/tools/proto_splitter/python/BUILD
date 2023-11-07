@@ -35,6 +35,7 @@ py_strict_test(
     deps = [
         ":saved_model",
         ":test_util",
+        #internal proto upb dep
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/tools/proto_splitter:constants",
@@ -56,6 +57,7 @@ py_strict_test(
     name = "test_util_test",
     srcs = ["test_util_test.py"],
     deps = [
+        #internal proto upb dep
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/tools/proto_splitter/python:test_util",
