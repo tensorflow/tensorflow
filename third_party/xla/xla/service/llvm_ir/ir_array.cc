@@ -548,9 +548,8 @@ llvm::Value* IrArray::EmitLinearArrayElementAddress(
   llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
   llvm::Type* type = PrimitiveTypeToIrType(shape_.element_type(), module);
   if (!primitive_util::Is4BitType(shape_.element_type())) {
-    return b->CreateInBoundsGEP(
-        type, b->CreateBitCast(base_ptr_, type->getPointerTo()), index.linear(),
-        llvm_ir::AsStringRef(name));
+    return b->CreateInBoundsGEP(type, base_ptr_, index.linear(),
+                                llvm_ir::AsStringRef(name));
   }
 
   // Handle int4 case by dividing index by 2. Int4 arrays are represented in
@@ -565,9 +564,8 @@ llvm::Value* IrArray::EmitLinearArrayElementAddress(
   // is_high_order_bits must be set for int4 arrays.
   CHECK_NE(is_high_order_bits, nullptr);
   *is_high_order_bits = b->CreateICmpEQ(remainder, zero);
-  return b->CreateInBoundsGEP(type,
-                              b->CreateBitCast(base_ptr_, type->getPointerTo()),
-                              byte_offset, llvm_ir::AsStringRef(name));
+  return b->CreateInBoundsGEP(type, base_ptr_, byte_offset,
+                              llvm_ir::AsStringRef(name));
 }
 
 void IrArray::AnnotateLoadStoreInstructionWithMetadata(
@@ -653,9 +651,7 @@ IrArray IrArray::CastToShape(const Shape& new_shape,
 
   llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
   llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, module);
-  IrArray new_irarray(
-      b->CreatePointerCast(base_ptr_, new_ir_type->getPointerTo()), new_ir_type,
-      new_shape);
+  IrArray new_irarray(base_ptr_, new_ir_type, new_shape);
   new_irarray.metadata_ = metadata_;
   return new_irarray;
 }

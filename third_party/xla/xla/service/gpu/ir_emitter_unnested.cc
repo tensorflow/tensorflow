@@ -459,8 +459,7 @@ llvm::Value* IrEmitterUnnested::CreateLoad(llvm::Value* address,
   int data_bytes = data_type->getPrimitiveSizeInBits() /
                    primitive_util::BitWidth(PrimitiveType::U8);
   if (alignment_bytes == 0) {
-    return b_.CreateLoad(data_type,
-                         b_.CreateBitCast(address, data_type->getPointerTo()));
+    return b_.CreateLoad(data_type, address);
   }
 
   int alignment_bitwidth =
@@ -489,8 +488,7 @@ void IrEmitterUnnested::CreateStore(llvm::Value* data, llvm::Value* address,
                    primitive_util::BitWidth(PrimitiveType::U8);
   CHECK_GE(data_bytes, alignment_bytes);
   if (alignment_bytes == 0) {
-    b_.CreateStore(data,
-                   b_.CreateBitCast(address, data->getType()->getPointerTo()));
+    b_.CreateStore(data, address);
     return;
   }
 
@@ -505,10 +503,7 @@ void IrEmitterUnnested::CreateStore(llvm::Value* data, llvm::Value* address,
         b_.CreateLShr(data,
                       llvm::ConstantInt::get(b_.getInt32Ty(), offset_bytes)),
         b_.getIntNTy(alignment_bitwidth), "truncated_value");
-    b_.CreateStore(
-        shifted_partial,
-        b_.CreateBitCast(offset_address,
-                         b_.getIntNTy(alignment_bitwidth)->getPointerTo()));
+    b_.CreateStore(shifted_partial, offset_address);
   }
 }
 
@@ -545,8 +540,6 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
   //   int* source_array = input[0];
   //   int* dest_array = output[0];
   llvm::Value* source_buffer = source_array.GetBasePointer();
-  llvm::Value* raw_buffer =
-      b_.CreateBitCast(source_buffer, b_.getInt8Ty()->getPointerTo());
 
   // TODO(jurahul): input_shape here is the static shape of the input (which has
   // a dynamic shape in XLA). Currently, we are mapping that to a static shaped
@@ -567,7 +560,7 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
 
     const int64_t dim_index = i - 1;
     llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
-        b_.getInt8Ty(), raw_buffer,
+        b_.getInt8Ty(), source_buffer,
         raw_data_size + dim_index * sizeof(int32_t));
     llvm::Value* dyn_dim_size =
         CreateLoad(metadata, b_.getInt32Ty(), alignment);
@@ -680,8 +673,6 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
   //   int* dest_array = output[0];
   const llvm_ir::IrArray data_array = input_arrays.back();
   llvm::Value* dest_buffer = data_array.GetBasePointer();
-  llvm::Value* raw_buffer =
-      b_.CreateBitCast(dest_buffer, b_.getInt8Ty()->getPointerTo());
 
   // Load dynamic dimensions from memory.
   std::vector<llvm::Value*> dynamic_dims;
@@ -706,7 +697,7 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
     for (int64_t i = 1; i < slice_to_dynamic.getArgs().size(); ++i) {
       const int64_t dim_index = i - 1;
       llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
-          b_.getInt8Ty(), raw_buffer,
+          b_.getInt8Ty(), dest_buffer,
           raw_data_size + dim_index * sizeof(int32_t));
       // output[i] stores dynamic_dim_(i-1)
       CreateStore(dynamic_dims[dim_index], metadata, alignment);
@@ -2483,10 +2474,6 @@ Status IrEmitterUnnested::EmitRngGetAndUpdateState(mlir::Operation* op) {
       llvm_ir::IrArray::Index(
           /*linear=*/b_.getInt64(0), shape, &b_),
       &b_, "rng_state_address");
-  output_address = BitCast(
-      output_address, llvm::PointerType::get(
-                          old_state->getType(),
-                          output_address->getType()->getPointerAddressSpace()));
   Store(old_state, output_address);
 
   return OkStatus();

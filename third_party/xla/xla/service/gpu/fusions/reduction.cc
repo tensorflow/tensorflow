@@ -450,10 +450,7 @@ void EmitFullWarpShuffleDownLoopForReduce(
       llvm::Type* shuffled_value_type = element_type->isStructTy()
                                             ? builder->getIntNTy(bit_width)
                                             : element_type;
-      auto convert_pointer_for_shuffle = [&](llvm::Value* ptr) {
-        return builder->CreatePointerBitCastOrAddrSpaceCast(
-            ptr, shuffled_value_type->getPointerTo());
-      };
+      auto convert_pointer_for_shuffle = [&](llvm::Value* ptr) { return ptr; };
 
       llvm::Value* partial_result = builder->CreateLoad(
           shuffled_value_type,

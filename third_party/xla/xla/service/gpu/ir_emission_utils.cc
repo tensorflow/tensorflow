@@ -191,7 +191,7 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
         builder->CreateGEP(arguments_type, arguments_ptr,
                            {builder->getInt64(0), builder->getInt32(i)}));
   }
-  llvm::Type* ptr_ty = builder->getInt8Ty()->getPointerTo();
+  llvm::Type* ptr_ty = builder->getPtrTy();
   return builder->CreateCall(
       builder->GetInsertBlock()->getParent()->getParent()->getOrInsertFunction(
           "vprintf",
