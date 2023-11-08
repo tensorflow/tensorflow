@@ -538,7 +538,7 @@ struct PackedArgType<const DeviceMemory<T> *> {
 
 // Overload set for packing kernel arguments. This overload set matches
 // supported kernel arguments types defined by `PackedArgType`.
-template <typename T>
+template <typename T, std::enable_if_t<!std::is_pointer_v<T>> * = nullptr>
 T PackArg(const T &arg) {
   return arg;
 }
@@ -621,14 +621,14 @@ class KernelArgsPackedTuple : public KernelArgsPackedArrayBase {
 // checks.
 template <typename... Params, typename... Args>
 std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
-    const TypedKernel<Params...> &kernel, const Args &...args) {
+    const TypedKernel<Params...> &kernel, Args... args) {
   using PackedParams = KernelArgsPackedTuple<Params...>;
   using PackedArgs = KernelArgsPackedTuple<Args...>;
 
   PackedParams::template CheckCompatibleStaticAssert<Args...>();
 
   int64_t shmem_bytes = kernel.metadata().shared_memory_bytes().value_or(0);
-  return std::make_unique<PackedArgs>(shmem_bytes, args...);
+  return std::make_unique<PackedArgs>(shmem_bytes, std::forward<Args>(args)...);
 }
 
 }  // namespace stream_executor
