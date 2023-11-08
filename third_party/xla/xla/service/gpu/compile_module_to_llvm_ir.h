@@ -61,23 +61,13 @@ void RemoveUnusedAndUninitializedGlobals(
     llvm::Module* llvm_module,
     const std::vector<GpuExecutable::ConstantInfo>& constants);
 
-// Compile `hlo_module` using XLA GPU and return the LLVM module thus generated.
-// The GpuExecutable (and the Thunks that are part of it) are not returned.
-StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
-    HloModule* hlo_module, llvm::LLVMContext* llvm_context,
-    const std::string& target_triple, const std::string& data_layout,
-    const std::string& platform_name, se::Platform::Id platform_id,
-    const se::DeviceDescription& gpu_device_info,
-    const BufferValue::SizeFunction& buffer_size_bytes_function);
-
-Status CompileModuleToLlvmIrImpl(
+StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, se::Platform::Id platform_id,
     const se::DeviceDescription& gpu_device_info,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
-    const BufferValue::SizeFunction& buffer_size_bytes_function,
-    CompileModuleResults* results);
+    const BufferValue::SizeFunction& buffer_size_bytes_function);
 
 }  // namespace gpu
 }  // namespace xla
