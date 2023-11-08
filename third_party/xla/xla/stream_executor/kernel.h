@@ -377,7 +377,8 @@ class KernelArgsPackedArray : public KernelArgsPackedArrayBase, ArgsStorage {
       argument_addresses_[number_of_argument_addresses_++] =
           ArgsStorage::add_pod_argument(arg);
     } else {
-      static_assert(false, "Arguments storage is not supported");
+      // https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2022/p2593r0.html
+      static_assert(sizeof(T) == 0, "Arguments storage is not supported");
     }
   }
 
