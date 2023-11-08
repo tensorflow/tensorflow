@@ -70,6 +70,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_KERNEL_H_
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -376,7 +377,6 @@ class KernelArgsPackedArray : public KernelArgsPackedArrayBase {
     std::memcpy(generic_arg_storage, &arg, sizeof(T));
 
     argument_addresses_[number_of_argument_addresses_] = generic_arg_storage;
-    argument_sizes_[number_of_argument_addresses_] = sizeof(arg);
     ++number_of_argument_addresses_;
   }
 
@@ -386,7 +386,6 @@ class KernelArgsPackedArray : public KernelArgsPackedArrayBase {
         &device_memory_opaque_pointers_[number_of_argument_addresses_];
     *copy_ptr = arg.opaque();
     argument_addresses_[number_of_argument_addresses_] = copy_ptr;
-    argument_sizes_[number_of_argument_addresses_] = sizeof(void *);
     ++number_of_argument_addresses_;
   }
 
@@ -395,17 +394,13 @@ class KernelArgsPackedArray : public KernelArgsPackedArrayBase {
   // The only significant information about a shared argument is its size, so
   // that is the only parameter in this function.
   void add_shared_bytes(size_t number_of_bytes) {
-    shared_memory_indices_[number_of_shared_memory_arguments_] =
-        number_of_argument_addresses_ + number_of_shared_memory_arguments_;
-    shared_memory_bytes_[number_of_shared_memory_arguments_] = number_of_bytes;
-    ++number_of_shared_memory_arguments_;
     total_shared_memory_bytes_ += number_of_bytes;
   }
 
   // Gets the number of arguments added so far, including shared memory
   // arguments.
   size_t number_of_arguments() const override {
-    return number_of_argument_addresses_ + number_of_shared_memory_arguments_;
+    return number_of_argument_addresses_ + (total_shared_memory_bytes_ > 0);
   }
 
   // Gets the total number of shared memory bytes added so far.
@@ -427,27 +422,14 @@ class KernelArgsPackedArray : public KernelArgsPackedArrayBase {
   std::array<const void *, kNumArgs> argument_addresses_;
 
   // Storage for arguments of templated type.
-  alignas(kMaxGenericArgSize)
+  alignas(std::max_align_t)
       std::array<char, kNumArgs * kMaxGenericArgSize> generic_arguments_;
-
-  // Sizes for non-shared-memory arguments.
-  std::array<size_t, kNumArgs> argument_sizes_;
-
-  // Size in bytes for each shared memory argument.
-  std::array<size_t, kNumArgs> shared_memory_bytes_;
-
-  // Indices in the arguments array for shared memory arguments.
-  std::array<size_t, kNumArgs> shared_memory_indices_;
 
   // Total of all shared memory sizes.
   size_t total_shared_memory_bytes_ = 0;
 
   // Number of significant entries in argument_addresses_ and argument_sizes_.
   size_t number_of_argument_addresses_ = 0;
-
-  // Number of significant entries in shared_memory_bytes_ and
-  // shared_memory_indices_.
-  size_t number_of_shared_memory_arguments_ = 0;
 
   // The number of generic arguments that have been added to generic_arguments_.
   size_t number_of_generic_arguments_ = 0;
