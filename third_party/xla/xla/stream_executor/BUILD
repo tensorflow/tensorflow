@@ -667,6 +667,7 @@ xla_cc_test(
     deps = [
         ":device_memory",
         ":stream_executor",
+        "//xla/stream_executor/host:host_platform",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:test",

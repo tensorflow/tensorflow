@@ -70,6 +70,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_KERNEL_H_
 
 #include <array>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -325,34 +326,63 @@ class KernelArgsPackedArrayBase : public KernelArgsArrayBase {
   Kind kind() const final { return Kind::kPackedArray; }
 };
 
-// A list of arguments for a kernel call.
-//
-// The template parameter kNumArgs is the maximum number of arguments which can
-// be stored in the list.
-//
-// Contains a list of addresses for non-shared-memory arguments and a list of
-// sizes for shared-memory arguments. Since the shared-memory arguments may be
-// interspersed with the non-shared-memory arguments, it also stores a list of
-// the indices at which the shared-memory arguments appeared.
-//
-// For example, if the argument address list contains {a, b, c, d, e}, the
-// shared-memory arguments list contains the sizes of {A, B, C}, and the
-// shared-memory indices list contains {0, 3, 5}, then the original list of
-// arguments was {A, a, b, B, c, C, d, e}.
-//
-// This way of storing the arguments makes CUDA kernel calls efficient because
-// they only require the argument address list and the total number of shared
-// bytes, but it also makes it possible for OpenCL kernel calls because they
-// depend on the location of each shared-memory argument and its size.
-//
-// Note that the code for adding arguments has been identified as a performance
-// hotspot in some real-world applications so this structure has been optimized
-// for the performance of argument adding.
-template <size_t kNumArgs>
-class KernelArgsPackedArray : public KernelArgsPackedArrayBase {
- public:
-  static constexpr int kMaxGenericArgSize = 8;
+//===----------------------------------------------------------------------===//
+// Kernel arguments packing for device memory and POD args.
+//===----------------------------------------------------------------------===//
 
+// KernelArgsPackedArray is optimized for packing DeviceMemoryBase pointers
+// and POD arguments (i.e. scalars) when the number and type of arguments are
+// not known at compile time.
+
+namespace internal {
+
+// An empty storage for packing just the device memory arguments, that are
+// stored directly in the `KernelArgsPackedArray`.
+class EmptyArgs {};
+
+// A storage for POD generic arguments that are smaller than `size` and require
+// alignment smaller or equal to `alignment`.
+template <size_t capacity, size_t size = 8,
+          size_t alignment = alignof(std::max_align_t)>
+class PodArgs {
+ protected:
+  template <typename T>
+  const std::byte *add_pod_argument(const T &arg) {
+    static_assert(
+        std::is_pod_v<T> && sizeof(T) <= size & alignof(T) <= alignment,
+        "Type is not compatible with POD arguments storage");
+
+    assert(num_args_ < capacity && "pod args overflow");
+    std::byte *arg_storage = args_storage_[num_args_++].storage;
+    std::memcpy(arg_storage, &arg, sizeof(T));
+
+    return arg_storage;
+  }
+
+ private:
+  struct Arg {
+    alignas(alignment) std::byte storage[size];
+  };
+
+  size_t num_args_ = 0;
+  std::array<Arg, capacity> args_storage_;
+};
+
+template <typename ArgsStorage>
+static constexpr bool is_pod_args_v = false;
+
+template <size_t capacity, size_t size, size_t alignment>
+static constexpr bool is_pod_args_v<PodArgs<capacity, size, alignment>> = true;
+
+}  // namespace internal
+
+// An array of arguments for a kernel call.
+//
+// The template parameter `num_args` is the maximum number of arguments which
+// can be stored in the array.
+template <size_t num_args, typename ArgsStorage = internal::PodArgs<num_args>>
+class KernelArgsPackedArray : public KernelArgsPackedArrayBase, ArgsStorage {
+ public:
   KernelArgsPackedArray() = default;
 
   // KernelArgsPackedArray is not copyable or movable because argument addresses
@@ -360,24 +390,15 @@ class KernelArgsPackedArray : public KernelArgsPackedArrayBase {
   KernelArgsPackedArray(const KernelArgsPackedArray &) = delete;
   KernelArgsPackedArray &operator=(const KernelArgsPackedArray &) = delete;
 
-  // Do not allow casting into concrete packed array type.
-  static bool classof(const KernelArgsArrayBase *args) { return false; }
-
   // Adds an argument to the list.
   template <typename T>
   void add_argument(const T &arg) {
-    static_assert(sizeof(T) <= kMaxGenericArgSize,
-                  "Please adjust kMaxGenericArgSize");
-    static_assert(std::is_pod_v<T>, "Only pod types supported!");
-    char *generic_arg_storage =
-        &generic_arguments_[number_of_generic_arguments_++ *
-                            kMaxGenericArgSize];
-
-    CHECK_EQ(reinterpret_cast<uintptr_t>(generic_arg_storage) % alignof(T), 0);
-    std::memcpy(generic_arg_storage, &arg, sizeof(T));
-
-    argument_addresses_[number_of_argument_addresses_] = generic_arg_storage;
-    ++number_of_argument_addresses_;
+    if constexpr (internal::is_pod_args_v<ArgsStorage>) {
+      argument_addresses_[number_of_argument_addresses_++] =
+          ArgsStorage::add_pod_argument(arg);
+    } else {
+      static_assert(false, "Arguments storage is not supported");
+    }
   }
 
   // Adds a device memory argument to the list.
@@ -399,54 +420,49 @@ class KernelArgsPackedArray : public KernelArgsPackedArrayBase {
 
   // Gets the number of arguments added so far, including shared memory
   // arguments.
-  size_t number_of_arguments() const override {
+  size_t number_of_arguments() const final {
     return number_of_argument_addresses_ + (total_shared_memory_bytes_ > 0);
   }
 
   // Gets the total number of shared memory bytes added so far.
-  uint64_t number_of_shared_bytes() const override {
+  uint64_t number_of_shared_bytes() const final {
     return total_shared_memory_bytes_;
   }
 
   // Gets the list of argument addresses.
-  absl::Span<const void *const> argument_addresses() const override {
+  absl::Span<const void *const> argument_addresses() const final {
     return absl::Span<const void *const>(argument_addresses_.data(),
                                          number_of_argument_addresses_);
   }
 
  private:
   // A place to store copies of opaque pointers from device memory arguments.
-  std::array<const void *, kNumArgs> device_memory_opaque_pointers_;
+  std::array<const void *, num_args> device_memory_opaque_pointers_;
 
   // Addresses for non-shared-memory arguments.
-  std::array<const void *, kNumArgs> argument_addresses_;
-
-  // Storage for arguments of templated type.
-  alignas(std::max_align_t)
-      std::array<char, kNumArgs * kMaxGenericArgSize> generic_arguments_;
+  std::array<const void *, num_args> argument_addresses_;
 
   // Total of all shared memory sizes.
   size_t total_shared_memory_bytes_ = 0;
 
-  // Number of significant entries in argument_addresses_ and argument_sizes_.
+  // Number of significant entries in argument_addresses_.
   size_t number_of_argument_addresses_ = 0;
-
-  // The number of generic arguments that have been added to generic_arguments_.
-  size_t number_of_generic_arguments_ = 0;
 };
 
+namespace internal {
 template <int n>
 std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
     absl::Span<const DeviceMemoryBase> args, uint32_t shared_mem_bytes) {
-  auto kernel_args = std::make_unique<KernelArgsPackedArray<n>>();
+  auto packed = std::make_unique<KernelArgsPackedArray<n, EmptyArgs>>();
   for (const DeviceMemoryBase &buf : args) {
-    kernel_args->add_device_memory_argument(buf);
+    packed->add_device_memory_argument(buf);
   }
   if (shared_mem_bytes > 0) {
-    kernel_args->add_shared_bytes(shared_mem_bytes);
+    packed->add_shared_bytes(shared_mem_bytes);
   }
-  return kernel_args;
+  return packed;
 }
+}  // namespace internal
 
 inline tsl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>> PackKernelArgs(
     absl::Span<const DeviceMemoryBase> args, uint32_t shared_mem_bytes) {
@@ -461,22 +477,22 @@ inline tsl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>> PackKernelArgs(
   // Specialize kernel arguments array for small sizes to allocate a smaller
   // chunk of memory and hopefully hit a small allocations cache.
   if (args.size() <= 4) {
-    return PackKernelArgs<8>(args, shared_mem_bytes);
+    return internal::PackKernelArgs<4>(args, shared_mem_bytes);
   } else if (args.size() <= 8) {
-    return PackKernelArgs<8>(args, shared_mem_bytes);
+    return internal::PackKernelArgs<8>(args, shared_mem_bytes);
   } else if (args.size() <= 16) {
-    return PackKernelArgs<16>(args, shared_mem_bytes);
+    return internal::PackKernelArgs<16>(args, shared_mem_bytes);
   } else if (args.size() <= 32) {
-    return PackKernelArgs<32>(args, shared_mem_bytes);
+    return internal::PackKernelArgs<32>(args, shared_mem_bytes);
   } else if (args.size() <= 64) {
-    return PackKernelArgs<64>(args, shared_mem_bytes);
+    return internal::PackKernelArgs<64>(args, shared_mem_bytes);
   } else if (args.size() <= 256) {
-    return PackKernelArgs<256>(args, shared_mem_bytes);
+    return internal::PackKernelArgs<256>(args, shared_mem_bytes);
   } else if (args.size() <= 512) {
-    return PackKernelArgs<512>(args, shared_mem_bytes);
+    return internal::PackKernelArgs<512>(args, shared_mem_bytes);
   }
 
-  return PackKernelArgs<kKernelArgsLimit>(args, shared_mem_bytes);
+  return internal::PackKernelArgs<kKernelArgsLimit>(args, shared_mem_bytes);
 }
 
 inline tsl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>> PackKernelArgs(
@@ -709,8 +725,7 @@ struct KernelParamsOk<TypedKernel<Params...>, Args...> {
 };
 
 // Packs the given arguments into a KernelArgsArray with compile-time type
-// checks. se::Stream::ThenLaunch does this too except it ignores the shared
-// memory size in `kernel`.
+// checks.
 template <typename... Params, typename... Args>
 std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
     const TypedKernel<Params...> &kernel, const Args &...args) {

@@ -15,14 +15,74 @@ limitations under the License.
 
 #include "xla/stream_executor/kernel.h"
 
+#include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 
 namespace stream_executor {
 
-// TODO(ezhulenev): Add tests for packing custom arguments.
+static std::unique_ptr<StreamExecutor> NewStreamExecutor() {
+  Platform* platform = MultiPlatformManager::PlatformWithName("Host").value();
+  StreamExecutorConfig config(/*ordinal=*/0);
+  return platform->GetUncachedExecutor(config).value();
+}
+
+TEST(KernelTest, PackDeviceMemoryArguments) {
+  auto executor = NewStreamExecutor();
+
+  DeviceMemoryBase a(reinterpret_cast<void*>(0x12345678));
+  DeviceMemoryBase b(reinterpret_cast<void*>(0x87654321));
+
+  auto args = PackKernelArgs({a, b}, 0).value();
+  ASSERT_EQ(args->number_of_arguments(), 2);
+
+  auto packed = args->argument_addresses();
+  const void* ptr0 = *reinterpret_cast<const void* const*>(packed[0]);
+  const void* ptr1 = *reinterpret_cast<const void* const*>(packed[1]);
+
+  ASSERT_EQ(ptr0, a.opaque());
+  ASSERT_EQ(ptr1, b.opaque());
+}
+
+TEST(KernelTest, PackPodArguments) {
+  auto args = std::make_unique<KernelArgsPackedArray<4>>();
+  args->add_argument(1);
+  args->add_argument(2.0f);
+  args->add_argument(3.0);
+
+  ASSERT_EQ(args->number_of_arguments(), 3);
+
+  auto packed = args->argument_addresses();
+  int32_t i32 = *reinterpret_cast<const int32_t*>(packed[0]);
+  float f32 = *reinterpret_cast<const float*>(packed[1]);
+  double f64 = *reinterpret_cast<const double*>(packed[2]);
+
+  ASSERT_EQ(i32, 1);
+  ASSERT_EQ(f32, 2.0f);
+  ASSERT_EQ(f64, 3.0);
+}
+
+TEST(KernelTest, PackTypedKernelArguments) {
+  auto executor = NewStreamExecutor();
+  TypedKernel<int32_t, float, double> kernel(executor.get());
+
+  auto args = PackKernelArgs(kernel, 1, 2.0f, 3.0);
+  ASSERT_EQ(args->number_of_arguments(), 3);
+
+  auto packed = args->argument_addresses();
+  int32_t i32 = *reinterpret_cast<const int32_t*>(packed[0]);
+  float f32 = *reinterpret_cast<const float*>(packed[1]);
+  double f64 = *reinterpret_cast<const double*>(packed[2]);
+
+  ASSERT_EQ(i32, 1);
+  ASSERT_EQ(f32, 2.0f);
+  ASSERT_EQ(f64, 3.0);
+}
 
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below
