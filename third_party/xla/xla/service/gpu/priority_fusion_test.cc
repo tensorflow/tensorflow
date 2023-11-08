@@ -549,5 +549,39 @@ CHECK: ROOT {{.*}} reduce(
   )");
 }
 
+TEST_F(PriorityFusionTest, FuseReductionEpilogueWithMultipleUsers) {
+  // Regression test that verifies we correctly fuse the `log` into the reduce.
+  constexpr absl::string_view kHlo = R"(
+    HloModule test_module
+
+    add {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT add = f32[] add(x, y)
+    }
+
+    fused_computation {
+      p0 = f32[64,16384]{1,0} parameter(0)
+      c0 = f32[] constant(0)
+      ROOT reduce.858 = f32[64]{0} reduce(p0, c0), dimensions={1}, to_apply=add
+    }
+
+    ENTRY main {
+      p0 = f32[64,16384]{1,0} parameter(0)
+      fusion = f32[64]{0} fusion(p0), kind=kInput, calls=fused_computation
+      log = f32[64]{0} log(fusion)
+      negate = f32[64]{0} custom-call(log), custom_call_target="negate"
+      ROOT add = f32[64]{0} add(negate, log)
+    }
+  )";
+
+  RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
+    CHECK: ENTRY
+    CHECK: %[[PARAM:.*]] = {{.*}} parameter(0)
+    CHECK: %[[FUSION:.*]] = {{.*}} fusion(%[[PARAM]])
+    CHECK: custom-call(%[[FUSION]])
+  )");
+}
+
 }  // namespace gpu
 }  // namespace xla

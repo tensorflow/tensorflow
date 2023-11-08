@@ -444,6 +444,7 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
   absl::Duration exec_time_fused = absl::ZeroDuration();
   absl::Duration producer_output_read_time_unfused = absl::ZeroDuration();
   for (const HloInstruction* fused_consumer : fused_consumers) {
+    VLOG(8) << "Consumer: " << fused_consumer->name();
     float utilization_by_this_consumer = cost_analysis->operand_utilization(
         *fused_consumer, fused_consumer->operand_index(producer));
     total_producer_utilization += utilization_by_this_consumer;
@@ -478,6 +479,9 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
     absl::Duration input_access_time_by_this_consumer = ProducerInputAccessTime(
         cost_analysis, *device_info, launch_dimensions_fused.num_blocks(),
         producer, analysis_fused, config, fused_consumer);
+    VLOG(10) << "  Compute time by consumer: " << compute_time_by_this_consumer;
+    VLOG(10) << "  Input access time by consumer: "
+             << input_access_time_by_this_consumer;
 
     exec_time_fused += std::max(compute_time_by_this_consumer,
                                 input_access_time_by_this_consumer);
@@ -486,11 +490,14 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
                                          utilization_by_this_consumer);
     int64_t n_bytes_net = std::min(producer_data.bytes_written, n_bytes_total);
 
-    producer_output_read_time_unfused += ReadTime(
+    auto read_time_unfused = ReadTime(
         *device_info, launch_dimensions_unfused.num_blocks(), n_bytes_net,
         n_bytes_total, fused_consumer->shape().element_type(),
         /*coalesced=*/!TransposesMinorDimension(fused_consumer),
         config.first_read_from_dram);
+
+    VLOG(10) << "  Read time unfused: " << read_time_unfused;
+    producer_output_read_time_unfused += read_time_unfused;
   }
 
   absl::Duration time_unfused =
