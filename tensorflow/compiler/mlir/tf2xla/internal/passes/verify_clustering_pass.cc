@@ -18,9 +18,11 @@ limitations under the License.
 #include <string>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -51,6 +53,15 @@ void VerifyClusteringPass::runOnOperation() {
       op->emitError() << error;
       return mlir::WalkResult::interrupt();
     }
+
+    if (op->hasAttr(mlir::TF::kXlaOutsideCompilationAttr)) {
+      std::string error =
+          "op has outside compilation attribute _xla_outside_compilation which "
+          "is not allowed after clustering";
+      op->emitError() << error;
+      return mlir::WalkResult::interrupt();
+    }
+
     return mlir::WalkResult::advance();
   });
 
