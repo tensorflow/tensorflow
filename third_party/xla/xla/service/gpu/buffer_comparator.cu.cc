@@ -17,6 +17,8 @@ limitations under the License.
 #include <cuda_fp16.h>
 #include <cuda_fp8.h>
 
+#include <cstdint>
+
 namespace xla::gpu::buffer_comparator {
 
 // Comparison kernel code: compare two buffers of
