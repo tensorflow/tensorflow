@@ -21,7 +21,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/strings/match.h"
 #include "xla/client/lib/comparators.h"
 #include "xla/client/xla_builder.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -245,6 +245,91 @@ std::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
   return k;
 }
 
+struct TopKCustomCall {
+  HloInstruction* topk;
+  HloInstruction* value_gte;
+  HloInstruction* index_gte;
+};
+
+TopKCustomCall CreateTopKCustomCall(HloInstruction* input,
+                                    const int64_t sort_dim, const int64_t k,
+                                    HloComputation* comparator,
+                                    HloComputation* comp) {
+  Shape data_shape = input->shape();
+  PrimitiveType element_type = data_shape.element_type();
+  bool has_batch = data_shape.rank() >= 2;
+  int64_t input_size = data_shape.dimensions(sort_dim);
+  int64_t batch_size = 1;
+  Shape topk_input_shape;
+
+  if (has_batch) {
+    // The TopK custom call expects either a 1d tensor or a 2d tensor with
+    // the last dimension being the sort dimension. An input with rank > 2
+    // is reshaped into a 2d tensor by combining non-sort dimensions into a
+    // single batch dimension. The original non-sort dimensions are
+    // restored for the outputs with another reshape after the custom call.
+    batch_size =
+        ShapeUtil::ElementsIn(data_shape) / data_shape.dimensions(sort_dim);
+    topk_input_shape =
+        ShapeUtil::MakeShape(element_type, {batch_size, input_size});
+
+    if (data_shape.rank() > 2) {
+      // Reshape to 2d.
+      input = comp->AddInstruction(HloInstruction::CreateReshape(
+          sort_dim == 0
+              ? ShapeUtil::MakeShape(element_type, {input_size, batch_size})
+              : ShapeUtil::MakeShape(element_type, {batch_size, input_size}),
+          input));
+    }
+
+    if (sort_dim == 0) {
+      // Transpose for the custom call when sorting the first dimension.
+      input = comp->AddInstruction(
+          HloInstruction::CreateTranspose(topk_input_shape, input, {1, 0}));
+    }
+  } else {
+    topk_input_shape = data_shape;
+  }
+
+  Shape topk_shape =
+      has_batch
+          ? ShapeUtil::MakeTupleShape(
+                {ShapeUtil::MakeShape(element_type, {batch_size, k}),
+                 ShapeUtil::MakeShape(S32, {batch_size, k})})
+          : ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(element_type, {k}),
+                                       ShapeUtil::MakeShape(S32, {k})});
+  HloInstruction* topk = comp->AddInstruction(HloInstruction::CreateCustomCall(
+      topk_shape, {input}, /*to_apply=*/comparator, "TopK"));
+  HloInstruction* value_gte =
+      comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+          topk->shape().tuple_shapes(0), topk, 0));
+  HloInstruction* index_gte =
+      comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+          topk->shape().tuple_shapes(1), topk, 1));
+
+  if (has_batch) {
+    if (sort_dim == 0) {
+      // Transpose back.
+      value_gte = comp->AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShape(element_type, {k, batch_size}), value_gte,
+          {1, 0}));
+      index_gte = comp->AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShape(S32, {k, batch_size}), index_gte, {1, 0}));
+    }
+    if (data_shape.rank() > 2) {
+      // Reshape back.
+      std::vector<int64_t> shape_dim(data_shape.dimensions().begin(),
+                                     data_shape.dimensions().end());
+      shape_dim[sort_dim] = k;
+      value_gte = comp->AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(element_type, shape_dim), value_gte));
+      index_gte = comp->AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(S32, shape_dim), index_gte));
+    }
+  }
+  return {topk, value_gte, index_gte};
+}
+
 StatusOr<bool> TopkRewriter::TransformToCustomCall(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -260,7 +345,6 @@ StatusOr<bool> TopkRewriter::TransformToCustomCall(
       HloSortInstruction* sort = DynCast<HloSortInstruction>(inst);
       HloInstruction* data = sort->mutable_operand(0);
       const PrimitiveType element_type = data->shape().element_type();
-      const Shape data_shape = data->shape();
 
       if (element_type != F32 && element_type != BF16) {
         continue;
@@ -268,7 +352,7 @@ StatusOr<bool> TopkRewriter::TransformToCustomCall(
 
       // Sort dimension must be the first or last dimension.
       const int64_t sort_dim = sort->sort_dimension();
-      if (sort_dim != 0 && sort_dim != data_shape.rank() - 1) {
+      if (sort_dim != 0 && sort_dim != data->shape().rank() - 1) {
         continue;
       }
 
@@ -277,100 +361,27 @@ StatusOr<bool> TopkRewriter::TransformToCustomCall(
         continue;
       }
 
-      HloInstruction* input = data;
-      const bool has_batch = data_shape.rank() >= 2;
-      const int64_t input_size = data_shape.dimensions(sort_dim);
-      int64_t batch_size = 1;
-      Shape topk_input_shape;
-
-      if (has_batch) {
-        // The TopK custom call expects either a 1d tensor or a 2d tensor with
-        // the last dimension being the sort dimension. An input with rank > 2
-        // is reshaped into a 2d tensor by combining non-sort dimensions into a
-        // single batch dimension. The original non-sort dimensions are
-        // restored for the outputs with another reshape after the custom call.
-        batch_size =
-            ShapeUtil::ElementsIn(data_shape) / data_shape.dimensions(sort_dim);
-        topk_input_shape =
-            ShapeUtil::MakeShape(element_type, {batch_size, input_size});
-
-        if (data_shape.rank() > 2) {
-          // Reshape to 2d.
-          input = comp->AddInstruction(HloInstruction::CreateReshape(
-              sort_dim == 0
-                  ? ShapeUtil::MakeShape(element_type, {input_size, batch_size})
-                  : ShapeUtil::MakeShape(element_type,
-                                         {batch_size, input_size}),
-              input));
-        }
-
-        if (sort_dim == 0) {
-          // Transpose for the custom call when sorting the first dimension.
-          input = comp->AddInstruction(
-              HloInstruction::CreateTranspose(topk_input_shape, input, {1, 0}));
-        }
-      } else {
-        topk_input_shape = data_shape;
-      }
-
-      Shape topk_shape =
-          has_batch ? ShapeUtil::MakeTupleShape(
-                          {ShapeUtil::MakeShape(element_type,
-                                                {batch_size, k.value()}),
-                           ShapeUtil::MakeShape(S32, {batch_size, k.value()})})
-                    : ShapeUtil::MakeTupleShape(
-                          {ShapeUtil::MakeShape(element_type, {k.value()}),
-                           ShapeUtil::MakeShape(S32, {k.value()})});
-      HloInstruction* topk =
-          comp->AddInstruction(HloInstruction::CreateCustomCall(
-              topk_shape, {input}, /*to_apply=*/sort->to_apply(), "TopK"));
-      HloInstruction* value_gte =
-          comp->AddInstruction(HloInstruction::CreateGetTupleElement(
-              topk->shape().tuple_shapes(0), topk, 0));
-      HloInstruction* index_gte =
-          comp->AddInstruction(HloInstruction::CreateGetTupleElement(
-              topk->shape().tuple_shapes(1), topk, 1));
-
-      if (has_batch) {
-        if (sort_dim == 0) {
-          // Transpose back.
-          value_gte = comp->AddInstruction(HloInstruction::CreateTranspose(
-              ShapeUtil::MakeShape(element_type, {k.value(), batch_size}),
-              value_gte, {1, 0}));
-          index_gte = comp->AddInstruction(HloInstruction::CreateTranspose(
-              ShapeUtil::MakeShape(S32, {k.value(), batch_size}), index_gte,
-              {1, 0}));
-        }
-        if (data_shape.rank() > 2) {
-          // Reshape back.
-          std::vector<int64_t> shape_dim(data_shape.dimensions().begin(),
-                                         data_shape.dimensions().end());
-          shape_dim[sort_dim] = k.value();
-          value_gte = comp->AddInstruction(HloInstruction::CreateReshape(
-              ShapeUtil::MakeShape(element_type, shape_dim), value_gte));
-          index_gte = comp->AddInstruction(HloInstruction::CreateReshape(
-              ShapeUtil::MakeShape(S32, shape_dim), index_gte));
-        }
-      }
+      TopKCustomCall topkcc = CreateTopKCustomCall(data, sort_dim, k.value(),
+                                                   sort->to_apply(), comp);
 
       for (HloInstruction* user : sort->users()) {
         if (sort->operand_count() == 2) {
           HloInstruction* gte = user;
           for (HloInstruction* slice : gte->users()) {
             if (gte->tuple_index() == 0) {
-              TF_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(value_gte));
+              TF_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(topkcc.value_gte));
             } else if (gte->tuple_index() == 1) {
-              TF_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(index_gte));
+              TF_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(topkcc.index_gte));
             } else {
               LOG(FATAL) << "Sort with more than 2 output isn't supported in "
                             "topk rewriter";
             }
           }
         } else {
-          TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(value_gte));
+          TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(topkcc.value_gte));
         }
       }
-      VLOG(2) << "Rewritten Topk: " << topk->ToString();
+      VLOG(2) << "Rewritten Topk: " << topkcc.topk->ToString();
       changed = true;
     }
   }
