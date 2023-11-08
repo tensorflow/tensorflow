@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <tuple>
+#include <type_traits>
 #include <vector>
 
 #include "xla/stream_executor/device_memory.h"
@@ -25,6 +27,40 @@ limitations under the License.
 #include "tsl/platform/test_benchmark.h"
 
 namespace stream_executor {
+
+// Struct for testing custom kernel arguments with C++ structs.
+struct Data {};
+
+// Compile time checks to make sure that we correctly infer the storage type
+// from packed arguments.
+template <typename... Args>
+using ArgsStorage = typename KernelArgsPackedTuple<Args...>::Storage;
+
+// We automatically remove const and reference from integral arguments types.
+static_assert(
+    std::is_same_v<ArgsStorage<int32_t, const int32_t, int32_t&, const int32_t>,
+                   std::tuple<int32_t, int32_t, int32_t, int32_t>>);
+
+// We automatically remove const and reference from struct arguments types.
+static_assert(std::is_same_v<ArgsStorage<Data, const Data, Data&, const Data>,
+                             std::tuple<Data, Data, Data, Data>>);
+
+// We pass DeviceMemoryBase as an opaque pointer.
+static_assert(std::is_same_v<
+              ArgsStorage<DeviceMemoryBase, const DeviceMemoryBase,
+                          DeviceMemoryBase&, const DeviceMemoryBase&>,
+              std::tuple<const void*, const void*, const void*, const void*>>);
+
+// We pass DeviceMemory<T> as an opaque pointer.
+static_assert(std::is_same_v<
+              ArgsStorage<DeviceMemory<float>, const DeviceMemory<float>,
+                          DeviceMemory<float>&, const DeviceMemory<float>&>,
+              std::tuple<const void*, const void*, const void*, const void*>>);
+
+// We accept pointers to DeviceMemoryBase and extract opaque pointers from them.
+static_assert(
+    std::is_same_v<ArgsStorage<DeviceMemoryBase*, const DeviceMemoryBase*>,
+                   std::tuple<const void*, const void*>>);
 
 static std::unique_ptr<StreamExecutor> NewStreamExecutor() {
   Platform* platform = MultiPlatformManager::PlatformWithName("Host").value();

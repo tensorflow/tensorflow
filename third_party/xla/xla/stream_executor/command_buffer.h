@@ -160,12 +160,8 @@ template <typename... Params, typename... Args>
 inline tsl::Status CommandBuffer::Launch(const TypedKernel<Params...>& kernel,
                                          const ThreadDim& threads,
                                          const BlockDim& blocks, Args... args) {
-  KernelInvocationChecker<std::tuple<Params...>,
-                          std::tuple<Args...>>::CheckAllStaticAssert();
-
-  KernelArgsPackedArray<sizeof...(args)> kernel_args;
-  kernel.PackParams(&kernel_args, args...);
-  TF_RETURN_IF_ERROR(Launch(threads, blocks, kernel, kernel_args));
+  auto kernel_args = PackKernelArgs(kernel, args...);
+  TF_RETURN_IF_ERROR(Launch(threads, blocks, kernel, *kernel_args));
   return tsl::OkStatus();
 }
 

@@ -35,6 +35,8 @@ namespace stream_executor::cuda {
 using AddI32Kernel = TypedKernel<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
                                  DeviceMemory<int32_t>>;
 
+using AddI32Ptrs3 = TypedKernel<internal::Ptrs3<int32_t>>;
+
 static constexpr auto nested = CommandBuffer::Mode::kNested;    // NOLINT
 static constexpr auto primary = CommandBuffer::Mode::kPrimary;  // NOLINT
 
@@ -103,10 +105,10 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
   stream.Init();
   ASSERT_TRUE(stream.ok());
 
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
+  MultiKernelLoaderSpec spec(/*arity=*/1);
+  spec.AddInProcessSymbol(internal::GetAddI32Ptrs3CudaKernel(), "add");
 
-  AddI32Kernel add(executor);
+  AddI32Ptrs3 add(executor);
   TF_ASSERT_OK(executor->GetKernel(spec, &add));
 
   int64_t length = 4;
@@ -123,7 +125,12 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
 
   // Create a command buffer by tracing kernel launch operations.
   auto cmd_buffer = CommandBuffer::Trace(executor, [&](Stream* stream) {
-    return stream->ThenLaunch(ThreadDim(), BlockDim(4), add, a, b, c);
+    internal::Ptrs3<int32_t> ptrs = {
+        static_cast<int32_t*>(a.opaque()),
+        static_cast<int32_t*>(b.opaque()),
+        static_cast<int32_t*>(c.opaque()),
+    };
+    return stream->ThenLaunch(ThreadDim(), BlockDim(4), add, ptrs);
   });
 
   TF_ASSERT_OK(cmd_buffer.status());
