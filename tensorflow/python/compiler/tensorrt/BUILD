@@ -32,12 +32,10 @@ py_strict_library(
 
 py_strict_library(
     name = "trt_convert_py",
-    srcs = [
-        "trt_convert.py",
-        "utils.py",
-    ],
+    srcs = ["trt_convert.py"],
     srcs_version = "PY3",
     deps = [
+        ":utils",
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
         "//tensorflow/compiler/tf2tensorrt:trt_ops_loader",
         "//tensorflow/core:protos_all_py",
@@ -69,8 +67,18 @@ py_strict_library(
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
-        "@pypi_packaging//:pkg",
         "@six_archive//:six",
+    ],
+)
+
+py_strict_library(
+    name = "utils",
+    srcs = ["utils.py"],
+    deps = [
+        "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/framework:dtypes",
+        "@pypi_packaging//:pkg",
     ],
 )
 
@@ -80,6 +88,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":trt_convert_py",
+        ":utils",
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:def_function",
