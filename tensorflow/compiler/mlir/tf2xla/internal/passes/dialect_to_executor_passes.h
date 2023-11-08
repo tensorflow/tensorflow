@@ -25,7 +25,10 @@ namespace internal {
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateVerifyInputDialectToExecutorPass();
 
+#define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_VERIFYINPUTDIALECTTOEXECUTORPASS
+#include "tensorflow/compiler/mlir/tf2xla/internal/passes/dialect_to_executor_passes.h.inc"
+
 }  // namespace internal
 }  // namespace tf2xla
 }  // namespace tensorflow
