@@ -780,6 +780,12 @@ AsLhloFusedMhaBackwardDagSignature(xla::gpu::CudnnfMHAKind kind) {
       return lmhlo_gpu::FusedMhaBackwardDagSignature::
           BackwardScaleBiasMaskSoftmaxDropout;
       break;
+    case xla::gpu::CudnnfMHAKind::kBackwardSoftmax:
+      return lmhlo_gpu::FusedMhaBackwardDagSignature::BackwardSoftmax;
+      break;
+    case xla::gpu::CudnnfMHAKind::kBackwardSoftmaxDropout:
+      return lmhlo_gpu::FusedMhaBackwardDagSignature::BackwardSoftmaxDropout;
+      break;
     default:
       return xla::InternalError("unknown cudnn fmha bwd kind");
   }
@@ -1270,13 +1276,17 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHA(
                                has_activation ? 1 : 0};
     op->setAttr(op.getOperandSegmentSizeAttr(),
                 builder_.getDenseI32ArrayAttr(operand_sizes));
+    // set is flash attention here
+    op.setIsFlashAttentionAttr(
+        builder_.getBoolAttr(config.is_flash_attention()));
+    // set is causal mask here
+    op.setIsCausalMaskAttr(builder_.getBoolAttr(config.is_causal_mask()));
     return op.getOperation();
   };
   llvm::SmallVector<Value, 8> operands;
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(0), &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(1), &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(2), &operands));
-
   switch (kind) {
     case xla::gpu::CudnnfMHAKind::kBmmBmm:
     case xla::gpu::CudnnfMHAKind::kSoftmax: {
@@ -1365,8 +1375,11 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHABackward(
   TF_ASSIGN_OR_RETURN(const xla::gpu::CudnnfMHAKind kind,
                       xla::gpu::GetCudnnfMHAKind(custom_call));
 
-  bool has_dbias = custom_call->shape().tuple_shapes().size() == 6;
+  bool is_flash_attention = config.is_flash_attention();
+  bool has_dbias =
+      custom_call->shape().tuple_shapes().size() == 6 && !is_flash_attention;
   bool has_mask = false;
+  bool has_bias = false;
 
   auto set_common_fmha_backward_attributes =
       [&, this](auto op) -> tsl::StatusOr<Operation*> {
@@ -1384,13 +1397,44 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHABackward(
     op.setBmm2GradGemm2DotDimensionNumbersAttr(GetDotDimensionNumbersAttr(
         builder_, config.bmm2_grad_gemm2_dot_dimension_numbers()));
 
+    auto intermediate_tensor_shape = Shape(config.intermediate_tensor_shape());
+    auto arrayref = [](absl::Span<const int64_t> array) {
+      return llvm::ArrayRef<int64_t>{array.data(), array.size()};
+    };
+    auto intermediate_tensor_dims = builder_.getI64ArrayAttr(
+        arrayref(intermediate_tensor_shape.dimensions()));
+    op.setIntermediateTensorDimensionsAttr(intermediate_tensor_dims);
+
+    auto intermediate_tensor_layout = builder_.getI64ArrayAttr(
+        arrayref(intermediate_tensor_shape.layout().minor_to_major()));
+    op.setIntermediateTensorLayoutAttr(intermediate_tensor_layout);
+
     op.setFmhaScaleAttr(builder_.getF64FloatAttr(config.fmha_scale()));
 
-    int32_t operand_sizes[] = {1, 1, 1, 1, 1, has_mask ? 1 : 0,
-                               1, 1, 1, 1, 1, has_dbias ? 1 : 0};
+    int32_t operand_sizes[] = {1,
+                               1,
+                               1,
+                               1,
+                               1,
+                               has_mask ? 1 : 0,
+                               has_bias ? 1 : 0,
+                               is_flash_attention ? 1 : 0,  // fwd_output
+                               1,
+                               1,
+                               1,
+                               is_flash_attention ? 0 : 1,  // d_S
+                               is_flash_attention ? 1 : 0,  // softmax_sum
+                               is_flash_attention ? 1 : 0,  // d_Q_accum
+                               1,
+                               has_dbias ? 1 : 0};
     op->setAttr(op.getOperandSegmentSizeAttr(),
                 builder_.getDenseI32ArrayAttr(operand_sizes));
 
+    // set is flash attention here
+    op.setIsFlashAttentionAttr(
+        builder_.getBoolAttr(config.is_flash_attention()));
+    // set is causal mask here
+    op.setIsCausalMaskAttr(builder_.getBoolAttr(config.is_causal_mask()));
     const auto& algorithm = config.algorithm();
     std::vector<int64_t> knob_ids;
     std::vector<int64_t> knob_values;
@@ -1406,7 +1450,7 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHABackward(
     return op.getOperation();
   };
 
-  llvm::SmallVector<Value, 12> operands;
+  llvm::SmallVector<Value, 15> operands;
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(0), &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(1), &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(2), &operands));
@@ -1415,15 +1459,35 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHABackward(
 
   switch (kind) {
     case xla::gpu::CudnnfMHAKind::kBackwardBmmBmm:
-    case xla::gpu::CudnnfMHAKind::kBackwardSoftmax:
-    case xla::gpu::CudnnfMHAKind::kBackwardScaleBiasSoftmax: {
+    case xla::gpu::CudnnfMHAKind::kBackwardSoftmax: {
+      // push fwd output for bwd here if it is flash attention
+      if (config.is_flash_attention()) {
+        TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(5), &operands));
+      }
       TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
       auto fmha_backward = CreateOpWithoutAttrs<lmhlo_gpu::fusedMHABackwardOp>(
           custom_call, operands);
       return set_common_fmha_backward_attributes(fmha_backward);
     }
-    case xla::gpu::CudnnfMHAKind::kBackwardSoftmaxDropout:
+    case xla::gpu::CudnnfMHAKind::kBackwardScaleBiasSoftmax: {
+      // push fwd output for bwd here if it is flash attention
+      if (config.is_flash_attention()) {
+        has_bias = true;
+        TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(5), &operands));
+        TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(6), &operands));
+      }
+      TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
+      auto fmha_backward = CreateOpWithoutAttrs<lmhlo_gpu::fusedMHABackwardOp>(
+          custom_call, operands);
+      return set_common_fmha_backward_attributes(fmha_backward);
+    }
     case xla::gpu::CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout: {
+      // push fwd output for bwd here if it is flash attention
+      if (config.is_flash_attention()) {
+        has_bias = true;
+        TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(5), &operands));
+        TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(6), &operands));
+      }
       TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
       auto fmha_backward = CreateOpWithoutAttrs<lmhlo_gpu::fusedMHABackwardOp>(
           custom_call, operands);
@@ -1433,9 +1497,26 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHABackward(
       return set_common_fmha_backward_attributes(fmha_backward);
     }
 
-    case xla::gpu::CudnnfMHAKind::kBackwardScaleMaskSoftmax:
+    case xla::gpu::CudnnfMHAKind::kBackwardScaleMaskSoftmax: {
+      TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(5), &operands));
+      // push fwd output for bwd here if it is flash attention
+      if (config.is_flash_attention()) {
+        TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(6), &operands));
+      }
+      TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
+      has_mask = true;
+      auto fmha_backward = CreateOpWithoutAttrs<lmhlo_gpu::fusedMHABackwardOp>(
+          custom_call, operands);
+      return set_common_fmha_backward_attributes(fmha_backward);
+    }
     case xla::gpu::CudnnfMHAKind::kBackwardScaleBiasMaskSoftmax: {
       TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(5), &operands));
+      // push fwd output for bwd here if it is flash attention
+      if (config.is_flash_attention()) {
+        has_bias = true;
+        TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(6), &operands));
+        TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(7), &operands));
+      }
       TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
       has_mask = true;
       auto fmha_backward = CreateOpWithoutAttrs<lmhlo_gpu::fusedMHABackwardOp>(
@@ -1443,9 +1524,31 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHABackward(
       return set_common_fmha_backward_attributes(fmha_backward);
     }
 
-    case xla::gpu::CudnnfMHAKind::kBackwardScaleMaskSoftmaxDropout:
+    case xla::gpu::CudnnfMHAKind::kBackwardScaleMaskSoftmaxDropout: {
+      TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(5), &operands));
+      // push fwd output for bwd here if it is flash attention
+      if (config.is_flash_attention()) {
+        TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(6), &operands));
+      }
+      TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
+      has_mask = true;
+      auto fmha_backward = CreateOpWithoutAttrs<lmhlo_gpu::fusedMHABackwardOp>(
+          custom_call, operands);
+      fmha_backward.setDropoutRateAttr(
+          builder_.getF64FloatAttr(config.dropout_rate()));
+      fmha_backward.setSeedAttr(builder_.getI64IntegerAttr(config.seed()));
+      return set_common_fmha_backward_attributes(fmha_backward);
+    }
     case xla::gpu::CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout: {
       TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(5), &operands));
+      // push fwd output for bwd here if it is flash attention
+      if (config.is_flash_attention()) {
+        has_bias = true;
+        TF_RETURN_IF_ERROR(
+            GetOrCreateView(custom_call->operand(6), &operands));  // bias
+        TF_RETURN_IF_ERROR(
+            GetOrCreateView(custom_call->operand(7), &operands));  // fwd_output
+      }
       TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
       has_mask = true;
       auto fmha_backward = CreateOpWithoutAttrs<lmhlo_gpu::fusedMHABackwardOp>(
