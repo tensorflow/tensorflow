@@ -89,7 +89,6 @@ std::string CreateTmpDir() {
 
 }  // namespace
 
-// TODO - b/309551852: Allow keyword arguments for exported functions.
 PYBIND11_MODULE(pywrap_quantize_model, m) {
   // Supports absl::StatusOr<T> type conversions.
   pybind11::google::ImportStatusModule();
@@ -119,7 +118,8 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       { CalibratorSingleton::ClearData(id); },
       R"pbdoc(
       Clears the collected data of the given id from calibrator.
-    )pbdoc");
+      )pbdoc",
+      py::arg("id"));
   m.def(
       // If the function signature changes, likely its corresponding .pyi type
       // hinting should also change.
@@ -131,7 +131,8 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       },
       R"pbdoc(
       Returns the proto CalibrationStatistics given id from calibrator.
-    )pbdoc");
+      )pbdoc",
+      py::arg("id"));
 
   // Quantization functions.
   m.def(
@@ -141,24 +142,25 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       "quantize_qat_model",
       [](const absl::string_view src_saved_model_path,
          const absl::string_view dst_saved_model_path,
+         const QuantizationOptions& quantization_options,
          const std::vector<std::string>& signature_keys,
-         const QuantizationOptions& quant_opts,
-         const absl::flat_hash_map<std::string, std::string>& function_aliases,
          const absl::flat_hash_map<std::string, SignatureDef>&
              signature_def_map,
-         const PyFunctionLibrary& py_function_lib) -> absl::Status {
+         const absl::flat_hash_map<std::string, std::string>& function_aliases,
+         const PyFunctionLibrary& py_function_library) -> absl::Status {
         // LINT.ThenChange(pywrap_quantize_model.pyi:quantize_qat_model)
         std::unordered_set<std::string> tags;
-        tags.insert(quant_opts.tags().begin(), quant_opts.tags().end());
+        tags.insert(quantization_options.tags().begin(),
+                    quantization_options.tags().end());
 
         const absl::StatusOr<ExportedModel> exported_model =
             QuantizeQatModel(src_saved_model_path, signature_keys, tags,
-                             quant_opts, function_aliases);
+                             quantization_options, function_aliases);
         if (!exported_model.ok()) return exported_model.status();
 
-        py_function_lib.SaveExportedModel(dst_saved_model_path, *exported_model,
-                                          src_saved_model_path, tags,
-                                          signature_def_map);
+        py_function_library.SaveExportedModel(
+            dst_saved_model_path, *exported_model, src_saved_model_path, tags,
+            signature_def_map);
 
         return absl::OkStatus();
       },
@@ -169,9 +171,18 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       raises `StatusNotOk` exception.
 
       The user should pass a serialized `QuantizationOptions` for the
-      `quant_opts` argument, and a signature key -> serialized `SignatureDef`
-      mapping for the `signature_def_map` argument.
-    )pbdoc");
+      `quantization_options_serialized` argument, and a signature key ->
+      serialized `SignatureDef` mapping for the `signature_def_map_serialized`
+      argument.
+
+      `function_aliases` maps actual function names to the function aliases, as
+      defined by the `MetaGraphDef::MetaInfoDef::function_aliases` from the
+      input SavedModel.
+      )pbdoc",
+      py::arg("src_saved_model_path"), py::arg("dst_saved_model_path"),
+      py::arg("quantization_options_serialized"), py::kw_only(),
+      py::arg("signature_keys"), py::arg("signature_def_map_serialized"),
+      py::arg("function_aliases"), py::arg("py_function_library"));
 
   m.def(
       // If the function signature changes, likely its corresponding .pyi type
@@ -180,23 +191,24 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       "quantize_ptq_dynamic_range",
       [](const absl::string_view src_saved_model_path,
          const absl::string_view dst_saved_model_path,
+         const QuantizationOptions& quantization_options,
          const std::vector<std::string>& signature_keys,
-         const QuantizationOptions& quant_opts,
-         const absl::flat_hash_map<std::string, std::string>& function_aliases,
          const absl::flat_hash_map<std::string, SignatureDef>&
              signature_def_map,
-         const PyFunctionLibrary& py_function_lib) -> absl::Status {
+         const absl::flat_hash_map<std::string, std::string>& function_aliases,
+         const PyFunctionLibrary& py_function_library) -> absl::Status {
         // LINT.ThenChange(pywrap_quantize_model.pyi:quantize_ptq_dynamic_range)
         std::unordered_set<std::string> tags;
-        tags.insert(quant_opts.tags().begin(), quant_opts.tags().end());
+        tags.insert(quantization_options.tags().begin(),
+                    quantization_options.tags().end());
 
         const absl::StatusOr<ExportedModel> exported_model =
             QuantizePtqDynamicRange(src_saved_model_path, signature_keys, tags,
-                                    quant_opts, function_aliases);
+                                    quantization_options, function_aliases);
 
-        py_function_lib.SaveExportedModel(dst_saved_model_path, *exported_model,
-                                          src_saved_model_path, tags,
-                                          signature_def_map);
+        py_function_library.SaveExportedModel(
+            dst_saved_model_path, *exported_model, src_saved_model_path, tags,
+            signature_def_map);
 
         return absl::OkStatus();
       },
@@ -207,9 +219,18 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       raises `StatusNotOk` exception.
 
       The user should pass a serialized `QuantizationOptions` for the
-      `quant_opts` argument, and a signature key -> serialized `SignatureDef`
-      mapping for the `signature_def_map` argument.
-    )pbdoc");
+      `quantization_options_serialized` argument, and a signature key ->
+      serialized `SignatureDef` mapping for the `signature_def_map_serialized`
+      argument.
+
+      `function_aliases` maps actual function names to the function aliases, as
+      defined by the `MetaGraphDef::MetaInfoDef::function_aliases` from the
+      input SavedModel.
+      )pbdoc",
+      py::arg("src_saved_model_path"), py::arg("dst_saved_model_path"),
+      py::arg("quantization_options_serialized"), py::kw_only(),
+      py::arg("signature_keys"), py::arg("signature_def_map_serialized"),
+      py::arg("function_aliases"), py::arg("py_function_library"));
 
   m.def(
       // If the function signature changes, likely its corresponding .pyi type
@@ -218,22 +239,23 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       "quantize_weight_only",
       [](const absl::string_view src_saved_model_path,
          const absl::string_view dst_saved_model_path,
-         const QuantizationOptions& quant_opts,
-         const absl::flat_hash_map<std::string, std::string>& function_aliases,
+         const QuantizationOptions& quantization_options,
          const absl::flat_hash_map<std::string, SignatureDef>&
              signature_def_map,
-         const PyFunctionLibrary& py_function_lib) -> absl::Status {
+         const absl::flat_hash_map<std::string, std::string>& function_aliases,
+         const PyFunctionLibrary& py_function_library) -> absl::Status {
         // LINT.ThenChange(pywrap_quantize_model.pyi:quantize_weight_only)
         const absl::StatusOr<ExportedModel> exported_model = QuantizeWeightOnly(
-            src_saved_model_path, quant_opts, function_aliases);
+            src_saved_model_path, quantization_options, function_aliases);
         if (!exported_model.ok()) return exported_model.status();
 
         std::unordered_set<std::string> tags;
-        tags.insert(quant_opts.tags().begin(), quant_opts.tags().end());
+        tags.insert(quantization_options.tags().begin(),
+                    quantization_options.tags().end());
 
-        py_function_lib.SaveExportedModel(dst_saved_model_path, *exported_model,
-                                          src_saved_model_path, tags,
-                                          signature_def_map);
+        py_function_library.SaveExportedModel(
+            dst_saved_model_path, *exported_model, src_saved_model_path, tags,
+            signature_def_map);
 
         return absl::OkStatus();
       },
@@ -244,9 +266,18 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       raises `StatusNotOk` exception.
 
       The user should pass a serialized `QuantizationOptions` for the
-      `quant_opts` argument, and a signature key -> serialized `SignatureDef`
-      mapping for the `signature_def_map` argument.
-    )pbdoc");
+      `quantization_options_serialized` argument, and a signature key ->
+      serialized `SignatureDef` mapping for the `signature_def_map_serialized`
+      argument.
+
+      `function_aliases` maps actual function names to the function aliases, as
+      defined by the `MetaGraphDef::MetaInfoDef::function_aliases` from the
+      input SavedModel.
+      )pbdoc",
+      py::arg("src_saved_model_path"), py::arg("dst_saved_model_path"),
+      py::arg("quantization_options_serialized"), py::kw_only(),
+      py::arg("signature_def_map_serialized"), py::arg("function_aliases"),
+      py::arg("py_function_library"));
 
   m.def(
       // If the function signature changes, likely its corresponding .pyi type
@@ -254,28 +285,30 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       // LINT.IfChange
       "quantize_ptq_model_pre_calibration",
       [](const absl::string_view saved_model_path,
+         const QuantizationOptions& quantization_options,
          const std::vector<std::string>& signature_keys,
-         const QuantizationOptions& quant_opts,
-         const absl::flat_hash_map<std::string, std::string>& function_aliases,
          const absl::flat_hash_map<std::string, SignatureDef>&
              signature_def_map,
-         const PyFunctionLibrary& py_function_lib)
+         const absl::flat_hash_map<std::string, std::string>& function_aliases,
+         const PyFunctionLibrary& py_function_library)
           -> absl::StatusOr<std::pair<ExportedModel, std::string>> {
         // LINT.ThenChange(pywrap_quantize_model.pyi:quantize_ptq_model_pre_calibration)
         std::unordered_set<std::string> tags;
-        tags.insert(quant_opts.tags().begin(), quant_opts.tags().end());
+        tags.insert(quantization_options.tags().begin(),
+                    quantization_options.tags().end());
 
         const absl::StatusOr<ExportedModel> exported_model =
             QuantizePtqModelPreCalibration(saved_model_path, signature_keys,
-                                           tags, quant_opts, function_aliases);
+                                           tags, quantization_options,
+                                           function_aliases);
         if (!exported_model.ok()) return exported_model.status();
 
         const ExportedModel exported_model_ids_assigned =
-            py_function_lib.AssignIdsToCustomAggregatorOps(*exported_model);
+            py_function_library.AssignIdsToCustomAggregatorOps(*exported_model);
 
         const std::string precalibrated_saved_model_dir = CreateTmpDir();
 
-        py_function_lib.SaveExportedModel(
+        py_function_library.SaveExportedModel(
             precalibrated_saved_model_dir, exported_model_ids_assigned,
             saved_model_path, tags, signature_def_map);
 
@@ -287,11 +320,20 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       went through the pre-calibration phase of static-range PTQ.
 
       The user should pass a serialized `QuantizationOptions` for the
-      `quant_opts` argument, and a signature key -> serialized `SignatureDef`
-      mapping for the `signature_def_map` argument.
+      `quantization_options_serialized` argument, and a signature key ->
+      serialized `SignatureDef` mapping for the `signature_def_map_serialized`
+      argument.
+
+      `function_aliases` maps actual function names to the function aliases, as
+      defined by the `MetaGraphDef::MetaInfoDef::function_aliases` from the
+      input SavedModel.
 
       Raises `StatusNotOk` exception if when the run was unsuccessful.
-    )pbdoc");
+      )pbdoc",
+      py::arg("saved_model_path"), py::arg("quantization_options_serialized"),
+      py::kw_only(), py::arg("signature_keys"),
+      py::arg("signature_def_map_serialized"), py::arg("function_aliases"),
+      py::arg("py_function_library"));
 
   m.def(
       // If the function signature changes, likely its corresponding .pyi type
@@ -300,25 +342,26 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       "quantize_ptq_model_post_calibration",
       [](const absl::string_view src_saved_model_path,
          const absl::string_view dst_saved_model_path,
+         const QuantizationOptions& quantization_options,
          const std::vector<std::string>& signature_keys,
-         const QuantizationOptions& quant_opts,
-         const absl::flat_hash_map<std::string, std::string>& function_aliases,
          const absl::flat_hash_map<std::string, SignatureDef>&
              signature_def_map,
-         const PyFunctionLibrary& py_function_lib) -> absl::Status {
+         const absl::flat_hash_map<std::string, std::string>& function_aliases,
+         const PyFunctionLibrary& py_function_library) -> absl::Status {
         // LINT.ThenChange(pywrap_quantize_model.pyi:quantize_ptq_model_post_calibration)
         std::unordered_set<std::string> tags;
-        tags.insert(quant_opts.tags().begin(), quant_opts.tags().end());
+        tags.insert(quantization_options.tags().begin(),
+                    quantization_options.tags().end());
 
         const absl::StatusOr<ExportedModel> exported_model =
-            QuantizePtqModelPostCalibration(src_saved_model_path,
-                                            signature_keys, tags, quant_opts,
-                                            function_aliases);
+            QuantizePtqModelPostCalibration(
+                src_saved_model_path, signature_keys, tags,
+                quantization_options, function_aliases);
         if (!exported_model.ok()) return exported_model.status();
 
-        py_function_lib.SaveExportedModel(dst_saved_model_path, *exported_model,
-                                          src_saved_model_path, tags,
-                                          signature_def_map);
+        py_function_library.SaveExportedModel(
+            dst_saved_model_path, *exported_model, src_saved_model_path, tags,
+            signature_def_map);
 
         return absl::OkStatus();
       },
@@ -332,5 +375,13 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       The user should pass a serialized `QuantizationOptions` for the
       `quant_opts` argument, and a signature key -> serialized `SignatureDef`
       mapping for the `signature_def_map` argument.
-    )pbdoc");
+
+      `function_aliases` maps actual function names to the function aliases, as
+      defined by the `MetaGraphDef::MetaInfoDef::function_aliases` from the
+      input SavedModel.
+    )pbdoc",
+      py::arg("src_saved_model_path"), py::arg("dst_saved_model_path"),
+      py::arg("quantization_options_serialized"), py::kw_only(),
+      py::arg("signature_keys"), py::arg("signature_def_map_serialized"),
+      py::arg("function_aliases"), py::arg("py_function_library"));
 }

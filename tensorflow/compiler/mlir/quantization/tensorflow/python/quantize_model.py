@@ -581,11 +581,13 @@ def _run_static_range_qat(
   pywrap_quantize_model.quantize_qat_model(
       src_saved_model_path,
       dst_saved_model_path,
-      list(quant_opts.signature_keys),
-      quant_opts.SerializeToString(),
-      dict(function_aliases),
-      _serialize_signature_def_map(signature_def_map),
-      py_function_lib.PyFunctionLibrary(),
+      quantization_options_serialized=quant_opts.SerializeToString(),
+      signature_keys=list(quant_opts.signature_keys),
+      signature_def_map_serialized=_serialize_signature_def_map(
+          signature_def_map
+      ),
+      function_aliases=dict(function_aliases),
+      py_function_library=py_function_lib.PyFunctionLibrary(),
   )
 
 
@@ -725,11 +727,11 @@ def _run_static_range_ptq(
   exported_model_serialized, pre_calib_output_model_path = (
       pywrap_quantize_model.quantize_ptq_model_pre_calibration(
           src_saved_model_path,
-          list(quant_opts.signature_keys),
-          quant_opts.SerializeToString(),
-          dict(function_aliases),
-          signature_def_map_serialized,
-          py_function_lib.PyFunctionLibrary(),
+          quantization_options_serialized=quant_opts.SerializeToString(),
+          signature_keys=list(quant_opts.signature_keys),
+          signature_def_map_serialized=signature_def_map_serialized,
+          function_aliases=dict(function_aliases),
+          py_function_library=py_function_lib.PyFunctionLibrary(),
       )
   )
   exported_model = exported_model_pb2.ExportedModel.FromString(
@@ -786,19 +788,19 @@ def _run_static_range_ptq(
 
   logging.info('Running post-training quantization post-calibration step.')
   pywrap_quantize_model.quantize_ptq_model_post_calibration(
-      calibrated_model_path,
-      dst_saved_model_path,
-      list(quant_opts.signature_keys),
-      quant_opts.SerializeToString(),
-      dict(exported_model.function_aliases),
-      signature_def_map_serialized,
-      py_function_lib.PyFunctionLibrary(),
+      src_saved_model_path=calibrated_model_path,
+      dst_saved_model_path=dst_saved_model_path,
+      quantization_options_serialized=quant_opts.SerializeToString(),
+      signature_keys=list(quant_opts.signature_keys),
+      signature_def_map_serialized=signature_def_map_serialized,
+      function_aliases=dict(exported_model.function_aliases),
+      py_function_library=py_function_lib.PyFunctionLibrary(),
   )
 
 
 def _static_range_quantize(
-    saved_model_path: str,
-    output_directory: str,
+    src_saved_model_path: str,
+    dst_saved_model_path: str,
     quantization_options: _QuantizationOptions,
     representative_dataset: Optional[
         repr_dataset.RepresentativeDatasetOrMapping
@@ -812,10 +814,10 @@ def _static_range_quantize(
   model input, `representative_dataset` will be ignored.
 
   Args:
-    saved_model_path: Path to the saved model. When representative_dataset is
-      not provided, this should be a model trained with QAT.
-    output_directory: The path to save the output SavedModel. The directory will
-      be overwritten if not empty.
+    src_saved_model_path: Path to the saved model. When representative_dataset
+      is not provided, this should be a model trained with QAT.
+    dst_saved_model_path: The path to save the output SavedModel. The directory
+      will be overwritten if not empty.
     quantization_options: QuantizationOptions proto describing quantization
       related config.
     representative_dataset: a generator that returns a dictionary in {input_key:
@@ -832,18 +834,18 @@ def _static_range_quantize(
       in the SavedModel.
   """
   logging.info(
-      'Running static range quantization on model: %s', saved_model_path
+      'Running static range quantization on model: %s', src_saved_model_path
   )
   logging.info('QuantizationOptions: \n%s', quantization_options)
 
   is_qat_saved_model_or_method_no_quantize = _is_qat_saved_model(
-      saved_model_path
+      src_saved_model_path
   ) or (
       quantization_options.quantization_method.preset_method
       == _QuantizationMethod.METHOD_NO_QUANTIZE
   )
   signature_def_map = save_model.get_signatures_from_saved_model(
-      saved_model_path,
+      src_saved_model_path,
       quantization_options.signature_keys,
       set(quantization_options.tags),
   )
@@ -866,34 +868,34 @@ def _static_range_quantize(
 
   if is_qat_saved_model_or_method_no_quantize:
     _run_static_range_qat(
-        saved_model_path,
-        output_directory,
+        src_saved_model_path,
+        dst_saved_model_path,
         quantization_options,
         signature_def_map,
     )
   else:
     _run_static_range_ptq(
-        saved_model_path,
-        output_directory,
+        src_saved_model_path,
+        dst_saved_model_path,
         quantization_options,
         representative_dataset,
         signature_def_map,
     )
 
-  return saved_model_load.load(output_directory)
+  return saved_model_load.load(dst_saved_model_path)
 
 
 def _dynamic_range_quantize(
-    saved_model_path: str,
-    output_directory: str,
+    src_saved_model_path: str,
+    dst_saved_model_path: str,
     quantization_options: _QuantizationOptions,
 ) -> autotrackable.AutoTrackable:
   """Quantizes the given SavedModel via post-training dynamic range quantization.
 
   Args:
-    saved_model_path: Path to the saved model.
-    output_directory: The path to save the output SavedModel. The directory will
-      be overwritten if not empty.
+    src_saved_model_path: Path to the saved model.
+    dst_saved_model_path: The path to save the output SavedModel. The directory
+      will be overwritten if not empty.
     quantization_options: QuantizationOptions proto describing quantization
       related config.
 
@@ -904,54 +906,56 @@ def _dynamic_range_quantize(
     ValueError: when the model is QAT model.
   """
   mode_str = 'dynamic-range quantization'
-  if _is_qat_saved_model(saved_model_path):
+  if _is_qat_saved_model(src_saved_model_path):
     raise ValueError(
         'The models trained with quantization-aware training (QAT) is not '
         'supported for %s.' % mode_str
     )
 
   logging.info(
-      'Running post-training %s on model: %s', mode_str, saved_model_path
+      'Running post-training %s on model: %s', mode_str, src_saved_model_path
   )
   logging.info('QuantizationOptions: \n%s', quantization_options)
 
-  loader = saved_model_loader.SavedModelLoader(saved_model_path)
+  loader = saved_model_loader.SavedModelLoader(src_saved_model_path)
 
   function_aliases = loader.get_meta_graph_def_from_tags(
       quantization_options.tags
   ).meta_info_def.function_aliases
 
   signature_def_map = save_model.get_signatures_from_saved_model(
-      saved_model_path,
+      src_saved_model_path,
       quantization_options.signature_keys,
       quantization_options.tags,
   )
 
   # Apply post-training dynamic range quantization to the model.
   pywrap_quantize_model.quantize_ptq_dynamic_range(
-      saved_model_path,
-      output_directory,
-      list(quantization_options.signature_keys),
-      quantization_options.SerializeToString(),
-      dict(function_aliases),
-      _serialize_signature_def_map(signature_def_map),
-      py_function_lib.PyFunctionLibrary(),
+      src_saved_model_path,
+      dst_saved_model_path,
+      quantization_options_serialized=quantization_options.SerializeToString(),
+      signature_keys=list(quantization_options.signature_keys),
+      signature_def_map_serialized=_serialize_signature_def_map(
+          signature_def_map
+      ),
+      function_aliases=dict(function_aliases),
+      py_function_library=py_function_lib.PyFunctionLibrary(),
   )
 
-  return saved_model_load.load(output_directory)
+  return saved_model_load.load(dst_saved_model_path)
 
 
 def _weight_only_quantize(
-    saved_model_path: str,
-    output_directory: str,
+    src_saved_model_path: str,
+    dst_saved_model_path: str,
     quantization_options: quant_opts_pb2.QuantizationOptions,
 ) -> autotrackable.AutoTrackable:
   """Quantizes the given SavedModel via weight-only quantization.
 
   Args:
-    saved_model_path: Path to the saved model.
-    output_directory: The path to save the output SavedModel. The directory will
-      be overwritten if not empty.
+    src_saved_model_path: Path to the saved model.
+    dst_saved_model_path: The path to save the output SavedModel. The directory
+      will be overwritten if not empty.
     quantization_options: QuantizationOptions proto describing quantization
       related config.
 
@@ -964,39 +968,41 @@ def _weight_only_quantize(
   mode_str = 'weight-only quantization'
 
   # QAT weight-only is not supported yet.
-  if _is_qat_saved_model(saved_model_path):
+  if _is_qat_saved_model(src_saved_model_path):
     raise ValueError(
         'The models trained with quantization-aware training (QAT) is not '
         'supported for %s.' % mode_str
     )
 
   logging.info(
-      'Running post-training %s on model: %s', mode_str, saved_model_path
+      'Running post-training %s on model: %s', mode_str, src_saved_model_path
   )
   logging.info('QuantizationOptions: \n%s', quantization_options)
 
-  loader = saved_model_loader.SavedModelLoader(saved_model_path)
+  loader = saved_model_loader.SavedModelLoader(src_saved_model_path)
 
   function_aliases = loader.get_meta_graph_def_from_tags(
       quantization_options.tags
   ).meta_info_def.function_aliases
 
   signature_def_map = save_model.get_signatures_from_saved_model(
-      saved_model_path,
+      src_saved_model_path,
       list(quantization_options.signature_keys),
       set(quantization_options.tags),
   )
 
   pywrap_quantize_model.quantize_weight_only(
-      saved_model_path,
-      output_directory,
-      quantization_options.SerializeToString(),
-      dict(function_aliases),
-      _serialize_signature_def_map(signature_def_map),
-      py_function_lib.PyFunctionLibrary(),
+      src_saved_model_path,
+      dst_saved_model_path,
+      quantization_options_serialized=quantization_options.SerializeToString(),
+      signature_def_map_serialized=_serialize_signature_def_map(
+          signature_def_map
+      ),
+      function_aliases=dict(function_aliases),
+      py_function_library=py_function_lib.PyFunctionLibrary(),
   )
 
-  return saved_model_load.load(output_directory)
+  return saved_model_load.load(dst_saved_model_path)
 
 
 def _verify_output_dir(output_dir: Optional[str], overwrite: bool) -> None:

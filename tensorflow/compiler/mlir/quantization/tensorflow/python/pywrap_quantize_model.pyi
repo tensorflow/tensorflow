@@ -38,10 +38,11 @@ def get_statistics_from_calibrator(
 def quantize_qat_model(
     src_saved_model_path: str,
     dst_saved_model_path: str,
-    signature_keys: list[str],
     quantization_options_serialized: bytes,
-    function_aliases: dict[str, str],
+    *,
+    signature_keys: list[str],
     signature_def_map_serialized: dict[str, bytes],
+    function_aliases: dict[str, str],
     py_function_library: py_function_lib.PyFunctionLibrary,
 ) -> Any: ...  # Status
 
@@ -51,10 +52,11 @@ def quantize_qat_model(
 def quantize_ptq_dynamic_range(
     src_saved_model_path: str,
     dst_saved_model_path: str,
-    signature_keys: list[str],
     quantization_options_serialized: bytes,
-    function_aliases: dict[str, str],
+    *,
+    signature_keys: list[str],
     signature_def_map_serialized: dict[str, bytes],
+    function_aliases: dict[str, str],
     py_function_library: py_function_lib.PyFunctionLibrary,
 ) -> Any: ...  # Status
 
@@ -65,8 +67,9 @@ def quantize_weight_only(
     src_saved_model_path: str,
     dst_saved_model_path: str,
     quantization_options_serialized: bytes,
-    function_aliases: dict[str, str],
+    *,
     signature_def_map_serialized: dict[str, bytes],
+    function_aliases: dict[str, str],
     py_function_library: py_function_lib.PyFunctionLibrary,
 ) -> Any: ...  # Status
 
@@ -75,10 +78,11 @@ def quantize_weight_only(
 # LINT.IfChange(quantize_ptq_model_pre_calibration)
 def quantize_ptq_model_pre_calibration(
     src_saved_model_path: str,
-    signature_keys: list[str],
     quantization_options_serialized: bytes,
-    function_aliases: dict[str, str],
+    *,
+    signature_keys: list[str],
     signature_def_map_serialized: dict[str, bytes],
+    function_aliases: dict[str, str],
     py_function_library: py_function_lib.PyFunctionLibrary,
 ) -> tuple[bytes, str]: ...
 
@@ -88,10 +92,11 @@ def quantize_ptq_model_pre_calibration(
 def quantize_ptq_model_post_calibration(
     src_saved_model_path: str,
     dst_saved_model_path: str,
-    signature_keys: list[str],
     quantization_options_serialized: bytes,
-    function_aliases: dict[str, str],
+    *,
+    signature_keys: list[str],
     signature_def_map_serialized: dict[str, bytes],
+    function_aliases: dict[str, str],
     py_function_library: py_function_lib.PyFunctionLibrary,
 ) -> Any: ...  # Status
 
