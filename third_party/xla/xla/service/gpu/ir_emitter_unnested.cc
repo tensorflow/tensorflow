@@ -1952,7 +1952,7 @@ static Status ProcessFusionForConversion(mlir::Region* region,
   });
 
   region->walk([&](mlir::bufferization::MaterializeInDestinationOp store) {
-    if (!isa<mlir::TensorType>(store.getDest().getType())) return;
+    if (!llvm::isa<mlir::TensorType>(store.getDest().getType())) return;
     if (store.getDest().getParentRegion() != region) {
       stores.push_back(store);
     }
