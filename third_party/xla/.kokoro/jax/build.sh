@@ -62,7 +62,6 @@ build_and_test_on_rbe_cpu() {
       --verbose_failures=true \
       --override_repository=xla="${KOKORO_ARTIFACTS_DIR}"/github/xla \
       --config=avx_posix \
-      --config=tpu \
       --config=mkl_open_source_only \
       --config="$NOCUDA_RBE_CONFIG_NAME" \
       --config=tensorflow_testing_rbe_linux \
