@@ -20,6 +20,7 @@ package_group(
         "//tensorflow/compiler/mlir/tfrt",
         "//tensorflow/compiler/tf2xla",
         "//tensorflow/compiler/mlir",
+        "//tensorflow/compiler/mlir/tfrt/transforms/ifrt",
         # Legacy due to where the bridge currently runs. This should go away.
         "//tensorflow/compiler/mlir/tensorflow/transforms",
     ],

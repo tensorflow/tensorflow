@@ -17,7 +17,7 @@ cc_library(
     srcs = ["ifrt_serving_executable.cc"],
     hdrs = ["ifrt_serving_executable.h"],
     deps = [
-        "//tensorflow/compiler/mlir/tfrt:tf2hlo",
+        "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:tf2hlo",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:framework",
