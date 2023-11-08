@@ -37,8 +37,16 @@ class PyFunctionLibrary {
   // `exported_model`. The UUIDs are set to the `id` attributes. The UUIDs will
   // be used during calibration step to identify the collected quantization
   // statistics for each CustsomAggregator op.
+  //
+  // If the function signature changes, likely its corresponding .pyi type
+  // hinting and definition should also change.
+  // LINT.IfChange
   virtual ExportedModel AssignIdsToCustomAggregatorOps(
       const ExportedModel& exported_model) const = 0;
+  // LINT.ThenChange(
+  //     pywrap_function_lib.pyi:assign_ids_to_custom_aggregator_ops,
+  //     py_function_lib.py:assign_ids_to_custom_aggregator_ops,
+  // )
 
   // Saves `exported_model` to `dst_saved_model_path` as SavedModel.
   // `src_saved_model_path` is the path to the source SavedModel from which the
@@ -47,6 +55,10 @@ class PyFunctionLibrary {
   // `MetaGraphDef`. `signature_def_map` will be passed to the
   // `add_meta_graph_and_variables` function, which is internally used to add a
   // `MetaGraphDef` to save to the SavedModel.
+  //
+  // If the function signature changes, likely its corresponding .pyi type
+  // hinting and definition should also change.
+  // LINT.IfChange
   virtual void SaveExportedModel(
       absl::string_view dst_saved_model_path,
       const ExportedModel& exported_model,
@@ -54,6 +66,10 @@ class PyFunctionLibrary {
       const std::unordered_set<std::string>& tags,
       const absl::flat_hash_map<std::string, tensorflow::SignatureDef>&
           signature_def_map) const = 0;
+  // LINT.ThenChange(
+  //     pywrap_function_lib.pyi:save_exported_model,
+  //     py_function_lib.py:save_exported_model,
+  // )
 };
 
 }  // namespace tensorflow::quantization

@@ -99,20 +99,34 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
 
   // Calibrator related functions.
   m.def(
+      // If the function signature changes, likely its corresponding .pyi type
+      // hinting should also change.
+      // LINT.IfChange
       "clear_calibrator",
-      [] { CalibratorSingleton::ClearCollectedInformation(); },
+      []() -> void
+      // LINT.ThenChange(pywrap_quantize_model.pyi:clear_calibrator)
+      { CalibratorSingleton::ClearCollectedInformation(); },
       R"pbdoc(
       Clears the collected metrics from the calibrator.
     )pbdoc");
   m.def(
+      // If the function signature changes, likely its corresponding .pyi type
+      // hinting should also change.
+      // LINT.IfChange
       "clear_data_from_calibrator",
-      [](const absl::string_view id) { CalibratorSingleton::ClearData(id); },
+      [](const absl::string_view id) -> void
+      // LINT.ThenChange(pywrap_quantize_model.pyi:clear_data_from_calibrator)
+      { CalibratorSingleton::ClearData(id); },
       R"pbdoc(
       Clears the collected data of the given id from calibrator.
     )pbdoc");
   m.def(
+      // If the function signature changes, likely its corresponding .pyi type
+      // hinting should also change.
+      // LINT.IfChange
       "get_statistics_from_calibrator",
       [](const absl::string_view id) -> CalibrationStatistics {
+        // LINT.ThenChange(pywrap_quantize_model.pyi:get_statistics_from_calibrator)
         return GetStatisticsFromCalibrator(id);
       },
       R"pbdoc(
@@ -121,6 +135,9 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
 
   // Quantization functions.
   m.def(
+      // If the function signature changes, likely its corresponding .pyi type
+      // hinting should also change.
+      // LINT.IfChange
       "quantize_qat_model",
       [](const absl::string_view src_saved_model_path,
          const absl::string_view dst_saved_model_path,
@@ -130,6 +147,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const absl::flat_hash_map<std::string, SignatureDef>&
              signature_def_map,
          const PyFunctionLibrary& py_function_lib) -> absl::Status {
+        // LINT.ThenChange(pywrap_quantize_model.pyi:quantize_qat_model)
         std::unordered_set<std::string> tags;
         tags.insert(quant_opts.tags().begin(), quant_opts.tags().end());
 
@@ -156,6 +174,9 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
     )pbdoc");
 
   m.def(
+      // If the function signature changes, likely its corresponding .pyi type
+      // hinting should also change.
+      // LINT.IfChange
       "quantize_ptq_dynamic_range",
       [](const absl::string_view src_saved_model_path,
          const absl::string_view dst_saved_model_path,
@@ -165,6 +186,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const absl::flat_hash_map<std::string, SignatureDef>&
              signature_def_map,
          const PyFunctionLibrary& py_function_lib) -> absl::Status {
+        // LINT.ThenChange(pywrap_quantize_model.pyi:quantize_ptq_dynamic_range)
         std::unordered_set<std::string> tags;
         tags.insert(quant_opts.tags().begin(), quant_opts.tags().end());
 
@@ -190,6 +212,9 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
     )pbdoc");
 
   m.def(
+      // If the function signature changes, likely its corresponding .pyi type
+      // hinting should also change.
+      // LINT.IfChange
       "quantize_weight_only",
       [](const absl::string_view src_saved_model_path,
          const absl::string_view dst_saved_model_path,
@@ -198,6 +223,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const absl::flat_hash_map<std::string, SignatureDef>&
              signature_def_map,
          const PyFunctionLibrary& py_function_lib) -> absl::Status {
+        // LINT.ThenChange(pywrap_quantize_model.pyi:quantize_weight_only)
         const absl::StatusOr<ExportedModel> exported_model = QuantizeWeightOnly(
             src_saved_model_path, quant_opts, function_aliases);
         if (!exported_model.ok()) return exported_model.status();
@@ -223,6 +249,9 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
     )pbdoc");
 
   m.def(
+      // If the function signature changes, likely its corresponding .pyi type
+      // hinting should also change.
+      // LINT.IfChange
       "quantize_ptq_model_pre_calibration",
       [](const absl::string_view saved_model_path,
          const std::vector<std::string>& signature_keys,
@@ -232,6 +261,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
              signature_def_map,
          const PyFunctionLibrary& py_function_lib)
           -> absl::StatusOr<std::pair<ExportedModel, std::string>> {
+        // LINT.ThenChange(pywrap_quantize_model.pyi:quantize_ptq_model_pre_calibration)
         std::unordered_set<std::string> tags;
         tags.insert(quant_opts.tags().begin(), quant_opts.tags().end());
 
@@ -264,6 +294,9 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
     )pbdoc");
 
   m.def(
+      // If the function signature changes, likely its corresponding .pyi type
+      // hinting should also change.
+      // LINT.IfChange
       "quantize_ptq_model_post_calibration",
       [](const absl::string_view src_saved_model_path,
          const absl::string_view dst_saved_model_path,
@@ -273,6 +306,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const absl::flat_hash_map<std::string, SignatureDef>&
              signature_def_map,
          const PyFunctionLibrary& py_function_lib) -> absl::Status {
+        // LINT.ThenChange(pywrap_quantize_model.pyi:quantize_ptq_model_post_calibration)
         std::unordered_set<std::string> tags;
         tags.insert(quant_opts.tags().begin(), quant_opts.tags().end());
 

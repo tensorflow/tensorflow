@@ -87,10 +87,12 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
   declared in `pywrap_function_lib.PyFunctionLibrary`.
   """
 
+  # LINT.IfChange(assign_ids_to_custom_aggregator_ops)
   def assign_ids_to_custom_aggregator_ops(
       self,
       exported_model_serialized: bytes,
   ) -> bytes:
+  # LINT.ThenChange(py_function_lib.h:assign_ids_to_custom_aggregator_ops)
     """Assigns UUIDs to each CustomAggregator op find in the graph def.
 
     Args:
@@ -112,6 +114,7 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
 
     return exported_model.SerializeToString()
 
+  # LINT.IfChange(save_exported_model)
   def save_exported_model(
       self,
       dst_saved_model_path: str,
@@ -120,6 +123,7 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
       tags: set[str],
       serialized_signature_def_map: dict[str, bytes],
   ) -> None:
+  # LINT.ThenChange(py_function_lib.h:save_exported_model)
     """Saves `ExportedModel` to `dst_saved_model_path` as a SavedModel.
 
     Args:
