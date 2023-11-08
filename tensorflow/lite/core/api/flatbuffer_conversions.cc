@@ -918,6 +918,9 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
+    case BuiltinOperator_STABLEHLO_PAD: {
+      return ParseStablehloPad(op, error_reporter, allocator, builtin_data);
+    }
     // TODO: skip param parsing for now since ops below don't have kernels
     case BuiltinOperator_STABLEHLO_SLICE:
     case BuiltinOperator_STABLEHLO_BROADCAST_IN_DIM:
@@ -952,7 +955,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_STABLEHLO_IOTA:
     case BuiltinOperator_STABLEHLO_COMPARE:
     case BuiltinOperator_STABLEHLO_CONVERT:
-    case BuiltinOperator_STABLEHLO_PAD:
     case BuiltinOperator_STABLEHLO_DOT_GENERAL:
     case BuiltinOperator_STABLEHLO_SORT:
     case BuiltinOperator_STABLEHLO_WHILE:
@@ -2314,6 +2316,59 @@ TfLiteStatus ParseStablehloGather(const Operator* op,
 
   *builtin_data = params.release();
   return kTfLiteOk;
+}
+
+TfLiteStatus ParseStablehloPad(const Operator* op,
+                               ErrorReporter* error_reporter,
+                               BuiltinDataAllocator* allocator,
+                               void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  auto params = safe_allocator.Allocate<TfLiteStablehloPadParams>();
+  const StablehloPadOptions* schema_params =
+      op->builtin_options_2_as_StablehloPadOptions();
+
+  if (schema_params) {
+    auto LoadAttr =
+        [&error_reporter](
+            int64_t* params_array, const size_t params_array_size_bytes,
+            const flatbuffers::Vector<int64_t>* const flatbuffer_vector,
+            const char* const attr_name) -> TfLiteStatus {
+      TfLiteStatus status = FlatBufferIntVectorToArray(
+          params_array_size_bytes, flatbuffer_vector, params_array,
+          error_reporter, "stablehlo.pad");
+      if (status != kTfLiteOk) {
+        TF_LITE_REPORT_ERROR(error_reporter, "Check the '%s' attribute.",
+                             attr_name);
+      }
+      return status;
+    };
+
+    TF_LITE_ENSURE_STATUS(
+        LoadAttr(params->edge_padding_low, sizeof(params->edge_padding_low),
+                 schema_params->edge_padding_low(), "edge_padding_low"));
+    TF_LITE_ENSURE_STATUS(
+        LoadAttr(params->edge_padding_high, sizeof(params->edge_padding_high),
+                 schema_params->edge_padding_high(), "edge_padding_high"));
+    TF_LITE_ENSURE_STATUS(
+        LoadAttr(params->interior_padding, sizeof(params->interior_padding),
+                 schema_params->interior_padding(), "interior_padding"));
+    if (schema_params->edge_padding_low()->size() !=
+            schema_params->edge_padding_high()->size() ||
+        schema_params->edge_padding_low()->size() !=
+            schema_params->interior_padding()->size()) {
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "'stablehlo.pad' operation parameter array sizes "
+                           "are not consistent.");
+      return kTfLiteError;
+    }
+    *builtin_data = params.release();
+    return kTfLiteOk;
+  }
+  TF_LITE_REPORT_ERROR(error_reporter,
+                       "Could not get 'stablehlo.pad' operation parameters.");
+  return kTfLiteError;
 }
 
 // We have this parse function instead of directly returning kTfLiteOk from the

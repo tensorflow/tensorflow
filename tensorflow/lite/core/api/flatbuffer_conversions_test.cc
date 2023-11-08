@@ -26,7 +26,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
-#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -721,6 +720,149 @@ TEST_F(StablehloReduceWindowFlatbufferConversionsTest, DeathTests) {
                "");
   EXPECT_DEATH(ParseOpData(stablehlo_reduce_window_op,
                            BuiltinOperator_STABLEHLO_REDUCE_WINDOW,
+                           &mock_reporter_, &mock_allocator_, nullptr),
+               "");
+}
+
+class StablehloPadFlatbufferConversionsTest : public FlatbufferConversionsTest {
+ public:
+  static constexpr int kMaxDims =
+      TFLITE_STABLEHLO_PAD_PARAMS_MAX_DIMENSION_COUNT;
+  static constexpr int64_t kValidValue = 5;
+};
+
+TEST_F(StablehloPadFlatbufferConversionsTest, Succeeds) {
+  const Operator* stablehlo_pad_op = BuildTestOperator(
+      BuiltinOptions2_StablehloPadOptions,
+      CreateStablehloPadOptions(
+          builder_,
+          /*edge_padding_low=*/builder_.CreateVector<int64_t>({1, 0, -1}),
+          /*edge_padding_high=*/builder_.CreateVector<int64_t>({2, 0, -2}),
+          /*interior_padding=*/builder_.CreateVector<int64_t>({3, 0, 3}))
+          .Union());
+  TfLiteStablehloPadParams* output_data = nullptr;
+  EXPECT_EQ(
+      ParseOpData(stablehlo_pad_op, BuiltinOperator_STABLEHLO_PAD,
+                  &mock_reporter_, &mock_allocator_, (void**)&output_data),
+      kTfLiteOk);
+  EXPECT_THAT(std::make_tuple(output_data->edge_padding_low, 3),
+              ElementsAre(1, 0, -1));
+  EXPECT_THAT(std::make_tuple(output_data->edge_padding_high, 3),
+              ElementsAre(2, 0, -2));
+  EXPECT_THAT(std::make_tuple(output_data->interior_padding, 3),
+              ElementsAre(3, 0, 3));
+}
+
+TEST_F(StablehloPadFlatbufferConversionsTest, FailsWithMissingLowPadding) {
+  const Operator* stablehlo_pad_op = BuildTestOperator(
+      BuiltinOptions2_StablehloPadOptions,
+      CreateStablehloPadOptions(
+          builder_,
+          /*edge_padding_low=*/0,
+          /*edge_padding_high=*/builder_.CreateVector<int64_t>({2, 0, -2}),
+          /*interior_padding=*/builder_.CreateVector<int64_t>({3, 0, 3}))
+          .Union());
+  TfLiteStablehloPadParams* output_data = nullptr;
+  EXPECT_EQ(
+      ParseOpData(stablehlo_pad_op, BuiltinOperator_STABLEHLO_PAD,
+                  &mock_reporter_, &mock_allocator_, (void**)&output_data),
+      kTfLiteError);
+  EXPECT_THAT(
+      mock_reporter_.GetString(),
+      AllOf(
+          HasSubstr("Input array not provided for operation 'stablehlo.pad'."),
+          HasSubstr("Check the 'edge_padding_low' attribute.")));
+}
+
+TEST_F(StablehloPadFlatbufferConversionsTest, FailsWithMissingHighPadding) {
+  const Operator* stablehlo_pad_op = BuildTestOperator(
+      BuiltinOptions2_StablehloPadOptions,
+      CreateStablehloPadOptions(
+          builder_,
+          /*edge_padding_low=*/builder_.CreateVector<int64_t>({1, 0, -1}),
+          /*edge_padding_high=*/0,
+          /*interior_padding=*/builder_.CreateVector<int64_t>({3, 0, 3}))
+          .Union());
+  TfLiteStablehloPadParams* output_data = nullptr;
+  EXPECT_EQ(
+      ParseOpData(stablehlo_pad_op, BuiltinOperator_STABLEHLO_PAD,
+                  &mock_reporter_, &mock_allocator_, (void**)&output_data),
+      kTfLiteError);
+  EXPECT_THAT(
+      mock_reporter_.GetString(),
+      AllOf(
+          HasSubstr("Input array not provided for operation 'stablehlo.pad'."),
+          HasSubstr("Check the 'edge_padding_high' attribute.")));
+}
+
+TEST_F(StablehloPadFlatbufferConversionsTest, FailsWithMissingInteriorPadding) {
+  const Operator* stablehlo_pad_op = BuildTestOperator(
+      BuiltinOptions2_StablehloPadOptions,
+      CreateStablehloPadOptions(
+          builder_,
+          /*edge_padding_low=*/builder_.CreateVector<int64_t>({1, 0, -1}),
+          /*edge_padding_high=*/builder_.CreateVector<int64_t>({2, 0, -2}),
+          /*interior_padding=*/0)
+          .Union());
+  TfLiteStablehloPadParams* output_data = nullptr;
+  EXPECT_EQ(
+      ParseOpData(stablehlo_pad_op, BuiltinOperator_STABLEHLO_PAD,
+                  &mock_reporter_, &mock_allocator_, (void**)&output_data),
+      kTfLiteError);
+  EXPECT_THAT(
+      mock_reporter_.GetString(),
+      AllOf(
+          HasSubstr("Input array not provided for operation 'stablehlo.pad'."),
+          HasSubstr("Check the 'interior_padding' attribute.")));
+}
+
+TEST_F(StablehloPadFlatbufferConversionsTest, FailsInconsistentSizes) {
+  const Operator* stablehlo_pad_op = BuildTestOperator(
+      BuiltinOptions2_StablehloPadOptions,
+      CreateStablehloPadOptions(
+          builder_,
+          /*edge_padding_low=*/builder_.CreateVector<int64_t>({1, 0, -1}),
+          /*edge_padding_high=*/builder_.CreateVector<int64_t>({2, 0, -2}),
+          /*interior_padding=*/builder_.CreateVector<int64_t>({3, 0, -3, 5}))
+          .Union());
+  TfLiteStablehloPadParams* output_data = nullptr;
+  EXPECT_EQ(
+      ParseOpData(stablehlo_pad_op, BuiltinOperator_STABLEHLO_PAD,
+                  &mock_reporter_, &mock_allocator_, (void**)&output_data),
+      kTfLiteError);
+  EXPECT_THAT(mock_reporter_.GetString(),
+              HasSubstr("'stablehlo.pad' operation parameter array sizes are "
+                        "not consistent."));
+}
+
+TEST_F(StablehloPadFlatbufferConversionsTest, FailsWithWrongOptions) {
+  const Operator* stablehlo_pad_op = BuildTestOperator(BuiltinOptions_NONE, 0);
+  TfLiteStablehloPadParams* output_data = nullptr;
+  EXPECT_EQ(
+      ParseOpData(stablehlo_pad_op, BuiltinOperator_STABLEHLO_PAD,
+                  &mock_reporter_, &mock_allocator_, (void**)&output_data),
+      kTfLiteError);
+  EXPECT_THAT(mock_reporter_.GetString(),
+              HasSubstr("Could not get 'stablehlo.pad' operation parameters."));
+}
+
+TEST_F(StablehloPadFlatbufferConversionsTest, DeathTests) {
+  const Operator* stablehlo_pad_op = BuildTestOperator(BuiltinOptions_NONE, 0);
+  TfLiteStablehloPadParams* output_data = nullptr;
+#ifdef NDEBUG
+  GTEST_SKIP();
+#endif
+  EXPECT_DEATH(
+      ParseOpData(nullptr, BuiltinOperator_STABLEHLO_PAD, &mock_reporter_,
+                  &mock_allocator_, (void**)&output_data),
+      "");
+  EXPECT_DEATH(ParseOpData(stablehlo_pad_op, BuiltinOperator_STABLEHLO_PAD,
+                           nullptr, &mock_allocator_, (void**)&output_data),
+               "");
+  EXPECT_DEATH(ParseOpData(stablehlo_pad_op, BuiltinOperator_STABLEHLO_PAD,
+                           &mock_reporter_, nullptr, (void**)&output_data),
+               "");
+  EXPECT_DEATH(ParseOpData(stablehlo_pad_op, BuiltinOperator_STABLEHLO_PAD,
                            &mock_reporter_, &mock_allocator_, nullptr),
                "");
 }

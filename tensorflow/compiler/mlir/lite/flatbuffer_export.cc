@@ -751,6 +751,10 @@ class Translator {
       const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
+  std::optional<BufferOffset<tflite::Operator>> BuildStablehloPadOp(
+      mlir::stablehlo::PadOp pad_op, const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results);
+
   // create a subgraph given a unnamed mlir region, return the corresponding
   // subgraph index
   int32_t UnnamedRegionToSubgraph(mlir::Region* region,
@@ -1610,6 +1614,30 @@ Translator::BuildStablehloRngBitGeneratorOp(
       rng_options.Union());
 }
 
+std::optional<BufferOffset<tflite::Operator>> Translator::BuildStablehloPadOp(
+    mlir::stablehlo::PadOp pad_op, const std::vector<int32_t>& operands,
+    const std::vector<int32_t>& results) {
+  std::string op_name = pad_op->getName().getStringRef().str();
+  uint32_t opcode_index =
+      GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_PAD);
+
+  auto edge_padding_low = builder_.CreateVector(
+      mlir::GetOptionalVector<int64_t>(pad_op.getEdgePaddingLowAttr()));
+  auto edge_padding_high = builder_.CreateVector(
+      mlir::GetOptionalVector<int64_t>(pad_op.getEdgePaddingHighAttr()));
+  auto interior_padding = builder_.CreateVector(
+      mlir::GetOptionalVector<int64_t>(pad_op.getInteriorPaddingAttr()));
+
+  auto pad_option = tflite::CreateStablehloPadOptions(
+      builder_, edge_padding_low, edge_padding_high, interior_padding);
+
+  return tflite::CreateOperator(
+      builder_, opcode_index, builder_.CreateVector(operands),
+      builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+      tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+      tflite::BuiltinOptions2_StablehloPadOptions, pad_option.Union());
+}
+
 std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     Operation* inst, std::vector<int32_t> operands,
     const std::vector<int32_t>& results,
@@ -1710,6 +1738,9 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::MinOp>(inst)) {
       return BuildStablehloOperatorwithoutOptions(
           inst, operands, results, tflite::BuiltinOperator_STABLEHLO_MINIMUM);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::PadOp>(inst)) {
+      return BuildStablehloPadOp(shlo_op, operands, results);
     }
     // for ops don't have kernels, only serialize when conversion is set to true
     if (convert_stablehlo_) {
@@ -1860,27 +1891,6 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
             tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
             tflite::BuiltinOptions2_StablehloCompareOptions,
             compare_option.Union());
-      }
-      if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::PadOp>(inst)) {
-        std::string op_name = inst->getName().getStringRef().str();
-        uint32_t opcode_index =
-            GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_PAD);
-
-        auto edge_padding_low = builder_.CreateVector(
-            mlir::GetOptionalVector<int64_t>(shlo_op.getEdgePaddingLowAttr()));
-        auto edge_padding_high = builder_.CreateVector(
-            mlir::GetOptionalVector<int64_t>(shlo_op.getEdgePaddingHighAttr()));
-        auto interior_padding = builder_.CreateVector(
-            mlir::GetOptionalVector<int64_t>(shlo_op.getInteriorPaddingAttr()));
-
-        auto pad_option = tflite::CreateStablehloPadOptions(
-            builder_, edge_padding_low, edge_padding_high, interior_padding);
-
-        return tflite::CreateOperator(
-            builder_, opcode_index, builder_.CreateVector(operands),
-            builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
-            tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
-            tflite::BuiltinOptions2_StablehloPadOptions, pad_option.Union());
       }
       if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ConcatenateOp>(inst)) {
         std::string op_name = inst->getName().getStringRef().str();
