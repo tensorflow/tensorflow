@@ -303,37 +303,62 @@ config_setting(
 
 selects.config_setting_group(
     name = "aarch32_or_cross",
-    match_any = [":linux_armhf", ":with_cross_compiler_support"],
+    match_any = [
+        ":linux_armhf",
+        ":with_cross_compiler_support"
+    ],
     visibility = ["//visibility:public"],
 )
 
 selects.config_setting_group(
     name = "aarch64_or_cross",
-    match_any = [":linux_aarch64", ":macos_arm64", ":windows_aarch64", ":with_cross_compiler_support"],
+    match_any = [
+        ":linux_aarch64",
+        ":macos_arm64",
+        ":windows_aarch64",
+        ":with_cross_compiler_support"
+    ],
     visibility = ["//visibility:public"],
 )
 
 selects.config_setting_group(
     name = "arm_or_cross",
-    match_any = [":linux_aarch64", ":macos_arm64", ":windows_aarch64", ":linux_armhf", ":with_cross_compiler_support"],
+    match_any = [
+        ":linux_aarch64",
+        ":macos_arm64",
+        ":windows_aarch64",
+        ":linux_armhf",
+        ":with_cross_compiler_support"
+    ],
     visibility = ["//visibility:public"],
 )
 
 selects.config_setting_group(
     name = "ppc64le_or_cross",
-    match_any = [":linux_ppc64le", ":with_cross_compiler_support"],
+    match_any = [
+        ":linux_ppc64le",
+        ":with_cross_compiler_support"
+    ],
     visibility = ["//visibility:public"],
 )
 
 selects.config_setting_group(
     name = "s390x_or_cross",
-    match_any = [":linux_s390x", ":with_cross_compiler_support"],
+    match_any = [
+        ":linux_s390x",
+        ":with_cross_compiler_support"
+    ],
     visibility = ["//visibility:public"],
 )
 
 selects.config_setting_group(
     name = "x86_or_cross",
-    match_any = [":linux_x86_64", ":macos_x86_64", ":windows_x86_64", ":with_cross_compiler_support"],
+    match_any = [
+        ":linux_x86_64",
+        ":macos_x86_64",
+        ":windows_x86_64",
+        ":with_cross_compiler_support"
+    ],
     visibility = ["//visibility:public"],
 )
 
