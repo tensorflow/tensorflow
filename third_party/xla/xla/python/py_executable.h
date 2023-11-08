@@ -174,6 +174,8 @@ class PyLoadedExecutable
 
   StatusOr<std::vector<Layout>> GetParameterLayouts() const;
 
+  StatusOr<std::vector<Layout>> GetOutputLayouts() const;
+
   std::optional<std::vector<OpSharding>> GetParameterShardings() const;
 
   std::optional<std::vector<OpSharding>> GetOutputShardings() const;
