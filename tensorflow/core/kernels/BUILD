@@ -52,10 +52,8 @@ package(
     default_visibility = ["//visibility:public"],
     features = if_google(
         [
-            "-layering_check",
             "-parse_headers",
         ],
-        ["-layering_check"],
     ),
     licenses = ["notice"],
 )
@@ -183,6 +181,7 @@ tf_kernel_library(
         "collective_nccl_reducer.h",
         "collective_nccl_reducer.cc",
     ]),
+    features = ["-layering_check"],
     prefix = "collective_ops",
     deps = [
         "//tensorflow/core:core_cpu",
@@ -202,6 +201,7 @@ tf_cuda_cc_test(
     name = "collective_nccl_test",
     size = "small",
     srcs = ["collective_nccl_test.cc"],
+    features = if_cuda(["-layering_check"]),
     tags = tf_cuda_tests_tags() + [
         "guitar",
         "multi_gpu",
@@ -265,6 +265,7 @@ cc_library(
 tf_kernel_library(
     name = "conv_2d",
     hdrs = ["conv_2d.h"],
+    features = if_cuda(["-layering_check"]),
     gpu_copts = if_not_windows([
         "-Wno-pass-failed",  # clang misses #pragma loop optimizations
     ]),
@@ -317,6 +318,7 @@ cc_library(
 
 tf_kernel_library(
     name = "fill_functor",
+    features = ["-layering_check"],
     prefix = "fill_functor",
     deps = [
         "//tensorflow/core:framework",
@@ -372,6 +374,7 @@ cc_library(
         "sparse_utils.cc",
     ],
     hdrs = ["sparse_utils.h"],
+    features = ["-layering_check"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
@@ -382,6 +385,7 @@ cc_library(
 tf_cc_test(
     name = "sparse_utils_test",
     srcs = ["sparse_utils_test.cc"],
+    features = ["-layering_check"],
     deps = [
         ":sparse_utils",
         "//tensorflow/core:framework",
@@ -490,6 +494,7 @@ cc_library(
 tf_cuda_only_cc_test(
     name = "gpu_prim_helpers_test",
     srcs = ["gpu_prim_helpers_test.cu.cc"],
+    features = if_cuda(["-layering_check"]),
     tags = ["no_cuda_asan"],  # TODO(b/183963619)
     deps = [
         ":gpu_prim_helpers",
@@ -538,6 +543,7 @@ tf_cuda_library(
     name = "gpu_utils",
     srcs = if_cuda_or_rocm(["gpu_utils.cc"]),
     hdrs = ["gpu_utils.h"],
+    features = ["-layering_check"],
     deps = [
         ":gpu_util_hdrs",
         "//tensorflow/core:lib",
@@ -626,6 +632,7 @@ cc_library(
     name = "queue_base",
     srcs = ["queue_base.cc"],
     hdrs = ["queue_base.h"],
+    features = ["-layering_check"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -637,6 +644,7 @@ cc_library(
     name = "queue_op",
     srcs = ["queue_op.cc"],
     hdrs = ["queue_op.h"],
+    features = ["-layering_check"],
     deps = [
         ":queue_base",
         "//tensorflow/core:framework",
@@ -877,6 +885,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "debug_ops",
+    features = ["-layering_check"],
     prefix = "debug_ops",
     deps = ARRAY_DEPS + [
         "//tensorflow/core:gpu_runtime",
@@ -948,6 +957,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "concat_op",
+    features = ["-layering_check"],
     prefix = "concat_op",
     deps = ARRAY_DEPS,
 )
@@ -1072,6 +1082,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "reshape_op",
+    features = ["-layering_check"],
     prefix = "reshape_op",
     deps = ARRAY_DEPS,
 )
@@ -1090,6 +1101,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "shape_ops",
+    features = ["-layering_check"],
     prefix = "shape_ops",
     deps = ARRAY_DEPS + ["//tensorflow/core/common_runtime:dma_helper"],
 )
@@ -1108,6 +1120,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "split_op",
+    features = ["-layering_check"],
     gpu_srcs = ["gpu_device_array.h"],
     prefix = "split_op",
     deps = ARRAY_DEPS + [
@@ -1118,6 +1131,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "split_v_op",
+    features = ["-layering_check"],
     gpu_srcs = ["gpu_device_array.h"],
     prefix = "split_v_op",
     deps = ARRAY_DEPS + [
@@ -1190,6 +1204,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "unique_op",
+    features = if_cuda(["-layering_check"]),
     prefix = "unique_op",
     deps = ARRAY_DEPS + [
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1219,6 +1234,7 @@ tf_kernel_library(
     name = "where_op",
     srcs = ["where_op.cc"],
     hdrs = ["where_op.h"],
+    features = ["-layering_check"],
     gpu_srcs = [
         "where_op.h",
         "where_op_gpu.cu.h",
@@ -1315,6 +1331,7 @@ tf_cc_test(
 tf_kernel_library(
     name = "ragged_range_op",
     srcs = ["ragged_range_op.cc"],
+    features = ["-layering_check"],
     deps = [
         "//tensorflow/core:framework",
     ],
@@ -1323,6 +1340,7 @@ tf_kernel_library(
 tf_cc_test(
     name = "ragged_range_op_test",
     srcs = ["ragged_range_op_test.cc"],
+    features = ["-layering_check"],
     deps = [
         ":ops_testutil",
         ":ragged_range_op",
@@ -1336,6 +1354,7 @@ tf_cc_test(
 tf_kernel_library(
     name = "ragged_tensor_to_sparse_kernel",
     srcs = ["ragged_tensor_to_sparse_kernel.cc"],
+    features = ["-layering_check"],
     deps = [
         "//tensorflow/core:framework",
     ],
@@ -1389,6 +1408,7 @@ cc_library(
     name = "ragged_tensor_variant",
     srcs = ["ragged_tensor_variant.cc"],
     hdrs = ["ragged_tensor_variant.h"],
+    features = ["-layering_check"],
     deps = [
         ":cwise_op",
         "//tensorflow/core:framework",
@@ -1423,6 +1443,7 @@ tf_cc_test(
         "ragged_tensor_to_variant_op_test.cc",
         "ragged_tensor_to_variant_op_test.h",
     ],
+    features = ["-layering_check"],
     deps = [
         ":ops_testutil",
         ":ragged_tensor_to_variant_op",
@@ -1444,6 +1465,7 @@ tf_cc_test(
         "ragged_tensor_to_variant_op_large_data_test.cc",
         "ragged_tensor_to_variant_op_test.h",
     ],
+    features = ["-layering_check"],
     tags = [
         "local",
         "manual",
@@ -1482,6 +1504,7 @@ tf_cc_test(
 tf_kernel_library(
     name = "ragged_cross_op",
     srcs = ["ragged_cross_op.cc"],
+    features = ["-layering_check"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1508,6 +1531,7 @@ tf_cc_test(
     name = "ragged_fill_empty_rows_op_test",
     size = "small",
     srcs = ["ragged_fill_empty_rows_op_test.cc"],
+    features = ["-layering_check"],
     deps = [
         ":ops_testutil",
         ":ragged_fill_empty_rows_op",
@@ -1570,6 +1594,7 @@ cc_library(
     testonly = 1,
     srcs = ["batch_kernel_test_util.cc"],
     hdrs = ["batch_kernel_test_util.h"],
+    features = ["-layering_check"],
     deps = [
         ":batch_kernels",
         ":ops_testutil",
@@ -1583,6 +1608,7 @@ tf_cc_test(
     name = "batch_kernels_test",
     size = "small",
     srcs = ["batch_kernels_test.cc"],
+    features = ["-layering_check"],
     deps = [
         ":batch_kernel_test_util",
         ":batch_kernels",
@@ -1910,6 +1936,7 @@ tf_cuda_cc_test(
     name = "fused_batch_norm_ex_op_test",
     size = "small",
     srcs = ["fused_batch_norm_ex_op_test.cc"],
+    features = if_cuda(["-layering_check"]),
     tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":cwise_op",
@@ -1957,6 +1984,7 @@ tf_cc_test(
 
 tf_kernel_library(
     name = "gather_functor",
+    features = ["-layering_check"],
     prefix = "gather_functor",
     visibility = [":friends"],
     deps = [
@@ -2357,6 +2385,7 @@ tf_kernel_library(
 tf_cc_test(
     name = "while_op_test",
     srcs = ["while_op_test.cc"],
+    features = ["-layering_check"],
     tags = [
         "no_windows",
     ],  # TODO(b/208697533): Re-enable after fixing.
@@ -2411,8 +2440,8 @@ tf_cc_test(
         ":control_flow_ops",
         ":ops_testutil",
         ":ops_util",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -2611,6 +2640,7 @@ DYNAMIC_DEPS = [
 
 tf_kernel_library(
     name = "dynamic_partition_op",
+    features = if_cuda(["-layering_check"]),
     prefix = "dynamic_partition_op",
     deps = DYNAMIC_DEPS + [
         ":fill_functor",
@@ -2634,6 +2664,7 @@ cc_library(
     name = "tensor_cord",
     srcs = ["tensor_cord.cc"],
     hdrs = ["tensor_cord.h"],
+    features = ["-layering_check"],
     deps = [
         "//tensorflow/core:framework",
         "@com_google_absl//absl/strings",
@@ -2806,6 +2837,7 @@ tf_kernel_library(
     name = "tensor_array",
     srcs = ["tensor_array.cc"],
     hdrs = ["tensor_array.h"],
+    features = ["-layering_check"],
     visibility = ["//visibility:private"],
     deps = [
         ":aggregate_ops",
@@ -2819,6 +2851,7 @@ tf_kernel_library(
     name = "resource_variable_ops",
     srcs = ["resource_variable_ops.cc"],
     hdrs = ["resource_variable_ops.h"],
+    features = ["-layering_check"],
     deps = [
         ":dense_update_functor",
         ":gather_functor",
@@ -2874,6 +2907,7 @@ tf_kernel_library(
     name = "list_kernels",
     srcs = ["list_kernels.cc"],
     hdrs = ["list_kernels.h"],
+    features = ["-layering_check"],
     gpu_srcs = [
         "list_kernels.cu.cc",
         "list_kernels.h",
@@ -2894,6 +2928,7 @@ cc_library(
     name = "tensor_map",
     srcs = ["tensor_map.cc"],
     hdrs = ["tensor_map.h"],
+    features = ["-layering_check"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -2947,6 +2982,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "function_ops",
+    features = ["-layering_check"],
     prefix = "function_ops",
     deps = [
         "//tensorflow/core:core_cpu",
@@ -3024,6 +3060,7 @@ tf_cc_test(
         ":no_mkldnn_contraction_kernel": [],
         "//conditions:default": ["eigen_mkldnn_contraction_kernel_test.cc"],
     }),
+    features = ["-layering_check"],
     tags = ["mkldnn_contraction_kernel"],
     deps = [
         "//tensorflow/core:test",
@@ -3167,6 +3204,7 @@ tf_kernel_library(
     hdrs = [
         "checkpoint_callback_manager.h",
     ],
+    features = ["-layering_check"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:regexp",
@@ -3178,6 +3216,7 @@ tf_cc_tests(
     name = "checkpoint_callback_manager_test",
     size = "small",
     srcs = ["checkpoint_callback_manager_test.cc"],
+    features = ["-layering_check"],
     deps = [
         ":checkpoint_callback_manager",
         ":io",
@@ -3368,6 +3407,7 @@ tf_cc_test(
     name = "resource_ops_test",
     size = "small",
     srcs = ["resource_ops_test.cc"],
+    features = ["-layering_check"],
     deps = [
         ":dense_update_functor",
         ":ops_testutil",
@@ -3382,6 +3422,7 @@ tf_cc_test(
     name = "lookup_ops_test",
     size = "small",
     srcs = ["lookup_ops_test.cc"],
+    features = ["-layering_check"],
     deps = [
         ":lookup_table_op",
         ":ops_testutil",
@@ -3465,6 +3506,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "matmul_op",
+    features = ["-layering_check"],
     prefix = "matmul_op",
     textual_hdrs = ["matmul_op_impl.h"],
     deps = MATH_DEPS + [
@@ -3495,6 +3537,7 @@ cc_library(
     name = "matmul_util",
     srcs = ["matmul_util.cc"],
     hdrs = ["matmul_util.h"],
+    features = ["-layering_check"],
     local_defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
     deps = if_cuda_or_rocm([
         "@com_google_absl//absl/container:flat_hash_map",
@@ -3520,6 +3563,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "bucketize_op",
+    features = if_cuda(["-layering_check"]),
     gpu_srcs = ["gpu_device_array.h"],
     prefix = "bucketize_op",
     deps = ARRAY_DEPS,
@@ -3530,6 +3574,7 @@ tf_kernel_library(
     copts = if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
     ),
+    features = ["-layering_check"],
     # *.cu.cc sources are compiled with gpu_copts instead of copts.
     gpu_copts = if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
@@ -3542,6 +3587,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "check_numerics_op",
+    features = ["-layering_check"],
     prefix = "check_numerics_op",
     deps = MATH_DEPS + ["//tensorflow/core:framework_internal"],
 )
@@ -3576,6 +3622,7 @@ tf_kernel_library(
     copts = if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
     ),
+    features = if_cuda(["-layering_check"]),
     # *.cu.cc sources are compiled with gpu_copts instead of copts.
     gpu_copts = if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
@@ -3595,6 +3642,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "fft_ops",
+    features = ["-layering_check"],
     prefix = "fft_ops",
     deps = MATH_DEPS + if_cuda([
         "@com_google_absl//absl/container:flat_hash_map",
@@ -3605,6 +3653,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "reduction_ops",
+    features = if_cuda(["-layering_check"]),
     gpu_srcs = ["reduction_gpu_kernels.cu.h"],
     prefix = "reduction_ops",
     deps = MATH_DEPS + [
@@ -3615,6 +3664,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "segment_reduction_ops",
+    features = ["-layering_check"],
     prefix = "segment_reduction_ops",
     deps = MATH_DEPS + [
         "//tensorflow/core/util:determinism_for_kernels",
@@ -3631,6 +3681,7 @@ tf_kernel_library(
     name = "scan_ops",
     srcs = ["scan_ops.cc"],
     hdrs = ["scan_ops.h"],
+    features = if_cuda(["-layering_check"]),
     gpu_srcs = [
         "scan_ops.h",
         "scan_ops_gpu.h",
@@ -3999,6 +4050,7 @@ tf_kernel_library(
     defines = [
         "EIGEN_NEON_GEBP_NR=4",
     ],
+    features = ["-layering_check"],
     prefix = "conv_ops",
     textual_hdrs = [
         "autotune_conv_impl.h",
@@ -4067,6 +4119,7 @@ tf_kernel_library(
     name = "depthwise_conv_op",
     srcs = ["depthwise_conv_op.cc"],
     hdrs = ["depthwise_conv_op.h"],
+    features = ["-layering_check"],
     gpu_copts = if_not_windows([
         "-Wno-pass-failed",  # clang misses #pragma loop optimizations
     ]),
@@ -4102,6 +4155,7 @@ tf_kernel_library(
     hdrs = [
         "depthwise_conv_op.h",
     ],
+    features = ["-layering_check"],
     prefix = "depthwise_conv_grad_op",
     deps = [
         ":cast_op",
@@ -4174,6 +4228,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "bias_op",
+    features = ["-layering_check"],
     prefix = "bias_op",
     deps = NN_DEPS + [
         ":loose_headers",
@@ -4194,6 +4249,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "fused_batch_norm_op",
+    features = ["-layering_check"],
     prefix = "fused_batch_norm_op",
     deps = NN_DEPS + [
         ":cast_op",
@@ -4208,12 +4264,14 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "in_topk_op",
+    features = if_cuda(["-layering_check"]),
     prefix = "in_topk_op",
     deps = NN_DEPS + [":reduction_ops"],
 )
 
 tf_kernel_library(
     name = "lrn_op",
+    features = ["-layering_check"],
     prefix = "lrn_op",
     deps = NN_DEPS + if_rocm([":conv_ops_gpu_hdrs"]) + [":loose_headers"],
 )
@@ -4225,6 +4283,7 @@ tf_kernel_library(
     ) + if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
     ),
+    features = if_cuda(["-layering_check"]),
     # *.cu.cc sources are compiled with gpu_copts instead of copts.
     gpu_copts = if_mlir_generated_experimental_kernels_enabled(
         ["-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED"],
@@ -4345,6 +4404,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "l2loss_op",
+    features = if_cuda(["-layering_check"]),
     prefix = "l2loss_op",
     deps = [
         ":gpu_prim_hdrs",
@@ -4440,6 +4500,7 @@ tf_kernel_library(
         "pooling_ops_3d.h",
         "pooling_ops_common.h",
     ],
+    features = ["-layering_check"],
     gpu_srcs = [
         "avgpooling_op.h",
         "avgpooling_op_gpu.cu.cc",
@@ -4686,6 +4747,7 @@ cc_library(
 
 tf_kernel_library(
     name = "random_op",
+    features = ["-layering_check"],
     prefix = "random_op",
     deps = RANDOM_OPS_DEPS,
 )
@@ -4771,6 +4833,7 @@ cc_library(
 
 tf_kernel_library(
     name = "stateful_random_ops",
+    features = if_cuda(["-layering_check"]),
     prefix = "stateful_random_ops",
     deps = [
         ":dense_update_functor",
@@ -4797,6 +4860,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "stateless_random_gamma_op",
+    features = ["-layering_check"],
     prefix = "stateless_random_gamma_op",
     deps = [
         ":stateless_random_ops",
@@ -4840,6 +4904,7 @@ tf_cc_test(
 
 tf_kernel_library(
     name = "random_index_shuffle_ops",
+    features = ["-layering_check"],
     prefix = "random_index_shuffle_ops",
     deps = [
         ":random_index_shuffle",
@@ -4940,6 +5005,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "sparse_concat_op",
+    features = ["-layering_check"],
     prefix = "sparse_concat_op",
     deps = SPARSE_DEPS + if_cuda_or_rocm([
         ":gpu_device_array",
@@ -4964,6 +5030,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "fill_empty_rows_functor",
+    features = if_cuda(["-layering_check"]),
     prefix = "fill_empty_rows_functor",
     deps = [
         "//tensorflow/core:framework",
@@ -4979,6 +5046,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "sparse_cross_op",
+    features = ["-layering_check"],
     prefix = "sparse_cross_op",
     deps = SPARSE_DEPS + [
         "@eigen_archive//:eigen3",
@@ -5011,6 +5079,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "sparse_reorder_op",
+    features = if_cuda(["-layering_check"]),
     prefix = "sparse_reorder_op",
     deps = SPARSE_DEPS + if_cuda_or_rocm([
         ":gpu_prim_hdrs",
@@ -5028,6 +5097,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "sparse_slice_grad_op",
+    features = if_cuda(["-layering_check"]),
     prefix = "sparse_slice_grad_op",
     deps = SPARSE_DEPS + if_cuda_or_rocm([
         ":gpu_prim_hdrs",
@@ -5036,6 +5106,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "sparse_slice_op",
+    features = if_cuda(["-layering_check"]),
     prefix = "sparse_slice_op",
     deps = SPARSE_DEPS + if_cuda_or_rocm([
         ":gpu_device_array",
@@ -5057,6 +5128,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "sparse_split_op",
+    features = if_cuda(["-layering_check"]),
     prefix = "sparse_split_op",
     deps = SPARSE_DEPS + if_cuda_or_rocm([
         ":gpu_device_array",
@@ -5090,6 +5162,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "sparse_to_dense_op",
+    features = ["-layering_check"],
     prefix = "sparse_to_dense_op",
     deps = SPARSE_DEPS + [
         ":loose_headers",
@@ -5102,6 +5175,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "sparse_xent_op",
+    features = if_cuda(["-layering_check"]),
     gpu_copts = tf_disable_ptxas_warning_flags(),
     prefix = "sparse_xent_op",
     deps = SPARSE_DEPS + [
@@ -5147,6 +5221,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "sparse_tensors_map_ops",
+    features = ["-layering_check"],
     prefix = "sparse_tensors_map_ops",
     deps = SPARSE_DEPS,
 )
@@ -5323,6 +5398,7 @@ cc_library(
     name = "scatter_nd_util",
     srcs = ["scatter_nd_util.cc"],
     hdrs = ["scatter_nd_util.h"],
+    features = ["-layering_check"],
     deps = [
         "//tensorflow/core:framework",
     ],
@@ -5344,6 +5420,7 @@ tf_kernel_library(
     hdrs = [
         "scatter_nd_op.h",
     ],
+    features = ["-layering_check"],
     gpu_copts = if_not_windows([
         "-Wno-pass-failed",  # clang misses #pragma loop optimizations
     ]),
@@ -5365,6 +5442,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "variable_ops",
+    features = ["-layering_check"],
     prefix = "variable_ops",
     deps = STATE_DEPS,
 )
@@ -5656,6 +5734,7 @@ tf_cc_test(
 
 tf_kernel_library(
     name = "as_string_op",
+    features = ["-layering_check"],
     prefix = "as_string_op",
     deps = STRING_DEPS,
 )
@@ -5730,6 +5809,7 @@ tf_cc_test(
 
 tf_kernel_library(
     name = "multinomial_op",
+    features = if_cuda(["-layering_check"]),
     prefix = "multinomial_op",
     deps = [
         ":gpu_prim_hdrs",
@@ -5763,6 +5843,7 @@ tf_cuda_cc_test(
 
 tf_kernel_library(
     name = "parameterized_truncated_normal_op",
+    features = if_cuda(["-layering_check"]),
     gpu_copts = if_not_windows([
         "-Wno-pass-failed",  # clang misses #pragma loop optimizations
     ]),
@@ -6011,6 +6092,7 @@ tf_cuda_cc_test(
     name = "spectrogram_op_test",
     size = "small",
     srcs = ["spectrogram_op_test.cc"],
+    features = ["-layering_check"],
     deps = [
         ":ops_util",
         ":spectrogram_op",
@@ -6978,6 +7060,7 @@ cc_library(
     ]),
     copts = tf_copts() + tf_opts_nortti_if_lite_protos(),
     defines = ["EIGEN_NEON_GEBP_NR=4"],
+    features = ["-layering_check"],
     linkopts = if_android(["-ldl"]),
     tags = [
         "manual",
@@ -7071,6 +7154,7 @@ tf_kernel_library(
         "reshape_op.h",
     ],
     hdrs = ["reference_gemm.h"],
+    features = ["-layering_check"],
     deps = [
         ":concat_lib_hdrs",
         ":conv_ops",
@@ -7163,6 +7247,7 @@ tf_cc_binary(
     testonly = 1,
     srcs = ["quantization_utils_test.cc"],
     copts = tf_copts(),
+    features = ["-layering_check"],
     linkopts = select({
         "//tensorflow:android": [
             "-lm",
@@ -7222,6 +7307,7 @@ cc_binary(
     testonly = 1,
     srcs = ["quantized_add_op_test.cc"],
     copts = tf_copts(),
+    features = ["-layering_check"],
     linkopts = select({
         "//tensorflow:android": [
             "-lm",
@@ -7307,6 +7393,7 @@ cc_binary(
     testonly = 1,
     srcs = ["quantized_resize_bilinear_op_test.cc"],
     copts = tf_copts(),
+    features = ["-layering_check"],
     linkopts = select({
         "//tensorflow:android": [
             "-lm",
@@ -7428,6 +7515,7 @@ cc_binary(
     name = "quantized_mul_op_test_android_only",
     testonly = 1,
     srcs = ["quantized_mul_op_test.cc"],
+    features = ["-layering_check"],
     linkopts = select({
         "//tensorflow:android": [
             "-pie",
@@ -7622,6 +7710,7 @@ cc_library(
     name = "quantization_utils",
     srcs = ["quantization_utils.cc"],
     hdrs = ["quantization_utils.h"],
+    features = ["-layering_check"],
     deps = [
         "//tensorflow/core:framework",
         "@gemmlowp",
@@ -7734,6 +7823,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "sync_ops",
+    features = ["-layering_check"],
     prefix = "sync_ops",
     deps = [
         "//tensorflow/core:framework",
@@ -7816,6 +7906,7 @@ cc_library(
 
 tf_kernel_library(
     name = "stochastic_cast_op",
+    features = ["-layering_check"],
     prefix = "stochastic_cast_op",
     deps = [
         ":stateless_random_ops_v2_util",
@@ -7829,6 +7920,7 @@ tf_cc_test(
     name = "stochastic_cast_op_test",
     timeout = "moderate",
     srcs = ["stochastic_cast_op_test.cc"],
+    features = ["-layering_check"],
     shard_count = 48,
     deps = [
         ":cwise_lib",
