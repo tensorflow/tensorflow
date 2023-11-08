@@ -17,9 +17,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#if defined(__APPLE__)
-#include <mach-o/dyld.h>
-#endif
 #if defined(PLATFORM_WINDOWS)
 #include <windows.h>
 #define PATH_MAX MAX_PATH
@@ -46,7 +43,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -899,10 +895,7 @@ GpuContext* GpuExecutor::gpu_context() { return context_; }
 // turn to gsys' topology modeling.
 static int TryToReadNumaNode(const std::string& pci_bus_id,
                              int device_ordinal) {
-#if defined(__APPLE__)
-  LOG(INFO) << "OS X does not support NUMA - returning NUMA node zero";
-  return 0;
-#elif defined(PLATFORM_WINDOWS)
+#if defined(PLATFORM_WINDOWS)
   // Windows support for NUMA is not currently implemented. Return node 0.
   return 0;
 #else
