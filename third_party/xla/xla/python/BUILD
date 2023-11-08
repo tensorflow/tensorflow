@@ -859,7 +859,7 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
-        "@stablehlo//:stablehlo_passes",
+        "@stablehlo//stablehlo/experimental:experimental_stablehlo_passes",
     ],
 )
 
