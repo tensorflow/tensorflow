@@ -478,13 +478,20 @@ inline tsl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>> PackKernelArgs(
 
   // Specialize kernel arguments array for small sizes to allocate a smaller
   // chunk of memory and hopefully hit a small allocations cache.
-  //
-  // TODO(ezhulenev): Benchmark if smaller sizes make a performance difference
-  // and try to optimize arguments packing for larger number of arguments.
-  if (args.size() <= 64) {
+  if (args.size() <= 4) {
+    return PackKernelArgs<8>(args, shared_mem_bytes);
+  } else if (args.size() <= 8) {
+    return PackKernelArgs<8>(args, shared_mem_bytes);
+  } else if (args.size() <= 16) {
+    return PackKernelArgs<16>(args, shared_mem_bytes);
+  } else if (args.size() <= 32) {
+    return PackKernelArgs<32>(args, shared_mem_bytes);
+  } else if (args.size() <= 64) {
     return PackKernelArgs<64>(args, shared_mem_bytes);
   } else if (args.size() <= 256) {
     return PackKernelArgs<256>(args, shared_mem_bytes);
+  } else if (args.size() <= 512) {
+    return PackKernelArgs<512>(args, shared_mem_bytes);
   }
 
   return PackKernelArgs<kKernelArgsLimit>(args, shared_mem_bytes);

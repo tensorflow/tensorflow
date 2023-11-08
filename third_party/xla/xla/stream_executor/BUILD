@@ -662,6 +662,20 @@ cc_library(
 #===--------------------------------------------------------------------------------------------===#
 
 xla_cc_test(
+    name = "kernel_test",
+    srcs = ["kernel_test.cc"],
+    deps = [
+        ":device_memory",
+        ":stream_executor",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+xla_cc_test(
     name = "stream_test",
     size = "small",
     srcs = ["stream_test.cc"],
