@@ -2773,10 +2773,6 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         }
       }
     }
-    if (opts_.verify_s4_u4_usage) {
-      TF_RETURN_IF_ERROR(VerifyS4U4Usage(instruction));
-    }
-
     return OkStatus();
   }
 
@@ -2798,41 +2794,6 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
           << " sharding among instructions: \n"
           << common_sharding_inst->ToString() << "\n"
           << check_inst->ToString();
-    }
-    return OkStatus();
-  }
-
-  static Status VerifyS4U4Usage(HloInstruction* instruction) {
-    // TODO(b/259306620): Support S4/U4 operands in all instructions that
-    // support inputs of other integer dtypes. Currently only aim to use it in
-    // matmul and convolution op.
-    if (instruction->opcode() != HloOpcode::kDot &&
-        instruction->opcode() != HloOpcode::kConvolution &&
-        instruction->opcode() != HloOpcode::kConvert &&
-        instruction->opcode() != HloOpcode::kFusion &&
-        instruction->opcode() != HloOpcode::kBitcast &&
-        instruction->opcode() != HloOpcode::kCopy &&
-        instruction->opcode() != HloOpcode::kCopyStart &&
-        instruction->opcode() != HloOpcode::kCopyDone &&
-        instruction->opcode() != HloOpcode::kGetTupleElement &&
-        instruction->opcode() != HloOpcode::kTuple &&
-        instruction->opcode() != HloOpcode::kWhile &&
-        instruction->opcode() != HloOpcode::kCustomCall &&
-        instruction->opcode() != HloOpcode::kReshape &&
-        instruction->opcode() != HloOpcode::kDynamicSlice &&
-        instruction->opcode() != HloOpcode::kBitcastConvert &&
-        instruction->opcode() != HloOpcode::kSlice &&
-        instruction->opcode() != HloOpcode::kBroadcast &&
-        !(instruction->opcode() == HloOpcode::kCall &&
-          instruction->metadata().op_type() == "XlaCallModule") &&
-        absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
-          return ShapeUtil::HasPrimitiveType(operand->shape(), S4) ||
-                 ShapeUtil::HasPrimitiveType(operand->shape(), U4);
-        })) {
-      return InvalidArgument(
-          "S4/U4 is currently only supported in matmul and convolution, but "
-          "got instruction with S4/U4 input: %s",
-          instruction->ToString());
     }
     return OkStatus();
   }
