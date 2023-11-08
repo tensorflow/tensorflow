@@ -3153,6 +3153,11 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
     int loop_idx = i % loop_size_;
     update_additional_memory_used(loop_idx, value->size);
   }
+  // We reset accumulated copy resource and then reuse it to accumulate copy
+  // resource time in order to replay the previous for loop. It is important
+  // that we use the same arithmetic operations (as opposed to subtracting from
+  // copy_resource) because floating point operations aren't commutative.
+  accumulated_copy_resource = 0.0;
   for (int i = first_use_idx - 1; i >= last_use_idx_sentinel - loop_size_;
        --i) {
     int loop_idx = (i + loop_size_) % loop_size_;
@@ -3163,16 +3168,16 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
     int64_t overlap_memory_overhead = 0;
     update_additional_memory_used(loop_idx,
                                   value->size + overlap_memory_overhead);
-    if (bandwidth_idle_time < copy_resource) {
-      copy_resource -= bandwidth_idle_time;
+    if (bandwidth_idle_time < copy_resource - accumulated_copy_resource) {
+      accumulated_copy_resource += bandwidth_idle_time;
       bandwidth_idle_time = 0;
       if (loop_idx == *copy_start_time) {
-        VLOG(3) << "Remaining copy resource: " << copy_resource;
+        VLOG(3) << "Remaining copy resource: "
+                << (copy_resource - accumulated_copy_resource);
         break;
       }
     } else {
-      bandwidth_idle_time -= copy_resource;
-      copy_resource = 0;
+      bandwidth_idle_time -= copy_resource - accumulated_copy_resource;
       CHECK_EQ(loop_idx, *copy_start_time);
       break;
     }
