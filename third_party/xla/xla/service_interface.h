@@ -56,9 +56,6 @@ class ServiceInterface {
   virtual Status ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
                                       ExecuteParallelResponse* result) = 0;
 
-  virtual Status WaitForExecution(const WaitForExecutionRequest* arg,
-                                  WaitForExecutionResponse* result) = 0;
-
   virtual Status DeconstructTuple(const DeconstructTupleRequest* arg,
                                   DeconstructTupleResponse* result) = 0;
 

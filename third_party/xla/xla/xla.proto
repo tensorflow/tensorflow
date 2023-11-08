@@ -983,15 +983,6 @@ message ExecuteParallelResponse {
   repeated ExecuteResponse responses = 1;
 }
 
-message WaitForExecutionRequest {
-  ExecutionHandle execution = 1;
-}
-
-message WaitForExecutionResponse {
-  GlobalDataHandle output = 1;
-  ExecutionProfile profile = 2;
-}
-
 message ComputeConstantGraphRequest {
   HloModuleProto computation = 1;
   LayoutProto output_layout = 2;
