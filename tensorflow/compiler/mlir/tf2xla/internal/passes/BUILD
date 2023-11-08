@@ -48,6 +48,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:string_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
         "//tensorflow/compiler/mlir/tensorflow:tpu_rewrite_device_util",
+        "//tensorflow/compiler/mlir/tf2xla/internal/utils:dialect_detection_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core/transforms/toposort:Pass",
         "@com_google_absl//absl/container:flat_hash_map",

@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <set>
 #include <string>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -23,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/utils/dialect_detection_utils.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -33,6 +33,9 @@ namespace {
 #define GEN_PASS_DEF_VERIFYCLUSTERINGPASS
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
 
+using mlir::Operation;
+using mlir::WalkResult;
+
 class VerifyClusteringPass
     : public impl::VerifyClusteringPassBase<VerifyClusteringPass> {
  public:
@@ -40,18 +43,15 @@ class VerifyClusteringPass
 };
 
 void VerifyClusteringPass::runOnOperation() {
-  std::set<std::string> valid_namespaces = {"tf", "func", "return", "tf_device",
-                                            "builtin"};
-  mlir::Operation* func_op = getOperation();
+  Operation* func_op = getOperation();
 
-  auto walk_result = func_op->walk([&](mlir::Operation* op) {
-    if (valid_namespaces.find(op->getDialect()->getNamespace().str()) ==
-        valid_namespaces.end()) {
+  auto walk_result = func_op->walk([&](Operation* op) {
+    if (!tensorflow::tf2xla::internal::IsInBridgeAcceptableDialects(op)) {
       std::string error = "op is in dialect " +
                           op->getDialect()->getNamespace().str() +
                           " not in tf functional dialect";
       op->emitError() << error;
-      return mlir::WalkResult::interrupt();
+      return WalkResult::interrupt();
     }
 
     if (op->hasAttr(mlir::TF::kXlaOutsideCompilationAttr)) {
@@ -62,7 +62,7 @@ void VerifyClusteringPass::runOnOperation() {
       return mlir::WalkResult::interrupt();
     }
 
-    return mlir::WalkResult::advance();
+    return WalkResult::advance();
   });
 
   if (walk_result.wasInterrupted()) {
