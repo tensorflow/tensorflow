@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "xla/client/lib/comparators.h"
 #include "xla/client/xla_builder.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -330,59 +331,72 @@ TopKCustomCall CreateTopKCustomCall(HloInstruction* input,
   return {topk, value_gte, index_gte};
 }
 
+StatusOr<HloInstruction*> TopkRewriter::TransformPatternToCustomCall(
+    HloInstruction* inst) {
+  // Check if sort is in TopK.
+  std::optional<int64_t> k = SortIsInTopK(inst);
+  if (!k) {
+    return nullptr;
+  }
+
+  HloSortInstruction* sort = DynCast<HloSortInstruction>(inst);
+  HloInstruction* data = sort->mutable_operand(0);
+  const PrimitiveType element_type = data->shape().element_type();
+
+  if (element_type != F32 && element_type != BF16) {
+    return nullptr;
+  }
+
+  // Sort dimension must be the first or last dimension.
+  const int64_t sort_dim = sort->sort_dimension();
+  if (sort_dim != 0 && sort_dim != data->shape().rank() - 1) {
+    return nullptr;
+  }
+
+  // Profitability check.
+  if (!is_profitable_to_convert_(sort, *k)) {
+    return nullptr;
+  }
+
+  TopKCustomCall topkcc = CreateTopKCustomCall(
+      data, sort_dim, k.value(), sort->to_apply(), inst->parent());
+
+  for (HloInstruction* user : sort->users()) {
+    if (sort->operand_count() == 2) {
+      HloInstruction* gte = user;
+      for (HloInstruction* slice : gte->users()) {
+        if (gte->tuple_index() == 0) {
+          TF_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(topkcc.value_gte));
+        } else if (gte->tuple_index() == 1) {
+          TF_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(topkcc.index_gte));
+        } else {
+          // The line below should be unreachable. SortIsInTopK() already checks
+          // that sort has either 1 or 2 operands. Reaching this line indicates
+          // a programming error (not a bad input), so crashing is OK.
+          LOG(FATAL) << "Sort with more than 2 output isn't supported in "
+                        "topk rewriter";
+        }
+      }
+    } else {
+      TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(topkcc.value_gte));
+    }
+  }
+
+  return topkcc.topk;
+}
+
 StatusOr<bool> TopkRewriter::TransformToCustomCall(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   for (HloComputation* comp : module->computations(execution_threads)) {
     for (HloInstruction* inst : comp->MakeInstructionPostOrder()) {
-      // Check if sort is in TopK.
-      std::optional<int64_t> k = SortIsInTopK(inst);
-      if (!k) {
-        continue;
+      TF_ASSIGN_OR_RETURN(HloInstruction * topkcc,
+                          TransformPatternToCustomCall(inst));
+      if (topkcc != nullptr) {
+        VLOG(2) << "Rewritten Topk: " << topkcc->ToString();
+        changed = true;
       }
-
-      HloSortInstruction* sort = DynCast<HloSortInstruction>(inst);
-      HloInstruction* data = sort->mutable_operand(0);
-      const PrimitiveType element_type = data->shape().element_type();
-
-      if (element_type != F32 && element_type != BF16) {
-        continue;
-      }
-
-      // Sort dimension must be the first or last dimension.
-      const int64_t sort_dim = sort->sort_dimension();
-      if (sort_dim != 0 && sort_dim != data->shape().rank() - 1) {
-        continue;
-      }
-
-      // Profitability check.
-      if (!is_profitable_to_convert_(sort, *k)) {
-        continue;
-      }
-
-      TopKCustomCall topkcc = CreateTopKCustomCall(data, sort_dim, k.value(),
-                                                   sort->to_apply(), comp);
-
-      for (HloInstruction* user : sort->users()) {
-        if (sort->operand_count() == 2) {
-          HloInstruction* gte = user;
-          for (HloInstruction* slice : gte->users()) {
-            if (gte->tuple_index() == 0) {
-              TF_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(topkcc.value_gte));
-            } else if (gte->tuple_index() == 1) {
-              TF_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(topkcc.index_gte));
-            } else {
-              LOG(FATAL) << "Sort with more than 2 output isn't supported in "
-                            "topk rewriter";
-            }
-          }
-        } else {
-          TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(topkcc.value_gte));
-        }
-      }
-      VLOG(2) << "Rewritten Topk: " << topkcc.topk->ToString();
-      changed = true;
     }
   }
   return changed;
