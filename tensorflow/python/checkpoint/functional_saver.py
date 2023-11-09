@@ -14,33 +14,124 @@
 # ==============================================================================
 """Saves and restore variables inside traced @tf.functions."""
 
+import dataclasses
+from typing import Callable, Mapping, Sequence
+
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device as device_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import registration
+from tensorflow.python.trackable import base
 from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
+from tensorflow.python.types import core
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 
 
-class _SingleDeviceSaver(object):
+TensorSlice = Mapping[tensor_spec.TensorSpec, tensor_lib.Tensor]
+TensorSliceDict = Mapping[str, TensorSlice]
+RegisteredSaversDict = Mapping[
+    registration.RegisteredSaver, Mapping[str, base.Trackable]]
+MappedCapturesCallable = Callable[
+    [core.ConcreteFunction, Sequence[tensor_lib.Tensor]], tensor_lib.Tensor]
+
+
+@dataclasses.dataclass(frozen=True)
+class ShardableTensor:
+  """Tensor wrapper containing data necessary for sharding."""
+  _tensor_save_spec: saveable_object.SaveSpec
+  tensor: tensor_lib.Tensor
+  dtype: dtypes.DType
+  device: device_lib.DeviceSpec
+  name: str
+  shape: tensor_shape.TensorShape
+  slice_spec: variables.Variable.SaveSliceInfo
+  checkpoint_key: str
+  trackable: base.Trackable
+
+  def __hash__(self) -> int:
+    return hash((self.name, self.dtype, str(self.device), self.checkpoint_key))
+
+
+@dataclasses.dataclass(frozen=True)
+class ShardingCallback:
+  """Checkpoint sharding callback function, along with a text description."""
+  callback: Callable[
+      [Sequence[ShardableTensor], ...],
+      Sequence[Mapping[
+          str, Mapping[tensor_spec.TensorSpec, saveable_object.SaveSpec]]]]
+  description: str
+
+  def __hash__(self) -> int:
+    if hasattr(self.callback, "__name__"):
+      callback_hash = hash((self.callback.__module__, self.callback.__name__))
+    else:
+      callback_hash = id(self.callback)
+    return hash((callback_hash, self.description))
+
+
+class ShardByDevicePolicy(ShardingCallback):
+  """Policy that splits tensors into shards based on their device spec."""
+
+  def __init__(self):
+    def device_callback_impl(
+        shardable_tensors: Sequence[ShardableTensor]) -> Sequence[TensorSlice]:
+      """Callback to split tensors into shards based on their device spec.
+
+      Args:
+        shardable_tensors: A list of ShardableTensors.
+
+      Returns:
+        List of shard dicts containing tensors.
+          [ {checkpoint key: {slice_spec: tensor} } ]
+      """
+      tensors_by_device = {}
+
+      for shardable_tensor in shardable_tensors:
+        tensor = shardable_tensor.tensor
+        checkpoint_key = shardable_tensor.checkpoint_key
+        slice_spec = shardable_tensor.slice_spec
+        device = saveable_object_util.set_cpu0(shardable_tensor.device)
+
+        (tensors_by_device
+         .setdefault(device, {})
+         .setdefault(checkpoint_key, {})[slice_spec]) = tensor
+
+      return list(tensors_by_device.values())
+
+    super().__init__(
+        device_callback_impl,
+        "Split tensors into shards based on their device spec.")
+
+  def __call__(
+      self,
+      shardable_tensors: Sequence[ShardableTensor]
+  ) -> Sequence[TensorSlice]:
+    return self.callback(shardable_tensors)  # pylint: disable=no-value-for-parameter
+
+
+class _SingleDeviceSaver:
   """Saves and restores checkpoints from the current device."""
 
   __slots__ = ["_tensor_slice_dict"]
 
-  def __init__(self, tensor_slice_dict):
+  def __init__(self, tensor_slice_dict: TensorSliceDict):
     """Specify a list of `SaveableObject`s to save and restore.
 
     Args:
@@ -48,13 +139,18 @@ class _SingleDeviceSaver(object):
     """
     self._tensor_slice_dict = tensor_slice_dict
 
-  def save(self, file_prefix, options=None):
+  def save(
+      self,
+      file_prefix: tensor_lib.Tensor,
+      options: "checkpoint_options.CheckpointOptions | None" = None,
+  ) -> ops.Operation:
     """Save the saveable objects to a checkpoint with `file_prefix`.
 
     Args:
       file_prefix: A string or scalar string Tensor containing the prefix to
         save under.
       options: Optional `CheckpointOptions` object.
+
     Returns:
       An `Operation`, or None when executing eagerly.
     """
@@ -83,7 +179,11 @@ class _SingleDeviceSaver(object):
     with ops.device(save_device):
       return io_ops.save_v2(file_prefix, tensor_names, slice_specs, tensors)
 
-  def restore(self, file_prefix, options=None):
+  def restore(
+      self,
+      file_prefix: tensor_lib.Tensor,
+      options: "checkpoint_options.CheckpointOptions | None" = None
+  ) -> TensorSliceDict:
     """Restore the saveable objects from a checkpoint with `file_prefix`.
 
     Args:
@@ -123,7 +223,11 @@ class _SingleDeviceSaver(object):
     return restored_tensor_dict
 
 
-def sharded_filename(filename_tensor, shard, num_shards):
+def sharded_filename(
+    filename_tensor: tensor_lib.Tensor,
+    shard: int,
+    num_shards: tensor_lib.Tensor
+) -> tensor_lib.Tensor:
   """Append sharding information to a filename.
 
   Args:
@@ -137,15 +241,22 @@ def sharded_filename(filename_tensor, shard, num_shards):
   return gen_io_ops.sharded_filename(filename_tensor, shard, num_shards)
 
 
-def registered_saver_filename(filename_tensor, saver_name):
+def registered_saver_filename(
+    filename_tensor: tensor_lib.Tensor,
+    saver_name: registration.RegisteredSaver
+) -> tensor_lib.Tensor:
   return string_ops.string_join(
       [filename_tensor, constant_op.constant(f"-{saver_name}")])
 
 
-def _get_mapped_registered_save_fn(fn, trackables, call_with_mapped_captures):
+def _get_mapped_registered_save_fn(
+    fn: Callable[..., tensor_lib.Tensor],
+    trackables: Sequence[base.Trackable],
+    call_with_mapped_captures: MappedCapturesCallable
+) -> Callable[[tensor_lib.Tensor], MappedCapturesCallable]:
   """Converts the function to a python or tf.function with a single file arg."""
 
-  def save_fn(file_prefix):
+  def save_fn(file_prefix: tensor_lib.Tensor) -> tensor_lib.Tensor:
     return fn(trackables=trackables, file_prefix=file_prefix)
   if call_with_mapped_captures is None:
     return save_fn
@@ -154,17 +265,21 @@ def _get_mapped_registered_save_fn(fn, trackables, call_with_mapped_captures):
     concrete = tf_fn.get_concrete_function(
         file_prefix=tensor_spec.TensorSpec(shape=(), dtype=dtypes.string))
 
-    def save_fn_with_replaced_captures(file_prefix):
+    def save_fn_with_replaced_captures(
+        file_prefix: tensor_lib.Tensor) -> tensor_lib.Tensor:
       return call_with_mapped_captures(concrete, [file_prefix])
 
     return save_fn_with_replaced_captures
 
 
-def _get_mapped_registered_restore_fn(fn, trackables,
-                                      call_with_mapped_captures):
+def _get_mapped_registered_restore_fn(
+    fn: Callable[..., tensor_lib.Tensor],
+    trackables: Sequence[base.Trackable],
+    call_with_mapped_captures: MappedCapturesCallable
+) -> Callable[..., tensor_lib.Tensor]:
   """Converts the function to a python or tf.function with a single file arg."""
 
-  def restore_fn(merged_prefix):
+  def restore_fn(merged_prefix: tensor_lib.Tensor) -> tensor_lib.Tensor:
     return fn(trackables=trackables, merged_prefix=merged_prefix)
   if call_with_mapped_captures is None:
     return restore_fn
@@ -173,7 +288,8 @@ def _get_mapped_registered_restore_fn(fn, trackables,
     concrete = tf_fn.get_concrete_function(
         merged_prefix=tensor_spec.TensorSpec(shape=(), dtype=dtypes.string))
 
-    def restore_fn_with_replaced_captures(merged_prefix):
+    def restore_fn_with_replaced_captures(
+        merged_prefix: tensor_lib.Tensor) -> tensor_lib.Tensor:
       return call_with_mapped_captures(concrete, [merged_prefix])
 
     return restore_fn_with_replaced_captures
@@ -182,7 +298,7 @@ def _get_mapped_registered_restore_fn(fn, trackables,
 _restore_noop = lambda *args, **kwargs: None
 
 
-class MultiDeviceSaver(object):
+class MultiDeviceSaver:
   """Saves checkpoints directly from multiple devices.
 
   Note that this is a low-level utility which stores Tensors in the keys
@@ -190,10 +306,11 @@ class MultiDeviceSaver(object):
   checkpointing are built on top of it.
   """
 
-  def __init__(self,
-               serialized_tensors,
-               registered_savers=None,
-               call_with_mapped_captures=None):
+  def __init__(
+      self,
+      serialized_tensors: Mapping[base.Trackable, TensorSliceDict],
+      registered_savers: "RegisteredSaversDict | None" = None,
+      call_with_mapped_captures: "MappedCapturesCallable | None" = None):
     """Specify a list of `SaveableObject`s to save and restore.
 
     Args:
@@ -255,8 +372,13 @@ class MultiDeviceSaver(object):
         self._registered_savers[registered_name] = (save_fn, restore_fn)
 
   @classmethod
-  def from_saveables(cls, saveables, registered_savers=None,
-                     call_with_mapped_captures=None):
+  def from_saveables(
+      cls,
+      saveables: Sequence[base.Trackable],
+      registered_savers: "RegisteredSaversDict | None" = None,
+      call_with_mapped_captures: "MappedCapturesCallable | None" = None
+  ) -> "MultiDeviceSaver":
+    """Constructs a MultiDeviceSaver from a list of `SaveableObject`s."""
     serialized_tensors = object_identity.ObjectIdentityDictionary()
     for saveable in saveables:
       trackable = saveable_object_util.SaveableCompatibilityConverter(
@@ -264,7 +386,7 @@ class MultiDeviceSaver(object):
       serialized_tensors[trackable] = trackable._serialize_to_tensors()  # pylint: disable=protected-access
     return cls(serialized_tensors, registered_savers, call_with_mapped_captures)
 
-  def to_proto(self):
+  def to_proto(self) -> saver_pb2.SaverDef:
     """Serializes to a SaverDef referencing the current graph."""
     filename_tensor = array_ops.placeholder(
         shape=[], dtype=dtypes.string, name="saver_filename")
@@ -279,7 +401,7 @@ class MultiDeviceSaver(object):
   @def_function.function(
       input_signature=(tensor_spec.TensorSpec(shape=(), dtype=dtypes.string),),
       autograph=False)
-  def _traced_save(self, file_prefix):
+  def _traced_save(self, file_prefix: tensor_lib.Tensor) -> tensor_lib.Tensor:
     save_op = self.save(file_prefix)
     with ops.device("cpu:0"):
       with ops.control_dependencies([save_op]):
@@ -288,13 +410,18 @@ class MultiDeviceSaver(object):
   @def_function.function(
       input_signature=(tensor_spec.TensorSpec(shape=(), dtype=dtypes.string),),
       autograph=False)
-  def _traced_restore(self, file_prefix):
+  def _traced_restore(
+      self, file_prefix: tensor_lib.Tensor) -> tensor_lib.Tensor:
     restore_ops = self.restore(file_prefix)
     with ops.device("cpu:0"):
       with ops.control_dependencies(restore_ops.values()):
         return array_ops.identity(file_prefix)
 
-  def save(self, file_prefix, options=None):
+  def save(
+      self,
+      file_prefix: tensor_lib.Tensor,
+      options: "checkpoint_options.CheckpointOptions | None" = None
+  ) -> ops.Operation:
     """Save the saveable objects to a checkpoint with `file_prefix`.
 
     Args:
@@ -346,7 +473,7 @@ class MultiDeviceSaver(object):
           for saver_name in self._registered_savers
       }
 
-    def save_fn():
+    def save_fn() -> ops.Operation:
       saved_prefixes = []
       # Save with the registered savers. These run before default savers due to
       # the API contract.
@@ -400,13 +527,17 @@ class MultiDeviceSaver(object):
     if context.executing_eagerly() and len(self._single_device_savers) > 1:
       # Explicitly place the identity op on the first device.
       @def_function.function(jit_compile=False)
-      def tf_function_save():
+      def tf_function_save() -> None:
         save_fn()
       tf_function_save()
     else:
       return save_fn()
 
-  def restore(self, file_prefix, options=None):
+  def restore(
+      self,
+      file_prefix: tensor_lib.Tensor,
+      options: "checkpoint_options.CheckpointOptions | None" = None
+  ) -> Mapping[str, ops.Operation]:
     """Restore the saveable objects from a checkpoint with `file_prefix`.
 
     Args:
@@ -421,7 +552,7 @@ class MultiDeviceSaver(object):
     """
     options = options or checkpoint_options.CheckpointOptions()
 
-    def restore_fn():
+    def restore_fn() -> Mapping[str, ops.Operation]:
       restore_fn_inputs = {}
       restore_fn_input_count = {
           fn: len(keys) for fn, keys in self._restore_fn_to_keys.items()}
@@ -490,7 +621,7 @@ class MultiDeviceSaver(object):
     if context.executing_eagerly() and (len(self._single_device_savers) > 1 or
                                         has_custom_device_saver):
       @def_function.function(jit_compile=False, autograph=False)
-      def tf_function_restore():
+      def tf_function_restore() -> Mapping[str, ops.Operation]:
         restore_fn()
         return {}
 

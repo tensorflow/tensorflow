@@ -130,30 +130,6 @@ const std::optional<std::set<int>>& ServiceOptions::allowed_devices() const {
   return allowed_devices_;
 }
 
-/* static */ StatusOr<std::unique_ptr<Service>> Service::NewService(
-    se::Platform* platform) {
-  ServiceOptions default_options;
-  default_options.set_platform(platform);
-  return NewService(default_options);
-}
-
-/* static */ StatusOr<std::unique_ptr<Service>> Service::NewService(
-    const ServiceOptions& options) {
-  se::Platform* platform = options.platform();
-  std::unique_ptr<Backend> execute_backend;
-  if (platform == nullptr) {
-    TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
-  }
-  BackendOptions backend_options;
-  backend_options.set_platform(platform);
-  backend_options.set_allowed_devices(options.allowed_devices());
-  TF_ASSIGN_OR_RETURN(execute_backend, Backend::CreateBackend(backend_options));
-
-  std::unique_ptr<Service> service(
-      new Service(options, std::move(execute_backend)));
-  return std::move(service);
-}
-
 Service::Service(const ServiceOptions& options,
                  std::unique_ptr<Backend> execute_backend)
     : options_(options),
@@ -922,21 +898,6 @@ Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
   }
 
   VLOG(1) << "successfully completed 'execute' request";
-  return OkStatus();
-}
-
-Status Service::WaitForExecution(const WaitForExecutionRequest* arg,
-                                 WaitForExecutionResponse* result) {
-  TF_ASSIGN_OR_RETURN(const auto execution,
-                      execution_tracker_.Resolve(arg->execution()));
-
-  TF_RETURN_IF_ERROR(execution->BlockUntilDone());
-
-  *result->mutable_output() = execution->result();
-  *result->mutable_profile() = execution->profile();
-
-  TF_RETURN_IF_ERROR(execution_tracker_.Unregister(arg->execution()));
-  VLOG(1) << "successfully completed 'wait-for-execution' request";
   return OkStatus();
 }
 

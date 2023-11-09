@@ -293,6 +293,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "@ducc//:fft_wrapper",
         "@eigen_archive//:eigen3",
         "@local_xla//xla:empty",
         "//tensorflow/core/framework:numeric_types",
@@ -966,6 +967,7 @@ tf_cc_test(
         "//tensorflow/core/framework:tensor_testutil",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:literal",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:status_macros",
@@ -974,6 +976,7 @@ tf_cc_test(
         "@local_xla//xla/client:xla_builder",
         "@local_xla//xla/service:cpu_plugin",
         "@local_xla//xla/service:hlo_proto_cc",
+        "@local_xla//xla/service:hlo_proto_util",
         "@local_xla//xla/tests:literal_test_util",
     ],
 )

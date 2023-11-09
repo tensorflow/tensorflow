@@ -1,0 +1,304 @@
+diff --git a/lib/Conversion/TritonGPUToLLVM/BarrierOpToLLVM.cpp b/lib/Conversion/TritonGPUToLLVM/BarrierOpToLLVM.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/BarrierOpToLLVM.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/BarrierOpToLLVM.cpp
+@@ -67,8 +67,10 @@ struct AllocMBarrierOpConversion : publi
+                                                      op.getCount());
+     }
+     if (resultTensorTy) {
+-      auto smemObj = SharedMemoryObject(smemBase, resultTensorTy.getShape(),
+-                                        {0}, loc, rewriter);
++      auto llvmElemTy =
++          getTypeConverter()->convertType(resultTensorTy.getElementType());
++      auto smemObj = SharedMemoryObject(
++          smemBase, llvmElemTy, resultTensorTy.getShape(), {0}, loc, rewriter);
+       auto retVal = getStructFromSharedMemoryObject(loc, smemObj, rewriter);
+       rewriter.replaceOp(op, retVal);
+     } else {
+diff --git a/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM.cpp b/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM.cpp
+@@ -707,8 +707,9 @@ private:
+     auto dstLayout = dstTy.getEncoding();
+     auto inOrd = getOrder(srcSharedLayout);
+ 
+-    auto smemObj =
+-        getSharedMemoryObjectFromStruct(loc, adaptor.getSrc(), rewriter);
++    auto smemObj = getSharedMemoryObjectFromStruct(
++        loc, adaptor.getSrc(),
++        getTypeConverter()->convertType(srcTy.getElementType()), rewriter);
+     auto elemTy = getTypeConverter()->convertType(dstTy.getElementType());
+ 
+     auto srcStrides =
+@@ -843,8 +844,8 @@ private:
+       storeDistributedToShared(src, adaptor.getSrc(), dstStrides, srcIndices,
+                                dst, smemBase, elemTy, loc, rewriter);
+     }
+-    auto smemObj =
+-        SharedMemoryObject(smemBase, dstShapePerCTA, outOrd, loc, rewriter);
++    auto smemObj = SharedMemoryObject(smemBase, elemTy, dstShapePerCTA, outOrd,
++                                      loc, rewriter);
+     auto retVal = getStructFromSharedMemoryObject(loc, smemObj, rewriter);
+     rewriter.replaceOp(op, retVal);
+     return success();
+@@ -1013,8 +1014,11 @@ private:
+     Value dst = op.getResult();
+     bool isMMA = supportMMA(dst, mmaLayout.getVersionMajor());
+ 
+-    auto smemObj =
+-        getSharedMemoryObjectFromStruct(loc, adaptor.getSrc(), rewriter);
++    auto llvmElemTy = getTypeConverter()->convertType(
++        src.getType().cast<RankedTensorType>().getElementType());
++
++    auto smemObj = getSharedMemoryObjectFromStruct(loc, adaptor.getSrc(),
++                                                   llvmElemTy, rewriter);
+     Value res;
+     if (!isOuter && mmaLayout.isAmpere()) { // tensor core v2
+       res = SharedToDotOperandMMAv2::convertLayout(
+diff --git a/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM/SharedToDotOperandFMA.cpp b/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM/SharedToDotOperandFMA.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM/SharedToDotOperandFMA.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM/SharedToDotOperandFMA.cpp
+@@ -101,7 +101,9 @@ Value loadAFMA(Value A, Value llA, Block
+ 
+   bool isARow = aOrder[0] == 1;
+ 
+-  auto aSmem = getSharedMemoryObjectFromStruct(loc, llA, rewriter);
++  auto aSmem = getSharedMemoryObjectFromStruct(
++      loc, llA, typeConverter->convertType(aTensorTy.getElementType()),
++      rewriter);
+   Value strideAM = aSmem.strides[0];
+   Value strideAK = aSmem.strides[1];
+   Value strideA0 = isARow ? strideAK : strideAM;
+@@ -166,7 +168,9 @@ Value loadBFMA(Value B, Value llB, Block
+ 
+   bool isBRow = bOrder[0] == 1;
+ 
+-  auto bSmem = getSharedMemoryObjectFromStruct(loc, llB, rewriter);
++  auto bSmem = getSharedMemoryObjectFromStruct(
++      loc, llB, typeConverter->convertType(bTensorTy.getElementType()),
++      rewriter);
+   Value strideBN = bSmem.strides[1];
+   Value strideBK = bSmem.strides[0];
+   Value strideB0 = isBRow ? strideBN : strideBK;
+diff --git a/lib/Conversion/TritonGPUToLLVM/DotOpToLLVM/WGMMA.cpp b/lib/Conversion/TritonGPUToLLVM/DotOpToLLVM/WGMMA.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/DotOpToLLVM/WGMMA.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/DotOpToLLVM/WGMMA.cpp
+@@ -332,8 +332,15 @@ LogicalResult convertDot(TritonGPUToLLVM
+   Value baseA;
+   Value baseB;
+   if (aSharedLayout)
+-    baseA = getSharedMemoryObjectFromStruct(loc, loadedA, rewriter).base;
+-  baseB = getSharedMemoryObjectFromStruct(loc, loadedB, rewriter).base;
++    baseA =
++        getSharedMemoryObjectFromStruct(
++            loc, loadedA,
++            typeConverter->convertType(aTensorTy.getElementType()), rewriter)
++            .base;
++  baseB = getSharedMemoryObjectFromStruct(
++              loc, loadedB,
++              typeConverter->convertType(bTensorTy.getElementType()), rewriter)
++              .base;
+   if (aSharedLayout) {
+     auto aOrd = aSharedLayout.getOrder();
+     transA = aOrd[0] == 0;
+diff --git a/lib/Conversion/TritonGPUToLLVM/LoadStoreOpToLLVM.cpp b/lib/Conversion/TritonGPUToLLVM/LoadStoreOpToLLVM.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/LoadStoreOpToLLVM.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/LoadStoreOpToLLVM.cpp
+@@ -551,7 +551,8 @@ struct StoreAsyncOpConversion
+     Value llDst = adaptor.getDst();
+     Value llSrc = adaptor.getSrc();
+     auto srcShape = srcTy.getShape();
+-    auto smemObj = getSharedMemoryObjectFromStruct(loc, llSrc, rewriter);
++    auto smemObj =
++        getSharedMemoryObjectFromStruct(loc, llSrc, elemTy, rewriter);
+ 
+     SmallVector<Value> offsetVals;
+     for (auto i = 0; i < srcShape.size(); ++i) {
+@@ -1250,7 +1251,8 @@ struct InsertSliceOpConversion
+ 
+     // newBase = base + offset
+     // Triton support either static and dynamic offsets
+-    auto smemObj = getSharedMemoryObjectFromStruct(loc, llDst, rewriter);
++    auto smemObj = getSharedMemoryObjectFromStruct(
++        loc, llDst, dstTy.getElementType(), rewriter);
+     SmallVector<Value, 4> offsets;
+     SmallVector<Value, 4> srcStrides;
+     auto mixedOffsets = op.getMixedOffsets();
+@@ -1339,7 +1341,8 @@ struct InsertSliceAsyncOpConversion
+     // %dst
+     auto dstTy = dst.getType().cast<RankedTensorType>();
+     auto dstShape = dstTy.getShape();
+-    auto smemObj = getSharedMemoryObjectFromStruct(loc, llDst, rewriter);
++    auto smemObj =
++        getSharedMemoryObjectFromStruct(loc, llDst, resElemTy, rewriter);
+     auto axis = op->getAttrOfType<IntegerAttr>("axis").getInt();
+     SmallVector<Value, 4> offsetVals;
+     SmallVector<Value, 4> srcStrides;
+@@ -1601,7 +1604,9 @@ struct InsertSliceAsyncV2OpConversion
+     Value dst = op.getDst();
+     auto dstTy = dst.getType().cast<RankedTensorType>();
+     auto dstShape = dstTy.getShape();
+-    auto smemObj = getSharedMemoryObjectFromStruct(loc, llDst, rewriter);
++    auto smemObj = getSharedMemoryObjectFromStruct(
++        loc, llDst, typeConverter->convertType(dstTy.getElementType()),
++        rewriter);
+ 
+     // the offset of coord considering multicast slicing
+     SmallVector<Value> mcastOffsetVals;
+diff --git a/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVM.cpp b/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVM.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVM.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVM.cpp
+@@ -680,8 +680,8 @@ struct AllocTensorOpConversion
+     }
+ 
+     auto shapePerCTA = getShapePerCTA(sharedLayout, resultTy.getShape());
+-    auto smemObj =
+-        SharedMemoryObject(smemBase, shapePerCTA, newOrder, loc, rewriter);
++    auto smemObj = SharedMemoryObject(smemBase, llvmElemTy, shapePerCTA,
++                                      newOrder, loc, rewriter);
+     auto retVal = getStructFromSharedMemoryObject(loc, smemObj, rewriter);
+     rewriter.replaceOp(op, retVal);
+     return success();
+@@ -704,10 +704,12 @@ struct ExtractSliceOpConversion
+     assert(op.hasUnitStride() &&
+            "Only unit stride supported by ExtractSliceOpConversion");
+ 
++    auto llvmElemTy = getTypeConverter()->convertType(srcTy.getElementType());
++
+     // newBase = base + offset
+     // Triton supports either static and dynamic offsets
+-    auto smemObj =
+-        getSharedMemoryObjectFromStruct(loc, adaptor.getSource(), rewriter);
++    auto smemObj = getSharedMemoryObjectFromStruct(loc, adaptor.getSource(),
++                                                   llvmElemTy, rewriter);
+     SmallVector<Value, 4> opOffsetVals;
+     SmallVector<Value, 4> offsetVals;
+     auto mixedOffsets = op.getMixedOffsets();
+@@ -735,10 +737,9 @@ struct ExtractSliceOpConversion
+       }
+     }
+ 
+-    auto llvmElemTy = getTypeConverter()->convertType(srcTy.getElementType());
+     auto elemPtrTy = ptr_ty(llvmElemTy, 3);
+     smemObj = SharedMemoryObject(gep(elemPtrTy, smemObj.base, offset),
+-                                 strideVals, offsetVals);
++                                 llvmElemTy, strideVals, offsetVals);
+     auto retVal = getStructFromSharedMemoryObject(loc, smemObj, rewriter);
+     rewriter.replaceOp(op, retVal);
+     return success();
+diff --git a/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVMBase.h b/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVMBase.h
+--- a/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVMBase.h
++++ b/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVMBase.h
+@@ -525,7 +525,7 @@ public:
+ 
+     SmallVector<Value> srcStrides = {dstStrides[0], dstStrides[1]};
+     SmallVector<Value> offsetVals = {i32_val(0), i32_val(0)};
+-    SharedMemoryObject smemObj(smemBase, srcStrides, offsetVals);
++    SharedMemoryObject smemObj(smemBase, elemTy, srcStrides, offsetVals);
+ 
+     DenseMap<unsigned, Value> sharedPtrs =
+         getSwizzledSharedPtrs(loc, inVec, srcTy, dstSharedLayout, dstElemTy,
+diff --git a/lib/Conversion/TritonGPUToLLVM/Utility.cpp b/lib/Conversion/TritonGPUToLLVM/Utility.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/Utility.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/Utility.cpp
+@@ -131,9 +131,9 @@ void createStoreDSmem(Location loc, Patt
+   createStoreDSmem(loc, rewriter, addr, ctaId, values, pred);
+ }
+ 
+-SharedMemoryObject
+-getSharedMemoryObjectFromStruct(Location loc, Value llvmStruct,
+-                                ConversionPatternRewriter &rewriter) {
++SharedMemoryObject getSharedMemoryObjectFromStruct(
++    Location loc, Value llvmStruct, Type elemTy,
++    ConversionPatternRewriter &rewriter) {
+   ArrayRef<Type> types =
+       llvmStruct.getType().cast<LLVM::LLVMStructType>().getBody();
+   SmallVector<Value> elems(types.size());
+@@ -144,6 +144,7 @@ getSharedMemoryObjectFromStruct(Location
+ 
+   auto rank = (elems.size() - 1) / 2;
+   return {/*base=*/elems[0],
++          /*baseElemType=*/elemTy,
+           /*strides=*/{elems.begin() + 1, elems.begin() + 1 + rank},
+           /*offsets=*/{elems.begin() + 1 + rank, elems.end()}};
+ }
+diff --git a/lib/Conversion/TritonGPUToLLVM/Utility.h b/lib/Conversion/TritonGPUToLLVM/Utility.h
+--- a/lib/Conversion/TritonGPUToLLVM/Utility.h
++++ b/lib/Conversion/TritonGPUToLLVM/Utility.h
+@@ -234,6 +234,7 @@ getStridesFromShapeAndOrder(ArrayRef<int
+ struct SharedMemoryObject {
+   Value base; // i32 ptr. The start address of the shared memory object after
+               // the initial allocation or the last slicing operation.
++  Type baseElemType;
+   // We need to store strides as Values, not integers, because the
+   // extract_slice instruction can take a slice at arbitrary offsets.
+   // Take $a[16:32, 16:32] as an example; though we know the stride of $a[0] is
+@@ -251,15 +252,22 @@ struct SharedMemoryObject {
+   // We can use offsets to recover the previous base.
+   // The offsets are zero at the initial allocation.
+ 
+-  SharedMemoryObject(Value base, ArrayRef<Value> strides,
++  SharedMemoryObject(Value base, Type baseElemType, ArrayRef<Value> strides,
+                      ArrayRef<Value> offsets)
+-      : base(base), strides(strides.begin(), strides.end()),
+-        offsets(offsets.begin(), offsets.end()) {}
++      : base(base),
++        baseElemType(baseElemType),
++        strides(strides.begin(), strides.end()),
++        offsets(offsets.begin(), offsets.end()) {
++    assert(baseElemType ==
++           base.getType().cast<LLVMPointerType>().getElementType());
++  }
+ 
+-  SharedMemoryObject(Value base, ArrayRef<int64_t> shape,
++  SharedMemoryObject(Value base, Type baseElemType, ArrayRef<int64_t> shape,
+                      ArrayRef<unsigned> order, Location loc,
+                      ConversionPatternRewriter &rewriter)
+-      : base(base) {
++      : base(base), baseElemType(baseElemType) {
++    assert(baseElemType ==
++           base.getType().cast<LLVMPointerType>().getElementType());
+     strides = getStridesFromShapeAndOrder(shape, order, loc, rewriter);
+     offsets.append(order.size(), i32_val(0));
+   }
+@@ -290,13 +298,13 @@ struct SharedMemoryObject {
+     Value cSwizzleOffset = getCSwizzleOffset(order);
+     Value offset = sub(i32_val(0), cSwizzleOffset);
+     Type type = base.getType();
+-    return gep(type, base, offset);
++    return gep(type, baseElemType, base, offset);
+   }
+ };
+ 
+-SharedMemoryObject
+-getSharedMemoryObjectFromStruct(Location loc, Value llvmStruct,
+-                                ConversionPatternRewriter &rewriter);
++SharedMemoryObject getSharedMemoryObjectFromStruct(
++    Location loc, Value llvmStruct, Type elemTy,
++    ConversionPatternRewriter &rewriter);
+ 
+ // Convert an \param index to a multi-dim coordinate given \param shape and
+ // \param order.
+diff --git a/lib/Conversion/TritonGPUToLLVM/ViewOpToLLVM.cpp b/lib/Conversion/TritonGPUToLLVM/ViewOpToLLVM.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/ViewOpToLLVM.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/ViewOpToLLVM.cpp
+@@ -211,14 +211,16 @@ struct TransOpConversion
+   matchAndRewrite(triton::TransOp op, OpAdaptor adaptor,
+                   ConversionPatternRewriter &rewriter) const override {
+     Location loc = op->getLoc();
+-    auto srcSmemObj =
+-        getSharedMemoryObjectFromStruct(loc, adaptor.getSrc(), rewriter);
++    auto llvmElemTy = getTypeConverter()->convertType(
++        op.getType().cast<RankedTensorType>().getElementType());
++    auto srcSmemObj = getSharedMemoryObjectFromStruct(loc, adaptor.getSrc(),
++                                                      llvmElemTy, rewriter);
+     SmallVector<Value> dstStrides = {srcSmemObj.strides[1],
+                                      srcSmemObj.strides[0]};
+     SmallVector<Value> dstOffsets = {srcSmemObj.offsets[1],
+                                      srcSmemObj.offsets[0]};
+-    auto dstSmemObj =
+-        SharedMemoryObject(srcSmemObj.base, dstStrides, dstOffsets);
++    auto dstSmemObj = SharedMemoryObject(
++        srcSmemObj.base, srcSmemObj.baseElemType, dstStrides, dstOffsets);
+     auto retVal = getStructFromSharedMemoryObject(loc, dstSmemObj, rewriter);
+     rewriter.replaceOp(op, retVal);
+     return success();

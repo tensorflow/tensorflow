@@ -6,6 +6,7 @@ load(
     "if_dynamic_kernels",
     "if_static",
     "tf_additional_grpc_deps_py",
+    "tf_additional_tpu_ops_deps",
     "tf_additional_xla_deps_py",
     "tf_exec_properties",
     "tf_gpu_tests_tags",
@@ -2617,6 +2618,7 @@ def tf_py_test(
         # TODO(b/156911178): Revert this temporary workaround once TFRT open source
         # is fully integrated with TF.
         tfrt_enabled_internal = False,
+        tpu_ops_enabled = False,
         **kwargs):
     """Create one or more python tests with extra tensorflow dependencies."""
     xla_test_true_list = []
@@ -2633,6 +2635,8 @@ def tf_py_test(
         deps = deps + tf_additional_xla_deps_py()
     if grpc_enabled:
         deps = deps + tf_additional_grpc_deps_py()
+    if tpu_ops_enabled:
+        deps = deps + tf_additional_tpu_ops_deps()
 
     # NOTE(ebrevdo): This is a workaround for depset() not being able to tell
     # the difference between 'dep' and 'clean_dep(dep)'.

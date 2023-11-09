@@ -1366,7 +1366,6 @@ tf_cc_shared_library(
         "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_model",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/sparsity:sparsify_model",
-        "//tensorflow/compiler/mlir/python:mlir",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
@@ -1449,9 +1448,14 @@ tf_cc_shared_library(
         "//tensorflow/lite:util",
         "//tensorflow/python/grappler:cost_analyzer_lib",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
-    ] + (tf_monitoring_python_deps() +
-         tf_additional_plugin_deps() +
-         tf_additional_profiler_deps()) + if_xla_available([
+    ] + select({
+        "//tensorflow/compiler/mlir/python:disable_mlir_config": [],
+        "//conditions:default": [
+            "//tensorflow/compiler/mlir/python:mlir",
+        ],
+    }) + (tf_monitoring_python_deps() +
+          tf_additional_plugin_deps() +
+          tf_additional_profiler_deps()) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
     ]) + if_static(extra_deps = [
         "//tensorflow/core/platform:tensor_float_32_utils",

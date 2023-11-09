@@ -807,7 +807,7 @@ def assert_no_new_tensors(f):
     The decorated test case.
   """
 
-  def decorator(self, **kwargs):
+  def decorator(*args, **kwargs):
     """Finds existing Tensors, runs the test, checks for new Tensors."""
 
     def _is_tensorflow_object(obj):
@@ -829,9 +829,9 @@ def assert_no_new_tensors(f):
       ops.get_default_graph()._graph_key = outside_graph_key
       if outside_executed_eagerly:
         with context.eager_mode():
-          result = f(self, **kwargs)
+          result = f(*args, **kwargs)
       else:
-        result = f(self, **kwargs)
+        result = f(*args, **kwargs)
     # Make an effort to clear caches, which would otherwise look like leaked
     # Tensors.
     context.context()._clear_caches()  # pylint: disable=protected-access
@@ -847,7 +847,7 @@ def assert_no_new_tensors(f):
       )))
     return result
 
-  return decorator
+  return tf_decorator.make_decorator(f, decorator)
 
 
 def _find_reference_cycle(objects, idx):
@@ -1743,14 +1743,14 @@ def deprecated_graph_mode_only(func=None):
 
       return f
 
-    def decorated(self, *args, **kwargs):
+    def decorated(*args, **kwargs):
       if context.executing_eagerly():
         with context.graph_mode():
-          return f(self, *args, **kwargs)
+          return f(*args, **kwargs)
       else:
-        return f(self, *args, **kwargs)
+        return f(*args, **kwargs)
 
-    return decorated
+    return tf_decorator.make_decorator(f, decorated)
 
   if func is not None:
     return decorator(func)
@@ -1971,15 +1971,15 @@ def with_forward_compatibility_horizons(*horizons):
     if tf_inspect.isclass(f):
       raise ValueError("`with_forward_compatibility_horizons` only "
                        "supports test methods.")
-    def decorated(self, *args, **kwargs):
+    def decorated(*args, **kwargs):
       for horizon in horizons:
         if horizon is None:
-          f(self, *args, **kwargs)
+          f(*args, **kwargs)
         else:
           (year, month, day) = horizon
           with forward_compatibility_horizon(year, month, day):
-            f(self, *args, **kwargs)
-    return decorated
+            f(*args, **kwargs)
+    return tf_decorator.make_decorator(f, decorated)
 
   return decorator
 
@@ -2184,7 +2184,7 @@ def disable_cudnn_autotune(func):
 
   def decorator(f):
 
-    def decorated(self, *args, **kwargs):
+    def decorated(*args, **kwargs):
       original_tf_cudnn_use_autotune = os.environ.get("TF_CUDNN_USE_AUTOTUNE")
       os.environ["TF_CUDNN_USE_AUTOTUNE"] = "false"
       original_xla_flags = os.environ.get("XLA_FLAGS")
@@ -2193,7 +2193,7 @@ def disable_cudnn_autotune(func):
         new_xla_flags = original_xla_flags + " " + new_xla_flags
       os.environ["XLA_FLAGS"] = new_xla_flags
 
-      result = f(self, *args, **kwargs)
+      result = f(*args, **kwargs)
 
       if (original_tf_cudnn_use_autotune is None):
         del os.environ["TF_CUDNN_USE_AUTOTUNE"]
@@ -2235,14 +2235,14 @@ def enable_tf_xla_constant_folding(description):
 
     def decorator(f):
 
-      def decorated(self, *args, **kwargs):
+      def decorated(*args, **kwargs):
         original_var = pywrap_tf_session.TF_GetXlaConstantFoldingDisabled()
         pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(False)
-        result = f(self, *args, **kwargs)
+        result = f(*args, **kwargs)
         pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(original_var)
         return result
 
-      return decorated
+      return tf_decorator.make_decorator(func, decorated)
 
     if func is not None:
       return decorator(func)
@@ -2259,9 +2259,9 @@ def _disable_test(execute_func):
 
     def decorator(func):
 
-      def decorated(self, *args, **kwargs):
+      def decorated(*args, **kwargs):
         if execute_func:
-          return func(self, *args, **kwargs)
+          return func(*args, **kwargs)
 
       return tf_decorator.make_decorator(func, decorated)
 
@@ -2329,13 +2329,13 @@ def disable_tfrt(unused_description):
     else:
       def decorator(func):
 
-        def decorated(self, *args, **kwargs):
+        def decorated(*args, **kwargs):
           if tfrt_utils.enabled():
             return
           else:
-            return func(self, *args, **kwargs)
+            return func(*args, **kwargs)
 
-        return decorated
+        return tf_decorator.make_decorator(func, decorated)
 
       if cls_or_func is not None:
         return decorator(cls_or_func)
@@ -2387,19 +2387,19 @@ def xla_allow_fallback(description):  # pylint: disable=unused-argument
 
     def decorator(func):
 
-      def decorated(self, *args, **kwargs):
+      def decorated(*args, **kwargs):
         if is_xla_enabled():
           # Update the global XLABuildOpsPassFlags to enable lazy compilation,
           # which allows the compiler to fall back to TF classic. Remember the
           # old value so that we can reset it.
           old_value = pywrap_tf_session.TF_SetXlaEnableLazyCompilation(True)
-          result = func(self, *args, **kwargs)
+          result = func(*args, **kwargs)
           pywrap_tf_session.TF_SetXlaEnableLazyCompilation(old_value)
           return result
         else:
-          return func(self, *args, **kwargs)
+          return func(*args, **kwargs)
 
-      return decorated
+      return tf_decorator.make_decorator(func, decorated)
 
     if func is not None:
       return decorator(func)
@@ -2429,15 +2429,15 @@ def run_without_tensor_float_32(description):  # pylint: disable=unused-argument
   def decorator(f):
 
     @functools.wraps(f)
-    def decorated(self, *args, **kwargs):
+    def decorated(*args, **kwargs):
       allowed = config.tensor_float_32_execution_enabled()
       try:
         config.enable_tensor_float_32_execution(False)
-        f(self, *args, **kwargs)
+        f(*args, **kwargs)
       finally:
         config.enable_tensor_float_32_execution(allowed)
 
-    return decorated
+    return tf_decorator.make_decorator(f, decorated)
 
   return decorator
 

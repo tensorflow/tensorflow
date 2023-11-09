@@ -29,6 +29,7 @@ across many other scientific domains. TensorFlow is licensed under [Apache
 2.0](https://github.com/tensorflow/tensorflow/blob/master/LICENSE).
 """
 
+import datetime
 import fnmatch
 import os
 import platform
@@ -119,7 +120,7 @@ REQUIRED_PACKAGES = [
     # dependencies on the release branch is updated to the stable releases (RC
     # or final). For example, 'keras-nightly ~= 2.14.0.dev' will be replaced by
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
-    'tb-nightly ~= 2.15.0.a',
+    'tb-nightly ~= 2.16.0.a',
     'tf-estimator-nightly ~= 2.14.0.dev',
     'keras-nightly ~= 3.0.0.dev',
 ]
@@ -266,10 +267,13 @@ class InstallHeaders(Command):
     # we can do the symlink.
     # pylint: disable=line-too-long
     external_header_locations = {
-        '/tensorflow/include/external/eigen_archive': '',
         '/tensorflow/include/external/com_google_absl': '',
+        '/tensorflow/include/external/ducc': '/ducc',
+        '/tensorflow/include/external/eigen_archive': '',
         '/tensorflow/include/external/ml_dtypes': '/ml_dtypes',
-        '/tensorflow/include/tensorflow/compiler/xla': '/tensorflow/include/xla',
+        '/tensorflow/include/tensorflow/compiler/xla': (
+            '/tensorflow/include/xla'
+        ),
         '/tensorflow/include/tensorflow/tsl': '/tensorflow/include/tsl',
     }
     # pylint: enable=line-too-long
@@ -319,9 +323,23 @@ matches = []
 for path in so_lib_paths:
   matches.extend(['../' + x for x in find_files('*', path) if '.py' not in x])
 
-# If building a tpu package, bundle libtpu.so as part of the wheel
+# If building a tpu package, LibTPU for Cloud TPU VM can be installed via:
+# $ pip install <tf-tpu project> -f https://storage.googleapis.com/libtpu-releases/index.html
+# libtpu is built and uploaded to this link every night (PST).
 if '_tpu' in project_name:
-  matches.append('tensorflow/lib/libtpu.so')
+  # For tensorflow-tpu releases, use a set libtpu-nightly version;
+  # For tf-nightly-tpu, use the most recent libtpu-nightly. Because of the
+  # timing of these tests, the UTC date from eight hours ago is expected to be a
+  # valid version.
+  _libtpu_version = standard_or_nightly(
+      '0.1.dev20231018',
+      '0.1.dev'
+      + (
+          datetime.datetime.now(tz=datetime.timezone.utc)
+          - datetime.timedelta(hours=8)
+      ).strftime('%Y%m%d'),
+  )
+  REQUIRED_PACKAGES.append([f'libtpu-nightly=={_libtpu_version}'])
 
 if os.name == 'nt':
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.pyd'
@@ -329,31 +347,33 @@ else:
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.so'
 
 headers = (
-    list(find_files('*.proto', 'tensorflow/compiler')) +
-    list(find_files('*.proto', 'tensorflow/core')) +
-    list(find_files('*.proto', 'tensorflow/python')) +
-    list(find_files('*.proto', 'tensorflow/python/framework')) +
-    list(find_files('*.proto', 'tensorflow/tsl')) +
-    list(find_files('*.def', 'tensorflow/compiler')) +
-    list(find_files('*.h', 'tensorflow/c')) +
-    list(find_files('*.h', 'tensorflow/cc')) +
-    list(find_files('*.h', 'tensorflow/compiler')) +
-    list(find_files('*.h.inc', 'tensorflow/compiler')) +
-    list(find_files('*.h', 'tensorflow/core')) +
-    list(find_files('*.h', 'tensorflow/lite/kernels/shim')) +
-    list(find_files('*.h', 'tensorflow/python')) +
-    list(find_files('*.h', 'tensorflow/python/client')) +
-    list(find_files('*.h', 'tensorflow/python/framework')) +
-    list(find_files('*.h', 'tensorflow/stream_executor')) +
-    list(find_files('*.h', 'tensorflow/compiler/xla/stream_executor')) +
-    list(find_files('*.h', 'tensorflow/tsl')) +
-    list(find_files('*.h', 'google/com_google_protobuf/src')) +
-    list(find_files('*.inc', 'google/com_google_protobuf/src')) +
-    list(find_files('*', 'third_party/gpus')) +
-    list(find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
-    list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +
-    list(find_files('*', 'tensorflow/include/external/eigen_archive')) +
-    list(find_files('*.h', 'tensorflow/include/external/ml_dtypes')))
+    list(find_files('*.proto', 'tensorflow/compiler'))
+    + list(find_files('*.proto', 'tensorflow/core'))
+    + list(find_files('*.proto', 'tensorflow/python'))
+    + list(find_files('*.proto', 'tensorflow/python/framework'))
+    + list(find_files('*.proto', 'tensorflow/tsl'))
+    + list(find_files('*.def', 'tensorflow/compiler'))
+    + list(find_files('*.h', 'tensorflow/c'))
+    + list(find_files('*.h', 'tensorflow/cc'))
+    + list(find_files('*.h', 'tensorflow/compiler'))
+    + list(find_files('*.h.inc', 'tensorflow/compiler'))
+    + list(find_files('*.h', 'tensorflow/core'))
+    + list(find_files('*.h', 'tensorflow/lite/kernels/shim'))
+    + list(find_files('*.h', 'tensorflow/python'))
+    + list(find_files('*.h', 'tensorflow/python/client'))
+    + list(find_files('*.h', 'tensorflow/python/framework'))
+    + list(find_files('*.h', 'tensorflow/stream_executor'))
+    + list(find_files('*.h', 'tensorflow/compiler/xla/stream_executor'))
+    + list(find_files('*.h', 'tensorflow/tsl'))
+    + list(find_files('*.h', 'google/com_google_protobuf/src'))
+    + list(find_files('*.inc', 'google/com_google_protobuf/src'))
+    + list(find_files('*', 'third_party/gpus'))
+    + list(find_files('*.h', 'tensorflow/include/external/com_google_absl'))
+    + list(find_files('*.inc', 'tensorflow/include/external/com_google_absl'))
+    + list(find_files('*.h', 'tensorflow/include/external/ducc/google'))
+    + list(find_files('*', 'tensorflow/include/external/eigen_archive'))
+    + list(find_files('*.h', 'tensorflow/include/external/ml_dtypes'))
+)
 
 # Quite a lot of setup() options are different if this is a collaborator package
 # build. We explicitly list the differences here, then unpack the dict as

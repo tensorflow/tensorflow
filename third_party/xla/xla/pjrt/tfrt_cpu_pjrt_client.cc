@@ -385,11 +385,6 @@ StatusOr<std::unique_ptr<HloCostAnalysis>> TfrtCpuClient::GetHloCostAnalysis()
   return std::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
 }
 
-StatusOr<std::optional<std::string>> TfrtCpuClient::ExecutableFingerprint(
-    const PjRtLoadedExecutable& executable) const {
-  return std::optional<std::string>();
-}
-
 // Find the root instruction of the entry computation.
 static const InstructionValueSet& GetRootValueSet(
     const BufferAssignment& assignment, const HloModule& module) {

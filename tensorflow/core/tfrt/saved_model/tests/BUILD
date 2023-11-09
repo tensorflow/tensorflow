@@ -349,13 +349,11 @@ pytype_strict_binary(
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
         "//tensorflow/python/client:session",
-        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:lookup_ops",
-        "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:variable_scope",
+        "//tensorflow/python/ops:resource_variables_toggle",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/saved_model:builder",
@@ -363,7 +361,6 @@ pytype_strict_binary(
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/saved_model:utils",
-        "//tensorflow/python/training",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
     ],

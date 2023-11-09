@@ -49,9 +49,9 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
-#include "xla/hlo/experimental/auto_sharding/auto_sharding_solver_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_wrapper.h"
 #include "xla/hlo/experimental/auto_sharding/cluster_environment.h"
 #include "xla/hlo/experimental/auto_sharding/matrix.h"
 #include "xla/hlo/experimental/auto_sharding/metrics.h"
@@ -71,6 +71,7 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_memory_scheduler.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/sharding_propagation.h"
@@ -196,9 +197,8 @@ GenerateReshardingCostsAndMissingShardingsForAllOperands(
       auto operand_shape = operand->shape();
       if (ins->opcode() == HloOpcode::kGather && k == 0 &&
           is_sharding_default_replicated) {
-        LOG(INFO)
-            << "Zeroing out operand 0 resharding costs for gather sharding "
-            << output_sharding.ToString();
+        VLOG(2) << "Zeroing out operand 0 resharding costs for gather sharding "
+                << output_sharding.ToString();
         resharding_costs.push_back(
             std::vector<double>(operand_strategies->leaf_vector.size(), 0));
         input_shardings[k] = std::nullopt;
@@ -833,7 +833,6 @@ void BuildStrategyAndCostForOp(const HloInstruction* ins, const Shape& shape,
     std::tie(resharding_costs, input_shardings) =
         ReshardingCostsForTupleOperand(ins->operand(0),
                                        strategy_map.at(ins->operand(0)).get());
-    LOG(INFO) << absl::StrJoin(resharding_costs.back(), ",");
   } else {
     std::tie(resharding_costs, input_shardings) =
         GenerateReshardingCostsAndShardingsForAllOperands(
@@ -1102,7 +1101,7 @@ bool AllowTieFollowing(const HloInstruction* ins) {
 void DisableIncompatibleMixedMeshShapeAndForceBatchDim(
     const InstructionBatchDimMap& batch_dim_map,
     const std::vector<HloInstruction*>& instructions, int num_devices,
-    AutoShardingSolverOption& solver_option) {
+    AutoShardingOption& option) {
   int64_t batch_size = INT_MAX;
   for (const auto& iter : batch_dim_map) {
     batch_size = std::min(batch_size, FindInstruction(instructions, iter.first)
@@ -1111,36 +1110,36 @@ void DisableIncompatibleMixedMeshShapeAndForceBatchDim(
   }
 
   if (IsDivisible(batch_size, num_devices)) {
-    if (solver_option.allow_mixed_mesh_shape) {
-      solver_option.allow_mixed_mesh_shape = false;
+    if (option.allow_mixed_mesh_shape) {
+      option.allow_mixed_mesh_shape = false;
       LOG(WARNING)
           << "Mixed mesh shape is disabled due to indivisible batch size.";
     }
   }
 
   if (batch_size == 1) {
-    solver_option.force_batch_dim_to_mesh_dim = -1;
+    option.force_batch_dim_to_mesh_dim = -1;
   }
 }
 
 StatusOr<std::unique_ptr<StrategyVector>> CreateAllStrategiesVector(
     const HloInstruction* ins, const Shape& shape, size_t instruction_id,
     LeafStrategies& leaf_strategies, const ClusterEnvironment& cluster_env,
-    const StrategyMap& strategy_map,
-    const AutoShardingSolverOption& solver_option, double replicated_penalty,
-    const InstructionBatchDimMap& batch_dim_map, const CallGraph& call_graph,
-    bool only_allow_divisible, bool create_replicated_strategies) {
+    const StrategyMap& strategy_map, const AutoShardingOption& option,
+    double replicated_penalty, const InstructionBatchDimMap& batch_dim_map,
+    const CallGraph& call_graph, bool only_allow_divisible,
+    bool create_replicated_strategies) {
   std::unique_ptr<StrategyVector> strategies;
   if (shape.IsTuple()) {
     strategies = CreateTupleStrategyVector(instruction_id);
     strategies->childs.reserve(shape.tuple_shapes_size());
     for (size_t i = 0; i < shape.tuple_shapes_size(); ++i) {
       auto child_strategies =
-          CreateAllStrategiesVector(
-              ins, shape.tuple_shapes(i), instruction_id, leaf_strategies,
-              cluster_env, strategy_map, solver_option, replicated_penalty,
-              batch_dim_map, call_graph, only_allow_divisible,
-              create_replicated_strategies)
+          CreateAllStrategiesVector(ins, shape.tuple_shapes(i), instruction_id,
+                                    leaf_strategies, cluster_env, strategy_map,
+                                    option, replicated_penalty, batch_dim_map,
+                                    call_graph, only_allow_divisible,
+                                    create_replicated_strategies)
               .value();
       child_strategies->tuple_element_idx = i;
       strategies->childs.push_back(std::move(child_strategies));
@@ -1164,7 +1163,7 @@ StatusOr<std::unique_ptr<StrategyVector>> CreateAllStrategiesVector(
                             only_allow_divisible, call_graph, /*partitions*/ 3);
     }
 
-    if (solver_option.allow_mixed_mesh_shape && cluster_env.IsDeviceMesh2D()) {
+    if (option.allow_mixed_mesh_shape && cluster_env.IsDeviceMesh2D()) {
       // Set penalty for 1d partial tiled layout
       for (size_t i = 0; i < strategies->leaf_vector.size(); ++i) {
         strategies->leaf_vector[i].compute_cost += replicated_penalty * 0.8;
@@ -1182,10 +1181,10 @@ StatusOr<std::unique_ptr<StrategyVector>> CreateAllStrategiesVector(
 
     // If force_batch_dim_to_mesh_dim is set, filter out invalid strategies
     // and only keep the data parallel strategies.
-    if (solver_option.force_batch_dim_to_mesh_dim >= 0 &&
+    if (option.force_batch_dim_to_mesh_dim >= 0 &&
         batch_dim_map.contains(GetBatchDimMapKey(ins))) {
       TF_RETURN_IF_ERROR(FilterStrategy(ins, shape, strategies, cluster_env,
-                                        batch_dim_map, solver_option));
+                                        batch_dim_map, option));
     }
   } else if (shape.IsToken()) {
     strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
@@ -1201,14 +1200,13 @@ StatusOr<std::unique_ptr<StrategyVector>> CreateAllStrategiesVector(
 StatusOr<std::unique_ptr<StrategyVector>> CreateParameterStrategyVector(
     const HloInstruction* ins, const Shape& shape, size_t instruction_id,
     LeafStrategies& leaf_strategies, const ClusterEnvironment& cluster_env,
-    const StrategyMap& strategy_map,
-    const AutoShardingSolverOption& solver_option, double replicated_penalty,
-    const InstructionBatchDimMap& batch_dim_map, const CallGraph& call_graph,
-    bool only_allow_divisible) {
+    const StrategyMap& strategy_map, const AutoShardingOption& option,
+    double replicated_penalty, const InstructionBatchDimMap& batch_dim_map,
+    const CallGraph& call_graph, bool only_allow_divisible) {
   return CreateAllStrategiesVector(
       ins, shape, instruction_id, leaf_strategies, cluster_env, strategy_map,
-      solver_option, replicated_penalty, batch_dim_map, call_graph,
-      only_allow_divisible, solver_option.allow_replicated_parameters);
+      option, replicated_penalty, batch_dim_map, call_graph,
+      only_allow_divisible, option.allow_replicated_parameters);
 }
 
 // The sharding is replicated or the total number of tiles is over or equal to
@@ -1607,8 +1605,7 @@ std::unique_ptr<StrategyVector> CreateReshapeStrategies(
     const StrategyMap& strategy_map, const ClusterEnvironment& cluster_env,
     bool only_allow_divisible, double replicated_penalty,
     const InstructionBatchDimMap& batch_dim_map,
-    const AutoShardingSolverOption& solver_option,
-    LeafStrategies& leaf_strategies) {
+    const AutoShardingOption& option, LeafStrategies& leaf_strategies) {
   std::unique_ptr<StrategyVector> strategies = CreateLeafStrategyVector(
       instruction_id, ins, strategy_map, leaf_strategies);
   const HloInstruction* operand = ins->operand(0);
@@ -1616,7 +1613,7 @@ std::unique_ptr<StrategyVector> CreateReshapeStrategies(
   const Array<int64_t>& device_mesh_1d = cluster_env.device_mesh_1d_;
 
   int mesh_nn_dims = VectorGreaterThanOneElementCount(device_mesh.dimensions());
-  if (mesh_nn_dims < 2 || !solver_option.allow_mixed_mesh_shape) {
+  if (mesh_nn_dims < 2 || !option.allow_mixed_mesh_shape) {
     // Create follow strategies
     const StrategyVector* src_strategies = strategy_map.at(operand).get();
     CHECK(!src_strategies->is_tuple);
@@ -1667,7 +1664,7 @@ std::unique_ptr<StrategyVector> CreateReshapeStrategies(
                                      strategy_map, strategies,
                                      only_allow_divisible, "");
     }
-    if (solver_option.allow_mixed_mesh_shape && cluster_env.IsDeviceMesh2D()) {
+    if (option.allow_mixed_mesh_shape && cluster_env.IsDeviceMesh2D()) {
       // Split 1 dim, but for 1d mesh
       EnumerateAll1DPartitionReshape(ins, device_mesh_1d, cluster_env,
                                      strategy_map, strategies,
@@ -1705,8 +1702,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                      const InstructionBatchDimMap& batch_dim_map,
                      const AliasMap& alias_map,
                      const ClusterEnvironment& cluster_env,
-                     AutoShardingSolverOption& solver_option,
-                     const CallGraph& call_graph,
+                     AutoShardingOption& option, const CallGraph& call_graph,
+                     const HloCostAnalysis& hlo_cost_analysis,
                      bool trying_multiple_mesh_shapes) {
   const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
   const Array<int64_t>& device_mesh_1d = cluster_env.device_mesh_1d_;
@@ -1751,20 +1748,20 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       // strategies, outputs would be constrained as welll, but if outputs are
       // still unevely sharded in some cases, we need to fix the implementation
       // in auto sharding.
-      only_allow_divisible = solver_option.only_allow_divisible_input_output;
+      only_allow_divisible = option.only_allow_divisible_input_output;
     } else {
-      only_allow_divisible = solver_option.only_allow_divisible_intermediate;
+      only_allow_divisible = option.only_allow_divisible_intermediate;
     }
+
     switch (opcode) {
       case HloOpcode::kParameter:
       case HloOpcode::kRngBitGenerator:
       case HloOpcode::kRng: {
-        strategies =
-            CreateParameterStrategyVector(
-                ins, ins->shape(), instruction_id, leaf_strategies, cluster_env,
-                strategy_map, solver_option, replicated_penalty, batch_dim_map,
-                call_graph, only_allow_divisible)
-                .value();
+        strategies = CreateParameterStrategyVector(
+                         ins, ins->shape(), instruction_id, leaf_strategies,
+                         cluster_env, strategy_map, option, replicated_penalty,
+                         batch_dim_map, call_graph, only_allow_divisible)
+                         .value();
         break;
       }
       case HloOpcode::kConstant: {
@@ -1907,7 +1904,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                                 cluster_env, strategy_map, strategies,
                                 batch_dim_map, only_allow_divisible, call_graph,
                                 /*partitions*/ 2);
-          if (solver_option.allow_mixed_mesh_shape) {
+          if (option.allow_mixed_mesh_shape) {
             EnumerateAll1DPartition(ins, ins->shape(),
                                     cluster_env.device_mesh_1d_, cluster_env,
                                     strategy_map, strategies,
@@ -1923,7 +1920,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         strategies = CreateReshapeStrategies(instruction_id, ins, strategy_map,
                                              cluster_env, only_allow_divisible,
                                              replicated_penalty, batch_dim_map,
-                                             solver_option, leaf_strategies);
+                                             option, leaf_strategies);
         break;
       }
       case HloOpcode::kTranspose:
@@ -2086,8 +2083,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         } else {
           strategies = CreateReshapeStrategies(
               instruction_id, ins, strategy_map, cluster_env,
-              only_allow_divisible, replicated_penalty, batch_dim_map,
-              solver_option, leaf_strategies);
+              only_allow_divisible, replicated_penalty, batch_dim_map, option,
+              leaf_strategies);
         }
         break;
       }
@@ -2153,7 +2150,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         auto strategies_status = FollowReduceStrategy(
             ins, ins->shape(), ins->operand(0), ins->operand(1), instruction_id,
             strategy_map, leaf_strategies, cluster_env,
-            solver_option.allow_mixed_mesh_shape, !trying_multiple_mesh_shapes);
+            option.allow_mixed_mesh_shape, !trying_multiple_mesh_shapes);
         if (strategies_status.ok()) {
           strategies = std::move(strategies_status.value());
         } else {
@@ -2164,20 +2161,24 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       case HloOpcode::kDot: {
         TF_RETURN_IF_ERROR(HandleDot(strategies, leaf_strategies, strategy_map,
                                      ins, instruction_id, cluster_env,
-                                     batch_dim_map, solver_option, call_graph));
-        if (solver_option.allow_replicated_strategy_for_dot_and_conv) {
-          AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
-                                strategies, 0);
+                                     batch_dim_map, option, call_graph));
+        if (option.allow_replicated_strategy_for_dot_and_conv) {
+          AddReplicatedStrategy(
+              ins, ins->shape(), cluster_env, strategy_map, strategies,
+              GetDotConvReplicationPenalty(ins, instruction_id, /* window */ 10,
+                                           sequence, hlo_cost_analysis));
         }
         break;
       }
       case HloOpcode::kConvolution: {
-        TF_RETURN_IF_ERROR(HandleConv(
-            strategies, leaf_strategies, strategy_map, ins, instruction_id,
-            cluster_env, batch_dim_map, solver_option, call_graph));
-        if (solver_option.allow_replicated_strategy_for_dot_and_conv) {
-          AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
-                                strategies, 0);
+        TF_RETURN_IF_ERROR(HandleConv(strategies, leaf_strategies, strategy_map,
+                                      ins, instruction_id, cluster_env,
+                                      batch_dim_map, option, call_graph));
+        if (option.allow_replicated_strategy_for_dot_and_conv) {
+          AddReplicatedStrategy(
+              ins, ins->shape(), cluster_env, strategy_map, strategies,
+              GetDotConvReplicationPenalty(ins, instruction_id, /* window */ 10,
+                                           sequence, hlo_cost_analysis));
         }
         break;
       }
@@ -2208,8 +2209,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                                 strategy_map, strategies, batch_dim_map,
                                 only_allow_divisible, call_graph, /*parts*/ 3);
         }
-        if (cluster_env.IsDeviceMesh2D() &&
-            solver_option.allow_mixed_mesh_shape) {
+        if (cluster_env.IsDeviceMesh2D() && option.allow_mixed_mesh_shape) {
           // Split 1 dim, but for 1d flattened version of the 2d mesh
           // For example, when the mesh shape is (2, 4), we add strategies for
           // mesh shape (1, 8) here in addition.
@@ -2273,9 +2273,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                   strategies =
                       CreateAllStrategiesVector(
                           ins, ins->shape(), instruction_id, leaf_strategies,
-                          cluster_env, strategy_map, solver_option,
-                          replicated_penalty, batch_dim_map, call_graph,
-                          only_allow_divisible, true)
+                          cluster_env, strategy_map, option, replicated_penalty,
+                          batch_dim_map, call_graph, only_allow_divisible, true)
                           .value();
                 }
               } else {
@@ -2289,9 +2288,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                   strategies =
                       CreateAllStrategiesVector(
                           ins, ins->shape(), instruction_id, leaf_strategies,
-                          cluster_env, strategy_map, solver_option,
-                          replicated_penalty, batch_dim_map, call_graph,
-                          only_allow_divisible, true)
+                          cluster_env, strategy_map, option, replicated_penalty,
+                          batch_dim_map, call_graph, only_allow_divisible, true)
                           .value();
                 }
               }
@@ -2349,13 +2347,12 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       case HloOpcode::kConditional:
       case HloOpcode::kInfeed:
       case HloOpcode::kSort: {
-        strategies =
-            CreateAllStrategiesVector(
-                ins, ins->shape(), instruction_id, leaf_strategies, cluster_env,
-                strategy_map, solver_option, replicated_penalty, batch_dim_map,
-                call_graph, only_allow_divisible,
-                /*create_replicated_strategies*/ true)
-                .value();
+        strategies = CreateAllStrategiesVector(
+                         ins, ins->shape(), instruction_id, leaf_strategies,
+                         cluster_env, strategy_map, option, replicated_penalty,
+                         batch_dim_map, call_graph, only_allow_divisible,
+                         /*create_replicated_strategies*/ true)
+                         .value();
         break;
       }
       case HloOpcode::kOutfeed: {
@@ -2382,7 +2379,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       TrimOrGenerateStrategiesBasedOnExistingSharding(
           ins->shape(), strategies.get(), strategy_map, instructions,
           ins->sharding(), cluster_env, pretrimmed_strategy_map, call_graph,
-          solver_option.nd_sharding_iteratively_strict_search_space);
+          option.nd_sharding_iteratively_strict_search_space);
     }
     if (!strategies->is_tuple && strategies->following) {
       if (!LeafVectorsAreConsistent(
@@ -2419,11 +2416,9 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
     XLA_VLOG_LINES(2, absl::StrCat("strategies:\n", strategies->ToString()));
 
     // Debug options: forcibly set the strategy of some instructions.
-    if (solver_option.force_strategy) {
-      std::vector<int64_t> inst_indices =
-          solver_option.force_strategy_inst_indices;
-      std::vector<std::string> stra_names =
-          solver_option.force_strategy_stra_names;
+    if (option.force_strategy) {
+      std::vector<int64_t> inst_indices = option.force_strategy_inst_indices;
+      std::vector<std::string> stra_names = option.force_strategy_stra_names;
       CHECK_EQ(inst_indices.size(), stra_names.size());
       auto it = absl::c_find(inst_indices, strategies->node_idx);
       if (it != inst_indices.end()) {
@@ -2462,7 +2457,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
 
   // If gradient accumulation is used, adjust the cost of all-reduce for
   // gradient synchronization.
-  if (solver_option.grad_acc_num_micro_batches > 1) {
+  if (option.grad_acc_num_micro_batches > 1) {
     // find gradient-computation instructions
     std::vector<const HloInstruction*> grad_insts =
         GetGradientComputationInstructions(instructions);
@@ -2472,7 +2467,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
 
       for (auto& stra : stra_vector->leaf_vector) {
         if (absl::StrContains(stra.name, "allreduce")) {
-          stra.communication_cost /= solver_option.grad_acc_num_micro_batches;
+          stra.communication_cost /= option.grad_acc_num_micro_batches;
         }
       }
     }
@@ -2534,7 +2529,7 @@ AutoShardingSolverResult CallSolver(
       CHECK(iter->second->has_sharding()) << iter->second->ToString();
       default_strategy = iter->second->sharding();
       if (strategies->tuple_element_idx) {
-        const auto& tuple_elements = default_strategy->tuple_elements();
+        const auto& tuple_elements = iter->second->sharding().tuple_elements();
         CHECK_LT(*strategies->tuple_element_idx, tuple_elements.size());
         default_strategy = tuple_elements.at(*strategies->tuple_element_idx);
       }
@@ -3498,14 +3493,11 @@ void FindReplicateSet(
 }
 
 // Substitute all-reduce strategies with their reduce-scatter variants.
-void GenerateReduceScatter(const HloInstructionSequence& sequence,
-                           const AliasMap& alias_map,
-                           const InstructionDepthMap& depth_map,
-                           const StrategyMap& strategy_map,
-                           const CostGraph& cost_graph,
-                           absl::Span<const NodeStrategyIdx> s_val,
-                           const ClusterEnvironment& cluster_env,
-                           const AutoShardingSolverOption& solver_option) {
+void GenerateReduceScatter(
+    const HloInstructionSequence& sequence, const AliasMap& alias_map,
+    const InstructionDepthMap& depth_map, const StrategyMap& strategy_map,
+    const CostGraph& cost_graph, absl::Span<const NodeStrategyIdx> s_val,
+    const ClusterEnvironment& cluster_env, const AutoShardingOption& option) {
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
 
   // Propagation ends at output
@@ -3530,8 +3522,7 @@ void GenerateReduceScatter(const HloInstructionSequence& sequence,
   // in our current system. So we generate a gradient-accumulation-friendly
   // all-reduce + all-gather, which has the same memory consumption but with 50%
   // communication overhead.
-  bool use_all_reduce_for_grad_acc =
-      solver_option.reduce_scatter_grad_acc_friendly;
+  bool use_all_reduce_for_grad_acc = option.reduce_scatter_grad_acc_friendly;
 
   std::vector<HloInstruction*> insert_all_gather;
   StableHashSet<const HloInstruction*> modified;
@@ -3669,7 +3660,7 @@ void GenerateReduceScatter(const HloInstructionSequence& sequence,
         SetSharding(to_split, output_spec, inst, transpose_inst, modified);
       }
 
-      if (!solver_option.reduce_scatter_aggressive_partition) {
+      if (!option.reduce_scatter_aggressive_partition) {
         // The normal case
         for (HloInstruction* to_split : need_all_gather) {
           SetSharding(to_split, output_spec, inst, transpose_inst, modified);
@@ -3886,14 +3877,14 @@ void AnnotateShardingWithSimpleHeuristic(
   output->set_sharding(HloSharding::Tuple(tuple_sharding));
 }
 
-// Filter strategies according to the solver_option.force_batch_dim_to_mesh_dim.
+// Filter strategies according to the option.force_batch_dim_to_mesh_dim.
 // This can be used to forcibly generate data-parallel strategies.
 Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
                       std::unique_ptr<StrategyVector>& strategies,
                       const ClusterEnvironment& cluster_env,
                       const InstructionBatchDimMap& batch_map,
-                      const AutoShardingSolverOption& solver_option) {
-  int mesh_dim = solver_option.force_batch_dim_to_mesh_dim;
+                      const AutoShardingOption& option) {
+  int mesh_dim = option.force_batch_dim_to_mesh_dim;
   int batch_dim = batch_map.at(GetBatchDimMapKey(ins));
   const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
 
@@ -4183,48 +4174,6 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
   bool module_is_changed = false;
 
   bool set_to_memory_lower_bound = (option_.memory_budget_per_device == 0);
-  // ----- Set options for this pass -----
-  spmd::AutoShardingSolverOption solver_option;
-  solver_option.override_all_gather_cost = false;
-  solver_option.override_all_reduce_cost = false;
-  solver_option.override_reduce_scatter_cost = false;
-  solver_option.override_all_to_all_cost = false;
-
-  if (option_.force_all_gather_cost) {
-    solver_option.override_all_gather_cost = true;
-    solver_option.all_gather_cost = option_.all_gather_cost;
-  }
-  if (option_.force_all_to_all_cost) {
-    solver_option.override_all_to_all_cost = true;
-    solver_option.all_to_all_cost = option_.all_to_all_cost;
-  }
-  solver_option.force_batch_dim_to_mesh_dim =
-      option_.force_batch_dim_to_mesh_dim;
-  solver_option.allow_replicated_parameters =
-      option_.allow_replicated_parameters;
-  solver_option.prefer_reduce_scatter = option_.prefer_reduce_scatter;
-  solver_option.reduce_scatter_grad_acc_friendly =
-      option_.reduce_scatter_grad_acc_friendly;
-  solver_option.reduce_scatter_aggressive_partition =
-      option_.reduce_scatter_aggressive_partition;
-  solver_option.batch_matmul_always_split_batch =
-      option_.batch_matmul_always_split_batch;
-  solver_option.allow_recompute_heavy_op = option_.allow_recompute_heavy_op;
-  solver_option.allow_mixed_mesh_shape = option_.allow_mixed_mesh_shape;
-  solver_option.grad_acc_num_micro_batches = option_.grad_acc_num_micro_batches;
-  solver_option.load_solution_vector = option_.load_solution_vector;
-  solver_option.force_simple_heuristic = option_.force_simple_heuristic;
-  solver_option.force_strategy = option_.force_strategy;
-  solver_option.force_strategy_inst_indices =
-      option_.force_strategy_inst_indices;
-  solver_option.force_strategy_stra_names = option_.force_strategy_stra_names;
-  solver_option.only_allow_divisible_input_output = true;
-  solver_option.only_allow_divisible_intermediate = false;
-  solver_option.nd_sharding_iteratively_strict_search_space = false;
-  solver_option.allow_replicated_strategy_for_dot_and_conv =
-      option_.allow_replicated_strategy_for_dot_and_conv;
-  solver_option.allow_alias_to_follower_conversion =
-      option_.allow_alias_to_follower_conversion;
 
   // Remove CustomCalls with custom_call_target="Sharding" and move their
   // shardings to their input ops.
@@ -4324,6 +4273,11 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
 
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
 
+  HloCostAnalysis::Options hlo_cost_analysis_options{
+      .shape_size = [](const Shape& shape) { return spmd::GetBytes(shape); }};
+  HloCostAnalysis hlo_cost_analysis(hlo_cost_analysis_options);
+  CHECK_OK(module->entry_computation()->Accept(&hlo_cost_analysis));
+
   for (size_t mesh_idx = 0; mesh_idx < partial_mesh_shapes.size(); ++mesh_idx) {
     // Adjust existing shardings with current partial mesh shapes;
     std::vector<int64_t> mesh_shape = partial_mesh_shapes[mesh_idx];
@@ -4355,9 +4309,9 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     spmd::ProfilingResult prof_result;
     spmd::ClusterEnvironment cluster_env(
         original_device_mesh, device_mesh, option_.device_mesh_alpha,
-        option_.device_mesh_beta, prof_result, solver_option);
+        option_.device_mesh_beta, prof_result, option_);
 
-    XLA_VLOG_LINES(3, module->ToString());
+    XLA_VLOG_LINES(6, module->ToString());
     int64_t memory_lower_bound = spmd::MemoryBudgetLowerBound(
         *module, liveness_set, alias_analysis.get(),
         device_mesh.num_elements());
@@ -4387,16 +4341,16 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
                 << option_.memory_budget_per_device;
     }
 
-    if (!solver_option.force_simple_heuristic.empty()) {
+    if (!option_.force_simple_heuristic.empty()) {
       AnnotateShardingWithSimpleHeuristic(
-          module, solver_option.force_simple_heuristic, alias_map, cluster_env);
+          module, option_.force_simple_heuristic, alias_map, cluster_env);
       return AutoShardingResult::kModuleChangedShardingPerformed;
     }
 
-    if (solver_option.force_batch_dim_to_mesh_dim >= 0) {
-      DisableIncompatibleMixedMeshShapeAndForceBatchDim(
+    if (option_.force_batch_dim_to_mesh_dim >= 0) {
+      spmd::DisableIncompatibleMixedMeshShapeAndForceBatchDim(
           batch_dim_map, sequence.instructions(), device_mesh.num_elements(),
-          solver_option);
+          option_);
     }
 
     // ----- Analyze depth -----
@@ -4409,10 +4363,10 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
 
     TF_ASSIGN_OR_RETURN(
         std::tie(strategy_map, leaf_strategies, associative_dot_pairs),
-        BuildStrategyAndCost(sequence, module, instruction_execution_counts,
-                             ins_depth_map, batch_dim_map, alias_map,
-                             cluster_env, solver_option, *call_graph,
-                             option_.try_multiple_mesh_shapes));
+        BuildStrategyAndCost(
+            sequence, module, instruction_execution_counts, ins_depth_map,
+            batch_dim_map, alias_map, cluster_env, option_, *call_graph,
+            hlo_cost_analysis, option_.try_multiple_mesh_shapes));
     spmd::AliasSet alias_set = spmd::BuildAliasSet(module, strategy_map);
     CheckAliasSetCompatibility(alias_set, leaf_strategies, sequence);
     XLA_VLOG_LINES(8, PrintStrategyMap(strategy_map, sequence));
@@ -4440,7 +4394,7 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     std::vector<spmd::NodeStrategyIdx> s_val;
     std::vector<spmd::EdgeStrategyIdx> e_val;
     double objective = -1.0;
-    if (!solver_option.load_solution_vector) {
+    if (!option_.load_solution_vector) {
       auto solver_result = Solve(
           *hlo_live_range, liveness_node_set, strategy_map, leaf_strategies,
           cost_graph, alias_set, option_, sharding_propagation_solution);
@@ -4466,9 +4420,9 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
                                                cost_graph, s_val));
 
     // ----- Substitute all-reduce with reduce-scatter -----
-    if (solver_option.prefer_reduce_scatter) {
+    if (option_.prefer_reduce_scatter) {
       GenerateReduceScatter(sequence, alias_map, ins_depth_map, strategy_map,
-                            cost_graph, s_val, cluster_env, solver_option);
+                            cost_graph, s_val, cluster_env, option_);
     }
     // ----- Set Sharding -----
     SetHloSharding(sequence, strategy_map, cost_graph, s_val,
@@ -4552,7 +4506,7 @@ StatusOr<bool> AutoSharding::Run(
   if (!option_.enable) {
     return false;
   }
-  VLOG(1) << "Start auto sharding pass";
+  LOG(INFO) << "Starting the auto sharding pass";
 
   if (IsModuleManuallySharded(module)) {
     LOG(ERROR)
@@ -4572,7 +4526,7 @@ StatusOr<bool> AutoSharding::Run(
 #endif
 
   TF_RETURN_IF_ERROR(option_.CheckAndSetup());
-  VLOG(1) << "AutoShardingOptions:\n" << option_.ToString();
+  LOG(INFO) << "AutoShardingOptions:\n" << option_.ToString();
 
   absl::flat_hash_set<std::string> replicated_small_tensors;
   if (option_.small_tensor_byte_size > 0) {
@@ -4592,18 +4546,19 @@ StatusOr<bool> AutoSharding::Run(
     }
   }
 
-  bool asymmetrical_mesh_dims = false;
-  for (size_t i = 0; i < option_.device_mesh_shape.size(); ++i) {
-    if (option_.device_mesh_beta[0] != option_.device_mesh_beta[i] ||
-        option_.device_mesh_alpha[0] != option_.device_mesh_alpha[i]) {
-      asymmetrical_mesh_dims = true;
-      break;
-    }
-  }
-
   std::vector<std::vector<int64_t>> mesh_shapes;
   if (option_.try_multiple_mesh_shapes) {
-    mesh_shapes = spmd::CreateDifferentMeshShapesToTry(
+    bool asymmetrical_mesh_dims = false;
+    for (size_t i = 0; i < option_.device_mesh_shape.size(); ++i) {
+      if (option_.device_mesh_beta[0] != option_.device_mesh_beta[i] ||
+          option_.device_mesh_alpha[0] != option_.device_mesh_alpha[i]) {
+        asymmetrical_mesh_dims = true;
+        break;
+      }
+    }
+
+    mesh_shapes = spmd::InferOrEnumerateMeshShapesToTry(
+        *module,
         absl::c_accumulate(option_.device_mesh_shape, 1,
                            [](int64_t a, int64_t b) { return a * b; }),
         option_.device_mesh_shape.size(),
@@ -4630,7 +4585,7 @@ StatusOr<bool> AutoSharding::Run(
 
     CHECK_OK(sharding_prop.Run(module_with_default_solution.get(),
                                execution_threads));
-    LOG(INFO) << module_with_default_solution->ToString();
+    VLOG(6) << module_with_default_solution->ToString();
     for (const auto computation :
          module_with_default_solution->computations()) {
       for (const auto instruction : computation->instructions()) {

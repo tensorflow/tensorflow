@@ -70,7 +70,7 @@ class BlasLt : public gpu::BlasLt {
         blas::ComputationType compute_type, blas::DataType scale_type,
         blas::Transpose trans_a = blas::Transpose::kNoTranspose,
         blas::Transpose trans_b = blas::Transpose::kNoTranspose,
-        Epilogue epilogue = Epilogue::kDefault,
+        Epilogue epilogue = Epilogue::kDefault, bool enable_fast_accum = false,
         PointerMode pointer_mode = PointerMode::kHost);
 
     cublasComputeType_t compute_type() const;

@@ -191,7 +191,7 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
         builder->CreateGEP(arguments_type, arguments_ptr,
                            {builder->getInt64(0), builder->getInt32(i)}));
   }
-  llvm::Type* ptr_ty = builder->getInt8Ty()->getPointerTo();
+  llvm::Type* ptr_ty = builder->getPtrTy();
   return builder->CreateCall(
       builder->GetInsertBlock()->getParent()->getParent()->getOrInsertFunction(
           "vprintf",
@@ -538,7 +538,7 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
       }
       dus_user = *bitcast->user_begin();
     }
-    if (!mlir::isa<mlir::memref::TensorStoreOp>(dus_user)) {
+    if (!mlir::isa<mlir::bufferization::MaterializeInDestinationOp>(dus_user)) {
       return false;
     }
     auto operand = dus.getOperand();
@@ -564,8 +564,8 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     q.push(parameter);
     visited.insert(parameter);
     // We have already checked above that the DUS only has one user: a
-    // (possibly bitcasted) TensorStoreOp. So we don't need to visit it during
-    // the breadth-first search.
+    // (possibly bitcasted) MaterializeInDestinationOp. So we don't need to
+    // visit it during the breadth-first search.
     visited.insert(dus);
     while (!q.empty()) {
       auto op = q.front();
@@ -723,7 +723,8 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
   return std::nullopt;
 }
 
-bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count) {
+bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count,
+                    FusionBoundaryFn boundary) {
   // Number of operands should be in range [1, allowed_operand_count].
   if (instr->operand_count() == 0 ||
       instr->operand_count() > allowed_operand_count) {
@@ -731,7 +732,16 @@ bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count) {
   }
 
   // Intermediate `instr` can't have multiple users.
-  if (instr->user_count() > 1) {
+  // If we have a boundary function, only consider users within the
+  // boundary. This isn't really correct, since the real users aren't
+  // necessarily the instruction's users at this point.
+  // TODO(jreiffers): Figure out the point of this check.
+  int64_t num_users =
+      boundary ? absl::c_count_if(
+                     instr->users(),
+                     [&](const auto* user) { return !boundary(*instr, *user); })
+               : instr->user_count();
+  if (num_users > 1) {
     return false;
   }
 
@@ -780,7 +790,8 @@ const HloInstruction& FindNonTrivialHero(
       auto preds = FindPredecessors(*node, is_boundary);
       return preds.size() == 1 ? preds.front() : nullptr;
     }
-    return IsIntermediate(node) && !is_boundary(*node->operand(0), *node)
+    return IsIntermediate(node, 1, is_boundary) &&
+                   !is_boundary(*node->operand(0), *node)
                ? node->operand(0)
                : nullptr;
   };

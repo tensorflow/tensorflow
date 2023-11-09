@@ -3444,6 +3444,8 @@ bool LhsIsBestMatchForNonContractingPartitioning(
       } else {
         lhs_matching = lhs_all_gather_time_in_ms > rhs_all_gather_time_in_ms;
       }
+    } else {
+      lhs_matching = lhs_matching_iterations.has_value();
     }
   }
   return lhs_matching;

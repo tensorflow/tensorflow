@@ -110,6 +110,32 @@ int64_t SizeFunction(const BufferValue& value) {
   return ShapeSize(value.shape());
 }
 
+class TestBufferIntervalComparator
+    : public MemorySpaceAssignment::BufferIntervalComparator {
+ public:
+  explicit TestBufferIntervalComparator(
+      GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
+          compare_method)
+      : MemorySpaceAssignment::BufferIntervalComparator(),
+        compare_method_(compare_method) {}
+
+  ~TestBufferIntervalComparator() override = default;
+
+  std::string DescribeComparisonCriteria() const override {
+    return "internal to test";
+  }
+  std::string CriteriaToString(const BufferInterval& buffer_interval) override {
+    return "internal to test";
+  }
+  bool LessThan(const BufferInterval& lhs, const BufferInterval& rhs) override {
+    return compare_method_(lhs, rhs);
+  }
+
+ private:
+  GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
+      compare_method_;
+};
+
 class MemorySpaceAssignmentTestBase : public HloTestBase {
  protected:
   // We use the following two memory space values to describe the default (slow
@@ -183,10 +209,14 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
             /*preferred_overlap_to_async_copy_ratio=*/1.5,
             /*max_overlap_to_mem_size_async_copy_ratio=*/10.0,
             /*mem_size_bytes=*/memory_space_options.max_size_in_bytes));
+    memory_space_assignment::MemoryBoundednessBufferIntervalComparator
+        comparator(*cost_analysis, &cache_);
     return AssignMemorySpace(
         module, memory_space_options,
-        MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
-            *cost_analysis, &cache_),
+        [&comparator](const MemorySpaceAssignment::BufferInterval& lhs,
+                      const MemorySpaceAssignment::BufferInterval& rhs) {
+          return comparator.LessThan(lhs, rhs);
+        },
         &prefetch_interval_picker);
   }
 
@@ -243,7 +273,12 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     if (options_override) {
       options = *options_override;
     }
-    options.buffer_interval_compare = buffer_interval_compare;
+    std::unique_ptr<TestBufferIntervalComparator> test_comparator;
+    if (buffer_interval_compare.has_value()) {
+      test_comparator = std::make_unique<TestBufferIntervalComparator>(
+          *buffer_interval_compare);
+      options.buffer_interval_comparator = test_comparator.get();
+    }
     options.prefetch_interval_picker = prefetch_interval_picker;
     options.size_fn = size_fn;
     if (options.is_allowed_in_alternate_mem_fn == nullptr) {
@@ -9749,9 +9784,9 @@ ENTRY Entry {
       TF_RETURN_IF_ERROR(Initialize(module, alternate_memory_size));
     }
     MemorySpaceAssignmentCostAnalysis::Cache cache;
-    options_.buffer_interval_compare =
-        MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
-            *cost_analysis_, &cache);
+    memory_space_assignment::MemoryBoundednessBufferIntervalComparator
+        comparator(*cost_analysis_, &cache);
+    options_.buffer_interval_comparator = &comparator;
     CostAnalysisPrefetchIntervalPicker prefetch_interval_picker(
         CostAnalysisPrefetchIntervalPicker(
             *cost_analysis_, /*min_overlap_to_async_copy_ratio=*/0.8,

@@ -845,6 +845,27 @@ xla_test(
     ],
 )
 
+# Repeat fft_test with single-threaded runtime.
+xla_test(
+    name = "fft_single_threaded_test",
+    srcs = ["fft_test.cc"],
+    backend_args = {
+        "cpu": [
+            "--xla_cpu_multi_thread_eigen=false",
+        ],
+    },
+    tags = [
+        "optonly",
+    ],
+    deps = [
+        ":hlo_test_base",
+        ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 xla_test(
     name = "dot_operation_test",
     srcs = ["dot_operation_test.cc"],
@@ -2352,6 +2373,7 @@ xla_cc_test(
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/gpu:gpu_compiler",
         "//xla/stream_executor",
+        "//xla/stream_executor/cuda:cuda_platform_id",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test_main",
     ]),

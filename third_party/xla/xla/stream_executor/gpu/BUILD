@@ -83,6 +83,16 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_runtime_header",
+    hdrs = if_gpu_is_configured(["gpu_runtime.h"]),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":gpu_types_header",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "gpu_command_buffer",
     srcs = if_gpu_is_configured(["gpu_command_buffer.cc"]),
     hdrs = if_gpu_is_configured(["gpu_command_buffer.h"]),
@@ -141,6 +151,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":gpu_kernel_header",
+        ":gpu_types_header",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor:stream_executor_internal",
@@ -444,6 +455,7 @@ cc_library(
         ":gpu_driver_header",
         ":gpu_kernel_header",
         ":gpu_types_header",
+        ":gpu_executor_header",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/status:statusor",

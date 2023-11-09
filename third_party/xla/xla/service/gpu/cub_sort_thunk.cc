@@ -43,8 +43,8 @@ namespace {
 // Template class for sorting a single tensor.
 class CubSortKeysImpl : public CubSortRunnerInterface {
  public:
-  using SortKeysFn =
-      std::function<Status(void*, size_t&, const void*, void*, size_t, bool)>;
+  using SortKeysFn = std::function<const char*(void*, size_t&, const void*,
+                                               void*, size_t, bool)>;
 
   explicit CubSortKeysImpl(SortKeysFn sort_keys_fn, PrimitiveType type)
       : sort_keys_fn_(sort_keys_fn), type_(type) {}
@@ -71,8 +71,14 @@ Status CubSortKeysImpl::Run(se::DeviceMemoryBase input_keys,
   size_t num_items = input_keys.size() * 8 / primitive_util::BitWidth(type_);
   CHECK(input_values.is_null());
   CHECK(output_values.is_null());
-  return sort_keys_fn_(scratch.opaque(), temp_bytes, input_keys.opaque(),
-                       output_keys.opaque(), num_items, descending);
+  const char* error =
+      sort_keys_fn_(scratch.opaque(), temp_bytes, input_keys.opaque(),
+                    output_keys.opaque(), num_items, descending);
+  if (error != nullptr) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("CubSortKeys error: ", error));
+  }
+  return absl::OkStatus();
 }
 
 Status CubSortKeysImpl::Run(const Thunk::ExecuteParams& params,
@@ -85,16 +91,20 @@ Status CubSortKeysImpl::Run(const Thunk::ExecuteParams& params,
 
 StatusOr<int64_t> CubSortKeysImpl::GetScratchSize(int64_t num_items) {
   size_t temp_bytes = 0;
-  TF_RETURN_IF_ERROR(
-      sort_keys_fn_(nullptr, temp_bytes, nullptr, nullptr, num_items, false));
+  const char* error =
+      sort_keys_fn_(nullptr, temp_bytes, nullptr, nullptr, num_items, false);
+  if (error != nullptr) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("CubSortKeys error: ", error));
+  }
   return temp_bytes;
 }
 
 // Template class for sorting a pair of tensors.
 class CubSortPairsImpl : public CubSortRunnerInterface {
  public:
-  using SortPairsFn = std::function<Status(void*, size_t&, const void*, void*,
-                                           const void*, void*, size_t, bool)>;
+  using SortPairsFn = std::function<const char*(
+      void*, size_t&, const void*, void*, const void*, void*, size_t, bool)>;
 
   explicit CubSortPairsImpl(SortPairsFn sort_pairs_fn, PrimitiveType type)
       : sort_pairs_fn_(sort_pairs_fn), type_(type) {}
@@ -119,9 +129,14 @@ Status CubSortPairsImpl::Run(se::DeviceMemoryBase input_keys,
                              se::DeviceMemoryBase scratch, bool descending) {
   size_t temp_bytes = scratch.size();
   size_t num_items = input_keys.size() * 8 / primitive_util::BitWidth(type_);
-  return sort_pairs_fn_(scratch.opaque(), temp_bytes, input_keys.opaque(),
-                        output_keys.opaque(), input_values.opaque(),
-                        output_values.opaque(), num_items, descending);
+  const char* error = sort_pairs_fn_(
+      scratch.opaque(), temp_bytes, input_keys.opaque(), output_keys.opaque(),
+      input_values.opaque(), output_values.opaque(), num_items, descending);
+  if (error != nullptr) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("CubSortPairs error: ", error));
+  }
+  return absl::OkStatus();
 }
 
 Status CubSortPairsImpl::Run(const Thunk::ExecuteParams& params,
@@ -136,8 +151,12 @@ Status CubSortPairsImpl::Run(const Thunk::ExecuteParams& params,
 
 StatusOr<int64_t> CubSortPairsImpl::GetScratchSize(int64_t num_items) {
   size_t temp_bytes = 0;
-  TF_RETURN_IF_ERROR(sort_pairs_fn_(nullptr, temp_bytes, nullptr, nullptr,
-                                    nullptr, nullptr, num_items, false));
+  const char* error = sort_pairs_fn_(nullptr, temp_bytes, nullptr, nullptr,
+                                     nullptr, nullptr, num_items, false);
+  if (error != nullptr) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("CubSortPairs error: ", error));
+  }
   return temp_bytes;
 }
 

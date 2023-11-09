@@ -459,6 +459,26 @@ cc_library(
 )
 
 cc_library(
+    name = "dynamically_quantized_conv_2d_tester",
+    testonly = 1,
+    srcs = ["dynamically_quantized_conv_2d_tester.cc"],
+    hdrs = ["dynamically_quantized_conv_2d_tester.h"],
+    deps = [
+        ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//testing/base/public:gunit_for_library_testonly",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "fully_connected_tester",
     testonly = 1,
     srcs = ["fully_connected_tester.cc"],
@@ -1273,6 +1293,22 @@ cc_test(
     }),
     deps = [
         ":dynamically_quantized_fully_connected_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "dynamically_quantized_conv_2d_test",
+    srcs = ["dynamically_quantized_conv_2d_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":dynamically_quantized_conv_2d_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite/c:c_api_types",

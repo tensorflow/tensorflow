@@ -239,6 +239,38 @@ class GemmConfigSetCollector : public ConstDfsHloVisitorWithDefault {
   absl::flat_hash_set<AutotuneCacheKey> handled_fusions_;
 };
 
+struct TileSizeLimit {
+  int64_t block_m = 0;
+  int64_t block_n = 0;
+  int64_t block_k = 0;
+};
+
+TileSizeLimit GetUpperLimit(const HloDotInstruction& dot) {
+  // This is not a sharp upper limit, the actual m value can be much smaller
+  // based on how much of the m dimension is physically contiguous.
+  // TODO(tdanyluk): Get the exact m value by running a TritonFusionAnalysis.
+  const int64_t m = dot.operand(0)->shape().dimensions(
+      NonContractingDimensionIndex(dot, /*operand_number=*/0));
+  // Theoretically the same is true as for m, but that is not possible in
+  // practice with the current implementation.
+  const int64_t n = dot.operand(1)->shape().dimensions(
+      NonContractingDimensionIndex(dot, /*operand_number=*/1));
+  // This is before doing the split-k transform.
+  const int64_t k = dot.operand(0)->shape().dimensions(
+      ContractingDimensionIndex(dot, /*operand_number=*/0));
+  const int64_t block_m_limit =
+      std::max<int64_t>(tsl::NextPowerOfTwoS64(m), kMinTileSize);
+  const int64_t block_n_limit =
+      std::max<int64_t>(tsl::NextPowerOfTwoS64(n), kMinTileSize);
+  const int64_t block_k_limit =
+      std::max<int64_t>(tsl::NextPowerOfTwoS64(k), kMinTileSize);
+  return {block_m_limit, block_n_limit, block_k_limit};
+}
+
+int64_t GetSplitKLimit(int64_t block_k, int64_t block_k_limit) {
+  return std::max<int64_t>(block_k_limit / block_k, 1);
+}
+
 // Search space for exhaustive matmul autotuning.
 constexpr std::array<int, 6> BLOCK_SIZES = {16, 32, 64, 128, 256, 512};
 constexpr std::array<int, 4> NUM_STAGES = {1, 2, 3, 4};
@@ -246,7 +278,9 @@ constexpr std::array<int, 4> NUM_WARPS = {2, 4, 8, 16};
 constexpr std::array<int, 5> SPLIT_K = {1, 2, 4, 8, 16};
 
 std::vector<TritonGemmConfig> GetExhaustiveMatmulAutotuneConfigs(
+    const HloDotInstruction& dot,
     const se::CudaComputeCapability compute_capability, const int max_split_k) {
+  const TileSizeLimit limit = GetUpperLimit(dot);
   std::vector<TritonGemmConfig> configs;
   bool mma_layout_v2 =
       compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE);
@@ -257,14 +291,23 @@ std::vector<TritonGemmConfig> GetExhaustiveMatmulAutotuneConfigs(
         continue;
       }
       for (int block_m : BLOCK_SIZES) {
+        if (block_m > limit.block_m) {
+          continue;
+        }
         for (int block_n : BLOCK_SIZES) {
           // Exclude configs not supported by MMA layout v2.
-          if (mma_layout_v2 && (block_m * block_n / 256) % num_warps != 0) {
+          if (block_n > limit.block_n ||
+              (mma_layout_v2 && (block_m * block_n / 256) % num_warps != 0)) {
             continue;
           }
           for (int block_k : BLOCK_SIZES) {
+            if (block_k > limit.block_k) {
+              continue;
+            }
             for (int split_k : SPLIT_K) {
-              if (split_k > max_split_k) {
+              if (split_k >
+                  std::min<int64_t>(max_split_k,
+                                    GetSplitKLimit(block_k, limit.block_k))) {
                 continue;
               }
               auto config = TritonGemmConfig(block_m, block_n, block_k, split_k,
@@ -280,7 +323,6 @@ std::vector<TritonGemmConfig> GetExhaustiveMatmulAutotuneConfigs(
 }
 
 std::vector<TritonGemmConfig> GetFixedMatmulAutotuneConfigs(
-    const HloDotInstruction& dot,
     const se::CudaComputeCapability compute_capability, const int max_split_k) {
   // Shorter name for better formatting.
   using Config = TritonGemmConfig;
@@ -322,35 +364,20 @@ std::vector<TritonGemmConfig> GetFixedMatmulAutotuneConfigs(
                                  return config.split_k > max_split_k;
                                }),
                 configs.end());
+  return configs;
+}
 
-  // This is not a sharp upper limit, the actual m value can be much smaller
-  // based on how much of the m dimension is physically contiguous.
-  // TODO(tdanyluk): Get the exact m value by running a TritonFusionAnalysis.
-  const int64_t m = dot.operand(0)->shape().dimensions(
-      NonContractingDimensionIndex(dot, /*operand_number=*/0));
-  // Theoretically the same is true as for m, but that is not possible in
-  // practice with the current implementation.
-  const int64_t n = dot.operand(1)->shape().dimensions(
-      NonContractingDimensionIndex(dot, /*operand_number=*/1));
-  // This is before doing the split-k transform.
-  const int64_t k = dot.operand(0)->shape().dimensions(
-      ContractingDimensionIndex(dot, /*operand_number=*/0));
-  const int64_t block_m_limit =
-      std::max<int64_t>(tsl::NextPowerOfTwoS64(m), kMinTileSize);
-  const int64_t block_n_limit =
-      std::max<int64_t>(tsl::NextPowerOfTwoS64(n), kMinTileSize);
-  const int64_t block_k_limit =
-      std::max<int64_t>(tsl::NextPowerOfTwoS64(k), kMinTileSize);
-
+// This prefers to take the parameter by moving it.
+std::vector<TritonGemmConfig> ReduceTileSizes(
+    const HloDotInstruction& dot, std::vector<TritonGemmConfig> configs) {
+  const TileSizeLimit limit = GetUpperLimit(dot);
   // Decrease the block sizes and split_k if they are unnecessarily big.
   for (TritonGemmConfig& config : configs) {
-    config.block_m = std::min<int64_t>(config.block_m, block_m_limit);
-    config.block_n = std::min<int64_t>(config.block_n, block_n_limit);
-    config.block_k = std::min<int64_t>(config.block_k, block_k_limit);
-
-    const int64_t split_k_limit =
-        std::max<int64_t>(block_k_limit / config.block_k, 1);
-    config.split_k = std::min<int64_t>(config.split_k, split_k_limit);
+    config.block_m = std::min<int64_t>(config.block_m, limit.block_m);
+    config.block_n = std::min<int64_t>(config.block_n, limit.block_n);
+    config.block_k = std::min<int64_t>(config.block_k, limit.block_k);
+    config.split_k = std::min<int64_t>(
+        config.split_k, GetSplitKLimit(config.block_k, limit.block_k));
   }
 
   // Remove duplicates.
@@ -369,11 +396,16 @@ int GetLogEveryN() { return VLOG_IS_ON(3) ? 100 : 1000; }
 StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     const TritonGemmConfig& config,
     const se::DeviceDescription& gpu_device_info,
-    const HloFusionInstruction* fusion, DebugOptions debug_opts) {
+    const HloFusionInstruction* fusion, DebugOptions debug_opts,
+    bool allow_filtering_kernels_spilling_registers) {
   std::unique_ptr<HloModule> new_module =
       AutotunerUtil::ExtractInstructionIntoNewModule(*fusion);
   // Reduce memory usage during compilation by disabling GPU runtime.
   debug_opts.set_xla_gpu_enable_xla_runtime_executable(false);
+  if (!allow_filtering_kernels_spilling_registers) {
+    debug_opts.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
+        false);
+  }
   new_module->mutable_config().set_debug_options(debug_opts);
 
   HloComputation* entry_computation = new_module->entry_computation();
@@ -431,6 +463,11 @@ StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
   return new_module;
 }
 
+bool ShouldAllowFilteringKernelsSpillingRegisters(
+    const GemmConfigSet& gemm_config_set) {
+  return gemm_config_set.configs.size() > 1;
+}
+
 StatusOr<absl::flat_hash_map<const HloFusionInstruction*, ExecutableSet>>
 CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
             tsl::thread::ThreadPool* thread_pool,
@@ -470,8 +507,9 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
   };
 
   // Returns true on success.
-  auto compile = [&](const HloFusionInstruction* fusion,
-                     const TritonGemmConfig& conf) -> StatusOr<bool> {
+  auto compile =
+      [&](const HloFusionInstruction* fusion, const TritonGemmConfig& conf,
+          bool allow_filtering_kernels_spilling_registers) -> StatusOr<bool> {
     CHECK_LE(conf.block_m, kMaxTileSize);
     CHECK_LE(conf.block_n, kMaxTileSize);
     CHECK_LE(conf.block_k, kMaxTileSize);
@@ -482,7 +520,8 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                         util.Compile([&](const DebugOptions& opts) {
                           return TritonGemmAutotuneExtractor(
-                              conf, gpu_device_info, fusion, opts);
+                              conf, gpu_device_info, fusion, opts,
+                              allow_filtering_kernels_spilling_registers);
                         }));
 
     if (executable != nullptr) {
@@ -537,7 +576,9 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
 
       for (const TritonGemmConfig& conf : gemm_config_set.configs) {
         thread_pool->Schedule([&, fusion] {
-          StatusOr<bool> has_executable = compile(fusion, conf);
+          StatusOr<bool> has_executable = compile(
+              fusion, conf,
+              ShouldAllowFilteringKernelsSpillingRegisters(gemm_config_set));
           TF_CHECK_OK(has_executable.status())
               << "Failure occured when compiling fusion " << fusion->name()
               << " with config '" << conf.ToString()
@@ -572,7 +613,11 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
       const GemmConfigSet& gemm_config_set = key_value.second;
 
       for (const TritonGemmConfig& gemm_config : gemm_config_set.configs) {
-        TF_ASSIGN_OR_RETURN(bool has_executable, compile(fusion, gemm_config));
+        TF_ASSIGN_OR_RETURN(
+            bool has_executable,
+            compile(
+                fusion, gemm_config,
+                ShouldAllowFilteringKernelsSpillingRegisters(gemm_config_set)));
         log(has_executable);
       }
 
@@ -754,13 +799,14 @@ Status DumpAutotunedFusions(const AutotuneConfig& config,
                             AutotunerCompileUtil& util,
                             const AutotuneResult result,
                             const HloFusionInstruction* fusion, int fusion_id) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      util.ExtractModule([&](const DebugOptions& debug_opts) {
-                        return TritonGemmAutotuneExtractor(
-                            TritonGemmConfig::FromProto(result.triton()),
-                            config.GetExecutor()->GetDeviceDescription(),
-                            fusion, debug_opts);
-                      }));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> module,
+      util.ExtractModule([&](const DebugOptions& debug_opts) {
+        return TritonGemmAutotuneExtractor(
+            TritonGemmConfig::FromProto(result.triton()),
+            config.GetExecutor()->GetDeviceDescription(), fusion, debug_opts,
+            /*allow_filtering_kernels_spilling_registers=*/true);
+      }));
   module->set_name(std::string(fusion->name()));
   // Using the original module for its debug info and name in the first
   // parameter. It's better to include the name of both the original module
@@ -834,7 +880,7 @@ std::vector<TritonGemmConfig> GetPossibleMatmulAutotuneConfigs(
   constexpr int kMinGemmElements = 32 * 32;
   if (ShapeUtil::ElementsIn(dot.operand(0)->shape()) <= kMinGemmElements &&
       ShapeUtil::ElementsIn(dot.operand(1)->shape()) <= kMinGemmElements) {
-    return {TritonGemmConfig(32, 32, 32, 1, 1, 4)};
+    return ReduceTileSizes(dot, {TritonGemmConfig(32, 32, 32, 1, 1, 4)});
   }
   // Split-K optimization enables more even utilization of a GPU in cases
   // where tiling just the non-contracting dimensions of a GEMM does not create
@@ -852,10 +898,11 @@ std::vector<TritonGemmConfig> GetPossibleMatmulAutotuneConfigs(
                                       kMaxTileSize /
                                       ShapeUtil::ElementsIn(dot.shape()))
           : 1;
-  return exhaustive_tiling_search ? GetExhaustiveMatmulAutotuneConfigs(
-                                        compute_capability, max_split_k)
-                                  : GetFixedMatmulAutotuneConfigs(
-                                        dot, compute_capability, max_split_k);
+  return exhaustive_tiling_search
+             ? GetExhaustiveMatmulAutotuneConfigs(dot, compute_capability,
+                                                  max_split_k)
+             : ReduceTileSizes(dot, GetFixedMatmulAutotuneConfigs(
+                                        compute_capability, max_split_k));
 }
 
 StatusOr<bool> TritonAutotuner::Run(

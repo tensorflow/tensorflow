@@ -94,7 +94,13 @@ tf_staging/tensorflow/lite/delegates/gpu/common/gpu_model_generated.h:
 tf_staging/tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h:
 tf_staging/tensorflow/lite/delegates/hexagon/hexagon_nn/BUILD:
 tf_staging/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/BUILD:
+tf_staging/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_app_using_stable_delegate.cc:
 tf_staging/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_stable_delegate_external.cc:
+tf_staging/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_stable_delegate_external_test.cc:
+tf_staging/tensorflow/lite/delegates/utils/experimental/stable_delegate/BUILD:
+tf_staging/tensorflow/lite/delegates/utils/experimental/stable_delegate/delegate_loader.cc:
+tf_staging/tensorflow/lite/delegates/utils/experimental/stable_delegate/delegate_loader.h:
+tf_staging/tensorflow/lite/delegates/utils/experimental/stable_delegate/delegate_loader_test.cc:
 tf_staging/tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h:
 tf_staging/tensorflow/lite/experimental/acceleration/mini_benchmark/c/c_api.h:
 tf_staging/tensorflow/lite/experimental/acceleration/mini_benchmark/libjpeg.h:

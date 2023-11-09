@@ -171,7 +171,10 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
     padding_config.mutable_dimensions(contracting_dim_idx)
         ->set_edge_padding_high(config.split_k - k % config.split_k);
 
-    TF_ASSIGN_OR_RETURN(operand, MakePadHlo(operand, zero, padding_config));
+    TF_ASSIGN_OR_RETURN(HloInstruction * pad,
+                        MakePadHlo(operand, zero, padding_config));
+    *pad->mutable_shape()->mutable_layout() = operand->shape().layout();
+    operand = pad;
   }
   CHECK_GE(operand->shape().dimensions(contracting_dim_idx), config.split_k);
 

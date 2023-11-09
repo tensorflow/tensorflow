@@ -1881,13 +1881,14 @@ Status LiftOutsideCompilationOnlyArgsAndReplaceFunctionDef(
   if (*rewritten) {
     FunctionDef rewritten_fdef;
     TF_RETURN_IF_ERROR(GraphToFunctionDef(
-        *(fbody.graph), fbody.fdef.signature().name(), &rewritten_fdef));
+        *(fbody.graph), fbody.record->fdef().signature().name(),
+        &rewritten_fdef));
     if (new_func_name) {
       rewritten_fdef.mutable_signature()->set_name(*new_func_name);
       TF_RETURN_IF_ERROR(fld->AddFunctionDef(rewritten_fdef));
     } else {
-      TF_RETURN_IF_ERROR(
-          fld->ReplaceFunction(fbody.fdef.signature().name(), rewritten_fdef));
+      TF_RETURN_IF_ERROR(fld->ReplaceFunction(
+          fbody.record->fdef().signature().name(), rewritten_fdef));
     }
   }
 
@@ -2128,11 +2129,11 @@ Status LiftOutsideCompilationOnlyArgsFromWhileNode(
       cond_fbody.get()));
 
   FunctionDef rewritten_cond_fdef;
-  TF_RETURN_IF_ERROR(GraphToFunctionDef(*(cond_fbody->graph),
-                                        cond_fbody->fdef.signature().name(),
-                                        &rewritten_cond_fdef));
-  TF_RETURN_IF_ERROR(fld->ReplaceFunction(cond_fbody->fdef.signature().name(),
-                                          rewritten_cond_fdef));
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(
+      *(cond_fbody->graph), cond_fbody->record->fdef().signature().name(),
+      &rewritten_cond_fdef));
+  TF_RETURN_IF_ERROR(fld->ReplaceFunction(
+      cond_fbody->record->fdef().signature().name(), rewritten_cond_fdef));
 
   // For body func, remove _Retval nodes, and replace _Arg nodes with
   // Placeholder nodes.
@@ -2146,11 +2147,11 @@ Status LiftOutsideCompilationOnlyArgsFromWhileNode(
   CleanUpRetvalsForWhileBody(index_mapping, dtypes, body_fbody.get());
 
   FunctionDef rewritten_body_fdef;
-  TF_RETURN_IF_ERROR(GraphToFunctionDef(*(body_fbody->graph),
-                                        body_fbody->fdef.signature().name(),
-                                        &rewritten_body_fdef));
-  TF_RETURN_IF_ERROR(fld->ReplaceFunction(body_fbody->fdef.signature().name(),
-                                          rewritten_body_fdef));
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(
+      *(body_fbody->graph), body_fbody->record->fdef().signature().name(),
+      &rewritten_body_fdef));
+  TF_RETURN_IF_ERROR(fld->ReplaceFunction(
+      body_fbody->record->fdef().signature().name(), rewritten_body_fdef));
 
   // Remove edges from lifted args to While node, and change "T" attr of the
   // While node.
@@ -2204,11 +2205,13 @@ Status LiftOutsideCompilationOnlyArgsFromIfNode(Graph* g, Node* if_node,
       then_branch_fbody.get()));
 
   FunctionDef rewritten_then_branch_fdef;
-  TF_RETURN_IF_ERROR(GraphToFunctionDef(
-      *(then_branch_fbody->graph), then_branch_fbody->fdef.signature().name(),
-      &rewritten_then_branch_fdef));
-  TF_RETURN_IF_ERROR(fld->ReplaceFunction(
-      then_branch_fbody->fdef.signature().name(), rewritten_then_branch_fdef));
+  TF_RETURN_IF_ERROR(
+      GraphToFunctionDef(*(then_branch_fbody->graph),
+                         then_branch_fbody->record->fdef().signature().name(),
+                         &rewritten_then_branch_fdef));
+  TF_RETURN_IF_ERROR(
+      fld->ReplaceFunction(then_branch_fbody->record->fdef().signature().name(),
+                           rewritten_then_branch_fdef));
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<FunctionBody> else_branch_fbody,
@@ -2219,11 +2222,13 @@ Status LiftOutsideCompilationOnlyArgsFromIfNode(Graph* g, Node* if_node,
       else_branch_fbody.get()));
 
   FunctionDef rewritten_else_branch_fdef;
-  TF_RETURN_IF_ERROR(GraphToFunctionDef(
-      *(else_branch_fbody->graph), else_branch_fbody->fdef.signature().name(),
-      &rewritten_else_branch_fdef));
-  TF_RETURN_IF_ERROR(fld->ReplaceFunction(
-      else_branch_fbody->fdef.signature().name(), rewritten_else_branch_fdef));
+  TF_RETURN_IF_ERROR(
+      GraphToFunctionDef(*(else_branch_fbody->graph),
+                         else_branch_fbody->record->fdef().signature().name(),
+                         &rewritten_else_branch_fdef));
+  TF_RETURN_IF_ERROR(
+      fld->ReplaceFunction(else_branch_fbody->record->fdef().signature().name(),
+                           rewritten_else_branch_fdef));
 
   // Remove edges from lifted args to If node, and change "Tin" attr of the
   // If node.
@@ -2292,9 +2297,10 @@ Status LiftOutsideCompilationOnlyArgsFromCallNode(
   // might be defined by user and we should not modify it.
   FunctionDef rewritten_fdef;
   TF_RETURN_IF_ERROR(GraphToFunctionDef(
-      *(fbody->graph), fbody->fdef.signature().name(), &rewritten_fdef));
+      *(fbody->graph), fbody->record->fdef().signature().name(),
+      &rewritten_fdef));
   std::string new_func_name =
-      fld->UniqueFunctionName(fbody->fdef.signature().name());
+      fld->UniqueFunctionName(fbody->record->fdef().signature().name());
   rewritten_fdef.mutable_signature()->set_name(new_func_name);
   TF_RETURN_IF_ERROR(fld->AddFunctionDef(rewritten_fdef));
 
@@ -2381,8 +2387,8 @@ Status LiftOutsideCompilationOnlyArgs(Graph* g, FunctionLibraryRuntime* flr,
       TF_ASSIGN_OR_RETURN(function_fbody,
                           InstantiateAssociatedFunction(*call_node, "f", fld));
       bool func_rewritten = false;
-      std::string new_func_name =
-          fld->UniqueFunctionName(function_fbody->fdef.signature().name());
+      std::string new_func_name = fld->UniqueFunctionName(
+          function_fbody->record->fdef().signature().name());
       TF_RETURN_IF_ERROR(LiftOutsideCompilationOnlyArgsAndReplaceFunctionDef(
           *function_fbody, flr, fld, lifted_arg_count, new_func_name,
           &func_rewritten));
@@ -2403,8 +2409,8 @@ Status LiftOutsideCompilationOnlyArgs(Graph* g, FunctionLibraryRuntime* flr,
       TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fdef, call_node->attrs(), fld,
                                                  &function_fbody));
       bool func_rewritten = false;
-      std::string new_func_name =
-          fld->UniqueFunctionName(function_fbody->fdef.signature().name());
+      std::string new_func_name = fld->UniqueFunctionName(
+          function_fbody->record->fdef().signature().name());
       TF_RETURN_IF_ERROR(LiftOutsideCompilationOnlyArgsAndReplaceFunctionDef(
           *function_fbody, flr, fld, lifted_arg_count, new_func_name,
           &func_rewritten));

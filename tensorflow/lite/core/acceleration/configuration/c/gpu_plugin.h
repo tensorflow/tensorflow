@@ -25,10 +25,10 @@ limitations under the License.
 /// This header file is for the delegate plugin for GPU.
 ///
 /// For the C++ delegate plugin interface, the GPU delegate plugin is added to
-/// the DelegatePluginRegistry by the side effect of a constructor for a static
-/// object, so there's no public API needed for this plugin, other than the API
-/// of tflite::delegates::DelegatePluginRegistry, which is declared in
-/// delegate_registry.h.
+/// the `DelegatePluginRegistry` by the side effect of a constructor for a
+/// static object, so there's no public API needed for this plugin, other than
+/// the API of `tflite::delegates::DelegatePluginRegistry`s, which is declared
+/// in delegate_registry.h.
 ///
 /// But to provide a C API to access the GPU delegate plugin, we do expose
 /// some functions, which are declared below.

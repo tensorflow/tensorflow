@@ -295,6 +295,15 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       dnn::ActivationMode activation_mode) override;
 
+  tsl::StatusOr<std::unique_ptr<const dnn::NormRunner>> NormRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc, double epsilon,
+      const dnn::TensorDescriptor& input_descriptor,
+      const dnn::TensorDescriptor& scale_descriptor,
+      const dnn::TensorDescriptor& bias_descriptor,
+      const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> expectation_descriptor,
+      std::optional<dnn::TensorDescriptor> norm_factor_descriptor) override;
+
   tsl::StatusOr<std::unique_ptr<const dnn::FusedMHARunner>>
   FusedMHARunnerFromDesc(
       Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,

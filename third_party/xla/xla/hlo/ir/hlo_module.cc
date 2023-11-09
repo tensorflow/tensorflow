@@ -74,6 +74,7 @@ HloModule::HloModule(const std::string& name,
       config_(std::move(config)),
       unique_id_(next_unique_module_id_++),
       metadata_(tsl::Env::Default()),
+      autofdo_fingerprint_(""),
       comp_envs_(std::move(comp_envs)) {
   metadata_.set_canonical_module_id(unique_id_);
 }

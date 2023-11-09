@@ -227,7 +227,7 @@ CommandBufferScheduling::BuildCommandBuffer(HloInstructionSequence seq) {
   builder.AddInstruction(HloInstruction::CreateTuple(new_instructions));
 
   BuildCommandBufferResult result = {builder.Build(), parameters_map,
-                                     inst_to_tuple_index_map};
+                                     inst_to_tuple_index_map, instructions_map};
   return result;
 }
 
@@ -270,7 +270,45 @@ StatusOr<bool> CommandBufferScheduling::Run(
           HloInstruction::CreateGetTupleElement(call_command_buffer, i));
     }
 
+    // Remove instructions in the command buffer sequence.
+    bool first_inst = true;
     for (HloInstruction* inst : seq.instructions()) {
+      // Replace the first instruction in the sequence by command buffer call.
+      // Removal of the rest of the instructions in the sequence is handled by
+      // HloSchedule::Update().
+      if (first_inst) {
+        first_inst = false;
+        HloInstructionSequence& sequence =
+            module->schedule().GetOrCreateSequence(entry);
+        sequence.replace_instruction(inst, call_command_buffer);
+      }
+
+      // Forward control dependencies to the new instruction inside command
+      // buffer. If the dependent instruction is not captured by the command
+      // buffer, forward the dependency to the command buffer call instead.
+      HloInstruction* new_inst = result.instructions_map[inst];
+      for (HloInstruction* predecessor : inst->control_predecessors()) {
+        if (auto it = result.instructions_map.find(predecessor);
+            it != result.instructions_map.end()) {
+          HloInstruction* new_predecessor = it->second;
+          TF_RETURN_IF_ERROR(new_predecessor->AddControlDependencyTo(new_inst));
+        } else {
+          TF_RETURN_IF_ERROR(
+              predecessor->AddControlDependencyTo(call_command_buffer));
+        }
+      }
+      for (HloInstruction* successor : inst->control_successors()) {
+        if (auto it = result.instructions_map.find(successor);
+            it != result.instructions_map.end()) {
+          HloInstruction* new_successor = it->second;
+          TF_RETURN_IF_ERROR(new_inst->AddControlDependencyTo(new_successor));
+        } else {
+          TF_RETURN_IF_ERROR(
+              call_command_buffer->AddControlDependencyTo(successor));
+        }
+      }
+      TF_RETURN_IF_ERROR(inst->DropAllControlDeps());
+
       int64_t tuple_index = result.inst_to_tuple_index_map[inst];
       TF_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(results[tuple_index]));
       TF_RETURN_IF_ERROR(entry->RemoveInstruction(inst));

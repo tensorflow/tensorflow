@@ -312,6 +312,9 @@ class PjRtExecutable {
   // Returns the layout of each input parameter.
   virtual StatusOr<std::vector<Layout>> GetParameterLayouts() const;
 
+  // Returns the layout of each output.
+  virtual StatusOr<std::vector<Layout>> GetOutputLayouts() const;
+
   // Returns a list of lists of memory kind strings for output. The returned
   // value is `[num_programs, num_output]`. The size of the outer list should be
   // equal to `GetHloModules()`. Under SPMD, one can use

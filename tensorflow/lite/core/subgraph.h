@@ -229,6 +229,14 @@ class Subgraph {
   // Return read-only vector of node indices in the order of execution.
   const std::vector<int>& execution_plan() const { return execution_plan_; }
 
+  // Return read-only vector of node indices in the order of execution before
+  // any delegate was applied.
+  //
+  // Note: if no delegate is applied, this vector will be empty.
+  const std::vector<int>& pre_delegation_execution_plan() const {
+    return pre_delegation_execution_plan_;
+  }
+
   const std::vector<std::pair<TfLiteNode, TfLiteRegistration>>&
   nodes_and_registration() const {
     return nodes_and_registration_;

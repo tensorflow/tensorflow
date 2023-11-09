@@ -357,6 +357,33 @@ class ConvertCollectiveReduceV2
   }
 };
 
+class ConvertCollectiveAssignGroupV2
+    : public CollectiveRewritePattern<TF::CollectiveAssignGroupV2Op> {
+ public:
+  using CollectiveRewritePattern::CollectiveRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::CollectiveAssignGroupV2Op assign_group,
+                                PatternRewriter& rewriter) const override {
+    DenseIntElementsAttr replica_groups;
+    if (failed(ConvertReplicaGroups(rewriter, assign_group.getGroupAssignment(),
+                                    replica_groups, assign_group))) {
+      return failure();
+    }
+    IntegerAttr group_size = rewriter.getI32IntegerAttr(replica_groups.size());
+    IntegerAttr group_key = rewriter.getI32IntegerAttr(0);
+
+    auto const_group_size = rewriter.create<TF::ConstOp>(
+        assign_group->getLoc(), assign_group.getResult(0).getType(),
+        group_size);
+    auto const_group_key = rewriter.create<TF::ConstOp>(
+        assign_group->getLoc(), assign_group.getResult(1).getType(), group_key);
+    rewriter.replaceAllUsesWith(assign_group.getResult(0), const_group_size);
+    rewriter.replaceAllUsesWith(assign_group.getResult(1), const_group_key);
+    rewriter.eraseOp(assign_group);
+    return success();
+  }
+};
+
 void LegalizeTFCollective::runOnOperation() {
   // FIXME(b/226139061): Figure out a way to share the channel_id with
   // send/recv Ops. For now, start with a different range to avoid collision.
@@ -365,6 +392,7 @@ void LegalizeTFCollective::runOnOperation() {
   MLIRContext* context = module->getContext();
 
   RewritePatternSet patterns(context);
+  patterns.insert<ConvertCollectiveAssignGroupV2>(context, &channel_id);
   patterns.insert<ConvertCollectiveReduceV2>(context, &channel_id);
   patterns.insert<ConvertXlaAllReduce>(context, &channel_id);
 

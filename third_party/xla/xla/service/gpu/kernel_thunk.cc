@@ -19,10 +19,15 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
-#include "xla/service/gpu/gpu_executable.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/kernel_arguments.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/gpu/thunk.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -43,11 +48,15 @@ mlir::Value RemoveTransformingOperations(mlir::Value value) {
 
 }  // namespace
 
-KernelThunk::KernelThunk(mlir::Operation* op, std::string kernel_name,
-                         absl::Span<const KernelArgument> kernel_arguments,
-                         LaunchDimensions launch_dimensions,
-                         int64_t shmem_bytes, bool emit_ir_from_hlo)
-    : Thunk(Kind::kKernel, Thunk::ThunkInfo::WithProfileAnnotation(op)),
+KernelThunk::KernelThunk(
+    std::variant<mlir::Operation*, const HloInstruction*> op,
+    std::string kernel_name, absl::Span<const KernelArgument> kernel_arguments,
+    LaunchDimensions launch_dimensions, int64_t shmem_bytes)
+    : Thunk(Kind::kKernel, std::holds_alternative<mlir::Operation*>(op)
+                               ? Thunk::ThunkInfo::WithProfileAnnotation(
+                                     std::get<mlir::Operation*>(op))
+                               : Thunk::ThunkInfo::WithProfileAnnotation(
+                                     std::get<const HloInstruction*>(op))),
       kernel_name_(std::move(kernel_name)),
       launch_dimensions_(std::move(launch_dimensions)),
       shmem_bytes_(shmem_bytes) {
@@ -60,7 +69,7 @@ KernelThunk::KernelThunk(mlir::Operation* op, std::string kernel_name,
     }
   }
 
-  if (emit_ir_from_hlo) {
+  if (std::holds_alternative<const HloInstruction*>(op)) {
     // Skip populating MLIR values_ if emitting from HLO.
     return;
   }

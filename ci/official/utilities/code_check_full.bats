@@ -53,6 +53,7 @@ do_external_licenses_check(){
 @com_github_grpc_grpc//src/compiler
 @platforms//os
 @ruy//
+@stablehlo//stablehlo/experimental
 EOF
 
   # grep patterns for targets which are allowed to be extra licenses

@@ -14,10 +14,13 @@ package(
 package_group(
     name = "tf2xla_users",
     packages = [
+        "//learning/brain/mlir/bridge",
         "//tensorflow/compiler/mlir/quantization/stablehlo/...",
         "//learning/serving/contrib/tfrt/mlir/saved_model_analysis",
         "//tensorflow/compiler/mlir/tfrt",
         "//tensorflow/compiler/tf2xla",
+        "//tensorflow/compiler/mlir",
+        "//tensorflow/compiler/mlir/tfrt/transforms/ifrt",
         # Legacy due to where the bridge currently runs. This should go away.
         "//tensorflow/compiler/mlir/tensorflow/transforms",
     ],

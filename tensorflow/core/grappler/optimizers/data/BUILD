@@ -707,6 +707,9 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/kernels:control_flow_ops",
+        "//tensorflow/core/platform:status",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 

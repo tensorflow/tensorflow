@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/ffi/call_frame.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -39,21 +40,22 @@ TEST(FfiTest, StaticRegistration) {
 }
 
 TEST(FfiTest, ForwardError) {
-  auto call_frame = CallFrameBuilder().Build(GetXlaFfiApi(), /*ctx=*/nullptr);
+  auto call_frame = CallFrameBuilder().Build();
   auto handler = Ffi::Bind().To([] { return absl::AbortedError("Ooops!"); });
-  auto status = Unwrap(handler->Call(call_frame.call_frame()));
+  auto status = Call(*handler, call_frame);
   ASSERT_EQ(status.message(), "Ooops!");
 }
 
 TEST(FfiTest, WrongNumArgs) {
   CallFrameBuilder builder;
   builder.AddBufferArg(se::DeviceMemoryBase(nullptr), PrimitiveType::F32, {});
-  auto call_frame = builder.Build(GetXlaFfiApi(), /*ctx=*/nullptr);
+  auto call_frame = builder.Build();
 
   auto handler = Ffi::Bind().Arg<Buffer>().Arg<Buffer>().To(
       [](Buffer, Buffer) { return absl::OkStatus(); });
 
-  auto status = Unwrap(handler->Call(call_frame.call_frame()));
+  auto status = Call(*handler, call_frame);
+
   ASSERT_EQ(status.message(),
             "Wrong number of arguments: expected 2 but got 1");
 }
@@ -62,12 +64,13 @@ TEST(FfiTest, WrongNumAttrs) {
   CallFrameBuilder builder;
   builder.AddI32Attr("i32", 42);
   builder.AddF32Attr("f32", 42.0f);
-  auto call_frame = builder.Build(GetXlaFfiApi(), /*ctx=*/nullptr);
+  auto call_frame = builder.Build();
 
   auto handler = Ffi::Bind().Attr<int32_t>("i32").To(
       [](int32_t) { return absl::OkStatus(); });
 
-  auto status = Unwrap(handler->Call(call_frame.call_frame()));
+  auto status = Call(*handler, call_frame);
+
   ASSERT_EQ(status.message(),
             "Wrong number of attributes: expected 1 but got 2");
 }
@@ -77,7 +80,7 @@ TEST(FfiTest, BuiltinAttributes) {
   builder.AddI32Attr("i32", 42);
   builder.AddF32Attr("f32", 42.0f);
   builder.AddStringAttr("str", "foo");
-  auto call_frame = builder.Build(GetXlaFfiApi(), /*ctx=*/nullptr);
+  auto call_frame = builder.Build();
 
   auto fn = [&](int32_t i32, float f32, std::string_view str) {
     EXPECT_EQ(i32, 42);
@@ -92,7 +95,8 @@ TEST(FfiTest, BuiltinAttributes) {
                      .Attr<std::string_view>("str")
                      .To(fn);
 
-  auto status = Unwrap(handler->Call(call_frame.call_frame()));
+  auto status = Call(*handler, call_frame);
+
   TF_ASSERT_OK(status);
 }
 
@@ -101,7 +105,7 @@ TEST(FfiTest, DecodingErrors) {
   builder.AddI32Attr("i32", 42);
   builder.AddF32Attr("f32", 42.0f);
   builder.AddStringAttr("str", "foo");
-  auto call_frame = builder.Build(GetXlaFfiApi(), /*ctx=*/nullptr);
+  auto call_frame = builder.Build();
 
   auto fn = [](int32_t, float, std::string_view) { return absl::OkStatus(); };
 
@@ -111,7 +115,8 @@ TEST(FfiTest, DecodingErrors) {
                      .Attr<std::string_view>("not_str_should_fail")
                      .To(fn);
 
-  auto status = Unwrap(handler->Call(call_frame.call_frame()));
+  auto status = Call(*handler, call_frame);
+
   ASSERT_EQ(
       status.message(),
       "Failed to decode all FFI handler operands (bad operands at: 0, 2)");
@@ -123,7 +128,7 @@ TEST(FfiTest, BufferArgument) {
 
   CallFrameBuilder builder;
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
-  auto call_frame = builder.Build(GetXlaFfiApi(), /*ctx=*/nullptr);
+  auto call_frame = builder.Build();
 
   auto fn = [&](Buffer buffer) {
     EXPECT_EQ(buffer.data.opaque(), storage.data());
@@ -133,7 +138,23 @@ TEST(FfiTest, BufferArgument) {
   };
 
   auto handler = Ffi::Bind().Arg<Buffer>().To(fn);
-  auto status = Unwrap(handler->Call(call_frame.call_frame()));
+  auto status = Call(*handler, call_frame);
+
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, RunOptionsCtx) {
+  auto call_frame = CallFrameBuilder().Build();
+  auto* expected = reinterpret_cast<ServiceExecutableRunOptions*>(0x01234567);
+
+  auto fn = [&](const ServiceExecutableRunOptions* run_options) {
+    EXPECT_EQ(run_options, expected);
+    return absl::OkStatus();
+  };
+
+  auto handler = Ffi::Bind().Ctx<ServiceExecutableRunOptions>().To(fn);
+  auto status = Call(*handler, call_frame, {expected});
+
   TF_ASSERT_OK(status);
 }
 

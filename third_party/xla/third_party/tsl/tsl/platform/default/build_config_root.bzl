@@ -36,6 +36,9 @@ def tf_additional_grpc_deps_py():
 def tf_additional_license_deps():
     return []
 
+def tf_additional_tpu_ops_deps():
+    return []
+
 # Include specific extra dependencies when building statically, or
 # another set of dependencies otherwise. If "macos" is provided, that
 # dependency list is used when using the framework_shared_object config

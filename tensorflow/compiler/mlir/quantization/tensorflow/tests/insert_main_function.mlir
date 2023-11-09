@@ -49,8 +49,8 @@ module attributes {tf.versions = {producer = 1132 : i32}, tf_saved_model.semanti
   "tf_saved_model.session_initializer"() {initializers = [@NoOp]} : () -> ()
   "tf_saved_model.asset"() {filename = "assets/mydata.txt", sym_name = "__tf_saved_model_asset0_mydata.txt"} : () -> ()
 // Session initializer ops and asset ops untouched.
-// CHECK: "tf_saved_model.session_initializer"() {initializers = [@NoOp]} : () -> ()
-// CHECK: "tf_saved_model.asset"() {filename = "assets/mydata.txt", sym_name = "__tf_saved_model_asset0_mydata.txt"} : () -> ()
+// CHECK: "tf_saved_model.session_initializer"() <{initializers = [@NoOp]}> : () -> ()
+// CHECK: "tf_saved_model.asset"() <{filename = "assets/mydata.txt", sym_name = "__tf_saved_model_asset0_mydata.txt"}> : () -> ()
 
   func.func @NoOp(%arg0: tensor<!tf_type.string> {tf_saved_model.bound_input = @__tf_saved_model_asset0_mydata.txt}) attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp"]} {
     %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf_type.string, shared_name = "", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf_type.resource>

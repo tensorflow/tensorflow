@@ -59,6 +59,9 @@ FusionBoundaryFn MakeProducerConsumerFusion(
       // producer.
       return &fused_producer != &producer;
     }
+    if (&producer == &fused_consumer) {
+      return true;
+    }
 
     // Otherwise, fall back to the default; we're already in the fused
     // producer.

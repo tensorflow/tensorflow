@@ -107,6 +107,8 @@ cc_library(
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings",
         "//xla/stream_executor",
+        "//xla/stream_executor:command_buffer",
+        "//xla/stream_executor:kernel",
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor/gpu:gpu_activation_header",
         "//xla/stream_executor/gpu:gpu_event",

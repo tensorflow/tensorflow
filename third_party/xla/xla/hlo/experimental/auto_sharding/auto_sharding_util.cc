@@ -2187,51 +2187,6 @@ bool IsEntryComputationInputOrOutput(const HloModule* module,
   return false;
 }
 
-void CreateDifferentMeshShapesToTryHelper(
-    int64_t num_devices, size_t num_mesh_dims,
-    std::vector<int64_t> current_shape,
-    std::vector<std::vector<int64_t>>& all_shapes) {
-  if (current_shape.size() == num_mesh_dims - 1) {
-    current_shape.push_back(num_devices);
-    if (spmd::VectorGreaterThanOneElementCount(current_shape) <= 2) {
-      all_shapes.push_back(current_shape);
-    }
-    return;
-  } else {
-    int64_t current_dim = 1;
-    while (current_dim <= num_devices) {
-      std::vector<int64_t> new_shape(current_shape);
-      new_shape.push_back(current_dim);
-      CreateDifferentMeshShapesToTryHelper(
-          num_devices / current_dim, num_mesh_dims, new_shape, all_shapes);
-      current_dim *= 2;
-    }
-  }
-}
-
-std::vector<std::vector<int64_t>> CreateDifferentMeshShapesToTry(
-    const int64_t num_devices, int num_mesh_dims, bool symmetrical_mesh_dims) {
-  std::vector<std::vector<int64_t>> result;
-  CreateDifferentMeshShapesToTryHelper(num_devices, num_mesh_dims, {}, result);
-
-  if (symmetrical_mesh_dims) {
-    absl::flat_hash_set<absl::btree_multiset<int64_t>> dedup_result;
-    for (const auto& mesh_shape : result) {
-      dedup_result.insert(
-          absl::btree_multiset<int64_t>(mesh_shape.begin(), mesh_shape.end()));
-    }
-
-    result.clear();
-
-    for (const auto& mesh_shape_set : dedup_result) {
-      result.push_back(
-          std::vector<int64_t>(mesh_shape_set.begin(), mesh_shape_set.end()));
-    }
-  }
-
-  return result;
-}
-
 void ComputeInstructionExecutionCountsHelper(
     const HloComputation* computation, int64_t computation_execution_count,
     int64_t loop_iteration_count_estimate,
@@ -2279,6 +2234,116 @@ ComputeInstructionExecutionCounts(const HloModule* module,
                                           loop_iteration_count_estimate,
                                           &instruction_execution_counts);
   return instruction_execution_counts;
+}
+
+void EnumerateAllPossibleMeshShapesHelper(
+    int64_t num_devices, size_t num_mesh_dims,
+    std::vector<int64_t> current_shape,
+    std::vector<std::vector<int64_t>>& all_shapes) {
+  if (current_shape.size() == num_mesh_dims - 1) {
+    current_shape.push_back(num_devices);
+    if (spmd::VectorGreaterThanOneElementCount(current_shape) <= 2) {
+      all_shapes.push_back(current_shape);
+    }
+    return;
+  } else {
+    int64_t current_dim = 1;
+    while (current_dim <= num_devices) {
+      std::vector<int64_t> new_shape(current_shape);
+      new_shape.push_back(current_dim);
+      EnumerateAllPossibleMeshShapesHelper(
+          num_devices / current_dim, num_mesh_dims, new_shape, all_shapes);
+      current_dim *= 2;
+    }
+  }
+}
+
+std::vector<std::vector<int64_t>> EnumerateAllPossibleMeshShapes(
+    const int64_t num_devices, int num_mesh_dims, bool symmetrical_mesh_dims) {
+  std::vector<std::vector<int64_t>> result;
+  EnumerateAllPossibleMeshShapesHelper(num_devices, num_mesh_dims, {}, result);
+
+  if (symmetrical_mesh_dims) {
+    absl::flat_hash_set<absl::btree_multiset<int64_t>> dedup_result;
+    for (const std::vector<int64_t>& mesh_shape : result) {
+      dedup_result.insert(
+          absl::btree_multiset<int64_t>(mesh_shape.begin(), mesh_shape.end()));
+    }
+
+    result.clear();
+
+    for (const absl::btree_multiset<int64_t>& mesh_shape_set : dedup_result) {
+      result.push_back(
+          std::vector<int64_t>(mesh_shape_set.begin(), mesh_shape_set.end()));
+    }
+  }
+
+  return result;
+}
+
+std::vector<std::vector<int64_t>> InferMeshShapesToTry(
+    const HloModule& module) {
+  int64_t sharding_1d = -1;
+  absl::flat_hash_set<std::vector<int64_t>> shardings_nd;
+  std::function<void(const HloSharding&)> process_sharding;
+  process_sharding = [&sharding_1d, &shardings_nd,
+                      &process_sharding](const HloSharding& sharding) {
+    if (sharding.IsTuple()) {
+      for (const HloSharding& child : sharding.tuple_elements()) {
+        process_sharding(child);
+      }
+    } else if (!sharding.IsReplicated()) {
+      absl::Span<const int64_t> dims = sharding.tile_assignment().dimensions();
+      std::vector<int64_t> dims_greater_than_one;
+      for (const int64_t dim : dims) {
+        if (dim > 1) {
+          dims_greater_than_one.push_back(dim);
+        }
+      }
+      if (dims_greater_than_one.size() == 1) {
+        CHECK(sharding_1d == -1 || sharding_1d == dims_greater_than_one[0]);
+        sharding_1d = dims_greater_than_one[0];
+      } else {
+        std::sort(dims_greater_than_one.begin(), dims_greater_than_one.end());
+        shardings_nd.insert(dims_greater_than_one);
+      }
+    }
+  };
+
+  for (const HloComputation* comp : module.computations()) {
+    for (const HloInstruction* ins : comp->instructions()) {
+      if (ins->has_sharding()) {
+        process_sharding(ins->sharding());
+      }
+    }
+  }
+
+  if (shardings_nd.empty() && sharding_1d < 0) {
+    return {};
+  } else if (shardings_nd.empty()) {
+    CHECK_GE(sharding_1d, 0);
+    return {{1, sharding_1d}};
+  } else {
+    std::vector<std::vector<int64_t>> result;
+    for (std::vector<int64_t> mesh : shardings_nd) {
+      do {
+        result.push_back(std::vector<int64_t>(mesh));
+      } while (std::next_permutation(std::begin(mesh), std::end(mesh)));
+    }
+    return result;
+  }
+}
+
+std::vector<std::vector<int64_t>> InferOrEnumerateMeshShapesToTry(
+    const HloModule& module, int64_t num_devices, int num_mesh_dims,
+    bool symmetrical_mesh_dims) {
+  std::vector<std::vector<int64_t>> mesh_shapes = InferMeshShapesToTry(module);
+  if (mesh_shapes.empty()) {
+    mesh_shapes = spmd::EnumerateAllPossibleMeshShapes(
+        num_devices, num_mesh_dims,
+        /* symmetrical_mesh_dims */ symmetrical_mesh_dims);
+  }
+  return mesh_shapes;
 }
 
 }  // namespace spmd

@@ -29,6 +29,7 @@ py_strict_test(
     ],
     deps = [
         ":mlir",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python:pywrap_mlir",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",

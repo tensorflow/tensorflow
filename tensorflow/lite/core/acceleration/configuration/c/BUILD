@@ -39,6 +39,16 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = [
+        "stable_delegate.h",
+    ],
+    visibility = [
+        "//tensorflow/lite:__pkg__",
+    ],
+)
+
 # LINT.IfChange(tflite_acceleration_exported_headers)
 exports_files([
     "delegate_plugin.h",

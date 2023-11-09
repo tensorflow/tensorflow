@@ -996,7 +996,7 @@ GetFunctionsToLoad(mlir::ModuleOp module, std::string_view entry) {
   // to make sure they are loaded in correct order.
   auto export_ops = llvm::to_vector(module.getOps<runtime::ExportOp>());
   llvm::sort(export_ops, [](runtime::ExportOp a, runtime::ExportOp b) {
-    return b.getOrdinal()->getSExtValue() < b.getOrdinal()->getSExtValue();
+    return a.getOrdinal()->getSExtValue() < b.getOrdinal()->getSExtValue();
   });
   for (runtime::ExportOp exported : export_ops) {
     TF_CHECK_OK(convert(

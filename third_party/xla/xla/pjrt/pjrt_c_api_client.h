@@ -183,12 +183,12 @@ class PjRtCApiCompiler : public PjRtCompiler {
 
 class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
  public:
+  // `owned` indicates whether this PjRtCApiTopologyDescription should take
+  // ownership of `c_topology`, i.e., if owned is true,
+  // PJRT_TopologyDescription_Destroy will be called on `c_topology` when this
+  // PjRtCApiTopologyDescription is destroyed.
   PjRtCApiTopologyDescription(const PJRT_Api* c_api,
                               PJRT_TopologyDescription* c_topology, bool owned);
-
-  // Does not take ownership of `c_topology`.
-  PjRtCApiTopologyDescription(const PJRT_Api* c_api,
-                              const PJRT_TopologyDescription* c_topology);
 
   PjRtPlatformId platform_id() const override {
     CHECK(false) << "PJRT C API does not support platform_id.";
@@ -276,9 +276,6 @@ class PjRtCApiClient : public PjRtClient {
 
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) override;
-
-  StatusOr<std::optional<std::string>> ExecutableFingerprint(
-      const PjRtLoadedExecutable& executable) const override;
 
   // `PjRtCApiClient::DeserializeExecutable()` ignores `CompileOptions` arg
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
@@ -699,6 +696,10 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
       PJRT_Chunk*, PJRT_CallbackError*, size_t, bool)>;
   // std::function version of PJRT_RecvCallback
   using RecvCallbackFunction = std::function<void(PJRT_CopyToDeviceStream*)>;
+
+  // Override to call FingerprintExecutable through the wrapped
+  // PjRtCApiExecutable.
+  StatusOr<std::string> FingerprintExecutable() const override;
 
  private:
   // Groups data needed to support send/recv execution callbacks.

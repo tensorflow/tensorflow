@@ -13,23 +13,13 @@
 # limitations under the License.
 # ============================================================================
 
-load(
-    "//xla:pytype.default.bzl",
-    "pytype_strict_binary",
-    "pytype_strict_library",
-)
+load("//xla:pytype.default.bzl", "pytype_strict_library")
 # Placeholder: load py_test
 
 package(
     default_visibility = ["//visibility:public"],
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
-)
-
-pytype_strict_binary(
-    name = "clang_tidy",
-    srcs = ["clang_tidy.py"],
-    deps = [":diff_parser"],
 )
 
 pytype_strict_library(

@@ -1,15 +1,19 @@
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
 load("//tensorflow:tensorflow.bzl", "check_deps")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_python_pybind_extension")
-load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
-load(
-    "//tensorflow/tools/test:performance.bzl",
-    "tf_py_logged_benchmark",
-)
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_rpc_deps",
+)
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
+load(
+    "//tensorflow/tools/test:performance.bzl",
+    "cuda_py_benchmark_test",
+)
+load(
+    "//tensorflow/tools/test:performance.bzl",
+    "tf_py_logged_benchmark",
 )
 
 package(
@@ -223,7 +227,7 @@ py_strict_library(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:function_utils",
         "//tensorflow/python/util:is_in_graph_mode",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_contextlib",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
@@ -295,6 +299,25 @@ cuda_py_strict_test(
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
         "@local_xla//xla/service:hlo_proto_py",
+    ],
+)
+
+cuda_py_strict_test(
+    name = "context_cross_platform_test",
+    size = "small",
+    srcs = ["context_cross_platform_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_oss",
+    ],
+    tpu_ops_enabled = True,
+    xla_enabled = True,
+    deps = [
+        ":def_function",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -714,8 +737,9 @@ py_strict_library(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:_pywrap_utils",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_contextlib",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
         "//tensorflow/python/util:variable_utils",
     ],
 )
@@ -784,7 +808,7 @@ py_strict_library(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
     python_version = "PY3",
@@ -818,7 +842,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
         "//third_party/py/numpy",
     ],
 )
@@ -847,7 +871,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/ops/ragged:ragged_map_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
     ],
 )
 
@@ -875,7 +899,7 @@ tf_xla_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "remote_benchmarks_test",
     srcs = ["remote_benchmarks_test.py"],
     python_version = "PY3",

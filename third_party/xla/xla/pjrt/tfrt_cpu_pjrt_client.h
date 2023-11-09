@@ -186,9 +186,6 @@ class TfrtCpuClient final : public PjRtClient {
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) override;
 
-  StatusOr<std::optional<std::string>> ExecutableFingerprint(
-      const PjRtLoadedExecutable& executable) const override;
-
   // For TfrtCpuClient, `options` is mandatory.
   // This function returns an InvalidArgument error if `std::nullopt` is passed.
   // TODO(b/237720161): make it actually optional
@@ -446,6 +443,10 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   StatusOr<std::optional<std::string>> Fingerprint() const;
 
   std::shared_ptr<Executable> cpu_executable() const { return cpu_executable_; }
+
+  StatusOr<std::string> FingerprintExecutable() const override {
+    return Unimplemented("Fingerprinting executable is not supported.");
+  }
 
  private:
   friend class TfrtCpuClient;

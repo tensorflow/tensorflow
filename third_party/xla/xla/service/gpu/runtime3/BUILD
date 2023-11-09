@@ -44,7 +44,7 @@ cc_library(
 
 xla_test(
     name = "command_buffer_cmd_test",
-    srcs = ["command_buffer_cmd_test.cc"],
+    srcs = if_gpu_is_configured(["command_buffer_cmd_test.cc"]),
     backends = ["gpu"],
     deps = [
         ":command_buffer_cmd",
@@ -75,7 +75,7 @@ cc_library(
     deps = if_gpu_is_configured([
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:cusolver_context",
-        "//xla/service/gpu:precompiled_kernels",
+        "//xla/service/gpu:make_batch_pointers",
         "//xla/service/gpu:thunk",
         "//xla:types",
         "//xla:util",
@@ -115,7 +115,7 @@ cc_library(
 
 xla_test(
     name = "command_buffer_thunk_test",
-    srcs = ["command_buffer_thunk_test.cc"],
+    srcs = if_gpu_is_configured(["command_buffer_thunk_test.cc"]),
     backends = ["gpu"],
     deps = [
         ":command_buffer_cmd",
@@ -146,13 +146,23 @@ cc_library(
     ]),
     visibility = ["//visibility:public"],
     deps = [
+        "//xla:executable_run_options",
+        "//xla:shape_util",
+        "//xla:status",
         "//xla:util",
+        "//xla/ffi",
+        "//xla/ffi:call_frame",
+        "//xla/ffi/api:c_api",
         "//xla/service:buffer_assignment",
+        "//xla/service:custom_call_status",
         "//xla/service:custom_call_status_internal",
+        "//xla/service:executable",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:thunk",
+        "//xla/stream_executor:device_memory",
         "//xla/stream_executor/gpu:gpu_stream_header",
         "//xla/stream_executor/gpu:gpu_types_header",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:errors",
     ],
@@ -188,13 +198,14 @@ cc_library(
     deps = if_gpu_is_configured([
         "@com_google_absl//absl/strings:str_format",
         "//xla/service/gpu:buffer_allocations",
-        "//xla/service/gpu:precompiled_kernels",
+        "//xla/service/gpu:make_batch_pointers",
         "//xla/service/gpu:thunk",
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/service:buffer_assignment",
         "//xla/hlo/ir:hlo",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",

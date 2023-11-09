@@ -96,9 +96,9 @@ extern const char* const kEigenConv3DF16SymbolName =
     "__xla_cpu_runtime_EigenConv3DF16";
 extern const char* const kEigenConv3DF32SymbolName =
     "__xla_cpu_runtime_EigenConv3DF32";
-extern const char* const kEigenFftSymbolName = "__xla_cpu_runtime_EigenFft";
-extern const char* const kEigenSingleThreadedFftSymbolName =
-    "__xla_cpu_runtime_EigenSingleThreadedFft";
+extern const char* const kDuccFftSymbolName = "__xla_cpu_runtime_DuccFft";
+extern const char* const kDuccSingleThreadedFftSymbolName =
+    "__xla_cpu_runtime_DuccSingleThreadedFft";
 extern const char* const kEigenSingleThreadedMatMulF16SymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedMatMulF16";
 extern const char* const kEigenSingleThreadedMatMulF32SymbolName =

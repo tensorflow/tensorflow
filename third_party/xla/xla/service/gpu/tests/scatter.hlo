@@ -158,7 +158,7 @@ update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
   ROOT rhs = s32[] parameter(1)
 }
 
-ENTRY main {
+fused_computation {
   operand = s32[3,3] parameter(0)
   indices = s32[2] parameter(1)
   updates = s32[2,3] parameter(2)
@@ -168,6 +168,13 @@ ENTRY main {
       inserted_window_dims={0},
       scatter_dims_to_operand_dims={0},
       index_vector_dim=1
+}
+
+ENTRY main {
+  p0 = s32[3,3] parameter(0)
+  p1 = s32[2] parameter(1)
+  p2 = s32[2,3] parameter(2)
+  ROOT wrapped_scatter = s32[3,3] fusion(p0, p1, p2), kind=kInput, calls=fused_computation
 }
 
 
@@ -181,7 +188,7 @@ update_s32 {
   ROOT rhs = s32[] parameter(1)
 }
 
-ENTRY main {
+fused_computation {
   parameter.1 = s32[] parameter(0)
   parameter.2 = s32[0]{0} parameter(1)
   parameter.3 = s32[] parameter(2)
@@ -191,6 +198,13 @@ ENTRY main {
       scatter_dims_to_operand_dims={},
       index_vector_dim=0,
       to_apply=update_s32
+}
+
+ENTRY main {
+  p0 = s32[] parameter(0)
+  p1 = s32[0]{0} parameter(1)
+  p2 = s32[] parameter(2)
+  ROOT wrapped_scatter = s32[] fusion(p0, p1, p2), kind=kInput, calls=fused_computation
 }
 
 
@@ -205,7 +219,7 @@ mul_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
   ROOT mul = s32[] multiply(s32[] lhs, s32[] rhs)
 }
 
-ENTRY main {
+fused_computation {
   operand = s32[3,3] parameter(0)
   indices = s32[2] parameter(1)
   updates = s32[2,3] parameter(2)
@@ -215,6 +229,13 @@ ENTRY main {
       inserted_window_dims={0},
       scatter_dims_to_operand_dims={0},
       index_vector_dim=1
+}
+
+ENTRY main {
+  p0 = s32[3,3] parameter(0)
+  p1 = s32[2] parameter(1)
+  p2 = s32[2,3] parameter(2)
+  ROOT wrapped_scatter = s32[3,3] fusion(p0, p1, p2), kind=kInput, calls=fused_computation
 }
 
 // -----
@@ -227,7 +248,7 @@ update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
   ROOT rhs = s32[] parameter(1)
 }
 
-ENTRY main {
+fused_computation {
   operand = s32[4]{0} parameter(0)
   index = s32[] parameter(1)
   updates = s32[] parameter(2)
@@ -237,4 +258,11 @@ ENTRY main {
       inserted_window_dims={0},
       scatter_dims_to_operand_dims={0},
       index_vector_dim=0
+}
+
+ENTRY main {
+  p0 = s32[4]{0} parameter(0)
+  p1 = s32[] parameter(1)
+  p2 = s32[] parameter(2)
+  ROOT wrapped_scatter = s32[4] fusion(p0, p1, p2), kind=kInput, calls=fused_computation
 }

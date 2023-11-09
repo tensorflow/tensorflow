@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
-load("//tensorflow/lite:special_rules.bzl", "nnapi_plugin_impl_visibility_allowlist")
+load("//tensorflow/lite:special_rules.bzl", "nnapi_plugin_impl_visibility_allowlist", "xnnpack_plugin_impl_visibility_allowlist")
 load("//tensorflow/lite/core:special_rules.bzl", "delegate_registry_visibility_allowlist")
 load("//tensorflow/lite/core/c:special_rules.bzl", "experimental_acceleration_api_allowlist")
 
@@ -93,7 +93,7 @@ cc_library(
     name = "xnnpack_plugin",
     srcs = ["xnnpack_plugin.cc"],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = xnnpack_plugin_impl_visibility_allowlist() + [
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [

@@ -285,11 +285,11 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
     case TUPLE:
     // An Opaque is like a void*, use i8*.
     case OPAQUE_TYPE:
-      return llvm::Type::getInt8PtrTy(module->getContext());
+      return llvm::PointerType::getUnqual(module->getContext());
     case TOKEN:
       // Tokens do not have a physical representation, but the compiler needs
       // some placeholder type, so use int8_t*.
-      return llvm::Type::getInt8PtrTy(module->getContext());
+      return llvm::PointerType::getUnqual(module->getContext());
     default:
       LOG(FATAL) << "unsupported type " << element_type;
   }
@@ -469,7 +469,7 @@ void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilder<>* b) {
       b->getVoidTy(), {b->getInt64Ty(), b->getInt64Ty()}, /*isVarArg=*/false);
   b->CreateCall(log_function_type,
                 b->CreateIntToPtr(b->getInt64(absl::bit_cast<int64_t>(&LogS64)),
-                                  log_function_type->getPointerTo()),
+                                  b->getPtrTy()),
                 {b->getInt64(absl::bit_cast<int64_t>(tag)), value});
 }
 

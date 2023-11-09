@@ -77,6 +77,8 @@ _PER_CHANNEL_QUANTIZED_OPS = (
     'UniformQuantizedDotHybrid',
 )
 
+_DebuggerOptions = quant_opts_pb2.DebuggerOptions
+
 # Lists of ops whose channel dimension should be changed if per_channel
 # quantization is enabled. Respectively refers to (scale, zero_point).
 _SUFFIXES = ('/filter1', '/filter2')
@@ -785,6 +787,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             dilations=[1, 1, 1, 1],
             padding='SAME',
             data_format='NHWC',
+            name='sample/conv2d',
         )
         if has_bias:
           out = nn_ops.bias_add(out, bias, data_format='NHWC')
@@ -870,7 +873,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     graphdef = loader.get_meta_graph_def_from_tags(tags).graph_def
     if target_opset == quant_opts_pb2.XLA:
-      self.assertTrue(self._contains_op(graphdef, 'XlaConvV2'))
+      self.assertTrue(
+          self._contains_op(graphdef, 'XlaConvV2', node_name='sample/conv2d.*')
+      )
 
     new_outputs = converted_model.signatures[signature_key](
         input=ops.convert_to_tensor(input_data)
@@ -2486,9 +2491,19 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     loader = saved_model_loader.SavedModelLoader(self._output_saved_model_path)
     output_graphdef = loader.get_meta_graph_def_from_tags(tags).graph_def
     if target_opset == quant_opts_pb2.XLA:
-      self.assertTrue(self._contains_op(output_graphdef, 'XlaDotV2'))
+      self.assertTrue(
+          self._contains_op(
+              output_graphdef, 'XlaDotV2', node_name='sample/matmul.*'
+          )
+      )
     elif target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
-      self.assertTrue(self._contains_op(output_graphdef, 'UniformQuantizedDot'))
+      self.assertTrue(
+          self._contains_op(
+              output_graphdef,
+              'UniformQuantizedDot',
+              node_name='sample/matmul.*',
+          )
+      )
 
     new_outputs = converted_model.signatures['serving_default'](
         input_tensor=ops.convert_to_tensor(input_data)
@@ -5955,8 +5970,8 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
             preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
         ),
         op_set=quant_opts_pb2.XLA,
-        debugger_options=quant_opts_pb2.DebuggerOptions(
-            debugger_type=quant_opts_pb2.DebuggerOptions.DebuggerType.DEBUGGER_TYPE_WHOLE_MODEL,
+        debugger_options=_DebuggerOptions(
+            debugger_type=_DebuggerOptions.DebuggerType.DEBUGGER_TYPE_WHOLE_MODEL,
             unquantized_dump_model_path=unquantized_dump_model_path,
             log_dir_path=log_dir_path,
         ),
@@ -6019,27 +6034,57 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
 
   @parameterized.named_parameters(
       {
-          'testcase_name': 'none',
+          'testcase_name': 'none_int',
           'activation_fn': None,
           'has_bias': False,
+          'debugger_type': _DebuggerOptions.DEBUGGER_TYPE_INT_PER_LAYER,
       },
       {
-          'testcase_name': 'relu',
+          'testcase_name': 'relu_int',
           'activation_fn': nn_ops.relu,
           'has_bias': False,
+          'debugger_type': _DebuggerOptions.DEBUGGER_TYPE_INT_PER_LAYER,
       },
       {
-          'testcase_name': 'with_bias',
+          'testcase_name': 'with_bias_int',
           'activation_fn': None,
           'has_bias': True,
+          'debugger_type': _DebuggerOptions.DEBUGGER_TYPE_INT_PER_LAYER,
       },
       {
-          'testcase_name': 'with_bias_and_relu',
+          'testcase_name': 'with_bias_and_relu_int',
           'activation_fn': nn_ops.relu,
           'has_bias': True,
+          'debugger_type': _DebuggerOptions.DEBUGGER_TYPE_INT_PER_LAYER,
+      },
+      {
+          'testcase_name': 'none_float',
+          'activation_fn': None,
+          'has_bias': False,
+          'debugger_type': _DebuggerOptions.DEBUGGER_TYPE_FLOAT_PER_LAYER,
+      },
+      {
+          'testcase_name': 'relu_float',
+          'activation_fn': nn_ops.relu,
+          'has_bias': False,
+          'debugger_type': _DebuggerOptions.DEBUGGER_TYPE_FLOAT_PER_LAYER,
+      },
+      {
+          'testcase_name': 'with_bias_float',
+          'activation_fn': None,
+          'has_bias': True,
+          'debugger_type': _DebuggerOptions.DEBUGGER_TYPE_FLOAT_PER_LAYER,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu_float',
+          'activation_fn': nn_ops.relu,
+          'has_bias': True,
+          'debugger_type': _DebuggerOptions.DEBUGGER_TYPE_FLOAT_PER_LAYER,
       },
   )
-  def test_conv2d_ptq_model_per_layer_verify(self, activation_fn, has_bias):
+  def test_conv2d_ptq_model_per_layer_verify(
+      self, activation_fn, has_bias, debugger_type
+  ):
     input_shape = [None, None, None, 3]
     filter_shape = [2, 3, 3, 2]
 
@@ -6070,8 +6115,8 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
             preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
         ),
         op_set=quant_opts_pb2.XLA,
-        debugger_options=quant_opts_pb2.DebuggerOptions(
-            debugger_type=quant_opts_pb2.DebuggerOptions.DEBUGGER_TYPE_PER_LAYER,
+        debugger_options=_DebuggerOptions(
+            debugger_type=debugger_type,
             log_dir_path=log_dir_path,
         ),
         tags=tags,
@@ -6094,10 +6139,10 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
         'input_tensor': np.random.uniform(low=0, high=1, size=(16, 3, 4, 3))
     }
 
-    unquantized_output_value = self._run_model_in_sess(
+    output_value_from_original_model = self._run_model_in_sess(
         self._input_saved_model_path, tags, 'serving_default', sample_input
     )
-    quantized_output_value = self._run_model_in_sess(
+    output_value_from_debugging_model = self._run_model_in_sess(
         self._output_saved_model_path, tags, 'serving_default', sample_input
     )
 
@@ -6127,8 +6172,21 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
     # Since the model only has one conv2d and its output is directly used as
     # the output of the model, output of the model and conv2d's dump value
     # should be the same.
-    self.assertAllEqual(quantized_output_value, quantized_dump_file_numpy)
-    self.assertAllEqual(unquantized_output_value, unquantized_dump_file_numpy)
+    self.assertAllEqual(
+        output_value_from_original_model, unquantized_dump_file_numpy
+    )
+    # The output_value_from_debugging_model of DEBUGGER_TYPE_INT_PER_LAYER is
+    # a quantized value, while for DEBUGGER_TYPE_FLOAT_PER_LAYER, it's an
+    # unquantized value. Therefore there are different verifications for the
+    # output value.
+    if debugger_type == _DebuggerOptions.DEBUGGER_TYPE_INT_PER_LAYER:
+      self.assertAllEqual(
+          output_value_from_debugging_model, quantized_dump_file_numpy
+      )
+    else:  # debugger_type == _DebuggerOptions.DEBUGGER_TYPE_FLOAT_PER_LAYER:
+      self.assertAllEqual(
+          output_value_from_debugging_model, output_value_from_original_model
+      )
 
     # Verify if quant_unit.pb file was created correctly.
     quant_unit_file_path = os.path.join(log_dir_path, folder, 'quant_unit.pb')

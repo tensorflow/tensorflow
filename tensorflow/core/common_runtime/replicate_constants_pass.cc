@@ -67,13 +67,39 @@ bool HasCpuDevice(const Node* node) {
   return device.type == "CPU";
 }
 
+// Convert the CPU device name to the corresponding CPU device name. If
+// multiple local CPU devices are enabled, the CPU device name will also
+// contain the device id.
+Status DeviceNameToCpuDeviceNameWithDeviceId(const string& device_name,
+                                             string* host_device_name) {
+  DeviceNameUtils::ParsedName device;
+  if (!DeviceNameUtils::ParseFullName(device_name, &device)) {
+    return absl::InternalError(
+        absl::StrCat("Could not parse device name ", device_name));
+  }
+  // If aggressive constant replication is enabled and the dst node is on CPU.
+  // We just use the device name of the dst for the src.
+  if (flags::Global().enable_aggressive_constant_replication.value() &&
+      device.type == "CPU") {
+    *host_device_name = device_name;
+  } else {
+    // If not, assigning the corresponding CPU 0 to it.
+    device.type = "CPU";
+    device.has_type = true;
+    device.id = 0;
+    device.has_id = true;
+    *host_device_name = DeviceNameUtils::ParsedNameToString(device);
+  }
+  return OkStatus();
+}
+
 // Get the CPU device on the same host as dst.
 Status GetDestinationCpuDevice(const Node* dst, std::string* device) {
   if (!dst->has_assigned_device_name())
     return absl::AbortedError(
         absl::StrCat("Node name: ", dst->name(), " has no assigned device."));
-  return DeviceNameUtils::DeviceNameToCpuDeviceName(dst->assigned_device_name(),
-                                                    device);
+  return DeviceNameToCpuDeviceNameWithDeviceId(dst->assigned_device_name(),
+                                               device);
 }
 
 // Collect the successor edges of the constant. Group them by the device of the
@@ -116,10 +142,6 @@ void ReplicateToEachDevice(
 
 Status ReplicateConstantsPass::Run(
     const GraphOptimizationPassOptions& options) {
-  if (!flags::Global().replicate_small_constants.value()) {
-    VLOG(1) << "replicate_constants_pass not enabled";
-    return OkStatus();
-  }
   VLOG(1) << "replicate_constants_pass will replicate constants with "
              "number-of-elements <= "
           << kMaxSize;

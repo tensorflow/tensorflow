@@ -100,12 +100,18 @@ namespace xla {
 
 // ---------------------------------- Client -----------------------------------
 
-static StatusOr<const PjRtCApiTopologyDescription> InitTopologyDescription(
+static StatusOr<const PjRtCApiTopologyDescription> InitClientTopoDesc(
     const PJRT_Api* c_api, PJRT_Client* c_client) {
-  StatusOr<const PJRT_TopologyDescription*> c_topo =
+  if (c_api->pjrt_api_version.major_version == 0 &&
+      c_api->pjrt_api_version.minor_version < 36) {
+    return Unimplemented(
+        "Getting TopologyDescription for PJRT client requires plugin with PJRT "
+        "C API version >= 0.36");
+  }
+  StatusOr<PJRT_TopologyDescription*> c_topo =
       pjrt::GetTopologyDescription(c_client, c_api);
   TF_RETURN_IF_ERROR(c_topo.status());
-  return PjRtCApiTopologyDescription(c_api, *c_topo);
+  return PjRtCApiTopologyDescription(c_api, *c_topo, /*owned=*/false);
 }
 
 PjRtCApiClient::PjRtCApiClient(
@@ -115,7 +121,7 @@ PjRtCApiClient::PjRtCApiClient(
       c_client_(std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter>(
           c_client, ::pjrt::MakeClientDeleter(c_api))),
       kv_callback_data_(std::move(kv_callback_data)),
-      topo_desc_(InitTopologyDescription(c_api, c_client)),
+      topo_desc_(InitClientTopoDesc(c_api, c_client)),
       // Example platform version string:
       //   PJRT C API
       //   TFRT TPU v2
@@ -305,35 +311,6 @@ StatusOr<DeviceAssignment> PjRtCApiClient::GetDefaultDeviceAssignment(
                               args.default_assignment_size};
   return CalculateDefaultAssignment(args.num_replicas, args.num_partitions,
                                     param);
-}
-
-StatusOr<std::optional<std::string>> PjRtCApiClient::ExecutableFingerprint(
-    const PjRtLoadedExecutable& executable) const {
-  PJRT_LoadedExecutable_Fingerprint_Args args;
-  args.struct_size = PJRT_LoadedExecutable_Fingerprint_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  args.executable =
-      tensorflow::down_cast<const PjRtCApiLoadedExecutable*>(&executable)
-          ->c_loaded_executable();
-  std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> error(
-      c_api_->PJRT_LoadedExecutable_Fingerprint(&args),
-      pjrt::MakeErrorDeleter(c_api_));
-
-  if (error && pjrt::GetErrorCode(error.get(), c_api_) ==
-                   PJRT_Error_Code_UNIMPLEMENTED) {
-    return {std::nullopt};
-  }
-  if (error) {
-    xla::Status s = ::pjrt::PjrtErrorToStatus(error.get(), c_api_);
-    return s;
-  }
-  if (args.executable_fingerprint == nullptr ||
-      args.executable_fingerprint_size == 0) {
-    return {std::nullopt};
-  }
-  std::string fingerprint = std::string(args.executable_fingerprint,
-                                        args.executable_fingerprint_size);
-  return {fingerprint};
 }
 
 StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(int device_id) const {
@@ -1668,6 +1645,10 @@ bool PjRtCApiLoadedExecutable::IsDeleted() {
   return args.is_deleted;
 }
 
+StatusOr<std::string> PjRtCApiLoadedExecutable::FingerprintExecutable() const {
+  return executable_->FingerprintExecutable();
+}
+
 // ---------------------------------- Buffers ----------------------------------
 
 PjRtCApiBuffer::PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer)
@@ -2058,12 +2039,6 @@ PjRtCApiTopologyDescription::PjRtCApiTopologyDescription(
   InitAttributes();
 }
 
-PjRtCApiTopologyDescription::PjRtCApiTopologyDescription(
-    const PJRT_Api* c_api, const PJRT_TopologyDescription* c_topology)
-    : PjRtCApiTopologyDescription(
-          c_api, const_cast<PJRT_TopologyDescription*>(c_topology),
-          /*owned=*/false) {}
-
 absl::string_view PjRtCApiTopologyDescription::platform_name() const {
   PJRT_TopologyDescription_PlatformName_Args args;
   args.topology = c_topology_;
@@ -2261,7 +2236,8 @@ StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
       c_api->PJRT_TopologyDescription_Create(&init_args), c_api);
   PJRT_TopologyDescription* c_topology = init_args.topology;
   return std::unique_ptr<PjRtTopologyDescription>(
-      std::make_unique<PjRtCApiTopologyDescription>(c_api, c_topology));
+      std::make_unique<PjRtCApiTopologyDescription>(c_api, c_topology,
+                                                    /*owned=*/true));
 }
 
 }  // namespace xla

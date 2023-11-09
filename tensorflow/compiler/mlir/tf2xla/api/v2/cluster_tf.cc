@@ -24,14 +24,13 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/lower_cluster_to_runtime_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/device_type.pb.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_dialect_to_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/clustering_bridge_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/logging_hooks.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -39,12 +38,9 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
-#include "tsl/framework/device_type.h"
 #include "tsl/platform/error_logging.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -115,14 +111,6 @@ tensorflow::Status RunTFXLABridge(
   return diag_handler.ConsumeStatus();
 }
 
-void CreateTPUBridgePipeline(OpPassManager &pm, llvm::StringRef module_name) {
-  pm.addPass(mlir::TFTPU::CreateTPUValidateInputsPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
-  tensorflow::tf2xla::internal::AddBridgeClusteringPipelinePasses(pm,
-                                                                  module_name);
-}
-
 tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
                                        bool fallback_enabled,
                                        std::string device_type,
@@ -153,6 +141,18 @@ tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
   return status;
 }
 
+void CreateClusteringPipeline(OpPassManager &pm, llvm::StringRef module_name) {
+  pm.addPass(mlir::TFTPU::CreateTPUValidateInputsPass());
+  pm.addNestedPass<FuncOp>(
+      mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
+  tensorflow::tf2xla::internal::AddBridgeClusteringPipelinePasses(pm,
+                                                                  module_name);
+}
+
+void CreateTPUClusteringPipelineV2(OpPassManager &pm) {
+  CreateClusteringPipeline(pm, /*module_name=*/"");
+}
+
 tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
                              llvm::StringRef module_name) {
   VLOG(2)
@@ -163,7 +163,7 @@ tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
   Status clustering_status = RunTFXLABridge(
       module,
       [module_name](OpPassManager &pm) {
-        CreateTPUBridgePipeline(pm, module_name);
+        CreateClusteringPipeline(pm, module_name);
       },
       module_name, /*dump_prefix=*/"tf_xla_bridge_v2_tpu");
 
@@ -217,6 +217,12 @@ tensorflow::Status RunFunctionTf2xlaClusteringBridge(
 
   return RunNonTPUBridge(module, is_in_fallback_enabled_mode, module_name);
 }
+
+mlir::PassPipelineRegistration<> clustering_tpu_pipeline_v2(
+    "tf-cluster-tpu-bridge-v2",
+    "Run all the passes involved in transforming a TensorFlow 2 graph before "
+    "execution so that it is suitable for targeting TPUs.",
+    CreateTPUClusteringPipelineV2);
 
 }  // namespace v2
 }  // namespace tf2xla

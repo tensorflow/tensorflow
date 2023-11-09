@@ -171,9 +171,9 @@ absl::Status ExportWithXlaRuntimeAbi(llvm::Module &module,
     return InternalError("exported function must return void");
 
   // Add an XLA interface function for the exported function.
-  llvm::FunctionType *xla_runtime_type = llvm::FunctionType::get(
-      builder.getVoidTy(), builder.getInt8PtrTy()->getPointerTo(),
-      /*isVarArg=*/false);
+  llvm::FunctionType *xla_runtime_type =
+      llvm::FunctionType::get(builder.getVoidTy(), builder.getPtrTy(),
+                              /*isVarArg=*/false);
 
   llvm::FunctionCallee xla_runtime_func =
       module.getOrInsertFunction(exported_name, xla_runtime_type);

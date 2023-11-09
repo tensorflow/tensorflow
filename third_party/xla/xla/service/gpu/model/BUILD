@@ -182,6 +182,30 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "tile_analysis",
+    srcs = ["tile_analysis.cc"],
+    hdrs = ["tile_analysis.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:status_macros",
+        "//xla:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "tile_analysis_test",
+    srcs = ["tile_analysis_test.cc"],
+    deps = [
+        ":tile_analysis",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
 tf_proto_library(
     name = "hlo_op_profile_proto",
     srcs = ["hlo_op_profile.proto"],

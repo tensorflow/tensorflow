@@ -67,7 +67,7 @@ class NVPTXCompiler : public GpuCompiler {
 
   HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const override;
 
-  StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
+  StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
       se::GpuComputeCapability gpu_version, bool relocatable,
       const HloModule* debug_module, const CompileOptions& options) override;

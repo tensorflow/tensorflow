@@ -768,15 +768,6 @@ StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
 
 }  // namespace gpublas_lt
 
-TritonGemmConfig::TritonGemmConfig(int block_m, int block_n, int block_k,
-                                   int split_k, int num_stages, int num_warps)
-    : block_m(block_m),
-      block_n(block_n),
-      block_k(block_k),
-      split_k(split_k),
-      num_stages(num_stages),
-      num_warps(num_warps) {}
-
 /*static*/ TritonGemmConfig TritonGemmConfig::FromProto(
     const AutotuneResult::TritonGemmKey& proto) {
   TritonGemmConfig config;

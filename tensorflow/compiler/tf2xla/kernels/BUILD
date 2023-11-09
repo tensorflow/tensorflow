@@ -1737,6 +1737,7 @@ tf_kernel_library(
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",

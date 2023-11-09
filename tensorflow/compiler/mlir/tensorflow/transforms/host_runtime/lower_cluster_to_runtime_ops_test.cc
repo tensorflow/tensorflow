@@ -190,20 +190,6 @@ TEST_F(LowerClusterToRuntimeOpsTest, DumpsPipelinePasses) {
   EXPECT_THAT(files, ::testing::SizeIs(15));
 }
 
-TEST_F(LowerClusterToRuntimeOpsTest, AddsTPUPipelinePasses) {
-  OpPassManager pass_manager;
-  AddTPULowerClusterToRuntimeOpsPassPipeline(pass_manager);
-
-  EXPECT_EQ(pass_manager.size(), 8);
-}
-
-TEST_F(LowerClusterToRuntimeOpsTest, AddsNonTPUPipelinePasses) {
-  OpPassManager pass_manager;
-  AddNonTPULowerClusterToRuntimeOpsPassPipeline(pass_manager);
-
-  EXPECT_EQ(pass_manager.size(), 4);
-}
-
 }  // namespace
 }  // namespace tfrt_compiler
 }  // namespace tensorflow

@@ -776,7 +776,7 @@ void StripParameterAddressSpaces(mlir::RewriterBase& rewriter,
         auto ptr_ty = type.dyn_cast<ml::LLVMPointerType>();
         if (!ptr_ty) return type;
         if (ptr_ty.getAddressSpace() != mn::kGlobalMemorySpace) return type;
-        return ml::LLVMPointerType::get(ptr_ty.getElementType());
+        return ml::LLVMPointerType::get(ptr_ty.getContext());
       }));
   ml::LLVMFunctionType generic_func_ty =
       func_ty.clone(generic_func_params, func_ty.getReturnTypes());

@@ -169,7 +169,12 @@ tsl::Status GpuCommandBuffer::Launch(const ThreadDim& threads,
   const GpuKernel* gpu_kernel = AsGpuKernel(&kernel);
   GpuFunctionHandle gpu_func = gpu_kernel->AsGpuFunctionHandle();
 
-  void** kernel_params = const_cast<void**>(args.argument_addresses().data());
+  auto* packed_args = DynCast<KernelArgsPackedArrayBase>(&args);
+  if (!packed_args)
+    return absl::InternalError("Unsupported kernel arguments type");
+
+  void** kernel_params =
+      const_cast<void**>(packed_args->argument_addresses().data());
 
   // Adds a new kernel node to the graph under construction.
   if (state_ == State::kCreate) {

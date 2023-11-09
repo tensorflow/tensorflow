@@ -881,7 +881,7 @@ cuda_py_strict_test(
     name = "tridiagonal_matmul_op_test",
     size = "medium",
     srcs = ["tridiagonal_matmul_op_test.py"],
-    shard_count = 10,
+    shard_count = 5,
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",

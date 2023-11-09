@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 
@@ -73,14 +74,10 @@ bool UpdateShape(Shape* shape, SubByteNormalization::Mode mode) {
 // layout was changed.
 bool ProcessInputOrOutputLayout(ShapeLayout* shape_layout,
                                 SubByteNormalization::Mode mode) {
-  if (!shape_layout->LayoutIsSet() || !shape_layout->shape().IsArray()) {
-    return false;
-  }
-  Layout layout = shape_layout->layout();
-  bool changed =
-      UpdateLayout(&layout, shape_layout->shape().element_type(), mode);
+  Shape shape = shape_layout->shape();
+  bool changed = UpdateShape(&shape, mode);
   if (changed) {
-    shape_layout->ResetLayout(layout);
+    TF_CHECK_OK(shape_layout->CopyLayoutFromShape(shape));
   }
   return changed;
 }

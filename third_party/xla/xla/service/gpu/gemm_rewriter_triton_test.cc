@@ -29,7 +29,9 @@ limitations under the License.
 #include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/xla.pb.h"
@@ -59,6 +61,12 @@ class GemmRewriterTritonTest : public HloTestBase {
 
   se::GpuComputeCapability gpu_version_{
       se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0}};
+
+  void MatchHloModule(HloModule& module, absl::string_view pattern) {
+    TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                            RunFileCheck(module.ToString(), pattern));
+    EXPECT_TRUE(filecheck_result);
+  }
 };
 
 TEST_F(GemmRewriterTritonTest, TransposeSubdimensionGroup) {
@@ -752,6 +760,42 @@ ENTRY e {
             nullptr);
 }
 
+TEST_F(TritonSoftmaxAnalysisTest, BroadcastIntoBatchDimensionIsSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+c {
+  p1 = f32[127]{0} parameter(0)
+  ROOT b = f32[125,127]{1,0} broadcast(p1), dimensions={1}
+}
+
+ENTRY e {
+  p0 = f32[127]{0} parameter(0)
+  ROOT t = f32[125,127]{1,0} fusion(p0), kind=kCustom, calls=c
+})"));
+  const HloComputation* computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
+                          TritonFusionAnalysis::Execute(*computation));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
+                                 computation->root_instruction(), 0),
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/127,
+                                    /*slice_start=*/0, /*slice_limit=*/127,
+                                    /*subfragments=*/ElementsAre(127))));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
+                                 computation->root_instruction(), 1),
+              ElementsAre(FieldsAre(/*stride=*/127, /*count=*/125,
+                                    /*slice_start=*/0, /*slice_limit=*/125,
+                                    /*subfragments=*/ElementsAre(125))));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
+                                 computation->parameter_instruction(0), 0),
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/127,
+                                    /*slice_start=*/0, /*slice_limit=*/127,
+                                    /*subfragments=*/ElementsAre(127))));
+  EXPECT_EQ(analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
+                              computation->parameter_instruction(0), 1),
+            nullptr);
+}
+
 TEST_F(GemmRewriterTritonTest, HandleDotIfCublasRequiresPadding) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
@@ -839,7 +883,15 @@ ENTRY e {
 }
 )"));
   const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
-  EXPECT_FALSE(GemmRewriterTriton(cc).Run(module.get()).value());
+
+  ASSERT_TRUE(GemmRewriterTriton(cc).Run(module.get()).value());
+
+  // Slice is not fused.
+  MatchHloModule(*module, R"(
+; CHECK-NOT: slice
+; CHECK: ENTRY
+; CHECK: slice
+)");
 }
 
 TEST_F(GemmRewriterTritonTest, MultipleUsesAreHandled) {

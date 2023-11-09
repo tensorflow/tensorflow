@@ -121,28 +121,13 @@ struct OneProvider {
 };
 
 template <typename T>
-struct Is16BitFloat {
-  static constexpr bool value =
-      std::is_same<bfloat16, T>::value || std::is_same<half, T>::value;
-};
-
-template <typename T>
 struct IsReal {
-  static constexpr bool value =
-      std::is_integral<T>::value || std::is_floating_point<T>::value ||
-      std::is_same<bfloat16, T>::value || std::is_same<half, T>::value ||
-      std::is_same<tsl::float8_e5m2, T>::value ||
-      std::is_same<tsl::float8_e5m2fnuz, T>::value ||
-      std::is_same<tsl::float8_e4m3fn, T>::value ||
-      std::is_same<tsl::float8_e4m3b11, T>::value ||
-      std::is_same<tsl::float8_e4m3fnuz, T>::value;
+  static constexpr bool value = std::numeric_limits<T>::is_specialized;
 };
 
 template <typename T>
 struct IsValidScalarType {
-  static constexpr bool value = IsReal<T>::value ||
-                                std::is_same<complex64, T>::value ||
-                                std::is_same<complex128, T>::value;
+  static constexpr bool value = IsReal<T>::value || is_complex_v<T>;
 };
 
 template <typename NativeT>

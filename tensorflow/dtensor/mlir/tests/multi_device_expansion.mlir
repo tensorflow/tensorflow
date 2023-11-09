@@ -133,25 +133,25 @@ module @test_inferred_resource_attributes attributes {dtensor.all_reduce_combine
 // CHECK-SAME: %arg0: tensor<1x2xi32> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}
 // CHECK-SAME: %arg1: tensor<1x2xi32> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:1"}
 // CHECK-SAME: -> (tensor<2xi32>, tensor<2xi32>) {
-// CHECK-NEXT:   %0:2 = "tf_device.launch"() ({
+// CHECK-NEXT:   %0:2 = "tf_device.launch"() <{device = ""}> ({
 // CHECK-NEXT:     %compilation_status, %program = "tf._TPUCompileMlir"() <{metadata = ""}> : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
 // CHECK-NEXT:     tf_device.return %compilation_status, %program : tensor<!tf_type.string>, tensor<3x!tf_type.string>
-// CHECK-NEXT:   }) {device = ""} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
-// CHECK-NEXT:   "tf_device.launch"() ({
+// CHECK-NEXT:   }) : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
+// CHECK-NEXT:   "tf_device.launch"() <{device = ""}> ({
 // CHECK-NEXT:     "tf.TPUCompileSucceededAssert"(%0#0) : (tensor<!tf_type.string>) -> ()
 // CHECK-NEXT:     tf_device.return
-// CHECK-NEXT:   }) {device = ""} : () -> ()
+// CHECK-NEXT:   }) : () -> ()
 // CHECK-NEXT:   %1:2 = "tf_device.parallel_execute"() ({
-// CHECK-NEXT:     %2 = "tf_device.launch"() ({
+// CHECK-NEXT:     %2 = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:TPU:0"}> ({
 // CHECK-NEXT:       %3 = "tf.TPUExecute"(%arg0, %0#1) : (tensor<1x2xi32>, tensor<3x!tf_type.string>) -> tensor<2xi32>
 // CHECK-NEXT:       tf_device.return %3 : tensor<2xi32>
-// CHECK-NEXT:     }) {device = "/job:localhost/replica:0/task:0/device:TPU:0"} : () -> tensor<2xi32>
+// CHECK-NEXT:     }) : () -> tensor<2xi32>
 // CHECK-NEXT:     tf_device.return %2 : tensor<2xi32>
 // CHECK-NEXT:   }, {
-// CHECK-NEXT:     %2 = "tf_device.launch"() ({
+// CHECK-NEXT:     %2 = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:TPU:1"}> ({
 // CHECK-NEXT:       %3 = "tf.TPUExecute"(%arg1, %0#1) : (tensor<1x2xi32>, tensor<3x!tf_type.string>) -> tensor<2xi32>
 // CHECK-NEXT:       tf_device.return %3 : tensor<2xi32>
-// CHECK-NEXT:     }) {device = "/job:localhost/replica:0/task:0/device:TPU:1"} : () -> tensor<2xi32>
+// CHECK-NEXT:     }) : () -> tensor<2xi32>
 // CHECK-NEXT:     tf_device.return %2 : tensor<2xi32>
 // CHECK-NEXT:   }) : () -> (tensor<2xi32>, tensor<2xi32>)
 // CHECK-NEXT:   return %1#0, %1#1 : tensor<2xi32>, tensor<2xi32>
@@ -189,25 +189,25 @@ module attributes {dtensor.all_reduce_combiner.num_ops_in_group = 0 : i64, dtens
 // CHECK-SAME: %arg1: tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:1"}
 // CHECK-SAME: %arg2: tensor<!tf_type.resource<tensor<i32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}
 // CHECK-SAME: %arg3: tensor<!tf_type.resource<tensor<i32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:1"}
-// CHECK-NEXT:   %0:2 = "tf_device.launch"() ({
+// CHECK-NEXT:   %0:2 = "tf_device.launch"() <{device = ""}> ({
 // CHECK-NEXT:     %compilation_status, %program = "tf._TPUCompileMlir"() <{metadata = ""}> : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
 // CHECK-NEXT:     tf_device.return %compilation_status, %program : tensor<!tf_type.string>, tensor<3x!tf_type.string>
-// CHECK-NEXT:   }) {device = ""} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
-// CHECK-NEXT:   "tf_device.launch"() ({
+// CHECK-NEXT:   }) : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
+// CHECK-NEXT:   "tf_device.launch"() <{device = ""}> ({
 // CHECK-NEXT:     "tf.TPUCompileSucceededAssert"(%0#0) : (tensor<!tf_type.string>) -> ()
 // CHECK-NEXT:     tf_device.return
-// CHECK-NEXT:   }) {device = ""} : () -> ()
+// CHECK-NEXT:   }) : () -> ()
 // CHECK-NEXT:   %1:2 = "tf_device.parallel_execute"() ({
-// CHECK-NEXT:     %2 = "tf_device.launch"() ({
+// CHECK-NEXT:     %2 = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:TPU:0"}> ({
 // CHECK-NEXT:       %3 = "tf.TPUExecute"(%arg0, %0#1) : (tensor<i32>, tensor<3x!tf_type.string>) -> tensor<i32>
 // CHECK-NEXT:       tf_device.return %3 : tensor<i32>
-// CHECK-NEXT:     }) {device = "/job:localhost/replica:0/task:0/device:TPU:0"} : () -> tensor<i32>
+// CHECK-NEXT:     }) : () -> tensor<i32>
 // CHECK-NEXT:     tf_device.return %2 : tensor<i32>
 // CHECK-NEXT:   }, {
-// CHECK-NEXT:     %2 = "tf_device.launch"() ({
+// CHECK-NEXT:     %2 = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:TPU:1"}> ({
 // CHECK-NEXT:       %3 = "tf.TPUExecute"(%arg1, %0#1) : (tensor<i32>, tensor<3x!tf_type.string>) -> tensor<i32>
 // CHECK-NEXT:       tf_device.return %3 : tensor<i32>
-// CHECK-NEXT:     }) {device = "/job:localhost/replica:0/task:0/device:TPU:1"} : () -> tensor<i32>
+// CHECK-NEXT:     }) : () -> tensor<i32>
 // CHECK-NEXT:     tf_device.return %2 : tensor<i32>
 // CHECK-NEXT:   }) : () -> (tensor<i32>, tensor<i32>)
 // CHECK-NEXT:   "tf.AssignVariableOp"(%arg2, %1#0) <{validate_shape = false}> {_global_shape = [], _layout = [], device = "/job:localhost/replica:0/task:0/device:TPU:0"} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()

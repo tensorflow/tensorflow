@@ -21,9 +21,11 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/refcount.h"
 
 namespace tensorflow {
 namespace {
@@ -63,12 +65,12 @@ Status PlacerInspectionRequiredOpChecker::IsPlacerInspectionRequired(
   if (!IsFunctionCall(node)) {
     return Set(node, false, is_deep, &cache_);
   }
-  const FunctionDef* fdef;
+  core::RefCountPtr<FunctionRecord> fdef;
   NameAttrList func;
   TF_RETURN_IF_ERROR(GetFunctionDefAndAttrs(flib_def_, node, &fdef, &func));
   DataTypeVector types;
-  TF_RETURN_IF_ERROR(
-      OutputTypesForNode(AttrSlice(&func.attr()), fdef->signature(), &types));
+  TF_RETURN_IF_ERROR(OutputTypesForNode(AttrSlice(&func.attr()),
+                                        fdef->fdef().signature(), &types));
   for (DataType type : types) {
     if (type == DT_RESOURCE) {
       return Set(node, true, is_deep, &cache_);
@@ -78,11 +80,12 @@ Status PlacerInspectionRequiredOpChecker::IsPlacerInspectionRequired(
 }
 
 Status GetFunctionDefAndAttrs(const FunctionLibraryDefinition& flib_def,
-                              const Node& node, const FunctionDef** fdef,
+                              const Node& node,
+                              core::RefCountPtr<FunctionRecord>* fdef,
                               NameAttrList* func) {
   TF_RETURN_IF_ERROR(GetNodeAttr(node.def(), "f", func));
   const string& function_name = func->name();
-  *fdef = flib_def.Find(function_name);
+  *fdef = flib_def.FindRecord(function_name);
   if (*fdef == nullptr) {
     return errors::InvalidArgument(
         "Failed to find function \"", function_name,

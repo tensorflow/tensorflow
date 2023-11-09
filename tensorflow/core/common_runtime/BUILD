@@ -888,6 +888,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/config:flag_defs",
+        "//tensorflow/core/config:flags",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/algorithm:container",
@@ -905,10 +907,10 @@ cc_library(
     hdrs = ["function_body.h"],
     copts = tf_copts(),
     deps = [
-        ":device",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:refcount",
     ],
 )
 
@@ -1241,6 +1243,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:refcount",
         "@com_google_absl//absl/algorithm:container",
     ],
 )
@@ -1540,6 +1543,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:refcount",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],

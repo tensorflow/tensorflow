@@ -446,7 +446,9 @@ class _SavedModelBuilder(object):
               "No proto_splitter is provided, cannot use"
               " experimental_image_format."
           )
-        proto_splitter.SavedModelSplitter(self._saved_model).write(path)
+        # Overwrites path to record whether the saved_model is split, i.e.,
+        # whether the suffix is `.pb` or `.cpb`.
+        path = proto_splitter.SavedModelSplitter(self._saved_model).write(path)
       else:
         path = file_io.join(
             compat.as_bytes(self._export_dir),

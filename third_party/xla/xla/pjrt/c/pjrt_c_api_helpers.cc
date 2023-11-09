@@ -613,7 +613,7 @@ absl::string_view GetPlatformName(PJRT_Client* client, const PJRT_Api* api) {
   return platform_name;
 }
 
-xla::StatusOr<const PJRT_TopologyDescription*> GetTopologyDescription(
+xla::StatusOr<PJRT_TopologyDescription*> GetTopologyDescription(
     PJRT_Client* client, const PJRT_Api* api) {
   PJRT_Client_TopologyDescription_Args args;
   args.struct_size = PJRT_Client_TopologyDescription_Args_STRUCT_SIZE;

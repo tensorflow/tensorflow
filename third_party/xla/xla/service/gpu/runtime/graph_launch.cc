@@ -185,6 +185,8 @@ static void EvictAllGraphs(
     return (diff / (1000 * 1000)) > *eviction_timeout_seconds;
   };
 
+  int64_t num_evicted = 0;
+
   for (auto& weak_ptr : vec) {
     auto ptr = weak_ptr.lock();
     if (!ptr) continue;
@@ -214,6 +216,15 @@ static void EvictAllGraphs(
     }
     ptr->graphs.erase(it);
     ptr->mu.Unlock();
+    ++num_evicted;
+  }
+
+  if (num_evicted > 0) {
+    VLOG(3) << "Evicted " << num_evicted << " graphs from executor "
+            << executor;
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    se::gpu::GpuGraphSupport::TrimDeviceMemory(executor);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   }
 }
 
@@ -364,6 +375,9 @@ Status GraphInstances::InstantiateAllGraphs(
 
     if (instance.status().code() == absl::StatusCode::kResourceExhausted) {
       if (num_retries == 0) {
+        LOG(WARNING) << "InstantiateAllGraph failed due to insufficient memory."
+                        " Try to evict all graphs and free device memory.";
+
         // Retry on OOM error after evicting all graphs from executor.
         EvictAllGraphs(executor);
         num_retries++;
@@ -371,7 +385,7 @@ Status GraphInstances::InstantiateAllGraphs(
         continue;
       } else {
         LOG(WARNING) << "InstantiateAllGraph failed due to insufficient memory."
-                        " Uninitializd graphs will run in op-by-op mode.";
+                        " Unitialized graphs will run in op-by-op mode.";
         return OkStatus();
       }
     }

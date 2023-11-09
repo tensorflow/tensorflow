@@ -303,7 +303,7 @@ func.func @NoOp_0(%arg0: tensor<!tf_type.string> {tf_saved_model.bound_input = @
 // CHECK-LABEL: module
 module attributes {tf_saved_model.semantics} {
   "tf_saved_model.session_initializer"() {initializers = [@init_func_restore_op]} : () -> ()
-// CHECK: "tf_saved_model.session_initializer"() {initializers = []}
+// CHECK: "tf_saved_model.session_initializer"() <{initializers = []}>
 
   func.func @init_func_restore_op(%arg: tensor<!tf_type.string> {tf_saved_model.index_path = ["__tf_file_prefix"]})
     attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp"], tf_saved_model.initializer_type = "restore_op"} {
@@ -383,7 +383,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK-LABEL: module
 module attributes {tf_saved_model.semantics} {
   "tf_saved_model.session_initializer"() {initializers = [@init_func_restore_op]} : () -> ()
-// CHECK: "tf_saved_model.session_initializer"() {initializers = []}
+// CHECK: "tf_saved_model.session_initializer"() <{initializers = []}>
 
   func.func @init_func_restore_op(%arg: tensor<!tf_type.string> {tf_saved_model.index_path = ["file_prefix"]})
     attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp"], tf_saved_model.initializer_type = "restore_op"} {

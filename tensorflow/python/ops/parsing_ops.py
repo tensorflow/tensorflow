@@ -295,7 +295,8 @@ def parse_example_v2(serialized, features, example_names=None, name=None):
     ValueError: if any feature is invalid.
   """
   if not features:
-    raise ValueError("Argument `features` cannot be None.")
+    raise ValueError(
+        "Argument `features` cannot be None or falsy. Got %s" % features)
   features = _prepend_none_dimension(features)
   params = _ParseOpParams.from_features(features, [
       VarLenFeature, SparseFeature, FixedLenFeature, FixedLenSequenceFeature,

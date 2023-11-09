@@ -88,6 +88,7 @@ cc_library(
         "//xla/runtime:custom_call",
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
+        "//xla/service:collective_ops_utils",
         "//xla/service:computation_placer_hdr",
         "//xla/service:executable",
         "//xla/service:global_device_id",
@@ -147,6 +148,47 @@ cc_library(
 )
 
 cc_library(
+    name = "conv_reorder",
+    srcs = ["conv_reorder.cc"],
+    hdrs = ["conv_reorder.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":support",
+        "//xla:xla_proto_cc",
+        "//xla/runtime:custom_call",
+        "//xla/runtime:custom_call_registry",
+        "//xla/runtime:executable",
+        "//xla/service:executable",
+    ],
+)
+
+cc_library(
+    name = "norm",
+    srcs = ["norm.cc"],
+    hdrs = ["norm.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":support",
+        "//xla:status",
+        "//xla:xla_proto_cc",
+        "//xla/mlir/runtime/transforms:custom_call_encoding",
+        "//xla/runtime:custom_call",
+        "//xla/runtime:custom_call_registry",
+        "//xla/runtime:executable",
+        "//xla/service:executable",
+        "//xla/service/gpu:gpu_asm_opts_util",
+        "//xla/service/gpu:gpu_norm_runner",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_memory_allocator",
+        "//xla/translate/mhlo_to_hlo:attribute_exporter",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/synchronization",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "fused_attention",
     srcs = ["fused_attention.cc"],
     hdrs = ["fused_attention.h"],
@@ -169,21 +211,6 @@ cc_library(
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Support",
-    ],
-)
-
-cc_library(
-    name = "conv_reorder",
-    srcs = ["conv_reorder.cc"],
-    hdrs = ["conv_reorder.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":support",
-        "//xla:xla_proto_cc",
-        "//xla/runtime:custom_call",
-        "//xla/runtime:custom_call_registry",
-        "//xla/runtime:executable",
-        "//xla/service:executable",
     ],
 )
 
@@ -267,6 +294,7 @@ cc_library(
         ":kernel_launch",
         ":memcpy",
         ":memset",
+        ":norm",
         ":send_recv",
         ":stream_synchronization",
         ":support",
@@ -469,7 +497,9 @@ cc_library(
     name = "graph_launch",
     srcs = ["graph_launch.cc"],
     hdrs = ["graph_launch.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     visibility = ["//visibility:public"],
     deps = [
         ":concurrent_region",
@@ -552,7 +582,9 @@ cc_library(
     name = "kernel_launch",
     srcs = ["kernel_launch.cc"],
     hdrs = ["kernel_launch.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     visibility = ["//visibility:public"],
     deps = [
         ":concurrent_region",

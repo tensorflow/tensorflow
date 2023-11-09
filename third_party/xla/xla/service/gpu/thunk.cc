@@ -74,6 +74,7 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kKernel);
     CASE(kMemset32BitValue);
     CASE(kMemzero);
+    CASE(kNorm);
     CASE(kOutfeed);
     CASE(kReplicaId);
     CASE(kPartitionId);

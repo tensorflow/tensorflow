@@ -35,7 +35,14 @@ extern "C" {
 // only in statically linked binaries, and we do not need any backward or
 // forward compatibility.
 
+// Forwards `absl::Status` object pointed to by `status` to XLA FFI error
+// (status left in moved-from state). Pointer ownership stays with the
+// caller.
 typedef XLA_FFI_Error* XLA_FFI_Error_Forward(void* status);
+
+// Returns a pointer to `xla::ServiceExecutableRunOptions`.
+typedef void* XLA_FFI_ServiceExecutableRunOptions_Get(
+    XLA_FFI_ExecutionContext* ctx);
 
 //===----------------------------------------------------------------------===//
 // API access
@@ -45,6 +52,7 @@ typedef XLA_FFI_Error* XLA_FFI_Error_Forward(void* status);
 
 struct XLA_FFI_InternalApi {
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_Error_Forward);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_ServiceExecutableRunOptions_Get);
 };
 
 #undef _XLA_FFI_INTERNAL_API_STRUCT_FIELD

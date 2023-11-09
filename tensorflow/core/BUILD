@@ -127,7 +127,6 @@ package(
         "//tensorflow_models:__subpackages__",
     ],
     features = if_google([
-        "-layering_check",
         "-parse_headers",
     ]),
     licenses = ["notice"],
@@ -1318,6 +1317,7 @@ cc_library(
     ],
     hdrs = [":lib_internal_public_headers"],
     copts = tf_copts(),
+    features = ["-layering_check"],
     deps = tf_additional_lib_deps() + [
         ":core_stringpiece",
         ":lib_proto_parsing",
@@ -1649,6 +1649,7 @@ tf_cuda_library(
     ],
     hdrs = [":framework_internal_public_headers"],
     copts = tf_copts(),
+    features = ["-layering_check"],
     linkopts = select({
         "//tensorflow:freebsd": ["-lm"],
         "//tensorflow:windows": [],
@@ -1770,6 +1771,7 @@ tf_cuda_library(
     name = "graph",
     srcs = ["//tensorflow/core/graph:graph_srcs"],
     hdrs = ["//tensorflow/core/graph:graph_headers"],
+    features = ["-layering_check"],
     deps = [
         ":framework",
         ":framework_internal",

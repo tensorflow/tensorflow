@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -54,10 +55,15 @@ void CallFrameBuilder::AddStringAttr(std::string name, std::string value) {
   attrs_.try_emplace(std::move(name), value);
 }
 
-CallFrame CallFrameBuilder::Build(XLA_FFI_Api* api,
-                                  XLA_FFI_ExecutionContext* ctx) {
-  return CallFrame(api, ctx, args_, attrs_);
+void CallFrameBuilder::AddAttribute(std::string name, Attribute attr) {
+  attrs_.try_emplace(std::move(name), attr);
 }
+
+void CallFrameBuilder::AddAttributes(const AttributesMap& attrs) {
+  attrs_.insert(attrs.begin(), attrs.end());
+}
+
+CallFrame CallFrameBuilder::Build() { return CallFrame(args_, attrs_); }
 
 // ------------------------    !!! !!! !!!     ------------------------------ //
 
@@ -136,14 +142,18 @@ struct CallFrame::Attributes {
 // CallFrame
 //===----------------------------------------------------------------------===//
 
-CallFrame::CallFrame(XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
-                     absl::Span<const CallFrameBuilder::Buffer> args,
+CallFrame::CallFrame(absl::Span<const CallFrameBuilder::Buffer> args,
                      const CallFrameBuilder::AttributesMap& attrs)
-    : arguments_(InitArgs(args)), attributes_(InitAttrs(attrs)) {
-  call_frame_.api = api;
-  call_frame_.ctx = ctx;
-  call_frame_.args = arguments_->ffi_args;
-  call_frame_.attrs = attributes_->ffi_attrs;
+    : arguments_(InitArgs(args)), attributes_(InitAttrs(attrs)) {}
+
+XLA_FFI_CallFrame CallFrame::Build(XLA_FFI_Api* api,
+                                   XLA_FFI_ExecutionContext* ctx) {
+  XLA_FFI_CallFrame call_frame = {XLA_FFI_CallFrame_STRUCT_SIZE, nullptr};
+  call_frame.api = api;
+  call_frame.ctx = ctx;
+  call_frame.args = arguments_->ffi_args;
+  call_frame.attrs = attributes_->ffi_attrs;
+  return call_frame;
 }
 
 CallFrame::~CallFrame() = default;
@@ -190,11 +200,6 @@ CallFrame::~CallFrame() = default;
 // Call frame attributes
 //===----------------------------------------------------------------------===//
 
-/*static*/ void CallFrame::FixupString(CallFrame::String& str) {
-  str.span.ptr = str.value.data();
-  str.span.len = str.value.size();
-}
-
 // An std::visit overload set for converting CallFrameBuilder::Attribute to
 // CallFrame::Attribute.
 struct CallFrame::ConvertAttribute {
@@ -214,7 +219,10 @@ struct CallFrame::FixupAttribute {
   template <typename T>
   void operator()(T& value) {}
 
-  void operator()(CallFrame::String& str) { FixupString(str); }
+  void operator()(CallFrame::String& str) {
+    str.span.ptr = str.value.data();
+    str.span.len = str.value.size();
+  }
 };
 
 // An std::visit overload set to get CallFrame::Attribute XLA FFI type.
@@ -256,7 +264,7 @@ struct CallFrame::AttributeStorage {
 
   // Fix up XLA FFI structs to point to correct storage.
   for (NamedAttribute& attr : res->attributes) {
-    FixupString(attr.name);
+    std::invoke(FixupAttribute{}, attr.name);
     std::visit(FixupAttribute{}, attr.value);
   }
 

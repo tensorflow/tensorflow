@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/runtime/custom_call.h"
 #include "xla/runtime/executable.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
@@ -105,7 +106,7 @@ StatusOr<NcclComm::Lock> GetNcclComm(
     const NcclExecuteParams& params, int64_t group_mode, int64_t op_id,
     absl::Span<const int64_t> replica_group_offsets,
     absl::Span<const int64_t> replica_group_values, int64_t stream_id,
-    bool enable_clique_optimization) {
+    bool enable_clique_optimization_flag) {
   // TODO(b/233930690): Pass the attribute below as a nested array.
   // Pass an array of arrays using two vectors; one specifying all the values
   // and another specifying the (ending) offsets of each array in the other
@@ -120,9 +121,12 @@ StatusOr<NcclComm::Lock> GetNcclComm(
     replica_groups.push_back(replica_group);
   }
 
-  return LockNcclComm(params, replica_groups,
-                      static_cast<CollectiveOpGroupMode>(group_mode), op_id,
-                      stream_id, enable_clique_optimization);
+  // Always enable clique optimization for single host, which is indicated by
+  // the absence of nccl_unique_id_callback.
+  return LockNcclComm(
+      params, replica_groups, static_cast<CollectiveOpGroupMode>(group_mode),
+      op_id, stream_id,
+      enable_clique_optimization_flag || !params.nccl_unique_id_callback);
 }
 #endif  // XLA_ENABLE_XCCL
 

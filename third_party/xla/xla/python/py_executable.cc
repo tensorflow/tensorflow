@@ -366,6 +366,10 @@ StatusOr<std::vector<Layout>> PyLoadedExecutable::GetParameterLayouts() const {
   return ifrt_loaded_executable_->GetParameterLayouts();
 }
 
+StatusOr<std::vector<Layout>> PyLoadedExecutable::GetOutputLayouts() const {
+  return ifrt_loaded_executable_->GetOutputLayouts();
+}
+
 std::optional<std::vector<OpSharding>>
 PyLoadedExecutable::GetParameterShardings() const {
   return ifrt_loaded_executable_->GetParameterShardings();

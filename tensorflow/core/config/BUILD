@@ -95,6 +95,7 @@ py_strict_test(
     python_version = "PY3",
     deps = [
         ":flags_py",
+        #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
     ],
 )

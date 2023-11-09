@@ -105,8 +105,9 @@ py_strict_library(
         "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
         "//tensorflow/python/util:variable_utils",
     ],
 )

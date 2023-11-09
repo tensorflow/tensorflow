@@ -491,20 +491,32 @@ constexpr inline T KeepLowerBits(T value, int width) {
 // Returns `base` multiplied by itself `exponent` number of times.
 //
 // Note: returns 1 when `exponent` is zero.
-// Precondition: `exponent` is non-negative.
-template <typename T>
-constexpr T IPow(T base, int exponent) {
-  // A negative `exponent` is indicative of a logic bug for integral `base`.
-  // We disallow it for floating-point types for symmetry.
-  ABSL_ASSERT(exponent >= 0);
+// Precondition: `exponent` is non-negative for integral `T`.
+template <typename T, typename ExpType>
+constexpr T IPow(T base, ExpType exponent) {
+  static_assert(std::numeric_limits<ExpType>::is_integer);
+  if constexpr (std::numeric_limits<T>::is_integer) {
+    // A negative `exponent` is indicative of a logic bug for integral `base`.
+    // We disallow it for floating-point types for symmetry.
+    ABSL_ASSERT(exponent >= 0);
+  }
+  const bool take_reciprocal = exponent < 0;
   // We use the right-to-left binary exponentiation algorithm.
-  T result{1};
-  while (exponent > 0) {
+  T result(1);
+  for (;;) {
     if ((exponent & 1) != 0) {
       result *= base;
     }
+    exponent /= 2;
+    if (exponent == 0) {
+      break;
+    }
     base *= base;
-    exponent >>= 1;
+  }
+  if constexpr (std::numeric_limits<ExpType>::is_signed) {
+    if (take_reciprocal) {
+      return T(1) / result;
+    }
   }
   return result;
 }

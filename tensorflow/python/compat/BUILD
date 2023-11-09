@@ -24,7 +24,7 @@ py_strict_library(
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:control_flow_v2_toggles",
-        "//tensorflow/python/ops:variable_scope",
+        "//tensorflow/python/ops:resource_variables_toggle",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -36,7 +36,7 @@ py_strict_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_contextlib",
         "//tensorflow/python/util:tf_export",
     ],
 )

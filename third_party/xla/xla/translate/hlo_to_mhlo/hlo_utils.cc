@@ -98,7 +98,7 @@ template <typename T>
 void CopyDenseElementsBy(mlir::DenseElementsAttr data,
                          std::vector<uint8_t>* output) {
   output->resize(data.getNumElements() * sizeof(T));
-  int i = 0;
+  int64_t i = 0;
   for (T element : data.getValues<T>()) {
     std::memcpy(&(*output)[i], &element, sizeof(T));
     i += sizeof(T);

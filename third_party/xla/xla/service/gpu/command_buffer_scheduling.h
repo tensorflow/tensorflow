@@ -96,6 +96,10 @@ class CommandBufferScheduling : public HloModulePass {
     // the original instruction to the tuple index of the result that replaces
     // the original instruction.
     absl::flat_hash_map<HloInstruction*, int64_t> inst_to_tuple_index_map;
+
+    // Map original instructions to their clones in the command buffer
+    // computation.
+    absl::flat_hash_map<HloInstruction*, HloInstruction*> instructions_map;
   };
 
   // Builds a computation from the instruction sequence. Used values constructed

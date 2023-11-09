@@ -151,6 +151,23 @@ class TPUEmbeddingShardedVariable(
   def shard_dim(self) -> int:
     return 0
 
+  @property
+  def shape(self) -> tensor_shape.TensorShape:
+    """Returns the shape of the embedding variable for the current context."""
+    local_shape = self._values[0].shape
+    global_shape = local_shape.as_list()
+    global_shape[self.shard_dim] = global_shape[self.shard_dim] * len(
+        self.values
+    )
+    return tensor_shape.TensorShape(global_shape)
+
+  def _write_object_proto(self, proto, options):
+    super()._write_object_proto(proto, options)
+    # TODO(b/305882915): Reset the saved model shape to the local shape
+    # for backward compatibility of users that directly access the full
+    # variable shape as the shape of values.
+    proto.variable.shape.CopyFrom(self._values[0].shape.as_proto())
+
   def _gather_saveables_for_checkpoint(self) -> Dict[str, Callable[..., Any]]:
     """Overrides Trackable method.
 
@@ -531,7 +548,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       )
 
     with variable_scope.variable_creator_scope(
-        make_sharded_variable_creator(self._strategy, shape_is_local=False)
+        make_sharded_variable_creator(self._strategy)
     ):
       parameters = variable_creator(stacked_table_name, table_initialize_fn)
 
@@ -539,17 +556,8 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       return variable_creator(stacked_table_name + "/" + name, initializer)
 
     if optimizer is not None:
-      # FIXME(b/305882915): tensorflow_recommender calls into keras legacy
-      # optimizer, which creates the slot variable with
-      # TPUShardedEmbeddingVariable.shape as shape, but that shape attribute
-      # returns a local shape. We shall change the shape attribute to
-      # return a global shape, but such a change will break users who already
-      # depend on the attribute being local.
-      shape_is_local = optimizer.slot_variable_creation_fn is not None
       with variable_scope.variable_creator_scope(
-          make_sharded_variable_creator(
-              self._strategy, shape_is_local=shape_is_local
-          )
+          make_sharded_variable_creator(self._strategy)
       ):
         slot_vars = optimizer._create_slots(parameters, slot_creator)  # pylint: disable=protected-access
     else:
@@ -2217,13 +2225,12 @@ def is_checkpoint_initial_value(initial_value: Any) -> bool:
 
 
 def make_sharded_variable_creator(
-    strategy: distribute_lib.Strategy, shape_is_local: bool
+    strategy: distribute_lib.Strategy,
 ) -> Callable[..., Any]:
   """Create a variable creator which shards across all the tpu device.
 
   Args:
     strategy: a TPUStrategy object.
-    shape_is_local: If the shape to the creator is per replica.
 
   Returns:
     The sharded variable creator.
@@ -2265,8 +2272,7 @@ def make_sharded_variable_creator(
       )
 
     partition_shape = shape.as_list()
-    if not shape_is_local:
-      partition_shape[shard_dim] = partition_shape[shard_dim] // num_devices
+    partition_shape[shard_dim] = partition_shape[shard_dim] // num_devices
 
     unwrapped_arg_spec = tf_inspect.getargspec(unwrapped_initial_value)
     sharding_aware = "shard_info" in unwrapped_arg_spec.args

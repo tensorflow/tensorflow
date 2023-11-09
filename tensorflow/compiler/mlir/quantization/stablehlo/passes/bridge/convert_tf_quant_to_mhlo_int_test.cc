@@ -389,6 +389,45 @@ func.func @main(%input: tensor<1x9x9x9xi8>, %filter: tensor<3x3x9x10xi8>) -> ten
   ExecuteAndCompareResultsWithTfKernel(kProgram, {&input, &filter});
 }
 
+TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeConvolutionPerChannel) {
+  constexpr absl::string_view kProgram = R"mlir(
+func.func @main(
+    %input: tensor<1x9x9x9xi8>, %filter: tensor<3x3x9x10xi8>, %scale: tensor<10xf32>
+  ) -> tensor<1x9x9x10xi32> {
+  %input_scale = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
+  %input_zp = "tf.Const"() { value = dense<-10> : tensor<i32> } : () -> tensor<i32>
+  %zp = "tf.Const"() { value = dense<0> : tensor<10xi32> } : () -> tensor<10xi32>
+  %quant_input = "tf.Cast"(%input) {} : (tensor<1x9x9x9xi8>) ->
+    tensor<1x9x9x9x!tf_type.qint8>
+  %quant_filter = "tf.Cast"(%filter) {} : (tensor<3x3x9x10xi8>) ->
+    tensor<3x3x9x10x!tf_type.qint8>
+  %0 = "tf.UniformQuantizedConvolution"(
+    %quant_input, %quant_filter, %input_scale, %input_zp, %scale, %zp, %scale, %zp
+  ) {
+    Tin = "tfdtype$DT_QINT8", Tout = "tfdtype$DT_QINT32",
+    attr_map = "", batch_group_count = 1 : i64,
+    dimension_numbers = "\10\03\1A\02\01\02 \02(\032\02\00\01@\03J\02\01\02",
+    explicit_padding = [], feature_group_count = 1 : i64, lhs_dilation = [1, 1],
+    lhs_quantization_axis = -1 : i64, lhs_quantization_max_val = 127 : i64,
+    lhs_quantization_min_val = -128 : i64, output_quantization_axis = 3 : i64,
+    output_quantization_max_val = 2147483647 : i64,
+    output_quantization_min_val = -2147483648 : i64, padding = "SAME",
+    rhs_dilation = [1, 1], rhs_quantization_axis = 3 : i64,
+    rhs_quantization_max_val = 127 : i64, rhs_quantization_min_val = -128 : i64,
+    window_strides = [1, 1]
+  } : (tensor<1x9x9x9x!tf_type.qint8>, tensor<3x3x9x10x!tf_type.qint8>,
+    tensor<f32>, tensor<i32>, tensor<10xf32>, tensor<10xi32>, tensor<10xf32>, tensor<10xi32>
+  ) -> tensor<1x9x9x10x!tf_type.qint32>
+  %output = "tf.Cast"(%0) {} : (tensor<1x9x9x10x!tf_type.qint32>) -> tensor<1x9x9x10xi32>
+  return %output : tensor<1x9x9x10xi32>
+})mlir";
+  TF_ASSERT_OK_AND_ASSIGN(auto input, CreateRandomI8Literal({1, 9, 9, 9}));
+  TF_ASSERT_OK_AND_ASSIGN(auto filter, CreateRandomI8Literal({3, 3, 9, 10}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto scale, CreateRandomF32Literal({10}, /*min=*/0.0001, /*max=*/2));
+  ExecuteAndCompareResultsWithTfKernel(kProgram, {&input, &filter, &scale});
+}
+
 TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeConvolutionHybrid) {
   constexpr absl::string_view kTfProgram = R"mlir(
 func.func @main(%input: tensor<2x10x10x10xf32>, %filter: tensor<3x3x10x20xi8>) -> tensor<2x10x10x20xf32> {

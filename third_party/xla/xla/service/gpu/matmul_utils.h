@@ -182,9 +182,15 @@ StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
 // We should use this in code instead of AutotuneResult::TritonGemmKey.
 // This has some advantages, for example it can be used in hashmaps.
 struct TritonGemmConfig {
-  TritonGemmConfig() = default;
-  TritonGemmConfig(int block_m, int block_n, int block_k, int split_k,
-                   int num_stages, int num_warps);
+  constexpr TritonGemmConfig() = default;
+  constexpr TritonGemmConfig(int block_m, int block_n, int block_k, int split_k,
+                             int num_stages, int num_warps)
+      : block_m(block_m),
+        block_n(block_n),
+        block_k(block_k),
+        split_k(split_k),
+        num_stages(num_stages),
+        num_warps(num_warps) {}
 
   int block_m = 0;
   int block_n = 0;
