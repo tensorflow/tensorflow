@@ -1039,7 +1039,7 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
         "@local_tsl//tsl/profiler/lib:traceme",
     ] + if_gpu_is_configured([
-        ":precompiled_kernels",
+        ":make_batch_pointers",
         "//xla/service/gpu/runtime3:cholesky_thunk",
         "//xla/service/gpu/runtime3:triangular_solve_thunk",
     ]) + if_cuda_is_configured([
@@ -4305,26 +4305,32 @@ cc_library(
 )
 
 cc_library(
-    name = "precompiled_kernels",
-    srcs = if_gpu_is_configured(["precompiled_kernels.cc"]),
-    hdrs = if_gpu_is_configured(["precompiled_kernels.h"]),
+    name = "make_batch_pointers",
+    srcs = if_gpu_is_configured(["make_batch_pointers.cc"]),
+    hdrs = if_gpu_is_configured(["make_batch_pointers.h"]),
     visibility = ["//visibility:public"],
-    deps = if_gpu_is_configured([
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
+    deps = [
         "//xla:status",
         "//xla:statusor",
         "//xla:types",
         "//xla:util",
-        "//xla/stream_executor:device_memory",
         "//xla/stream_executor",
-        "//xla/stream_executor/gpu:asm_compiler",
-        "//xla/stream_executor/gpu:gpu_asm_opts",
+        "//xla/stream_executor:device_memory",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ] + if_cuda_is_configured([
+        ":make_batch_pointers_kernel",
     ]) + if_rocm_is_configured([
         "//xla/stream_executor/gpu:gpu_stream_header",
         "//xla/stream_executor/rocm:rocm_helpers",
     ]),
+)
+
+cuda_library(
+    name = "make_batch_pointers_kernel",
+    srcs = if_cuda_is_configured(["make_batch_pointers.cu.cc"]),
+    visibility = ["//visibility:public"],
+    deps = ["@local_config_cuda//cuda:cuda_headers"],
 )
 
 cc_library(

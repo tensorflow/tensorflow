@@ -13,19 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_PRECOMPILED_KERNELS_H_
-#define XLA_SERVICE_GPU_PRECOMPILED_KERNELS_H_
+#ifndef XLA_SERVICE_GPU_MAKE_BATCH_POINTERS_H_
+#define XLA_SERVICE_GPU_MAKE_BATCH_POINTERS_H_
+
+#include <cstddef>
+#include <cstdint>
 
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/types.h"
+#include "xla/types.h"  // IWYU pragma: keep
 
-// Hardcoded GPU kernels for various simple tasks.
-
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 // In GPU memory, does
 //
@@ -51,10 +50,10 @@ namespace gpu {
 //    driver and slow down *all* work on the GPU.  So to do this right, we'd
 //    need to allocate the host memory as pinned, one alloc per stream.  Then
 //    we'd need to manage this memory without leaks.  This becomes complex!
-Status MakeBatchPointers(se::Stream* stream, const se::GpuAsmOpts& asm_opts,
-                         se::DeviceMemoryBase base_ptr, int stride_bytes, int n,
+Status MakeBatchPointers(se::Stream* stream, se::DeviceMemoryBase base_ptr,
+                         size_t stride_bytes, size_t n,
                          se::DeviceMemoryBase ptrs_out);
 
-}  // namespace gpu
-}  // namespace xla
-#endif  // XLA_SERVICE_GPU_PRECOMPILED_KERNELS_H_
+}  // namespace xla::gpu
+
+#endif  // XLA_SERVICE_GPU_MAKE_BATCH_POINTERS_H_
