@@ -23,7 +23,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/simple_memory_arena.h"
@@ -394,7 +393,7 @@ TfLiteStatus ArenaPlanner::ReleaseNonPersistentMemory() {
 TfLiteStatus ArenaPlanner::AcquireNonPersistentMemory() {
   // First commit arena_ to allocate underlying buffer.
   bool reallocated;
-  TF_LITE_ENSURE_STATUS(arena_.Commit(context_, &reallocated));
+  TF_LITE_ENSURE_STATUS(arena_.Commit(&reallocated));
   // Resolve allocations for all tensors not on the persistent arena.
   TfLiteTensor* tensors = graph_info_->tensors();
   for (int i = 0; i < static_cast<int>(graph_info_->num_tensors()); ++i) {
@@ -424,9 +423,9 @@ void ArenaPlanner::GetAllocInfo(size_t* arena_size,
 
 TfLiteStatus ArenaPlanner::Commit(bool* reallocated) {
   bool arena_reallocated, persistent_arena_reallocated;
-  TF_LITE_ENSURE_STATUS(arena_.Commit(context_, &arena_reallocated));
+  TF_LITE_ENSURE_STATUS(arena_.Commit(&arena_reallocated));
   TF_LITE_ENSURE_STATUS(
-      persistent_arena_.Commit(context_, &persistent_arena_reallocated));
+      persistent_arena_.Commit(&persistent_arena_reallocated));
   *reallocated = arena_reallocated;
   *reallocated |= persistent_arena_reallocated;
   return kTfLiteOk;

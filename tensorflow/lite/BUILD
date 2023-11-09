@@ -220,7 +220,6 @@ cc_library(
     copts = tflite_copts_warnings(),
     deps = [
         ":graph_info",
-        ":kernel_api",
         ":memory_planner",
         ":simple_memory_arena",
         ":util",
@@ -237,7 +236,6 @@ cc_library(
     copts = tflite_copts_warnings() + ["-DTF_LITE_TENSORFLOW_PROFILER"],
     deps = [
         ":graph_info",
-        ":kernel_api",
         ":memory_planner",
         ":simple_memory_arena_with_profiler",
         ":util",

@@ -106,7 +106,7 @@ class SimpleMemoryArena {
     return arena_alignment_ + high_water_mark_ + padding;
   }
 
-  TfLiteStatus Commit(TfLiteContext* context, bool* arena_reallocated);
+  TfLiteStatus Commit(bool* arena_reallocated);
 
   TfLiteStatus ResolveAlloc(TfLiteContext* context,
                             const ArenaAllocWithUsageInterval& alloc,
