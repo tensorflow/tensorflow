@@ -429,8 +429,12 @@ const std::vector<PyArray>& PyArray::py_arrays_cached() {
   auto& py_arrays = this->py_arrays();
 
   if (py_arrays.empty()) {
-    auto ifrt_arrays = ifrt_array()->DisassembleIntoSingleDeviceArrays(
-        ifrt::ArrayCopySemantics::kReuseInput);
+    StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>> ifrt_arrays;
+    {
+      pybind11::gil_scoped_release gil_release;
+      ifrt_arrays = ifrt_array()->DisassembleIntoSingleDeviceArrays(
+          ifrt::ArrayCopySemantics::kReuseInput);
+    }
     if (!ifrt_arrays.ok()) {
       throw py::value_error(
           absl::StrCat("Failed to disassemble into single-device arrays: ",
