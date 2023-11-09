@@ -22,6 +22,14 @@ limitations under the License.
 extern "C" {
 #endif
 
+/// Checks whether the TFLite API has been initialized, throwing a Java exception
+/// otherwise.
+///
+/// @param env The JNIEnv for the current thread (which has to be attached to the
+///     JVM).
+/// @return Whether or not the TFLite API has been initialized. If this method
+///   returns false, no other JNI method should be called until the pending
+///   exception has been handled (typically by returning to Java).
 bool TfLiteCheckInitializedOrThrow(JNIEnv* env);
 
 #ifdef __cplusplus
