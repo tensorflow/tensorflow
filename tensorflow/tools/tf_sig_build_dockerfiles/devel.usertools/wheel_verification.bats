@@ -59,13 +59,9 @@ teardown_file() {
 @test "Wheel is installable" {
     python3 -m venv /tf/venv
     source /tf/venv/bin/activate
-<<<<<<< HEAD
-    python3 -m pip install "$TF_WHEEL"
+    python3 -m pip install "$TF_WHEEL" -f https://storage.googleapis.com/libtpu-releases/index.html
     # needed to avoid a dependency conflcit with `requests`
     python3 -m pip install "urllib3<2"
-=======
-    python3 -m pip install "$TF_WHEEL" -f https://storage.googleapis.com/libtpu-releases/index.html
->>>>>>> master/master
 }
 
 @test "TensorFlow is importable" {
