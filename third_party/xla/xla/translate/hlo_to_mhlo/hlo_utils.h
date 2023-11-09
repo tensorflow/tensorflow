@@ -59,22 +59,24 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
       ConvertPrimitiveTypeToMLIRType(xla_ty.element_type(), builder);
   if (!element_type_or.ok()) return element_type_or.status();
 
-  bool is_dynamic = false;
+  bool is_bounded_dynamic = false;
   int64_t rank = xla_ty.rank();
   llvm::SmallVector<int64_t, 4> shape(rank, mlir::ShapedType::kDynamic);
   llvm::SmallVector<int64_t, 4> bounds(rank, mlir::ShapedType::kDynamic);
   for (int64_t dim = 0; dim < rank; ++dim) {
     int64_t dim_size = xla_ty.dimensions(dim);
     if (xla_ty.is_dynamic_dimension(dim)) {
-      bounds[dim] = dim_size;
-      is_dynamic = true;
+      if (dim_size != Shape::kUnboundedSize) {
+        bounds[dim] = dim_size;
+        is_bounded_dynamic = true;
+      }
     } else {
       shape[dim] = dim_size;
     }
   }
   using mlir::mhlo::TypeExtensionsAttr;
   mlir::Attribute encoding;
-  if (is_dynamic) {
+  if (is_bounded_dynamic) {
     encoding = TypeExtensionsAttr::get(builder.getContext(), bounds);
   }
 
@@ -89,7 +91,7 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
   if (xla_ty.has_layout()) {
     auto layout = xla_ty.layout();
     if (LayoutUtil::IsSparse(layout)) {
-      if (is_dynamic)
+      if (is_bounded_dynamic)
         return Unimplemented(
             "MHLO doesn't support bounded dynamic shapes for sparse tensors");
       llvm::SmallVector<mlir::sparse_tensor::DimLevelType> dlts;

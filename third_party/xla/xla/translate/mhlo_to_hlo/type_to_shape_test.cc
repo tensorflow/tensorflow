@@ -138,8 +138,15 @@ TEST(TypeToShapeTest, ConvertTensorTypeToTypes) {
           ShapeUtil::MakeShape(PrimitiveType::F32, {8, 128}, {true, false})
               .ToProto()));
 
-  // Shape cannot represent dynamic shapes.
-  // TODO(b/115638799): Update once Shape can support dynamic shapes.
+  EXPECT_THAT(
+      TypeToShape(RankedTensorType::get({mlir::ShapedType::kDynamic, 784},
+                                        b.getF32Type()))
+          .ToProto(),
+      EqualsProto(ShapeUtil::MakeShape(PrimitiveType::F32,
+                                       {Shape::kUnboundedSize, 784},
+                                       {true, false})
+                      .ToProto()));
+
   EXPECT_THAT(TypeToShape(UnrankedTensorType::get(b.getF32Type())).ToProto(),
               EqualsProto(Shape().ToProto()));
 
