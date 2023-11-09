@@ -489,7 +489,8 @@ StatusOr<GpuCompiler::BackendCompileResult> NVPTXCompiler::CompileTargetBinary(
       (debug_module != nullptr ? debug_module->name() : "(unknown)"),
       relocatable, options);
 
-  if (maybe_cubin.status().code() == absl::StatusCode::kCancelled) {
+  if (maybe_cubin.status().code() == absl::StatusCode::kCancelled ||
+      maybe_cubin.status().code() == absl::StatusCode::kResourceExhausted) {
     return maybe_cubin.status();
   }
   return BackendCompileResult{std::move(ptx), std::move(maybe_cubin.value())};
@@ -586,6 +587,14 @@ StatusOr<std::vector<uint8_t>> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
                      absl::StatusCode::kCancelled) {
             // Register spilling has occurred during autotuning, this config
             // should not be tried further.
+            CHECK(options.is_autotuning_compilation);
+            cache_value->compilation_done = true;
+            cache_value->compilation_done_cv.SignalAll();
+            return maybe_cubin;
+          } else if (maybe_cubin.status().code() ==
+                     absl::StatusCode::kResourceExhausted) {
+            // Exhausting the register limit during autotuning is not a fatal
+            // error, we should just skip the problematic tiling.
             CHECK(options.is_autotuning_compilation);
             cache_value->compilation_done = true;
             cache_value->compilation_done_cv.SignalAll();
