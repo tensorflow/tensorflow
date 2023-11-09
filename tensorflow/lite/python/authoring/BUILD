@@ -27,6 +27,7 @@ py_strict_test(
     srcs_version = "PY2AND3",
     deps = [
         ":authoring",
+        #internal proto upb dep
         "//tensorflow:tensorflow_py",
     ],
 )
