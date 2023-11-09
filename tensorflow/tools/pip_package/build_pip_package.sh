@@ -215,23 +215,6 @@ function prepare_src() {
     cp -L \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
       "${TMPDIR}"
-    # Check if it is a tpu build
-    if [[ ${TPU_BUILD} == "1" ]]; then
-      # Check if libtpu.so exists
-      if [[ -f "./tensorflow/lib/libtpu.so" ]]; then
-        if [[ ! -L "${RUNFILES}/tensorflow/lib/libtpu.so" ]]; then
-          mkdir "$(real_path ${RUNFILES}/tensorflow/lib)"
-          ln -s $(real_path ./tensorflow/lib/libtpu.so) $(real_path ${RUNFILES}/tensorflow/lib/libtpu.so)
-          echo "Created symlink: $(real_path ./tensorflow/lib/libtpu.so) -> \
-            $(real_path ${RUNFILES}/tensorflow/lib/libtpu.so)"
-        else
-          echo "Symlink already exists: ${RUNFILES}/tensorflow/lib/libtpu.so"
-        fi
-      else
-        echo "Libtpu.so is not found in $(real_path ./tensorflow/lib/)"
-        exit 1
-      fi
-    fi
     cp -LR \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
       "${TMPDIR}"
