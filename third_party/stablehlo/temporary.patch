@@ -1,19 +1,3 @@
-diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
---- stablehlo/BUILD.bazel
-+++ stablehlo/BUILD.bazel
-@@ -1315,8 +1315,8 @@
- test_suite(
-     name = "stablehlo_ci_tests",
-     tests = [
-+        "//stablehlo/conversions/tosa/tests:stablehlo_tosa_tests",
-+        "//stablehlo/testdata:stablehlo_testdata_tests",
-         "//stablehlo/tests:stablehlo_tests",
--        "//stablehlo/testdata:stablehlo_testdata_tests",
--        "//stablehlo/conversions/tosa/tests:stablehlo_tosa_tests"
--    ],
--)
-+    ],
-+)
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
@@ -172,25 +156,6 @@ diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists
  add_subdirectory(integrations)
  add_subdirectory(reference)
  add_subdirectory(tests)
-diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
---- stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
-+++ stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
-@@ -19,6 +19,7 @@
- func.func @iota_dimension_0() -> tensor<4x8xf32> {
-   // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"()
-   // CHECK-SAME{LITERAL}: <{value = dense<[[0.000000e+00], [1.000000e+00], [2.000000e+00], [3.000000e+00]]> : tensor<4x1xf32>}>
-+  // CHECK-DAG: %[[VAR1:.*]] = tosa.tile %[[VAR0]] {multiples = array<i64: 1, 8>}
-   %0 = "stablehlo.iota"() {iota_dimension = 0 : i64} : () -> (tensor<4x8xf32>)
-   return %0 : tensor<4x8xf32>
- }
-@@ -27,6 +28,7 @@
- func.func @iota_dimension_1() -> tensor<4x8xi32> {
-   // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"()
-   // CHECK-SAME{LITERAL}: <{value = dense<[[0, 1, 2, 3, 4, 5, 6, 7]]> : tensor<1x8xi32>}>
-+  // CHECK-DAG: %[[VAR1:.*]] = tosa.tile %[[VAR0]] {multiples = array<i64: 4, 1>}
-   %0 = "stablehlo.iota"() {iota_dimension = 1 : i64} : () -> (tensor<4x8xi32>)
-   return %0 : tensor<4x8xi32>
- }
 diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
 --- stablehlo/stablehlo/dialect/Base.cpp
 +++ stablehlo/stablehlo/dialect/Base.cpp
@@ -227,25 +192,6 @@ diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Ba
  // This interface is implemented by both StableHLO and MHLO dialects
  // and is used as the foundation for sharing verification, type inference and
  // prettyprinting logic between them.
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
---- stablehlo/stablehlo/dialect/StablehloOps.cpp
-+++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -1543,6 +1543,7 @@
-     p << " across dimensions = [";
-     llvm::interleaveComma(getDimensions().getValues<int64_t>(), p);
-     p << "]";
-+    p.printOptionalAttrDict(getOperation()->getAttrs(), {"dimensions"});
-     p << " : ";
-     p.printFunctionalType(*this);
-   } else {
-@@ -1705,6 +1706,7 @@
-   if (parser.parseKeyword("across") || parser.parseKeyword("dimensions") ||
-       parser.parseEqual() ||
-       parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, parseDim) ||
-+      parser.parseOptionalAttrDict(result.attributes) ||
-       parser.parseColon() || parser.parseType(reduceOpFnType) ||
-       parser.parseOptionalLocationSpecifier(explicitLoc))
-     return failure();
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD b/stablehlo/stablehlo/experimental/BUILD
 --- stablehlo/stablehlo/experimental/BUILD
 +++ stablehlo/stablehlo/experimental/BUILD
@@ -3766,25 +3712,6 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
-diff --ruN a/stablehlo/stablehlo/tests/print_reduce.mlir b/stablehlo/stablehlo/tests/print_reduce.mlir
---- stablehlo/stablehlo/tests/print_reduce.mlir
-+++ stablehlo/stablehlo/tests/print_reduce.mlir
-@@ -168,3 +168,15 @@
- 
-   func.return %0: tensor<4xf32>
- }
-+
-+// The test case makes sure any custom attrs set on the reduce-op are
-+// printed/parsed when pretty-printed.
-+
-+// CHECK-LABEL:  func @pretty_print_with_custom_attr
-+// CHECK:          applies stablehlo.add across dimensions = [1] {custom_user_attr = 1 : i64}
-+
-+func.func @pretty_print_with_custom_attr(%arg0: tensor<2x64x13xf32>) -> tensor<2x13xf32> {
-+  %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
-+  %1 = stablehlo.reduce(%arg0 init: %0) applies stablehlo.add across dimensions = [1] {custom_user_attr = 1 : i64} : (tensor<2x64x13xf32>, tensor<f32>) -> tensor<2x13xf32>
-+  return %1 : tensor<2x13xf32>
-+}
 diff --ruN a/stablehlo/stablehlo/transforms/Passes.h b/stablehlo/stablehlo/transforms/Passes.h
 --- stablehlo/stablehlo/transforms/Passes.h
 +++ stablehlo/stablehlo/transforms/Passes.h
