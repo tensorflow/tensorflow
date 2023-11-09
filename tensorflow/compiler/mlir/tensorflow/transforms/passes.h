@@ -458,11 +458,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateParallelExecuteToIslandsPass(
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateAnnotateParameterReplicationPass();
 
-// Creates a pass that marks unsupported ops in device cluster for outside
-// compilation.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateMarkOpsForOutsideCompilationPass();
-
 // Creates a pass that merges control flow with similar predicates.
 std::unique_ptr<OperationPass<ModuleOp>> CreateMergeControlFlowPass();
 
@@ -670,7 +665,6 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_LOCALIZEVARHANDLESPASS
 #define GEN_PASS_DECL_LOWERQUANTIZEDPASS
 #define GEN_PASS_DECL_MARKINPUTOUTPUTALIASESPASS
-#define GEN_PASS_DECL_MARKOPSFOROUTSIDECOMPILATIONPASS
 #define GEN_PASS_DECL_MATERIALIZEPASSTHROUGHOP
 #define GEN_PASS_DECL_MERGECONTROLFLOWPASS
 #define GEN_PASS_DECL_MOVETRANSPOSESPASS
