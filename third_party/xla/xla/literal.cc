@@ -2213,9 +2213,6 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
     case S4:
       *proto->mutable_s4s() = std::string(
           reinterpret_cast<const char*>(data<s4>().data()), size_bytes_dense());
-      if (!kLittleEndian) {
-        ConvertEndianShort(proto->mutable_s4s());
-      }
       break;
     case S8:
       proto->set_s8s(static_cast<const signed char*>(data<int8_t>().data()),
@@ -2224,9 +2221,6 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
     case U4:
       *proto->mutable_u4s() = std::string(
           reinterpret_cast<const char*>(data<u4>().data()), size_bytes_dense());
-      if (!kLittleEndian) {
-        ConvertEndianShort(proto->mutable_u4s());
-      }
       break;
     case U8:
       proto->set_u8s(static_cast<const unsigned char*>(data<uint8_t>().data()),
@@ -2374,9 +2368,6 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       const std::string& s(proto.s4s());
       TF_RET_CHECK(data<s4>().size() * sizeof(s4) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
-      if (!kLittleEndian) {
-        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
-      }
     } break;
     case S8: {
       auto s8_data = data<int8_t>();
@@ -2387,9 +2378,6 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       const std::string& s(proto.u4s());
       TF_RET_CHECK(data<u4>().size() * sizeof(u4) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
-      if (!kLittleEndian) {
-        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
-      }
     } break;
     case U8: {
       auto u8_data = data<uint8_t>();
