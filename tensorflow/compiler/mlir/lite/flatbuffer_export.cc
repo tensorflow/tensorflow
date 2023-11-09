@@ -538,14 +538,16 @@ class Translator {
       const std::unordered_set<std::string>& tags,
       OpOrArgNameMapper* op_or_arg_name_mapper,
       const std::map<std::string, std::string>& metadata,
-      bool serialize_stablehlo_ops);
+      bool serialize_stablehlo_ops,
+      std::optional<size_t> custom_option_alignment);
 
  private:
   enum class OpType : char { kTfliteBuiltin, kSelectTf, kCustomOp };
   explicit Translator(ModuleOp module, const toco::TocoFlags& toco_flags,
                       const std::unordered_set<std::string>& saved_model_tags,
                       OpOrArgNameMapper* op_or_arg_name_mapper,
-                      const std::map<std::string, std::string>& metadata)
+                      const std::map<std::string, std::string>& metadata,
+                      std::optional<size_t> custom_option_alignment)
       : module_(module),
         name_mapper_(*op_or_arg_name_mapper),
         builder_(kInitialBufferSize),
@@ -556,7 +558,8 @@ class Translator {
         metadata_(metadata),
         supported_backends_(toco_flags.supported_backends().begin(),
                             toco_flags.supported_backends().end()),
-        use_buffer_offset_(toco_flags.use_buffer_offset()) {
+        use_buffer_offset_(toco_flags.use_buffer_offset()),
+        custom_option_alignment_(custom_option_alignment) {
     // The first buffer must be empty according to the schema definition.
     empty_buffer_ = tflite::CreateBuffer(builder_);
     buffers_.push_back(empty_buffer_);
@@ -844,6 +847,8 @@ class Translator {
   bool use_buffer_offset_ = false;
 
   bool require_use_buffer_offset_ = false;
+
+  std::optional<size_t> custom_option_alignment_ = std::nullopt;
 };
 
 bool Translator::EstimateArithmeticCount(int64_t* count) {
@@ -1310,11 +1315,16 @@ BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
         /*builtin_options=*/0,
         /*custom_options=*/0, tflite::CustomOptionsFormat_FLEXBUFFERS);
   }
+  if (custom_option_alignment_.has_value()) {
+    builder_.ForceVectorAlignment(results.size(), sizeof(uint8_t),
+                                  custom_option_alignment_.value());
+  }
+  auto custom_option_fbs_vector =
+      builder_.CreateVector<uint8_t>(custom_option_vector);
   return tflite::CreateOperator(
       builder_, opcode_index, builder_.CreateVector(operands),
       builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
-      /*builtin_options=*/0,
-      builder_.CreateVector<uint8_t>(custom_option_vector),
+      /*builtin_options=*/0, custom_option_fbs_vector,
       tflite::CustomOptionsFormat_FLEXBUFFERS);
 }
 
@@ -2844,21 +2854,23 @@ std::optional<std::string> Translator::Translate(
     const std::unordered_set<std::string>& tags,
     OpOrArgNameMapper* op_or_arg_name_mapper,
     const std::map<std::string, std::string>& metadata,
-    bool serialize_stablehlo_ops) {
+    bool serialize_stablehlo_ops,
+    std::optional<size_t> custom_option_alignment) {
   OpOrArgLocNameMapper default_op_or_arg_name_mapper;
   if (!op_or_arg_name_mapper)
     op_or_arg_name_mapper = &default_op_or_arg_name_mapper;
   if (!UpdateEntryFunction(module)) return std::nullopt;
   if (!IsValidTFLiteMlirModule(module)) return std::nullopt;
   Translator translator(module, toco_flags, tags, op_or_arg_name_mapper,
-                        metadata);
+                        metadata, custom_option_alignment);
   translator.convert_stablehlo_ = serialize_stablehlo_ops;
   auto ret = translator.TranslateInternal();
   if (translator.require_use_buffer_offset_) {
     auto new_toco_flags = toco_flags;
     new_toco_flags.set_use_buffer_offset(true);
     Translator new_translator(module, new_toco_flags, tags,
-                              op_or_arg_name_mapper, metadata);
+                              op_or_arg_name_mapper, metadata,
+                              custom_option_alignment);
     return new_translator.TranslateInternal();
   }
   return ret;
@@ -3151,6 +3163,10 @@ void Translator::AppendBufferData(std::string& result) {
 
   for (auto& it : custom_op_data_map_) {
     while (result.size() % 16 != 0) result += '\0';
+    if (custom_option_alignment_.has_value()) {
+      while (result.size() % custom_option_alignment_.value() != 0)
+        result += '\0';
+    }
     auto buffer = std::string(it.second.begin(), it.second.end());
     int64_t offset = result.size();
     int64_t size = it.second.size();
@@ -3365,7 +3381,8 @@ bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
                                        bool serialize_stablehlo_ops) {
   auto maybe_translated = Translator::Translate(
       module, options.toco_flags, options.saved_model_tags,
-      options.op_or_arg_name_mapper, options.metadata, serialize_stablehlo_ops);
+      options.op_or_arg_name_mapper, options.metadata, serialize_stablehlo_ops,
+      options.custom_option_alignment);
   if (!maybe_translated) return false;
   *serialized_flatbuffer = std::move(*maybe_translated);
   return true;
