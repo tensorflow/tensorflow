@@ -110,6 +110,7 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/tensor_float_32_utils.h"
 #include "triton/Conversion/NVGPUToLLVM/NVGPUToLLVMPass.h"
 #include "triton/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.h"
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
@@ -1445,6 +1446,7 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
     }
 
     const bool allow_tf32 =
+        tsl::tensor_float_32_execution_enabled() &&
         absl::c_none_of(dot_instr->precision_config().operand_precision(),
                         [](const int precision) {
                           return precision != PrecisionConfig::DEFAULT;

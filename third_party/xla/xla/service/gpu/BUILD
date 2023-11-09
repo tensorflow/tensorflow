@@ -491,7 +491,7 @@ cc_library(
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
+        "@local_tsl//tsl/platform:tensor_float_32_utils",
         "@triton//:TritonDialects",
         "@triton//:TritonTransforms",
     ] + if_cuda_is_configured([
@@ -1266,6 +1266,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:tensor_float_32_utils",
     ],
 )
 
