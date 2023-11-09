@@ -258,6 +258,11 @@ class PjRtCApiClient : public PjRtClient {
 
   absl::string_view platform_version() const override;
 
+  std::optional<PjRtPluginAttributes> plugin_attributes() const override {
+    return PjRtPluginAttributes{c_api_->pjrt_api_version.major_version,
+                                c_api_->pjrt_api_version.minor_version};
+  }
+
   // TODO(b/244756954): Rethink this function altogether
   PjRtRuntimeType runtime_type() const override {
     return PjRtRuntimeType::kTfrt;

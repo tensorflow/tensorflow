@@ -114,6 +114,8 @@ class MockClient final : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::string_view, runtime_type, (), (const, final));
   MOCK_METHOD(absl::string_view, platform_name, (), (const, final));
   MOCK_METHOD(absl::string_view, platform_version, (), (const, final));
+  MOCK_METHOD((absl::flat_hash_map<std::string, Client::ClientAttribute>),
+              attributes, (), (const, final));
   MOCK_METHOD(int, device_count, (), (const, final));
   MOCK_METHOD(PlatformId, platform_id, (), (const, final));
   MOCK_METHOD(int, addressable_device_count, (), (const, final));
