@@ -9,8 +9,8 @@ RUN apt-get update && \
 # Install Android SDK.
 ENV ANDROID_SDK_FILENAME commandlinetools-linux-6858069_latest.zip
 ENV ANDROID_SDK_URL https://dl.google.com/android/repository/${ANDROID_SDK_FILENAME}
-ENV ANDROID_API_LEVEL 23
-ENV ANDROID_NDK_API_LEVEL 21
+ENV ANDROID_API_LEVEL 30
+ENV ANDROID_NDK_API_LEVEL 30
 # Build Tools Version liable to change.
 ENV ANDROID_BUILD_TOOLS_VERSION 31.0.0
 ENV ANDROID_SDK_HOME ${ANDROID_DEV_HOME}/sdk
