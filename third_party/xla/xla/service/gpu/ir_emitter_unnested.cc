@@ -3092,9 +3092,13 @@ Status IrEmitterUnnested::BuildInitializerThunk(
   // initial value must be a scalar memref.
   TF_RET_CHECK(init_value->shape().rank() == 0);
 
-  TF_ASSIGN_OR_RETURN(std::optional<std::unique_ptr<Thunk>> constant_init_thunk,
-                      BuildConstantInitializerThunk(*ir_emitter_context_, op,
-                                                    instr, init_value, dest));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dest_slice,
+                      GetAllocationSlice(dest));
+
+  TF_ASSIGN_OR_RETURN(
+      std::optional<std::unique_ptr<Thunk>> constant_init_thunk,
+      BuildConstantInitializerThunk(*ir_emitter_context_, op, instr, init_value,
+                                    dest, dest_slice));
   if (constant_init_thunk) {
     AddThunkToThunkSequence(*std::move(constant_init_thunk));
     return OkStatus();

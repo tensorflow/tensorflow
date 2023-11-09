@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/thunk_util.h"
@@ -71,6 +72,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/translate/mhlo_to_hlo/location_exporter.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -341,7 +343,8 @@ Status EmitExtraOutputsForReduce(llvm::IRBuilder<>* builder,
 StatusOr<std::unique_ptr<Thunk>> BuildFusedInitializerThunk(
     IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
     mlir::lmhlo::FusionOp fusion_op, const HloComputation* fused_computation,
-    const HloInstruction* fusion_root, ElementalIrEmitter& elemental_emitter,
+    const HloInstruction* fusion_root, mlir::Value dest,
+    BufferAllocation::Slice dest_slice, ElementalIrEmitter& elemental_emitter,
     KernelReuseCache& kernel_cache, int output_index,
     llvm::IRBuilder<>* builder) {
   const HloReduceInstruction* reduce =
@@ -349,13 +352,10 @@ StatusOr<std::unique_ptr<Thunk>> BuildFusedInitializerThunk(
   TF_RET_CHECK(reduce);
 
   const HloInstruction* init_value = reduce->init_values()[0];
-  mlir::Value dest = ir_emitter_context.emit_ir_from_hlo()
-                         ? nullptr
-                         : fusion_op.getOutputBuffers()[output_index];
   TF_ASSIGN_OR_RETURN(
       std::optional<std::unique_ptr<Thunk>> constant_init_thunk,
       BuildConstantInitializerThunk(ir_emitter_context, fusion_op, fusion_root,
-                                    init_value, dest));
+                                    init_value, dest, dest_slice));
   if (constant_init_thunk) {
     return *std::move(constant_init_thunk);
   }
@@ -985,16 +985,63 @@ StatusOr<FusionEmissionResult> ReductionFusion::Emit(
   const HloComputation* fused_computation =
       fusion.fused_instructions_computation();
   if (!reduction_codegen_info->IsRaceFree()) {
+    // We need to get the dest slice by traversing the slice assigned to
+    // fusion, because instructions inside fusion don't have buffer assignment.
+    //
+    // The order of fusion roots is determined by its position in the result
+    // tuple. For example, in the following fused computation
+    //
+    // %fused_computation {
+    //   %a = ...
+    //   &b = ...
+    //   ROOT %root = tuple(%a, %b)
+    // }
+    //
+    // The fusion root with index = 0 is %a, and the fusion root %b has index 1.
+    // Therefore we can get the ordered slices by calling ForEachSubshape on the
+    // result shape.
+    std::vector<BufferAllocation::Slice> slices;
+    if (ir_emitter_context.emit_ir_from_hlo()) {
+      TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+          fusion.shape(), [&](const Shape& subshape, ShapeIndex index) {
+            if (!ShapeUtil::IsLeafIndex(fusion.shape(), index)) {
+              return OkStatus();
+            }
+
+            TF_ASSIGN_OR_RETURN(
+                BufferAllocation::Slice slice,
+                ir_emitter_context.buffer_assignment().GetUniqueSlice(&fusion,
+                                                                      index));
+            slices.push_back(slice);
+            return OkStatus();
+          }));
+    }
+
     absl::Span<const HloInstruction* const> fusion_roots =
         analysis_.fusion_roots();
     for (int i = 0; i < fusion_roots.size(); ++i) {
       const HloInstruction* fusion_root = fusion_roots[i];
+
+      mlir::Value dest = ir_emitter_context.emit_ir_from_hlo()
+                             ? nullptr
+                             : fusion_op.getOutputBuffers()[i];
+
+      BufferAllocation::Slice dest_slice;
+      if (ir_emitter_context.emit_ir_from_hlo()) {
+        dest_slice = slices[i];
+      } else {
+        TF_ASSIGN_OR_RETURN(
+            dest_slice,
+            GetAllocationSlice(dest, ir_emitter_context.allocations()));
+      }
+
       if (IsReductionFromOrToContiguousDimensions(*fusion_root)) {
         TF_ASSIGN_OR_RETURN(
             result.thunks.emplace_back(),
-            BuildFusedInitializerThunk(
-                ir_emitter_context, fusion, fusion_op, fused_computation,
-                fusion_root, elemental_emitter, kernel_cache, i, builder));
+            BuildFusedInitializerThunk(ir_emitter_context, fusion, fusion_op,
+                                       fused_computation, fusion_root, dest,
+                                       dest_slice, elemental_emitter,
+                                       kernel_cache, i, builder));
       }
     }
   }
