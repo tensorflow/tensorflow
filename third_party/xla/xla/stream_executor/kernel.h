@@ -352,6 +352,14 @@ class KernelArgsDeviceMemoryArray : public KernelArgsArrayBase {
     return device_memory_args_;
   }
 
+  const void *device_memory_ptr(size_t index) const {
+    return device_memory_args_[index].opaque();
+  }
+
+  size_t device_memory_size(size_t index) const {
+    return device_memory_args_[index].size();
+  }
+
  private:
   absl::InlinedVector<DeviceMemoryBase, 4> device_memory_args_;
   size_t shared_memory_bytes_ = 0;
@@ -643,9 +651,9 @@ class KernelArgsPackedTuple : public KernelArgsPackedArrayBase {
   using Storage = std::tuple<
       typename internal::PackedArgType<absl::remove_cvref_t<Args>>::Type...>;
 
-  explicit KernelArgsPackedTuple(size_t shared_memory_bytes, Args... args)
-      : shared_memory_bytes_(shared_memory_bytes),
-        storage_(internal::PackArg(std::forward<Args>(args))...) {
+  explicit KernelArgsPackedTuple(Args... args, size_t shared_memory_bytes)
+      : storage_(internal::PackArg(std::forward<Args>(args))...),
+        shared_memory_bytes_(shared_memory_bytes) {
     InitializeArgumentAddresses(std::make_index_sequence<kSize>{});
   }
 
@@ -683,18 +691,26 @@ class KernelArgsPackedTuple : public KernelArgsPackedArrayBase {
     ((argument_addresses_[Is] = &std::get<Is>(storage_)), ...);
   }
 
-  // Shared memory required by a kernel.
-  size_t shared_memory_bytes_ = 0;
-
   // Storage for packed kernel arguments.
   Storage storage_;
+
+  // Shared memory required by a kernel.
+  size_t shared_memory_bytes_ = 0;
 
   // Pointers into `storage_`.
   std::array<const void *, kSize> argument_addresses_;
 };
 
+// Packs the given arguments into a KernelArgsPackedTuple.
+template <typename... Args>
+std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(int64_t shmem_bytes,
+                                                          Args... args) {
+  using PackedArgs = KernelArgsPackedTuple<Args...>;
+  return std::make_unique<PackedArgs>(std::forward<Args>(args)..., shmem_bytes);
+}
+
 // Packs the given arguments into a KernelArgsPackedTuple with compile-time type
-// checks.
+// checks that arguments are compatible with TypedKernel signature.
 template <typename... Params, typename... Args>
 std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
     const TypedKernel<Params...> &kernel, Args... args) {
@@ -704,7 +720,7 @@ std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
   PackedParams::template CheckCompatibleStaticAssert<Args...>();
 
   int64_t shmem_bytes = kernel.metadata().shared_memory_bytes().value_or(0);
-  return std::make_unique<PackedArgs>(shmem_bytes, std::forward<Args>(args)...);
+  return std::make_unique<PackedArgs>(std::forward<Args>(args)..., shmem_bytes);
 }
 
 }  // namespace stream_executor
