@@ -426,6 +426,7 @@ py_strict_library(
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:object_identity",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -449,6 +450,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/module",
+        "//tensorflow/python/ops:io_ops_gen",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/training:server_lib",

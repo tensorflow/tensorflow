@@ -126,101 +126,93 @@ class ShardByDevicePolicy(ShardingCallback):
     return self.callback(shardable_tensors)  # pylint: disable=no-value-for-parameter
 
 
-class _SingleDeviceSaver:
-  """Saves and restores checkpoints from the current device."""
+def _single_task_save(
+    file_prefix: tensor_lib.Tensor,
+    tensor_slice_dict: TensorSliceDict,
+    options: "checkpoint_options.CheckpointOptions | None" = None,
+) -> ops.Operation:
+  """Save the saveable objects to a checkpoint with `file_prefix`.
 
-  __slots__ = ["_tensor_slice_dict"]
+  Args:
+    file_prefix: A string or scalar string Tensor containing the prefix to
+      save under.
+    tensor_slice_dict: A dict mapping checkpoint key -> slice_spec -> tensor.
+      Tensors in this structure must belong to the same task, but may belong to
+      different devices within that task.
+    options: Optional `CheckpointOptions` object.
 
-  def __init__(self, tensor_slice_dict: TensorSliceDict):
-    """Specify a list of `SaveableObject`s to save and restore.
-
-    Args:
-      tensor_slice_dict: A dict mapping checkpoint key -> slice_spec -> tensor.
-    """
-    self._tensor_slice_dict = tensor_slice_dict
-
-  def save(
-      self,
-      file_prefix: tensor_lib.Tensor,
-      options: "checkpoint_options.CheckpointOptions | None" = None,
-  ) -> ops.Operation:
-    """Save the saveable objects to a checkpoint with `file_prefix`.
-
-    Args:
-      file_prefix: A string or scalar string Tensor containing the prefix to
-        save under.
-      options: Optional `CheckpointOptions` object.
-
-    Returns:
-      An `Operation`, or None when executing eagerly.
-    """
-    options = options or checkpoint_options.CheckpointOptions()
-    tensor_names = []
-    tensors = []
-    slice_specs = []
-    for checkpoint_key, tensor_slices in self._tensor_slice_dict.items():
-      for slice_spec, tensor in tensor_slices.items():
-        if isinstance(tensor, saveable_object.SaveSpec):
-          tensor_value = tensor.tensor
-          # A tensor value of `None` indicates that this SaveableObject gets
-          # recorded in the object graph, but that no value is saved in the
-          # checkpoint.
-          if tensor_value is not None:
-            tensor_names.append(tensor.name)
-            tensors.append(tensor_value)
-            slice_specs.append(tensor.slice_spec)
-        else:
-          tensor_names.append(checkpoint_key)
-          tensors.append(tensor)
-          slice_specs.append(slice_spec)
-    save_device = options.experimental_io_device or (
-        len(tensors) and saveable_object_util.set_cpu0(tensors[0].device))
-    save_device = save_device or "cpu:0"
-    with ops.device(save_device):
-      return io_ops.save_v2(file_prefix, tensor_names, slice_specs, tensors)
-
-  def restore(
-      self,
-      file_prefix: tensor_lib.Tensor,
-      options: "checkpoint_options.CheckpointOptions | None" = None
-  ) -> TensorSliceDict:
-    """Restore the saveable objects from a checkpoint with `file_prefix`.
-
-    Args:
-      file_prefix: A string or scalar string Tensor containing the prefix for
-        files to read from.
-      options: Optional `CheckpointOptions` object.
-
-    Returns:
-      A restored tensor dict (maps checkpoint_key -> slice_spec -> tensor).
-    """
-    options = options or checkpoint_options.CheckpointOptions()
-    tensor_names = []
-    tensor_dtypes = []
-    slice_specs = []
-
-    for checkpoint_key, tensor_slices in self._tensor_slice_dict.items():
-      for slice_spec, tensor in tensor_slices.items():
-        tensor_dtypes.append(tensor.dtype)
-        if isinstance(tensor, saveable_object.SaveSpec):
-          slice_specs.append(tensor.slice_spec)
+  Returns:
+    An `Operation`, or None when executing eagerly.
+  """
+  options = options or checkpoint_options.CheckpointOptions()
+  tensor_names = []
+  tensors = []
+  slice_specs = []
+  for checkpoint_key, tensor_slices in tensor_slice_dict.items():
+    for slice_spec, tensor in tensor_slices.items():
+      if isinstance(tensor, saveable_object.SaveSpec):
+        tensor_value = tensor.tensor
+        # A tensor value of `None` indicates that this SaveableObject gets
+        # recorded in the object graph, but that no value is saved in the
+        # checkpoint.
+        if tensor_value is not None:
           tensor_names.append(tensor.name)
-        else:
-          slice_specs.append(slice_spec)
-          tensor_names.append(checkpoint_key)
+          tensors.append(tensor_value)
+          slice_specs.append(tensor.slice_spec)
+      else:
+        tensor_names.append(checkpoint_key)
+        tensors.append(tensor)
+        slice_specs.append(slice_spec)
+  save_device_spec = options.experimental_io_device or (
+      len(tensors) and saveable_object_util.set_cpu0(tensors[0].device))
+  save_device_spec = save_device_spec or "cpu:0"
+  with ops.device(save_device_spec):
+    return io_ops.save_v2(file_prefix, tensor_names, slice_specs, tensors)
 
-    restore_device = options.experimental_io_device or "cpu:0"
-    with ops.device(restore_device):
-      restored_tensors = io_ops.restore_v2(
-          file_prefix, tensor_names, slice_specs, tensor_dtypes)
 
-    restored_tensor_dict = {}
-    for checkpoint_key, tensor_slices in self._tensor_slice_dict.items():
-      for slice_spec in tensor_slices:
-        restored_tensor = restored_tensors.pop(0)
-        restored_tensor_dict.setdefault(checkpoint_key, {})[slice_spec] = (
-            restored_tensor)
-    return restored_tensor_dict
+def _single_task_restore(
+    file_prefix: tensor_lib.Tensor,
+    tensor_slice_dict: TensorSliceDict,
+    options: "checkpoint_options.CheckpointOptions | None" = None
+) -> TensorSliceDict:
+  """Restore the saveable objects from a checkpoint with `file_prefix`.
+
+  Args:
+    file_prefix: A string or scalar string Tensor containing the prefix for
+      files to read from.
+    tensor_slice_dict: A dict mapping checkpoint key -> slice_spec -> tensor.
+    options: Optional `CheckpointOptions` object.
+
+  Returns:
+    A restored tensor dict (maps checkpoint_key -> slice_spec -> tensor).
+  """
+  options = options or checkpoint_options.CheckpointOptions()
+  tensor_names = []
+  tensor_dtypes = []
+  slice_specs = []
+
+  for checkpoint_key, tensor_slices in tensor_slice_dict.items():
+    for slice_spec, tensor in tensor_slices.items():
+      tensor_dtypes.append(tensor.dtype)
+      if isinstance(tensor, saveable_object.SaveSpec):
+        slice_specs.append(tensor.slice_spec)
+        tensor_names.append(tensor.name)
+      else:
+        slice_specs.append(slice_spec)
+        tensor_names.append(checkpoint_key)
+
+  restore_device_spec = options.experimental_io_device or "cpu:0"
+  with ops.device(restore_device_spec):
+    restored_tensors = io_ops.restore_v2(
+        file_prefix, tensor_names, slice_specs, tensor_dtypes)
+
+  restored_tensor_dict = {}
+  for checkpoint_key, tensor_slices in tensor_slice_dict.items():
+    for slice_spec in tensor_slices:
+      restored_tensor = restored_tensors.pop(0)
+      restored_tensor_dict.setdefault(checkpoint_key, {})[slice_spec] = (
+          restored_tensor)
+  return restored_tensor_dict
 
 
 def sharded_filename(
@@ -329,13 +321,16 @@ class MultiDeviceSaver:
     self._keys_to_restore_fn = {}
     self._restore_fn_to_keys = {}
 
-    # Extract serialized tensors and separate by device.
-    tensors_by_device = {}  # device -> checkpoint key -> (slice_spec ->) tensor
+    # Extract serialized tensors and separate by task, which contains 1 or more
+    # devices. A DeviceSpec specifies both the task and device.
+
+    # device_spec -> checkpoint key -> (slice_spec ->) tensor
+    self._tensors_by_task = {}
 
     for obj, tensor_dict in serialized_tensors.items():
       restore_fn = _restore_noop if obj is None else obj._restore_from_tensors
 
-      # Divide tensor_dict by device.
+      # Divide tensor_dict by task.
       for checkpoint_key, maybe_tensor in tensor_dict.items():
         if not isinstance(maybe_tensor, dict):
           # Make sure that maybe_tensor is structured as {slice_spec -> tensor}.
@@ -352,13 +347,12 @@ class MultiDeviceSaver:
           self._restore_fn_to_keys.setdefault(restore_fn, []).append(
               (checkpoint_key, slice_spec))
 
-          host_device = saveable_object_util.set_cpu0(tensor.device)
-          (tensors_by_device
-           .setdefault(host_device, {})
+          # By setting the device within the DeviceSpec to CPU:0, we ensure that
+          # we group the tensors by task.
+          tensor_task = saveable_object_util.set_cpu0(tensor.device)
+          (self._tensors_by_task
+           .setdefault(tensor_task, {})
            .setdefault(checkpoint_key, {})[slice_spec]) = tensor
-    self._single_device_savers = {
-        device: _SingleDeviceSaver(tensor_slice_dict)
-        for device, tensor_slice_dict in tensors_by_device.items()}
 
     self._registered_savers = {}
     if registered_savers:
@@ -489,31 +483,32 @@ class MultiDeviceSaver:
                 f"string type tensors. Got {maybe_saved_prefixes}.")
           saved_prefixes.extend(flattened_saved_prefixes)
 
-      # (Default saver) Save with single device savers.
-      num_shards = len(self._single_device_savers)
+      # Save the shards.
+      num_shards = len(self._tensors_by_task)
       sharded_saves = []
       num_shards_tensor = constant_op.constant(num_shards, name="num_shards")
-      last_device = None
-      for shard, (device, saver) in enumerate(
-          sorted(self._single_device_savers.items())):
-        last_device = device
-        with ops.device(saveable_object_util.set_cpu0(device)):
+      last_device_spec = None
+      for shard, (device_spec, tensor_slice_dict) in enumerate(
+          sorted(self._tensors_by_task.items())):
+        last_device_spec = device_spec
+        with ops.device(saveable_object_util.set_cpu0(device_spec)):
           shard_prefix = sharded_filename(tmp_checkpoint_prefix, shard,
                                           num_shards_tensor)
         saved_prefixes.append(shard_prefix)
-        with ops.device(device):
-          # _SingleDeviceSaver will use the CPU device when necessary, but
+        with ops.device(device_spec):
+          # _single_task_save will use the CPU device when necessary, but
           # initial read operations should be placed on the SaveableObject's
           # device.
-          sharded_saves.append(saver.save(shard_prefix, options))
+          sharded_saves.append(
+              _single_task_save(shard_prefix, tensor_slice_dict, options))
 
       with ops.control_dependencies(sharded_saves):
         # Merge on the io_device if specified, otherwise co-locates the merge op
         # with the last device used.
-        merge_device = (
+        merge_device_spec = (
             options.experimental_io_device or
-            saveable_object_util.set_cpu0(last_device))
-        with ops.device(merge_device):
+            saveable_object_util.set_cpu0(last_device_spec))
+        with ops.device(merge_device_spec):
           # V2 format write path consists of a metadata merge step.  Once
           # merged, attempts to delete the temporary directory,
           # "<user-fed prefix>_temp".
@@ -521,10 +516,10 @@ class MultiDeviceSaver:
               saved_prefixes, file_prefix, delete_old_dirs=True)
 
     # Since this will causes a function re-trace on each save, limit this to the
-    # cases where it is needed: eager and when there are multiple tasks/single
-    # device savers. Note that the retrace is needed to ensure we pickup the
-    # latest values of options like experimental_io_device.
-    if context.executing_eagerly() and len(self._single_device_savers) > 1:
+    # cases where it is needed: eager and when there are multiple tasks. Note
+    # that the retrace is needed to ensure we pickup the latest values of
+    # options like experimental_io_device.
+    if context.executing_eagerly() and len(self._tensors_by_task) > 1:
       # Explicitly place the identity op on the first device.
       @def_function.function(jit_compile=False)
       def tf_function_save() -> None:
@@ -558,12 +553,14 @@ class MultiDeviceSaver:
           fn: len(keys) for fn, keys in self._restore_fn_to_keys.items()}
 
       restore_ops = {}
-      # Sort by device name to avoid propagating non-deterministic dictionary
+      # Sort by device_spec to avoid propagating non-deterministic dictionary
       # ordering in some Python versions.
-      for device, saver in sorted(self._single_device_savers.items()):
-        with ops.device(device):
+      for device_spec, tensor_slice_dict in sorted(
+          self._tensors_by_task.items()):
+        with ops.device(device_spec):
           # Load values from checkpoint
-          restored_tensor_dict = saver.restore(file_prefix, options)
+          restored_tensor_dict = _single_task_restore(
+              file_prefix, tensor_slice_dict, options)
 
           # Map restored tensors to the corresponding restore_fn, and see if all
           # inputs have all been loaded. Call `restore_fn` if that is the case.
@@ -604,13 +601,12 @@ class MultiDeviceSaver:
       return restore_ops
 
     has_custom_device_saver = any([
-        context.is_custom_device(d) for d in self._single_device_savers.keys()
+        context.is_custom_device(ds) for ds in self._tensors_by_task
     ])
     # Since this will cause a function re-trace on each restore, limit this to
-    # cases where it is needed: eager and when there are multiple tasks/single
-    # device savers or any single device saver is a custom device. Note that the
-    # retrace is needed to ensure we pickup the latest values of options like
-    # experimental_io_device.
+    # cases where it is needed: eager and when there are multiple tasks or any
+    # device_spec is a custom device. Note that the retrace is needed to ensure
+    # we pickup the latest values of options like experimental_io_device.
     #
     # We run in a function when there is a custom device saver because custom
     # devices, such as DTensor, usually do a sharded save and restore.
@@ -618,7 +614,7 @@ class MultiDeviceSaver:
     # of variables we are restoring to. In practice, this means that custom
     # devices need the AssignVariableOps along with the Restore op within the
     # same graph to infer shapes and shard specs for Restore op.
-    if context.executing_eagerly() and (len(self._single_device_savers) > 1 or
+    if context.executing_eagerly() and (len(self._tensors_by_task) > 1 or
                                         has_custom_device_saver):
       @def_function.function(jit_compile=False, autograph=False)
       def tf_function_restore() -> Mapping[str, ops.Operation]:
