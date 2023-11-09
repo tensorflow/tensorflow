@@ -178,14 +178,14 @@ TEST_F(TestDelegate, SetBufferHandleToInput) {
   TfLiteDelegate* delegate = delegate_->get_tf_lite_delegate();
   interpreter_->ModifyGraphWithDelegate(delegate);
 
-  constexpr int kOutputTensorIndex = 0;
-  TfLiteTensor* tensor = interpreter_->tensor(kOutputTensorIndex);
+  constexpr int kInputTensorIndex = 0;
+  TfLiteTensor* tensor = interpreter_->tensor(kInputTensorIndex);
   ASSERT_EQ(tensor->delegate, nullptr);
   ASSERT_EQ(tensor->buffer_handle, kTfLiteNullBufferHandle);
 
   TfLiteBufferHandle handle = AllocateBufferHandle();
   TfLiteStatus status =
-      interpreter_->SetBufferHandle(kOutputTensorIndex, handle, delegate);
+      interpreter_->SetBufferHandle(kInputTensorIndex, handle, delegate);
   ASSERT_EQ(status, kTfLiteOk);
   EXPECT_EQ(tensor->delegate, delegate);
   EXPECT_EQ(tensor->buffer_handle, handle);
