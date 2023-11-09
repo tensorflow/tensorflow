@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_test_kernels.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
@@ -105,10 +106,21 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
   stream.Init();
   ASSERT_TRUE(stream.ok());
 
-  MultiKernelLoaderSpec spec(/*arity=*/1);
+  AddI32Ptrs3 add(executor);
+
+  // Register a kernel with a custom arguments packing function that packs
+  // device memory arguments into a struct with pointers.
+  MultiKernelLoaderSpec spec(/*arity=*/1, [&](const KernelArgsArrayBase& args) {
+    auto bufs = Cast<KernelArgsDeviceMemoryArray>(&args)->device_memory_args();
+    auto cast = [](auto m) { return reinterpret_cast<int32_t*>(m.opaque()); };
+    return PackKernelArgs(add, internal::Ptrs3<int32_t>{
+                                   cast(bufs[0]),
+                                   cast(bufs[1]),
+                                   cast(bufs[2]),
+                               });
+  });
   spec.AddInProcessSymbol(internal::GetAddI32Ptrs3CudaKernel(), "add");
 
-  AddI32Ptrs3 add(executor);
   TF_ASSERT_OK(executor->GetKernel(spec, &add));
 
   int64_t length = 4;
@@ -123,14 +135,12 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
   stream.ThenMemset32(&b, 2, byte_length);
   stream.ThenMemZero(&c, byte_length);
 
+  // Use an array of device memory base pointers as argument to test packing.
+  KernelArgsDeviceMemoryArray args({a, b, c}, 0);
+
   // Create a command buffer by tracing kernel launch operations.
   auto cmd_buffer = CommandBuffer::Trace(executor, [&](Stream* stream) {
-    internal::Ptrs3<int32_t> ptrs = {
-        static_cast<int32_t*>(a.opaque()),
-        static_cast<int32_t*>(b.opaque()),
-        static_cast<int32_t*>(c.opaque()),
-    };
-    return stream->ThenLaunch(ThreadDim(), BlockDim(4), add, ptrs);
+    return executor->Launch(stream, ThreadDim(), BlockDim(4), add, args);
   });
 
   TF_ASSERT_OK(cmd_buffer.status());

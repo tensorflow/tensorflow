@@ -45,6 +45,7 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <functional>
 #include <initializer_list>
 #include <map>
 #include <memory>
@@ -56,8 +57,12 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/platform/port.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
+
+class KernelArgsArrayBase;        // defined in kernel.h
+class KernelArgsPackedArrayBase;  // defined in kernel.h
 
 // Describes how to load a kernel on a target platform.
 //
@@ -251,7 +256,16 @@ class CudaCubinInMemory : public KernelLoaderSpec {
 // Describes how to load a kernel on any subset of a number of target platforms.
 class MultiKernelLoaderSpec {
  public:
-  explicit MultiKernelLoaderSpec(size_t arity);
+  // A function for converting kernel arguments into a packed kernels arguments
+  // that can be directly passed to a device kernel. This indirection allows
+  // registering custom CUDA C++ kernels with non-trivial C++ API with a
+  // StreamExecutor as a generic `Kernel`.
+  using KernelArgsPacking =
+      std::function<tsl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>(
+          const KernelArgsArrayBase &args)>;
+
+  explicit MultiKernelLoaderSpec(
+      size_t arity, KernelArgsPacking kernel_args_packing = nullptr);
 
   // Returns the number of arguments that this kernel accepts.
   size_t arity() const { return arity_; }
@@ -314,6 +328,10 @@ class MultiKernelLoaderSpec {
       std::initializer_list<CudaPtxInMemory::PtxSpec> spec_list,
       absl::string_view kernel_name);
 
+  const KernelArgsPacking &kernel_args_packing() const {
+    return kernel_args_packing_;
+  }
+
  private:
   std::unique_ptr<InProcessSymbol>
       in_process_symbol_;  // In process symbol pointer.
@@ -330,6 +348,9 @@ class MultiKernelLoaderSpec {
   // constexpr than having to determine it from the types via template
   // metaprogramming).
   size_t arity_;
+
+  // Custom kernel arguments packing.
+  KernelArgsPacking kernel_args_packing_;
 };
 
 }  // namespace stream_executor

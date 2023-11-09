@@ -234,6 +234,8 @@ MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaCompressedPtxInMemory(
   return this;
 }
 
-MultiKernelLoaderSpec::MultiKernelLoaderSpec(size_t arity) : arity_(arity) {}
+MultiKernelLoaderSpec::MultiKernelLoaderSpec(
+    size_t arity, KernelArgsPacking kernel_args_packing)
+    : arity_(arity), kernel_args_packing_(std::move(kernel_args_packing)) {}
 
 }  // namespace stream_executor

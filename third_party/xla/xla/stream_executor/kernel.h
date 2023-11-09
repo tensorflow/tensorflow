@@ -74,6 +74,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -81,6 +82,7 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/meta/type_traits.h"
 #include "absl/status/status.h"
@@ -97,6 +99,9 @@ class StreamExecutor;
 namespace internal {
 class KernelInterface;
 }  // namespace internal
+
+class KernelArgsArrayBase;        // forward declare
+class KernelArgsPackedArrayBase;  // forward declare
 
 //===----------------------------------------------------------------------===//
 // Kernel cache config
@@ -157,8 +162,18 @@ class KernelMetadata {
 // variant.
 //
 // Thread-compatible.
+//
+// TODO(ezhulenev): Rename `KernelBase` to `Kernel`.
 class KernelBase {
  public:
+  // A function for converting kernel arguments into a packed kernels arguments
+  // that can be directly passed to a device kernel. This indirection allows
+  // registering custom CUDA C++ kernels with non-trivial C++ API with a
+  // StreamExecutor as a generic `Kernel`.
+  using KernelArgsPacking =
+      std::function<tsl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>(
+          const KernelArgsArrayBase &args)>;
+
   KernelBase(KernelBase &&from);
 
   // Constructs an "empty" (not-yet-loaded) kernel instance.
@@ -202,6 +217,15 @@ class KernelBase {
   // Gets the preferred cache configuration for a kernel.
   KernelCacheConfig GetPreferredCacheConfig() const;
 
+  // Sets custom kernels arguments packing function for a kernel.
+  void set_kernel_args_packing(KernelArgsPacking kernel_args_packing) {
+    kernel_args_packing_ = std::move(kernel_args_packing);
+  }
+
+  const KernelArgsPacking &kernel_args_packing() const {
+    return kernel_args_packing_;
+  }
+
   void set_name(absl::string_view name);
   const std::string &name() const { return name_; }
   const std::string &demangled_name() const { return demangled_name_; }
@@ -217,6 +241,8 @@ class KernelBase {
   std::string demangled_name_;
 
   KernelMetadata metadata_;
+
+  KernelArgsPacking kernel_args_packing_;
 
   KernelBase(const KernelBase &) = delete;
   void operator=(const KernelBase &) = delete;
@@ -246,7 +272,18 @@ class KernelArgsArrayBase {
   using IsKernelArgs =
       std::enable_if_t<std::is_base_of<KernelArgsArrayBase, T>::value>;
 
-  enum class Kind { kPackedArray };
+  enum class Kind {
+    // A list of type-erased DeviceMemoryBase pointers to on-device memory. This
+    // type of kernel arguments used only when the kernel has to do its own
+    // custom packing, e.g. wrap all device pointers into a custom
+    // structure, but can't be implemented as a TypedKernel because it has to be
+    // passed around as a generic Kernel.
+    kDeviceMemoryArray,
+
+    // A list of kernel arguments packed into a storage that can be passed
+    // directly to device kernel as void** kernel parameters.
+    kPackedArray
+  };
 
   virtual ~KernelArgsArrayBase() = default;
 
@@ -261,6 +298,14 @@ class KernelArgsArrayBase {
 };
 
 // A small LLVM-style RTTI library for casting kernel arguments.
+template <class T, KernelArgsArrayBase::IsKernelArgs<T> * = nullptr>
+T *Cast(KernelArgsArrayBase *args) {
+  CHECK(T::classof(args)) << "Invalid arguments casting to a destination type: "
+                          << typeid(T).name();
+  CHECK(args != nullptr) << "Casted arguments must be not null";
+  return static_cast<const T *>(args);
+}
+
 template <class T, KernelArgsArrayBase::IsKernelArgs<T> * = nullptr>
 const T *Cast(const KernelArgsArrayBase *args) {
   CHECK(T::classof(args)) << "Invalid arguments casting to a destination type: "
@@ -279,6 +324,38 @@ template <class T, KernelArgsArrayBase::IsKernelArgs<T> * = nullptr>
 const T *DynCastOrNull(const KernelArgsArrayBase *args) {
   return args && T::classof(args) ? static_cast<const T *>(args) : nullptr;
 }
+
+//===----------------------------------------------------------------------===//
+// Kernel arguments device memory array
+//===----------------------------------------------------------------------===//
+
+class KernelArgsDeviceMemoryArray : public KernelArgsArrayBase {
+ public:
+  KernelArgsDeviceMemoryArray(absl::Span<const DeviceMemoryBase> args,
+                              size_t shared_memory_bytes)
+      : device_memory_args_(args.begin(), args.end()),
+        shared_memory_bytes_(shared_memory_bytes) {}
+
+  static bool classof(const KernelArgsArrayBase *args) {
+    return args->kind() == Kind::kDeviceMemoryArray;
+  }
+
+  Kind kind() const final { return Kind::kDeviceMemoryArray; }
+
+  size_t number_of_arguments() const final {
+    return device_memory_args_.size() + (shared_memory_bytes_ > 0);
+  }
+
+  uint64_t number_of_shared_bytes() const final { return shared_memory_bytes_; }
+
+  absl::Span<const DeviceMemoryBase> device_memory_args() const {
+    return device_memory_args_;
+  }
+
+ private:
+  absl::InlinedVector<DeviceMemoryBase, 4> device_memory_args_;
+  size_t shared_memory_bytes_ = 0;
+};
 
 //===----------------------------------------------------------------------===//
 // Kernel arguments packed array
@@ -396,19 +473,17 @@ class KernelArgsPackedArray : public KernelArgsPackedArrayBase, ArgsStorage {
   // The only significant information about a shared argument is its size, so
   // that is the only parameter in this function.
   void add_shared_bytes(size_t number_of_bytes) {
-    total_shared_memory_bytes_ += number_of_bytes;
+    shared_memory_bytes_ += number_of_bytes;
   }
 
   // Gets the number of arguments added so far, including shared memory
   // arguments.
   size_t number_of_arguments() const final {
-    return number_of_argument_addresses_ + (total_shared_memory_bytes_ > 0);
+    return number_of_argument_addresses_ + (shared_memory_bytes_ > 0);
   }
 
   // Gets the total number of shared memory bytes added so far.
-  uint64_t number_of_shared_bytes() const final {
-    return total_shared_memory_bytes_;
-  }
+  uint64_t number_of_shared_bytes() const final { return shared_memory_bytes_; }
 
   // Gets the list of argument addresses.
   absl::Span<const void *const> argument_addresses() const final {
@@ -423,8 +498,8 @@ class KernelArgsPackedArray : public KernelArgsPackedArrayBase, ArgsStorage {
   // Addresses for non-shared-memory arguments.
   std::array<const void *, num_args> argument_addresses_;
 
-  // Total of all shared memory sizes.
-  size_t total_shared_memory_bytes_ = 0;
+  // Shared memory required by a kernel.
+  size_t shared_memory_bytes_ = 0;
 
   // Number of significant entries in argument_addresses_.
   size_t number_of_argument_addresses_ = 0;
@@ -608,6 +683,7 @@ class KernelArgsPackedTuple : public KernelArgsPackedArrayBase {
     ((argument_addresses_[Is] = &std::get<Is>(storage_)), ...);
   }
 
+  // Shared memory required by a kernel.
   size_t shared_memory_bytes_ = 0;
 
   // Storage for packed kernel arguments.
