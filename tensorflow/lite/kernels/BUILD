@@ -1341,7 +1341,6 @@ cc_test(
 
 cc_test(
     name = "stablehlo_pad_test",
-    size = "small",
     srcs = ["stablehlo_pad_test.cc"],
     tags = ["tflite_nnapi"],
     deps = [
@@ -1382,7 +1381,6 @@ cc_test(
 
 cc_test(
     name = "stablehlo_reduce_window_test",
-    size = "small",
     srcs = ["stablehlo_reduce_window_test.cc"],
     tags = ["tflite_nnapi"],
     deps = [
