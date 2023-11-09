@@ -354,6 +354,7 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       .def("__hash__",
            [](const Layout& layout) { return absl::HashOf(layout); })
       .def("to_string", &Layout::ToString)
+      .def("__str__", &Layout::ToString)
       .def("__getstate__",
            [](const Layout& self) -> nb::tuple {
              auto proto = self.ToProto();
