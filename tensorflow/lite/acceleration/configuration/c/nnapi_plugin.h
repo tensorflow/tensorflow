@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_ACCELERATION_CONFIGURATION_C_NNAPI_PLUGIN_H_
 #define TENSORFLOW_LITE_ACCELERATION_CONFIGURATION_C_NNAPI_PLUGIN_H_
 
+/// For documentation, see
+/// third_party/tensorflow/lite/core/acceleration/configuration/c/nnapi_plugin.h
+
 #include "tensorflow/lite/core/acceleration/configuration/c/nnapi_plugin.h"
 
 #endif  // TENSORFLOW_LITE_ACCELERATION_CONFIGURATION_C_NNAPI_PLUGIN_H_

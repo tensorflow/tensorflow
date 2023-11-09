@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_VERIFIER_H_
 #define TENSORFLOW_LITE_TOOLS_VERIFIER_H_
 
+/// For documentation, see third_party/tensorflow/lite/core/tools/verifier.h
+
 #include "tensorflow/lite/core/tools/verifier.h"  // IWYU pragma: export
 
 namespace tflite {
