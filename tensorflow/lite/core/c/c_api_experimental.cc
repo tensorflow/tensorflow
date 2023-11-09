@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <cstddef>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -199,6 +200,11 @@ TfLiteStatus TfLiteInterpreterSetCustomAllocationForTensor(
   }
   return interpreter->impl->SetCustomAllocationForTensor(tensor_index,
                                                          *allocation, flags);
+}
+
+TfLiteStatus TfLiteInterpreterEnsureTensorDataIsReadable(
+    TfLiteInterpreter* interpreter, int tensor_index) {
+  return interpreter->impl->EnsureTensorDataIsReadable(tensor_index);
 }
 
 const char* TfLiteInterpreterGetSignatureKey(

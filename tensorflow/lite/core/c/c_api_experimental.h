@@ -360,6 +360,16 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetTelemetryProfiler(
     TfLiteInterpreterOptions* options,
     struct TfLiteTelemetryProfilerStruct* profiler);
 
+/// Ensures the data of the tensor at the given index is readable.
+/// Note: If a delegate has been used, and `SetAllowBufferHandleOutput(true)`
+/// has been called, tensor outputs may be stored as delegate buffer handles
+/// whose data is not directly readable until this method has been called. In
+/// such cases, this method will copy the data from the delegate buffer handle
+/// to CPU memory.
+///
+/// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterEnsureTensorDataIsReadable(
+    TfLiteInterpreter* interpreter, int tensor_index);
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
