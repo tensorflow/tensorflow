@@ -17,23 +17,6 @@ from typing import Any
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
 
-# LINT.IfChange(clear_calibrator)
-def clear_calibrator() -> None: ...
-
-# LINT.ThenChange()
-
-# LINT.IfChange(clear_data_from_calibrator)
-def clear_data_from_calibrator(id: bytes) -> None: ...
-
-# LINT.ThenChange()
-
-# LINT.IfChange(get_statistics_from_calibrator)
-def get_statistics_from_calibrator(
-    id: bytes,
-) -> calibration_statistics_pb2.CalibrationStatistics: ...
-
-# LINT.ThenChange()
-
 # LINT.IfChange(quantize_qat_model)
 def quantize_qat_model(
     src_saved_model_path: str,

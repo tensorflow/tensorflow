@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -32,8 +31,6 @@ limitations under the License.
 #include "pybind11_abseil/import_status_module.h"  // from @pybind11_abseil
 #include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil  // IWYU pragma: keep
 #include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
-#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/quantize_model.h"
@@ -46,8 +43,6 @@ limitations under the License.
 namespace {
 
 using ::tensorflow::SignatureDef;
-using ::tensorflow::calibrator::CalibrationStatistics;
-using ::tensorflow::calibrator::CalibratorSingleton;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PyFunctionLibrary;
 using ::tensorflow::quantization::QuantizationOptions;
@@ -56,22 +51,6 @@ using ::tensorflow::quantization::QuantizePtqModelPostCalibration;
 using ::tensorflow::quantization::QuantizePtqModelPreCalibration;
 using ::tensorflow::quantization::QuantizeQatModel;
 using ::tensorflow::quantization::QuantizeWeightOnly;
-
-// Retrieves collected statistics of a `CustomAggregator` node from the
-// singleton. `id` is the identifier of the `CustomAggregator`.
-CalibrationStatistics GetStatisticsFromCalibrator(const absl::string_view id) {
-  std::optional<CalibrationStatistics> statistics =
-      CalibratorSingleton::GetStatistics(id);
-
-  if (!statistics.has_value()) {
-    throw py::value_error(absl::StrFormat(
-        "Calibrated data does not exist. Cannot find statistics."
-        "value for id: '%s'",
-        id));
-  }
-
-  return *statistics;
-}
 
 // Creates a temporary directory and returns its path.
 std::string CreateTmpDir() {
@@ -96,45 +75,6 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
   // overhead.
   pybind11_protobuf::ImportNativeProtoCasters();
 
-  // Calibrator related functions.
-  m.def(
-      // If the function signature changes, likely its corresponding .pyi type
-      // hinting should also change.
-      // LINT.IfChange
-      "clear_calibrator",
-      []() -> void
-      // LINT.ThenChange(pywrap_quantize_model.pyi:clear_calibrator)
-      { CalibratorSingleton::ClearCollectedInformation(); },
-      R"pbdoc(
-      Clears the collected metrics from the calibrator.
-    )pbdoc");
-  m.def(
-      // If the function signature changes, likely its corresponding .pyi type
-      // hinting should also change.
-      // LINT.IfChange
-      "clear_data_from_calibrator",
-      [](const absl::string_view id) -> void
-      // LINT.ThenChange(pywrap_quantize_model.pyi:clear_data_from_calibrator)
-      { CalibratorSingleton::ClearData(id); },
-      R"pbdoc(
-      Clears the collected data of the given id from calibrator.
-      )pbdoc",
-      py::arg("id"));
-  m.def(
-      // If the function signature changes, likely its corresponding .pyi type
-      // hinting should also change.
-      // LINT.IfChange
-      "get_statistics_from_calibrator",
-      [](const absl::string_view id) -> CalibrationStatistics {
-        // LINT.ThenChange(pywrap_quantize_model.pyi:get_statistics_from_calibrator)
-        return GetStatisticsFromCalibrator(id);
-      },
-      R"pbdoc(
-      Returns the proto CalibrationStatistics given id from calibrator.
-      )pbdoc",
-      py::arg("id"));
-
-  // Quantization functions.
   m.def(
       // If the function signature changes, likely its corresponding .pyi type
       // hinting should also change.

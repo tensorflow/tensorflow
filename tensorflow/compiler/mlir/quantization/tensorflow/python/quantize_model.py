@@ -25,6 +25,7 @@ from tensorflow.compiler.mlir.quantization.tensorflow import exported_model_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_algorithm
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2 as calib_stats_pb2
+from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import pywrap_calibration
 from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
 from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
@@ -608,7 +609,7 @@ def _get_min_max_from_calibrator(
     ValueError: Unsupported calibration method is given.
   """
   statistics: calib_stats_pb2.CalibrationStatistics = (
-      pywrap_quantize_model.get_statistics_from_calibrator(node_id)
+      pywrap_calibration.get_statistics_from_calibrator(node_id)
   )
   min_value, max_value = calibration_algorithm.get_min_max_value(
       statistics, calib_opts
@@ -638,7 +639,7 @@ def _add_calibration_statistics(
       node_id = node_def.attr['id'].s
       try:
         min_value, max_value = _get_min_max_from_calibrator(node_id, calib_opts)
-        pywrap_quantize_model.clear_data_from_calibrator(node_id)
+        pywrap_calibration.clear_data_from_calibrator(node_id)
 
         node_def.attr['min'].f = min_value
         node_def.attr['max'].f = max_value
