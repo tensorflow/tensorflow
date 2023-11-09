@@ -172,7 +172,7 @@ ios_static_framework(
         "metal_delegate.h",
         "metal_delegate_internal.h",
     ],
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     deps = [":metal_delegate"],
 )
 
@@ -184,7 +184,7 @@ macos_dylib(
         "-all_load",
         "-dead_strip",
     ],
-    minimum_os_version = "10.13",
+    minimum_os_version = "12.0",
     tags = [
         "manual",
         "nobuilder",
