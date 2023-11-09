@@ -210,7 +210,8 @@ def TestFactory(xla_backend,
         self.assertEqual(computation.as_serialized_hlo_module_proto(), ref)
 
     # TODO(b/261771737): some version of this should work with pjrt_c_api=True
-    @unittest.skipIf(cloud_tpu or pathways or pjrt_c_api, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways or pathways_ifrt or pjrt_c_api,
+                     "not implemented")
     def testFlopEstimate(self):
       computation = self.ExampleComputation()
       properties = xla_client._xla.hlo_module_cost_analysis(
@@ -222,7 +223,8 @@ def TestFactory(xla_backend,
       executable = self.backend.compile(
           xla_computation_to_mlir_module(computation))
       fingerprint = executable.fingerprint
-      if self.backend.platform == "tpu" and not (cloud_tpu or pathways):
+      if self.backend.platform == "tpu" and not (cloud_tpu or pathways or
+                                                 pathways_ifrt):
         logging.info("fingerprint: %s", fingerprint)
         self.assertNotEmpty(fingerprint)
       else:
@@ -567,7 +569,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       self.assertEmpty(layouts[1].minor_to_major())
       self.assertLen(layouts[2].minor_to_major(), 1)
 
-    @unittest.skipIf(pathways, "not implemented")
+    @unittest.skipIf(pathways or pathways_ifrt, "not implemented")
     def testSetArgumentLayouts(self):
       # Create computation with custom input layouts.
       c = self._NewComputation()
@@ -782,7 +784,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       self.assertGreaterEqual(arg1_buffer.unsafe_buffer_pointer(), 0)
       self.assertGreaterEqual(arg2_buffer.unsafe_buffer_pointer(), 0)
 
-    @unittest.skipIf(cloud_tpu or pathways, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways or pathways_ifrt, "not implemented")
     def testClone(self):
       x = np.array([[3., 4., 5.]], np.float32)
       y = self.backend.buffer_from_pyval(x)
@@ -2150,7 +2152,8 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
                       false_computation)
       self._ExecuteAndCompareClose(c, expected=[1.])
 
-    @unittest.skipIf(cloud_tpu or pathways or pjrt_c_api, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways or pathways_ifrt or pjrt_c_api,
+                     "not implemented")
     def testInfeedS32Values(self):
       to_infeed = NumpyArrayS32([1, 2, 3, 4])
       c = self._NewComputation()
@@ -2170,7 +2173,8 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
             compiled_c, (), backend=self.backend)
         self.assertEqual(result, item)
 
-    @unittest.skipIf(cloud_tpu or pathways or pjrt_c_api, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways or pathways_ifrt or pjrt_c_api,
+                     "not implemented")
     def testInfeedTuple(self):
       to_infeed = (NumpyArrayS32([1, 2, 3, 4]), NumpyArrayS32([[7], [8]]))
       c = self._NewComputation()
@@ -2190,7 +2194,8 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       np.testing.assert_equal(result[0], to_infeed[0])
       np.testing.assert_equal(result[1], to_infeed[1])
 
-    @unittest.skipIf(cloud_tpu or pathways or pjrt_c_api, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways or pathways_ifrt or pjrt_c_api,
+                     "not implemented")
     def testInfeedThenOutfeedS32(self):
       to_round_trip = NumpyArrayS32([1, 2, 3, 4])
       c = self._NewComputation()
@@ -2617,12 +2622,13 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           self.assertTrue(
               re.match(r"^cuda \d{4,}$", version),
               msg=f"Expected CUDA version string; got {repr(version)}")
-      elif self.backend.platform == "tpu" and not pathways:
+      elif self.backend.platform == "tpu" and not (pathways or pathways_ifrt):
         self.assertIn("tpu", version.lower())
         self.assertIn("cl/", version)
         self.assertIn("Built on ", version)
 
-    @unittest.skipIf(cloud_tpu or pathways or tfrt_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways or pathways_ifrt or tfrt_tpu,
+                     "not implemented")
     def testExecutableSerialization(self):
       if self.backend.platform != "tpu":
         self.skipTest("Test requires tpu platform")
