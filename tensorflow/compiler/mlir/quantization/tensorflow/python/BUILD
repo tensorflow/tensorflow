@@ -269,7 +269,6 @@ pytype_strict_library(
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:tf_export",
-        "//third_party/py/numpy",
         "@absl_py//absl/logging",
     ],
 )
@@ -391,6 +390,7 @@ pytype_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/eager:context",
@@ -399,6 +399,7 @@ pytype_strict_library(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -407,7 +408,9 @@ tf_py_strict_test(
     srcs = ["representative_dataset_test.py"],
     deps = [
         ":representative_dataset",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
