@@ -1,1 +1,20 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -1191,6 +1191,7 @@
+     name = "exp10f_impl",
+     hdrs = ["src/math/generic/exp10f_impl.h"],
+     deps = [
++        ":__support_fputil_basic_operations",
+         ":__support_fputil_fma",
+         ":__support_fputil_multiply_add",
+         ":__support_fputil_nearest_integer",
+@@ -1206,6 +1207,7 @@
+     name = "exp2f_impl",
+     hdrs = ["src/math/generic/exp2f_impl.h"],
+     deps = [
++        ":__support_fputil_except_value_utils",
+         ":__support_fputil_fma",
+         ":__support_fputil_multiply_add",
+         ":__support_fputil_nearest_integer",
