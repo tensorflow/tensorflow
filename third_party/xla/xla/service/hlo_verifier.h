@@ -91,11 +91,6 @@ struct HloVerifierOpts {
     return std::move(*this);
   }
 
-  HloVerifierOpts&& WithAllowUnboundedDynamism(bool allow) {
-    allow_unbounded_dynamism = allow;
-    return std::move(*this);
-  }
-
   bool IsLayoutSensitive() const { return layout_sensitive; }
 
   bool AllowMixedPrecision() const { return allow_mixed_precision; }
@@ -135,9 +130,6 @@ struct HloVerifierOpts {
 
   // Whether bitcast should have the same size, including all paddings.
   bool allow_bitcast_to_have_different_size = false;
-
-  // Whether unbounded dynamic sizes should be allowed for shapes.
-  bool allow_unbounded_dynamism = false;
 
   HloPredicate instruction_can_change_layout;
 

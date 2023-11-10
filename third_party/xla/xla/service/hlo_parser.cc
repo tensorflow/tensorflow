@@ -5382,7 +5382,6 @@ bool HloParserImpl::ParseParamList() {
 // dimension_sizes ::= '[' dimension_list ']'
 // dimension_list
 //   ::= /*empty*/
-//   ::= '?'
 //   ::= <=? int64_t (',' param)*
 // param ::= name shape
 bool HloParserImpl::ParseDimensionSizes(std::vector<int64_t>* dimension_sizes,
@@ -5390,18 +5389,12 @@ bool HloParserImpl::ParseDimensionSizes(std::vector<int64_t>* dimension_sizes,
   auto parse_and_add_item = [&]() {
     int64_t i;
     bool is_dynamic = false;
-    if (lexer_.GetKind() == TokKind::kQuestionMark) {
-      i = Shape::kUnboundedSize;
+    if (lexer_.GetKind() == TokKind::kLeq) {
       is_dynamic = true;
       lexer_.Lex();
-    } else {
-      if (lexer_.GetKind() == TokKind::kLeq) {
-        is_dynamic = true;
-        lexer_.Lex();
-      }
-      if (!ParseInt64(&i)) {
-        return false;
-      }
+    }
+    if (!ParseInt64(&i)) {
+      return false;
     }
     dimension_sizes->push_back(i);
     dynamic_dimensions->push_back(is_dynamic);

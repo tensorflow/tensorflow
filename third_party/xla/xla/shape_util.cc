@@ -248,18 +248,14 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
   const int ndims = dimensions.size();
   auto layout = shape->mutable_layout();
   auto* minor_to_major = layout->mutable_minor_to_major();
-  auto is_unbounded_dynamic = absl::c_any_of(
-      dimensions, [](int64_t dim) { return dim == Shape::kUnboundedSize; });
   for (int i = 0; i < ndims; i++) {
     const int64_t d = dimensions[i];
-    if (d < 0 && d != Shape::kUnboundedSize) {
+    if (d < 0) {
       return false;
     }
-    if (!is_unbounded_dynamic) {
-      dense_shape_size = MultiplyWithoutOverflow(dense_shape_size, d);
-      if (dense_shape_size < 0) {
-        return false;
-      }
+    dense_shape_size = MultiplyWithoutOverflow(dense_shape_size, d);
+    if (dense_shape_size < 0) {
+      return false;
     }
 
     shape->add_dimensions(d);
@@ -702,14 +698,9 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   printer->Append("[");
   auto print_one = [&](int i) {
     if (shape.is_dynamic_dimension(i)) {
-      if (shape.dimensions(i) != Shape::kUnboundedSize) {
-        printer->Append(StrCat("<=", shape.dimensions(i)));
-      } else {
-        printer->Append("?");
-      }
-    } else {
-      printer->Append(shape.dimensions(i));
+      printer->Append("<=");
     }
+    printer->Append(shape.dimensions(i));
   };
   print_one(0);
   for (int i = 1, n = shape.dimensions_size(); i < n; ++i) {
@@ -935,7 +926,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 
   for (int64_t i = 0; i < shape.rank(); ++i) {
     int64_t dimension = shape.dimensions(i);
-    if (dimension < 0 && dimension != Shape::kUnboundedSize) {
+    if (dimension < 0) {
       return InvalidArgument(
           "shape's dimensions must not be < 0; dimension at index %d was %d", i,
           dimension);
@@ -950,10 +941,6 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   VLOG(3) << "Validating shape size: " << ShapeUtil::HumanString(shape);
 
   if (!shape.IsArray()) {
-    return OkStatus();
-  }
-
-  if (shape.is_unbounded_dynamic()) {
     return OkStatus();
   }
 

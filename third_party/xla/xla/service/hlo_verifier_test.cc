@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -2932,34 +2931,6 @@ ENTRY entry {
   Status status = verifier().Run(module.get()).status();
 
   TF_ASSERT_OK(status);
-}
-
-TEST_F(HloVerifierTest, UnboundedDynamism) {
-  const char* const hlo = R"(
-  HloModule Module
-
-  ENTRY entry {
-    ROOT param0 = f32[?,784] parameter(0)
-  }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.message(), HasSubstr("Unbounded dynamism is disabled"));
-}
-
-TEST_F(HloVerifierTest, EnableUnboundedDynamism) {
-  const char* const hlo = R"(
-  HloModule Module
-
-  ENTRY entry {
-    ROOT param0 = f32[?,784] parameter(0)
-  }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
-  HloVerifier verifier{HloVerifierOpts{}.WithAllowUnboundedDynamism(true)};
-  auto status = verifier.Run(module.get()).status();
-  ASSERT_TRUE(status.ok());
 }
 
 }  // namespace
