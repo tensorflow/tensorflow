@@ -156,46 +156,19 @@ diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists
  add_subdirectory(integrations)
  add_subdirectory(reference)
  add_subdirectory(tests)
-diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
---- stablehlo/stablehlo/dialect/Base.cpp
-+++ stablehlo/stablehlo/dialect/Base.cpp
-@@ -600,5 +600,18 @@
-   return UnrankedTensorType::get(components.getElementType());
- }
- 
-+DenseIntElementsAttr getPaddingAttr(MLIRContext* context,
-+                                    ArrayRef<int64_t> values) {
-+  return DenseIntElementsAttr::get(
-+      RankedTensorType::get({static_cast<int64_t>(values.size()) / 2, 2},
-+                            IntegerType::get(context, 64)),
-+      values);
-+}
-+
-+DenseIntElementsAttr getPaddingAttr(Builder* builder,
-+                                    ArrayRef<int64_t> values) {
-+  return getPaddingAttr(builder->getContext(), values);
-+}
-+
- }  // namespace hlo
- }  // namespace mlir
 diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Base.h
 --- stablehlo/stablehlo/dialect/Base.h
 +++ stablehlo/stablehlo/dialect/Base.h
-@@ -194,6 +194,10 @@
+@@ -371,4 +371,4 @@
+ }  // namespace hlo
+ }  // namespace mlir
  
- ShapedType createShapedType(ShapedTypeComponents components);
- 
-+DenseIntElementsAttr getPaddingAttr(MLIRContext *context,
-+                                    ArrayRef<int64_t> value);
-+DenseIntElementsAttr getPaddingAttr(Builder *builder, ArrayRef<int64_t> value);
-+
- // This interface is implemented by both StableHLO and MHLO dialects
- // and is used as the foundation for sharing verification, type inference and
- // prettyprinting logic between them.
+-#endif
++#endif  // STABLEHLO_DIALECT_BASE_H
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD b/stablehlo/stablehlo/experimental/BUILD
 --- stablehlo/stablehlo/experimental/BUILD
 +++ stablehlo/stablehlo/experimental/BUILD
-@@ -0,0 +1,97 @@
+@@ -0,0 +1,117 @@
 +load("//third_party/llvm/llvm-project/mlir:tblgen.bzl", "gentbl_cc_library")
 +load("//tensorflow:tensorflow.google.bzl", "get_compatible_with_portable")
 +load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -212,6 +185,22 @@ diff --ruN a/stablehlo/stablehlo/experimental/BUILD b/stablehlo/stablehlo/experi
 +)
 +
 +cc_library(
++    name = "experimental_base",
++    srcs = [
++        "dialect/Base.cpp",
++    ],
++    hdrs = [
++        "dialect/Base.h",
++    ],
++    compatible_with = get_compatible_with_portable(),
++    includes = ["../.."],
++    deps = [
++        "//third_party/llvm/llvm-project/llvm:Support",
++        "//third_party/llvm/llvm-project/mlir:IR",
++    ],
++)
++
++cc_library(
 +    name = "experimental_stablehlo_ops",
 +    srcs = [
 +        "dialect/StablehloOps.cpp",
@@ -220,7 +209,9 @@ diff --ruN a/stablehlo/stablehlo/experimental/BUILD b/stablehlo/stablehlo/experi
 +        "dialect/StablehloOps.h",
 +    ],
 +    compatible_with = get_compatible_with_portable(),
++    includes = ["../.."],
 +    deps = [
++        ":experimental_base",
 +        "//third_party/llvm/llvm-project/llvm:Support",
 +        "//third_party/llvm/llvm-project/mlir:FuncDialect",
 +        "//third_party/llvm/llvm-project/mlir:IR",
@@ -255,6 +246,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/BUILD b/stablehlo/stablehlo/experi
 +        "transforms/Passes.h",
 +    ],
 +    compatible_with = get_compatible_with_portable(),
++    includes = ["../.."],
 +    deps = [
 +        ":experimental_stablehlo_ops",
 +        ":experimental_stablehlo_pass_inc_gen",
@@ -280,6 +272,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/BUILD b/stablehlo/stablehlo/experi
 +        "tools/StablehloOptMain.cpp",
 +    ],
 +    compatible_with = get_compatible_with_portable(),
++    includes = ["../.."],
 +    deps = [
 +        ":experimental_stablehlo_passes",
 +        "//third_party/llvm/llvm-project/mlir:AllExtensions",
@@ -296,7 +289,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/BUILD b/stablehlo/stablehlo/experi
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
-@@ -0,0 +1,98 @@
+@@ -0,0 +1,113 @@
 +# Copyright 2023 The StableHLO Authors. All Rights Reserved.
 +#
 +# Licensed under the Apache License, Version 2.0 (the "License");
@@ -318,6 +311,20 @@ diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/
 +)
 +
 +cc_library(
++    name = "experimental_base",
++    srcs = [
++        "dialect/Base.cpp",
++    ],
++    hdrs = [
++        "dialect/Base.h",
++    ],
++    deps = [
++        "@llvm-project//llvm:Support",
++        "@llvm-project//mlir:IR",
++    ],
++)
++
++cc_library(
 +    name = "experimental_stablehlo_ops",
 +    srcs = [
 +        "dialect/StablehloOps.cpp",
@@ -326,6 +333,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/
 +        "dialect/StablehloOps.h",
 +    ],
 +    deps = [
++        ":experimental_base",
 +        "//:stablehlo_ops",
 +        "@llvm-project//llvm:Support",
 +        "@llvm-project//mlir:FuncDialect",
@@ -417,10 +425,92 @@ diff --ruN a/stablehlo/stablehlo/experimental/CMakeLists.txt b/stablehlo/stableh
 +add_subdirectory(tests)
 +add_subdirectory(tools)
 +add_subdirectory(transforms)
+diff --ruN a/stablehlo/stablehlo/experimental/dialect/Base.cpp b/stablehlo/stablehlo/experimental/dialect/Base.cpp
+--- stablehlo/stablehlo/experimental/dialect/Base.cpp
++++ stablehlo/stablehlo/experimental/dialect/Base.cpp
+@@ -0,0 +1,39 @@
++/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
++   Copyright 2022 The StableHLO Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#include "stablehlo/experimental/dialect/Base.h"
++
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypes.h"
++
++namespace mlir {
++namespace hlo {
++
++DenseIntElementsAttr getPaddingAttr(MLIRContext* context,
++                                    ArrayRef<int64_t> values) {
++  return DenseIntElementsAttr::get(
++      RankedTensorType::get({static_cast<int64_t>(values.size()) / 2, 2},
++                            IntegerType::get(context, 64)),
++      values);
++}
++
++DenseIntElementsAttr getPaddingAttr(Builder* builder,
++                                    ArrayRef<int64_t> values) {
++  return getPaddingAttr(builder->getContext(), values);
++}
++
++}  // namespace hlo
++}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/experimental/dialect/Base.h b/stablehlo/stablehlo/experimental/dialect/Base.h
+--- stablehlo/stablehlo/experimental/dialect/Base.h
++++ stablehlo/stablehlo/experimental/dialect/Base.h
+@@ -0,0 +1,35 @@
++/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
++   Copyright 2022 The StableHLO Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#ifndef STABLEHLO_EXPERIMENTAL_DIALECT_BASE_H
++#define STABLEHLO_EXPERIMENTAL_DIALECT_BASE_H
++
++#include "llvm/ADT/ArrayRef.h"
++#include "mlir/IR/Builders.h"
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/MLIRContext.h"
++
++namespace mlir {
++namespace hlo {
++
++DenseIntElementsAttr getPaddingAttr(MLIRContext *context,
++                                    ArrayRef<int64_t> value);
++DenseIntElementsAttr getPaddingAttr(Builder *builder, ArrayRef<int64_t> value);
++
++}  // namespace hlo
++}  // namespace mlir
++
++#endif  // STABLEHLO_EXPERIMENTAL_DIALECT_BASE_H
 diff --ruN a/stablehlo/stablehlo/experimental/dialect/CMakeLists.txt b/stablehlo/stablehlo/experimental/dialect/CMakeLists.txt
 --- stablehlo/stablehlo/experimental/dialect/CMakeLists.txt
 +++ stablehlo/stablehlo/experimental/dialect/CMakeLists.txt
-@@ -0,0 +1,33 @@
+@@ -0,0 +1,42 @@
 +# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 +# Copyright 2023 The StableHLO Authors.
 +#
@@ -436,6 +526,14 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/CMakeLists.txt b/stablehlo
 +# See the License for the specific language governing permissions and
 +# limitations under the License.
 +
++add_mlir_library(ExperimentalStablehloBase
++  PARTIAL_SOURCES_INTENDED
++  Base.cpp
++
++  LINK_LIBS PUBLIC
++  MLIRIR
++)
++
 +add_mlir_dialect_library(ExperimentalStablehloOps
 +  PARTIAL_SOURCES_INTENDED
 +  StablehloOps.cpp
@@ -444,6 +542,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/CMakeLists.txt b/stablehlo
 +  StablehloOpsIncGen
 +
 +  LINK_LIBS PUBLIC
++  ExperimentalStablehloBase
 +  MLIRFuncDialect
 +  MLIRIR
 +  MLIRSupport
@@ -967,7 +1066,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stableh
 diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.h b/stablehlo/stablehlo/experimental/dialect/StablehloOps.h
 --- stablehlo/stablehlo/experimental/dialect/StablehloOps.h
 +++ stablehlo/stablehlo/experimental/dialect/StablehloOps.h
-@@ -0,0 +1,229 @@
+@@ -0,0 +1,230 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -1001,6 +1100,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.h b/stablehlo
 +#include "mlir/IR/ValueRange.h"
 +#include "mlir/Support/LogicalResult.h"
 +#include "stablehlo/dialect/StablehloOps.h"
++#include "stablehlo/experimental/dialect/Base.h"
 +
 +namespace mlir {
 +namespace stablehlo {
