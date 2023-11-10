@@ -1,9 +1,9 @@
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/lite:build_def.bzl",
     "tflite_cc_library_with_c_headers_test",
     "tflite_copts",
 )
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/lite/core/c:special_rules.bzl",
     "c_api_experimental_visibility_allowlist",
@@ -350,6 +350,7 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:signature_runner",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/c:c_api_opaque_internal",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/profiling/telemetry:profiler",
@@ -387,6 +388,7 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/c:c_api_opaque_internal",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/profiling/telemetry:profiler",
@@ -438,6 +440,7 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/c:c_api_opaque_internal_without_alwayslink",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/profiling/telemetry:profiler",
@@ -563,6 +566,7 @@ cc_test(
         ":common",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/delegates:delegate_test_util",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
