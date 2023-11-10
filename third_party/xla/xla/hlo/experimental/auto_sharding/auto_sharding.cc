@@ -187,6 +187,8 @@ GenerateReshardingCostsAndMissingShardingsForAllOperands(
         } else if (ins->opcode() == HloOpcode::kCustomCall) {
           is_sharding_default_replicated = true;
           cur_input_sharding = HloSharding::Replicate();
+        } else if (ins->opcode() == HloOpcode::kRngBitGenerator) {
+          cur_input_sharding = HloSharding::Replicate();
         }
       }
       CHECK(cur_input_sharding.has_value());
@@ -720,9 +722,7 @@ void EnumerateAll1DPartition(const HloInstruction* ins, const Shape& shape,
                 ins->operand(0), strategy_map.at(ins->operand(0)).get());
       } else if (ins->opcode() == HloOpcode::kRngBitGenerator &&
                  ins->operand(0)->shape().IsArray()) {
-        auto replicated_sharding = HloSharding::Replicate();
-        input_shardings.push_back(HloSharding::SingleTuple(
-            ins->operand(0)->shape(), replicated_sharding));
+        input_shardings.push_back(HloSharding::Replicate());
         resharding_costs =
             GenerateReshardingCostsAndMissingShardingsForAllOperands(
                 ins, output_spec, strategy_map, cluster_env, call_graph,
@@ -2959,6 +2959,7 @@ Status SetHloShardingPostProcessing(
         switch (inst->opcode()) {
           case HloOpcode::kReduce:
           case HloOpcode::kCustomCall:
+          case HloOpcode::kRngBitGenerator:
           case HloOpcode::kSort: {
             for (size_t i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
               const ShardingStrategy& stra =
