@@ -100,10 +100,7 @@ class SimpleMemoryArena {
                         ArenaAllocWithUsageInterval* new_alloc);
 
   inline size_t RequiredBufferSize() {
-    // Add in a small amount of padding to reduce the chance of resize events
-    // for small allocations.
-    size_t padding = arena_alignment_;
-    return arena_alignment_ + high_water_mark_ + padding;
+    return high_water_mark_ + arena_alignment_ - 1;
   }
 
   TfLiteStatus Commit(bool* arena_reallocated);
