@@ -7,6 +7,10 @@ load(
     "//xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
 load("@local_tsl//tsl:tsl.bzl", "tsl_copts")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load(
@@ -14,6 +18,10 @@ load(
     "tf_cuda_tests_tags",
 )
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load(
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 package(
     default_visibility = ["//visibility:public"],
@@ -2355,6 +2363,9 @@ xla_test(
 xla_cc_test(
     name = "llvm_compiler_test",
     srcs = if_gpu_is_configured(["llvm_compiler_test.cc"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM",
+    ]),
     tags = tf_cuda_tests_tags(),
     deps = if_gpu_is_configured([
         ":verified_hlo_module",
@@ -2369,9 +2380,12 @@ xla_cc_test(
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/gpu:gpu_compiler",
         "//xla/stream_executor",
-        "//xla/stream_executor/cuda:cuda_platform_id",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test_main",
+    ]) + if_cuda_is_configured([
+        "//xla/stream_executor/cuda:cuda_platform_id",
+    ]) + if_rocm_is_configured([
+        "//xla/stream_executor/rocm:rocm_platform_id",
     ]),
 )
 
