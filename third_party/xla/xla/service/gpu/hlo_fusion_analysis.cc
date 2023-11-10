@@ -896,5 +896,31 @@ ReductionCodegenInfo HloFusionAnalysis::ComputeReductionCodegenInfo(
       reduction_is_race_free, std::move(instr_index_groups), hero_reduction);
 }
 
+static std::vector<const HloInstruction*> GetRoots(
+    const HloInstruction& consumer) {
+  return consumer.opcode() == HloOpcode::kFusion
+             ? GetFusionRoots(*consumer.fused_instructions_computation())
+             : std::vector<const HloInstruction*>{&consumer};
+}
+
+std::optional<HloFusionAnalysis> AnalyzeProducerConsumerFusion(
+    const HloInstruction& producer, const HloInstruction& consumer,
+    const se::DeviceDescription& device_info) {
+  auto ret = HloFusionAnalysis::Create(
+      FusionBackendConfig::default_instance(), GetRoots(consumer),
+      MakeProducerConsumerFusion(producer, consumer), &device_info);
+  if (!ret.ok()) return std::nullopt;
+  return {std::move(*ret)};
+}
+
+std::optional<HloFusionAnalysis> AnalyzeFusion(
+    const HloInstruction& consumer, const se::DeviceDescription& device_info) {
+  auto ret = HloFusionAnalysis::Create(
+      FusionBackendConfig::default_instance(), GetRoots(consumer),
+      MakeSingleInstructionFusion(consumer), &device_info);
+  if (!ret.ok()) return std::nullopt;
+  return {std::move(*ret)};
+}
+
 }  // namespace gpu
 }  // namespace xla

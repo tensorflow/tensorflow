@@ -220,31 +220,6 @@ float GetMaxSysBwFromGpu(const se::CudaComputeCapability cc,
   return -1;
 }
 
-std::vector<const HloInstruction*> GetRoots(const HloInstruction& consumer) {
-  return consumer.opcode() == HloOpcode::kFusion
-             ? GetFusionRoots(*consumer.fused_instructions_computation())
-             : std::vector<const HloInstruction*>{&consumer};
-}
-
-std::optional<HloFusionAnalysis> AnalyzeProducerConsumerFusion(
-    const HloInstruction& producer, const HloInstruction& consumer,
-    const se::DeviceDescription& device_info) {
-  auto ret = HloFusionAnalysis::Create(
-      FusionBackendConfig::default_instance(), GetRoots(consumer),
-      MakeProducerConsumerFusion(producer, consumer), &device_info);
-  if (!ret.ok()) return std::nullopt;
-  return {std::move(*ret)};
-}
-
-std::optional<HloFusionAnalysis> AnalyzeFusion(
-    const HloInstruction& consumer, const se::DeviceDescription& device_info) {
-  auto ret = HloFusionAnalysis::Create(
-      FusionBackendConfig::default_instance(), GetRoots(consumer),
-      MakeSingleInstructionFusion(consumer), &device_info);
-  if (!ret.ok()) return std::nullopt;
-  return {std::move(*ret)};
-}
-
 // Uses HloFusionAnalysis for computing the actual number of threads and blocks
 // that the IR emitter will use.
 LaunchDimensions EstimateFusionLaunchDimensions(

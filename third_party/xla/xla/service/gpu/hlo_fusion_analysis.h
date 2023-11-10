@@ -138,6 +138,16 @@ class HloFusionAnalysis {
   std::optional<LaunchDimensionsConfig> loop_fusion_config_;
 };
 
+// Creates a HloFusionAnalysis that analyzes a hypothetical fusion of producer
+// into consumer.
+std::optional<HloFusionAnalysis> AnalyzeProducerConsumerFusion(
+    const HloInstruction& producer, const HloInstruction& consumer,
+    const se::DeviceDescription& device_info);
+// Creates a HloFusionAnalysis that analyzes just consumer as a standalone
+// fusion.
+std::optional<HloFusionAnalysis> AnalyzeFusion(
+    const HloInstruction& consumer, const se::DeviceDescription& device_info);
+
 }  // namespace gpu
 }  // namespace xla
 
