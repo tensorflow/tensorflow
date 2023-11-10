@@ -256,7 +256,7 @@ cuda_py_strict_test(
     name = "linear_operator_circulant_test",
     size = "medium",
     srcs = ["linear_operator_circulant_test.py"],
-    shard_count = 32,
+    shard_count = 50,
     tags = [
         "no_cuda11",  # TODO(b/197522782): reenable test after fixing.
         "optonly",  # times out, b/79171797
