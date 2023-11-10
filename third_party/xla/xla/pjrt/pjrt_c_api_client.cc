@@ -1135,14 +1135,21 @@ StatusOr<std::string> PjRtCApiExecutable::SerializeExecutable() const {
 }
 
 StatusOr<std::string> PjRtCApiExecutable::FingerprintExecutable() const {
+  const PJRT_Api* c_api_ = pjrt_c_api();
+  if (c_api_->pjrt_api_version.major_version == 0 &&
+      c_api_->pjrt_api_version.minor_version < 35) {
+    // TODO(yeounoh): To be removed after 01/20/2024.
+    return xla::Unimplemented(
+        "Getting fingerprint from unloaded PJRT executable requires plugin "
+        "with PJRT C API version >= 0.35");
+  }
+
   PJRT_Executable_Fingerprint_Args args;
   args.struct_size = PJRT_Executable_Fingerprint_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.executable = c_executable();
-
   RETURN_STATUS_IF_PJRT_ERROR(c_api_->PJRT_Executable_Fingerprint(&args),
                               c_api_);
-
   return std::string(args.executable_fingerprint,
                      args.executable_fingerprint_size);
 }
@@ -1646,7 +1653,31 @@ bool PjRtCApiLoadedExecutable::IsDeleted() {
 }
 
 StatusOr<std::string> PjRtCApiLoadedExecutable::FingerprintExecutable() const {
-  return executable_->FingerprintExecutable();
+  StatusOr<std::string> fingerprint = executable_->FingerprintExecutable();
+  if (fingerprint.ok()) {
+    return *fingerprint;
+  }
+  if (fingerprint.status().code() != absl::StatusCode::kUnimplemented) {
+    return fingerprint.status();
+  }
+
+  // Fallback and call PJRT_LoadedEecutable_Fingerprint until the plugins
+  // implement new PJRT_Executable_Fingerprint API within the compatibility
+  // window.
+  // TODO(yeounoh): To be removed after 01/20/2024.
+  PJRT_LoadedExecutable_Fingerprint_Args args;
+  args.struct_size = PJRT_LoadedExecutable_Fingerprint_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = c_loaded_executable();
+  const PJRT_Api* c_api = pjrt_c_api();
+  std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> error(
+      c_api->PJRT_LoadedExecutable_Fingerprint(&args),
+      pjrt::MakeErrorDeleter(c_api));
+  if (error) {
+    return ::pjrt::PjrtErrorToStatus(error.get(), c_api);
+  }
+  return std::string(args.executable_fingerprint,
+                     args.executable_fingerprint_size);
 }
 
 // ---------------------------------- Buffers ----------------------------------
