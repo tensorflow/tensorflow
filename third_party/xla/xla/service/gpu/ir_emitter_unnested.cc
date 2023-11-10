@@ -27,12 +27,14 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -1913,24 +1915,22 @@ static Status ProcessFusionForConversion(mlir::Region* region,
 
 #if GOOGLE_CUDA
 Status IrEmitterUnnested::EmitTritonFusion(
-    const HloFusionAnalysis& hlo_fusion_analysis, mlir::Operation* op,
-    const TritonGemmConfig& config,
-    const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
-        hlo_for_lmhlo) {
+    const HloFusionAnalysis& hlo_fusion_analysis,
+    const HloFusionInstruction* fusion, mlir::Operation* op) {
   // Note: In this method we can't use `BuildKernelThunk` as usual,
   // because we only get the launch dimensions after code generation. So we
   // implement kernel reuse using lower level APIs, such as
   // `BuildKernelThunkImpl`.
 
   VLOG(3) << llvm_ir::DumpToString(op);
-  auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(op);
-
-  std::string suggested_kernel_name = GetIrNameFromLoc(fusion_op->getLoc());
+  std::string suggested_kernel_name = std::string(fusion->name());
   TF_ASSIGN_OR_RETURN(
       auto kernel_arguments,
-      KernelArguments::Create(ir_emitter_context_->allocations(), fusion_op));
-
-  auto* fusion = Cast<HloFusionInstruction>(hlo_for_lmhlo.at(op));
+      ir_emitter_context_->emit_ir_from_hlo()
+          ? KernelArguments::Create(ir_emitter_context_->buffer_assignment(),
+                                    fusion)
+          : KernelArguments::Create(ir_emitter_context_->allocations(),
+                                    mlir::cast<mlir::lmhlo::FusionOp>(op)));
 
   const HloComputation* hlo_computation =
       fusion->fused_instructions_computation();
@@ -1943,18 +1943,19 @@ Status IrEmitterUnnested::EmitTritonFusion(
             llvm_ir::SanitizeFunctionName(
                 absl::StrCat(suggested_kernel_name, "_impl")));
 
-    FusionBackendConfig backend_config;
-    auto backend_config_str = fusion_op.getBackendConfig()
-                                  .value_or(mlir::Attribute())
-                                  .dyn_cast_or_null<mlir::StringAttr>();
-    CHECK(backend_config_str);
-    TF_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(backend_config_str.str(),
-                                                     &backend_config));
+    TF_ASSIGN_OR_RETURN(auto backend_config,
+                        fusion->backend_config<FusionBackendConfig>());
     absl::string_view fusion_kind = backend_config.kind();
 
     TritonWrapperResult triton_wrapper_result;
     LaunchDimensions launch_dimensions;
     if (fusion_kind == kTritonSoftmaxFusionKind) {
+      auto& triton_config = *backend_config.mutable_triton_gemm_config();
+      triton_config.set_num_stages(1);
+      triton_config.set_num_warps(DeriveNumWarpsFromTritonSoftmaxComputation(
+          fusion->fused_instructions_computation()));
+      TritonGemmConfig config = TritonGemmConfig::FromProto(triton_config);
+
       TF_ASSIGN_OR_RETURN(auto analysis,
                           TritonFusionAnalysis::Execute(*hlo_computation));
       TF_ASSIGN_OR_RETURN(
@@ -1969,6 +1970,20 @@ Status IrEmitterUnnested::EmitTritonFusion(
           hlo_fusion_analysis.fusion_boundary(), config);
     } else {  // Must be a MatMul
       CHECK_EQ(fusion_kind, kTritonGemmFusionKind);
+      if (!backend_config.has_triton_gemm_config()) {
+        LOG(WARNING) << "Using fallback triton GEMM config for op "
+                     << GetIrNameFromLoc(op->getLoc());
+        auto& triton_config = *backend_config.mutable_triton_gemm_config();
+        triton_config.set_block_m(64);
+        triton_config.set_block_k(64);
+        triton_config.set_block_n(64);
+        triton_config.set_split_k(1);
+        triton_config.set_num_stages(1);
+        triton_config.set_num_warps(2);
+      }
+      TritonGemmConfig config =
+          TritonGemmConfig::FromProto(backend_config.triton_gemm_config());
+
       TF_ASSIGN_OR_RETURN(auto analysis, TritonFusionAnalysis::Execute(
                                              *hlo_computation, config.split_k));
       TF_ASSIGN_OR_RETURN(
@@ -2007,8 +2022,14 @@ Status IrEmitterUnnested::EmitTritonFusion(
       /*discriminator=*/"", generate);
   TF_RETURN_IF_ERROR(kernel.status());
 
+  std::variant<mlir::Operation*, const HloInstruction*> fusion_op;
+  if (ir_emitter_context_->emit_ir_from_hlo()) {
+    fusion_op = fusion;
+  } else {
+    fusion_op = op;
+  }
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
-      op, kernel->kernel_name, kernel_arguments.args(),
+      fusion_op, kernel->kernel_name, kernel_arguments.args(),
       kernel->launch_dimensions, kernel->shmem_bytes));
   return OkStatus();
 }
@@ -2044,7 +2065,7 @@ bool IsSpecializedLoopFusion(
 
 Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
                                      HloFusionAnalysis& fusion_analysis) {
-  // TODO(anlunx): Support kTriton, and kScatter.
+  // TODO(anlunx): Support kScatter.
   std::unique_ptr<FusionInterface> emitter;
   switch (fusion_analysis.GetEmitterFusionKind()) {
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
@@ -2060,6 +2081,14 @@ Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
       emitter = std::make_unique<ReductionFusion>(fusion_analysis);
       break;
+    case HloFusionAnalysis::EmitterFusionKind::kTriton: {
+      TF_ASSIGN_OR_RETURN(auto backend_config,
+                          instr->backend_config<FusionBackendConfig>());
+#if GOOGLE_CUDA
+      return EmitTritonFusion(fusion_analysis, instr, nullptr);
+#endif
+      LOG(FATAL) << "Unsupported fusion kind: " << backend_config.kind();
+    }
     default:
       return FailedPrecondition(
           "Fusion type not supported by the HLO emitter.");
@@ -2122,33 +2151,7 @@ Status IrEmitterUnnested::EmitFusion(
   switch (emitter_fusion_kind) {
     case HloFusionAnalysis::EmitterFusionKind::kTriton: {
 #if GOOGLE_CUDA
-      if (backend_config.kind() == kTritonGemmFusionKind) {
-        if (!backend_config.has_triton_gemm_config()) {
-          LOG(WARNING) << "Using fallback triton GEMM config for op "
-                       << GetIrNameFromLoc(op->getLoc());
-          auto& triton_config = *backend_config.mutable_triton_gemm_config();
-          triton_config.set_block_m(64);
-          triton_config.set_block_k(64);
-          triton_config.set_block_n(64);
-          triton_config.set_split_k(1);
-          triton_config.set_num_stages(1);
-          triton_config.set_num_warps(2);
-        }
-        return EmitTritonFusion(
-            fusion_analysis, fusion_op,
-            TritonGemmConfig::FromProto(backend_config.triton_gemm_config()),
-            hlo_for_lmhlo);
-      }
-      if (backend_config.kind() == kTritonSoftmaxFusionKind) {
-        auto& triton_config = *backend_config.mutable_triton_gemm_config();
-        triton_config.set_num_stages(1);
-        triton_config.set_num_warps(
-            DeriveNumWarpsFromTritonSoftmaxComputation(fused_computation));
-        return EmitTritonFusion(
-            fusion_analysis, fusion_op,
-            TritonGemmConfig::FromProto(backend_config.triton_gemm_config()),
-            hlo_for_lmhlo);
-      }
+      return EmitTritonFusion(fusion_analysis, fusion, fusion_op);
 #endif
       LOG(FATAL) << "Unsupported fusion kind: " << backend_config.kind();
     }
@@ -3271,10 +3274,9 @@ Status IrEmitterUnnested::EmitOp(
                           HloFusionAnalysis::Create(instr, &device_info));
       HloFusionAnalysis::EmitterFusionKind kind =
           fusion_analysis.GetEmitterFusionKind();
-      // TODO(anlunx): Add support for emitting kTriton, kScatter, and
-      // specialized kLoops.
-      if (kind != HloFusionAnalysis::EmitterFusionKind::kTriton &&
-          kind != HloFusionAnalysis::EmitterFusionKind::kScatter &&
+      // TODO(anlunx): Add support for emitting kScatter, and specialized
+      // kLoops.
+      if (kind != HloFusionAnalysis::EmitterFusionKind::kScatter &&
           !IsSpecializedLoopFusion(op, ir_emitter_context_->allocations(),
                                    fusion_analysis)) {
         return EmitFusion(instr, fusion_analysis);
