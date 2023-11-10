@@ -113,8 +113,7 @@ else
     'N'
     'N'
     'N'
-    'N'
-    '-march=native -Wno-sign-compare -Wno-c++20-designator -Wno-gnu-inline-cpp-without-extern'
+    '-Wno-sign-compare -Wno-c++20-designator -Wno-gnu-inline-cpp-without-extern'
     'y'
     '/android/sdk'
   )
