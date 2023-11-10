@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/runtime/gpu_kernel_helper.h"
 #include "xla/service/gpu/runtime/topk_kernel_common.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/xla_data.pb.h"
@@ -94,22 +94,22 @@ absl::Status TypedTopK(TopkArgs<T> args) {
   int num_threads = NumThreads(args.num_elements, args.k, args.batch_size);
   if (num_threads == 0) {
     return absl::FailedPreconditionError(
-        "Invalid kernel pameters. This is likely a bug in the "
+        "Invalid kernel parameters. This is likely a bug in the "
         "TopkSpecializer.");
   }
+
   TF_ASSIGN_OR_RETURN(void* kernel, GetKernel<T>(args.num_elements, args.k));
   int blocks_per_grid = args.batch_size;
   constexpr size_t max_kv_size = sizeof(uint64_t);
   // Allocate shmem assuming we have a full reduction.
-  int shmem_size = absl::bit_ceil(args.k) * max_kv_size * 32;
+  int shmem_size = absl::bit_ceil(args.k) * max_kv_size * WAVEFRONT_SIZE;
   void* kernel_args[] = {&args.data, &args.num_elements, &args.top_elements,
                          &args.top_indices, &args.k};
-  cudaError_t launch_status =
-      cudaLaunchKernel(kernel, blocks_per_grid, num_threads, kernel_args,
-                       shmem_size, args.stream);
-  if (launch_status != cudaSuccess) {
+  auto launch_status = gpuLaunchKernel(kernel, blocks_per_grid, num_threads,
+                                       kernel_args, shmem_size, args.stream);
+  if (launch_status != gpuSuccess) {
     return absl::InternalError(absl::StrCat("Failed to launch kernel: ",
-                                            cudaGetErrorString(launch_status)));
+                                            gpuGetErrorString(launch_status)));
   }
   return absl::OkStatus();
 }

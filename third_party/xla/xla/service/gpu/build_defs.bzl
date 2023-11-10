@@ -2,7 +2,8 @@
 """
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
-load("@local_config_rocm//rocm:build_defs.bzl", "rocm_copts")  # copybara:comment
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured", "rocm_copts")
+load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 def get_cub_sort_kernel_types(name = ""):
     """ List of supported types for CUB sort kernels.
@@ -34,9 +35,17 @@ def build_cub_sort_kernels(name, types, local_defines = [], **kwargs):
     """ Create build rules for all CUB sort kernels.
     """
     for suffix in types:
-        cuda_library(
+        gpu_kernel_library(
             name = name + "_" + suffix,
             local_defines = local_defines + ["CUB_TYPE_" + suffix.upper()],
-            copts = rocm_copts(),  # copybara:comment
             **kwargs
         )
+
+def gpu_kernel_library(name, copts = [], local_defines = [], **kwargs):
+    cuda_library(
+        name = name,
+        local_defines = local_defines + if_cuda_is_configured(["GOOGLE_CUDA=1"]) +
+                        if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
+        copts = copts + rocm_copts(),
+        **kwargs
+    )

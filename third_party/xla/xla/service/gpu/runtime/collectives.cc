@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "xla/runtime/custom_call.h"
 #include "xla/runtime/executable.h"
 #include "xla/service/collective_ops_utils.h"
@@ -45,11 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 
 #if XLA_ENABLE_XCCL
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
-#include "third_party/gpus/cuda/include/driver_types.h"
-#include "third_party/gpus/cuda/include/vector_types.h"
-#endif
+#include "xla/service/gpu/runtime/gpu_kernel_helper.h"
 #include "xla/service/gpu/runtime/sleep_kernel.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -189,35 +186,30 @@ absl::Status AsyncDoneImpl(const ServiceExecutableRunOptions* run_options,
 #if XLA_ENABLE_XCCL
 absl::Status NcclMockImplCommon(se::Stream* stream) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(stream);
+#define CHK(x)                                              \
+  if (auto res = (x); res != gpuSuccess) {                  \
+    return absl::InternalError(                             \
+        absl::StrFormat("Call failed with '%s' at line %d", \
+                        gpuGetErrorString(res), __LINE__)); \
+  }
+  auto gpu_stream = se::gpu::AsGpuStreamValue(stream);
   uint32_t sleep_duration_ns = 1000;
   void* kernel = GetSleepKernel();
   dim3 gridDim = {1, 1, 1};
   dim3 blockDim = {512, 1, 1};
-#endif
+
 #if GOOGLE_CUDA
   void* kernel_args[] = {&sleep_duration_ns};
-  cudaError_t launch_status =
-      cudaLaunchKernel(kernel, gridDim, blockDim, kernel_args, 0, gpu_stream);
-  if (launch_status != cudaSuccess) {
-    return absl::InternalError(absl::StrCat("Failed to launch kernel: ",
-                                            cudaGetErrorString(launch_status)));
-  }
-#elif TENSORFLOW_USE_ROCM
-#define CHK(x)                                                  \
-  if (auto res = (x); res != hipSuccess) {                      \
-    return absl::InternalError(                                 \
-        absl::StrFormat("HIP call failed with '%s' at line %d", \
-                        hipGetErrorString(res), __LINE__));     \
-  }
+#else
   int devID = 0;
   hipDeviceProp_t prop{};
   CHK(hipGetDevice(&devID));
   CHK(hipGetDeviceProperties(&prop, devID));
   void* kernel_args[] = {&sleep_duration_ns, &prop.clockRate};
-  CHK(hipLaunchKernel(kernel, gridDim, blockDim, kernel_args, 0, gpu_stream));
+#endif
+  CHK(gpuLaunchKernel(kernel, gridDim, blockDim, kernel_args, 0, gpu_stream));
 #undef CHK
-#endif  // TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return absl::OkStatus();
 }
 #endif  // XLA_ENABLE_XCCL
