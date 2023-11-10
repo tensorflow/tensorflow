@@ -111,10 +111,10 @@ class StreamExecutor {
   //
   // If an error occurs, or there is no kernel available for the StreamExecutor
   // platform, error status is returned.
-  tsl::Status GetKernel(const MultiKernelLoaderSpec& spec, KernelBase* kernel);
+  tsl::Status GetKernel(const MultiKernelLoaderSpec& spec, Kernel* kernel);
 
   // Releases any state associated with the previously loaded kernel.
-  void UnloadKernel(const KernelBase* kernel);
+  void UnloadKernel(const Kernel* kernel);
 
   // Loads a module for the platform this StreamExecutor is acting upon.
   //
@@ -413,7 +413,7 @@ class StreamExecutor {
   // This is called by Stream::Launch() to delegate to the platform's launch
   // implementation in StreamExecutorInterface::Launch().
   tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
-                     const BlockDim& block_dims, const KernelBase& kernel,
+                     const BlockDim& block_dims, const Kernel& kernel,
                      const KernelArgsArrayBase& args);
 
   // Submits command buffer for execution to the underlying platform driver.

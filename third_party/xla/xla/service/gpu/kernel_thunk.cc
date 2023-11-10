@@ -98,7 +98,7 @@ Status KernelThunk::Initialize(se::StreamExecutor* executor,
   // profiles.
   auto it = kernel_cache_.find(executor);
   if (kernel_cache_.end() == it) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::KernelBase> kernel,
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
                         CreateKernel(kernel_name_, args_.size(), src.text,
                                      src.binary, executor, shmem_bytes_));
 
@@ -129,7 +129,7 @@ Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Load the kernel.
   se::StreamExecutor* executor = params.stream->parent();
   LaunchDimensions launch_dimensions;
-  const se::KernelBase* kernel = nullptr;
+  const se::Kernel* kernel = nullptr;
 
   {
     absl::MutexLock lock(&mutex_);

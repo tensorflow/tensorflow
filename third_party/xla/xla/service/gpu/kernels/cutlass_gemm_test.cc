@@ -38,7 +38,7 @@ TEST(CutlassGemmKernelTest, SimpleGemm) {
   stream.Init();
   ASSERT_TRUE(stream.ok());
 
-  se::KernelBase gemm(executor);
+  se::Kernel gemm(executor);
 
   // Load [4, 4] x [4, 4] gemm kernel written in CUDA C++ with CUTLASS.
   auto custom_kernel = GetCutlassGemmKernel(PrimitiveType::F32, 4, 4, 4);

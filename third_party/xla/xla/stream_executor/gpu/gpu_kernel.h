@@ -89,13 +89,13 @@ class GpuKernel : public internal::KernelInterface {
 
 // Given a platform-independent kernel datatype, returns the (const) internal
 // CUDA platform implementation pointer.
-inline const GpuKernel* AsGpuKernel(const KernelBase* kernel) {
+inline const GpuKernel* AsGpuKernel(const Kernel* kernel) {
   return static_cast<const GpuKernel*>(kernel->implementation());
 }
 
 // Given a platform-independent kernel datatype, returns the (non-const)
 // internal CUDA platform implementation pointer.
-inline GpuKernel* AsGpuKernel(KernelBase* kernel) {
+inline GpuKernel* AsGpuKernel(Kernel* kernel) {
   return static_cast<GpuKernel*>(kernel->implementation());
 }
 

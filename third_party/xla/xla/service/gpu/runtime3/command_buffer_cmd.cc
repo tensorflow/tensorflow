@@ -82,7 +82,7 @@ Status LaunchCmd::Initialize(se::StreamExecutor* executor,
                              ExecutableSource source) {
   if (kernels_.contains(executor)) return OkStatus();
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::KernelBase> kernel,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
                       CreateKernel(kernel_name_, args_.size(), source.text,
                                    source.binary, executor, shmem_bytes_));
 
@@ -95,7 +95,7 @@ Status LaunchCmd::Record(const RecordParams& params,
   VLOG(5) << "LaunchCmd: kernel=" << kernel_name_
           << ", shmem_bytes=" << shmem_bytes_;
 
-  se::KernelBase* kernel = kernels_[command_buffer->executor()].get();
+  se::Kernel* kernel = kernels_[command_buffer->executor()].get();
   if (kernel == nullptr) {
     return absl::InternalError(
         "Kernel not loaded on a command buffer executor");

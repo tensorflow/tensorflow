@@ -115,7 +115,7 @@ tsl::StatusOr<OwnedGpuGraph> CreateGpuGraph();
 // Adds a kernel node to the graph.
 tsl::StatusOr<GpuGraphNodeHandle> AddKernelNode(
     GpuGraphHandle graph, absl::Span<GpuGraphNodeHandle> deps,
-    ThreadDim threads, BlockDim blocks, const KernelBase& kernel,
+    ThreadDim threads, BlockDim blocks, const Kernel& kernel,
     const KernelArgsArrayBase& args);
 
 // Adds a memory copy node to the graph.

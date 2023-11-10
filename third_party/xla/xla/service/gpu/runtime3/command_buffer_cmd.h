@@ -115,7 +115,7 @@ class LaunchCmd : public CommandBufferCmd {
                 se::CommandBuffer* command_buffer) override;
 
  private:
-  using OwnedKernel = std::unique_ptr<se::KernelBase>;
+  using OwnedKernel = std::unique_ptr<se::Kernel>;
 
   std::string kernel_name_;
   std::vector<BufferAllocation::Slice> args_;

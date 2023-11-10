@@ -173,11 +173,11 @@ tsl::Status StreamExecutor::Init(DeviceOptions device_options) {
 tsl::Status StreamExecutor::Init() { return Init(DeviceOptions::Default()); }
 
 tsl::Status StreamExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
-                                      KernelBase* kernel) {
+                                      Kernel* kernel) {
   return implementation_->GetKernel(spec, kernel);
 }
 
-void StreamExecutor::UnloadKernel(const KernelBase* kernel) {
+void StreamExecutor::UnloadKernel(const Kernel* kernel) {
   implementation_->UnloadKernel(kernel);
 }
 
@@ -439,7 +439,7 @@ fft::FftSupport* StreamExecutor::AsFft() {
 
 tsl::Status StreamExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                                    const BlockDim& block_dims,
-                                   const KernelBase& kernel,
+                                   const Kernel& kernel,
                                    const KernelArgsArrayBase& args) {
   SubmitTrace(&TraceListener::LaunchSubmit, stream, thread_dims, block_dims,
               kernel, args);
