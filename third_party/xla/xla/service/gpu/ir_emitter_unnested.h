@@ -338,7 +338,7 @@ class IrEmitterUnnested : public IrEmitter {
     Shape operand_shape;
     Shape scatter_indices_shape;
     Shape updates_shape;
-    mlir::mhlo::ScatterDimensionNumbersAttr dim_numbers;
+    ScatterDimensionNumbers dim_numbers;
     bool unique_indices;
     const HloComputation* update_computation;
     llvm_ir::IrArray output;
@@ -352,8 +352,8 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitScatter(const ScatterDescriptor& desc,
                      const LaunchDimensions& launch_dimensions);
 
-  Status EmitScatter(mlir::lmhlo::FusionOp fusion_op,
-                     const HloComputation* fused_computation,
+  Status EmitScatter(const HloFusionInstruction* fusion,
+                     mlir::lmhlo::FusionOp fusion_op,
                      HloFusionAnalysis& fusion_analysis);
 
   // Builds a kernel thunk for a non-fusion operation, without reuse.

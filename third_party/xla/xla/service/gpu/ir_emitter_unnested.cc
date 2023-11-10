@@ -274,17 +274,21 @@ StatusOr<xla::gpu::CudnnfMHAKind> AsCudnnBackwardfMHAKind(
 // ```
 StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkForFusion(
     IrEmitterContext& ir_emitter_context, KernelReuseCache& kernel_cache,
-    mlir::lmhlo::FusionOp fusion_op, const HloComputation* fused_computation,
+    const HloFusionInstruction* fusion, mlir::lmhlo::FusionOp fusion_op,
+    const HloComputation* fused_computation,
     const LaunchDimensions& launch_dimensions, absl::string_view discriminator,
     std::function<Status(std::vector<llvm_ir::IrArray>,
                          std::vector<llvm_ir::IrArray>)>
         kernel_builder_fn,
     llvm::IRBuilder<>* builder) {
-  std::string suggested_kernel_name = GetIrNameFromLoc(fusion_op->getLoc());
+  std::string suggested_kernel_name = std::string(fusion->name());
 
-  TF_ASSIGN_OR_RETURN(
-      auto kernel_arguments,
-      KernelArguments::Create(ir_emitter_context.allocations(), fusion_op));
+  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
+                      ir_emitter_context.emit_ir_from_hlo()
+                          ? KernelArguments::Create(
+                                ir_emitter_context.buffer_assignment(), fusion)
+                          : KernelArguments::Create(
+                                ir_emitter_context.allocations(), fusion_op));
 
   auto kernel_builder_status = OkStatus();
   auto [entry, cached] = kernel_cache.Get(
@@ -292,7 +296,7 @@ StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkForFusion(
       [&]() -> KernelReuseCache::Entry {
         auto [kernel, input_arrays, output_arrays] = BuildKernelPrototype(
             ir_emitter_context, suggested_kernel_name, kernel_arguments.args(),
-            fusion_op.getInputBuffers().size(), launch_dimensions, builder);
+            fusion->operand_count(), launch_dimensions, builder);
         kernel_builder_status = kernel_builder_fn(input_arrays, output_arrays);
         return {kernel->getName().str(), launch_dimensions};
       });
@@ -302,8 +306,15 @@ StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkForFusion(
             << entry.kernel_name;
   }
 
+  std::variant<mlir::Operation*, const HloInstruction*> op;
+  if (ir_emitter_context.emit_ir_from_hlo()) {
+    op = fusion;
+  } else {
+    op = fusion_op;
+  }
+
   return std::make_unique<KernelThunk>(
-      fusion_op, entry.kernel_name, kernel_arguments.args(), launch_dimensions,
+      op, entry.kernel_name, kernel_arguments.args(), launch_dimensions,
       /*shmem_bytes=*/0);
 }
 
@@ -2065,7 +2076,6 @@ bool IsSpecializedLoopFusion(
 
 Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
                                      HloFusionAnalysis& fusion_analysis) {
-  // TODO(anlunx): Support kScatter.
   std::unique_ptr<FusionInterface> emitter;
   switch (fusion_analysis.GetEmitterFusionKind()) {
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
@@ -2089,6 +2099,8 @@ Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
 #endif
       LOG(FATAL) << "Unsupported fusion kind: " << backend_config.kind();
     }
+    case HloFusionAnalysis::EmitterFusionKind::kScatter:
+      return EmitScatter(instr, nullptr, fusion_analysis);
     default:
       return FailedPrecondition(
           "Fusion type not supported by the HLO emitter.");
@@ -2125,8 +2137,6 @@ Status IrEmitterUnnested::EmitFusion(
     }
   }
 
-  auto* fused_computation = fusion->fused_instructions_computation();
-
   // Create HloFusionAnalysis instance.
   const se::DeviceDescription& device_info =
       ir_emitter_context_->gpu_device_info();
@@ -2156,7 +2166,7 @@ Status IrEmitterUnnested::EmitFusion(
       LOG(FATAL) << "Unsupported fusion kind: " << backend_config.kind();
     }
     case HloFusionAnalysis::EmitterFusionKind::kScatter:
-      return EmitScatter(fusion_op, fused_computation, fusion_analysis);
+      return EmitScatter(fusion, fusion_op, fusion_analysis);
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
     case HloFusionAnalysis::EmitterFusionKind::kLoop:
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
@@ -2489,11 +2499,18 @@ Status IrEmitterUnnested::EmitScatter(
     std::vector<llvm::Value*> input_scatter_multidim;
     std::vector<int64_t> raw_window_bounds;
 
+    auto get_i64_array = [](absl::Span<const int64_t> container) {
+      return llvm::ArrayRef<int64_t>{container.data(),
+                                     static_cast<size_t>(container.size())};
+    };
+
+    llvm::ArrayRef<int64_t> update_window_dims =
+        get_i64_array(desc.dim_numbers.update_window_dims());
     // Partition the index into window indices and scatter indices.
     for (int64_t i = 0, e = index.size(); i != e; ++i) {
       // For window indices also remember the window size, this comes in handy
       // later.
-      if (llvm::is_contained(desc.dim_numbers.getUpdateWindowDims(), i)) {
+      if (llvm::is_contained(update_window_dims, i)) {
         raw_window_multidim.push_back(index[i]);
         raw_window_bounds.push_back(desc.updates_shape.dimensions(i));
       } else {
@@ -2501,7 +2518,7 @@ Status IrEmitterUnnested::EmitScatter(
       }
     }
     DCHECK_EQ(raw_window_multidim.size(),
-              desc.dim_numbers.getUpdateWindowDims().size());
+              desc.dim_numbers.update_window_dims_size());
 
     // Apply inserted_window_dims to the window dimensions.
     int64_t raw_window_multidim_idx = 0;
@@ -2511,8 +2528,10 @@ Status IrEmitterUnnested::EmitScatter(
     input_window_bounds.reserve(rank);
     input_window_multidim.reserve(rank);
 
+    llvm::ArrayRef<int64_t> inserted_window_dims =
+        get_i64_array(desc.dim_numbers.inserted_window_dims());
     for (int64_t i = 0; i != rank; ++i) {
-      if (llvm::is_contained(desc.dim_numbers.getInsertedWindowDims(), i)) {
+      if (llvm::is_contained(inserted_window_dims, i)) {
         input_window_bounds.push_back(1);  // Trivial dimension.
         input_window_multidim.push_back(index.GetConstantWithIndexType(0));
       } else {
@@ -2527,11 +2546,11 @@ Status IrEmitterUnnested::EmitScatter(
 
     // Insert a 1 dimension at the end if index_vector_dim requests one.
     Shape scatter_indices_shape_fixed = desc.scatter_indices_shape;
-    if (desc.dim_numbers.getIndexVectorDim() ==
+    if (desc.dim_numbers.index_vector_dim() ==
         desc.scatter_indices_shape.rank()) {
       scatter_indices_shape_fixed.add_dimensions(1);
       scatter_indices_shape_fixed.mutable_layout()->add_minor_to_major(
-          desc.dim_numbers.getIndexVectorDim());
+          desc.dim_numbers.index_vector_dim());
     }
 
     // Now load the indices corresponding to the current window from
@@ -2539,21 +2558,22 @@ Status IrEmitterUnnested::EmitScatter(
     std::vector<llvm::Value*> raw_scatter_index_multidim =
         input_scatter_multidim;
     raw_scatter_index_multidim.insert(raw_scatter_index_multidim.begin() +
-                                          desc.dim_numbers.getIndexVectorDim(),
+                                          desc.dim_numbers.index_vector_dim(),
                                       nullptr);
+
+    llvm::ArrayRef<int64_t> scatter_dims_to_operand_dims =
+        get_i64_array(desc.dim_numbers.scatter_dims_to_operand_dims());
     llvm::Value* is_in_bounds = b_.getTrue();
-    for (int64_t i = 0,
-                 e = desc.dim_numbers.getScatterDimsToOperandDims().size();
-         i != e; ++i) {
+    for (int64_t i = 0, e = scatter_dims_to_operand_dims.size(); i != e; ++i) {
       // Our index is stored along index_vector_dim, insert that into the lookup
       // index into scatter_indices.
-      raw_scatter_index_multidim[desc.dim_numbers.getIndexVectorDim()] =
+      raw_scatter_index_multidim[desc.dim_numbers.index_vector_dim()] =
           index.GetConstantWithIndexType(i);
       llvm_ir::IrArray::Index raw_scatter_index_index(
           raw_scatter_index_multidim, scatter_indices_shape_fixed,
           index.GetType());
 
-      int64_t operand_dim = desc.dim_numbers.getScatterDimsToOperandDims()[i];
+      int64_t operand_dim = scatter_dims_to_operand_dims[i];
       if (operand_dim > rank) {
         return absl::OutOfRangeError(
             "The provided scatter_dims_to_operand_dims was out of range.");
@@ -3108,9 +3128,10 @@ Status IrEmitterUnnested::EmitTargetElementLoop(
   return InternalError("This should be unreachable");
 }
 
-Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
-                                      const HloComputation* fused_computation,
+Status IrEmitterUnnested::EmitScatter(const HloFusionInstruction* fusion,
+                                      mlir::lmhlo::FusionOp fusion_op,
                                       HloFusionAnalysis& fusion_analysis) {
+  auto* fused_computation = fusion->fused_instructions_computation();
   auto* root = fused_computation->root_instruction();
 
   // Nothing should have been fused into the first operand of scatter.
@@ -3137,16 +3158,16 @@ Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
           });
     }
 
-    TF_ASSIGN_OR_RETURN(const auto dim_numbers,
-                        mlir::LhloDialectEmitter::GetScatterDimensionNumbers(
-                            root, fusion_op.getContext()));
+    auto* scatter = Cast<HloScatterInstruction>(root);
+    const xla::ScatterDimensionNumbers& xla_scatter_dim =
+        scatter->scatter_dimension_numbers();
 
     ScatterDescriptor desc;
     desc.name = llvm_ir::IrName(root);
     desc.operand_shape = root->operand(0)->shape();
     desc.scatter_indices_shape = root->operand(1)->shape();
     desc.updates_shape = updates_shape;
-    desc.dim_numbers = dim_numbers;
+    desc.dim_numbers = xla_scatter_dim;
     desc.unique_indices = root->unique_indices();
     desc.update_computation = root->called_computations()[0];
     desc.output = outputs.back();
@@ -3160,11 +3181,11 @@ Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
     return EmitScatter(desc, launch_dimensions);
   };
 
-  TF_ASSIGN_OR_RETURN(
-      auto thunk,
-      BuildKernelThunkForFusion(*ir_emitter_context_, kernel_reuse_cache_,
-                                fusion_op, fused_computation, launch_dimensions,
-                                /*discriminator=*/"scatter", builder_fn, &b_));
+  TF_ASSIGN_OR_RETURN(auto thunk,
+                      BuildKernelThunkForFusion(
+                          *ir_emitter_context_, kernel_reuse_cache_, fusion,
+                          fusion_op, fused_computation, launch_dimensions,
+                          /*discriminator=*/"scatter", builder_fn, &b_));
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
 }
@@ -3272,12 +3293,8 @@ Status IrEmitterUnnested::EmitOp(
           ir_emitter_context_->gpu_device_info();
       TF_ASSIGN_OR_RETURN(auto fusion_analysis,
                           HloFusionAnalysis::Create(instr, &device_info));
-      HloFusionAnalysis::EmitterFusionKind kind =
-          fusion_analysis.GetEmitterFusionKind();
-      // TODO(anlunx): Add support for emitting kScatter, and specialized
-      // kLoops.
-      if (kind != HloFusionAnalysis::EmitterFusionKind::kScatter &&
-          !IsSpecializedLoopFusion(op, ir_emitter_context_->allocations(),
+      // TODO(anlunx): Add support for emitting specialized kLoops.
+      if (!IsSpecializedLoopFusion(op, ir_emitter_context_->allocations(),
                                    fusion_analysis)) {
         return EmitFusion(instr, fusion_analysis);
       }
