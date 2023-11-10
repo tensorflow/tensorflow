@@ -26,17 +26,22 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
+#include "pybind11/gil.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "xla/pjrt/lru_cache.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/python/py_buffer.h"
+#include "xla/python/py_client.h"
 #include "xla/python/py_values.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/python_utils.h"
@@ -850,6 +855,40 @@ StatusOr<PyArray> PyArray::BatchedDevicePut(
   return PyArray(aval, weak_type, dtype, std::move(shape), sharding,
                  dst_devices[0].client(), Traceback::Get(), ifrt_array,
                  committed, /*skip_checks=*/true);
+}
+
+absl::Status PyArray::BatchedBlockUntilReady(
+    absl::Span<const py::object> objs) {
+  // Create ready futures for all arrays before blocking on their readiness.
+  // This helps reduce the latency in some backend implementations where
+  // querying readiness of an array is not free.
+
+  std::vector<ifrt::Array*> ifrt_arrays;
+  ifrt_arrays.reserve(objs.size());
+  for (py::handle obj : objs) {
+    if (obj.get_type().is(PyArray::type())) {
+      auto py_array = py::reinterpret_borrow<PyArray>(obj);
+      ifrt::Array* const ifrt_array = py_array.ifrt_array();
+      if (ifrt_array == nullptr) {
+        return absl::InvalidArgumentError(
+            "BlockHostUntilReady() called on deleted or donated buffer");
+      }
+      ifrt_arrays.push_back(ifrt_array);
+    } else {
+      return absl::InvalidArgumentError(
+          "PyClient::BlockUntilReady can take PyArray only");
+    }
+  }
+
+  GlobalPyRefManager()->CollectGarbage();
+  py::gil_scoped_release gil_release;
+
+  std::vector<ifrt::Future<absl::Status>> futures;
+  futures.reserve(ifrt_arrays.size());
+  for (ifrt::Array* const ifrt_array : ifrt_arrays) {
+    futures.push_back(ifrt_array->GetReadyFuture());
+  }
+  return ifrt::JoinFutures(absl::MakeSpan(futures)).Await();
 }
 
 std::vector<py::object> PyClient::LiveArrays() {
