@@ -270,6 +270,7 @@ cc_library(
         ],
         "//conditions:default": [],
     }) + [
+        ":android_hardware_buffer",
         ":api",
         ":delegate_options",
         ":tflite_profile",
@@ -306,10 +307,26 @@ cc_library(
 )
 
 cc_library(
+    name = "android_hardware_buffer",
+    srcs = ["android_hardware_buffer.cc"],
+    hdrs = ["android_hardware_buffer.h"],
+)
+
+cc_test(
+    name = "android_hardware_buffer_test",
+    srcs = ["android_hardware_buffer_test.cc"],
+    deps = [
+        ":android_hardware_buffer",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "async_buffers",
     srcs = ["async_buffers.cc"],
     hdrs = ["async_buffers.h"],
     deps = [
+        ":android_hardware_buffer",
         ":api",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/gl:gl_errors",
