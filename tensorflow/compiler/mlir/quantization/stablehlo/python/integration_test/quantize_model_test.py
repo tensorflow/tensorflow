@@ -60,7 +60,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       has_bias: bool,
       batch_sizes: Sequence[int],
   ):
-    target_opset = quant_opts_pb2.XLA
+    target_opset = quant_opts_pb2.STABLEHLO
 
     lhs_batch_size, rhs_batch_size = batch_sizes
     input_shape = (*lhs_batch_size, 1, 1024)
