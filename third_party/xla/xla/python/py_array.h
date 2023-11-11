@@ -23,11 +23,8 @@ limitations under the License.
 #include <vector>
 
 // placeholder for index annotation headers
-#include "absl/status/status.h"
-#include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "pybind11/pybind11.h"  // from @pybind11
-#include "pybind11/pytypes.h"  // from @pybind11
 #include "xla/python/ifrt/array.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/py_buffer.h"
@@ -240,9 +237,6 @@ class PyArray : public pybind11::object {
       std::vector<ClientAndPtr<PjRtDevice>> dst_devices, bool committed,
       bool force_copy, PjRtClient::HostBufferSemantics host_buffer_semantics,
       bool jax_enable_x64);
-
-  static absl::Status BatchedBlockUntilReady(
-      absl::Span<const pybind11::object> objs);
 
  private:
   StatusOr<PyArray> FetchSingleShard(std::string_view api);
