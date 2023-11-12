@@ -277,12 +277,14 @@ tsl::Status GpuCommandBuffer::Update() {
         "Command buffer has to be finalized first before it can be updated");
   }
 
-  // TODO(ezhulenev): Add support for updating nested command buffers. Today
-  // we only support updating primary command buffers as we need a non null
-  // executable graph.
   if (exec_ == nullptr) {
+    if (mode_ == Mode::kPrimary)
+      return absl::InternalError(
+          "Primary command buffers are expected to have executable graphs");
     return absl::UnimplementedError(
-        "Nested command buffer update is not implemented");
+        "Nested command buffer update is deliberately not implemented. One "
+        "should create a new nested command buffer and update the primary one "
+        "instead");
   }
 
   VLOG(5) << "Begin primary command buffer update for executable graph "
