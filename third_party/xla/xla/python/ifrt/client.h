@@ -16,14 +16,20 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_CLIENT_H_
 #define XLA_PYTHON_IFRT_CLIENT_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
+#include <variant>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/tuple.h"
@@ -117,6 +123,10 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   virtual absl::string_view platform_name() const = 0;
   virtual absl::string_view platform_version() const = 0;
   virtual PlatformId platform_id() const = 0;
+
+  using ClientAttribute = xla::PjRtValueType;
+  virtual absl::flat_hash_map<std::string, ClientAttribute> attributes()
+      const = 0;
 
   virtual int device_count() const = 0;
   virtual int addressable_device_count() const = 0;

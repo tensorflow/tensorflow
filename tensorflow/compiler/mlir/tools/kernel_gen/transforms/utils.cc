@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 
@@ -61,7 +62,7 @@ Value CreateOrFindGlobalStringConstant(Location loc, StringRef global_name,
                                   ValueRange{c0, c0});
   }
   return LLVM::createGlobalString(loc, *b, global_name, content,
-                                  LLVM::Linkage::Internal, true);
+                                  LLVM::Linkage::Internal);
 }
 
 }  // namespace transforms

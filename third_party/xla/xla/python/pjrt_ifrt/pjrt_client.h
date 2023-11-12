@@ -19,8 +19,10 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -108,6 +110,18 @@ class PjRtClient final
   PlatformId platform_id() const override {
     DCHECK(this);
     return pjrt_client_->platform_id();
+  }
+  absl::flat_hash_map<std::string, ClientAttribute> attributes()
+      const override {
+    std::optional<PjRtPluginAttributes> attributes =
+        pjrt_client_->plugin_attributes();
+    if (!attributes.has_value()) {
+      return {};
+    }
+    return {{"pjrt_c_api_major_version",
+             ClientAttribute(attributes->pjrt_c_api_major_version)},
+            {"pjrt_c_api_minor_version",
+             ClientAttribute(attributes->pjrt_c_api_minor_version)}};
   }
 
   int device_count() const override {

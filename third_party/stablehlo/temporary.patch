@@ -1,19 +1,40 @@
 diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
 --- stablehlo/BUILD.bazel
 +++ stablehlo/BUILD.bazel
-@@ -1315,8 +1315,8 @@
- test_suite(
-     name = "stablehlo_ci_tests",
-     tests = [
-+        "//stablehlo/conversions/tosa/tests:stablehlo_tosa_tests",
-+        "//stablehlo/testdata:stablehlo_testdata_tests",
-         "//stablehlo/tests:stablehlo_tests",
--        "//stablehlo/testdata:stablehlo_testdata_tests",
--        "//stablehlo/conversions/tosa/tests:stablehlo_tosa_tests"
--    ],
--)
-+    ],
-+)
+@@ -289,10 +289,10 @@
+     strip_include_prefix = ".",
+     deps = [
+         ":interpreter_ops_inc_gen",
+-        ":reference_value",
+         ":reference_numpy",
+         ":reference_ops",
+         ":reference_process_grid",
++        ":reference_value",
+         "@llvm-project//llvm:Support",
+         "@llvm-project//mlir:FuncDialect",
+         "@llvm-project//mlir:IR",
+@@ -465,10 +465,10 @@
+     strip_include_prefix = ".",
+     deps = [
+         ":reference_axes",
++        ":reference_configuration",
+         ":reference_element",
+         ":reference_errors",
+         ":reference_index",
+-        ":reference_configuration",
+         ":reference_process",
+         ":reference_process_grid",
+         ":reference_scope",
+@@ -965,8 +965,8 @@
+     ],
+     deps = [
+         ":interpreter_ops",
++        ":reference_api",
+         ":reference_errors",
+-        ":reference_api",
+         ":reference_ops",
+         ":reference_process_grid",
+         ":reference_scope",
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
@@ -172,84 +193,19 @@ diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists
  add_subdirectory(integrations)
  add_subdirectory(reference)
  add_subdirectory(tests)
-diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
---- stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
-+++ stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
-@@ -19,6 +19,7 @@
- func.func @iota_dimension_0() -> tensor<4x8xf32> {
-   // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"()
-   // CHECK-SAME{LITERAL}: <{value = dense<[[0.000000e+00], [1.000000e+00], [2.000000e+00], [3.000000e+00]]> : tensor<4x1xf32>}>
-+  // CHECK-DAG: %[[VAR1:.*]] = tosa.tile %[[VAR0]] {multiples = array<i64: 1, 8>}
-   %0 = "stablehlo.iota"() {iota_dimension = 0 : i64} : () -> (tensor<4x8xf32>)
-   return %0 : tensor<4x8xf32>
- }
-@@ -27,6 +28,7 @@
- func.func @iota_dimension_1() -> tensor<4x8xi32> {
-   // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"()
-   // CHECK-SAME{LITERAL}: <{value = dense<[[0, 1, 2, 3, 4, 5, 6, 7]]> : tensor<1x8xi32>}>
-+  // CHECK-DAG: %[[VAR1:.*]] = tosa.tile %[[VAR0]] {multiples = array<i64: 4, 1>}
-   %0 = "stablehlo.iota"() {iota_dimension = 1 : i64} : () -> (tensor<4x8xi32>)
-   return %0 : tensor<4x8xi32>
- }
-diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
---- stablehlo/stablehlo/dialect/Base.cpp
-+++ stablehlo/stablehlo/dialect/Base.cpp
-@@ -600,5 +600,18 @@
-   return UnrankedTensorType::get(components.getElementType());
- }
- 
-+DenseIntElementsAttr getPaddingAttr(MLIRContext* context,
-+                                    ArrayRef<int64_t> values) {
-+  return DenseIntElementsAttr::get(
-+      RankedTensorType::get({static_cast<int64_t>(values.size()) / 2, 2},
-+                            IntegerType::get(context, 64)),
-+      values);
-+}
-+
-+DenseIntElementsAttr getPaddingAttr(Builder* builder,
-+                                    ArrayRef<int64_t> values) {
-+  return getPaddingAttr(builder->getContext(), values);
-+}
-+
- }  // namespace hlo
- }  // namespace mlir
 diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Base.h
 --- stablehlo/stablehlo/dialect/Base.h
 +++ stablehlo/stablehlo/dialect/Base.h
-@@ -194,6 +194,10 @@
+@@ -371,4 +371,4 @@
+ }  // namespace hlo
+ }  // namespace mlir
  
- ShapedType createShapedType(ShapedTypeComponents components);
- 
-+DenseIntElementsAttr getPaddingAttr(MLIRContext *context,
-+                                    ArrayRef<int64_t> value);
-+DenseIntElementsAttr getPaddingAttr(Builder *builder, ArrayRef<int64_t> value);
-+
- // This interface is implemented by both StableHLO and MHLO dialects
- // and is used as the foundation for sharing verification, type inference and
- // prettyprinting logic between them.
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
---- stablehlo/stablehlo/dialect/StablehloOps.cpp
-+++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -1543,6 +1543,7 @@
-     p << " across dimensions = [";
-     llvm::interleaveComma(getDimensions().getValues<int64_t>(), p);
-     p << "]";
-+    p.printOptionalAttrDict(getOperation()->getAttrs(), {"dimensions"});
-     p << " : ";
-     p.printFunctionalType(*this);
-   } else {
-@@ -1705,6 +1706,7 @@
-   if (parser.parseKeyword("across") || parser.parseKeyword("dimensions") ||
-       parser.parseEqual() ||
-       parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, parseDim) ||
-+      parser.parseOptionalAttrDict(result.attributes) ||
-       parser.parseColon() || parser.parseType(reduceOpFnType) ||
-       parser.parseOptionalLocationSpecifier(explicitLoc))
-     return failure();
+-#endif
++#endif  // STABLEHLO_DIALECT_BASE_H
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD b/stablehlo/stablehlo/experimental/BUILD
 --- stablehlo/stablehlo/experimental/BUILD
 +++ stablehlo/stablehlo/experimental/BUILD
-@@ -0,0 +1,97 @@
+@@ -0,0 +1,117 @@
 +load("//third_party/llvm/llvm-project/mlir:tblgen.bzl", "gentbl_cc_library")
 +load("//third_party/tensorflow:tensorflow.google.bzl", "get_compatible_with_portable")
 +load("//third_party/tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -266,6 +222,22 @@ diff --ruN a/stablehlo/stablehlo/experimental/BUILD b/stablehlo/stablehlo/experi
 +)
 +
 +cc_library(
++    name = "experimental_base",
++    srcs = [
++        "dialect/Base.cpp",
++    ],
++    hdrs = [
++        "dialect/Base.h",
++    ],
++    compatible_with = get_compatible_with_portable(),
++    includes = ["../.."],
++    deps = [
++        "//third_party/llvm/llvm-project/llvm:Support",
++        "//third_party/llvm/llvm-project/mlir:IR",
++    ],
++)
++
++cc_library(
 +    name = "experimental_stablehlo_ops",
 +    srcs = [
 +        "dialect/StablehloOps.cpp",
@@ -274,7 +246,9 @@ diff --ruN a/stablehlo/stablehlo/experimental/BUILD b/stablehlo/stablehlo/experi
 +        "dialect/StablehloOps.h",
 +    ],
 +    compatible_with = get_compatible_with_portable(),
++    includes = ["../.."],
 +    deps = [
++        ":experimental_base",
 +        "//third_party/llvm/llvm-project/llvm:Support",
 +        "//third_party/llvm/llvm-project/mlir:FuncDialect",
 +        "//third_party/llvm/llvm-project/mlir:IR",
@@ -309,6 +283,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/BUILD b/stablehlo/stablehlo/experi
 +        "transforms/Passes.h",
 +    ],
 +    compatible_with = get_compatible_with_portable(),
++    includes = ["../.."],
 +    deps = [
 +        ":experimental_stablehlo_ops",
 +        ":experimental_stablehlo_pass_inc_gen",
@@ -334,6 +309,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/BUILD b/stablehlo/stablehlo/experi
 +        "tools/StablehloOptMain.cpp",
 +    ],
 +    compatible_with = get_compatible_with_portable(),
++    includes = ["../.."],
 +    deps = [
 +        ":experimental_stablehlo_passes",
 +        "//third_party/llvm/llvm-project/mlir:AllExtensions",
@@ -350,7 +326,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/BUILD b/stablehlo/stablehlo/experi
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
-@@ -0,0 +1,98 @@
+@@ -0,0 +1,113 @@
 +# Copyright 2023 The StableHLO Authors. All Rights Reserved.
 +#
 +# Licensed under the Apache License, Version 2.0 (the "License");
@@ -372,6 +348,20 @@ diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/
 +)
 +
 +cc_library(
++    name = "experimental_base",
++    srcs = [
++        "dialect/Base.cpp",
++    ],
++    hdrs = [
++        "dialect/Base.h",
++    ],
++    deps = [
++        "@llvm-project//llvm:Support",
++        "@llvm-project//mlir:IR",
++    ],
++)
++
++cc_library(
 +    name = "experimental_stablehlo_ops",
 +    srcs = [
 +        "dialect/StablehloOps.cpp",
@@ -380,6 +370,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/
 +        "dialect/StablehloOps.h",
 +    ],
 +    deps = [
++        ":experimental_base",
 +        "//:stablehlo_ops",
 +        "@llvm-project//llvm:Support",
 +        "@llvm-project//mlir:FuncDialect",
@@ -471,10 +462,92 @@ diff --ruN a/stablehlo/stablehlo/experimental/CMakeLists.txt b/stablehlo/stableh
 +add_subdirectory(tests)
 +add_subdirectory(tools)
 +add_subdirectory(transforms)
+diff --ruN a/stablehlo/stablehlo/experimental/dialect/Base.cpp b/stablehlo/stablehlo/experimental/dialect/Base.cpp
+--- stablehlo/stablehlo/experimental/dialect/Base.cpp
++++ stablehlo/stablehlo/experimental/dialect/Base.cpp
+@@ -0,0 +1,39 @@
++/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
++   Copyright 2022 The StableHLO Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#include "stablehlo/experimental/dialect/Base.h"
++
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypes.h"
++
++namespace mlir {
++namespace hlo {
++
++DenseIntElementsAttr getPaddingAttr(MLIRContext* context,
++                                    ArrayRef<int64_t> values) {
++  return DenseIntElementsAttr::get(
++      RankedTensorType::get({static_cast<int64_t>(values.size()) / 2, 2},
++                            IntegerType::get(context, 64)),
++      values);
++}
++
++DenseIntElementsAttr getPaddingAttr(Builder* builder,
++                                    ArrayRef<int64_t> values) {
++  return getPaddingAttr(builder->getContext(), values);
++}
++
++}  // namespace hlo
++}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/experimental/dialect/Base.h b/stablehlo/stablehlo/experimental/dialect/Base.h
+--- stablehlo/stablehlo/experimental/dialect/Base.h
++++ stablehlo/stablehlo/experimental/dialect/Base.h
+@@ -0,0 +1,35 @@
++/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
++   Copyright 2022 The StableHLO Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#ifndef STABLEHLO_EXPERIMENTAL_DIALECT_BASE_H
++#define STABLEHLO_EXPERIMENTAL_DIALECT_BASE_H
++
++#include "llvm/ADT/ArrayRef.h"
++#include "mlir/IR/Builders.h"
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/MLIRContext.h"
++
++namespace mlir {
++namespace hlo {
++
++DenseIntElementsAttr getPaddingAttr(MLIRContext *context,
++                                    ArrayRef<int64_t> value);
++DenseIntElementsAttr getPaddingAttr(Builder *builder, ArrayRef<int64_t> value);
++
++}  // namespace hlo
++}  // namespace mlir
++
++#endif  // STABLEHLO_EXPERIMENTAL_DIALECT_BASE_H
 diff --ruN a/stablehlo/stablehlo/experimental/dialect/CMakeLists.txt b/stablehlo/stablehlo/experimental/dialect/CMakeLists.txt
 --- stablehlo/stablehlo/experimental/dialect/CMakeLists.txt
 +++ stablehlo/stablehlo/experimental/dialect/CMakeLists.txt
-@@ -0,0 +1,33 @@
+@@ -0,0 +1,42 @@
 +# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 +# Copyright 2023 The StableHLO Authors.
 +#
@@ -490,6 +563,14 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/CMakeLists.txt b/stablehlo
 +# See the License for the specific language governing permissions and
 +# limitations under the License.
 +
++add_mlir_library(ExperimentalStablehloBase
++  PARTIAL_SOURCES_INTENDED
++  Base.cpp
++
++  LINK_LIBS PUBLIC
++  MLIRIR
++)
++
 +add_mlir_dialect_library(ExperimentalStablehloOps
 +  PARTIAL_SOURCES_INTENDED
 +  StablehloOps.cpp
@@ -498,6 +579,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/CMakeLists.txt b/stablehlo
 +  StablehloOpsIncGen
 +
 +  LINK_LIBS PUBLIC
++  ExperimentalStablehloBase
 +  MLIRFuncDialect
 +  MLIRIR
 +  MLIRSupport
@@ -1021,7 +1103,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stableh
 diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.h b/stablehlo/stablehlo/experimental/dialect/StablehloOps.h
 --- stablehlo/stablehlo/experimental/dialect/StablehloOps.h
 +++ stablehlo/stablehlo/experimental/dialect/StablehloOps.h
-@@ -0,0 +1,229 @@
+@@ -0,0 +1,230 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -1055,6 +1137,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.h b/stablehlo
 +#include "mlir/IR/ValueRange.h"
 +#include "mlir/Support/LogicalResult.h"
 +#include "stablehlo/dialect/StablehloOps.h"
++#include "stablehlo/experimental/dialect/Base.h"
 +
 +namespace mlir {
 +namespace stablehlo {
@@ -3766,25 +3849,41 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
-diff --ruN a/stablehlo/stablehlo/tests/print_reduce.mlir b/stablehlo/stablehlo/tests/print_reduce.mlir
---- stablehlo/stablehlo/tests/print_reduce.mlir
-+++ stablehlo/stablehlo/tests/print_reduce.mlir
-@@ -168,3 +168,15 @@
+diff --ruN a/stablehlo/stablehlo/tests/BUILD.bazel b/stablehlo/stablehlo/tests/BUILD.bazel
+--- stablehlo/stablehlo/tests/BUILD.bazel
++++ stablehlo/stablehlo/tests/BUILD.bazel
+@@ -40,6 +40,7 @@
  
-   func.return %0: tensor<4xf32>
- }
-+
-+// The test case makes sure any custom attrs set on the reduce-op are
-+// printed/parsed when pretty-printed.
-+
-+// CHECK-LABEL:  func @pretty_print_with_custom_attr
-+// CHECK:          applies stablehlo.add across dimensions = [1] {custom_user_attr = 1 : i64}
-+
-+func.func @pretty_print_with_custom_attr(%arg0: tensor<2x64x13xf32>) -> tensor<2x13xf32> {
-+  %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
-+  %1 = stablehlo.reduce(%arg0 init: %0) applies stablehlo.add across dimensions = [1] {custom_user_attr = 1 : i64} : (tensor<2x64x13xf32>, tensor<f32>) -> tensor<2x13xf32>
-+  return %1 : tensor<2x13xf32>
-+}
+ gentbl_cc_library(
+     name = "check_ops_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-op-decls"],
+@@ -52,7 +53,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "CheckOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":check_ops_td_files",
+     ],
+@@ -140,6 +140,7 @@
+ [
+     lit_test(
+         name = "%s.test" % src,
++        size = "small",
+         srcs = [src],
+         data = [
+             "lit.cfg.py",
+@@ -149,7 +150,6 @@
+             "@llvm-project//llvm:FileCheck",
+             "@llvm-project//llvm:not",
+         ] + glob(["%s.bc" % src]),
+-        size = "small",
+         tags = ["stablehlo_tests"],
+     )
+     for src in glob(["**/*.mlir"])
 diff --ruN a/stablehlo/stablehlo/transforms/Passes.h b/stablehlo/stablehlo/transforms/Passes.h
 --- stablehlo/stablehlo/transforms/Passes.h
 +++ stablehlo/stablehlo/transforms/Passes.h

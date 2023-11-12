@@ -47,8 +47,7 @@ class TraceListener {
   virtual ~TraceListener() {}
 
   virtual void LaunchSubmit(Stream* stream, const ThreadDim& thread_dims,
-                            const BlockDim& block_dims,
-                            const KernelBase& kernel,
+                            const BlockDim& block_dims, const Kernel& kernel,
                             const KernelArgsArrayBase& args) {}
 
   virtual void SynchronousMemcpyH2DBegin(int64_t correlation_id,

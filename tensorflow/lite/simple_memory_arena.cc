@@ -20,7 +20,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstring>
-#include <iterator>
 #include <limits>
 #include <memory>
 #include <string>
@@ -141,8 +140,7 @@ TfLiteStatus SimpleMemoryArena::Allocate(
   return kTfLiteOk;
 }
 
-TfLiteStatus SimpleMemoryArena::Commit(TfLiteContext* context,
-                                       bool* arena_reallocated) {
+TfLiteStatus SimpleMemoryArena::Commit(bool* arena_reallocated) {
   size_t required_size = RequiredBufferSize();
   if (required_size > underlying_buffer_size_) {
     *arena_reallocated = true;

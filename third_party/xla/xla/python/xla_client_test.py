@@ -2627,6 +2627,22 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
         self.assertIn("cl/", version)
         self.assertIn("Built on ", version)
 
+    @unittest.skipIf(
+        not cloud_tpu and not pjrt_c_api, "PJRT version only exist for plugins"
+    )
+    def testPjRtCApiVersion(self):
+      self.assertGreaterEqual(self.backend.pjrt_c_api_major_version, 0)
+      self.assertGreaterEqual(self.backend.pjrt_c_api_minor_version, 0)
+
+    @unittest.skipIf(
+        cloud_tpu or pjrt_c_api, "PJRT version only exist for plugins"
+    )
+    def testNotExistPjRtCApiVersion(self):
+      with self.assertRaises(AttributeError):
+        self.backend.pjrt_c_api_major_version  # pylint: disable=pointless-statement
+      with self.assertRaises(AttributeError):
+        self.backend.pjrt_c_api_minor_version  # pylint: disable=pointless-statement
+
     @unittest.skipIf(cloud_tpu or pathways or pathways_ifrt or tfrt_tpu,
                      "not implemented")
     def testExecutableSerialization(self):

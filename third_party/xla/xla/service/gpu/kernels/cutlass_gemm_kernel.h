@@ -13,10 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/runtime/topk.h"
+#ifndef XLA_SERVICE_GPU_KERNELS_CUTLASS_GEMM_KERNEL_H_
+#define XLA_SERVICE_GPU_KERNELS_CUTLASS_GEMM_KERNEL_H_
 
-namespace xla::gpu {
+#include "xla/service/gpu/kernels/custom_kernel.h"
+#include "xla/statusor.h"
+#include "xla/xla_data.pb.h"
 
-void RegisterTopkCustomCall(runtime::DirectCustomCallRegistry&) {}
+namespace xla::gpu::kernel {
 
-}  // namespace xla::gpu
+// A reference implementation GEMM kernel written in CUTLASS based on
+// `00_basic_gemm` example.
+StatusOr<CustomKernel> GetCutlassGemmKernel(PrimitiveType dtype, int32_t m,
+                                            int32_t n, int32_t k);
+
+}  // namespace xla::gpu::kernel
+
+#endif  // XLA_SERVICE_GPU_KERNELS_CUTLASS_GEMM_KERNEL_H_

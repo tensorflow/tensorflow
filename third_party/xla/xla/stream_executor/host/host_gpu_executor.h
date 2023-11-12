@@ -50,11 +50,11 @@ class HostExecutor : public internal::StreamExecutorInterface {
   tsl::Status Init(int device_ordinal, DeviceOptions device_options) override;
 
   tsl::Status GetKernel(const MultiKernelLoaderSpec& spec,
-                        KernelBase* kernel) override {
+                        Kernel* kernel) override {
     return tsl::errors::Unimplemented("Not Implemented");
   }
   tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
-                     const BlockDim& block_dims, const KernelBase& kernel,
+                     const BlockDim& block_dims, const Kernel& kernel,
                      const KernelArgsArrayBase& args) override {
     return tsl::errors::Unimplemented("Not Implemented");
   }

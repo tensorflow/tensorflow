@@ -92,6 +92,8 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
   // fusion parameter to fusion output which are elementwise (no copy) or
   // bitcast or an elementwise dynamic update slice (i.e. with the first operand
   // being on this path).
+  // In addition to that, we can also share the buffer for Scatter fusions if
+  // the scatter is the single output of the fusion.
   HloInstruction* fusion_param =
       user->fused_parameter(user->operand_index(operand));
   HloInstruction* output = user->fused_expression_root();
@@ -109,20 +111,13 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
   q.push(fusion_param);
   visited.insert(fusion_param);
   bool found_path_to_output = false;
-  int reached_root = 0;
   while (!q.empty()) {
     HloInstruction* hlo_operand = q.front();
     q.pop();
-    if (hlo_operand->IsRoot()) {
-      ++reached_root;
-    }
     if (hlo_operand == output) {
       found_path_to_output = true;
       // We still need to process the users of 'hlo_operand'. There can be other
-      // reduction users in addition to the tuple user.
-      if (hlo_operand->user_count() > 1 && !is_reduction_emitter) {
-        return false;
-      }
+      // users in addition to the tuple user.
     }
     // Reduction emitter processes the reduction first, so the values below it
     // will not interfere with buffer sharing.
@@ -187,7 +182,20 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
       }
     }
   }
-  return found_path_to_output && reached_root == 1;
+  // Special case: multi-output fusions with Scatter or DynamicUpdateSlice. For
+  // Scatter, we currently do not support multi-output fusions anyway, but still
+  // handle it here. To be on the safe side, check for !IsElementwise() instead
+  // of checking whether it is Scatter or DynamicUpdateSlice.
+  if (user->IsMultiOutputFusion() && !non_bitcast_root->IsElementwise()) {
+    // Check if any other fusion output was reached. If yes, we cannot share,
+    // because the order in which the output is written might be different.
+    for (HloInstruction* operand : user->fused_expression_root()->operands()) {
+      if (operand != output && visited.find(operand) != visited.end()) {
+        return false;
+      }
+    }
+  }
+  return found_path_to_output;
 }
 
 std::optional<bool> CanShareBufferHint(const HloInstruction* user,

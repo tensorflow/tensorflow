@@ -44,7 +44,7 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
                     absl::AnyInvocable<tsl::Status()> function) override;
 
   tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
-                     const KernelBase& kernel,
+                     const Kernel& kernel,
                      const KernelArgsArrayBase& args) override;
 
   tsl::Status AddNestedCommandBuffer(const CommandBuffer& nested) override;

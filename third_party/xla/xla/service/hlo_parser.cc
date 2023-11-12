@@ -248,6 +248,7 @@ class HloParserImpl : public HloParser {
 
   // Stand alone parsing utils for various aggregate data types.
   StatusOr<Shape> ParseShapeOnly();
+  StatusOr<Layout> ParseLayoutOnly();
   StatusOr<HloSharding> ParseShardingOnly();
   StatusOr<FrontendAttributes> ParseFrontendAttributesOnly();
   StatusOr<StatisticsViz> ParseStatisticsVizOnly();
@@ -6322,6 +6323,18 @@ StatusOr<Shape> HloParserImpl::ParseShapeOnly() {
   return shape;
 }
 
+StatusOr<Layout> HloParserImpl::ParseLayoutOnly() {
+  lexer_.Lex();
+  Layout layout;
+  if (!ParseLayout(&layout)) {
+    return InvalidArgument("Syntax error:\n%s", GetError());
+  }
+  if (lexer_.GetKind() != TokKind::kEof) {
+    return InvalidArgument("Syntax error:\nExtra content after layout");
+  }
+  return layout;
+}
+
 StatusOr<HloSharding> HloParserImpl::ParseShardingOnly() {
   lexer_.Lex();
   OpSharding op_sharding;
@@ -6560,6 +6573,11 @@ StatusOr<PaddingConfig> ParsePaddingConfig(absl::string_view str) {
 StatusOr<Shape> ParseShape(absl::string_view str) {
   HloParserImpl parser(str);
   return parser.ParseShapeOnly();
+}
+
+StatusOr<Layout> ParseLayout(absl::string_view str) {
+  HloParserImpl parser(str);
+  return parser.ParseLayoutOnly();
 }
 
 std::unique_ptr<HloParser> HloParser::CreateHloParserForTests(

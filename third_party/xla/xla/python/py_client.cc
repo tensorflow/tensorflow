@@ -57,7 +57,8 @@ namespace xla {
 namespace py = pybind11;
 
 PyClient::PyClient(std::shared_ptr<ifrt::Client> ifrt_client)
-    : ifrt_client_(std::move(ifrt_client)) {
+    : ifrt_client_(std::move(ifrt_client)),
+      client_attributes_(ifrt_client_->attributes()) {
   CHECK(ifrt_client_);
   // TODO(phawkins): this is a temporary backwards compatibility shim. We
   // changed the name PJRT reports for GPU platforms to "cuda" or "rocm", but

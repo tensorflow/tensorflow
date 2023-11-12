@@ -316,7 +316,7 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
   return it->second;
 }
 
-StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
+StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
     absl::string_view kernel_name, uint64_t num_args, absl::string_view ptx,
     absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec,
     uint32_t shared_mem_bytes) {
@@ -328,7 +328,7 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
         reinterpret_cast<const char*>(cubin_data.data()), kernel_name);
   }
 
-  auto kernel_base = std::make_unique<se::KernelBase>(stream_exec);
+  auto kernel_base = std::make_unique<se::Kernel>(stream_exec);
   TF_RETURN_IF_ERROR(stream_exec->GetKernel(loader_spec, kernel_base.get()));
   se::KernelMetadata m;
   m.set_shared_memory_bytes(shared_mem_bytes);
@@ -336,7 +336,7 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
   return std::move(kernel_base);
 }
 
-Status ExecuteKernelOnStream(const se::KernelBase& kernel,
+Status ExecuteKernelOnStream(const se::Kernel& kernel,
                              absl::Span<const se::DeviceMemoryBase> args,
                              const LaunchDimensions& dims, se::Stream* stream) {
   TF_ASSIGN_OR_RETURN(

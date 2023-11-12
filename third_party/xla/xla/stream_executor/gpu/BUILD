@@ -361,6 +361,7 @@ cc_library(
         "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor/platform",
         "//xla:util",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",

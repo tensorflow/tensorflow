@@ -1,6 +1,6 @@
-load("//tensorflow/core/platform:build_config.bzl", "tf_platform_alias")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//tensorflow:tensorflow.bzl", "workspace_root")
+load("//tensorflow/core/platform:build_config.bzl", "tf_platform_alias")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -296,6 +296,16 @@ cc_library(
         "//tensorflow/lite/kernels/internal:types",
         "@FP16",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "model_builder_helper_test",
+    srcs = ["model_builder_helper_test.cc"],
+    deps = [
+        ":model_builder_helper",
+        "//tensorflow/lite/core/c:private_common",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

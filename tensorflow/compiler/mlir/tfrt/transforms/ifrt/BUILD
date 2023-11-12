@@ -11,6 +11,7 @@ package_group(
     packages = [
         "//tensorflow/compiler/mlir/tfrt/...",
         "//tensorflow/core/tfrt/ifrt/...",
+        "//tensorflow/core/tfrt/saved_model/tests/...",
     ] + if_google([
         "//learning/brain/tfrt/cpp_tests/...",
         # Allow visibility from the mlir language server.

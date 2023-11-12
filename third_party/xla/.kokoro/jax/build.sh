@@ -99,7 +99,7 @@ build_and_test_on_rbe_gpu() {
 "$KOKORO_ARTIFACTS_DIR"/github/xla/.kokoro/generate_index_html.sh "$KOKORO_ARTIFACTS_DIR"/index.html
 
 NOCUDA_RBE_CONFIG_NAME="rbe_cpu_linux_py312"
-CUDA_RBE_CONFIG_NAME="rbe_linux_cuda12.2_nvcc_py3.9_clang"
+CUDA_RBE_CONFIG_NAME="rbe_linux_cuda12.2_nvcc_py3.9"
 
 prelude
 

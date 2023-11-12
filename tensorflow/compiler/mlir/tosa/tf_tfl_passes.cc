@@ -30,6 +30,9 @@ void createTFTFLtoTOSALegalizationPipeline(
   //----------------------------------------------------------------------------
   // Prepare TFL module for conversion
   //----------------------------------------------------------------------------
+  // For stateful ops
+  pm.addPass(createRetainCallOnceFuncsPass());
+
   // Inline all functions into main and then delete the functions themselves.
   pm.addPass(mlir::createInlinerPass());
 
@@ -52,6 +55,7 @@ void createTFTFLtoTOSALegalizationPipeline(
   if (opts.dequantize_tfl_softmax) {
     pm.addPass(mlir::tosa::createDequantizeTFLSoftmaxPass());
   }
+  pm.addPass(mlir::tosa::createLegalizeTFLStatefulPass());
   pm.addPass(mlir::tosa::createLegalizeTFTFLPass());
 
   //----------------------------------------------------------------------------

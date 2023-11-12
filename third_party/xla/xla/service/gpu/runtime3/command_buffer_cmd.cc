@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/status.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -82,7 +83,7 @@ Status LaunchCmd::Initialize(se::StreamExecutor* executor,
                              ExecutableSource source) {
   if (kernels_.contains(executor)) return OkStatus();
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::KernelBase> kernel,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
                       CreateKernel(kernel_name_, args_.size(), source.text,
                                    source.binary, executor, shmem_bytes_));
 
@@ -95,7 +96,7 @@ Status LaunchCmd::Record(const RecordParams& params,
   VLOG(5) << "LaunchCmd: kernel=" << kernel_name_
           << ", shmem_bytes=" << shmem_bytes_;
 
-  se::KernelBase* kernel = kernels_[command_buffer->executor()].get();
+  se::Kernel* kernel = kernels_[command_buffer->executor()].get();
   if (kernel == nullptr) {
     return absl::InternalError(
         "Kernel not loaded on a command buffer executor");
@@ -136,6 +137,49 @@ Status MemcpyDeviceToDeviceCmd::Record(const RecordParams& params,
   se::DeviceMemoryBase dst = params.buffer_allocations->GetDeviceAddress(dst_);
   se::DeviceMemoryBase src = params.buffer_allocations->GetDeviceAddress(src_);
   return command_buffer->MemcpyDeviceToDevice(&dst, src, num_bytes_);
+}
+
+//===----------------------------------------------------------------------===//
+// GemmCmd
+//===----------------------------------------------------------------------===//
+
+GemmCmd::GemmCmd(GemmConfig config, const BufferAllocation::Slice& lhs_buffer,
+                 const BufferAllocation::Slice& rhs_buffer,
+                 const BufferAllocation::Slice& output_buffer,
+                 bool deterministic)
+    : config_(std::move(config)),
+      lhs_buffer_(lhs_buffer),
+      rhs_buffer_(rhs_buffer),
+      output_buffer_(output_buffer),
+      deterministic_(deterministic) {}
+
+Status GemmCmd::Initialize(se::StreamExecutor* executor,
+                           ExecutableSource source) {
+  if (!executor->AsBlas()) {
+    return absl::InternalError("Failed to initialize BLAS support for GemmCmd");
+  }
+  return OkStatus();
+}
+
+Status GemmCmd::Record(const RecordParams& params,
+                       se::CommandBuffer* command_buffer) {
+  VLOG(5) << "GemmCmd: lhs=" << lhs_buffer_ << ", rhs=" << rhs_buffer_
+          << ", output=" << output_buffer_
+          << ", deterministic=" << deterministic_;
+
+  const BufferAllocations& allocs = *params.buffer_allocations;
+  se::DeviceMemoryBase workspace(nullptr, 0);
+
+  TF_ASSIGN_OR_RETURN(
+      auto nested_buffer,
+      stream_executor::CommandBuffer::Trace(
+          command_buffer->executor(), [&](stream_executor::Stream* stream) {
+            return RunGemm(config_, allocs.GetDeviceAddress(lhs_buffer_),
+                           allocs.GetDeviceAddress(rhs_buffer_),
+                           allocs.GetDeviceAddress(output_buffer_), workspace,
+                           deterministic_, stream);
+          }));
+  return command_buffer->AddNestedCommandBuffer(nested_buffer);
 }
 
 }  // namespace xla::gpu

@@ -1318,6 +1318,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "ragged_utils",
+    hdrs = [
+        "ragged_utils.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "@com_google_absl//absl/status",
+    ],
+)
+
 tf_kernel_library(
     name = "ragged_gather_op",
     srcs = ["ragged_gather_op.cc"],
@@ -1433,6 +1444,7 @@ tf_kernel_library(
     deps = [
         ":concat_lib",
         ":ragged_tensor_variant",
+        ":ragged_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -1518,6 +1530,7 @@ tf_kernel_library(
     srcs = ["ragged_cross_op.cc"],
     features = ["-layering_check"],
     deps = [
+        ":ragged_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -6502,6 +6515,7 @@ filegroup(
         "partitioned_function_ops.h",
         "pooling_ops_3d.h",
         "ragged_tensor_variant.h",
+        "ragged_utils.h",
         "random_index_shuffle.h",
         "random_op.h",
         "random_poisson_op.h",

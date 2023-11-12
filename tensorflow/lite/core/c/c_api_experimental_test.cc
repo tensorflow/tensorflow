@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/core/c/c_api_experimental.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <vector>
@@ -25,6 +27,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/c/c_api_opaque.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -561,6 +564,356 @@ TEST(CApiExperimentalTest, SetCustomAllocationForOutputTensorSuccess) {
   EXPECT_EQ(output[1], 9.f);
 
   delete[] new_alloc;
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
+}
+
+TEST(CApiExperimentalTest, SetAndGetBufferHandleSuccess) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+
+  auto simple_delegate = std::make_unique<SimpleDelegate>(
+      // The delegate will handle the first (index 0) and the second (index 1)
+      // op nodes in the TfLiteModel.
+      /*nodes=*/std::vector<int>({0, 1}),
+      /*delegate_flags=*/kTfLiteDelegateFlagsNone,
+      /*fail_node_prepare=*/false, /*min_ops_per_subset=*/0,
+      /*fail_node_invoke=*/false,
+      /* automatic_shape_propagation=*/false, /*custom_op=*/false,
+      /* set_output_tensor_dynamic =*/false);
+  TfLiteDelegate* delegate = simple_delegate->get_tf_lite_delegate();
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddDelegate(options, delegate);
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+  ASSERT_NE(interpreter, nullptr);
+  EXPECT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+
+  // Tensor index is set to the input tensor (index 1) of the TfLiteModel.
+  int tensor_index = 1;
+  TfLiteTensor* tensor = TfLiteInterpreterGetTensor(interpreter, tensor_index);
+  ASSERT_EQ(tensor->buffer_handle, kTfLiteNullBufferHandle);
+  ASSERT_EQ(tensor->delegate, nullptr);
+
+  // Use of an arbitrary non-negative int value for the buffer handle.
+  TfLiteBufferHandle buffer_handle = 1234;
+
+  TfLiteDelegate* expected_delegate = delegate;
+  TfLiteBufferHandle expected_buffer_handle = buffer_handle;
+  ASSERT_EQ(TfLiteInterpreterSetBufferHandle(interpreter, tensor, buffer_handle,
+                                             delegate),
+            kTfLiteOk);
+  ASSERT_EQ(tensor->delegate, expected_delegate);
+  ASSERT_EQ(tensor->buffer_handle, expected_buffer_handle);
+
+  TfLiteOpaqueDelegate* fetched_delegate;
+  TfLiteBufferHandle fetched_buffer_handle;
+  ASSERT_EQ(
+      TfLiteInterpreterGetBufferHandle(
+          interpreter, tensor_index, &fetched_buffer_handle, &fetched_delegate),
+      kTfLiteOk);
+  ASSERT_EQ(fetched_delegate, expected_delegate);
+  ASSERT_EQ(fetched_buffer_handle, expected_buffer_handle);
+
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
+}
+
+// A utility struct, intended to be used to record the interaction between a
+// test delegate and the runtime.
+struct DelegateState {
+  bool delegate_prepared;
+  bool copy_from_buffer_handle_called;
+  bool free_buffer_handle_called;
+  int buffer_handle;
+
+  void Reset() {
+    delegate_prepared = false;
+    copy_from_buffer_handle_called = false;
+    free_buffer_handle_called = false;
+    buffer_handle = -1;
+  }
+};
+
+struct OpaqueTestDelegate {
+  static constexpr int kTestDelegateOutput = 42;
+
+  static inline TfLiteStatus Prepare(TfLiteOpaqueContext* opaque_context,
+                                     TfLiteOpaqueDelegate* opaque_delegate,
+                                     void* data) {
+    DelegateState* delegate_state = reinterpret_cast<DelegateState*>(data);
+    delegate_state->delegate_prepared = true;
+
+    // The buffer handle is set to one greater than the last allocated buffer
+    // handle.
+    delegate_state->buffer_handle++;
+
+    TfLiteRegistration registration{};
+    registration.registration_external = TfLiteRegistrationExternalCreate(
+        kTfLiteBuiltinDelegate, "OpaqueTestDelegate delegate kernel",
+        /* version = */ 1);
+
+    TfLiteRegistrationExternalSetPrepare(
+        registration.registration_external,
+        [](TfLiteOpaqueContext* context,
+           TfLiteOpaqueNode* node) -> TfLiteStatus { return kTfLiteOk; });
+
+    TfLiteRegistrationExternalSetInvoke(
+        registration.registration_external,
+        [](TfLiteOpaqueContext*, TfLiteOpaqueNode*) -> TfLiteStatus {
+          return kTfLiteOk;
+        });
+
+    TfLiteIntArray* execution_plan;
+    TfLiteOpaqueContextGetExecutionPlan(opaque_context, &execution_plan);
+
+    TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
+        opaque_context, registration.registration_external, execution_plan,
+        opaque_delegate);
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus CopyFromBufferHandle(TfLiteOpaqueContext* context,
+                                           TfLiteOpaqueDelegate* delegate,
+                                           void* data,
+                                           TfLiteBufferHandle buffer_handle,
+                                           TfLiteOpaqueTensor* opaque_tensor) {
+    DelegateState* delegate_state = reinterpret_cast<DelegateState*>(data);
+    delegate_state->copy_from_buffer_handle_called = true;
+    delegate_state->buffer_handle = buffer_handle;
+
+    auto* output =
+        reinterpret_cast<float*>(TfLiteOpaqueTensorData(opaque_tensor));
+    int total_num_elements = 1;
+    for (int i = 0; i < TfLiteOpaqueTensorNumDims(opaque_tensor); ++i) {
+      total_num_elements *= TfLiteOpaqueTensorDim(opaque_tensor, i);
+    }
+    std::vector<float> meaning_of_life(total_num_elements, kTestDelegateOutput);
+    memcpy(output, meaning_of_life.data(),
+           meaning_of_life.size() * sizeof(float));
+    return kTfLiteOk;
+  }
+
+  static inline void FreeBufferHandle(TfLiteOpaqueContext* context,
+                                      TfLiteOpaqueDelegate* delegate,
+                                      void* data,
+                                      TfLiteBufferHandle* buffer_handle) {
+    DelegateState* delegate_state = reinterpret_cast<DelegateState*>(data);
+    delegate_state->free_buffer_handle_called = true;
+  }
+};
+
+TEST(CApiExperimentalTest, SetAllowBufferHandleOutputFalse) {
+  DelegateState delegate_state;
+  delegate_state.Reset();
+
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+  int kNumTensorElements = 1 * 8 * 8 * 3;
+
+  TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
+  opaque_delegate_builder.data = &delegate_state;
+  opaque_delegate_builder.CopyFromBufferHandle =
+      OpaqueTestDelegate::CopyFromBufferHandle;
+  opaque_delegate_builder.FreeBufferHandle =
+      OpaqueTestDelegate::FreeBufferHandle;
+  opaque_delegate_builder.Prepare = OpaqueTestDelegate::Prepare;
+
+  TfLiteOpaqueDelegate* tflite_delegate =
+      TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddDelegate(options, tflite_delegate);
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+  ASSERT_NE(interpreter, nullptr);
+
+  // Allocate tensor buffers.
+  EXPECT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+
+  // Fill input buffers
+  TfLiteTensor* input_tensor = TfLiteInterpreterGetInputTensor(interpreter, 0);
+  float* input = reinterpret_cast<float*>(input_tensor->data.raw);
+  std::fill(input, input + kNumTensorElements, 1);
+
+  // We set the buffer handle of the output tensor and mark its data as stale.
+  // This will make the interpreter call 'CopyFromBufferHandle' to refresh the
+  // output tensor's data.
+  int first_buffer_handle = 0;
+
+  // Tensor index is set to the output tensor (index 2) of the TfLite model.
+  int tensor_index = 2;
+
+  TfLiteTensor* output_tensor =
+      TfLiteInterpreterGetTensor(interpreter, tensor_index);
+
+  ASSERT_EQ(
+      TfLiteInterpreterSetBufferHandle(interpreter, output_tensor,
+                                       first_buffer_handle, tflite_delegate),
+      kTfLiteOk);
+
+  output_tensor->data_is_stale = true;
+
+  TfLiteSetAllowBufferHandleOutput(interpreter,
+                                   /*allow_buffer_handle_output=*/false);
+
+  // Run inference
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+  EXPECT_TRUE(delegate_state.delegate_prepared);
+  EXPECT_TRUE(delegate_state.copy_from_buffer_handle_called);
+  EXPECT_EQ(delegate_state.buffer_handle, first_buffer_handle);
+  EXPECT_FALSE(delegate_state.free_buffer_handle_called);
+  float* outputs = reinterpret_cast<float*>(output_tensor->data.raw);
+  for (int i = 0; i < kNumTensorElements; ++i) {
+    EXPECT_EQ(outputs[i], OpaqueTestDelegate::kTestDelegateOutput);
+  }
+  ASSERT_EQ(output_tensor->buffer_handle, first_buffer_handle);
+  ASSERT_EQ(output_tensor->delegate, tflite_delegate);
+
+  // Destroying the interpreter will release any buffer handles that are
+  // associated with the tensors owner by the interpreter.
+  delegate_state.Reset();
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteOpaqueDelegateDelete(tflite_delegate);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
+  EXPECT_FALSE(delegate_state.copy_from_buffer_handle_called);
+  EXPECT_TRUE(delegate_state.free_buffer_handle_called);
+}
+
+TEST(CApiExperimentalTest, SetAllowBufferHandleOutputTrue) {
+  DelegateState delegate_state;
+  delegate_state.Reset();
+
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+  int kNumTensorElements = 1 * 8 * 8 * 3;
+
+  TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
+  opaque_delegate_builder.data = &delegate_state;
+  opaque_delegate_builder.CopyFromBufferHandle =
+      OpaqueTestDelegate::CopyFromBufferHandle;
+  opaque_delegate_builder.FreeBufferHandle =
+      OpaqueTestDelegate::FreeBufferHandle;
+  opaque_delegate_builder.Prepare = OpaqueTestDelegate::Prepare;
+
+  TfLiteOpaqueDelegate* tflite_delegate =
+      TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddDelegate(options, tflite_delegate);
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+  ASSERT_NE(interpreter, nullptr);
+
+  // Allocate tensor buffers.
+  EXPECT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+
+  // Fill input buffers
+  TfLiteTensor* input_tensor = TfLiteInterpreterGetInputTensor(interpreter, 0);
+  float* input = reinterpret_cast<float*>(input_tensor->data.raw);
+  std::fill(input, input + kNumTensorElements, 1);
+
+  // We set the buffer handle of the output tensor and mark its data as stale.
+  // This will make the interpreter call 'CopyFromBufferHandle' to refresh the
+  // output tensor's data.
+  EXPECT_FALSE(delegate_state.free_buffer_handle_called);
+  int first_buffer_handle = 0;
+
+  // Tensor index is set to the output tensor (index 2) of the TfLite model.
+  int tensor_index = 2;
+
+  TfLiteTensor* output_tensor =
+      TfLiteInterpreterGetTensor(interpreter, tensor_index);
+
+  ASSERT_EQ(
+      TfLiteInterpreterSetBufferHandle(interpreter, output_tensor,
+                                       first_buffer_handle, tflite_delegate),
+      kTfLiteOk);
+
+  output_tensor->data_is_stale = true;
+
+  TfLiteSetAllowBufferHandleOutput(interpreter,
+                                   /*allow_buffer_handle_output=*/true);
+
+  // Run inference
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+  EXPECT_TRUE(delegate_state.delegate_prepared);
+  EXPECT_FALSE(delegate_state.copy_from_buffer_handle_called);
+  EXPECT_EQ(delegate_state.buffer_handle, first_buffer_handle);
+  EXPECT_FALSE(delegate_state.free_buffer_handle_called);
+  ASSERT_EQ(output_tensor->buffer_handle, first_buffer_handle);
+  ASSERT_EQ(output_tensor->delegate, tflite_delegate);
+
+  // Destroying the interpreter will release any buffer handles that are
+  // associated with the tensors owner by the interpreter.
+  delegate_state.Reset();
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteOpaqueDelegateDelete(tflite_delegate);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
+  EXPECT_FALSE(delegate_state.copy_from_buffer_handle_called);
+  EXPECT_TRUE(delegate_state.free_buffer_handle_called);
+}
+
+TEST(CApiExperimentalTest, SetInvalidHandleToTensor) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+
+  auto simple_delegate = std::make_unique<SimpleDelegate>(
+      // The delegate will handle the first (index 0) and the second (index 1)
+      // op nodes in the TfLiteModel.
+      /*nodes=*/std::vector<int>({0, 1}),
+      /*delegate_flags=*/kTfLiteDelegateFlagsNone,
+      /*fail_node_prepare=*/false, /*min_ops_per_subset=*/0,
+      /*fail_node_invoke=*/false,
+      /* automatic_shape_propagation=*/false, /*custom_op=*/false,
+      /* set_output_tensor_dynamic =*/false);
+  TfLiteDelegate* delegate = simple_delegate->get_tf_lite_delegate();
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddDelegate(options, delegate);
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+  ASSERT_NE(interpreter, nullptr);
+
+  EXPECT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+
+  auto another_simple_delegate = std::make_unique<SimpleDelegate>(
+      // The delegate will handle the 0th, 1st and the 2nd indexed nodes in
+      // the TfLiteModel.
+      /*nodes=*/std::vector<int>({0, 1, 2}),
+      /*delegate_flags=*/kTfLiteDelegateFlagsNone,
+      /*fail_node_prepare=*/false, /*min_ops_per_subset=*/0,
+      /*fail_node_invoke=*/false, /* automatic_shape_propagation=*/false,
+      /*custom_op=*/false, /*set_output_tensor_dynamic=*/false);
+
+  // Tensor index is set to the output tensor (index 2) of the TfLite model.
+  int tensor_index = 2;
+  TfLiteTensor* tensor = TfLiteInterpreterGetTensor(interpreter, tensor_index);
+
+  // Before setting the buffer handle, the tensor's `delegate` is already set
+  // because it will be written by the delegate.
+  ASSERT_EQ(tensor->delegate, delegate);
+  ASSERT_EQ(tensor->buffer_handle, kTfLiteNullBufferHandle);
+
+  // Buffer handle is set to one greater than the last allocated buffer handle.
+  TfLiteBufferHandle buffer_handle = kTfLiteNullBufferHandle + 1;
+
+  // Setting a buffer handle to a tensor with another delegate will fail.
+  ASSERT_EQ(TfLiteInterpreterSetBufferHandle(
+                interpreter, tensor, buffer_handle,
+                another_simple_delegate->get_tf_lite_delegate()),
+            kTfLiteError);
+  EXPECT_EQ(tensor->delegate, delegate);
+  EXPECT_EQ(tensor->buffer_handle, kTfLiteNullBufferHandle);
+
   TfLiteInterpreterDelete(interpreter);
   TfLiteInterpreterOptionsDelete(options);
   TfLiteModelDelete(model);

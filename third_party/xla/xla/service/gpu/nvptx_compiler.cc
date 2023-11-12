@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/metrics.h"
+#include "xla/service/gpu/move_copy_to_users.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/service/gpu/triangular_solve_rewriter.h"
 #include "xla/service/gpu/triton_autotuner.h"
@@ -225,13 +226,14 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
         false);
     if (debug_options.xla_gpu_normalize_layouts()) {
       mha_fusion_pipeline.AddPass<ReshapeDecomposer>();
+      mha_fusion_pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
       mha_fusion_pipeline.AddPass<LayoutNormalization>();
     }
-
     mha_fusion_pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
     mha_fusion_pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
         alg_sim_options);
     mha_fusion_pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+
     // Rewrite Multi-Headed Attention modules to Fused MHA custom-calls.
     if (stream_exec) {
       mha_fusion_pipeline.AddPass<CudnnFusedMHARewriter>(
@@ -489,7 +491,8 @@ StatusOr<GpuCompiler::BackendCompileResult> NVPTXCompiler::CompileTargetBinary(
       (debug_module != nullptr ? debug_module->name() : "(unknown)"),
       relocatable, options);
 
-  if (maybe_cubin.status().code() == absl::StatusCode::kCancelled) {
+  if (maybe_cubin.status().code() == absl::StatusCode::kCancelled ||
+      maybe_cubin.status().code() == absl::StatusCode::kResourceExhausted) {
     return maybe_cubin.status();
   }
   return BackendCompileResult{std::move(ptx), std::move(maybe_cubin.value())};
@@ -586,6 +589,14 @@ StatusOr<std::vector<uint8_t>> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
                      absl::StatusCode::kCancelled) {
             // Register spilling has occurred during autotuning, this config
             // should not be tried further.
+            CHECK(options.is_autotuning_compilation);
+            cache_value->compilation_done = true;
+            cache_value->compilation_done_cv.SignalAll();
+            return maybe_cubin;
+          } else if (maybe_cubin.status().code() ==
+                     absl::StatusCode::kResourceExhausted) {
+            // Exhausting the register limit during autotuning is not a fatal
+            // error, we should just skip the problematic tiling.
             CHECK(options.is_autotuning_compilation);
             cache_value->compilation_done = true;
             cache_value->compilation_done_cv.SignalAll();

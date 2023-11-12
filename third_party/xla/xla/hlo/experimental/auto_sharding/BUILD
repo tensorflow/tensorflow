@@ -176,6 +176,7 @@ cc_library(
         ":auto_sharding_wrapper",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",
+        "//xla/service:hlo_cost_analysis",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

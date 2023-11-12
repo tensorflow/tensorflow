@@ -21,6 +21,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_CORE_C_C_API_EXPERIMENTAL_H_
 
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/c/common.h"
 
@@ -266,17 +267,6 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetUseNNAPI(
 TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetEnableDelegateFallback(
     TfLiteInterpreterOptions* options, bool enable);
 
-// Set if buffer handle output is allowed.
-//
-/// When using hardware delegation, Interpreter will make the data of output
-/// tensors available in `tensor->data` by default. If the application can
-/// consume the buffer handle directly (e.g. reading output from OpenGL
-/// texture), it can set this flag to false, so Interpreter won't copy the
-/// data from buffer handle to CPU memory. WARNING: This is an experimental
-/// API and subject to change.
-TFL_CAPI_EXPORT extern void TfLiteSetAllowBufferHandleOutput(
-    const TfLiteInterpreter* interpreter, bool allow_buffer_handle_output);
-
 /// Allow a delegate to look at the graph and modify the graph to handle
 /// parts of the graph themselves. After this is called, the graph may
 /// contain new nodes that replace 1 more nodes.
@@ -333,6 +323,41 @@ TfLiteInterpreterSetCustomAllocationForTensor(
     const TfLiteCustomAllocation* allocation, int64_t flags);
 
 /// --------------------------------------------------------------------------
+/// BufferHandle APIs
+
+/// Sets the delegate buffer handle for the given tensor.
+///
+/// This function sets the buffer handle for a tensor that is used by other
+/// computing hardware such as EdgeTpu. For example, EdgeTpu delegate imports a
+/// tensor's memory into EdgeTpu's virtual address and returns a buffer handle.
+/// Then EdgeTpu delegate calls this API to associate the tensor with the buffer
+/// handle.
+///
+/// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterSetBufferHandle(
+    TfLiteInterpreter* interpreter, TfLiteTensor* tensor,
+    TfLiteBufferHandle buffer_handle, TfLiteOpaqueDelegate* delegate);
+
+/// Gets the delegate buffer handle, and the delegate which can process
+/// the buffer handle.
+///
+/// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterGetBufferHandle(
+    TfLiteInterpreter* interpreter, int tensor_index,
+    TfLiteBufferHandle* buffer_handle, TfLiteOpaqueDelegate** delegate);
+
+/// Sets whether buffer handle output is allowed.
+/// When using hardware delegation, Interpreter will make the data of output
+/// tensors available in `tensor->data` by default. If the application can
+/// consume the buffer handle directly (e.g. reading output from OpenGL
+/// texture), it can set this flag to false, so Interpreter won't copy the
+/// data from buffer handle to CPU memory.
+///
+/// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern void TfLiteSetAllowBufferHandleOutput(
+    const TfLiteInterpreter* interpreter, bool allow_buffer_handle_output);
+
+/// --------------------------------------------------------------------------
 /// SignatureRunner APIs
 
 /// Attempts to cancel in flight invocation if any.
@@ -360,6 +385,16 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetTelemetryProfiler(
     TfLiteInterpreterOptions* options,
     struct TfLiteTelemetryProfilerStruct* profiler);
 
+/// Ensures the data of the tensor at the given index is readable.
+/// Note: If a delegate has been used, and `SetAllowBufferHandleOutput(true)`
+/// has been called, tensor outputs may be stored as delegate buffer handles
+/// whose data is not directly readable until this method has been called. In
+/// such cases, this method will copy the data from the delegate buffer handle
+/// to CPU memory.
+///
+/// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterEnsureTensorDataIsReadable(
+    TfLiteInterpreter* interpreter, int tensor_index);
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

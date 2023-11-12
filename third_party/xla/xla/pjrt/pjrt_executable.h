@@ -160,7 +160,6 @@ struct PjRtTransferMetadata {
 };
 
 class PjRtChunk;
-class PjRtTransferMetadata;
 class CopyToDeviceStream;
 
 struct SendCallback {

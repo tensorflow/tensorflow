@@ -438,7 +438,24 @@ FusionDecision GpuPriorityFusion::ShouldFuse(HloInstruction* consumer,
 
 HloInstruction::FusionKind GpuPriorityFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
-  return ChooseFusionKind(*producer, *consumer);
+  // Derive kInput/kLoop fusion kinds from fusion analysis. This shouldn't
+  // matter but some passes downstream still query these instead of fusion
+  // analysis.
+  // TODO: Don't recompute this all the time.
+  auto analysis =
+      AnalyzeProducerConsumerFusion(*producer, *consumer, device_info_);
+  if (!analysis) return HloInstruction::FusionKind::kLoop;
+  switch (analysis->GetEmitterFusionKind()) {
+    case HloFusionAnalysis::EmitterFusionKind::kLoop:
+      return HloInstruction::FusionKind::kLoop;
+    case HloFusionAnalysis::EmitterFusionKind::kTriton:
+      return HloInstruction::FusionKind::kCustom;
+    case HloFusionAnalysis::EmitterFusionKind::kReduction:
+    case HloFusionAnalysis::EmitterFusionKind::kTranspose:
+    case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
+    case HloFusionAnalysis::EmitterFusionKind::kScatter:
+      return HloInstruction::FusionKind::kInput;
+  }
 }
 
 HloInstruction* GpuPriorityFusion::FuseInstruction(

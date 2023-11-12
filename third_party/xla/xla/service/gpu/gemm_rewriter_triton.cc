@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/tensor_float_32_utils.h"
 
 namespace xla {
 namespace gpu {
@@ -1661,6 +1662,7 @@ const DimIterationSpec* TritonFusionAnalysis::IterSpec(
 FusionDecision CanTritonHandleGEMM(const HloInstruction& dot,
                                    const se::GpuComputeCapability gpu_version) {
   if (dot.opcode() != HloOpcode::kDot ||
+      !tsl::tensor_float_32_execution_enabled() ||
       absl::c_any_of(dot.precision_config().operand_precision(),
                      [](int x) { return x != PrecisionConfig::DEFAULT; })) {
     return "Non-default precision.";

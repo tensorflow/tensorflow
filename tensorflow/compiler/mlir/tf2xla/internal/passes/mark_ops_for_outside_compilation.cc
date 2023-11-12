@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,29 +19,60 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/log/log.h"
+#include "absl/strings/str_join.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Rewrite/PatternApplicator.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/string_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/legalization_op_config.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 
-namespace mlir {
-namespace TFDevice {
+namespace tensorflow {
+namespace tf2xla {
+namespace internal {
 
 namespace {
+
+using mlir::Block;
+using mlir::BoolAttr;
+using mlir::Dialect;
+using mlir::LogicalResult;
+using mlir::MLIRContext;
+using mlir::ModuleOp;
+using mlir::Operation;
+using mlir::OperationName;
+using mlir::OperationPass;
+using mlir::Pattern;
+using mlir::PatternApplicator;
+using mlir::RewritePatternSet;
+using mlir::StringAttr;
+using mlir::TensorType;
+using mlir::Type;
+using mlir::Value;
+using mlir::WalkResult;
 
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 constexpr char kAllowSoftPlacementAttr[] = "allow_soft_placement";
@@ -52,7 +83,7 @@ auto* auto_outside_compilation_gauge =
         "Tracks if auto outside compilation is enabled");
 
 #define GEN_PASS_DEF_MARKOPSFOROUTSIDECOMPILATIONPASS
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+#include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
 
 struct MarkOpsForOutsideCompilation
     : public impl::MarkOpsForOutsideCompilationPassBase<
@@ -79,16 +110,17 @@ void AddCanonicalizationPatterns(MLIRContext* context,
 void AddSupportedOpsUsingFolding(MLIRContext* context,
                                  llvm::DenseSet<OperationName>* supported_ops) {
   llvm::SmallDenseSet<OperationName, 8> allowlist_ops = {
-      OperationName(TF::BroadcastArgsOp::getOperationName(), context),
-      OperationName(TF::BroadcastGradientArgsOp::getOperationName(), context),
-      OperationName(TF::ConcatOffsetOp::getOperationName(), context),
-      OperationName(TF::EmptyOp::getOperationName(), context),
-      OperationName(TF::ListDiffOp::getOperationName(), context),
-      OperationName(TF::RankOp::getOperationName(), context),
-      OperationName(TF::RangeOp::getOperationName(), context),
-      OperationName(TF::ShapeOp::getOperationName(), context),
-      OperationName(TF::ShapeNOp::getOperationName(), context),
-      OperationName(TF::SizeOp::getOperationName(), context),
+      OperationName(mlir::TF::BroadcastArgsOp::getOperationName(), context),
+      OperationName(mlir::TF::BroadcastGradientArgsOp::getOperationName(),
+                    context),
+      OperationName(mlir::TF::ConcatOffsetOp::getOperationName(), context),
+      OperationName(mlir::TF::EmptyOp::getOperationName(), context),
+      OperationName(mlir::TF::ListDiffOp::getOperationName(), context),
+      OperationName(mlir::TF::RankOp::getOperationName(), context),
+      OperationName(mlir::TF::RangeOp::getOperationName(), context),
+      OperationName(mlir::TF::ShapeOp::getOperationName(), context),
+      OperationName(mlir::TF::ShapeNOp::getOperationName(), context),
+      OperationName(mlir::TF::SizeOp::getOperationName(), context),
   };
 
   supported_ops->insert(allowlist_ops.begin(), allowlist_ops.end());
@@ -102,14 +134,16 @@ void AddSupportedOpsUsingFolding(MLIRContext* context,
 void AddOldBridgeOnlyOps(MLIRContext* context,
                          llvm::DenseSet<OperationName>* supported_ops) {
   llvm::SmallDenseSet<OperationName, 8> allowlist_ops = {
-      OperationName(TF::DynamicPartitionOp::getOperationName(), context),
-      OperationName(TF::OutfeedEnqueueOp::getOperationName(), context),
-      OperationName(TF::WhereOp::getOperationName(), context),
-      OperationName(TF::UniqueOp::getOperationName(), context),
-      OperationName(TF::XlaSetDynamicDimensionSizeOp::getOperationName(),
+      OperationName(mlir::TF::DynamicPartitionOp::getOperationName(), context),
+      OperationName(mlir::TF::OutfeedEnqueueOp::getOperationName(), context),
+      OperationName(mlir::TF::WhereOp::getOperationName(), context),
+      OperationName(mlir::TF::UniqueOp::getOperationName(), context),
+      OperationName(mlir::TF::XlaSetDynamicDimensionSizeOp::getOperationName(),
                     context),
-      OperationName(TF::XlaSpmdFullToShardShapeOp::getOperationName(), context),
-      OperationName(TF::XlaSpmdShardToFullShapeOp::getOperationName(), context),
+      OperationName(mlir::TF::XlaSpmdFullToShardShapeOp::getOperationName(),
+                    context),
+      OperationName(mlir::TF::XlaSpmdShardToFullShapeOp::getOperationName(),
+                    context),
   };
 
   supported_ops->insert(allowlist_ops.begin(), allowlist_ops.end());
@@ -120,46 +154,46 @@ void AddOldBridgeOnlyOps(MLIRContext* context,
 void AddSupportedFunctionalOps(MLIRContext* context,
                                llvm::DenseSet<OperationName>* supported_ops) {
   supported_ops->insert(
-      OperationName(TF::CaseRegionOp::getOperationName(), context));
+      OperationName(mlir::TF::CaseRegionOp::getOperationName(), context));
   supported_ops->insert(
-      OperationName(TF::IfRegionOp::getOperationName(), context));
+      OperationName(mlir::TF::IfRegionOp::getOperationName(), context));
   supported_ops->insert(
-      OperationName(TF::InplaceAddOp::getOperationName(), context));
+      OperationName(mlir::TF::InplaceAddOp::getOperationName(), context));
   supported_ops->insert(
-      OperationName(TF::WhileRegionOp::getOperationName(), context));
+      OperationName(mlir::TF::WhileRegionOp::getOperationName(), context));
   supported_ops->insert(
-      OperationName(TF::XlaCallModuleOp::getOperationName(), context));
+      OperationName(mlir::TF::XlaCallModuleOp::getOperationName(), context));
   supported_ops->insert(
-      OperationName(TF::XlaReduceOp::getOperationName(), context));
+      OperationName(mlir::TF::XlaReduceOp::getOperationName(), context));
   supported_ops->insert(
-      OperationName(TF::XlaReduceWindowOp::getOperationName(), context));
+      OperationName(mlir::TF::XlaReduceWindowOp::getOperationName(), context));
+  supported_ops->insert(OperationName(
+      mlir::TF::XlaRngBitGeneratorOp::getOperationName(), context));
   supported_ops->insert(
-      OperationName(TF::XlaRngBitGeneratorOp::getOperationName(), context));
+      OperationName(mlir::TF::XlaScatterOp::getOperationName(), context));
+  supported_ops->insert(OperationName(
+      mlir::TF::XlaSelectAndScatterOp::getOperationName(), context));
   supported_ops->insert(
-      OperationName(TF::XlaScatterOp::getOperationName(), context));
+      OperationName(mlir::TF::SymbolicGradientOp::getOperationName(), context));
+  supported_ops->insert(OperationName(
+      mlir::TF::XlaVariadicReduceOp::getOperationName(), context));
+  supported_ops->insert(OperationName(
+      mlir::TF::XlaVariadicReduceV2Op::getOperationName(), context));
   supported_ops->insert(
-      OperationName(TF::XlaSelectAndScatterOp::getOperationName(), context));
+      OperationName(mlir::TF::XlaVariadicSortOp::getOperationName(), context));
   supported_ops->insert(
-      OperationName(TF::SymbolicGradientOp::getOperationName(), context));
+      OperationName(mlir::TF::XlaReplicaIdOp::getOperationName(), context));
   supported_ops->insert(
-      OperationName(TF::XlaVariadicReduceOp::getOperationName(), context));
-  supported_ops->insert(
-      OperationName(TF::XlaVariadicReduceV2Op::getOperationName(), context));
-  supported_ops->insert(
-      OperationName(TF::XlaVariadicSortOp::getOperationName(), context));
-  supported_ops->insert(
-      OperationName(TF::XlaReplicaIdOp::getOperationName(), context));
-  supported_ops->insert(
-      OperationName(TF::YieldOp::getOperationName(), context));
+      OperationName(mlir::TF::YieldOp::getOperationName(), context));
 }
 
 // These embedding ops are rewritten when running TPUCompileOp.
 void AddRewrittenEmbeddingOps(MLIRContext* context,
                               llvm::DenseSet<OperationName>* supported_ops) {
   supported_ops->insert(OperationName(
-      TF::RecvTPUEmbeddingActivationsOp::getOperationName(), context));
+      mlir::TF::RecvTPUEmbeddingActivationsOp::getOperationName(), context));
   supported_ops->insert(OperationName(
-      TF::SendTPUEmbeddingGradientsOp::getOperationName(), context));
+      mlir::TF::SendTPUEmbeddingGradientsOp::getOperationName(), context));
 }
 
 // Stack, TensorList and TensorArray ops are rewritten during the second phase
@@ -171,32 +205,32 @@ void AddRewrittenCompositeOps(MLIRContext* context,
 #define GET_OPERATION_NAME(op) OperationName(op::getOperationName(), context)
   llvm::SmallDenseSet<OperationName, 32> allowlist_ops = {
       // Stack ops.
-      GET_OPERATION_NAME(TF::StackV2Op),
-      GET_OPERATION_NAME(TF::StackPushV2Op),
-      GET_OPERATION_NAME(TF::StackPopV2Op),
+      GET_OPERATION_NAME(mlir::TF::StackV2Op),
+      GET_OPERATION_NAME(mlir::TF::StackPushV2Op),
+      GET_OPERATION_NAME(mlir::TF::StackPopV2Op),
       // Tensor Array ops.
-      GET_OPERATION_NAME(TF::TensorArrayV3Op),
-      GET_OPERATION_NAME(TF::TensorArrayReadV3Op),
-      GET_OPERATION_NAME(TF::TensorArrayWriteV3Op),
-      GET_OPERATION_NAME(TF::TensorArrayConcatV3Op),
-      GET_OPERATION_NAME(TF::TensorArraySplitV3Op),
-      GET_OPERATION_NAME(TF::TensorArraySizeV3Op),
-      GET_OPERATION_NAME(TF::TensorArrayGradV3Op),
-      GET_OPERATION_NAME(TF::TensorArrayGatherV3Op),
-      GET_OPERATION_NAME(TF::TensorArrayScatterV3Op),
+      GET_OPERATION_NAME(mlir::TF::TensorArrayV3Op),
+      GET_OPERATION_NAME(mlir::TF::TensorArrayReadV3Op),
+      GET_OPERATION_NAME(mlir::TF::TensorArrayWriteV3Op),
+      GET_OPERATION_NAME(mlir::TF::TensorArrayConcatV3Op),
+      GET_OPERATION_NAME(mlir::TF::TensorArraySplitV3Op),
+      GET_OPERATION_NAME(mlir::TF::TensorArraySizeV3Op),
+      GET_OPERATION_NAME(mlir::TF::TensorArrayGradV3Op),
+      GET_OPERATION_NAME(mlir::TF::TensorArrayGatherV3Op),
+      GET_OPERATION_NAME(mlir::TF::TensorArrayScatterV3Op),
       // Tensor List Ops.
-      GET_OPERATION_NAME(TF::EmptyTensorListOp),
-      GET_OPERATION_NAME(TF::TensorListReserveOp),
-      GET_OPERATION_NAME(TF::TensorListFromTensorOp),
-      GET_OPERATION_NAME(TF::TensorListPushBackOp),
-      GET_OPERATION_NAME(TF::TensorListPopBackOp),
-      GET_OPERATION_NAME(TF::TensorListGetItemOp),
-      GET_OPERATION_NAME(TF::TensorListSetItemOp),
-      GET_OPERATION_NAME(TF::TensorListLengthOp),
-      GET_OPERATION_NAME(TF::TensorListElementShapeOp),
-      GET_OPERATION_NAME(TF::TensorListGatherOp),
-      GET_OPERATION_NAME(TF::TensorListScatterIntoExistingListOp),
-      GET_OPERATION_NAME(TF::TensorListStackOp),
+      GET_OPERATION_NAME(mlir::TF::EmptyTensorListOp),
+      GET_OPERATION_NAME(mlir::TF::TensorListReserveOp),
+      GET_OPERATION_NAME(mlir::TF::TensorListFromTensorOp),
+      GET_OPERATION_NAME(mlir::TF::TensorListPushBackOp),
+      GET_OPERATION_NAME(mlir::TF::TensorListPopBackOp),
+      GET_OPERATION_NAME(mlir::TF::TensorListGetItemOp),
+      GET_OPERATION_NAME(mlir::TF::TensorListSetItemOp),
+      GET_OPERATION_NAME(mlir::TF::TensorListLengthOp),
+      GET_OPERATION_NAME(mlir::TF::TensorListElementShapeOp),
+      GET_OPERATION_NAME(mlir::TF::TensorListGatherOp),
+      GET_OPERATION_NAME(mlir::TF::TensorListScatterIntoExistingListOp),
+      GET_OPERATION_NAME(mlir::TF::TensorListStackOp),
   };
 #undef GET_OPERATION_NAME
 
@@ -204,13 +238,13 @@ void AddRewrittenCompositeOps(MLIRContext* context,
 }
 
 bool IsStringType(Type type) {
-  if (type.isa<TF::StringType>()) return true;
+  if (type.isa<mlir::TF::StringType>()) return true;
 
-  auto sub_type = type.dyn_cast<TF::TensorFlowTypeWithSubtype>();
+  auto sub_type = type.dyn_cast<mlir::TF::TensorFlowTypeWithSubtype>();
   if (!sub_type) return false;
 
   bool has_string = llvm::any_of(sub_type.GetSubtypes(), [](TensorType type) {
-    return type.getElementType().isa<TF::StringType>();
+    return type.getElementType().isa<mlir::TF::StringType>();
   });
   return has_string;
 }
@@ -241,11 +275,10 @@ bool MatchesPattern(Operation& op,
 bool IsSupportedOp(Operation& op,
                    const llvm::DenseSet<OperationName>& supported_ops,
                    const Dialect* tf_dialect) {
-  if (op.getDialect() != tf_dialect)
-    return true;
+  if (op.getDialect() != tf_dialect) return true;
   // Assert has a legalization that later removes it so we don't want to outside
   // compile it ever for performance reasons.
-  if (llvm::isa<TF::AssertOp>(op)) return true;
+  if (llvm::isa<mlir::TF::AssertOp>(op)) return true;
 
   if (HasStringOperand(op)) return false;
   if (HasStringResult(op)) return false;
@@ -253,25 +286,11 @@ bool IsSupportedOp(Operation& op,
 
   auto abstractOp = op.getRegisteredInfo();
   if (!abstractOp) return false;
-  return mhlo::HasTf2XlaFallback(abstractOp->getTypeID());
-}
-
-// Checks all regions of `op` for captured string operands.
-bool HasCapturedStringOperand(Operation* op) {
-  bool string_operand = false;
-  for (auto& region : op->getRegions()) {
-    mlir::visitUsedValuesDefinedAbove(
-        region, region, [&](mlir::OpOperand* operand) {
-          if (getElementTypeOrSelf(operand->get()).isa<TF::StringType>())
-            string_operand = true;
-        });
-    if (string_operand) return string_operand;
-  }
-  return string_operand;
+  return mlir::mhlo::HasTf2XlaFallback(abstractOp->getTypeID());
 }
 
 bool IsVariant(Value value) {
-  return getElementTypeOrSelf(value.getType()).isa<TF::VariantType>();
+  return getElementTypeOrSelf(value.getType()).isa<mlir::TF::VariantType>();
 }
 
 bool HasOutsideCompiledAncestor(Operation* op) {
@@ -287,7 +306,7 @@ bool HasOutsideCompiledAncestor(Operation* op) {
 // If any tf.variants are inputs/outputs to the another outside compiled
 // Operation, `op`, mark  them for outside compilation unless they are already
 // marks with outside compilation attribute.
-void MarkVariantInputsOutputs(tf_device::ClusterOp tpu_cluster) {
+void MarkVariantInputsOutputs(mlir::tf_device::ClusterOp tpu_cluster) {
   std::queue<Operation*> outside_compiled_ops;
   tpu_cluster.walk([&](Operation* op) {
     if (op->hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
@@ -316,7 +335,7 @@ void MarkVariantInputsOutputs(tf_device::ClusterOp tpu_cluster) {
       for (auto value : op->getResults()) {
         if (IsVariant(value)) {
           for (auto user : value.getUsers()) {
-            if (!user->hasTrait<OpTrait::IsTerminator>() &&
+            if (!user->hasTrait<mlir::OpTrait::IsTerminator>() &&
                 !HasOutsideCompiledAncestor(user) &&
                 !user->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
               user->setAttr(kXlaOutsideCompilationAttr,
@@ -358,7 +377,7 @@ LogicalResult MarkUncompilableOps(
   if (outside_compiled_cluster_counter > 0) {
     auto_outside_compilation_gauge->GetCell()->Set(true);
   }
-  return success();
+  return mlir::success();
 }
 
 // Check for uncompilable ops that are in `tf_dialect` and are not already
@@ -369,7 +388,7 @@ bool ContainsUncompilableOps(const Dialect* tf_dialect, Block* block,
   // Check if op or any parent is already marked for outside compilation.
   block->walk([&](Operation* op) {
     Operation* iter_op = op;
-    while (iter_op && !llvm::isa<tf_device::ClusterOp>(iter_op)) {
+    while (iter_op && !llvm::isa<mlir::tf_device::ClusterOp>(iter_op)) {
       if (iter_op->hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
         return;
       }
@@ -444,9 +463,9 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
     return signalPassFailure();
   }
   RewritePatternSet patterns(&getContext());
-  mhlo::PopulateLegalizeTfPatterns(module.getContext(), &patterns);
-  TF::PopulateTFLoweringBeforeHLOPatterns(module.getContext(), &patterns);
-  TF::PopulateLoweringQuantizedPatterns(module.getContext(), &patterns);
+  mlir::mhlo::PopulateLegalizeTfPatterns(module.getContext(), &patterns);
+  mlir::TF::PopulateTFLoweringBeforeHLOPatterns(module.getContext(), &patterns);
+  mlir::TF::PopulateLoweringQuantizedPatterns(module.getContext(), &patterns);
   AddCanonicalizationPatterns(module.getContext(), &patterns);
 
   // `supported_ops` contains the name of all of the ops that can potentially be
@@ -465,7 +484,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   AddRewrittenEmbeddingOps(module.getContext(), &supported_ops);
   AddRewrittenCompositeOps(module.getContext(), &supported_ops);
 
-  auto result = module.walk([&](tf_device::ClusterOp cluster) {
+  auto result = module.walk([&](mlir::tf_device::ClusterOp cluster) {
     // Only if `allow_soft_placement` attribute is true should we mark ops
     // for outside compilation.
     auto soft_placement_attr =
@@ -498,5 +517,6 @@ CreateMarkOpsForOutsideCompilationPass() {
   return std::make_unique<MarkOpsForOutsideCompilation>();
 }
 
-}  // namespace TFDevice
-}  // namespace mlir
+}  // namespace internal
+}  // namespace tf2xla
+}  // namespace tensorflow

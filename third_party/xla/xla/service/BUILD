@@ -7217,6 +7217,7 @@ xla_cc_binary(
         ":export_hlo",
         ":hlo_module_config",
         ":symbol_repository",
+        ":xla_compile_result_proto_cc_impl",
         "//xla:autotune_results_proto_cc",
         "//xla:debug_options_flags",
         "//xla:statusor",
@@ -7232,18 +7233,24 @@ xla_cc_binary(
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/tools:hlo_module_loader",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:env_time",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/platform:status_to_from_proto",
+        "@local_tsl//tsl/platform:types",
         "@local_tsl//tsl/util:command_line_flags",
+        "@local_tsl//tsl/util/proto:proto_utils",
         "@stablehlo//:register",
     ] + if_cuda_is_configured([
         "//xla/service/gpu:executable_proto_cc",
@@ -7462,4 +7469,15 @@ cc_library(
     hdrs = ["time_utils.h"],
     visibility = ["//visibility:public"],
     deps = [],
+)
+
+tf_proto_library(
+    name = "xla_compile_result_proto",
+    srcs = ["xla_compile_result.proto"],
+    make_default_target_header_only = True,
+    protodeps = [
+        ":hlo_proto",
+        "@local_tsl//tsl/protobuf:status_proto",
+    ],
+    visibility = ["//visibility:public"],
 )

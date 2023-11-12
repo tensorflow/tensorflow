@@ -583,5 +583,38 @@ TEST_F(PriorityFusionTest, FuseReductionEpilogueWithMultipleUsers) {
   )");
 }
 
+TEST_F(PriorityFusionTest, EpilogueFusion) {
+  absl::string_view kHlo = R"(
+    HloModule test_module
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add.13235 = f32[] add(p0, p1)
+    }
+
+    fused_computation.1 {
+      p0 = f32[8,4,128,226]{3,2,1,0} parameter(0)
+      c0 = f32[] constant(0)
+      ROOT r0 = f32[8,4,128]{2,1,0} reduce(p0, c0), dimensions={3}, to_apply=add
+    }
+
+    fused_computation.2 {
+      p0 = f32[8,4,128]{2,1,0} parameter(0)
+      r1 = f32[8,4,128]{2,1,0} log(p0)
+      ROOT r2 = f32[8,4,128]{2,1,0} log(r1)
+    }
+
+    ENTRY main {
+      p0 = f32[8,4,128,226]{3,2,1,0} parameter(0)
+      f1 = f32[8,4,128]{2,1,0} fusion(p0), kind=kInput, calls=%fused_computation.1
+      ROOT fusion = f32[8,4,128]{2,1,0} fusion(f1), kind=kLoop, calls=%fused_computation.2
+    })";
+
+  RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
+CHECK: ROOT %fusion = f32[8,4,128]{2,1,0} fusion(%p{{.*}}), kind=kInput, calls=%fused_computation
+  )");
+}
+
 }  // namespace gpu
 }  // namespace xla

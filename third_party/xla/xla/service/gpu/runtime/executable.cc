@@ -87,7 +87,6 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
   RegisterIoFeedCustomCalls(registry);
   RegisterMemsetCustomCalls(registry);
   RegisterSendRecvCustomCalls(registry);
-  RegisterTopkCustomCall(registry);
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
   RegisterMatmulCustomCalls(registry);
@@ -104,6 +103,7 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
   RegisterStreamSynchronizationCustomCalls(registry);
   RegisterCubSortCustomCalls(registry);
   RegisterXlaClassicCustomCalls(registry);
+  RegisterTopkCustomCall(registry);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 

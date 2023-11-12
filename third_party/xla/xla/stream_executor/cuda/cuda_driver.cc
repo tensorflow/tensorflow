@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/debugging/leak_check.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -931,8 +932,16 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
                                               : 0] = '\0';
       LOG(ERROR) << "error log buffer (" << error_log_buffer_bytes
                  << " bytes): " << error_log_buffer.data();
-      ret = tsl::errors::Internal("Failed to load PTX text as a module: ",
-                                  ToString(res));
+      if (absl::StrContains(error_log_buffer.data(),
+                            "Register allocation failed")) {
+        ret = absl::ResourceExhaustedError(
+            absl::StrFormat("Failed to load PTX text as a module (register "
+                            "allocation failed): %s",
+                            ToString(res)));
+      } else {
+        ret = absl::InternalError(absl::StrFormat(
+            "Failed to load PTX text as a module: %s", ToString(res)));
+      }
       notification.Notify();
     }
 

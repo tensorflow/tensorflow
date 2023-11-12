@@ -52,20 +52,32 @@ FusionBoundaryFn MakeProducerConsumerFusion(
       return &consumer == &fused_producer;
     };
   }
-  // anything -> non-fusion.
+  if (fused_producer.opcode() == HloOpcode::kFusion) {
+    // fusion -> non-fusion.
+    return [&](const HloInstruction& producer, const HloInstruction& consumer) {
+      if (&consumer == &fused_consumer) {
+        // If the consumer is the fused user, only follow edges to the fused
+        // producer.
+        return &fused_producer != &producer;
+      }
+      if (&producer == &fused_consumer) {
+        return true;
+      }
+
+      // Otherwise, fall back to the default; we're already in the fused
+      // producer.
+      return DefaultFusionBoundaryFn(producer, consumer);
+    };
+  }
+
+  // non-fusion -> non-fusion.
   return [&](const HloInstruction& producer, const HloInstruction& consumer) {
     if (&consumer == &fused_consumer) {
       // If the consumer is the fused user, only follow edges to the fused
       // producer.
       return &fused_producer != &producer;
     }
-    if (&producer == &fused_consumer) {
-      return true;
-    }
-
-    // Otherwise, fall back to the default; we're already in the fused
-    // producer.
-    return DefaultFusionBoundaryFn(producer, consumer);
+    return &producer == &fused_consumer || &consumer == &fused_producer;
   };
 }
 

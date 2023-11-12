@@ -272,15 +272,12 @@ compare {
 // CHECK:         br label %[[VAL_49]]
 // CHECK:       entry:
 // CHECK:         %[[VAL_179:.*]] = alloca i8, align 1
-// CHECK-GCN:     %[[VAL_179_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_179]] to ptr
 // CHECK:         %[[VAL_180:.*]] = load float, ptr %[[VAL_181:.*]], align 4
 // CHECK:         %[[VAL_182:.*]] = load float, ptr %[[VAL_183:.*]], align 4
 // CHECK:         %[[VAL_184:.*]] = fcmp olt float %[[VAL_180]], %[[VAL_182]]
 // CHECK:         %[[VAL_185:.*]] = zext i1 %[[VAL_184]] to i8
-// CHECK-PTX:     store i8 %[[VAL_185]], ptr %[[VAL_179]], align 1
-// CHECK-PTX:     %[[VAL_186:.*]] = load i8, ptr %[[VAL_179]], align 1
-// CHECK-GCN:     store i8 %[[VAL_185]], ptr %[[VAL_179_2]], align 1
-// CHECK-GCN:     %[[VAL_186:.*]] = load i8, ptr %[[VAL_179_2]], align 1
+// CHECK:         store i8 %[[VAL_185]], ptr [[ADDRSPACE_ANNOTATION]]%[[VAL_179]], align 1
+// CHECK:         %[[VAL_186:.*]] = load i8, ptr [[ADDRSPACE_ANNOTATION]]%[[VAL_179]], align 1
 // CHECK:         store i8 %[[VAL_186]], ptr %[[VAL_187:.*]], align 1
 // CHECK:         ret void
 
@@ -668,15 +665,12 @@ compare {
 // CHECK:         br label %[[VAL_248]]
 // CHECK:       entry:
 // CHECK:         %[[VAL_448:.*]] = alloca i8, align 1
-// CHECK-GCN:     %[[VAL_448_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_448]] to ptr
 // CHECK:         %[[VAL_449:.*]] = load float, ptr %[[VAL_450:.*]], align 4
 // CHECK:         %[[VAL_451:.*]] = load float, ptr %[[VAL_452:.*]], align 4
 // CHECK:         %[[VAL_453:.*]] = fcmp olt float %[[VAL_449]], %[[VAL_451]]
 // CHECK:         %[[VAL_454:.*]] = zext i1 %[[VAL_453]] to i8
-// CHECK-PTX:     store i8 %[[VAL_454]], ptr %[[VAL_448]], align 1
-// CHECK-PTX:     %[[VAL_455:.*]] = load i8, ptr %[[VAL_448]], align 1
-// CHECK-GCN:     store i8 %[[VAL_454]], ptr %[[VAL_448_2]], align 1
-// CHECK-GCN:     %[[VAL_455:.*]] = load i8, ptr %[[VAL_448_2]], align 1
+// CHECK:         store i8 %[[VAL_454]], ptr [[ADDRSPACE_ANNOTATION]]%[[VAL_448]], align 1
+// CHECK:         %[[VAL_455:.*]] = load i8, ptr [[ADDRSPACE_ANNOTATION]]%[[VAL_448]], align 1
 // CHECK:         store i8 %[[VAL_455]], ptr %[[VAL_456:.*]], align 1
 // CHECK:         ret void
 

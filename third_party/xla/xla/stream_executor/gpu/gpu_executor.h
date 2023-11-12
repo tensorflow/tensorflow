@@ -101,10 +101,10 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   tsl::Status Init(int device_ordinal, DeviceOptions device_options) override;
 
   tsl::Status GetKernel(const MultiKernelLoaderSpec& spec,
-                        KernelBase* kernel) override;
+                        Kernel* kernel) override;
 
   // (supported on CUDA only)
-  void UnloadKernel(const KernelBase* kernel) override;
+  void UnloadKernel(const Kernel* kernel) override;
   tsl::Status LoadModule(const MultiModuleLoaderSpec& spec,
                          ModuleHandle* module_handle) override;
   bool UnloadModule(ModuleHandle module_handle) override;
@@ -116,7 +116,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
       Stream* stream, const std::vector<uint8_t>& content) override;
 
   tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
-                     const BlockDim& block_dims, const KernelBase& k,
+                     const BlockDim& block_dims, const Kernel& k,
                      const KernelArgsArrayBase& args) override;
 
   tsl::Status Submit(Stream* stream,
@@ -306,7 +306,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   // Prints to VLOG(2) information about the kernel's occupancy and how it might
   // be improved.
-  void VlogOccupancyInfo(const KernelBase& kernel, const ThreadDim& thread_dims,
+  void VlogOccupancyInfo(const Kernel& kernel, const ThreadDim& thread_dims,
                          const BlockDim& block_dims);
 
   // (supported on CUDA only)
@@ -349,7 +349,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
       shared_constants_ ABSL_GUARDED_BY(shared_constants_mu_);
 
   // Kernel -> loaded GPU binary. Many kernels may load the same binary.
-  std::unordered_map<const KernelBase*, const void*> kernel_to_gpu_binary_
+  std::unordered_map<const Kernel*, const void*> kernel_to_gpu_binary_
       ABSL_GUARDED_BY(in_memory_modules_mu_);
   // GPU binary (PTX or CUBIN or HSACO) -> {CUDA module, reference count}.
   std::unordered_map<const void*, std::pair<GpuModuleHandle, uint64_t>>

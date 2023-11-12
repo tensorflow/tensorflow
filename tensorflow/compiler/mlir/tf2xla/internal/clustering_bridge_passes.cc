@@ -143,7 +143,8 @@ void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
   // all passes support it.
   pm.addPass(mlir::TFDevice::CreateHostLaunchToOutsideCompiledPass());
 
-  pm.addPass(mlir::TFDevice::CreateMarkOpsForOutsideCompilationPass());
+  pm.addPass(
+      tensorflow::tf2xla::internal::CreateMarkOpsForOutsideCompilationPass());
   pm.addPass(tensorflow::tf2xla::internal::
                  CreateExtractHeadTailOutsideCompilationPass());
   pm.addPass(
@@ -224,7 +225,8 @@ void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
   // for generic pipeline is landed.
   if (tensorflow::GetMlirCommonFlags()
           ->tf_mlir_enable_generic_outside_compilation) {
-    pm.addPass(mlir::TFDevice::CreateMarkOpsForOutsideCompilationPass());
+    pm.addPass(
+        tensorflow::tf2xla::internal::CreateMarkOpsForOutsideCompilationPass());
     pm.addPass(tensorflow::tf2xla::internal::
                    CreateExtractHeadTailOutsideCompilationPass());
     pm.addPass(

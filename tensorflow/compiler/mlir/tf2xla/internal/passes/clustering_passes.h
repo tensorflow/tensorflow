@@ -46,12 +46,18 @@ CreateExtractOutsideCompilationPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateXlaClusterFormationPass();
 
+// Creates a pass that marks unsupported ops in device cluster for outside
+// compilation.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateMarkOpsForOutsideCompilationPass();
+
 #define GEN_PASS_REGISTRATION
+#define GEN_PASS_DECL_MARKOPSFOROUTSIDECOMPILATIONPASS
 #define GEN_PASS_DECL_TPUCLUSTERFORMATIONPASS
 #define GEN_PASS_DECL_TPUEXTRACTHEADTAILOUTSIDECOMPILATIONPASS
 #define GEN_PASS_DECL_TPUEXTRACTOUTSIDECOMPILATIONPASS
-#define GEN_PASS_DECL_XLACLUSTERFORMATIONPASS
 #define GEN_PASS_DECL_VERIFYCLUSTERINGPASS
+#define GEN_PASS_DECL_XLACLUSTERFORMATIONPASS
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
 
 }  // namespace internal
