@@ -7,7 +7,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load("//xla:xla.bzl", "xla_cc_test", "xla_cub_deps", "xla_export_hlo_deps")
 load(
     "//xla/service/gpu:build_defs.bzl",
-    "build_cub_sort_kernels", 
+    "build_cub_sort_kernels",
     "get_cub_sort_kernel_types",
 )
 load(

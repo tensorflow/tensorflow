@@ -502,7 +502,7 @@ static inline Status GetrsImpl(SolverFnT solver, OpKernelContext* context,
   template <>                                                                \
   Status GpuSolver::Getrs<Scalar>(                                           \
       cublasOperation_t trans, int n, int nrhs, const Scalar* A, int lda,    \
-      int* pivots, Scalar* B, int ldb, int* dev_lapack_info) const {         \
+      const int* pivots, Scalar* B, int ldb, int* dev_lapack_info) const {   \
     return GetrsImpl(DN_SOLVER_FN(getrs, type_prefix), context_,             \
                      cusolver_dn_handle_, trans, n, nrhs, A, lda, pivots, B, \
                      ldb, dev_lapack_info);                                  \

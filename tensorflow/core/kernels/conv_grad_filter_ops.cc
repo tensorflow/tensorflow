@@ -485,6 +485,7 @@ extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, double>;
 // GPU definitions.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+
 REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<double>("T")

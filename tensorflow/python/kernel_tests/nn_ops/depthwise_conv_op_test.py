@@ -16,6 +16,7 @@
 
 from tensorflow.python.kernel_tests.nn_ops import depthwise_conv_op_base
 from tensorflow.python.platform import test
+
 DepthwiseConv2DTest = depthwise_conv_op_base.DepthwiseConv2DBase
 
 if __name__ == "__main__":

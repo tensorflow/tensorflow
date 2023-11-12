@@ -111,8 +111,8 @@ cuda_py_strict_test(
     name = "batch_matmul_op_test",
     size = "medium",
     srcs = ["batch_matmul_op_test.py"],
-    tags = ["no_mac_arm64"],
     shard_count = 20,
+    tags = ["no_mac_arm64"],
     deps = [
         "//tensorflow/python:tf2",
         "//tensorflow/python/client:session",
@@ -264,7 +264,6 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["cwise_ops_binary_test.py"],
     shard_count = 50,
-    tags = [],
     # b/140155647: Error just outside of tolerance
     xla_enable_strict_auto_jit = False,
     deps = [

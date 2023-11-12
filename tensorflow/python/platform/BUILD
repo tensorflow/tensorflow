@@ -126,7 +126,6 @@ tf_py_strict_test(
         "no_oss",  # TODO(b/259295275) re-enable after fixing sysconfig.get_path breakage
         "no_pip",
         "no_windows",
-	"no_oss",  # TODO(b/259319686) : Disable the tes
     ],
     deps = [
         ":client_testlib",

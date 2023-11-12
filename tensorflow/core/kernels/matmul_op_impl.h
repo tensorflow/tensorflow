@@ -56,8 +56,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/matmul_util.h"
 #include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
-#include "xla/stream_executor/host_or_device_scalar.h"
-#include "tensorflow/core/kernels/matmul_util.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"

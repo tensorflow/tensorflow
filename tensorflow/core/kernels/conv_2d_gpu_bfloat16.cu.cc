@@ -48,4 +48,4 @@ template struct PadInput<Eigen::GpuDevice, Eigen::bfloat16, int, 5>;
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA  
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
