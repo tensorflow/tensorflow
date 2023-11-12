@@ -494,8 +494,10 @@ static void Init(py::module_& m) {
       "get_tfrt_cpu_client",
       [](bool asynchronous) -> std::shared_ptr<PyClient> {
         py::gil_scoped_release gil_release;
+        CpuClientOptions options;
+        options.asynchronous = asynchronous;
         std::unique_ptr<PjRtClient> client =
-            xla::ValueOrThrow(GetTfrtCpuClient(asynchronous));
+            xla::ValueOrThrow(GetTfrtCpuClient(options));
         return std::make_shared<PyClient>(
             ifrt::PjRtClient::Create(std::move(client)));
       },

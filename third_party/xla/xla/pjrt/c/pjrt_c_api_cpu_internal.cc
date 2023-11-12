@@ -34,9 +34,10 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
 
   // TODO(b/263170683): cpu_device_count should be configurable after config
   // options can be passed to PJRT_Client_Create.
-  PJRT_ASSIGN_OR_RETURN(
-      std::unique_ptr<xla::PjRtClient> client,
-      xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/4));
+  xla::CpuClientOptions options;
+  options.cpu_device_count = 4;
+  PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
+                        xla::GetTfrtCpuClient(options));
   args->client = pjrt::CreateWrapperClient(std::move(client));
   return nullptr;
 }

@@ -20,11 +20,12 @@ namespace xla {
 namespace {
 
 // Register a CPU PjRt client for tests.
-const bool kUnused =
-    (RegisterPjRtClientTestFactory([]() {
-       return GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/4);
-     }),
-     true);
+const bool kUnused = (RegisterPjRtClientTestFactory([]() {
+                        CpuClientOptions options;
+                        options.cpu_device_count = 4;
+                        return GetTfrtCpuClient(options);
+                      }),
+                      true);
 
 }  // namespace
 }  // namespace xla

@@ -112,7 +112,7 @@ class Accumulator {
 
 TEST(OutfeedReceiverTest, ReceiveOutfeedSimple) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
-                          GetTfrtCpuClient(true));
+                          GetTfrtCpuClient(CpuClientOptions()));
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
   auto receiver = std::make_unique<Accumulator>();
@@ -145,7 +145,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedSimple) {
 
 TEST(OutfeedReceiverTest, ReceiveOutfeedTwoComputations) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
-                          GetTfrtCpuClient(true));
+                          GetTfrtCpuClient(CpuClientOptions()));
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
   auto receiver = std::make_unique<Accumulator>();
@@ -190,7 +190,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoComputations) {
 
 TEST(OutfeedReceiverTest, ReceiveOutfeedTwoOutfeed) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
-                          GetTfrtCpuClient(true));
+                          GetTfrtCpuClient(CpuClientOptions()));
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
   auto receiver = std::make_unique<Accumulator>();
@@ -233,7 +233,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoOutfeed) {
 
 TEST(OutfeedReceiverTest, DifferentShapeForConsumerIdError) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
-                          GetTfrtCpuClient(true));
+                          GetTfrtCpuClient(CpuClientOptions()));
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
   auto receiver = std::make_unique<Accumulator>();
@@ -267,7 +267,7 @@ TEST(OutfeedReceiverTest, DifferentShapeForConsumerIdError) {
 
 TEST(OutfeedReceiverTest, InvalidConsumerIdError) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
-                          GetTfrtCpuClient(true));
+                          GetTfrtCpuClient(CpuClientOptions()));
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
   auto receiver = std::make_unique<Accumulator>();

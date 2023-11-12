@@ -509,16 +509,38 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   bool cheap_computation_;
 };
 
-// Creates a CPU client with one Device. For testing purposes, you can set the
-// number of devices passing the --xla_force_host_platform_device_count flag to
-// the XLA_FLAGS environment variable.
-StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous);
+struct CpuClientOptions {
+  // Does nothing at the moment. Ignored.
+  bool asynchronous = true;
 
-// Similar to the function above, but you can set the number of devices and max
-// number of inflight computations per device explicitly.
+  // Number of CPU devices. If not provided, the value of
+  // --xla_force_host_platform_device_count is used.
+  std::optional<int> cpu_device_count = std::nullopt;
+
+  int max_inflight_computations_per_device = 32;
+};
 StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
+    const CpuClientOptions& options);
+
+// Deprecated. Use the overload that takes 'options' instead.
+inline StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
+    bool asynchronous) {
+  CpuClientOptions options;
+  options.asynchronous = asynchronous;
+  return GetTfrtCpuClient(options);
+}
+
+// Deprecated. Use the overload that takes 'options' instead.
+inline StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
     bool asynchronous, int cpu_device_count,
-    int max_inflight_computations_per_device = 32);
+    int max_inflight_computations_per_device = 32) {
+  CpuClientOptions options;
+  options.asynchronous = asynchronous;
+  options.cpu_device_count = cpu_device_count;
+  options.max_inflight_computations_per_device =
+      max_inflight_computations_per_device;
+  return GetTfrtCpuClient(options);
+}
 
 }  // namespace xla
 

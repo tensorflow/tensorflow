@@ -293,21 +293,18 @@ static StatusOr<std::vector<std::unique_ptr<TfrtCpuDevice>>> GetTfrtCpuDevices(
 }
 
 StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
-    bool asynchronous, int cpu_device_count,
-    int max_inflight_computations_per_device) {
+    const CpuClientOptions& options) {
   // Need at least CpuDeviceCount threads to launch one collective.
+  int cpu_device_count = options.cpu_device_count.value_or(CpuDeviceCount());
   size_t num_threads = std::max(DefaultThreadPoolSize(), cpu_device_count);
 
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
-                      GetTfrtCpuDevices(cpu_device_count,
-                                        max_inflight_computations_per_device));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
+      GetTfrtCpuDevices(cpu_device_count,
+                        options.max_inflight_computations_per_device));
 
   return std::unique_ptr<PjRtClient>(std::make_unique<TfrtCpuClient>(
       /*process_index=*/0, std::move(devices), num_threads));
-}
-
-StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous) {
-  return GetTfrtCpuClient(asynchronous, CpuDeviceCount());
 }
 
 TfrtCpuClient::TfrtCpuClient(
