@@ -207,7 +207,7 @@ TEST(CommandBufferThunkTest, GemmCmd) {
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
   commands.Emplace<GemmCmd>(config.value(), slice_lhs, slice_rhs, slice_out,
-                            /*deterministic*/ true);
+                            /*deterministic=*/true);
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
@@ -225,6 +225,23 @@ TEST(CommandBufferThunkTest, GemmCmd) {
   // Copy `out` data back to host.
   std::vector<float> dst(6, 0);
   stream.ThenMemcpy(dst.data(), out, out_length);
+
+  ASSERT_EQ(dst, std::vector<float>({10, 10, 10, 26, 26, 26}));
+
+  // Prepare buffer allocation for updating command buffer.
+  se::DeviceMemory<float> updated_out = executor->AllocateArray<float>(2 * 3);
+  stream.ThenMemZero(&updated_out, out_length);
+
+  // Update buffer allocation to updated `out` buffer.
+  allocations =
+      BufferAllocations({lhs, rhs, updated_out}, 0, executor->GetAllocator());
+
+  // Thunk execution should automatically update underlying command buffer.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+
+  // Copy `updated_out` data back to host.
+  std::fill(dst.begin(), dst.end(), 0);
+  stream.ThenMemcpy(dst.data(), updated_out, out_length);
 
   ASSERT_EQ(dst, std::vector<float>({10, 10, 10, 26, 26, 26}));
 }

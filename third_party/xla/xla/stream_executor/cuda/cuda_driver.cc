@@ -839,6 +839,19 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
   return ::tsl::OkStatus();
 }
 
+/*static*/ tsl::Status GpuDriver::GraphExecChildNodeSetParams(CUgraphExec exec,
+                                                              CUgraphNode node,
+                                                              CUgraph child) {
+  VLOG(2) << "Set child node params " << node << " in graph executable " << exec
+          << "to params contained in " << child;
+
+  RETURN_IF_CUDA_RES_ERROR(
+      cuGraphExecChildGraphNodeSetParams(exec, node, child),
+      "Failed to set CUDA graph child node params");
+
+  return ::tsl::OkStatus();
+}
+
 /* static */ tsl::Status GpuDriver::LaunchKernel(
     GpuContext* context, absl::string_view kernel_name, CUfunction function,
     unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,

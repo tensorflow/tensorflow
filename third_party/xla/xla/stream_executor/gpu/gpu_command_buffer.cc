@@ -203,12 +203,18 @@ tsl::Status GpuCommandBuffer::AddNestedCommandBuffer(
   TF_RETURN_IF_ERROR(CheckNotFinalized());
   TF_RETURN_IF_ERROR(CheckPrimary());
 
+  GpuGraphHandle child_graph = GpuCommandBuffer::Cast(&nested)->graph();
   // Adds a child graph node to the graph under construction.
   if (state_ == State::kCreate) {
     absl::Span<GpuGraphNodeHandle> deps = GetDependencies();
     GpuGraphNodeHandle* node = &nodes_.emplace_back();
-    return GpuDriver::GraphAddChildNode(
-        node, graph_, deps, GpuCommandBuffer::Cast(&nested)->graph());
+    return GpuDriver::GraphAddChildNode(node, graph_, deps, child_graph);
+  }
+
+  // Updates child graph node in the executable graph.
+  if (state_ == State::kUpdate) {
+    GpuGraphNodeHandle node = nodes_[node_update_idx_++];
+    return GpuDriver::GraphExecChildNodeSetParams(exec_, node, child_graph);
   }
 
   return UnsupportedStateError(state_);

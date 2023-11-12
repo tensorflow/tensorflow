@@ -463,6 +463,12 @@ class GpuDriver {
                                        absl::Span<GpuGraphNodeHandle> deps,
                                        GpuGraphHandle child);
 
+  // Sets the parameters for a child graph node in the given graph exec.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g8f2d9893f6b899f992db1a2942ec03ff
+  static tsl::Status GraphExecChildNodeSetParams(GpuGraphExecHandle exec,
+                                                 GpuGraphNodeHandle node,
+                                                 GpuGraphHandle child);
+
   // Loads ptx_contents with the CUDA driver's PTX JIT and stores the resulting
   // handle in "module". Any error logs that are produced are logged internally.
   // (supported on CUDA only)

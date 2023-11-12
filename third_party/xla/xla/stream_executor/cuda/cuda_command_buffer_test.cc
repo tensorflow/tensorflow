@@ -195,6 +195,25 @@ TEST(CudaCommandBufferTest, LaunchNestedCommandBuffer) {
 
   std::vector<int32_t> expected = {3, 3, 3, 3};
   ASSERT_EQ(dst, expected);
+
+  // Prepare argument for graph update: d = 0
+  DeviceMemory<int32_t> d = executor->AllocateArray<int32_t>(length, 0);
+  stream.ThenMemZero(&d, byte_length);
+
+  // Update command buffer to write into `d` buffer by creating a new nested
+  // command buffer.
+  nested_cmd = CommandBuffer::Create(executor, nested).value();
+  TF_ASSERT_OK(nested_cmd.Launch(add, ThreadDim(), BlockDim(4), a, b, d));
+  TF_ASSERT_OK(primary_cmd.Update());
+  TF_ASSERT_OK(primary_cmd.AddNestedCommandBuffer(nested_cmd));
+  TF_ASSERT_OK(primary_cmd.Finalize());
+
+  TF_ASSERT_OK(executor->Submit(&stream, primary_cmd));
+
+  // Copy `d` data back to host.
+  std::fill(dst.begin(), dst.end(), 42);
+  stream.ThenMemcpy(dst.data(), d, byte_length);
+  ASSERT_EQ(dst, expected);
 }
 
 //===----------------------------------------------------------------------===//
