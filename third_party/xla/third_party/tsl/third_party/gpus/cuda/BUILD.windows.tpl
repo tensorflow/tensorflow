@@ -59,26 +59,27 @@ cuda_header_library(
     ],
 )
 
-cc_library(
+cc_import(
     name = "cudart_static",
-    srcs = ["cuda/lib/%{cudart_static_lib}"],
-    linkopts = [
-        "-ldl",
-        "-lpthread",
-        %{cudart_static_linkopt}
-    ],
+    # /WHOLEARCHIVE:cudart_static.lib will cause a
+    # "Internal error during CImplib::EmitThunk" error.
+    # Treat this library as interface library to avoid being whole archived when
+    # linking a DLL that depends on this.
+    # TODO(pcloudy): Remove this rule after b/111278841 is resolved.
+    interface_library = "cuda/lib/%{cudart_static_lib}",
+    system_provided = 1,
 )
 
-cc_library(
+cc_import(
     name = "cuda_driver",
-    srcs = ["cuda/lib/%{cuda_driver_lib}"],
+    interface_library = "cuda/lib/%{cuda_driver_lib}",
+    system_provided = 1,
 )
 
-cc_library(
+cc_import(
     name = "cudart",
-    srcs = ["cuda/lib/%{cudart_lib}"],
-    data = ["cuda/lib/%{cudart_lib}"],
-    linkstatic = 1,
+    interface_library = "cuda/lib/%{cudart_lib}",
+    system_provided = 1,
 )
 
 cuda_header_library(
@@ -126,33 +127,28 @@ cuda_header_library(
     deps = [":cuda_headers"],
 )
 
-cc_library(
+cc_import(
     name = "cublas",
-    srcs = ["cuda/lib/%{cublas_lib}"],
-    data = ["cuda/lib/%{cublas_lib}"],
-    linkstatic = 1,
+    interface_library = "cuda/lib/%{cublas_lib}",
+    system_provided = 1,
 )
 
-cc_library(
+cc_import(
     name = "cublasLt",
-    srcs = ["cuda/lib/%{cublasLt_lib}"],
-    data = ["cuda/lib/%{cublasLt_lib}"],
-    linkstatic = 1,
+    interface_library = "cuda/lib/%{cublasLt_lib}",
+    system_provided = 1,
 )
 
-cc_library(
+cc_import(
     name = "cusolver",
-    srcs = ["cuda/lib/%{cusolver_lib}"],
-    data = ["cuda/lib/%{cusolver_lib}"],
-    linkopts = ["-lgomp"],
-    linkstatic = 1,
+    interface_library = "cuda/lib/%{cusolver_lib}",
+    system_provided = 1,
 )
 
-cc_library(
+cc_import(
     name = "cudnn",
-    srcs = ["cuda/lib/%{cudnn_lib}"],
-    data = ["cuda/lib/%{cudnn_lib}"],
-    linkstatic = 1,
+    interface_library = "cuda/lib/%{cudnn_lib}",
+    system_provided = 1,
 )
 
 cc_library(
@@ -163,18 +159,16 @@ cc_library(
     deps = [":cuda_headers"],
 )
 
-cc_library(
+cc_import(
     name = "cufft",
-    srcs = ["cuda/lib/%{cufft_lib}"],
-    data = ["cuda/lib/%{cufft_lib}"],
-    linkstatic = 1,
+    interface_library = "cuda/lib/%{cufft_lib}",
+    system_provided = 1,
 )
 
-cc_library(
+cc_import(
     name = "curand",
-    srcs = ["cuda/lib/%{curand_lib}"],
-    data = ["cuda/lib/%{curand_lib}"],
-    linkstatic = 1,
+    interface_library = "cuda/lib/%{curand_lib}",
+    system_provided = 1,
 )
 
 cc_library(
@@ -203,25 +197,16 @@ cuda_header_library(
     deps = [":cuda_headers"],
 )
 
-cuda_header_library(
-    name = "nvml_headers",
-    hdrs = [":nvml"],
-    include_prefix = "third_party/gpus",
-    includes = ["cuda/nvml/include/"],
-    deps = [":cuda_headers"],
-)
-
-cc_library(
+cc_import(
     name = "cupti_dsos",
-    data = ["cuda/lib/%{cupti_lib}"],
+    interface_library = "cuda/lib/%{cupti_lib}",
+    system_provided = 1,
 )
 
-cc_library(
+cc_import(
     name = "cusparse",
-    srcs = ["cuda/lib/%{cusparse_lib}"],
-    data = ["cuda/lib/%{cusparse_lib}"],
-    linkopts = ["-lgomp"],
-    linkstatic = 1,
+    interface_library = "cuda/lib/%{cusparse_lib}",
+    system_provided = 1,
 )
 
 cc_library(
