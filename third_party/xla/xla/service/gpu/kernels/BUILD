@@ -4,8 +4,33 @@ load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configu
 
 package(
     default_visibility = ["//visibility:public"],
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
+)
+
+package_group(
+    name = "friends",
+    includes = ["//xla:friends"],
+)
+
+cc_library(
+    name = "custom_fusion",
+    srcs = ["custom_fusion.cc"],
+    hdrs = ["custom_fusion.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":custom_kernel",
+        "//xla:status",
+        "//xla:statusor",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+    ],
 )
 
 cc_library(
@@ -23,6 +48,39 @@ cc_library(
 
 # copybara:uncomment_begin(google-only)
 # # TODO(ezhulenev): We currently do not have a CUTLASS dependency in open source BUILD.
+#
+# cc_library(
+#     name = "cutlass_gemm_fusion",
+#     srcs = ["cutlass_gemm_fusion.cc"],
+#     deps = [
+#         ":custom_fusion",
+#         ":custom_kernel",
+#         ":cutlass_gemm_kernel",
+#         "@com_google_absl//absl/status",
+#         "//xla:statusor",
+#         "//xla:xla_data_proto_cc",
+#         "//xla/hlo/ir:hlo",
+#         "@local_tsl//tsl/platform:errors",
+#         "@local_tsl//tsl/platform:logging",
+#         "@local_tsl//tsl/platform:statusor",
+#     ],
+#     alwayslink = 1,  # static fusion registration
+# )
+#
+# xla_test(
+#     name = "cutlass_gemm_fusion_test",
+#     srcs = ["cutlass_gemm_fusion_test.cc"],
+#     backends = ["gpu"],
+#     deps = [
+#         ":cutlass_gemm_fusion",
+#         "@com_google_absl//absl/strings",
+#         "//xla:debug_options_flags",
+#         "//xla:error_spec",
+#         "//xla/tests:hlo_test_base",
+#         "@local_tsl//tsl/platform:test",
+#         "@local_tsl//tsl/platform:test_main",
+#     ],
+# )
 #
 # cuda_library(
 #     name = "cutlass_gemm_kernel",

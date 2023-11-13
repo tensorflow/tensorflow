@@ -117,6 +117,8 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_nested.h"
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_thunk.h"
+#include "xla/service/gpu/kernels/custom_fusion.h"
+#include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/nccl_all_gather_thunk.h"
@@ -316,6 +318,17 @@ StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkForFusion(
   return std::make_unique<KernelThunk>(
       op, entry.kernel_name, kernel_arguments.args(), launch_dimensions,
       /*shmem_bytes=*/0);
+}
+
+StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
+    IrEmitterContext& ir_emitter_context, const HloFusionInstruction* fusion,
+    kernel::CustomKernel custom_kernel) {
+  TF_ASSIGN_OR_RETURN(
+      auto kernel_arguments,
+      KernelArguments::Create(ir_emitter_context.buffer_assignment(), fusion));
+
+  return std::make_unique<CustomKernelThunk>(
+      fusion, std::move(custom_kernel), std::move(kernel_arguments.args()));
 }
 
 // Derives the number of warps to use for processing a Triton Softmax fusion.
@@ -2101,6 +2114,11 @@ Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
     }
     case HloFusionAnalysis::EmitterFusionKind::kScatter:
       return EmitScatter(instr, nullptr, fusion_analysis);
+    case HloFusionAnalysis::EmitterFusionKind::kCustomFusion: {
+      TF_ASSIGN_OR_RETURN(auto backend_config,
+                          instr->backend_config<FusionBackendConfig>());
+      return EmitCustomFusion(instr, backend_config.custom_fusion_config());
+    }
     default:
       return FailedPrecondition(
           "Fusion type not supported by the HLO emitter.");
@@ -2165,6 +2183,11 @@ Status IrEmitterUnnested::EmitFusion(
 #endif
       LOG(FATAL) << "Unsupported fusion kind: " << backend_config.kind();
     }
+    case HloFusionAnalysis::EmitterFusionKind::kCustomFusion:
+      if (!backend_config.has_custom_fusion_config())
+        return absl::InternalError(
+            "custom fusion is missing custom fusion config");
+      return EmitCustomFusion(fusion, backend_config.custom_fusion_config());
     case HloFusionAnalysis::EmitterFusionKind::kScatter:
       return EmitScatter(fusion, fusion_op, fusion_analysis);
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
@@ -3186,6 +3209,46 @@ Status IrEmitterUnnested::EmitScatter(const HloFusionInstruction* fusion,
                           *ir_emitter_context_, kernel_reuse_cache_, fusion,
                           fusion_op, fused_computation, launch_dimensions,
                           /*discriminator=*/"scatter", builder_fn, &b_));
+  AddThunkToThunkSequence(std::move(thunk));
+  return OkStatus();
+}
+
+Status IrEmitterUnnested::EmitCustomFusion(const HloFusionInstruction* fusion,
+                                           const CustomFusionConfig& config) {
+  VLOG(3) << "Lower HLO fusion to a custom fusion " << config.name();
+
+  auto* registry = kernel::CustomFusionRegistry::Default();
+  auto* custom_fusion = registry->Lookup(config.name());
+
+  // If custom fusion is not found it means that some of the build targets might
+  // not be statically linked into the binary.
+  if (custom_fusion == nullptr) {
+    return absl::InternalError(absl::StrCat(
+        "Custom fusion ", config.name(), " not found in a default registry."));
+  }
+
+  // Load custom kernels that can implement a fusion computation.
+  TF_ASSIGN_OR_RETURN(
+      std::vector<kernel::CustomKernel> kernels,
+      custom_fusion->LoadKernels(fusion->fused_instructions_computation()));
+
+  // This should never happen, it means that compilation pipeline created a
+  // fusion operation that is not supported by a given custom fusion.
+  if (kernels.empty()) {
+    return absl::InternalError(
+        absl::StrCat("Custom fusion ", config.name(),
+                     " returned empty custom kernels for a fused computation"));
+  }
+
+  // TODO(ezhulenev): Add support for auto tuning to select the best kernel.
+  if (kernels.size() != 1) {
+    return absl::InternalError("Expected exactly one custom kernel");
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      auto thunk, BuildCustomKernelThunkForFusion(*ir_emitter_context_, fusion,
+                                                  std::move(kernels[0])));
+
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
 }

@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 
 namespace xla {
@@ -355,6 +356,11 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitScatter(const HloFusionInstruction* fusion,
                      mlir::lmhlo::FusionOp fusion_op,
                      HloFusionAnalysis& fusion_analysis);
+
+  // Emits kernel thunk for a custom fusion implemented with hand written custom
+  // device kernels.
+  Status EmitCustomFusion(const HloFusionInstruction* fusion,
+                          const CustomFusionConfig& config);
 
   // Builds a kernel thunk for a non-fusion operation, without reuse.
   //

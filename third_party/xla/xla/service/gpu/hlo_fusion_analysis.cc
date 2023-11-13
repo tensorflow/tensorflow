@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/numeric/bits.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -308,6 +309,10 @@ bool HloFusionAnalysis::HasConsistentTransposeHeros() const {
 
 HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
     const {
+  if (fusion_backend_config_.kind() == kCustomFusionKind) {
+    return EmitterFusionKind::kCustomFusion;
+  }
+
 #if GOOGLE_CUDA
   if (fusion_backend_config_.kind() == kTritonGemmFusionKind ||
       fusion_backend_config_.kind() == kTritonSoftmaxFusionKind) {
@@ -388,8 +393,12 @@ StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions() {
       return CalculateLaunchDimensions(root_shape, *device_info_,
                                        {unroll_factor, /*few_waves=*/false});
     }
+    case EmitterFusionKind::kCustomFusion:
+      return absl::UnimplementedError(
+          "GetLaunchDimensions is not implemented for custom fusions");
     case EmitterFusionKind::kTriton:
-      return Unimplemented("GetLaunchDimensions");
+      return absl::UnimplementedError(
+          "GetLaunchDimensions is not implemented for Triton fusions");
   }
 }
 

@@ -40,6 +40,7 @@ class HloFusionAnalysis {
   // The type of emitted fusion.
   enum class EmitterFusionKind {
     kLoop,
+    kCustomFusion,
     kTriton,
     kReduction,
     kTranspose,
