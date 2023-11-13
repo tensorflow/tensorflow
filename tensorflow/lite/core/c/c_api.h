@@ -12,11 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// \warning Note: Users of TensorFlow Lite should not include this file
-// directly, but should instead include
-// "third_party/tensorflow/lite/c/c_api.h". Only the TensorFlow Lite
-// implementation itself should include this
-// file directly.
+// WARNING: Users of TensorFlow Lite should not include this file directly, but
+// should instead include "third_party/tensorflow/lite/c/c_api.h".
+// Only the TensorFlow Lite implementation itself should include this file
+// directly.
 
 #ifndef TENSORFLOW_LITE_CORE_C_C_API_H_
 #define TENSORFLOW_LITE_CORE_C_C_API_H_
@@ -76,6 +75,16 @@ limitations under the License.
 /// TfLiteInterpreterOptionsDelete(options);
 /// TfLiteModelDelete(model);
 /// </code></pre>
+///
+// clang-format off
+// NOLINTBEGIN(whitespace/line_length)
+/// \note Users of TensorFlow Lite should use
+///
+///     #include "tensorflow/lite/c/c_api.h"
+///
+/// to access the APIs documented on this page.
+// NOLINTEND(whitespace/line_length)
+// clang-format on
 
 #ifdef __cplusplus
 extern "C" {
@@ -83,7 +92,7 @@ extern "C" {
 
 // clang-format off
 // NOLINTBEGIN(whitespace/line_length)
-/** \defgroup c_api tensorflow/lite/c/c_api.h
+/** \defgroup c_api lite/c/c_api.h
  *  @{
  */
 // NOLINTEND(whitespace/line_length)
