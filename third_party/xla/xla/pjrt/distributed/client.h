@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/time/time.h"
 #include "grpcpp/channel.h"
-#include "xla/pjrt/distributed/protocol.grpc.pb.h"
 #include "xla/statusor.h"
 #include "xla/types.h"
 #include "tsl/platform/env.h"
@@ -101,20 +100,14 @@ class DistributedRuntimeClient {
 
   // Connects to the master, and blocks until all clients have successfully
   // connected.
-  // Not thread-safe, i.e., calls to Connect()/Shutdown()/EnumerateDevices()
-  // must be serialized by some other means.
+  // Not thread-safe, i.e., calls to Connect()/Shutdown() must be serialized by
+  // some other means.
   virtual xla::Status Connect() = 0;
 
   // Reports to the master that the client is ready to shutdown, and blocks
   // until all clients are ready to shutdown or the shutdown timeout expires.
   // Not thread-safe.
   virtual xla::Status Shutdown() = 0;
-
-  // Blocking enumeration of global devices. Used by the GPU platform.
-  // Not thread-safe.
-  virtual xla::Status EnumerateDevices(
-      const LocalTopologyProto& local_topology,
-      GlobalTopologyProto* global_topology) = 0;
 
   // The following APIs are thread-safe.
 

@@ -679,7 +679,7 @@ def get_distributed_runtime_service(
     num_nodes: int,
     heartbeat_interval: Optional[int] = ...,
     max_missing_heartbeats: Optional[int] = ...,
-    enumerate_devices_timeout: Optional[int] = ...,
+    cluster_register_timeout: Optional[int] = ...,
     shutdown_timeout: Optional[int] = ...) -> DistributedRuntimeService: ...
 def get_distributed_runtime_client(
     address: str,

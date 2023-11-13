@@ -45,8 +45,6 @@ class DistributedRuntimeCoordinationServiceClient
 
   xla::Status Connect() override;
   xla::Status Shutdown() override;
-  xla::Status EnumerateDevices(const LocalTopologyProto& local_topology,
-                               GlobalTopologyProto* global_topology) override;
   xla::StatusOr<std::string> BlockingKeyValueGet(
       std::string key, absl::Duration timeout) override;
   xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
@@ -131,26 +129,6 @@ xla::Status DistributedRuntimeCoordinationServiceClient::Shutdown() {
   Status s = coord_agent_->Shutdown();
   LOG(INFO) << "Distributed task shutdown result: " << s;
   return s;
-}
-
-xla::Status DistributedRuntimeCoordinationServiceClient::EnumerateDevices(
-    const LocalTopologyProto& local_topology,
-    GlobalTopologyProto* global_topology) {
-  LocalTopologyProto local_device = local_topology;
-  local_device.set_node_id(task_id_);
-  tensorflow::DeviceInfo devices;
-  devices.mutable_device()->Add()->PackFrom(local_device);
-  // Client sends LocalTopologyProto.
-  Status s = coord_agent_->WaitForAllTasks(devices);
-  if (!s.ok()) return s;
-  // Server responds with GlobalTopologyProto (refer to service.cc for details).
-  tensorflow::DeviceInfo global_devices = coord_agent_->GetClusterDeviceInfo();
-  if (global_devices.device_size() != 1) {
-    return tsl::errors::Internal(
-        "Unexpected cluster device response from EnumerateDevices().");
-  }
-  global_devices.device().Get(0).UnpackTo(global_topology);
-  return OkStatus();
 }
 
 xla::StatusOr<std::string>

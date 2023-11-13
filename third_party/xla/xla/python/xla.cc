@@ -899,7 +899,7 @@ static void Init(py::module_& m) {
       [](std::string address, int num_nodes,
          std::optional<int> heartbeat_interval,
          std::optional<int> max_missing_heartbeats,
-         std::optional<int> enumerate_devices_timeout,
+         std::optional<int> cluster_register_timeout,
          std::optional<int> shutdown_timeout)
           -> std::unique_ptr<DistributedRuntimeService> {
         CoordinationServiceImpl::Options options;
@@ -910,9 +910,9 @@ static void Init(py::module_& m) {
         if (max_missing_heartbeats.has_value()) {
           options.max_missing_heartbeats = *max_missing_heartbeats;
         }
-        if (enumerate_devices_timeout.has_value()) {
-          options.enumerate_devices_timeout =
-              absl::Seconds(*enumerate_devices_timeout);
+        if (cluster_register_timeout.has_value()) {
+          options.cluster_register_timeout =
+              absl::Seconds(*cluster_register_timeout);
         }
         if (shutdown_timeout.has_value()) {
           options.shutdown_timeout = absl::Seconds(*shutdown_timeout);
@@ -924,7 +924,7 @@ static void Init(py::module_& m) {
       py::arg("address"), py::arg("num_nodes"), py::kw_only(),
       py::arg("heartbeat_interval") = std::nullopt,
       py::arg("max_missing_heartbeats") = std::nullopt,
-      py::arg("enumerate_devices_timeout") = std::nullopt,
+      py::arg("cluster_register_timeout") = std::nullopt,
       py::arg("shutdown_timeout") = std::nullopt);
 
   m.def(
