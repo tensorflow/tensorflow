@@ -16,32 +16,22 @@ limitations under the License.
 #include "xla/pjrt/distributed/client.h"
 
 #include <algorithm>
-#include <chrono>  // NOLINT
 #include <memory>
-#include <optional>
-#include <random>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/synchronization/mutex.h"
-#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "grpcpp/channel.h"
-#include "xla/pjrt/distributed/protocol.h"
-#include "xla/pjrt/distributed/util.h"
-#include "xla/util.h"
 #include "tsl/distributed_runtime/coordination/coordination_client.h"
 #include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tsl/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/random.h"
 #include "tsl/protobuf/coordination_config.pb.h"
 #include "tsl/protobuf/coordination_service.pb.h"
 
 namespace xla {
-
 
 class DistributedRuntimeCoordinationServiceClient
     : public DistributedRuntimeClient {
