@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/casts.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/runtime/cpu_event.h"
 #include "tsl/concurrency/async_value_ref.h"
@@ -45,7 +46,7 @@ tsl::AsyncValueRef<CpuEvent> AfterAll(
     tsl::AsyncValueRef<CpuEvent> after_all;
 
     absl::Mutex mutex;
-    std::string error_message;
+    absl::Status error;
   };
 
   auto after_all = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
@@ -55,12 +56,12 @@ tsl::AsyncValueRef<CpuEvent> AfterAll(
     event.AndThen([state, event = event.AsPtr()]() {
       if (event.IsError()) {
         absl::MutexLock lock(&state->mutex);
-        state->error_message = event.GetError().message();
+        state->error = event.GetError();
       }
 
       if (state->count.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-        if (!state->error_message.empty()) {
-          state->after_all.SetError(state->error_message);
+        if (!state->error.ok()) {
+          state->after_all.SetError(state->error);
         } else {
           state->after_all.SetStateConcrete();
         }

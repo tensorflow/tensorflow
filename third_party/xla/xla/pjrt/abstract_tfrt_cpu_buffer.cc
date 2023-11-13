@@ -435,8 +435,7 @@ PjRtFuture<Status> AbstractTfrtCpuBuffer::ToLiteralHelper(
           // Errors in src buffer are surfaced to user.
           for (const auto& av : device_buffer_wait_avs) {
             if (auto* error = av->GetErrorIfPresent()) {
-              ready_event.emplace(Internal("Error converting to literal: %s",
-                                           error->message()));
+              ready_event.emplace(*error);
               return;
             }
           }

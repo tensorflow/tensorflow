@@ -565,6 +565,7 @@ cc_library(
         "//xla/runtime:cpu_event",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/concurrency:async_value",
