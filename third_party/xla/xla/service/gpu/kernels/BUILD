@@ -34,6 +34,17 @@ cc_library(
 )
 
 cc_library(
+    name = "custom_fusion_pattern",
+    srcs = ["custom_fusion_pattern.cc"],
+    hdrs = ["custom_fusion_pattern.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:backend_configs_cc",
+    ],
+)
+
+cc_library(
     name = "custom_kernel",
     srcs = ["custom_kernel.cc"],
     hdrs = ["custom_kernel.h"],
