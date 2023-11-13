@@ -19,14 +19,13 @@ limitations under the License.
 #include <stdint.h>
 
 #include <memory>
-#include <optional>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/dump.h"
+#include "xla/service/fusion_node_indexing_evaluation.h"
 #include "xla/service/fusion_queue.h"
 #include "xla/service/gpu/fusion_process_dump.pb.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
@@ -77,6 +76,11 @@ class GpuPriorityFusion : public InstructionFusion {
   // Proto with structured logs of fusion decisions. Used only for debugging. If
   // null, logging is disabled.
   std::unique_ptr<FusionProcessDumpProto> fusion_process_dump_;
+
+  // Keep track of the number of times each instruction inside a fusion node is
+  // indexed with different index vectors.
+  absl::flat_hash_map<const HloInstruction*, FusionNodeIndexingEvaluation>
+      fusion_node_evaluations_;
 };
 
 }  // namespace gpu

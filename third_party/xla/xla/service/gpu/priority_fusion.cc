@@ -433,6 +433,23 @@ FusionDecision GpuPriorityFusion::ShouldFuse(HloInstruction* consumer,
     return fits_budget;
   }
 
+  // Also check that our emitter can handle the fusion node. We currently can
+  // have exponential time/memory requirements for emitting certain fusion
+  // kernels, in which case we don't want to fuse.
+  // TODO(b/119692968): Remove this once we have fixed our fusion emitter.
+  if (consumer->opcode() == HloOpcode::kFusion) {
+    if (fusion_node_evaluations_.find(consumer) ==
+        fusion_node_evaluations_.end()) {
+      // We have no cached results for this fusion node yet. Compute it now.
+      fusion_node_evaluations_.emplace(consumer,
+                                       FusionNodeIndexingEvaluation(consumer));
+    }
+    if (fusion_node_evaluations_.at(consumer).CodeDuplicationTooHigh(
+            producer)) {
+      return "the fusion would result in an overly large code duplication";
+    }
+  }
+
   return InstructionFusion::ShouldFuse(consumer, operand_index);
 }
 
@@ -466,6 +483,13 @@ HloInstruction* GpuPriorityFusion::FuseInstruction(
   } else {
     result = InstructionFusion::FuseInstruction(fusion_instruction, producer);
   }
+
+  // Invalidate cached values that are now invalid.
+  for (auto* user : fusion_instruction->users()) {
+    fusion_node_evaluations_.erase(user);
+  }
+  fusion_node_evaluations_.erase(fusion_instruction);
+
   return result;
 }
 
