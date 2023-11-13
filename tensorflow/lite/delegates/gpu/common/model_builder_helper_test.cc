@@ -32,6 +32,7 @@ TEST(ModelBuilderHelperTest, CreateVectorCopyDataDifferentSize) {
   tflite_tensor.data.i32 = src_data;
   tflite_tensor.dims = TfLiteIntArrayCreate(1);
   tflite_tensor.dims->data[0] = 4;
+  tflite_tensor.bytes = 4 * sizeof(int32_t);
 
   int16_t dst[4];
   ASSERT_OK(CreateVectorCopyData(tflite_tensor, dst));
