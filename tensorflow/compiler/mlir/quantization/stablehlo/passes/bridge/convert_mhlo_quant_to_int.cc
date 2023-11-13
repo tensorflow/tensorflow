@@ -1160,6 +1160,7 @@ class ConvertUniformQuantizedConvolutionOp
 
 // This pattern lowers a generic MHLO op for uq->int.
 // This pattern essentially just performs type change, with no algorithm change.
+// TODO: b/310685906 - Add operand/result type validations.
 class ConvertGenericOp : public ConversionPattern {
  public:
   explicit ConvertGenericOp(MLIRContext *ctx)
@@ -1172,28 +1173,6 @@ class ConvertGenericOp : public ConversionPattern {
     if (!isa<mhlo::ConstantOp, mhlo::ConvertOp, mhlo::BroadcastInDimOp,
              mhlo::MaxOp, mhlo::MinOp>(op)) {
       return failure();
-    }
-
-    // Check that all operands and result uq types are the same.
-    llvm::SmallVector<Type> uq_types;
-    for (auto result_type : op->getResultTypes()) {
-      auto type =
-          getElementTypeOrSelf(result_type).dyn_cast<UniformQuantizedType>();
-      if (type) {
-        uq_types.push_back(type);
-      }
-    }
-    for (auto operand : op->getOperands()) {
-      auto type = getElementTypeOrSelf(operand.getType())
-                      .dyn_cast<UniformQuantizedType>();
-      if (type) {
-        uq_types.push_back(type);
-      }
-    }
-    for (auto type : uq_types) {
-      if (type != uq_types.front()) {
-        return failure();
-      }
     }
 
     // Determine new result type: use storage type for uq types; use original

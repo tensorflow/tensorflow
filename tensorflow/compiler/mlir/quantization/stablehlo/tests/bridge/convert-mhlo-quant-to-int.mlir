@@ -1660,6 +1660,21 @@ func.func @broadcast(
 
 // -----
 
+// CHECK-LABEL: func @broadcast_per_channel
+func.func @broadcast_per_channel(
+    %arg0: tensor<2x!quant.uniform<i32:f32:0, {4.000000e+00:0, 2.000000e+00:0}>>
+  ) -> tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:0}>>  {
+  // CHECK: "mhlo.broadcast_in_dim"
+  // CHECK-SAME: broadcast_dimensions = dense<3> : tensor<1xi64>
+  // CHECK-SAME: (tensor<2xi32>) -> tensor<128x26x26x2xi32>
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<3> : tensor<1xi64>}: (
+      tensor<2x!quant.uniform<i32:f32:0, {4.000000e+00:0, 2.000000e+00:0}>>
+    ) -> tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:0}>>
+  return %0 : tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:0}>>
+}
+
+// -----
+
 // CHECK-LABEL: func @max
 func.func @max(
     %arg0: tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
@@ -1671,6 +1686,21 @@ func.func @max(
     tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
   ) -> tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
   return %0 : tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
+}
+
+// -----
+
+// CHECK-LABEL: func @max_per_channel
+func.func @max_per_channel(
+    %arg0: tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>>
+  ) -> tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>> {
+  // CHECK: mhlo.maximum
+  // CHECK-SAME: tensor<1x2xi8>
+  %0 = "mhlo.maximum"(%arg0, %arg0) : (
+    tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>>,
+    tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>>
+  ) -> tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>>
+  return %0 : tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>>
 }
 
 // -----
@@ -1690,37 +1720,25 @@ func.func @min(
 
 // -----
 
+// CHECK-LABEL: func @min_per_channel
+func.func @min_per_channel(
+    %arg0: tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>>
+  ) -> tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>> {
+  // CHECK: mhlo.minimum
+  // CHECK-SAME: tensor<1x2xi8>
+  %0 = "mhlo.minimum"(%arg0, %arg0) : (
+    tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>>,
+    tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>>
+  ) -> tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>>
+  return %0 : tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>>
+}
+
+// -----
+
 // CHECK-LABEL: func @function(%arg0: tensor<1x2xi8>) -> tensor<1x2xi8>
 func.func @function(
     %arg0: tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
   ) -> tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>> {
   // CHECK: return %arg0 : tensor<1x2xi8>
   return %arg0 : tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
-}
-
-// -----
-
-func.func @min_mix_uq_type1(
-    %arg0: tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>,
-    %arg1: tensor<1x2x!quant.uniform<i8:f32, 1.000000e+00:2>>
-  ) -> tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>> {
-  // expected-error@+1 {{failed to legalize operation 'mhlo.minimum' that was explicitly marked illegal}}
-  %0 = "mhlo.minimum"(%arg0, %arg1) : (
-    tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>,
-    tensor<1x2x!quant.uniform<i8:f32, 1.000000e+00:2>>
-  ) -> tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
-  return %0 : tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
-}
-
-// -----
-
-func.func @min_mix_uq_type2(
-    %arg0: tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
-  ) -> tensor<1x2x!quant.uniform<i8:f32, 1.000000e+00:2>> {
-  // expected-error@+1 {{failed to legalize operation 'mhlo.minimum' that was explicitly marked illegal}}
-  %0 = "mhlo.minimum"(%arg0, %arg0) : (
-    tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>,
-    tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
-  ) -> tensor<1x2x!quant.uniform<i8:f32, 1.000000e+00:2>>
-  return %0 : tensor<1x2x!quant.uniform<i8:f32, 1.000000e+00:2>>
 }
