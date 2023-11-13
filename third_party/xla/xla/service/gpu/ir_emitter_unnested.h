@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/elemental_ir_emitter.h"
+#include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter.h"
@@ -141,9 +142,9 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitCublasLtMatmulThunkF8(mlir::Operation* op);
   Status EmitConvolutionReorderThunk(mlir::Operation* op);
   Status EmitNormThunk(mlir::Operation* op);
-  Status EmitTritonFusion(const HloFusionAnalysis& hlo_fusion_analysis,
-                          const HloFusionInstruction* fusion,
-                          mlir::Operation* op);
+  StatusOr<FusionEmissionResult> EmitTritonFusion(
+      const HloFusionAnalysis& hlo_fusion_analysis,
+      const HloFusionInstruction* fusion, mlir::Operation* op);
   Status EmitFusedMHAThunk(mlir::Operation* op);
   Status EmitFusedMHABackwardThunk(mlir::Operation* op);
 #endif  // GOOGLE_CUDA
@@ -353,14 +354,14 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitScatter(const ScatterDescriptor& desc,
                      const LaunchDimensions& launch_dimensions);
 
-  Status EmitScatter(const HloFusionInstruction* fusion,
-                     mlir::lmhlo::FusionOp fusion_op,
-                     HloFusionAnalysis& fusion_analysis);
+  StatusOr<FusionEmissionResult> EmitScatter(
+      const HloFusionInstruction* fusion, mlir::lmhlo::FusionOp fusion_op,
+      HloFusionAnalysis& fusion_analysis);
 
   // Emits kernel thunk for a custom fusion implemented with hand written custom
   // device kernels.
-  Status EmitCustomFusion(const HloFusionInstruction* fusion,
-                          const CustomFusionConfig& config);
+  StatusOr<FusionEmissionResult> EmitCustomFusion(
+      const HloFusionInstruction* fusion, const CustomFusionConfig& config);
 
   // Builds a kernel thunk for a non-fusion operation, without reuse.
   //
