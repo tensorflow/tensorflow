@@ -122,7 +122,7 @@ class PyCustomCallPartitioner : public CustomCallPartitioner {
       auto py_result =
           partition_(GetArgShapes(instruction), GetArgShardings(instruction),
                      instruction->shape(), instruction->sharding(),
-                     instruction->raw_backend_config_string());
+                     py::bytes(instruction->raw_backend_config_string()));
 
       const XlaComputation* computation = nullptr;  // Kept alive by py_result.
       std::vector<HloSharding> arg_shardings;
@@ -190,9 +190,9 @@ class PyCustomCallPartitioner : public CustomCallPartitioner {
     // The user is used when the custom call returns a Tuple and
     // the user is a get-tuple-element. In this case we must update only
     // part of the sharding spec.
-    auto result = py::cast<HloSharding>(
-        prop_user_sharding_(sharding, instruction->shape(),
-                            instruction->raw_backend_config_string()));
+    auto result = py::cast<HloSharding>(prop_user_sharding_(
+        sharding, instruction->shape(),
+        py::bytes(instruction->raw_backend_config_string())));
     return result;
   }
   std::optional<HloSharding> InferShardingFromOperands(
@@ -202,7 +202,7 @@ class PyCustomCallPartitioner : public CustomCallPartitioner {
     py::gil_scoped_acquire gil;
     auto py_result = infer_sharding_from_operands_(
         arg_shapes, arg_shardings, instruction->shape(),
-        instruction->raw_backend_config_string());
+        py::bytes(instruction->raw_backend_config_string()));
     if (py_result.is_none()) {
       return std::nullopt;
     }
