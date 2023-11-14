@@ -1816,7 +1816,7 @@ ENTRY CRS {
 // all-reduce with subgroups
 {
 "AllReduceWithSubgroups",
-R"(HloModule CRS_Subgroups, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}
+R"(HloModule CRS_Subgroups, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}, replica_count=4
 
 add {
   lhs = f32[] parameter(0)
@@ -1933,7 +1933,7 @@ ENTRY AllGather {
 // all-gather with subgroups
 {
 "AllGatherWithSubgroups",
-R"(HloModule AllGatherWithSubgroups, entry_computation_layout={(f32[128,32]{0,1})->f32[128,64]{0,1}}
+R"(HloModule AllGatherWithSubgroups, entry_computation_layout={(f32[128,32]{0,1})->f32[128,64]{0,1}}, replica_count=4
 
 ENTRY AllGatherWithSubgroups {
   input = f32[128,32]{0,1} parameter(0)
@@ -1958,7 +1958,7 @@ ENTRY AllToAll {
 // all-to-all with subgroups
 {
 "AllToAllWithSubgroups",
-R"(HloModule AllToAllWithSubgroups, entry_computation_layout={(f32[128,32]{0,1}, f32[128,32]{0,1})->(f32[128,32]{0,1}, f32[128,32]{0,1})}
+R"(HloModule AllToAllWithSubgroups, entry_computation_layout={(f32[128,32]{0,1}, f32[128,32]{0,1})->(f32[128,32]{0,1}, f32[128,32]{0,1})}, replica_count=4
 
 ENTRY AllToAllWithSubgroups {
   p0 = f32[128,32]{0,1} parameter(0)
@@ -1972,7 +1972,7 @@ ENTRY AllToAllWithSubgroups {
 // collective-permute
 {
 "CollectivePermute",
-R"(HloModule CollectivePermute, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}
+R"(HloModule CollectivePermute, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}, replica_count=4
 
 ENTRY CollectivePermute {
   input = f32[128,32]{0,1} parameter(0)
@@ -1985,7 +1985,7 @@ ENTRY CollectivePermute {
 // collective-permute with in-place updates
 {
 "CollectivePermuteInPlaceUpdate",
-R"(HloModule CollectivePermuteInPlaceUpdate, entry_computation_layout={(f32[128,32]{0,1})->f32[128,128]{0,1}}
+R"(HloModule CollectivePermuteInPlaceUpdate, entry_computation_layout={(f32[128,32]{0,1})->f32[128,128]{0,1}}, replica_count=4
 
 ENTRY CollectivePermuteInPlaceUpdate {
   input = f32[128,32]{0,1} parameter(0)
@@ -2004,7 +2004,7 @@ ENTRY CollectivePermuteInPlaceUpdate {
 // collective-permute with in-place updates with multiple targets per source
 {
 "CollectivePermuteInPlaceUpdateMultipleReadWrite",
-R"(HloModule CollectivePermuteInPlaceUpdateMultipleReadWrite, entry_computation_layout={(f32[8,8,128]{2,1,0})->f32[8,8,128]{2,1,0}}
+R"(HloModule CollectivePermuteInPlaceUpdateMultipleReadWrite, entry_computation_layout={(f32[8,8,128]{2,1,0})->f32[8,8,128]{2,1,0}}, replica_count=4
 
 ENTRY CollectivePermuteInPlaceUpdate {
   constant.3 = s32[] constant(2)
@@ -2028,7 +2028,7 @@ ENTRY CollectivePermuteInPlaceUpdate {
 },
 {
 "CollectivePermuteInPlaceUpdateTupleMultipleReadWrite",
-R"(HloModule hlo_runner_test_0.1, entry_computation_layout={()->(u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)})}
+R"(HloModule hlo_runner_test_0.1, entry_computation_layout={()->(u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)})}, replica_count=4
 
 ENTRY hlo_runner_test_0.1 {
   replica_id = u32[] replica-id()
@@ -2059,7 +2059,7 @@ ENTRY hlo_runner_test_0.1 {
 // collective-permute tuple with in-place updates
 {
 "CollectivePermuteTupleInPlaceUpdate",
-R"(HloModule CollectivePermuteTupleInPlaceUpdate, entry_computation_layout={(f32[128,32]{0,1})->(f32[128,128]{0,1}, f32[128,128]{0,1})}
+R"(HloModule CollectivePermuteTupleInPlaceUpdate, entry_computation_layout={(f32[128,32]{0,1})->(f32[128,128]{0,1}, f32[128,128]{0,1})}, replica_count=4
 
 ENTRY CollectivePermuteInPlaceUpdate {
   input = f32[128,32]{0,1} parameter(0)
@@ -2084,7 +2084,7 @@ ENTRY CollectivePermuteInPlaceUpdate {
 // collective-permute-start and -done with inplace update
 {
 "CollectivePermuteStartAndDone",
-R"(HloModule CollectivePermuteStartAndDone, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}
+R"(HloModule CollectivePermuteStartAndDone, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}, replica_count=4
 
 ENTRY CollectivePermuteStartAndDone {
   input = f32[128,32]{0,1} parameter(0)
@@ -2098,7 +2098,7 @@ ENTRY CollectivePermuteStartAndDone {
 // collective-permute-start and -done
 {
 "CollectivePermuteStartAndDoneInplaceUpdate",
-R"(HloModule CollectivePermuteStartAndDoneInplaceUpdate, entry_computation_layout={(f32[128,32]{0,1})->f32[128,128]{0,1}}
+R"(HloModule CollectivePermuteStartAndDoneInplaceUpdate, entry_computation_layout={(f32[128,32]{0,1})->f32[128,128]{0,1}}, replica_count=4
 
 ENTRY CollectivePermuteStartAndDoneInplaceUpdate {
   input = f32[128,32]{0,1} parameter(0)
@@ -4485,6 +4485,37 @@ ENTRY TestComputation {
   auto result = ParseAndReturnVerifiedModule(hlo_string);
   TF_EXPECT_OK(result.status());
   EXPECT_TRUE(result.value()->config().alias_passthrough_params());
+}
+
+TEST_F(HloParserTest, CheckReplicaCount) {
+  const char* const hlo_string = R"(
+HloModule TestModule, replica_count=5
+
+ENTRY TestComputation {
+    p0 = f16[2048,1024] parameter(0)
+    p1 = f16[2048,1024] parameter(1)
+    ROOT root = (f16[2048,1024], f16[2048,1024]) tuple(p0, p1)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(hlo_string);
+  TF_EXPECT_OK(result.status());
+  EXPECT_EQ(result.value()->config().replica_count(), 5);
+}
+
+TEST_F(HloParserTest, CheckNumPartitions) {
+  const char* const hlo_string = R"(
+HloModule TestModule, num_partitions=3
+
+ENTRY TestComputation {
+    p0 = f16[2048,1024] parameter(0)
+    p1 = f16[2048,1024] parameter(1)
+    ROOT root = (f16[2048,1024], f16[2048,1024]) tuple(p0, p1)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(hlo_string);
+  TF_EXPECT_OK(result.status());
+  EXPECT_EQ(result.value()->config().num_partitions(), 3);
+  EXPECT_TRUE(result.value()->config().use_spmd_partitioning());
 }
 
 TEST_F(HloParserTest, CheckFrontendAttributes) {

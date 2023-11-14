@@ -1006,6 +1006,8 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
                                    bool parse_module_without_header) {
   std::string name;
   std::optional<bool> is_scheduled;
+  std::optional<int64_t> replica_count;
+  std::optional<int64_t> num_partitions;
   std::optional<AliasingData> aliasing_data;
   std::optional<BufferDonor> buffer_donor_data;
   std::optional<bool> alias_passthrough_params;
@@ -1015,6 +1017,9 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   BoolList allow_spmd_sharding_propagation_to_output;
 
   attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
+  attrs["replica_count"] = {/*required=*/false, AttrTy::kInt64, &replica_count};
+  attrs["num_partitions"] = {/*required=*/false, AttrTy::kInt64,
+                             &num_partitions};
   attrs["input_output_alias"] = {/*required=*/false, AttrTy::kAliasing,
                                  &aliasing_data};
   attrs["buffer_donor"] = {/*required=*/false, AttrTy::kBufferDonor,
@@ -1066,6 +1071,15 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   bool default_config = true;
   if (alias_passthrough_params.value_or(false)) {
     config.set_alias_passthrough_params(true);
+    default_config = false;
+  }
+  if (num_partitions.value_or(1) != 1) {
+    config.set_num_partitions(*num_partitions);
+    config.set_use_spmd_partitioning(true);
+    default_config = false;
+  }
+  if (replica_count.value_or(1) != 1) {
+    config.set_replica_count(*replica_count);
     default_config = false;
   }
   if (entry_computation_layout.has_value()) {
