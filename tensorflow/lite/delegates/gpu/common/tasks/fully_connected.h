@@ -166,7 +166,7 @@ void FullyConnected::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
   if (weights_are_buffer) {
     BufferDescriptor desc;
     desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-    desc.element_size = 16;
+    desc.element_size = 4;
     desc.size = float4_size * elements_count;
     desc.data.resize(desc.size);
 
