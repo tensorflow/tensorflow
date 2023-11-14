@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_H_
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <list>
@@ -35,19 +36,26 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #endif
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_alias_analysis.h"
+#include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/statusor.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace memory_space_assignment {
@@ -2703,6 +2711,7 @@ class AlternateMemoryBestFitHeap
   // for aliased allocations.
   std::list<RepackAllocationBlock> repack_allocation_blocks_;
   int64_t num_repacks_ = 0;
+  int64_t num_repacks_successful_ = 0;
   std::vector<std::pair<BufferInterval, Chunk>> pending_chunks_;
   std::vector<AsynchronousCopy> pending_async_copies_;
   std::vector<std::pair<const HloValue*, RequiredMemoryAssignment>>

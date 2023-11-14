@@ -23,6 +23,7 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <list>
+#include <map>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -36,17 +37,30 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
+#include "xla/service/buffer_value.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/heap_simulator.h"
+#include "xla/service/hlo_alias_analysis.h"
+#include "xla/service/hlo_buffer.h"
+#include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/service/memory_space_assignment/tuning_utils.h"
@@ -56,6 +70,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
@@ -3835,6 +3850,9 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
           ImportRepackedAllocations();
           --retry_number;
         }
+        if (*repack_status) {
+          ++num_repacks_successful_;
+        }
       } else {
         // Check if any of the allocation sites are inefficient. If so, get rid
         // of the pending allocation, require all of the inefficient sites in
@@ -3883,6 +3901,9 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
       AppendAllocationInfoDebugString(*allocation, allocation_info_str_);
     }
   }
+
+  VLOG(1) << "Repack summary: " << num_repacks_successful_
+          << " succeeded out of " << num_repacks_;
 
   VLOG(3) << "Debug buffer info: ";
   XLA_VLOG_LINES(3, buffer_info_str_);
