@@ -220,11 +220,15 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
       arg.replaceAllUsesWith(tmp_val);
       auto rescale_op = builder.create<tosa::RescaleOp>(
           function.getLoc(), rescaled_type, arg,
-          builder.getI32IntegerAttr(rescale_input_zp),
-          builder.getI32IntegerAttr(rescale_output_zp),
-          builder.getDenseI32ArrayAttr({1 << 30}),
-          builder.getDenseI8ArrayAttr({30}), builder.getBoolAttr(true),
-          builder.getBoolAttr(false), builder.getBoolAttr(false));
+          /* input_zp = */ builder.getI32IntegerAttr(rescale_input_zp),
+          /* output_zp = */ builder.getI32IntegerAttr(rescale_output_zp),
+          /* multiplier = */ builder.getDenseI32ArrayAttr({1 << 30}),
+          /* shift = */ builder.getDenseI8ArrayAttr({30}),
+          /* scale32 = */ builder.getBoolAttr(true),
+          /* double_round = */ builder.getBoolAttr(false),
+          /* per_channel = */ builder.getBoolAttr(false),
+          /* input_unsigned = */ builder.getBoolAttr(true),     // uint8_t ->
+          /* output_unsigned = */ builder.getBoolAttr(false));  // int8_t
 
       Operation *op_rescale_op = static_cast<Operation *>(rescale_op);
       bb.push_front(op_rescale_op);
@@ -295,11 +299,15 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
       input_val.replaceAllUsesWith(tmp_val);
       auto rescale_op = builder.create<tosa::RescaleOp>(
           function.getLoc(), shaped_output_type, input_val,
-          builder.getI32IntegerAttr(operand_zp),
-          builder.getI32IntegerAttr(uint8_zp),
-          builder.getDenseI32ArrayAttr({1 << 30}),
-          builder.getDenseI8ArrayAttr({30}), builder.getBoolAttr(true),
-          builder.getBoolAttr(false), builder.getBoolAttr(false));
+          /* input_zp = */ builder.getI32IntegerAttr(operand_zp),
+          /* output_zp = */ builder.getI32IntegerAttr(uint8_zp),
+          /* multiplier = */ builder.getDenseI32ArrayAttr({1 << 30}),
+          /* shift = */ builder.getDenseI8ArrayAttr({30}),
+          /* scale32 = */ builder.getBoolAttr(true),
+          /* double_rount = */ builder.getBoolAttr(false),
+          /* per_channel = */ builder.getBoolAttr(false),
+          /* input_unsigned = */ builder.getBoolAttr(false),   // int8_t ->
+          /* output_unsigned = */ builder.getBoolAttr(true));  // uint8_t
 
       Operation *op_rescale_op = static_cast<Operation *>(rescale_op);
       bb.push_back(op_rescale_op);
