@@ -18,13 +18,14 @@ from typing import Optional, Sequence
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.compiler.mlir.quantization.stablehlo.python import quantization
 from tensorflow.compiler.mlir.quantization.stablehlo.python.integration_test import quantize_model_test_base
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
-from tensorflow.compiler.mlir.quantization.tensorflow.python import quantize_model
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import tag_constants
 
 # Type aliases for quantization method protobuf enums.
@@ -73,14 +74,13 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         has_bias,
         activation_fn,
     )
-    rng = np.random.default_rng(seed=1235)
 
+    rng = np.random.default_rng(seed=1235)
     input_data = ops.convert_to_tensor(
         rng.uniform(low=0.0, high=1.0, size=static_input_shape).astype(
             np.float32
         )
     )
-    expected_outputs = model.matmul(input_data)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(100):
@@ -90,33 +90,66 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             ).astype(np.float32)
         }
 
-    quantization_options = quant_opts_pb2.QuantizationOptions(
+    dataset_path = self.create_tempfile('tfrecord').full_path
+    path_map = {'serving_default': dataset_path}
+    repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
+        {'serving_default': data_gen()}
+    )
+
+    config = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
         ),
         tags={tag_constants.SERVING},
         signature_keys=['serving_default'],
         op_set=target_opset,
+        representative_datasets={
+            'serving_default': quant_opts_pb2.RepresentativeDatasetFile(
+                tfrecord_file_path=dataset_path
+            )
+        },
     )
-    converted_model = quantize_model.quantize(
+    quantization.quantize_saved_model(
         self._input_saved_model_path,
         self._output_saved_model_path,
-        quantization_options,
-        representative_dataset=data_gen(),
+        config,
     )
 
-    self.assertIsNotNone(converted_model)
-    self.assertCountEqual(
-        converted_model.signatures._signatures.keys(), {'serving_default'}
-    )
+    expected_outputs = model.matmul(input_data)
 
-    new_outputs = converted_model.signatures['serving_default'](
+    root = load.load(self._output_saved_model_path)
+    self.assertCountEqual(root.signatures.keys(), {'serving_default'})
+
+    new_outputs = root.signatures['serving_default'](
         input_tensor=ops.convert_to_tensor(input_data)
     )
     # Tests that the quantized graph outputs similar values. The rtol value is
     # arbitrary.
-    # TODO(b/309674337): Fix the large numerical errors.
+    # TODO: b/309674337 - Fix the large numerical errors.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.3)
+
+  def test_when_preset_not_srq_raise_error(self):
+    self._create_matmul_model(
+        input_shape=(1, 1024),
+        weight_shape=(1024, 3),
+        saved_model_path=self._input_saved_model_path,
+    )
+
+    config = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            preset_method=_PresetMethod.METHOD_NO_QUANTIZE
+        ),
+        tags={tag_constants.SERVING},
+        signature_keys=['serving_default'],
+        op_set=quant_opts_pb2.STABLEHLO,
+    )
+
+    with self.assertRaisesRegex(ValueError, 'only supports static-range PTQ'):
+      quantization.quantize_saved_model(
+          self._input_saved_model_path,
+          self._output_saved_model_path,
+          config,
+      )
 
 
 if __name__ == '__main__':
