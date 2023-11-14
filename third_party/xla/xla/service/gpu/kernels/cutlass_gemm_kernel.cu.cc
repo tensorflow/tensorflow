@@ -54,7 +54,7 @@ StatusOr<CustomKernel> GetCutlassGemmKernel(PrimitiveType dtype, int32_t m,
   size_t shared_memory_bytes = sizeof(typename GemmKernel::SharedStorage);
 
   // Packs device memory arguments into CUTLASS kernel parameters struct.
-  auto pack = [problem_size, tiled_shape](const se::KernelArgsArrayBase &args) {
+  auto pack = [problem_size, tiled_shape](const se::KernelArgs &args) {
     auto *mem_args = Cast<se::KernelArgsDeviceMemoryArray>(&args);
 
     // Converts DeviceMemoryBase to an opaque `void *` device pointer.

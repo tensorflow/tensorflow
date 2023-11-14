@@ -414,8 +414,7 @@ tsl::Status GpuExecutor::GetKernelMetadata(GpuKernel* cuda_kernel,
 
 tsl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                                 const BlockDim& block_dims,
-                                const Kernel& kernel,
-                                const KernelArgsArrayBase& args) {
+                                const Kernel& kernel, const KernelArgs& args) {
   CUstream custream = AsGpuStreamValue(stream);
   const GpuKernel* cuda_kernel = AsGpuKernel(&kernel);
   CUfunction cufunc = cuda_kernel->AsGpuFunctionHandle();

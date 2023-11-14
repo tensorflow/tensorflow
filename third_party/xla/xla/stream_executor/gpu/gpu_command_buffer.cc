@@ -163,7 +163,7 @@ tsl::Status GpuCommandBuffer::CheckPrimary() {
 tsl::Status GpuCommandBuffer::Launch(const ThreadDim& threads,
                                      const BlockDim& blocks,
                                      const Kernel& kernel,
-                                     const KernelArgsArrayBase& args) {
+                                     const KernelArgs& args) {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
   const GpuKernel* gpu_kernel = AsGpuKernel(&kernel);

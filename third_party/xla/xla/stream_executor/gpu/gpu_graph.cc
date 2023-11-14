@@ -211,7 +211,7 @@ tsl::StatusOr<OwnedGpuGraph> CreateGpuGraph() {
 tsl::StatusOr<GpuGraphNodeHandle> AddKernelNode(
     GpuGraphHandle graph, absl::Span<GpuGraphNodeHandle> deps,
     ThreadDim threads, BlockDim blocks, const Kernel& kernel,
-    const KernelArgsArrayBase& args) {
+    const KernelArgs& args) {
   const GpuKernel* gpu_kernel = AsGpuKernel(&kernel);
   GpuFunctionHandle gpu_func = gpu_kernel->AsGpuFunctionHandle();
 

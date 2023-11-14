@@ -256,8 +256,7 @@ tsl::Status GpuExecutor::GetKernelMetadata(GpuKernel* rocm_kernel,
 
 tsl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                                 const BlockDim& block_dims,
-                                const Kernel& kernel,
-                                const KernelArgsArrayBase& args) {
+                                const Kernel& kernel, const KernelArgs& args) {
   CHECK_EQ(kernel.Arity() + (args.number_of_shared_bytes() > 0),
            args.number_of_arguments());
   GpuStreamHandle hipstream = AsGpuStreamValue(stream);

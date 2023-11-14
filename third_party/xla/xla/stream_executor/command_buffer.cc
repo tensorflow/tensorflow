@@ -77,7 +77,7 @@ CommandBuffer::CommandBuffer(
 
 tsl::Status CommandBuffer::Launch(const ThreadDim& threads,
                                   const BlockDim& blocks, const Kernel& kernel,
-                                  const KernelArgsArrayBase& args) {
+                                  const KernelArgs& args) {
   return implementation_->Launch(threads, blocks, kernel, args);
 }
 

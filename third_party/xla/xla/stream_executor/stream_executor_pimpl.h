@@ -414,7 +414,7 @@ class StreamExecutor {
   // implementation in StreamExecutorInterface::Launch().
   tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                      const BlockDim& block_dims, const Kernel& kernel,
-                     const KernelArgsArrayBase& args);
+                     const KernelArgs& args);
 
   // Submits command buffer for execution to the underlying platform driver.
   tsl::Status Submit(Stream* stream, const CommandBuffer& command_buffer);

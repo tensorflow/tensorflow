@@ -117,7 +117,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                      const BlockDim& block_dims, const Kernel& k,
-                     const KernelArgsArrayBase& args) override;
+                     const KernelArgs& args) override;
 
   tsl::Status Submit(Stream* stream,
                      const CommandBuffer& command_buffer) override;

@@ -130,8 +130,7 @@ class CommandBufferInterface {
 
   // Adds a kernel launch command to the command buffer.
   virtual tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
-                             const Kernel& kernel,
-                             const KernelArgsArrayBase& args) = 0;
+                             const Kernel& kernel, const KernelArgs& args) = 0;
 
   // Adds a nested command buffer to the command buffer.
   virtual tsl::Status AddNestedCommandBuffer(const CommandBuffer& nested) = 0;
@@ -247,7 +246,7 @@ class StreamExecutorInterface {
   }
   virtual tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                              const BlockDim& block_dims, const Kernel& k,
-                             const KernelArgsArrayBase& args) {
+                             const KernelArgs& args) {
     return absl::UnimplementedError("Not Implemented");
   }
 

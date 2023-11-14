@@ -100,7 +100,7 @@ class CommandBuffer {
 
   // Adds a kernel launch command to the command buffer.
   tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
-                     const Kernel& kernel, const KernelArgsArrayBase& args);
+                     const Kernel& kernel, const KernelArgs& args);
 
   // Adds a nested command buffer to the command buffer.
   tsl::Status AddNestedCommandBuffer(const CommandBuffer& nested);

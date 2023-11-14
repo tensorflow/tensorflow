@@ -61,7 +61,7 @@ limitations under the License.
 
 namespace stream_executor {
 
-class KernelArgsArrayBase;        // defined in kernel.h
+class KernelArgs;                 // defined in kernel.h
 class KernelArgsPackedArrayBase;  // defined in kernel.h
 
 // Describes how to load a kernel on a target platform.
@@ -262,7 +262,7 @@ class MultiKernelLoaderSpec {
   // StreamExecutor as a generic `Kernel`.
   using KernelArgsPacking =
       std::function<tsl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>(
-          const KernelArgsArrayBase &args)>;
+          const KernelArgs &args)>;
 
   explicit MultiKernelLoaderSpec(
       size_t arity, KernelArgsPacking kernel_args_packing = nullptr);

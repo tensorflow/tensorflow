@@ -440,7 +440,7 @@ fft::FftSupport* StreamExecutor::AsFft() {
 tsl::Status StreamExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                                    const BlockDim& block_dims,
                                    const Kernel& kernel,
-                                   const KernelArgsArrayBase& args) {
+                                   const KernelArgs& args) {
   SubmitTrace(&TraceListener::LaunchSubmit, stream, thread_dims, block_dims,
               kernel, args);
 
