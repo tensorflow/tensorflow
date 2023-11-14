@@ -24,7 +24,7 @@ load(
     "cuda_py_benchmark_test",
 )
 
-visibility = tf_python_framework_friends()
+visibility = tf_python_framework_friends()  # buildifier: disable=package-on-top
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -2004,7 +2004,9 @@ pytype_strict_library(
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
-    ],
+    ] + if_xla_available([
+        "//tensorflow/python:_pywrap_tfcompile",
+    ]),
 )
 
 pytype_strict_library(
@@ -2017,7 +2019,9 @@ pytype_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
-    ],
+    ] + if_xla_available([
+        "//tensorflow/python:_pywrap_tfcompile",
+    ]),
 )
 
 py_strict_library(
