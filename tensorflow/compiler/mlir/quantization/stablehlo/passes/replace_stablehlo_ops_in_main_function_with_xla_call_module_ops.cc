@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
 #include <string>
 
 #include "llvm/ADT/STLExtras.h"
@@ -41,6 +42,11 @@ namespace mlir::quant::stablehlo {
 namespace {
 
 constexpr StringRef kQuantizeTargetOpAttr = "tf_quant.composite_function";
+
+// Default version number for native serialization.
+constexpr int64_t kDefaultVersion = 9;
+// Default platform for XlaCallModuleOp.
+constexpr StringRef kPlatformCpu = "CPU";
 
 class ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass
     : public impl::
@@ -163,14 +169,15 @@ void CreateXlaCallModuleOp(ArrayRef<Value> inputs, ArrayRef<Value> outputs,
         tf_type::ShapeAttr::get(ctx, result_type.cast<ShapedType>()));
   }
   auto empty_array_attr = ArrayAttr::get(ctx, {});
-  // TODO - b/303363466: Allow XlaCallModuleOp with versions >5.
+  // TODO - b/310291615: Support platforms = ["TPU"].
+  auto platforms = ArrayAttr::get(ctx, {StringAttr::get(ctx, kPlatformCpu)});
+
   auto xla_call_module_op = builder.create<TF::XlaCallModuleOp>(
       module_op.getLoc(), /*output=*/result_types,
       /*args=*/inputs,
-      /*version=*/5, /*module=*/"",
+      /*version=*/kDefaultVersion, /*module=*/"",
       /*Sout=*/ArrayAttr::get(ctx, shape_attrs),
-      /*dim_args_spec=*/empty_array_attr,
-      /*platforms=*/empty_array_attr,
+      /*dim_args_spec=*/empty_array_attr, platforms,
       /*function_list=*/empty_array_attr,
       /*has_token_input_output=*/false,
       /*disabled_checks=*/empty_array_attr);
