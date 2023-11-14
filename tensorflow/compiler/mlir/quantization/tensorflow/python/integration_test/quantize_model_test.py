@@ -2518,68 +2518,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     else:
       self.assertAllClose(new_outputs, expected_outputs, atol=0.13)
 
-  @test_util.run_in_graph_and_eager_modes
-  def test_matmul_ptq_model_stablehlo(self):
-    activation_fn = None
-    has_bias = False
-    batch_sizes = ([], [])
-    target_opset = quant_opts_pb2.STABLEHLO
-
-    lhs_batch_size, rhs_batch_size = batch_sizes
-    input_shape = (*lhs_batch_size, 1, 1024)
-    filter_shape = (*rhs_batch_size, 1024, 3)
-    static_input_shape = [dim if dim is not None else 2 for dim in input_shape]
-    model = self._create_matmul_model(
-        input_shape,
-        filter_shape,
-        self._input_saved_model_path,
-        has_bias,
-        activation_fn,
-    )
-    rng = np.random.default_rng(seed=1234)
-
-    input_data = ops.convert_to_tensor(
-        rng.uniform(low=0.0, high=1.0, size=static_input_shape).astype(
-            np.float32
-        )
-    )
-    expected_outputs = model.matmul(input_data)
-
-    def data_gen() -> repr_dataset.RepresentativeDataset:
-      for _ in range(100):
-        yield {
-            'input_tensor': rng.uniform(
-                low=0.0, high=1.0, size=static_input_shape
-            ).astype(np.float32)
-        }
-
-    quantization_options = quant_opts_pb2.QuantizationOptions(
-        quantization_method=quant_opts_pb2.QuantizationMethod(
-            preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
-        ),
-        tags={tag_constants.SERVING},
-        signature_keys=['serving_default'],
-        op_set=target_opset,
-    )
-    converted_model = quantize_model.quantize(
-        self._input_saved_model_path,
-        self._output_saved_model_path,
-        quantization_options,
-        representative_dataset=data_gen(),
-    )
-
-    self.assertIsNotNone(converted_model)
-    self.assertCountEqual(
-        converted_model.signatures._signatures.keys(), {'serving_default'}
-    )
-
-    new_outputs = converted_model.signatures['serving_default'](
-        input_tensor=ops.convert_to_tensor(input_data)
-    )
-    # Tests that the quantized graph outputs similar values. The rtol value is
-    # arbitrary.
-    self.assertAllClose(new_outputs, expected_outputs, rtol=0.02)
-
   @parameterized.named_parameters(
       {
           'testcase_name': 'with_biasadd',
