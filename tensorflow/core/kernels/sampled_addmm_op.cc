@@ -1,0 +1,131 @@
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/kernels/sparse_utils.h"
+#include "tensorflow/core/util/work_sharder.h"
+
+namespace tensorflow {
+
+template <typename T>
+class SampledADDMMOp : public OpKernel {
+
+  public:
+    explicit SampledADDMMOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("beta", &beta_));
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("alpha", &alpha_));
+    }
+
+    void Compute(OpKernelContext* ctx) override {
+      const Tensor& indices_t = ctx->input(0);
+      const Tensor& values_t = ctx->input(1);
+      const Tensor& dense_shape_t = ctx->input(2);
+      const Tensor& mat1 = ctx->input(3);
+      const Tensor& mat2 = ctx->input(4);
+
+      const int sparse_rank = dense_shape_t.NumElements();
+      OP_REQUIRES(ctx, sparse_rank == 2 || sparse_rank == 3,
+                  errors::InvalidArgument("SparseTensor must have rank 2 or 3; ",
+                                          "but indices has rank: ", sparse_rank));
+
+      auto dense_shape = dense_shape_t.vec<int32_t>();
+      const int32_t sparse_num_batches = sparse_rank == 3 ? dense_shape(0) : 1;
+      const int32_t sparse_num_rows = dense_shape(sparse_rank == 2 ? 0 : 1);
+      const int32_t sparse_num_cols = dense_shape(sparse_rank == 2 ? 1 : 2);
+
+      const TensorShape& values_shape = values_t.shape();
+      const int32_t num_values_per_batch = values_shape.dim_size(sparse_rank == 2 ? 0 : 1);
+
+      const int32_t mat1_rank = mat1.dims();
+      const int32_t mat2_rank = mat2.dims();
+
+      OP_REQUIRES(ctx, sparse_rank == mat1_rank,
+                  errors::InvalidArgument("SparseTensor and mat1 must have the ",
+                      "same rank, but SparseTensor has rank: ", sparse_rank,
+                      ", and mat1 has rank: ", mat1_rank));
+      OP_REQUIRES(ctx, sparse_rank == mat2_rank,
+                  errors::InvalidArgument("SparseTensor and mat2 must have the ",
+                      "same rank, but SparseTensor has rank: ", sparse_rank,
+                      ", and mat2 has rank: ", mat2_rank));
+
+      const TensorShape& mat1_shape = mat1.shape();
+      const TensorShape& mat2_shape = mat2.shape();
+                   
+      const int32_t mat1_num_batches = mat1_rank == 3 ? mat1_shape.dim_size(0) : 1;
+      const int32_t mat1_num_rows = mat1_shape.dim_size(mat1_rank == 2 ? 0 : 1);
+      const int32_t mat1_num_cols = mat1_shape.dim_size(mat1_rank == 2 ? 1 : 2);
+      const int32_t mat2_num_batches = mat2_rank == 3 ? mat2_shape.dim_size(0) : 1;
+      const int32_t mat2_num_rows = mat2_shape.dim_size(mat2_rank == 2 ? 0 : 1);
+      const int32_t mat2_num_cols = mat2_shape.dim_size(mat2_rank == 2 ? 1 : 2);
+
+      OP_REQUIRES(ctx, mat1_num_batches == mat2_num_batches &&
+                       mat1_num_cols == mat2_num_rows,
+                            errors::InvalidArgument(
+                                "Matrix size incompatible: mat1: ",
+                                mat1_shape.DebugString(),
+                                ", mat2: ", mat2_shape.DebugString()));
+      OP_REQUIRES(ctx, sparse_num_batches == mat1_num_batches &&
+                       sparse_num_rows == mat1_num_rows,
+                            errors::InvalidArgument(
+                                "Matrix size incompatible: mat1: ",
+                                mat1_shape.DebugString(),
+                                ", SparseTensor: (", sparse_num_rows, ",",
+                                sparse_num_cols, ")"));
+      OP_REQUIRES(ctx, sparse_num_cols == mat2_num_cols,
+                  errors::InvalidArgument(
+                      "Matrix size incompatible: mat2: ",
+                      mat2_shape.DebugString(),
+                      ", SparseTensor: (", sparse_num_rows, ",",
+                      sparse_num_cols, ")"));
+
+      auto mat1_ptr = mat1.flat<T>().data();
+      auto mat2_ptr = mat2.flat<T>().data();
+      auto values_ptr = values_t.flat<T>().data();
+      auto indices_ptr = indices_t.flat<int32_t>().data();
+
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, values_shape, &output));
+
+      auto output_flat = output->flat<T>();
+        
+      // Process the individual batches in parallel using a threadpool.
+      auto shard = [&](int32_t batch_begin, int32_t batch_end) {
+        for (int32_t batch_idx = batch_begin; batch_idx < batch_end; ++batch_idx) {
+          const int32_t sparse_batch_offset = batch_idx * num_values_per_batch;
+          const int32_t indices_batch_offset = batch_idx * num_values_per_batch * 2;
+          const int32_t mat1_batch_offset = batch_idx * mat1_num_rows * mat1_num_cols;
+          const int32_t mat2_batch_offset = batch_idx * mat2_num_rows * mat2_num_cols;
+
+          for (int32_t i = 0; i < num_values_per_batch; ++i) {
+            T val = values_ptr[sparse_batch_offset + i];
+            auto row_idx = indices_ptr[indices_batch_offset + 2 * i];
+            auto col_idx = indices_ptr[indices_batch_offset + 2 * i + 1];
+            T dot = 0;
+
+            if (alpha_ != 0) {
+              for (int32_t j = 0; j < mat1_num_cols; ++j) {
+                auto mat1_idx = mat1_batch_offset + row_idx * mat1_num_cols + j;
+                auto mat2_idx = mat2_batch_offset + j * mat2_num_cols + col_idx;
+                dot += mat1_ptr[mat1_idx] * mat2_ptr[mat2_idx]; 
+              }
+            }
+
+            output_flat(sparse_batch_offset + i) = alpha_ * dot + beta_ * val;
+          } 
+        }
+      };
+
+      auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
+      Shard(worker_threads.num_threads, worker_threads.workers, sparse_num_batches,
+            num_values_per_batch, shard);
+    }
+
+  private:
+    T beta_;
+    T alpha_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("SampledADDMM")            
+                            .Device(DEVICE_CPU)         
+                            .TypeConstraint<float>("T"),
+                        SampledADDMMOp<float>);
+
+
+}

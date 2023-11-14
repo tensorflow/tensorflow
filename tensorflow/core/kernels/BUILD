@@ -3409,6 +3409,12 @@ tf_kernel_library(
     deps = MATH_DEPS + ["@local_tsl//tsl/framework/contraction:eigen_contraction_kernel"],
 )
 
+tf_kernel_library(
+    name = "sampled_addmm_op",
+    prefix = "sampled_addmm_op",
+    deps = MATH_DEPS + [":sparse_utils"],
+)
+
 cc_library(
     name = "math",
     deps = [
@@ -3427,6 +3433,7 @@ cc_library(
         ":nextafter_op",
         ":population_count_op",
         ":reduction_ops",
+        ":sampled_addmm_op",
         ":scan_ops",
         ":segment_reduction_ops",
         ":sequence_ops",

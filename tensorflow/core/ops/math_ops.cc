@@ -978,6 +978,17 @@ REGISTER_OP("SparseMatMul")
     .Attr("Tb: {float, bfloat16} = DT_FLOAT")
     .SetShapeFn(shape_inference::MatMulShape);
 
+REGISTER_OP("SampledADDMM")
+    .Input("indices: int32")
+    .Input("values: T")
+    .Input("dense_shape: int32")
+    .Input("mat1: T")
+    .Input("mat2: T")
+    .Attr("T: type")
+    .Attr("beta: float = 1.0")
+    .Attr("alpha: float = 1.0")
+    .Output("output: T");
+
 REGISTER_OP("_FusedMatMul")
     .Input("a: T")
     .Input("b: T")
