@@ -84,13 +84,13 @@ py_strict_library(
 
 py_strict_library(
     name = "tf_trt_integration_test_base",
-    srcs = ["//tensorflow/python/compiler/tensorrt/test:tf_trt_integration_test_base_srcs"],
     srcs_version = "PY3",
     deps = [
         ":trt_convert_py",
         ":utils",
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/compiler/tensorrt/test:tf_trt_integration_test_base_srcs",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:graph_io",
