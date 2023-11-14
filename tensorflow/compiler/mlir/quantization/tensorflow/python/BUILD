@@ -141,7 +141,7 @@ cc_library(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; Required for pybind11.
-        "@com_google_absl//absl/strings:string_view",
+        #"@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:protobuf",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
@@ -156,7 +156,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings:string_view",
+        #"@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -171,7 +171,7 @@ tf_python_pybind_extension(
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "@com_google_absl//absl/strings:string_view",
+        #"@com_google_absl//absl/strings:string_view",
         "@pybind11",
     ],
 )
