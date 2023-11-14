@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
-namespace xla::gpu::kernel {
+namespace xla::gpu {
 
 class CutlassGemmFusion : public CustomFusion {
  public:
@@ -53,12 +53,12 @@ class CutlassGemmFusion : public CustomFusion {
     size_t k = lhs_shape.dimensions(1);
     size_t n = rhs_shape.dimensions(1);
 
-    TF_ASSIGN_OR_RETURN(auto kernel, GetCutlassGemmKernel(dtype, m, n, k));
+    TF_ASSIGN_OR_RETURN(auto kernel,
+                        kernel::GetCutlassGemmKernel(dtype, m, n, k));
     return std::vector<CustomKernel>{std::move(kernel)};
   }
 };
 
-}  // namespace xla::gpu::kernel
+}  // namespace xla::gpu
 
-XLA_REGISTER_CUSTOM_FUSION("cutlass_gemm",
-                           ::xla::gpu::kernel::CutlassGemmFusion);
+XLA_REGISTER_CUSTOM_FUSION("cutlass_gemm", ::xla::gpu::CutlassGemmFusion);

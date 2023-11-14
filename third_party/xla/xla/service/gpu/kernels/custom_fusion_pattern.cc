@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instruction.h"
 
-namespace xla::gpu::kernel {
+namespace xla::gpu {
 
 std::vector<CustomFusionPattern::Match> CustomFusionPatternRegistry::Match(
     HloInstruction* instr) const {
@@ -38,4 +38,4 @@ void CustomFusionPatternRegistry::Add(
   patterns_.push_back(std::move(pattern));
 }
 
-}  // namespace xla::gpu::kernel
+}  // namespace xla::gpu

@@ -322,7 +322,7 @@ StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkForFusion(
 
 StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
     IrEmitterContext& ir_emitter_context, const HloFusionInstruction* fusion,
-    kernel::CustomKernel custom_kernel) {
+    CustomKernel custom_kernel) {
   TF_ASSIGN_OR_RETURN(
       auto kernel_arguments,
       KernelArguments::Create(ir_emitter_context.buffer_assignment(), fusion));
@@ -3252,7 +3252,7 @@ StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitCustomFusion(
     const HloFusionInstruction* fusion, const CustomFusionConfig& config) {
   VLOG(3) << "Lower HLO fusion to a custom fusion " << config.name();
 
-  auto* registry = kernel::CustomFusionRegistry::Default();
+  auto* registry = CustomFusionRegistry::Default();
   auto* custom_fusion = registry->Lookup(config.name());
 
   // If custom fusion is not found it means that some of the build targets might
@@ -3264,7 +3264,7 @@ StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitCustomFusion(
 
   // Load custom kernels that can implement a fusion computation.
   TF_ASSIGN_OR_RETURN(
-      std::vector<kernel::CustomKernel> kernels,
+      std::vector<CustomKernel> kernels,
       custom_fusion->LoadKernels(fusion->fused_instructions_computation()));
 
   // This should never happen, it means that compilation pipeline created a

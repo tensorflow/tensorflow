@@ -18,7 +18,7 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 
-namespace xla::gpu::kernel {
+namespace xla::gpu {
 
 class CutlassFusionTest : public HloTestBase {
   // Custom fusions are not supported by XLA runtime.
@@ -65,4 +65,4 @@ TEST_F(CutlassFusionTest, SimpleF32Gemm) {
                                       error_spec, /*run_hlo_passes=*/false));
 }
 
-}  // namespace xla::gpu::kernel
+}  // namespace xla::gpu

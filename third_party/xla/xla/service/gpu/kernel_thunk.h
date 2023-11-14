@@ -136,8 +136,7 @@ class KernelThunk : public Thunk {
 // compiled by XLA and loaded from an executable source.
 class CustomKernelThunk : public Thunk {
  public:
-  CustomKernelThunk(const HloInstruction* instr,
-                    kernel::CustomKernel custom_kernel,
+  CustomKernelThunk(const HloInstruction* instr, CustomKernel custom_kernel,
                     absl::Span<const KernelArgument> kernel_arguments);
 
   std::string ToStringExtra(int indent) const override;
@@ -156,7 +155,7 @@ class CustomKernelThunk : public Thunk {
   // mlir::Value(s) corresponding to the buffer slice arguments.
   std::vector<mlir::Value> values_;
 
-  kernel::CustomKernel custom_kernel_;
+  CustomKernel custom_kernel_;
 
   // Loaded kernels for each `StreamExecutor`.
   mutable absl::Mutex mutex_;

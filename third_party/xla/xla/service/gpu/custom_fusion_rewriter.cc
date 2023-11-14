@@ -33,9 +33,6 @@ limitations under the License.
 
 namespace xla::gpu {
 
-using xla::gpu::kernel::CustomFusionPattern;
-using xla::gpu::kernel::CustomFusionPatternRegistry;
-
 CustomFusionRewriter::CustomFusionRewriter(
     const CustomFusionPatternRegistry* patterns)
     : patterns_(patterns) {}

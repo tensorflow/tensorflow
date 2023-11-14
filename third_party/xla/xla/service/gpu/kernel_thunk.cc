@@ -173,7 +173,7 @@ Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
 //===----------------------------------------------------------------------===//
 
 CustomKernelThunk::CustomKernelThunk(
-    const HloInstruction* instr, kernel::CustomKernel custom_kernel,
+    const HloInstruction* instr, CustomKernel custom_kernel,
     absl::Span<const KernelArgument> kernel_arguments)
     : Thunk(Kind::kKernel, Thunk::ThunkInfo::WithProfileAnnotation(instr)),
       custom_kernel_(std::move(custom_kernel)) {

@@ -61,8 +61,7 @@ namespace xla::gpu {
 //
 class CustomFusionRewriter : public HloModulePass {
  public:
-  explicit CustomFusionRewriter(
-      const kernel::CustomFusionPatternRegistry* patterns);
+  explicit CustomFusionRewriter(const CustomFusionPatternRegistry* patterns);
 
   absl::string_view name() const override { return "custom-fusion-rewriter"; }
 
@@ -71,7 +70,7 @@ class CustomFusionRewriter : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  const kernel::CustomFusionPatternRegistry* patterns_;
+  const CustomFusionPatternRegistry* patterns_;
 };
 
 }  // namespace xla::gpu

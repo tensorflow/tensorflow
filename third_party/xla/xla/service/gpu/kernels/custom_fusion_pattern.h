@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 
-namespace xla::gpu::kernel {
+namespace xla::gpu {
 
 //===----------------------------------------------------------------------===//
 // CustomFusionPattern
@@ -69,6 +69,6 @@ class CustomFusionPatternRegistry {
   std::vector<std::unique_ptr<CustomFusionPattern>> patterns_;
 };
 
-}  // namespace xla::gpu::kernel
+}  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_KERNELS_CUSTOM_FUSION_PATTERN_H_

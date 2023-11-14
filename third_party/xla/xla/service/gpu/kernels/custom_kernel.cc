@@ -21,7 +21,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 
-namespace xla::gpu::kernel {
+namespace xla::gpu {
 
 CustomKernel::CustomKernel(se::MultiKernelLoaderSpec kernel_spec,
                            se::BlockDim block_dims, se::ThreadDim thread_dims,
@@ -44,4 +44,4 @@ size_t CustomKernel::shared_memory_bytes() const {
   return shared_memory_bytes_;
 }
 
-}  // namespace xla::gpu::kernel
+}  // namespace xla::gpu

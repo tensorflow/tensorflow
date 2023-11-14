@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "tsl/platform/logging.h"
 
-namespace xla::gpu::kernel {
+namespace xla::gpu {
 
 //===----------------------------------------------------------------------===//
 // CustomFusion
@@ -129,7 +129,7 @@ class CustomFusionRegistry {
       ABSL_GUARDED_BY(mutex_);
 };
 
-}  // namespace xla::gpu::kernel
+}  // namespace xla::gpu
 
 #define XLA_REGISTER_CUSTOM_FUSION(NAME, FUSION) \
   XLA_REGISTER_CUSTOM_FUSION_(NAME, FUSION, __COUNTER__)
@@ -137,14 +137,14 @@ class CustomFusionRegistry {
 #define XLA_REGISTER_CUSTOM_FUSION_(NAME, FUSION, N) \
   XLA_REGISTER_CUSTOM_FUSION__(NAME, FUSION, N)
 
-#define XLA_REGISTER_CUSTOM_FUSION__(NAME, FUSION, N)                      \
-  ABSL_ATTRIBUTE_UNUSED static const bool                                  \
-      xla_custom_fusion_##N##_registered_ = [] {                           \
-        ::xla::Status status =                                             \
-            ::xla::gpu::kernel::CustomFusionRegistry::Default()->Register( \
-                NAME, std::make_unique<FUSION>());                         \
-        if (!status.ok()) LOG(ERROR) << status;                            \
-        return status.ok();                                                \
+#define XLA_REGISTER_CUSTOM_FUSION__(NAME, FUSION, N)              \
+  ABSL_ATTRIBUTE_UNUSED static const bool                          \
+      xla_custom_fusion_##N##_registered_ = [] {                   \
+        ::xla::Status status =                                     \
+            ::xla::gpu::CustomFusionRegistry::Default()->Register( \
+                NAME, std::make_unique<FUSION>());                 \
+        if (!status.ok()) LOG(ERROR) << status;                    \
+        return status.ok();                                        \
       }()
 
 #endif  // XLA_SERVICE_GPU_KERNELS_CUSTOM_FUSION_H_

@@ -25,7 +25,7 @@ limitations under the License.
 // it's included into all device kernel implementations, and we want to minimize
 // the number of (very expensive!) recompilations.
 
-namespace xla::gpu::kernel {
+namespace xla::gpu {
 namespace se = ::stream_executor;  // NOLINT
 
 // Custom kernel is a mechanism for plugging pre-compiled device kernels into
@@ -60,6 +60,6 @@ class CustomKernel {
   size_t shared_memory_bytes_;
 };
 
-}  // namespace xla::gpu::kernel
+}  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_KERNELS_CUSTOM_KERNEL_H_

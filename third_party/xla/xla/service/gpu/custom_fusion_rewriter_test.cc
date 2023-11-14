@@ -31,7 +31,7 @@ namespace xla::gpu {
 // Simple pattern matchers for testing custom fusion rewriter.
 //===----------------------------------------------------------------------===//
 
-class SimpleGemmPattern : public kernel::CustomFusionPattern {
+class SimpleGemmPattern : public CustomFusionPattern {
  public:
   std::optional<Match> TryMatch(HloInstruction* instr) const override {
     if (auto* dot = DynCast<HloDotInstruction>(instr)) {
@@ -77,7 +77,7 @@ TEST_F(CustomFusionRewriterTest, SimpleGemm) {
     ; CHECK: }
   )";
 
-  kernel::CustomFusionPatternRegistry patterns;
+  CustomFusionPatternRegistry patterns;
   patterns.Emplace<SimpleGemmPattern>();
 
   CustomFusionRewriter pass(&patterns);

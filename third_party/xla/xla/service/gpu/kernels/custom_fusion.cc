@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/status.h"
 
-namespace xla::gpu::kernel {
+namespace xla::gpu {
 
 //===----------------------------------------------------------------------===//
 // CustomFusionRegistry
@@ -53,4 +53,4 @@ CustomFusion* CustomFusionRegistry::Lookup(std::string_view name) const {
   return nullptr;
 }
 
-}  // namespace xla::gpu::kernel
+}  // namespace xla::gpu
