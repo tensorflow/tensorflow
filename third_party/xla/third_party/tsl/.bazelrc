@@ -692,18 +692,26 @@ build:unsupported_gpu_linux --crosstool_top=@ubuntu20.04-gcc9_manylinux2014-cuda
 build:release_cpu_macos --config=avx_linux
 test:release_cpu_macos --config=release_base
 
-# Build configs for macOS ARM CPUs
+# Base build configs for macOS
+build:release_macos_base --action_env  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+build:release_macos_base --define=no_nccl_support=true --output_filter=^$
+
+# Build configs for macOS Arm64
+build:release_macos_arm64 --config=release_macos_base
 build:release_macos_arm64 --cpu=darwin_arm64
-# Set DEVELOPER_DIR to select a version of Xcode.
-build:release_macos_arm64 --action_env  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-build:release_macos_arm64 --define=no_nccl_support=true
-# Suppress all warning messages
-build:release_macos_arm64 --output_filter=^$
-# Disable MKL
 build:release_macos_arm64 --define=tensorflow_mkldnn_contraction_kernel=0
 # Target Moneterey as the minimum compatible OS version
 build:release_macos_arm64 --macos_minimum_os=12.0
 build:release_macos_arm64 --action_env MACOSX_DEPLOYMENT_TARGET=12.0
+
+# Base test configs for macOS
+test:release_macos_base --verbose_failures=true --local_test_jobs=HOST_CPUS
+test:release_macos_base --test_timeout=300,450,1200,3600 --test_output=errors
+test:release_macos_base --build_tests_only --keep_going
+test:release_macos_base --flaky_test_attempts=3
+
+# Test configs for macOS Arm64
+test:release_macos_arm64 --config=release_macos_base
 
 # TODO(kanglan): Update windows configs after b/289091160 is fixed
 build:release_cpu_windows --config=avx_win
@@ -723,10 +731,14 @@ build:no_tfrt --deleted_packages=tensorflow/compiler/mlir/tfrt,tensorflow/compil
 
 # Use --config=tf_public_cache to try and use the TensorFlow public build cache
 # to build TensorFlow. Look at ci/official/envs to find which types of jobs
-# push to the cache.
+# push to the cache.  For macOS, use --config=tf_public_macos_cache
 build:tf_public_cache --remote_cache="https://storage.googleapis.com/tensorflow-devinfra-bazel-cache/september2022" --remote_upload_local_results=false
 # Cache pushes are limited to TF's CI system.
 build:tf_public_cache_push --config=tf_public_cache --remote_upload_local_results=true --google_default_credentials
+# Public cache for macOS builds
+build:tf_public_macos_cache --remote_cache="https://storage.googleapis.com/tensorflow-macos-bazel-cache/oct2023" --remote_upload_local_results=false
+# Cache pushes are limited to TF's CI system.
+build:tf_public_macos_cache_push --config=tf_public_macos_cache --remote_upload_local_results=true --google_default_credentials
 
 # END TF CACHE HELPER OPTIONS
 # BEGIN TF TEST SUITE OPTIONS
@@ -757,8 +769,8 @@ test:linux_arm64_wheel_test --config=linux_arm64_wheel_test_filters -- //tensorf
 # MACOS ARM64 WHEEL
 test:macos_arm64_wheel_test_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
 test:macos_arm64_wheel_test_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
-test:macos_arm64_wheel_test_filters --test_lang_filters=py
-test:macos_arm64_wheel_test --config=macos_arm64_wheel_test_filters -- //tensorflow/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xla/service/gpu/... -//tensorflow/compiler/xla/tools/multihost_hlo_runner/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/python/integration_testing/... -//tensorflow/tools/toolchains/... -//tensorflow/lite/... -//tensorflow/compiler/aot/... -//tensorflow/compiler/xla/tests:local_client_aot_test_computation -//tensorflow/compiler/xla/tests:local_client_aot_test_helper -//tensorflow/compiler/xla/tests:local_client_aot_test
+test:macos_arm64_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
+test:macos_arm64_wheel_test --config=macos_arm64_wheel_test_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/compiler/aot/...
 
 # PYCPP TESTS run a suite of Python and C++ tests to verify general correctness over
 # the whole TF code base. These are usually run continuously or upon presubmit.
@@ -781,6 +793,6 @@ test:linux_arm64_pycpp_test --config=linux_arm64_pycpp_test_filters -- //tensorf
 # MACOS ARM64 PYCPP
 test:macos_arm64_pycpp_test_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
 test:macos_arm64_pycpp_test_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
-test:macos_arm64_pycpp_test_filters --test_lang_filters=cc,py
-test:macos_arm64_pycpp_test --config=macos_arm64_pycpp_test_filters -- //tensorflow/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xla/service/gpu/... -//tensorflow/compiler/xla/tools/multihost_hlo_runner/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/python/integration_testing/... -//tensorflow/tools/toolchains/... -//tensorflow/lite/... -//tensorflow/compiler/aot/... -//tensorflow/compiler/xla/tests:local_client_aot_test_computation -//tensorflow/compiler/xla/tests:local_client_aot_test_helper -//tensorflow/compiler/xla/tests:local_client_aot_test
+test:macos_arm64_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium
+test:macos_arm64_pycpp_test --config=macos_arm64_pycpp_test_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/compiler/aot/...
 # END TF TEST SUITE OPTIONS
