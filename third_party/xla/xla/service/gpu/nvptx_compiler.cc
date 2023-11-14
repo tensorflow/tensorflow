@@ -670,6 +670,14 @@ StatusOr<NVPTXCompiler::LinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
   TF_ASSIGN_OR_RETURN(auto ptxas_version_tuple,
                       se::GetAsmCompilerVersion(preferred_cuda_dir));
 
+  // ptxas versions prior to 11.8 are not supported anymore. We check this here,
+  // since we are fetching the ptxas version anyway. Catching the error
+  // elsewhere might introduce unnecessary overhead.
+  if (ptxas_version_tuple < std::array<int64_t, 3>{11, 8, 0}) {
+    return Status(absl::StatusCode::kInternal,
+                  "XLA requires ptxas version 11.8 or higher");
+  }
+
   static const std::optional<std::array<int64_t, 3>> nvlink_version =
       GetNvLinkVersion(preferred_cuda_dir);
   if (nvlink_version && *nvlink_version >= ptxas_version_tuple) {
