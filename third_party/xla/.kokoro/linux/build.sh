@@ -27,7 +27,7 @@ function is_linux_gpu_job() {
 }
 
 function is_use_nvcc() {
-  [[ -z "${USE_NVCC:-}" ]] || [[ "$USE_NVCC" == "true" ]]
+  [[ "${USE_NVCC:-}" == "true" ]]
 }
 
 # Pull the container (in case it was updated since the instance started) and
