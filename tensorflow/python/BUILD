@@ -463,15 +463,6 @@ py_strict_library(
     ],
 )
 
-# Necessary for the pywrap inclusion below.
-tf_pybind_cc_library_wrapper(
-    name = "tfcompile_headers_lib",
-    compatible_with = [],
-    deps = [
-        "//tensorflow/compiler/aot:tfcompile_lib",
-    ],
-)
-
 tf_python_pybind_extension(
     name = "_pywrap_tfcompile",
     srcs = ["tfcompile_wrapper.cc"],
@@ -481,15 +472,13 @@ tf_python_pybind_extension(
         "//tensorflow:windows": [],
     }),
     enable_stub_generation = True,
-    features = ["-layering_check"],
     pytype_srcs = [
         "_pywrap_tfcompile.pyi",
     ],
     static_deps = tf_python_pybind_static_deps(),
     deps = [
-        ":tfcompile_headers_lib",
         "@pybind11",
-        "//third_party/python_runtime:headers",
+        "//tensorflow/compiler/aot:tfcompile_lib",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         # The headers here cannot be brought in via cc_header_only_library
