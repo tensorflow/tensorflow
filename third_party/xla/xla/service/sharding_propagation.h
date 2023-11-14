@@ -148,10 +148,10 @@ class ShardingPropagation : public HloModulePass {
       HloInstruction* instruction, const ComputationMap& computation_map,
       int64_t aggressiveness,
       const absl::flat_hash_set<HloInstruction*>& shard_group);
-  bool InferShardingFromOperands(HloInstruction* instruction,
-                                 const ComputationMap& computation_map,
-                                 int64_t aggressiveness,
-                                 const CallGraph& call_graph);
+  bool InferShardingFromOperands(
+      HloInstruction* instruction, const ComputationMap& computation_map,
+      int64_t aggressiveness, const CallGraph& call_graph,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
   bool InferShardingFromUsers(
       HloInstruction* instruction,
       const ShardingPropagation::ComputationMap& computation_map,

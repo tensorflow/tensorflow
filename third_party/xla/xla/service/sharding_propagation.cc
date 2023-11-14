@@ -2164,7 +2164,8 @@ bool ShardingPropagation::InferShardingFromShardGroup(
 // changed and false otherwise.
 bool ShardingPropagation::InferShardingFromOperands(
     HloInstruction* instruction, const ComputationMap& computation_map,
-    int64_t aggressiveness, const CallGraph& call_graph) {
+    int64_t aggressiveness, const CallGraph& call_graph,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!CanPropagateThroughAtAggressiveLevel(*instruction, aggressiveness)) {
     return false;
   }
@@ -2175,16 +2176,27 @@ bool ShardingPropagation::InferShardingFromOperands(
   // Propagate manual sharding. Avoid tuple shaped HLOs that group independent
   // together. Reduce, ReduceWindow, and Sort can be tuples but the elements
   // are correlated, so we propagate manual sharding through them.
+
   // For custom-calls with manual operand, the default propagation logic will
   // just assign manual to the whole custom-call.
+  const bool custom_call_condition =
+      instruction->opcode() == HloOpcode::kCustomCall &&
+      instruction->shape().IsTuple();
+  // For asynchronous instructions with manual operand, we assign manual to the
+  // whole instructions if the async_execution_thread is not in the
+  // execution_threads.
+  const bool async_instr_condition =
+      instruction->IsAsynchronous() &&
+      !HloInstruction::IsThreadIncluded(instruction->async_execution_thread(),
+                                        execution_threads);
+
   if ((!instruction->has_sharding() ||
        instruction->sharding().IsTileMaximal()) &&
       (instruction->shape().IsArray() ||
        instruction->opcode() == HloOpcode::kReduce ||
        instruction->opcode() == HloOpcode::kSort ||
        instruction->opcode() == HloOpcode::kReduceWindow ||
-       (instruction->opcode() == HloOpcode::kCustomCall &&
-        instruction->shape().IsTuple()))) {
+       custom_call_condition || async_instr_condition)) {
     for (const HloInstruction* op : instruction->operands()) {
       if (!op->has_sharding() || !op->sharding().IsManual()) continue;
       // Do not pass through manual sharding to SPMDShardToFullShape.
@@ -3165,7 +3177,8 @@ StatusOr<bool> ShardingPropagation::Run(
           }
           already_inferred_from_operands.insert(instruction);
           if (InferShardingFromOperands(instruction, computation_map,
-                                        aggressiveness, *call_graph)) {
+                                        aggressiveness, *call_graph,
+                                        execution_threads)) {
             ++inferred_from_operand_counter;
             any_changed = true;
             VLOG(2) << "Add sharding (forward-pass): "
