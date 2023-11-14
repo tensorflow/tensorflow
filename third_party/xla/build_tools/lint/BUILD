@@ -13,7 +13,7 @@
 # limitations under the License.
 # ============================================================================
 
-load("//xla:pytype.default.bzl", "pytype_strict_library")
+load("//xla:pytype.default.bzl", "pytype_strict_binary", "pytype_strict_library")
 # Placeholder: load py_test
 
 package(
@@ -32,6 +32,11 @@ pytype_strict_library(
     name = "diff_parser",
     srcs = ["diff_parser.py"],
     visibility = ["//visibility:public"],
+)
+
+pytype_strict_binary(
+    name = "generate_compile_commands",
+    srcs = ["generate_compile_commands.py"],
 )
 
 py_test(
