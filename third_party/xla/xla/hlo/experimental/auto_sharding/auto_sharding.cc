@@ -4573,7 +4573,7 @@ StatusOr<bool> AutoSharding::Run(
   std::unique_ptr<HloModule> module_with_default_solution = nullptr;
   if (option_.use_sharding_propagation_for_default_shardings) {
     module_with_default_solution = CloneModule(module);
-    // TODO(pratikf): Ensure that we're passing the correct customc all sharding
+    // TODO(pratikf): Ensure that we're passing the correct custom call sharding
     // helper to the sharding propagation pass.
     auto sharding_prop = ShardingPropagation(
         /*is_spmd */ true, /*propagate_metadata */ false,

@@ -50,6 +50,7 @@ cc_library(
         "//xla/service:buffer_value",
         "//xla/service:call_graph",
         "//xla/service:computation_layout",
+        "//xla/service:dot_as_convolution_util",
         "//xla/service:dump",
         "//xla/service:hlo_alias_analysis",
         "//xla/service:hlo_buffer",
