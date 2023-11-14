@@ -966,7 +966,8 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
                                          table_name_);
 
   CalculateHeadroom(this_max_ids, this_max_uniques, program_key,
-                    max_ids_per_partition, max_unique_ids_per_partition);
+                    max_ids_per_partition, max_unique_ids_per_partition,
+                    dropped_id_count);
 
   Tensor* splits_tensor;
   OP_REQUIRES_OK(
