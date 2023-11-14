@@ -202,6 +202,45 @@ diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Ba
  
 -#endif
 +#endif  // STABLEHLO_DIALECT_BASE_H
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -3510,12 +3510,21 @@
+ }
+ 
+ LogicalResult verifyDynamicIotaOp(std::optional<Location> location,
+-                                  Value outputShape, int64_t outputDimension,
++                                  Value outputShape, int64_t iotaDimension,
+                                   Value result) {
+-  if (!isCompatibleForHloTypeInference(outputShape, result.getType()))
++  auto shape = result.getType().cast<ShapedType>();
++  if (!isCompatibleForHloTypeInference(outputShape, shape))
+     return emitOptionalError(
+         location, "output_shape is incompatible with return type of operation ",
+         result.getType());
++
++  if (!shape.hasRank()) return success();
++
++  if (iotaDimension >= shape.getRank() || iotaDimension < 0)
++    return emitOptionalError(
++        location,
++        "iota dimension cannot go beyond the output rank or be negative.");
++
+   return success();
+ }
+ 
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/dialect/TypeInference.h
+--- stablehlo/stablehlo/dialect/TypeInference.h
++++ stablehlo/stablehlo/dialect/TypeInference.h
+@@ -427,7 +427,7 @@
+     Value result);
+ 
+ LogicalResult verifyDynamicIotaOp(std::optional<Location> location,
+-                                  Value outputShape, int64_t outputDimension,
++                                  Value outputShape, int64_t iotaDimension,
+                                   Value result);
+ 
+ LogicalResult verifyDynamicPadOp(std::optional<Location> location,
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD b/stablehlo/stablehlo/experimental/BUILD
 --- stablehlo/stablehlo/experimental/BUILD
 +++ stablehlo/stablehlo/experimental/BUILD
@@ -3884,6 +3923,42 @@ diff --ruN a/stablehlo/stablehlo/tests/BUILD.bazel b/stablehlo/stablehlo/tests/B
          tags = ["stablehlo_tests"],
      )
      for src in glob(["**/*.mlir"])
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
+@@ -5648,6 +5648,32 @@
+ 
+ // -----
+ 
++func.func @dynamic_iota_unranked_large() -> tensor<*xf32> {
++  %0 = stablehlo.constant dense<[4]> : tensor<1xi64>
++  %1 = stablehlo.dynamic_iota %0, dim = 3 : (tensor<1xi64>) -> tensor<*xf32>
++  func.return %1 : tensor<*xf32>
++}
++
++// -----
++
++func.func @dynamic_iota_invalid_iota_dimension_negative() -> tensor<?xf32> {
++  // expected-error@+2 {{iota dimension cannot go beyond the output rank or be negative}}
++  %0 = stablehlo.constant dense<[4]> : tensor<1xi64>
++  %1 = stablehlo.dynamic_iota %0, dim = -1 : (tensor<1xi64>) -> tensor<?xf32>
++  func.return %1 : tensor<?xf32>
++}
++
++// -----
++
++func.func @dynamic_iota_invalid_iota_dimension_too_big() -> tensor<?xf32> {
++  %0 = stablehlo.constant dense<[4]> : tensor<1xi64>
++  // expected-error@+1 {{iota dimension cannot go beyond the output rank or be negative}}
++  %1 = stablehlo.dynamic_iota %0, dim = 2 : (tensor<1xi64>) -> tensor<?xf32>
++  func.return %1 : tensor<?xf32>
++}
++
++// -----
++
+ func.func @dynamic_iota_output_shape_negative_size() -> tensor<4xf32> {
+   // @expected-error@+2 {{output_shape is incompatible with return type of operation 'tensor<4xf32>'}}
+   %0 = stablehlo.constant dense<[-1]> : tensor<1xi64>
 diff --ruN a/stablehlo/stablehlo/transforms/Passes.h b/stablehlo/stablehlo/transforms/Passes.h
 --- stablehlo/stablehlo/transforms/Passes.h
 +++ stablehlo/stablehlo/transforms/Passes.h
