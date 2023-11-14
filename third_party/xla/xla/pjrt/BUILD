@@ -678,6 +678,7 @@ cc_library(
         "//xla/client:executable_build_options",
         "//xla/client:xla_computation",
         "//xla/hlo/ir:hlo",
+        "//xla/pjrt/distributed:topology_util",
         "//xla/runtime:cpu_event",
         "//xla/service:buffer_assignment",
         "//xla/service:compiler",
@@ -706,6 +707,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",  # TODO(zhangqiaorjc): Remove if use TFRT threadpool.
         "@llvm-project//mlir:IR",
