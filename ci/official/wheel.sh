@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# Change to kick off CI 
 source "${BASH_SOURCE%/*}/utilities/setup.sh"
 
 # Record GPU count and CUDA version status
