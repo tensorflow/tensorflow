@@ -1898,6 +1898,10 @@ class MemoryBoundLoopOptimizer {
     static std::string AllocationTypeToString(AllocationType allocation_type);
     std::string ToString() const;
 
+    // Returns true if memory-bound loop optimizer supports allocating this type
+    // of a loop value.
+    bool IsAllocationTypeSupported() const;
+
     // The HloValues that correspond to this LoopValue.
     std::vector<const HloValue*> hlo_values;
     // The position in the header, if any.

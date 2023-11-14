@@ -2692,6 +2692,12 @@ std::string MemoryBoundLoopOptimizer::LoopValue::ToString() const {
       values_str, "\n", allocations_str);
 }
 
+bool MemoryBoundLoopOptimizer::LoopValue::IsAllocationTypeSupported() const {
+  return allocation_type == AllocationType::kTemporary ||
+         allocation_type == AllocationType::kPinned ||
+         allocation_type == AllocationType::kPrefetch;
+}
+
 void MemoryBoundLoopOptimizer::SortLoopValues() {
   absl::c_stable_sort(loop_values_, [](const LoopValue& a, const LoopValue& b) {
     return a.savings_per_byte > b.savings_per_byte;
@@ -3358,7 +3364,7 @@ Status AlternateMemoryBestFitHeap::OptimizeMemoryBoundLoop(int loop_start_idx,
   const int loop_optimized_allocations_original_size =
       loop_optimized_allocations_.size();
   for (MemoryBoundLoopOptimizer::LoopValue& value : optimizer->loop_values()) {
-    if (!value.allocations.empty()) {
+    if (!value.allocations.empty() && value.IsAllocationTypeSupported()) {
       loop_optimized_allocations_.push_back(std::move(value.allocations));
     }
   }
@@ -3476,7 +3482,6 @@ void AlternateMemoryBestFitHeap::IdentifyAndOptimizeMemoryBoundLoops() {
   // The minimum and maximum loop sizes that we consider.
   const int kMinLoopSize = 4;
   const int kMaxLoopSize = 400;
-  const float kMinNumIterations = 3.0;
   int optimized_loop_idx = 0;
   while (optimized_loop_idx < instruction_sequence.size()) {
     // Iterate over the flattened instruction sequence. We first try to find a
@@ -3502,6 +3507,11 @@ void AlternateMemoryBestFitHeap::IdentifyAndOptimizeMemoryBoundLoops() {
             // We found two instructions with the same fingerprint. The distance
             // between the two is the loop size candidate.
             loop_size_candidate = distance;
+            // Update the fingerprint map with the current loop index so that if
+            // the loop size candidate doesn't find a valid loop, we can resume
+            // searching from this instruction.
+            fingerprint_schedule_map[fingerprint_it->second] =
+                optimized_loop_idx;
             break;
           }
         }
@@ -3633,7 +3643,8 @@ void AlternateMemoryBestFitHeap::IdentifyAndOptimizeMemoryBoundLoops() {
 
     optimized_loop_idx = std::max(optimized_loop_idx, loop_end_idx) + 1;
 
-    if (num_iterations >= kMinNumIterations) {
+    if (num_iterations >=
+        options_.memory_bound_loop_optimizer_options.min_num_iterations()) {
       VLOG(2) << "Found valid loop. Loop start: " << loop_start_idx
               << " loop end: " << loop_end_idx
               << " num iterations: " << num_iterations;

@@ -9562,6 +9562,7 @@ class MemoryBoundLoopOptimizerTest : public HloTestBase {
     optimizer_options.set_enabled(true);
     optimizer_options.set_desired_copy_ratio(0.7);
     optimizer_options.set_allow_unsatisfied_fully_pipelined_prefetch(false);
+    optimizer_options.set_min_num_iterations(3.0);
     options_.memory_bound_loop_optimizer_options = optimizer_options;
     options_.alternate_mem_bandwidth_bytes_per_second = 128;
     options_.async_copy_bandwidth_bytes_per_second = 32;
@@ -9825,13 +9826,20 @@ ENTRY Entry {
     return preset_assignments;
   }
 
-  Status VerifyMsaEquivalence(HloModule* module) {
+  Status VerifyMsaEquivalence(HloModule* module,
+                              bool expect_unsupported_allocations = false) {
     // Create a map indexed by instruction number and operand number.
     absl::flat_hash_map<std::pair<int, int>,
                         const MemorySpaceAssignment::Allocation*>
         allocation_map;
     for (const MemoryBoundLoopOptimizer::LoopValue& value :
          optimizer_->loop_values()) {
+      // Skip verification for unsupported allocations as they will go through
+      // the usual MSA algorithm and may actually get an alternate memory
+      // allocation.
+      if (!value.IsAllocationTypeSupported()) {
+        continue;
+      }
       for (const auto& allocation : value.allocations) {
         for (const HloUse& use : allocation->uses()) {
           absl::string_view inst_name = use.instruction->name();
@@ -9873,7 +9881,10 @@ ENTRY Entry {
         for (int operand_number = 0; operand_number < 2; ++operand_number) {
           const HloInstruction* operand = inst->operand(operand_number);
           LOG(INFO) << inst->name() << ", operand " << operand_number;
-          TF_RET_CHECK(allocation_map.contains({inst_number, operand_number}));
+          if (!allocation_map.contains({inst_number, operand_number})) {
+            TF_RET_CHECK(expect_unsupported_allocations);
+            continue;
+          }
           const MemorySpaceAssignment::Allocation* allocation =
               allocation_map.at({inst_number, operand_number});
           if (!allocation->is_copy_allocation()) {
@@ -10391,6 +10402,37 @@ TEST_F(MemoryBoundLoopOptimizerTest, OptimizerEndToEnd) {
                           RunMsa(module.get(), /*alternate_memory_size=*/1024));
 
   TF_ASSERT_OK(VerifyMsaEquivalence(module.get()));
+}
+
+TEST_F(MemoryBoundLoopOptimizerTest, OptimizerEndToEndUnsupportedAllocation) {
+  // op2 is a loop-carried dependency, which is currently not supported. But the
+  // usual MSA algorithm should still be able to give it an alternate memory
+  // allocation.
+  absl::string_view hlo_loop_str = R"(
+    $op0 = f32[1,4] add(f32[1,4] $prev_op3, f32[1,4] $prev_op4)
+    $op1 = f32[8,4] add(f32[8,4] $param0, f32[8,4] $param1)
+    $op2 = f32[1,4] add(f32[1,4] $prev_op2, f32[1,4] $op0)
+    $op3 = f32[1,4] add(f32[1,4] $op0, f32[1,4] $op2)
+    $op4 = f32[1,4] add(f32[1,4] $op2, f32[1,4] $op3)
+    ROOT $root = tuple($op1, $op4)
+  )";
+
+  int loop_start_idx;
+  MemoryBoundLoopOptimizer* optimizer;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndCreateOptimizer(hlo_loop_str,
+                                           /*alternate_memory_size=*/1024,
+                                           loop_start_idx, &optimizer));
+
+  optimizer->Optimize();
+  TF_ASSERT_OK_AND_ASSIGN(auto preset_assignments,
+                          RunMsa(module.get(), /*alternate_memory_size=*/1024));
+
+  TF_ASSERT_OK(VerifyMsaEquivalence(module.get(),
+                                    /*expect_unsupported_allocations=*/true));
+
+  const HloInstruction* op2 = FindInstruction(module.get(), "op2");
+  EXPECT_EQ(op2->shape().layout().memory_space(), kAlternateMemorySpace);
 }
 
 TEST_F(MemoryBoundLoopOptimizerTest, OptimizerEndToEndWhileLoop) {
