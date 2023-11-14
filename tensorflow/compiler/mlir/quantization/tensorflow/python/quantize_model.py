@@ -731,11 +731,11 @@ def _run_static_range_ptq(
       # TODO: b/296916287 - Create a separate function for saving unquantized
       # dump model
       py_function_library.save_exported_model(
-          quant_opts.debugger_options.unquantized_dump_model_path,
-          exported_model.SerializeToString(),
-          src_saved_model_path,
-          quant_opts.tags,
-          signature_def_map_serialized,
+          dst_saved_model_path=quant_opts.debugger_options.unquantized_dump_model_path,
+          exported_model_serialized=exported_model.SerializeToString(),
+          src_saved_model_path=src_saved_model_path,
+          tags=quant_opts.tags,
+          serialized_signature_def_map=signature_def_map_serialized,
       )
 
       _change_dump_tensor_file_name(graph_def)
@@ -744,11 +744,11 @@ def _run_static_range_ptq(
   # TODO: b/309601030 - Integrate model functionality to
   # `quantize_ptq_model_pre_calibration`.
   py_function_library.save_exported_model(
-      calibrated_model_path,
-      exported_model.SerializeToString(),
-      pre_calib_output_model_path,
-      quant_opts.tags,
-      signature_def_map_serialized,
+      dst_saved_model_path=calibrated_model_path,
+      exported_model_serialized=exported_model.SerializeToString(),
+      src_saved_model_path=pre_calib_output_model_path,
+      tags=quant_opts.tags,
+      serialized_signature_def_map=signature_def_map_serialized,
   )
 
   logging.info('Running post-training quantization post-calibration step.')

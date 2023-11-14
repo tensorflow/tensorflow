@@ -15,12 +15,14 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/detail/common.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/python/type_casters.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/type_casters.h"  // IWYU pragma: keep
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
@@ -64,6 +66,11 @@ PYBIND11_MODULE(pywrap_function_lib, m) {
       m, "PyFunctionLibrary")
       .def(py::init<>())
       .def("assign_ids_to_custom_aggregator_ops",
-           &PyFunctionLibrary::AssignIdsToCustomAggregatorOps)
-      .def("save_exported_model", &PyFunctionLibrary::SaveExportedModel);
+           &PyFunctionLibrary::AssignIdsToCustomAggregatorOps,
+           py::arg("exported_model_serialized"))
+      .def("save_exported_model", &PyFunctionLibrary::SaveExportedModel,
+           py::arg("dst_saved_model_path"),
+           py::arg("exported_model_serialized"),
+           py::arg("src_saved_model_path"), py::arg("tags"),
+           py::arg("serialized_signature_def_map"));
 }
