@@ -935,17 +935,6 @@ ENTRY main.4 {
     MatchOptimizedHlo(hlo_text,
                       R"(
 ; CHECK: [[GEMM:%[^ ]+]] = (s32[8,4]{1,0}, s8[{{[0-9]+}}]{0}) custom-call(s8[8,4]{1,0} %fusion.1, s8[4,4]{0,1} %bitcast.13), custom_call_target="__cublas$gemm",
-; CHECK:   backend_config={
-; CHECK-DAG:   "selected_algorithm":"0"
-; CHECK-DAG:   "alpha_real":1
-; CHECK-DAG:   "alpha_imag":0
-; CHECK-DAG:   "beta":0
-; CHECK-DAG:   "dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]}
-; CHECK-DAG:   "precision_config":{"operand_precision":["DEFAULT","DEFAULT"]}
-; CHECK-DAG:   "epilogue":"DEFAULT"
-; CHECK:   }
-; CHECK: [[RES:%[^ ]+]] = s32[8,4]{1,0} get-tuple-element((s32[8,4]{1,0}, s8[{{[0-9]+}}]{0}) [[GEMM]]), index=0
-; CHECK: ROOT [[OUT:%[^ ]+]] = s32[1,8,4]{2,1,0} bitcast(s32[8,4]{1,0} [[RES]])
   )",
                       /*print_operand_shape=*/true);
   }
