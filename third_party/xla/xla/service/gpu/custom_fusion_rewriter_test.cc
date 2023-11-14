@@ -64,7 +64,7 @@ TEST_F(CustomFusionRewriterTest, SimpleGemm) {
     ; CHECK:   [[P0:%[^ ]+]] = f16[15,19]{1,0} parameter(0)
     ; CHECK:   [[P1:%[^ ]+]] = f16[19,17]{1,0} parameter(1)
     ; CHECK:   ROOT [[DOT:%[^ ]+]] = f16[15,17]{1,0} dot([[P0]], [[P1]]),
-    ; CEHCK:     lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    ; CHECK:     lhs_contracting_dims={1}, rhs_contracting_dims={0}
     ; CHECK: }
 
     ; CHECK: ENTRY %main {{.*}} {
