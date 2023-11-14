@@ -63,13 +63,11 @@ namespace xla {
 
 class TfrtCpuDeviceDescription final : public PjRtDeviceDescription {
  public:
-  TfrtCpuDeviceDescription(int id, int process_index, int local_hardware_id);
+  explicit TfrtCpuDeviceDescription(int id);
 
   int id() const override { return id_; }
 
-  int process_index() const override { return process_index_; }
-
-  int local_hardware_id() const { return local_hardware_id_; }
+  int process_index() const override { return 0; }
 
   absl::string_view device_kind() const override;
 
@@ -84,8 +82,6 @@ class TfrtCpuDeviceDescription final : public PjRtDeviceDescription {
 
  private:
   int id_;
-  int process_index_;
-  int local_hardware_id_;
   std::string debug_string_;
   std::string to_string_;
   absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_ = {};
@@ -93,8 +89,7 @@ class TfrtCpuDeviceDescription final : public PjRtDeviceDescription {
 
 class TfrtCpuDevice final : public PjRtDevice {
  public:
-  explicit TfrtCpuDevice(int id, int process_index, int local_hardware_id,
-                         int max_inflight_computations = 32);
+  explicit TfrtCpuDevice(int id, int max_inflight_computations = 32);
 
   const TfrtCpuDeviceDescription& description() const override {
     return description_;
@@ -111,9 +106,8 @@ class TfrtCpuDevice final : public PjRtDevice {
     return process_index() == client()->process_index();
   }
 
-  int local_hardware_id() const override {
-    return description_.local_hardware_id();
-  }
+  // Used as `device_ordinal`.
+  int local_hardware_id() const override { return id(); }
 
   Status TransferToInfeed(const LiteralSlice& literal) override;
 
@@ -524,17 +518,6 @@ struct CpuClientOptions {
   std::optional<int> cpu_device_count = std::nullopt;
 
   int max_inflight_computations_per_device = 32;
-
-  // Number of distributed nodes. node_id, kv_get, and kv_put are ignored if
-  // this is set to 1.
-  int num_nodes = 1;
-
-  // My node ID.
-  int node_id = 0;
-
-  // KV store primitives for sharing topology information.
-  PjRtClient::KeyValueGetCallback kv_get = nullptr;
-  PjRtClient::KeyValuePutCallback kv_put = nullptr;
 };
 StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
     const CpuClientOptions& options);
