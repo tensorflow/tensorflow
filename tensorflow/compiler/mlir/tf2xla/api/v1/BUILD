@@ -50,6 +50,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tpu:tpu_defs",
+        "@com_google_absl//absl/base:core_headers",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
