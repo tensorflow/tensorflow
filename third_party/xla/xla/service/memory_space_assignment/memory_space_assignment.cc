@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
@@ -6937,9 +6938,23 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::CheckPrefetchFit(
   }
 
   // Update the prefetch start time in our working solution.
-  std::vector<int64_t> exclusive_slice_start_times = PickSliceStartTimes(
-      sliced_buffer_interval->num_slices(),
-      context.exclusive_prefetch_start_time, context.prefetch_end_time);
+  std::vector<int64_t> exclusive_slice_start_times =
+      SlicedPrefetchStartTimePicker::Pick(
+          sliced_buffer_interval->num_slices(),
+          context.exclusive_prefetch_start_time, context.prefetch_end_time,
+          [&](int64_t exclusive_start_time,
+              int64_t exclusive_end_time) -> float {
+            return options_.prefetch_interval_picker->GetLogicalIntervalElapsed(
+                exclusive_start_time, exclusive_end_time);
+          },
+          [&](int64_t lhs_time, int64_t rhs_time) -> bool {
+            return hlo_live_range_.flattened_instruction_sequence()
+                       .instructions()[lhs_time]
+                       ->parent() ==
+                   hlo_live_range_.flattened_instruction_sequence()
+                       .instructions()[rhs_time]
+                       ->parent();
+          });
   CHECK_EQ(sliced_buffer_interval->num_slices(),
            exclusive_slice_start_times.size());
   sliced_buffer_interval->UpdateExclusiveSliceStartTimes(
@@ -7149,12 +7164,14 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::CheckPrefetchFit(
   return Result::kFailOutOfMemory;
 }
 
-std::vector<int64_t> AlternateMemoryBestFitHeap::PickSliceStartTimes(
-    int64_t num_slices, int64_t prefetch_start_time,
-    int64_t prefetch_end_time) const {
-  CHECK_LE(prefetch_start_time, prefetch_end_time);
+std::vector<int64_t> SlicedPrefetchStartTimePicker::Pick(
+    int64_t num_slices, int64_t exclusive_prefetch_start_time,
+    int64_t prefetch_end_time, absl::AnyInvocable<ElapsedTimeFn> elapsed_fn,
+    absl::AnyInvocable<SameComputationParentFn> has_same_parent_fn) {
+  CHECK_LE(exclusive_prefetch_start_time, prefetch_end_time);
   VLOG(5) << "Picking slice start times. num_slices = " << num_slices
-          << "; prefetch_start_time = " << prefetch_start_time
+          << "; exclusive_prefetch_start_time = "
+          << exclusive_prefetch_start_time
           << "; prefetch_end_time = " << prefetch_end_time;
 
   // Prefetching starts after the selected start instruction and ends
@@ -7162,59 +7179,54 @@ std::vector<int64_t> AlternateMemoryBestFitHeap::PickSliceStartTimes(
   // instructions worth of time to perform all of the sliced copies. So, the
   // only choices for start times that give us time to copy are <=
   // prefetch_end_time - 2.
-  if (prefetch_start_time >= prefetch_end_time - 2 || num_slices == 1) {
-    return std::vector<int64_t>(num_slices, prefetch_start_time);
+  if (exclusive_prefetch_start_time >= prefetch_end_time - 2 ||
+      num_slices == 1) {
+    return std::vector<int64_t>(num_slices, exclusive_prefetch_start_time);
   }
 
   float total_elapsed =
-      options_.prefetch_interval_picker->GetLogicalIntervalElapsed(
-          prefetch_start_time, prefetch_end_time);
+      elapsed_fn(exclusive_prefetch_start_time, prefetch_end_time);
   if (total_elapsed <= 0.0) {
-    return std::vector<int64_t>(num_slices, prefetch_start_time);
+    return std::vector<int64_t>(num_slices, exclusive_prefetch_start_time);
   }
 
-  CHECK_LE(prefetch_start_time, prefetch_end_time - 2);
-  std::vector<int64_t> reverse_start_times;
-  reverse_start_times.reserve(num_slices);
-  for (int64_t candidate_start_time = prefetch_end_time - 2;
-       reverse_start_times.size() < num_slices &&
-       candidate_start_time >= prefetch_start_time;
-       --candidate_start_time) {
-    if (candidate_start_time == prefetch_start_time) {
-      while (reverse_start_times.size() < num_slices) {
-        // This is the last good start time, so use it for all remaining slices.
-        reverse_start_times.push_back(candidate_start_time);
-      }
-      break;
+  std::vector<int64_t> start_times;
+  start_times.reserve(num_slices);
+  start_times.push_back(exclusive_prefetch_start_time);
+  int64_t last_valid_candidate = exclusive_prefetch_start_time;
+  int64_t candidate = exclusive_prefetch_start_time;
+  while (candidate < prefetch_end_time - 1 && start_times.size() < num_slices) {
+    float target_elapsed = total_elapsed *
+                           static_cast<float>(num_slices - start_times.size()) /
+                           static_cast<float>(num_slices);
+    float elapsed = elapsed_fn(candidate, prefetch_end_time);
+    if (elapsed < target_elapsed) {
+      // We've gone past our target, so use the last valid candidate.
+      start_times.push_back(last_valid_candidate);
+      continue;
     }
-    float used = options_.prefetch_interval_picker->GetLogicalIntervalElapsed(
-        candidate_start_time, prefetch_end_time);
-    CHECK_GE(used, 0.0) << used << " real time elapses in logical interval ("
-                        << candidate_start_time << ", " << prefetch_end_time
-                        << "). Expected something >= 0.0.";
-    CHECK_LE(used, total_elapsed);
-    auto compute_target_fraction =
-        [num_slices](const std::vector<int64_t>& reverse_start_times) -> float {
-      return (static_cast<float>(reverse_start_times.size()) + 1.0f) /
-             static_cast<float>(num_slices);
-    };
-    while (used >=
-           compute_target_fraction(reverse_start_times) * total_elapsed) {
-      CHECK_LE(reverse_start_times.size(), num_slices)
-          << "Num slices = " << num_slices
-          << "; Prefetch start = " << prefetch_start_time
-          << "; Slice candidate time = " << candidate_start_time
-          << "; Prefetch end = " << prefetch_end_time
-          << "; Total elapsed = " << total_elapsed << "; Used = " << used
-          << "; Target fraction = "
-          << compute_target_fraction(reverse_start_times);
-      reverse_start_times.push_back(candidate_start_time);
+    bool updating_candidate_impacts_elapsed =
+        last_valid_candidate != candidate &&
+        elapsed_fn(last_valid_candidate,
+                   ExclusiveToInclusiveStartTime(candidate)) > 0.0;
+    // has_same_parent_fn will look up the computation parent of the
+    // instructions at prefetch_start_time and prefetch_end_time. If
+    // prefetch_start_time is -1, no such instruction will exist. However, if we
+    // want to insert an instruction after the -1 schedule position, we can
+    // use the parent of the instruction at index 0 instead. Thus, we use
+    // std::max below.
+    if (has_same_parent_fn(std::max<int64_t>(0, exclusive_prefetch_start_time),
+                           std::max<int64_t>(0, candidate)) &&
+        updating_candidate_impacts_elapsed) {
+      last_valid_candidate = candidate;
     }
+    ++candidate;
+  }
+  while (start_times.size() < num_slices) {
+    start_times.push_back(last_valid_candidate);
   }
 
-  CHECK_EQ(reverse_start_times.size(), num_slices);
-  absl::c_reverse(reverse_start_times);
-  return reverse_start_times;
+  return start_times;
 }
 
 std::string
@@ -7228,7 +7240,7 @@ AlternateMemoryBestFitHeap::AlternateMemoryAllocationAttemptToString(
 
   for (int i = 0; i < sliced_buffer_interval->num_slices(); ++i) {
     slice_times.push_back(absl::StrCat(
-        "(", sliced_buffer_interval->IntervalForMakeFreeChunks(i).start, ", ",
+        "[", sliced_buffer_interval->IntervalForMakeFreeChunks(i).start, ", ",
         sliced_buffer_interval->full_buffer_interval().end, ")"));
     if (context.slice_proposal_collection) {
       estimated_slice_prefetch_end_times.push_back(
@@ -7918,7 +7930,7 @@ Status MemorySpaceAssignment::SlicedCopyAllocation::Process() {
     TF_RETURN_IF_ERROR(slice_detail.CreateAsyncSlice(
         shape, *producing_instruction, *computation, update_layout_fn_));
     VLOG(4) << "Created " << slice_detail.copy_start->name()
-            << " for copy allocation: " << ToString();
+            << " for sliced copy allocation: " << ToString();
     slice_dones.push_back(slice_detail.copy_done);
   }
 

@@ -27,6 +27,7 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -37,6 +38,7 @@ limitations under the License.
 #endif
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -555,6 +557,33 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   // to treat all async copies the same duration. Having an override forces
   // prefetches to be scheduled roughly in FIFO order.
   std::optional<Shape> shape_override_;
+};
+
+// A class for turning a copy start time and end time into slice start times.
+class SlicedPrefetchStartTimePicker {
+ public:
+  // Returns the amount of time elapsed in the instruction schedule between
+  // (exclusive_start_time, exclusive_end_time).
+  using ElapsedTimeFn = std::add_pointer<float(
+      int64_t exclusive_start_time, int64_t exclusive_end_time) const>::type;
+
+  // Returns true if the instructions at lhs_time and rhs_time are in the same
+  // computation.
+  using SameComputationParentFn =
+      std::add_pointer<bool(int64_t lhs_time, int64_t rhs_time) const>::type;
+
+  // Picks slice start times, given the num_slices, prefetch_start_time, and
+  // prefetch_end_time. The returned times are exclusive.
+  //
+  // REQUIRES:
+  // - The instructions following each start time are guaranateed to be in the
+  //   same computation.
+  // - The returned times sorted.
+  // - The first returned time is equal to prefetch_start_time.
+  static std::vector<int64_t> Pick(
+      int64_t num_slices, int64_t exclusive_prefetch_start_time,
+      int64_t prefetch_end_time, absl::AnyInvocable<ElapsedTimeFn> elapsed_fn,
+      absl::AnyInvocable<SameComputationParentFn> has_same_parent_fn);
 };
 
 // MemorySpaceAssignment assigns memory spaces (default or alternate) to each
@@ -2486,11 +2515,6 @@ class AlternateMemoryBestFitHeap
   // Check if for the specified type of solution, using the parameters in
   // context. If we find a solution, it will be stored in context.
   Result CheckPrefetchFit(bool for_sliced_solution, PrefetchContext& context);
-  // Given a specified number of slices, start times, and end times, pick times
-  // to start each slice.
-  std::vector<int64_t> PickSliceStartTimes(int64_t num_slices,
-                                           int64_t prefetch_start_time,
-                                           int64_t prefetch_end_time) const;
   // Creates a debugging string describing the timing of the prefetch solution
   // we are currently attempting (as dictated by for_sliced_solution and
   // context).
