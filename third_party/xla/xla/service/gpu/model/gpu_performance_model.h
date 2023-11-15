@@ -91,6 +91,18 @@ class GpuPerformanceModel {
       const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config);
 
+  static absl::Duration EstimateUnfusedExecTime(
+      const HloInstruction* producer, const EstimateRunTimeData& producer_data,
+      const GpuHloCostAnalysis* cost_analysis,
+      const GpuPerformanceModelOptions& config,
+      std::vector<HloInstruction*> fused_consumers);
+
+  static absl::Duration EstimateFusedExecTime(
+      const HloInstruction* producer, const EstimateRunTimeData& producer_data,
+      const GpuHloCostAnalysis* cost_analysis,
+      const GpuPerformanceModelOptions& config,
+      std::vector<HloInstruction*> fused_consumers, bool multi_output);
+
   static RunTimes EstimateRunTimes(
       const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config,
