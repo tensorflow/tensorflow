@@ -527,6 +527,7 @@ build:rbe_linux_cuda --repo_env=TF_NCCL_CONFIG_REPO="@sigbuild-r2.16-clang_confi
 test:rbe_linux_cuda --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
 
 build:rbe_linux_cuda_nvcc --config=cuda
+build:rbe_linux_cuda_nvcc --action_env=TF_NVCC_CLANG="1"
 build:rbe_linux_cuda_nvcc --repo_env TF_NCCL_USE_STUB=1
 build:rbe_linux_cuda_nvcc --@local_xla//xla/python:enable_gpu=true
 build:rbe_linux_cuda_nvcc --@local_xla//xla/python:jax_cuda_pip_rpaths=true
@@ -536,7 +537,6 @@ build:rbe_linux_cuda_nvcc --repo_env=TF_CUDA_COMPUTE_CAPABILITIES="sm_50,sm_60,s
 build:rbe_linux_cuda_nvcc --action_env=TF_CUDA_VERSION="12"
 build:rbe_linux_cuda_nvcc --action_env=TF_CUDNN_VERSION="8"
 build:rbe_linux_cuda_nvcc --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-12.2"
-build:rbe_linux_cuda_nvcc --action_env=GCC_HOST_COMPILER_PATH="/dt9/usr/bin/gcc"
 build:rbe_linux_cuda_nvcc --action_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
 build:rbe_linux_cuda_nvcc --crosstool_top="@ubuntu20.04-clang_manylinux2014-cuda12.2-cudnn8.9_config_cuda//crosstool:toolchain"
 build:rbe_linux_cuda_nvcc --config=rbe_linux
