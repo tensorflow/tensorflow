@@ -36,28 +36,28 @@ TEST_F(CutlassFusionTest, SimpleF32Gemm) {
   HloModule cublas
 
   ENTRY e {
-    arg0 = f32[32, 64]{1,0} parameter(0)
-    arg1 = f32[64, 16]{1,0} parameter(1)
-    gemm = (f32[32,16]{1,0}, s8[0]{0}) custom-call(arg0, arg1),
+    arg0 = f32[100,784]{1,0} parameter(0)
+    arg1 = f32[784,10]{1,0} parameter(1)
+    gemm = (f32[100,10]{1,0}, s8[0]{0}) custom-call(arg0, arg1),
       custom_call_target="__cublas$gemm",
       backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
-    ROOT get-tuple-element = f32[32,16]{1,0} get-tuple-element((f32[32,16]{1,0}, s8[0]{0}) gemm), index=0
+    ROOT get-tuple-element = f32[100,10]{1,0} get-tuple-element((f32[100,10]{1,0}, s8[0]{0}) gemm), index=0
   })";
 
   const char* hlo_text_custom_fusion = R"(
   HloModule cutlass
 
   cutlass_gemm {
-    arg0 = f32[32,64]{1,0} parameter(0)
-    arg1 = f32[64,16]{1,0} parameter(1)
-    ROOT dot = f32[32,16]{1,0} dot(arg0, arg1),
+    arg0 = f32[100,784]{1,0} parameter(0)
+    arg1 = f32[784,10]{1,0} parameter(1)
+    ROOT dot = f32[100,10]{1,0} dot(arg0, arg1),
       lhs_contracting_dims={1}, rhs_contracting_dims={0}
   }
 
   ENTRY e {
-    arg0 = f32[32, 64]{1,0} parameter(0)
-    arg1 = f32[64, 16]{1,0} parameter(1)
-    ROOT _ = f32[32,16]{1,0} fusion(arg0, arg1), kind=kCustom, calls=cutlass_gemm,
+    arg0 = f32[100,784]{1,0} parameter(0)
+    arg1 = f32[784,10]{1,0} parameter(1)
+    ROOT _ = f32[100,10]{1,0} fusion(arg0, arg1), kind=kCustom, calls=cutlass_gemm,
       backend_config={kind: "__custom_fusion", custom_fusion_config: {"name":"cutlass_gemm"}}
   })";
 

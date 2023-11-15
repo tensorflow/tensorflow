@@ -117,6 +117,7 @@ limitations under the License.
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
 #include "xla/service/gpu/copy_fusion.h"
+#include "xla/service/gpu/custom_fusion_rewriter.h"
 #include "xla/service/gpu/dot_dimension_sorter.h"
 #include "xla/service/gpu/fusion_pipeline.h"
 #include "xla/service/gpu/fusion_wrapper.h"
@@ -1053,6 +1054,17 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     });
     pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
 
+    // Greedy pattern matching for custom fusions. We run it before Triton
+    // rewriter or a regular Gemm rewriter to be able to match compatible GEMMs
+    // before they matched into Triton gemm or a cuBLAS custom call.
+    //
+    // TODO(ezhulenev): This should be plugged into the cost model and fusion
+    // heuristic, so we can mix and match various Gemm implementations based
+    // on projected (measured) performance.
+    if (debug_options.xla_gpu_enable_custom_fusions()) {
+      pipeline.AddPass<CustomFusionRewriter>();
+    }
+
     // Rewrite GEMMs into custom calls.
     se::GpuComputeCapability gpu_version =
         gpu_target_config.device_description.gpu_compute_capability();
@@ -1500,19 +1512,19 @@ StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileToTargetBinary(
       llvm_modules.size());
   tsl::BlockingCounter counter(llvm_modules.size());
   for (int i = 0; i < llvm_modules.size(); i++) {
-    thread_pool->Schedule(
-        [&compile_results, i, &llvm_modules, &counter, this, &module_config,
-         &gpu_version, &debug_module, &options] {
-          // Each thread has its own context to avoid race conditions.
-          llvm::LLVMContext new_context;
-          std::unique_ptr<llvm::Module> new_module =
-              CopyToContext(*llvm_modules.at(i), new_context);
-          compile_results.at(i) = CompileSingleModule(
-              module_config, gpu_version, debug_module, new_module.get(),
-              /*relocatable=*/true, options,
-              /*shard_number=*/i);
-          counter.DecrementCount();
-        });
+    thread_pool->Schedule([&compile_results, i, &llvm_modules, &counter, this,
+                           &module_config, &gpu_version, &debug_module,
+                           &options] {
+      // Each thread has its own context to avoid race conditions.
+      llvm::LLVMContext new_context;
+      std::unique_ptr<llvm::Module> new_module =
+          CopyToContext(*llvm_modules.at(i), new_context);
+      compile_results.at(i) = CompileSingleModule(
+          module_config, gpu_version, debug_module, new_module.get(),
+          /*relocatable=*/true, options,
+          /*shard_number=*/i);
+      counter.DecrementCount();
+    });
   }
   counter.Wait();
 
@@ -1770,7 +1782,6 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
     // TODO(ezhulenev): Unify AOT compilation with GpuRuntimeExecutable::Create
     // (see `gpu/runtime/executable.h`).
-
 
     // Options for the default XLA runtime compilation pipeline.
     runtime::CompilationPipelineOptions copts;

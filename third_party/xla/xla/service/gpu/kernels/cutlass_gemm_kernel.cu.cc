@@ -54,7 +54,9 @@ StatusOr<CustomKernel> GetCutlassGemmKernel(PrimitiveType dtype, int32_t m,
   size_t shared_memory_bytes = sizeof(typename GemmKernel::SharedStorage);
 
   // Packs device memory arguments into CUTLASS kernel parameters struct.
-  auto pack = [problem_size, tiled_shape](const se::KernelArgs &args) {
+  using PackedArgs = StatusOr<std::unique_ptr<se::KernelArgsPackedArrayBase>>;
+  auto pack = [problem_size,
+               tiled_shape](const se::KernelArgs &args) -> PackedArgs {
     auto *mem_args = Cast<se::KernelArgsDeviceMemoryArray>(&args);
 
     // Converts DeviceMemoryBase to an opaque `void *` device pointer.
@@ -70,6 +72,20 @@ StatusOr<CustomKernel> GetCutlassGemmKernel(PrimitiveType dtype, int32_t m,
     int32_t lda = problem_size.k();
     int32_t ldb = problem_size.n();
     int32_t ldc = problem_size.n();
+
+    // Check if GemmKernel can implement the given problem size.
+    cutlass::Status can_implement = GemmKernel::can_implement(
+        problem_size,          // problem size
+        {device_ptr(0), lda},  // Tensor-ref for source matrix A
+        {device_ptr(1), ldb},  // Tensor-ref for source matrix B
+        {device_ptr(2), ldc},  // Tensor-ref for source matrix C
+        {device_ptr(2), ldc}   // Tensor-ref for destination matrix D
+    );
+
+    if (can_implement != cutlass::Status::kSuccess) {
+      return absl::InternalError(
+          "CUTLASS GemmKernel can not implement gemm for a given problem size");
+    }
 
     // Sanity check that we do not accidentally get a giant parameters struct.
     static_assert(sizeof(GemmKernel::Params) < 512,

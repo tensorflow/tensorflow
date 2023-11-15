@@ -61,7 +61,8 @@ namespace xla::gpu {
 //
 class CustomFusionRewriter : public HloModulePass {
  public:
-  explicit CustomFusionRewriter(const CustomFusionPatternRegistry* patterns);
+  explicit CustomFusionRewriter(const CustomFusionPatternRegistry* patterns =
+                                    CustomFusionPatternRegistry::Default());
 
   absl::string_view name() const override { return "custom-fusion-rewriter"; }
 

@@ -23,6 +23,11 @@ limitations under the License.
 
 namespace xla::gpu {
 
+CustomFusionPatternRegistry* CustomFusionPatternRegistry::Default() {
+  static auto* registry = new CustomFusionPatternRegistry();
+  return registry;
+}
+
 std::vector<CustomFusionPattern::Match> CustomFusionPatternRegistry::Match(
     HloInstruction* instr) const {
   std::vector<CustomFusionPattern::Match> matches;

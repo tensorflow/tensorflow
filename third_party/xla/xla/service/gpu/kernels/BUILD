@@ -43,6 +43,7 @@ cc_library(
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:backend_configs_cc",
+        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
@@ -60,6 +61,16 @@ cc_library(
     ],
 )
 
+# Bundle all custom fusions into a single target, so we can link all fusions and patterns by adding
+# a single dependency.
+cc_library(
+    name = "custom_fusion_library",
+    visibility = ["//visibility:public"],
+    # copybara:uncomment_begin(google-only)
+    # deps = [":cutlass_gemm_fusion"],
+    # copybara:uncomment_end(google-only)
+)
+
 # copybara:uncomment_begin(google-only)
 # # TODO(ezhulenev): We currently do not have a CUTLASS dependency in open source BUILD.
 #
@@ -68,9 +79,12 @@ cc_library(
 #     srcs = ["cutlass_gemm_fusion.cc"],
 #     deps = [
 #         ":custom_fusion",
+#         ":custom_fusion_pattern",
 #         ":custom_kernel",
 #         ":cutlass_gemm_kernel",
 #         "@com_google_absl//absl/status",
+#         "//xla:shape_util",
+#         "//xla:status",
 #         "//xla:statusor",
 #         "//xla:xla_data_proto_cc",
 #         "//xla/hlo/ir:hlo",

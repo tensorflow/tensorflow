@@ -21,6 +21,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 
@@ -56,6 +57,10 @@ class CustomFusionPattern {
 
 class CustomFusionPatternRegistry {
  public:
+  // Returns a pointer to a default custom fusion pattern registry, which is a
+  // global static registry.
+  static CustomFusionPatternRegistry *Default();
+
   std::vector<CustomFusionPattern::Match> Match(HloInstruction *instr) const;
 
   void Add(std::unique_ptr<CustomFusionPattern> pattern);
@@ -70,5 +75,19 @@ class CustomFusionPatternRegistry {
 };
 
 }  // namespace xla::gpu
+
+#define XLA_REGISTER_CUSTOM_FUSION_PATTERN(PATTERN) \
+  XLA_REGISTER_CUSTOM_FUSION_PATTERN_(PATTERN, __COUNTER__)
+
+#define XLA_REGISTER_CUSTOM_FUSION_PATTERN_(PATTERN, N) \
+  XLA_REGISTER_CUSTOM_FUSION_PATTERN__(PATTERN, N)
+
+#define XLA_REGISTER_CUSTOM_FUSION_PATTERN__(PATTERN, N)   \
+  ABSL_ATTRIBUTE_UNUSED static const bool                  \
+      xla_custom_fusion_pattern_##N##_registered_ = [] {   \
+        ::xla::gpu::CustomFusionPatternRegistry::Default() \
+            ->Emplace<PATTERN>();                          \
+        return true;                                       \
+      }()
 
 #endif  // XLA_SERVICE_GPU_KERNELS_CUSTOM_FUSION_PATTERN_H_
