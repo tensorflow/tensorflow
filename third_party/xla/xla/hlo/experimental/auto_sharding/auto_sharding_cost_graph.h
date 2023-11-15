@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/matrix.h"
@@ -113,8 +114,8 @@ class CostGraph {
 
   Matrix CreateEdgeCost(NodeIdx src_idx, NodeIdx dst_idx, size_t in_node_idx,
                         StrategyVector* strategies, bool zero_cost = false) {
-    CHECK_GE(node_lens_.size(), src_idx);
-    CHECK_GE(node_lens_.size(), dst_idx);
+    CHECK_LT(src_idx, node_lens_.size());
+    CHECK_LT(dst_idx, node_lens_.size());
     Matrix edge_cost(node_lens_[src_idx], node_lens_[dst_idx]);
     for (NodeStrategyIdx k = 0; k < strategies->leaf_vector.size(); ++k) {
       const ShardingStrategy& strategy = strategies->leaf_vector[k];

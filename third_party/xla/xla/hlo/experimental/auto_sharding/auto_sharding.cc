@@ -1270,21 +1270,26 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
                            cluster_env.device_mesh_.num_elements())) {
       // Sharding provided by XLA users, we need to keep them.
       strategies->following = nullptr;
-      int32_t strategy_index = -1;
+      std::vector<int32_t> strategy_indices;
       for (size_t i = 0; i < strategies->leaf_vector.size(); i++) {
         if (strategies->leaf_vector[i].output_sharding == existing_sharding) {
-          strategy_index = i;
+          strategy_indices.push_back(i);
         }
       }
-      if (strategy_index >= 0) {
-        VLOG(1) << "Keeping strategy index: " << strategy_index;
+      if (!strategy_indices.empty()) {
+        VLOG(1) << "Keeping strategy indices: "
+                << spmd::ToString(strategy_indices);
         // Stores other strategies in the map, removes them in the vector and
         // only keeps the one we found.
-        ShardingStrategy found_strategy =
-            strategies->leaf_vector[strategy_index];
         pretrimmed_strategy_map[strategies->node_idx] = strategies->leaf_vector;
+        std::vector<ShardingStrategy> new_leaf_vector;
+        for (int32_t found_strategy_index : strategy_indices) {
+          ShardingStrategy found_strategy =
+              strategies->leaf_vector[found_strategy_index];
+          new_leaf_vector.push_back(found_strategy);
+        }
         strategies->leaf_vector.clear();
-        strategies->leaf_vector.push_back(found_strategy);
+        strategies->leaf_vector = new_leaf_vector;
       } else {
         VLOG(1) << "Generate a new strategy based on user sharding.";
         std::string name = ToStringSimple(existing_sharding);
@@ -1330,16 +1335,17 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
             ShardingStrategy({name, existing_sharding, 0, 0, memory_cost,
                               resharding_costs, input_shardings}));
       }
-      CHECK_EQ(strategies->leaf_vector.size(), 1);
       // If there is only one option for resharding, and the cost computed for
       // that option is kInfinityCost, set the cost to zero. This is okay
       // because there is only one option anyway, and having the costs set to
       // kInfinityCost is problematic for the solver.
-      for (auto& operand_resharding_costs :
-           strategies->leaf_vector[0].resharding_costs) {
-        if (operand_resharding_costs.size() == 1 &&
-            operand_resharding_costs[0] >= kInfinityCost) {
-          operand_resharding_costs[0] = 0;
+      if (strategies->leaf_vector.size() == 1) {
+        for (auto& operand_resharding_costs :
+             strategies->leaf_vector[0].resharding_costs) {
+          if (operand_resharding_costs.size() == 1 &&
+              operand_resharding_costs[0] >= kInfinityCost) {
+            operand_resharding_costs[0] = 0;
+          }
         }
       }
     } else if (!strategies->following) {
