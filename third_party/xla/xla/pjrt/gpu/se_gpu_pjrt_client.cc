@@ -721,8 +721,6 @@ GetStreamExecutorGpuDeviceAllocator(
     case GpuAllocatorConfig::Kind::kDefault:
     case GpuAllocatorConfig::Kind::kBFC: {
       LOG(INFO) << "Using BFC allocator.";
-      std::vector<se::StreamExecutor*> executors;
-      executors.reserve(addressable_devices.size());
       std::vector<se::MultiDeviceAdapter::AllocatorWithStream>
           allocators_and_streams;
       for (const auto& ordinal_and_device : addressable_devices) {
