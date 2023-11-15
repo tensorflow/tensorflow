@@ -18,6 +18,7 @@ limitations under the License.
 #include <atomic>
 #include <cstdint>
 #include <string_view>
+#include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -141,9 +142,12 @@ tsl::Status GpuCommandBuffer::Trace(
   return tsl::OkStatus();
 }
 
-absl::Span<GpuGraphNodeHandle> GpuCommandBuffer::GetDependencies() {
-  return nodes_.empty() ? absl::Span<GpuGraphNodeHandle>()
-                        : absl::Span<GpuGraphNodeHandle>(&nodes_.back(), 1);
+GpuCommandBuffer::Dependencies GpuCommandBuffer::GetDependencies() {
+  if (nodes_.empty()) {
+    return {};
+  }
+
+  return {nodes_.back()};
 }
 
 tsl::Status GpuCommandBuffer::CheckNotFinalized() {
@@ -178,11 +182,11 @@ tsl::Status GpuCommandBuffer::Launch(const ThreadDim& threads,
 
   // Adds a new kernel node to the graph under construction.
   if (state_ == State::kCreate) {
-    absl::Span<GpuGraphNodeHandle> deps = GetDependencies();
+    Dependencies deps = GetDependencies();
     GpuGraphNodeHandle* node = &nodes_.emplace_back();
     return GpuDriver::GraphAddKernelNode(
-        node, graph_, deps, kernel.name(), gpu_func, blocks.x, blocks.y,
-        blocks.z, threads.x, threads.y, threads.z,
+        node, graph_, absl::MakeSpan(deps), kernel.name(), gpu_func, blocks.x,
+        blocks.y, blocks.z, threads.x, threads.y, threads.z,
         args.number_of_shared_bytes(), kernel_params, /*extra=*/nullptr);
   }
 
@@ -206,9 +210,10 @@ tsl::Status GpuCommandBuffer::AddNestedCommandBuffer(
   GpuGraphHandle child_graph = GpuCommandBuffer::Cast(&nested)->graph();
   // Adds a child graph node to the graph under construction.
   if (state_ == State::kCreate) {
-    absl::Span<GpuGraphNodeHandle> deps = GetDependencies();
+    Dependencies deps = GetDependencies();
     GpuGraphNodeHandle* node = &nodes_.emplace_back();
-    return GpuDriver::GraphAddChildNode(node, graph_, deps, child_graph);
+    return GpuDriver::GraphAddChildNode(node, graph_, absl::MakeSpan(deps),
+                                        child_graph);
   }
 
   // Updates child graph node in the executable graph.
@@ -227,11 +232,11 @@ tsl::Status GpuCommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
 
   // Adds a new memcpy node to the graph under construction.
   if (state_ == State::kCreate) {
-    absl::Span<GpuGraphNodeHandle> deps = GetDependencies();
+    Dependencies deps = GetDependencies();
     GpuGraphNodeHandle* node = &nodes_.emplace_back();
-    return GpuDriver::GraphAddMemcpyD2DNode(parent_->gpu_context(), node,
-                                            graph_, deps, AsDevicePtr(*dst),
-                                            AsDevicePtr(src), size);
+    return GpuDriver::GraphAddMemcpyD2DNode(
+        parent_->gpu_context(), node, graph_, absl::MakeSpan(deps),
+        AsDevicePtr(*dst), AsDevicePtr(src), size);
   }
 
   return UnsupportedStateError(state_);
