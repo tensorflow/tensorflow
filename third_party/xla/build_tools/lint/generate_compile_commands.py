@@ -15,7 +15,7 @@
 r"""Produces a `compile_commands.json` from the output of `bazel aquery`.
 
 Example usage:
-  bazel aquery "mnemonic(CppCompile, //xla/...)" | \
+  bazel aquery "mnemonic(CppCompile, //xla/...)" --output=jsonproto | \
       python3 build_tools/lint/generate_compile_commands.py
 """
 import dataclasses
