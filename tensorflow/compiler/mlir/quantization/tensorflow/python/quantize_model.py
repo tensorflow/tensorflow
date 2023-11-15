@@ -1205,6 +1205,19 @@ def _populate_quantization_options_default_values(
         'Legacy weight-only is deprecated. Use weight-only quantization method.'
     )
 
+  # Converter assumes options are specified. So set SRQ explicitly.
+  if (
+      quantization_options.quantization_method.preset_method
+      == _PresetMethod.METHOD_UNSPECIFIED
+  ):
+    logging.debug(
+        '"preset_method" for QuantizationMethod is not specified.'
+        'Static range quantization is used by default.'
+    )
+    quantization_options.quantization_method.preset_method = (
+        _PresetMethod.METHOD_STATIC_RANGE_INT8
+    )
+
   # Check default quantization option values for weight-only quantization.
   # TODO(b/242805842): Find good minimum_elements_for_weights number for server.
   # please also update default value in tflite converter:
@@ -1264,19 +1277,6 @@ def _populate_quantization_options_default_values(
     raise ValueError(
         'StableHLO quantized opset currently only supports static range'
         ' quantization via TF Quantizer.'
-    )
-
-  # Converter assumes options are specified. So set SRQ explicitly.
-  if (
-      quantization_options.quantization_method.preset_method
-      == _PresetMethod.METHOD_UNSPECIFIED
-  ):
-    logging.debug(
-        '"preset_method" for QuantizationMethod is not specified.'
-        'Static range quantization is used by default.'
-    )
-    quantization_options.quantization_method.preset_method = (
-        _PresetMethod.METHOD_STATIC_RANGE_INT8
     )
 
   if quantization_options.HasField('debugger_options'):
