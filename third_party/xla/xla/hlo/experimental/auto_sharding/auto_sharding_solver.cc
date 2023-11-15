@@ -210,9 +210,12 @@ AutoShardingSolverResult CallORToolsSolver(
 #ifdef PLATFORM_GOOGLE
   if (solver->ProblemType() ==
       operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
-    // Set num_workers for parallelism.
-    solver_parameter_str = absl::StrCat("num_workers:", num_workers);
-    solver->SetSolverSpecificParametersAsString(solver_parameter_str);
+    // Set random_seed, interleave_search and share_binary_clauses for
+    // determinism, and num_workers for parallelism.
+    solver_parameter_str = absl::StrCat(
+        "share_binary_clauses:false,random_seed:1,interleave_"
+        "search:true,num_workers:",
+        num_workers);
   }
 #endif
   // Create variables
