@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
@@ -22,11 +24,14 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/concurrency:ref_count",
@@ -64,5 +69,36 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/python/ifrt",
+    ],
+)
+
+tf_cc_test(
+    name = "ifrt_serving_executable_test",
+    srcs = [
+        "ifrt_serving_executable_test.cc",
+    ],
+    data = [
+        "//tensorflow/core/tfrt/ifrt/testdata",
+    ],
+    tags = ["no_oss"],
+    deps = [
+        ":ifrt_serving_executable",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:resource_loader",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/python/ifrt:test_util",
+        "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
     ],
 )
