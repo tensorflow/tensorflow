@@ -882,8 +882,29 @@ float MemorySpaceAssignmentCostAnalysis::GetBytesAccessedFromAlternateMemory(
   return bytes_accessed_from_alternate_mem;
 }
 
+namespace {
+// Returns true on async instructions since we assume they are already
+// efficiently scheduled such that they are not in the critical path and appear
+// to take no time.
+bool ExcludeInstructionFromElapsed(const HloInstruction& instruction) {
+  return instruction.opcode() == HloOpcode::kAllGatherStart ||
+         instruction.opcode() == HloOpcode::kAllGatherDone ||
+         instruction.opcode() == HloOpcode::kAllReduceStart ||
+         instruction.opcode() == HloOpcode::kAllReduceDone ||
+         instruction.opcode() == HloOpcode::kAsyncStart ||
+         instruction.opcode() == HloOpcode::kAsyncDone ||
+         instruction.opcode() == HloOpcode::kCollectivePermuteStart ||
+         instruction.opcode() == HloOpcode::kCollectivePermuteDone ||
+         instruction.opcode() == HloOpcode::kCopyStart ||
+         instruction.opcode() == HloOpcode::kCopyDone;
+}
+}  // namespace
+
 float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToCompute(
     const HloInstruction& instruction) const {
+  if (ExcludeInstructionFromElapsed(instruction)) {
+    return 0.0f;
+  }
   return std::max(
       cost_analysis_.flop_count(instruction) /
           cost_analysis_.per_second_rate(HloCostAnalysis::kFlopsKey),
@@ -895,6 +916,9 @@ float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToMemory(
     const HloInstruction& instruction,
     absl::Span<const std::pair<int64_t, ShapeIndex>> operands_in_alternate_mem,
     absl::Span<const ShapeIndex> outputs_in_alternate_mem) const {
+  if (ExcludeInstructionFromElapsed(instruction)) {
+    return 0.0f;
+  }
   float total_bytes_accessed = cost_analysis_.bytes_accessed(instruction);
   float bytes_accessed_from_alternate_mem = GetBytesAccessedFromAlternateMemory(
       instruction, operands_in_alternate_mem, outputs_in_alternate_mem);
@@ -910,6 +934,9 @@ float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToMemory(
 float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToMemory(
     const HloInstruction& instruction,
     IsInAlternateMemoryFun is_in_alternate_mem) const {
+  if (ExcludeInstructionFromElapsed(instruction)) {
+    return 0.0f;
+  }
   float total_bytes_accessed = cost_analysis_.bytes_accessed(instruction);
   float bytes_accessed_from_alternate_mem = 0.0;
   for (int operand_num = 0; operand_num < instruction.operand_count();
@@ -948,6 +975,9 @@ float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToMemory(
 
 float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsed(
     const HloInstruction& instruction) const {
+  if (ExcludeInstructionFromElapsed(instruction)) {
+    return 0.0f;
+  }
   float overhead = GetDefaultMemoryAccessOverhead(instruction);
   return std::max(GetInstructionElapsedDueToCompute(instruction),
                   GetInstructionElapsedDueToMemory(instruction) + overhead);
@@ -957,6 +987,9 @@ float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedInAlternateMemory(
     const HloInstruction& instruction,
     absl::Span<const std::pair<int64_t, ShapeIndex>> operands_in_alternate_mem,
     absl::Span<const ShapeIndex> outputs_in_alternate_mem) const {
+  if (ExcludeInstructionFromElapsed(instruction)) {
+    return 0.0f;
+  }
   float overhead = GetDefaultMemoryAccessOverhead(
       instruction, operands_in_alternate_mem, outputs_in_alternate_mem);
   return std::max(
@@ -969,6 +1002,9 @@ float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedInAlternateMemory(
 float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedInAlternateMemory(
     const HloInstruction& instruction,
     IsInAlternateMemoryFun is_in_alternate_mem) const {
+  if (ExcludeInstructionFromElapsed(instruction)) {
+    return 0.0f;
+  }
   return std::max(
       GetInstructionElapsedDueToCompute(instruction),
       GetInstructionElapsedDueToMemory(instruction, is_in_alternate_mem));

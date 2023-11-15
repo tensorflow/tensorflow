@@ -7317,6 +7317,32 @@ ENTRY entry {
   AssignMemorySpaceUsingCostAnalysis(module.get(), options, cost_options);
 }
 
+TEST_P(MemorySpaceAssignmentTest, AsyncOpElapsedTime) {
+  // Test that async ops are treated to take no time. We assume async operations
+  // are efficiently scheduled. So, in this example, collective-permute-start
+  // should take zero time, which should be insufficient time to overlap a
+  // prefetch for negate1's operand.
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param0 = bf16[16]{0} parameter(0)
+  param1 = bf16[4]{0} parameter(1)
+  collective-permute-start = (bf16[16]{0}, bf16[16]{0}, u32[], u32[]) collective-permute-start(param0), source_target_pairs={{0,1},{1,2},{2,3}}
+  negate1 = bf16[4]{0} negate(param1)
+  collective-permute-done = bf16[16]{0} collective-permute-done(collective-permute-start)
+  ROOT negate2 = bf16[4]{0} negate(negate1)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AssignMemorySpaceUsingCostAnalysis(module.get());
+  EXPECT_THAT(FindInstruction(module.get(), "negate1")->operand(0),
+              op::Parameter(1));
+}
+
 INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
                          MemorySpaceAssignmentTest,
                          ::testing::Values(false, true));
