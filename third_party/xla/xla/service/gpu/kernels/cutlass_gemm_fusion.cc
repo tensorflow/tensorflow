@@ -150,7 +150,7 @@ CutlassGemmWithUpcastPattern::TryMatch(HloInstruction* instr) const {
 }
 
 //===----------------------------------------------------------------------===//
-// CutlassGemmFusion
+// Cutlass Gemm Fusions
 //===----------------------------------------------------------------------===//
 
 class CutlassGemmFusion : public CustomFusion {
@@ -180,7 +180,37 @@ class CutlassGemmFusion : public CustomFusion {
   }
 };
 
+class CutlassGemmWithUpcastFusion : public CustomFusion {
+ public:
+  StatusOr<std::vector<CustomKernel>> LoadKernels(
+      const HloComputation* computation) const final {
+    auto* dot = DynCast<HloDotInstruction>(computation->root_instruction());
+    if (dot == nullptr) {
+      return absl::InternalError(
+          "cutlass_gemm requires ROOT operation to be a dot");
+    }
+
+    TF_ASSIGN_OR_RETURN(auto matched, MatchGemmWithUpcast(dot));
+
+    // We only support upcasting of rhs operand.
+    if (matched.lhs_upcast != nullptr)
+      return absl::InternalError("only rhs upcasting is implemented");
+
+    auto dot_dtype = dot->shape().element_type();
+    auto upcast_dtype = matched.rhs_upcast->shape().element_type();
+
+    // We only support BF16 <- BF16 x S8 upcasted gemm.
+    if (dot_dtype != PrimitiveType::BF16 || upcast_dtype != PrimitiveType::S8)
+      return absl::InternalError("unsupported upcasting pattern");
+
+    return absl::UnimplementedError("requires CUTLASS 3.3.0");
+  }
+};
+
 }  // namespace xla::gpu
 
 XLA_REGISTER_CUSTOM_FUSION_PATTERN(::xla::gpu::CutlassGemmPattern);
+
 XLA_REGISTER_CUSTOM_FUSION("cutlass_gemm", ::xla::gpu::CutlassGemmFusion);
+XLA_REGISTER_CUSTOM_FUSION("cutlass_gemm_with_upcast",
+                           ::xla::gpu::CutlassGemmWithUpcastFusion);
