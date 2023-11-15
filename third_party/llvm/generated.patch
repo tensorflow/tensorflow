@@ -1,20 +1,101 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-@@ -1191,6 +1191,7 @@
-     name = "exp10f_impl",
-     hdrs = ["src/math/generic/exp10f_impl.h"],
-     deps = [
-+        ":__support_fputil_basic_operations",
-         ":__support_fputil_fma",
-         ":__support_fputil_multiply_add",
-         ":__support_fputil_nearest_integer",
-@@ -1206,6 +1207,7 @@
-     name = "exp2f_impl",
-     hdrs = ["src/math/generic/exp2f_impl.h"],
-     deps = [
-+        ":__support_fputil_except_value_utils",
-         ":__support_fputil_fma",
-         ":__support_fputil_multiply_add",
-         ":__support_fputil_nearest_integer",
+diff -ruN --strip-trailing-cr a/clang/test/Analysis/builtin_signbit.cpp b/clang/test/Analysis/builtin_signbit.cpp
+--- a/clang/test/Analysis/builtin_signbit.cpp
++++ b/clang/test/Analysis/builtin_signbit.cpp
+@@ -5,6 +5,7 @@
+ // RUN:   -O0 %s -o - | FileCheck %s --check-prefixes=CHECK-BE64
+ // RUN: %clang -target powerpc64le-linux-gnu -emit-llvm -S -mabi=ibmlongdouble \
+ // RUN:   -O0 %s -o - | FileCheck %s --check-prefixes=CHECK-LE
++// REQUIRES: asserts
+ 
+ bool b;
+ double d = -1.0;
+diff -ruN --strip-trailing-cr a/lldb/test/Shell/SymbolFile/DWARF/ignored_artificial_fields.test b/lldb/test/Shell/SymbolFile/DWARF/ignored_artificial_fields.test
+--- a/lldb/test/Shell/SymbolFile/DWARF/ignored_artificial_fields.test
++++ b/lldb/test/Shell/SymbolFile/DWARF/ignored_artificial_fields.test
+@@ -1,4 +1,5 @@
+ # UNSUPPORTED: system-darwin, system-windows
++# REQUIRES: gcc
+ 
+ # Make sure the artifical field `vptr.ClassName` from gcc debug info is ignored.
+ # RUN: %build --compiler=gcc %S/Inputs/debug-types-expressions.cpp -o %t
+diff -ruN --strip-trailing-cr a/llvm/lib/Support/CommandLine.cpp b/llvm/lib/Support/CommandLine.cpp
+--- a/llvm/lib/Support/CommandLine.cpp
++++ b/llvm/lib/Support/CommandLine.cpp
+@@ -1667,13 +1667,6 @@
+       Handler = LookupLongOption(*ChosenSubCommand, ArgName, Value,
+                                  LongOptionsUseDoubleDash, HaveDoubleDash);
+ 
+-      // If Handler is not found in a specialized subcommand, look up handler
+-      // in the top-level subcommand.
+-      // cl::opt without cl::sub belongs to top-level subcommand.
+-      if (!Handler && ChosenSubCommand != &SubCommand::getTopLevel())
+-        Handler = LookupLongOption(SubCommand::getTopLevel(), ArgName, Value,
+-                                   LongOptionsUseDoubleDash, HaveDoubleDash);
+-
+       // Check to see if this "option" is really a prefixed or grouped argument.
+       if (!Handler && !(LongOptionsUseDoubleDash && HaveDoubleDash))
+         Handler = HandlePrefixedOrGroupedOption(ArgName, Value, ErrorParsing,
+diff -ruN --strip-trailing-cr a/llvm/unittests/Support/CommandLineTest.cpp b/llvm/unittests/Support/CommandLineTest.cpp
+--- a/llvm/unittests/Support/CommandLineTest.cpp
++++ b/llvm/unittests/Support/CommandLineTest.cpp
+@@ -525,59 +525,6 @@
+   EXPECT_FALSE(Errs.empty());
+ }
+ 
+-TEST(CommandLineTest, TopLevelOptInSubcommand) {
+-  enum LiteralOptionEnum {
+-    foo,
+-    bar,
+-    baz,
+-  };
+-
+-  cl::ResetCommandLineParser();
+-
+-  // This is a top-level option and not associated with a subcommand.
+-  // A command line using subcommand should parse both subcommand options and
+-  // top-level options.  A valid use case is that users of llvm command line
+-  // tools should be able to specify top-level options defined in any library.
+-  cl::opt<std::string> TopLevelOpt("str", cl::init("txt"),
+-                                   cl::desc("A top-level option."));
+-
+-  StackSubCommand SC("sc", "Subcommand");
+-  StackOption<std::string> PositionalOpt(
+-      cl::Positional, cl::desc("positional argument test coverage"),
+-      cl::sub(SC));
+-  StackOption<LiteralOptionEnum> LiteralOpt(
+-      cl::desc("literal argument test coverage"), cl::sub(SC), cl::init(bar),
+-      cl::values(clEnumVal(foo, "foo"), clEnumVal(bar, "bar"),
+-                 clEnumVal(baz, "baz")));
+-  StackOption<bool> EnableOpt("enable", cl::sub(SC), cl::init(false));
+-  StackOption<int> ThresholdOpt("threshold", cl::sub(SC), cl::init(1));
+-
+-  const char *PositionalOptVal = "input-file";
+-  const char *args[] = {"prog",    "sc",        PositionalOptVal,
+-                        "-enable", "--str=csv", "--threshold=2"};
+-
+-  // cl::ParseCommandLineOptions returns true on success. Otherwise, it will
+-  // print the error message to stderr and exit in this setting (`Errs` ostream
+-  // is not set).
+-  ASSERT_TRUE(cl::ParseCommandLineOptions(sizeof(args) / sizeof(args[0]), args,
+-                                          StringRef()));
+-  EXPECT_STREQ(PositionalOpt.getValue().c_str(), PositionalOptVal);
+-  EXPECT_TRUE(EnableOpt);
+-  // Tests that the value of `str` option is `csv` as specified.
+-  EXPECT_STREQ(TopLevelOpt.getValue().c_str(), "csv");
+-  EXPECT_EQ(ThresholdOpt, 2);
+-
+-  for (auto &[LiteralOptVal, WantLiteralOpt] :
+-       {std::pair{"--bar", bar}, {"--foo", foo}, {"--baz", baz}}) {
+-    const char *args[] = {"prog", "sc", LiteralOptVal};
+-    ASSERT_TRUE(cl::ParseCommandLineOptions(sizeof(args) / sizeof(args[0]),
+-                                            args, StringRef()));
+-
+-    // Tests that literal options are parsed correctly.
+-    EXPECT_EQ(LiteralOpt, WantLiteralOpt);
+-  }
+-}
+-
+ TEST(CommandLineTest, AddToAllSubCommands) {
+   cl::ResetCommandLineParser();
+ 
