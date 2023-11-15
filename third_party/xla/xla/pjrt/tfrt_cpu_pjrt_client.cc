@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -57,6 +58,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/abstract_tfrt_cpu_buffer.h"
 #include "xla/pjrt/compile_options.pb.h"
+#include "xla/pjrt/distributed/topology_util.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -236,7 +238,11 @@ class TfrtCpuAsyncHostToDeviceTransferManager
 
 }  // namespace
 
-TfrtCpuDeviceDescription::TfrtCpuDeviceDescription(int id) : id_(id) {
+TfrtCpuDeviceDescription::TfrtCpuDeviceDescription(int id, int process_index,
+                                                   int local_hardware_id)
+    : id_(id),
+      process_index_(process_index),
+      local_hardware_id_(local_hardware_id) {
   debug_string_ = absl::StrCat("TFRT_CPU_", id);
   to_string_ = absl::StrCat("CpuDevice(id=", id, ")");
 }
@@ -253,8 +259,9 @@ absl::string_view TfrtCpuDeviceDescription::ToString() const {
   return to_string_;
 }
 
-TfrtCpuDevice::TfrtCpuDevice(int id, int max_inflight_computations)
-    : description_(id),
+TfrtCpuDevice::TfrtCpuDevice(int id, int process_index, int local_hardware_id,
+                             int max_inflight_computations)
+    : description_(id, process_index, local_hardware_id),
       max_inflight_computations_semaphore_(
           /*capacity=*/max_inflight_computations) {}
 
@@ -281,30 +288,47 @@ static int CpuDeviceCount() {
   return GetDebugOptionsFromFlags().xla_force_host_platform_device_count();
 }
 
-static StatusOr<std::vector<std::unique_ptr<TfrtCpuDevice>>> GetTfrtCpuDevices(
-    int cpu_device_count, int max_inflight_computations_per_device) {
-  std::vector<std::unique_ptr<TfrtCpuDevice>> devices;
-  for (int i = 0; i < cpu_device_count; ++i) {
-    auto device = std::make_unique<TfrtCpuDevice>(
-        /*id=*/i, max_inflight_computations_per_device);
-    devices.push_back(std::move(device));
-  }
-  return std::move(devices);
-}
-
 StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
     const CpuClientOptions& options) {
   // Need at least CpuDeviceCount threads to launch one collective.
   int cpu_device_count = options.cpu_device_count.value_or(CpuDeviceCount());
   size_t num_threads = std::max(DefaultThreadPoolSize(), cpu_device_count);
 
-  TF_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
-      GetTfrtCpuDevices(cpu_device_count,
-                        options.max_inflight_computations_per_device));
+  LocalTopologyProto local_topology;
+  local_topology.set_node_id(options.node_id);
+  std::string boot_id_str;
+  auto boot_id_str_or_status = GetBootIdString();
+  if (!boot_id_str_or_status.ok()) {
+    LOG(INFO) << boot_id_str_or_status.status();
+  } else {
+    boot_id_str = boot_id_str_or_status.value();
+  }
+  local_topology.set_boot_id(boot_id_str);
+  for (int i = 0; i < cpu_device_count; ++i) {
+    DeviceProto* device_proto = local_topology.add_devices();
+    device_proto->set_local_device_ordinal(i);
+    device_proto->set_name("cpu");
+  }
+
+  GlobalTopologyProto global_topology;
+  TF_RETURN_IF_ERROR(
+      ExchangeTopologies("cpu", options.node_id, options.num_nodes,
+                         absl::Minutes(2), absl::Minutes(5), options.kv_get,
+                         options.kv_put, local_topology, &global_topology));
+
+  std::vector<std::unique_ptr<TfrtCpuDevice>> devices;
+  for (const LocalTopologyProto& node : global_topology.nodes()) {
+    for (const DeviceProto& device_proto : node.devices()) {
+      auto device = std::make_unique<TfrtCpuDevice>(
+          /*id=*/device_proto.global_device_id(), node.node_id(),
+          device_proto.local_device_ordinal(),
+          options.max_inflight_computations_per_device);
+      devices.push_back(std::move(device));
+    }
+  }
 
   return std::unique_ptr<PjRtClient>(std::make_unique<TfrtCpuClient>(
-      /*process_index=*/0, std::move(devices), num_threads));
+      /*process_index=*/options.node_id, std::move(devices), num_threads));
 }
 
 TfrtCpuClient::TfrtCpuClient(
@@ -613,6 +637,25 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
       },
       &num_replicas, &num_partitions, &device_assignment));
 
+  // TODO(phawkins): cross-process computations aren't implemented yet. Check
+  // for these and error.
+  if (device_assignment) {
+    for (int replica = 0; replica < device_assignment->replica_count();
+         ++replica) {
+      for (int computation = 0;
+           computation < device_assignment->computation_count();
+           ++computation) {
+        int id = (*device_assignment)(replica, computation);
+        TF_ASSIGN_OR_RETURN(auto* device, LookupDevice(id));
+        if (device->process_index() != process_index()) {
+          return InvalidArgument(
+              "Multiprocess computations aren't implemented on the CPU "
+              "backend.");
+        }
+      }
+    }
+  }
+
   std::vector<const Shape*> argument_layout_pointers;
   TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
       computation, &LayoutUtil::GetWithDefaultLayout, options.argument_layouts,
@@ -762,6 +805,10 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
   VLOG(2) << "TfrtCpuClient::BufferFromHostBuffer: shape: " << shape.ToString()
           << " device: " << device->DebugString();
 
+  if (!device->IsAddressable()) {
+    return InvalidArgument("Cannot copy array to non-addressable device %s",
+                           device->DebugString());
+  }
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer,
       AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
@@ -831,6 +878,11 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
   // Copying across PjRtClients involves a copy through the host.
   if (dst_device->client() != client_) {
     return CopyToDeviceAcrossClients(dst_device);
+  }
+
+  if (!dst_device->IsAddressable()) {
+    return InvalidArgument("Cannot copy array to non-addressable device %s",
+                           dst_device->DebugString());
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -1179,7 +1231,7 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
   ExecutableRunOptions run_options;
   run_options.set_run_id(run_id);
-  run_options.set_device_ordinal(device->local_hardware_id());
+  run_options.set_device_ordinal(device->id());
   // Need to keep device_assignment alive until execution completes.
   run_options.set_device_assignment(device_assignment.get());
   run_options.set_intra_op_thread_pool(client_->eigen_intraop_device());
