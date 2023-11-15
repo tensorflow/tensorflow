@@ -15,14 +15,17 @@ limitations under the License.
 
 #include "xla/service/gpu/custom_fusion_rewriter.h"
 
+#include <cstdint>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -37,42 +40,86 @@ CustomFusionRewriter::CustomFusionRewriter(
     const CustomFusionPatternRegistry* patterns)
     : patterns_(patterns) {}
 
-// Creates custom fusion computation and moves all matched instructions into it.
-static StatusOr<HloComputation*> CreateFusionBody(
-    HloModule* module, const CustomFusionPattern::Match& match) {
-  HloComputation::Builder builder(match.config.name());
+// Returns instructions that have to become custom fusion parameters. Returns an
+// error if matched pattern can't be outlined as a fusion.
+static StatusOr<absl::InlinedVector<HloInstruction*, 4>> GetPatternCaptures(
+    const CustomFusionPattern::Match& match) {
+  HloInstruction* root = match.instructions.back();
+  absl::InlinedVector<HloInstruction*, 4> captures;
 
-  // We do not currently support matching custom fusions with more than one
-  // instruction.
-  HloInstruction* root = match.instructions[0];
+  // Instruction that will go into the fusion body.
+  absl::flat_hash_set<HloInstruction*> instructions_set(
+      match.instructions.begin(), match.instructions.end());
 
-  // Fusion computation parameters inferred from a matched instruction.
-  absl::InlinedVector<HloInstruction*, 4> parameters;
-  for (HloInstruction* operand : root->operands()) {
-    parameters.push_back(builder.AddInstruction(
-        HloInstruction::CreateParameter(parameters.size(), operand->shape(),
-                                        absl::StrCat("p", parameters.size()))));
+  // Check that intermediate instructions do not have users outside of the
+  // matched pattern. Only root instruction can have external users.
+  for (HloInstruction* instr : match.instructions) {
+    for (HloInstruction* user : instr->users()) {
+      if (instr != root && !instructions_set.contains(user)) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Custom fusion intermediate result ", instr->name(),
+            " has users outside of a matched pattern: ", user->name()));
+      }
+    }
   }
 
-  builder.AddInstruction(root->CloneWithNewOperands(root->shape(), parameters));
+  // Collect instructions captured by a matched pattern.
+  for (HloInstruction* instr : match.instructions) {
+    for (HloInstruction* operand : instr->operands()) {
+      if (!instructions_set.contains(operand)) captures.push_back(operand);
+    }
+  }
+
+  return captures;
+}
+
+// Creates custom fusion computation and moves all matched instructions into it.
+static StatusOr<HloComputation*> CreateFusionBody(
+    HloModule* module, const CustomFusionPattern::Match& match,
+    absl::Span<HloInstruction* const> captures) {
+  HloComputation::Builder builder(match.config.name());
+
+  // A mapping from original instructions to instructions in the fusion body.
+  absl::flat_hash_map<const HloInstruction*, HloInstruction*> instr_mapping;
+
+  auto mapped_operands = [&](HloInstruction* instr) {
+    absl::InlinedVector<HloInstruction*, 4> operands;
+    for (HloInstruction* operand : instr->operands()) {
+      operands.push_back(instr_mapping.at(operand));
+    }
+    return operands;
+  };
+
+  // For every parameter create a parameter instruction in the computation body
+  // and set up instruction mapping.
+  for (const HloInstruction* capture : captures) {
+    int64_t index = instr_mapping.size();
+    instr_mapping[capture] =
+        builder.AddInstruction(HloInstruction::CreateParameter(
+            index, capture->shape(), absl::StrCat("p", index)));
+  }
+
+  // TODO(ezhulenev): Instructions in the pattern must be topologically sorted,
+  // otherwise we'll get a crash! Figure out how to do it!
+  for (HloInstruction* instr : match.instructions) {
+    instr_mapping[instr] = builder.AddInstruction(
+        instr->CloneWithNewOperands(instr->shape(), mapped_operands(instr)));
+  }
 
   return module->AddComputationAndUnifyNamesAndIds(builder.Build(), false);
 }
 
 static StatusOr<HloInstruction*> CreateFusionInstruction(
     HloModule* module, const CustomFusionPattern::Match& match,
-    HloComputation* body) {
+    absl::Span<HloInstruction* const> captures, HloComputation* body) {
   // We'll be replacing the root operation of a custom fusion with a fusion
   // instruction calling fusion computation.
-  HloInstruction* fusion_root = match.instructions[0];
-  HloComputation* fusion_parent = fusion_root->parent();
+  HloInstruction* root = match.instructions.back();
+  HloComputation* parent = root->parent();
 
-  HloInstruction* fusion =
-      fusion_parent->AddInstruction(HloInstruction::CreateFusion(
-          fusion_root->shape(), HloInstruction::FusionKind::kCustom,
-          fusion_root->operands(), body));
-
-  // Assign unique name to a new fusion instruction.
+  // Add a fusion operation calling outlined fusion computation.
+  HloInstruction* fusion = parent->AddInstruction(HloInstruction::CreateFusion(
+      root->shape(), HloInstruction::FusionKind::kCustom, captures, body));
   module->SetAndUniquifyInstrName(fusion, match.config.name());
 
   // Set backends config to a matched custom fusion config.
@@ -81,9 +128,7 @@ static StatusOr<HloInstruction*> CreateFusionInstruction(
   *backend_config.mutable_custom_fusion_config() = match.config;
   TF_RETURN_IF_ERROR(fusion->set_backend_config(std::move(backend_config)));
 
-  // Replace fusion root with a fusion instruction.
-  TF_RETURN_IF_ERROR(fusion_parent->ReplaceInstruction(fusion_root, fusion));
-
+  TF_RETURN_IF_ERROR(parent->ReplaceInstruction(root, fusion));
   return fusion;
 }
 
@@ -103,17 +148,23 @@ StatusOr<bool> CustomFusionRewriter::Run(
   if (matches.empty()) return false;
 
   for (const CustomFusionPattern::Match& match : matches) {
-    if (match.instructions.size() != 1)
-      return absl::InternalError(
-          "Custom fusions with multiple instruction are not yet supported");
+    // Check if pattern can be outlined as a fusion and collect captured
+    // parameters (instructions defined outside of a fusion).
+    auto captures = GetPatternCaptures(match);
+    if (!captures.ok()) {
+      VLOG(2) << "Skip custom fusion " << match.config.name() << ": "
+              << captures.status();
+      continue;
+    }
 
     TF_ASSIGN_OR_RETURN(HloComputation * fusion_body,
-                        CreateFusionBody(module, match));
+                        CreateFusionBody(module, match, *captures));
 
-    TF_ASSIGN_OR_RETURN(HloInstruction * fusion,
-                        CreateFusionInstruction(module, match, fusion_body));
+    TF_ASSIGN_OR_RETURN(
+        HloInstruction * fusion,
+        CreateFusionInstruction(module, match, *captures, fusion_body));
 
-    VLOG(5) << "Added a fusion instruction: " << fusion->name()
+    VLOG(2) << "Added a fusion instruction: " << fusion->name()
             << " for custom fusion " << match.config.name()
             << " (instruction count = " << match.instructions.size() << ")";
   }

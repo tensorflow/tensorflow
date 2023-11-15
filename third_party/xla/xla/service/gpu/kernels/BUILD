@@ -77,6 +77,7 @@ cc_library(
 # cc_library(
 #     name = "cutlass_gemm_fusion",
 #     srcs = ["cutlass_gemm_fusion.cc"],
+#     hdrs = ["cutlass_gemm_fusion.h"],
 #     deps = [
 #         ":custom_fusion",
 #         ":custom_fusion_pattern",
@@ -88,6 +89,7 @@ cc_library(
 #         "//xla:statusor",
 #         "//xla:xla_data_proto_cc",
 #         "//xla/hlo/ir:hlo",
+#         "//xla/service:pattern_matcher",
 #         "@local_tsl//tsl/platform:errors",
 #         "@local_tsl//tsl/platform:logging",
 #         "@local_tsl//tsl/platform:statusor",
@@ -100,10 +102,12 @@ cc_library(
 #     srcs = ["cutlass_gemm_fusion_test.cc"],
 #     backends = ["gpu"],
 #     deps = [
+#         ":custom_fusion_pattern",
 #         ":cutlass_gemm_fusion",
 #         "@com_google_absl//absl/strings",
 #         "//xla:debug_options_flags",
 #         "//xla:error_spec",
+#         "//xla/service/gpu:custom_fusion_rewriter",
 #         "//xla/tests:hlo_test_base",
 #         "@local_tsl//tsl/platform:test",
 #         "@local_tsl//tsl/platform:test_main",
