@@ -16,6 +16,7 @@ from typing import Any
 
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
+from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as rd
 
 # LINT.IfChange(quantize_qat_model)
 def quantize_qat_model(
@@ -67,6 +68,7 @@ def quantize_ptq_model_pre_calibration(
     signature_def_map_serialized: dict[str, bytes],
     function_aliases: dict[str, str],
     py_function_library: py_function_lib.PyFunctionLibrary,
+    representative_dataset: rd.RepresentativeDatasetOrMapping,
 ) -> tuple[bytes, str]: ...
 
 # LINT.ThenChange()

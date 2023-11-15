@@ -20,7 +20,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow::quantization {
@@ -69,6 +71,27 @@ class PyFunctionLibrary {
   // LINT.ThenChange(
   //     pywrap_function_lib.pyi:save_exported_model,
   //     py_function_lib.py:save_exported_model,
+  // )
+
+  // Runs calibration on a model saved at `saved_model_path`. `exported_model`
+  // should be the corresponding exported model resulting from the
+  // pre-calibration step. `representative_dataset` is a python object of type
+  // `RepresentativeDatasetOrMapping`, which is used to run the calibration.
+  //
+  // Returns the updated exported model where the collected calibration
+  // statistics are added to `CustomAggregator` nodes at the `min` and `max`
+  // attributes.
+  //
+  // If the function signature changes, likely its corresponding .pyi type
+  // hinting and definition should also change.
+  // LINT.IfChange
+  virtual ExportedModel RunCalibration(
+      absl::string_view saved_model_path, const ExportedModel& exported_model,
+      const QuantizationOptions& quantization_options,
+      pybind11::object representative_dataset) const = 0;
+  // LINT.ThenChange(
+  //     pywrap_function_lib.pyi:run_calibration,
+  //     py_function_lib.py:run_calibration,
   // )
 };
 

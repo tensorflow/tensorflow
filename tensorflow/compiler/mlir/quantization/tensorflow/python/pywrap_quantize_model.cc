@@ -230,7 +230,8 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const absl::flat_hash_map<std::string, SignatureDef>&
              signature_def_map,
          const absl::flat_hash_map<std::string, std::string>& function_aliases,
-         const PyFunctionLibrary& py_function_library)
+         const PyFunctionLibrary& py_function_library,
+         py::object representative_dataset)
           -> absl::StatusOr<std::pair<ExportedModel, std::string>> {
         // LINT.ThenChange(pywrap_quantize_model.pyi:quantize_ptq_model_pre_calibration)
         std::unordered_set<std::string> tags;
@@ -252,7 +253,12 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
             precalibrated_saved_model_dir, exported_model_ids_assigned,
             saved_model_path, tags, signature_def_map);
 
-        return std::make_pair(exported_model_ids_assigned,
+        const ExportedModel calibrated_exported_model =
+            py_function_library.RunCalibration(
+                precalibrated_saved_model_dir, exported_model_ids_assigned,
+                quantization_options, representative_dataset);
+
+        return std::make_pair(calibrated_exported_model,
                               precalibrated_saved_model_dir);
       },
       R"pbdoc(
@@ -273,7 +279,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       py::arg("saved_model_path"), py::arg("quantization_options_serialized"),
       py::kw_only(), py::arg("signature_keys"),
       py::arg("signature_def_map_serialized"), py::arg("function_aliases"),
-      py::arg("py_function_library"));
+      py::arg("py_function_library"), py::arg("representative_dataset"));
 
   m.def(
       // If the function signature changes, likely its corresponding .pyi type

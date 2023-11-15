@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+from typing import Any
+
 class PyFunctionLibrary:
 
   # LINT.IfChange(assign_ids_to_custom_aggregator_ops)
@@ -29,4 +31,14 @@ class PyFunctionLibrary:
       tags: set[str],
       serialized_signature_def_map: dict[str, bytes],
   ) -> None: ...
+  # LINT.ThenChange()
+
+  # LINT.IfChange(run_calibration)
+  def run_calibration(
+      self,
+      saved_model_path: str,
+      exported_model_serialized: bytes,
+      quantization_options_serialized: bytes,
+      representative_dataset: Any,
+  ) -> bytes: ...
   # LINT.ThenChange()

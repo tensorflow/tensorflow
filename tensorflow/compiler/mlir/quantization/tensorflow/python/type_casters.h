@@ -91,14 +91,15 @@ struct type_caster<tensorflow::quantization::ExportedModel> {
   }
 };
 
-// Python -> cpp conversion for `QuantizationOptions`. Accepts a serialized
-// protobuf string and deserializes into an instance of `QuantizationOptions`.
+// Handles type conversion for `QuantizationOptions`.
 template <>
 struct type_caster<tensorflow::quantization::QuantizationOptions> {
  public:
   PYBIND11_TYPE_CASTER(tensorflow::quantization::QuantizationOptions,
                        const_name("QuantizationOptions"));
 
+  // Python -> C++. Converts a serialized protobuf string and deserializes into
+  // an instance of `QuantizationOptions`.
   bool load(handle src, const bool convert) {
     auto caster = make_caster<absl::string_view>();
     // The user should have passed a valid python string.
@@ -111,6 +112,14 @@ struct type_caster<tensorflow::quantization::QuantizationOptions> {
 
     // NOLINTNEXTLINE: Explicit std::string conversion required for OSS.
     return value.ParseFromString(std::string(quantization_opts_serialized));
+  }
+
+  // C++ -> Python. Constructs a `bytes` object after serializing `src`.
+  static handle cast(const tensorflow::quantization::QuantizationOptions& src,
+                     return_value_policy policy, handle parent) {
+    // release() prevents the reference count from decreasing upon the
+    // destruction of py::bytes and returns a raw python object handle.
+    return py::bytes(internal::Serialize(src)).release();
   }
 };
 
