@@ -2027,10 +2027,11 @@ def random_brightness(image, max_delta, seed=None):
   with `tf.image.random_*` ops, `tf.image.stateless_random_*` ops guarantee the
   same results given the same seed independent of how many times the function is
   called, and independent of global seed settings (e.g. tf.random.set_seed).
+  
 
   Args:
     image: An image or images to adjust.
-    max_delta: float, must be non-negative.
+    max_delta: float, must be non-negative. The max_delta parameter controls the maximum relative change in brightness. This means that the actual change in brightness will depend on the range of values in the input image.
     seed: A Python integer. Used to create a random seed. See
       `tf.compat.v1.set_random_seed` for behavior.
 
