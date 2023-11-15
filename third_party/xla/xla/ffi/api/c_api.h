@@ -117,6 +117,16 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Error_Create_Args, errc);
 
 typedef XLA_FFI_Error* XLA_FFI_Error_Create(XLA_FFI_Error_Create_Args* args);
 
+struct XLA_FFI_Error_Destroy_Args {
+  size_t struct_size;
+  void* priv;
+  XLA_FFI_Error* error;
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Error_Destroy_Args, error);
+
+typedef void XLA_FFI_Error_Destroy(XLA_FFI_Error_Destroy_Args* args);
+
 //===----------------------------------------------------------------------===//
 // Builtin argument types
 //===----------------------------------------------------------------------===//
@@ -229,6 +239,24 @@ typedef XLA_FFI_Error* XLA_FFI_Handler_Register(
     XLA_FFI_Handler_Register_Args* args);
 
 //===----------------------------------------------------------------------===//
+// Stream
+//===----------------------------------------------------------------------===//
+
+struct XLA_FFI_Stream_Get_Args {
+  size_t struct_size;
+  void* priv;
+
+  XLA_FFI_ExecutionContext* ctx;
+  void* stream;  // out
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Stream_Get_Args, stream);
+
+// Returns an underling platform-specific stream via out argument, i.e. for CUDA
+// platform it returns `CUstream` (same as `cudaStream`).
+typedef XLA_FFI_Error* XLA_FFI_Stream_Get(XLA_FFI_Stream_Get_Args* args);
+
+//===----------------------------------------------------------------------===//
 // API access
 //===----------------------------------------------------------------------===//
 
@@ -241,7 +269,9 @@ struct XLA_FFI_Api {
   XLA_FFI_InternalApi* internal_api;
 
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_Create);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_Destroy);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Handler_Register);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Stream_Get);
 };
 
 #undef _XLA_FFI_API_STRUCT_FIELD

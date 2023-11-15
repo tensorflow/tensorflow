@@ -173,6 +173,16 @@ static XLA_FFI_Error* XLA_FFI_Error_Create(XLA_FFI_Error_Create_Args* args) {
   return new XLA_FFI_Error{Status(ToStatusCode(args->errc), args->message)};
 }
 
+static void XLA_FFI_Error_Destroy(XLA_FFI_Error_Destroy_Args* args) {
+  Status struct_size_check = ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_Error_Destroy", XLA_FFI_Error_Destroy_Args_STRUCT_SIZE,
+      args->struct_size);
+  if (!struct_size_check.ok()) {
+    LOG(ERROR) << struct_size_check.message();
+  }
+  delete args->error;
+}
+
 static XLA_FFI_Error* XLA_FFI_Handler_Register(
     XLA_FFI_Handler_Register_Args* args) {
   XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -182,6 +192,17 @@ static XLA_FFI_Error* XLA_FFI_Handler_Register(
   if (auto status = RegisterHandler(args->name, args->handler); !status.ok()) {
     return new XLA_FFI_Error{std::move(status)};
   }
+  return nullptr;
+}
+
+static XLA_FFI_Error* XLA_FFI_Stream_Get(XLA_FFI_Stream_Get_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_Stream_Get", XLA_FFI_Stream_Get_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  auto handle = args->ctx->run_options->stream()->platform_specific_handle();
+  args->stream = handle.stream;
+
   return nullptr;
 }
 
@@ -214,7 +235,9 @@ static XLA_FFI_Api api = {
     &internal_api,
 
     XLA_FFI_Error_Create,      // creates error
+    XLA_FFI_Error_Destroy,     // frees error
     XLA_FFI_Handler_Register,  // registers handler
+    XLA_FFI_Stream_Get,        // returns platform specific stream
 };
 
 XLA_FFI_Api* GetXlaFfiApi() { return &api; }
