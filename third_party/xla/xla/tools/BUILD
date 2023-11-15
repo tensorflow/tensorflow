@@ -282,6 +282,14 @@ xla_cc_binary(
     ],
 )
 
+xla_cc_binary(
+    name = "hlo-opt",
+    testonly = True,
+    deps = [
+        "//xla/tools/hlo_opt:opt_main",
+    ],
+)
+
 cc_library(
     name = "hlo_expand_main",
     srcs = ["hlo_expand_main.cc"],
