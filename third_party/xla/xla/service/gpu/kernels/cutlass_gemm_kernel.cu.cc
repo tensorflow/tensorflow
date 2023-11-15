@@ -99,8 +99,8 @@ StatusOr<CustomKernel> GetCutlassGemmKernel(PrimitiveType dtype, int32_t m,
   kernel_spec.AddInProcessSymbol(
       reinterpret_cast<void *>(cutlass::Kernel<GemmKernel>), "cutlass_gemm");
 
-  return CustomKernel(std::move(kernel_spec), block_dims, thread_dims,
-                      shared_memory_bytes);
+  return CustomKernel("cutlass_gemm:f32<-f32xf32", std::move(kernel_spec),
+                      block_dims, thread_dims, shared_memory_bytes);
 }
 
 }  // namespace xla::gpu::kernel

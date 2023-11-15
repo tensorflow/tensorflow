@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_KERNELS_CUSTOM_KERNEL_H_
 
 #include <cstddef>
+#include <string>
 
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -42,8 +43,9 @@ namespace se = ::stream_executor;  // NOLINT
 // define if it has to be zeroed first.
 class CustomKernel {
  public:
-  CustomKernel(se::MultiKernelLoaderSpec kernel_spec, se::BlockDim block_dims,
-               se::ThreadDim thread_dims, size_t shared_memory_bytes);
+  CustomKernel(std::string name, se::MultiKernelLoaderSpec kernel_spec,
+               se::BlockDim block_dims, se::ThreadDim thread_dims,
+               size_t shared_memory_bytes);
 
   const se::MultiKernelLoaderSpec& kernel_spec() const;
 
@@ -53,7 +55,10 @@ class CustomKernel {
 
   size_t shared_memory_bytes() const;
 
+  std::string ToString() const;
+
  private:
+  std::string name_;
   se::MultiKernelLoaderSpec kernel_spec_;
   se::BlockDim block_dims_;
   se::ThreadDim thread_dims_;

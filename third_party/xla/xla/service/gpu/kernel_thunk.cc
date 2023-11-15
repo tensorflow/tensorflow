@@ -188,10 +188,7 @@ CustomKernelThunk::CustomKernelThunk(
 }
 
 std::string CustomKernelThunk::ToStringExtra(int indent) const {
-  // TODO(ezhulenev): Add `name` to a custom kernel and add pretty printing for
-  // custom kernel launch dimensions.
-  return absl::StrFormat(", kernel = %s, launch dimensions = %s", "<unknown>",
-                         "<unknown>");
+  return custom_kernel_.ToString();
 }
 
 Status CustomKernelThunk::Initialize(se::StreamExecutor* executor,
@@ -217,7 +214,8 @@ Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
     return kernel_cache_[executor].get();
   }();
 
-  VLOG(3) << "Launching " << kernel->name();
+  VLOG(3) << "Launching " << custom_kernel_.ToString() << " as device kernel "
+          << kernel->name();
 
   absl::InlinedVector<se::DeviceMemoryBase, 4> buffer_args;
   for (const BufferAllocation::Slice& arg : args_) {

@@ -152,9 +152,6 @@ class CustomKernelThunk : public Thunk {
   // args_[i] is written iff (written_[i] == true).
   std::vector<bool> written_;
 
-  // mlir::Value(s) corresponding to the buffer slice arguments.
-  std::vector<mlir::Value> values_;
-
   CustomKernel custom_kernel_;
 
   // Loaded kernels for each `StreamExecutor`.

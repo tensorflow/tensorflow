@@ -16,17 +16,21 @@ limitations under the License.
 #include "xla/service/gpu/kernels/custom_kernel.h"
 
 #include <cstddef>
+#include <string>
 #include <utility>
 
+#include "absl/strings/str_format.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 
 namespace xla::gpu {
 
-CustomKernel::CustomKernel(se::MultiKernelLoaderSpec kernel_spec,
+CustomKernel::CustomKernel(std::string name,
+                           se::MultiKernelLoaderSpec kernel_spec,
                            se::BlockDim block_dims, se::ThreadDim thread_dims,
                            size_t shared_memory_bytes)
-    : kernel_spec_(std::move(kernel_spec)),
+    : name_(std::move(name)),
+      kernel_spec_(std::move(kernel_spec)),
       block_dims_(block_dims),
       thread_dims_(thread_dims),
 
@@ -42,6 +46,13 @@ se::ThreadDim CustomKernel::thread_dims() const { return thread_dims_; }
 
 size_t CustomKernel::shared_memory_bytes() const {
   return shared_memory_bytes_;
+}
+
+std::string CustomKernel::ToString() const {
+  return absl::StrFormat(
+      "%s grid: [%d, %d, %d] threads: [%d, %d, %d] shared_memory: %d bytes",
+      name_, block_dims_.x, block_dims_.y, block_dims_.z, thread_dims_.x,
+      thread_dims_.y, thread_dims_.z, shared_memory_bytes_);
 }
 
 }  // namespace xla::gpu
