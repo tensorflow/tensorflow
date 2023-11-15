@@ -20,14 +20,17 @@ limitations under the License.
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {
 
 // Function wrapper around the (non-horizontal) XLA GPU fusion pipeline.
+// Thread pool may be nullptr.
 HloPassPipeline FusionPipeline(
     const DebugOptions& debug_options,
     HloCostAnalysis::ShapeSizeFunction shape_size_bytes_function,
+    tsl::thread::ThreadPool* thread_pool,
     const se::DeviceDescription& gpu_device_info);
 
 // Function wrapper around the horizontal XLA GPU fusion pipeline.

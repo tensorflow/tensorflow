@@ -835,10 +835,10 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
   const se::DeviceDescription& gpu_device_info =
       gpu_target_config.device_description;
 
-  TF_RETURN_IF_ERROR(
-      FusionPipeline(debug_options, ShapeSizeBytesFunction(), gpu_device_info)
-          .Run(hlo_module)
-          .status());
+  TF_RETURN_IF_ERROR(FusionPipeline(debug_options, ShapeSizeBytesFunction(),
+                                    thread_pool, gpu_device_info)
+                         .Run(hlo_module)
+                         .status());
 
   if (debug_options.xla_gpu_collect_cost_model_stats()) {
     GpuHloCostAnalysis::Options cost_analysis_options{
