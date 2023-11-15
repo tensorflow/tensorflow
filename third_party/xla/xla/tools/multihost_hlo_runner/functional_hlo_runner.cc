@@ -273,15 +273,15 @@ StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateGpuClient(
 
   xla::PjRtClient::KeyValueGetCallback kv_get =
       [distributed_client](
-          const std::string& k,
+          std::string_view k,
           absl::Duration timeout) -> xla::StatusOr<std::string> {
     return distributed_client->BlockingKeyValueGet(absl::StrCat(kKeyPrefix, k),
                                                    timeout);
   };
 
   xla::PjRtClient::KeyValuePutCallback kv_put =
-      [distributed_client](const std::string& k,
-                           const std::string& v) -> xla::Status {
+      [distributed_client](std::string_view k,
+                           std::string_view v) -> xla::Status {
     return distributed_client->KeyValueSet(absl::StrCat(kKeyPrefix, k), v);
   };
 

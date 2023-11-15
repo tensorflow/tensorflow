@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <string>
+#include <string_view>
 #include <thread>  // NOLINT(build/c++11)
 #include <utility>
 #include <variant>
@@ -157,7 +158,7 @@ TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
 std::unique_ptr<::pjrt::PJRT_KeyValueCallbackData> CreateTestCKVCallback(
     absl::flat_hash_map<std::string, std::string>* kv_store, absl::Mutex& mu) {
   xla::PjRtClient::KeyValueGetCallback kv_get =
-      [kv_store, &mu](const std::string& k,
+      [kv_store, &mu](std::string_view k,
                       absl::Duration timeout) -> xla::StatusOr<std::string> {
     absl::Duration wait_interval = absl::Milliseconds(10);
     int num_retry = timeout / wait_interval;
@@ -175,8 +176,7 @@ std::unique_ptr<::pjrt::PJRT_KeyValueCallbackData> CreateTestCKVCallback(
         absl::StrCat(k, " is not found in the kv store."));
   };
   xla::PjRtClient::KeyValuePutCallback kv_put =
-      [kv_store, &mu](const std::string& k,
-                      const std::string& v) -> xla::Status {
+      [kv_store, &mu](std::string_view k, std::string_view v) -> xla::Status {
     {
       absl::MutexLock lock(&mu);
       kv_store->insert(std::pair<std::string, std::string>(k, v));

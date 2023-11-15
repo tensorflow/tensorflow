@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -135,7 +136,7 @@ TEST(PjRtCApiHelperTest, Callback) {
   absl::flat_hash_map<std::string, std::string> kv_store;
   absl::Mutex mu;
   xla::PjRtClient::KeyValueGetCallback kv_get =
-      [&kv_store, &mu](const std::string& k,
+      [&kv_store, &mu](std::string_view k,
                        absl::Duration timeout) -> xla::StatusOr<std::string> {
     absl::Duration wait_interval = absl::Milliseconds(10);
     int num_retry = timeout / wait_interval;
@@ -153,8 +154,7 @@ TEST(PjRtCApiHelperTest, Callback) {
         absl::StrCat(k, " is not found in the kv store."));
   };
   xla::PjRtClient::KeyValuePutCallback kv_put =
-      [&kv_store, &mu](const std::string& k,
-                       const std::string& v) -> xla::Status {
+      [&kv_store, &mu](std::string_view k, std::string_view v) -> xla::Status {
     {
       absl::MutexLock lock(&mu);
       kv_store[k] = v;

@@ -23,6 +23,7 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -542,7 +543,7 @@ TEST(StreamExecutorGpuClientTest, DistributeInit) {
   absl::flat_hash_map<std::string, std::string> kv_store;
   absl::Mutex mu;
   PjRtClient::KeyValueGetCallback kv_get =
-      [&kv_store, &mu](const std::string& k,
+      [&kv_store, &mu](std::string_view k,
                        absl::Duration timeout) -> xla::StatusOr<std::string> {
     absl::Duration wait_interval = absl::Milliseconds(10);
     int num_retry = timeout / wait_interval;
@@ -560,8 +561,7 @@ TEST(StreamExecutorGpuClientTest, DistributeInit) {
         absl::StrCat(k, " is not found in the kv store."));
   };
   PjRtClient::KeyValuePutCallback kv_put =
-      [&kv_store, &mu](const std::string& k,
-                       const std::string& v) -> xla::Status {
+      [&kv_store, &mu](std::string_view k, std::string_view v) -> xla::Status {
     {
       absl::MutexLock lock(&mu);
       kv_store[k] = v;

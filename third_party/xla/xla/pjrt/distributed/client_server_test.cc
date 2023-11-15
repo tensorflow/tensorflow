@@ -16,6 +16,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -217,12 +218,11 @@ TEST_F(ClientServerTest, ConnectAndEnumerateDevices) {
     // Sleep a short while for the other thread to send their device info first.
     absl::SleepFor(absl::Seconds(1));
 
-    auto kv_get = [&](const std::string& k,
+    auto kv_get = [&](std::string_view k,
                       absl::Duration timeout) -> xla::StatusOr<std::string> {
       return client->BlockingKeyValueGet(k, timeout);
     };
-    auto kv_put = [&](const std::string& k,
-                      const std::string& v) -> xla::Status {
+    auto kv_put = [&](std::string_view k, std::string_view v) -> xla::Status {
       return client->KeyValueSet(k, v);
     };
     TF_RETURN_IF_ERROR(
@@ -250,12 +250,11 @@ TEST_F(ClientServerTest, ConnectAndEnumerateDevices) {
     // We cannot send the notification after the call since there is a barrier
     // within the call that would cause a deadlock.
     n.Notify();
-    auto kv_get = [&](const std::string& k,
+    auto kv_get = [&](std::string_view k,
                       absl::Duration timeout) -> xla::StatusOr<std::string> {
       return client->BlockingKeyValueGet(k, timeout);
     };
-    auto kv_put = [&](const std::string& k,
-                      const std::string& v) -> xla::Status {
+    auto kv_put = [&](std::string_view k, std::string_view v) -> xla::Status {
       return client->KeyValueSet(k, v);
     };
     TF_RETURN_IF_ERROR(
@@ -316,12 +315,11 @@ TEST_F(ClientServerTest, EnumerateElevenDevices) {
     auto client = GetClient(node_id);
     GlobalTopologyProto topology;
     TF_RETURN_IF_ERROR(client->Connect());
-    auto kv_get = [&](const std::string& k,
+    auto kv_get = [&](std::string_view k,
                       absl::Duration timeout) -> xla::StatusOr<std::string> {
       return client->BlockingKeyValueGet(k, timeout);
     };
-    auto kv_put = [&](const std::string& k,
-                      const std::string& v) -> xla::Status {
+    auto kv_put = [&](std::string_view k, std::string_view v) -> xla::Status {
       return client->KeyValueSet(k, v);
     };
     TF_RETURN_IF_ERROR(

@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -115,7 +116,7 @@ class DistributedRuntimeClient {
   // There are no concurrency guarantees. To avoid a race / impose an ordering
   // on potentially concurrent ops (e.g. set, delete), use WaitAtBarrier().
   virtual xla::StatusOr<std::string> BlockingKeyValueGet(
-      std::string key, absl::Duration timeout) = 0;
+      std::string_view key, absl::Duration timeout) = 0;
 
   // Get all key-value pairs under a directory (key).
   // A value is considered to be in the directory if its key is prefixed with
@@ -123,13 +124,14 @@ class DistributedRuntimeClient {
   // This is not a blocking call. If no keys are found, an empty vector is
   // returned immediately.
   virtual xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
-  KeyValueDirGet(absl::string_view key) = 0;
+  KeyValueDirGet(std::string_view key) = 0;
 
-  virtual xla::Status KeyValueSet(std::string key, std::string value) = 0;
+  virtual xla::Status KeyValueSet(std::string_view key,
+                                  std::string_view value) = 0;
 
   // Delete the key-value. If the key is a directory, recursively clean
   // up all key-values under the directory.
-  virtual xla::Status KeyValueDelete(std::string key) = 0;
+  virtual xla::Status KeyValueDelete(std::string_view key) = 0;
 
   // Blocks until all nodes are at the barrier or the barrier times out.
   // `barrier_id` should be unique across barriers.

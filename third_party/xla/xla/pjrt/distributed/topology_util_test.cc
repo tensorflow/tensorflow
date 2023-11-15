@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/topology_util.h"
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -66,7 +67,7 @@ TEST(TopologyTest, ExchangeTopology) {
   absl::Mutex mu;
   absl::flat_hash_map<std::string, std::string> kv;
 
-  auto kv_get = [&](const std::string& key,
+  auto kv_get = [&](std::string_view key,
                     absl::Duration timeout) -> xla::StatusOr<std::string> {
     absl::MutexLock lock(&mu);
     auto ready = [&]() { return kv.contains(key); };
@@ -76,8 +77,8 @@ TEST(TopologyTest, ExchangeTopology) {
     return absl::NotFoundError("key not found");
   };
 
-  auto kv_put = [&](const std::string& key,
-                    const std::string& value) -> xla::Status {
+  auto kv_put = [&](std::string_view key,
+                    std::string_view value) -> xla::Status {
     absl::MutexLock lock(&mu);
     kv[key] = value;
     return absl::OkStatus();

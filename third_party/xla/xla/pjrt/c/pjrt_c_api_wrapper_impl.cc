@@ -22,6 +22,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -230,7 +231,7 @@ xla::PjRtClient::KeyValueGetCallback ToCppKeyValueGetCallback(
     return nullptr;
   }
   return [c_callback, user_arg](
-             const std::string& key,
+             std::string_view key,
              absl::Duration timeout) -> xla::StatusOr<std::string> {
     PJRT_CallbackError callback_error = [](PJRT_Error_Code code,
                                            const char* message,
@@ -239,7 +240,7 @@ xla::PjRtClient::KeyValueGetCallback ToCppKeyValueGetCallback(
                                         std::string(message, message_size))};
     };
     PJRT_KeyValueGetCallback_Args args;
-    args.key = key.c_str();
+    args.key = key.data();
     args.key_size = key.size();
     args.timeout_in_ms = timeout / absl::Milliseconds(1);
     args.callback_error = &callback_error;
@@ -259,8 +260,8 @@ xla::PjRtClient::KeyValuePutCallback ToCppKeyValuePutCallback(
   if (c_callback == nullptr) {
     return nullptr;
   }
-  return [c_callback, user_arg](const std::string& key,
-                                const std::string& value) -> xla::Status {
+  return [c_callback, user_arg](std::string_view key,
+                                std::string_view value) -> xla::Status {
     PJRT_CallbackError callback_error = [](PJRT_Error_Code code,
                                            const char* message,
                                            size_t message_size) {
@@ -268,9 +269,9 @@ xla::PjRtClient::KeyValuePutCallback ToCppKeyValuePutCallback(
                                         std::string(message, message_size))};
     };
     PJRT_KeyValuePutCallback_Args args;
-    args.key = key.c_str();
+    args.key = key.data();
     args.key_size = key.size();
-    args.value = value.c_str();
+    args.value = value.data();
     args.value_size = value.size();
     args.callback_error = &callback_error;
     args.user_arg = user_arg;
