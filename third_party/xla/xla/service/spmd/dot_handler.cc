@@ -2347,9 +2347,9 @@ GetNonContractingPartitionGroupedShardingForOtherOperand(
       other_group_dims = std::move(*found_dims);
     } else if (may_replicate_other_contracting_dims &&
                (!may_replicate_other_non_contracting_dims ||
-                ShapeUtil::ByteSizeOf(other_shape)) <=
-                   ShapeUtil::ByteSizeOf(MakePartitionedShape(
-                       output_base_shape, output_sharding))) {
+                ShapeUtil::ByteSizeOf(other_shape) <=
+                    ShapeUtil::ByteSizeOf(MakePartitionedShape(
+                        output_base_shape, output_sharding)))) {
       for (const auto& dim : other_contracting_dims) {
         other_group_dims.push_back(lhs_matching ? dim.rhs : dim.lhs);
       }
