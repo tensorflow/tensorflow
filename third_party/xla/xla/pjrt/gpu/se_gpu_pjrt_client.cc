@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/client/xla_computation.h"
 #include "xla/pjrt/distributed/topology_util.h"
+#include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -874,33 +875,53 @@ StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     bool should_stage_host_to_device_transfers,
     PjRtClient::KeyValueGetCallback kv_get,
     PjRtClient::KeyValuePutCallback kv_put, bool enable_mock_nccl) {
+  GpuClientOptions options;
+  options.allocator_config = allocator_config;
+  options.node_id = node_id;
+  options.num_nodes = num_nodes;
+  options.allowed_devices = allowed_devices;
+  options.platform_name = platform_name;
+  options.should_stage_host_to_device_transfers =
+      should_stage_host_to_device_transfers;
+  options.kv_get = kv_get;
+  options.kv_put = kv_put;
+  options.enable_mock_nccl = enable_mock_nccl;
+
+  return GetStreamExecutorGpuClient(options);
+}
+
+StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
+    const GpuClientOptions& options) {
 #if TENSORFLOW_USE_ROCM
   auto pjrt_platform_name = xla::RocmName();
 #else   // TENSORFLOW_USE_ROCM
   auto pjrt_platform_name = xla::CudaName();
 #endif  // TENSORFLOW_USE_ROCM
 
-  TF_ASSIGN_OR_RETURN(LocalClient * xla_client,
-                      GetGpuXlaClient(platform_name, allowed_devices));
+  TF_ASSIGN_OR_RETURN(
+      LocalClient * xla_client,
+      GetGpuXlaClient(options.platform_name, options.allowed_devices));
   std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states;
   TF_ASSIGN_OR_RETURN(local_device_states, BuildLocalDeviceStates(xla_client));
   EnablePeerAccess(xla_client->backend().stream_executors());
-  TF_ASSIGN_OR_RETURN(
-      auto allocator,
-      GetStreamExecutorGpuDeviceAllocator(
-          xla_client->platform(), allocator_config, local_device_states));
+  TF_ASSIGN_OR_RETURN(auto allocator,
+                      GetStreamExecutorGpuDeviceAllocator(
+                          xla_client->platform(), options.allocator_config,
+                          local_device_states));
   auto host_memory_allocator =
       GetGpuHostAllocator(local_device_states.begin()->second->executor());
 
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   auto gpu_run_options = std::make_unique<gpu::GpuExecutableRunOptions>();
-  if (enable_mock_nccl) {
+  if (options.enable_mock_nccl) {
     gpu_run_options->set_enable_mock_nccl_collectives();
   }
   absl::flat_hash_map<std::string, std::string> device_maps;
   absl::Mutex mu;
-  if (enable_mock_nccl) {
-    kv_get = [&device_maps, &mu, &num_nodes](
+  PjRtClient::KeyValueGetCallback kv_get = options.kv_get;
+  PjRtClient::KeyValuePutCallback kv_put = options.kv_put;
+  if (options.enable_mock_nccl) {
+    kv_get = [&device_maps, &mu, &options](
                  std::string_view k,
                  absl::Duration timeout) -> xla::StatusOr<std::string> {
       std::string result;
@@ -912,7 +933,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
           int device_id;
           std::vector<std::string> tokens = absl::StrSplit(k, ':');
           if (tokens.size() != 2 || !absl::SimpleAtoi(tokens[1], &device_id)) {
-            device_id = num_nodes - 1;
+            device_id = options.num_nodes - 1;
           }
           // Return fake local topology with device_id info back.
           xla::LocalTopologyProto local;
@@ -936,17 +957,17 @@ StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
       return xla::OkStatus();
     };
   }
-  TF_RET_CHECK(num_nodes == 1 || kv_get != nullptr);
-  TF_RET_CHECK(num_nodes == 1 || kv_put != nullptr);
+  TF_RET_CHECK(options.num_nodes == 1 || kv_get != nullptr);
+  TF_RET_CHECK(options.num_nodes == 1 || kv_put != nullptr);
   TF_RETURN_IF_ERROR(BuildDistributedDevices(
-      pjrt_platform_name, std::move(local_device_states), node_id, num_nodes,
-      &devices, gpu_run_options.get(), kv_get, kv_put));
+      pjrt_platform_name, std::move(local_device_states), options.node_id,
+      options.num_nodes, &devices, gpu_run_options.get(), kv_get, kv_put));
 
   return std::unique_ptr<PjRtClient>(std::make_unique<StreamExecutorGpuClient>(
-      pjrt_platform_name, xla_client, std::move(devices),
-      /*node_id=*/node_id, std::move(allocator),
-      std::move(host_memory_allocator), should_stage_host_to_device_transfers,
-      /*gpu_run_options=*/std::move(gpu_run_options)));
+      pjrt_platform_name, xla_client, std::move(devices), options.node_id,
+      std::move(allocator), std::move(host_memory_allocator),
+      options.should_stage_host_to_device_transfers,
+      std::move(gpu_run_options)));
 }
 
 absl::StatusOr<std::string> StreamExecutorGpuTopologyDescription::Serialize()
