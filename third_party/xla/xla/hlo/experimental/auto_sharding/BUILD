@@ -159,6 +159,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":auto_sharding_cost_graph",
+        ":auto_sharding_option",
         ":auto_sharding_strategy",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",

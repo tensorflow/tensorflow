@@ -21,8 +21,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -40,9 +40,8 @@ AutoShardingSolverResult CallSolver(
     const LivenessNodeSet& liveness_node_set, const StrategyMap& strategy_map,
     const LeafStrategies& leaf_strategies, const CostGraph& cost_graph,
     const AliasSet& alias_set, const std::vector<NodeStrategyIdx>& s_hint,
-    int64_t memory_budget_per_device, bool crash_at_infinity_costs_check,
     bool compute_iis, int64_t solver_timeout_in_seconds,
-    bool allow_alias_to_follower_conversion,
+    const AutoShardingOption& option,
     const absl::flat_hash_map<std::string, const HloInstruction*>&
         sharding_propagation_solution = {});
 

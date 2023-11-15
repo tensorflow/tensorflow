@@ -37,12 +37,10 @@ AutoShardingSolverResult Solve(
     const AliasSet& alias_set, const AutoShardingOption& option,
     const absl::flat_hash_map<std::string, const HloInstruction*>&
         sharding_propagation_solution) {
-  return CallSolver(
-      hlo_live_range, liveness_node_set, strategy_map, leaf_strategies,
-      cost_graph, alias_set, /*s_hint*/ {}, option.memory_budget_per_device,
-      /*crash_at_infinity_costs_check*/ !option.try_multiple_mesh_shapes,
-      /*compute_iis*/ true, option.solver_timeout_in_seconds,
-      option.allow_alias_to_follower_conversion, sharding_propagation_solution);
+  return CallSolver(hlo_live_range, liveness_node_set, strategy_map,
+                    leaf_strategies, cost_graph, alias_set, /*s_hint*/ {},
+                    /*compute_iis*/ true, option.solver_timeout_in_seconds,
+                    option, sharding_propagation_solution);
 }
 
 void PopulateTemporalValues(const CostGraph& cost_graph,

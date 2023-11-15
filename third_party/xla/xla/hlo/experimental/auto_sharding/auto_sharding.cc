@@ -2490,20 +2490,19 @@ AutoShardingSolverResult CallSolver(
     const LivenessNodeSet& liveness_node_set, const StrategyMap& strategy_map,
     const LeafStrategies& leaf_strategies, const CostGraph& cost_graph,
     const AliasSet& alias_set, const std::vector<NodeStrategyIdx>& s_hint,
-    int64_t memory_budget_per_device, bool crash_at_infinity_costs_check,
     bool compute_iis, int64_t solver_timeout_in_seconds,
-    bool allow_alias_to_follower_conversion,
+    const AutoShardingOption& option,
     const absl::flat_hash_map<std::string, const HloInstruction*>&
         sharding_propagation_solution) {
   // Serialize edges and edge costs to 1d numpy arrays
   AutoShardingSolverRequest request;
   request.num_nodes = leaf_strategies.size();
-  request.memory_budget = memory_budget_per_device;
+  request.memory_budget = option.memory_budget_per_device;
   request.s_len = cost_graph.node_lens_;
   request.s_follow = cost_graph.follow_idx_;
   request.s_hint = s_hint;
   request.solver_timeout_in_seconds = solver_timeout_in_seconds;
-  request.crash_at_infinity_costs_check = crash_at_infinity_costs_check;
+  request.crash_at_infinity_costs_check = !option.try_multiple_mesh_shapes;
   request.compute_iis = compute_iis;
   for (const auto& iter : cost_graph.edge_costs_) {
     request.e.push_back(iter.first);
@@ -2549,7 +2548,8 @@ AutoShardingSolverResult CallSolver(
       mi.push_back(strategy.memory_cost);
       pi.push_back(default_strategy && sharding == *default_strategy ? 0 : 1);
     }
-    if (*std::min_element(pi.begin(), pi.end()) > 0) {
+    if (option.use_sharding_propagation_for_default_shardings &&
+        *std::min_element(pi.begin(), pi.end()) > 0) {
       LOG(WARNING) << "No default strategy for {node_idx " << node_idx
                    << ", instruction ID " << strategies->instruction_id
                    << ", instruction name " << instruction_name << "}";
@@ -2614,7 +2614,7 @@ AutoShardingSolverResult CallSolver(
     for (NodeStrategyIdx i = 0; i < row_indices.size() && convertable; ++i) {
       if (vij[i * col_indices.size() + i] != 0.0) convertable = false;
     }
-    if (convertable && allow_alias_to_follower_conversion) {
+    if (convertable && option.allow_alias_to_follower_conversion) {
       new_followers.push_back(std::make_pair(idx_a, idx_b));
     } else {
       request.a.push_back(std::make_pair(idx_a, idx_b));
