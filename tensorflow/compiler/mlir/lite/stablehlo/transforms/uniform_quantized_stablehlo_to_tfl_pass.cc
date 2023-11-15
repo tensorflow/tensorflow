@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/uniform_quantized_types.h"
 
 #define DEBUG_TYPE "uniform-quantized-stablehlo-to-tfl"
 
@@ -46,6 +47,8 @@ namespace mlir {
 namespace odml {
 namespace {
 
+using ::mlir::quant::IsI8F32UniformQuantizedPerAxisType;
+using ::mlir::quant::IsI8F32UniformQuantizedType;
 using ::mlir::quant::QuantizedType;
 using ::mlir::quant::UniformQuantizedPerAxisType;
 using ::mlir::quant::UniformQuantizedType;
@@ -72,69 +75,6 @@ bool IsSupportedByTfliteQuantizeOrDequantizeOps(IntegerType storage_type) {
                << storage_type << ".\n");
     return false;
   }
-  return true;
-}
-
-// Returns true iff the storage type of `quantized_type` is 8-bit integer.
-bool IsStorageTypeI8(QuantizedType quantized_type) {
-  const Type storage_type = quantized_type.getStorageType();
-  return storage_type.isInteger(/*width=*/8);
-}
-
-// Returns true iff the expressed type of `quantized_type` is f32.
-bool IsExpressedTypeF32(QuantizedType quantized_type) {
-  const Type expressed_type = quantized_type.getExpressedType();
-  return expressed_type.isa<Float32Type>();
-}
-
-// Returns true iff `type` is a uniform quantized type whose storage type is
-// 8-bit integer and expressed type is f32.
-bool IsI8F32UniformQuantizedType(const Type type) {
-  auto quantized_type = type.dyn_cast_or_null<UniformQuantizedType>();
-  if (!quantized_type) {
-    LLVM_DEBUG(llvm::dbgs()
-               << "Expected a uniform quantized type. Got: " << type << ".\n");
-    return false;
-  }
-
-  if (!IsStorageTypeI8(quantized_type)) {
-    LLVM_DEBUG(llvm::dbgs() << "Expected an i8 storage type. Got: "
-                            << quantized_type << ".\n");
-    return false;
-  }
-
-  if (!IsExpressedTypeF32(quantized_type)) {
-    LLVM_DEBUG(llvm::dbgs() << "Expected an f32 expressed type. Got: "
-                            << quantized_type << ".\n");
-    return false;
-  }
-
-  return true;
-}
-
-// Returns true iff `type` is a uniform quantized per-axis (per-channel) type
-// whose storage type is 8-bit integer and expressed type is f32.
-bool IsI8F32UniformQuantizedPerAxisType(const Type type) {
-  auto quantized_per_axis_type =
-      type.dyn_cast_or_null<UniformQuantizedPerAxisType>();
-  if (!quantized_per_axis_type) {
-    LLVM_DEBUG(llvm::dbgs()
-               << "Expected a uniform quantized type. Got: " << type << ".\n");
-    return false;
-  }
-
-  if (!IsStorageTypeI8(quantized_per_axis_type)) {
-    LLVM_DEBUG(llvm::dbgs() << "Expected an i8 storage type. Got: "
-                            << quantized_per_axis_type << ".\n");
-    return false;
-  }
-
-  if (!IsExpressedTypeF32(quantized_per_axis_type)) {
-    LLVM_DEBUG(llvm::dbgs() << "Expected an f32 expressed type. Got: "
-                            << quantized_per_axis_type << ".\n");
-    return false;
-  }
-
   return true;
 }
 
@@ -257,7 +197,7 @@ class RewriteUniformDequantizeOp
 //   * Not a depthwise convolution.
 //   * Does not consider bias add fusion.
 // TODO: b/294771704 - Support bias quantization.
-class RewriteQuantizedConvolutionOp
+class RewriteUpstreamQuantizedConvolutionOp
     : public OpRewritePattern<stablehlo::ConvolutionOp> {
  public:
   using OpRewritePattern<stablehlo::ConvolutionOp>::OpRewritePattern;
@@ -654,7 +594,7 @@ class RewriteQuantizedConvolutionOp
 //
 // TODO: b/293650675 - Relax the conversion condition to support dot_general in
 // general.
-class RewriteFullIntegerQuantizedDotGeneralOp
+class RewriteUpstreamQuantizedDotGeneralOpToBatchMatmulOp
     : public OpRewritePattern<stablehlo::DotGeneralOp> {
  public:
   using OpRewritePattern<stablehlo::DotGeneralOp>::OpRewritePattern;
@@ -662,7 +602,7 @@ class RewriteFullIntegerQuantizedDotGeneralOp
   static LogicalResult MatchLhs(
       Value lhs, stablehlo::DotDimensionNumbersAttr dimension_numbers) {
     auto lhs_type = lhs.getType().cast<TensorType>();
-    if (!(IsI8F32UniformQuantizedType(lhs_type.getElementType()))) {
+    if (!IsI8F32UniformQuantizedType(lhs_type.getElementType())) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Expected a per-tensor uniform "
                     "quantized (i8->f32) input for dot_general. Got: "
@@ -704,11 +644,24 @@ class RewriteFullIntegerQuantizedDotGeneralOp
     }
 
     auto rhs_type = rhs.getType().cast<TensorType>();
-    if (!(IsI8F32UniformQuantizedType(rhs_type.getElementType()))) {
+    if (!IsI8F32UniformQuantizedType(rhs_type.getElementType())) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Expected a per-tensor uniform "
                     "quantized (i8->f32) weight for dot_general. Got: "
                  << rhs_type << "\n");
+      return failure();
+    }
+    return success();
+  }
+
+  static LogicalResult MatchOutput(
+      Value output, stablehlo::DotDimensionNumbersAttr dimension_numbers) {
+    auto output_type = output.getType().cast<TensorType>();
+    if (!IsI8F32UniformQuantizedType(output_type.getElementType())) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Expected a per-tensor uniform "
+                    "quantized (i8->f32) output for dot_general. Got: "
+                 << output_type << "\n");
       return failure();
     }
     return success();
@@ -743,6 +696,12 @@ class RewriteFullIntegerQuantizedDotGeneralOp
     if (failed(MatchRhs(op.getRhs(), dimension_numbers))) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Failed to match weight for quantized dot_general.\n");
+      return failure();
+    }
+
+    if (failed(MatchOutput(op.getResult(), dimension_numbers))) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Failed to match output for quantized dot_general.\n");
       return failure();
     }
 
@@ -816,10 +775,10 @@ class RewriteFullIntegerQuantizedDotGeneralOp
 //   * Does not consider bias add fusion.
 //
 // TODO: b/294983811 - Merge this pattern into
-// `RewriteFullIntegerQuantizedDotGeneralOp`.
+// `RewriteUpstreamQuantizedDotGeneralOpToBatchMatmulOp`.
 // TODO: b/295264927 - `stablehlo.dot_general` with per-axis quantized operands
 // is not specified in the StableHLO dialect. Update the spec to allow this.
-class RewriteQuantizedDotGeneralOpToTflFullyConnectedOp
+class RewriteUpstreamQuantizedDotGeneralOpToTflFullyConnectedOp
     : public OpRewritePattern<stablehlo::DotGeneralOp> {
   using OpRewritePattern<stablehlo::DotGeneralOp>::OpRewritePattern;
 
@@ -1071,9 +1030,9 @@ void UniformQuantizedStablehloToTflPass::runOnOperation() {
 
   RewritePatternSet patterns(&ctx);
   patterns.add<RewriteUniformQuantizeOp, RewriteUniformDequantizeOp,
-               RewriteQuantizedConvolutionOp,
-               RewriteFullIntegerQuantizedDotGeneralOp,
-               RewriteQuantizedDotGeneralOpToTflFullyConnectedOp>(&ctx);
+               RewriteUpstreamQuantizedConvolutionOp,
+               RewriteUpstreamQuantizedDotGeneralOpToBatchMatmulOp,
+               RewriteUpstreamQuantizedDotGeneralOpToTflFullyConnectedOp>(&ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
     func_op.emitError() << "Failed to convert stablehlo ops with uniform "

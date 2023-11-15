@@ -24,7 +24,7 @@ func.func @uniform_quantize_op_quantized_input(%arg: tensor<2x2x!quant.uniform<i
 
 // -----
 
-// Tests that the pattern doesn't match when the output tensor's sotrage type
+// Tests that the pattern doesn't match when the output tensor's storage type
 // is ui16. ui16 storage type for quantized type is not compatible with
 // `tfl.quantize`.
 
@@ -38,7 +38,7 @@ func.func @uniform_quantize_op_uint16_output(%arg: tensor<2x2xf32>) -> tensor<2x
 
 // -----
 
-// Tests that the pattern doesn't match when the output tensor's sotrage type
+// Tests that the pattern doesn't match when the output tensor's storage type
 // is i32. i32 storage type for quantized type is not compatible with
 // `tfl.quantize`.
 
@@ -234,6 +234,30 @@ func.func @dot_general_full_integer_sym_input(%arg0: tensor<1x2x3x4x!quant.unifo
 // CHECK-SAME: %[[ARG:.*]]: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00>>
 // CHECK: %[[QCONST_0:.*]] =  "tfl.pseudo_qconst"()
 // CHECK: "tfl.batch_matmul"(%[[ARG]], %[[QCONST_0]]) {adj_x = false, adj_y = false}
+
+// -----
+
+// Tests that the pattern does not match when the output tensor's storage
+// type is i32. Currently we support qi8, qi8 -> qi8 only for GEMM ops that
+// are quantized upstream. Other cases should be handled by regular quantized
+// stablehlo.dot_general case.
+
+// CHECK-LABEL: dot_general_op_i32_output
+func.func @dot_general_op_i32_output(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i32:f32, 4.000000e+0>> {
+  %0 = stablehlo.constant() {value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>
+  %1 = "stablehlo.dot_general"(%arg0, %0) {
+    dot_dimension_numbers = #stablehlo.dot<
+      lhs_batching_dimensions = [0, 1],
+      rhs_batching_dimensions = [0, 1],
+      lhs_contracting_dimensions = [3],
+      rhs_contracting_dimensions = [2]
+    >,
+    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
+  } : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i32:f32, 4.000000e+0>>
+  return %1 : tensor<1x2x3x5x!quant.uniform<i32:f32, 4.000000e+0>>
+}
+// CHECK: stablehlo.dot_general
+// CHECK-NOT: tfl.quantize
 
 // -----
 

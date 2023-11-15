@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
@@ -53,6 +54,24 @@ UniformQuantizedType CreateI32F32UniformQuantizedType(Location loc,
 UniformQuantizedPerAxisType CreateI8F32UniformQuantizedPerAxisType(
     Location loc, MLIRContext& context, ArrayRef<float> scales,
     ArrayRef<int8_t> zero_points, int quantization_dimension);
+
+bool IsStorageTypeI8(QuantizedType quantized_type);
+
+bool IsStorageTypeI32(QuantizedType quantized_type);
+
+bool IsExpressedTypeF32(QuantizedType quantized_type);
+
+// Returns true iff `type` is a uniform quantized type whose storage type is
+// 8-bit integer and expressed type is f32.
+bool IsI8F32UniformQuantizedType(Type type);
+
+// Returns true iff `type` is a uniform quantized per-axis (per-channel) type
+// whose storage type is 8-bit integer and expressed type is f32.
+bool IsI8F32UniformQuantizedPerAxisType(Type type);
+
+// Returns true iff `type` is a uniform quantized type whose storage type is
+// 32-bit integer and expressed type is f32.
+bool IsI32F32UniformQuantizedType(Type type);
 
 }  // namespace quant
 }  // namespace mlir
