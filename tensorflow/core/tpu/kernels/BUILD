@@ -1368,6 +1368,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:partitioned_function_ops",
+        "//tensorflow/core/tpu/ops:sparse_core_ops",
     ],
 )
 
