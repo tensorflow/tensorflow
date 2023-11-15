@@ -1071,6 +1071,16 @@ Status HloValueSemanticsPropagation::HandleReplicaId(
   return OkStatus();
 }
 
+Status HloValueSemanticsPropagation::HandleRngBitGenerator(
+    HloInstruction* rng_bit_generator) {
+  const HloValueSemantics* semantics = analysis_->NewHloValueSemantics(
+      HloValueSemanticLabel::kRandom, {rng_bit_generator, {}});
+  ShapeTree<const HloValueSemantics*> rbg_semantics_tree(
+      rng_bit_generator->shape(), semantics);
+  analysis_->SetHloValueSemantics(rng_bit_generator, rbg_semantics_tree);
+  return OkStatus();
+}
+
 Status HloValueSemanticsPropagation::HandleClamp(HloInstruction* clamp) {
   const ShapeTree<const HloValueSemantics*>& operand_semantics =
       analysis_->GetInstructionSemantics(clamp->operand(1));
