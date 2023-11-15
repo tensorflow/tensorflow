@@ -70,11 +70,11 @@ std::unique_ptr<OpQuantSpec> GetStableHloOpQuantSpec(Operation* op) {
 std::unique_ptr<OpQuantScaleSpec> GetStableHloQuantScaleSpec(Operation* op) {
   auto scale_spec = std::make_unique<OpQuantScaleSpec>();
   // TODO - b/307619822: Add below ops to the spec with unit tests.
-  // mlir::stablehlo::SelectOp, mlir::stablehlo::PadOp,
   // mlir::stablehlo::GatherOp, mlir::stablehlo::SliceOp,
   // mlir::stablehlo::BroadcastInDimOp
   if (llvm::isa<mlir::stablehlo::ConcatenateOp, mlir::stablehlo::ConvertOp,
-                mlir::stablehlo::ReshapeOp, mlir::stablehlo::TransposeOp>(op)) {
+                mlir::stablehlo::PadOp, mlir::stablehlo::ReshapeOp,
+                mlir::stablehlo::SelectOp, mlir::stablehlo::TransposeOp>(op)) {
     scale_spec->has_same_scale_requirement = true;
   }
   return scale_spec;
