@@ -51,6 +51,7 @@ cc_library(
         ":lift_quantizable_spots_as_functions_fusion_inc_gen",
         ":lift_quantizable_spots_as_functions_simple_inc_gen",
         ":quantization_options_proto_cc",
+        ":quantization_pattern",
         ":stablehlo_passes_inc_gen",
         ":stablehlo_type_utils",
         ":uniform_quantized_types",
@@ -58,6 +59,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/ops:stablehlo_op_quant_spec",
         "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
@@ -67,6 +69,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:xla_call_module_attrs",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/tpu:tpu_defs",
@@ -98,6 +101,34 @@ cc_library(
         "@local_xla//xla/mlir_hlo:unfuse_batch_norm",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
+    ],
+    # Alwayslink is required for registering the MLIR passes.
+    # TODO(b/255530126): Split the pass registration from the definitions to avoid binary size bloat.
+    alwayslink = True,
+)
+
+cc_library(
+    name = "quantization_pattern",
+    hdrs = [
+        "passes/quantization_pattern.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":bridge_passes",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/ops:stablehlo_op_quant_spec",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:xla_call_module_attrs",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:path",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
     ],
     # Alwayslink is required for registering the MLIR passes.
     # TODO(b/255530126): Split the pass registration from the definitions to avoid binary size bloat.
