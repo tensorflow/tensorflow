@@ -263,7 +263,7 @@ def InvokeNvcc(argv, log=False):
   # may cause compilation failure or incorrect run time execution.
   # Use at your own risk.
   if USE_CLANG_COMPILER:
-    nvccopts += ' -allow-unsupported-compiler'
+    nvccopts += ' -allow-unsupported-compiler --expt-extended-lambda --expt-relaxed-constexpr '
 
   if depfiles:
     # Generate the dependency file
