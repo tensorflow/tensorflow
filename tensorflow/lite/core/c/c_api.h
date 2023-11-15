@@ -285,8 +285,6 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsAddRegistrationExternal(
 ///
 /// By default it is disabled and calling to `TfLiteInterpreterCancel` will
 /// return kTfLiteError. See `TfLiteInterpreterCancel`.
-///
-/// \warning This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterOptionsEnableCancellation(
     TfLiteInterpreterOptions* options, bool enable);
 
@@ -457,8 +455,6 @@ TfLiteTensor* TfLiteInterpreterGetTensor(const TfLiteInterpreter* interpreter,
 ///
 /// Returns kTfLiteError if cancellation is not enabled via
 /// `TfLiteInterpreterOptionsEnableCancellation`.
-///
-/// \warning This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterCancel(
     const TfLiteInterpreter* interpreter);
 
