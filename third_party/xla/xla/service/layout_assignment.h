@@ -273,7 +273,9 @@ class LayoutAssignment : public HloModulePass {
    public:
     explicit LayoutConstraints(HloComputation* computation,
                                ComputationLayout* computation_layout,
-                               int64_t priority);
+                               int64_t priority)
+        : computation_(computation),
+          computation_constraint_(computation, computation_layout, priority) {}
     ~LayoutConstraints() = default;
 
     const HloComputation* computation() const { return computation_; }

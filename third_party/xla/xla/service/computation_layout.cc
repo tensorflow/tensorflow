@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "xla/service/computation_layout.h"
 
-#include <algorithm>
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/printer.h"
@@ -34,8 +34,6 @@ ComputationLayout::ComputationLayout(const ProgramShape& program_shape,
   }
   if (ignore_layouts) {
     SetToDefaultLayout();
-  } else {
-    SetToDefaultLayoutIfEmpty();
   }
 }
 
@@ -45,21 +43,15 @@ void ComputationLayout::SetToDefaultLayout() {
   }
   result_layout_.SetToDefaultLayout();
 }
-
-void ComputationLayout::SetToDefaultLayoutIfEmpty() {
-  for (auto& parameter_layout : parameter_layouts_) {
-    if (!parameter_layout.LayoutIsSet()) {
-      parameter_layout.SetToDefaultLayout();
-    }
-  }
-  if (!result_layout_.LayoutIsSet()) {
-    result_layout_.SetToDefaultLayout();
-  }
-}
-
 bool ComputationLayout::LayoutIsSet() const {
   return absl::c_all_of(parameter_layouts_,
                         [](const ShapeLayout& s) { return s.LayoutIsSet(); }) &&
+         result_layout_.LayoutIsSet();
+}
+
+bool ComputationLayout::AnyLayoutSet() const {
+  return absl::c_any_of(parameter_layouts_,
+                        [](const ShapeLayout& s) { return s.LayoutIsSet(); }) ||
          result_layout_.LayoutIsSet();
 }
 

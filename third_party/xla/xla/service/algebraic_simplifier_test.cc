@@ -7532,7 +7532,7 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedReshapeWithoutLayout) {
       HloInstruction::CreateReshape(reshaped_shape, broadcast));
 
   std::unique_ptr<VerifiedHloModule> module = CreateNewVerifiedModule();
-  module->AddEntryComputationWithLayouts(builder.Build());
+  module->AddEntryComputation(builder.Build());
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);

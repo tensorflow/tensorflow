@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/sharding_op_util.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -2816,6 +2817,12 @@ Status ShardingPropagation::CanonicalizeLayouts(HloModule* module) {
   }
   if (!module->layout_canonicalization_callback()) {
     LOG(INFO) << "There is no registered layout_canonicalization_callback.";
+    return OkStatus();
+  }
+  // If the result layout is automatically set, allow layout assignment to
+  // choose the layout.
+  if (!module->entry_computation_layout().LayoutIsSet() ||
+      !module->entry_computation_layout().result_layout().LayoutIsSet()) {
     return OkStatus();
   }
   TF_ASSIGN_OR_RETURN(auto layouts,
