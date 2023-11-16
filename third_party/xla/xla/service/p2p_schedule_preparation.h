@@ -31,18 +31,18 @@ namespace xla {
 // (2) For a pipelined P2P Send-Recv chain, add control dependence to the
 //     while-body to express this ordering:
 //       send => recv
-//     No control dependence are added to a pipelined Send-Recv in the
-// computation with the while-loop as the data dependence already expresses
-// this ordering:
-//       recv => recv-done => while-loop => send => send-done.
+//     In the computation with such a while-loop, the data dependence already
+//     expresses this ordering:
+//       recv => recv-done => while-loop => send => send-done
 //
-// (3) For a pipelined P2P Send-Recv chain, if the while-body has other P2P
-// chains, we need to add control dependence to ensure that the pipelined
+// (3) For a pipelined P2P Send-Recv chain, if the while-body has other
+// collective ops, we add control dependence to ensure that the pipelined
 // Send-done is ordered before other P2P chains while the pipelined
-// Recv-done is ordered after other P2P chains. In particular, we make the
-// pipelined Send-done the control predecessor of other Recv and the pipelined
-// Recv the control successor of other Send-done. Here is an example to
-// illustrate the problem we address:
+// Recv is ordered after other P2P chains. For example, if the other collective
+// op is another Send-Recv chain, we make the pipelined Send-done the control
+// predecessor of the other Recv and the pipelined Recv the control successor of
+// the other other Send. Here is an example to illustrate the problem we
+// address:
 //
 // Assume a while-body with the following HLO collective-permute operations:
 //    collective-permute-start-1 = (u32[2], u32[2])
@@ -99,10 +99,13 @@ namespace xla {
 // Send-Recv chain is executed after the Send for the first chain finishes and
 // before the Recv for the first chain starts.
 //
-// (4) Adds control prececessors/successors to ensure that a P2P Send-Recv
-// sequence on a non-host device will be scheduled before other operations that
-// use the Recv result and may also invoke P2P operations indirectly. Here is an
-// example to illustrate the problem we address:
+// (4) For an unpipelined P2P chain or a pipelined P2P chain in the computation
+// containing the pipelined while-loop, adds control dependence to ensure
+// other instructions that may invoke collective operations do not interference
+// with the P2P chain.
+//
+// Here is an example to illustrate a potential scheduler deadlock we want to
+// avoid:
 //
 // Assume a computation with the following HLO instructions, where while-body
 // invokes collective-permute operations:
@@ -139,21 +142,37 @@ namespace xla {
 // while-result can't be scheduled when the Send-Recv chain is holding the
 // resources for P2P operations and recv-done cannot be scheduled as well
 // because while-result depends on while-init which depends on recv-done. To
-// avoid this deadlock, we make send-done a control predecessor of recv-data
-// in this pass.
+// avoid this deadlock, we make send-done a control predecessor of the
+// while-loop with nested collective ops, regardless whether the P2P chain is
+// pipelined or not.
 //
-// Note that instead of making send-done a control predecessor of recv-data, we
-// may make send-done a control predecessor of the instruction that contains
-// the nested P2P operations, which is while-result in this example. This allows
-// recv-data and while-init to be scheduled before send-done. However, doing so
-// would complicate the implementation. We leave this to future improvement if
-// we will find out it can actually help performance in real practice.
+// Here is an example to illustrate a potential runtime deadlock we want to
+// avoid:
 //
-// (4) Similar to case (3), if the result of the while-loop with pipelined P2P
-// chain is used by an instruction with nested P2P chains, we meed to schedule
-// send-done of the pipelined while-loop before the instruction to avoid
-// deadlock. We express this by making the send-done a control predecessor of
-// the get-tuple-element instruction that retrieve the while-loop result.
+// Assume a computation with the following HLO instructions:
+//    collective-permute-start = (u32[2], u32[2])
+//      collective-permute-start(data) ...
+//    collective-permute-done = u32[2]
+//      collective-permute-done(collective-permute-start)
+//    an-independent-all-gather = ... all-gather(...)
+//
+// If we transform the collective-permute operations into a sequence of P2P
+// Send-Recv sequence and schedule All-Gather operation between the Send
+// and Recv, a runtime deadlock will happen as the devices that would have
+// bypassed Recv to perform Send are not blocked by All-Gather.
+//
+//    after-all = token[] after-all()
+//    recv = (u32[2], token[]) recv(after-all) ...
+//    an-independent-all-gather = ... all-gather(...)
+//    send = (u32[2], token[]) send(data, after-all),
+//      control-predecessors={recv} ...
+//    recv-done = (u32[2], token[]) recv-done(recv),
+//      control-predecessors={send} ...
+//    send-done = token[] send-done(send),
+//      control-predecessors={recv-done} ...
+//
+// To avoid this deadlock, we either make All-Gather a control predecessor of
+// Send or make Send-Done a control predecessor of All-Gather.
 //
 class P2PSchedulePreparation : public HloModulePass {
  public:

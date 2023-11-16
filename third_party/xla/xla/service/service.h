@@ -80,12 +80,6 @@ class ServiceOptions {
 // (target-specific compiler, StreamExecutor).
 class Service : public ServiceInterface {
  public:
-  // Factory method for creating a new Service.
-  static StatusOr<std::unique_ptr<Service>> NewService(
-      se::Platform* platform = nullptr);
-  static StatusOr<std::unique_ptr<Service>> NewService(
-      const ServiceOptions& options);
-
   // Unregisters a previously-allocated global handle.
   //
   // If the handle given is not currently allocated, a NOT_FOUND status is
@@ -123,13 +117,6 @@ class Service : public ServiceInterface {
   // replica id 0.
   Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
                           GetDeviceHandlesResponse* result) override;
-
-  // Waits until the specified execution is complete and returns the result.
-  // Calling this API multiple times with the same execution handle returns the
-  // method with an error since the execution handle is destroyed after the
-  // first call.
-  Status WaitForExecution(const WaitForExecutionRequest* arg,
-                          WaitForExecutionResponse* result) override;
 
   // Requests that global data be transferred to the client in literal form.
   Status TransferToClient(const TransferToClientRequest* arg,

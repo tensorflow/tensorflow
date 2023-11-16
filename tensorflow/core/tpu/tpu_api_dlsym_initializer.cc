@@ -24,6 +24,7 @@ limitations under the License.
 
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -99,9 +100,22 @@ absl::Status FindAndLoadTpuLibrary() {
     }
   }
 
+  // Check if libtpu is attached to the whl. In that case, libtpu should be in
+  // the path `library/libtpu.so` inside the whl.
+  std::filesystem::path whl_libtpu_path =
+      std::filesystem::path(so_name).replace_filename("lib/libtpu.so");
+
   const char* env_value = getenv("TPU_LIBRARY_PATH");
-  const char* libtpu_path =
-      env_value && strlen(env_value) > 0 ? env_value : "libtpu.so";
+  const char* libtpu_path = nullptr;
+  if (env_value && strlen(env_value) > 0) {
+    libtpu_path = env_value;
+  } else if (std::filesystem::exists(whl_libtpu_path)) {
+    // whl_libtpu_path must outlive libtpu_path.
+    libtpu_path = whl_libtpu_path.c_str();
+  } else {
+    libtpu_path = "libtpu.so";
+  }
+
   LOG(INFO) << "Libtpu path is: " << libtpu_path;
   void* library = dlopen(libtpu_path, RTLD_LAZY);
   if (library == nullptr) {

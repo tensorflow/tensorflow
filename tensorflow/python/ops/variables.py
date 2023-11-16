@@ -352,7 +352,7 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
         variable and return the Tensor for the projected value (which must have
         the same shape). Constraints are not safe to use when doing asynchronous
         distributed training.
-      synchronization: Indicates when a distributed a variable will be
+      synchronization: Indicates when a distributed variable will be
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses when to

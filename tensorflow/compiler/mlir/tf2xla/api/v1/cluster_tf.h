@@ -29,12 +29,13 @@ namespace v1 {
 // These transformations take as input a Tensorflow Graph as an MLIR Module
 // and transforms the module in place to cluster the given ops for compilation
 // that is compatible with the given device_type. The MLIR should be in the TF
-// Executor Dialect for graph nodes and edges. Individual Op inside a node
-// should be the Tensorflow Dialect. The output MLIR is in the TF Executor
-// Dialect.  The input MLIR should not have infeed and outfeed ops, which are
-// unsupported via this API.
-// Returns OkStatus if passed, otherwise an error.
-tensorflow::Status RunSessionTf2xlaClusteringBridge(mlir::ModuleOp module);
+// Executor Dialect for graph nodes and edges or TF Functional. It will convert
+// to TF Functional internally. Individual Op inside a node should be the
+// Tensorflow Dialect. The output MLIR is in the TF Functional Dialect.  The
+// input MLIR should not have infeed and outfeed ops, which are unsupported via
+// this API. Returns OkStatus if passed, otherwise an error.
+tensorflow::Status RunSessionTf2xlaClusteringBridge(
+    mlir::ModuleOp module, bool is_in_fallback_enabled_mode);
 
 }  // namespace v1
 }  // namespace tf2xla

@@ -197,11 +197,9 @@ class ModelDatasetOp::Dataset : public DatasetBase {
               int64_t captured_ram_budget = ram_budget_;
               Status status = model_->OptimizeLoop(
                   dataset()->algorithm_,
-                  [captured_cpu_budget]() { return captured_cpu_budget; },
-                  [captured_ram_budget](int64_t) {
-                    return captured_ram_budget;
-                  },
-                  *ram_budget_manager, cancellation_manager_.get());
+                  [captured_cpu_budget]() { return captured_cpu_budget; }, 1.0,
+                  captured_ram_budget, *ram_budget_manager,
+                  cancellation_manager_.get());
               if (!status.ok()) {
                 LOG(WARNING)
                     << "Optimization loop failed: " << status.ToString();

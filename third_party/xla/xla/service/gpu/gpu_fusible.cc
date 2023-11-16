@@ -106,6 +106,28 @@ bool IsPhysicallyTransposing(const HloInstruction& instr) {
                                          instr.shape(), instr.dimensions()));
 }
 
+bool TransposesMinorDimension(const HloInstruction* instr) {
+  switch (instr->opcode()) {
+    case HloOpcode::kFusion:
+      return absl::c_any_of(instr->fused_instructions(),
+                            TransposesMinorDimension);
+    case HloOpcode::kCopy:
+      return instr->shape().layout().minor_to_major(0) !=
+             instr->operand(0)->shape().layout().minor_to_major(0);
+    case HloOpcode::kTranspose: {
+      // We have an input ([a,b,c]{x,y,z}) that's being transposed. We need to
+      // check if the minor-most dimension (x) is still the minor-most dimension
+      // after the transpose.
+      int64_t minor_input =
+          instr->operand(0)->shape().layout().minor_to_major(0);
+      int64_t minor_output = instr->shape().layout().minor_to_major(0);
+      return minor_input != instr->dimensions().at(minor_output);
+    }
+    default:
+      return false;
+  }
+}
+
 bool IsReduceInputFusion(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kFusion &&
          absl::c_any_of(GetFusionRoots(*instr.called_computations()[0]),
@@ -401,6 +423,33 @@ static bool AllSatisfy(const HloInstruction& instr,
       });
 }
 
+FusionDecision CanEmitInputFusedScatter(const HloInstruction& producer,
+                                        const HloInstruction& consumer) {
+  if (IsInputFusibleScatter(producer)) {
+    return "do not fuse into the output of scatter";
+  }
+  if (!IsInputFusibleScatter(consumer)) {
+    return {};
+  }
+
+  const HloInstruction* inplace_operand;
+  if (consumer.opcode() == HloOpcode::kFusion) {
+    const HloInstruction* scatter = consumer.fused_expression_root();
+    CHECK_EQ(scatter->opcode(), HloOpcode::kScatter);
+    CHECK_EQ(scatter->operand(0)->opcode(), HloOpcode::kParameter);
+    inplace_operand = consumer.operand(scatter->operand(0)->parameter_number());
+  } else {
+    inplace_operand = consumer.operand(0);
+  }
+  if (inplace_operand == &producer) {
+    return "do not fuse into the in-place operand of scatter";
+  }
+  if (absl::c_linear_search(producer.operands(), inplace_operand)) {
+    return "Producer uses the in-place operand of a scatter";
+  }
+  return {};
+}
+
 FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
                                          const HloInstruction& consumer) {
   const auto& producer_hero = FindNonTrivialHero(producer);
@@ -428,6 +477,10 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
     if (producer.user_count() > 1) {
       return "reduction output fusion only works for single user";
     }
+  }
+
+  if (auto can_fuse = CanEmitInputFusedScatter(producer, consumer); !can_fuse) {
+    return can_fuse;
   }
 
   if (!IsInputFusible(consumer) &&
@@ -882,9 +935,8 @@ bool IsRealReductionHero(const HloInstruction& root,
     return false;
   }
   return &root == &hero ||
-         (hero.user_count() == 1 &&
-          ReductionIsRaceFree(hero.GetModule()->config(),
-                              GetReductionKindAndContiguousComponents(hero)));
+         ReductionIsRaceFree(hero.GetModule()->config(),
+                             GetReductionKindAndContiguousComponents(hero));
 }
 
 }  // namespace gpu

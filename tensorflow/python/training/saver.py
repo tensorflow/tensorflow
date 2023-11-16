@@ -1371,7 +1371,9 @@ class Saver:
     # pylint: enable=line-too-long
     return export_meta_graph(
         filename=filename,
-        graph_def=ops.get_default_graph().as_graph_def(add_shapes=True),
+        graph_def=ops.get_default_graph().as_graph_def(
+            add_shapes=True, use_pybind11_proto=True
+        ),
         saver_def=self.saver_def,
         collection_list=collection_list,
         as_text=as_text,
@@ -1379,7 +1381,8 @@ class Saver:
         clear_devices=clear_devices,
         clear_extraneous_savers=clear_extraneous_savers,
         strip_default_attrs=strip_default_attrs,
-        save_debug_info=save_debug_info)
+        save_debug_info=save_debug_info,
+    )
 
   def restore(self, sess, save_path):
     """Restores previously saved variables.

@@ -37,7 +37,6 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     features = [
-        "-layering_check",
         "-parse_headers",
     ],
     licenses = ["notice"],
@@ -99,10 +98,13 @@ tf_cuda_cc_test(
         ":use_efficient_nms_plugin": ["-DTF_TRT_USE_EFFICIENT_NMS_PLUGIN=1"],
         "//conditions:default": [],
     }),
+    features = ["-layering_check"],
     tags = [
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":trt_logging",
@@ -127,6 +129,7 @@ cc_library(
         "trt_convert_api.h",
     ],
     copts = tf_copts(),
+    features = ["-layering_check"],
     deps = [
         ":trt_parameters",
         ":trt_resources",
@@ -151,10 +154,13 @@ tf_cuda_cc_test(
     name = "trt_convert_api_test",
     size = "small",
     srcs = ["trt_convert_api_test.cc"],
+    features = ["-layering_check"],
     tags = [
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":common_utils",
@@ -200,6 +206,7 @@ cc_library(
         "common/utils.h",
     ],
     copts = tf_copts(),
+    features = ["-layering_check"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:logging",
@@ -215,6 +222,7 @@ cc_library(
         "utils/trt_testutils.h",
     ],
     copts = tf_copts(),
+    features = ["-layering_check"],
     visibility = ["//visibility:private"],
     deps = [
         ":trt_conversion",
@@ -230,10 +238,13 @@ tf_cuda_cc_test(
     name = "testutils_test",
     size = "small",
     srcs = ["utils/trt_testutils_test.cc"],
+    features = ["-layering_check"],
     tags = [
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":testutils",
@@ -252,6 +263,7 @@ cc_library(
         "kernels/trt_engine_op.cc",
     ],
     copts = tf_copts(),
+    features = ["-layering_check"],
     visibility = ["//visibility:public"],
     deps = [
         ":common_utils",
@@ -312,6 +324,8 @@ tf_cuda_cc_test(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":common_utils",
@@ -343,10 +357,13 @@ tf_cuda_cc_test(
     name = "trt_engine_op_test",
     size = "small",
     srcs = ["kernels/trt_engine_op_test.cc"],
+    features = ["-layering_check"],
     tags = [
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":testutils",
@@ -378,13 +395,11 @@ tf_cuda_cc_test(
     ]),
 )
 
-tf_gen_op_libs(
-    op_lib_names = [
-        "trt_engine_op",
-        "get_calibration_data_op",
-        "trt_engine_resource_ops",
-    ],
-)
+tf_gen_op_libs(op_lib_names = [
+    "trt_engine_op",
+    "get_calibration_data_op",
+    "trt_engine_resource_ops",
+])
 
 cc_library(
     name = "trt_op_libs",
@@ -490,6 +505,7 @@ tf_cuda_library(
         "utils/trt_shape_optimization_profiles.h",
         "utils/trt_tensor_proxy.h",
     ],
+    features = ["-layering_check"],
     deps = [
         ":common_utils",
         ":trt_allocator",
@@ -550,10 +566,13 @@ tf_cuda_cc_test(
     name = "trt_shape_optimization_profiles_test",
     size = "small",
     srcs = ["utils/trt_shape_optimization_profiles_test.cc"],
+    features = ["-layering_check"],
     tags = [
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":trt_resources",
@@ -582,6 +601,7 @@ tf_cuda_library(
         "convert/weights.h",
     ],
     copts = tf_copts(),
+    features = ["-layering_check"],
     deps = [
         ":utils",
         "//tensorflow/core:framework",
@@ -613,6 +633,7 @@ tf_cuda_library(
     hdrs = [
         "convert/op_converter_registry.h",
     ],
+    features = ["-layering_check"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":op_converter",
@@ -644,6 +665,7 @@ tf_cuda_cc_test(
     name = "op_converter_registry_test",
     size = "small",
     srcs = ["convert/op_converter_registry_test.cc"],
+    features = ["-layering_check"],
     tags = [
         "no_windows",
         "nomac",
@@ -663,6 +685,7 @@ tf_cuda_library(
     hdrs = [
         "convert/algorithm_selector.h",
     ],
+    features = ["-layering_check"],
     deps = [":common_utils"] + if_tensorrt([":tensorrt_lib"]),
 )
 
@@ -671,6 +694,7 @@ tf_cuda_cc_test(
     srcs = [
         "convert/algorithm_selector_test.cc",
     ],
+    features = ["-layering_check"],
     deps = [
         ":algorithm_selector",
         "//tensorflow/core:test",
@@ -713,6 +737,7 @@ tf_cuda_library(
         ":use_efficient_nms_plugin": ["-DTF_TRT_USE_EFFICIENT_NMS_PLUGIN=1"],
         "//conditions:default": [],
     }),
+    features = ["-layering_check"],
     deps = [
         ":algorithm_selector",
         ":common_utils",
@@ -767,6 +792,8 @@ tf_cuda_cc_test(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":testutils",
@@ -798,10 +825,13 @@ tf_cuda_cc_test(
         "convert/convert_nodes_test.cc",
         "convert/op_converter_test.cc",
     ],
+    features = ["-layering_check"],
     tags = [
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":testutils",
@@ -841,6 +871,7 @@ tf_cuda_cc_test(
     srcs = [
         "convert/ops/quantization_ops_test.cc",
     ],
+    features = ["-layering_check"],
     tags = [
         "no_cuda_on_cpu_tap",
         "no_windows",
@@ -935,6 +966,7 @@ tf_cuda_cc_test(
     name = "segment_test",
     size = "small",
     srcs = ["segment/segment_test.cc"],
+    features = ["-layering_check"],
     tags = [
         "no_cuda_on_cpu_tap",
         "no_windows",
@@ -976,6 +1008,7 @@ cc_library(
         "utils/trt_tensor_proxy.h",
     ],
     copts = tf_copts(),
+    features = ["-layering_check"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",

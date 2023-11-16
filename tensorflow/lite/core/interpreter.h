@@ -611,9 +611,12 @@ class Interpreter {
       std::unique_ptr<TfLiteDelegate> delegate) = delete;
 
   /// \warning This is an experimental API and subject to change. \n
-  /// \brief Ensure the data in `tensor.data` is readable. In case delegate is
-  /// used, it might require to copy the data from delegate buffer to raw
-  /// memory.
+  /// \brief Ensure the data in `tensor.data` is readable. If a
+  /// delegate has been used, and `SetAllowBufferHandleOutput(true)` has been
+  /// called, tensor outputs may be stored as delegate buffer handles whose data
+  /// is not directly readable until this method has been called.
+  /// In such cases, this method will copy the data from the delegate buffer
+  /// handle to CPU memory.
   TfLiteStatus EnsureTensorDataIsReadable(int tensor_index) {
     return primary_subgraph().EnsureTensorDataIsReadable(tensor_index);
   }
@@ -994,7 +997,7 @@ class Interpreter {
   // The flag is shared across all subgraphs in the interpreter.
   // When the application calls `Cancel`, the flag will be set to false.
   // It "resets" to true at the beginning of each `Invoke`.
-  std::atomic_flag continue_invocation_{false};
+  std::atomic_flag continue_invocation_ = ATOMIC_FLAG_INIT;
   bool cancellation_enabled_ = false;
 };
 

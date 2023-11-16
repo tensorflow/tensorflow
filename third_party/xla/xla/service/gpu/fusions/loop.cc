@@ -17,20 +17,23 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/IR/IRBuilder.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
+#include "xla/service/llvm_ir/ir_array.h"
 
 namespace xla {
 namespace gpu {
 
 Status LoopFusion::EmitKernel(
     IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
-    mlir::lmhlo::FusionOp fusion_op, const HloFusionInstruction& fusion,
-    const LaunchDimensions& launch_dims, std::vector<llvm_ir::IrArray> inputs,
-    std::vector<llvm_ir::IrArray> outputs, llvm::IRBuilder<>* builder,
-    int kernel_index) const {
+    const HloFusionInstruction& fusion, const LaunchDimensions& launch_dims,
+    std::vector<llvm_ir::IrArray> inputs, std::vector<llvm_ir::IrArray> outputs,
+    llvm::IRBuilder<>* builder, int kernel_index) const {
   FusedIrEmitter fused_emitter(elemental_emitter);
-  for (int i = 0; i < fusion_op.getInputBuffers().size(); i++) {
+  for (int i = 0; i < fusion.fused_parameters().size(); i++) {
     fused_emitter.BindGenerator(
         *fusion.fused_parameter(i), [&, i](llvm_ir::IrArray::Index index) {
           return inputs[i].EmitReadArrayElement(index, builder);
@@ -41,11 +44,11 @@ Status LoopFusion::EmitKernel(
       fused_emitter.GetGenerator(*fusion.fused_expression_root()));
 
   llvm::Type* index_type =
-      GetIndexTypeForKernel(fusion_op, launch_dims.launch_bound(), builder);
+      GetIndexTypeForKernel(&fusion, launch_dims.launch_bound(), builder);
 
   return ParallelLoopEmitter(element_generator, outputs, launch_dims, builder,
                              *analysis_.GetLoopFusionConfig())
-      .EmitLoop(GetIrNameFromLoc(fusion_op->getLoc()), index_type);
+      .EmitLoop(fusion.name(), index_type);
 }
 
 StatusOr<LaunchDimensions> LoopFusion::launch_dimensions(

@@ -66,7 +66,7 @@ ENTRY DonationWithExecutionError() -> f32[2, 2] {
     ROOT %result = f32[2, 2] get-tuple-element(%custom-call), index=0
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(/*asynchronous=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(CpuClientOptions()));
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
                           ParseAndReturnUnverifiedModule(kProgram, {}));
@@ -105,11 +105,9 @@ TEST(TfrtCpuClientTest, HloSnapshot) {
       ROOT add = f32[3,2] add(x, y)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client,
-      GetTfrtCpuClient(/*asynchronous=*/true,
-                       /*cpu_device_count=*/1,
-                       /*max_inflight_computations_per_device=*/32));
+  CpuClientOptions cpu_options;
+  cpu_options.cpu_device_count = 1;
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(cpu_options));
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
                           ParseAndReturnUnverifiedModule(kProgram, {}));
 
@@ -167,7 +165,7 @@ TEST(TfrtCpuClientTest, HloSnapshot) {
 }
 
 TEST(TfrtCpuClientTest, AsyncTransferRawData) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(/*asynchronous=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
                           client->CreateBuffersForAsyncHostToDevice(
@@ -187,7 +185,7 @@ TEST(TfrtCpuClientTest, AsyncTransferRawData) {
 }
 
 TEST(TfrtCpuClientTest, AsyncTransferLiteral) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(/*asynchronous=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(CpuClientOptions()));
   xla::Shape shape = xla::ShapeUtil::MakeShape(F32, {128, 256});
   TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
                           client->CreateBuffersForAsyncHostToDevice(
@@ -203,7 +201,7 @@ TEST(TfrtCpuClientTest, AsyncTransferLiteral) {
 }
 
 TEST(TfrtCpuClientTest, AsyncTransferCallsOnDone) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(/*asynchronous=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(F32, {3, 2});
   TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
                           client->CreateBuffersForAsyncHostToDevice(
@@ -221,7 +219,7 @@ TEST(TfrtCpuClientTest, AsyncTransferCallsOnDone) {
 }
 
 TEST(TfrtCpuClientTest, AsyncTransferNeverTransferred) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(/*asynchronous=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
                           client->CreateBuffersForAsyncHostToDevice(
@@ -236,7 +234,7 @@ TEST(TfrtCpuClientTest, AsyncTransferNeverTransferred) {
 }
 
 TEST(TfrtCpuClientTest, AsyncTransferBufferCount) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(/*asynchronous=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
                           client->CreateBuffersForAsyncHostToDevice(
@@ -249,7 +247,7 @@ TEST(TfrtCpuClientTest, AsyncTransferBufferCount) {
 }
 
 TEST(TfrtCpuClientTest, AsyncTransferBufferSize) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(/*asynchronous=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
                           client->CreateBuffersForAsyncHostToDevice(
@@ -258,7 +256,7 @@ TEST(TfrtCpuClientTest, AsyncTransferBufferSize) {
 }
 
 TEST(TfrtCpuClientTest, AsyncTransferDevice) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(/*asynchronous=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   auto* device = client->addressable_devices()[0];
   TF_ASSERT_OK_AND_ASSIGN(
@@ -268,7 +266,7 @@ TEST(TfrtCpuClientTest, AsyncTransferDevice) {
 }
 
 TEST(TfrtCpuClientTest, AsyncTransferSetBufferError) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(/*asynchronous=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
                           client->CreateBuffersForAsyncHostToDevice(
@@ -280,8 +278,19 @@ TEST(TfrtCpuClientTest, AsyncTransferSetBufferError) {
       tsl::testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
 }
 
+TEST(TfrtCpuClientTest, CreateErrorBuffer) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(CpuClientOptions()));
+  xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer, client->CreateErrorBuffer(InternalError("foobar"), shape,
+                                             client->addressable_devices()[0]));
+  EXPECT_THAT(
+      buffer->ToLiteralSync(),
+      tsl::testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
+}
+
 TEST(TfrtCpuClientTest, AsyncTransferRawDataToSubBuffer) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(/*asynchronous=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
                           client->CreateBuffersForAsyncHostToDevice(

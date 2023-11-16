@@ -64,8 +64,8 @@ func.func @main(
   // CHECK-SAME:     (tensor<*x!tf_type.resource>) -> tensor<8x16xf32>
   // CHECK:        "tf.WhileRegion"
   // CHECK:        %[[ITER_OPTIONAL_OUT:.*]] = "tf.IteratorGetNextAsOptional"(%arg1)
-  // CHECK-SAME:     _layout = ["sharding_specs: mesh:|x=4,y=2|0,1,2,3,4,5,6,7|0,1,2,3,4,5,6,7|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3,/job:localhost/task:0/device:TPU:4,/job:localhost/task:0/device:TPU:5,/job:localhost/task:0/device:TPU:6,/job:localhost/task:0/device:TPU:7"]
   // CHECK-SAME:     output_shapes = [#tf_type.shape<8x16>]
+  // CHECK-SAME:     _layout = ["sharding_specs: mesh:|x=4,y=2|0,1,2,3,4,5,6,7|0,1,2,3,4,5,6,7|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3,/job:localhost/task:0/device:TPU:4,/job:localhost/task:0/device:TPU:5,/job:localhost/task:0/device:TPU:6,/job:localhost/task:0/device:TPU:7"]
   // CHECK-SAME:     (tensor<*x!tf_type.resource>) -> tensor<!tf_type.variant>
   // CHECK-NEXT:   %[[HAS_VALUE:.*]] = "tf.OptionalHasValue"(%[[ITER_OPTIONAL_OUT]])
   // CHECK-SAME:     _layout = ["sharding_specs: mesh:|x=4,y=2|0,1,2,3,4,5,6,7|0,1,2,3,4,5,6,7|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3,/job:localhost/task:0/device:TPU:4,/job:localhost/task:0/device:TPU:5,/job:localhost/task:0/device:TPU:6,/job:localhost/task:0/device:TPU:7"]

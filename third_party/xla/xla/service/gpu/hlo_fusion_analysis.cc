@@ -26,6 +26,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
+#include "absl/numeric/bits.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -262,7 +265,7 @@ StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
   std::vector<const HloInstruction*> heroes;
   heroes.reserve(hlo_roots.size());
   for (auto* root : hlo_roots) {
-    heroes.push_back(&FindNonTrivialHero(*root));
+    heroes.push_back(&FindNonTrivialHero(*root, boundary_fn));
   }
 
   std::vector<const HloInstruction*> fusion_arguments;
@@ -271,13 +274,19 @@ StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
                         fusion_arguments.push_back(&argument);
                       });
 
+  auto is_4bit = [](const HloInstruction* arg) {
+    return primitive_util::Is4BitType(arg->shape().element_type());
+  };
+  bool has_4_bit_input = absl::c_any_of(fusion_arguments, is_4bit);
+  bool has_4_bit_output = absl::c_any_of(hlo_roots, is_4bit);
+
   std::optional<TransposeDescription> tiled_transpose_hero =
       FindConsistentTransposeHero(hlo_roots, heroes);
 
   return HloFusionAnalysis(std::move(backend_config), std::move(hlo_roots),
                            std::move(boundary_fn), std::move(fusion_arguments),
-                           std::move(heroes), device_info,
-                           tiled_transpose_hero);
+                           std::move(heroes), device_info, tiled_transpose_hero,
+                           has_4_bit_input, has_4_bit_output);
 }
 
 // static
@@ -300,18 +309,28 @@ bool HloFusionAnalysis::HasConsistentTransposeHeros() const {
 
 HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
     const {
+  if (fusion_backend_config_.kind() == kCustomFusionKind) {
+    return EmitterFusionKind::kCustomFusion;
+  }
+
 #if GOOGLE_CUDA
   if (fusion_backend_config_.kind() == kTritonGemmFusionKind ||
       fusion_backend_config_.kind() == kTritonSoftmaxFusionKind) {
     return EmitterFusionKind::kTriton;
   }
 #endif
-  const auto& roots = fusion_roots();
 
-  if (absl::c_any_of(roots, [](const HloInstruction* root) {
-        return IsRealReductionHero(*root, FindNonTrivialHero(*root));
-      })) {
-    return EmitterFusionKind::kReduction;
+  if (has_4_bit_input_ || has_4_bit_output_) {
+    // Only loop fusions currently can handle int4 inputs/outputs, due to the
+    // special handling with IrArray needed to deal with two values occupying a
+    // single byte.
+    return EmitterFusionKind::kLoop;
+  }
+
+  for (auto [root, hero] : llvm::zip(fusion_roots_, fusion_heroes_)) {
+    if (IsRealReductionHero(*root, *hero)) {
+      return EmitterFusionKind::kReduction;
+    }
   }
 
   // We expect that the last dimension is swapped with a different dimension.
@@ -319,15 +338,15 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
     return EmitterFusionKind::kTranspose;
   }
 
-  if (roots.size() > 1) {
-    if (IsInputFusibleNonStridedSlices(roots) &&
-        AllSliceInputsAreCompatible(roots)) {
+  if (fusion_roots_.size() > 1) {
+    if (IsInputFusibleNonStridedSlices(fusion_roots_) &&
+        AllSliceInputsAreCompatible(fusion_roots_)) {
       return EmitterFusionKind::kInputSlices;
     }
     return EmitterFusionKind::kLoop;
   }
 
-  if (roots[0]->opcode() == HloOpcode::kScatter) {
+  if (fusion_roots_[0]->opcode() == HloOpcode::kScatter) {
     return EmitterFusionKind::kScatter;
   }
 
@@ -374,8 +393,12 @@ StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions() {
       return CalculateLaunchDimensions(root_shape, *device_info_,
                                        {unroll_factor, /*few_waves=*/false});
     }
+    case EmitterFusionKind::kCustomFusion:
+      return absl::UnimplementedError(
+          "GetLaunchDimensions is not implemented for custom fusions");
     case EmitterFusionKind::kTriton:
-      return Unimplemented("GetLaunchDimensions");
+      return absl::UnimplementedError(
+          "GetLaunchDimensions is not implemented for Triton fusions");
   }
 }
 
@@ -459,6 +482,20 @@ const LaunchDimensionsConfig* HloFusionAnalysis::GetLoopFusionConfig() {
   if (num_elements >= n_threads_max &&
       !MayPreventVectorization(fusion_roots_, fusion_boundary_fn_)) {
     unroll_factor = ComputeMaxUnrollFactor(num_elements);
+  }
+  // CHECK that unroll_factor is a power-of-2, as needed by the logic below.
+  CHECK(absl::has_single_bit(static_cast<uint64_t>(unroll_factor)));
+  if (has_4_bit_output_ && unroll_factor == 1) {
+    // Ensure a single thread writes to a byte containing two int4 values by
+    // setting unroll_factor to 2. unroll_factor is always a power of 2, so
+    // setting it to 2 here ensures unroll_factor is even when there are 4-bit
+    // outputs. Setting unroll_factor is safe even if there are an odd number of
+    // elements, as the parallel loop emitter will insert a bounds check in this
+    // case to ensure the out-of-bounds element is not computed and written.
+    // Setting unroll_factor is safe even if MayPreventVectorization returns
+    // false, as the MayPreventVectorization check is an optimization, not a
+    // correctness requirement.
+    unroll_factor = 2;
   }
   VLOG(2) << "Unroll factor: " << unroll_factor;
 
@@ -866,6 +903,32 @@ ReductionCodegenInfo HloFusionAnalysis::ComputeReductionCodegenInfo(
   return ReductionCodegenInfo(
       tiling_scheme, num_partial_results, reduction_dimensions.is_row_reduction,
       reduction_is_race_free, std::move(instr_index_groups), hero_reduction);
+}
+
+static std::vector<const HloInstruction*> GetRoots(
+    const HloInstruction& consumer) {
+  return consumer.opcode() == HloOpcode::kFusion
+             ? GetFusionRoots(*consumer.fused_instructions_computation())
+             : std::vector<const HloInstruction*>{&consumer};
+}
+
+std::optional<HloFusionAnalysis> AnalyzeProducerConsumerFusion(
+    const HloInstruction& producer, const HloInstruction& consumer,
+    const se::DeviceDescription& device_info) {
+  auto ret = HloFusionAnalysis::Create(
+      FusionBackendConfig::default_instance(), GetRoots(consumer),
+      MakeProducerConsumerFusion(producer, consumer), &device_info);
+  if (!ret.ok()) return std::nullopt;
+  return {std::move(*ret)};
+}
+
+std::optional<HloFusionAnalysis> AnalyzeFusion(
+    const HloInstruction& consumer, const se::DeviceDescription& device_info) {
+  auto ret = HloFusionAnalysis::Create(
+      FusionBackendConfig::default_instance(), GetRoots(consumer),
+      MakeSingleInstructionFusion(consumer), &device_info);
+  if (!ret.ok()) return std::nullopt;
+  return {std::move(*ret)};
 }
 
 }  // namespace gpu

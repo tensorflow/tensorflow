@@ -18,16 +18,21 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo  // IWYU pragma: keep
@@ -58,10 +63,6 @@ constexpr llvm::StringRef kCalledFuncAttrName = "called_func";
 // attribute.
 tsl::StatusOr<OwningOpRef<ModuleOp>> DeserializeStablehlo(MLIRContext *context,
                                                           XlaCallModuleOp op) {
-  std::vector<std::string> dim_args_spec;
-  for (auto attr : op.getDimArgsSpec().getAsRange<StringAttr>()) {
-    dim_args_spec.push_back(attr.getValue().str());
-  }
   std::vector<std::string> disabled_checks;
   for (auto attr : op.getDisabledChecks().getAsRange<StringAttr>()) {
     disabled_checks.push_back(attr.getValue().str());
@@ -75,28 +76,14 @@ tsl::StatusOr<OwningOpRef<ModuleOp>> DeserializeStablehlo(MLIRContext *context,
   // we set loading_platform to the first platform.
   std::string loading_platform =
       (platforms.empty() ? "CPU" : platforms.front());
-  TF_ASSIGN_OR_RETURN(
-      auto loader,
-      tensorflow::XlaCallModuleLoader::Create(
-          context, static_cast<int>(op.getVersion()), op.getModule().str(),
-          std::move(dim_args_spec), std::move(disabled_checks),
-          std::move(platforms), std::move(loading_platform),
-          /*num_invocation_args=*/op.getArgs().size(),
-          op.getHasTokenInputOutput()));
+  TF_ASSIGN_OR_RETURN(auto loader,
+                      tensorflow::XlaCallModuleLoader::Create(
+                          context, static_cast<int>(op.getVersion()),
+                          op.getModule().str(), std::move(disabled_checks),
+                          std::move(platforms), std::move(loading_platform),
+                          /*num_invocation_args=*/op.getArgs().size(),
+                          op.getHasTokenInputOutput()));
   return std::move(*loader).module();
-}
-
-// If `func_name` exists in `symbol_table`, returns a new name that doesn't
-// exist. Otherwise, returns `func_name` as is.
-StringAttr NewFuncName(const SymbolTable &symbol_table, StringAttr func_name) {
-  int index = 0;
-  StringAttr new_func_name = func_name;
-  while (symbol_table.lookup(new_func_name)) {
-    new_func_name =
-        StringAttr::get(func_name.getContext(),
-                        llvm::formatv("{0}{1}", func_name.getValue(), index++));
-  }
-  return new_func_name;
 }
 
 // Renames functions in the stablehlo module to avoid naming conflicts with
@@ -113,20 +100,23 @@ FailureOr<StringAttr> RenameStablehloFunctions(
     MLIRContext *context, SymbolTableCollection &symbol_tables,
     ModuleOp tf_module, ModuleOp stablehlo_module) {
   SymbolTable &tf_symbol_table = symbol_tables.getSymbolTable(tf_module);
+  // `stablehlo_module` is deleted right after the deserialization, so no need
+  // to store its `SymbolTable` to `SymbolTableCollection`.
+  SymbolTable stablehlo_symbol_table(stablehlo_module);
+
   Builder builder(context);
   StringAttr main_func_name;
   for (auto func : stablehlo_module.getOps<func::FuncOp>()) {
-    StringAttr func_name = NewFuncName(tf_symbol_table, func.getSymNameAttr());
-    if (func.getSymName() == kStablehloMainFunctionName) {
-      main_func_name = func_name;
-    }
-    if (func_name != func.getSymNameAttr()) {
-      if (failed(SymbolTable::replaceAllSymbolUses(func, func_name,
-                                                   stablehlo_module))) {
+    const bool is_main_func = func.getSymName() == kStablehloMainFunctionName;
+    if (tf_symbol_table.lookup(func.getSymName())) {
+      if (failed(stablehlo_symbol_table.renameToUnique(
+              func, {&tf_symbol_table, &stablehlo_symbol_table}))) {
         return func.emitError()
                << "failed to rename StableHLO function " << func.getSymName();
       }
-      func.setName(func_name);
+    }
+    if (is_main_func) {
+      main_func_name = func.getSymNameAttr();
     }
     func->setAttr(kFromXlaCallModuleAttrName, builder.getUnitAttr());
   }
@@ -230,7 +220,7 @@ LogicalResult DeserializeXlaCallModule(MLIRContext *context,
 
   // Translate `called_index` in TF function custom calls into symbol
   // references. `function_list` attribute is needed after that.
-  SmallVector<SymbolRefAttr> function_list(
+  llvm::SmallVector<SymbolRefAttr> function_list(
       op.getFunctionList().getAsRange<SymbolRefAttr>());
   if (failed(
           SymbolizeCustomCallCalledIndex(*stablehlo_module, function_list))) {

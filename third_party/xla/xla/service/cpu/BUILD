@@ -1,7 +1,7 @@
 # Description:
 #    LLVM-based CPU backend for XLA.
 
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load(
     "//xla:xla.bzl",
     "ORC_JIT_MEMORY_MAPPER_TARGETS",
@@ -9,19 +9,19 @@ load(
     "xla_cc_test",
 )
 load(
-    "@local_tsl//tsl/mkl:build_defs.bzl",
-    "mkl_deps",
-)
-load("@local_tsl//tsl:tsl.bzl", "tf_openmp_copts", "tsl_copts")
-load(
     "//third_party/compute_library:build_defs.bzl",
     "acl_deps",
     "if_enable_acl",
 )
-load(":build_defs.bzl", "runtime_copts")
+load("@local_tsl//tsl:tsl.bzl", "tf_openmp_copts", "tsl_copts")
+load("@local_tsl//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load(
+    "@local_tsl//tsl/mkl:build_defs.bzl",
+    "mkl_deps",
+)
 load("@local_tsl//tsl/platform:build_config.bzl", "if_llvm_system_z_available", "tf_proto_library")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load(":build_defs.bzl", "runtime_copts")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -107,7 +107,6 @@ filegroup(
         # Single-threaded support.
         "runtime_custom_call_status.h",
         "runtime_conv_impl.h",
-        "runtime_fft_impl.h",
         "runtime_fp16.h",
         "runtime_key_value_sort.h",
         "runtime_pow.h",
@@ -251,7 +250,6 @@ cc_library(
         "//xla/mlir_hlo:transforms_passes",
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
-        "//xla/runtime:ffi",
         "//xla/runtime:jit_executable",
         "//xla/service:algebraic_simplifier",
         "//xla/service:all_gather_decomposer",
@@ -324,6 +322,7 @@ cc_library(
         "//xla/service:slow_operation_alarm",
         "//xla/service:sort_simplifier",
         "//xla/service:stochastic_convert_decomposer",
+        "//xla/service:sub_byte_normalization",
         "//xla/service:topk_rewriter",
         "//xla/service:transpose_folding",
         "//xla/service:tree_reduction_rewriter",
@@ -620,7 +619,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/mlir/runtime/transforms:compiler",
         "//xla/runtime:executable",
-        "//xla/runtime:ffi",
         "//xla/runtime:jit_executable",
         "//xla/service:buffer_assignment",
         "//xla/service:computation_layout",
@@ -670,6 +668,7 @@ cc_library(
         ":onednn_memory_util",
         ":parallel_loop_emitter",
         ":target_machine_features",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:statusor",
@@ -697,6 +696,7 @@ cc_library(
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -1025,19 +1025,15 @@ cc_library(
     name = "runtime_fft",
     srcs = [
         "runtime_fft.cc",
-        "runtime_fft_impl.h",
     ],
     hdrs = ["runtime_fft.h"],
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":runtime_lightweight_check",
         "//xla:executable_run_options",
-        "//xla:types",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:dynamic_annotations",
+        "@ducc//:fft_wrapper",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:mutex",
     ],
 )
 
@@ -1144,18 +1140,14 @@ cc_library(
 cc_library(
     name = "runtime_single_threaded_fft",
     srcs = [
-        "runtime_fft_impl.h",
         "runtime_single_threaded_fft.cc",
     ],
     hdrs = ["runtime_single_threaded_fft.h"],
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
+        ":runtime_fft",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:dynamic_annotations",
-        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -1272,23 +1264,6 @@ xla_cc_test(
         "@com_google_absl//absl/strings:str_format",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:test",
-    ],
-)
-
-xla_cc_test(
-    name = "runtime_fft_test",
-    srcs = [
-        "runtime_fft_impl.h",
-        "runtime_fft_test.cc",
-    ],
-    deps = [
-        ":runtime_single_threaded_fft",
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
-        "//xla/tests:xla_internal_test_main",
-        "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
     ],
@@ -1701,10 +1676,10 @@ cc_library(
         ":backend_config_proto_cc",
         ":runtime_lightweight_check",
         "//xla:executable_run_options",
+        "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:platform_port",
-        "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
     ] + mkl_deps(),
@@ -1729,6 +1704,13 @@ cc_library(
         "//xla/service:hlo_pass",
         "//xla/service:pattern_matcher",
     ] + mkl_deps(),
+)
+
+cc_library(
+    name = "cpu_symbol_repository",
+    hdrs = ["cpu_symbol_repository.h"],
+    visibility = ["//visibility:public"],
+    deps = ["//xla/service:symbol_repository"],
 )
 
 cc_library(

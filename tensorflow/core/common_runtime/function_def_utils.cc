@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/function_body.h"
@@ -24,22 +25,26 @@ limitations under the License.
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_debug_info_builder.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
 Status FunctionDefToBodyHelper(
-    const FunctionDef& fdef, const AttrSlice& attrs,
+    core::RefCountPtr<FunctionRecord>&& record, const AttrSlice& attrs,
     const FunctionLibraryDefinition* const lib_def,
     const std::function<Status(const string&, const OpDef**)>& get_func_sig,
     std::unique_ptr<FunctionBody>* fbody) {
   // Instantiates the function template into a graph def.
   InstantiationResult result;
-  TF_RETURN_IF_ERROR(InstantiateFunction(fdef, attrs, get_func_sig, &result));
+  TF_RETURN_IF_ERROR(
+      InstantiateFunction(record->fdef(), attrs, get_func_sig, &result));
 
   auto graph = std::make_unique<Graph>(lib_def);
 
-  auto construction_context_iter = fdef.attr().find("_construction_context");
-  if (construction_context_iter != fdef.attr().end()) {
+  auto construction_context_iter =
+      record->fdef().attr().find("_construction_context");
+  if (construction_context_iter != record->fdef().attr().end()) {
     if (construction_context_iter->second.s() == "kEagerRuntime") {
       graph->SetConstructionContext(ConstructionContext::kEagerRuntime);
     } else {
@@ -56,7 +61,7 @@ Status FunctionDefToBodyHelper(
                                             /*debug_info=*/nullptr));
 
   const StackTracesMap* stack_traces =
-      lib_def->GetStackTraces(fdef.signature().name());
+      lib_def->GetStackTraces(record->fdef().signature().name());
   if (stack_traces) {
     for (Node* n : graph->nodes()) {
       if (n) {
@@ -73,18 +78,32 @@ Status FunctionDefToBodyHelper(
   std::vector<ControlFlowInfo> dummy;
   TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph.get(), &dummy));
 
-  *fbody = std::make_unique<FunctionBody>(fdef, result.arg_types,
+  *fbody = std::make_unique<FunctionBody>(std::move(record), result.arg_types,
                                           result.ret_types, graph.release());
   return OkStatus();
 }
 
-Status FunctionDefToBodyHelper(const FunctionDef& fdef, const AttrSlice& attrs,
+Status FunctionDefToBodyHelper(core::RefCountPtr<FunctionRecord>&& record,
+                               const AttrSlice& attrs,
                                const FunctionLibraryDefinition* lib_def,
                                std::unique_ptr<FunctionBody>* fbody) {
   const auto get_func_sig = [&lib_def](const string& op, const OpDef** sig) {
     return lib_def->LookUpOpDef(op, sig);
   };
-  return FunctionDefToBodyHelper(fdef, attrs, lib_def, get_func_sig, fbody);
+  return FunctionDefToBodyHelper(std::move(record), attrs, lib_def,
+                                 get_func_sig, fbody);
+}
+
+Status FunctionDefToBodyHelper(const FunctionDef& fdef, const AttrSlice& attrs,
+                               const FunctionLibraryDefinition* lib_def,
+                               std::unique_ptr<FunctionBody>* fbody) {
+  core::RefCountPtr<FunctionRecord> record(
+      new FunctionRecord(FunctionDef(fdef), {}, true));
+  const auto get_func_sig = [&lib_def](const string& op, const OpDef** sig) {
+    return lib_def->LookUpOpDef(op, sig);
+  };
+  return FunctionDefToBodyHelper(std::move(record), attrs, lib_def,
+                                 get_func_sig, fbody);
 }
 
 }  // end namespace tensorflow

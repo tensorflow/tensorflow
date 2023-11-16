@@ -16,10 +16,12 @@ limitations under the License.
 #include "mhlo/analysis/shape_component_analysis.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <optional>
 #include <vector>
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -520,6 +522,8 @@ struct ShapeVisitor {
     if (auto index = op.getIndex().getDefiningOp<arith::ConstantOp>()) {
       int64_t i = index.getValue().cast<IntegerAttr>().getInt();
       auto in = lookup(ShapeOrValueInfo::getShapeInfoOf(op.getSource()));
+      if (i >= static_cast<int64_t>(in.size()) || i < 0)
+        llvm::report_fatal_error("tensor dim out of bounds");
       dims.push_back({in[i].symbols, in[i].expr});
     } else {
       forwardUnknown(op);

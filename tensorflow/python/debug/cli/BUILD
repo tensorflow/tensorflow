@@ -165,7 +165,7 @@ py_strict_test(
         ":readline_ui",
         ":ui_factory",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:test",
     ],
@@ -196,7 +196,7 @@ py_strict_test(
     deps = [
         ":cli_config",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:test",
     ],
@@ -298,7 +298,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:math_ops",
@@ -306,7 +306,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
         "//third_party/py/numpy",
     ],
 )
@@ -329,6 +329,6 @@ py_strict_test(
         "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
     ],
 )

@@ -119,7 +119,6 @@ cc_library(
         "//tsl/lib/gtl:map_util",
         "//tsl/platform:logging",
         "//tsl/platform:macros",
-        "//tsl/platform:regexp",
         "//tsl/platform:types",
         "//tsl/profiler/lib:context_types_hdrs",
         "@com_google_absl//absl/container:flat_hash_map",

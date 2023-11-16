@@ -121,13 +121,12 @@ GpuSolver::GpuSolver(OpKernelContext* context) : context_(context) {
   mutex_lock lock(handle_map_mutex);
   GpuExecutor* gpu_executor = static_cast<GpuExecutor*>(
       context->op_device_context()->stream()->parent()->implementation());
-  const hipStream_t* hip_stream_ptr = CHECK_NOTNULL(
-      reinterpret_cast<const hipStream_t*>(context->op_device_context()
-                                               ->stream()
-                                               ->implementation()
-                                               ->GpuStreamMemberHack()));
+  hip_stream_ = reinterpret_cast<hipStream_t>(
+      CHECK_NOTNULL(context->op_device_context()
+                        ->stream()
+                        ->platform_specific_handle()
+                        .stream));
 
-  hip_stream_ = *hip_stream_ptr;
   HandleMap* handle_map = CHECK_NOTNULL(GetHandleMapSingleton());
   auto it = handle_map->find(hip_stream_);
   if (it == handle_map->end()) {
@@ -324,7 +323,7 @@ Status GpuSolver::forward_input_or_allocate_scoped_tensor(
     TF_RETURN_IF_ROCBLAS_ERROR(BUFSIZE_FN(getrf, type_prefix)(             \
         hipsolver_handle_, m, n, AsHipComplex(A), lda, &lwork));           \
     auto dev_work =                                                        \
-        this->GetScratchSpace<Scalar>(lwork, "", /*on_host*/ false);       \
+        this -> GetScratchSpace<Scalar>(lwork, "", /*on_host*/ false);     \
     TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(getrf, type_prefix)(              \
         hipsolver_handle_, m, n, AsHipComplex(A), lda,                     \
         AsHipComplex(dev_work.mutable_data()), lwork, dev_pivots,          \
@@ -343,7 +342,7 @@ TF_CALL_LAPACK_TYPES(GETRF_INSTANCE);
     TF_RETURN_IF_ROCBLAS_ERROR(BUFSIZE_FN(geqrf, type_prefix)(               \
         hipsolver_handle_, m, n, AsHipComplex(dev_A), lda, &lwork));         \
     auto dev_work =                                                          \
-        this->GetScratchSpace<Scalar>(lwork, "", /*on_host*/ false);         \
+        this -> GetScratchSpace<Scalar>(lwork, "", /*on_host*/ false);       \
     TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(geqrf, type_prefix)(                \
         hipsolver_handle_, m, n, AsHipComplex(dev_A), lda,                   \
         AsHipComplex(dev_tau), AsHipComplex(dev_work.mutable_data()), lwork, \
@@ -380,7 +379,7 @@ TF_CALL_LAPACK_TYPES(GEQRF_INSTANCE);
         reinterpret_cast<HipScalar*>(dev_tau_copy.mutable_data()),             \
         AsHipComplex(dev_c), ldc, &lwork));                                    \
     auto dev_work =                                                            \
-        this->GetScratchSpace<Scalar>(lwork, "", /*on_host*/ false);           \
+        this -> GetScratchSpace<Scalar>(lwork, "", /*on_host*/ false);         \
     TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(unmqr, type_prefix)(                  \
         hipsolver_handle_, side, trans, m, n, k,                               \
         reinterpret_cast<HipScalar*>(dev_a_copy.mutable_data()), lda,          \
@@ -409,7 +408,7 @@ TF_CALL_LAPACK_TYPES_NO_REAL(UNMQR_INSTANCE);
         hipsolver_handle_, m, n, k, AsHipComplex(dev_a), lda,                \
         reinterpret_cast<HipScalar*>(dev_tau_copy.mutable_data()), &lwork)); \
     auto dev_work =                                                          \
-        this->GetScratchSpace<Scalar>(lwork, "", /*on_host*/ false);         \
+        this -> GetScratchSpace<Scalar>(lwork, "", /*on_host*/ false);       \
     TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(ungqr, type_prefix)(                \
         hipsolver_handle_, m, n, k, AsHipComplex(dev_a), lda,                \
         reinterpret_cast<HipScalar*>(dev_tau_copy.mutable_data()),           \
@@ -430,7 +429,7 @@ TF_CALL_LAPACK_TYPES_NO_REAL(UNGQR_INSTANCE);
     TF_RETURN_IF_ROCBLAS_ERROR(BUFSIZE_FN(potrf, type_prefix)(           \
         hipsolver_handle_, uplo, n, AsHipComplex(dev_A), lda, &lwork));  \
     auto dev_work =                                                      \
-        this->GetScratchSpace<Scalar>(lwork, "", /*on_host*/ false);     \
+        this -> GetScratchSpace<Scalar>(lwork, "", /*on_host*/ false);   \
     TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(potrf, type_prefix)(            \
         hipsolver_handle_, uplo, n, AsHipComplex(dev_A), lda,            \
         AsHipComplex(dev_work.mutable_data()), lwork, dev_lapack_info)); \
@@ -450,7 +449,7 @@ TF_CALL_LAPACK_TYPES(POTRF_INSTANCE);
         hipsolver_handle_, trans, n, nrhs, AsHipComplex(A), lda, dev_pivots,   \
         AsHipComplex(B), ldb, &lwork));                                        \
     auto dev_work =                                                            \
-        this->GetScratchSpace<Scalar>(lwork, "", /*on_host*/ false);           \
+        this -> GetScratchSpace<Scalar>(lwork, "", /*on_host*/ false);         \
     TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(getrs, type_prefix)(                  \
         hipsolver_handle_, trans, n, nrhs, AsHipComplex(A), lda, dev_pivots,   \
         AsHipComplex(B), ldb, AsHipComplex(dev_work.mutable_data()), lwork,    \
@@ -480,7 +479,7 @@ TF_CALL_LAPACK_TYPES(GETRS_INSTANCE);
         reinterpret_cast<HipScalar**>(dev_a.mutable_data()), lda, &lwork,     \
         batch_size));                                                         \
     auto dev_work =                                                           \
-        this->GetScratchSpace<Scalar>(lwork, "", /*on_host*/ false);          \
+        this -> GetScratchSpace<Scalar>(lwork, "", /*on_host*/ false);        \
     TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(potrfBatched, type_prefix)(          \
         hipsolver_handle_, uplo, n,                                           \
         reinterpret_cast<HipScalar**>(dev_a.mutable_data()), lda,             \
@@ -504,7 +503,7 @@ TF_CALL_LAPACK_TYPES(POTRF_BATCHED_INSTANCE);
         hipsolver_handle_, jobz, uplo, n, AsHipComplex(dev_A), lda, dev_W,     \
         &lwork));                                                              \
     auto dev_workspace =                                                       \
-        this->GetScratchSpace<Scalar>(lwork, "", /*on host */ false);          \
+        this -> GetScratchSpace<Scalar>(lwork, "", /*on host */ false);        \
     TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(heevd, type_prefix)(                  \
         hipsolver_handle_, jobz, uplo, n, AsHipComplex(dev_A), lda, dev_W,     \
         AsHipComplex(dev_workspace.mutable_data()), lwork, dev_lapack_info));  \

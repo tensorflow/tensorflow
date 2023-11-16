@@ -26,12 +26,12 @@ limitations under the License.
 
 #include "absl/base/dynamic_annotations.h"
 #include "dnnl.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tsl/util/onednn_threadpool.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/runtime_lightweight_check.h"
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla {
 namespace cpu {

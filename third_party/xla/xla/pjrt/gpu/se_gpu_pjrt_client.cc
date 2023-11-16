@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 
-#include <fstream>
 #include <map>
 #include <memory>
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/time/time.h"
 #include "xla/client/local_client.h"
+#include "xla/client/xla_computation.h"
 #include "xla/pjrt/distributed/topology_util.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -50,44 +51,39 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/framework/allocator.h"
 #include "tsl/framework/bfc_allocator.h"
 #include "tsl/lib/strings/proto_serialization.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/connected_traceme.h"
-#include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
-#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
-#include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
-#include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
-#include "tfrt/host_context/host_context.h"  // from @tf_runtime
 
-#ifdef GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/gpu/nccl_id_store.h"
+#include "xla/pjrt/metrics.h"
 #include "xla/pjrt/stream_executor_executable.pb.h"
 #include "xla/service/gpu/gpu_compiler.h"
-#include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #include "xla/xla.pb.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
+#elif TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
-#include "xla/pjrt/compile_options.pb.h"  // NOLINT(build/include)
-#include "xla/pjrt/gpu/nccl_id_store.h"  // NOLINT(build/include)
-#include "xla/pjrt/stream_executor_executable.pb.h"  // NOLINT(build/include)
-#include "xla/service/gpu/gpu_compiler.h"  // NOLINT(build/include)
-#include "xla/xla.pb.h"  // NOLINT(build/include)
-#endif  // TENSORFLOW_USE_ROCM
+#endif
 
 #include "xla/client/client_library.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/platform_util.h"
 #include "xla/statusor.h"
-#include "xla/stream_executor/device_host_allocator.h"
-#include "xla/stream_executor/device_mem_allocator.h"
-#include "xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/stream_executor/integrations/device_host_allocator.h"
+#include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/util.h"
 #include "tsl/framework/device_id.h"
 #include "tsl/util/env_var.h"
@@ -534,6 +530,17 @@ PjRtFuture<absl::Status> StreamExecutorGpuClient::CopyRawSubBufferToHost(
       });
 }
 
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+StreamExecutorGpuClient::Compile(const XlaComputation& computation,
+                                 CompileOptions options) {
+  auto executable = PjRtStreamExecutorClient::Compile(computation, options);
+
+#if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
+  metrics::RecordFreeGpuSystemMemory();
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  return executable;
+}
+
 namespace {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 StatusOr<std::unique_ptr<StreamExecutorExecutable>> FromProto(
@@ -545,7 +552,7 @@ StatusOr<std::unique_ptr<StreamExecutorExecutable>> FromProto(
   for (const auto& executable : proto.executables()) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<xla::AotCompilationResult> deserialized,
-        gpu::GpuXlaRuntimeAotCompilationResult::FromString(executable));
+        gpu::GpuCompiler::LoadAotCompilationResultStatic(executable));
     deserialized_aot_executables.push_back(std::move(deserialized));
   }
   return std::make_unique<StreamExecutorExecutable>(
@@ -556,9 +563,9 @@ StatusOr<std::unique_ptr<StreamExecutorExecutable>> FromProto(
 }  // namespace
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-StreamExecutorGpuClient::LoadSerializedExecutable(
-    absl::string_view serialized, std::optional<CompileOptions> options,
-    const LoadOptions& load_options) {
+StreamExecutorGpuClient::LoadSerialized(absl::string_view serialized,
+                                        std::optional<CompileOptions> options,
+                                        const LoadOptions& load_options) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   StreamExecutorExecutableProto proto;
   if (serialized.size() > std::numeric_limits<int>::max()) {
@@ -572,29 +579,14 @@ StreamExecutorGpuClient::LoadSerializedExecutable(
         "failed");
   }
   TF_ASSIGN_OR_RETURN(auto se_executable, FromProto(proto));
-  return Load(std::move(se_executable), LoadOptions());
+  // TODO(b/296466237): Unify the `Load` method.
+  return Load(std::move(se_executable));
 #endif
   return absl::InternalError("LoadSerialized only works with cuda or rocm.");
 }
 
-std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
-    std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
-    int node_id) {
-  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
-  for (auto& ordinal_and_device : local_device_states) {
-    const se::DeviceDescription& description =
-        ordinal_and_device.second->executor()->GetDeviceDescription();
-    auto device = std::make_unique<StreamExecutorGpuDevice>(
-        ordinal_and_device.first, std::move(ordinal_and_device.second),
-        description.name(), description.device_vendor(), node_id);
-    devices.push_back(std::move(device));
-  }
-  return devices;
-}
-
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>> StreamExecutorGpuClient::Load(
-    std::unique_ptr<PjRtExecutable> executable,
-    const LoadOptions& load_options) {
+    std::unique_ptr<PjRtExecutable> executable) {
   auto se_executable = absl::WrapUnique(
       tensorflow::down_cast<StreamExecutorExecutable*>(executable.release()));
 
@@ -648,27 +640,27 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateCudaAsyncAllocator(
       return Unavailable("Failed to query available memory from device %i",
                          device_ordinal);
     }
-    // To allow full GPU memory to be visible to the BFC allocator if using
-    // unified memory.
+    // To allow full GPU memory to be visible to the Cuda Async allocator
+    // if using unified memory.
     // When unified memory is enabled, allow GPU memory oversubscription by
     // setting memory_fraction > 1.
     size_t allocator_memory = total_memory * memory_fraction;
     if (preallocate) {
       LOG(INFO) << "XLA backend allocating " << allocator_memory
                 << " bytes on device " << device_ordinal
-                << " for BFCAllocator.";
+                << " for CudaAsyncAllocator.";
     } else {
       LOG(INFO) << "XLA backend will use up to " << allocator_memory
                 << " bytes on device " << device_ordinal
-                << " for BFCAllocator.";
+                << " for CudaAsyncAllocator.";
     }
 
     auto allocator = std::make_unique<se::GpuCudaMallocAsyncAllocator>(
         tsl::PlatformDeviceId(device_ordinal), allocator_memory, preallocate);
     allocator->SetStreamAndPreallocateMemory(
         ordinal_and_device.second->compute_stream()
-            ->implementation()
-            ->GpuStreamMemberHack());
+            ->platform_specific_handle()
+            .stream);
     allocators.emplace_back(std::move(allocator),
                             ordinal_and_device.second->compute_stream());
   }
@@ -755,96 +747,14 @@ GetStreamExecutorGpuDeviceAllocator(
   return std::move(allocator);
 }
 
-// Exists on Linux systems. Unique per OS kernel restart.
-static constexpr char kBootIdPath[] = "/proc/sys/kernel/random/boot_id";
-
-// Retrieve content of /proc/sys/kernel/random/boot_id as a string.
-// Note that procfs file may have file size 0 which throws off generic file
-// readers such as tsl::ReadFileToString.
-StatusOr<std::string> GetBootIdString() {
-  std::string boot_id_str;
-#ifdef __linux__
-  std::ifstream file(kBootIdPath);
-  if (!file) {
-    return NotFound("%s not found.", kBootIdPath);
-  }
-  std::string line;
-  while (std::getline(file, line)) {
-    absl::StripAsciiWhitespace(&line);
-    absl::StrAppend(&boot_id_str, line);
-  }
-#endif
-  return boot_id_str;
-}
-
-static std::string GetLocalTopologyKey(int node_id) {
-  return absl::StrCat("local_topology:", node_id);
-}
-
-static std::string GetGlobalTopologyKey() { return "global_topology"; }
-
-static StatusOr<std::vector<LocalTopologyProto>> GetAllLocalTopologies(
-    int num_nodes, const PjRtClient::KeyValueGetCallback& kv_get,
-    absl::Duration timeout) {
-  std::vector<StatusOr<std::string>> local_topology_strs(num_nodes);
-  auto host_context = std::make_unique<tfrt::HostContext>(
-      [](const tfrt::DecodedDiagnostic& diag) {
-        LOG(ERROR) << "Encountered runtime error: " << diag.message() << "\n";
-      },
-      tfrt::CreateMallocAllocator(),
-      tfrt::CreateMultiThreadedWorkQueue(
-          /*num_threads=*/DefaultThreadPoolSize(),
-          /*num_blocking_threads=*/4));
-
-  absl::BlockingCounter blocking_counter(num_nodes);
-  absl::Mutex mu;
-  for (int i = 0; i < num_nodes; i++) {
-    tfrt::EnqueueWork(
-        host_context.get(),
-        [&mu, &local_topology_strs, &blocking_counter, &kv_get, i, &timeout] {
-          StatusOr<std::string> local_topology_str =
-              kv_get(GetLocalTopologyKey(i), timeout);
-          {
-            absl::MutexLock lock(&mu);
-            local_topology_strs[i] = local_topology_str;
-          }
-          blocking_counter.DecrementCount();
-        });
-  }
-  blocking_counter.Wait();
-
-  std::vector<std::string> error_messages;
-  std::vector<LocalTopologyProto> local_topologies;
-  int max_num_failed_message = 10;
-  int failed_count = 0;
-  for (const StatusOr<std::string>& str : local_topology_strs) {
-    if (str.ok()) {
-      LocalTopologyProto local;
-      local.ParseFromString(*str);
-      local_topologies.push_back(local);
-    } else {
-      error_messages.push_back(
-          absl::StrCat("Error ", ++failed_count, ": ", str.status().message()));
-      if (failed_count > max_num_failed_message) {
-        break;
-      }
-    }
-  }
-  if (error_messages.empty()) {
-    return local_topologies;
-  }
-  return absl::InternalError(
-      absl::StrCat("Getting local topologies failed: ",
-                   absl::StrJoin(error_messages, "\n\n")));
-}
-
 Status BuildDistributedDevices(
+    std::string_view platform_name,
     std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
     int node_id, int num_nodes,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>* devices,
     gpu::GpuExecutableRunOptions* gpu_executable_run_options,
-    PjRtClient::KeyValueGetCallback kv_get,
-    PjRtClient::KeyValuePutCallback kv_put,
+    const PjRtClient::KeyValueGetCallback& kv_get,
+    const PjRtClient::KeyValuePutCallback& kv_put,
     absl::Duration get_local_topology_timeout = absl::Minutes(2),
     absl::Duration get_global_topology_timeout = absl::Minutes(5)) {
   LocalTopologyProto local_topology;
@@ -868,28 +778,12 @@ Status BuildDistributedDevices(
     device_proto->set_name(desc->name());
     device_proto->set_vendor(desc->device_vendor());
   }
-  VLOG(3) << "GPU Local Topology:\n" << local_topology.DebugString();
-  TF_RETURN_IF_ERROR(
-      kv_put(GetLocalTopologyKey(node_id), local_topology.SerializeAsString()));
 
   GlobalTopologyProto global_topology;
-  // The lead node gets all local topologies, builds the global topology and
-  // puts it to the key-value store.
-  if (node_id == 0) {
-    TF_ASSIGN_OR_RETURN(
-        std::vector<LocalTopologyProto> local_topologies,
-        GetAllLocalTopologies(num_nodes, kv_get, get_local_topology_timeout));
-    global_topology =
-        BuildGlobalTopology(absl::Span<LocalTopologyProto>(local_topologies));
-    TF_RETURN_IF_ERROR(
-        kv_put(GetGlobalTopologyKey(), global_topology.SerializeAsString()));
-  } else {
-    TF_ASSIGN_OR_RETURN(
-        std::string global_topology_str,
-        kv_get(GetGlobalTopologyKey(), get_global_topology_timeout));
-    global_topology.ParseFromString(global_topology_str);
-  }
-  VLOG(3) << "GPU Global Topology:\n" << global_topology.DebugString();
+  TF_RETURN_IF_ERROR(ExchangeTopologies(
+      platform_name, node_id, num_nodes, get_local_topology_timeout,
+      get_global_topology_timeout, kv_get, kv_put, local_topology,
+      &global_topology));
 
   std::map<int, GlobalDeviceId> gpu_device_ids;
   absl::flat_hash_map<GlobalDeviceId, int> device_to_node;
@@ -919,12 +813,14 @@ Status BuildDistributedDevices(
   gpu_executable_run_options->set_gpu_global_device_ids(
       std::move(gpu_device_ids));
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  auto nccl_id_store =
-      std::make_shared<NcclIdStore>(node_id, device_to_node, kv_get, kv_put);
-  gpu_executable_run_options->set_nccl_unique_id_callback(
-      [nccl_id_store](const gpu::NcclCliqueKey& key) {
-        return nccl_id_store->GetNcclUniqueId(key);
-      });
+  if (num_nodes > 1) {
+    auto nccl_id_store =
+        std::make_shared<NcclIdStore>(node_id, device_to_node, kv_get, kv_put);
+    gpu_executable_run_options->set_nccl_unique_id_callback(
+        [nccl_id_store](const gpu::NcclCliqueKey& key) {
+          return nccl_id_store->GetNcclUniqueId(key);
+        });
+  }
 #endif  // GOOGLE_CUDA
   return OkStatus();
 }
@@ -980,6 +876,12 @@ StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     bool should_stage_host_to_device_transfers,
     PjRtClient::KeyValueGetCallback kv_get,
     PjRtClient::KeyValuePutCallback kv_put, bool enable_mock_nccl) {
+#if TENSORFLOW_USE_ROCM
+  auto pjrt_platform_name = xla::RocmName();
+#else   // TENSORFLOW_USE_ROCM
+  auto pjrt_platform_name = xla::CudaName();
+#endif  // TENSORFLOW_USE_ROCM
+
   TF_ASSIGN_OR_RETURN(LocalClient * xla_client,
                       GetGpuXlaClient(platform_name, allowed_devices));
   std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states;
@@ -997,61 +899,50 @@ StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   if (enable_mock_nccl) {
     gpu_run_options->set_enable_mock_nccl_collectives();
   }
-  if (num_nodes > 1) {
-    absl::flat_hash_map<std::string, std::string> device_maps;
-    absl::Mutex mu;
-    if (enable_mock_nccl) {
-      kv_get = [&device_maps, &mu, &num_nodes](
-                   const std::string& k,
-                   absl::Duration timeout) -> xla::StatusOr<std::string> {
-        std::string result;
-        {
-          absl::MutexLock lock(&mu);
-          if (device_maps.contains(k)) {
-            result = device_maps[k];
-          } else {
-            int device_id;
-            std::vector<std::string> tokens = absl::StrSplit(k, ':');
-            if (tokens.size() != 2 ||
-                !absl::SimpleAtoi(tokens[1], &device_id)) {
-              device_id = num_nodes - 1;
-            }
-            // Return fake local topology with device_id info back.
-            xla::LocalTopologyProto local;
-            local.set_boot_id("fake_boot_id");
-            local.set_node_id(device_id);
-            xla::DeviceProto* device = local.add_devices();
-            device->set_global_device_id(device_id);
-            device->set_name("fake_device");
-            device->set_vendor("fake_vendor");
-            result = local.SerializeAsString();
+  absl::flat_hash_map<std::string, std::string> device_maps;
+  absl::Mutex mu;
+  if (enable_mock_nccl) {
+    kv_get = [&device_maps, &mu, &num_nodes](
+                 std::string_view k,
+                 absl::Duration timeout) -> xla::StatusOr<std::string> {
+      std::string result;
+      {
+        absl::MutexLock lock(&mu);
+        if (device_maps.contains(k)) {
+          result = device_maps[k];
+        } else {
+          int device_id;
+          std::vector<std::string> tokens = absl::StrSplit(k, ':');
+          if (tokens.size() != 2 || !absl::SimpleAtoi(tokens[1], &device_id)) {
+            device_id = num_nodes - 1;
           }
+          // Return fake local topology with device_id info back.
+          xla::LocalTopologyProto local;
+          local.set_boot_id("fake_boot_id");
+          local.set_node_id(device_id);
+          xla::DeviceProto* device = local.add_devices();
+          device->set_global_device_id(device_id);
+          device->set_name("fake_device");
+          device->set_vendor("fake_vendor");
+          result = local.SerializeAsString();
         }
-        return result;
-      };
-      kv_put = [&device_maps, &mu](const std::string& k,
-                                   const std::string& v) -> xla::Status {
-        {
-          absl::MutexLock lock(&mu);
-          device_maps[k] = v;
-        }
-        return xla::OkStatus();
-      };
-    }
-    TF_RET_CHECK(kv_get != nullptr);
-    TF_RET_CHECK(kv_put != nullptr);
-    TF_RETURN_IF_ERROR(BuildDistributedDevices(
-        std::move(local_device_states), node_id, num_nodes, &devices,
-        gpu_run_options.get(), kv_get, kv_put));
-  } else {
-    devices = BuildLocalDevices(std::move(local_device_states), node_id);
+      }
+      return result;
+    };
+    kv_put = [&device_maps, &mu](std::string_view k,
+                                 std::string_view v) -> xla::Status {
+      {
+        absl::MutexLock lock(&mu);
+        device_maps[k] = v;
+      }
+      return xla::OkStatus();
+    };
   }
-
-#if TENSORFLOW_USE_ROCM
-  auto pjrt_platform_name = xla::RocmName();
-#else   // TENSORFLOW_USE_ROCM
-  auto pjrt_platform_name = xla::CudaName();
-#endif  // TENSORFLOW_USE_ROCM
+  TF_RET_CHECK(num_nodes == 1 || kv_get != nullptr);
+  TF_RET_CHECK(num_nodes == 1 || kv_put != nullptr);
+  TF_RETURN_IF_ERROR(BuildDistributedDevices(
+      pjrt_platform_name, std::move(local_device_states), node_id, num_nodes,
+      &devices, gpu_run_options.get(), kv_get, kv_put));
 
   return std::unique_ptr<PjRtClient>(std::make_unique<StreamExecutorGpuClient>(
       pjrt_platform_name, xla_client, std::move(devices),
@@ -1067,6 +958,21 @@ absl::StatusOr<std::string> StreamExecutorGpuTopologyDescription::Serialize()
     return absl::InternalError("Failed to serialize gpu_topology");
   }
   return result;
+}
+
+std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
+    std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
+    int node_id) {
+  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
+  for (auto& ordinal_and_device : local_device_states) {
+    const se::DeviceDescription& description =
+        ordinal_and_device.second->executor()->GetDeviceDescription();
+    auto device = std::make_unique<StreamExecutorGpuDevice>(
+        ordinal_and_device.first, std::move(ordinal_and_device.second),
+        description.name(), description.device_vendor(), node_id);
+    devices.push_back(std::move(device));
+  }
+  return devices;
 }
 
 }  // namespace xla

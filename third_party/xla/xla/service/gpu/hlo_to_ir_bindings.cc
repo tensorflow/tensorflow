@@ -102,8 +102,7 @@ llvm::Value* HloToIrBindings::EmitGetTupleElement(const HloInstruction* gte,
   // TODO(b/26344050): tighten the alignment based on the real element type.
   if (gte->operand(0)->opcode() != HloOpcode::kGetTupleElement) {
     return llvm_ir::EmitGetTupleElement(
-        gte->shape(), gte->tuple_index(), /*alignment=*/1,
-        GetTypedIrValue(*gte->operand(0), {}, base_ptr),
+        gte->shape(), gte->tuple_index(), /*alignment=*/1, base_ptr,
         llvm_ir::ShapeToIrType(gte->operand(0)->shape(), module_), b_);
   }
   return llvm_ir::EmitGetTupleElement(
@@ -120,51 +119,17 @@ static bool HasMeaningfulName(llvm::Value* value) {
   return false;
 }
 
-llvm::Value* CastToTypedValue(const Shape& shape, llvm::Value* ir_value,
-                              llvm::IRBuilder<>* b) {
-  llvm::Type* pointee_type =
-      llvm_ir::ShapeToIrType(shape, b->GetInsertBlock()->getModule());
-
-  llvm::Type* dest_type = pointee_type->getPointerTo();
-
-  llvm::Value* typed_ir_value;
-  if (llvm::isa<llvm::GlobalVariable>(ir_value)) {
-    typed_ir_value = llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(
-        llvm::cast<llvm::GlobalVariable>(ir_value), dest_type);
-  } else {
-    typed_ir_value = b->CreatePointerBitCastOrAddrSpaceCast(
-        ir_value, pointee_type->getPointerTo());
-  }
-  return typed_ir_value;
-}
-
-llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
-                                              ShapeIndexView shape_index,
-                                              llvm::Value* ir_value) {
-  auto typed_ir_value = CastToTypedValue(
-      ShapeUtil::GetSubshape(hlo.shape(), shape_index), ir_value, b_);
-  if (!HasMeaningfulName(ir_value)) {
-    ir_value->setName(llvm_ir::IrName(&hlo, "raw"));
-  }
-  if (!HasMeaningfulName(typed_ir_value)) {
-    typed_ir_value->setName(llvm_ir::IrName(&hlo, "typed"));
-  }
-  return typed_ir_value;
-}
-
 void HloToIrBindings::BindHloToIrValue(const HloInstruction& hlo,
                                        llvm::Value* ir_value,
                                        ShapeIndexView shape_index) {
   VLOG(2) << "Binding " << hlo.ToString();
 
   const Shape& hlo_shape = hlo.shape();
-  llvm::Value* typed_ir_value = GetTypedIrValue(hlo, shape_index, ir_value);
-
   if (!BoundToIrValue(hlo)) {
     // Set the root of ShapeTree first before assigning the element ir value.
     InsertOrDie(&base_ptrs_, &hlo, ShapeTree<llvm::Value*>(hlo_shape, nullptr));
   }
-  *(base_ptrs_[&hlo].mutable_element(shape_index)) = typed_ir_value;
+  *(base_ptrs_[&hlo].mutable_element(shape_index)) = ir_value;
 }
 
 llvm_ir::IrArray HloToIrBindings::GetIrArray(const HloInstruction& hlo,

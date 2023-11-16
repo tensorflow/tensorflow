@@ -638,7 +638,7 @@ TEST_F(HloInstructionTest, PostProcessAllVisitedNodesMultiComputation) {
       c.4 = f32[] constant(4)
       ROOT ret = f32[] multiply(c.4, c.3)
     }
-    
+
     ENTRY axpy_computation {
       p.0 = f32[10] parameter(0)
       p.1 = f32[10] parameter(1)
@@ -749,8 +749,12 @@ TEST_F(HloInstructionTest, PreserveMetadataInFusionAndClone) {
   EXPECT_TRUE(protobuf_util::ProtobufEquals(
       metadata, fusion->fused_expression_root()->operand(0)->metadata()));
 
-  auto cloned = fusion->CloneWithNewOperands(fusion->shape(), {});
+  std::string new_name = "foobarfoo";
+  auto cloned = fusion->CloneWithNewOperands(fusion->shape(), {}, new_name);
   EXPECT_TRUE(protobuf_util::ProtobufEquals(metadata, fusion->metadata()));
+
+  size_t index = cloned->name().rfind(new_name);
+  EXPECT_TRUE(index != std::string::npos);
 }
 
 TEST_F(HloInstructionTest, BinaryCallOp) {
@@ -2423,6 +2427,118 @@ TEST_F(HloInstructionTest, BackendConfigCanContainNonFiniteFloats) {
                           dot->backend_config<gpu::GemmBackendConfig>());
   EXPECT_GT(new_config.alpha_real(), std::numeric_limits<double>::max());
   EXPECT_NE(new_config.alpha_imag(), new_config.alpha_imag());
+}
+
+TEST_F(HloInstructionTest, VerifyToApplyRegionPointsToReduceScatter) {
+  const Shape rs_input_shape = ShapeUtil::MakeShape(F32, {20});
+  const Shape rs_output_shape = ShapeUtil::MakeShape(F32, {10});
+
+  std::unique_ptr<HloComputation> add_computation;
+  {
+    const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
+    HloComputation::Builder add_builder("add");
+    HloInstruction* param0 = add_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    HloInstruction* param1 = add_builder.AddInstruction(
+        HloInstruction::CreateParameter(1, scalar_shape, "p1"));
+    add_builder.AddInstruction(HloInstruction::CreateBinary(
+        scalar_shape, HloOpcode::kAdd, param0, param1));
+    add_computation = add_builder.Build();
+  }
+
+  std::unique_ptr<HloComputation> main_computation;
+  HloComputation::Builder main_builder("Entry");
+  HloInstruction* param = main_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, rs_input_shape, "input"));
+  main_builder.AddInstruction(HloInstruction::CreateReduceScatter(
+      rs_output_shape, {param}, add_computation.get(), {}, false, std::nullopt,
+      false, 0));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(main_builder.Build());
+  module->AddEmbeddedComputation(std::move(add_computation));
+  // The only embedded computation in the graph should be pointing to
+  // the reduce-scatter instruction.
+  for (HloComputation* comp : module->MakeComputationPostOrder()) {
+    if (!comp->IsEntryComputation()) {
+      EXPECT_TRUE(comp->IsCollectiveCalledComputation());
+      EXPECT_EQ(comp->CollectiveCallInstruction(),
+                module->entry_computation()->root_instruction());
+    }
+  }
+}
+
+TEST_F(HloInstructionTest, VerifyToApplyRegionPointsToAllReduce) {
+  const Shape ar_input_shape = ShapeUtil::MakeShape(F32, {20});
+
+  std::unique_ptr<HloComputation> add_computation;
+  {
+    const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
+    HloComputation::Builder add_builder("add");
+    HloInstruction* param0 = add_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    HloInstruction* param1 = add_builder.AddInstruction(
+        HloInstruction::CreateParameter(1, scalar_shape, "p1"));
+    add_builder.AddInstruction(HloInstruction::CreateBinary(
+        scalar_shape, HloOpcode::kAdd, param0, param1));
+    add_computation = add_builder.Build();
+  }
+
+  std::unique_ptr<HloComputation> main_computation;
+  HloComputation::Builder main_builder("Entry");
+  HloInstruction* param = main_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ar_input_shape, "input"));
+  main_builder.AddInstruction(HloInstruction::CreateAllReduce(
+      ar_input_shape, {param}, add_computation.get(), {}, false, std::nullopt,
+      false));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(main_builder.Build());
+  module->AddEmbeddedComputation(std::move(add_computation));
+  // The only embedded computation in the graph should be pointing to
+  // the all-reduce instruction.
+  for (HloComputation* comp : module->MakeComputationPostOrder()) {
+    if (!comp->IsEntryComputation()) {
+      EXPECT_TRUE(comp->IsCollectiveCalledComputation());
+      EXPECT_EQ(comp->CollectiveCallInstruction(),
+                module->entry_computation()->root_instruction());
+    }
+  }
+}
+
+TEST_F(HloInstructionTest, PrintCycle) {
+  constexpr char kHloString[] = R"(
+  ENTRY main {
+    c0 = u32[] constant(0)
+    f0 = f32[] constant(0.0)
+    init = f32[1, 1024, 1024] broadcast(f0), dimensions={}
+
+    after-all = token[] after-all()
+    recv = (f32[1, 1024, 1024], u32[], token[]) recv(after-all), channel_id=2,
+      frontend_attributes={
+      _xla_send_recv_source_target_pairs="{{0, 1}, {1, 2}}"
+    }
+    send = (f32[1, 1024, 1024], u32[], token[]) send(init, after-all),
+      channel_id=2, frontend_attributes={
+      _xla_send_recv_source_target_pairs="{{0, 1}, {1, 2}}"
+    }, control-predecessors={recv}
+    send-done = token[] send-done(send), channel_id=2
+    recv-done = (f32[1, 1024, 1024], token[]) recv-done(recv), channel_id=2
+    ROOT recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done), index=0
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  HloInstruction* recv = FindInstruction(module.get(), "recv");
+  HloInstruction* send_done = FindInstruction(module.get(), "send-done");
+  ASSERT_IS_OK(send_done->AddControlDependencyTo(recv));
+  HloInstruction* root = FindInstruction(module.get(), "recv-data");
+  NodeCollectorAndPostProcessor visitor;
+  auto status = root->Accept(&visitor);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              ::testing::HasSubstr("recv\n send\n send-done\n recv"));
+  // Remove the cycle to avoid error when destructing the verified module.
+  ASSERT_IS_OK(send_done->DropAllControlDeps());
 }
 
 }  // namespace

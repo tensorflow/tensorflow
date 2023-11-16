@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -29,13 +30,13 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
-#include "xla/hlo/experimental/auto_sharding/auto_sharding_solver_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/cluster_environment.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_live_range.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/shape.h"
 #include "xla/statusor.h"
@@ -155,21 +156,22 @@ Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
                       std::unique_ptr<StrategyVector>& strategies,
                       const ClusterEnvironment& cluster_env,
                       const InstructionBatchDimMap& batch_map,
-                      const AutoShardingSolverOption& solver_option);
+                      const AutoShardingOption& option);
 
 Status HandleDot(std::unique_ptr<StrategyVector>& strategies,
                  LeafStrategies& leaf_strategies, StrategyMap& strategy_map,
                  const HloInstruction* ins, size_t instruction_id,
                  const ClusterEnvironment& cluster_env,
                  const InstructionBatchDimMap& batch_map,
-                 const AutoShardingSolverOption& solver_option);
+                 const AutoShardingOption& option, const CallGraph& call_graph);
 
 Status HandleConv(std::unique_ptr<StrategyVector>& strategies,
                   LeafStrategies& leaf_strategies, StrategyMap& strategy_map,
                   const HloInstruction* ins, size_t instruction_id,
                   const ClusterEnvironment& cluster_env,
                   const InstructionBatchDimMap& batch_map,
-                  const AutoShardingSolverOption& solver_option);
+                  const AutoShardingOption& option,
+                  const CallGraph& call_graph);
 
 void AnnotateShardingWithSimpleHeuristic(HloModule* module,
                                          const std::string& heuristic,
@@ -193,14 +195,11 @@ void CheckAliasSetCompatibility(const AliasSet& alias_set,
                                 const LeafStrategies& leaf_strategies,
                                 const HloInstructionSequence& sequence);
 
-void GenerateReduceScatter(const HloInstructionSequence& sequence,
-                           const AliasMap& alias_map,
-                           const InstructionDepthMap& depth_map,
-                           const StrategyMap& strategy_map,
-                           const CostGraph& cost_graph,
-                           absl::Span<const int64_t> s_val,
-                           const ClusterEnvironment& cluster_env,
-                           const AutoShardingSolverOption& solver_option);
+void GenerateReduceScatter(
+    const HloInstructionSequence& sequence, const AliasMap& alias_map,
+    const InstructionDepthMap& depth_map, const StrategyMap& strategy_map,
+    const CostGraph& cost_graph, absl::Span<const int64_t> s_val,
+    const ClusterEnvironment& cluster_env, const AutoShardingOption& option);
 
 bool HasReduceScatterOpportunity(
     const HloInstruction* inst, const StrategyMap& strategy_map,
@@ -213,10 +212,10 @@ HloSharding GetReduceScatterOutput(const HloInstruction* ins,
 
 // The high-level "recipe" for solving an Auto Sharding problem.
 AutoShardingSolverResult Solve(
-    const HloLiveRange& hlo_live_range, const LivenessSet& liveness_set,
-    const StrategyMap& strategy_map, const LeafStrategies& leaf_strategies,
-    const CostGraph& cost_graph, const AliasSet& alias_set,
-    const AutoShardingOption& option,
+    const HloLiveRange& hlo_live_range,
+    const LivenessNodeSet& liveness_node_set, const StrategyMap& strategy_map,
+    const LeafStrategies& leaf_strategies, const CostGraph& cost_graph,
+    const AliasSet& alias_set, const AutoShardingOption& option,
     const absl::flat_hash_map<std::string, const HloInstruction*>&
         sharding_propagation_solution = {});
 

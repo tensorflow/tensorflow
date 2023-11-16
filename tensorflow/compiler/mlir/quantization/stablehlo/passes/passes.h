@@ -1,4 +1,4 @@
-/* Copyright 2023 The StableHLO Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,28 +18,34 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_options.pb.h"
-
-#define GEN_PASS_DECL
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_options.pb.h"
 
 namespace mlir::quant::stablehlo {
 
+// Creates a `QuantizePass` that quantizes ops according to surrounding qcast /
+// dcast ops.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
+    const quant::QuantizationSpecs& quantization_specs);
+
 // Creates a pass that quantizes weight component of StableHLO graph.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizeWeightPass(
-    ::stablehlo::quantization::QuantizationComponentSpec
-        quantization_component_spec);
+    const ::stablehlo::quantization::QuantizationComponentSpec&
+        quantization_component_spec = {});
 
-// Creates a pass that prepares static range quantization of StableHLO graph.
-std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareSrqQuantizePass(
-    ::stablehlo::quantization::QuantizationOptions quantization_options);
+// Creates an instance of the StableHLO dialect PrepareQuantize pass without any
+// arguments. Preset method of SRQ is set to the quantization option by default.
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(
+    bool enable_per_channel_quantization = true, int bit_width = 8);
 
-// Creates an instance of the StableHLO dialect PrepareSrqQuantize pass without
-// any arguments. Preset method of SRQ is set to the quantization option by
-// default.
-std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareSrqQuantizePass();
+// Adds generated pass default constructors or options definitions.
+#define GEN_PASS_DECL
+// Adds generated pass registration functions.
+#define GEN_PASS_REGISTRATION
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"
 
 }  // namespace mlir::quant::stablehlo
 

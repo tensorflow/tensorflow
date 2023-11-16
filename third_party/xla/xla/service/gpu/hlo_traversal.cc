@@ -52,18 +52,40 @@ FusionBoundaryFn MakeProducerConsumerFusion(
       return &consumer == &fused_producer;
     };
   }
-  // anything -> non-fusion.
+  if (fused_producer.opcode() == HloOpcode::kFusion) {
+    // fusion -> non-fusion.
+    return [&](const HloInstruction& producer, const HloInstruction& consumer) {
+      if (&consumer == &fused_consumer) {
+        // If the consumer is the fused user, only follow edges to the fused
+        // producer.
+        return &fused_producer != &producer;
+      }
+      if (&producer == &fused_consumer) {
+        return true;
+      }
+
+      // Otherwise, fall back to the default; we're already in the fused
+      // producer.
+      return DefaultFusionBoundaryFn(producer, consumer);
+    };
+  }
+
+  // non-fusion -> non-fusion.
   return [&](const HloInstruction& producer, const HloInstruction& consumer) {
     if (&consumer == &fused_consumer) {
       // If the consumer is the fused user, only follow edges to the fused
       // producer.
       return &fused_producer != &producer;
     }
-
-    // Otherwise, fall back to the default; we're already in the fused
-    // producer.
-    return DefaultFusionBoundaryFn(producer, consumer);
+    return &producer == &fused_consumer || &consumer == &fused_producer;
   };
+}
+
+FusionBoundaryFn MakeSingleInstructionFusion(const HloInstruction& root) {
+  if (root.opcode() == HloOpcode::kFusion) {
+    return DefaultFusionBoundaryFn;
+  }
+  return [](const HloInstruction&, const HloInstruction&) { return true; };
 }
 
 void HloBfsConsumersFirstTraversal(
@@ -73,30 +95,9 @@ void HloBfsConsumersFirstTraversal(
   absl::flat_hash_set<const HloInstruction*> visited;
   std::queue<const HloInstruction*> q;
   auto enqueue_operands = [&](const HloInstruction& node) {
-    if (node.opcode() == HloOpcode::kParameter) {
-      auto* fusion = node.parent()->FusionInstruction();
-      // If the parent is the entry computation, there's no producer.
-      if (!fusion) {
-        return;
-      }
-      auto* operand = fusion->operand(node.parameter_number());
-      if (!boundary(*operand, node) && visited.insert(operand).second) {
-        q.push(operand);
-      }
-      return;
-    }
-
-    if (node.opcode() == HloOpcode::kFusion) {
-      const auto* fusion_root = node.fused_expression_root();
-      if (!boundary(*fusion_root, node) && visited.insert(fusion_root).second) {
-        q.push(fusion_root);
-      }
-      return;
-    }
-
-    for (HloInstruction* operand : node.operands()) {
-      if (!boundary(*operand, node) && visited.insert(operand).second) {
-        q.push(operand);
+    for (const auto* predecessor : FindPredecessors(node, boundary)) {
+      if (visited.insert(predecessor).second) {
+        q.push(predecessor);
       }
     }
   };
@@ -158,6 +159,33 @@ const HloInstruction* HloFindIf(
                                   return TraversalResult::kVisitOperands;
                                 });
   return result;
+}
+
+absl::InlinedVector<const HloInstruction*, 2> FindPredecessors(
+    const HloInstruction& node, const FusionBoundaryFn& boundary) {
+  absl::InlinedVector<const HloInstruction*, 2> predecessors;
+  auto visit = [&](const HloInstruction& predecessor) {
+    if (!boundary(predecessor, node)) {
+      predecessors.push_back(&predecessor);
+    }
+  };
+
+  switch (node.opcode()) {
+    case HloOpcode::kParameter:
+      if (auto* fusion = node.parent()->FusionInstruction()) {
+        // If the parent is the entry computation, there's no predecessor.
+        visit(*fusion->operand(node.parameter_number()));
+      }
+      break;
+    case HloOpcode::kFusion:
+      visit(*node.fused_expression_root());
+      break;
+    default:
+      for (HloInstruction* operand : node.operands()) {
+        visit(*operand);
+      }
+  }
+  return predecessors;
 }
 
 }  // namespace gpu

@@ -39,7 +39,7 @@ func.func @fakeQuantForActivationNoDuplication(tensor<8xf32>) -> (tensor<8x!quan
   %1 = "tfl.quantize"(%0) {qtype = tensor<8x!quant.uniform<u8:f32, 1.000000e+00>>} : (tensor<8xf32>) -> tensor<8x!quant.uniform<u8:f32, 1.000000e+00>>
   func.return %1 : tensor<8x!quant.uniform<u8:f32, 1.000000e+00>>
 
-// CHECK:  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %cst, %cst_0) {narrow_range = false, num_bits = 5 : i64}
+// CHECK:  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %cst, %cst_0) <{narrow_range = false, num_bits = 5 : i64}>
 // CHECK:  %1 = "tfl.quantize"(%0) {qtype = tensor<8x!quant.uniform<u8:f32, 1.000000e+00>>}
 // CHECK:  return %1
 }

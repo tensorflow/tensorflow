@@ -9737,6 +9737,20 @@ ENTRY entry {
                           op::Shape("f32[5,1,1,512]")));
 }
 
+TEST_P(SpmdPartitioningTest, PartitionConvWithBatchGroupCountReplicatedLHSRHS) {
+  // This test case is derived from b/304203416.
+  absl::string_view hlo_string = R"(
+HloModule test, entry_computation_layout={(f32[8,28,1,64]{3,2,1,0}, f32[8,28,1,2]{3,2,1,0})->f32[3,1,32,2]{3,2,1,0}}, allow_spmd_sharding_propagation_to_output={true}
+
+ENTRY main.4 {
+  lhs = f32[8,28,1,64]{3,2,1,0} parameter(0), sharding={replicated}
+  rhs = f32[8,28,1,2]{3,2,1,0} parameter(1), sharding={replicated}
+  ROOT convolution.3 = f32[3,1,32,2]{3,2,1,0} convolution(lhs, rhs), window={size=28x1 pad=1_1x0_0}, dim_labels=f01b_i01o->01bf, batch_group_count=2, sharding={replicated}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+}
+
 TEST_P(SpmdPartitioningTest,
        PartitionConvWithFeatureGroupCountAlignOuputWithRHS) {
   absl::string_view hlo_string = R"(
@@ -10541,6 +10555,28 @@ ENTRY %module {
       root, op::AllReduce(op::DynamicUpdateSlice(
                 _, op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)),
                 _, _, _, _)));
+}
+
+TEST_P(SpmdPartitioningTest, Gather_b303520921) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY %module {
+  %convert.303 = bf16[1000,16]{1,0} parameter(0), sharding={devices=[4,1,2]<=[2,4]T(1,0) last_tile_dim_replicate}
+  %reshape.830 = s32[16,8,1]{2,1,0} parameter(1), sharding={devices=[2,1,1,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT %gather.831 = bf16[16,8,16]{2,1,0} gather(convert.303, reshape.830),
+    offset_dims={2}, collapsed_slice_dims={0}, start_index_map={0},
+    index_vector_dim=2, slice_sizes={1,16}, sharding={devices=[2,1,4]<=[8]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  LOG(INFO) << module->ToString();
+  auto operand = AllOf(op::Shape("bf16[250,16]"), op::Parameter());
+  auto indices = AllOf(op::Shape("s32[8,8,1]"), op::Subtract());
+  auto gather = AllOf(op::Shape("bf16[8,8,16]"), op::Gather(operand, indices));
+  const HloInstruction* gather_inst = FindInstruction(module.get(), "gather");
+  EXPECT_NE(gather_inst, nullptr);
+  EXPECT_THAT(gather_inst, gather);
 }
 
 TEST_P(SpmdPartitioningTest, GatherMergedIndexParallelAndOperandPassthrough) {
@@ -13915,6 +13951,41 @@ ENTRY %entry {
   EXPECT_THAT(topk_instruction,
               op::Shape("(bf16[64,40]{1,0}, s32[64,40]{1,0})"));
   EXPECT_THAT(topk_operand, op::Shape("bf16[64,128000]{1,0}"));
+}
+
+TEST_P(SpmdPartitioningTest, WindowedEinsumShouldMatchLhs_b305313406) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+
+ENTRY %entry {
+  %copy.11 = bf16[64,2048,20480]{2,1,0} parameter(0), sharding={devices=[8,1,4]<=[32]}
+  %reshape.44 = bf16[20480,65536]{1,0} parameter(1), sharding={devices=[4,4,2]0,16,1,17,2,18,3,19,4,20,5,21,6,22,7,23,8,24,9,25,10,26,11,27,12,28,13,29,14,30,15,31 last_tile_dim_replicate}
+  ROOT %dot.339 = bf16[64,2048,65536]{2,1,0} dot(bf16[64,2048,20480]{2,1,0} %copy.11, bf16[20480,65536]{1,0} %reshape.44), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[8,1,4]<=[32]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_devices=*/32,
+                           /*conv_halo_exchange_always_on_lhs=*/true,
+                           /*choose_faster_windowed_einsum=*/true,
+                           /*unroll_windowed_einsum=*/false,
+                           /*bidirectional_windowed_einsum=*/true,
+                           /*threshold_for_windowed_einsum_mib=*/-1));
+  XLA_VLOG_LINES(1, module->ToString());
+
+  // Check while op.
+  const auto collective_permute =
+      AllOf(op::CollectivePermute(), op::Shape("bf16[8,2048,1,5120]"));
+  const auto broadcast =
+      AllOf(op::Broadcast(), op::Shape("bf16[8,2048,16384]"));
+  const auto all_reduce =
+      AllOf(op::AllReduce(), op::Shape("bf16[20480,16384]"));
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::GetTupleElement(op::While(op::Tuple(
+                              op::Reshape(), all_reduce, op::Broadcast(),
+                              collective_permute, op::Constant()))),
+                          op::Shape("bf16[8,2048,16384]")));
 }
 
 }  // namespace

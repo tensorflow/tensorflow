@@ -236,6 +236,7 @@ cc_library(
         ":logging",
         ":mutex",
         ":scanner",
+        ":str_util",
         ":strcat",
         ":stringpiece",
         ":types",
@@ -1148,7 +1149,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
-        ":platform",
+        "@com_google_absl//absl/base:prefetch",
     ],
 )
 
@@ -1350,7 +1351,10 @@ tsl_cc_test(
     srcs = ["path_test.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        ":env",
+        ":env_impl",
         ":path",
+        ":stringpiece",
         ":test",
         ":test_main",
     ],
@@ -1904,12 +1908,4 @@ tsl_cc_test(
         ":test_main",
         "//tsl/lib/core:status_test_util",
     ],
-)
-
-cc_library(
-    name = "static_threadlocal",
-    hdrs = [
-        "static_threadlocal.h",
-    ],
-    visibility = ["//visibility:public"],
 )

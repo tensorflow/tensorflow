@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/statusor.h"
+#include "xla/test.h"
 #include "xla/tests/filecheck.h"
 #include "xla/xla.pb.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -51,6 +52,14 @@ class GemmRewriteTest : public GpuCodegenTest {
         .default_stream_executor()
         ->GetDeviceDescription()
         .cuda_compute_capability();
+  }
+
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    // These tests test the cuBLAS rewriter so we have to make sure that we use
+    // cuBLAS for them.
+    debug_options.set_xla_gpu_enable_triton_gemm(false);
+    return debug_options;
   }
 };
 
@@ -239,7 +248,7 @@ ENTRY test {
 ; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4]) -> f32[2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]),
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -277,7 +286,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,3], y: f32[3,4]) -> f32[2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]),
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -319,7 +328,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[3,4,5]{2,1,0} parameter(1)
 ; CHECK-DAG:     [[BITCAST0:%[^ ]+]] = f32[2,12]{0,1} bitcast([[P0]])
 ; CHECK-DAG:     [[BITCAST1:%[^ ]+]] = f32[12,5]{1,0} bitcast([[P1]])
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,5]{1,0} custom-call([[BITCAST0]], [[BITCAST1]]),
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[BITCAST0]], [[BITCAST1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -358,7 +367,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[3,2], y: f32[3,4]) -> f32[2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[3,2]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]),
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -397,7 +406,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[5,3,2], y: f32[5,3,4]) -> f32[5,2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[5,3,2]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[5,2,4]{2,1,0} custom-call([[P0]], [[P1]]),
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -436,7 +445,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,5,3], y: f32[5,3,4]) -> f32[5,2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,5,3]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[5,2,4]{2,1,0} custom-call([[P0]], [[P1]]),
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -476,7 +485,7 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[3,2,5]{2,1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
 ; CHECK-DAG:     [[FUSION:%[^ ]+]] = f32[5,2,3]{2,1,0} transpose([[P0]])
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[5,2,4]{2,1,0} custom-call([[FUSION]], [[P1]]),
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[FUSION]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -518,7 +527,7 @@ ENTRY AddDotsFunc {
 ; CHECK:    [[BC0:%[^ ]+]] = f32[80000,3,2]{2,1,0} bitcast([[P0]])
 ; CHECK:    [[P1:%[^ ]+]] = f32[20000,4,3,4]{3,2,1,0} parameter(1)
 ; CHECK:    [[BC1:%[^ ]+]] = f32[80000,3,4]{2,1,0} bitcast([[P1]])
-; CHECK:    [[OUT:%[^ ]+]] = f32[80000,2,4]{2,1,0} custom-call([[BC0]], [[BC1]]),
+; CHECK:    [[GEMM:%[^ ]+]] = (f32[80000,2,4]{2,1,0}, s8[{{[0-9]+}}]{0}) custom-call([[BC0]], [[BC1]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -534,6 +543,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
 ; CHECK:           }
+; CHECK:   [[OUT:%[^ ]+]] = f32[80000,2,4]{2,1,0} get-tuple-element([[GEMM]]), index=0
 ; CHECK:   ROOT {{[^ ]+}} = f32[20000,4,2,4]{3,2,1,0} bitcast([[OUT]])
 )");
 }
@@ -557,7 +567,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,3], y: f32[3,4]) -> f32[4,2] {
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[4,2]{1,0} custom-call([[P1]], [[P0]]),
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P1]], [[P0]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -596,7 +606,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[5,2,3], y: f32[5,3,4]) -> f32[2,5,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[5,2,3]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
-; CHECK-NEXT:    [[GEMM:%[^ ]+]] = f32[5,2,4]{2,0,1} custom-call([[P0]], [[P1]]),
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -613,7 +623,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,5,4]{2,1,0} bitcast([[GEMM]])
+; CHECK:         ROOT [[OUT:%[^ ]+]] = f32[2,5,4]{2,1,0} bitcast
 )");
 }
 
@@ -636,7 +646,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[5,2,3], y: f32[5,3,4]) -> f32[2,4,5] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[5,2,3]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
-; CHECK-NEXT:    [[GEMM:%[^ ]+]] = f32[5,2,4]{2,1,0} custom-call([[P0]], [[P1]]),
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -653,7 +663,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4,5]{2,1,0} [[OP:[^ ]+]]([[GEMM]])
+; CHECK:         ROOT [[OUT:%[^ ]+]] = f32[2,4,5]{2,1,0} [[OP:[^ ]+]]
 )");
 }
 
@@ -678,7 +688,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} custom-call([[P0]], [[P1]]),
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":3
@@ -719,7 +729,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: c64[2,2], y: c64[2,2]) -> c64[2,2] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = c64[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = c64[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = c64[2,2]{1,0} custom-call([[P0]], [[P1]]),
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":3
@@ -758,7 +768,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK:    {{[^ ]+}} = f32[2,2]{1,0} custom-call({{[^,]+}}, {{[^)]+}}),
+; CHECK:    {{[^ ]+}} = {{.*}} custom-call({{[^,]+}}, {{[^)]+}}),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -798,7 +808,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    [[OUT:%[^ ]+]] = f32[2,2]{1,0} custom-call([[P0]], [[P1]]),
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -833,13 +843,13 @@ ENTRY bf16gemm {
   if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::AMPERE)) {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: bf16[16,8]{1,0} custom-call(bf16[16,8]{1,0} {{.*}}, bf16[8,8]{1,0} {{.*}}), custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
+; CHECK: {{.*}} custom-call(bf16[16,8]{1,0} {{.*}}, bf16[8,8]{1,0} {{.*}}), custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
   )",
                       /*print_operand_shape=*/true);
   } else {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: bf16[12,8]{1,0} custom-call(bf16[12,4]{1,0} [[P0:%[^ ]+]], bf16[4,8]{1,0} [[P1:%[^ ]+]]), custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
+; CHECK: {{.*}} custom-call(bf16[12,4]{1,0} [[P0:%[^ ]+]], bf16[4,8]{1,0} [[P1:%[^ ]+]]), custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
   )",
                       /*print_operand_shape=*/true);
   }
@@ -861,13 +871,19 @@ ENTRY bf16gemm {
   if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::AMPERE)) {
     MatchOptimizedHlo(hlo_text,
                       R"(
-    ; CHECK: bf16[3,8,8]{2,1,0} custom-call(bf16[3,8,8]{2,1,0} {{.*}}, bf16[3,8,8]{2,1,0} {{.*}}), custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
+    ; CHECK: {{.*}} custom-call(bf16[3,8,8]{2,1,0} {{.*}}, bf16[3,8,8]{2,1,0} {{.*}}), custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
+    )",
+                      /*print_operand_shape=*/true);
+  } else if (GetParam()) {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+    ; CHECK: ROOT [[OUT:%[^ ]+]] = bf16[3,4,2]{2,1,0} custom-call(bf16[3,3,4]{2,1,0} [[A:%[^ ]+]], bf16[3,3,2]{2,1,0} [[B:%[^ ]+]]), custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
     )",
                       /*print_operand_shape=*/true);
   } else {
     MatchOptimizedHlo(hlo_text,
                       R"(
-    ; CHECK: ROOT [[OUT:%[^ ]+]] = bf16[3,4,2]{2,1,0} custom-call(bf16[3,3,4]{2,1,0} [[A:%[^ ]+]], bf16[3,3,2]{2,1,0} [[B:%[^ ]+]]), custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
+    ; CHECK: {{.*}} custom-call(bf16[3,3,4]{2,1,0} [[A:%[^ ]+]], bf16[3,3,2]{2,1,0} [[B:%[^ ]+]]), custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
     )",
                       /*print_operand_shape=*/true);
   }
@@ -888,14 +904,37 @@ ENTRY int8gemm {
   if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} [[A:%[^ ]+]], s8[4,8]{0,1} [[B:%[^ ]+]]), custom_call_target="__cublas$gemm"
+; CHECK: {{.*}} custom-call(s8[12,4]{1,0} [[A:%[^ ]+]], s8[4,8]{0,1} [[B:%[^ ]+]]), custom_call_target="__cublas$gemm"
   )",
                       /*print_operand_shape=*/true);
   } else {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: s32[12,8]{1,0} dot(s32[12,4]{1,0} [[A:%[^ ]+]], s32[4,8]{1,0} [[B:%[^ ]+]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+; CHECK: {{.*}} dot(s32[12,4]{1,0} [[A:%[^ ]+]], s32[4,8]{1,0} [[B:%[^ ]+]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 
+  )",
+                      /*print_operand_shape=*/true);
+  }
+}
+
+TEST_F(GemmRewriteTest, Int8GemmRankGreaterThanTwo) {
+  const char* hlo_text = R"(
+HloModule int8gemm
+
+ENTRY main.4 {
+  Arg_0.1 = s8[1,8,2]{2,1,0} parameter(0)
+  Arg_1.2 = s8[2,4]{1,0} parameter(1)
+  ROOT dot.3 = s32[1,8,4]{2,1,0} dot(Arg_0.1, Arg_1.2),
+  lhs_contracting_dims={2}, rhs_contracting_dims={0}
+}
+  )";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+
+  if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK: [[GEMM:%[^ ]+]] = (s32[8,4]{1,0}, s8[{{[0-9]+}}]{0}) custom-call(s8[8,4]{1,0} %fusion.1, s8[4,4]{0,1} %bitcast.13), custom_call_target="__cublas$gemm",
   )",
                       /*print_operand_shape=*/true);
   }
@@ -919,7 +958,7 @@ ENTRY int8gemm {
   if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} [[A:%[^ ]+]], s8[4,8]{0,1} [[B:%[^ ]+]]),
+; CHECK: {{.*}} custom-call(s8[12,4]{1,0} [[A:%[^ ]+]], s8[4,8]{0,1} [[B:%[^ ]+]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:       "alpha_real":1
@@ -929,7 +968,7 @@ ENTRY int8gemm {
   } else {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: s32[12,8]{1,0} dot(s32[12,4]{1,0} [[A:%[^ ]+]], s32[4,8]{1,0} [[B:%[^ ]+]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+; CHECK: {{.*}} dot(s32[12,4]{1,0} [[A:%[^ ]+]], s32[4,8]{1,0} [[B:%[^ ]+]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 
   )",
                       /*print_operand_shape=*/true);
@@ -953,7 +992,7 @@ ENTRY int8gemm {
   if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} [[A:%[^ ]+]], s8[4,8]{0,1} [[B:%[^ ]+]]),
+; CHECK: {{.*}} custom-call(s8[12,4]{1,0} [[A:%[^ ]+]], s8[4,8]{0,1} [[B:%[^ ]+]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:       "alpha_real":1
@@ -964,7 +1003,7 @@ ENTRY int8gemm {
   } else {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: s32[12,8]{1,0} dot(s32[12,4]{1,0} [[A:%[^ ]+]], s32[4,8]{1,0} [[B:%[^ ]+]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+; CHECK: {{.*}} dot(s32[12,4]{1,0} [[A:%[^ ]+]], s32[4,8]{1,0} [[B:%[^ ]+]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 
   )",
                       /*print_operand_shape=*/true);
@@ -986,13 +1025,13 @@ ENTRY int8gemm {
   if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: s32[16,12]{1,0} custom-call(s8[16,4]{1,0} [[A:%[^ ]+]], s8[4,12]{0,1} [[B:%[^ ]+]]), custom_call_target="__cublas$gemm"
+; CHECK: {{.*}} custom-call(s8[16,4]{1,0} [[A:%[^ ]+]], s8[4,12]{0,1} [[B:%[^ ]+]]), custom_call_target="__cublas$gemm"
   )",
                       /*print_operand_shape=*/true);
   } else {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: s32[13,9]{1,0} dot(s32[13,4]{1,0} [[A:%[^ ]+]], s32[4,9]{1,0} [[B:%[^ ]+]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+; CHECK: {{.*}} dot(s32[13,4]{1,0} [[A:%[^ ]+]], s32[4,9]{1,0} [[B:%[^ ]+]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 
   )",
                       /*print_operand_shape=*/true);
@@ -1085,8 +1124,9 @@ ENTRY test {
 
   // This is a type combination which is not supported by cublasLt, expect
   // GemmRewriter to choose legacy cublas.
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::CustomCall({"__cublas$gemm"})));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::GetTupleElement(m::CustomCall({"__cublas$gemm"}), 0)));
 }
 
 TEST_P(ParameterizedGemmRewriteTest, UpcastingC64ToC128) {
@@ -1108,8 +1148,9 @@ ENTRY test {
 
   // This is a type combination which is not supported by cublasLt, expect
   // GemmRewriter to choose legacy cublas.
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::CustomCall({"__cublas$gemm"})));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::GetTupleElement(m::CustomCall({"__cublas$gemm"}), 0)));
 }
 
 TEST_P(ParameterizedGemmRewriteTest, UpcastingF16ToF32) {
@@ -1129,8 +1170,14 @@ ENTRY test {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::CustomCall({CustomCallTarget()})));
+  if (GetParam()) {
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                GmockMatch(m::CustomCall({CustomCallTarget()})));
+  } else {
+    EXPECT_THAT(
+        module->entry_computation()->root_instruction(),
+        GmockMatch(m::GetTupleElement(m::CustomCall({CustomCallTarget()}), 0)));
+  }
 }
 
 TEST_P(ParameterizedGemmRewriteTest, UpcastingF16ToF64) {
@@ -1152,8 +1199,9 @@ ENTRY test {
 
   // This is a type combination which is not supported by cublasLt, expect
   // GemmRewriter to choose legacy cublas.
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::CustomCall({"__cublas$gemm"})));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::GetTupleElement(m::CustomCall({"__cublas$gemm"}), 0)));
 }
 
 TEST_P(ParameterizedGemmRewriteTest, UpcastingF32ToF64) {
@@ -1175,8 +1223,9 @@ ENTRY test {
 
   // This is a type combination which is not supported by cublasLt, expect
   // GemmRewriter to choose legacy cublas.
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::CustomCall({"__cublas$gemm"})));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::GetTupleElement(m::CustomCall({"__cublas$gemm"}), 0)));
 }
 
 TEST_P(ParameterizedGemmRewriteTest, DoNotUpconvertOutput) {
@@ -1202,8 +1251,14 @@ ENTRY main {
 
   // input fp16 and output fp32 combination is supported by legacy cublas and
   // cublasLt, expect GemmRewriter to fuse the convert into gemm.
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Convert(m::CustomCall({CustomCallTarget()}))));
+  if (GetParam()) {
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                GmockMatch(m::Convert(m::CustomCall({CustomCallTarget()}))));
+  } else {
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                GmockMatch(m::Convert(m::GetTupleElement(
+                    m::CustomCall({CustomCallTarget()}), 0))));
+  }
 }
 
 TEST_P(ParameterizedGemmRewriteTest, UnsupportedMixTypeGemm) {
@@ -1229,8 +1284,14 @@ ENTRY main {
 
   // u8 is not supported by legacy cublas and cublasLt, expect
   // GemmRewriter to not fuse the convert into gemm.
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Convert(m::CustomCall({CustomCallTarget()}))));
+  if (GetParam()) {
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                GmockMatch(m::Convert(m::CustomCall({CustomCallTarget()}))));
+  } else {
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                GmockMatch(m::Convert(m::GetTupleElement(
+                    m::CustomCall({CustomCallTarget()}), 0))));
+  }
 }
 
 TEST_P(ParameterizedGemmRewriteTest, CheckIsGemmAliasedBeforeFusion) {
@@ -1259,8 +1320,14 @@ ENTRY main {
   // input fp16 and output fp32 combination is supported by legacy cublas and
   // cublasLt, but gemm output is already aliased with one of the input expect
   // GemmRewriter to not fuse the convert into gemm.
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Convert(m::CustomCall({CustomCallTarget()}))));
+  if (GetParam()) {
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                GmockMatch(m::Convert(m::CustomCall({CustomCallTarget()}))));
+  } else {
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                GmockMatch(m::Convert(m::GetTupleElement(
+                    m::CustomCall({CustomCallTarget()}), 0))));
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(CublasTestsBothLegacyAndLt,
@@ -1309,9 +1376,11 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2], param_2: f32[2,2]) -> f32[2,2] {
 ; CHECK-DAG:     [[X:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
 ; CHECK-DAG:     [[Y:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
-; CHECK:         ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} custom-call([[X]], [[Y]], {{[^,)]+}}),
+; CHECK:         [[O:%[^ ]+]] = (f32[2,2]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[X]], [[Y]], {{[^,)]+}}),
 ; CHECK:           custom_call_target="__cublas$gemm",
-; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
+; CHECK:           output_to_operand_aliasing={
+; CHECK-SAME:        {0}: (2, {})
+; CHECK-SAME:      }
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":3
 ; CHECK-DAG:         "alpha_imag":0
@@ -1327,6 +1396,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
+; CHECK:         ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} get-tuple-element([[O]]), index=0
 )");
 }
 
@@ -1353,7 +1423,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2], bias: f32[2,2]) -> f32[2,2] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    [[GEMM:%[^ ]+]] = f32[2,2]{1,0} custom-call([[P0]], [[P1]]),
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = (f32[2,2]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":3
@@ -1392,7 +1462,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2], bias: f32[2,2]) -> f32[2,2] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    [[GEMM:%[^ ]+]] = f32[2,2]{1,0} custom-call([[P0]], [[P1]]),
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = (f32[2,2]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -1435,9 +1505,11 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:     [[P2:%[^ ]+]] = (f32[2,2]{1,0}, f32[3,3]{1,0}) parameter(2)
 ; CHECK-DAG:     [[BIAS:%[^ ]+]] = f32[2,2]{1,0} get-tuple-element([[P2]]), index=0
 ; CHECK-DAG:     [[BIAS_COPY:%[^ ]+]] = f32[2,2]{1,0} copy([[BIAS]])
-; CHECK-NEXT:    [[GEMM:%[^ ]+]] = f32[2,2]{1,0} custom-call([[P0]], [[P1]], [[BIAS_COPY]]),
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = (f32[2,2]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1]], [[BIAS_COPY]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
-; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
+; CHECK:           output_to_operand_aliasing={
+; CHECK-SAME:        {0}: (2, {})
+; CHECK-SAME:      }
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
 ; CHECK-DAG:         "alpha_imag":0
@@ -1480,9 +1552,11 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:     [[X:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
 ; CHECK-DAG:     [[Y:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
 ; CHECK-DAG:     [[BIAS:%[^ ]+]] = f32[2,2]{1,0} parameter(2)
-; CHECK:         ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} custom-call([[X]], [[Y]], [[BIAS]]),
+; CHECK:         [[GEMM:%[^ ]+]] = (f32[2,2]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[X]], [[Y]], [[BIAS]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
-; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
+; CHECK:           output_to_operand_aliasing={
+; CHECK-SAME:        {0}: (2, {})
+; CHECK-SAME:      }
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":3
 ; CHECK-DAG:         "alpha_imag":0
@@ -1522,7 +1596,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[1024,1024], y: f32[1024,1024], bias: f32[1024,1024]) -> f32[1024,1024] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f32[1024,1024]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[1024,1024]{1,0} parameter(1)
-; CHECK-NEXT:    [[GEMM:%[^ ]+]] = f32[1024,1024]{1,0} custom-call([[P0]], [[P1]]),
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = (f32[1024,1024]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -1567,9 +1641,11 @@ ENTRY BF16GemmWithBias {
 ; CHECK-LABEL: ENTRY %BF16GemmWithBias (x: bf16[8,8], y: bf16[8,8], param_2: bf16[8,8]) -> bf16[8,8] {
 ; CHECK-DAG:    [[X:%[^ ]+]] = bf16[8,8]{1,0} parameter(0)
 ; CHECK-DAG:    [[Y:%[^ ]+]] = bf16[8,8]{1,0} parameter(1)
-; CHECK:        ROOT [[GEMM:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[X]], [[Y]], {{[^,)]+}}),
+; CHECK:        [[GEMM:%[^ ]+]] = (bf16[8,8]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[X]], [[Y]], {{[^,)]+}}),
 ; CHECK:           custom_call_target="__cublas$gemm",
-; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
+; CHECK:           output_to_operand_aliasing={
+; CHECK-SAME:        {0}: (2, {})
+; CHECK-SAME:      }
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
 ; CHECK-DAG:         "alpha_imag":0
@@ -1614,9 +1690,11 @@ ENTRY test {
 ; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], param_2: f32[2,4]) -> f32[2,4] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
-; CHECK:         ROOT [[GEMM:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], {{[^,)]+}}),
+; CHECK:         [[GEMM:%[^ ]+]] = (f32[2,4]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1]], {{[^,)]+}}),
 ; CHECK:           custom_call_target="__cublas$gemm",
-; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
+; CHECK:           output_to_operand_aliasing={
+; CHECK-SAME:        {0}: (2, {})
+; CHECK-SAME:      }
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
 ; CHECK-DAG:         "alpha_imag":0
@@ -1659,7 +1737,7 @@ ENTRY test {
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-DAG:     [[P2:%[^ ]+]] = f32[2,3]{1,0} parameter(2)
 ; CHECK-DAG:     [[P3:%[^ ]+]] = f32[3,4]{1,0} parameter(3)
-; CHECK-NEXT:    [[FIRST_GEMM:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]),
+; CHECK-NEXT:    [[FIRST_GEMM:%[^ ]+]] = (f32[2,4]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -1676,9 +1754,12 @@ ENTRY test {
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
-; CHECK-NEXT:    ROOT [[SECOND_GEMM:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P2]], [[P3]], [[FIRST_GEMM]]),
+; CHECK:         [[FIRST_GEMM_OUT:%[^ ]+]] = f32[2,4]{1,0} get-tuple-element([[FIRST_GEMM]]), index=0
+; CHECK-NEXT:    [[SECOND_GEMM:%[^ ]+]] = (f32[2,4]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P2]], [[P3]], [[FIRST_GEMM_OUT]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
-; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
+; CHECK:           output_to_operand_aliasing={
+; CHECK-SAME:        {0}: (2, {})
+; CHECK-SAME:      }
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
 ; CHECK-DAG:         "alpha_imag":0
@@ -1729,8 +1810,10 @@ ENTRY test {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                             GetOptimizedModule(hlo_text));
     EXPECT_THAT(optimized_module->entry_computation()->root_instruction(),
-                GmockMatch(m::CustomCall(m::Parameter(0), m::Parameter(1),
-                                         m::Negate(m::Parameter(2)))));
+                GmockMatch(m::GetTupleElement(
+                    m::CustomCall(m::Parameter(0), m::Parameter(1),
+                                  m::Negate(m::Parameter(2))),
+                    0)));
   }
 }
 
@@ -1764,8 +1847,10 @@ ENTRY test {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                             GetOptimizedModule(hlo_text));
     EXPECT_THAT(optimized_module->entry_computation()->root_instruction(),
-                GmockMatch(m::CustomCall(m::Parameter(0), m::Parameter(1),
-                                         m::Negate(m::Parameter(2)))));
+                GmockMatch(m::GetTupleElement(
+                    m::CustomCall(m::Parameter(0), m::Parameter(1),
+                                  m::Negate(m::Parameter(2))),
+                    0)));
   }
 }
 #endif
@@ -1794,7 +1879,9 @@ ENTRY test {
       optimized_module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(
           m::Parameter(2),
-          m::CustomCall({"__cublas$gemm"}, m::Parameter(0), m::Parameter(1)))));
+          m::GetTupleElement(m::CustomCall({"__cublas$gemm"}, m::Parameter(0),
+                                           m::Parameter(1)),
+                             0))));
 }
 
 // Test batch gemm matrix bias add fusion with mix type that is not supported
@@ -1823,7 +1910,9 @@ ENTRY test {
       optimized_module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(
           m::Parameter(2),
-          m::CustomCall({"__cublas$gemm"}, m::Parameter(0), m::Parameter(1)))));
+          m::GetTupleElement(m::CustomCall({"__cublas$gemm"}, m::Parameter(0),
+                                           m::Parameter(1)),
+                             0))));
 }
 
 TEST_F(LegacyCublasGemmRewriteTest, MergeBitcastAndAdd) {
@@ -1848,8 +1937,11 @@ ENTRY test {
       module->entry_computation()->root_instruction(),
       GmockMatch(
           m::Bitcast(
-              m::CustomCall({"__cublas$gemm"}, m::Parameter(0), m::Parameter(1),
-                            m::Bitcast(m::Parameter(2)).WithShape(F32, {2, 2})))
+              m::GetTupleElement(
+                  m::CustomCall(
+                      {"__cublas$gemm"}, m::Parameter(0), m::Parameter(1),
+                      m::Bitcast(m::Parameter(2)).WithShape(F32, {2, 2})),
+                  0))
               .WithShape(F32, {4})));
 }
 
@@ -1895,11 +1987,18 @@ ENTRY test {
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Tuple(
-          m::CustomCall(m::Parameter(0), m::Parameter(1),
-                        m::Negate(m::Parameter(2))),
-          m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
-          m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
-          m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()))));
+          m::GetTupleElement(m::CustomCall(m::Parameter(0), m::Parameter(1),
+                                           m::Negate(m::Parameter(2))),
+                             0),
+          m::GetTupleElement(
+              m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
+              0),
+          m::GetTupleElement(
+              m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
+              0),
+          m::GetTupleElement(
+              m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
+              0))));
 }
 
 #if GOOGLE_CUDA
@@ -4695,7 +4794,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreAda) {
   MatchOptimizedHlo(hlo_text,
                     R"(
 ; CHECK-LABEL: ENTRY %PreAdaTest (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16]) -> f8e4m3fn[16,16] {
-; CHECK:    {{.*}} = f16[16,16]{1,0} custom-call({{.*}}, {{.*}})
+; CHECK:    {{.*}} = {{.*}} custom-call({{.*}}, {{.*}})
 ; CHECK-DAG:  custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
           )");
 }
@@ -4723,7 +4822,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnsupportedTypesF8) {
 ; CHECK-NEXT:    [[P0_CONVERT:%[^ ]+]] = f16[16,16]{1,0} convert([[P0]])
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e5m2[16,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_CONVERT:%[^ ]+]] = f16[16,16]{1,0} convert([[P1]])
-; CHECK-NEXT:    [[DOT:%[^ ]+]] = f16[16,16]{1,0} custom-call([[P0_CONVERT]], [[P1_CONVERT]]),
+; CHECK-NEXT:    [[DOT:%[^ ]+]] = {{.*}} custom-call([[P0_CONVERT]], [[P1_CONVERT]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -4740,7 +4839,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnsupportedTypesF8) {
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e5m2[16,16]{1,0} convert([[DOT]])
+; CHECK:         ROOT [[OUT:%[^ ]+]] = f8e5m2[16,16]{1,0} convert
       )",
                                                 replacements_));
 }
@@ -5824,11 +5923,11 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDVectorBiasF8) {
 ; CHECK-DAG:         "alpha_real":1
 ; CHECK-DAG:         "alpha_imag":0
 ; CHECK-DAG:         "beta":0
-; CHECK-DAG:         "dot_dimension_numbers":{ 
+; CHECK-DAG:         "dot_dimension_numbers":{
 ; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
 ; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
 ; CHECK-DAG:           "lhs_batch_dimensions":[]
-; CHECK-DAG:           "rhs_batch_dimensions":[] 
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
 ; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
@@ -5886,11 +5985,11 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF32VectorBiasF8) {
 ; CHECK-DAG:         "alpha_real":1
 ; CHECK-DAG:         "alpha_imag":0
 ; CHECK-DAG:         "beta":0
-; CHECK-DAG:         "dot_dimension_numbers":{ 
+; CHECK-DAG:         "dot_dimension_numbers":{
 ; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
 ; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
 ; CHECK-DAG:           "lhs_batch_dimensions":[]
-; CHECK-DAG:           "rhs_batch_dimensions":[] 
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
 ; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
@@ -6581,11 +6680,11 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 ; CHECK-DAG:         "alpha_real":1
 ; CHECK-DAG:         "alpha_imag":0
 ; CHECK-DAG:         "beta":1
-; CHECK-DAG:         "dot_dimension_numbers":{ 
+; CHECK-DAG:         "dot_dimension_numbers":{
 ; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
 ; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
 ; CHECK-DAG:           "lhs_batch_dimensions":[]
-; CHECK-DAG:           "rhs_batch_dimensions":[] 
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
 ; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
@@ -6838,6 +6937,38 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
       )");
 }
 
+TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDPrecisionF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
+  const char* hlo_template = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[1600,3200] parameter(0)
+      y = f8e4m3fn[3200,1600] parameter(1)
+      x_f32 = f32[1600,3200] convert(x)
+      y_f32 = f32[3200,1600] convert(y)
+      x_scale = f32[] parameter(2)
+      y_scale = f32[] parameter(3)
+      x_scale_bcast = f32[1600,3200] broadcast(x_scale), dimensions={}
+      y_scale_bcast = f32[3200,1600] broadcast(y_scale), dimensions={}
+      x_unscaled = f32[1600,3200] multiply(x_f32, x_scale_bcast)
+      y_unscaled = f32[3200,1600] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[1600,1600] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={<<precision>>,<<precision>>}
+          }
+)";
+
+  absl::flat_hash_map<absl::string_view, absl::string_view> replacements;
+  replacements["<<precision>>"] = "default";
+  const auto hlo_text_default = absl::StrReplaceAll(hlo_template, replacements);
+  EXPECT_TRUE(RunAndCompare(hlo_text_default, ErrorSpec{1e-3, 1e-3}));
+
+  replacements["<<precision>>"] = "highest";
+  const auto hlo_text_highest = absl::StrReplaceAll(hlo_template, replacements);
+  EXPECT_TRUE(RunAndCompare(hlo_text_highest, ErrorSpec{1e-4, 1e-4}));
+}
+
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
 #if CUDA_VERSION < 12000
   GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
@@ -7046,7 +7177,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, FnuzTypeF8) {
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[P3_B:%[^ ]+]] = f32[32,16]{1,0} broadcast([[P3]]), dimensions={}
 ; CHECK-NEXT:    [[P1_UNSCALED:%[^ ]+]] = f32[32,16]{1,0} multiply([[P1_CV]], [[P3_B]])
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0_UNSCALED]], [[P1_UNSCALED]]),
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0_UNSCALED]], [[P1_UNSCALED]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -7108,7 +7239,7 @@ class GemmRewriteAllocationTest : public GpuCodegenTest {
         static_cast<GpuExecutable*>(executable.get());
     absl::Span<const BufferAllocation> allocations =
         gpu_executable->GetAllocations();
-    CHECK_EQ(allocations.size(), expected_number_of_allocations);
+    ASSERT_EQ(allocations.size(), expected_number_of_allocations);
   }
 };
 
@@ -7127,7 +7258,7 @@ ENTRY AddDotsFunc {
 )";
 
   // Bias should be fused into the multiplication.
-  CheckNumberOfAllocations(hlo_text, 3);
+  CheckNumberOfAllocations(hlo_text, 4);
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 

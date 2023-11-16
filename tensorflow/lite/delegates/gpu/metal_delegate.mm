@@ -337,7 +337,8 @@ class Delegate {
       tensor->delegate = &delegate_;
     }
 
-    std::string device_name = std::string([[metal_device_ name] UTF8String]);
+    auto utf8_name = [[metal_device_ name] UTF8String];
+    const std::string device_name = utf8_name != nil ? utf8_name : "";
     GpuInfo gpu_info;
     GetGpuInfoFromDeviceDescription(device_name, GpuApi::kMetal, &gpu_info);
     size_t storage_type_size;

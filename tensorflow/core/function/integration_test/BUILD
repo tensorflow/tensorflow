@@ -12,8 +12,9 @@ py_strict_test(
     srcs = ["side_inputs_test.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py",
         "@absl_py//absl/testing:parameterized",
+        #internal proto upb dep
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -22,7 +23,8 @@ py_strict_test(
     srcs = ["side_inputs_manual_api_test.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py",
         "@absl_py//absl/testing:parameterized",
+        #internal proto upb dep
+        "//tensorflow:tensorflow_py",
     ],
 )

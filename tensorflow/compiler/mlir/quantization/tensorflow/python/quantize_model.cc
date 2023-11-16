@@ -22,10 +22,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
@@ -39,6 +43,7 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
@@ -197,7 +202,7 @@ std::string FindFilePrefixTensorName(const GraphDef &graph_def) {
         if (const auto file_prefix_itr =
                 absl::c_find(index_paths, kTfFilePrefix.str());
             file_prefix_itr != index_paths.end()) {
-          // ":0" appended to inidicate that it is a tensor, not an Operation.
+          // ":0" appended to indicate that it is a tensor, not an Operation.
           return absl::StrCat(node_def.name(), ":0");
         }
       }
@@ -391,7 +396,7 @@ absl::StatusOr<llvm::SmallVector<AssetFileDef>> RunExportPasses(
               << export_opts.checkpoint_dir;
   }
 
-  if (const absl::Status pass_run_status = RunPasses(
+  if (absl::Status pass_run_status = RunPasses(
           /*name=*/export_opts.debug_name,
           /*add_passes_func=*/
           [dup_constants = export_opts.duplicate_shape_determining_constants](

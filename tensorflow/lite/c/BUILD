@@ -225,7 +225,6 @@ cc_library(
     visibility = [
         "//tensorflow/lite/core/async/c:__subpackages__",
         "//tensorflow/lite/core/c:__subpackages__",
-        "//tensorflow/lite/delegates/utils:__pkg__",
     ],
     deps = [
         ":common_internal",
@@ -464,6 +463,7 @@ cc_library_with_tflite_with_c_headers_test(
     testonly = True,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
+    generate_opaque_delegate_target = True,
 )
 
 tflite_self_contained_libs_test_suite(name = "self_contained_libs_test_suite")

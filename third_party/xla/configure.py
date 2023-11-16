@@ -15,8 +15,8 @@
 """configure script to get build parameters from user."""
 
 import argparse
-import glob
 import os
+import pathlib
 import platform
 import re
 import subprocess
@@ -31,7 +31,7 @@ except ImportError:
 
 _DEFAULT_CUDA_VERSION = '11'
 _DEFAULT_CUDNN_VERSION = '2'
-_DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
+_DEFAULT_CUDA_COMPUTE_CAPABILITIES = '5.2,7.0'
 
 _DEFAULT_PROMPT_ASK_ATTEMPTS = 10
 
@@ -688,8 +688,9 @@ def set_tf_cuda_compute_capabilities(environ_cp):
         ' binary GPU code, or as "sm_xy" to only include the binary '
         'code.\nPlease note that each additional compute capability '
         'significantly increases your build time and binary size, and that '
-        'XLA only supports compute capabilities >= 3.5 [Default is: '
-        '%s]: ' % default_cuda_compute_capabilities)
+        'XLA only supports compute capabilities >= 5.2 [Default is: '
+        '%s]: ' % default_cuda_compute_capabilities
+    )
     tf_cuda_compute_capabilities = get_from_env_or_user_or_default(
         environ_cp, 'TF_CUDA_COMPUTE_CAPABILITIES',
         ask_cuda_compute_capabilities, default_cuda_compute_capabilities)
@@ -701,7 +702,7 @@ def set_tf_cuda_compute_capabilities(environ_cp):
     for compute_capability in tf_cuda_compute_capabilities.split(','):
       m = re.match('[0-9]+.[0-9]+', compute_capability)
       if not m:
-        # We now support sm_35,sm_50,sm_60,compute_70.
+        # We now support sm_52,compute_70.
         sm_compute_match = re.match('(sm|compute)_?([0-9]+[0-9]+)',
                                     compute_capability)
         if not sm_compute_match:
@@ -709,25 +710,22 @@ def set_tf_cuda_compute_capabilities(environ_cp):
           all_valid = False
         else:
           ver = int(sm_compute_match.group(2))
-          if ver < 30:
+          if ver < 52:
             print(
                 'ERROR: XLA only supports small CUDA compute'
-                ' capabilities of sm_30 and higher. Please re-specify the list'
-                ' of compute capabilities excluding version %s.' % ver)
+                ' capabilities of sm_52 and higher. Please re-specify the list'
+                ' of compute capabilities excluding version %s.' % ver
+            )
             all_valid = False
-          if ver < 35:
-            print('WARNING: XLA does not support CUDA compute capabilities '
-                  'lower than sm_35. Disable XLA when running on older GPUs.')
       else:
         ver = float(m.group(0))
-        if ver < 3.0:
-          print('ERROR: XLA only supports CUDA compute capabilities 3.0 '
-                'and higher. Please re-specify the list of compute '
-                'capabilities excluding version %s.' % ver)
+        if ver < 5.2:
+          print(
+              'ERROR: XLA only supports CUDA compute capabilities 5.2 '
+              'and higher. Please re-specify the list of compute '
+              'capabilities excluding version %s.' % ver
+          )
           all_valid = False
-        if ver < 3.5:
-          print('WARNING: XLA does not support CUDA compute capabilities '
-                'lower than 3.5. Disable XLA when running on older GPUs.')
 
     if all_valid:
       break
@@ -854,14 +852,20 @@ def validate_cuda_config(environ_cp):
     if environ_cp.get('TF_NCCL_VERSION', None):
       cuda_libraries.append('nccl')
 
-  paths = glob.glob('**/third_party/gpus/find_cuda_config.py', recursive=True)
-  if not paths:
+  find_cuda_script = os.path.join(
+      pathlib.Path(__file__).parent.resolve(),
+      'third_party/tsl/third_party/gpus/find_cuda_config.py',
+  )
+  if not os.path.isfile(find_cuda_script):
     raise FileNotFoundError(
-        "Can't find 'find_cuda_config.py' script inside working directory")
+        "Can't find 'find_cuda_config.py' script inside working directory,"
+        f' expected in {find_cuda_script}'
+    )
   proc = subprocess.Popen(
-      [environ_cp['PYTHON_BIN_PATH'], paths[0]] + cuda_libraries,
+      [environ_cp['PYTHON_BIN_PATH'], find_cuda_script] + cuda_libraries,
       stdout=subprocess.PIPE,
-      env=maybe_encode_env(environ_cp))
+      env=maybe_encode_env(environ_cp),
+  )
 
   if proc.wait():
     # Errors from find_cuda_config.py were sent to stderr.

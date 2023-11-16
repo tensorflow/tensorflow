@@ -28,6 +28,8 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -315,12 +317,18 @@ tsl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
     //  Example error message associated with this error code:
     //      ptxas fatal   : Value 'sm_80' is not defined for option 'gpu-name'
     // In that case, fallback to the driver for compilation
-    if (absl::StartsWith(stderr_output, "ptxas fatal   : Value '") &&
+    if (absl::StrContains(stderr_output, "ptxas fatal   : Value '") &&
         absl::StrContains(stderr_output,
                           "is not defined for option 'gpu-name'")) {
       LogPtxasTooOld(ptxas_path, cc_major, cc_minor);
-      return tsl::errors::Unimplemented(
-          ptxas_path, " ptxas too old. Falling back to the driver to compile.");
+      return absl::UnimplementedError(absl::StrFormat(
+          "%s ptxas too old. Falling back to the driver to compile.",
+          ptxas_path));
+    }
+    if (absl::StrContains(stderr_output, "ptxas fatal") &&
+        absl::StrContains(stderr_output, "Register allocation failed")) {
+      LOG(INFO) << stderr_output;
+      return absl::ResourceExhaustedError("Register allocation failed");
     }
 
     return tsl::errors::Internal(

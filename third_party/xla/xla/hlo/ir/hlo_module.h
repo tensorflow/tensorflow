@@ -18,13 +18,13 @@ limitations under the License.
 
 #include <atomic>
 #include <functional>
-#include <list>
 #include <memory>
 #include <optional>
 #include <random>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -54,6 +54,65 @@ using LayoutCanonicalizationCallback =
     std::function<StatusOr<std::pair<std::vector<Shape>, Shape>>(
         const HloModule& module)>;
 
+// Helper class to maintain a copy-on-write storage of an object of the
+// specified type. Logically Variant<MutableOwned, ImmutableShared>.
+template <typename T>
+class CopyOnWrite {
+ public:
+  static_assert(!std::is_const_v<T>);
+  explicit CopyOnWrite(
+      std::variant<std::unique_ptr<T>, std::shared_ptr<const T>> ptr)
+      : ownership_(std::move(ptr)), ptr_([&]() -> decltype(ptr_) {
+          if (auto* owned = std::get_if<std::unique_ptr<T>>(&ownership_)) {
+            return owned->get();
+          }
+          return std::get<std::shared_ptr<const T>>(ownership_).get();
+        }()) {}
+
+  // Obtains a const reference to the read-only copy of the object, could be
+  // sharing the storage with other CopyOnWrite<T> instances.
+  const T& get() const { return *ptr_; }
+
+  // Obtains a mutable reference to an exclusively owned copy of the object. If
+  // the object was sharing storage with other CopyOnWrite<T> instances, make a
+  // deep copy inline and transform into exclusively owned copy.
+  T& get_mutable() {
+    if (auto* owned = std::get_if<std::unique_ptr<T>>(&ownership_)) {
+      return **owned;
+    }
+    auto& shared = std::get<std::shared_ptr<const T>>(ownership_);
+    DeepCopyToNewUnique(T(*shared));
+    return const_cast<T&>(*ptr_);
+  }
+  // Deep copies the provided value into an exclusively owned copy of the
+  // object.
+  void set(T&& value) {
+    if (auto* owned = std::get_if<std::unique_ptr<T>>(&ownership_)) {
+      **owned = std::forward<T>(value);
+    } else {
+      DeepCopyToNewUnique(std::forward<T>(value));
+    }
+  }
+  // If the instance is in MutableOwned state, move the storage into
+  // ImmutableShared state.
+  // If the instance is in ImmutableShared state, returns the shared storage.
+  const std::shared_ptr<const T>& FreezeAndShare() const {
+    if (auto* owned = std::get_if<std::unique_ptr<T>>(&ownership_)) {
+      ownership_ = std::shared_ptr<const T>(std::move(*owned));
+    }
+    return std::get<std::shared_ptr<const T>>(ownership_);
+  }
+
+ private:
+  void DeepCopyToNewUnique(T&& value) {
+    auto owned = std::make_unique<T>(std::forward<T>(value));
+    ptr_ = owned.get();
+    ownership_ = std::move(owned);
+  }
+  mutable std::variant<std::unique_ptr<T>, std::shared_ptr<const T>> ownership_;
+  const T* ptr_;
+};
+
 // Describes a compilation unit at the HLO level.
 //
 // HloModule is the top-level unit in the HLO IR.  It corresponds to a whole
@@ -75,6 +134,11 @@ class HloModule {
   // REQUIRED:
   // - comp_envs must not be null.
   HloModule(const std::string& name, HloModuleConfig config,
+            std::unique_ptr<CompilationEnvironments> comp_envs);
+  HloModule(const std::string& name,
+            std::variant<std::unique_ptr<HloModuleConfig>,
+                         std::shared_ptr<const HloModuleConfig>>
+                config,
             std::unique_ptr<CompilationEnvironments> comp_envs);
   virtual ~HloModule() = default;
 
@@ -138,6 +202,9 @@ class HloModule {
   std::unique_ptr<HloModule> Clone(const std::string& suffix = "clone") const;
   std::unique_ptr<HloModule> Clone(const HloModuleConfig& config,
                                    const std::string& suffix = "clone") const;
+  std::unique_ptr<HloModule> Clone(
+      std::shared_ptr<const HloModuleConfig> config,
+      const std::string& suffix = "clone") const;
 
   // Performs a deep clone of the computation, by recursively cloning all
   // the called computations as well. If the clone context is specified, it
@@ -169,11 +236,11 @@ class HloModule {
   }
 
   ComputationLayout* mutable_entry_computation_layout() {
-    return config_.mutable_entry_computation_layout();
+    return config_.get_mutable().mutable_entry_computation_layout();
   }
 
   const ComputationLayout& entry_computation_layout() const {
-    return config_.entry_computation_layout();
+    return config_.get().entry_computation_layout();
   }
 
   void set_frontend_attributes(FrontendAttributes frontend_attributes) {
@@ -348,9 +415,13 @@ class HloModule {
   std::vector<HloComputation*> MakeNonfusionComputationsSorted(
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 
-  HloModuleConfig& config() { return config_; }
-  const HloModuleConfig& config() const { return config_; }
-  void set_config(const HloModuleConfig& config) { config_ = config; }
+  HloModuleConfig& mutable_config() { return config_.get_mutable(); }
+  const HloModuleConfig& config() const { return config_.get(); }
+  void set_config(HloModuleConfig config) { config_.set(std::move(config)); }
+
+  const std::shared_ptr<const HloModuleConfig>& shared_config() const {
+    return config_.FreezeAndShare();
+  }
 
   bool is_dynamic() const { return is_dynamic_; }
   void set_is_dynamic(bool is_dynamic) { is_dynamic_ = is_dynamic; }
@@ -603,7 +674,7 @@ class HloModule {
     autofdo_fingerprint_ = std::string(fingerprint);
   }
 
-  absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
+  std::string autofdo_fingerprint() const { return autofdo_fingerprint_; }
 
   CompilationEnvironments& comp_envs() const { return *comp_envs_; }
 
@@ -638,7 +709,7 @@ class HloModule {
       bool uniquify_identifiers, bool preserve_entry_layouts);
 
   std::string name_;
-  HloModuleConfig config_;
+  CopyOnWrite<HloModuleConfig> config_;
   HloComputation* entry_computation_ = nullptr;
   std::vector<std::unique_ptr<HloComputation>> computations_;
 

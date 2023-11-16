@@ -51,6 +51,7 @@ PYBIND11_MODULE(flags_pybind, m) {
   TF_PY_DECLARE_FLAG(saved_model_fingerprinting);
   TF_PY_DECLARE_FLAG(tf_shape_default_int64);
   TF_PY_DECLARE_FLAG(more_stack_traces);
-  TF_PY_DECLARE_FLAG(replicate_small_constants);
+  TF_PY_DECLARE_FLAG(publish_function_graphs);
+  TF_PY_DECLARE_FLAG(enable_aggressive_constant_replication);
   // LINT.ThenChange(//tensorflow/core/config/flag_defs.h)
 };

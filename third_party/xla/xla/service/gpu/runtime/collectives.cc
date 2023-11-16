@@ -25,8 +25,10 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "xla/runtime/custom_call.h"
 #include "xla/runtime/executable.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
@@ -44,9 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 
 #if XLA_ENABLE_XCCL
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
-#include "third_party/gpus/cuda/include/driver_types.h"
-#include "third_party/gpus/cuda/include/vector_types.h"
+#include "xla/service/gpu/runtime/gpu_kernel_helper.h"
 #include "xla/service/gpu/runtime/sleep_kernel.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -103,7 +103,7 @@ StatusOr<NcclComm::Lock> GetNcclComm(
     const NcclExecuteParams& params, int64_t group_mode, int64_t op_id,
     absl::Span<const int64_t> replica_group_offsets,
     absl::Span<const int64_t> replica_group_values, int64_t stream_id,
-    bool enable_clique_optimization) {
+    bool enable_clique_optimization_flag) {
   // TODO(b/233930690): Pass the attribute below as a nested array.
   // Pass an array of arrays using two vectors; one specifying all the values
   // and another specifying the (ending) offsets of each array in the other
@@ -118,9 +118,12 @@ StatusOr<NcclComm::Lock> GetNcclComm(
     replica_groups.push_back(replica_group);
   }
 
-  return LockNcclComm(params, replica_groups,
-                      static_cast<CollectiveOpGroupMode>(group_mode), op_id,
-                      stream_id, enable_clique_optimization);
+  // Always enable clique optimization for single host, which is indicated by
+  // the absence of nccl_unique_id_callback.
+  return LockNcclComm(
+      params, replica_groups, static_cast<CollectiveOpGroupMode>(group_mode),
+      op_id, stream_id,
+      enable_clique_optimization_flag || !params.nccl_unique_id_callback);
 }
 #endif  // XLA_ENABLE_XCCL
 
@@ -179,20 +182,34 @@ absl::Status AsyncDoneImpl(const ServiceExecutableRunOptions* run_options,
 #endif  // XLA_ENABLE_XCCL
 }
 
+// TODO: shall we use GpuDriver::LaunchKernel() to avoid macros here ?
 #if XLA_ENABLE_XCCL
 absl::Status NcclMockImplCommon(se::Stream* stream) {
-  se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(stream);
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#define CHK(x)                                              \
+  if (auto res = (x); res != gpuSuccess) {                  \
+    return absl::InternalError(                             \
+        absl::StrFormat("Call failed with '%s' at line %d", \
+                        gpuGetErrorString(res), __LINE__)); \
+  }
+  auto gpu_stream = se::gpu::AsGpuStreamValue(stream);
   uint32_t sleep_duration_ns = 1000;
   void* kernel = GetSleepKernel();
-  void* kernel_args[] = {&sleep_duration_ns};
   dim3 gridDim = {1, 1, 1};
   dim3 blockDim = {512, 1, 1};
-  cudaError_t launch_status =
-      cudaLaunchKernel(kernel, gridDim, blockDim, kernel_args, 0, gpu_stream);
-  if (launch_status != cudaSuccess) {
-    return absl::InternalError(absl::StrCat("Failed to launch kernel: ",
-                                            cudaGetErrorString(launch_status)));
-  }
+
+#if GOOGLE_CUDA
+  void* kernel_args[] = {&sleep_duration_ns};
+#else
+  int devID = 0;
+  hipDeviceProp_t prop{};
+  CHK(hipGetDevice(&devID));
+  CHK(hipGetDeviceProperties(&prop, devID));
+  void* kernel_args[] = {&sleep_duration_ns, &prop.clockRate};
+#endif
+  CHK(gpuLaunchKernel(kernel, gridDim, blockDim, kernel_args, 0, gpu_stream));
+#undef CHK
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return absl::OkStatus();
 }
 #endif  // XLA_ENABLE_XCCL

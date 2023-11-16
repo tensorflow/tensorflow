@@ -23,7 +23,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_GPU_GPU_KERNEL_H_
 
 #include "xla/stream_executor/gpu/gpu_driver.h"
-#include "xla/stream_executor/kernel_cache_config.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/logging.h"
@@ -89,13 +89,13 @@ class GpuKernel : public internal::KernelInterface {
 
 // Given a platform-independent kernel datatype, returns the (const) internal
 // CUDA platform implementation pointer.
-inline const GpuKernel* AsGpuKernel(const KernelBase* kernel) {
+inline const GpuKernel* AsGpuKernel(const Kernel* kernel) {
   return static_cast<const GpuKernel*>(kernel->implementation());
 }
 
 // Given a platform-independent kernel datatype, returns the (non-const)
 // internal CUDA platform implementation pointer.
-inline GpuKernel* AsGpuKernel(KernelBase* kernel) {
+inline GpuKernel* AsGpuKernel(Kernel* kernel) {
   return static_cast<GpuKernel*>(kernel->implementation());
 }
 

@@ -18,6 +18,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/blas.h"
 
+#if TF_HIPBLASLT
+
 namespace stream_executor {
 namespace rocm {
 
@@ -30,27 +32,27 @@ tsl::Status ToStatus(hipblasStatus_t status, const char* prefix) {
   return tsl::OkStatus();
 }
 
-hipblasDatatype_t AsHipblasDataType(blas::DataType type) {
+hipblasltDatatype_t AsHipblasDataType(blas::DataType type) {
   switch (type) {
     case blas::DataType::kF8E5M2:
     case blas::DataType::kF8E4M3FN:
       LOG(FATAL) << "hipblaslt does not support F8 yet";
     case blas::DataType::kHalf:
-      return HIPBLAS_R_16F;
+      return HIPBLASLT_R_16F;
     case blas::DataType::kBF16:
-      return HIPBLAS_R_16B;
+      return HIPBLASLT_R_16B;
     case blas::DataType::kFloat:
-      return HIPBLAS_R_32F;
+      return HIPBLASLT_R_32F;
     case blas::DataType::kDouble:
-      return HIPBLAS_R_64F;
+      return HIPBLASLT_R_64F;
     case blas::DataType::kInt8:
-      return HIPBLAS_R_8I;
+      return HIPBLASLT_R_8I;
     case blas::DataType::kInt32:
-      return HIPBLAS_R_32I;
+      return HIPBLASLT_R_32I;
     case blas::DataType::kComplexFloat:
-      return HIPBLAS_C_32F;
+      return HIPBLASLT_C_32F;
     case blas::DataType::kComplexDouble:
-      return HIPBLAS_C_64F;
+      return HIPBLASLT_C_64F;
     default:
       LOG(FATAL) << "unknown data type";
   }
@@ -77,3 +79,5 @@ hipblasOperation_t AsHipblasOperation(blas::Transpose trans) {
 
 }  // namespace rocm
 }  // namespace stream_executor
+
+#endif  // #TF_HIPBLASLT

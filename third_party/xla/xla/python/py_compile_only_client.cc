@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "pybind11/stl.h"  // from @pybind11
 #include "xla/pjrt/mlir_to_hlo.h"
@@ -135,6 +136,10 @@ class CompileOnlyIfRtClient final
   }
   ifrt::PlatformId platform_id() const override {
     return topology_->platform_id();
+  }
+  absl::flat_hash_map<std::string, ClientAttribute> attributes()
+      const override {
+    return {};
   }
 
   int device_count() const override { return devices().size(); }

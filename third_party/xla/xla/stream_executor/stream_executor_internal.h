@@ -32,19 +32,20 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "xla/stream_executor/allocator_stats.h"
+#include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_options.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/kernel_cache_config.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/port.h"
-#include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/trace_listener.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
@@ -53,27 +54,6 @@ limitations under the License.
 namespace stream_executor {
 
 class Stream;
-
-//===----------------------------------------------------------------------===//
-// ModuleHandle
-//===----------------------------------------------------------------------===//
-
-// An opaque handle to a loaded module.
-//
-// An instance of this is returned from StreamExecutor::GetModule.
-class ModuleHandle {
- public:
-  explicit ModuleHandle(void* id = nullptr) : id_(id) {}
-
-  // A ModuleHandle with id() == nullptr is an invalid module handle, akin to a
-  // null pointer.
-  void* id() const { return id_; }
-
-  explicit operator bool() const { return id() != nullptr; }
-
- private:
-  void* id_;
-};
 
 namespace internal {
 
@@ -97,7 +77,7 @@ class EventInterface {
 // KernelInterface
 //===----------------------------------------------------------------------===//
 
-// Pointer-to-implementation object type (i.e. the KernelBase class delegates to
+// Pointer-to-implementation object type (i.e. the Kernel class delegates to
 // this interface) with virtual destruction. This class exists for the
 // platform-dependent code to hang any kernel data/resource info/functionality
 // off of.
@@ -150,8 +130,10 @@ class CommandBufferInterface {
 
   // Adds a kernel launch command to the command buffer.
   virtual tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
-                             const KernelBase& kernel,
-                             const KernelArgsArrayBase& args) = 0;
+                             const Kernel& kernel, const KernelArgs& args) = 0;
+
+  // Adds a nested command buffer to the command buffer.
+  virtual tsl::Status AddNestedCommandBuffer(const CommandBuffer& nested) = 0;
 
   // Adds a device-to-device memory copy to the command buffer.
   virtual tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
@@ -162,8 +144,15 @@ class CommandBufferInterface {
   // finalized no commands can be added to it.
   virtual tsl::Status Finalize() = 0;
 
+  // Begins command buffer update. Command buffer update should be finalized
+  // before it can be executed.
+  virtual tsl::Status Update() = 0;
+
   // Returns command buffer execution mode.
   virtual CommandBuffer::Mode mode() const = 0;
+
+  // Returns command buffer state.
+  virtual CommandBuffer::State state() const = 0;
 
  private:
   CommandBufferInterface(const CommandBufferInterface&) = delete;
@@ -200,13 +189,11 @@ class StreamInterface {
     return StreamPriority::Default;
   }
 
-  // Returns the GPU stream associated with this platform's stream
-  // implementation, or nullptr otherwise.
-  virtual void* GpuStreamHack() { return nullptr; }
-
-  // Returns a pointer to a GPU stream associated with this platform's stream,
-  // or a nullptr.
-  virtual void** GpuStreamMemberHack() { return nullptr; }
+  // Returns a pointer to a platform specific stream associated with this object
+  // if it exists, or nullptr otherwise. This is available via Stream public API
+  // as Stream::PlatformSpecificHandle, and should not be accessed directly
+  // outside of a StreamExecutor package.
+  virtual void* platform_specific_stream() { return nullptr; }
 
  private:
   StreamInterface(const StreamInterface&) = delete;
@@ -245,7 +232,7 @@ class StreamExecutorInterface {
   }
 
   virtual tsl::Status GetKernel(const MultiKernelLoaderSpec& spec,
-                                KernelBase* kernel) {
+                                Kernel* kernel) {
     return absl::UnimplementedError("Not Implemented");
   }
   virtual bool UnloadModule(ModuleHandle module_handle) { return false; }
@@ -258,8 +245,8 @@ class StreamExecutorInterface {
     return absl::UnimplementedError("Not Implemented");
   }
   virtual tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
-                             const BlockDim& block_dims, const KernelBase& k,
-                             const KernelArgsArrayBase& args) {
+                             const BlockDim& block_dims, const Kernel& k,
+                             const KernelArgs& args) {
     return absl::UnimplementedError("Not Implemented");
   }
 
@@ -269,7 +256,7 @@ class StreamExecutorInterface {
   }
 
   // Releases any state associated with the kernel.
-  virtual void UnloadKernel(const KernelBase* kernel) {}
+  virtual void UnloadKernel(const Kernel* kernel) {}
   virtual DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) = 0;
   DeviceMemoryBase Allocate(uint64_t size) {
     return Allocate(size, /*memory_space=*/0);
@@ -412,14 +399,11 @@ class StreamExecutorInterface {
     return absl::UnimplementedError("Command buffers are not implemented");
   }
 
-  // Returns the CUDA or ROCm context associated with this StreamExecutor
-  // platform implementation.
-  //
-  // WARNING: checks that the underlying platform is, in fact, CUDA or ROCm,
-  // causing a fatal error if it is not. This hack is made available solely for
-  // use from distbelief code, which temporarily has strong ties to CUDA or ROCm
-  // as a platform.
-  virtual void* GpuContextHack() { return nullptr; }
+  // Returns a pointer to a platform specific context associated with this
+  // object if it exists, or nullptr otherwise. This is available via
+  // StreamExecutor public API as StreamExecuto::PlatformSpecificHandle, and
+  // should not be accessed directly outside of a StreamExecutor package.
+  virtual void* platform_specific_context() { return nullptr; }
 
   // Return allocator statistics.
   virtual std::optional<AllocatorStats> GetAllocatorStats() {

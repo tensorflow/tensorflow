@@ -152,6 +152,23 @@ func.func @attr_custom_call_api_version_status_returning_unified(%arg0: tensor<f
   func.return %0 : tensor<f32>
 }
 
+// -----
+
+// CHECK-LABEL: "attr_custom_call_api_version_typed_ffi"
+func.func @attr_custom_call_api_version_typed_ffi(%arg0: tensor<f32>) -> tensor<f32> {
+  //      CHECK: "stablehlo.custom_call"(%arg0) {
+  // CHECK-SAME:   call_target_name = "mhlo.custom_call"
+  // CHECK-SAME:   mhlo.attributes = {api_version = 4 : i32, backend_config = {foo = "bar"}, call_target_name = "foo"},
+  // CHECK-SAME:   mhlo.version = 1 : i64
+  // CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
+  %0 = "mhlo.custom_call"(%arg0) {
+    call_target_name = "foo",
+    backend_config = {foo = "bar"},
+    api_version = 4 : i32
+  } : (tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
 // CustomCallSchedule aka #mhlo<custom_call_schedule> is unsupported at the moment (see negative test below).
 // DequantizeMode aka #mhlo<dequantize_mode> is unused at the moment.
 // DomainKind aka #mhlo<kind> is unsupported at the moment (see negative test below).
@@ -1819,7 +1836,7 @@ func.func @type_quantization(%arg0: tensor<!quant.uniform<i8:f32, 34.0:16>>, %ar
 
 // CHECK-LABEL: "type_sparsity"
 func.func @type_sparsity(%arg0: tensor<16xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> tensor<16xf32> {
-  // CHECK: "stablehlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<16xf32>
+  // CHECK: "stablehlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> tensor<16xf32>
   %0 = "mhlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> tensor<16xf32>
   func.return %0 : tensor<16xf32>
 }

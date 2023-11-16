@@ -482,10 +482,13 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     //
     // REQUIRES:
     // - The SlicedBufferInterval was constructed using CreateMutableInterval.
-    // - start_times.size() == NumSlices()
-    // - start_times should be set such that it is permissible for any slice
-    //   size to map to any start time.
-    void UpdateSliceStartTimes(const std::vector<int64_t>& start_times);
+    // - *_start_times.size() == NumSlices()
+    // - *_start_times should be set such that it is permissible for any
+    //   slice size to map to any start time.
+    void UpdateExclusiveSliceStartTimes(
+        const std::vector<int64_t>& exclusive_start_times);
+    void UpdateInclusiveSliceStartTimes(
+        const std::vector<int64_t>& inclusive_start_times);
 
     // Updates the free time for all the slices.
     //

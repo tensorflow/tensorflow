@@ -84,9 +84,7 @@ struct FreeOpLowering : public ConvertOpToLLVMPattern<FreeOp> {
   LogicalResult matchAndRewrite(
       FreeOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
-    auto freeFn =
-        LLVM::lookupOrCreateFreeFn(op->getParentOfType<ModuleOp>(),
-                                   getTypeConverter()->useOpaquePointers());
+    auto freeFn = LLVM::lookupOrCreateFreeFn(op->getParentOfType<ModuleOp>());
 
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, freeFn, adaptor.getAlloc());
     return success();
@@ -108,7 +106,7 @@ struct RetainOpLowering : public ConvertOpToLLVMPattern<RetainOp> {
     rewriter.setInsertionPoint(&body, body.begin());
 
     auto i64Ty = rewriter.getI64Type();
-    auto ptrPtrTy = getTypeConverter()->getPointerType(ptrTy);
+    auto ptrPtrTy = LLVM::LLVMPointerType::get(rewriter.getContext());
     Type indexType = ConvertOpToLLVMPattern::getIndexType();
     auto getBuffers = [&](ValueRange values) {
       auto ret = rewriter.create<LLVM::AllocaOp>(

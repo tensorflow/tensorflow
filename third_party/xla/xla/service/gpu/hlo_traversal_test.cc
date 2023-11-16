@@ -52,7 +52,8 @@ const char kTestModule[] = R"(
       p0 = f32[] parameter(0)
       p1 = f32[128] parameter(1)
       sum = f32[128] add(p1, p1)
-      negate = f32[128] negate(sum)
+      log = f32[128] log(sum)
+      negate = f32[128] negate(log)
       fusion = f32[] fusion(p0, negate), kind=kLoop, calls=fused_computation
       ROOT difference = f32[] subtract(fusion, p0)
     })";
@@ -147,7 +148,7 @@ TEST_F(HloTraversalTest, FindArgumentsAfterFusion) {
       [&](const HloInstruction& producer) {
         producers.emplace_back(producer.name());
       });
-  EXPECT_THAT(producers, ElementsAre("p0", "sum"));
+  EXPECT_THAT(producers, ElementsAre("p0", "log"));
 }
 
 TEST_F(HloTraversalTest, FuseEverything) {
@@ -309,6 +310,55 @@ TEST_F(HloTraversalTest, FuseFusionConsumerAndProducer) {
   EXPECT_THAT(nodes, ElementsAre("reduce.2", "p1.2", "p0.2", "fusion.1",
                                  "reduce.1", "mul", "p0.1", "p1.1"));
   EXPECT_THAT(params, ElementsAre("negate", "p0"));
+}
+
+TEST_F(HloTraversalTest, FuseNonFusionConsumerAndProducer) {
+  auto module = ParseAndReturnVerifiedModule(kTestModule).value();
+  auto* producer = module->entry_computation()->GetInstructionWithName("log");
+  auto* consumer =
+      module->entry_computation()->GetInstructionWithName("negate");
+
+  auto boundary = MakeProducerConsumerFusion(*producer, *consumer);
+  std::vector<std::string> nodes;
+  HloBfsConsumersFirstTraversal({consumer}, boundary,
+                                [&](const HloInstruction& node) {
+                                  nodes.emplace_back(node.name());
+                                  return TraversalResult::kVisitOperands;
+                                });
+
+  EXPECT_THAT(nodes, ElementsAre("negate", "log"));
+}
+
+TEST_F(HloTraversalTest, SingleInstructionFusionOfFusion) {
+  auto module = ParseAndReturnVerifiedModule(kTwoFusions).value();
+  auto* fusion =
+      module->entry_computation()->GetInstructionWithName("fusion.1");
+
+  auto boundary = MakeSingleInstructionFusion(*fusion);
+  std::vector<std::string> nodes;
+  HloBfsConsumersFirstTraversal({fusion}, boundary,
+                                [&](const HloInstruction& node) {
+                                  nodes.emplace_back(node.name());
+                                  return TraversalResult::kVisitOperands;
+                                });
+
+  EXPECT_THAT(nodes,
+              ElementsAre("fusion.1", "reduce.1", "mul", "p0.1", "p1.1"));
+}
+
+TEST_F(HloTraversalTest, SingleInstructionFusionOfInstruction) {
+  auto module = ParseAndReturnVerifiedModule(kTwoFusions).value();
+  auto* negate = module->entry_computation()->GetInstructionWithName("negate");
+
+  auto boundary = MakeSingleInstructionFusion(*negate);
+  std::vector<std::string> nodes;
+  HloBfsConsumersFirstTraversal({negate}, boundary,
+                                [&](const HloInstruction& node) {
+                                  nodes.emplace_back(node.name());
+                                  return TraversalResult::kVisitOperands;
+                                });
+
+  EXPECT_THAT(nodes, ElementsAre("negate"));
 }
 
 }  // namespace

@@ -24,9 +24,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using FloatSupportTestWithCublas = HloTestBase;
-
-class FloatSupportTestWithTriton : public HloTestBase {
+class FloatSupportTest : public HloTestBase {
  public:
   se::CudaComputeCapability GetCudaComputeCapability() {
     return backend()
@@ -34,9 +32,22 @@ class FloatSupportTestWithTriton : public HloTestBase {
         ->GetDeviceDescription()
         .cuda_compute_capability();
   }
+};
 
+class FloatSupportTestWithCublas : public FloatSupportTest {
+ public:
   DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = FloatSupportTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_triton_gemm(false);
+    return debug_options;
+  }
+};
+
+class FloatSupportTestWithTriton : public FloatSupportTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = FloatSupportTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_triton_gemm(true);
     debug_options.set_xla_gpu_triton_gemm_any(true);
     debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;

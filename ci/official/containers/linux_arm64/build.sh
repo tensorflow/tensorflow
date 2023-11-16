@@ -14,6 +14,11 @@
 # limitations under the License.
 # ==============================================================================
 
+# Builds the following Docker images for Linux ARM64. See the accompanying
+# Dockerfile for more details:
+# - gcr.io/tensorflow-sigs/build-arm64:jax-latest-multi-python
+# - gcr.io/tensorflow-sigs/build-arm64:tf-latest-multi-python
+
 set -exo pipefail
 
 function is_continuous_or_release() {

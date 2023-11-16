@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/service/call_graph.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/statusor.h"
@@ -353,15 +354,14 @@ inline std::vector<int> Argsort(const std::vector<T>& scores) {
   return index;
 }
 
-// Return whether the reshape is a special reshape that switches the batch dim
-// of a dot.
-bool IsBatchDimSwitchReshape(const HloInstruction* inst);
-
-// Return whether the instruction is followed by a broadcast.
-bool IsFollowedByBroadcast(const HloInstruction* inst);
-
-// Return whether the instruction is followed by a reduce.
-bool IsFollowedByReduce(const HloInstruction* inst);
+// Given the sharding for an instruction, invoke the sharding propagation pass
+// to infer appropriate shardings for its operands.
+std::optional<HloSharding> GetInputSharding(const HloInstruction* ins,
+                                            const HloInstruction* operand,
+                                            int64_t op_index,
+                                            const HloSharding& output_sharding,
+                                            const xla::CallGraph& call_graph,
+                                            int64_t num_devices);
 
 // Return whether the instruction is an activation from another pipeline stage.
 bool IsActivationFromAnotherStage(const HloInstruction* inst,
@@ -651,18 +651,21 @@ bool OutputInputSameShapes(const HloInstruction* ins);
 bool IsEntryComputationInputOrOutput(const HloModule* module,
                                      const HloInstruction* ins);
 
-// Given a number of devices (`num_devices`), create a list different mesh
-// shapes of a given rank (`num_mesh_dims`) to try, if the option to try
-// multiple mesh shapes is enabled.
-std::vector<std::vector<int64_t>> CreateDifferentMeshShapesToTry(
-    int64_t num_devices, int num_mesh_dims, bool symmetrical_mesh_dims);
-
 // Statically estimate the execution counts of HLO ops. This matters for while
 // loops, and we use a constant iteration count for all while loops for this
 // approximation.
 absl::flat_hash_map<const HloInstruction*, int64_t>
 ComputeInstructionExecutionCounts(const HloModule* module,
                                   int64_t loop_iteration_count_estimate);
+
+// Generates a set of mesh shapes to try for a given module based on
+// pre-existing sharding annotations. If not such annotations exist, it will
+// enumerate and return all possible mesh shapes for a given number of devices
+// and mesh dimensions.
+std::vector<std::vector<int64_t>> InferOrEnumerateMeshShapesToTry(
+    const HloModule& module, int64_t num_devices, int num_mesh_dims,
+    bool symmetrical_mesh_dims);
+
 }  // namespace spmd
 }  // namespace xla
 

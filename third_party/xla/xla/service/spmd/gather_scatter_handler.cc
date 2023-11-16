@@ -503,6 +503,16 @@ StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
         b->AddInstruction(HloInstruction::CreateCompare(
             ShapeUtil::ChangeElementType(indices.hlo()->shape(), PRED),
             indices.hlo(), indices_max, ComparisonDirection::kGt))));
+    // Make sure that filter is of the same shape on the index pass-through
+    // dimensions as the partitioned gather output, since we will need to filter
+    // the gather output later.
+    PartitionedHlo pfilter = indices.CloneWithNewHlo(filter);
+    pfilter = pfilter.Reshard(
+        hlo_sharding_util::
+            GatherIndexShardingFromOutputIndexPassthroughDimensions(
+                hlo_sharding_util::UngroupSharding(output_grouped), gather));
+    filter = pfilter.hlo();
+
     if (dnums.index_vector_dim() < indices.rank()) {
       std::vector<int64_t> reduced_filter_dims;
       for (int64_t i = 0; i < filter->shape().rank(); ++i) {

@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "xla/service/gpu/parallel_loop_emitter.h"
 
+#include <cstdint>
 #include <memory>
 
+#include "absl/log/check.h"
+#include "llvm/IR/Constants.h"
+#include "xla/primitive_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
@@ -72,11 +76,12 @@ ParallelLoopEmitter::EmitLinearBaseAndThreadIdx(llvm::Type* index_type,
                             static_cast<llvm::Instruction*>(thread_id_x));
   thread_id_x = b_->CreateZExtOrTrunc(thread_id_x, index_type, "thread_id_x");
 
-  llvm::Value* linear_index_base = b_->CreateMul(
-      block_id,
-      llvm::ConstantInt::get(index_type, launch_dimensions_.total_nb_threads()),
-      "",
-      /*HasNUW=*/true, /*HasNSW=*/true);
+  llvm::Value* linear_index_base =
+      b_->CreateMul(block_id,
+                    llvm::ConstantInt::get(
+                        index_type, launch_dimensions_.num_threads_per_block()),
+                    "",
+                    /*HasNUW=*/true, /*HasNSW=*/true);
 
   if (launch_dimensions_.thread_counts_per_block().y > 1) {
     llvm::Value* thread_id_y =
@@ -112,7 +117,7 @@ ParallelLoopEmitter::EmitLinearBaseAndThreadIdx(llvm::Type* index_type,
       {b_->CreateICmpULT(
           linear_index_base,
           llvm::ConstantInt::get(index_type,
-                                 launch_dimensions_.total_nb_threads() *
+                                 launch_dimensions_.num_threads_per_block() *
                                      launch_dimensions_.block_counts().x),
           "linear_index_in_range")},
       {}, b_);
@@ -227,9 +232,29 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
 Status ParallelLoopEmitter::EmitSerialLoop(absl::string_view loop_name,
                                            llvm::Type* index_type,
                                            llvm::Value* base_indvar) {
+  int64_t num_elements = ShapeUtil::ElementsIn(shape_);
+  bool check_bounds = num_elements % launch_config_.unroll_factor > 0;
   for (const llvm_ir::IrArray::Index& array_index :
        EmitIndexAndSetExitBasicBlock(loop_name, index_type, base_indvar)) {
-    TF_RETURN_IF_ERROR(body_emitter_(array_index));
+    if (!check_bounds) {
+      TF_RETURN_IF_ERROR(body_emitter_(array_index));
+    } else {
+      // If the unroll_factor does not divide the number of elements, we must
+      // check that the index is in bounds, since the last iteration of the last
+      // thread might not have unroll_factor elements to write to. Normally
+      // the caller of ParallelLoopEmitter ensures unroll_factor is always set
+      // such that it divides num_elements, but for int4 arrays, the caller
+      // always sets unroll_factor to a multiple of 2 to prevent different
+      // threads from writing to adjacent elements occupying the same byte.
+      CHECK(primitive_util::Is4BitType(shape_.element_type()));
+      llvm_ir::LlvmIfData if_in_bounds = llvm_ir::EmitIfThenElse(
+          b_->CreateICmpULT(array_index.linear(),
+                            llvm::ConstantInt::get(index_type, num_elements)),
+          llvm_ir::IrName(loop_name, "unrolled_in_bounds"), b_, false);
+      llvm_ir::SetToFirstInsertPoint(if_in_bounds.true_block, b_);
+      TF_RETURN_IF_ERROR(body_emitter_(array_index));
+      llvm_ir::SetToFirstInsertPoint(if_in_bounds.after_block, b_);
+    }
   }
   return OkStatus();
 }
@@ -262,10 +287,8 @@ Status ParallelLoopEmitter::EmitLoop(absl::string_view loop_name,
 
   // Set the insertion point of b_ to the loop exit, so that
   // code emitted for later instructions will be correctly placed.
-  if (exit_bb_ != nullptr) {
-    CHECK(exit_bb_->getTerminator());
-    b_->SetInsertPoint(exit_bb_->getTerminator());
-  }
+  CHECK(exit_bb_->getTerminator());
+  b_->SetInsertPoint(exit_bb_->getTerminator());
   return OkStatus();
 }
 

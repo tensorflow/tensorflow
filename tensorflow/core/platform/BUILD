@@ -515,11 +515,12 @@ py_strict_test(
     srcs = ["ram_file_system_test.py"],
     python_version = "PY3",
     deps = [
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/module",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",

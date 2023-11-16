@@ -14,6 +14,8 @@
 # ==============================================================================
 """An XLA client in Python."""
 
+from __future__ import annotations
+
 import atexit
 import contextlib
 import enum  # pylint: disable=g-bad-import-order
@@ -24,9 +26,10 @@ import os
 import threading
 from typing import Any, List, Mapping, Optional, Sequence, Tuple, Union
 
-from . import xla_extension as _xla
 import ml_dtypes
 import numpy as np
+
+from . import xla_extension as _xla
 
 # Note this module does *not* depend on any Python protocol buffers. The XLA
 # Python bindings are currently packaged both as part of jaxlib and as part
@@ -45,7 +48,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 201
+_version = 213
 
 # Version number for MLIR:Python components.
 mlir_api_version = 54
@@ -76,13 +79,12 @@ def make_gpu_client(
     mock=False,
 ):
   """Returns a GPU client. BFC allocator is used by default."""
-  allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
-  memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION')
-  preallocate = os.getenv('XLA_PYTHON_CLIENT_PREALLOCATE')
-  if allocator not in ('default', 'platform', 'bfc', 'cuda_async'):
-    raise ValueError(
-        'XLA_PYTHON_CLIENT_ALLOCATOR env var must be "default", "platform", '
-        '"bfc", or "cuda_async", got "%s"' % allocator)
+  options = generate_pjrt_gpu_plugin_options()
+  allocator = options['allocator']
+  memory_fraction = (
+      options['memory_fraction'] if 'memory_fraction' in options else None
+  )
+  preallocate = options['preallocate'] if 'preallocate' in options else None
   config = _xla.GpuAllocatorConfig()
   if allocator == 'default':
     config.kind = _xla.GpuAllocatorConfig.Kind.DEFAULT
@@ -180,12 +182,44 @@ def make_c_api_client(
   return _xla.get_c_api_client(plugin_name, options, distributed_client)
 
 
-def make_tpu_client():
+def make_tpu_client(library_path: Optional[str] = None):
   """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
   if not pjrt_plugin_loaded('tpu'):
-    library_path = os.getenv('TPU_LIBRARY_PATH', 'libtpu.so')
-    load_pjrt_plugin_dynamically('tpu', library_path)
+    c_api = load_pjrt_plugin_dynamically('tpu', library_path or 'libtpu.so')
+    profiler.register_plugin_profiler(c_api)
   return make_tfrt_tpu_c_api_client()
+
+
+def generate_pjrt_gpu_plugin_options(
+    visible_devices: str = 'all',
+) -> _NameValueMapping:
+  """Generates the PjRt GPU plugin options.
+
+  Args:
+    visible_devices: A string of visible cuda devices.
+
+  Returns:
+    A dictionary of plugin options.
+  """
+
+  options = {}
+  if visible_devices != 'all':
+    options['visible_devices'] = [int(x) for x in visible_devices.split(',')]
+    options['platform_name'] = 'cuda'
+  allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
+  memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION', '')
+  preallocate = os.getenv('XLA_PYTHON_CLIENT_PREALLOCATE', '')
+  if allocator not in ('default', 'platform', 'bfc', 'cuda_async'):
+    raise ValueError(
+        'XLA_PYTHON_CLIENT_ALLOCATOR env var must be "default", "platform", '
+        '"bfc", or "cuda_async", got "%s"' % allocator
+    )
+  options['allocator'] = allocator
+  if memory_fraction:
+    options['memory_fraction'] = float(memory_fraction)
+  if preallocate:
+    options['preallocate'] = preallocate not in ('false', 'False', '0')
+  return options
 
 
 class OpMetadata:
@@ -339,14 +373,17 @@ class ShapeIndex:
 """
 
 
-def shape_from_pyval(pyval):
+def shape_from_pyval(pyval, layout: Sequence[int] | None = None):
   """Returns a Shape that describes a tuple-tree of Numpy arrays."""
 
   def convert(pyval):
     if isinstance(pyval, tuple):
+      if layout is not None:
+        raise NotImplementedError(
+            'shape_from_pyval does not support layouts for tuple shapes')
       return Shape.tuple_shape(tuple(convert(elt) for elt in pyval))
     else:
-      return Shape.array_shape(pyval.dtype, np.shape(pyval))
+      return Shape.array_shape(pyval.dtype, np.shape(pyval), layout)
 
   return convert(pyval)
 

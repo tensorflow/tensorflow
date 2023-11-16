@@ -20,9 +20,13 @@ limitations under the License.
 #include <string>
 #include <thread>  // NOLINT
 #include <utility>
+#include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
+#include "pybind11/cast.h"  // from @pybind11
+#include "pybind11/gil.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "xla/pjrt/lru_cache.h"
 
@@ -160,9 +164,12 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
           if (cache == nullptr) {
             return;
           }
-          cache->entries_.erase(WeakrefCacheEntry{
+          auto it = cache->entries_.find(WeakrefCacheEntry{
               pybind11::reinterpret_borrow<pybind11::weakref>(weakref),
               cached_hash});
+          // Create temp-var to avoid re-entrant erase.
+          auto tmp = std::move(it->second);
+          cache->entries_.erase(it);
         }));
     return (entries_
                 .emplace(WeakrefCacheEntry{std::move(weakref), key.cached_hash},
@@ -230,7 +237,12 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
   }
   void Clear() {
     total_queries_ = misses_ = 0;
+    std::vector<std::shared_ptr<Cache>> deferred_deletes;
+    for (auto& entry : entries_) {
+      deferred_deletes.push_back(std::move(entry.second));
+    }
     entries_.clear();
+    deferred_deletes.clear();
   }
 
   pybind11::function cache_context_fn_;

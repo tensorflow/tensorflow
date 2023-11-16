@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_BATCH_KERNELS_H_
 #define TENSORFLOW_CORE_KERNELS_BATCH_KERNELS_H_
 
+#include <cstdint>
+
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -34,6 +37,18 @@ ABSL_CONST_INIT extern const int64_t kMaxInflightBatches;
 namespace internal {
 class BatchFunctionKernelTestAccess;
 }
+
+// Records the usage of attribute `enable_large_batch_splitting`.
+void RecordBatchSplitUsage(
+    std::optional<bool> maybe_enable_large_batch_splitting,
+    absl::string_view model_name);
+
+// Records the number of batch threads of a model.
+void RecordBatchParamNumBatchThreads(int64_t num_batch_threads,
+                                     absl::string_view model_name);
+
+// Returns the model name from the context.
+absl::string_view GetModelName(OpKernelContext* ctx);
 
 // `BatchFunctionKernel` is the implementation of op `BatchFunction`.
 //

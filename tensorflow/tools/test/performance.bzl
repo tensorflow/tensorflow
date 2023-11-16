@@ -1,4 +1,12 @@
-load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
+"""
+Benchmark-related macros.
+"""
+
+load(
+    "//tensorflow:tensorflow.default.bzl",
+    "cuda_py_strict_test",
+    "tf_py_strict_test",
+)
 
 # Create a benchmark test target of a TensorFlow C++ test (tf_cc_*_test)
 def tf_cc_logged_benchmark(
@@ -49,6 +57,33 @@ def tf_cc_logged_benchmark(
         ],
         **kwargs
     )
+
+def add_benchmark_tag_to_kwargs(kwargs):
+    """Adds the `benchmark-test` tag to the kwargs, if not already present.
+
+    Notes:
+      For benchmarks which are not technically tests, but whose class methods
+      can still be discovered, and run as such via `bazel run`.
+    Args:
+      kwargs: kwargs to be passed to a test wrapper/rule further down.
+    Returns:
+      kwargs: kwargs with the tags including the `benchmark-test` tags.
+    """
+    benchmark_tag = "benchmark-test"
+    if "tags" in kwargs and kwargs["tags"] != None:
+        if benchmark_tag not in kwargs["tags"]:
+            kwargs["tags"].append(benchmark_tag)
+    else:
+        kwargs["tags"] = [benchmark_tag]
+    return kwargs
+
+def tf_py_benchmark_test(**kwargs):
+    kwargs = add_benchmark_tag_to_kwargs(kwargs)
+    tf_py_strict_test(**kwargs)
+
+def cuda_py_benchmark_test(**kwargs):
+    kwargs = add_benchmark_tag_to_kwargs(kwargs)
+    cuda_py_strict_test(**kwargs)
 
 # Create a benchmark test target of a TensorFlow python test (*py_tests)
 def tf_py_logged_benchmark(

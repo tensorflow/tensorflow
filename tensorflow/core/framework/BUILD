@@ -547,7 +547,7 @@ cc_library(
     testonly = True,
     srcs = ["tensor_matcher.cc"],
     hdrs = ["tensor_matcher.h"],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:portable_gif_internal",
@@ -712,6 +712,7 @@ cc_library(
     hdrs = ["resource_base.h"],
     visibility = default_visibility + [
         "//learning/brain/google/data/core/kernels:__pkg__",
+        "//learning/deepmind/tensorflow/sstable:__pkg__",
     ],
     deps = [
         "//tensorflow/core/lib/core:refcount",

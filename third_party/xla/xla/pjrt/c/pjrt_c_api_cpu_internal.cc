@@ -28,15 +28,16 @@ namespace pjrt {
 namespace cpu_plugin {
 
 PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
-  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Client_Create_Args", PJRT_Client_Create_Args_STRUCT_SIZE,
       args->struct_size));
 
   // TODO(b/263170683): cpu_device_count should be configurable after config
   // options can be passed to PJRT_Client_Create.
-  PJRT_ASSIGN_OR_RETURN(
-      std::unique_ptr<xla::PjRtClient> client,
-      xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/4));
+  xla::CpuClientOptions options;
+  options.cpu_device_count = 4;
+  PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
+                        xla::GetTfrtCpuClient(options));
   args->client = pjrt::CreateWrapperClient(std::move(client));
   return nullptr;
 }

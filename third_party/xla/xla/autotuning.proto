@@ -73,6 +73,8 @@ message AutotuneResult {
     string exec_plan_id = 1;
   }
 
+  // If you don't need a proto in your code, please use TritonGemmConfig instead
+  // of using this proto directly.
   message TritonGemmKey {
     int64 block_m = 1;
     int64 block_n = 2;

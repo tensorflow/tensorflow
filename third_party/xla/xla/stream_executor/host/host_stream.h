@@ -45,9 +45,6 @@ class HostStream : public internal::StreamInterface {
   // Enqueue a task that doesn't report any status.
   bool EnqueueTask(absl::AnyInvocable<void() &&> task);
 
-  void* GpuStreamHack() override { return nullptr; }
-  void** GpuStreamMemberHack() override { return nullptr; }
-
   // Blocks until all tasks are done, returns the first error reported by a task
   // (if any) and clears the error status.
   tsl::Status BlockUntilDone();

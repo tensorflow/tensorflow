@@ -113,12 +113,10 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
 
 Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-    const AutotuneResults* autotune_results,
+    const CompileOptions& options, const TargetConfig& gpu_target_config,
     tsl::thread::ThreadPool* thread_pool) {
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
-      hlo_module, stream_exec, options, gpu_target_config, autotune_results,
-      thread_pool));
+      hlo_module, stream_exec, options, gpu_target_config, thread_pool));
 
   HloPassPipeline post_pipeline("AMDGPU post-layout_assignment");
 
@@ -160,47 +158,14 @@ Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
   return OkStatus();
 }
 
-Status AMDGPUCompiler::LoadAutotuneResultsFromFile(
-    const DebugOptions& debug_options) {
-  // We are doing this before the timer is started.
-  if (absl::string_view file_path =
-          debug_options.xla_gpu_load_autotune_results_from();
-      !file_path.empty()) {
-    static absl::once_flag once;
-    Status status = OkStatus();
-    absl::call_once(once, [&file_path, &status] {
-      status = AutotunerUtil::LoadAutotuneResultsFromFile(file_path);
-    });
-    TF_RETURN_IF_ERROR(status);
-  }
-  return OkStatus();
-}
-
-Status AMDGPUCompiler::SerializeAutotuneResultsToFile(
-    const DebugOptions& debug_options) {
-  // We are doing this after the timer is finished.
-  if (absl::string_view file_path =
-          debug_options.xla_gpu_dump_autotune_results_to();
-      !file_path.empty()) {
-    // Warning: This writes the autotune results at every compilation, possibly
-    // multiple times per process.
-    TF_RETURN_IF_ERROR(
-        AutotunerUtil::SerializeAutotuneResultsToFile(file_path));
-  }
-  return OkStatus();
-}
-
 AMDGPUCompiler::AMDGPUCompiler()
     : GpuCompiler(stream_executor::rocm::kROCmPlatformId,
                   amdgpu::TargetTriple(), amdgpu::DataLayout()) {}
 
-StatusOr<std::pair<std::string, std::vector<uint8_t>>>
-AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
-                                    llvm::Module* llvm_module,
-                                    se::GpuComputeCapability gpu_version,
-                                    bool relocatable,
-                                    const HloModule* debug_module,
-                                    const CompileOptions& options) {
+StatusOr<GpuCompiler::BackendCompileResult> AMDGPUCompiler::CompileTargetBinary(
+    const HloModuleConfig& module_config, llvm::Module* llvm_module,
+    se::GpuComputeCapability gpu_version, bool relocatable,
+    const HloModule* debug_module, const CompileOptions& options) {
   if (rocdl_dir_.empty()) {
     // Compute rocdl_dir_ just once and cache it in this member.
     rocdl_dir_ = GetROCDLDir(module_config);
@@ -223,7 +188,7 @@ AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                       module_config.compilation_cache_key()));
   }
 
-  return std::pair<std::string, std::vector<uint8_t>>("", std::move(hsaco));
+  return BackendCompileResult{"", std::move(hsaco)};
 }
 
 }  // namespace gpu

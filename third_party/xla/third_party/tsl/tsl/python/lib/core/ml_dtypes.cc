@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tsl/python/lib/core/ml_dtypes.h"
 
+#include <atomic>
 #include <exception>
 
 #include "numpy/ndarraytypes.h"
+#include "absl/base/attributes.h"
 #include "absl/base/call_once.h"
 #include "pybind11/gil.h"  // from @pybind11
 #include "pybind11/numpy.h"  // from @pybind11
@@ -25,99 +27,90 @@ limitations under the License.
 
 namespace tsl {
 namespace ml_dtypes {
+namespace {
 
 namespace py = pybind11;
 
-namespace {
+struct MlDtypesInitInfo {
+  constexpr MlDtypesInitInfo()
+      : numpy_dtypes{}, init_valid(true), init_done(false), init_once() {}
 
-class MlDtypesInitInfo {
- public:
-  MlDtypesInitInfo()
-      : np_dtypes_{/*bfloat16=*/NPY_NOTYPE,
-                   /*float8_e4m3fn=*/NPY_NOTYPE,
-                   /*float8_e4m3b11fnuz=*/NPY_NOTYPE,
-                   /*float8_e4m3fnuz=*/NPY_NOTYPE,
-                   /*float8_e5m2=*/NPY_NOTYPE,
-                   /*float8_e5m2fnuz=*/NPY_NOTYPE,
-                   /*int4=*/NPY_NOTYPE,
-                   /*uint4=*/NPY_NOTYPE},
-        valid_{false} {}
+  void InitOnce() {
+    // Fast/slow path: only interact with GIL if we have not already
+    // initialized.
+    // IMPORTANT: The lock order matters, so as to avoid deadlock:
+    //   First: lock the once-mutex.
+    //   Second: lock the GIL.
+    //
+    // This initialization can happen from within a Python call, when the GIL is
+    // already held, in which case we release it first.
 
-  void Init() {
-    valid_ = true;
-    // Pybind11 might throw.
+    if (!init_done.load(std::memory_order_acquire)) {
+      py::gil_scoped_release release;
+      absl::call_once(init_once, [this]() { DoInit(); });
+    }
+  }
+
+  void DoInit() {
     try {
       py::gil_scoped_acquire acquire;
       py::module ml_dtypes = py::module::import("ml_dtypes");
-      np_dtypes_.bfloat16 =
+
+      numpy_dtypes.bfloat16 =
           py::dtype::from_args(ml_dtypes.attr("bfloat16")).num();
-      np_dtypes_.float8_e4m3fn =
+      numpy_dtypes.float8_e4m3fn =
           py::dtype::from_args(ml_dtypes.attr("float8_e4m3fn")).num();
-      np_dtypes_.float8_e5m2 =
+      numpy_dtypes.float8_e5m2 =
           py::dtype::from_args(ml_dtypes.attr("float8_e5m2")).num();
-      np_dtypes_.float8_e4m3b11fnuz =
+      numpy_dtypes.float8_e4m3b11fnuz =
           py::dtype::from_args(ml_dtypes.attr("float8_e4m3b11fnuz")).num();
-      np_dtypes_.float8_e4m3fnuz =
+      numpy_dtypes.float8_e4m3fnuz =
           py::dtype::from_args(ml_dtypes.attr("float8_e4m3fnuz")).num();
-      np_dtypes_.float8_e5m2fnuz =
+      numpy_dtypes.float8_e5m2fnuz =
           py::dtype::from_args(ml_dtypes.attr("float8_e5m2fnuz")).num();
-      np_dtypes_.int4 = py::dtype::from_args(ml_dtypes.attr("int4")).num();
-      np_dtypes_.uint4 = py::dtype::from_args(ml_dtypes.attr("uint4")).num();
+      numpy_dtypes.int4 = py::dtype::from_args(ml_dtypes.attr("int4")).num();
+      numpy_dtypes.uint4 = py::dtype::from_args(ml_dtypes.attr("uint4")).num();
     } catch (const std::exception& e) {
       py::print(e.what());
-      valid_ = false;
+      init_valid = false;
     }
 
     // Verify all types were successfully loaded.
-    if (np_dtypes_.bfloat16 == NPY_NOTYPE ||
-        np_dtypes_.float8_e4m3fn == NPY_NOTYPE ||
-        np_dtypes_.float8_e4m3fnuz == NPY_NOTYPE ||
-        np_dtypes_.float8_e4m3b11fnuz == NPY_NOTYPE ||
-        np_dtypes_.float8_e5m2 == NPY_NOTYPE ||
-        np_dtypes_.float8_e5m2fnuz == NPY_NOTYPE ||
-        np_dtypes_.int4 == NPY_NOTYPE || np_dtypes_.uint4 == NPY_NOTYPE) {
-      valid_ = false;
+    if (numpy_dtypes.bfloat16 == NPY_NOTYPE ||
+        numpy_dtypes.float8_e4m3fn == NPY_NOTYPE ||
+        numpy_dtypes.float8_e4m3fnuz == NPY_NOTYPE ||
+        numpy_dtypes.float8_e4m3b11fnuz == NPY_NOTYPE ||
+        numpy_dtypes.float8_e5m2 == NPY_NOTYPE ||
+        numpy_dtypes.float8_e5m2fnuz == NPY_NOTYPE ||
+        numpy_dtypes.int4 == NPY_NOTYPE || numpy_dtypes.uint4 == NPY_NOTYPE) {
+      init_valid = false;
     }
+
+    init_done.store(true, std::memory_order_release);
   }
 
-  bool IsValid() const { return valid_; }
+  NumpyDtypes numpy_dtypes;
 
-  const NumpyDtypes& GetNumpyDtypes() const { return np_dtypes_; }
-
- private:
-  NumpyDtypes np_dtypes_;  // Numpy type numbers.
-  bool valid_;             // Stores whether type loading was valid.
+  bool init_valid;
+  std::atomic<bool> init_done;
+  absl::once_flag init_once;
 };
 
-// Safely initialize the ml_dtypes module and load the numpy dtype information.
 const MlDtypesInitInfo& GetMlDtypesInitInfo() {
-  static MlDtypesInitInfo info;
-
-  // We must take special care in initializing the ml_dtypes module
-  // since there is a potential race condition between the python
-  // GIL and any synchronization mechanism we attempt to use (b/302750630).
-  // We also want to avoid unnecessarily locking the GIL if possible.
-  static bool initialized = false;
-  if (!initialized) {
-    auto init = [&]() { info.Init(); };
-
-    // GIL must be released prior to attempting synchronization.
-    py::gil_scoped_release release;
-    static absl::once_flag init_flag;
-    absl::call_once(init_flag, init);
-    initialized = true;
-  }
-
-  return info;
+  ABSL_CONST_INIT static MlDtypesInitInfo state;
+  state.InitOnce();
+  return state;
 }
 
 }  // namespace
 
 const NumpyDtypes& GetNumpyDtypes() {
-  return GetMlDtypesInitInfo().GetNumpyDtypes();
+  return GetMlDtypesInitInfo().numpy_dtypes;
 }
 
-bool RegisterTypes() { return GetMlDtypesInitInfo().IsValid(); }
+bool RegisterTypes() {  //
+  return GetMlDtypesInitInfo().init_valid;
+}
 
 }  // namespace ml_dtypes
 }  // namespace tsl

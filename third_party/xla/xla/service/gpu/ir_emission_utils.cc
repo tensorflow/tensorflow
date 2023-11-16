@@ -24,13 +24,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/hlo_parser.h"
@@ -188,7 +191,7 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
         builder->CreateGEP(arguments_type, arguments_ptr,
                            {builder->getInt64(0), builder->getInt32(i)}));
   }
-  llvm::Type* ptr_ty = builder->getInt8Ty()->getPointerTo();
+  llvm::Type* ptr_ty = builder->getPtrTy();
   return builder->CreateCall(
       builder->GetInsertBlock()->getParent()->getParent()->getOrInsertFunction(
           "vprintf",
@@ -385,7 +388,7 @@ static int64_t GetAllocationIndex(mlir::BlockArgument func_arg,
 }
 
 StatusOr<BufferAllocation::Slice> GetAllocationSlice(
-    mlir::Value v, absl::Span<const BufferAllocation> allocations,
+    mlir::Value v, absl::Span<const BufferAllocation* const> allocations,
     std::string* constant_name) {
   if (constant_name) {
     constant_name->clear();
@@ -411,9 +414,10 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
           mlir::dyn_cast_or_null<mlir::memref::ViewOp>(v.getDefiningOp())) {
     TF_RET_CHECK(view.getSource().isa<mlir::BlockArgument>());
 
+    const BufferAllocation* allocation = allocations[GetAllocationIndex(
+        view.getSource().cast<mlir::BlockArgument>(), constant_name)];
     return BufferAllocation::Slice(
-        &allocations[GetAllocationIndex(
-            view.getSource().cast<mlir::BlockArgument>(), constant_name)],
+        allocation,
         mlir::cast<mlir::arith::ConstantOp>(view.getByteShift().getDefiningOp())
             .getValue()
             .cast<mlir::IntegerAttr>()
@@ -431,12 +435,13 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
         module.lookupSymbol(get_global.getName()));
     int64_t index =
         global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
-    return BufferAllocation::Slice(&allocations[index], 0,
-                                   allocations[index].size());
+
+    return BufferAllocation::Slice(allocations[index], 0,
+                                   allocations[index]->size());
   }
   if (auto arg = v.dyn_cast<mlir::BlockArgument>()) {
     return BufferAllocation::Slice(
-        &allocations[GetAllocationIndex(arg, constant_name)], 0, size);
+        allocations[GetAllocationIndex(arg, constant_name)], 0, size);
   }
 
   return Unimplemented(
@@ -490,7 +495,7 @@ GetOutputDefiningDynamicUpdateSliceOps(mlir::lmhlo::FusionOp fusion) {
 
 bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     mlir::lmhlo::FusionOp fusion,
-    absl::Span<const BufferAllocation> allocations) {
+    absl::Span<const BufferAllocation* const> allocations) {
   std::vector<mlir::mhlo::DynamicUpdateSliceOp> dus_ops =
       GetOutputDefiningDynamicUpdateSliceOps(fusion);
 
@@ -533,7 +538,7 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
       }
       dus_user = *bitcast->user_begin();
     }
-    if (!mlir::isa<mlir::memref::TensorStoreOp>(dus_user)) {
+    if (!mlir::isa<mlir::bufferization::MaterializeInDestinationOp>(dus_user)) {
       return false;
     }
     auto operand = dus.getOperand();
@@ -559,8 +564,8 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     q.push(parameter);
     visited.insert(parameter);
     // We have already checked above that the DUS only has one user: a
-    // (possibly bitcasted) TensorStoreOp. So we don't need to visit it during
-    // the breadth-first search.
+    // (possibly bitcasted) MaterializeInDestinationOp. So we don't need to
+    // visit it during the breadth-first search.
     visited.insert(dus);
     while (!q.empty()) {
       auto op = q.front();
@@ -618,15 +623,21 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
 }
 
 Shape GetShape(mlir::Value value) {
+  Shape shape;
   if (value.getType().isa<mlir::MemRefType>()) {
-    return TypeToShape(value.getType());
+    shape = TypeToShape(value.getType());
   } else if (value.getType().isa<mlir::TensorType>()) {
-    return GetShapeFromTensorType(value);
+    shape = GetShapeFromTensorType(value);
   } else if (value.getType().isa<mlir::TupleType>()) {
-    return TypeToShape(value.getType());
+    shape = TypeToShape(value.getType());
+  } else {
+    LOG(FATAL) << "Unexpected value type to get shape for";
   }
-  LOG(FATAL) << "Unexpected value type to get shape for";
-  return {};
+  if (primitive_util::Is4BitType(shape.element_type())) {
+    // 4-bit types are always packed on the GPU
+    shape.mutable_layout()->set_element_size_in_bits(4);
+  }
+  return shape;
 }
 
 std::optional<TransposeDescription> FindTiledTranspose(
@@ -712,7 +723,8 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
   return std::nullopt;
 }
 
-bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count) {
+bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count,
+                    FusionBoundaryFn boundary) {
   // Number of operands should be in range [1, allowed_operand_count].
   if (instr->operand_count() == 0 ||
       instr->operand_count() > allowed_operand_count) {
@@ -720,7 +732,16 @@ bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count) {
   }
 
   // Intermediate `instr` can't have multiple users.
-  if (instr->user_count() > 1) {
+  // If we have a boundary function, only consider users within the
+  // boundary. This isn't really correct, since the real users aren't
+  // necessarily the instruction's users at this point.
+  // TODO(jreiffers): Figure out the point of this check.
+  int64_t num_users =
+      boundary ? absl::c_count_if(
+                     instr->users(),
+                     [&](const auto* user) { return !boundary(*instr, *user); })
+               : instr->user_count();
+  if (num_users > 1) {
     return false;
   }
 
@@ -763,8 +784,19 @@ const HloInstruction& FindNonTrivialHero(
   // chains are bound to be quite small, as we restrict the number of users as
   // well. Note that no memoization is needed due to user number constraints: we
   // never have to revisit same nodes.
-  while (IsIntermediate(idx) && !is_boundary(*idx->operand(0), *idx)) {
-    idx = idx->operand(0);
+  auto get_intermediate_arg = [&](const HloInstruction* node) {
+    if (node->opcode() == HloOpcode::kFusion ||
+        node->opcode() == HloOpcode::kParameter) {
+      auto preds = FindPredecessors(*node, is_boundary);
+      return preds.size() == 1 ? preds.front() : nullptr;
+    }
+    return IsIntermediate(node, 1, is_boundary) &&
+                   !is_boundary(*node->operand(0), *node)
+               ? node->operand(0)
+               : nullptr;
+  };
+  while (auto* arg = get_intermediate_arg(idx)) {
+    idx = arg;
   }
 
   const HloInstruction* transpose = nullptr;
@@ -796,22 +828,25 @@ const HloInstruction& FindNonTrivialHero(
 }
 
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
+  // It doesn't really make sense to call this function with a fusion, but it
+  // happens. Return the fusion itself for historical reasons.
+  // TODO(jreiffers): Clean this up.
+  if (instr.opcode() == HloOpcode::kFusion) return instr;
   return FindNonTrivialHero(instr, [](const HloInstruction& producer,
                                       const HloInstruction& consumer) {
     return consumer.opcode() == HloOpcode::kParameter;
   });
 }
 
-void LogAndVerify(const llvm::Module* m) {
-  if (VLOG_IS_ON(5)) {
-    XLA_VLOG_LINES(5, llvm_ir::DumpToString(m));
-  }
+void VLogModule(int level, const llvm::Module& module) {
+  XLA_VLOG_LINES(level, llvm_ir::DumpToString(&module));
+}
 
-  std::string llir_str;
-  llvm::raw_string_ostream llir_stream(llir_str);
-  bool broken = llvm::verifyModule(*m, &llir_stream);
-  llir_stream.flush();
-  CHECK(!broken) << llir_str;
+void VerifyModule(const llvm::Module& module) {
+  std::string error_str;
+  llvm::raw_string_ostream error_stream(error_str);
+  bool broken = llvm::verifyModule(module, &error_stream);
+  CHECK(!broken) << error_str;
 }
 
 llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,

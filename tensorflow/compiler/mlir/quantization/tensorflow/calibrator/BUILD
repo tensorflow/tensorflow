@@ -12,6 +12,7 @@ load(
     "get_compatible_with_portable",
     "tf_kernel_library",
     "tf_py_strict_test",
+    "tf_python_pybind_extension",
 )
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load(
@@ -223,13 +224,28 @@ tf_py_strict_test(
     deps = [
         ":calibration_statistics_proto_py",
         ":gen_custom_aggregator_op_wrapper",
+        ":pywrap_calibration",
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/python:pywrap_quantize_model",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "pywrap_calibration",
+    srcs = ["pywrap_calibration.cc"],
+    pytype_srcs = ["pywrap_calibration.pyi"],
+    deps = [
+        ":calibration_statistics_proto_cc",
+        ":calibrator_singleton",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
+        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
 )

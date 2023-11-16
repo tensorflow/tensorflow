@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/types/optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -158,8 +159,9 @@ tsl::Status ConvertHloToLmhlo(std::unique_ptr<HloModule> hlo_module,
   module.getBody()->clear();
   OpBuilder builder(module);
 
+  std::vector<const BufferAllocation*> ordered_allocations;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      HloToLhloModule(**assignment, *hlo_module, module),
+      HloToLhloModule(**assignment, *hlo_module, module, &ordered_allocations),
       "converting HLO to LHLO");
 
   return ::tsl::OkStatus();
@@ -277,6 +279,10 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return EmitRecvOp(instr);
     case HloOpcode::kRecvDone:
       return EmitRecvDoneOp(instr);
+    // TODO(b/302038092): Currently the command buffer call is represented by
+    // a kCall. We need to be able to differentiate it from a regular kCall.
+    case HloOpcode::kCall:
+      return EmitCommandBufferOp(instr);
     default:
       llvm::errs() << instr->ToString();
       llvm::errs() << "\n\nModule:\n"
@@ -400,7 +406,10 @@ tsl::StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
     llvm::SmallVector<Value, 4> output;
     TF_RETURN_IF_ERROR(GetOrCreateView(instr, &output));
     TF_RETURN_IF_ERROR(WalkTuplePostOrder(result, [&](Value v) mutable {
-      region_builder.create<memref::TensorStoreOp>(loc, v, output[i++]);
+      auto materialize_op =
+          region_builder.create<bufferization::MaterializeInDestinationOp>(
+              loc, v, output[i++]);
+      materialize_op.setWritable(true);
       return ::tsl::OkStatus();
     }));
     if (i != output.size()) {
@@ -558,11 +567,19 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
   if (xla::gpu::IsCudnnConvolutionReorder(*instr)) {
     return EmitDnnConvolutionReorderVectorized(custom_call_instr);
   }
+
+  if (xla::gpu::IsCustomCallToDnnNorm(*instr)) {
+    return EmitDnnNorm(custom_call_instr);
+  }
+
   if (xla::gpu::IsFwdCustomCallTofMHA(*instr)) {
     return EmitDnnfMHA(custom_call_instr);
   }
   if (xla::gpu::IsBwdCustomCallTofMHA(*instr)) {
     return EmitDnnfMHABackward(custom_call_instr);
+  }
+  if (xla::gpu::IsCubDeviceRadixSort(*instr)) {
+    return EmitCubDeviceRadixSort(custom_call_instr);
   }
 
   // For custom call, if there are any token operands or results, they will not
@@ -692,6 +709,8 @@ void SetMatmulAttributes(OpT op, const xla::gpu::GemmBackendConfig& config,
   }
   op.setPrecisionConfigAttr(
       xla::ConvertPrecisionConfig(&config.precision_config(), &builder));
+  op.setGradXAttr(builder.getBoolAttr(config.grad_x()));
+  op.setGradYAttr(builder.getBoolAttr(config.grad_y()));
 }
 
 tsl::StatusOr<lmhlo_gpu::CublasLtMatmulEpilogue> AsLhloEpilogue(
@@ -800,11 +819,11 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmul(
 
   TF_ASSIGN_OR_RETURN(
       bool has_vector_bias,
-      xla::gpu::cublas_lt::EpilogueAddsVectorBias(config.epilogue()));
+      xla::gpu::gpublas_lt::EpilogueAddsVectorBias(config.epilogue()));
 
   TF_ASSIGN_OR_RETURN(
       bool has_aux_output,
-      xla::gpu::cublas_lt::EpilogueHasAuxiliaryOutput(config.epilogue()));
+      xla::gpu::gpublas_lt::EpilogueHasAuxiliaryOutput(config.epilogue()));
 
   TF_RET_CHECK(custom_call->operand_count() ==
                2 + int{has_matrix_bias} + int{has_vector_bias});
@@ -864,7 +883,7 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmulF8(
   TF_RET_CHECK(ops_num == 6 || ops_num == 7 || ops_num == 8);
   TF_ASSIGN_OR_RETURN(
       bool has_vector_bias,
-      xla::gpu::cublas_lt::EpilogueAddsVectorBias(config.epilogue()));
+      xla::gpu::gpublas_lt::EpilogueAddsVectorBias(config.epilogue()));
 
   bool has_damax = custom_call->shape().IsTuple();
   bool has_matrix_bias = config.beta() != 0.;
@@ -1139,6 +1158,58 @@ LhloDialectEmitter::EmitDnnConvolutionReorderVectorized(
   }
 }
 
+tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnNorm(
+    const HloCustomCallInstruction* custom_call) {
+  TF_ASSIGN_OR_RETURN(
+      auto const backend_config,
+      custom_call->backend_config<xla::gpu::CudnnNormBackendConfig>());
+
+  llvm::SmallVector<Value, 7> operands;
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(0), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(1), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(2), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
+
+  auto norm =
+      CreateOpWithoutAttrs<lmhlo_gpu::CudnnNormOp>(custom_call, operands);
+  norm.setEpsilonAttr(builder_.getF64FloatAttr(backend_config.epsilon()));
+
+  const auto& algorithm = backend_config.algorithm();
+  auto norm_algo_config = mlir::lmhlo_gpu::NormAlgorithmConfigAttr::get(
+      builder_.getContext(), algorithm.algo_id(),
+      algorithm.has_workspace_size() ? algorithm.workspace_size().value() : -1);
+  norm.setAlgorithmConfigAttr(norm_algo_config);
+
+  std::vector<int64_t> operand_minor_to_major;
+
+  auto get_minor_to_major =
+      [&operand_minor_to_major](const xla::Layout& layout) -> void {
+    std::vector<int64_t> minor_to_major(layout.minor_to_major_size());
+    absl::c_transform(layout.minor_to_major(), minor_to_major.begin(),
+                      [](int64_t x) { return static_cast<int64_t>(x); });
+    operand_minor_to_major.insert(operand_minor_to_major.end(),
+                                  minor_to_major.begin(), minor_to_major.end());
+  };
+
+  // Store the layout information of all operands and outputs.
+  for (HloInstruction* operand : custom_call->operands()) {
+    get_minor_to_major(operand->shape().layout());
+  }
+  for (int i = 0; i < custom_call->shape().tuple_shapes_size() - 1; ++i) {
+    get_minor_to_major(custom_call->shape().tuple_shapes(i).layout());
+  }
+
+  norm.setOperandLayoutsAttr(builder_.getI64ArrayAttr(llvm::ArrayRef<int64_t>{
+      operand_minor_to_major.data(), operand_minor_to_major.size()}));
+
+  bool has_aux_outputs = custom_call->shape().tuple_shapes_size() == 4;
+  int32_t operand_sizes[] = {1, 1, 1, 1, has_aux_outputs, has_aux_outputs, 1};
+  norm->setAttr(norm.getOperandSegmentSizeAttr(),
+                builder_.getDenseI32ArrayAttr(operand_sizes));
+
+  return norm.getOperation();
+}
+
 tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHA(
     const HloCustomCallInstruction* custom_call) {
   TF_ASSIGN_OR_RETURN(
@@ -1388,6 +1459,17 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHABackward(
     default:
       return xla::InternalError("Unknown backward fused MHA call.");
   }
+}
+
+xla::StatusOr<Operation*> LhloDialectEmitter::EmitCubDeviceRadixSort(
+    const xla::HloCustomCallInstruction* custom_call) {
+  TF_ASSIGN_OR_RETURN(
+      auto radix_sort_op,
+      CreateOpWithoutAttrs<lmhlo_gpu::RadixSortOp>(custom_call));
+  TF_ASSIGN_OR_RETURN(xla::SortOptions options,
+                      custom_call->backend_config<xla::SortOptions>());
+  radix_sort_op.setDescendingAttr(builder_.getBoolAttr(options.descending()));
+  return radix_sort_op.getOperation();
 }
 
 // Convert an XLA HLO constant to a global_memref + get_global_memref pair.
@@ -1944,6 +2026,21 @@ tsl::StatusOr<lmhlo::RecvDoneOp> LhloDialectEmitter::EmitRecvDoneOp(
   return recv_done_op;
 }
 
+tsl::StatusOr<lmhlo::CommandBufferOp> LhloDialectEmitter::EmitCommandBufferOp(
+    const xla::HloInstruction* instr) {
+  const std::vector<HloComputation*> called_computations =
+      instr->called_computations();
+  if (called_computations.size() != 1) {
+    return absl::InternalError(
+        "Command buffer calls must have one called computation");
+  }
+
+  if (!absl::StartsWith(called_computations[0]->name(), "command_buffer")) {
+    return absl::InternalError("Called computation must be a command buffer");
+  }
+  return builder_.create<lmhlo::CommandBufferOp>(getLocation(instr));
+}
+
 // Sets builder insertion point for a new `memref.view` operation in the parent
 // function. We create just one `memref.view` operation for every unique
 // subspan of allocation, and because first use of the slice can be inside a
@@ -2118,7 +2215,8 @@ tsl::Status LhloDialectEmitter::GetOrCreateView(
                              token_mode);
 }
 
-tsl::Status LhloDialectEmitter::Initialize() {
+tsl::Status LhloDialectEmitter::Initialize(
+    std::vector<const BufferAllocation*>* ordered_allocations) {
   TF_RET_CHECK(computation_.IsEntryComputation());
 
   mlir::IntegerAttr unique_id =
@@ -2144,9 +2242,11 @@ tsl::Status LhloDialectEmitter::Initialize() {
   }
   Block* block = func_op.addEntryBlock();
 
-  llvm::SmallVector<const BufferAllocation*, 8> ordered_allocations;
-  for (const BufferAllocation& alloc : assignment_.Allocations())
-    ordered_allocations.push_back(&alloc);
+  for (const BufferAllocation& alloc : assignment_.Allocations()) {
+    if (!alloc.is_thread_local()) {
+      ordered_allocations->push_back(&alloc);
+    }
+  }
 
   if (computation_.IsEntryComputation()) {
     // Sort the rather arbitrarily ordered allocations to match the input/output
@@ -2174,7 +2274,7 @@ tsl::Status LhloDialectEmitter::Initialize() {
       return false;
     };
 
-    std::stable_sort(ordered_allocations.begin(), ordered_allocations.end(),
+    std::stable_sort(ordered_allocations->begin(), ordered_allocations->end(),
                      allocation_comparator);
   }
 
@@ -2198,11 +2298,9 @@ tsl::Status LhloDialectEmitter::Initialize() {
   // - one memref for each of the parameters.
   // - one memref for each other buffer allocation.
   llvm::SmallVector<DictionaryAttr, 8> args_attrs;
-  for (const BufferAllocation* alloc : ordered_allocations) {
-    if (alloc->is_thread_local()) {
-      continue;
-    }
-
+  auto it = ordered_allocations->begin();
+  while (it != ordered_allocations->end()) {
+    const BufferAllocation* alloc = *it;
     // There are optional attributes to help the program run through XLA. XLA
     // defines ExecutionInput and ExecutionOutput structures to carry
     // input-output type and buffer information, therefore any information they
@@ -2246,6 +2344,7 @@ tsl::Status LhloDialectEmitter::Initialize() {
       const Shape* sub_shape = iter->second.first;
       const xla::ShapeIndex& shape_index = iter->second.second;
       if (!sub_shape->IsArray()) {
+        it = ordered_allocations->erase(it);
         continue;
       }
       arg_attr_list.set("lmhlo.output_index",
@@ -2262,6 +2361,7 @@ tsl::Status LhloDialectEmitter::Initialize() {
     block->addArgument(arg_type, loc);
     allocations_[alloc] = block->getArguments().back();
     args_attrs.push_back(arg_attr_list.getDictionary(builder_.getContext()));
+    it++;
   }
 
   FunctionType function_type =
@@ -2281,7 +2381,7 @@ tsl::Status LhloDialectEmitter::Initialize() {
 
 tsl::Status HloToLhloModule(
     const BufferAssignment& assignment, const HloModule& hlo_module,
-    ModuleOp module,
+    ModuleOp module, std::vector<const BufferAllocation*>* ordered_allocations,
     absl::flat_hash_map<const mlir::Operation*, const xla::HloInstruction*>*
         lhlo_to_hlo_map) {
   module.getContext()
@@ -2300,7 +2400,7 @@ tsl::Status HloToLhloModule(
   const HloComputation* computation = hlo_module.entry_computation();
 
   LhloDialectEmitter emitter(assignment, *computation, module);
-  TF_RETURN_IF_ERROR(emitter.Initialize());
+  TF_RETURN_IF_ERROR(emitter.Initialize(ordered_allocations));
 
   const xla::HloInstructionSequence* schedule =
       assignment.hlo_ordering().SequentialOrder(*computation);

@@ -108,13 +108,13 @@ void AddSparsificationPasses(mlir::OpPassManager& pm, bool new_deallocator,
   pm.addPass(mlir::bufferization::createEmptyTensorEliminationPass());
   pm.addPass(mlir::createSparsificationAndBufferizationPass(
       GetBufferizationOptions(new_deallocator), sparsification_options,
-      mlir::SparseTensorConversionOptions(),
       /*createSparseDeallocs=*/false,
       /*enableRuntimeLibrary=*/false,
       /*enableBufferInitialization=*/false,
       /*vectorLength=*/0,
       /*enableVLAVectorization=*/false,
       /*enableSIMDIndex32*/ false));
+  pm.addPass(mlir::createStorageSpecifierToLLVMPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createFinalizingBufferizePass());

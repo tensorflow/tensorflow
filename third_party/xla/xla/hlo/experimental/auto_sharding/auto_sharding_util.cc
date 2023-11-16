@@ -50,6 +50,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
+#include "xla/service/call_graph.h"
+#include "xla/service/sharding_propagation.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
@@ -64,84 +66,25 @@ inline const HloInstruction* PassThroughCustomCallMarkerGetSource(
 inline HloInstruction* PassThroughCustomCallMarkerUser(
     HloInstruction* raw_user, const HloInstruction* inst);
 
-// Return whether a reshape instruction is a special reshape that switches
-// the batch dim of a dot.
-bool IsBatchDimSwitchReshape(const HloInstruction* inst) {
-  if (inst->opcode() != HloOpcode::kReshape) {
-    return false;
+std::optional<HloSharding> GetInputSharding(const HloInstruction* ins,
+                                            const HloInstruction* operand,
+                                            int64_t op_index,
+                                            const HloSharding& output_sharding,
+                                            const CallGraph& call_graph,
+                                            int64_t num_devices) {
+  auto ins_clone = ins->Clone();
+  ins_clone->set_sharding(output_sharding);
+  auto operand_clone = operand->Clone();
+  if (operand_clone->has_sharding() &&
+      !operand_clone->sharding()
+           .Validate(operand_clone->shape(), num_devices)
+           .ok()) {
+    operand_clone->clear_sharding();
   }
-  if (inst->users().size() != 1) {
-    return false;
-  }
-  const HloInstruction* operand = inst->operand(0);
-  const HloInstruction* user = inst->users().front();
-
-  if (operand->opcode() != HloOpcode::kDot) {
-    return false;
-  }
-
-  int batch_dims = operand->dot_dimension_numbers().lhs_batch_dimensions_size();
-  if (batch_dims <= 0) {
-    return false;
-  }
-
-  if (user->opcode() != HloOpcode::kTranspose) {
-    return false;
-  }
-
-  return true;
-}
-
-// Return whether the instruction is followed by a broadcast.
-bool IsFollowedByBroadcast(const HloInstruction* ins) {
-  const int max_depth = 6;
-  for (int i = 0; i < max_depth; ++i) {
-    if (ins->users().empty()) {
-      return false;
-    }
-    ins = PassThroughCustomCallMarkerUser(ins->users().front(), ins);
-    if (ins->opcode() == HloOpcode::kBroadcast) {
-      return true;
-    }
-    if (ins->opcode() == HloOpcode::kReshape) {
-      i--;
-    }
-  }
-
-  return false;
-}
-
-// Return whether the instruction is followed by a reduce.
-bool IsFollowedByReduce(const HloInstruction* ins) {
-  int max_depth = 1;
-  bool found = false;
-
-  std::function<void(const HloInstruction*, int)> dfs;
-
-  dfs = [&](const HloInstruction* cur, int depth) {
-    if (found) {
-      return;
-    }
-
-    if (cur->opcode() == HloOpcode::kReduce) {
-      found = true;
-      return;
-    }
-
-    if (cur->opcode() == HloOpcode::kGetTupleElement) {
-      depth -= 1;
-    }
-
-    if (depth < max_depth) {
-      for (auto user : cur->users()) {
-        dfs(PassThroughCustomCallMarkerUser(user, cur), depth + 1);
-      }
-    }
-  };
-
-  dfs(ins, 0);
-
-  return found;
+  auto s = ins_clone->ReplaceOperandWith(op_index, operand_clone.get());
+  CHECK_OK(s);
+  return ShardingPropagation::GetShardingFromUser(*operand_clone, *ins_clone,
+                                                  10, true, call_graph);
 }
 
 // Return whether the instruction is an activation from another pipeline stage.
@@ -2244,51 +2187,6 @@ bool IsEntryComputationInputOrOutput(const HloModule* module,
   return false;
 }
 
-void CreateDifferentMeshShapesToTryHelper(
-    int64_t num_devices, size_t num_mesh_dims,
-    std::vector<int64_t> current_shape,
-    std::vector<std::vector<int64_t>>& all_shapes) {
-  if (current_shape.size() == num_mesh_dims - 1) {
-    current_shape.push_back(num_devices);
-    if (spmd::VectorGreaterThanOneElementCount(current_shape) <= 2) {
-      all_shapes.push_back(current_shape);
-    }
-    return;
-  } else {
-    int64_t current_dim = 1;
-    while (current_dim <= num_devices) {
-      std::vector<int64_t> new_shape(current_shape);
-      new_shape.push_back(current_dim);
-      CreateDifferentMeshShapesToTryHelper(
-          num_devices / current_dim, num_mesh_dims, new_shape, all_shapes);
-      current_dim *= 2;
-    }
-  }
-}
-
-std::vector<std::vector<int64_t>> CreateDifferentMeshShapesToTry(
-    const int64_t num_devices, int num_mesh_dims, bool symmetrical_mesh_dims) {
-  std::vector<std::vector<int64_t>> result;
-  CreateDifferentMeshShapesToTryHelper(num_devices, num_mesh_dims, {}, result);
-
-  if (symmetrical_mesh_dims) {
-    absl::flat_hash_set<absl::btree_multiset<int64_t>> dedup_result;
-    for (const auto& mesh_shape : result) {
-      dedup_result.insert(
-          absl::btree_multiset<int64_t>(mesh_shape.begin(), mesh_shape.end()));
-    }
-
-    result.clear();
-
-    for (const auto& mesh_shape_set : dedup_result) {
-      result.push_back(
-          std::vector<int64_t>(mesh_shape_set.begin(), mesh_shape_set.end()));
-    }
-  }
-
-  return result;
-}
-
 void ComputeInstructionExecutionCountsHelper(
     const HloComputation* computation, int64_t computation_execution_count,
     int64_t loop_iteration_count_estimate,
@@ -2336,6 +2234,116 @@ ComputeInstructionExecutionCounts(const HloModule* module,
                                           loop_iteration_count_estimate,
                                           &instruction_execution_counts);
   return instruction_execution_counts;
+}
+
+void EnumerateAllPossibleMeshShapesHelper(
+    int64_t num_devices, size_t num_mesh_dims,
+    std::vector<int64_t> current_shape,
+    std::vector<std::vector<int64_t>>& all_shapes) {
+  if (current_shape.size() == num_mesh_dims - 1) {
+    current_shape.push_back(num_devices);
+    if (spmd::VectorGreaterThanOneElementCount(current_shape) <= 2) {
+      all_shapes.push_back(current_shape);
+    }
+    return;
+  } else {
+    int64_t current_dim = 1;
+    while (current_dim <= num_devices) {
+      std::vector<int64_t> new_shape(current_shape);
+      new_shape.push_back(current_dim);
+      EnumerateAllPossibleMeshShapesHelper(
+          num_devices / current_dim, num_mesh_dims, new_shape, all_shapes);
+      current_dim *= 2;
+    }
+  }
+}
+
+std::vector<std::vector<int64_t>> EnumerateAllPossibleMeshShapes(
+    const int64_t num_devices, int num_mesh_dims, bool symmetrical_mesh_dims) {
+  std::vector<std::vector<int64_t>> result;
+  EnumerateAllPossibleMeshShapesHelper(num_devices, num_mesh_dims, {}, result);
+
+  if (symmetrical_mesh_dims) {
+    absl::flat_hash_set<absl::btree_multiset<int64_t>> dedup_result;
+    for (const std::vector<int64_t>& mesh_shape : result) {
+      dedup_result.insert(
+          absl::btree_multiset<int64_t>(mesh_shape.begin(), mesh_shape.end()));
+    }
+
+    result.clear();
+
+    for (const absl::btree_multiset<int64_t>& mesh_shape_set : dedup_result) {
+      result.push_back(
+          std::vector<int64_t>(mesh_shape_set.begin(), mesh_shape_set.end()));
+    }
+  }
+
+  return result;
+}
+
+std::vector<std::vector<int64_t>> InferMeshShapesToTry(
+    const HloModule& module) {
+  int64_t sharding_1d = -1;
+  absl::flat_hash_set<std::vector<int64_t>> shardings_nd;
+  std::function<void(const HloSharding&)> process_sharding;
+  process_sharding = [&sharding_1d, &shardings_nd,
+                      &process_sharding](const HloSharding& sharding) {
+    if (sharding.IsTuple()) {
+      for (const HloSharding& child : sharding.tuple_elements()) {
+        process_sharding(child);
+      }
+    } else if (!sharding.IsReplicated()) {
+      absl::Span<const int64_t> dims = sharding.tile_assignment().dimensions();
+      std::vector<int64_t> dims_greater_than_one;
+      for (const int64_t dim : dims) {
+        if (dim > 1) {
+          dims_greater_than_one.push_back(dim);
+        }
+      }
+      if (dims_greater_than_one.size() == 1) {
+        CHECK(sharding_1d == -1 || sharding_1d == dims_greater_than_one[0]);
+        sharding_1d = dims_greater_than_one[0];
+      } else {
+        std::sort(dims_greater_than_one.begin(), dims_greater_than_one.end());
+        shardings_nd.insert(dims_greater_than_one);
+      }
+    }
+  };
+
+  for (const HloComputation* comp : module.computations()) {
+    for (const HloInstruction* ins : comp->instructions()) {
+      if (ins->has_sharding()) {
+        process_sharding(ins->sharding());
+      }
+    }
+  }
+
+  if (shardings_nd.empty() && sharding_1d < 0) {
+    return {};
+  } else if (shardings_nd.empty()) {
+    CHECK_GE(sharding_1d, 0);
+    return {{1, sharding_1d}};
+  } else {
+    std::vector<std::vector<int64_t>> result;
+    for (std::vector<int64_t> mesh : shardings_nd) {
+      do {
+        result.push_back(std::vector<int64_t>(mesh));
+      } while (std::next_permutation(std::begin(mesh), std::end(mesh)));
+    }
+    return result;
+  }
+}
+
+std::vector<std::vector<int64_t>> InferOrEnumerateMeshShapesToTry(
+    const HloModule& module, int64_t num_devices, int num_mesh_dims,
+    bool symmetrical_mesh_dims) {
+  std::vector<std::vector<int64_t>> mesh_shapes = InferMeshShapesToTry(module);
+  if (mesh_shapes.empty()) {
+    mesh_shapes = spmd::EnumerateAllPossibleMeshShapes(
+        num_devices, num_mesh_dims,
+        /* symmetrical_mesh_dims */ symmetrical_mesh_dims);
+  }
+  return mesh_shapes;
 }
 
 }  // namespace spmd

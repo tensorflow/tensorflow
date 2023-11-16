@@ -21,7 +21,10 @@ cc_library(
     srcs = ["hlo_constant_splitter.cc"],
     hdrs = ["hlo_constant_splitter.h"],
     visibility = ["//visibility:public"],
-    deps = ["//xla/service:hlo_pass"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_pass",
+    ],
 )
 
 xla_cc_test(
@@ -30,6 +33,8 @@ xla_cc_test(
     deps = [
         ":hlo_constant_splitter",
         "//xla:test",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_dce",
         "//xla/service:hlo_parser",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
@@ -27,8 +28,10 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/service/hlo_parser.h"
+#include "xla/test.h"
 #include "xla/tests/literal_test_util.h"
 #include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -55,6 +58,17 @@ absl::StatusOr<xla::XlaComputation> GetXlaComputation(
                       xla::ParseAndReturnUnverifiedModule(program, {}));
 
   return XlaComputation(hlo_module->ToProto());
+}
+
+TEST(StreamExecutorGpuCompilerTest, NoClientXla) {
+  StreamExecutorGpuCompiler compiler;
+  StreamExecutorGpuTopologyDescription topology(CudaId(), CudaName(),
+                                                "Fake_device", {0, 1});
+
+  TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
+  EXPECT_THAT(compiler.Compile(xla::CompileOptions(), computation, topology,
+                               /*client=*/nullptr),
+              StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 TEST(StreamExecutorGpuCompilerTest, TopologyNotSameXla) {

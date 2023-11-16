@@ -23,6 +23,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -401,6 +402,11 @@ class PjRtHostMemoryForDeviceManager {
 
 class PjRtLoadedExecutable;
 
+struct PjRtPluginAttributes {
+  int64_t pjrt_c_api_major_version;
+  int64_t pjrt_c_api_minor_version;
+};
+
 // Encapsulates the state of Python session with XLA.
 //
 // It is the responsibility of the client of this API to keep the PjRtClient
@@ -461,9 +467,9 @@ class PjRtClient {
   // Subclasses of PjRtClient can optionally take these callbacks in their
   // constructors.
   using KeyValueGetCallback = std::function<xla::StatusOr<std::string>(
-      const std::string& key, absl::Duration timeout)>;
-  using KeyValuePutCallback = std::function<xla::Status(
-      const std::string& key, const std::string& value)>;
+      std::string_view key, absl::Duration timeout)>;
+  using KeyValuePutCallback =
+      std::function<xla::Status(std::string_view key, std::string_view value)>;
 
   PjRtClient() = default;
   explicit PjRtClient(std::unique_ptr<PjRtHostMemoryForDeviceManager>
@@ -515,6 +521,12 @@ class PjRtClient {
   // (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
   virtual absl::string_view platform_version() const = 0;
 
+  // Returns information about the underlying PJRT C API plugin if such a plugin
+  // is being used, otherwise returns nullopt.
+  virtual std::optional<PjRtPluginAttributes> plugin_attributes() const {
+    return std::nullopt;
+  }
+
   // TODO(b/244756954): Rethink this function altogether
   // Returns an enum that identifies the type of runtime being used under this
   // client.
@@ -548,10 +560,6 @@ class PjRtClient {
   // Variant of `Compile` that accepts an MLIR module.
   virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) = 0;
-
-  // Generates a unique fingerprint for `executable`, may be std::nullopt.
-  virtual StatusOr<std::optional<std::string>> ExecutableFingerprint(
-      const PjRtLoadedExecutable& executable) const = 0;
 
   // Deserializes a serialized executable as produced by
   // PjRtExecutable::SerializeExecutable(). `serialized` must have been
@@ -598,7 +606,8 @@ class PjRtClient {
   // Gets the pointer to the topology description held by the client.
   virtual StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const {
-    return Unimplemented("GetTopologyDescription not supported!");
+    return Unimplemented("GetTopologyDescription not supported on platform %s",
+                         platform_name());
   }
 
   // Returns topology object for compilation based on this client's topology.

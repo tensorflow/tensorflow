@@ -32,7 +32,8 @@ namespace gpu {
 // `allocations` may be empty and `fusion_op` may be nullptr if buffer
 // assignment didn't run yet.
 std::optional<std::unique_ptr<FusionInterface>> GetFusionEmitter(
-    HloFusionAnalysis& analysis, absl::Span<const BufferAllocation> allocations,
+    HloFusionAnalysis& analysis,
+    absl::Span<const BufferAllocation* const> allocations,
     mlir::lmhlo::FusionOp fusion_op);
 
 }  // namespace gpu

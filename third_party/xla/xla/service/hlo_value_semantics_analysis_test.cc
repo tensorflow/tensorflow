@@ -581,5 +581,44 @@ TEST_F(EinsumDepthAnalysisTest, MnistTrainingLoop) {
   EXPECT_EQ(GetInstructionDepth(einsum_depth_map, computation, "dot.85"), 0);
 }
 
+TEST_F(EinsumDepthAnalysisTest, HandleConditional) {
+  const char* const hlo_string = R"(
+    HloModule Module
+
+    branch0 {
+      tparam = f32[4] parameter(0)
+      ROOT tgte1 = f32[4] ceil(tparam)
+    }
+
+    branch1 {
+      fparam = f32[4] parameter(0)
+      %async-start = ((f32[4]), f32[4], s32[]) custom-call-start(f32[4] fparam), async_execution_thread="parallel_thread", custom_call_target="foo"
+      ROOT %async-done = f32[4] custom-call-done(((f32[4]), f32[4], s32[]) %async-start), async_execution_thread="parallel_thread", custom_call_target="foo"
+    }
+
+    branch2 {
+      sparam = f32[4] parameter(0)
+      ROOT sgte1 = f32[4] ceil(sparam)
+    }
+
+    ENTRY entry {
+      p0 = f32[4] parameter(0)
+      b0 = s32[] parameter(1)
+      ROOT conditional = f32[4] conditional(b0, p0, p0, p0),
+        branch_computations={branch0, branch1, branch2}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<EinsumDepthAnalysis> einsum_depth_analysis,
+      EinsumDepthAnalysis::Run(*module->entry_computation()));
+  const EinsumDepthMap& einsum_depth_map =
+      einsum_depth_analysis->GetEinsumDepthMap();
+  HloComputation* computation = module->GetComputationWithName("entry");
+  EXPECT_EQ(GetInstructionDepth(einsum_depth_map, computation, "conditional"),
+            0);
+}
+
 }  // namespace
 }  // namespace xla

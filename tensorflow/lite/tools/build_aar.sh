@@ -90,7 +90,7 @@ function generate_tflite_aar {
   popd > /dev/null
   # TODO(b/254278688): Enable 'xnn_enable_arm_fp16' with toolchain upgrade.
   # TODO(b/297897797): Enable 'xnn_enable_arm_i8mm' with toolchain upgrade.
-  bazel ${CACHE_DIR_FLAG} build -c opt --cxxopt='--std=c++17' \
+  bazel ${CACHE_DIR_FLAG} build -c opt --config=opt --cxxopt='--std=c++17' \
         --fat_apk_cpu=${TARGET_ARCHS} \
         --define=android_dexmerger_tool=d8_dexmerger \
         --define=android_incremental_dexing_tool=d8_dexbuilder\
@@ -130,7 +130,7 @@ function generate_flex_aar {
   # Build the aar package.
   # TODO(b/254278688): Enable 'xnn_enable_arm_fp16' with toolchain upgrade.
   # TODO(b/297897797): Enable 'xnn_enable_arm_i8mm' with toolchain upgrade.
-  bazel ${CACHE_DIR_FLAG} build -c opt --cxxopt='--std=c++17' \
+  bazel ${CACHE_DIR_FLAG} build -c opt --config=opt --cxxopt='--std=c++17' \
       --fat_apk_cpu=${TARGET_ARCHS} \
       --define=android_dexmerger_tool=d8_dexmerger \
       --define=android_incremental_dexing_tool=d8_dexbuilder\
@@ -192,7 +192,7 @@ fi
 # TODO(b/254278688): Enable 'xnn_enable_arm_fp16' with toolchain upgrade.
 # TODO(b/297897797): Enable 'xnn_enable_arm_i8mm' with toolchain upgrade.
 if [ -z ${FLAG_MODELS} ]; then
-  bazel ${CACHE_DIR_FLAG} build -c opt --cxxopt='--std=c++17' \
+  bazel ${CACHE_DIR_FLAG} build -c opt --config=opt --cxxopt='--std=c++17' \
     --config=monolithic \
     --fat_apk_cpu=${TARGET_ARCHS} \
     --define=android_dexmerger_tool=d8_dexmerger \

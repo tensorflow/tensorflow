@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
@@ -61,6 +62,8 @@ namespace {
 
 constexpr char kOutputSize[] = "output_size";
 constexpr char kCode[] = "code";
+constexpr char kExperimentOptAll[] = "all";
+constexpr char kExperimentOptOutAllExceptOptIn[] = "all_except_opt_in";
 constexpr char kMessage[] = "msg";
 constexpr char kOutput[] = "output";
 
@@ -501,38 +504,47 @@ absl::flat_hash_set<string> GetExperiments(
     opt_outs_raw = string(opt_outs_raw_cs);
   }
 
-  // Identify opted out experiments.
   auto live_experiments = DatasetExperimentRegistry::Experiments();
+  for (const auto& [experiment, unused] : live_experiments) {
+    metrics::RecordTFDataExperimentLive(experiment);
+  }
+
+  // Identify opted out experiments.
   absl::flat_hash_set<string> opt_outs;
-  if (opt_outs_raw == "all") {
+  if (opt_outs_raw == kExperimentOptAll) {
     for (const auto& pair : live_experiments) {
       opt_outs.insert(pair.first);
     }
+    metrics::RecordTFDataExperimentOptOut(kExperimentOptAll);
   } else {
     for (const auto& experiment :
          str_util::Split(opt_outs_raw, ',', str_util::SkipEmpty())) {
       opt_outs.insert(experiment);
+      metrics::RecordTFDataExperimentOptOut(experiment);
     }
   }
 
   // Include opted in experiments unless they are opted out.
-  if (opt_ins_raw == "all") {
+  if (opt_ins_raw == kExperimentOptAll) {
     for (const auto& pair : live_experiments) {
       auto experiment = pair.first;
       if (!opt_outs.contains(experiment)) {
         experiments.insert(experiment);
       }
     }
+    metrics::RecordTFDataExperimentOptIn(kExperimentOptAll);
   } else {
     for (const auto& experiment :
          str_util::Split(opt_ins_raw, ',', str_util::SkipEmpty())) {
       if (!opt_outs.contains(experiment)) {
         experiments.insert(experiment);
       }
+      metrics::RecordTFDataExperimentOptIn(experiment);
     }
   }
 
-  if (opt_outs_raw == "all_except_opt_in") {
+  if (opt_outs_raw == kExperimentOptOutAllExceptOptIn) {
+    metrics::RecordTFDataExperimentOptOut(kExperimentOptOutAllExceptOptIn);
     return experiments;
   }
   // Stochastically include live experiments unless they are opted out.
@@ -859,13 +871,14 @@ Status CopyBatch(CopyBatchParams params,
 absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
   absl::flat_hash_set<tstring> configs;
   const auto& autotune_options = options.autotune_options();
-  std::array<tstring, 9> autotune_only_optimizations = {
+  std::array<tstring, 10> autotune_only_optimizations = {
       kAutotuneBufferSizesOpt,
       kBatchParallelizationOpt,
       kDisablePrefetchLegacyAutotuneOpt,
       kEnableGradientDescentOpt,
       kFilterParallelizationOpt,
       kMapParallelizationOpt,
+      kMapFusionOpt,
       kInjectPrefetchOpt,
       kInjectIoPrefetchEligibleOpt,
       kInjectIoPrefetchOpt};
@@ -985,12 +998,16 @@ REGISTER_DATASET_EXPERIMENT("stage_based_autotune_v2",
 REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<0>,
                             AllTasks);
 REGISTER_DATASET_EXPERIMENT("file_locality", RandomJobSamplePercentage<0>,
-                            IndependentHostTasks);
+                            AllTasks);
 REGISTER_DATASET_EXPERIMENT("file_locality_v2", RandomJobSamplePercentage<0>,
                             AllTasks);
 REGISTER_DATASET_EXPERIMENT("no_compression", RandomJobSamplePercentage<50>,
                             AllTasks);
 REGISTER_DATASET_EXPERIMENT("inject_io_prefetch", RandomJobSamplePercentage<0>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("reduce_array_record_dataset_memory_usage",
+                            RandomJobSamplePercentage<0>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("map_fusion", RandomJobSamplePercentage<50>,
                             AllTasks);
 }  // namespace
 }  // namespace data

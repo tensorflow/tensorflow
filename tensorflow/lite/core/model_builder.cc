@@ -17,6 +17,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <cstring>
 #include <memory>
 #include <string>
 #include <utility>
@@ -243,15 +244,13 @@ void FlatBufferModel::ValidateModelBuffers(ErrorReporter* error_reporter) {
   auto buffers = model_->buffers();
   if (buffers && buffers->size() > 0) {
     auto first_buffer = buffers->Get(0);
-    if (first_buffer && first_buffer->data()) {
-      if (first_buffer->data()->size() != 0) {
-        // Note the 0th entry of this array must be an empty buffer (sentinel).
-        // This is a convention so that tensors without a buffer can provide 0
-        // as their buffer.
-        TF_LITE_REPORT_ERROR(
-            error_reporter,
-            "The 0th entry of the model buffer must be an empty buffer.");
-      }
+    if (first_buffer && first_buffer->size() != 0) {
+      // Note the 0th entry of this array must be an empty buffer (sentinel).
+      // This is a convention so that tensors without a buffer can provide 0
+      // as their buffer.
+      TF_LITE_REPORT_ERROR(
+          error_reporter,
+          "The 0th entry of the model buffer must be an empty buffer.");
     }
   }
 }
@@ -390,6 +389,12 @@ std::map<std::string, std::string> FlatBufferModel::ReadAllMetadata(
 bool FlatBufferModel::CheckModelIdentifier() const {
   if (!tflite::ModelBufferHasIdentifier(allocation_->base())) {
     const char* ident = flatbuffers::GetBufferIdentifier(allocation_->base());
+    if (strlen(ident) < 4) {
+      TF_LITE_REPORT_ERROR(
+          error_reporter_,
+          "Model provided must have at least 8 bytes to hold identifier.\n");
+      return false;
+    }
     TF_LITE_REPORT_ERROR(
         error_reporter_,
         "Model provided has model identifier '%c%c%c%c', should be '%s'\n",

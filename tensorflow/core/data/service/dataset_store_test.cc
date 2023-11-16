@@ -102,8 +102,7 @@ TEST_P(DatasetStoreTest, StoreAlreadyExists) {
   DatasetDef dataset_def = DatasetDefWithVersion(version);
   std::string key = "key";
   TF_ASSERT_OK(store->Put(key, dataset_def));
-  Status s = store->Put(key, dataset_def);
-  EXPECT_EQ(s.code(), error::ALREADY_EXISTS);
+  TF_EXPECT_OK(store->Put(key, dataset_def));
   std::shared_ptr<const DatasetDef> result;
   TF_ASSERT_OK(store->Get(key, result));
   EXPECT_EQ(result->graph().version(), version);

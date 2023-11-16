@@ -26,6 +26,10 @@ function is_linux_gpu_job() {
   [[ "$KOKORO_JOB_NAME" =~ tensorflow/xla/linux/.*gpu.* ]]
 }
 
+function is_use_nvcc() {
+  [[ "${USE_NVCC:-}" == "true" ]]
+}
+
 # Pull the container (in case it was updated since the instance started) and
 # store its SHA in the Sponge log.
 docker pull "$DOCKER_IMAGE"
@@ -44,16 +48,23 @@ RC_FILE="/usertools/cpu.bazelrc"
 TARGET_FILTER=""
 TAGS_FILTER="-no_oss,-oss_excluded,-oss_serial"
 ADDITIONAL_FLAGS=""
+RBE_CONFIG=""
 
 if is_linux_gpu_job ; then
     TAGS_FILTER="$TAGS_FILTER,gpu,requires-gpu-nvidia,-no_gpu"
     ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --run_under=//tools/ci_build/gpu_build:parallel_gpu_execute"
     RC_FILE="/usertools/gpu.bazelrc"
+    if is_use_nvcc ; then
+      RBE_CONFIG="rbe_linux_cuda_nvcc"
+    else
+      RBE_CONFIG="rbe_linux_cuda"
+    fi
     echo "***NOTE: nvidia-smi lists the highest CUDA version the driver supports, which may be different than the version of CUDA actually used!!***"
     nvidia-smi
 else
     TAGS_FILTER="$TAGS_FILTER,-gpu,-requires-gpu-nvidia"
     ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --config=nonccl"
+    RBE_CONFIG="rbe_linux_cpu"
 fi
 
 # Build & test XLA
@@ -65,7 +76,7 @@ docker exec xla bazel --bazelrc=$RC_FILE \
         --features=layering_check \
         --profile=/tf/pkg/profile.json.gz \
         --flaky_test_attempts=3 \
-        --config=rbe \
+        --config=$RBE_CONFIG \
         --jobs=150 \
         --nobuild_tests_only \
         $ADDITIONAL_FLAGS \
@@ -74,9 +85,7 @@ docker exec xla bazel --bazelrc=$RC_FILE \
 
 # Print build time statistics, including critical path.
 docker exec xla bazel analyze-profile "/tf/pkg/profile.json.gz"
-# TODO(ddunleavy): enable once container has clang-tidy
-# docker exec xla git config --global --add safe.directory /tf/xla
-# docker exec xla bash -c "bazel aquery --output=jsonproto \"mnemonic(CppCompile, //xla/...)\" | PYTHONPATH=.. python3 build_tools/lint/clang_tidy.py --changed_lines_only"
+
 # Stop container
 docker stop xla
 

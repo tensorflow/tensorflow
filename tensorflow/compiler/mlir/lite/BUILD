@@ -12,6 +12,7 @@ package(
         "//learning/brain/mobile/programmability:__subpackages__",
         "//tensorflow/lite/experimental/tf_runtime:__subpackages__",
         "//tensorflow/lite/testing:__subpackages__",
+        "//third_party/odml/infra/genai/conversion/per_layer:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -873,8 +874,8 @@ cc_library(
         "transforms/lift_tflite_flex_ops.h",
     ],
     deps = [
+        ":tensorflow_lite",
         ":tensorflow_lite_passes_inc_gen",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_attr",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
@@ -883,6 +884,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
         "@flatbuffers",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -1259,6 +1261,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:translate_cl_options",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/lite:framework",

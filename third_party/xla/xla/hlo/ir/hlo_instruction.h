@@ -541,7 +541,7 @@ class HloInstruction {
   // instruction from each operand's user set and user's operand set.
   void DetachFromOperandsAndUsers();
 
-  // Adds a derived instruciton to the parent computation of this instruction.
+  // Adds a derived instruction to the parent computation of this instruction.
   // Also update setup the new instruction as a derived instruction.
   HloInstruction* AddInstruction(
       std::unique_ptr<HloInstruction> derived_instruction);
@@ -1717,6 +1717,11 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context = nullptr) const;
 
+  // Clones the HLO instruction with new shape, operands and suffix.
+  std::unique_ptr<HloInstruction> CloneWithNewOperands(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      const std::string& suffix, HloCloneContext* context = nullptr) const;
+
   // Returns the computations this instruction directly calls (if any).
   const std::vector<HloComputation*>& called_computations() const {
     return called_computations_;
@@ -2337,6 +2342,9 @@ class HloInstruction {
     kTrueComputationIndex = 0,
     kFalseComputationIndex = 1,
   };
+
+  // Change instruction's name to have a given suffix.
+  void AddSuffixToInstructionName(const absl::string_view suffix);
 
  private:
   friend class HloComputation;

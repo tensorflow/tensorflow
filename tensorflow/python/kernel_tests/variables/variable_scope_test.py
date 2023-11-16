@@ -33,6 +33,7 @@ from tensorflow.python.ops import cond
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import resource_variables_toggle
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variable_v1
@@ -456,18 +457,18 @@ class VariableScopeTest(test.TestCase):
   # AssertionError: True is not false (last assertFalse)
   @test_util.run_deprecated_v1
   def testEnableResourceVariables(self):
-    old = variable_scope._DEFAULT_USE_RESOURCE
+    old = resource_variables_toggle._DEFAULT_USE_RESOURCE
     try:
-      variable_scope.enable_resource_variables()
+      resource_variables_toggle.enable_resource_variables()
       self.assertIsInstance(
           variable_v1.VariableV1(1.0),
           resource_variable_ops.ResourceVariable)
-      variable_scope.disable_resource_variables()
+      resource_variables_toggle.disable_resource_variables()
       self.assertNotIsInstance(
           variable_v1.VariableV1(1.0),
           resource_variable_ops.ResourceVariable)
     finally:
-      variable_scope._DEFAULT_USE_RESOURCE = old
+      resource_variables_toggle._DEFAULT_USE_RESOURCE = old
 
   # Not converted to use wrap_function because of
   # TypeError: Fetch argument None has invalid type <type 'NoneType'>

@@ -206,6 +206,8 @@ PyHostSendAndRecvLoadedHostCallback::PyHostSendAndRecvLoadedHostCallback(
 PyHostSendAndRecvLoadedHostCallback::~PyHostSendAndRecvLoadedHostCallback() {
   GlobalPyRefManager()->AddGarbage(
       absl::MakeSpan(static_cast<pybind11::object*>(&callable_), 1));
+  GlobalPyRefManager()->AddGarbage(
+      absl::MakeSpan(static_cast<pybind11::object*>(&serializer_), 1));
 }
 
 StatusOr<std::string> PyHostSendAndRecvLoadedHostCallback::Serialize() const {

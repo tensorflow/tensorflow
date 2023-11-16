@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <cstddef>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/profiling/telemetry/profiler.h"
@@ -166,11 +168,6 @@ void TfLiteInterpreterOptionsSetEnableDelegateFallback(
   options->enable_delegate_fallback = enable;
 }
 
-void TfLiteSetAllowBufferHandleOutput(const TfLiteInterpreter* interpreter,
-                                      bool allow_buffer_handle_output) {
-  interpreter->impl->SetAllowBufferHandleOutput(allow_buffer_handle_output);
-}
-
 TfLiteStatus TfLiteInterpreterModifyGraphWithDelegate(
     const TfLiteInterpreter* interpreter, TfLiteDelegate* delegate) {
   return interpreter->impl->ModifyGraphWithDelegate(delegate);
@@ -189,6 +186,41 @@ int32_t TfLiteInterpreterGetOutputTensorIndex(
 int32_t TfLiteInterpreterGetSignatureCount(
     const TfLiteInterpreter* interpreter) {
   return static_cast<int32_t>(interpreter->impl->signature_keys().size());
+}
+
+TfLiteStatus TfLiteInterpreterSetBufferHandle(TfLiteInterpreter* interpreter,
+                                              TfLiteTensor* tensor,
+                                              TfLiteBufferHandle buffer_handle,
+                                              TfLiteOpaqueDelegate* delegate) {
+  return interpreter->impl->SetBufferHandle(tensor, buffer_handle, delegate);
+}
+
+TfLiteStatus TfLiteInterpreterGetBufferHandle(TfLiteInterpreter* interpreter,
+                                              int tensor_index,
+                                              TfLiteBufferHandle* buffer_handle,
+                                              TfLiteOpaqueDelegate** delegate) {
+  return interpreter->impl->GetBufferHandle(tensor_index, buffer_handle,
+                                            delegate);
+}
+
+void TfLiteSetAllowBufferHandleOutput(const TfLiteInterpreter* interpreter,
+                                      bool allow_buffer_handle_output) {
+  interpreter->impl->SetAllowBufferHandleOutput(allow_buffer_handle_output);
+}
+
+TfLiteStatus TfLiteInterpreterSetCustomAllocationForTensor(
+    TfLiteInterpreter* interpreter, int tensor_index,
+    const TfLiteCustomAllocation* allocation, int64_t flags) {
+  if (allocation == nullptr) {
+    return kTfLiteError;
+  }
+  return interpreter->impl->SetCustomAllocationForTensor(tensor_index,
+                                                         *allocation, flags);
+}
+
+TfLiteStatus TfLiteInterpreterEnsureTensorDataIsReadable(
+    TfLiteInterpreter* interpreter, int tensor_index) {
+  return interpreter->impl->EnsureTensorDataIsReadable(tensor_index);
 }
 
 const char* TfLiteInterpreterGetSignatureKey(

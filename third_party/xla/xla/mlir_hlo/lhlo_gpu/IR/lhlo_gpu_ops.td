@@ -165,12 +165,15 @@ def LHLOGPU_GEMMOp : LHLOGPU_Op<"gemm"> {
     Arg<LHLO_Buffer, "", [MemRead]>:$a,
     Arg<LHLO_Buffer, "", [MemRead]>:$b,
     Arg<LHLO_Buffer, "", [MemRead, MemWrite]>:$c,
+    Arg<Optional<LHLO_Buffer>, "", [MemRead, MemWrite]>:$workspace,
     MHLO_DotDimensionNumbers:$dot_dimension_numbers,
     MHLO_PrecisionConfigAttr:$precision_config,
     F64Attr:$alpha_real,
     F64Attr:$alpha_imag,
     F64Attr:$beta,
-    OptionalAttr<I64Attr>:$algorithm);
+    OptionalAttr<I64Attr>:$algorithm,
+    OptionalAttr<BoolAttr>:$grad_x,
+    OptionalAttr<BoolAttr>:$grad_y);
 }
 
 def LHLOGPU_CublasLtMatmulOp : LHLOGPU_Op<"cublas.lt.matmul", [AttrSizedOperandSegments]> {
@@ -187,7 +190,9 @@ def LHLOGPU_CublasLtMatmulOp : LHLOGPU_Op<"cublas.lt.matmul", [AttrSizedOperandS
     F64Attr:$alpha_imag,
     F64Attr:$beta,
     CublasLtMatmulEpilogueAttr:$epilogue,
-    I64Attr:$algorithm);
+    I64Attr:$algorithm,
+    OptionalAttr<BoolAttr>:$grad_x,
+    OptionalAttr<BoolAttr>:$grad_y);
 }
 
 def LHLOGPU_CublasLtMatmulF8Op : LHLOGPU_Op<"cublas.lt.matmul.f8", [AttrSizedOperandSegments]> {
@@ -208,7 +213,9 @@ def LHLOGPU_CublasLtMatmulF8Op : LHLOGPU_Op<"cublas.lt.matmul.f8", [AttrSizedOpe
     F64Attr:$alpha_imag,
     F64Attr:$beta,
     CublasLtMatmulEpilogueAttr:$epilogue,
-    I64Attr:$algorithm);
+    I64Attr:$algorithm,
+    OptionalAttr<BoolAttr>:$grad_x,
+    OptionalAttr<BoolAttr>:$grad_y);
 }
 
 def LHLOGPU_CholeskyOp : LHLOGPU_Op<"cholesky"> {
@@ -322,6 +329,21 @@ def LHLOGPU_AllToAllDoneOp: LHLOGPU_Op<"all_to_all_done"> {
   let arguments = (ins MHLO_Token:$token);
 }
 
+def LHLOGPU_CudnnNormOp : LHLOGPU_Op<"Norm", [AttrSizedOperandSegments]> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$input,
+    Arg<LHLO_Buffer, "", [MemRead]>:$scale,
+    Arg<LHLO_Buffer, "", [MemRead]>:$bias,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$expectation,
+    Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$norm_factor,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$scratch,
+    NormAlgorithmConfigAttr:$algorithm_config,
+    F64Attr:$epsilon,
+    I64ArrayAttr:$operand_layouts
+    );
+}
+
 def LHLOGPU_fusedMHAOp : LHLOGPU_Op<"fMHA", [AttrSizedOperandSegments]> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$lhs_bmm1,
@@ -367,6 +389,15 @@ def LHLOGPU_fusedMHABackwardOp : LHLOGPU_Op<"fMHABackward", [AttrSizedOperandSeg
     FusedMHAAlgorithmConfigAttr:$algorithm_config,
     OptionalAttr<F64Attr>:$dropout_rate,
     OptionalAttr<I64Attr>:$seed);
+}
+
+def LHLOGPU_RadixSortOp: LHLOGPU_Op<"radix_sort", [SameVariadicOperandSize]> {
+  let arguments = (ins
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$output,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$scratch,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$descending
+  );
 }
 
 #endif // LHLO_GPU_OPS

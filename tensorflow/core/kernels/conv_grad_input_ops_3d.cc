@@ -59,7 +59,7 @@ using stream_executor::dnn::DimIndex;
 #include "third_party/gpus/cudnn/cudnn.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
-#include "xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
 namespace {
@@ -743,7 +743,8 @@ void LaunchConvBackpropInputOpImpl(
 
     OP_REQUIRES_OK(context, stream->ThenBlasGemm(transpose, no_transpose, n, m,
                                                  k, b_ptr, k, a_ptr, k, &c_ptr,
-                                                 n, GetNumericOptions()));
+                                                 n, GetNumericOptions(),
+                                                 se::blas::CallContext::kNone));
     return;
   } else if (!is_grouped_convolution &&
              dims.filter_size(0) == dims.input_size(0) &&
@@ -767,7 +768,8 @@ void LaunchConvBackpropInputOpImpl(
 
     OP_REQUIRES_OK(context, stream->ThenBlasGemm(transpose, no_transpose, n, m,
                                                  k, b_ptr, k, a_ptr, k, &c_ptr,
-                                                 n, GetNumericOptions()));
+                                                 n, GetNumericOptions(),
+                                                 se::blas::CallContext::kNone));
     return;
   }
 

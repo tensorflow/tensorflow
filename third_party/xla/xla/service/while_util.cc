@@ -15,31 +15,51 @@ limitations under the License.
 
 #include "xla/service/while_util.h"
 
+#include <cstdint>
+#include <iterator>
 #include <memory>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout_util.h"
 #include "xla/literal_util.h"
+#include "xla/service/call_inliner.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/tuple_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/statusor.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
 using absl::StrCat;
 
-static StatusOr<HloComputation*> WidenWhileCondition(
-    HloComputation* narrow_condition, const Shape& wide_shape) {
+static StatusOr<std::pair<HloComputation*, CallInliner::InlinedInstructionMap>>
+WidenWhileCondition(HloComputation* narrow_condition, const Shape& wide_shape) {
   const Shape& narrow_shape =
       narrow_condition->parameter_instruction(0)->shape();
 
   HloComputation* wide_while_cond = [&]() {
     HloComputation::Builder builder(StrCat("wide.", narrow_condition->name()));
-    builder.AddInstruction(
-        HloInstruction::CreateParameter(0, wide_shape, "wide_param"));
+    builder.AddInstruction(HloInstruction::CreateParameter(
+        0, wide_shape,
+        absl::StrCat("wide.",
+                     narrow_condition->parameter_instruction(0)->name())));
 
     // This is needed so that the root instruction is shaped as a PRED[] -- we
     // need to get this right to begin with since we can't mutate the type of
@@ -50,17 +70,20 @@ static StatusOr<HloComputation*> WidenWhileCondition(
     return narrow_condition->parent()->AddEmbeddedComputation(builder.Build());
   }();
 
-  HloInstruction* truncated_parameter =
-      TupleUtil::ExtractPrefix(wide_while_cond->parameter_instruction(0),
-                               narrow_shape.tuple_shapes_size());
+  HloInstruction* truncated_parameter = TupleUtil::ExtractPrefix(
+      wide_while_cond->parameter_instruction(0),
+      narrow_shape.tuple_shapes_size(),
+      absl::StrCat("renarrowed.",
+                   wide_while_cond->parameter_instruction(0)->name()));
   HloInstruction* call_narrow_cond = wide_while_cond->AddInstruction(
       HloInstruction::CreateCall(ShapeUtil::MakeShape(PRED, {}),
                                  {truncated_parameter}, narrow_condition));
 
   wide_while_cond->set_root_instruction(call_narrow_cond);
 
-  TF_RETURN_IF_ERROR(CallInliner::Inline(call_narrow_cond).status());
-  return wide_while_cond;
+  TF_ASSIGN_OR_RETURN(auto inlined_instructions_map,
+                      CallInliner::Inline(call_narrow_cond));
+  return {{wide_while_cond, std::move(inlined_instructions_map)}};
 }
 
 static StatusOr<std::pair<HloComputation*, CallInliner::InlinedInstructionMap>>
@@ -69,14 +92,17 @@ WidenWhileBody(HloComputation* narrow_body, const Shape& wide_shape) {
 
   HloComputation* wide_while_body = [&]() {
     HloComputation::Builder builder(StrCat("wide.", narrow_body->name()));
-    builder.AddInstruction(
-        HloInstruction::CreateParameter(0, wide_shape, "wide_param"));
+    builder.AddInstruction(HloInstruction::CreateParameter(
+        0, wide_shape,
+        absl::StrCat("wide.", narrow_body->parameter_instruction(0)->name())));
     return narrow_body->parent()->AddEmbeddedComputation(builder.Build());
   }();
 
   HloInstruction* wide_parameter = wide_while_body->parameter_instruction(0);
   HloInstruction* truncated_parameter = TupleUtil::ExtractPrefix(
-      wide_parameter, narrow_shape.tuple_shapes_size());
+      wide_parameter, narrow_shape.tuple_shapes_size(),
+      absl::StrCat("renarrowed.",
+                   wide_while_body->parameter_instruction(0)->name()));
   HloInstruction* call_narrow_body =
       wide_while_body->AddInstruction(HloInstruction::CreateCall(
           narrow_shape, {truncated_parameter}, narrow_body));
@@ -84,9 +110,11 @@ WidenWhileBody(HloComputation* narrow_body, const Shape& wide_shape) {
   std::vector<HloInstruction*> live_through_values;
   for (int i = narrow_shape.tuple_shapes_size();
        i < wide_shape.tuple_shapes_size(); i++) {
-    live_through_values.push_back(
-        wide_while_body->AddInstruction(HloInstruction::CreateGetTupleElement(
-            wide_shape.tuple_shapes(i), wide_parameter, i)));
+    live_through_values.push_back(wide_while_body->AddInstruction(
+        HloInstruction::CreateGetTupleElement(wide_shape.tuple_shapes(i),
+                                              wide_parameter, i),
+        absl::StrCat(wide_while_body->name(), ".through.",
+                     i - narrow_shape.tuple_shapes_size())));
   }
 
   wide_while_body->set_root_instruction(
@@ -109,8 +137,10 @@ WhileUtil::MakeInstructionsLiveIn(
     *new_while_shape.add_tuple_shapes() = instruction->shape();
   }
 
+  HloComputation* new_while_condition;
+  CallInliner::InlinedInstructionMap inlined_condition_instructions_map;
   TF_ASSIGN_OR_RETURN(
-      HloComputation * new_while_condition,
+      std::tie(new_while_condition, inlined_condition_instructions_map),
       WidenWhileCondition(while_instr->while_condition(), new_while_shape));
 
   HloComputation* new_while_body;
@@ -138,10 +168,12 @@ WhileUtil::MakeInstructionsLiveIn(
   std::vector<HloInstruction*> live_in_instructions;
   for (int64_t i = elements_in_old_while_shape;
        i < new_while_shape.tuple_shapes_size(); i++) {
-    live_in_instructions.push_back(
-        new_while_body->AddInstruction(HloInstruction::CreateGetTupleElement(
+    live_in_instructions.push_back(new_while_body->AddInstruction(
+        HloInstruction::CreateGetTupleElement(
             instructions[i - elements_in_old_while_shape]->shape(),
-            while_body_param, i)));
+            while_body_param, i),
+        absl::StrCat(new_while_body->name(), ".in.",
+                     i - elements_in_old_while_shape)));
   }
 
   WhileUtil::MakeInstructionsLiveInResult result;
@@ -150,6 +182,8 @@ WhileUtil::MakeInstructionsLiveIn(
   result.replacement_instr = replacement_instr;
   result.while_body_live_in_values = std::move(live_in_instructions);
   result.while_body_instruction_map = std::move(inlined_instructions_map);
+  result.while_condition_instruction_map =
+      std::move(inlined_condition_instructions_map);
 
   return std::move(result);
 }

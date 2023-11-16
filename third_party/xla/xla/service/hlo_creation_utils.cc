@@ -16,16 +16,19 @@ limitations under the License.
 #include "xla/service/hlo_creation_utils.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <numeric>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/client/lib/comparators.h"
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
@@ -33,11 +36,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/literal.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shape_inference.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/statusor.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 using absl::StrCat;
@@ -319,6 +329,12 @@ HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type,
     return hlo;
   }
   Shape shape = ShapeUtil::ChangeElementType(hlo->shape(), type);
+  if (primitive_util::Is4BitType(shape.element_type())) {
+    shape.mutable_layout()->set_element_size_in_bits(4);
+  } else {
+    shape.mutable_layout()->set_element_size_in_bits(0);
+  }
+
   hlo = hlo->parent()->AddInstruction(HloInstruction::CreateConvert(shape, hlo),
                                       metadata);
   CHECK_EQ(hlo->shape().element_type(), type);
@@ -598,8 +614,10 @@ StatusOr<HloInstruction*> CollapseFirstNDims(HloInstruction* operand,
   const Shape& operand_shape = operand->shape();
   CHECK_GE(operand_shape.dimensions_size(), n);
   int64_t new_shape_leading_bound = 1;
+  bool new_shape_leading_is_dynamic = false;
   for (int64_t i = 0; i < n; i++) {
     new_shape_leading_bound *= operand_shape.dimensions(i);
+    new_shape_leading_is_dynamic |= operand_shape.is_dynamic_dimension(i);
   }
 
   std::vector<int64_t> new_shape_dims;
@@ -610,8 +628,15 @@ StatusOr<HloInstruction*> CollapseFirstNDims(HloInstruction* operand,
             operand_shape.dimensions().end(),
             std::back_inserter(new_shape_dims));
 
-  Shape output_shape =
-      ShapeUtil::MakeShape(operand_shape.element_type(), new_shape_dims);
+  std::vector<bool> new_shape_dynamic_dims;
+  new_shape_dynamic_dims.reserve(operand_shape.dimensions_size() - n + 1);
+  new_shape_dynamic_dims.push_back(new_shape_leading_is_dynamic);
+  std::copy(operand_shape.dynamic_dimensions().begin() + n,
+            operand_shape.dynamic_dimensions().end(),
+            std::back_inserter(new_shape_dynamic_dims));
+
+  Shape output_shape = ShapeUtil::MakeShape(
+      operand_shape.element_type(), new_shape_dims, new_shape_dynamic_dims);
 
   return MakeReshapeHlo(output_shape, operand);
 }

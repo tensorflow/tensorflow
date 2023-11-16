@@ -47,7 +47,7 @@ void CustomizeSortedBufferInterval(
 
     // Update the memory space assignment auto-tuning config of a module with a
     // given config.
-    module->config().mutable_memory_space_assignment_config()->assign(
+    module->mutable_config().mutable_memory_space_assignment_config()->assign(
         config.begin(), config.end());
   }
 }

@@ -281,6 +281,7 @@ cc_library(
     hdrs = ["buffer_assignment_util.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "@com_google_absl//absl/strings",
     ],
@@ -312,7 +313,12 @@ xla_cc_test(
     srcs = ["ir_array_test.cc"],
     deps = [
         ":ir_array",
+        ":llvm_util",
         "//xla:test",
+        "//xla/tests:filecheck",
         "//xla/tests:xla_internal_test_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )

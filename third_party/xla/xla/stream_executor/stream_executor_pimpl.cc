@@ -157,6 +157,13 @@ StreamExecutor::~StreamExecutor() {
   }
 }
 
+StreamExecutor::PlatformSpecificHandle
+StreamExecutor::platform_specific_handle() const {
+  PlatformSpecificHandle handle;
+  handle.context = implementation_->platform_specific_context();
+  return handle;
+}
+
 tsl::Status StreamExecutor::Init(DeviceOptions device_options) {
   TF_RETURN_IF_ERROR(
       implementation_->Init(device_ordinal_, std::move(device_options)));
@@ -166,11 +173,11 @@ tsl::Status StreamExecutor::Init(DeviceOptions device_options) {
 tsl::Status StreamExecutor::Init() { return Init(DeviceOptions::Default()); }
 
 tsl::Status StreamExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
-                                      KernelBase* kernel) {
+                                      Kernel* kernel) {
   return implementation_->GetKernel(spec, kernel);
 }
 
-void StreamExecutor::UnloadKernel(const KernelBase* kernel) {
+void StreamExecutor::UnloadKernel(const Kernel* kernel) {
   implementation_->UnloadKernel(kernel);
 }
 
@@ -432,8 +439,8 @@ fft::FftSupport* StreamExecutor::AsFft() {
 
 tsl::Status StreamExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                                    const BlockDim& block_dims,
-                                   const KernelBase& kernel,
-                                   const KernelArgsArrayBase& args) {
+                                   const Kernel& kernel,
+                                   const KernelArgs& args) {
   SubmitTrace(&TraceListener::LaunchSubmit, stream, thread_dims, block_dims,
               kernel, args);
 
@@ -472,6 +479,11 @@ DeviceMemoryBase StreamExecutor::Allocate(uint64_t size, int64_t memory_space) {
           << StackTraceIfVLOG10();
 
   return buf;
+}
+
+void* StreamExecutor::GetUntypedSubBuffer(DeviceMemoryBase* parent,
+                                          uint64_t offset, uint64_t size) {
+  return implementation_->GetSubBuffer(parent, offset, size);
 }
 
 tsl::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
@@ -744,6 +756,10 @@ std::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
 
 bool StreamExecutor::ClearAllocatorStats() {
   return implementation_->ClearAllocatorStats();
+}
+
+Stream* StreamExecutor::FindAllocatedStream(void* gpu_stream) {
+  return implementation_->FindAllocatedStream(gpu_stream);
 }
 
 template <typename TraceCallT, typename... ArgsT>

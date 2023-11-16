@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
+#include <string_view>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
@@ -36,6 +38,25 @@ limitations under the License.
 #include "tsl/platform/status.h"
 
 namespace stream_executor::gpu {
+
+using Mode = CommandBuffer::Mode;
+using State = CommandBuffer::State;
+
+std::string_view to_string(State state) {
+  switch (state) {
+    case State::kCreate:
+      return "create";
+    case State::kUpdate:
+      return "update";
+    case State::kFinalized:
+      return "finalized";
+  }
+}
+
+tsl::Status UnsupportedStateError(State state) {
+  return absl::InternalError(
+      absl::StrCat("Unsupported command buffer state: ", to_string(state)));
+}
 
 //===----------------------------------------------------------------------===//
 // GpuCommandBuffer resource usage tracking
@@ -66,13 +87,13 @@ static int64_t NotifyExecDestroyed() {
 // GpuCommandBuffer implementation
 //===----------------------------------------------------------------------===//
 
-GpuCommandBuffer::GpuCommandBuffer(CommandBuffer::Mode mode,
-                                   GpuExecutor* parent, GpuGraphHandle graph)
-    : mode_(mode), parent_(parent), graph_(graph), exec_(nullptr) {}
+GpuCommandBuffer::GpuCommandBuffer(Mode mode, GpuExecutor* parent,
+                                   GpuGraphHandle graph)
+    : mode_(mode), parent_(parent), graph_(graph) {}
 
 GpuCommandBuffer::~GpuCommandBuffer() {
   if (exec_ != nullptr) {
-    VLOG(5) << "Destroy GPU command buffer executable graph "
+    VLOG(5) << "Destroy GPU command buffer executable graph " << exec_ << " "
             << "(remaining alive executable graphs: " << NotifyExecDestroyed()
             << ")";
     auto st = GpuDriver::DestroyGraphExec(exec_);
@@ -120,31 +141,83 @@ tsl::Status GpuCommandBuffer::Trace(
   return tsl::OkStatus();
 }
 
+absl::Span<GpuGraphNodeHandle> GpuCommandBuffer::GetDependencies() {
+  return nodes_.empty() ? absl::Span<GpuGraphNodeHandle>()
+                        : absl::Span<GpuGraphNodeHandle>(&nodes_.back(), 1);
+}
+
 tsl::Status GpuCommandBuffer::CheckNotFinalized() {
-  if (finalized_)
+  if (state_ == State::kFinalized)
     return absl::InternalError(
-        "Command buffer can't be updated after it was finalized");
+        "Command can't be added to a command buffer after it was finalized");
+  return tsl::OkStatus();
+}
+
+tsl::Status GpuCommandBuffer::CheckPrimary() {
+  if (mode_ != Mode::kPrimary)
+    return absl::InternalError(
+        "Command can't be added to a non-primary command buffer");
   return tsl::OkStatus();
 }
 
 tsl::Status GpuCommandBuffer::Launch(const ThreadDim& threads,
                                      const BlockDim& blocks,
-                                     const KernelBase& kernel,
-                                     const KernelArgsArrayBase& args) {
+                                     const Kernel& kernel,
+                                     const KernelArgs& args) {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
   const GpuKernel* gpu_kernel = AsGpuKernel(&kernel);
   GpuFunctionHandle gpu_func = gpu_kernel->AsGpuFunctionHandle();
 
-  void** kernel_params = const_cast<void**>(args.argument_addresses().data());
+  auto* packed_args = DynCast<KernelArgsPackedArrayBase>(&args);
+  if (!packed_args)
+    return absl::InternalError("Unsupported kernel arguments type");
 
-  GpuGraphNodeHandle node;
-  TF_RETURN_IF_ERROR(GpuDriver::GraphAddKernelNode(
-      &node, graph_, {}, kernel.name(), gpu_func, blocks.x, blocks.y, blocks.z,
-      threads.x, threads.y, threads.z, args.number_of_shared_bytes(),
-      kernel_params, /*extra=*/nullptr));
+  void** kernel_params =
+      const_cast<void**>(packed_args->argument_addresses().data());
 
-  return tsl::OkStatus();
+  // Adds a new kernel node to the graph under construction.
+  if (state_ == State::kCreate) {
+    absl::Span<GpuGraphNodeHandle> deps = GetDependencies();
+    GpuGraphNodeHandle* node = &nodes_.emplace_back();
+    return GpuDriver::GraphAddKernelNode(
+        node, graph_, deps, kernel.name(), gpu_func, blocks.x, blocks.y,
+        blocks.z, threads.x, threads.y, threads.z,
+        args.number_of_shared_bytes(), kernel_params, /*extra=*/nullptr);
+  }
+
+  // Updates kernel node in the executable graph.
+  if (state_ == State::kUpdate) {
+    GpuGraphNodeHandle node = nodes_[node_update_idx_++];
+    return GpuDriver::GraphExecKernelNodeSetParams(
+        exec_, node, kernel.name(), gpu_func, blocks.x, blocks.y, blocks.z,
+        threads.x, threads.y, threads.z, args.number_of_shared_bytes(),
+        kernel_params, /*extra=*/nullptr);
+  }
+
+  return UnsupportedStateError(state_);
+}
+
+tsl::Status GpuCommandBuffer::AddNestedCommandBuffer(
+    const CommandBuffer& nested) {
+  TF_RETURN_IF_ERROR(CheckNotFinalized());
+  TF_RETURN_IF_ERROR(CheckPrimary());
+
+  GpuGraphHandle child_graph = GpuCommandBuffer::Cast(&nested)->graph();
+  // Adds a child graph node to the graph under construction.
+  if (state_ == State::kCreate) {
+    absl::Span<GpuGraphNodeHandle> deps = GetDependencies();
+    GpuGraphNodeHandle* node = &nodes_.emplace_back();
+    return GpuDriver::GraphAddChildNode(node, graph_, deps, child_graph);
+  }
+
+  // Updates child graph node in the executable graph.
+  if (state_ == State::kUpdate) {
+    GpuGraphNodeHandle node = nodes_[node_update_idx_++];
+    return GpuDriver::GraphExecChildNodeSetParams(exec_, node, child_graph);
+  }
+
+  return UnsupportedStateError(state_);
 }
 
 tsl::Status GpuCommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
@@ -152,34 +225,73 @@ tsl::Status GpuCommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                                    uint64_t size) {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
-  GpuGraphNodeHandle node;
-  TF_RETURN_IF_ERROR(GpuDriver::GraphAddMemcpyD2DNode(
-      parent_->gpu_context(), &node, graph_, {}, AsDevicePtr(*dst),
-      AsDevicePtr(src), size));
+  // Adds a new memcpy node to the graph under construction.
+  if (state_ == State::kCreate) {
+    absl::Span<GpuGraphNodeHandle> deps = GetDependencies();
+    GpuGraphNodeHandle* node = &nodes_.emplace_back();
+    return GpuDriver::GraphAddMemcpyD2DNode(parent_->gpu_context(), node,
+                                            graph_, deps, AsDevicePtr(*dst),
+                                            AsDevicePtr(src), size);
+  }
 
-  return tsl::OkStatus();
+  return UnsupportedStateError(state_);
 }
 
 tsl::Status GpuCommandBuffer::Finalize() {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
-  if (mode_ == CommandBuffer::Mode::kPrimary) {
+  if (mode_ == Mode::kPrimary && state_ == State::kCreate) {
+    // If this is the first time we finalize command buffer after construction,
+    // we need to instantiate it to an executable graph.
     GpuDriver::GraphInstantiateFlags flags;
 
     uint64_t start_nanos = tsl::Env::Default()->NowNanos();
     TF_RETURN_IF_ERROR(GpuDriver::GraphInstantiate(&exec_, graph_, flags));
     uint64_t end_nanos = tsl::Env::Default()->NowNanos();
 
-    VLOG(5) << "Instantiated executable graph #" << NotifyExecCreated()
-            << " in " << (end_nanos - start_nanos) / 1000
-            << " μs (alive executable graphs: " << AliveExecs() << ")";
+    VLOG(5) << "Instantiated executable graph " << exec_ << " in "
+            << (end_nanos - start_nanos) / 1000 << " μs ("
+            << "#" << NotifyExecCreated() << ", "
+            << "alive executable graphs: " << AliveExecs() << ")";
 
-  } else {
+  } else if (mode_ == Mode::kPrimary && state_ == State::kUpdate) {
+    // If this is a finalization after update, we don't have to do anything as
+    // each individual command already updated executable graph.
+    VLOG(5) << "Finalize executable graph " << exec_ << " update #"
+            << num_updates_++ << " "
+            << "(alive executable graphs: " << AliveExecs() << ")";
+
+  } else if (mode_ == Mode::kNested) {
+    // Nested command buffers do not have executable graphs.
     VLOG(5) << "Finalize nested command buffer without instantiating "
                "executable graph";
   }
 
-  finalized_ = true;
+  state_ = State::kFinalized;
+  return tsl::OkStatus();
+}
+
+tsl::Status GpuCommandBuffer::Update() {
+  if (state_ != State::kFinalized) {
+    return absl::InternalError(
+        "Command buffer has to be finalized first before it can be updated");
+  }
+
+  if (exec_ == nullptr) {
+    if (mode_ == Mode::kPrimary)
+      return absl::InternalError(
+          "Primary command buffers are expected to have executable graphs");
+    return absl::UnimplementedError(
+        "Nested command buffer update is deliberately not implemented. One "
+        "should create a new nested command buffer and update the primary one "
+        "instead");
+  }
+
+  VLOG(5) << "Begin primary command buffer update for executable graph "
+          << exec_;
+
+  state_ = State::kUpdate;
+  node_update_idx_ = 0;
   return tsl::OkStatus();
 }
 

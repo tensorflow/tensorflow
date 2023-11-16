@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/client/xla_builder.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -29,18 +31,28 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/array.h"
+#include "xla/client/padding.h"
 #include "xla/client/sharding_builder.h"
 #include "xla/client/xla_computation.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo.pb.h"
@@ -50,10 +62,13 @@ limitations under the License.
 #include "xla/sharding_op_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
+#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/stacktrace.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -860,6 +875,22 @@ StatusOr<XlaOp> XlaBuilder::InDimBroadcast(
     instr.add_dimensions(dim);
   }
 
+  TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+  for (int64_t i = 0; i < shape.rank(); i++) {
+    if (auto it = absl::c_find(broadcast_dimensions, i);
+        it != broadcast_dimensions.end()) {
+      // Broadcast dimensions are permitted to be dynamic iff the operand
+      // dimension is dynamic.
+      TF_RET_CHECK(operand_shape->is_dynamic_dimension(
+                       it - broadcast_dimensions.begin()) ==
+                   shape.is_dynamic_dimension(i))
+          << " i: " << i << ", shape: " << shape.ToString()
+          << ", operand_shape: " << operand_shape->ToString();
+    } else {
+      // Non-broadcast dimensions must not be dynamic.
+      TF_RET_CHECK(!shape.is_dynamic_dimension(i));
+    }
+  }
   return AddInstruction(std::move(instr), HloOpcode::kBroadcast, {operand});
 }
 
@@ -876,35 +907,34 @@ StatusOr<XlaOp> XlaBuilder::AddBroadcastSequence(const Shape& output_shape,
 
   // Do explicit broadcast for scalar.
   if (ShapeUtil::IsScalar(*operand_shape)) {
-    return InDimBroadcast(broadcast_shape, operand, {});
+    return InDimBroadcast(ShapeUtil::MakeStaticShape(broadcast_shape), operand,
+                          {});
   }
 
   // Do explicit broadcast for degenerate broadcast.
   std::vector<int64_t> broadcast_dimensions;
   std::vector<int64_t> reshaped_dimensions;
+  std::vector<bool> reshaped_dynamic_dimensions;
   for (int i = 0; i < operand_shape->rank(); i++) {
     if (operand_shape->dimensions(i) == output_shape.dimensions(i)) {
       broadcast_dimensions.push_back(i);
       reshaped_dimensions.push_back(operand_shape->dimensions(i));
+      reshaped_dynamic_dimensions.push_back(
+          operand_shape->is_dynamic_dimension(i));
     } else {
-      TF_RET_CHECK(operand_shape->dimensions(i) == 1)
+      TF_RET_CHECK(operand_shape->dimensions(i) == 1 &&
+                   !operand_shape->is_dynamic_dimension(i))
           << "An explicit broadcast sequence requires the broadcasted "
              "dimensions to be trivial; operand shape: "
           << *operand_shape << "; output_shape: " << output_shape;
     }
+    broadcast_shape.set_dynamic_dimension(
+        i, operand_shape->is_dynamic_dimension(i));
   }
 
   Shape reshaped_shape =
-      ShapeUtil::MakeShape(operand_shape->element_type(), reshaped_dimensions);
-
-  std::vector<std::pair<int64_t, int64_t>> unmodified_dims =
-      ShapeUtil::DimensionsUnmodifiedByReshape(*operand_shape, reshaped_shape);
-
-  for (auto& unmodified : unmodified_dims) {
-    if (operand_shape->is_dynamic_dimension(unmodified.first)) {
-      reshaped_shape.set_dynamic_dimension(unmodified.second, true);
-    }
-  }
+      ShapeUtil::MakeShape(operand_shape->element_type(), reshaped_dimensions,
+                           reshaped_dynamic_dimensions);
 
   // Eliminate the size one dimensions.
   TF_ASSIGN_OR_RETURN(
@@ -952,7 +982,7 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
       to_size_is_dynamic.reserve(rank);
       for (int i = 0; i < rank; i++) {
         to_size.push_back(shape.dimensions(i));
-        to_size_is_dynamic.push_back(shape.is_dynamic_dimension(i));
+        to_size_is_dynamic.push_back(false);
       }
       for (int64_t from_dim = 0; from_dim < from_shape.rank(); from_dim++) {
         int64_t to_dim = broadcast_dimensions[from_dim];
@@ -1055,7 +1085,7 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs) {
                          shape->dimensions())
                 << "Unimplemented implicit broadcast.";
           } else {
-            non_scalar_shape = *shape;
+            non_scalar_shape = ShapeUtil::MakeStaticShape(*shape);
           }
         }
       }
@@ -1114,6 +1144,11 @@ XlaOp XlaBuilder::ConstantLiteral(const LiteralSlice& literal) {
 
 XlaOp XlaBuilder::Iota(const Shape& shape, int64_t iota_dimension) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    if (!shape.is_static()) {
+      return InvalidArgument(
+          "The output of iota must not have dynamic dimensions: %s",
+          shape.ToString());
+    }
     HloInstructionProto instr;
     *instr.mutable_shape() = shape.ToProto();
     instr.add_dimensions(iota_dimension);
@@ -1223,11 +1258,14 @@ XlaOp XlaBuilder::BroadcastInDim(
                            *operand_shape, output_shape, broadcast_dimensions)
                            .status());
     std::vector<int64_t> in_dim_size(out_dim_size.begin(), out_dim_size.end());
+    std::vector<bool> in_dim_dynamic(out_dim_size.size(), false);
     for (int i = 0; i < broadcast_rank; i++) {
       in_dim_size[broadcast_dimensions[i]] = operand_shape->dimensions(i);
+      in_dim_dynamic[broadcast_dimensions[i]] =
+          operand_shape->is_dynamic_dimension(i);
     }
-    const auto& in_dim_shape =
-        ShapeUtil::MakeShape(operand_shape->element_type(), in_dim_size);
+    const auto& in_dim_shape = ShapeUtil::MakeShape(
+        operand_shape->element_type(), in_dim_size, in_dim_dynamic);
     TF_ASSIGN_OR_RETURN(
         XlaOp in_dim_broadcast,
         InDimBroadcast(in_dim_shape, operand, broadcast_dimensions));
@@ -2883,10 +2921,24 @@ XlaOp XlaBuilder::AllGatherImpl(const XlaOp operand,
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
 
-    TF_ASSIGN_OR_RETURN(
-        Shape inferred_shape,
-        ShapeInference::InferAllGatherShape({operand_shape},
-                                            all_gather_dimension, shard_count));
+    std::vector<const Shape*> operand_shapes;
+    std::vector<XlaOp> operands;
+    if (operand_shape->IsTuple()) {
+      if (operand_shape->tuple_shapes_size() == 0) {
+        return Unimplemented("0 element tuple AllGather is not supported");
+      }
+      for (int i = 0; i < operand_shape->tuple_shapes_size(); ++i) {
+        operand_shapes.push_back(&operand_shape->tuple_shapes(i));
+        operands.push_back(GetTupleElement(operand, i));
+      }
+    } else {
+      operand_shapes.push_back(operand_shape);
+      operands.push_back(operand);
+    }
+
+    TF_ASSIGN_OR_RETURN(Shape inferred_shape,
+                        ShapeInference::InferAllGatherShape(
+                            operand_shapes, all_gather_dimension, shard_count));
     if (layout) {
       *inferred_shape.mutable_layout() = *layout;
       instr.set_constrain_layout(true);
@@ -2908,7 +2960,7 @@ XlaOp XlaBuilder::AllGatherImpl(const XlaOp operand,
                         AddInstruction(std::move(instr),
                                        async ? HloOpcode::kAllGatherStart
                                              : HloOpcode::kAllGather,
-                                       {operand}));
+                                       operands));
     return all_gather;
   });
 }
@@ -3320,8 +3372,7 @@ XlaOp XlaBuilder::ReduceScatter(
             operand_shape->tuple_shapes(0).element_type()) {
           return Unimplemented(
               "All the shapes of a tuple input of ReduceScatter must have "
-              "the same "
-              "element type");
+              "the same element type");
         }
         operand_shapes.push_back(&operand_shape->tuple_shapes(i));
         operands.push_back(GetTupleElement(operand, i));
@@ -3355,7 +3406,7 @@ XlaOp XlaBuilder::ReduceScatter(
 
     TF_ASSIGN_OR_RETURN(
         auto reduce_scatter,
-        AddInstruction(std::move(instr), HloOpcode::kReduceScatter, {operand}));
+        AddInstruction(std::move(instr), HloOpcode::kReduceScatter, operands));
     return reduce_scatter;
   });
 }

@@ -412,8 +412,12 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Note: This constructor grabs `lib_def`'s lock in shared mode.
   FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
+  explicit FunctionLibraryDefinition(
+      const OpRegistryInterface* default_registry,
+      const FunctionDefLibrary& lib_def = {},
+      const FunctionDefLibraryStackTraces& library_traces = {});
   FunctionLibraryDefinition(const OpRegistryInterface* default_registry,
-                            const FunctionDefLibrary& lib_def = {});
+                            const GraphDef& graph_def);
   ~FunctionLibraryDefinition() override;
 
   FunctionLibraryDefinition& operator=(const FunctionLibraryDefinition&) =
@@ -446,6 +450,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // `graph` has to outlive all instantiated graphs.
   Status AddFunctionDef(const FunctionDef& fdef,
                         const StackTracesMap& stack_traces = {})
+      TF_LOCKS_EXCLUDED(mu_);
+  Status AddFunctionDef(FunctionDef&& fdef, StackTracesMap&& stack_traces = {})
       TF_LOCKS_EXCLUDED(mu_);
 
   // Adds gradient definition 'grad' to this function library.
@@ -559,6 +565,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // reachable from the nodes of `graph` or `func`.
   FunctionLibraryDefinition ReachableDefinitions(const GraphDef& graph) const;
   FunctionLibraryDefinition ReachableDefinitions(const FunctionDef& func) const;
+  StatusOr<FunctionLibraryDefinition> ReachableDefinitions(
+      const std::string& function_name) const;
 
   // Copies the function named `func` from `other` to this
   // FunctionLibraryDefinition.
@@ -600,7 +608,14 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
     return nullptr;
   }
 
+  // Creates a map of function names to stack traces for a FunctionDefLibrary.
+  static FunctionDefLibraryStackTraces CreateStackTracesForFunctionDefLibrary(
+      const FunctionDefLibrary& library, const GraphDebugInfo& debug_info);
+
  private:
+  void Initialize(const FunctionDefLibrary& library,
+                  const FunctionDefLibraryStackTraces& library_traces);
+
   core::RefCountPtr<FunctionRecord> FindHelper(const string& func) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
   std::string FindGradientHelper(const std::string& func) const

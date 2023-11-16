@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.pb.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/refcount.h"
 
 namespace tensorflow {
@@ -35,7 +36,7 @@ class RootDataset : public DatasetBase {
     bool autotune = true;
     model::AutotuneAlgorithm autotune_algorithm;
     std::function<int64_t()> autotune_cpu_budget_func;
-    std::function<int64_t()> autotune_free_memory_func;
+    double ram_budget_share;
     int64_t autotune_ram_budget_from_options;
     int64_t max_intra_op_parallelism = 1;
     int64_t private_threadpool_size = 0;
@@ -44,7 +45,7 @@ class RootDataset : public DatasetBase {
       if (autotune_ram_budget_from_options > 0) {
         return autotune_ram_budget_from_options;
       } else {
-        return autotune_free_memory_func();
+        return ram_budget_share * port::AvailableRam();
       }
     }
   };

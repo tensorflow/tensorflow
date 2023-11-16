@@ -312,7 +312,7 @@ def TF_YieldOp : TF_Op<"Yield",
       [Terminator,
        Pure,
        NativeOpTrait<"ReturnLike", [], "", "">,
-       ParentOneOf<["CaseRegionOp", "IfRegionOp", "WhileRegionOp"]>,
+       ParentOneOf<["CaseRegionOp", "IfRegionOp", "WhileRegionOp", "GeneratorDatasetRegionOp"]>,
        DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface,
            ["getMutableSuccessorOperands"]>,
       ]> {
@@ -389,6 +389,57 @@ else_branch: A region that computes the outputs of the op if cond = false.
   let hasCanonicalizer = 1;
 }
 
+def TF_GeneratorDatasetRegionOp : TF_Op<"GeneratorDatasetRegion",
+      [AttrSizedOperandSegments,
+       DeclareOpInterfaceMethods<RegionBranchOpInterface, [
+           "areTypesCompatible",
+           "getEntrySuccessorOperands",
+           "getRegionInvocationBounds",
+           "getSuccessorRegions"
+       ]>,
+       SingleBlockImplicitTerminator<"YieldOp">,
+       TF_GeneratorOpSideEffect,
+      ]> {
+  let summary = "Regional version of GeneratorDataset";
+
+  let description = [{
+Creates a dataset that invokes its 'next' region to generate elements. Conceptually,
+within MLIR, we treat this op as if it fills a buffer with all the results right away,
+and those results are then passed (through the variant tensor result) to
+MakeIterator / IteratorGetNext. Note that the actual TF implementation differs: It
+generates the next element just in time, during IteratorGetNext.
+
+init_extra_args: Additional arguments to pass to 'init'.
+next_extra_args: Additional arguments to pass to 'next'. (Passed after the
+                 normal arguments which are from the return values of 'init'.)
+finalize_extra_args: Additional arguments to pass to 'finalize'. (Passed after
+                 the normal arguments which are from the return values of 'init'.)
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$init_func_other_args,
+    Variadic<TF_Tensor>:$next_func_other_args,
+    Variadic<TF_Tensor>:$finalize_func_other_args,
+
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$metadata
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+
+  let regions = (region SizedRegion<1>:$init,
+                        SizedRegion<1>:$next,
+                        SizedRegion<1>:$finalize
+                        );
+
+  TF_DerivedOperandTypeListAttr Tinit_func_args = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedOperandTypeListAttr Tnext_func_args = TF_DerivedOperandTypeListAttr<1>;
+  TF_DerivedOperandTypeListAttr Tfinalize_func_args = TF_DerivedOperandTypeListAttr<2>;
+}
+
 def TF_LegacyCallOp : TF_Op<"LegacyCall",
       [CallOpInterface,
        DeclareOpInterfaceMethods<SymbolUserOpInterface>, Pure]> {
@@ -455,9 +506,7 @@ def TF_ParseExampleOp : TF_Op<"ParseExample",
     Variadic<TF_StrTensor>:$dense_keys,
     Variadic<TensorOf<[TF_Float32, TF_Int64, TF_Str]>>:$dense_defaults,
 
-    TF_ShapeAttrArray:$dense_shapes,
-    DenseI32ArrayAttr:$resultSegmentSizes,
-    DenseI32ArrayAttr:$operandSegmentSizes
+    TF_ShapeAttrArray:$dense_shapes
   );
 
   let results = (outs
@@ -491,8 +540,7 @@ def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
     Variadic<TensorOf<[TF_Float32, TF_Int64, TF_Str]>>:$dense_defaults,
 
     ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_sparse,
-    TF_ShapeAttrArray:$dense_shapes,
-    DenseI32ArrayAttr:$resultSegmentSizes
+    TF_ShapeAttrArray:$dense_shapes
   );
 
   let results = (outs
@@ -1706,7 +1754,6 @@ target computation.
 'metadata' is a serialized TPUCompileMetadataProto describing the shapes and
 types of the inputs to the computation, as well as a mapping onto the TPU pod
 topology.
-'num_operands_per_execute' is the number of operands that each partition(execution on one tpu core) takes.
 'producer_name' is a string describing the name of the framework that add support for running this portion of the model on TPUs.
   }];
 
@@ -1716,7 +1763,6 @@ topology.
     OptionalAttr<I32ArrayAttr>:$operands_with_static_shape,
     DefaultValuedStrAttr<StrAttr, "">:$mlir_module,
     StrAttr:$metadata,
-    UI32Attr:$num_operands_per_execute,
     StrAttr:$producer_name
   );
 
@@ -2171,6 +2217,8 @@ def TF_XlaSparseDenseMatmulGradWithSgdAndCsrInputOp : TF_Op<"XlaSparseDenseMatmu
     TF_Float32Tensor:$embedding_table,
     TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
 
+    F32Attr:$clip_weight_min,
+    F32Attr:$clip_weight_max,
     StrAttr:$table_name
   );
 
@@ -2193,6 +2241,8 @@ def XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp : TF_Op<"XlaSparseDenseMatm
     TF_Float32Tensor:$accumulator,
     TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
 
+    F32Attr:$clip_weight_min,
+    F32Attr:$clip_weight_max,
     StrAttr:$table_name
   );
 
@@ -2222,6 +2272,8 @@ def XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInputOp : TF_Op<"XlaSparseD
     F32Attr:$beta1,
     F32Attr:$beta2,
     F32Attr:$epsilon,
+    F32Attr:$clip_weight_min,
+    F32Attr:$clip_weight_max,
     StrAttr:$table_name
   );
 
@@ -2251,6 +2303,8 @@ def XlaSparseDenseMatmulGradWithAdamAndCsrInputOp : TF_Op<"XlaSparseDenseMatmulG
     F32Attr:$beta1,
     F32Attr:$beta2,
     F32Attr:$epsilon,
+    F32Attr:$clip_weight_min,
+    F32Attr:$clip_weight_max,
     StrAttr:$table_name
   );
 
@@ -2281,6 +2335,8 @@ def XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp : TF_Op<"XlaSparseDenseMatmulG
     F32Attr:$learning_rate_power,
     F32Attr:$l1_regularization_strength,
     F32Attr:$l2_regularization_strength,
+    F32Attr:$clip_weight_min,
+    F32Attr:$clip_weight_max,
     StrAttr:$table_name
   );
 
@@ -2349,8 +2405,30 @@ def TF_GetMinibatchSplitsWithPhysicalReplicaOp : TF_Op<"GetMinibatchSplitsWithPh
     TF_Int32Tensor:$sorted_col_ids,
     TF_Float32Tensor:$sorted_gains,
     TF_Int64Tensor:$splits,
-    TF_Int32Tensor:$id_counts
+    TF_Int32Tensor:$id_counts,
+    TF_Int32Tensor:$max_ids,
+    TF_Int32Tensor:$max_uniques
   );
 }
 
+def TF_StoreMinibatchStatisticsInFdoOp : TF_Op<"StoreMinibatchStatisticsInFdo", [Pure]> {
+  let summary = "Store the number of IDs and unique IDs in an FDO table.";
+
+  let arguments = (ins
+    TF_StrTensor:$program_key,
+    TF_Int32Tensor:$max_ids,
+    TF_Int32Tensor:$max_uniques,
+
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$sample_count,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_replica,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$feature_width,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_sc_per_chip,
+
+    StrAttr:$table_name,
+    StrAttr:$mini_batch_splits
+  );
+
+  let results = (outs
+  );
+}
 #endif // TF_OPS

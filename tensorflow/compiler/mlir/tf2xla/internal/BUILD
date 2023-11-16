@@ -187,6 +187,9 @@ cc_library(
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
+        "//tensorflow/compiler/mlir/tf2xla/internal/passes:clustering_passes",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
@@ -201,5 +204,41 @@ tf_cc_test(
         ":clustering_bridge_passes",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
+    name = "logging_hooks",
+    srcs = ["logging_hooks.cc"],
+    hdrs = ["logging_hooks.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
+        "//tensorflow/core:framework",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+tf_cc_test(
+    name = "logging_hooks_test",
+    srcs = ["logging_hooks_test.cc"],
+    data = [
+        "testdata/dead_const.mlir",
+    ],
+    deps = [
+        ":logging_hooks",
+        "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:resource_loader",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:status",
     ],
 )

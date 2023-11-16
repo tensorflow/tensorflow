@@ -1239,7 +1239,7 @@ StatusOr<std::intptr_t>
 PjRtStreamExecutorDevice::GetStreamForExternalReadyEvents() const {
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
   se::Stream* stream = local_device->GetExternalReadyEventStream();
-  void* raw_stream = stream->implementation()->GpuStreamHack();
+  void* raw_stream = stream->platform_specific_handle().stream;
   if (raw_stream == nullptr) {
     return Unimplemented(
         "GetStreamForExternalReadyEvents not implemented for platform '%s'.",
@@ -3154,7 +3154,8 @@ PjRtStreamExecutorClient::DeserializeExecutable(
   }
   if (!proto.ParseFromArray(serialized.data(), serialized.size())) {
     return Internal(
-        "PjRtStreamExecutorClient::DeserializeExecutable proto deserialization "
+        "PjRtStreamExecutorClient::DeserializeExecutable proto "
+        "deserialization "
         "failed");
   }
 

@@ -25,7 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
-from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import resource_variables_toggle
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import builder
@@ -54,7 +54,7 @@ def main(argv):
 
   shutil.rmtree(FLAGS.saved_model_path)
 
-  variable_scope.enable_resource_variables()
+  resource_variables_toggle.enable_resource_variables()
 
   # Create the graph
   table_initializer = lookup_ops.TextFileInitializer(

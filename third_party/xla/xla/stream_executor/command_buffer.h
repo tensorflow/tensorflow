@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/platform/port.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -49,13 +48,31 @@ class CommandBufferInterface;
 // device.
 class CommandBuffer {
  public:
-  enum class Mode {
-    // Command buffer can be submitted for execution via StreamExecutor APIs.
-    kPrimary,
+  ~CommandBuffer();
+  CommandBuffer(CommandBuffer&&);
+  CommandBuffer& operator=(CommandBuffer&&);
 
-    // Command buffer can be executed only within a primary command buffer.
-    kNested
-  };
+  // Command buffer state:
+  //
+  //   (1) kCreate:    a new command buffer under construction
+  //   (2) kUpdate:    updating a previously finalized command buffer
+  //   (3) kFinalized: command buffer ready for execution
+  //
+  // Supported state transitions:
+  //
+  //   (1) Finalize: (kCreate|kUpdate) -> kFinalized
+  //   (2) Update:   kFinalized -> kUpdate
+  //
+  enum class State { kCreate, kUpdate, kFinalized };
+
+  // Command buffers have two modes of execution:
+  //
+  //   (1) kPrimary: command buffer can be submitted for execution via
+  //                 StreamExecutor APIs
+  //   (2) kNested:  command buffer can be executed only within a primary
+  //                 command buffer
+  //
+  enum class Mode { kPrimary, kNested };
 
   //===--------------------------------------------------------------------===//
   // Command buffer constructors
@@ -83,7 +100,10 @@ class CommandBuffer {
 
   // Adds a kernel launch command to the command buffer.
   tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
-                     const KernelBase& kernel, const KernelArgsArrayBase& args);
+                     const Kernel& kernel, const KernelArgs& args);
+
+  // Adds a nested command buffer to the command buffer.
+  tsl::Status AddNestedCommandBuffer(const CommandBuffer& nested);
 
   // Adds a device-to-device memory copy to the command buffer.
   tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
@@ -92,6 +112,10 @@ class CommandBuffer {
   // Finalizes command buffer and makes it executable. Once command buffer is
   // finalized no commands can be added to it.
   tsl::Status Finalize();
+
+  // Begins command buffer update. Command buffer update should be finalized
+  // before it can be executed.
+  tsl::Status Update();
 
   // Type-safe wrapper for launching typed kernels. Notice that the order of
   // arguments is different do disambiguate from the regular launch API.
@@ -103,21 +127,25 @@ class CommandBuffer {
   // Returns command buffer execution mode.
   Mode mode() const;
 
+  // Returns command buffer state.
+  State state() const;
+
   internal::CommandBufferInterface* implementation() {
     return implementation_.get();
   }
+
+  StreamExecutor* executor() const { return executor_; }
 
   const internal::CommandBufferInterface* implementation() const {
     return implementation_.get();
   }
 
-  CommandBuffer(CommandBuffer&&) = default;
-  CommandBuffer& operator=(CommandBuffer&&) = default;
-
  private:
-  explicit CommandBuffer(
+  CommandBuffer(
+      StreamExecutor* executor,
       std::unique_ptr<internal::CommandBufferInterface> implementation);
 
+  StreamExecutor* executor_;
   std::unique_ptr<internal::CommandBufferInterface> implementation_;
 
   CommandBuffer(const CommandBuffer&) = delete;
@@ -132,12 +160,8 @@ template <typename... Params, typename... Args>
 inline tsl::Status CommandBuffer::Launch(const TypedKernel<Params...>& kernel,
                                          const ThreadDim& threads,
                                          const BlockDim& blocks, Args... args) {
-  KernelInvocationChecker<std::tuple<Params...>,
-                          std::tuple<Args...>>::CheckAllStaticAssert();
-
-  KernelArgsArray<sizeof...(args)> kernel_args;
-  kernel.PackParams(&kernel_args, args...);
-  TF_RETURN_IF_ERROR(Launch(threads, blocks, kernel, kernel_args));
+  auto kernel_args = PackKernelArgs(kernel, args...);
+  TF_RETURN_IF_ERROR(Launch(threads, blocks, kernel, *kernel_args));
   return tsl::OkStatus();
 }
 

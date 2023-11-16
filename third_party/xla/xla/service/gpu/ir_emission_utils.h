@@ -20,11 +20,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/hlo_traversal.h"
 
 namespace xla {
 namespace gpu {
@@ -46,6 +48,10 @@ inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 64 * 128;
 bool IsMatrixMultiplication(const HloInstruction& dot);
 
 inline constexpr int64_t WarpSize() { return 32; }
+
+// Fusions that implemented with pre-compiled device kernels have
+// FusionBackendConfig.kind requel to this string.
+inline constexpr absl::string_view kCustomFusionKind = "__custom_fusion";
 
 // Fusions that use Triton have FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
@@ -111,12 +117,14 @@ std::vector<T> ToStdVector(const llvm::SmallVectorImpl<T>& v) {
 }
 
 StatusOr<BufferAllocation::Slice> GetAllocationSlice(
-    mlir::Value v, absl::Span<const BufferAllocation> allocations,
+    mlir::Value v, absl::Span<const BufferAllocation* const> allocations,
     std::string* constant_name = nullptr);
+
+bool IsSingleInstructionFusion(mlir::lmhlo::FusionOp fusion);
 
 bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     mlir::lmhlo::FusionOp fusion,
-    absl::Span<const BufferAllocation> allocations);
+    absl::Span<const BufferAllocation* const> allocations);
 
 // Returns the dynamic-update-slice instructions defining the results of a
 // fusion node. A dynamic slice update is said to be "defining" of a result if
@@ -139,10 +147,14 @@ Shape GetShape(mlir::Value value);
 // `is_boundary` returns `true` for edges that are on the boundary of the
 // fusion, i.e., they go from an instruction inside the fusion to one outside,
 // or vice versa.
+// Note: when this is called with a fusion instruction, it will traverse into
+// the fusion (unless the boundary function stops it).
 const HloInstruction& FindNonTrivialHero(
     const HloInstruction& instr,
     const std::function<bool(const HloInstruction& producer,
                              const HloInstruction& consumer)>& is_boundary);
+// Like above, with the default boundary function. Additionally, this will not
+// traverse into `instr`'s computation if it is a fusion.
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr);
 
 /// Description of how to emit a given transposition.
@@ -187,10 +199,14 @@ std::optional<TransposeDescription> FindTiledLogicalTranspose(
 std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     const HloInstruction& root, const HloInstruction& hero);
 
-bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
+bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1,
+                    FusionBoundaryFn boundary = nullptr);
 
-// Log and verify an LLVM module.
-void LogAndVerify(const llvm::Module* m);
+// Log the given module if the VLOG level is >= level.
+void VLogModule(int level, const llvm::Module& module);
+
+// Verify the given module, and crash if it failed.
+void VerifyModule(const llvm::Module& module);
 
 // Returns the llvm type for the indices used in the kernel that contains the
 // hlo instruction. Such indices include the index for the parallel loop and

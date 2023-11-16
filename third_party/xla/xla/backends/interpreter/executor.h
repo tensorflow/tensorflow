@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/plugin.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
@@ -53,12 +52,12 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   }
 
   tsl::Status GetKernel(const MultiKernelLoaderSpec &spec,
-                        KernelBase *kernel) override {
+                        Kernel *kernel) override {
     return tsl::errors::Unimplemented("Not Implemented");
   }
   tsl::Status Launch(Stream *stream, const ThreadDim &thread_dims,
-                     const BlockDim &block_dims, const KernelBase &kernel,
-                     const KernelArgsArrayBase &args) override {
+                     const BlockDim &block_dims, const Kernel &kernel,
+                     const KernelArgs &args) override {
     return tsl::errors::Unimplemented("Not Implemented");
   }
 

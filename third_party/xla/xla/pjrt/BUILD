@@ -242,6 +242,7 @@ cc_library(
         ":compile_options_proto_cc",
         ":execute_options_proto_cc",
         ":pjrt_common",
+        "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:status",
         "//xla:statusor",
@@ -250,6 +251,8 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/client:executable_build_options",
         "//xla/hlo/ir:hlo",
+        "//xla/service:compiler",
+        "//xla/service:computation_layout",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -299,6 +302,7 @@ cc_library(
         ":pjrt_device_description",
         ":pjrt_executable",
         "//xla/client:xla_computation",
+        "//xla/service:hlo_parser",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -341,6 +345,7 @@ cc_library(
     hdrs = ["utils.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":layout_mode",
         "//xla:shape_util",
         "//xla:status",
         "//xla:status_macros",
@@ -356,10 +361,26 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "layout_mode",
+    srcs = ["layout_mode.cc"],
+    hdrs = ["layout_mode.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:status",
+        "//xla:statusor",
+        "//xla/service:hlo_parser",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -369,7 +390,10 @@ cc_library(
     hdrs = ["metrics.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//xla/stream_executor",
+        "//xla/stream_executor/gpu:gpu_init",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/lib/monitoring:counter",
         "@local_tsl//tsl/lib/monitoring:gauge",
@@ -489,10 +513,10 @@ xla_cc_test(
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/concurrency:async_value",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-        "@tf_runtime//:async_value",
     ],
 )
 
@@ -542,8 +566,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/functional:any_invocable",
-        "@tf_runtime//:hostcontext",
-        "@tf_runtime//:support",
+        "@local_tsl//tsl/concurrency:async_value",
+        "@local_tsl//tsl/concurrency:ref_count",
     ],
 )
 
@@ -559,11 +583,12 @@ cc_library(
         "//xla/runtime:cpu_event",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/concurrency:async_value",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:platform_port",
-        "@tf_runtime//:hostcontext",
     ],
 )
 
@@ -573,6 +598,7 @@ xla_cc_test(
     deps = [
         ":tracked_tfrt_cpu_device_buffer",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/concurrency:async_value",
         "@local_tsl//tsl/platform:env",
     ],
 )
@@ -613,14 +639,12 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/concurrency:async_value",
+        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:connected_traceme",
         "@local_tsl//tsl/profiler/lib:traceme",
-        "@tf_runtime//:async_value",
-        "@tf_runtime//:hostcontext",
-        "@tf_runtime//:ref_count",
-        "@tf_runtime//:support",
     ],
 )
 
@@ -685,6 +709,8 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",  # TODO(zhangqiaorjc): Remove if use TFRT threadpool.
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/concurrency:async_value",
+        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:denormal",
         "@local_tsl//tsl/platform:env",
@@ -695,9 +721,6 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:connected_traceme",
         "@local_tsl//tsl/profiler/lib:context_types_hdrs",
         "@local_tsl//tsl/profiler/lib:traceme",
-        "@tf_runtime//:async_value",
-        "@tf_runtime//:hostcontext",
-        "@tf_runtime//:support",
     ],
 )
 
@@ -870,6 +893,7 @@ xla_cc_test(
         "//xla/client:xla_builder",
         "//xla/pjrt/c:pjrt_c_api_cpu_internal",
         "//xla/tests:literal_test_util",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
@@ -885,7 +909,11 @@ cc_library(
     deps = [
         ":pjrt_client",
         ":pjrt_future",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:errors",
     ],
 )
@@ -934,6 +962,7 @@ tf_proto_library(
     protodeps = [
         "//xla:xla_data_proto",
         "//xla:xla_proto",
+        "//xla/stream_executor:device_description_proto",
     ],
     visibility = ["//visibility:public"],
 )

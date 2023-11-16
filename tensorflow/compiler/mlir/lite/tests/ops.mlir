@@ -134,7 +134,7 @@ func.func @testAddN(tensor<? x f32>, tensor<? x f32>, tensor<? x f32>) -> tensor
 // test invalid AddN
 func.func @testAddNWrongOperandResultType(tensor<? x f16>, tensor<? x f16>, tensor<? x f16>) -> tensor<? x f16> {
 ^bb0(%arg0: tensor<? x f16>, %arg1: tensor<? x f16>, %arg2: tensor<? x f16>):
-  // expected-error @+1 {{'tfl.add_n' op operand #0 must be tensor of 32-bit float or 32-bit signless integer}}
+  // expected-error @+1 {{'tfl.add_n' op operand #0 must be variadic of tensor of 32-bit float or 32-bit signless integer}}
   %0 = "tfl.add_n"(%arg0, %arg1, %arg2): (tensor<? x f16>, tensor<? x f16>, tensor<? x f16>) -> tensor<? x f16>
   func.return %0 : tensor<? x f16>
 }
@@ -183,6 +183,12 @@ func.func @testRsqrt(tensor<? x f32>) -> tensor<? x f32> {
 func.func @testRsqrtQuant(%arg0: tensor<1x80x1x!quant.uniform<i8:f32, 0.048358432948589325:-128>>) -> tensor<1x80x1x!quant.uniform<i8:f32, 0.0066055487841367722:-128>> {
   %0 = "tfl.rsqrt"(%arg0) : (tensor<1x80x1x!quant.uniform<i8:f32, 0.048358432948589325:-128>>) -> tensor<1x80x1x!quant.uniform<i8:f32, 0.0066055487841367722:-128>>
   func.return %0 : tensor<1x80x1x!quant.uniform<i8:f32, 0.0066055487841367722:-128>>
+}
+
+// CHECK-LABEL: testRsqrtQuantWithQI16
+func.func @testRsqrtQuantWithQI16(%arg0: tensor<1x80x1x!quant.uniform<i16:f32, 0.048358432948589325:0>>) -> tensor<1x80x1x!quant.uniform<i16:f32, 0.0066055487841367722:0>> {
+  %0 = "tfl.rsqrt"(%arg0) : (tensor<1x80x1x!quant.uniform<i16:f32, 0.048358432948589325:0>>) -> tensor<1x80x1x!quant.uniform<i16:f32, 0.0066055487841367722:0>>
+  return %0 : tensor<1x80x1x!quant.uniform<i16:f32, 0.0066055487841367722:0>>
 }
 
 // CHECK-LABEL: testSin
@@ -404,7 +410,7 @@ func.func @add_with_i32_five_dim_broadcasting(tensor<1x1x1x1x1xi32>, tensor<1xi3
 
 func.func @add_with_quantized_i16_broadcasting(tensor<2x2xf32>, tensor<1xf32>) -> tensor<2x2x!quant.any<i16:f32>> {
 ^bb0(%arg0: tensor<2x2xf32>, %arg1: tensor<1xf32>):
-  // expected-error @+1 {{Operands do not have valid shapes}}
+  // expected-error @+1 {{Operands should have valid shapes and element type needs to match}}
   %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<2x2xf32>, tensor<1xf32>) -> tensor<2x2x!quant.any<i16:f32>>
   func.return %0#0 : tensor<2x2x!quant.any<i16:f32>>
 }

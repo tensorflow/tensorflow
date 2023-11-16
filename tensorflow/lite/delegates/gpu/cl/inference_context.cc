@@ -238,6 +238,12 @@ void InferenceContext::ExecutionHints::Init(const GpuInfo& gpu_info) {
     flush_periodically = true;
     flush_period = 16;
   }
+  // clvk has inside to know when to flush, do not do it at the application
+  // level.
+  if (gpu_info.IsApiOpenCl() && gpu_info.opencl_info.IsCLVK()) {
+    need_flush = false;
+    flush_periodically = false;
+  }
 }
 
 absl::Status InferenceContext::InitFromGraph(

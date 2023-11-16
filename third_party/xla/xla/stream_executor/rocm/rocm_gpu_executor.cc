@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
-#include "xla/stream_executor/kernel_cache_config.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/initialize.h"
@@ -136,7 +135,7 @@ bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
   return true;
 }
 
-void GpuExecutor::UnloadKernel(const KernelBase* kernel) {
+void GpuExecutor::UnloadKernel(const Kernel* kernel) {
   VLOG(3) << "Unloading kernel " << kernel << " : " << kernel->name();
 
   absl::MutexLock lock{&in_memory_modules_mu_};
@@ -197,7 +196,7 @@ static string GetBinaryDir(bool strip_exe) {
 }
 
 tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
-                                   KernelBase* kernel) {
+                                   Kernel* kernel) {
   GpuKernel* rocm_kernel = AsGpuKernel(kernel);
   hipModule_t module = nullptr;
   const string* kernel_name;
@@ -257,8 +256,7 @@ tsl::Status GpuExecutor::GetKernelMetadata(GpuKernel* rocm_kernel,
 
 tsl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                                 const BlockDim& block_dims,
-                                const KernelBase& kernel,
-                                const KernelArgsArrayBase& args) {
+                                const Kernel& kernel, const KernelArgs& args) {
   CHECK_EQ(kernel.Arity() + (args.number_of_shared_bytes() > 0),
            args.number_of_arguments());
   GpuStreamHandle hipstream = AsGpuStreamValue(stream);
@@ -284,28 +282,30 @@ tsl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
         hipfunc, rocm_kernel->GetGpuCacheConfig()));
   }
 
-  // prepare kernargs
-  // KernelArgsArrayBase keeps the pointer of arguments
-  // deference them here
-  std::vector<void*> kernargs;
-  KernelArgIterator iter = args.arg_iterator();
-  while (iter.has_next()) {
-    KernelArg arg = iter.next();
-    VLOG(2) << "*(arg.address): "
-            << reinterpret_cast<void*>(
-                   *static_cast<const uint64_t*>(arg.address));
-    kernargs.push_back(
-        reinterpret_cast<void*>(*static_cast<const uint64_t*>(arg.address)));
-  }
+  auto* packed_args = DynCast<KernelArgsPackedArrayBase>(&args);
+  if (!packed_args)
+    return absl::InternalError("Unsupported kernel arguments type");
 
-  size_t size = sizeof(void*) * kernargs.size();
-  void* config[] = {HIP_LAUNCH_PARAM_BUFFER_POINTER, kernargs.data(),
-                    HIP_LAUNCH_PARAM_BUFFER_SIZE, &size, HIP_LAUNCH_PARAM_END};
+  void** kernel_params =
+      const_cast<void**>(packed_args->argument_addresses().data());
 
   return GpuDriver::LaunchKernel(
       GetGpuContext(stream), kernel.name(), hipfunc, block_dims.x, block_dims.y,
       block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
-      args.number_of_shared_bytes(), hipstream, nullptr, (void**)&config);
+      args.number_of_shared_bytes(), hipstream, kernel_params, nullptr);
+}
+
+tsl::Status GpuExecutor::Submit(Stream* stream,
+                                const CommandBuffer& command_buffer) {
+  if (command_buffer.mode() != CommandBuffer::Mode::kPrimary) {
+    return absl::InvalidArgumentError(
+        "Can't submit non-primary command buffer for execution");
+  }
+
+  auto exec = GpuCommandBuffer::Cast(&command_buffer)->executable();
+  VLOG(3) << "Launch command buffer execuable graph " << exec
+          << " on a stream: " << stream->DebugStreamPointers();
+  return GpuDriver::GraphLaunch(exec, AsGpuStreamValue(stream));
 }
 
 int GpuExecutor::CalculateOccupancy(const DeviceDescription& device_description,
@@ -379,7 +379,7 @@ tsl::Status GpuExecutor::LoadModuleFromHsaco(const char* hsaco,
 // This is a non-essential operation; if there's a failure, proceed without
 // logging an error. It's nearly certain that in case of failures, we'd never
 // get here in the first place; these are very low-impact routines.
-void GpuExecutor::VlogOccupancyInfo(const KernelBase& kernel,
+void GpuExecutor::VlogOccupancyInfo(const Kernel& kernel,
                                     const ThreadDim& thread_dims,
                                     const BlockDim& block_dims) {
   // TODO(ROCm) implement this feature in HIP
@@ -581,14 +581,14 @@ Event::Status GpuExecutor::PollForEventStatus(Event* event) {
 bool GpuExecutor::AllocateStream(Stream* stream) {
   absl::MutexLock l(&alive_gpu_streams_mu_);
   bool out = AsGpuStream(stream)->Init();
-  alive_gpu_streams_[stream->implementation()->GpuStreamHack()] = stream;
+  alive_gpu_streams_[stream->platform_specific_handle().stream] = stream;
   return out;
 }
 
 void GpuExecutor::DeallocateStream(Stream* stream) {
   GpuStream* rocm_stream = AsGpuStream(stream);
   absl::MutexLock l(&alive_gpu_streams_mu_);
-  alive_gpu_streams_.erase(rocm_stream->GpuStreamHack());
+  alive_gpu_streams_.erase(rocm_stream->platform_specific_stream());
   if (!rocm_stream->IsIdle()) {
     LOG(ERROR) << "Deallocating stream with pending work";
   }
@@ -724,14 +724,14 @@ GpuExecutor::GetStreamImplementation() {
 }
 
 tsl::StatusOr<std::unique_ptr<internal::CommandBufferInterface>>
-GpuExecutor::GetCommandBufferImplementation() {
+GpuExecutor::GetCommandBufferImplementation(CommandBuffer::Mode mode) {
   VLOG(2) << "Create ROCm command buffer (ROCm graph)";
   GpuGraphHandle graph = nullptr;
   TF_RETURN_IF_ERROR(GpuDriver::CreateGraph(&graph));
-  return std::make_unique<GpuCommandBuffer>(this, graph);
+  return std::make_unique<GpuCommandBuffer>(mode, /*parent=*/this, graph);
 }
 
-void* GpuExecutor::GpuContextHack() { return context_; }
+void* GpuExecutor::platform_specific_context() { return context_; }
 
 GpuContext* GpuExecutor::gpu_context() { return context_; }
 

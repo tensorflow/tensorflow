@@ -66,8 +66,8 @@ class Event {
   // Returns a pointer to the underlying platform-specific implementation.
   internal::EventInterface* implementation() { return implementation_.get(); }
 
-  Event(Event&&) = default;
-  Event& operator=(Event&&) = default;
+  Event(Event&&);
+  Event& operator=(Event&&);
 
  private:
   friend class Stream;

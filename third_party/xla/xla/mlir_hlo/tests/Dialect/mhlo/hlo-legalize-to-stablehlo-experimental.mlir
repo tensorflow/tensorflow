@@ -42,23 +42,6 @@ func.func @op_all_to_all_tuple(%arg0: tensor<128x4xf32>, %arg1: tensor<128x4xf32
 
 // -----
 
-// CHECK-LABEL: "op_custom_call_api_version_typed_ffi"
-func.func @op_custom_call_api_version_typed_ffi(%arg0: tensor<f32>) -> tensor<f32> {
-  //      CHECK: "stablehlo.custom_call"(%arg0) {
-  // CHECK-SAME:   call_target_name = "mhlo.custom_call"
-  // CHECK-SAME:   mhlo.attributes = {api_version = 4 : i32, backend_config = {foo = "bar"}, call_target_name = "foo"}
-  // CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
-  // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
-  %0 = "mhlo.custom_call"(%arg0) {
-    call_target_name = "foo",
-    backend_config = {foo = "bar"},
-    api_version = 4 : i32
-  } : (tensor<f32>) -> tensor<f32>
-  return %0 : tensor<f32>
-}
-
-// -----
-
 // CHECK-LABEL: "attr_precision_packed_nibble"
 func.func @attr_precision_packed_nibble(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>) -> tensor<8x8xf32> {
   //      CHECK: "stablehlo.custom_call"(%arg0, %arg1) {

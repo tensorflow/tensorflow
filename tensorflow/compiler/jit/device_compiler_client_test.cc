@@ -60,5 +60,17 @@ TEST(GetExecutableOptionTest, DeviceOrdinalNotSet) {
   EXPECT_EQ(build_option.device_ordinal(), -1);
 }
 
+TEST(GetExecutableOptionTest, DumpingWithoutDetailedLogging) {
+  XlaCompiler::Options options;
+  options.detailed_logging = false;
+  XlaCompiler::CompilationResult result;
+
+  auto build_option =
+      GetExecutableBuildOptions(options, result, /*default_device_ordinal=*/-1);
+
+  EXPECT_FALSE(build_option.debug_options().xla_detailed_logging());
+  EXPECT_TRUE(build_option.debug_options().xla_enable_dumping());
+}
+
 }  // namespace
 }  // namespace tensorflow
