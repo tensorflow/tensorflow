@@ -599,7 +599,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       self.assertEmpty(layouts[1].minor_to_major())
       self.assertLen(layouts[2].minor_to_major(), 1)
 
-    @unittest.skipIf(pathways or pathways_ifrt, "not implemented")
+    @unittest.skipIf(pathways, "not implemented")
     def testSetArgumentLayouts(self):
       # TODO(b/309682374): implement on CPU and GPU
       if self.backend.platform != "tpu":
@@ -688,7 +688,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
         self.assertEqual(actual.minor_to_major(),
                          expected.layout().minor_to_major())
 
-    @unittest.skipIf(pathways or pathways_ifrt, "not implemented")
+    @unittest.skipIf(pathways, "not implemented")
     def testSetOutputLayouts(self):
       # TODO(b/309682374): implement on CPU and GPU
       if self.backend.platform != "tpu":
@@ -787,7 +787,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 8 : i32,
           output_layouts[0].minor_to_major(),
           default_executable.get_output_layouts()[0].minor_to_major())
 
-    @unittest.skipIf(pathways or pathways_ifrt, "not implemented")
+    @unittest.skipIf(pathways, "not implemented")
     def testAutoArgumentLayouts(self):
       # TODO(b/309682374): implement on CPU and GPU
       if self.backend.platform != "tpu":
@@ -832,7 +832,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           default_executable.get_parameter_layouts()[1].minor_to_major(),
       )
 
-    @unittest.skipIf(pathways or pathways_ifrt, "not implemented")
+    @unittest.skipIf(pathways, "not implemented")
     def testAutoOutputLayouts(self):
       # TODO(b/309682374): implement on CPU and GPU
       if self.backend.platform != "tpu":

@@ -22,12 +22,15 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/types/span.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -258,6 +261,79 @@ StatusOr<std::vector<LayoutMode>> GetOutputLayoutModes(mlir::ModuleOp module) {
   if (maybe_tuple_result) return *maybe_tuple_result;
 
   return MlirAttrsToLayoutModes(main.getAllResultAttrs(), main.getNumResults());
+}
+
+// Make sure to choose delimiter that will never show up in Layout strings.
+static const char* kLayoutModeDelimiter = ";";
+
+static std::string GetFrontendAttr(absl::Span<const LayoutMode> layout_modes) {
+  return absl::StrJoin(layout_modes, kLayoutModeDelimiter,
+                       [](std::string* out, const LayoutMode& mode) {
+                         absl::StrAppend(out, mode.ToString());
+                       });
+}
+
+Status AddLayoutModesToFrontendAttrs(mlir::ModuleOp module,
+                                     XlaComputation& xla_computation) {
+  TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
+                      GetArgLayoutModes(module));
+  TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
+                      GetOutputLayoutModes(module));
+
+  // Type is string->string proto map. Using auto here to deal with different
+  // build environments.
+  auto& frontend_attrs = *xla_computation.mutable_proto()
+                              ->mutable_frontend_attributes()
+                              ->mutable_map();
+  frontend_attrs["arg_layout_modes"] = GetFrontendAttr(arg_layout_modes);
+  frontend_attrs["out_layout_modes"] = GetFrontendAttr(out_layout_modes);
+  return OkStatus();
+}
+
+static StatusOr<std::vector<LayoutMode>> GetLayoutModesFromFrontendAttr(
+    absl::string_view attr) {
+  // SkipEmpty() needed to avoid returning the empty string when attr is empty.
+  std::vector<std::string> str_modes =
+      absl::StrSplit(attr, kLayoutModeDelimiter, absl::SkipEmpty());
+  std::vector<LayoutMode> result;
+  for (const std::string& str_mode : str_modes) {
+    TF_ASSIGN_OR_RETURN(LayoutMode mode, LayoutMode::FromString(str_mode));
+    result.emplace_back(std::move(mode));
+  }
+  return result;
+}
+
+static StatusOr<std::vector<LayoutMode>> GetLayoutModes(
+    const XlaComputation& computation, absl::string_view frontend_attr_name,
+    size_t num_values) {
+  const auto& frontend_attrs = computation.proto().frontend_attributes().map();
+  auto iter = frontend_attrs.find(frontend_attr_name);
+  if (iter == frontend_attrs.end()) {
+    // Return all default layouts if frontend attr isn't present.
+    return std::vector<LayoutMode>(num_values);
+  }
+  return GetLayoutModesFromFrontendAttr(iter->second);
+}
+
+StatusOr<std::vector<LayoutMode>> GetArgLayoutModes(
+    const XlaComputation& computation) {
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      computation.GetProgramShape());
+  size_t num_args = program_shape.parameters_size() == 1 &&
+                            program_shape.parameters(0).IsTuple()
+                        ? program_shape.parameters(0).tuple_shapes_size()
+                        : program_shape.parameters_size();
+  return GetLayoutModes(computation, "arg_layout_modes", num_args);
+}
+
+StatusOr<std::vector<LayoutMode>> GetOutputLayoutModes(
+    const XlaComputation& computation) {
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      computation.GetProgramShape());
+  size_t num_outputs = program_shape.result().IsTuple()
+                           ? program_shape.result().tuple_shapes_size()
+                           : 1;
+  return GetLayoutModes(computation, "out_layout_modes", num_outputs);
 }
 
 static StatusOr<Shape> LayoutModeToXlaShape(

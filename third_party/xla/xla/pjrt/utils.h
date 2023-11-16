@@ -55,6 +55,22 @@ StatusOr<std::vector<LayoutMode>> GetArgLayoutModes(mlir::ModuleOp module);
 // LayoutMode::Mode::kDefault.
 StatusOr<std::vector<LayoutMode>> GetOutputLayoutModes(mlir::ModuleOp module);
 
+// Populates the frontend attributes "arg_layout_mode" and "out_layout_mode" in
+// xla_computation based on `module`. This function must be called before the
+// LayoutMode getters below work correctly on `computation`.
+Status AddLayoutModesToFrontendAttrs(mlir::ModuleOp module,
+                                     XlaComputation& xla_computation);
+// Returns the LayoutMode for each argument of the computations. Checks for the
+// "arg_layout_mode" frontend attribute, and if not present, assumes
+// LayoutMode::Mode::kDefault.
+StatusOr<std::vector<LayoutMode>> GetArgLayoutModes(
+    const XlaComputation& computation);
+// Returns the LayoutMode for each argument of the computations. Checks for the
+// "out_layout_mode" frontend attribute, and if not present, assumes
+// LayoutMode::Mode::kDefault.
+StatusOr<std::vector<LayoutMode>> GetOutputLayoutModes(
+    const XlaComputation& computation);
+
 // Returns (arg shapes, output shape) with properly-set Layouts that can
 // be passed to XLA to reflect arg_layout_modes and out_layout_modes.
 StatusOr<std::pair<std::vector<Shape>, Shape>> LayoutModesToXlaShapes(
