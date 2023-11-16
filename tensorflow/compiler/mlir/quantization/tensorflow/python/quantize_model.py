@@ -21,9 +21,6 @@ from absl import logging
 
 from tensorflow.compiler.mlir.quantization.tensorflow import exported_model_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
-from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_algorithm
-from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2 as calib_stats_pb2
-from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import pywrap_calibration
 from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
 from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
@@ -135,31 +132,6 @@ def _run_static_range_qat(
       function_aliases=dict(function_aliases),
       py_function_library=py_function_lib.PyFunctionLibrary(),
   )
-
-
-def _get_min_max_from_calibrator(
-    node_id: bytes,
-    calib_opts: quant_opts_pb2.CalibrationOptions,
-) -> tuple[float, float]:
-  """Calculate min and max from statistics using calibration options.
-
-  Args:
-    node_id: bytes of node id.
-    calib_opts: Calibration options used for calculating min and max.
-
-  Returns:
-    (min_value, max_value): Min and max calculated using calib_opts.
-
-  Raises:
-    ValueError: Unsupported calibration method is given.
-  """
-  statistics: calib_stats_pb2.CalibrationStatistics = (
-      pywrap_calibration.get_statistics_from_calibrator(node_id)
-  )
-  min_value, max_value = calibration_algorithm.get_min_max_value(
-      statistics, calib_opts
-  )
-  return min_value, max_value
 
 
 def _enable_dump_tensor(graph_def: graph_pb2.GraphDef) -> None:
