@@ -61,7 +61,7 @@ namespace {
 
 namespace m = ::xla::match;
 
-class TritonGemmTest : public GpuCodegenTest {
+class TritonTest : public GpuCodegenTest {
  public:
   se::CudaComputeCapability GetCudaComputeCapability() {
     return backend()
@@ -69,8 +69,12 @@ class TritonGemmTest : public GpuCodegenTest {
         ->GetDeviceDescription()
         .cuda_compute_capability();
   }
+};
+
+class TritonGemmTest : public TritonTest {
+ public:
   DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    DebugOptions debug_options = TritonTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;
   }
@@ -85,7 +89,7 @@ class TritonGemmTestWithoutTritonGemmAny : public TritonGemmTest {
   }
 };
 
-class TritonFilecheckTest : public TritonGemmTest {
+class TritonFilecheckTest : public TritonTest {
  public:
   StatusOr<bool> CreateTritonIrAndFileCheck(
       absl::string_view hlo_text, const TritonGemmConfig& config,
