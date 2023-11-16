@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/util.h"
+#include "tsl/platform/fingerprint.h"
 #include "tsl/platform/hash.h"
 #include "tsl/platform/types.h"
 #include "ortools/linear_solver/linear_solver.h"
@@ -555,8 +556,19 @@ AutoShardingSolverResult SolveAndExtractSolution(
     return AutoShardingSolverResult(absl::InternalError(err_msg), true);
   }
 
+  // Fingerprint the model & solution (useful when checking for determinism).
+  // We use TensorFlow's fingerprint library here, which differs from CP-SAT's.
+  operations_research::MPModelProto model_proto;
+  solver.ExportModelToProto(&model_proto);
+  uint64_t model_fprint = tsl::Fingerprint64(model_proto.SerializeAsString());
+  operations_research::MPSolutionResponse response;
+  solver.FillSolutionResponseProto(&response);
+  uint64_t solution_fprint = tsl::Fingerprint64(response.SerializeAsString());
+
   LOG(INFO) << "Solver Status: " << status
-            << " Objective value: " << solver.Objective().Value();
+            << " Objective value: " << solver.Objective().Value()
+            << " Model fingerprint: " << model_fprint
+            << " Solution fingerprint: " << solution_fprint;
   if (solver.Objective().Value() >= kInfinityCost) {
     LOG(WARNING) << "Objective (" << solver.Objective().Value()
                  << ") is larger than kInfinityCost. It means the solver "
@@ -566,13 +578,9 @@ AutoShardingSolverResult SolveAndExtractSolution(
   if (VLOG_IS_ON(10)) {
     // Print solver information for debugging. This hasn't been useful so far,
     // so leave it at VLOG level 10.
-    operations_research::MPModelProto model_proto;
-    solver.ExportModelToProto(&model_proto);
     VLOG(10) << "MODEL:";
     XLA_VLOG_LINES(10, model_proto.DebugString());
     VLOG(10) << "RESPONSE:";
-    operations_research::MPSolutionResponse response;
-    solver.FillSolutionResponseProto(&response);
     XLA_VLOG_LINES(10, response.DebugString());
   }
 
