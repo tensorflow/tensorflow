@@ -175,6 +175,8 @@ tf_staging/tensorflow/tools/toolchains/BUILD:
 tf_staging/tensorflow/tools/toolchains/clang6/BUILD:
 tf_staging/tensorflow/tools/toolchains/cpus/py/BUILD:
 tf_staging/tensorflow/tools/toolchains/cpus/py3/BUILD:
+tf_staging/tensorflow/tools/toolchains/cross_compile/cc/BUILD:
+tf_staging/tensorflow/tools/toolchains/cross_compile/config/BUILD:
 tf_staging/tensorflow/tools/toolchains/embedded/arm-linux/BUILD:
 tf_staging/tensorflow/tools/toolchains/java/BUILD:
 tf_staging/tensorflow/tools/toolchains/python/BUILD:
