@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/fusion_queue.h"
 #include "xla/service/gpu/fusion_process_dump.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
+#include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/instruction_fusion.h"
@@ -79,12 +80,14 @@ class GpuPriorityFusionQueue : public FusionQueue {
       const GpuHloCostAnalysis::Options& cost_analysis_options,
       const se::DeviceDescription* device_info, const CanFuseCallback& can_fuse,
       FusionProcessDumpProto* fusion_process_dump,
-      tsl::thread::ThreadPool* thread_pool)
+      tsl::thread::ThreadPool* thread_pool,
+      HloFusionAnalysisCache& fusion_analysis_cache)
       : computation_(computation),
         cost_analysis_(cost_analysis_options, device_info),
         can_fuse_(can_fuse),
         fusion_process_dump_(fusion_process_dump),
-        thread_pool_(thread_pool) {
+        thread_pool_(thread_pool),
+        fusion_analysis_cache_(fusion_analysis_cache) {
     VLOG(2) << "Running full HLO cost analysis for " << computation_->name();
     TF_CHECK_OK(computation_->Accept(&cost_analysis_));
 
@@ -180,6 +183,9 @@ class GpuPriorityFusionQueue : public FusionQueue {
       fusion_step->set_producer_name(std::string(original_producer->name()));
       fusion_step->set_consumer_name(std::string(original_consumer->name()));
     }
+
+    fusion_analysis_cache_.Invalidate(*original_producer);
+    fusion_analysis_cache_.Invalidate(*original_consumer);
 
     // The original consumer was replaced with the fusion, but it's pointer can
     // still be referenced somewhere, for example, in to_update_priority_.
@@ -289,7 +295,8 @@ class GpuPriorityFusionQueue : public FusionQueue {
     GpuPerformanceModel::RunTimes run_times =
         GpuPerformanceModel::EstimateRunTimes(
             producer, &cost_analysis_,
-            GpuPerformanceModelOptions::PriorityFusion(), producer->users());
+            GpuPerformanceModelOptions::PriorityFusion(&fusion_analysis_cache_),
+            producer->users());
     if (fusion_process_dump_) {
       absl::MutexLock lock(&fusion_process_dump_mutex_);
       auto* step =
@@ -365,6 +372,8 @@ class GpuPriorityFusionQueue : public FusionQueue {
   absl::Mutex fusion_process_dump_mutex_;
 
   tsl::thread::ThreadPool* thread_pool_;
+
+  HloFusionAnalysisCache& fusion_analysis_cache_;
 };
 
 }  // namespace
@@ -502,8 +511,7 @@ HloInstruction::FusionKind GpuPriorityFusion::ChooseKind(
   // matter but some passes downstream still query these instead of fusion
   // analysis.
   // TODO: Don't recompute this all the time.
-  auto analysis =
-      AnalyzeProducerConsumerFusion(*producer, *consumer, device_info_);
+  const auto& analysis = fusion_analysis_cache_.Get(*producer, *consumer);
   if (!analysis) return HloInstruction::FusionKind::kLoop;
   switch (analysis->GetEmitterFusionKind()) {
     case HloFusionAnalysis::EmitterFusionKind::kLoop:
@@ -544,7 +552,7 @@ std::unique_ptr<FusionQueue> GpuPriorityFusion::GetFusionQueue(
       [this](HloInstruction* consumer, int64_t operand_index) {
         return ShouldFuse(consumer, operand_index);
       },
-      fusion_process_dump_.get(), thread_pool_));
+      fusion_process_dump_.get(), thread_pool_, fusion_analysis_cache_));
 }
 
 }  // namespace gpu
