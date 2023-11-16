@@ -105,10 +105,10 @@ def main():
   logging.basicConfig()
   logging.getLogger().setLevel(logging.INFO)
 
-  # Setup external symlink so headers can be found in include paths
-  logging.info("Symlinking `xla/bazel-xla/external` to `xla/external`")
-  bazel_xla_external = _XLA_SRC_ROOT / "bazel-xla" / "external"
-  bazel_xla_external.symlink_to(_XLA_SRC_ROOT / "external")
+  # Setup external symlink if necessary so headers can be found in include paths
+  if not (external := _XLA_SRC_ROOT / "external").exists():
+    logging.info("Symlinking `xla/bazel-xla/external` to `xla/external`")
+    external.symlink_to(_XLA_SRC_ROOT / "bazel-xla" / "external")
 
   logging.info("Reading `bazel aquery` output from stdin...")
   parsed_aquery_output = json.loads(sys.stdin.read())
