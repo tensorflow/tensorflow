@@ -296,6 +296,44 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
   return {flops, bytes_written, num_threads, write_time, exec_time};
 }
 
+// Returns utilization `overlap` between a common operand of producer and
+// consumer on merge. `utilization > 0` means that the operand will be accessed
+// more efficiently after fusion.
+//
+// Currently covers two cases:
+// 1) Producer has to use the common operand elementwise from its root if it is
+//    a fusion or just be an elementwise instruction.
+// 2) Consumer has to have common elementwise roots for the producer and the
+//    common operand if it is a fusion or just be an elementwise instruction.
+float GetCommonUtilization(
+    const HloInstruction* producer, int64_t producer_idx_of_operand,
+    const HloInstruction* consumer,
+    const ConstHloInstructionMap<int64_t>& consumer_operands,
+    const GpuHloCostAnalysis* cost_analysis) {
+  auto consumer_idx_of_operand =
+      consumer_operands.find(producer->operand(producer_idx_of_operand));
+  if (consumer_idx_of_operand == consumer_operands.end()) {
+    return 0.f;
+  }
+
+  if (producer->IsElementwise() ||
+      (producer->opcode() == HloOpcode::kFusion &&
+       FusionUsesParameterElementwiseFromRoot(producer, producer_idx_of_operand,
+                                              cost_analysis))) {
+    if (consumer->opcode() == HloOpcode::kFusion) {
+      int64_t consumer_idx_of_producer = consumer_operands.at(producer);
+      return cost_analysis->CommonElementwiseUtilization(
+          consumer->fused_parameter(consumer_idx_of_operand->second),
+          consumer->fused_parameter(consumer_idx_of_producer));
+    } else {
+      if (consumer->IsElementwise()) {
+        return 1.f;
+      }
+    }
+  }
+  return 0.f;
+}
+
 // Tells input access time of the producer alone if fused_consumer
 // is not specified. Otherwise estimates the access time to producer's
 // inputs as if it is fused into the consumer.
@@ -308,14 +346,14 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
     const HloInstruction* fused_consumer) {
   absl::Duration ret = absl::ZeroDuration();
   float producer_output_utilization = 1.f;
-  ConstHloInstructionSet consumer_operands;
+  ConstHloInstructionMap<int64_t> consumer_operands;
   bool consumer_transposes = false;
   if (fused_consumer) {
     consumer_transposes = TransposesMinorDimension(fused_consumer);
     producer_output_utilization = cost_analysis->operand_utilization(
         *fused_consumer, fused_consumer->operand_index(producer));
-    for (const HloInstruction* op : fused_consumer->operands()) {
-      consumer_operands.insert(op);
+    for (int64_t i = 0; i < fused_consumer->operand_count(); ++i) {
+      consumer_operands[fused_consumer->operand(i)] = i;
     }
   }
 
@@ -336,33 +374,12 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
     int64_t n_bytes_net = std::llround(operand_bytes_accessed /
                                        std::max(operand_utilization, 1.0f));
 
-    // Look for common operands of producer and consumer that are accessed
-    // more efficiently on merge:
-    // 1) Producer has to use the common operand elementwise from its root if
-    //    it is a fusion or just be an elementwise instruction.
-    // 2) Consumer has to have common elementwise roots for the producer
-    //    and the common operand if it is a fusion or just be an elementwise
-    //    instruction.
-    float common_utilization = 0;
-    if (consumer_operands.count(producer->operand(i)) &&
-        (producer->IsElementwise() ||
-         (producer->opcode() == HloOpcode::kFusion &&
-          FusionUsesParameterElementwiseFromRoot(producer, i,
-                                                 cost_analysis)))) {
-      if (fused_consumer->opcode() == HloOpcode::kFusion) {
-        int64_t consumer_idx_of_common_operand =
-            fused_consumer->operand_index(producer->operand(i));
-        int64_t consumer_idx_of_producer =
-            fused_consumer->operand_index(producer);
-        common_utilization = cost_analysis->CommonElementwiseUtilization(
-            fused_consumer->fused_parameter(consumer_idx_of_common_operand),
-            fused_consumer->fused_parameter(consumer_idx_of_producer));
-      } else {
-        if (fused_consumer->IsElementwise()) {
-          common_utilization = 1.f;
-        }
-      }
-    }
+    // Look if common operand of producer and consumer will be accessed more
+    // efficiently on merge.
+    float common_utilization =
+        GetCommonUtilization(producer,
+                             /*producer_idx_of_operand=*/i, fused_consumer,
+                             consumer_operands, cost_analysis);
 
     // TODO(jreiffers): We should be checking each operand here.
     bool coalesced = (fusion_analysis &&
