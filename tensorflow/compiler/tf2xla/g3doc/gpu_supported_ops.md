@@ -254,7 +254,7 @@ Operator                              | Type Constraint
 `TensorArrayWriteV3`                  | `T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `Tile`                                | `Tmultiples={int32,int64}`<br>`T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `Transpose`                           | `Tperm={int32,int64}`<br>`T={bool,complex64,double,float,int32,int64,uint32,uint64}`
-`TruncateDiv`                         | `T={complex64,double,float,int32,int64}`
+`TruncateDiv`                         | `T={complex64,complex128,double,float,half,bfloat16,int8,int16,int32,int64,uint8,uint16,uint32,uint64}`
 `TruncateMod`                         | `T={double,float,int32,int64}`
 `Unpack`                              | `T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `UnsortedSegmentSum`                  | `Tnumsegments={int32,int64}`<br>`Tindices={int32,int64}`<br>`T={complex64,double,float,int32,int64,uint32,uint64}`
