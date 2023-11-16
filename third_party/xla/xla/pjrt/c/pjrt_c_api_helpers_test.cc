@@ -129,7 +129,7 @@ TEST(PjRtCApiHelperTest, InvalidOptionTypeIndex) {
   EXPECT_NE(status, tsl::OkStatus());
   EXPECT_THAT(status.message(),
               HasSubstr("Option passed to PJRT_Client_Create with name string "
-                        "has type index 1 but expected type index is 0"));
+                        "has type index 2 but expected type index is 0"));
 }
 
 TEST(PjRtCApiHelperTest, Callback) {
