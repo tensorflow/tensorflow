@@ -178,12 +178,11 @@ Shape TypeToShape(mlir::Type type) {
     llvm::SmallVector<int64_t, 4> shape(rank, mlir::ShapedType::kDynamic);
     std::vector<bool> is_dynamic(rank, false);
     for (int64_t dim = 0; dim < rank; ++dim) {
-      // Only fully static shapes are supported.
-      // TODO(b/115638799): Update once xla::Shape can support dynamic shapes.
       int64_t size = t.getDimSize(dim);
       if (size == ShapedType::kDynamic) {
-        if (bounds[dim] == ShapedType::kDynamic) return {};
-        shape[dim] = bounds[dim];
+        shape[dim] = bounds[dim] != ShapedType::kDynamic
+                         ? bounds[dim]
+                         : Shape::kUnboundedSize;
         is_dynamic[dim] = true;
       } else {
         if (bounds[dim] != ShapedType::kDynamic) return {};
