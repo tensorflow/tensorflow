@@ -87,7 +87,7 @@ class HandlerBase {
                                operand->shape(), input_specs[i], cluster_env_));
     }
 
-    strategy_group_->leaf_vector.push_back(ShardingStrategy({
+    strategy_group_->strategies.push_back(ShardingStrategy({
         name,
         output_spec,
         compute_cost,
@@ -601,7 +601,7 @@ class DotHandler : public HandlerBase {
         cluster_env_.non_zero_mesh_dims_.size() > 1) {
       // If there is a batch dim and the device mesh is multi-dimensional,
       // always split on batch dim. Clear all old strategies.
-      strategy_group_->leaf_vector.clear();
+      strategy_group_->strategies.clear();
     }
 
     // Sb = Sb x Sb
@@ -626,7 +626,7 @@ class DotHandler : public HandlerBase {
                          [](int64_t size) { return size > 1; }) > 1) {
       // If there are two batch dims, always split on these two dims.
       // Clear all old strategies.
-      strategy_group_->leaf_vector.clear();
+      strategy_group_->strategies.clear();
     }
 
     // Sb = Sb x Sb

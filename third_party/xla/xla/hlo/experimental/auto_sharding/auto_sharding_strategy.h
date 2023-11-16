@@ -136,18 +136,18 @@ struct StrategyGroup {
   bool is_tuple;
   // The index used in the solver. For non-leaf nodes, this is set to -1.
   NodeIdx node_idx;
-  // The index of the HLO instruction that this strategy vector belongs to.
+  // The index of the HLO instruction that this strategy group belongs to.
   size_t instruction_id;
   // The connected nodes used for resharding costs;
   // The size must be the same as the size of resharding cost
-  // each element in leaf_vector's resharding_costs.size() needs to be the same
+  // each element in strategies's resharding_costs.size() needs to be the same
   // as strategies->in_nodes.size()
   std::vector<const StrategyGroup*> in_nodes;
   // The followed strategy. Used for merging nodes.
   const StrategyGroup* following = nullptr;
   // Used when is_tuple == False. Leaf strategy vector.
   // A vector of strategy choices for the non-tuple output.
-  std::vector<ShardingStrategy> leaf_vector;
+  std::vector<ShardingStrategy> strategies;
   // Used when is_tuple == True. A vector of pointers, each pointer is one
   // StrategyGroup for one value in the output Tuple
   std::vector<std::unique_ptr<StrategyGroup>> childs;
@@ -177,7 +177,7 @@ struct StrategyGroup {
         absl::StrAppend(&str, childs[i]->ToString(indention + 2));
       }
     } else {
-      for (const auto& strategy : leaf_vector) {
+      for (const auto& strategy : strategies) {
         absl::StrAppend(&str, indent, "Strategy ", strategy.ToStringLong());
       }
     }
@@ -198,7 +198,7 @@ struct StrategyGroup {
 using LivenessSet = std::vector<std::vector<const HloValue*>>;
 // A liveness set using node indices instead of HLO values.
 using LivenessNodeSet = std::vector<std::vector<NodeIdx>>;
-// Map an instruction to its strategy vector.
+// Map an instruction to its strategy group.
 using StrategyMap =
     StableHashMap<const HloInstruction*, std::unique_ptr<StrategyGroup>>;
 // The list of all leaf strategies.

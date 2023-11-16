@@ -45,9 +45,9 @@ class CostGraph {
 
     // Build the cost graph
     for (const auto& strategies : leaf_strategies) {
-      node_lens_.push_back(strategies->leaf_vector.size());
+      node_lens_.push_back(strategies->strategies.size());
       extra_node_costs_.push_back(
-          std::vector<double>(strategies->leaf_vector.size(), 0.0));
+          std::vector<double>(strategies->strategies.size(), 0.0));
 
       for (size_t i = 0; i < strategies->in_nodes.size(); ++i) {
         if (!strategies->in_nodes[i]->is_tuple) {
@@ -101,14 +101,14 @@ class CostGraph {
 
       Matrix edge_cost(node_lens_[src_idx], node_lens_[dst_idx]);
       for (NodeStrategyIdx i = 0; i < node_lens_[src_idx]; ++i) {
-        if (leaf_strategies[src_idx]->leaf_vector[i].communication_cost > 0) {
+        if (leaf_strategies[src_idx]->strategies[i].communication_cost > 0) {
           CHECK_LE(
               std::abs(
-                  leaf_strategies[src_idx]->leaf_vector[i].communication_cost -
-                  leaf_strategies[dst_idx]->leaf_vector[i].communication_cost),
+                  leaf_strategies[src_idx]->strategies[i].communication_cost -
+                  leaf_strategies[dst_idx]->strategies[i].communication_cost),
               1e-6);
           edge_cost(i, i) =
-              -leaf_strategies[src_idx]->leaf_vector[i].communication_cost;
+              -leaf_strategies[src_idx]->strategies[i].communication_cost;
         }
       }
       AddEdgeCost(src_idx, dst_idx, edge_cost);
@@ -120,8 +120,8 @@ class CostGraph {
     CHECK_LT(src_idx, node_lens_.size());
     CHECK_LT(dst_idx, node_lens_.size());
     Matrix edge_cost(node_lens_[src_idx], node_lens_[dst_idx]);
-    for (NodeStrategyIdx k = 0; k < strategy_group->leaf_vector.size(); ++k) {
-      const ShardingStrategy& strategy = strategy_group->leaf_vector[k];
+    for (NodeStrategyIdx k = 0; k < strategy_group->strategies.size(); ++k) {
+      const ShardingStrategy& strategy = strategy_group->strategies[k];
       size_t start_idx = 0;
       if (strategy.resharding_costs[in_node_idx].size() > node_lens_[src_idx]) {
         start_idx =
@@ -366,7 +366,7 @@ inline const ShardingStrategy& GetShardingStrategy(
   CHECK(!strategy_group->is_tuple);
   NodeIdx node_idx = strategy_group->node_idx;
   NodeStrategyIdx stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
-  return strategy_group->leaf_vector[stra_idx];
+  return strategy_group->strategies[stra_idx];
 }
 
 // Get the final sharding strategy according to the ilp solution.
@@ -383,7 +383,7 @@ inline const ShardingStrategy& GetShardingStrategyForTuple(
   }
   NodeIdx node_idx = strategy_group->node_idx;
   NodeStrategyIdx stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
-  return strategy_group->leaf_vector[stra_idx];
+  return strategy_group->strategies[stra_idx];
 }
 
 }  // namespace spmd
