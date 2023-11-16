@@ -288,9 +288,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
   // Shapes
   py::class_<Layout> layout_class(m, "Layout");
   layout_class
-      .def(py::init([](py::object minor_to_major) {
-        return std::make_unique<Layout>(
-            py::cast<absl::Span<const int64_t>>(minor_to_major));
+      .def(py::init([](absl::Span<const int64_t> minor_to_major) {
+        return std::make_unique<Layout>(minor_to_major);
       }))
       .def("minor_to_major",
            [](Layout layout) { return SpanToTuple(layout.minor_to_major()); })
