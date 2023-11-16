@@ -18,6 +18,7 @@ limitations under the License.
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/InitAllPasses.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -53,7 +54,7 @@ int main(int argc, char** argv) {
                   mlir::tf_saved_model::TensorFlowSavedModelDialect,
                   mlir::func::FuncDialect, mlir::shape::ShapeDialect,
                   mlir::arith::ArithDialect, mlir::tf_type::TFTypeDialect,
-                  mlir::quant::QuantizationDialect,
+                  mlir::quant::QuantizationDialect, mlir::tensor::TensorDialect,
                   mlir::quantfork::QuantizationForkDialect,
                   mlir::stablehlo::StablehloDialect,
                   mlir::tf_executor::TensorFlowExecutorDialect>();
