@@ -25,18 +25,20 @@ namespace tflite {
 namespace gpu {
 namespace {
 
+using ::testing::ElementsAre;
+
 TEST(ModelBuilderHelperTest, CreateVectorCopyDataDifferentSize) {
   TfLiteTensor tflite_tensor;
   tflite_tensor.type = kTfLiteInt32;
   int32_t src_data[4] = {1, 2, 3, 4};
   tflite_tensor.data.i32 = src_data;
   tflite_tensor.dims = TfLiteIntArrayCreate(1);
-  tflite_tensor.dims->data[0] = 4;
-  tflite_tensor.bytes = 4 * sizeof(int32_t);
+  tflite_tensor.dims->data[0] = sizeof(src_data) / sizeof(src_data[0]);
+  tflite_tensor.bytes = sizeof(src_data);
 
   int16_t dst[4];
   ASSERT_OK(CreateVectorCopyData(tflite_tensor, dst));
-  EXPECT_THAT(dst, testing::ElementsAre(1, 2, 3, 4));
+  EXPECT_THAT(dst, ElementsAre(1, 2, 3, 4));
 
   TfLiteIntArrayFree(tflite_tensor.dims);
 }
