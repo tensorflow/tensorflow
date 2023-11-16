@@ -14,6 +14,12 @@
 # ============================================================================
 r"""Produces a `compile_commands.json` from the output of `bazel aquery`.
 
+This tool requires that a build has been completed for all targets in the
+query (e.g., for the example usage below `bazel build //xla/...`). This is due
+to generated files like proto headers and files generated via tablegen. So if
+LSP or other tools get out of date, it may be necessary to rebuild or regenerate
+`compile_commands.json`, or both.
+
 Example usage:
   bazel aquery "mnemonic(CppCompile, //xla/...)" --output=jsonproto | \
       python3 build_tools/lint/generate_compile_commands.py
@@ -98,6 +104,11 @@ def main():
   # Setup logging
   logging.basicConfig()
   logging.getLogger().setLevel(logging.INFO)
+
+  # Setup external symlink so headers can be found in include paths
+  logging.info("Symlinking `xla/bazel-xla/external` to `xla/external`")
+  bazel_xla_external = _XLA_SRC_ROOT / "bazel-xla" / "external"
+  bazel_xla_external.symlink_to(_XLA_SRC_ROOT / "external")
 
   logging.info("Reading `bazel aquery` output from stdin...")
   parsed_aquery_output = json.loads(sys.stdin.read())
