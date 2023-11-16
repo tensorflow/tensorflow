@@ -1,12 +1,51 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/test/Analysis/builtin_signbit.cpp b/clang/test/Analysis/builtin_signbit.cpp
---- a/clang/test/Analysis/builtin_signbit.cpp
-+++ b/clang/test/Analysis/builtin_signbit.cpp
-@@ -5,6 +5,7 @@
- // RUN:   -O0 %s -o - | FileCheck %s --check-prefixes=CHECK-BE64
- // RUN: %clang -target powerpc64le-linux-gnu -emit-llvm -S -mabi=ibmlongdouble \
- // RUN:   -O0 %s -o - | FileCheck %s --check-prefixes=CHECK-LE
-+// REQUIRES: asserts
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -5172,6 +5172,18 @@
+     ],
+ )
  
- bool b;
- double d = -1.0;
++gentbl(
++    name = "ReadTAPIOptsTableGen",
++    strip_include_prefix = "tools/llvm-readtapi",
++    tbl_outs = [(
++        "-gen-opt-parser-defs",
++        "tools/llvm-readtapi/TapiOpts.inc",
++    )],
++    tblgen = ":llvm-tblgen",
++    td_file = "tools/llvm-readtapi/TapiOpts.td",
++    td_srcs = ["include/llvm/Option/OptParser.td"],
++)
++
+ cc_binary(
+     name = "llvm-readtapi",
+     testonly = True,
+@@ -5183,6 +5195,8 @@
+     stamp = 0,
+     deps = [
+         ":Object",
++        ":Option",
++        ":ReadTAPIOptsTableGen",
+         ":Support",
+         ":TextAPI",
+     ],
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -1022,6 +1022,7 @@
+         ":CAPIIR",
+         ":CAPIQuant",
+         ":MLIRBindingsPythonHeadersAndDeps",
++        "@pybind11",
+     ],
+ )
+ 
+@@ -1040,6 +1041,7 @@
+         ":CAPIIR",
+         ":CAPISparseTensor",
+         ":MLIRBindingsPythonHeadersAndDeps",
++        "@pybind11",
+     ],
+ )
+ 
