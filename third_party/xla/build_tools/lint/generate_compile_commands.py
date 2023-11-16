@@ -32,14 +32,14 @@ _XLA_SRC_ROOT = pathlib.Path(__file__).absolute().parent.parent.parent
 
 
 @dataclasses.dataclass
-class ClangTidyCommand:
-  """Represents a clang-tidy command with options on a specific file."""
+class CompileCommand:
+  """Represents a compilation command with options on a specific file."""
 
   file: str
   arguments: list[str]
 
   @classmethod
-  def from_args_list(cls, args_list: list[str]) -> "ClangTidyCommand":
+  def from_args_list(cls, args_list: list[str]) -> "CompileCommand":
     """Alternative constructor which uses the args_list from `bazel aquery`.
 
     This collects arguments and the file being run on from the output of
@@ -75,21 +75,21 @@ class ClangTidyCommand:
 
 def extract_compile_commands(
     parsed_aquery_output: _JSONDict,
-) -> list[ClangTidyCommand]:
-  """Gathers clang-tidy commands to run from `bazel aquery` JSON output.
+) -> list[CompileCommand]:
+  """Gathers compile commands to run from `bazel aquery` JSON output.
 
   Arguments:
     parsed_aquery_output: Parsed JSON representing the output of `bazel aquery
       --output=jsonproto`.
 
   Returns:
-    The list of ClangTidyCommands that should be executed.
+    The list of CompileCommands that should be executed.
   """
   actions = parsed_aquery_output["actions"]
 
   commands = []
   for action in actions:
-    command = ClangTidyCommand.from_args_list(action["arguments"])
+    command = CompileCommand.from_args_list(action["arguments"])
     commands.append(command)
   return commands
 
@@ -99,7 +99,6 @@ def main():
   logging.basicConfig()
   logging.getLogger().setLevel(logging.INFO)
 
-  # Gather and run clang-tidy invocations
   logging.info("Reading `bazel aquery` output from stdin...")
   parsed_aquery_output = json.loads(sys.stdin.read())
 
