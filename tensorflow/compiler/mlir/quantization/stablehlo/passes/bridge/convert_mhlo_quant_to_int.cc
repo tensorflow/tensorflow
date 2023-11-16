@@ -53,78 +53,8 @@ limitations under the License.
 namespace mlir::quant::stablehlo {
 namespace {
 
-// This helper function create ops to requantize `input` tensor and returns the
-// output tensor. Clamping is done if output integer bit-width < 32.
-//
-// Requantization is essentially dequantize --> quantize.
-//
-// Dequantize: (input - zp) * scale
-// Quantize: input / scale + zp
-//
-// Hence,
-//   output = (input - input_zp) * input_scale / output_scale + output_zp
-//
-// This is simplified as:
-//   output = input * merged_scale + merged_zp
-// where:
-//   merged_zp = output_zp - input_zp * merged_scale.
-//   merged_scale = input_scale / output_scale.
-Value Requantize(mlir::OpState op, Value input,
-                 UniformQuantizedType input_quantized_type,
-                 UniformQuantizedType output_quantized_type,
-                 TensorType output_tensor_type,
-                 ConversionPatternRewriter &rewriter) {
-  // Skip requantization when input and result have the same type.
-  if (input_quantized_type == output_quantized_type) {
-    return rewriter.create<mhlo::ConvertOp>(op->getLoc(), output_tensor_type,
-                                            input);
-  }
-
-  double merged_scale_fp =
-      input_quantized_type.getScale() / output_quantized_type.getScale();
-  Value merged_scale = rewriter.create<mhlo::ConstantOp>(
-      op->getLoc(),
-      rewriter.getF32FloatAttr(static_cast<float>(merged_scale_fp)));
-
-  auto float_tensor_type =
-      input.getType().cast<TensorType>().clone(rewriter.getF32Type());
-  Value output_float =
-      rewriter.create<mhlo::ConvertOp>(op->getLoc(), float_tensor_type, input);
-
-  output_float = rewriter.create<chlo::BroadcastMulOp>(
-      op->getLoc(), float_tensor_type, output_float, merged_scale, nullptr);
-
-  // Add merged_zp only when it is non-zero.
-  double merged_zp_fp = output_quantized_type.getZeroPoint() -
-                        input_quantized_type.getZeroPoint() * merged_scale_fp;
-  if (merged_zp_fp != 0) {
-    Value merged_zp = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(),
-        rewriter.getF32FloatAttr(static_cast<float>(merged_zp_fp)));
-    output_float = rewriter.create<chlo::BroadcastAddOp>(
-        op->getLoc(), float_tensor_type, output_float, merged_zp, nullptr);
-  }
-
-  // Clamp output if the output integer bit-width <32.
-  if (output_tensor_type.getElementType().cast<IntegerType>().getWidth() < 32) {
-    Value quantization_min = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getF32FloatAttr(static_cast<float>(
-                          output_quantized_type.getStorageTypeMin())));
-    Value quantization_max = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getF32FloatAttr(static_cast<float>(
-                          output_quantized_type.getStorageTypeMax())));
-    // Clamp results by [quantization_min, quantization_max].
-    output_float = rewriter.create<mhlo::ClampOp>(
-        op->getLoc(), float_tensor_type, quantization_min, output_float,
-        quantization_max);
-  }
-
-  output_float = rewriter.create<mhlo::RoundNearestEvenOp>(
-      op->getLoc(), float_tensor_type, output_float);
-  return rewriter.create<mhlo::ConvertOp>(op->getLoc(), output_tensor_type,
-                                          output_float);
-}
-
+// TODO: b/311218165 - consider extract this to common utils and better ways to
+// handle polymorphism.
 using QuantType =
     std::variant<UniformQuantizedType, UniformQuantizedPerAxisType>;
 FailureOr<QuantType> GetQuantType(Type type) {
@@ -137,6 +67,22 @@ FailureOr<QuantType> GetQuantType(Type type) {
   } else {
     return failure();
   }
+}
+
+bool IsPerTensorType(QuantType quant_type) {
+  return std::holds_alternative<UniformQuantizedType>(quant_type);
+}
+
+bool IsPerChannelType(QuantType quant_type) {
+  return std::holds_alternative<UniformQuantizedPerAxisType>(quant_type);
+}
+
+UniformQuantizedType GetPerTensorType(QuantType quant_type) {
+  return std::get<UniformQuantizedType>(quant_type);
+}
+
+UniformQuantizedPerAxisType GetPerChannelType(QuantType quant_type) {
+  return std::get<UniformQuantizedPerAxisType>(quant_type);
 }
 
 // Extract scale and zero point info from input quant type info.
@@ -161,7 +107,7 @@ void GetQuantizationParams(OpBuilder &builder, Location loc,
   } else {
     auto &quant_per_channel_type =
         std::get<UniformQuantizedPerAxisType>(quant_type);
-    llvm::SmallVector<float> scales_vec;
+    SmallVector<float> scales_vec;
     for (auto scale : quant_per_channel_type.getScales())
       scales_vec.push_back(scale);
     scales = builder.create<mhlo::ConstantOp>(
@@ -172,7 +118,7 @@ void GetQuantizationParams(OpBuilder &builder, Location loc,
                      builder.getF32Type()),
                  scales_vec));
     if (output_zero_point_in_fp) {
-      llvm::SmallVector<float> zero_points_vec;
+      SmallVector<float> zero_points_vec;
       for (auto zero_point : quant_per_channel_type.getZeroPoints())
         zero_points_vec.push_back(zero_point);
       zero_points = builder.create<mhlo::ConstantOp>(
@@ -183,7 +129,7 @@ void GetQuantizationParams(OpBuilder &builder, Location loc,
                        builder.getF32Type()),
                    zero_points_vec));
     } else {
-      llvm::SmallVector<int32_t> zero_points_vec;
+      SmallVector<int32_t> zero_points_vec;
       for (auto zero_point : quant_per_channel_type.getZeroPoints())
         zero_points_vec.push_back(zero_point);
       zero_points = builder.create<mhlo::ConstantOp>(
@@ -241,6 +187,147 @@ Type GetQuantStorageType(Type type) {
   }
 }
 
+Type GetQuantStorageType(QuantType type) {
+  if (IsPerTensorType(type)) {
+    return GetPerTensorType(type).getStorageType();
+  } else {
+    return GetPerChannelType(type).getStorageType();
+  }
+}
+
+Value ApplyMergedScalesAndZps(OpBuilder &builder, Location loc,
+                              QuantType input_quant_type,
+                              QuantType output_quant_type,
+                              Value input_float_tensor) {
+  // Use single merged scale and merged zp if both input and output are
+  // per-tensor quantized. Otherwise use a vector.
+  if (IsPerTensorType(input_quant_type) && IsPerTensorType(output_quant_type)) {
+    UniformQuantizedType input_per_tensor_tyep =
+        GetPerTensorType(input_quant_type);
+    UniformQuantizedType output_per_tensor_tyep =
+        GetPerTensorType(output_quant_type);
+    double merged_scale_fp =
+        input_per_tensor_tyep.getScale() / output_per_tensor_tyep.getScale();
+    auto merged_scale = builder.create<mhlo::ConstantOp>(
+        loc, builder.getF32FloatAttr(static_cast<float>(merged_scale_fp)));
+    input_float_tensor = builder.create<chlo::BroadcastMulOp>(
+        loc, input_float_tensor, merged_scale,
+        /*broadcast_dimensions=*/nullptr);
+    // Add merged_zp only when it is non-zero.
+    double merged_zp_fp =
+        output_per_tensor_tyep.getZeroPoint() -
+        input_per_tensor_tyep.getZeroPoint() * merged_scale_fp;
+    if (merged_zp_fp != 0) {
+      Value merged_zp = builder.create<mhlo::ConstantOp>(
+          loc, builder.getF32FloatAttr(static_cast<float>(merged_zp_fp)));
+      input_float_tensor = builder.create<chlo::BroadcastAddOp>(
+          loc, input_float_tensor, merged_zp, /*broadcast_dimensions=*/nullptr);
+    }
+  } else {
+    int64_t channel_size =
+        IsPerChannelType(output_quant_type)
+            ? GetPerChannelType(output_quant_type).getScales().size()
+            : GetPerChannelType(input_quant_type).getScales().size();
+    int64_t quantized_dimension =
+        IsPerChannelType(output_quant_type)
+            ? GetPerChannelType(output_quant_type).getQuantizedDimension()
+            : GetPerChannelType(input_quant_type).getQuantizedDimension();
+    SmallVector<double> merged_scale_double, merged_zp_double;
+    merged_scale_double.resize(channel_size);
+    merged_zp_double.resize(channel_size);
+    for (int i = 0; i < channel_size; ++i) {
+      merged_scale_double[i] =
+          (IsPerChannelType(input_quant_type)
+               ? GetPerChannelType(input_quant_type).getScales()[i]
+               : GetPerTensorType(input_quant_type).getScale()) /
+          (IsPerChannelType(output_quant_type)
+               ? GetPerChannelType(output_quant_type).getScales()[i]
+               : GetPerTensorType(output_quant_type).getScale());
+      merged_zp_double[i] =
+          (IsPerChannelType(output_quant_type)
+               ? GetPerChannelType(output_quant_type).getZeroPoints()[i]
+               : GetPerTensorType(output_quant_type).getZeroPoint()) -
+          (IsPerChannelType(input_quant_type)
+               ? GetPerChannelType(input_quant_type).getZeroPoints()[i]
+               : GetPerTensorType(input_quant_type).getZeroPoint()) *
+              merged_scale_double[i];
+    }
+    SmallVector<float> merged_scale_float(merged_scale_double.begin(),
+                                          merged_scale_double.end()),
+        merged_zp_float(merged_zp_double.begin(), merged_zp_double.end());
+
+    auto broadcast_dims = DenseIntElementsAttr::get(
+        RankedTensorType::get({1}, builder.getI64Type()),
+        {quantized_dimension});
+    Value merged_scale = builder.create<mhlo::ConstantOp>(
+        loc, DenseFPElementsAttr::get(
+                 RankedTensorType::get({channel_size}, builder.getF32Type()),
+                 merged_scale_float));
+    input_float_tensor = builder.create<chlo::BroadcastMulOp>(
+        loc, input_float_tensor, merged_scale, broadcast_dims);
+    if (llvm::any_of(merged_zp_float, [](double zp) { return zp != 0; })) {
+      Value merged_zp = builder.create<mhlo::ConstantOp>(
+          loc, DenseFPElementsAttr::get(
+                   RankedTensorType::get({channel_size}, builder.getF32Type()),
+                   merged_zp_float));
+      input_float_tensor = builder.create<chlo::BroadcastAddOp>(
+          loc, input_float_tensor, merged_zp, broadcast_dims);
+    }
+  }
+  return input_float_tensor;
+}
+
+// This helper function create ops to requantize `input` tensor and returns the
+// output tensor. Clamping is done if output integer bit-width < i32. It assumes
+// that if both input and output tensor are per-channel quantized, they have the
+// same quantization axis.
+//
+// Requantization is essentially dequantize --> quantize.
+//
+// Dequantize: (input - zp) * scale
+// Quantize: input / scale + zp
+//
+// Hence,
+//   output = (input - input_zp) * input_scale / output_scale + output_zp
+//
+// This is simplified as:
+//   output = input * merged_scale + merged_zp
+// where:
+//   merged_zp = output_zp - input_zp * merged_scale.
+//   merged_scale = input_scale / output_scale.
+Value Requantize(mlir::OpState op, Value input, QuantType input_quant_type,
+                 QuantType output_quant_type, TensorType output_tensor_type,
+                 ConversionPatternRewriter &rewriter) {
+  // Skip requantization when input and result have the same type.
+  if (input_quant_type == output_quant_type) {
+    return rewriter.create<mhlo::ConvertOp>(op->getLoc(), output_tensor_type,
+                                            input);
+  }
+
+  auto float_tensor_type = output_tensor_type.clone(rewriter.getF32Type());
+  Value output_float =
+      rewriter.create<mhlo::ConvertOp>(op->getLoc(), float_tensor_type, input);
+
+  output_float =
+      ApplyMergedScalesAndZps(rewriter, op->getLoc(), input_quant_type,
+                              output_quant_type, output_float);
+
+  // Clamp output if the output integer bit-width <32.
+  if (output_tensor_type.getElementType().cast<IntegerType>().getWidth() < 32) {
+    Value quantization_min, quantization_max;
+    GetQuantizationStorageInfo(rewriter, op->getLoc(), output_quant_type,
+                               quantization_min, quantization_max);
+    // Clamp results by [quantization_min, quantization_max].
+    output_float = rewriter.create<mhlo::ClampOp>(
+        op->getLoc(), quantization_min, output_float, quantization_max);
+  }
+
+  output_float = rewriter.create<mhlo::RoundNearestEvenOp>(
+      op->getLoc(), float_tensor_type, output_float);
+  return rewriter.create<mhlo::ConvertOp>(op->getLoc(), output_tensor_type,
+                                          output_float);
+}
+
 class ConvertUniformQuantizeOp
     : public OpConversionPattern<mhlo::UniformQuantizeOp> {
  public:
@@ -255,10 +342,24 @@ class ConvertUniformQuantizeOp
       if (succeeded(quant_type)) {
         return matchAndRewriteQuantize(op, adaptor, rewriter, *quant_type);
       }
-    } else if (input_element_type.isa<UniformQuantizedType>()) {
-      return matchAndRewriteRequantize(op, adaptor, rewriter);
+    } else if (input_element_type.isa<quant::UniformQuantizedType,
+                                      quant::UniformQuantizedPerAxisType>()) {
+      auto input_quant_type = GetQuantType(input_element_type);
+      auto output_quant_type = GetQuantType(op.getResult().getType());
+      if (succeeded(input_quant_type) && succeeded(output_quant_type)) {
+        if (IsPerChannelType(*input_quant_type) &&
+            IsPerChannelType(*output_quant_type) &&
+            GetPerChannelType(*input_quant_type).getQuantizedDimension() !=
+                GetPerChannelType(*output_quant_type).getQuantizedDimension()) {
+          op->emitError("Cannot requantize while changing quantization_axis");
+          return failure();
+        }
+        return matchAndRewriteRequantize(op, adaptor, rewriter,
+                                         *input_quant_type, *output_quant_type);
+      }
     }
-    return rewriter.notifyMatchFailure(op, "Unsupported input element type.");
+    op->emitError("Unsupported input element type.");
+    return failure();
   }
 
   LogicalResult matchAndRewriteQuantize(mhlo::UniformQuantizeOp op,
@@ -298,16 +399,14 @@ class ConvertUniformQuantizeOp
 
   LogicalResult matchAndRewriteRequantize(
       mhlo::UniformQuantizeOp op, mhlo::UniformQuantizeOpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const {
-    auto input_quantized_type = getElementTypeOrSelf(op.getOperand().getType())
-                                    .cast<UniformQuantizedType>();
-    auto output_quantized_type = getElementTypeOrSelf(op.getResult().getType())
-                                     .cast<UniformQuantizedType>();
+      ConversionPatternRewriter &rewriter, QuantType input_quant_type,
+      QuantType output_quant_type) const {
     rewriter.replaceOp(
-        op, Requantize(op, adaptor.getOperand(), input_quantized_type,
-                       output_quantized_type,
+        op, Requantize(op, adaptor.getOperand(), input_quant_type,
+                       output_quant_type,
+                       /*output_tensor_type=*/
                        op.getResult().getType().cast<TensorType>().clone(
-                           output_quantized_type.getStorageType()),
+                           GetQuantStorageType(output_quant_type)),
                        rewriter));
     return success();
   }
@@ -357,18 +456,18 @@ class ConvertUniformQuantizedAddOp : public OpConversionPattern<mhlo::AddOp> {
   LogicalResult matchAndRewrite(
       mhlo::AddOp op, mhlo::AddOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    auto lhs_element_type =
-        op.getLhs().getType().getElementType().dyn_cast<UniformQuantizedType>();
-    auto rhs_element_type =
-        op.getRhs().getType().getElementType().dyn_cast<UniformQuantizedType>();
-    auto result_element_type = op.getResult()
-                                   .getType()
-                                   .getElementType()
-                                   .dyn_cast<UniformQuantizedType>();
+    auto lhs_quant_type =
+        GetQuantType(getElementTypeOrSelf(op.getLhs().getType()));
+    auto rhs_quant_type =
+        GetQuantType(getElementTypeOrSelf(op.getRhs().getType()));
+    auto res_quant_type =
+        GetQuantType(getElementTypeOrSelf(op.getResult().getType()));
 
     // We only handle cases where lhs, rhs and results all have quantized
     // element type.
-    if (!lhs_element_type || !rhs_element_type || !result_element_type) {
+    if (failed(lhs_quant_type) || IsPerChannelType(*lhs_quant_type) ||
+        failed(rhs_quant_type) || IsPerChannelType(*rhs_quant_type) ||
+        failed(res_quant_type) || IsPerChannelType(*res_quant_type)) {
       op->emitError(
           "AddOp requires the same quantized element type for all operands and "
           "results");
@@ -384,17 +483,17 @@ class ConvertUniformQuantizedAddOp : public OpConversionPattern<mhlo::AddOp> {
     // TODO: b/260280919 - Consider avoiding conversion to int32.
     Value lhs = adaptor.getLhs();
     Value lhs_int32_tensor =
-        Requantize(op, lhs, lhs_element_type, result_element_type,
+        Requantize(op, lhs, *lhs_quant_type, *res_quant_type,
                    res_int32_tensor_type, rewriter);
 
     Value rhs = adaptor.getRhs();
     Value rhs_int32_tensor =
-        Requantize(op, rhs, rhs_element_type, result_element_type,
+        Requantize(op, rhs, *rhs_quant_type, *res_quant_type,
                    res_int32_tensor_type, rewriter);
 
     Value zero_point = rewriter.create<mhlo::ConstantOp>(
         op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
-                          result_element_type.getZeroPoint())));
+                          GetPerTensorType(*res_quant_type).getZeroPoint())));
 
     // Now the lhs and rhs have been coverted to the same scale and zps.
     // Given:
@@ -411,24 +510,26 @@ class ConvertUniformQuantizedAddOp : public OpConversionPattern<mhlo::AddOp> {
     Value res_int32 = rewriter.create<chlo::BroadcastSubOp>(
         op->getLoc(), res_int32_tensor_type, add_result, zero_point, nullptr);
 
-    if (result_element_type.getStorageType().isInteger(32)) {
+    if (GetQuantStorageType(*res_quant_type).isInteger(32)) {
       // For i32, clamping is not needed.
       rewriter.replaceOp(op, res_int32);
     } else {
       // Clamp results by [quantization_min, quantization_max] when storage type
       // is not i32.
       Value result_quantization_min = rewriter.create<mhlo::ConstantOp>(
-          op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
-                            result_element_type.getStorageTypeMin())));
+          op->getLoc(),
+          rewriter.getI32IntegerAttr(static_cast<int32_t>(
+              GetPerTensorType(*res_quant_type).getStorageTypeMin())));
       Value result_quantization_max = rewriter.create<mhlo::ConstantOp>(
-          op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
-                            result_element_type.getStorageTypeMax())));
+          op->getLoc(),
+          rewriter.getI32IntegerAttr(static_cast<int32_t>(
+              GetPerTensorType(*res_quant_type).getStorageTypeMax())));
       res_int32 = rewriter.create<mhlo::ClampOp>(
           op->getLoc(), res_int32_tensor_type, result_quantization_min,
           res_int32, result_quantization_max);
       // Convert results back to result storage type.
       auto res_final_tensor_type =
-          res_int32_tensor_type.clone(result_element_type.getStorageType());
+          res_int32_tensor_type.clone(GetQuantStorageType(*res_quant_type));
       rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(op, res_final_tensor_type,
                                                    res_int32);
     }
@@ -512,7 +613,7 @@ Value CreateZeroPointPartialOffset(OpBuilder &builder, Location loc,
   // Calculate the output tensor shape. This is input tensor dims minus
   // contracting dims.
   auto ranked_tensor = tensor.getType().cast<RankedTensorType>();
-  llvm::SmallVector<int64_t> output_dims;
+  SmallVector<int64_t> output_dims;
   for (int64_t i = 0; i < ranked_tensor.getRank(); ++i) {
     if (absl::c_count(reduction_dims, i) == 0) {
       output_dims.push_back(ranked_tensor.getDimSize(i));
@@ -581,7 +682,7 @@ Value CalculateDynamicOutputDims(OpBuilder &builder, Location loc, Value lhs,
   // Calculate each output dim and concatenate into a 1D tensor.
   // Output dims are batching dims, spatial dims, LHS result dims, RHS result
   // dims.
-  llvm::SmallVector<Value> output_dims;
+  SmallVector<Value> output_dims;
   for (int64_t i = 0; i < lhs_shape.getRank(); ++i) {
     if (absl::c_count(dims.lhs_batching_dims, i) != 0) {
       output_dims.push_back(GetDimValue(builder, loc, lhs, lhs_shape, i));
@@ -612,8 +713,8 @@ Value CalculateDynamicOutputDims(OpBuilder &builder, Location loc, Value lhs,
 
 Value BroadcastZpContribution(OpBuilder &builder, Location loc,
                               Value zp_contribution,
-                              llvm::ArrayRef<int64_t> reduction_dims,
-                              llvm::ArrayRef<int64_t> batching_dims,
+                              ArrayRef<int64_t> reduction_dims,
+                              ArrayRef<int64_t> batching_dims,
                               int64_t non_batching_starting_idx,
                               TensorType output_tensor_type,
                               Value &output_dims_value, Value lhs, Value rhs,
@@ -623,7 +724,7 @@ Value BroadcastZpContribution(OpBuilder &builder, Location loc,
   // broadcast.
   auto zp_contribution_rank =
       zp_contribution.getType().cast<ShapedType>().getRank();
-  llvm::SmallVector<int64_t> broadcast_dims;
+  SmallVector<int64_t> broadcast_dims;
   broadcast_dims.resize(zp_contribution_rank, 0);
   // Result tensor will have batching dims first, then LHS result dims, then
   // RHS result dims. So non-batching result dims index doesn't start from 0.
@@ -677,9 +778,8 @@ Value CalculateZeroPointOffset(OpBuilder &builder, Location loc, Value lhs,
   Value output_dims_value = nullptr;
   // Calculate LHS contribution when RHS zp is non-zero.
   if (rhs_zp != 0) {
-    llvm::SmallVector<int64_t> reduction_dims =
-        llvm::to_vector(llvm::concat<const int64_t>(dims.lhs_spatial_dims,
-                                                    dims.lhs_contracting_dims));
+    SmallVector<int64_t> reduction_dims = to_vector(llvm::concat<const int64_t>(
+        dims.lhs_spatial_dims, dims.lhs_contracting_dims));
     Value lhs_zp_contribution =
         CreateZeroPointPartialOffset(builder, loc, lhs, rhs_zp, reduction_dims);
     // Broadcast lhs ZP contribution to result tensor shape.
@@ -691,9 +791,8 @@ Value CalculateZeroPointOffset(OpBuilder &builder, Location loc, Value lhs,
   }
   // Calculate RHS contribution when LHS zp is non-zero.
   if (lhs_zp != 0) {
-    llvm::SmallVector<int64_t> reduction_dims =
-        llvm::to_vector(llvm::concat<const int64_t>(dims.rhs_spatial_dims,
-                                                    dims.rhs_contracting_dims));
+    SmallVector<int64_t> reduction_dims = to_vector(llvm::concat<const int64_t>(
+        dims.rhs_spatial_dims, dims.rhs_contracting_dims));
     Value rhs_zp_contribution =
         CreateZeroPointPartialOffset(builder, loc, rhs, lhs_zp, reduction_dims);
     // Broadcast rhs ZP contribution to result tensor shape.
@@ -765,7 +864,7 @@ Value CreateDotLikeKernel<mhlo::ConvolutionOp>(OpBuilder &builder, Location loc,
   auto original_padding = op.getPaddingAttr().getValues<int64_t>();
 
   // Explicitly pad LHS with zp and update LHS value.
-  llvm::SmallVector<NamedAttribute> new_attrs(attrs);
+  SmallVector<NamedAttribute> new_attrs(attrs);
   if (llvm::any_of(original_padding, [](int64_t x) { return x != 0; })) {
     Value zp = builder.create<mhlo::ConstantOp>(
         loc,
@@ -779,7 +878,7 @@ Value CreateDotLikeKernel<mhlo::ConvolutionOp>(OpBuilder &builder, Location loc,
     // mhlo::Convolution. But mhlo::Pad require those for all dimensions. Hence
     // we add 0 to the beginning and end of the padding vectors.
     int64_t rank = lhs.getType().cast<TensorType>().getRank();
-    llvm::SmallVector<int64_t> padding_low(rank, 0), padding_high(rank, 0),
+    SmallVector<int64_t> padding_low(rank, 0), padding_high(rank, 0),
         padding_interior(rank, 0);
     for (int64_t i = 1; i < rank - 1; ++i) {
       padding_low[i] = original_padding[i * 2 - 2];
@@ -962,7 +1061,7 @@ class ConvertUniformQuantizedDotOp : public OpConversionPattern<mhlo::DotOp> {
           rewriter.getContext(), /*lhsBatchingDimensions=*/{},
           /*rhsBatchingDimensions=*/{}, /*lhsContractingDimensions=*/{1},
           /*rhsContractingDimensions=*/{0});
-      llvm::SmallVector<mlir::NamedAttribute> attrs(op->getAttrs());
+      SmallVector<mlir::NamedAttribute> attrs(op->getAttrs());
       attrs.push_back(
           {StringAttr::get(rewriter.getContext(), "dot_dimension_numbers"),
            dims});
@@ -1088,7 +1187,7 @@ FailureOr<DotLikeDimensionNumbers> VerifyAndConstructDims(
     auto res_element_quant_per_channel_type =
         getElementTypeOrSelf(op.getResult())
             .cast<UniformQuantizedPerAxisType>();
-    llvm::SmallVector<double> scale_ratios(
+    SmallVector<double> scale_ratios(
         res_element_quant_per_channel_type.getScales().size());
     for (int i = 0; i < scale_ratios.size(); ++i) {
       scale_ratios[i] =
@@ -1177,7 +1276,7 @@ class ConvertGenericOp : public ConversionPattern {
 
     // Determine new result type: use storage type for uq types; use original
     // type otherwise.
-    llvm::SmallVector<Type, 4> new_result_types;
+    SmallVector<Type, 4> new_result_types;
     for (auto result_type : op->getResultTypes()) {
       new_result_types.push_back(GetQuantStorageType(result_type));
     }
