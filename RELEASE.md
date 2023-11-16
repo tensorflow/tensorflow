@@ -48,6 +48,9 @@
       table maintained by the layer. If this layer is not used in conjunction
       with `UpdateEmbeddingCallback` the behavior of the layer would be same as
       `keras.layers.Embedding`.
+*  `keras.optimizers.Adam`
+    * Added the option to set adaptive epsilon to match implementations with Jax
+      and PyTorch equivalents.
 
 ### Breaking Changes
 
