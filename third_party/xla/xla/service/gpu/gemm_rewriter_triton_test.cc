@@ -1125,6 +1125,34 @@ ENTRY e {
 }
 
 TEST_F(GemmRewriterTritonLevel2Test,
+       DoNotFuseTooManyParametersWhenAnInstructionWouldAddMultipleParameters) {
+  // If we fuse the select, it adds 2 additional parameters at once (not 3,
+  // because the select instruction itself is removed from the parameters).
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  a = f32[3,49]{1,0} parameter(0)
+  b = f32[3,49]{1,0} parameter(1)
+  c = pred[3,49]{1,0} parameter(2)
+  d = f32[3,49]{1,0} parameter(3)
+  e = f32[3,49]{1,0} parameter(4)
+  add0 = f32[3,49]{1,0} add(a, b)
+  select = f32[3,49]{1,0} select(c, d, e)
+  add1 = f32[3,49]{1,0} add(add0, select)
+  f = f32[3,32]{1,0} parameter(5)
+  ROOT tmp_102 = f32[49,32]{1,0} dot(add1, f), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+})"));
+
+  EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
+  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kFusion);
+  EXPECT_EQ(module->entry_computation()->root_instruction()->fusion_kind(),
+            HloInstruction::FusionKind::kCustom);
+  EXPECT_LE(module->entry_computation()->root_instruction()->operand_count(),
+            TritonFusionAnalysis::kMaxParameterPerScope + 1);
+}
+
+TEST_F(GemmRewriterTritonLevel2Test,
        OperationsAddingMoreParametersGetMultipleTries) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
