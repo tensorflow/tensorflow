@@ -37,14 +37,14 @@ namespace spmd {
 // It merges nodes and does path compression.
 class CostGraph {
  public:
-  CostGraph(const LeafStrategies& leaf_strategies,
+  CostGraph(const StrategyGroups& strategy_groups,
             const AssociativeDotPairs& associative_dot_pairs) {
-    node_lens_.reserve(leaf_strategies.size());
-    extra_node_costs_.reserve(leaf_strategies.size());
-    adjacency_.assign(leaf_strategies.size(), StableHashSet<int>());
+    node_lens_.reserve(strategy_groups.size());
+    extra_node_costs_.reserve(strategy_groups.size());
+    adjacency_.assign(strategy_groups.size(), StableHashSet<int>());
 
     // Build the cost graph
-    for (const auto& strategies : leaf_strategies) {
+    for (const auto& strategies : strategy_groups) {
       node_lens_.push_back(strategies->strategies.size());
       extra_node_costs_.push_back(
           std::vector<double>(strategies->strategies.size(), 0.0));
@@ -101,14 +101,14 @@ class CostGraph {
 
       Matrix edge_cost(node_lens_[src_idx], node_lens_[dst_idx]);
       for (NodeStrategyIdx i = 0; i < node_lens_[src_idx]; ++i) {
-        if (leaf_strategies[src_idx]->strategies[i].communication_cost > 0) {
+        if (strategy_groups[src_idx]->strategies[i].communication_cost > 0) {
           CHECK_LE(
               std::abs(
-                  leaf_strategies[src_idx]->strategies[i].communication_cost -
-                  leaf_strategies[dst_idx]->strategies[i].communication_cost),
+                  strategy_groups[src_idx]->strategies[i].communication_cost -
+                  strategy_groups[dst_idx]->strategies[i].communication_cost),
               1e-6);
           edge_cost(i, i) =
-              -leaf_strategies[src_idx]->strategies[i].communication_cost;
+              -strategy_groups[src_idx]->strategies[i].communication_cost;
         }
       }
       AddEdgeCost(src_idx, dst_idx, edge_cost);

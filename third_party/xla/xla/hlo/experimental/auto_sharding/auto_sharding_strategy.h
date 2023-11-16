@@ -201,8 +201,8 @@ using LivenessNodeSet = std::vector<std::vector<NodeIdx>>;
 // Map an instruction to its strategy group.
 using StrategyMap =
     StableHashMap<const HloInstruction*, std::unique_ptr<StrategyGroup>>;
-// The list of all leaf strategies.
-using LeafStrategies = std::vector<StrategyGroup*>;
+// The list of all strategy groups.
+using StrategyGroups = std::vector<StrategyGroup*>;
 // The list of all dot instruction pairs that can be optimized by
 // AllReduceReassociate pass.
 using AssociativeDotPairs =

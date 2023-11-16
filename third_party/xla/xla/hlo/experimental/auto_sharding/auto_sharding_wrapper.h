@@ -38,7 +38,7 @@ namespace spmd {
 AutoShardingSolverResult CallSolver(
     const HloLiveRange& hlo_live_range,
     const LivenessNodeSet& liveness_node_set, const StrategyMap& strategy_map,
-    const LeafStrategies& leaf_strategies, const CostGraph& cost_graph,
+    const StrategyGroups& strategy_groups, const CostGraph& cost_graph,
     const AliasSet& alias_set, const std::vector<NodeStrategyIdx>& s_hint,
     bool compute_iis, int64_t solver_timeout_in_seconds,
     const AutoShardingOption& option,

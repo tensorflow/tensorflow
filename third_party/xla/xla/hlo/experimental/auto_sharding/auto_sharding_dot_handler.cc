@@ -659,14 +659,14 @@ class DotHandler : public HandlerBase {
 
 // Register strategies for dot instructions.
 Status HandleDot(std::unique_ptr<StrategyGroup>& strategy_group,
-                 LeafStrategies& leaf_strategies, StrategyMap& strategy_map,
+                 StrategyGroups& strategy_groups, StrategyMap& strategy_map,
                  const HloInstruction* ins, size_t instruction_id,
                  const ClusterEnvironment& cluster_env,
                  const InstructionBatchDimMap& batch_map,
                  const AutoShardingOption& option,
                  const CallGraph& call_graph) {
   strategy_group = CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
-                                           leaf_strategies);
+                                           strategy_groups);
 
   DotHandler handler(strategy_group, strategy_map, ins, cluster_env, batch_map,
                      option, call_graph);
@@ -853,14 +853,14 @@ class ConvHandler : public HandlerBase {
 
 // Register strategies for dot instructions.
 Status HandleConv(std::unique_ptr<StrategyGroup>& strategy_group,
-                  LeafStrategies& leaf_strategies, StrategyMap& strategy_map,
+                  StrategyGroups& strategy_groups, StrategyMap& strategy_map,
                   const HloInstruction* ins, size_t instruction_id,
                   const ClusterEnvironment& cluster_env,
                   const InstructionBatchDimMap& batch_map,
                   const AutoShardingOption& option,
                   const CallGraph& call_graph) {
   strategy_group = CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
-                                           leaf_strategies);
+                                           strategy_groups);
 
   ConvHandler handler(strategy_group, strategy_map, ins, cluster_env, batch_map,
                       option, call_graph);

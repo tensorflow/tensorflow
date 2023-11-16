@@ -108,11 +108,11 @@ std::vector<double> ReshardingCostVector(
 
 // Factory functions for StrategyGroup.
 std::unique_ptr<StrategyGroup> CreateLeafStrategyGroupWithoutInNodes(
-    size_t instruction_id, LeafStrategies& leaf_strategies) {
+    size_t instruction_id, StrategyGroups& strategy_groups) {
   auto strategy_group = std::make_unique<StrategyGroup>();
   strategy_group->is_tuple = false;
-  strategy_group->node_idx = leaf_strategies.size();
-  leaf_strategies.push_back(strategy_group.get());
+  strategy_group->node_idx = strategy_groups.size();
+  strategy_groups.push_back(strategy_group.get());
   strategy_group->instruction_id = instruction_id;
   return strategy_group;
 }
@@ -120,9 +120,9 @@ std::unique_ptr<StrategyGroup> CreateLeafStrategyGroupWithoutInNodes(
 // Factory functions for StrategyGroup.
 std::unique_ptr<StrategyGroup> CreateLeafStrategyGroup(
     size_t instruction_id, const HloInstruction* ins,
-    const StrategyMap& strategy_map, LeafStrategies& leaf_strategies) {
+    const StrategyMap& strategy_map, StrategyGroups& strategy_groups) {
   auto strategy_group =
-      CreateLeafStrategyGroupWithoutInNodes(instruction_id, leaf_strategies);
+      CreateLeafStrategyGroupWithoutInNodes(instruction_id, strategy_groups);
   for (int64_t i = 0; i < ins->operand_count(); ++i) {
     strategy_group->in_nodes.push_back(strategy_map.at(ins->operand(i)).get());
   }
@@ -234,7 +234,7 @@ GenerateReshardingCostsAndShardingsForAllOperands(
 std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
     const StrategyGroup* src_strategy_group, const Shape& shape,
     size_t instruction_id, bool have_memory_cost,
-    LeafStrategies& leaf_strategies, const ClusterEnvironment& cluster_env,
+    StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
     StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map) {
   std::unique_ptr<StrategyGroup> strategy_group;
@@ -246,7 +246,7 @@ std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
     for (size_t i = 0; i < src_strategy_group->childs.size(); ++i) {
       auto child_strategies = MaybeFollowInsStrategyGroup(
           src_strategy_group->childs[i].get(), shape.tuple_shapes(i),
-          instruction_id, have_memory_cost, leaf_strategies, cluster_env,
+          instruction_id, have_memory_cost, strategy_groups, cluster_env,
           pretrimmed_strategy_map);
       child_strategies->tuple_element_idx = i;
       strategy_group->childs.push_back(std::move(child_strategies));
@@ -254,7 +254,7 @@ std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
   } else {
     CHECK(shape.IsArray() || shape.IsToken());
     strategy_group =
-        CreateLeafStrategyGroupWithoutInNodes(instruction_id, leaf_strategies);
+        CreateLeafStrategyGroupWithoutInNodes(instruction_id, strategy_groups);
     strategy_group->in_nodes.push_back(src_strategy_group);
     // Only follows the given strategy when there is no other strategy to be
     // restored.
@@ -303,7 +303,7 @@ StatusOr<std::unique_ptr<StrategyGroup>> FollowReduceStrategy(
     const HloInstruction* ins, const Shape& output_shape,
     const HloInstruction* operand, const HloInstruction* unit,
     size_t instruction_id, StrategyMap& strategy_map,
-    LeafStrategies& leaf_strategies, const ClusterEnvironment& cluster_env,
+    StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
     bool allow_mixed_mesh_shape, bool crash_at_error) {
   std::unique_ptr<StrategyGroup> strategy_group;
   if (output_shape.IsTuple()) {
@@ -313,7 +313,7 @@ StatusOr<std::unique_ptr<StrategyGroup>> FollowReduceStrategy(
       auto child_strategy_status = FollowReduceStrategy(
           ins, ins->shape().tuple_shapes().at(i), ins->operand(i),
           ins->operand(i + ins->shape().tuple_shapes_size()), instruction_id,
-          strategy_map, leaf_strategies, cluster_env, allow_mixed_mesh_shape,
+          strategy_map, strategy_groups, cluster_env, allow_mixed_mesh_shape,
           crash_at_error);
       if (!child_strategy_status.ok()) {
         return child_strategy_status;
@@ -324,7 +324,7 @@ StatusOr<std::unique_ptr<StrategyGroup>> FollowReduceStrategy(
     }
   } else if (output_shape.IsArray()) {
     strategy_group = CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
-                                             leaf_strategies);
+                                             strategy_groups);
     const StrategyGroup* src_strategy_group = strategy_map.at(operand).get();
     // Follows the strategy of the operand.
     strategy_group->following = src_strategy_group;
@@ -1120,9 +1120,9 @@ void DisableIncompatibleMixedMeshShapeAndForceBatchDim(
   }
 }
 
-StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesVector(
+StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
     const HloInstruction* ins, const Shape& shape, size_t instruction_id,
-    LeafStrategies& leaf_strategies, const ClusterEnvironment& cluster_env,
+    StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
     const StrategyMap& strategy_map, const AutoShardingOption& option,
     double replicated_penalty, const InstructionBatchDimMap& batch_dim_map,
     const CallGraph& call_graph, bool only_allow_divisible,
@@ -1133,18 +1133,18 @@ StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesVector(
     strategy_group->childs.reserve(shape.tuple_shapes_size());
     for (size_t i = 0; i < shape.tuple_shapes_size(); ++i) {
       auto child_strategies =
-          CreateAllStrategiesVector(ins, shape.tuple_shapes(i), instruction_id,
-                                    leaf_strategies, cluster_env, strategy_map,
-                                    option, replicated_penalty, batch_dim_map,
-                                    call_graph, only_allow_divisible,
-                                    create_replicated_strategies)
+          CreateAllStrategiesGroup(ins, shape.tuple_shapes(i), instruction_id,
+                                   strategy_groups, cluster_env, strategy_map,
+                                   option, replicated_penalty, batch_dim_map,
+                                   call_graph, only_allow_divisible,
+                                   create_replicated_strategies)
               .value();
       child_strategies->tuple_element_idx = i;
       strategy_group->childs.push_back(std::move(child_strategies));
     }
   } else if (shape.IsArray()) {
     strategy_group = CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
-                                             leaf_strategies);
+                                             strategy_groups);
     EnumerateAll1DPartition(ins, shape, cluster_env.device_mesh_, cluster_env,
                             strategy_map, strategy_group, only_allow_divisible,
                             "", call_graph);
@@ -1186,7 +1186,7 @@ StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesVector(
     }
   } else if (shape.IsToken()) {
     strategy_group = CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
-                                             leaf_strategies);
+                                             strategy_groups);
     AddReplicatedStrategy(ins, shape, cluster_env, strategy_map, strategy_group,
                           replicated_penalty);
   } else {
@@ -1197,12 +1197,12 @@ StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesVector(
 
 StatusOr<std::unique_ptr<StrategyGroup>> CreateParameterStrategyGroup(
     const HloInstruction* ins, const Shape& shape, size_t instruction_id,
-    LeafStrategies& leaf_strategies, const ClusterEnvironment& cluster_env,
+    StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
     const StrategyMap& strategy_map, const AutoShardingOption& option,
     double replicated_penalty, const InstructionBatchDimMap& batch_dim_map,
     const CallGraph& call_graph, bool only_allow_divisible) {
-  return CreateAllStrategiesVector(
-      ins, shape, instruction_id, leaf_strategies, cluster_env, strategy_map,
+  return CreateAllStrategiesGroup(
+      ins, shape, instruction_id, strategy_groups, cluster_env, strategy_map,
       option, replicated_penalty, batch_dim_map, call_graph,
       only_allow_divisible, option.allow_replicated_parameters);
 }
@@ -1530,10 +1530,10 @@ std::unique_ptr<StrategyGroup> CreateElementwiseOperatorStrategies(
     const InstructionDepthMap& depth_map, const AliasMap& alias_map,
     const StableHashMap<int64_t, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map,
-    int64_t max_depth, LeafStrategies& leaf_strategies,
+    int64_t max_depth, StrategyGroups& strategy_groups,
     AssociativeDotPairs& associative_dot_pairs) {
   std::unique_ptr<StrategyGroup> strategy_group = CreateLeafStrategyGroup(
-      instruction_id, ins, strategy_map, leaf_strategies);
+      instruction_id, ins, strategy_map, strategy_groups);
 
   // Choose an operand to follow
   int64_t follow_idx;
@@ -1612,9 +1612,9 @@ std::unique_ptr<StrategyGroup> CreateReshapeStrategies(
     const StrategyMap& strategy_map, const ClusterEnvironment& cluster_env,
     bool only_allow_divisible, double replicated_penalty,
     const InstructionBatchDimMap& batch_dim_map,
-    const AutoShardingOption& option, LeafStrategies& leaf_strategies) {
+    const AutoShardingOption& option, StrategyGroups& strategy_groups) {
   std::unique_ptr<StrategyGroup> strategy_group = CreateLeafStrategyGroup(
-      instruction_id, ins, strategy_map, leaf_strategies);
+      instruction_id, ins, strategy_map, strategy_groups);
   const HloInstruction* operand = ins->operand(0);
   const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
   const Array<int64_t>& device_mesh_1d = cluster_env.device_mesh_1d_;
@@ -1702,7 +1702,7 @@ std::unique_ptr<StrategyGroup> CreateReshapeStrategies(
 // NOLINTBEGIN(readability/fn_size)
 // TODO(zhuohan): Decompose this function into smaller pieces
 // Build possible sharding strategies and their costs for all instructions.
-StatusOr<std::tuple<StrategyMap, LeafStrategies, AssociativeDotPairs>>
+StatusOr<std::tuple<StrategyMap, StrategyGroups, AssociativeDotPairs>>
 BuildStrategyAndCost(const HloInstructionSequence& sequence,
                      const HloModule* module,
                      const absl::flat_hash_map<const HloInstruction*, int64_t>&
@@ -1723,7 +1723,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
   // doesn't need to strictly follow it. We restore the trimmed strategies in
   // this situation.
   StableHashMap<int64_t, std::vector<ShardingStrategy>> pretrimmed_strategy_map;
-  LeafStrategies leaf_strategies;
+  StrategyGroups strategy_groups;
   AssociativeDotPairs associative_dot_pairs;
 
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
@@ -1768,7 +1768,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       case HloOpcode::kRng: {
         strategy_group =
             CreateParameterStrategyGroup(
-                ins, ins->shape(), instruction_id, leaf_strategies, cluster_env,
+                ins, ins->shape(), instruction_id, strategy_groups, cluster_env,
                 strategy_map, option, replicated_penalty, batch_dim_map,
                 call_graph, only_allow_divisible)
                 .value();
@@ -1776,14 +1776,14 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       }
       case HloOpcode::kConstant: {
         strategy_group = CreateLeafStrategyGroupWithoutInNodes(instruction_id,
-                                                               leaf_strategies);
+                                                               strategy_groups);
         AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
                               strategy_group, 0);
         break;
       }
       case HloOpcode::kScatter: {
         strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
-                                                 strategy_map, leaf_strategies);
+                                                 strategy_map, strategy_groups);
         // We follow the first operand (the array we're scattering into)
         auto src_strategy_group = strategy_map.at(ins->operand(0)).get();
         CHECK(!src_strategy_group->is_tuple);
@@ -1814,7 +1814,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       }
       case HloOpcode::kGather: {
         strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
-                                                 strategy_map, leaf_strategies);
+                                                 strategy_map, strategy_groups);
         const HloInstruction* indices = ins->operand(1);
         const Shape& shape = ins->shape();
         for (int32_t index_dim = 0; index_dim < indices->shape().rank();
@@ -1900,7 +1900,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       }
       case HloOpcode::kBroadcast: {
         strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
-                                                 strategy_map, leaf_strategies);
+                                                 strategy_map, strategy_groups);
 
         const HloInstruction* operand = ins->operand(0);
 
@@ -1932,13 +1932,13 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         strategy_group = CreateReshapeStrategies(
             instruction_id, ins, strategy_map, cluster_env,
             only_allow_divisible, replicated_penalty, batch_dim_map, option,
-            leaf_strategies);
+            strategy_groups);
         break;
       }
       case HloOpcode::kTranspose:
       case HloOpcode::kReverse: {
         strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
-                                                 strategy_map, leaf_strategies);
+                                                 strategy_map, strategy_groups);
 
         const HloInstruction* operand = ins->operand(0);
 
@@ -1984,7 +1984,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       case HloOpcode::kReduceWindow:
       case HloOpcode::kSelectAndScatter: {
         strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
-                                                 strategy_map, leaf_strategies);
+                                                 strategy_map, strategy_groups);
         int64_t follow_idx;
         switch (opcode) {
           // TODO(yuemmawang) Re-evaluate the follow_idx choices for the
@@ -2085,7 +2085,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         auto operand_strategies = strategy_map.at(ins->operand(0)).get();
         strategy_group = MaybeFollowInsStrategyGroup(
             operand_strategies, ins->shape(), instruction_id,
-            /* have_memory_cost */ true, leaf_strategies, cluster_env,
+            /* have_memory_cost */ true, strategy_groups, cluster_env,
             pretrimmed_strategy_map);
         break;
       }
@@ -2093,13 +2093,13 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         if (ins->shape() == ins->operand(0)->shape()) {
           strategy_group = CreateElementwiseOperatorStrategies(
               instruction_id, ins, strategy_map, cluster_env, depth_map,
-              alias_map, pretrimmed_strategy_map, max_depth, leaf_strategies,
+              alias_map, pretrimmed_strategy_map, max_depth, strategy_groups,
               associative_dot_pairs);
         } else {
           strategy_group = CreateReshapeStrategies(
               instruction_id, ins, strategy_map, cluster_env,
               only_allow_divisible, replicated_penalty, batch_dim_map, option,
-              leaf_strategies);
+              strategy_groups);
         }
         break;
       }
@@ -2157,14 +2157,14 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       case HloOpcode::kClamp: {
         strategy_group = CreateElementwiseOperatorStrategies(
             instruction_id, ins, strategy_map, cluster_env, depth_map,
-            alias_map, pretrimmed_strategy_map, max_depth, leaf_strategies,
+            alias_map, pretrimmed_strategy_map, max_depth, strategy_groups,
             associative_dot_pairs);
         break;
       }
       case HloOpcode::kReduce: {
         auto strategies_status = FollowReduceStrategy(
             ins, ins->shape(), ins->operand(0), ins->operand(1), instruction_id,
-            strategy_map, leaf_strategies, cluster_env,
+            strategy_map, strategy_groups, cluster_env,
             option.allow_mixed_mesh_shape, !trying_multiple_mesh_shapes);
         if (strategies_status.ok()) {
           strategy_group = std::move(strategies_status.value());
@@ -2175,7 +2175,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       }
       case HloOpcode::kDot: {
         TF_RETURN_IF_ERROR(HandleDot(
-            strategy_group, leaf_strategies, strategy_map, ins, instruction_id,
+            strategy_group, strategy_groups, strategy_map, ins, instruction_id,
             cluster_env, batch_dim_map, option, call_graph));
         if (option.allow_replicated_strategy_for_dot_and_conv) {
           AddReplicatedStrategy(
@@ -2187,7 +2187,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       }
       case HloOpcode::kConvolution: {
         TF_RETURN_IF_ERROR(HandleConv(
-            strategy_group, leaf_strategies, strategy_map, ins, instruction_id,
+            strategy_group, strategy_groups, strategy_map, ins, instruction_id,
             cluster_env, batch_dim_map, option, call_graph));
         if (option.allow_replicated_strategy_for_dot_and_conv) {
           AddReplicatedStrategy(
@@ -2199,14 +2199,14 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       }
       case HloOpcode::kRngGetAndUpdateState: {
         strategy_group = CreateLeafStrategyGroupWithoutInNodes(instruction_id,
-                                                               leaf_strategies);
+                                                               strategy_groups);
         AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
                               strategy_group, 0);
         break;
       }
       case HloOpcode::kIota: {
         strategy_group = CreateLeafStrategyGroupWithoutInNodes(instruction_id,
-                                                               leaf_strategies);
+                                                               strategy_groups);
         if (cluster_env.IsDeviceMesh1D()) {
           EnumerateAll1DPartition(ins, ins->shape(), device_mesh, cluster_env,
                                   strategy_map, strategy_group,
@@ -2248,7 +2248,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
               strategy_map.at(operand).get();
           auto child_strategies = MaybeFollowInsStrategyGroup(
               src_strategy_group, operand->shape(), instruction_id,
-              /* have_memory_cost= */ true, leaf_strategies, cluster_env,
+              /* have_memory_cost= */ true, strategy_groups, cluster_env,
               pretrimmed_strategy_map);
           child_strategies->tuple_element_idx = i;
           strategy_group->childs.push_back(std::move(child_strategies));
@@ -2263,7 +2263,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         strategy_group = MaybeFollowInsStrategyGroup(
             src_strategy_group->childs[ins->tuple_index()].get(), ins->shape(),
             instruction_id,
-            /* have_memory_cost= */ true, leaf_strategies, cluster_env,
+            /* have_memory_cost= */ true, strategy_groups, cluster_env,
             pretrimmed_strategy_map);
         break;
       }
@@ -2281,7 +2281,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                        ++i) {
                     std::unique_ptr<StrategyGroup> child_strategies =
                         CreateLeafStrategyGroup(instruction_id, ins,
-                                                strategy_map, leaf_strategies);
+                                                strategy_map, strategy_groups);
                     AddReplicatedStrategy(ins, ins->shape().tuple_shapes(i),
                                           cluster_env, strategy_map,
                                           child_strategies, replicated_penalty);
@@ -2290,8 +2290,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                   }
                 } else {
                   strategy_group =
-                      CreateAllStrategiesVector(
-                          ins, ins->shape(), instruction_id, leaf_strategies,
+                      CreateAllStrategiesGroup(
+                          ins, ins->shape(), instruction_id, strategy_groups,
                           cluster_env, strategy_map, option, replicated_penalty,
                           batch_dim_map, call_graph, only_allow_divisible, true)
                           .value();
@@ -2299,14 +2299,14 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
               } else {
                 if (only_replicated) {
                   strategy_group = CreateLeafStrategyGroup(
-                      instruction_id, ins, strategy_map, leaf_strategies);
+                      instruction_id, ins, strategy_map, strategy_groups);
                   AddReplicatedStrategy(ins, ins->shape(), cluster_env,
                                         strategy_map, strategy_group,
                                         replicated_penalty);
                 } else {
                   strategy_group =
-                      CreateAllStrategiesVector(
-                          ins, ins->shape(), instruction_id, leaf_strategies,
+                      CreateAllStrategiesGroup(
+                          ins, ins->shape(), instruction_id, strategy_groups,
                           cluster_env, strategy_map, option, replicated_penalty,
                           batch_dim_map, call_graph, only_allow_divisible, true)
                           .value();
@@ -2321,7 +2321,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           CHECK(src_strategy_group->is_tuple);
           strategy_group = MaybeFollowInsStrategyGroup(
               src_strategy_group, ins->shape(), instruction_id,
-              /* have_memory_cost= */ true, leaf_strategies, cluster_env,
+              /* have_memory_cost= */ true, strategy_groups, cluster_env,
               pretrimmed_strategy_map);
         } else if (ins->has_sharding()) {
           generate_non_following_strategies(false);
@@ -2336,7 +2336,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                 strategy_map.at(operand).get();
             strategy_group = MaybeFollowInsStrategyGroup(
                 src_strategy_group, ins->shape(), instruction_id,
-                /* have_memory_cost= */ true, leaf_strategies, cluster_env,
+                /* have_memory_cost= */ true, strategy_groups, cluster_env,
                 pretrimmed_strategy_map);
           }
         } else if (IsTopKCustomCall(ins)) {
@@ -2356,7 +2356,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           auto child_strategies = MaybeFollowInsStrategyGroup(
               src_strategy_group->childs[i].get(),
               ins->shape().tuple_shapes().at(i), instruction_id,
-              /* have_memory_cost= */ true, leaf_strategies, cluster_env,
+              /* have_memory_cost= */ true, strategy_groups, cluster_env,
               pretrimmed_strategy_map);
           child_strategies->tuple_element_idx = i;
           strategy_group->childs.push_back(std::move(child_strategies));
@@ -2368,24 +2368,24 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       case HloOpcode::kInfeed:
       case HloOpcode::kSort: {
         strategy_group =
-            CreateAllStrategiesVector(
-                ins, ins->shape(), instruction_id, leaf_strategies, cluster_env,
-                strategy_map, option, replicated_penalty, batch_dim_map,
-                call_graph, only_allow_divisible,
-                /*create_replicated_strategies*/ true)
+            CreateAllStrategiesGroup(ins, ins->shape(), instruction_id,
+                                     strategy_groups, cluster_env, strategy_map,
+                                     option, replicated_penalty, batch_dim_map,
+                                     call_graph, only_allow_divisible,
+                                     /*create_replicated_strategies*/ true)
                 .value();
         break;
       }
       case HloOpcode::kOutfeed: {
         strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
-                                                 strategy_map, leaf_strategies);
+                                                 strategy_map, strategy_groups);
         GenerateOutfeedStrategy(ins, ins->shape(), cluster_env, strategy_map,
                                 strategy_group, replicated_penalty);
         break;
       }
       case HloOpcode::kAfterAll: {
         strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
-                                                 strategy_map, leaf_strategies);
+                                                 strategy_map, strategy_groups);
         AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
                               strategy_group, replicated_penalty);
         break;
@@ -2496,7 +2496,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
     }
   }
 
-  return std::make_tuple(std::move(strategy_map), std::move(leaf_strategies),
+  return std::make_tuple(std::move(strategy_map), std::move(strategy_groups),
                          std::move(associative_dot_pairs));
 }
 
@@ -2505,7 +2505,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
 AutoShardingSolverResult CallSolver(
     const HloLiveRange& hlo_live_range,
     const LivenessNodeSet& liveness_node_set, const StrategyMap& strategy_map,
-    const LeafStrategies& leaf_strategies, const CostGraph& cost_graph,
+    const StrategyGroups& strategy_groups, const CostGraph& cost_graph,
     const AliasSet& alias_set, const std::vector<NodeStrategyIdx>& s_hint,
     bool compute_iis, int64_t solver_timeout_in_seconds,
     const AutoShardingOption& option,
@@ -2513,7 +2513,7 @@ AutoShardingSolverResult CallSolver(
         sharding_propagation_solution) {
   // Serialize edges and edge costs to 1d numpy arrays
   AutoShardingSolverRequest request;
-  request.num_nodes = leaf_strategies.size();
+  request.num_nodes = strategy_groups.size();
   request.memory_budget = option.memory_budget_per_device;
   request.s_len = cost_graph.node_lens_;
   request.s_follow = cost_graph.follow_idx_;
@@ -2540,7 +2540,7 @@ AutoShardingSolverResult CallSolver(
   // Serialize node costs
   int num_nodes_without_default = 0;
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes; ++node_idx) {
-    const StrategyGroup* strategy_group = leaf_strategies[node_idx];
+    const StrategyGroup* strategy_group = strategy_groups[node_idx];
     auto instruction_name =
         instructions.at(strategy_group->instruction_id)->name();
     request.instruction_names.push_back(
@@ -2585,8 +2585,8 @@ AutoShardingSolverResult CallSolver(
   // spec
   std::vector<std::pair<NodeIdx, NodeIdx>> new_followers;
   for (const auto& pair : alias_set) {
-    const StrategyGroup* src_strategy_group = leaf_strategies[pair.first];
-    const StrategyGroup* dst_strategy_group = leaf_strategies[pair.second];
+    const StrategyGroup* src_strategy_group = strategy_groups[pair.first];
+    const StrategyGroup* dst_strategy_group = strategy_groups[pair.second];
     Matrix raw_cost(src_strategy_group->strategies.size(),
                     dst_strategy_group->strategies.size());
     for (NodeStrategyIdx i = 0; i < src_strategy_group->strategies.size();
@@ -3115,29 +3115,29 @@ std::string PrintStrategyMap(const StrategyMap& strategy_map,
 std::string PrintAutoShardingSolution(const HloInstructionSequence& sequence,
                                       const LivenessSet& liveness_set,
                                       const StrategyMap& strategy_map,
-                                      const LeafStrategies& leaf_strategies,
+                                      const StrategyGroups& strategy_groups,
                                       const CostGraph& cost_graph,
                                       absl::Span<const NodeStrategyIdx> s_val,
                                       double objective) {
   std::string str("=== Auto sharding strategy ===\n");
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
-  size_t N = leaf_strategies.size();
+  size_t N = strategy_groups.size();
 
   // Print the chosen strategy
   for (NodeIdx node_idx = 0; node_idx < N; ++node_idx) {
     absl::StrAppend(
         &str, node_idx, " ",
         ToAdaptiveString(
-            instructions[leaf_strategies[node_idx]->instruction_id]),
+            instructions[strategy_groups[node_idx]->instruction_id]),
         " ");
     NodeStrategyIdx stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
     if (cost_graph.follow_idx_[node_idx] < 0) {
       absl::StrAppend(
-          &str, leaf_strategies[node_idx]->strategies[stra_idx].ToString(),
+          &str, strategy_groups[node_idx]->strategies[stra_idx].ToString(),
           "\n");
     } else {
       absl::StrAppend(
-          &str, leaf_strategies[node_idx]->strategies[stra_idx].ToString(),
+          &str, strategy_groups[node_idx]->strategies[stra_idx].ToString(),
           " follow ", cost_graph.follow_idx_[node_idx], "\n");
     }
   }
@@ -4386,21 +4386,21 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     ins_depth_map = spmd::BuildInstructionDepthMap(sequence, batch_dim_map);
     // ----- Build strategies and costs -----
     spmd::StrategyMap strategy_map;
-    spmd::LeafStrategies leaf_strategies;
+    spmd::StrategyGroups strategy_groups;
     spmd::AssociativeDotPairs associative_dot_pairs;
 
     TF_ASSIGN_OR_RETURN(
-        std::tie(strategy_map, leaf_strategies, associative_dot_pairs),
+        std::tie(strategy_map, strategy_groups, associative_dot_pairs),
         BuildStrategyAndCost(
             sequence, module, instruction_execution_counts, ins_depth_map,
             batch_dim_map, alias_map, cluster_env, option_, *call_graph,
             hlo_cost_analysis, option_.try_multiple_mesh_shapes));
     spmd::AliasSet alias_set = spmd::BuildAliasSet(module, strategy_map);
-    CheckAliasSetCompatibility(alias_set, leaf_strategies, sequence);
+    CheckAliasSetCompatibility(alias_set, strategy_groups, sequence);
     XLA_VLOG_LINES(8, PrintStrategyMap(strategy_map, sequence));
 
     // ----- Build cost graph and merge unimportant nodes -----
-    spmd::CostGraph cost_graph(leaf_strategies, associative_dot_pairs);
+    spmd::CostGraph cost_graph(strategy_groups, associative_dot_pairs);
     cost_graph.Simplify(option_.simplify_graph);
 
     // ----- Build the liveness node set -----
@@ -4424,7 +4424,7 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     double objective = -1.0;
     if (!option_.load_solution_vector) {
       auto solver_result = Solve(
-          *hlo_live_range, liveness_node_set, strategy_map, leaf_strategies,
+          *hlo_live_range, liveness_node_set, strategy_map, strategy_groups,
           cost_graph, alias_set, option_, sharding_propagation_solution);
       if (solver_result.skip_auto_sharding) {
         return AutoShardingResult::kModuleUnchangedNoShardingPerfomed;
@@ -4442,7 +4442,7 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     }
 
     XLA_VLOG_LINES(5, PrintAutoShardingSolution(sequence, liveness_set,
-                                                strategy_map, leaf_strategies,
+                                                strategy_map, strategy_groups,
                                                 cost_graph, s_val, objective));
     XLA_VLOG_LINES(1, PrintSolutionMemoryUsage(liveness_set, strategy_map,
                                                cost_graph, s_val));

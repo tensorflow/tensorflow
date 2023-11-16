@@ -1749,13 +1749,13 @@ AliasSet BuildAliasSet(const HloModule* module,
 }
 
 void CheckAliasSetCompatibility(const AliasSet& alias_set,
-                                const LeafStrategies& leaf_strategies,
+                                const StrategyGroups& strategy_groups,
                                 const HloInstructionSequence& sequence) {
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
   // Checks the compatibility
   for (const auto& pair : alias_set) {
-    const StrategyGroup* src_strategy_group = leaf_strategies[pair.first];
-    const StrategyGroup* dst_strategy_group = leaf_strategies[pair.second];
+    const StrategyGroup* src_strategy_group = strategy_groups[pair.first];
+    const StrategyGroup* dst_strategy_group = strategy_groups[pair.second];
 
     size_t compatible_cnt = 0;
     bool replicated = false;
