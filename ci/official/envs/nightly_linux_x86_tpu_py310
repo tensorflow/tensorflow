@@ -1,5 +1,5 @@
 # Disable tpu uploads while being worked on
-source ci/official/envs/disable_all_uploads
+source ci/official/envs/ci_nightly_uploads
 TFCI_BAZEL_COMMON_ARGS="--config tf_public_cache_push --config resultstore --repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION --config=release_cpu_linux --config=tpu"
 TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=linux_tpu
 TFCI_BUILD_PIP_PACKAGE_ARGS="--tpu --nightly_flag"
