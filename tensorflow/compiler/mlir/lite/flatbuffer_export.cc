@@ -681,11 +681,6 @@ class Translator {
   std::optional<VectorBufferOffset<BufferOffset<tflite::Metadata>>>
   CreateMetadataVector();
 
-  // Encodes the `tfl.metadata_buffer` array attribute of the module to the
-  // metadata_buffer section in the final model. Returns empty if there isn't
-  // such attribute in the mlir module.
-  VectorBufferOffset<int32_t> CreateMetadataBufferVector();
-
   // Builds and returns list of tfl.SignatureDef sections in the model.
   std::optional<VectorBufferOffset<BufferOffset<tflite::SignatureDef>>>
   CreateSignatureDefs(const std::vector<SignatureDefData>& signature_defs);
@@ -2655,18 +2650,6 @@ Translator::CreateMetadataVector() {
   return builder_.CreateVector(metadata);
 }
 
-VectorBufferOffset<int32_t> Translator::CreateMetadataBufferVector() {
-  auto array_attr =
-      module_->getAttrOfType<mlir::ArrayAttr>("tfl.metadata_buffer");
-  std::vector<int32_t> metadata_buffer;
-  if (!array_attr) return 0;
-  for (auto value : array_attr.getAsValueRange<mlir::IntegerAttr>()) {
-    metadata_buffer.push_back(value.getSExtValue());
-  }
-
-  return builder_.CreateVector(metadata_buffer);
-}
-
 // Helper method that returns list of all strings in a StringAttr identified
 // by 'attr_key' and values are separated by a comma.
 llvm::SmallVector<llvm::StringRef, 2> GetStringsFromAttrWithSeparator(
@@ -3071,8 +3054,7 @@ std::optional<std::string> Translator::TranslateInternal() {
 
   // Build the model and finish the model building process.
   auto description = builder_.CreateString(model_description.data());
-  VectorBufferOffset<int32_t> metadata_buffer =
-      CreateMetadataBufferVector();  // Deprecated
+  VectorBufferOffset<int32_t> metadata_buffer = 0;  // Deprecated
   auto metadata = CreateMetadataVector();
   if (!metadata) return std::nullopt;
 
