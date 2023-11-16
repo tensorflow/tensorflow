@@ -513,7 +513,6 @@ def TestFactory(xla_backend,
     """Tests related to getting and setting on-device memory layouts."""
 
     @unittest.skipIf(pathways, "not implemented")
-    @unittest.skipIf(pathways_ifrt, "check fails")
     def testGetArgumentLayouts(self):
       # Create computation with a few parameters.
       c = self._NewComputation()
@@ -542,7 +541,39 @@ def TestFactory(xla_backend,
       self.assertEmpty(layouts[2].minor_to_major())
 
     @unittest.skipIf(pathways, "not implemented")
-    @unittest.skipIf(pathways_ifrt, "not implemented")
+    def testGetArgumentLayoutsTupled(self):
+      # Generated with:
+      # jax.jit(lambda x, y, z: (x, y, z))(np.ones((1024, 8, 128)),
+      #                                    np.int32(42),
+      #                                    np.ones(10))
+      module_str = """
+module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
+                                 mhlo.num_replicas = 1 : i32} {
+  func.func public @main(
+      %arg0: tensor<1024x8x128xf32> {mhlo.sharding = "{replicated}"},
+      %arg1: tensor<i32> {mhlo.sharding = "{replicated}"},
+      %arg2: tensor<10xf32> {mhlo.sharding = "{replicated}"})
+      -> (tensor<1024x8x128xf32> {jax.result_info = "[0]"},
+          tensor<i32> {jax.result_info = "[1]"},
+          tensor<10xf32> {jax.result_info = "[2]"}) {
+    return %arg0, %arg1, %arg2 : tensor<1024x8x128xf32>, tensor<i32>, tensor<10xf32>
+  }
+}
+"""
+      options = xla_client.CompileOptions()
+      # 'parameter_is_tupled_arguments' causes MLIR untupled arguments to get
+      # turned into HLO tupled arguments.
+      options.parameter_is_tupled_arguments = True
+      executable = self.backend.compile(module_str, compile_options=options)
+
+      # Test that compiled executable returns plausible layouts.
+      layouts: Sequence[xla_client.Layout] = executable.get_parameter_layouts()
+      self.assertLen(layouts, 3)
+      self.assertLen(layouts[0].minor_to_major(), 3)
+      self.assertEmpty(layouts[1].minor_to_major())
+      self.assertLen(layouts[2].minor_to_major(), 1)
+
+    @unittest.skipIf(pathways, "not implemented")
     def testGetOutputLayouts(self):
       # Generated with jax.jit(lambda: (np.ones((1024, 128)), np.int32(42),
       #                                 np.ones(10)))()
@@ -552,13 +583,12 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
   func.func public @main() -> (tensor<1024x128xf32> {jax.result_info = "[0]"},
                                tensor<i32> {jax.result_info = "[1]"},
                                tensor<10xf32> {jax.result_info = "[2]"}) {
-    %0 = stablehlo.constant dense<1.000000e+00> : tensor<1024x128xf32> loc(#loc)
-    %1 = stablehlo.constant dense<1.000000e+00> : tensor<10xf32> loc(#loc)
-    %2 = stablehlo.constant dense<42> : tensor<i32> loc(#loc)
-    return %0, %2, %1 : tensor<1024x128xf32>, tensor<i32>, tensor<10xf32> loc(#loc)
-  } loc(#loc)
-} loc(#loc)
-#loc = loc(unknown)
+    %0 = stablehlo.constant dense<1.000000e+00> : tensor<1024x128xf32>
+    %1 = stablehlo.constant dense<1.000000e+00> : tensor<10xf32>
+    %2 = stablehlo.constant dense<42> : tensor<i32>
+    return %0, %2, %1 : tensor<1024x128xf32>, tensor<i32>, tensor<10xf32>
+  }
+}
 """
       executable = self.backend.compile(module_str)
 

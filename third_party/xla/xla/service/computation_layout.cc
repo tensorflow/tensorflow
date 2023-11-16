@@ -17,11 +17,15 @@ limitations under the License.
 
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/layout.h"
 #include "xla/printer.h"
+#include "xla/shape_util.h"
+#include "xla/statusor.h"
 #include "xla/types.h"
 
 namespace xla {
@@ -53,6 +57,62 @@ bool ComputationLayout::AnyLayoutSet() const {
   return absl::c_any_of(parameter_layouts_,
                         [](const ShapeLayout& s) { return s.LayoutIsSet(); }) ||
          result_layout_.LayoutIsSet();
+}
+
+StatusOr<std::vector<Layout>> ComputationLayout::FlattenedParameterLayouts()
+    const {
+  std::vector<Layout> result;
+  for (int i = 0; i < parameter_count(); ++i) {
+    TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+        parameter_shape(i),
+        [this, &result](const Shape& subshape, const ShapeIndex& index) {
+          if (subshape.IsTuple()) {
+            return OkStatus();
+          }
+          if (!subshape.IsArray()) {
+            return Unimplemented(
+                "ComputationLayout::FlattenedParameterLayouts doesn't support "
+                "token or opaque parameters (got: %s)",
+                ToString());
+          }
+          if (!subshape.has_layout()) {
+            return InvalidArgument(
+                "ComputationLayout::FlattenedParameterLayouts can only be "
+                "called after all parameters have layouts assigned (got: %s)",
+                ToString());
+          }
+          result.push_back(subshape.layout());
+          return OkStatus();
+        }));
+  }
+  return result;
+}
+
+StatusOr<std::vector<Layout>> ComputationLayout::FlattenedResultLayouts()
+    const {
+  std::vector<Layout> result;
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      result_shape(),
+      [this, &result](const Shape& subshape, const ShapeIndex& index) {
+        if (subshape.IsTuple()) {
+          return OkStatus();
+        }
+        if (!subshape.IsArray()) {
+          return Unimplemented(
+              "ComputationLayout::FlattenedResultLayouts doesn't support "
+              "token or opaque outputs (got: %s)",
+              ToString());
+        }
+        if (!subshape.has_layout()) {
+          return InvalidArgument(
+              "ComputationLayout::FlattenedResultLayouts can only be called "
+              "after all outputs have layouts assigned (got: %s)",
+              ToString());
+        }
+        result.push_back(subshape.layout());
+        return OkStatus();
+      }));
+  return result;
 }
 
 void ComputationLayout::Print(Printer* printer) const {
