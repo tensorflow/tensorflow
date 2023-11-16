@@ -108,40 +108,6 @@ bool IsActivationFromAnotherStage(const HloInstruction* ins,
   return true;
 }
 
-// Propagate sharding for broadcast.
-// The output will be tiled along the broadcasted dimension the same way
-// as the input for the broadcast while the other dimensions are kept
-// non-tiled.
-HloSharding BroadcastSharding(const HloSharding& input_spec,
-                              const Shape& new_shape,
-                              absl::Span<const int64_t> dimensions) {
-  if (input_spec.IsReplicated()) {
-    return input_spec;
-  }
-  CHECK(new_shape.IsArray());
-  std::vector<int64_t> target_tile_assignment_dimensions;
-  for (int64_t i = 0; i < new_shape.rank(); ++i) {
-    auto it = absl::c_find(dimensions, i);
-    if (it == dimensions.end()) {
-      target_tile_assignment_dimensions.push_back(1);
-    } else {
-      const int64_t source_dim = std::distance(dimensions.begin(), it);
-      target_tile_assignment_dimensions.push_back(
-          input_spec.tile_assignment().dim(source_dim));
-    }
-  }
-  if (input_spec.ReplicateOnLastTileDim()) {
-    target_tile_assignment_dimensions.push_back(
-        input_spec.tile_assignment().dimensions().back());
-  }
-  auto new_tile_assignment =
-      input_spec.tile_assignment().Reshape(target_tile_assignment_dimensions);
-
-  return input_spec.ReplicateOnLastTileDim()
-             ? HloSharding::PartialTile(new_tile_assignment)
-             : HloSharding::Tile(new_tile_assignment);
-}
-
 // Propagate sharding for dim-wise operations (e.g., slice, pad) which works
 // independently on each dimension.
 // The sharding can successfully propagate if the operation only happens
@@ -1053,47 +1019,6 @@ void UseAllReduceForGradAcc(StableHashSet<HloInstruction*>& replicated_set,
     };
 
     dfs_remove(add);
-  }
-}
-
-void RemoveCustomCallMarker(HloModule* module) {
-  HloComputation* entry_computation = module->entry_computation();
-
-  std::vector<HloInstruction*> get_tuple_ins;
-  std::vector<HloInstruction*> marker_ins;
-
-  for (HloInstruction* ins : entry_computation->instructions()) {
-    if (ins->opcode() == HloOpcode::kGetTupleElement &&
-        IsCustomCallMarker(ins->operand(0))) {
-      get_tuple_ins.push_back(ins);
-      marker_ins.push_back(ins->mutable_operand(0));
-    }
-  }
-
-  for (HloInstruction* raw_ins : get_tuple_ins) {
-    HloInstruction* ins = raw_ins;
-    while (ins->opcode() == HloOpcode::kGetTupleElement) {
-      HloInstruction* custom_call = ins->mutable_operand(0);
-      CHECK(IsCustomCallMarker(custom_call));
-      HloInstruction* tuple = custom_call->mutable_operand(0);
-      ins = tuple->mutable_operand(ins->tuple_index());
-    }
-
-    TF_CHECK_OK(raw_ins->ReplaceAllUsesWith(ins));
-  }
-
-  for (HloInstruction* ins : get_tuple_ins) {
-    TF_CHECK_OK(entry_computation->RemoveInstruction(ins));
-  }
-
-  StableHashSet<const HloInstruction*> removed;
-  for (HloInstruction* ins : marker_ins) {
-    if (!removed.contains(ins)) {
-      HloInstruction* tmp = ins->mutable_operand(0);
-      TF_CHECK_OK(entry_computation->RemoveInstruction(ins));
-      TF_CHECK_OK(entry_computation->RemoveInstruction(tmp));
-      removed.insert(ins);
-    }
   }
 }
 
