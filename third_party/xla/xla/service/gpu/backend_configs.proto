@@ -189,4 +189,10 @@ message CudnnfMHABackendConfig {
 
   // Random seed used by dropout
   int64 seed = 15;
+
+  // Is flash attention
+  bool is_flash_attention = 20;
+
+  // Is causal mask
+  bool is_causal_mask = 21;
 }

@@ -227,11 +227,11 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
       mha_fusion_pipeline.AddPass<ReshapeDecomposer>();
       mha_fusion_pipeline.AddPass<LayoutNormalization>();
     }
+
     mha_fusion_pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
     mha_fusion_pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
         alg_sim_options);
     mha_fusion_pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
-
     // Rewrite Multi-Headed Attention modules to Fused MHA custom-calls.
     if (stream_exec) {
       mha_fusion_pipeline.AddPass<CudnnFusedMHARewriter>(
