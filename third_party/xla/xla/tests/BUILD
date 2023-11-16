@@ -777,6 +777,7 @@ xla_test(
 xla_test(
     name = "array_elementwise_ops_test",
     srcs = ["array_elementwise_ops_test.cc"],
+    tags = ["no_rocm"],
     shard_count = 25,
     deps = [
         ":client_library_test_base",

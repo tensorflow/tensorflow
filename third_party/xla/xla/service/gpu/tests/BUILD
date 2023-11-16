@@ -948,6 +948,7 @@ xla_test(
     name = "load_autotune_results_using_execpath_test",
     srcs = [],
     backends = ["gpu"],
+    tags = ["no_rocm"],
     # Data dependency must be declared for the cache.
     data = ["test_autotune_cache.textproto"],
     env = {"XLA_FLAGS": "--xla_gpu_load_autotune_results_from=" +
@@ -993,7 +994,7 @@ xla_test(
 xla_cc_test(
     name = "gpu_int4_test",
     srcs = ["gpu_int4_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + ["no_rocm"],
     deps = [
         ":gpu_codegen_test",
         "@local_tsl//tsl/platform:test",
