@@ -4416,6 +4416,7 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
             strategy_group->GetSubStrategyGroup(index)->node_idx;
         if (node_idx >= 0) liveness_node_set[t].push_back(node_idx);
       }
+      std::sort(liveness_node_set[t].begin(), liveness_node_set[t].end());
     }
 
     // ----- Call the ILP Solver -----
