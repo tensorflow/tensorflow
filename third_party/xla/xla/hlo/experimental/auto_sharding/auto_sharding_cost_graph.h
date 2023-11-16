@@ -24,9 +24,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/matrix.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/shape_util.h"
 namespace xla {
 namespace spmd {
 
@@ -113,12 +116,12 @@ class CostGraph {
   }
 
   Matrix CreateEdgeCost(NodeIdx src_idx, NodeIdx dst_idx, size_t in_node_idx,
-                        StrategyVector* strategies, bool zero_cost = false) {
+                        StrategyGroup* strategy_group, bool zero_cost = false) {
     CHECK_LT(src_idx, node_lens_.size());
     CHECK_LT(dst_idx, node_lens_.size());
     Matrix edge_cost(node_lens_[src_idx], node_lens_[dst_idx]);
-    for (NodeStrategyIdx k = 0; k < strategies->leaf_vector.size(); ++k) {
-      const ShardingStrategy& strategy = strategies->leaf_vector[k];
+    for (NodeStrategyIdx k = 0; k < strategy_group->leaf_vector.size(); ++k) {
+      const ShardingStrategy& strategy = strategy_group->leaf_vector[k];
       size_t start_idx = 0;
       if (strategy.resharding_costs[in_node_idx].size() > node_lens_[src_idx]) {
         start_idx =
@@ -359,11 +362,11 @@ class CostGraph {
 inline const ShardingStrategy& GetShardingStrategy(
     const HloInstruction* inst, const StrategyMap& strategy_map,
     const CostGraph& cost_graph, absl::Span<const NodeStrategyIdx> s_val) {
-  const StrategyVector* strategies = strategy_map.at(inst).get();
-  CHECK(!strategies->is_tuple);
-  NodeIdx node_idx = strategies->node_idx;
+  const StrategyGroup* strategy_group = strategy_map.at(inst).get();
+  CHECK(!strategy_group->is_tuple);
+  NodeIdx node_idx = strategy_group->node_idx;
   NodeStrategyIdx stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
-  return strategies->leaf_vector[stra_idx];
+  return strategy_group->leaf_vector[stra_idx];
 }
 
 // Get the final sharding strategy according to the ilp solution.
@@ -371,16 +374,16 @@ inline const ShardingStrategy& GetShardingStrategyForTuple(
     const HloInstruction* inst, ShapeIndex index,
     const StrategyMap& strategy_map, const CostGraph& cost_graph,
     absl::Span<const NodeStrategyIdx> s_val) {
-  const StrategyVector* tuple_strategies = strategy_map.at(inst).get();
-  CHECK(tuple_strategies->is_tuple);
+  const StrategyGroup* strategy_group = strategy_map.at(inst).get();
+  CHECK(strategy_group->is_tuple);
   for (auto index_element : index) {
-    CHECK_LT(index_element, tuple_strategies->childs.size());
-    const auto& strategies = tuple_strategies->childs[index_element];
-    tuple_strategies = strategies.get();
+    CHECK_LT(index_element, strategy_group->childs.size());
+    const auto& strategies = strategy_group->childs[index_element];
+    strategy_group = strategies.get();
   }
-  NodeIdx node_idx = tuple_strategies->node_idx;
+  NodeIdx node_idx = strategy_group->node_idx;
   NodeStrategyIdx stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
-  return tuple_strategies->leaf_vector[stra_idx];
+  return strategy_group->leaf_vector[stra_idx];
 }
 
 }  // namespace spmd

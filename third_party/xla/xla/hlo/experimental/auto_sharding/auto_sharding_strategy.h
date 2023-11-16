@@ -130,8 +130,9 @@ using EdgeStrategyIdx = int64_t;  // An index into an edge's strategy vector.
 using LivenessIdx = int64_t;      // An index into the liveness vector.
 using AliasIdx = int64_t;         // An index into the alias vector.
 
-// The strategy choices for each instruction.
-struct StrategyVector {
+// A group of strategy choices (along with details like index values)
+// for each instruction.
+struct StrategyGroup {
   bool is_tuple;
   // The index used in the solver. For non-leaf nodes, this is set to -1.
   NodeIdx node_idx;
@@ -141,15 +142,15 @@ struct StrategyVector {
   // The size must be the same as the size of resharding cost
   // each element in leaf_vector's resharding_costs.size() needs to be the same
   // as strategies->in_nodes.size()
-  std::vector<const StrategyVector*> in_nodes;
+  std::vector<const StrategyGroup*> in_nodes;
   // The followed strategy. Used for merging nodes.
-  const StrategyVector* following = nullptr;
+  const StrategyGroup* following = nullptr;
   // Used when is_tuple == False. Leaf strategy vector.
   // A vector of strategy choices for the non-tuple output.
   std::vector<ShardingStrategy> leaf_vector;
   // Used when is_tuple == True. A vector of pointers, each pointer is one
-  // StrategyVector for one value in the output Tuple
-  std::vector<std::unique_ptr<StrategyVector>> childs;
+  // StrategyGroup for one value in the output Tuple
+  std::vector<std::unique_ptr<StrategyGroup>> childs;
   // The index of this instruction in the HLO operand (or tuple shape) list.
   std::optional<int64_t> tuple_element_idx;
 
@@ -183,8 +184,8 @@ struct StrategyVector {
     return str;
   }
 
-  const StrategyVector* GetSubStrategyVector(const ShapeIndex& index) const {
-    const StrategyVector* result = this;
+  const StrategyGroup* GetSubStrategyGroup(const ShapeIndex& index) const {
+    const StrategyGroup* result = this;
     for (auto index_element : index) {
       CHECK_LE(index_element, result->childs.size());
       result = result->childs.at(index_element).get();
@@ -199,13 +200,13 @@ using LivenessSet = std::vector<std::vector<const HloValue*>>;
 using LivenessNodeSet = std::vector<std::vector<NodeIdx>>;
 // Map an instruction to its strategy vector.
 using StrategyMap =
-    StableHashMap<const HloInstruction*, std::unique_ptr<StrategyVector>>;
+    StableHashMap<const HloInstruction*, std::unique_ptr<StrategyGroup>>;
 // The list of all leaf strategies.
-using LeafStrategies = std::vector<StrategyVector*>;
+using LeafStrategies = std::vector<StrategyGroup*>;
 // The list of all dot instruction pairs that can be optimized by
 // AllReduceReassociate pass.
 using AssociativeDotPairs =
-    std::vector<std::pair<const StrategyVector*, const StrategyVector*>>;
+    std::vector<std::pair<const StrategyGroup*, const StrategyGroup*>>;
 // The set of all alias pairs
 using AliasSet = StableHashSet<std::pair<NodeIdx, NodeIdx>>;
 

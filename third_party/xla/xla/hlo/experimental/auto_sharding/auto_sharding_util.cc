@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status.h"
 
@@ -874,40 +875,42 @@ bool AllInfinityCosts(
 // that were not intended to be replicated when being generating, but ending up
 // being replicated, which could happen when, for example, generating 2D
 // sharding for a 1D mesh shape.
-void RemoveDuplicatedStrategy(std::unique_ptr<StrategyVector>& strategies) {
-  if (strategies->is_tuple) {
-    for (auto& child : strategies->childs) {
+void RemoveDuplicatedStrategy(std::unique_ptr<StrategyGroup>& strategy_group) {
+  if (strategy_group->is_tuple) {
+    for (auto& child : strategy_group->childs) {
       RemoveDuplicatedStrategy(child);
     }
-  } else if (!strategies->following) {
-    if (strategies->leaf_vector.empty()) return;
+  } else if (!strategy_group->following) {
+    if (strategy_group->leaf_vector.empty()) return;
     std::vector<ShardingStrategy> new_vector;
     std::vector<ShardingStrategy> deduped_replicated_strategies;
     absl::flat_hash_set<std::string> added;
     size_t num_skipped_due_to_infinity_costs = 0;
-    for (size_t i = 0; i < strategies->leaf_vector.size(); ++i) {
-      if (AllInfinityCosts(strategies->leaf_vector[i].resharding_costs)) {
+    for (size_t i = 0; i < strategy_group->leaf_vector.size(); ++i) {
+      if (AllInfinityCosts(strategy_group->leaf_vector[i].resharding_costs)) {
         num_skipped_due_to_infinity_costs++;
         continue;
       }
-      std::string key = strategies->leaf_vector[i].output_sharding.ToString();
-      if (!strategies->leaf_vector[i].input_shardings.empty()) {
+      std::string key =
+          strategy_group->leaf_vector[i].output_sharding.ToString();
+      if (!strategy_group->leaf_vector[i].input_shardings.empty()) {
         for (const auto& sharding :
-             strategies->leaf_vector[i].input_shardings) {
+             strategy_group->leaf_vector[i].input_shardings) {
           key += "/" + (sharding.has_value() ? sharding->ToString() : "none");
         }
       }
       if (!added.contains(key)) {
         added.insert(key);
-        if (!strategies->leaf_vector[i].output_sharding.IsReplicated()) {
-          new_vector.push_back(std::move(strategies->leaf_vector[i]));
+        if (!strategy_group->leaf_vector[i].output_sharding.IsReplicated()) {
+          new_vector.push_back(std::move(strategy_group->leaf_vector[i]));
         } else {
           deduped_replicated_strategies.push_back(
-              std::move(strategies->leaf_vector[i]));
+              std::move(strategy_group->leaf_vector[i]));
         }
       }
     }
-    CHECK_LT(num_skipped_due_to_infinity_costs, strategies->leaf_vector.size())
+    CHECK_LT(num_skipped_due_to_infinity_costs,
+             strategy_group->leaf_vector.size())
         << "All strategies removed due to infinite resharding costs";
     // Keeps replicated strategies as the last ones.
     if (!deduped_replicated_strategies.empty()) {
@@ -915,7 +918,7 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyVector>& strategies) {
         new_vector.push_back(std::move(deduped_replicated_strategies[i]));
       }
     }
-    strategies->leaf_vector = std::move(new_vector);
+    strategy_group->leaf_vector = std::move(new_vector);
   }
 }
 
@@ -1742,20 +1745,21 @@ AliasSet BuildAliasSet(const HloModule* module,
   const HloInstruction* output_tuple = entry->root_instruction();
 
   AliasSet alias_set;
-  std::function<void(const StrategyVector*, const StrategyVector*)>
+  std::function<void(const StrategyGroup*, const StrategyGroup*)>
       traverse_tuple_alias;
-  traverse_tuple_alias = [&](const StrategyVector* src_strategies,
-                             const StrategyVector* dst_strategies) {
-    if (src_strategies->is_tuple) {
-      CHECK(dst_strategies->is_tuple);
-      CHECK_EQ(src_strategies->childs.size(), dst_strategies->childs.size());
-      for (size_t i = 0; i < src_strategies->childs.size(); ++i) {
-        traverse_tuple_alias(src_strategies->childs[i].get(),
-                             dst_strategies->childs[i].get());
+  traverse_tuple_alias = [&](const StrategyGroup* src_strategy_group,
+                             const StrategyGroup* dst_strategy_group) {
+    if (src_strategy_group->is_tuple) {
+      CHECK(dst_strategy_group->is_tuple);
+      CHECK_EQ(src_strategy_group->childs.size(),
+               dst_strategy_group->childs.size());
+      for (size_t i = 0; i < src_strategy_group->childs.size(); ++i) {
+        traverse_tuple_alias(src_strategy_group->childs[i].get(),
+                             dst_strategy_group->childs[i].get());
       }
     } else {
       alias_set.insert(
-          std::make_pair(src_strategies->node_idx, dst_strategies->node_idx));
+          {src_strategy_group->node_idx, dst_strategy_group->node_idx});
     }
   };
   alias_config.ForEachAlias([&](const ShapeIndex& output_index,
@@ -1825,17 +1829,18 @@ void CheckAliasSetCompatibility(const AliasSet& alias_set,
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
   // Checks the compatibility
   for (const auto& pair : alias_set) {
-    const StrategyVector* src_strategies = leaf_strategies[pair.first];
-    const StrategyVector* dst_strategies = leaf_strategies[pair.second];
+    const StrategyGroup* src_strategy_group = leaf_strategies[pair.first];
+    const StrategyGroup* dst_strategy_group = leaf_strategies[pair.second];
 
     size_t compatible_cnt = 0;
     bool replicated = false;
-    for (size_t i = 0; i < src_strategies->leaf_vector.size(); ++i) {
-      for (size_t j = 0; j < dst_strategies->leaf_vector.size(); ++j) {
-        if (src_strategies->leaf_vector[i].output_sharding ==
-            dst_strategies->leaf_vector[j].output_sharding) {
+    for (size_t i = 0; i < src_strategy_group->leaf_vector.size(); ++i) {
+      for (size_t j = 0; j < dst_strategy_group->leaf_vector.size(); ++j) {
+        if (src_strategy_group->leaf_vector[i].output_sharding ==
+            dst_strategy_group->leaf_vector[j].output_sharding) {
           compatible_cnt += 1;
-          if (src_strategies->leaf_vector[i].output_sharding.IsReplicated()) {
+          if (src_strategy_group->leaf_vector[i]
+                  .output_sharding.IsReplicated()) {
             replicated = true;
           }
         }
@@ -1843,32 +1848,31 @@ void CheckAliasSetCompatibility(const AliasSet& alias_set,
     }
 
     if (compatible_cnt == 1 &&
-        (replicated && (src_strategies->leaf_vector.size() > 1 ||
-                        dst_strategies->leaf_vector.size() > 1))) {
-      LOG(WARNING) << "Alias pair has only replicated strategy in common. This "
-                      "will result in choosing replicated strategy for these "
-                      "tensors and may result in large memory consumption: "
-                   << "("
-                   << instructions.at(src_strategies->instruction_id)->name()
-                   << ", "
-                   << instructions.at(dst_strategies->instruction_id)->name()
-                   << ")"
-                   << "\n"
-                   << "(" << src_strategies->node_idx << ", "
-                   << dst_strategies->node_idx << ")\n"
-                   << src_strategies->ToString() << "\n"
-                   << dst_strategies->ToString();
+        (replicated && (src_strategy_group->leaf_vector.size() > 1 ||
+                        dst_strategy_group->leaf_vector.size() > 1))) {
+      LOG(WARNING)
+          << "Alias pair has only replicated strategy in common. This "
+             "will result in choosing replicated strategy for these "
+             "tensors and may result in large memory consumption: "
+          << "(" << instructions.at(src_strategy_group->instruction_id)->name()
+          << ", " << instructions.at(dst_strategy_group->instruction_id)->name()
+          << ")"
+          << "\n"
+          << "(" << src_strategy_group->node_idx << ", "
+          << dst_strategy_group->node_idx << ")\n"
+          << src_strategy_group->ToString() << "\n"
+          << dst_strategy_group->ToString();
     }
     CHECK(compatible_cnt > 0)
         << "Alias pair does not have any sharding strategy in common: "
-        << "(" << instructions.at(src_strategies->instruction_id)->name()
-        << ", " << instructions.at(dst_strategies->instruction_id)->name()
+        << "(" << instructions.at(src_strategy_group->instruction_id)->name()
+        << ", " << instructions.at(dst_strategy_group->instruction_id)->name()
         << ")"
         << "\n"
-        << "(" << src_strategies->node_idx << ", " << dst_strategies->node_idx
-        << ")\n"
-        << src_strategies->ToString() << "\n"
-        << dst_strategies->ToString();
+        << "(" << src_strategy_group->node_idx << ", "
+        << dst_strategy_group->node_idx << ")\n"
+        << src_strategy_group->ToString() << "\n"
+        << dst_strategy_group->ToString();
   }
 }
 
@@ -2015,7 +2019,7 @@ AdjustShardingWithPartialMeshShapePerElement(
           LOG(FATAL) << err_msg;
         } else {
           LOG(WARNING) << err_msg;
-          return std::make_pair(absl::InternalError(err_msg), std::nullopt);
+          return {absl::InternalError(err_msg), std::nullopt};
         }
       }
     }
@@ -2028,7 +2032,7 @@ AdjustShardingWithPartialMeshShapePerElement(
       if (valid_shards.find(sharding.tile_assignment().dim(
               sharding.tile_assignment().num_dimensions() - 1)) !=
           valid_shards.end()) {
-        return std::make_pair(OkStatus(), HloSharding::Replicate());
+        return {OkStatus(), HloSharding::Replicate()};
       }
       // If replicate on other dimensions, remove the
       // replicate_on_last_tile
@@ -2075,9 +2079,9 @@ AdjustShardingWithPartialMeshShapePerElement(
     std::iota(device_ids.begin(), device_ids.end(), 0);
     tile_assignment.SetValues(device_ids);
     HloSharding new_sharding = HloSharding::Tile(std::move(tile_assignment));
-    return std::make_pair(OkStatus(), new_sharding);
+    return {OkStatus(), new_sharding};
   }
-  return std::make_pair(OkStatus(), std::nullopt);
+  return {OkStatus(), std::nullopt};
 }
 
 StatusOr<bool> AdjustShardingsWithPartialMeshShape(
@@ -2144,7 +2148,7 @@ std::vector<std::vector<int64_t>> DecomposeMeshShapes(
   std::vector<std::vector<int64_t>> partial_mesh_shapes;
   std::vector<std::pair<int64_t, size_t>> pairs(mesh_shape.size());
   for (size_t i = 0; i < mesh_shape.size(); i++) {
-    pairs[i] = std::make_pair(mesh_shape[i], i);
+    pairs[i] = {mesh_shape[i], i};
   }
   // For vector of size 3, the sorted indices happen to be the same as their
   // rankings. mesh_shapes over 3 elements are not supported by AutoSharding.

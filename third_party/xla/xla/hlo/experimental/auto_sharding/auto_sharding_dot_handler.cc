@@ -57,12 +57,12 @@ struct Enumeration {
 // Contains base functionality common to both DotHandler and ConvHandler.
 class HandlerBase {
  protected:
-  HandlerBase(std::unique_ptr<StrategyVector>& strategies,
+  HandlerBase(std::unique_ptr<StrategyGroup>& strategy_group,
               StrategyMap& strategy_map, const HloInstruction* ins,
               const ClusterEnvironment& cluster_env,
               const InstructionBatchDimMap& batch_map,
               const AutoShardingOption& option, const CallGraph& call_graph)
-      : strategies_(strategies),
+      : strategy_group_(strategy_group),
         strategy_map_(strategy_map),
         ins_(ins),
         cluster_env_(cluster_env),
@@ -87,7 +87,7 @@ class HandlerBase {
                                operand->shape(), input_specs[i], cluster_env_));
     }
 
-    strategies_->leaf_vector.push_back(ShardingStrategy({
+    strategy_group_->leaf_vector.push_back(ShardingStrategy({
         name,
         output_spec,
         compute_cost,
@@ -221,7 +221,7 @@ class HandlerBase {
     Enumerate(split_func, num_outer_dims, num_inner_dims, true);
   }
 
-  std::unique_ptr<StrategyVector>& strategies_;
+  std::unique_ptr<StrategyGroup>& strategy_group_;
   StrategyMap& strategy_map_;
   const HloInstruction* ins_;
   const ClusterEnvironment& cluster_env_;
@@ -237,12 +237,12 @@ class HandlerBase {
 
 class DotHandler : public HandlerBase {
  public:
-  DotHandler(std::unique_ptr<StrategyVector>& strategies,
+  DotHandler(std::unique_ptr<StrategyGroup>& strategy_group,
              StrategyMap& strategy_map, const HloInstruction* ins,
              const ClusterEnvironment& cluster_env,
              const InstructionBatchDimMap& batch_map,
              const AutoShardingOption& option, const CallGraph& call_graph)
-      : HandlerBase(strategies, strategy_map, ins, cluster_env, batch_map,
+      : HandlerBase(strategy_group, strategy_map, ins, cluster_env, batch_map,
                     option, call_graph),
         space_base_dim_(
             ins->dot_dimension_numbers().lhs_batch_dimensions_size()),
@@ -601,7 +601,7 @@ class DotHandler : public HandlerBase {
         cluster_env_.non_zero_mesh_dims_.size() > 1) {
       // If there is a batch dim and the device mesh is multi-dimensional,
       // always split on batch dim. Clear all old strategies.
-      strategies_->leaf_vector.clear();
+      strategy_group_->leaf_vector.clear();
     }
 
     // Sb = Sb x Sb
@@ -626,7 +626,7 @@ class DotHandler : public HandlerBase {
                          [](int64_t size) { return size > 1; }) > 1) {
       // If there are two batch dims, always split on these two dims.
       // Clear all old strategies.
-      strategies_->leaf_vector.clear();
+      strategy_group_->leaf_vector.clear();
     }
 
     // Sb = Sb x Sb
@@ -641,7 +641,7 @@ class DotHandler : public HandlerBase {
     // and only keep the data parallel strategies.
     if (option_.force_batch_dim_to_mesh_dim >= 0 &&
         batch_map_.contains(GetBatchDimMapKey(ins_))) {
-      TF_RETURN_IF_ERROR(FilterStrategy(ins_, ins_->shape(), strategies_,
+      TF_RETURN_IF_ERROR(FilterStrategy(ins_, ins_->shape(), strategy_group_,
                                         cluster_env_, batch_map_, option_));
     }
 
@@ -658,17 +658,17 @@ class DotHandler : public HandlerBase {
 };
 
 // Register strategies for dot instructions.
-Status HandleDot(std::unique_ptr<StrategyVector>& strategies,
+Status HandleDot(std::unique_ptr<StrategyGroup>& strategy_group,
                  LeafStrategies& leaf_strategies, StrategyMap& strategy_map,
                  const HloInstruction* ins, size_t instruction_id,
                  const ClusterEnvironment& cluster_env,
                  const InstructionBatchDimMap& batch_map,
                  const AutoShardingOption& option,
                  const CallGraph& call_graph) {
-  strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
-                                        leaf_strategies);
+  strategy_group = CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
+                                           leaf_strategies);
 
-  DotHandler handler(strategies, strategy_map, ins, cluster_env, batch_map,
+  DotHandler handler(strategy_group, strategy_map, ins, cluster_env, batch_map,
                      option, call_graph);
   TF_RETURN_IF_ERROR(handler.RegisterStrategies());
   return OkStatus();
@@ -676,12 +676,12 @@ Status HandleDot(std::unique_ptr<StrategyVector>& strategies,
 
 class ConvHandler : public HandlerBase {
  public:
-  ConvHandler(std::unique_ptr<StrategyVector>& strategies,
+  ConvHandler(std::unique_ptr<StrategyGroup>& strategy_group,
               StrategyMap& strategy_map, const HloInstruction* ins,
               const ClusterEnvironment& cluster_env,
               const InstructionBatchDimMap& batch_map,
               const AutoShardingOption& option, const CallGraph& call_graph)
-      : HandlerBase(strategies, strategy_map, ins, cluster_env, batch_map,
+      : HandlerBase(strategy_group, strategy_map, ins, cluster_env, batch_map,
                     option, call_graph),
         conv_dnums_(ins->convolution_dimension_numbers()) {
     lhs_batch_dim_ = conv_dnums_.input_batch_dimension();
@@ -837,7 +837,7 @@ class ConvHandler : public HandlerBase {
     // and only keep the data parallel strategies.
     if (option_.force_batch_dim_to_mesh_dim >= 0 &&
         batch_map_.contains(GetBatchDimMapKey(ins_))) {
-      TF_RETURN_IF_ERROR(FilterStrategy(ins_, ins_->shape(), strategies_,
+      TF_RETURN_IF_ERROR(FilterStrategy(ins_, ins_->shape(), strategy_group_,
                                         cluster_env_, batch_map_, option_));
     }
 
@@ -852,17 +852,17 @@ class ConvHandler : public HandlerBase {
 };
 
 // Register strategies for dot instructions.
-Status HandleConv(std::unique_ptr<StrategyVector>& strategies,
+Status HandleConv(std::unique_ptr<StrategyGroup>& strategy_group,
                   LeafStrategies& leaf_strategies, StrategyMap& strategy_map,
                   const HloInstruction* ins, size_t instruction_id,
                   const ClusterEnvironment& cluster_env,
                   const InstructionBatchDimMap& batch_map,
                   const AutoShardingOption& option,
                   const CallGraph& call_graph) {
-  strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
-                                        leaf_strategies);
+  strategy_group = CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
+                                           leaf_strategies);
 
-  ConvHandler handler(strategies, strategy_map, ins, cluster_env, batch_map,
+  ConvHandler handler(strategy_group, strategy_map, ins, cluster_env, batch_map,
                       option, call_graph);
   TF_RETURN_IF_ERROR(handler.RegisterStrategies());
   return OkStatus();
