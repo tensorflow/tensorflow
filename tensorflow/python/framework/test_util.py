@@ -18,7 +18,7 @@
 
 import collections
 from collections import OrderedDict
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 import contextlib
 import functools
 import gc
@@ -30,7 +30,7 @@ import re
 import tempfile
 import threading
 import time
-from typing import Union
+from typing import Any, cast, Optional, overload, TypeVar, Union
 import unittest
 
 from absl.testing import parameterized
@@ -97,6 +97,9 @@ from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.protobuf import compare
 from tensorflow.python.util.tf_export import tf_export
+
+_TC = TypeVar("_TC", bound=type["TensorFlowTestCase"])
+_R = TypeVar("_R")
 
 
 # If the below import is made available through the BUILD rule, then this
@@ -1273,7 +1276,7 @@ def enable_graph_building_optimization(fn):
   return wrapper
 
 
-def add_graph_building_optimization_tests(cls):
+def add_graph_building_optimization_tests(cls: _TC) -> _TC:
   """Adds methods with graph_building_optimization enabled to the test suite.
 
   Example:
@@ -1328,7 +1331,9 @@ def disable_eager_op_as_function(unused_msg):
   return _disable_test(execute_func=False)
 
 
-def set_xla_env_flag(flag=""):
+def set_xla_env_flag(
+    flag: str = "",
+) -> Callable[[Callable[..., _R]], Callable[..., _R]]:
   """Decorator for setting XLA_FLAGS prior to running a test.
 
   This function returns a decorator intended to be applied to test methods in
@@ -1352,10 +1357,10 @@ def set_xla_env_flag(flag=""):
     function.
   """
 
-  def decorator(f):
+  def decorator(f: Callable[..., _R]) -> Callable[..., _R]:
 
     @functools.wraps(f)
-    def decorated(*args, **kwargs):
+    def decorated(*args, **kwargs) -> _R:
       original_xla_flags = os.environ.get("XLA_FLAGS")
       new_xla_flags = flag
       if original_xla_flags:
@@ -1374,7 +1379,9 @@ def set_xla_env_flag(flag=""):
   return decorator
 
 
-def build_as_function_and_v1_graph(func):
+def build_as_function_and_v1_graph(
+    func: Callable[..., Any],
+) -> Callable[..., None]:
   """Run a test case in v1 graph mode and inside tf.function in eager mode.
 
   WARNING: This decorator can only be used in test cases that statically checks
@@ -1398,7 +1405,12 @@ def build_as_function_and_v1_graph(func):
   @parameterized.named_parameters(("_v1_graph", "v1_graph"),
                                   ("_function", "function"))
   @functools.wraps(func)
-  def decorated(self, run_mode, *args, **kwargs):
+  def decorated(
+      self: "TensorFlowTestCase",
+      run_mode: str,
+      *args,
+      **kwargs,
+  ) -> None:
     if run_mode == "v1_graph":
       with ops.Graph().as_default():
         func(self, *args, **kwargs)
@@ -1558,8 +1570,10 @@ def run_in_graph_and_eager_modes(func=None,
   return decorator
 
 
-def run_in_v1_v2(device_to_use: str = None,
-                 assert_no_eager_garbage: bool = False):
+def run_in_v1_v2(
+    device_to_use: Optional[str] = None,
+    assert_no_eager_garbage: bool = False,
+) -> Callable[[Callable[..., Any]], Callable[..., None]]:
   """Execute the decorated test in v1 and v2 modes.
 
   The overall execution is similar to that of `run_in_graph_and_eager_mode`.
@@ -1581,13 +1595,13 @@ def run_in_v1_v2(device_to_use: str = None,
     A decorator that runs a given test in v1 and v2 modes.
   """
 
-  def decorator(f):
+  def decorator(f: Callable[..., Any]) -> Callable[..., None]:
     decorator_tag = "wrapped_with_v1_v2_decorator"
     if hasattr(f, decorator_tag):
       # Already decorated with this very same decorator
       return f
 
-    def decorated(self, *args, **kwargs):
+    def decorated(self: "TensorFlowTestCase", *args, **kwargs) -> None:
       logging.info("Running %s in V1 mode.", f.__name__)
       try:
         with self.subTest("V1_mode"):
@@ -1686,7 +1700,19 @@ def also_run_as_tf_function(f):
   return decorated
 
 
-def deprecated_graph_mode_only(func):
+@overload
+def deprecated_graph_mode_only(func: Callable[..., _R]) -> Callable[..., _R]:
+  ...
+
+
+@overload
+def deprecated_graph_mode_only(func: _TC) -> Optional[_TC]:
+  ...
+
+
+def deprecated_graph_mode_only(
+    func: Union[_TC, Callable[..., _R]],
+) -> Union[_TC, Callable[..., _R]]:
   """Execute the decorated test in graph mode.
 
   This is a decorator intended to be applied to tests that are not compatible
@@ -1819,7 +1845,7 @@ def run_v2_only(func=None, reason=None):
   return _run_vn_only(func=func, v2=True, reason=reason)
 
 
-def run_gpu_only(func):
+def run_gpu_only(func: Callable[..., _R]) -> Callable[..., _R]:
   """Execute the decorated test only if a GPU is available.
 
   This function is intended to be applied to tests that require the presence
@@ -1835,7 +1861,7 @@ def run_gpu_only(func):
   if tf_inspect.isclass(func):
     raise ValueError("`run_gpu_only` only supports test methods.")
 
-  def decorated(self, *args, **kwargs):
+  def decorated(self: "TensorFlowTestCase", *args, **kwargs) -> _R:
     if not is_gpu_available():
       self.skipTest("Test requires GPU")
 
@@ -1844,7 +1870,7 @@ def run_gpu_only(func):
   return decorated
 
 
-def run_cuda_only(func):
+def run_cuda_only(func: Callable[..., _R]) -> Callable[..., _R]:
   """Execute the decorated test only if a GPU is available.
 
   This function is intended to be applied to tests that require the presence
@@ -1860,7 +1886,7 @@ def run_cuda_only(func):
   if tf_inspect.isclass(func):
     raise ValueError("`run_cuda_only` only supports test methods.")
 
-  def decorated(self, *args, **kwargs):
+  def decorated(self: "TensorFlowTestCase", *args, **kwargs) -> _R:
     if not is_gpu_available(cuda_only=True):
       self.skipTest("Test requires CUDA GPU")
 
@@ -1869,7 +1895,7 @@ def run_cuda_only(func):
   return decorated
 
 
-def run_gpu_or_tpu(func):
+def run_gpu_or_tpu(func: Callable[..., _R]) -> Callable[..., _R]:
   """Execute the decorated test only if a physical GPU or TPU is available.
 
   This function is intended to be applied to tests that require the presence
@@ -1888,7 +1914,7 @@ def run_gpu_or_tpu(func):
   if tf_inspect.isclass(func):
     raise ValueError("`run_gpu_or_tpu` only supports test methods.")
 
-  def decorated(self, *args, **kwargs):
+  def decorated(self: "TensorFlowTestCase", *args, **kwargs) -> _R:
     if config.list_physical_devices("GPU"):
       return func(self, "GPU", *args, **kwargs)
 
@@ -2120,7 +2146,7 @@ class ErrorLoggingSession(s.Session):
       raise
 
 
-def disable_cudnn_autotune(func):
+def disable_cudnn_autotune(func: Callable[..., _R]) -> Callable[..., _R]:
   """Disable autotuning during the call to this function.
 
   Some tests want to base assertions on a graph being isomorphic with a copy.
@@ -2133,7 +2159,7 @@ def disable_cudnn_autotune(func):
     Decorated function.
   """
 
-  def decorated(*args, **kwargs):
+  def decorated(*args, **kwargs) -> _R:
     original_tf_cudnn_use_autotune = os.environ.get("TF_CUDNN_USE_AUTOTUNE")
     os.environ["TF_CUDNN_USE_AUTOTUNE"] = "false"
     original_xla_flags = os.environ.get("XLA_FLAGS")
@@ -2159,13 +2185,17 @@ def disable_cudnn_autotune(func):
 
 
 # The description is just for documentation purposes.
-def enable_tf_xla_constant_folding(description):
+def enable_tf_xla_constant_folding(
+    description: str,
+) -> Callable[[Callable[..., _R]], Callable[..., _R]]:
 
   if not isinstance(description, str):
     raise ValueError("'description' should be string, got {}".format(
         type(description)))
 
-  def enable_tf_xla_constant_folding_impl(func):
+  def enable_tf_xla_constant_folding_impl(
+      func: Callable[..., _R],
+  ) -> Callable[..., _R]:
     """Enable constant folding during the call to this function.
 
     Some tests fail without constant folding.
@@ -2177,7 +2207,7 @@ def enable_tf_xla_constant_folding(description):
       Decorated function.
     """
 
-    def decorated(*args, **kwargs):
+    def decorated(*args, **kwargs) -> _R:
       original_var = pywrap_tf_session.TF_GetXlaConstantFoldingDisabled()
       pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(False)
       result = func(*args, **kwargs)
@@ -2190,11 +2220,13 @@ def enable_tf_xla_constant_folding(description):
 
 
 # Updates test function by selectively disabling it.
-def _disable_test(execute_func):
+def _disable_test(
+    execute_func: bool,
+) -> Callable[[Callable[..., _R]], Callable[..., _R]]:
 
-  def disable_test_impl(func):
+  def disable_test_impl(func: Callable[..., _R]) -> Callable[..., _R]:
 
-    def decorated(*args, **kwargs):
+    def decorated(*args, **kwargs) -> _R:
       if execute_func:
         return func(*args, **kwargs)
 
@@ -2204,64 +2236,84 @@ def _disable_test(execute_func):
 
 
 # The description is just for documentation purposes.
-def disable_xla(description):  # pylint: disable=unused-argument
+def disable_xla(
+    description: str,  # pylint: disable=unused-argument
+) -> Callable[[Callable[..., _R]], Callable[..., _R]]:
   """Execute the test method only if xla is not enabled."""
   execute_func = not is_xla_enabled()
   return _disable_test(execute_func)
 
 
 # The description is just for documentation purposes.
-def disable_mlir_bridge(description):  # pylint: disable=unused-argument
+def disable_mlir_bridge(
+    description: str,  # pylint: disable=unused-argument
+) -> Callable[[Callable[..., _R]], Callable[..., _R]]:
   """Execute the test method only if MLIR bridge is not enabled."""
   execute_func = not is_mlir_bridge_enabled()
   return _disable_test(execute_func)
 
 
 # The description is just for documentation purposes.
-def disable_asan(description):  # pylint: disable=unused-argument
+def disable_asan(
+    description: str,  # pylint: disable=unused-argument
+) -> Callable[[Callable[..., _R]], Callable[..., _R]]:
   """Execute the test method only if ASAN is not enabled."""
   execute_func = not is_asan_enabled()
   return _disable_test(execute_func)
 
 
 # The description is just for documentation purposes.
-def disable_msan(description):  # pylint: disable=unused-argument
+def disable_msan(
+    description: str,  # pylint: disable=unused-argument
+) -> Callable[[Callable[..., _R]], Callable[..., _R]]:
   """Execute the test method only if MSAN is not enabled."""
   execute_func = not is_msan_enabled()
   return _disable_test(execute_func)
 
 
 # The description is just for documentation purposes.
-def disable_tsan(description):  # pylint: disable=unused-argument
+def disable_tsan(
+    description: str,  # pylint: disable=unused-argument
+) -> Callable[[Callable[..., _R]], Callable[..., _R]]:
   """Execute the test method only if TSAN is not enabled."""
   execute_func = not is_tsan_enabled()
   return _disable_test(execute_func)
 
 
 # The description is just for documentation purposes.
-def disable_ubsan(description):  # pylint: disable=unused-argument
+def disable_ubsan(
+    description: str,  # pylint: disable=unused-argument
+) -> Callable[[Callable[..., _R]], Callable[..., _R]]:
   """Execute the test method only if UBSAN is not enabled."""
   execute_func = not is_ubsan_enabled()
   return _disable_test(execute_func)
 
 
 # The description is just for documentation purposes.
-def disable_tfrt(unused_description):
+def disable_tfrt(
+    unused_description: str,  # pylint: disable=unused-argument
+) -> Callable[
+    [Union[_TC, Callable[..., _R]]],
+    Union[_TC, Callable[..., _R], None]
+]:
 
-  def disable_tfrt_impl(cls_or_func):
+  def disable_tfrt_impl(
+      cls_or_func: Union[_TC, Callable[..., _R]]
+  ) -> Union[_TC, Callable[..., _R], None]:
     """Execute the test only if tfrt is not enabled."""
 
     if tf_inspect.isclass(cls_or_func):
       if tfrt_utils.enabled():
         return None
       else:
-        return cls_or_func
+        return cast(_TC, cls_or_func)
     else:
-      def decorated(*args, **kwargs):
+      func = cast(Callable[..., _R], cls_or_func)
+      def decorated(*args, **kwargs) -> _R:
         if tfrt_utils.enabled():
           return
         else:
-          return cls_or_func(*args, **kwargs)
+          return func(*args, **kwargs)
 
       return tf_decorator.make_decorator(cls_or_func, decorated)
 
@@ -2296,19 +2348,23 @@ def for_all_test_methods(decorator, *args, **kwargs):
 
 
 # The description is just for documentation purposes.
-def no_xla_auto_jit(description):  # pylint: disable=unused-argument
+def no_xla_auto_jit(
+    description: str,  # pylint: disable=unused-argument
+) -> Callable[[Callable[..., _R]], Callable[..., _R]]:
   """This test is not intended to be run with XLA auto jit enabled."""
   execute_func = not is_xla_enabled()
   return _disable_test(execute_func)
 
 
 # The description is just for documentation purposes.
-def xla_allow_fallback(description):  # pylint: disable=unused-argument
+def xla_allow_fallback(
+    description: str,  # pylint: disable=unused-argument
+):
 
-  def xla_allow_fallback_impl(func):
+  def xla_allow_fallback_impl(func: Callable[..., _R]) -> Callable[..., _R]:
     """Allow fallback to TF even though testing xla."""
 
-    def decorated(*args, **kwargs):
+    def decorated(*args, **kwargs) -> _R:
       if is_xla_enabled():
         # Update the global XLABuildOpsPassFlags to enable lazy compilation,
         # which allows the compiler to fall back to TF classic. Remember the
