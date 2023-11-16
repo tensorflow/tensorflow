@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Matchers.h"
+#include "mlir/Support/LLVM.h"
 
 using namespace mlir;
 
@@ -482,7 +483,7 @@ struct ShapeVisitor {
     SymbolicExpr dim;
     for (auto &it : in) {
       // For constant expressions, we can accumulate a concrete product.
-      if (auto cexpr = it.expr.dyn_cast<AffineConstantExpr>()) {
+      if (auto cexpr = dyn_cast<AffineConstantExpr>(it.expr)) {
         assert(cexpr.getValue() > 0 && "shape value must be positive");
         concreteProduct *= cexpr.getValue();
         continue;
@@ -768,8 +769,8 @@ void ShapeComponentAnalysis::reset() {
 }
 
 bool SymbolicExpr::isConstant(int64_t value) const {
-  return expr.isa<AffineConstantExpr>() &&
-         expr.cast<AffineConstantExpr>().getValue() == value;
+  return isa<AffineConstantExpr>(expr) &&
+         cast<AffineConstantExpr>(expr).getValue() == value;
 }
 
 bool SymbolicExpr::isKnownNotNegativeOne() const {
@@ -787,9 +788,9 @@ bool SymbolicExpr::isKnownNotNegativeOne() const {
   // For constants we know if it's -1 or not. Checking the sign is sufficient
   // here and allows for reuse below. This is correct, not complete.
   auto isGoodSymbolOrGoodConstantExpr = [&](AffineExpr expr) {
-    if (auto symExpr = expr.dyn_cast<AffineSymbolExpr>())
+    if (auto symExpr = dyn_cast<AffineSymbolExpr>(expr))
       return isGoodSymbol(symbols[symExpr.getPosition()]);
-    if (auto constExpr = expr.dyn_cast<AffineConstantExpr>())
+    if (auto constExpr = dyn_cast<AffineConstantExpr>(expr))
       return constExpr.getValue() >= 0;
     return false;
   };
@@ -799,7 +800,7 @@ bool SymbolicExpr::isKnownNotNegativeOne() const {
   // Multiplying non-negative symbols and non-negative constants will always
   // give a positive result. This is correct, not complete.
   // TODO(kramerb): Could the analysis provide a generic interface for this?
-  if (auto bexpr = expr.dyn_cast<AffineBinaryOpExpr>()) {
+  if (auto bexpr = dyn_cast<AffineBinaryOpExpr>(expr)) {
     return bexpr.getKind() == AffineExprKind::Mul &&
            isGoodSymbolOrGoodConstantExpr(bexpr.getLHS()) &&
            isGoodSymbolOrGoodConstantExpr(bexpr.getRHS());
@@ -809,15 +810,15 @@ bool SymbolicExpr::isKnownNotNegativeOne() const {
 }
 
 bool SymbolicExpr::isKnownNotOne() const {
-  if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
+  if (auto constExpr = dyn_cast<AffineConstantExpr>(expr)) {
     return constExpr.getValue() != 1;
   }
   return false;
 }
 
 std::optional<Symbol> SymbolicExpr::singleton() const {
-  if (expr.isa<AffineSymbolExpr>() &&
-      expr.cast<AffineSymbolExpr>().getPosition() == 0) {
+  if (isa<AffineSymbolExpr>(expr) &&
+      cast<AffineSymbolExpr>(expr).getPosition() == 0) {
     assert(symbols.size() == 1);
     return symbols[0];
   }
