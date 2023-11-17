@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -72,6 +73,10 @@ bool IsI8F32UniformQuantizedPerAxisType(Type type);
 // Returns true iff `type` is a uniform quantized type whose storage type is
 // 32-bit integer and expressed type is f32.
 bool IsI32F32UniformQuantizedType(Type type);
+
+// Determines whether the storage type of a quantized type is supported by
+// `tfl.quantize` or `tfl.dequantize` ops. ui8, i8 and i16 are supported.
+bool IsSupportedByTfliteQuantizeOrDequantizeOps(IntegerType storage_type);
 
 }  // namespace quant
 }  // namespace mlir

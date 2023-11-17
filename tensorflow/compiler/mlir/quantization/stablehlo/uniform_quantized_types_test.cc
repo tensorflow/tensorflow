@@ -349,6 +349,43 @@ TEST_F(IsI32F32UniformQuantizedTypeTest, IsExpressedTypeF32) {
   EXPECT_TRUE(IsExpressedTypeF32(qi32_per_axis_type));
 }
 
+class IsSupportedByTfliteQuantizeOrDequantizeOpsTest : public ::testing::Test {
+ protected:
+  IsSupportedByTfliteQuantizeOrDequantizeOpsTest() {
+    ctx_.loadDialect<quant::QuantizationDialect>();
+  }
+
+  MLIRContext ctx_;
+  OpBuilder builder_{&ctx_};
+};
+
+TEST_F(IsSupportedByTfliteQuantizeOrDequantizeOpsTest, IsI8) {
+  auto qi8_type = quant::UniformQuantizedType::get(
+      /*flags=*/0, builder_.getIntegerType(8, /*isSigned=*/true),
+      builder_.getF32Type(), /*scale=*/1.0,
+      /*zeroPoint=*/0, /*storageTypeMin=*/0, /*storageTypeMax=*/255);
+  EXPECT_TRUE(IsSupportedByTfliteQuantizeOrDequantizeOps(
+      dyn_cast_or_null<IntegerType>(qi8_type.getStorageType())));
+}
+
+TEST_F(IsSupportedByTfliteQuantizeOrDequantizeOpsTest, IsI16) {
+  auto qi16_type = quant::UniformQuantizedType::get(
+      /*flags=*/0, builder_.getIntegerType(16, /*isSigned=*/true),
+      builder_.getF32Type(), /*scale=*/1.0,
+      /*zeroPoint=*/0, /*storageTypeMin=*/0, /*storageTypeMax=*/255);
+  EXPECT_TRUE(IsSupportedByTfliteQuantizeOrDequantizeOps(
+      dyn_cast_or_null<IntegerType>(qi16_type.getStorageType())));
+}
+
+TEST_F(IsSupportedByTfliteQuantizeOrDequantizeOpsTest, IsUI8) {
+  auto qi8_type = quant::UniformQuantizedType::get(
+      /*flags=*/0, builder_.getIntegerType(8, /*isSigned=*/false),
+      builder_.getF32Type(), /*scale=*/1.0,
+      /*zeroPoint=*/0, /*storageTypeMin=*/0, /*storageTypeMax=*/255);
+  EXPECT_TRUE(IsSupportedByTfliteQuantizeOrDequantizeOps(
+      dyn_cast_or_null<IntegerType>(qi8_type.getStorageType())));
+}
+
 }  // namespace
 }  // namespace quant
 }  // namespace mlir
