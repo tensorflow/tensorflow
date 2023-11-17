@@ -372,15 +372,19 @@ StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::Compile(
     std::vector<pybind11::capsule> host_callbacks) {
   // Pass allocated device memory size to compile options for pjrt compatible
   // backends.
-  if ((ifrt_client_->platform_id() == xla::CudaId() ||
-       ifrt_client_->platform_id() == xla::RocmId()) &&
-      !pjrt_client()->devices().empty()) {
-    auto maybe_stats = pjrt_client()->devices()[0]->GetAllocatorStats();
-    if (maybe_stats.ok() && maybe_stats->bytes_limit) {
-      options.executable_build_options.set_device_memory_size(
-          *maybe_stats->bytes_limit);
+  auto* pjrt_compatible_client =
+      llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(ifrt_client_.get());
+  if (pjrt_compatible_client != nullptr) {
+    auto devices = pjrt_compatible_client->pjrt_client()->devices();
+    if (!devices.empty()) {
+      auto stats = devices[0]->GetAllocatorStats();
+      if (stats.ok() && stats->bytes_limit) {
+        options.executable_build_options.set_device_memory_size(
+            *stats->bytes_limit);
+      }
     }
   }
+
   std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable;
   std::optional<std::string> fingerprint;
   auto ifrt_compile_options =
