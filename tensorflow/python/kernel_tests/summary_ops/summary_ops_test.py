@@ -996,7 +996,7 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
     with context.graph_mode(), ops.Graph().as_default():
       summary_ops.create_file_writer_v2(logdir)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testNoMemoryLeak_eagerMode(self):
     logdir = self.get_temp_dir()
     with summary_ops.create_file_writer_v2(logdir).as_default():

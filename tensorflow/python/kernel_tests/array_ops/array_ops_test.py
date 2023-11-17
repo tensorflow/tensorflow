@@ -688,7 +688,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       s = array_ops.strided_slice(x, begin, end, strides)
       self.assertAllEqual([3.], self.evaluate(s))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   @test_util.assert_no_garbage_created
   def testTensorSliceEagerMemory(self):
     with context.eager_mode():
@@ -697,7 +697,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       # Tests that slicing an EagerTensor doesn't leak memory
       inputs[0]  # pylint: disable=pointless-statement
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   @test_util.assert_no_garbage_created
   def testVariableSliceEagerMemory(self):
     if sys.version_info.major == 3 and sys.version_info.minor in (11, 12):

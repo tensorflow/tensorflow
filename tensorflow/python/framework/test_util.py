@@ -672,26 +672,27 @@ def enable_output_all_intermediates(fn):
   return wrapper
 
 
-def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
+def assert_no_new_pyobjects_executing_eagerly(
+    warmup_iters: int = 2,
+) -> Callable[[Callable[..., Any]], Callable[..., None]]:
   """Decorator for asserting that no new Python objects persist after a test.
 
-  Runs the test multiple times executing eagerly, first as a warmup and then to
-  let objects accumulate. The warmup helps ignore caches which do not grow as
-  the test is run repeatedly.
+  Returns a decorator that runs the test multiple times executing eagerly,
+  first as a warmup and then to let objects accumulate. The warmup helps ignore
+  caches which do not grow as the test is run repeatedly.
 
   Useful for checking that there are no missing Py_DECREFs in the C exercised by
   a bit of Python.
 
   Args:
-    func: The function to test.
     warmup_iters: The numer of warmup iterations, excluded from measuring.
 
   Returns:
-    The wrapped function performing the test.
+    A decorator function which can be applied to the test function.
   """
 
-  def wrap_f(f):
-    def decorator(self, *args, **kwargs):
+  def wrap_f(f: Callable[..., Any]) -> Callable[..., None]:
+    def decorator(self: "TensorFlowTestCase", *args, **kwargs) -> None:
       """Warms up, gets object counts, runs the test, checks for new objects."""
       with context.eager_mode():
         gc.disable()
@@ -783,12 +784,9 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
             "The following objects were newly created: %s" %
             str(obj_count_by_type))
         gc.enable()
-    return decorator
+    return tf_decorator.make_decorator(f, decorator)
 
-  if func is None:
-    return wrap_f
-  else:
-    return wrap_f(func)
+  return wrap_f
 
 
 def assert_no_new_tensors(f):
