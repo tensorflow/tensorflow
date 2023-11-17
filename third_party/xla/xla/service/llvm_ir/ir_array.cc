@@ -485,6 +485,10 @@ llvm::Value* IrArray::EmitArrayElementAddress(
     const IrArray::Index& index, llvm::IRBuilder<>* b, absl::string_view name,
     bool use_linear_index, llvm::Value** is_high_order_bits) const {
   if (ShapeUtil::IsScalar(shape_)) {
+    if (primitive_util::Is4BitType(shape_.element_type())) {
+      CHECK_NE(is_high_order_bits, nullptr);
+      *is_high_order_bits = b->getTrue();
+    }
     // Special handling of scalars: a scalar pretends to have the same value for
     // every index, thus effectively implementing broadcasting of its value
     // over higher-rank arrays.
