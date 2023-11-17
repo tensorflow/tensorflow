@@ -95,7 +95,7 @@ class GpuExecutable : public Executable {
     xla::Shape output_shape;
     std::vector<BufferAllocation> allocations;
     bool enable_persistent_temp_buffers;
-    std::unique_ptr<BufferAssignmentProto> debug_buffer_assignment = nullptr;
+    std::shared_ptr<BufferAssignment> debug_buffer_assignment;
 
     // A callable that dumps out a debug string upon device OOM. It's not the
     // string itself, as the string can be huge and increase peak host memory
@@ -201,6 +201,14 @@ class GpuExecutable : public Executable {
 
   StatusOr<std::string_view> GetObjFile() const;
   StatusOr<std::string_view> GetMlirModule() const;
+
+  BufferAssignment* BufferAssignment() const {
+    return debug_buffer_assignment_.get();
+  }
+
+  BufferAssignmentProto* BufferAssignmentProto() const {
+    return debug_buffer_assignment_proto_.get();
+  }
 
  private:
   // Use GpuExecutable::Create() to create an instance.
@@ -308,7 +316,8 @@ class GpuExecutable : public Executable {
                       BufferAllocToDeviceMemoryMap>
       persistent_temp_buffers_ ABSL_GUARDED_BY(persistent_temp_buffers_mu_);
 
-  std::shared_ptr<BufferAssignmentProto> debug_buffer_assignment_;
+  std::shared_ptr<xla::BufferAssignment> debug_buffer_assignment_;
+  std::shared_ptr<xla::BufferAssignmentProto> debug_buffer_assignment_proto_;
   std::function<std::string()> verbose_buffer_assignment_string_dumper_;
 
   absl::Mutex module_handle_mutex_;

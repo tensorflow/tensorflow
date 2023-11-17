@@ -88,6 +88,13 @@ struct GpuOptProvider : public OptProvider {
           std::unique_ptr<Executable> executable,
           ToGpuExecutable(std::move(module), compiler, executor, opts));
       return static_cast<gpu::GpuExecutable*>(executable.get())->text();
+    } else if (s == "buffer-assignment") {
+      TF_ASSIGN_OR_RETURN(
+          std::unique_ptr<Executable> executable,
+          ToGpuExecutable(std::move(module), compiler, executor, opts));
+      return static_cast<gpu::GpuExecutable*>(executable.get())
+          ->BufferAssignment()
+          ->ToVerboseString(9999);
     }
 
     // Unimplemented stage.
@@ -95,7 +102,7 @@ struct GpuOptProvider : public OptProvider {
   }
 
   std::vector<std::string> SupportedStages() override {
-    return {"hlo", "llvm", "ptx"};
+    return {"hlo", "llvm", "ptx", "buffer-assignment"};
   }
 };
 
