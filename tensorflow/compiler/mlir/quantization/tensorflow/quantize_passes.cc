@@ -70,6 +70,9 @@ void AddCallModuleSerializationPasses(mlir::PassManager &pm) {
   pm.addPass(
       mlir::quant::stablehlo::
           createReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass());
+  // ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass may create
+  // duplicate constants. Add canonicalizer to deduplicate.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   pm.addPass(mlir::TF::CreateXlaCallModuleSerializationPass());
 }
 }  // namespace
