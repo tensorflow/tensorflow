@@ -57,10 +57,13 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
 // `dataset_node` is the name of the node corresponding to the dataset.
 // If `add_fake_sinks` is true, it adds fake sink node to graph and functions to
 // allow rewriting the actual sink nodes.
+// If `apply_optimizations` is true, general grappler optimizations at level
+// `tensorflow::OptimizerOptions::L1` are applied to the graph.
 // TODO(b/118820916): When MetaOptimizer adds provisions for function retvals to
 // be optimizable, we will no longer need to add fake nodes.
 std::unique_ptr<tensorflow::grappler::GrapplerItem> GetGrapplerItem(
-    GraphDef* graph_def, std::string* dataset_node, bool add_fake_sinks);
+    GraphDef* graph_def, std::string* dataset_node, bool add_fake_sinks,
+    bool apply_optimizations = true);
 
 // Returns the name of the node corresponding to the dataset. It is indicated by
 // the symbolic `_Retval` node.
