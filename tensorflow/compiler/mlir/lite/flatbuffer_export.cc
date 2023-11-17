@@ -1311,7 +1311,7 @@ BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
         /*custom_options=*/0, tflite::CustomOptionsFormat_FLEXBUFFERS);
   }
   if (custom_option_alignment_.has_value()) {
-    builder_.ForceVectorAlignment(results.size(), sizeof(uint8_t),
+    builder_.ForceVectorAlignment(custom_option_vector.size(), sizeof(uint8_t),
                                   custom_option_alignment_.value());
   }
   auto custom_option_fbs_vector =
