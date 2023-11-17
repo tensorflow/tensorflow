@@ -60,16 +60,6 @@ PyClient::PyClient(std::shared_ptr<ifrt::Client> ifrt_client)
     : ifrt_client_(std::move(ifrt_client)),
       client_attributes_(ifrt_client_->attributes()) {
   CHECK(ifrt_client_);
-  // TODO(phawkins): this is a temporary backwards compatibility shim. We
-  // changed the name PJRT reports for GPU platforms to "cuda" or "rocm", but
-  // we haven't yet updated JAX clients that expect "gpu". Migrate users and
-  // remove this code.
-  if (ifrt_client_->platform_name() == "cuda" ||
-      ifrt_client_->platform_name() == "rocm") {
-    platform_name_ = "gpu";
-  } else {
-    platform_name_ = ifrt_client_->platform_name();
-  }
 }
 
 PyClient::~PyClient() {
