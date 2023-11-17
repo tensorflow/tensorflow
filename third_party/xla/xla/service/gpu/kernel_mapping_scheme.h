@@ -146,34 +146,34 @@ class TilingScheme {
 
  private:
   // The number of elements in each dimension.
-  const Vector3 dims_in_elems_;
+  Vector3 dims_in_elems_;
 
   // The number of elements for each dimension of a tile.
-  const Vector3 tile_sizes_;
+  Vector3 tile_sizes_;
 
   // The dimensions which are used for the shared memory tile.
-  const Vector2 tiling_dimensions_;
+  Vector2 tiling_dimensions_;
 
   // Number of threads implicitly assigned to each dimension.
-  const Vector3 num_threads_;
+  Vector3 num_threads_;
 
-  const IndexingOrder indexing_order_;
+  IndexingOrder indexing_order_;
 
   // Vector size for dimension X.
-  const int vector_size_;
+  int vector_size_;
 
   // Scaling apply to transform physical threadIdx into logical.
-  const int64_t thread_id_virtual_scaling_ = 1;
+  int64_t thread_id_virtual_scaling_ = 1;
 };
 
 class ReductionCodegenInfo {
  public:
   using IndexGroups = std::vector<std::vector<const HloInstruction*>>;
 
-  explicit ReductionCodegenInfo(TilingScheme mapping_scheme,
-                                int num_partial_results, bool is_row_reduction,
-                                bool is_race_free, IndexGroups index_groups,
-                                const HloInstruction* first_reduce)
+  ReductionCodegenInfo(TilingScheme mapping_scheme, int num_partial_results,
+                       bool is_row_reduction, bool is_race_free,
+                       IndexGroups index_groups,
+                       const HloInstruction* first_reduce)
       : tiling_scheme_(mapping_scheme),
         num_partial_results_(num_partial_results),
         is_row_reduction_(is_row_reduction),
@@ -198,7 +198,7 @@ class ReductionCodegenInfo {
  private:
   friend class ReductionCodegenState;
 
-  const TilingScheme tiling_scheme_;
+  TilingScheme tiling_scheme_;
   int num_partial_results_;
   bool is_row_reduction_;
   bool is_race_free_;

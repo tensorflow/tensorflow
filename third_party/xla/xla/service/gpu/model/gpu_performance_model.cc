@@ -224,7 +224,7 @@ float GetMaxSysBwFromGpu(const se::CudaComputeCapability cc,
 // that the IR emitter will use.
 LaunchDimensions EstimateFusionLaunchDimensions(
     int64_t estimated_num_threads,
-    std::optional<HloFusionAnalysis>& fusion_analysis,
+    const std::optional<HloFusionAnalysis>& fusion_analysis,
     const se::DeviceDescription& device_info) {
   if (fusion_analysis) {
     // TODO(jreiffers): This is the wrong place for this DUS analysis.
@@ -269,7 +269,15 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
   int64_t bytes_written = cost_analysis->output_bytes_accessed(*instr);
   int64_t bytes_read = cost_analysis->bytes_accessed(*instr) - bytes_written;
 
-  auto fusion_analysis = AnalyzeFusion(*instr, *cost_analysis->device_info_);
+  // Use the analysis cache if present.
+  // TODO(jreiffers): Remove this once all callers use a cache.
+  std::optional<HloFusionAnalysis> local_analysis =
+      config.fusion_analysis_cache
+          ? std::nullopt
+          : AnalyzeFusion(*instr, *cost_analysis->device_info_);
+  const auto& fusion_analysis = config.fusion_analysis_cache
+                                    ? config.fusion_analysis_cache->Get(*instr)
+                                    : local_analysis;
   LaunchDimensions launch_dimensions = EstimateFusionLaunchDimensions(
       ShapeUtil::ElementsInRecursive(instr->shape()), fusion_analysis,
       *device_info);
@@ -341,7 +349,7 @@ float GetCommonUtilization(
     const GpuHloCostAnalysis* cost_analysis,
     const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
     const HloInstruction* producer,
-    std::optional<HloFusionAnalysis>& fusion_analysis,
+    const std::optional<HloFusionAnalysis>& fusion_analysis,
     const GpuPerformanceModelOptions& config,
     const HloInstruction* fused_consumer) {
   absl::Duration ret = absl::ZeroDuration();
@@ -430,7 +438,16 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
     float utilization_by_this_consumer = cost_analysis->operand_utilization(
         *fused_consumer, fused_consumer->operand_index(producer));
 
-    auto analysis_unfused = AnalyzeFusion(*fused_consumer, *device_info);
+    // Use the analysis cache if present.
+    // TODO(jreiffers): Remove this once all callers use a cache.
+    std::optional<HloFusionAnalysis> local_analysis =
+        config.fusion_analysis_cache
+            ? std::nullopt
+            : AnalyzeFusion(*fused_consumer, *device_info);
+    const auto& analysis_unfused =
+        config.fusion_analysis_cache
+            ? config.fusion_analysis_cache->Get(*fused_consumer)
+            : local_analysis;
 
     LaunchDimensions launch_dimensions_unfused = EstimateFusionLaunchDimensions(
         ShapeUtil::ElementsInRecursive(fused_consumer->shape()),
@@ -479,8 +496,15 @@ absl::Duration GpuPerformanceModel::EstimateFusedExecTime(
     //
     // TODO(shyshkov): Add calculations for consumer epilogue in the formula to
     // make it complete.
-    auto analysis_fused =
-        AnalyzeProducerConsumerFusion(*producer, *fused_consumer, *device_info);
+    std::optional<HloFusionAnalysis> local_analysis_fused =
+        config.fusion_analysis_cache
+            ? std::nullopt
+            : AnalyzeProducerConsumerFusion(*producer, *fused_consumer,
+                                            *device_info);
+    const auto& analysis_fused =
+        config.fusion_analysis_cache
+            ? config.fusion_analysis_cache->Get(*producer, *fused_consumer)
+            : local_analysis_fused;
 
     LaunchDimensions launch_dimensions_fused = EstimateFusionLaunchDimensions(
         producer_data.num_threads * utilization_by_this_consumer,
