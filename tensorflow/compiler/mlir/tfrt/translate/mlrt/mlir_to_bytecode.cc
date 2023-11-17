@@ -464,6 +464,8 @@ absl::StatusOr<bc::Buffer> EmitExecutable(
     return status;
   }
 
+  buffer.shrink_to_fit();
+
   return buffer;
 }
 
