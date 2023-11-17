@@ -211,9 +211,11 @@ cudaDataType_t BlasLt::MatrixLayout::type() const {
                              AsCublasOperation(trans_b)));
   TF_ASSIGN_OR_RETURN(cublasLtEpilogue_t epi, AsCublasLtEpilogue(epilogue));
   TF_RETURN_IF_ERROR(SetAttr(cu_desc, CUBLASLT_MATMUL_DESC_EPILOGUE, epi));
-  // TODO(b/259609697): Set the CUBLASLT_MATMUL_DESC_FAST_ACCUM attribute if
-  // enable_fast_accum is true, once Flax/Praxis properly pass a PrecisionConfig
-  // of HIGH or HIGHEST on the backwards pass.
+  // The CUBLASLT_MATMUL_DESC_FAST_ACCUM flag only impacts FP8 gemms. It speeds
+  // up gemms at the expense of accumulation precision. In practice, it is safe
+  // to set on the forward pass but not the backward pass.
+  TF_RETURN_IF_ERROR(SetAttr(cu_desc, CUBLASLT_MATMUL_DESC_FAST_ACCUM,
+                             static_cast<int8_t>(enable_fast_accum)));
   return std::move(desc);
 }
 
