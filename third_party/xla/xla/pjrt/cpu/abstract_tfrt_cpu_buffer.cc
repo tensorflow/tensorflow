@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/abstract_tfrt_cpu_buffer.h"
+#include "xla/pjrt/cpu/abstract_tfrt_cpu_buffer.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -40,9 +40,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/literal.h"
+#include "xla/pjrt/cpu/tracked_tfrt_cpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
-#include "xla/pjrt/tracked_tfrt_cpu_device_buffer.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/pjrt/pjrt_client_test.h"
-#include "xla/pjrt/tfrt_cpu_pjrt_client.h"
+#include "xla/pjrt/cpu/cpu_client.h"
 
 namespace xla {
 namespace {

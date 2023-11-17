@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_ABSTRACT_TFRT_CPU_BUFFER_H_
-#define XLA_PJRT_ABSTRACT_TFRT_CPU_BUFFER_H_
+#ifndef XLA_PJRT_CPU_ABSTRACT_TFRT_CPU_BUFFER_H_
+#define XLA_PJRT_CPU_ABSTRACT_TFRT_CPU_BUFFER_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -34,9 +34,9 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
+#include "xla/pjrt/cpu/tracked_tfrt_cpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
-#include "xla/pjrt/tracked_tfrt_cpu_device_buffer.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/runtime/cpu_event.h"
 #include "xla/shape.h"
@@ -421,4 +421,4 @@ class AbstractAsyncHostToHostMemoryTransferManager
 
 }  // namespace xla
 
-#endif  // XLA_PJRT_ABSTRACT_TFRT_CPU_BUFFER_H_
+#endif  // XLA_PJRT_CPU_ABSTRACT_TFRT_CPU_BUFFER_H_

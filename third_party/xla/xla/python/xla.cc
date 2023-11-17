@@ -60,10 +60,10 @@ limitations under the License.
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
+#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/tfrt_cpu_pjrt_client.h"
 #include "xla/python/custom_call_sharding.h"
 #include "xla/python/dlpack.h"
 #include "xla/python/jax_jit.h"

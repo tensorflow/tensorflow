@@ -136,7 +136,7 @@ cc_library(
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_wrapper_impl",
         "//xla/pjrt:pjrt_client",
-        "//xla/pjrt:tfrt_cpu_pjrt_client",
+        "//xla/pjrt/cpu:cpu_client",
     ],
 )
 

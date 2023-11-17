@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/tfrt_cpu_pjrt_client.h"
+#include "xla/pjrt/cpu/cpu_client.h"
 
 #include <unistd.h>
 
