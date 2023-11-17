@@ -93,7 +93,7 @@ struct GpuOptProvider : public OptProvider {
           std::unique_ptr<Executable> executable,
           ToGpuExecutable(std::move(module), compiler, executor, opts));
       return static_cast<gpu::GpuExecutable*>(executable.get())
-          ->BufferAssignment()
+          ->buffer_assignment()
           ->ToVerboseString(9999);
     }
 

@@ -202,11 +202,11 @@ class GpuExecutable : public Executable {
   StatusOr<std::string_view> GetObjFile() const;
   StatusOr<std::string_view> GetMlirModule() const;
 
-  BufferAssignment* BufferAssignment() const {
+  BufferAssignment* buffer_assignment() const {
     return debug_buffer_assignment_.get();
   }
 
-  BufferAssignmentProto* BufferAssignmentProto() const {
+  BufferAssignmentProto* buffer_assignment_proto() const {
     return debug_buffer_assignment_proto_.get();
   }
 
