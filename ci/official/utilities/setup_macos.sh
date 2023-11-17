@@ -60,5 +60,5 @@ if [[ "${TFCI_PYTHON_VERSION}" == "3.12" ]]; then
   # dm-tree (Keras v3 dependency) doesn't have pre-built wheels for 3.12 yet.
   # Having CMake allows building them.
   # Once the wheels are added, this should be removed - b/308399490.
-  sudo apt-get install -y --no-install-recommends cmake
+  brew install cmake
 fi
