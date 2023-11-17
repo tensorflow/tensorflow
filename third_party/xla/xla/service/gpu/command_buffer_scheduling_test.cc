@@ -222,10 +222,7 @@ TEST_F(CommandBufferSchedulingTest, CollectCommandBufferSequence) {
   EXPECT_EQ(seq.size(), 10);
 
   std::vector<HloInstructionSequence> command_buffer_sequences =
-      CommandBufferScheduling::CollectCommandBufferSequences(
-          seq, [](const HloInstruction* instr) {
-            return instr->opcode() == HloOpcode::kFusion;
-          });
+      CommandBufferScheduling::CollectCommandBufferSequences(seq);
   EXPECT_EQ(command_buffer_sequences.size(), 2);
 
   std::vector<HloInstruction*> seq_0 =

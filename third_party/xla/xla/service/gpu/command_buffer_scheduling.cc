@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/command_buffer_scheduling.h"
 
 #include <cstdint>
-#include <functional>
 #include <utility>
 #include <vector>
 
@@ -45,6 +44,11 @@ namespace {
 // category.
 // 2. Intermediates: Instructions that produce intermediate values that are
 // used by commands.
+bool IsCommand(const HloInstruction* inst) {
+  // TODO(anlunx): Add support for conditionals and while loops.
+  return inst->opcode() == HloOpcode::kFusion;
+}
+
 bool IsIntermediate(const HloInstruction* inst) {
   switch (inst->opcode()) {
     case HloOpcode::kConstant:
@@ -75,8 +79,7 @@ constexpr int kMinNumCommands = 2;
 // subsequences that will be extracted as command buffers.
 std::vector<HloInstructionSequence>
 CommandBufferScheduling::CollectCommandBufferSequences(
-    const HloInstructionSequence inst_sequence,
-    std::function<bool(const HloInstruction*)> is_command) {
+    const HloInstructionSequence inst_sequence) {
   struct Accumulator {
     std::vector<HloInstructionSequence> sequences;
     HloInstructionSequence current_seq;
@@ -93,10 +96,10 @@ CommandBufferScheduling::CollectCommandBufferSequences(
     return acc;
   };
 
-  auto process_instruction = [&start_new_sequence, &is_command](
+  auto process_instruction = [&start_new_sequence](
                                  Accumulator* acc,
                                  HloInstruction* inst) -> Accumulator* {
-    if (is_command(inst)) {
+    if (IsCommand(inst)) {
       acc->current_seq.push_back(inst);
       acc->num_commands_in_current_seq += 1;
       return acc;
@@ -236,26 +239,8 @@ StatusOr<bool> CommandBufferScheduling::Run(
   }
   HloComputation* entry = module->entry_computation();
   MoveParametersToFront(entry);
-
-  absl::flat_hash_set<DebugOptions::CommandBufferCmdType> command_types;
-  for (auto cmd_type_num :
-       module->config().debug_options().xla_gpu_enable_command_buffer()) {
-    DebugOptions::CommandBufferCmdType cmd_type =
-        static_cast<DebugOptions::CommandBufferCmdType>(cmd_type_num);
-    command_types.insert(cmd_type);
-  }
-
-  std::function<bool(const HloInstruction*)> is_command =
-      [&command_types =
-           std::as_const(command_types)](const HloInstruction* inst) {
-        if (inst->opcode() == HloOpcode::kFusion) {
-          if (command_types.contains(DebugOptions::FUSION)) return true;
-        }
-        return false;
-      };
-
-  std::vector<HloInstructionSequence> sequences = CollectCommandBufferSequences(
-      module->schedule().sequence(entry), is_command);
+  std::vector<HloInstructionSequence> sequences =
+      CollectCommandBufferSequences(module->schedule().sequence(entry));
 
   for (const HloInstructionSequence& seq : sequences) {
     TF_ASSIGN_OR_RETURN(BuildCommandBufferResult result,
