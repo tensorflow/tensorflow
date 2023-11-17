@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "xla/layout_util.h"
 #include "xla/permutation_util.h"
@@ -555,7 +556,6 @@ llvm::Value* IrArray::EmitLinearArrayElementAddress(
   // Handle int4 case by dividing index by 2. Int4 arrays are represented in
   // LLVM IR as an array of i8 value where each i8 value stores two int4
   // numbers.
-  CHECK(type->isIntegerTy(8));
   llvm::Type* index_type = index.linear()->getType();
   llvm::Value* zero = llvm::ConstantInt::get(index_type, 0);
   llvm::Value* two = llvm::ConstantInt::get(index_type, 2);
@@ -564,7 +564,7 @@ llvm::Value* IrArray::EmitLinearArrayElementAddress(
   // is_high_order_bits must be set for int4 arrays.
   CHECK_NE(is_high_order_bits, nullptr);
   *is_high_order_bits = b->CreateICmpEQ(remainder, zero);
-  return b->CreateInBoundsGEP(type, base_ptr_, byte_offset,
+  return b->CreateInBoundsGEP(b->getInt8Ty(), base_ptr_, byte_offset,
                               llvm_ir::AsStringRef(name));
 }
 
@@ -587,29 +587,18 @@ llvm::Value* IrArray::EmitReadArrayElement(const Index& index,
   llvm::Value* is_high_order_bits = nullptr;
   llvm::Value* element_address = EmitArrayElementAddress(
       index, b, name, use_linear_index, &is_high_order_bits);
+  llvm::Type* load_type = primitive_util::Is4BitType(shape_.element_type())
+                              ? b->getInt8Ty()
+                              : element_type_;
   llvm::LoadInst* load =
-      b->CreateLoad(element_type_, element_address, llvm_ir::AsStringRef(name));
+      b->CreateLoad(load_type, element_address, llvm_ir::AsStringRef(name));
   AnnotateLoadStoreInstructionWithMetadata(load);
   llvm::Value* elem = load;
   if (primitive_util::Is4BitType(shape_.element_type())) {
     llvm::Type* type = load->getType();
-    llvm::Value* high_order_bits;
-    llvm::Value* low_order_bits;
-    if (shape_.element_type() == U4) {
-      high_order_bits = b->CreateLShr(load, llvm::ConstantInt::get(type, 4));
-      low_order_bits = b->CreateAnd(load, llvm::ConstantInt::get(type, 0x0F));
-    } else {
-      CHECK_EQ(shape_.element_type(), S4);
-      high_order_bits = b->CreateAShr(load, llvm::ConstantInt::get(type, 4));
-      // To compute low_order_bits, cast to i4 then back to i8, which fills the
-      // left 4 bits with ones for negative numbers and zeros for positive
-      // numbers.
-      low_order_bits =
-          b->CreateIntCast(load, b->getIntNTy(4), /*isSigned=*/true);
-      low_order_bits =
-          b->CreateIntCast(low_order_bits, b->getInt8Ty(), /*isSigned=*/true);
-    }
-    elem = b->CreateSelect(is_high_order_bits, high_order_bits, low_order_bits);
+    llvm::Value* shifted = b->CreateLShr(load, llvm::ConstantInt::get(type, 4));
+    elem = b->CreateSelect(is_high_order_bits, shifted, load);
+    elem = b->CreateTrunc(elem, b->getIntNTy(4));
   }
   return elem;
 }
@@ -623,9 +612,11 @@ void IrArray::EmitWriteArrayElement(const Index& index, llvm::Value* value,
   if (primitive_util::Is4BitType(shape_.element_type())) {
     // Read a byte, replace the high-order or low-order bits with 'value',
     // and write it back.
-    llvm::LoadInst* load = b->CreateLoad(element_type_, element_address);
+    llvm::LoadInst* load = b->CreateLoad(b->getInt8Ty(), element_address);
     AnnotateLoadStoreInstructionWithMetadata(load);
     llvm::Type* type = load->getType();
+    value = b->CreateIntCast(value, b->getInt8Ty(),
+                             /*isSigned=*/shape_.element_type() == S4);
 
     llvm::Value* high_order_value =
         b->CreateShl(value, llvm::ConstantInt::get(type, 4));
