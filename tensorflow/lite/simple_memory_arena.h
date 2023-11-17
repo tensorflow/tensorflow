@@ -15,9 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_SIMPLE_MEMORY_ARENA_H_
 #define TENSORFLOW_LITE_SIMPLE_MEMORY_ARENA_H_
 
-#include <algorithm>
-#include <cstddef>
+#include <stddef.h>
+
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -57,16 +58,13 @@ struct ArenaAllocWithUsageInterval {
 class ResizableAlignedBuffer {
  public:
   explicit ResizableAlignedBuffer(size_t alignment, int subgraph_index)
-      : buffer_(nullptr),
-        allocation_size_(0),
+      : allocation_size_(0),
         alignment_(alignment),
         subgraph_index_(subgraph_index) {
     // To silence unused private member warning, only used with
     // TF_LITE_TENSORFLOW_PROFILER
     (void)subgraph_index_;
   }
-
-  ~ResizableAlignedBuffer() { Release(); }
 
   // Resizes the buffer to make sure new_size bytes fit in the buffer. Keeps
   // alignment and any existing the data. Returns true when any external
@@ -84,12 +82,10 @@ class ResizableAlignedBuffer {
 
  private:
   size_t RequiredAllocationSize(size_t data_array_size) const {
-    // malloc guarantees returned pointers are aligned to at least max_align_t.
-    return data_array_size +
-           std::max(std::size_t{0}, alignment_ - alignof(std::max_align_t));
+    return data_array_size + alignment_ - 1;
   }
 
-  char* buffer_;
+  std::unique_ptr<char[]> buffer_;
   size_t allocation_size_;
   size_t alignment_;
   char* aligned_ptr_;

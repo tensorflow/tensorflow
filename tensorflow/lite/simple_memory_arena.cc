@@ -16,12 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/simple_memory_arena.h"
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/core/c/common.h"
@@ -54,20 +54,20 @@ bool ResizableAlignedBuffer::Resize(size_t new_size) {
   OnTfLiteArenaAlloc(subgraph_index_, reinterpret_cast<std::uintptr_t>(this),
                      new_allocation_size);
 #endif
-  char* new_buffer = reinterpret_cast<char*>(std::malloc(new_allocation_size));
+  auto new_buffer = std::unique_ptr<char[]>(new char[new_allocation_size]);
   char* new_aligned_ptr = reinterpret_cast<char*>(
-      AlignTo(alignment_, reinterpret_cast<std::uintptr_t>(new_buffer)));
+      AlignTo(alignment_, reinterpret_cast<std::uintptr_t>(new_buffer.get())));
   if (new_size > 0 && allocation_size_ > 0) {
     // Copy data when both old and new buffers are bigger than 0 bytes.
-    const size_t new_alloc_alignment_adjustment = new_aligned_ptr - new_buffer;
-    const size_t old_alloc_alignment_adjustment = aligned_ptr_ - buffer_;
+    const size_t new_alloc_alignment_adjustment =
+        new_aligned_ptr - new_buffer.get();
+    const size_t old_alloc_alignment_adjustment = aligned_ptr_ - buffer_.get();
     const size_t copy_amount =
         std::min(allocation_size_ - old_alloc_alignment_adjustment,
                  new_allocation_size - new_alloc_alignment_adjustment);
     std::memcpy(new_aligned_ptr, aligned_ptr_, copy_amount);
   }
-  std::free(buffer_);
-  buffer_ = new_buffer;
+  buffer_ = std::move(new_buffer);
   aligned_ptr_ = new_aligned_ptr;
 #ifdef TF_LITE_TENSORFLOW_PROFILER
   if (allocation_size_ > 0) {
@@ -84,15 +84,11 @@ bool ResizableAlignedBuffer::Resize(size_t new_size) {
 }
 
 void ResizableAlignedBuffer::Release() {
-  if (buffer_ == nullptr) {
-    return;
-  }
 #ifdef TF_LITE_TENSORFLOW_PROFILER
   OnTfLiteArenaDealloc(subgraph_index_, reinterpret_cast<std::uintptr_t>(this),
                        allocation_size_);
 #endif
-  std::free(buffer_);
-  buffer_ = nullptr;
+  buffer_.reset();
   allocation_size_ = 0;
   aligned_ptr_ = nullptr;
 }
