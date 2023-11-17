@@ -89,6 +89,18 @@ TEST(CommandBufferThunkTest, MemcpyCmd) {
   stream.ThenMemcpy(dst.data(), b, byte_length);
 
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42));
+
+  // Try to update the command buffer with the same buffers.
+  stream.ThenMemZero(&b, byte_length);
+
+  // Thunk execution should automatically update underlying command buffer.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+
+  // Copy `b` data back to host.
+  std::fill(dst.begin(), dst.end(), 0);
+  stream.ThenMemcpy(dst.data(), b, byte_length);
+
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 42));
 }
 
 TEST(CommandBufferThunkTest, LaunchCmd) {
@@ -148,6 +160,18 @@ TEST(CommandBufferThunkTest, LaunchCmd) {
 
   // Update buffer allocation #1 to buffer `c`.
   allocations = BufferAllocations({a, c}, 0, executor->GetAllocator());
+
+  // Thunk execution should automatically update underlying command buffer.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+
+  // Copy `c` data back to host.
+  std::fill(dst.begin(), dst.end(), 0);
+  stream.ThenMemcpy(dst.data(), c, byte_length);
+
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
+
+  // Try to update the command buffer with the same buffers.
+  stream.ThenMemZero(&c, byte_length);
 
   // Thunk execution should automatically update underlying command buffer.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -244,6 +268,18 @@ TEST(CommandBufferThunkTest, GemmCmd) {
   stream.ThenMemcpy(dst.data(), updated_out, out_length);
 
   ASSERT_EQ(dst, std::vector<float>({10, 10, 10, 26, 26, 26}));
+
+  // Try to update the command buffer with the same buffers.
+  stream.ThenMemZero(&updated_out, out_length);
+
+  // Thunk execution should automatically update underlying command buffer.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+
+  // Copy `updated_out` data back to host.
+  std::fill(dst.begin(), dst.end(), 0);
+  stream.ThenMemcpy(dst.data(), updated_out, out_length);
+
+  ASSERT_EQ(dst, std::vector<float>({10, 10, 10, 26, 26, 26}));
 }
 
 TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
@@ -308,8 +344,47 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
 
   // Copy `d` data back to host.
-  std::vector<int32_t> dst_1(4, 0);
+  std::fill(dst.begin(), dst.end(), 0);
   stream.ThenMemcpy(dst.data(), d, byte_length);
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 21 + 21));
+
+  BufferAllocation alloc_e(/*index=*/3, byte_length, /*color=*/0);
+  BufferAllocation::Slice slice_e(&alloc_e, 0, byte_length);
+
+  // Prepare buffer allocation for updating command buffer: e=0
+  se::DeviceMemory<int32_t> e = executor->AllocateArray<int32_t>(length, 0);
+  stream.ThenMemZero(&e, byte_length);
+
+  // Update buffer allocation #1 to buffer `c`.
+  allocations = BufferAllocations({a, b, c, e}, 0, executor->GetAllocator());
+
+  // Thunk execution should automatically update underlying command buffer.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+
+  // Copy `b` data back to host.
+  std::fill(dst.begin(), dst.end(), 0);
+  stream.ThenMemcpy(dst.data(), b, byte_length);
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
+
+  // Copy `e` data back to host.
+  std::fill(dst.begin(), dst.end(), 0);
+  stream.ThenMemcpy(dst.data(), e, byte_length);
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 21 + 21));
+
+  // Try to update the command buffer with the same buffers.
+  stream.ThenMemZero(&e, byte_length);
+
+  // Thunk execution should automatically update underlying command buffer.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+
+  // Copy `b` data back to host.
+  std::fill(dst.begin(), dst.end(), 0);
+  stream.ThenMemcpy(dst.data(), b, byte_length);
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
+
+  // Copy `e` data back to host.
+  std::fill(dst.begin(), dst.end(), 0);
+  stream.ThenMemcpy(dst.data(), e, byte_length);
   ASSERT_EQ(dst, std::vector<int32_t>(4, 21 + 21));
 }
 
