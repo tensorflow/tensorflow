@@ -1196,12 +1196,12 @@ class CopyRemover {
     // Instruction indices based on post order traversal of computations and
     // instructions. Used as an enhancement for getting strict weak ordering
     // used for sorting below.
-    absl::flat_hash_map<HloInstruction*, int64_t> instruction_ids;
+    absl::flat_hash_map<int, int64_t> instruction_ids;
     int64_t id = 0;
     for (HloComputation* computation : module.MakeComputationPostOrder()) {
       for (HloInstruction* instruction :
            computation->MakeInstructionPostOrder()) {
-        instruction_ids[instruction] = id++;
+        instruction_ids[instruction->unique_id()] = id++;
       }
     }
 
@@ -1255,8 +1255,8 @@ class CopyRemover {
       }
 
       std::vector<const HloValue*> values = buffer.values();
-      absl::c_sort(values, [this, instruction_ids](const HloValue* a,
-                                                   const HloValue* b) {
+      absl::c_sort(values, [this, &instruction_ids](const HloValue* a,
+                                                    const HloValue* b) {
         // IsDefinedBefore() is generally not strict weak ordering required by
         // the sort algorithm, since a may not be comparable to b or c by
         // IsDefinedBefore(), but b and c can be comparable. Such as in:
@@ -1273,8 +1273,8 @@ class CopyRemover {
           return false;
         }
         const bool a_has_smaller_id =
-            instruction_ids.at(a->defining_instruction()) <
-            instruction_ids.at(b->defining_instruction());
+            instruction_ids.at(a->defining_instruction()->unique_id()) <
+            instruction_ids.at(b->defining_instruction()->unique_id());
         // Use a_has_smaller_id as a hint for the order between a and b. In case
         // it's right, there is no need for two IsDefinedBefore() tests.
         if (a_has_smaller_id) {
