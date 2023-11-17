@@ -728,7 +728,8 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
       std::vector<std::vector<PJRT_Buffer*>>& c_output_lists_storage,
       std::vector<PJRT_Buffer**>& c_output_lists,
       std::optional<std::vector<PJRT_Event*>>& device_complete_events,
-      SendRecvCallbackData& send_recv_callback_data);
+      SendRecvCallbackData& send_recv_callback_data,
+      std::vector<int64_t>& non_donatable_input_indices_storage);
 
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteWithSingleDevice(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,

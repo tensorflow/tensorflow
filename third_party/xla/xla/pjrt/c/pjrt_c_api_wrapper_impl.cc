@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -1337,6 +1338,12 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
   options.context = nullptr;
   options.multi_slice_config = nullptr;
   options.use_major_to_minor_data_layout_for_callbacks = true;
+  if (args->options->num_non_donatable_input_indices > 0) {
+    for (int i = 0; i < args->options->num_non_donatable_input_indices; ++i) {
+      options.non_donatable_input_indices.insert(
+          args->options->non_donatable_input_indices[i]);
+    }
+  }
 
   std::vector<std::vector<xla::PjRtBuffer*>> cpp_argument_lists =
       Convert2DCBuffersToCppBuffers(args->argument_lists, args->num_devices,
