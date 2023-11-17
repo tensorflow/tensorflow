@@ -1,5 +1,5 @@
 // RUN: mlir-hlo-opt -split-input-file %s | FileCheck %s
-// RUN: mlir-hlo-opt -split-input-file %s | mlir-hlo-opt | FileCheck %s
+// RUN: mlir-hlo-opt -split-input-file %s | mlir-hlo-opt -split-input-file | FileCheck %s
 
 // -----
 
@@ -238,14 +238,16 @@ func.func @extensions(%arg0 : tensor<?x?xf32, #mhlo.type_extensions<bounds = [3,
   map = (d0, d1) -> (d0 : compressed, d1 : compressed)
 }>
 
+// CHECK: #[[$CSR:.*]] = #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>
+// CHECK: #[[$DCSR:.*]] = #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : compressed, d1 : compressed) }>
 // CHECK-LABEL: func @encodings
 func.func @encodings(%arg0: tensor<10x20xf32, #CSR>,
                      %arg1: tensor<10x20xf32, #DCSR>) -> tensor<10x20xf32> {
-  // CHECK:      %0 = mhlo.add %arg0, %arg1 : (tensor<10x20xf32, #sparse_tensor.encoding<{{.*}}>>, tensor<10x20xf32, #sparse_tensor.encoding<{{.*}}>>) -> tensor<10x20xf32>
-  // CHECK-NEXT: %1 = mhlo.add %arg1, %arg1 : tensor<10x20xf32, #sparse_tensor.encoding<{{.*}}>>
-  // CHECK-NEXT: %2 = mhlo.abs %arg0 : (tensor<10x20xf32, #sparse_tensor.encoding<{{.*}}>>) -> tensor<10x20xf32>
-  // CHECK-NEXT: %3 = mhlo.abs %arg0 : tensor<10x20xf32, #sparse_tensor.encoding<{{.*}}>>
-  // CHECK-NEXT: %4 = mhlo.complex %arg0, %arg0 : (tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>>) -> tensor<10x20xcomplex<f32>>
+  // CHECK:      %0 = mhlo.add %arg0, %arg1 : (tensor<10x20xf32, #[[$CSR]]>, tensor<10x20xf32, #[[$DCSR]]>) -> tensor<10x20xf32>
+  // CHECK-NEXT: %1 = mhlo.add %arg1, %arg1 : tensor<10x20xf32, #[[$DCSR]]
+  // CHECK-NEXT: %2 = mhlo.abs %arg0 : (tensor<10x20xf32, #[[$CSR]]>) -> tensor<10x20xf32>
+  // CHECK-NEXT: %3 = mhlo.abs %arg0 : tensor<10x20xf32, #[[$CSR]]>
+  // CHECK-NEXT: %4 = mhlo.complex %arg0, %arg0 : (tensor<10x20xf32, #[[$CSR]]>, tensor<10x20xf32, #[[$CSR]]>) -> tensor<10x20xcomplex<f32>>
   %0 = "mhlo.add"(%arg0, %arg1) : (tensor<10x20xf32, #CSR>,
                                    tensor<10x20xf32, #DCSR>) -> tensor<10x20xf32>
   %1 = "mhlo.add"(%arg1, %arg1) : (tensor<10x20xf32, #DCSR>,

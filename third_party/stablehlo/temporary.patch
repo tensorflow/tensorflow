@@ -3959,6 +3959,57 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/
  func.func @dynamic_iota_output_shape_negative_size() -> tensor<4xf32> {
    // @expected-error@+2 {{output_shape is incompatible with return type of operation 'tensor<4xf32>'}}
    %0 = stablehlo.constant dense<[-1]> : tensor<1xi64>
+diff --ruN a/stablehlo/stablehlo/tests/print_stablehlo.mlir b/stablehlo/stablehlo/tests/print_stablehlo.mlir
+--- stablehlo/stablehlo/tests/print_stablehlo.mlir
++++ stablehlo/stablehlo/tests/print_stablehlo.mlir
+@@ -1,5 +1,5 @@
+-// RUN: stablehlo-opt %s | FileCheck %s
+-// RUN: stablehlo-opt %s | stablehlo-opt | FileCheck %s
++// RUN: stablehlo-opt %s --split-input-file | FileCheck %s
++// RUN: stablehlo-opt %s --split-input-file | stablehlo-opt --split-input-file | FileCheck %s
+ 
+ // CHECK-LABEL: func @zero_input
+ func.func @zero_input() -> !stablehlo.token {
+@@ -291,6 +291,8 @@
+   "stablehlo.return"() : () -> ()
+ }
+ 
++// -----
++
+ #CSR = #sparse_tensor.encoding<{
+   map = (d0, d1) -> (d0 : dense, d1 : compressed)
+ }>
+@@ -299,14 +301,16 @@
+   map = (d0, d1) -> (d0 : compressed, d1 : compressed)
+ }>
+ 
++// CHECK: #[[$CSR:.*]] = #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>
++// CHECK: #[[$DCSR:.*]] = #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : compressed, d1 : compressed) }>
+ // CHECK-LABEL: func @encodings
+ func.func @encodings(%arg0: tensor<10x20xf32, #CSR>,
+                      %arg1: tensor<10x20xf32, #DCSR>) -> tensor<10x20xf32> {
+-  // CHECK:      %0 = stablehlo.add %arg0, %arg1 : (tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : compressed, d1 : compressed) }>>) -> tensor<10x20xf32>
+-  // CHECK-NEXT: %1 = stablehlo.add %arg1, %arg1 : tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : compressed, d1 : compressed) }>>
+-  // CHECK-NEXT: %2 = stablehlo.abs %arg0 : (tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>>) -> tensor<10x20xf32>
+-  // CHECK-NEXT: %3 = stablehlo.abs %arg0 : tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>>
+-  // CHECK-NEXT: %4 = stablehlo.complex %arg0, %arg0 : (tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>>) -> tensor<10x20xcomplex<f32>>
++  // CHECK:      %0 = stablehlo.add %arg0, %arg1 : (tensor<10x20xf32, #[[$CSR]]>, tensor<10x20xf32, #[[$DCSR]]>) -> tensor<10x20xf32>
++  // CHECK-NEXT: %1 = stablehlo.add %arg1, %arg1 : tensor<10x20xf32, #[[$DCSR]]>
++  // CHECK-NEXT: %2 = stablehlo.abs %arg0 : (tensor<10x20xf32, #[[$CSR]]>) -> tensor<10x20xf32>
++  // CHECK-NEXT: %3 = stablehlo.abs %arg0 : tensor<10x20xf32, #[[$CSR]]>
++  // CHECK-NEXT: %4 = stablehlo.complex %arg0, %arg0 : (tensor<10x20xf32, #[[$CSR]]>, tensor<10x20xf32, #[[$CSR]]>) -> tensor<10x20xcomplex<f32>>
+   %0 = "stablehlo.add"(%arg0, %arg1) : (tensor<10x20xf32, #CSR>,
+                                    tensor<10x20xf32, #DCSR>) -> tensor<10x20xf32>
+   %1 = "stablehlo.add"(%arg1, %arg1) : (tensor<10x20xf32, #DCSR>,
+@@ -316,6 +320,8 @@
+   %4 = "stablehlo.complex"(%arg0, %arg0) : (tensor<10x20xf32, #CSR>, tensor<10x20xf32, #CSR>) -> tensor<10x20xcomplex<f32>>
+   func.return %0 : tensor<10x20xf32>
+ }
++
++// -----
+ 
+ func.func @dot_general(%arg0: tensor<2x2x2xi8>, %arg1: tensor<2x2x3xi8>, %arg2: tensor<2x2xi8>, %arg3: tensor<2x3xi8>) -> tensor<2x2x3xi32> {
+   //      CHECK: {{%.*}} = stablehlo.dot_general %arg0, %arg1, batching_dims = [0] x [0], contracting_dims = [2] x [1] : (tensor<2x2x2xi8>, tensor<2x2x3xi8>) -> tensor<2x2x3xi32>
 diff --ruN a/stablehlo/stablehlo/transforms/Passes.h b/stablehlo/stablehlo/transforms/Passes.h
 --- stablehlo/stablehlo/transforms/Passes.h
 +++ stablehlo/stablehlo/transforms/Passes.h
