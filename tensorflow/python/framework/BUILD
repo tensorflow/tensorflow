@@ -1950,7 +1950,7 @@ pytype_strict_library(
     ]),
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "stack",
     srcs = ["stack.py"],
     visibility = visibility + ["//tensorflow:internal"],
@@ -2037,7 +2037,7 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "traceable_stack",
     srcs = ["traceable_stack.py"],
     srcs_version = "PY3",
