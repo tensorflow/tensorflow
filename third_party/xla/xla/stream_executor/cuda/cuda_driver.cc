@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/debugging/leak_check.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -757,14 +758,13 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
 }
 
 /*static*/ tsl::Status GpuDriver::GraphExecKernelNodeSetParams(
-    GpuGraphExecHandle exec, GpuGraphNodeHandle node,
-    absl::string_view kernel_name, GpuFunctionHandle function,
-    unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
-    unsigned int block_dim_x, unsigned int block_dim_y,
+    CUgraphExec exec, CUgraphNode node, absl::string_view kernel_name,
+    CUfunction function, unsigned int grid_dim_x, unsigned int grid_dim_y,
+    unsigned int grid_dim_z, unsigned int block_dim_x, unsigned int block_dim_y,
     unsigned int block_dim_z, unsigned int shared_mem_bytes,
     void** kernel_params, void** extra) {
-  VLOG(2) << "Set kernel node params " << node << " in graph executabe " << exec
-          << "; kernel: " << kernel_name << "; gdx: " << grid_dim_x
+  VLOG(2) << "Set kernel node params " << node << " in graph executable "
+          << exec << "; kernel: " << kernel_name << "; gdx: " << grid_dim_x
           << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
           << " bdx: " << block_dim_x << " bdy: " << block_dim_y
           << " bdz: " << block_dim_z << "; shmem: " << shared_mem_bytes;
@@ -834,6 +834,19 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
   RETURN_IF_CUDA_RES_ERROR(
       cuGraphAddChildGraphNode(node, graph, deps.data(), deps.size(), child),
       "Failed to create a child graph node and add it to a CUDA graph");
+
+  return ::tsl::OkStatus();
+}
+
+/*static*/ tsl::Status GpuDriver::GraphExecChildNodeSetParams(CUgraphExec exec,
+                                                              CUgraphNode node,
+                                                              CUgraph child) {
+  VLOG(2) << "Set child node params " << node << " in graph executable " << exec
+          << "to params contained in " << child;
+
+  RETURN_IF_CUDA_RES_ERROR(
+      cuGraphExecChildGraphNodeSetParams(exec, node, child),
+      "Failed to set CUDA graph child node params");
 
   return ::tsl::OkStatus();
 }
@@ -931,8 +944,16 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
                                               : 0] = '\0';
       LOG(ERROR) << "error log buffer (" << error_log_buffer_bytes
                  << " bytes): " << error_log_buffer.data();
-      ret = tsl::errors::Internal("Failed to load PTX text as a module: ",
-                                  ToString(res));
+      if (absl::StrContains(error_log_buffer.data(),
+                            "Register allocation failed")) {
+        ret = absl::ResourceExhaustedError(
+            absl::StrFormat("Failed to load PTX text as a module (register "
+                            "allocation failed): %s",
+                            ToString(res)));
+      } else {
+        ret = absl::InternalError(absl::StrFormat(
+            "Failed to load PTX text as a module: %s", ToString(res)));
+      }
       notification.Notify();
     }
 

@@ -103,6 +103,8 @@ tf_cuda_cc_test(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":trt_logging",
@@ -157,6 +159,8 @@ tf_cuda_cc_test(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":common_utils",
@@ -239,6 +243,8 @@ tf_cuda_cc_test(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":testutils",
@@ -318,6 +324,8 @@ tf_cuda_cc_test(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":common_utils",
@@ -354,6 +362,8 @@ tf_cuda_cc_test(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":testutils",
@@ -561,6 +571,8 @@ tf_cuda_cc_test(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":trt_resources",
@@ -780,6 +792,8 @@ tf_cuda_cc_test(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":testutils",
@@ -816,6 +830,8 @@ tf_cuda_cc_test(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":testutils",

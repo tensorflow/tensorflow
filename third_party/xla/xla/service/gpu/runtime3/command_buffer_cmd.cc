@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -25,7 +26,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/status.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -60,10 +63,36 @@ Status CommandBufferCmdSequence::Record(
   if (command_buffer->state() == se::CommandBuffer::State::kFinalized) {
     TF_RETURN_IF_ERROR(command_buffer->Update());
   }
+  // Returns if no cmd requires update.
+  if (!ShouldUpdateCmd(params)) {
+    return OkStatus();
+  }
   for (auto& cmd : commands_) {
     TF_RETURN_IF_ERROR(cmd->Record(params, command_buffer));
   }
   return command_buffer->Finalize();
+}
+
+bool CommandBufferCmdSequence::ShouldUpdateCmd(
+    const CommandBufferCmd::RecordParams& params) {
+  bool should_update = false;
+  const BufferAllocations* allocs = params.buffer_allocations;
+  size_t size = allocs->size();
+  if (prev_allocs_.size() < size) {
+    prev_allocs_.resize(size);
+    should_update = true;
+  }
+  // Traversing all allocations from `params` using the index alone (no need for
+  // offset) is enough because every time `BufferAllocation` remapped to a new
+  // physical memory location all commands reading from any slice from that
+  // allocation must be invalidated.
+  for (unsigned i = 0; i < size; ++i) {
+    se::DeviceMemoryBase new_alloc = allocs->GetDeviceAddress(i);
+    se::DeviceMemoryBase& prev_alloc = prev_allocs_[i];
+    should_update |= !new_alloc.IsSameAs(prev_alloc);
+    prev_alloc = new_alloc;
+  }
+  return should_update;
 }
 
 //===----------------------------------------------------------------------===//
@@ -82,7 +111,7 @@ Status LaunchCmd::Initialize(se::StreamExecutor* executor,
                              ExecutableSource source) {
   if (kernels_.contains(executor)) return OkStatus();
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::KernelBase> kernel,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
                       CreateKernel(kernel_name_, args_.size(), source.text,
                                    source.binary, executor, shmem_bytes_));
 
@@ -90,27 +119,12 @@ Status LaunchCmd::Initialize(se::StreamExecutor* executor,
   return OkStatus();
 }
 
-static std::unique_ptr<se::KernelArgsArrayBase> AllocateKernelArgs(
-    absl::Span<const se::DeviceMemoryBase> args, int64_t shmem_bytes) {
-  static constexpr int kKernelArgsLimit = 1024;
-
-  // Specialize kernel arguments array for small sizes to allocate a smaller
-  // chunk of memory and hopefully hit a small allocations cache.
-  if (args.size() <= 64) {
-    return se::MakeKernelArgs<64>(args, shmem_bytes);
-  } else if (args.size() <= 256) {
-    return se::MakeKernelArgs<256>(args, shmem_bytes);
-  }
-
-  return se::MakeKernelArgs<kKernelArgsLimit>(args, shmem_bytes);
-}
-
 Status LaunchCmd::Record(const RecordParams& params,
                          se::CommandBuffer* command_buffer) {
   VLOG(5) << "LaunchCmd: kernel=" << kernel_name_
           << ", shmem_bytes=" << shmem_bytes_;
 
-  se::KernelBase* kernel = kernels_[command_buffer->executor()].get();
+  se::Kernel* kernel = kernels_[command_buffer->executor()].get();
   if (kernel == nullptr) {
     return absl::InternalError(
         "Kernel not loaded on a command buffer executor");
@@ -123,7 +137,8 @@ Status LaunchCmd::Record(const RecordParams& params,
     buffers.push_back(buf);
   }
 
-  auto kernel_args = AllocateKernelArgs(buffers, shmem_bytes_);
+  TF_ASSIGN_OR_RETURN(auto kernel_args,
+                      se::PackKernelArgs(buffers, shmem_bytes_));
 
   LaunchDimensions::Dim3D thread_counts = dims_.thread_counts_per_block();
   LaunchDimensions::Dim3D block_counts = dims_.block_counts();
@@ -132,6 +147,10 @@ Status LaunchCmd::Record(const RecordParams& params,
       se::ThreadDim(thread_counts.x, thread_counts.y, thread_counts.z),
       se::BlockDim(block_counts.x, block_counts.y, block_counts.z), *kernel,
       *kernel_args);
+}
+
+CommandBufferCmd::Slices LaunchCmd::slices() {
+  return CommandBufferCmd::Slices(args_.begin(), args_.end());
 }
 
 //===----------------------------------------------------------------------===//
@@ -150,6 +169,60 @@ Status MemcpyDeviceToDeviceCmd::Record(const RecordParams& params,
   se::DeviceMemoryBase dst = params.buffer_allocations->GetDeviceAddress(dst_);
   se::DeviceMemoryBase src = params.buffer_allocations->GetDeviceAddress(src_);
   return command_buffer->MemcpyDeviceToDevice(&dst, src, num_bytes_);
+}
+
+CommandBufferCmd::Slices MemcpyDeviceToDeviceCmd::slices() {
+  return {dst_, src_};
+}
+
+//===----------------------------------------------------------------------===//
+// GemmCmd
+//===----------------------------------------------------------------------===//
+
+GemmCmd::GemmCmd(GemmConfig config, const BufferAllocation::Slice& lhs_buffer,
+                 const BufferAllocation::Slice& rhs_buffer,
+                 const BufferAllocation::Slice& output_buffer,
+                 bool deterministic)
+    : config_(std::move(config)),
+      lhs_buffer_(lhs_buffer),
+      rhs_buffer_(rhs_buffer),
+      output_buffer_(output_buffer),
+      deterministic_(deterministic) {}
+
+Status GemmCmd::Initialize(se::StreamExecutor* executor,
+                           ExecutableSource source) {
+  if (!executor->AsBlas()) {
+    return absl::InternalError("Failed to initialize BLAS support for GemmCmd");
+  }
+  return OkStatus();
+}
+
+Status GemmCmd::Record(const RecordParams& params,
+                       se::CommandBuffer* command_buffer) {
+  VLOG(5) << "GemmCmd: lhs=" << lhs_buffer_ << ", rhs=" << rhs_buffer_
+          << ", output=" << output_buffer_
+          << ", deterministic=" << deterministic_;
+
+  se::DeviceMemoryBase workspace(nullptr, 0);
+
+  se::DeviceMemoryBase lhs =
+      params.buffer_allocations->GetDeviceAddress(lhs_buffer_);
+  se::DeviceMemoryBase rhs =
+      params.buffer_allocations->GetDeviceAddress(rhs_buffer_);
+  se::DeviceMemoryBase out =
+      params.buffer_allocations->GetDeviceAddress(output_buffer_);
+  TF_ASSIGN_OR_RETURN(
+      auto nested_buffer,
+      stream_executor::CommandBuffer::Trace(
+          command_buffer->executor(), [&](stream_executor::Stream* stream) {
+            return RunGemm(config_, lhs, rhs, out, workspace, deterministic_,
+                           stream);
+          }));
+  return command_buffer->AddNestedCommandBuffer(nested_buffer);
+}
+
+CommandBufferCmd::Slices GemmCmd::slices() {
+  return {lhs_buffer_, rhs_buffer_, output_buffer_};
 }
 
 }  // namespace xla::gpu

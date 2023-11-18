@@ -20,7 +20,8 @@ ENTRY TestComputation {
   // CHECK-SAME:               result_layout = dense<[0, 1]>
   // CHECK-SAME:               xla_shape = "f32[3,2]{0,1}"
   // CHECK-SAME:             } : tensor<3x2xf32>
-  // CHECK:   memref.tensor_store %[[VAL3:.*]], %{{.*}} : memref<3x2xf32, #[[MAP]]>
+  // CHECK:   bufferization.materialize_in_destination %[[VAL3:.*]] in
+  // CHECK-SAME: writable %{{.*}} : (tensor<3x2xf32>, memref<3x2xf32, #[[MAP]]>)
   // CHECK:   "lmhlo.terminator"() : () -> ()
   // CHECK: }) : () -> ()
   ROOT fusion = f32[3, 2]{0,1} fusion(f32[3, 2]{1,0} x), kind=kLoop, calls=Fusion

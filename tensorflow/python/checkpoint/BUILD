@@ -5,6 +5,7 @@ load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
+    "tf_py_benchmark_test",
     "tf_py_logged_benchmark",
 )
 
@@ -364,7 +365,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
     deps = [
@@ -402,26 +403,25 @@ py_strict_library(
     deps = [
         ":checkpoint_options",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/checkpoint/sharding:sharding_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
-        "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:io_ops",
         "//tensorflow/python/ops:io_ops_gen",
         "//tensorflow/python/ops:string_ops",
-        "//tensorflow/python/ops:variables",
         "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:trackable_utils",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
+        "//tensorflow/python/types:core",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:object_identity",
     ],
@@ -447,10 +447,10 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/module",
+        "//tensorflow/python/ops:io_ops_gen",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/training:server_lib",
-        "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
     ],
 )

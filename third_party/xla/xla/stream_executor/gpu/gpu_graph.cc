@@ -22,13 +22,14 @@ limitations under the License.
 #include <cstring>
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/kernel.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
@@ -209,12 +210,17 @@ tsl::StatusOr<OwnedGpuGraph> CreateGpuGraph() {
 
 tsl::StatusOr<GpuGraphNodeHandle> AddKernelNode(
     GpuGraphHandle graph, absl::Span<GpuGraphNodeHandle> deps,
-    ThreadDim threads, BlockDim blocks, const KernelBase& kernel,
-    const KernelArgsArrayBase& args) {
+    ThreadDim threads, BlockDim blocks, const Kernel& kernel,
+    const KernelArgs& args) {
   const GpuKernel* gpu_kernel = AsGpuKernel(&kernel);
   GpuFunctionHandle gpu_func = gpu_kernel->AsGpuFunctionHandle();
 
-  void** kernel_params = const_cast<void**>(args.argument_addresses().data());
+  auto* packed_args = DynCast<KernelArgsPackedArrayBase>(&args);
+  if (!packed_args)
+    return absl::InternalError("Unsupported kernel arguments type");
+
+  void** kernel_params =
+      const_cast<void**>(packed_args->argument_addresses().data());
 
   GpuGraphNodeHandle node;
   TF_RETURN_IF_ERROR(GpuDriver::GraphAddKernelNode(

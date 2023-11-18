@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/status_helper.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "xla/xla_data.pb.h"
@@ -41,11 +40,20 @@ limitations under the License.
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/tpu/kernels/sparse_core_ops_utils.h"
 #include "tsl/platform/macros.h"
+
+typedef tensorflow::monitoring::Gauge<int64_t, 2> TFGaugeMetric;
+static TFGaugeMetric* max_ids_per_partition_gauge_ = TFGaugeMetric::New(
+    "/tensorflow/tpu/embedding/maximum_ids_per_partition",
+    "Max ids_per_partition limit for each table", "device", "table");
+static TFGaugeMetric* max_unique_ids_per_partition_gauge_ = TFGaugeMetric::New(
+    "/tensorflow/tpu/embedding/maximum_unique_ids_per_partition",
+    "Max unique_ids_per_partition limit for each table", "device", "table");
 
 namespace tensorflow {
 namespace {
@@ -216,6 +224,7 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
         quantization_config_high_ = quant_clipping_float;
       }
     }
+    device_name_ = ctx->device()->name();
     // Check for incomplete quantization config.
     OP_REQUIRES(ctx,
                 quantization_config_low_.has_value() ==
@@ -248,10 +257,17 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
         ctx, GetMaxIdsAndUniquesExternal(
                  "", table_name_, per_sparse_core_batch_size, feature_width,
                  &max_ids_per_partition, &max_unique_ids_per_partition));
-    VLOG(3) << "XlaSparseDenseMatmulWithCsrInputOp: "
-            << "table_name = '" << table_name_
-            << "', max_ids = " << max_ids_per_partition
-            << ", max_uniques = " << max_unique_ids_per_partition;
+    // Log max_ids and max_uniques for offline analysis. We do this here since
+    // these values are fixed at TPU compile time and remain fixed during
+    // training.
+    max_ids_per_partition_gauge_->GetCell(device_name_, table_name_)
+        ->Set(max_ids_per_partition);
+    max_unique_ids_per_partition_gauge_->GetCell(device_name_, table_name_)
+        ->Set(max_unique_ids_per_partition);
+    LOG(INFO) << "Lowering XlaSparseDenseMatmulWithCsrInputOp to HLO: "
+              << "table_name = '" << table_name_
+              << "', max_ids = " << max_ids_per_partition
+              << ", max_uniques = " << max_unique_ids_per_partition;
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(ctx->InputShape(
                     "num_minibatches_per_physical_sparse_core")),
@@ -321,6 +337,7 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
   std::optional<float> quantization_config_low_;
   std::optional<float> quantization_config_high_;
   std::optional<int> quantization_config_num_buckets_;
+  std::string device_name_;
   std::string table_name_;
 
   XlaSparseDenseMatmulWithCsrInputOp(
@@ -410,10 +427,10 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
         ctx, GetMaxIdsAndUniquesExternal(
                  "", table_name_, per_sparse_core_batch_size, feature_width,
                  &max_ids_per_partition, &max_unique_ids_per_partition));
-    VLOG(3) << "XlaSparseDenseMatmulWithCsrInputOp: "
-            << "table_name = '" << table_name_
-            << "', max_ids = " << max_ids_per_partition
-            << ", max_uniques = " << max_unique_ids_per_partition;
+    LOG(INFO) << "Lowering XlaSparseDenseMatmulGradWithCsrInputOp to HLO: "
+              << "table_name = '" << table_name_
+              << "', max_ids = " << max_ids_per_partition
+              << ", max_uniques = " << max_unique_ids_per_partition;
 
     xla::XlaComputation optimizer = build_optimizer_computation(feature_width);
 

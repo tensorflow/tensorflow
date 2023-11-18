@@ -143,7 +143,8 @@ void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
   // all passes support it.
   pm.addPass(mlir::TFDevice::CreateHostLaunchToOutsideCompiledPass());
 
-  pm.addPass(mlir::TFDevice::CreateMarkOpsForOutsideCompilationPass());
+  pm.addPass(
+      tensorflow::tf2xla::internal::CreateMarkOpsForOutsideCompilationPass());
   pm.addPass(tensorflow::tf2xla::internal::
                  CreateExtractHeadTailOutsideCompilationPass());
   pm.addPass(
@@ -175,11 +176,12 @@ void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
   // The following ops must be preserved regardless of reachability. Ideally,
   // all graphs should have control dependencies to enforce this.
   VLOG(2) << "Create TF XLA Bridge pipeline";
+  pm.addPass(mlir::TFDevice::CreateXlaValidateInputsPass());
   pm.addNestedPass<FuncOp>(
       mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
-  // This pass expectes unified compilation markers.
-  pm.addPass(mlir::TFDevice::CreateXlaValidateInputsPass());
-  const llvm::SmallVector<std::string, 4> ops_to_preserve = {};
+  const llvm::SmallVector<std::string, 4> ops_to_preserve = {
+      "tf.TPUReplicateMetadata", "tf.TPUCompilationResult",
+      "tf.TPUReplicatedOutput"};
   pm.addNestedPass<FuncOp>(
       mlir::tf_executor::CreateTFExecutorGraphPruningPass(ops_to_preserve));
   // It is assumed at this stage there are no V1 control flow ops as Graph
@@ -191,9 +193,17 @@ void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
   // inference.
   pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  // The following passe are addded to match TPU pipeline and expected to be
+  // no-op.
+  pm.addNestedPass<FuncOp>(mlir::TFTPU::CreateTPUPartitionedOpConversionPass());
+  pm.addNestedPass<FuncOp>(
+      mlir::TFTPU::CreateTPUReorderReplicateAndPartitionedInputsPass());
+  pm.addNestedPass<FuncOp>(mlir::TF::CreateDecomposeReduceDatasetPass());
+  pm.addPass(mlir::TFDevice::CreateEmbeddingPipeliningPass());
+  pm.addPass(mlir::TFDevice::CreateEmbeddingSequencingPass());
   // Encapsulate PartitionedCall ops within a cluster so that the composite
   // resource ops can be decomposed.
-  pm.addPass(mlir::TFDevice::CreateXlaClusterFormationPass());
+  pm.addPass(tensorflow::tf2xla::internal::CreateXlaClusterFormationPass());
   // Running canonicalizer before decomposing resource ops in cluster helps the
   // latter pass to converge faster as it does not have to spend time folding
   // away dead ops.
@@ -224,7 +234,8 @@ void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
   // for generic pipeline is landed.
   if (tensorflow::GetMlirCommonFlags()
           ->tf_mlir_enable_generic_outside_compilation) {
-    pm.addPass(mlir::TFDevice::CreateMarkOpsForOutsideCompilationPass());
+    pm.addPass(
+        tensorflow::tf2xla::internal::CreateMarkOpsForOutsideCompilationPass());
     pm.addPass(tensorflow::tf2xla::internal::
                    CreateExtractHeadTailOutsideCompilationPass());
     pm.addPass(

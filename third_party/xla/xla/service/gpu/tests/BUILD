@@ -736,6 +736,7 @@ xla_cc_binary(
     deps = [
         "//xla:status",
         "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:buffer_sharing",
         "//xla/service/gpu:compile_module_to_llvm_ir",
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:gpu_device_info_for_tests",
@@ -881,6 +882,7 @@ xla_test(
         ":gpu_codegen_test",
         "//xla:error_spec",
         "//xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:tensor_float_32_utils",
         "@local_tsl//tsl/platform:test_main",
     ],

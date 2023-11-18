@@ -48,6 +48,7 @@ mlir_tf_tools_dirs = [
     "service/mlir_gpu",
     "translate",
     "translate/mhlo_to_lhlo_with_xla",
+    "tools",
 ]
 config.mlir_tf_tools_dirs = [
     os.path.join(real_test_srcdir, os.environ["TEST_WORKSPACE"], xla_root_dir,

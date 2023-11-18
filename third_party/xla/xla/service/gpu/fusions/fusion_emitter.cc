@@ -114,7 +114,7 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
   llvm::LLVMContext& context = llvm_module->getContext();
   llvm::FunctionType* kernel_type = llvm::FunctionType::get(
       /*Result=*/llvm::Type::getVoidTy(context),
-      std::vector<llvm::Type*>(kNumLlvmArgs, builder->getInt8PtrTy()),
+      std::vector<llvm::Type*>(kNumLlvmArgs, builder->getPtrTy()),
       /*isVarArg=*/false);
   llvm::Function* kernel =
       llvm::Function::Create(kernel_type, llvm::GlobalValue::ExternalLinkage,
@@ -163,9 +163,7 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
 
     llvm::Type* ir_type =
         llvm_ir::ShapeToIrType(kernel_argument.shape(), llvm_module);
-    llvm_ir::IrArray ir_array(
-        CastToTypedValue(kernel_argument.shape(), &llvm_arg, builder), ir_type,
-        kernel_argument.shape());
+    llvm_ir::IrArray ir_array(&llvm_arg, ir_type, kernel_argument.shape());
 
     if (!kernel_argument.written()) {
       ir_array.MarkInvariantOverWholeProgram(&llvm_arg.getContext());

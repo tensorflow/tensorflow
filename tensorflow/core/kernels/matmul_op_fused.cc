@@ -32,15 +32,20 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA
 
+#include <functional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/fused_eigen_output_kernels.h"
 #include "tensorflow/core/platform/errors.h"
@@ -85,14 +90,16 @@ struct LaunchFusedMatMulOp {
 
 template <typename T>
 struct LaunchFusedMatMulOp<CPUDevice, T> {
+  // Use F32 compute for F16 inputs on CPU to preserve precision and reduce
+  // excessive casting during intermediate computations.
+  using ComputeType =
+      std::conditional_t<DataTypeToEnum<T>::value == DT_HALF, float, T>;
+
   void operator()(
       OpKernelContext* context, const Tensor& a, const Tensor& b,
       const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1>& dim_pair,
       FusedComputationType fusion, const FusedComputationArgs& fusion_args,
       Tensor* output, bool use_autotune) {
-    OP_REQUIRES(context, DataTypeToEnum<T>::value != DT_HALF,
-                errors::InvalidArgument("_FusedMatMul doesn't support DT_HALF "
-                                        "data type on CPU devices."));
     auto lhs = a.matrix<T>();
     auto rhs = b.matrix<T>();
     auto out = output->matrix<T>();
@@ -104,13 +111,21 @@ struct LaunchFusedMatMulOp<CPUDevice, T> {
     auto executeWithOutputKernel = [&](auto output_kernel) {
       OutputKernelWrapper output_kernel_wrapper(
           [&output_kernel](
-              const ContractionOutputMapper<T, Eigen::Index>& output_mapper,
+              const ContractionOutputMapper<ComputeType, Eigen::Index>&
+                  output_mapper,
               const Eigen::TensorContractionParams& params, Eigen::Index i,
               Eigen::Index j, Eigen::Index num_rows, Eigen::Index num_cols) {
             output_kernel(output_mapper, params, i, j, num_rows, num_cols);
           });
 
-      out.device(d) = lhs.contract(rhs, dim_pair, output_kernel_wrapper);
+      if constexpr (std::is_same_v<ComputeType, T>) {
+        out.device(d) = lhs.contract(rhs, dim_pair, output_kernel_wrapper);
+      } else {
+        out.device(d) = lhs.template cast<ComputeType>()
+                            .contract(rhs.template cast<ComputeType>(),
+                                      dim_pair, output_kernel_wrapper)
+                            .template cast<T>();
+      }
     };
 
     BiasAddArgs<T> bias_add_args;
@@ -132,6 +147,12 @@ struct LaunchFusedMatMulOp<CPUDevice, T> {
         break;
       case FusedComputationType::kBiasAddWithRelu6:
         executeWithOutputKernel(WithBiasAddAndRelu6<T>(bias_add_args));
+        break;
+      case FusedComputationType::kBiasAddWithTanh:
+        executeWithOutputKernel(WithBiasAddAndTanh<T>(bias_add_args));
+        break;
+      case FusedComputationType::kBiasAddWithSigmoid:
+        executeWithOutputKernel(WithBiasAddAndSigmoid<T>(bias_add_args));
         break;
       case FusedComputationType::kBiasAddWithElu:
         executeWithOutputKernel(WithBiasAddAndElu<T>(bias_add_args));
@@ -155,16 +176,16 @@ struct LaunchFusedMatMulOp<CPUDevice, T> {
   // We do not pass std::function directly as an output kernel because it blows
   // up the binary size in debug mode with super long symbol names.
   struct OutputKernelWrapper {
-    using OutputKernelFn =
-        std::function<void(const ContractionOutputMapper<T, Eigen::Index>&,
-                           const Eigen::TensorContractionParams&, Eigen::Index,
-                           Eigen::Index, Eigen::Index, Eigen::Index)>;
+    using OutputKernelFn = std::function<void(
+        const ContractionOutputMapper<ComputeType, Eigen::Index>&,
+        const Eigen::TensorContractionParams&, Eigen::Index, Eigen::Index,
+        Eigen::Index, Eigen::Index)>;
 
     explicit OutputKernelWrapper(OutputKernelFn fn)
         : output_kernel_fn(std::move(fn)) {}
 
     void operator()(
-        const ContractionOutputMapper<T, Eigen::Index>& output_mapper,
+        const ContractionOutputMapper<ComputeType, Eigen::Index>& output_mapper,
         const Eigen::TensorContractionParams& params, Eigen::Index i,
         Eigen::Index j, Eigen::Index num_rows, Eigen::Index num_cols) const {
       output_kernel_fn(output_mapper, params, i, j, num_rows, num_cols);
@@ -611,6 +632,8 @@ class FusedMatMulOp : public OpKernel {
           {FCT::kBiasAdd, {"BiasAdd"}},
           {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}},
           {FCT::kBiasAddWithRelu6, {"BiasAdd", "Relu6"}},
+          {FCT::kBiasAddWithTanh, {"BiasAdd", "Tanh"}},
+          {FCT::kBiasAddWithSigmoid, {"BiasAdd", "Sigmoid"}},
           {FCT::kBiasAddWithElu, {"BiasAdd", "Elu"}},
           {FCT::kBiasAddWithLeakyRelu, {"BiasAdd", "LeakyRelu"}},
       };
@@ -711,6 +734,7 @@ class FusedMatMulOp : public OpKernel {
       FusedMatMulOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_FUSED_CPU_MATMUL);
+TF_CALL_half(REGISTER_FUSED_CPU_MATMUL);
 
 #undef REGISTER_FUSED_CPU_MATMUL
 

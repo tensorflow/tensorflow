@@ -69,38 +69,5 @@ TEST(ConvertTensorShapeToType, Simple) {
   }
 }
 
-TEST(LiteralToAttrToXlaFormat, Simple) {
-  mlir::MLIRContext context;
-  context.loadDialect<mlir::mhlo::MhloDialect>();
-  mlir::Builder builder(&context);
-
-  // int16
-  {
-    Literal x = LiteralUtil::CreateR2<int16_t>({{0, 1, 2}, {3, 4, 5}});
-    TF_ASSERT_OK_AND_ASSIGN(mlir::DenseElementsAttr attr,
-                            CreateDenseElementsAttrFromLiteral(x, builder));
-
-    std::vector<uint8_t> data;
-    TF_ASSERT_OK(CopyDenseElementsDataToXlaFormat(attr, &data));
-    for (int i = 0; i < 6; i++) {
-      int16_t x;
-      memcpy(&x, &data[i * 2], 2);
-      EXPECT_EQ(x, i);
-    }
-  }
-
-  // int4
-  {
-    Literal x = LiteralUtil::CreateR2<s4>(
-        {{s4(0), s4(1), s4(2)}, {s4(3), s4(4), s4(5)}});
-    TF_ASSERT_OK_AND_ASSIGN(mlir::DenseElementsAttr attr,
-                            CreateDenseElementsAttrFromLiteral(x, builder));
-
-    std::vector<uint8_t> data;
-    TF_ASSERT_OK(CopyDenseElementsDataToXlaFormat(attr, &data));
-    EXPECT_EQ(data, std::vector<uint8_t>({0x01, 0x23, 0x45}));
-  }
-}
-
 }  // namespace
 }  // namespace xla

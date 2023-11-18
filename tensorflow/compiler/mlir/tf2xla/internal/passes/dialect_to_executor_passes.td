@@ -1,4 +1,3 @@
-
 /* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 include "mlir/Pass/PassBase.td"
 
-def VerifyInputDialectToExecutor : Pass<"verify-input-dialect-to-executor-pass", "mlir::func::FuncOp"> {
+def VerifyInputDialectToExecutorPass : Pass<"verify-input-dialect-to-executor-pass", "mlir::func::FuncOp"> {
   let summary = "Verify that TF dialect to executor converter receives the correct input.";
   let description = [{
     Verifies the input before exporting to TF executor. This includes checking whether the Ops are in TF functional, have device attributes & there are no tf_device.cluster_func ops.

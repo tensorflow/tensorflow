@@ -87,19 +87,13 @@ std::optional<std::unique_ptr<Thunk>> BuildConstantInitializerThunk(
 StatusOr<std::optional<std::unique_ptr<Thunk>>> BuildConstantInitializerThunk(
     IrEmitterContext& ir_emitter_context, mlir::Operation* op,
     const HloInstruction* instr, const HloInstruction* init_value,
-    mlir::Value dest) {
+    mlir::Value dest, BufferAllocation::Slice dest_slice) {
   if (const HloConstantInstruction* constant =
           DynCast<HloConstantInstruction>(init_value)) {
     const Literal& literal = constant->literal();
     absl::Span<const uint8_t> literal_bytes(
         static_cast<const uint8_t*>(literal.untyped_data()),
         literal.size_bytes());
-
-    TF_ASSIGN_OR_RETURN(
-        BufferAllocation::Slice dest_slice,
-        ir_emitter_context.emit_ir_from_hlo()
-            ? ir_emitter_context.buffer_assignment().GetUniqueSlice(instr, {})
-            : GetAllocationSlice(dest, ir_emitter_context.allocations()));
 
     const Shape dest_shape = instr->shape();
     return BuildConstantInitializerThunk(op, literal_bytes, dest, dest_slice,

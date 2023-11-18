@@ -353,6 +353,7 @@ cc_library(
         ":attribute_utils",
         ":convert_type",
         ":dynamic_shape_utils",
+        ":side_effect_analysis_util",
         ":tensorflow_all_ops_inc_gen",
         ":tensorflow_attributes",
         ":tensorflow_op_interfaces",
@@ -407,6 +408,7 @@ cc_library(
     deps = [
         ":attribute_utils",
         ":serialize_mlir_module_utils",
+        ":side_effect_analysis_util",
         ":tensorflow_attributes",
         ":tensorflow_op_interfaces",
         ":tensorflow_op_interfaces_inc_gen",
@@ -451,6 +453,7 @@ cc_library(
         "ir/tf_remaining_ops.h.inc",
     ] + ["ir/tf_" + target["name"] + ".h.inc" for target in tf_ops_category_list],
     deps = [
+        ":side_effect_analysis_util",
         ":tensorflow_attributes",
         ":tensorflow_op_interfaces",
         ":tensorflow_op_interfaces_inc_gen",
@@ -492,6 +495,7 @@ cc_library(
         "ir/tfrt_ops.h",
     ] + ["ir/tf_" + target["name"] + ".h" for target in tf_ops_category_list],
     deps = [
+        ":side_effect_analysis_util",
         ":tensorflow_all_ops_inc_gen",
         ":tensorflow_attributes",
         ":tensorflow_op_interfaces",
@@ -1975,6 +1979,22 @@ tf_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "side_effect_analysis_util",
+    srcs = [
+        "utils/side_effect_analysis_util.cc",
+    ],
+    hdrs = [
+        "utils/side_effect_analysis_util.h",
+    ],
+    deps = [
+        "tensorflow_side_effects",
+        "tensorflow_types",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 

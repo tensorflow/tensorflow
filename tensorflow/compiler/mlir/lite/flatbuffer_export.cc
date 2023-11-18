@@ -165,12 +165,15 @@ constexpr size_t kInitialBufferSize = 10240;
 // `isSigned` is set to false for other types.
 static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
                                                   bool is_signed = true) {
-  if (!is_signed && type.isSignlessInteger(8)) {
-    return tflite::TensorType_UINT8;
-  }
   if (!is_signed) {
-    return Status(absl::StatusCode::kInvalidArgument,
-                  "'isSigned' can only be set for 8-bits integer type");
+    if (type.isSignlessInteger(8)) {
+      return tflite::TensorType_UINT8;
+    } else if (type.isSignlessInteger(16)) {
+      return tflite::TensorType_UINT16;
+    } else {
+      return Status(absl::StatusCode::kInvalidArgument,
+                    "'isSigned' can only be set for 8/16-bits integer type");
+    }
   }
 
   if (type.isF32()) {
@@ -535,14 +538,16 @@ class Translator {
       const std::unordered_set<std::string>& tags,
       OpOrArgNameMapper* op_or_arg_name_mapper,
       const std::map<std::string, std::string>& metadata,
-      bool serialize_stablehlo_ops);
+      bool serialize_stablehlo_ops,
+      std::optional<size_t> custom_option_alignment);
 
  private:
   enum class OpType : char { kTfliteBuiltin, kSelectTf, kCustomOp };
   explicit Translator(ModuleOp module, const toco::TocoFlags& toco_flags,
                       const std::unordered_set<std::string>& saved_model_tags,
                       OpOrArgNameMapper* op_or_arg_name_mapper,
-                      const std::map<std::string, std::string>& metadata)
+                      const std::map<std::string, std::string>& metadata,
+                      std::optional<size_t> custom_option_alignment)
       : module_(module),
         name_mapper_(*op_or_arg_name_mapper),
         builder_(kInitialBufferSize),
@@ -553,7 +558,8 @@ class Translator {
         metadata_(metadata),
         supported_backends_(toco_flags.supported_backends().begin(),
                             toco_flags.supported_backends().end()),
-        use_buffer_offset_(toco_flags.use_buffer_offset()) {
+        use_buffer_offset_(toco_flags.use_buffer_offset()),
+        custom_option_alignment_(custom_option_alignment) {
     // The first buffer must be empty according to the schema definition.
     empty_buffer_ = tflite::CreateBuffer(builder_);
     buffers_.push_back(empty_buffer_);
@@ -675,11 +681,6 @@ class Translator {
   std::optional<VectorBufferOffset<BufferOffset<tflite::Metadata>>>
   CreateMetadataVector();
 
-  // Encodes the `tfl.metadata_buffer` array attribute of the module to the
-  // metadata_buffer section in the final model. Returns empty if there isn't
-  // such attribute in the mlir module.
-  VectorBufferOffset<int32_t> CreateMetadataBufferVector();
-
   // Builds and returns list of tfl.SignatureDef sections in the model.
   std::optional<VectorBufferOffset<BufferOffset<tflite::SignatureDef>>>
   CreateSignatureDefs(const std::vector<SignatureDefData>& signature_defs);
@@ -749,6 +750,10 @@ class Translator {
   std::optional<BufferOffset<tflite::Operator>> BuildStablehloRngBitGeneratorOp(
       mlir::stablehlo::RngBitGeneratorOp rng_op,
       const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results);
+
+  std::optional<BufferOffset<tflite::Operator>> BuildStablehloPadOp(
+      mlir::stablehlo::PadOp pad_op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
   // create a subgraph given a unnamed mlir region, return the corresponding
@@ -837,6 +842,8 @@ class Translator {
   bool use_buffer_offset_ = false;
 
   bool require_use_buffer_offset_ = false;
+
+  std::optional<size_t> custom_option_alignment_ = std::nullopt;
 };
 
 bool Translator::EstimateArithmeticCount(int64_t* count) {
@@ -1303,11 +1310,16 @@ BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
         /*builtin_options=*/0,
         /*custom_options=*/0, tflite::CustomOptionsFormat_FLEXBUFFERS);
   }
+  if (custom_option_alignment_.has_value()) {
+    builder_.ForceVectorAlignment(custom_option_vector.size(), sizeof(uint8_t),
+                                  custom_option_alignment_.value());
+  }
+  auto custom_option_fbs_vector =
+      builder_.CreateVector<uint8_t>(custom_option_vector);
   return tflite::CreateOperator(
       builder_, opcode_index, builder_.CreateVector(operands),
       builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
-      /*builtin_options=*/0,
-      builder_.CreateVector<uint8_t>(custom_option_vector),
+      /*builtin_options=*/0, custom_option_fbs_vector,
       tflite::CustomOptionsFormat_FLEXBUFFERS);
 }
 
@@ -1610,6 +1622,30 @@ Translator::BuildStablehloRngBitGeneratorOp(
       rng_options.Union());
 }
 
+std::optional<BufferOffset<tflite::Operator>> Translator::BuildStablehloPadOp(
+    mlir::stablehlo::PadOp pad_op, const std::vector<int32_t>& operands,
+    const std::vector<int32_t>& results) {
+  std::string op_name = pad_op->getName().getStringRef().str();
+  uint32_t opcode_index =
+      GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_PAD);
+
+  auto edge_padding_low = builder_.CreateVector(
+      mlir::GetOptionalVector<int64_t>(pad_op.getEdgePaddingLowAttr()));
+  auto edge_padding_high = builder_.CreateVector(
+      mlir::GetOptionalVector<int64_t>(pad_op.getEdgePaddingHighAttr()));
+  auto interior_padding = builder_.CreateVector(
+      mlir::GetOptionalVector<int64_t>(pad_op.getInteriorPaddingAttr()));
+
+  auto pad_option = tflite::CreateStablehloPadOptions(
+      builder_, edge_padding_low, edge_padding_high, interior_padding);
+
+  return tflite::CreateOperator(
+      builder_, opcode_index, builder_.CreateVector(operands),
+      builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+      tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+      tflite::BuiltinOptions2_StablehloPadOptions, pad_option.Union());
+}
+
 std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     Operation* inst, std::vector<int32_t> operands,
     const std::vector<int32_t>& results,
@@ -1710,6 +1746,9 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::MinOp>(inst)) {
       return BuildStablehloOperatorwithoutOptions(
           inst, operands, results, tflite::BuiltinOperator_STABLEHLO_MINIMUM);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::PadOp>(inst)) {
+      return BuildStablehloPadOp(shlo_op, operands, results);
     }
     // for ops don't have kernels, only serialize when conversion is set to true
     if (convert_stablehlo_) {
@@ -1860,27 +1899,6 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
             tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
             tflite::BuiltinOptions2_StablehloCompareOptions,
             compare_option.Union());
-      }
-      if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::PadOp>(inst)) {
-        std::string op_name = inst->getName().getStringRef().str();
-        uint32_t opcode_index =
-            GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_PAD);
-
-        auto edge_padding_low = builder_.CreateVector(
-            mlir::GetOptionalVector<int64_t>(shlo_op.getEdgePaddingLowAttr()));
-        auto edge_padding_high = builder_.CreateVector(
-            mlir::GetOptionalVector<int64_t>(shlo_op.getEdgePaddingHighAttr()));
-        auto interior_padding = builder_.CreateVector(
-            mlir::GetOptionalVector<int64_t>(shlo_op.getInteriorPaddingAttr()));
-
-        auto pad_option = tflite::CreateStablehloPadOptions(
-            builder_, edge_padding_low, edge_padding_high, interior_padding);
-
-        return tflite::CreateOperator(
-            builder_, opcode_index, builder_.CreateVector(operands),
-            builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
-            tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
-            tflite::BuiltinOptions2_StablehloPadOptions, pad_option.Union());
       }
       if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ConcatenateOp>(inst)) {
         std::string op_name = inst->getName().getStringRef().str();
@@ -2632,18 +2650,6 @@ Translator::CreateMetadataVector() {
   return builder_.CreateVector(metadata);
 }
 
-VectorBufferOffset<int32_t> Translator::CreateMetadataBufferVector() {
-  auto array_attr =
-      module_->getAttrOfType<mlir::ArrayAttr>("tfl.metadata_buffer");
-  std::vector<int32_t> metadata_buffer;
-  if (!array_attr) return 0;
-  for (auto value : array_attr.getAsValueRange<mlir::IntegerAttr>()) {
-    metadata_buffer.push_back(value.getSExtValue());
-  }
-
-  return builder_.CreateVector(metadata_buffer);
-}
-
 // Helper method that returns list of all strings in a StringAttr identified
 // by 'attr_key' and values are separated by a comma.
 llvm::SmallVector<llvm::StringRef, 2> GetStringsFromAttrWithSeparator(
@@ -2831,21 +2837,23 @@ std::optional<std::string> Translator::Translate(
     const std::unordered_set<std::string>& tags,
     OpOrArgNameMapper* op_or_arg_name_mapper,
     const std::map<std::string, std::string>& metadata,
-    bool serialize_stablehlo_ops) {
+    bool serialize_stablehlo_ops,
+    std::optional<size_t> custom_option_alignment) {
   OpOrArgLocNameMapper default_op_or_arg_name_mapper;
   if (!op_or_arg_name_mapper)
     op_or_arg_name_mapper = &default_op_or_arg_name_mapper;
   if (!UpdateEntryFunction(module)) return std::nullopt;
   if (!IsValidTFLiteMlirModule(module)) return std::nullopt;
   Translator translator(module, toco_flags, tags, op_or_arg_name_mapper,
-                        metadata);
+                        metadata, custom_option_alignment);
   translator.convert_stablehlo_ = serialize_stablehlo_ops;
   auto ret = translator.TranslateInternal();
   if (translator.require_use_buffer_offset_) {
     auto new_toco_flags = toco_flags;
     new_toco_flags.set_use_buffer_offset(true);
     Translator new_translator(module, new_toco_flags, tags,
-                              op_or_arg_name_mapper, metadata);
+                              op_or_arg_name_mapper, metadata,
+                              custom_option_alignment);
     return new_translator.TranslateInternal();
   }
   return ret;
@@ -3046,8 +3054,7 @@ std::optional<std::string> Translator::TranslateInternal() {
 
   // Build the model and finish the model building process.
   auto description = builder_.CreateString(model_description.data());
-  VectorBufferOffset<int32_t> metadata_buffer =
-      CreateMetadataBufferVector();  // Deprecated
+  VectorBufferOffset<int32_t> metadata_buffer = 0;  // Deprecated
   auto metadata = CreateMetadataVector();
   if (!metadata) return std::nullopt;
 
@@ -3138,6 +3145,10 @@ void Translator::AppendBufferData(std::string& result) {
 
   for (auto& it : custom_op_data_map_) {
     while (result.size() % 16 != 0) result += '\0';
+    if (custom_option_alignment_.has_value()) {
+      while (result.size() % custom_option_alignment_.value() != 0)
+        result += '\0';
+    }
     auto buffer = std::string(it.second.begin(), it.second.end());
     int64_t offset = result.size();
     int64_t size = it.second.size();
@@ -3352,7 +3363,8 @@ bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
                                        bool serialize_stablehlo_ops) {
   auto maybe_translated = Translator::Translate(
       module, options.toco_flags, options.saved_model_tags,
-      options.op_or_arg_name_mapper, options.metadata, serialize_stablehlo_ops);
+      options.op_or_arg_name_mapper, options.metadata, serialize_stablehlo_ops,
+      options.custom_option_alignment);
   if (!maybe_translated) return false;
   *serialized_flatbuffer = std::move(*maybe_translated);
   return true;

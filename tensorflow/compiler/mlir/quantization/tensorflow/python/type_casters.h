@@ -25,24 +25,25 @@ limitations under the License.
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
+#include "tsl/platform/protobuf.h"
 
 namespace pybind11::detail {
 namespace internal {
 
-// Serializes an ExportedModel. Raises python ValueError if serialization fails.
-std::string Serialize(
-    const tensorflow::quantization::ExportedModel& exported_model) {
-  const std::string exported_model_serialized =
-      exported_model.SerializeAsString();
+// Serializes a protobuf object. Raises python ValueError if serialization
+// fails.
+std::string Serialize(const tsl::protobuf::Message& protobuf_object) {
+  const std::string serialized = protobuf_object.SerializeAsString();
 
   // Empty string means it failed to serialize the protobuf with an error. See
   // the docstring for SerializeAsString for details.
-  if (exported_model_serialized.empty()) {
-    throw py::value_error("Failed to serialize ExportedModel.");
+  if (serialized.empty()) {
+    throw py::value_error("Failed to serialize protobuf object.");
   }
 
-  return exported_model_serialized;
+  return serialized;
 }
 
 }  // namespace internal
@@ -90,14 +91,15 @@ struct type_caster<tensorflow::quantization::ExportedModel> {
   }
 };
 
-// Python -> cpp conversion for `QuantizationOptions`. Accepts a serialized
-// protobuf string and deserializes into an instance of `QuantizationOptions`.
+// Handles type conversion for `QuantizationOptions`.
 template <>
 struct type_caster<tensorflow::quantization::QuantizationOptions> {
  public:
   PYBIND11_TYPE_CASTER(tensorflow::quantization::QuantizationOptions,
                        const_name("QuantizationOptions"));
 
+  // Python -> C++. Converts a serialized protobuf string and deserializes into
+  // an instance of `QuantizationOptions`.
   bool load(handle src, const bool convert) {
     auto caster = make_caster<absl::string_view>();
     // The user should have passed a valid python string.
@@ -110,6 +112,39 @@ struct type_caster<tensorflow::quantization::QuantizationOptions> {
 
     // NOLINTNEXTLINE: Explicit std::string conversion required for OSS.
     return value.ParseFromString(std::string(quantization_opts_serialized));
+  }
+
+  // C++ -> Python. Constructs a `bytes` object after serializing `src`.
+  static handle cast(const tensorflow::quantization::QuantizationOptions& src,
+                     return_value_policy policy, handle parent) {
+    // release() prevents the reference count from decreasing upon the
+    // destruction of py::bytes and returns a raw python object handle.
+    return py::bytes(internal::Serialize(src)).release();
+  }
+};
+
+template <>
+struct type_caster<tensorflow::SignatureDef> {
+ public:
+  PYBIND11_TYPE_CASTER(tensorflow::SignatureDef, const_name("SignatureDef"));
+
+  // Python->C++ conversion. Accepts a serialized `SignatureDef` string from the
+  // python side.
+  bool load(handle src, const bool convert) {
+    auto caster = make_caster<absl::string_view>();
+    if (!caster.load(src, convert)) return false;
+
+    const absl::string_view signature_def_serialized =
+        cast_op<absl::string_view>(std::move(caster));
+
+    // NOLINTNEXTLINE: Explicit std::string conversion required for OSS.
+    return value.ParseFromString(std::string(signature_def_serialized));
+  }
+
+  // C++->Python conversion. Returns a serialized `SignatureDef` string.
+  static handle cast(const tensorflow::SignatureDef& src,
+                     return_value_policy policy, handle parent) {
+    return py::bytes(internal::Serialize(src)).release();
   }
 };
 

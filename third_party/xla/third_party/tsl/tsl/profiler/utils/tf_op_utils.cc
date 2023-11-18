@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tsl/profiler/utils/tf_op_utils.h"
 
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -61,6 +63,32 @@ absl::string_view DeriveOpType(absl::string_view full_op_name) {
   return op_type;
 }
 
+// TODO(xprof-devs): Include the corresponding Ops on TPU.
+std::optional<TfOp> GetMemcpyOp(absl::string_view tf_op_fullname) {
+  TfOp tf_op;
+  tf_op.name = tf_op_fullname;
+  if (absl::StartsWithIgnoreCase(tf_op_fullname, "MEMCPYHToD")) {
+    tf_op.category = Category::kMemcpyHToD;
+    tf_op.type = kMemcpyHToDOp;
+    return tf_op;
+  }
+  if (absl::StartsWithIgnoreCase(tf_op_fullname, "MEMCPYDToH")) {
+    tf_op.category = Category::kMemcpyDToH;
+    tf_op.type = kMemcpyDToHOp;
+    return tf_op;
+  }
+  if (absl::StartsWithIgnoreCase(tf_op_fullname, "MEMCPYDToD")) {
+    tf_op.category = Category::kMemcpyDToD;
+    tf_op.type = kMemcpyDToDOp;
+    return tf_op;
+  } else if (absl::StartsWithIgnoreCase(tf_op_fullname, "MEMCPYHToH")) {
+    tf_op.category = Category::kMemcpyHToH;
+    tf_op.type = kMemcpyHToHOp;
+    return tf_op;
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 const absl::string_view kUnknownOp = "";  // op types are non-empty strings
@@ -70,12 +98,14 @@ const absl::string_view kMemcpyDToHOp = "MemcpyDToH";
 const absl::string_view kMemcpyDToDOp = "MemcpyDToD";
 const absl::string_view kMemcpyHToHOp = "MemcpyHToH";
 
+// Example inputs: "MyOpName", "MyNamespace>MyOpName"
 bool IsTfOpName(absl::string_view op_name) {
   // TODO(b/177602927): Confirm the naming convention with the TF team.
   static const LazyRE2 kTfOpNameRegEx = {"[A-Za-z0-9.][A-Za-z0-9_.\\/>-]*"};
   return RE2::FullMatch(op_name, *kTfOpNameRegEx);
 }
 
+// Example inputs: "MyType", "_MyInternalType"
 bool IsTfOpType(absl::string_view op_type) {
   static const LazyRE2 kTfOpTypeRegEx = {"[A-Z_][a-zA-Z0-9_]*"};
   return RE2::FullMatch(op_type, *kTfOpTypeRegEx);
@@ -97,52 +127,64 @@ bool IsJaxOpNameAndType(absl::string_view op_name, absl::string_view op_type) {
 }
 
 TfOp ParseTfOpFullname(absl::string_view tf_op_fullname) {
-  // TF Op names have the format "name:type".
+  // For op types below, they all have the format "<op_name>:<op_type>", though
+  // op_type could be empty.
   TfOp tf_op = {Category::kUnknown, tf_op_fullname, kUnknownOp};
   std::vector<absl::string_view> parts =
       absl::StrSplit(tf_op_fullname, absl::MaxSplits(':', 1));
+
   if (parts.size() != 2) {
-    // GPU-related Ops that need to be tracked.
-    if (absl::StartsWithIgnoreCase(tf_op_fullname, "MEMCPYHToD")) {
-      tf_op.category = Category::kMemcpyHToD;
-      tf_op.type = kMemcpyHToDOp;
-    } else if (absl::StartsWithIgnoreCase(tf_op_fullname, "MEMCPYDToH")) {
-      tf_op.category = Category::kMemcpyDToH;
-      tf_op.type = kMemcpyDToHOp;
-    } else if (absl::StartsWithIgnoreCase(tf_op_fullname, "MEMCPYDToD")) {
-      tf_op.category = Category::kMemcpyDToD;
-      tf_op.type = kMemcpyDToDOp;
-    } else if (absl::StartsWithIgnoreCase(tf_op_fullname, "MEMCPYHToH")) {
-      tf_op.category = Category::kMemcpyHToH;
-      tf_op.type = kMemcpyHToHOp;
+    // Two possibilities here: GPU memcpy op or invalid op.
+    if (std::optional<TfOp> tfop = GetMemcpyOp(parts[0]); tfop.has_value()) {
+      return *tfop;
     }
-    // TODO(ckluk): Include the corresponding Ops on TPU.
-  } else if (parts[0] == kIterator) {
+    return tf_op;
+  }
+
+  // Check for a Dataset op.
+  if (parts[0] == kIterator) {
     // Dataset Op names (e.g., Iterator::Batch::Map::TFRecord) do not follow the
     // format of TF Op names. But we still want to capture them for
     // input-pipeline analysis.
     tf_op.category = Category::kTfData;
     tf_op.type = kDatasetOp;
-  } else if (IsTfOpType(parts[1]) && IsTfOpName(parts[0])) {
-    tf_op = {Category::kTensorFlow, parts[0], parts[1]};
-  } else {
-    absl::string_view op_type =
-        parts[1].empty() ? DeriveOpType(parts[0]) : parts[1];
-    if (IsJaxOpType(op_type)) {
-      // JAX category introduces op_type with '[]' including unnecessary details
-      // to represent a group of ops.
-      // We need to striping the brackets and contents inside. Based on our
-      // analysis, all the op_type ends with a closing ']' if it contains
-      // brakets. It's safe to remove all the characters starting with the
-      // position of '['.
-      // Example:
-      //    "transpose[permutation=(0, 3, 1, 2)]"  =>  "transpose"
-      // See: go/xprof-jax-op-type
-      tf_op = {Category::kJax, parts[0], op_type.substr(0, op_type.find('['))};
-    } else if (parts[1].empty()) {
-      tf_op = {Category::kTensorFlow, parts[0], op_type};
-    }
+    return tf_op;
   }
+
+  // Check for Tensorflow Op.
+  if (IsTfOpName(parts[0]) && IsTfOpType(parts[1])) {
+    tf_op.category = Category::kTensorFlow;
+    tf_op.name = parts[0];
+    tf_op.type = parts[1];
+    return tf_op;
+  }
+
+  // Check for JAX op.
+  absl::string_view op_type =
+      parts[1].empty() ? DeriveOpType(parts[0]) : parts[1];
+  if (IsJaxOpType(op_type)) {
+    // JAX category introduces op_type with '[]' including unnecessary details
+    // to represent a group of ops.
+    // We need to striping the brackets and contents inside. Based on our
+    // analysis, all the op_type ends with a closing ']' if it contains
+    // brakets. It's safe to remove all the characters starting with the
+    // position of '['.
+    // Example:
+    //    "transpose[permutation=(0, 3, 1, 2)]"  =>  "transpose"
+    // See: go/xprof-jax-op-type
+    tf_op.category = Category::kJax;
+    tf_op.name = parts[0];
+    tf_op.type = op_type.substr(0, op_type.find('['));
+    return tf_op;
+  }
+
+  if (parts[1].empty()) {
+    tf_op.category = Category::kTensorFlow;
+    tf_op.name = parts[0];
+    tf_op.type = op_type;
+    return tf_op;
+  }
+
   return tf_op;
 }
 

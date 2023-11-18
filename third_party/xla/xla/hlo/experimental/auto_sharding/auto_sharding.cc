@@ -90,52 +90,51 @@ namespace spmd {
 // Compute the resharding cost vector from multiple possible strategies
 // to a desired sharding spec.
 std::vector<double> ReshardingCostVector(
-    const StrategyVector* strategies, const Shape& operand_shape,
+    const StrategyGroup* strategy_group, const Shape& operand_shape,
     const HloSharding& required_sharding,
     const ClusterEnvironment& cluster_env) {
-  CHECK(!strategies->is_tuple) << "Only works with strategy vector.";
+  CHECK(!strategy_group->is_tuple) << "Only works with strategy vector.";
   std::vector<double> ret;
-  ret.reserve(strategies->leaf_vector.size());
+  ret.reserve(strategy_group->strategies.size());
   auto required_sharding_for_resharding = required_sharding.IsTileMaximal()
                                               ? HloSharding::Replicate()
                                               : required_sharding;
-  for (const auto& x : strategies->leaf_vector) {
+  for (const auto& x : strategy_group->strategies) {
     ret.push_back(cluster_env.ReshardingCost(operand_shape, x.output_sharding,
                                              required_sharding_for_resharding));
   }
   return ret;
 }
 
-// Factory functions for StrategyVector.
-std::unique_ptr<StrategyVector> CreateLeafStrategyVectorWithoutInNodes(
-    size_t instruction_id, LeafStrategies& leaf_strategies) {
-  auto strategies = std::make_unique<StrategyVector>();
-  strategies->is_tuple = false;
-  strategies->node_idx = leaf_strategies.size();
-  leaf_strategies.push_back(strategies.get());
-  strategies->instruction_id = instruction_id;
-  return strategies;
+// Factory functions for StrategyGroup.
+std::unique_ptr<StrategyGroup> CreateLeafStrategyGroupWithoutInNodes(
+    size_t instruction_id, StrategyGroups& strategy_groups) {
+  auto strategy_group = std::make_unique<StrategyGroup>();
+  strategy_group->is_tuple = false;
+  strategy_group->node_idx = strategy_groups.size();
+  strategy_groups.push_back(strategy_group.get());
+  strategy_group->instruction_id = instruction_id;
+  return strategy_group;
 }
 
-// Factory functions for StrategyVector.
-std::unique_ptr<StrategyVector> CreateLeafStrategyVector(
+// Factory functions for StrategyGroup.
+std::unique_ptr<StrategyGroup> CreateLeafStrategyGroup(
     size_t instruction_id, const HloInstruction* ins,
-    const StrategyMap& strategy_map, LeafStrategies& leaf_strategies) {
-  auto strategies =
-      CreateLeafStrategyVectorWithoutInNodes(instruction_id, leaf_strategies);
+    const StrategyMap& strategy_map, StrategyGroups& strategy_groups) {
+  auto strategy_group =
+      CreateLeafStrategyGroupWithoutInNodes(instruction_id, strategy_groups);
   for (int64_t i = 0; i < ins->operand_count(); ++i) {
-    strategies->in_nodes.push_back(strategy_map.at(ins->operand(i)).get());
+    strategy_group->in_nodes.push_back(strategy_map.at(ins->operand(i)).get());
   }
-  return strategies;
+  return strategy_group;
 }
 
-std::unique_ptr<StrategyVector> CreateTupleStrategyVector(
-    size_t instruction_id) {
-  auto strategies = std::make_unique<StrategyVector>();
-  strategies->is_tuple = true;
-  strategies->node_idx = -1;
-  strategies->instruction_id = instruction_id;
-  return strategies;
+std::unique_ptr<StrategyGroup> CreateTupleStrategyGroup(size_t instruction_id) {
+  auto strategy_group = std::make_unique<StrategyGroup>();
+  strategy_group->is_tuple = true;
+  strategy_group->node_idx = -1;
+  strategy_group->instruction_id = instruction_id;
+  return strategy_group;
 }
 
 // ShardingPropagation::GetShardingFromUser does not handle TopK custom
@@ -162,7 +161,7 @@ GenerateReshardingCostsAndMissingShardingsForAllOperands(
     auto operand = ins->operand(k);
     if (operand->shape().IsToken() || operand->shape().rank() == 0) {
       resharding_costs.push_back(std::vector<double>(
-          strategy_map.at(operand)->leaf_vector.size(), 0.0));
+          strategy_map.at(operand)->strategies.size(), 0.0));
       if (!input_shardings[k].has_value()) {
         input_shardings[k] = HloSharding::Replicate();
       }
@@ -187,6 +186,8 @@ GenerateReshardingCostsAndMissingShardingsForAllOperands(
         } else if (ins->opcode() == HloOpcode::kCustomCall) {
           is_sharding_default_replicated = true;
           cur_input_sharding = HloSharding::Replicate();
+        } else if (ins->opcode() == HloOpcode::kRngBitGenerator) {
+          cur_input_sharding = HloSharding::Replicate();
         }
       }
       CHECK(cur_input_sharding.has_value());
@@ -200,7 +201,7 @@ GenerateReshardingCostsAndMissingShardingsForAllOperands(
         VLOG(2) << "Zeroing out operand 0 resharding costs for gather sharding "
                 << output_sharding.ToString();
         resharding_costs.push_back(
-            std::vector<double>(operand_strategies->leaf_vector.size(), 0));
+            std::vector<double>(operand_strategies->strategies.size(), 0));
         input_shardings[k] = std::nullopt;
       } else {
         resharding_costs.push_back(
@@ -227,53 +228,54 @@ GenerateReshardingCostsAndShardingsForAllOperands(
     CHECK(sharding_optional.has_value());
   }
 
-  return std::make_pair(resharding_costs, input_shardings_optional);
+  return {resharding_costs, input_shardings_optional};
 }
 
-std::unique_ptr<StrategyVector> MaybeFollowInsStrategyVector(
-    const StrategyVector* src_strategies, const Shape& shape,
+std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
+    const StrategyGroup* src_strategy_group, const Shape& shape,
     size_t instruction_id, bool have_memory_cost,
-    LeafStrategies& leaf_strategies, const ClusterEnvironment& cluster_env,
+    StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
     StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map) {
-  std::unique_ptr<StrategyVector> strategies;
-  if (src_strategies->is_tuple) {
+  std::unique_ptr<StrategyGroup> strategy_group;
+  if (src_strategy_group->is_tuple) {
     CHECK(shape.IsTuple());
-    CHECK_EQ(shape.tuple_shapes_size(), src_strategies->childs.size());
-    strategies = CreateTupleStrategyVector(instruction_id);
-    strategies->childs.reserve(src_strategies->childs.size());
-    for (size_t i = 0; i < src_strategies->childs.size(); ++i) {
-      auto child_strategies = MaybeFollowInsStrategyVector(
-          src_strategies->childs[i].get(), shape.tuple_shapes(i),
-          instruction_id, have_memory_cost, leaf_strategies, cluster_env,
+    CHECK_EQ(shape.tuple_shapes_size(), src_strategy_group->childs.size());
+    strategy_group = CreateTupleStrategyGroup(instruction_id);
+    strategy_group->childs.reserve(src_strategy_group->childs.size());
+    for (size_t i = 0; i < src_strategy_group->childs.size(); ++i) {
+      auto child_strategies = MaybeFollowInsStrategyGroup(
+          src_strategy_group->childs[i].get(), shape.tuple_shapes(i),
+          instruction_id, have_memory_cost, strategy_groups, cluster_env,
           pretrimmed_strategy_map);
       child_strategies->tuple_element_idx = i;
-      strategies->childs.push_back(std::move(child_strategies));
+      strategy_group->childs.push_back(std::move(child_strategies));
     }
   } else {
     CHECK(shape.IsArray() || shape.IsToken());
-    strategies =
-        CreateLeafStrategyVectorWithoutInNodes(instruction_id, leaf_strategies);
-    strategies->in_nodes.push_back(src_strategies);
+    strategy_group =
+        CreateLeafStrategyGroupWithoutInNodes(instruction_id, strategy_groups);
+    strategy_group->in_nodes.push_back(src_strategy_group);
     // Only follows the given strategy when there is no other strategy to be
     // restored.
-    if (!pretrimmed_strategy_map.contains(src_strategies->node_idx)) {
-      strategies->following = src_strategies;
+    if (!pretrimmed_strategy_map.contains(src_strategy_group->node_idx)) {
+      strategy_group->following = src_strategy_group;
     }
-    strategies->leaf_vector.reserve(src_strategies->leaf_vector.size());
+    strategy_group->strategies.reserve(src_strategy_group->strategies.size());
     // Creates the sharding strategies and restores the trimmed strategies if
     // there is any.
     for (int64_t sid = 0;
-         sid < src_strategies->leaf_vector.size() +
-                   pretrimmed_strategy_map[src_strategies->node_idx].size();
+         sid < src_strategy_group->strategies.size() +
+                   pretrimmed_strategy_map[src_strategy_group->node_idx].size();
          ++sid) {
       const HloSharding* output_spec;
-      if (sid < src_strategies->leaf_vector.size()) {
-        output_spec = &src_strategies->leaf_vector[sid].output_sharding;
+      if (sid < src_strategy_group->strategies.size()) {
+        output_spec = &src_strategy_group->strategies[sid].output_sharding;
       } else {
         output_spec =
-            &pretrimmed_strategy_map[src_strategies->node_idx]
-                                    [sid - src_strategies->leaf_vector.size()]
+            &pretrimmed_strategy_map[src_strategy_group->node_idx]
+                                    [sid -
+                                     src_strategy_group->strategies.size()]
                                         .output_sharding;
         VLOG(1) << "Adding outspec from the trimmed strategy map: "
                 << output_spec->ToString();
@@ -282,9 +284,9 @@ std::unique_ptr<StrategyVector> MaybeFollowInsStrategyVector(
       double compute_cost = 0, communication_cost = 0;
       double memory_cost =
           have_memory_cost ? GetBytes(shape) / output_spec->NumTiles() : 0;
-      auto resharding_costs = ReshardingCostVector(src_strategies, shape,
+      auto resharding_costs = ReshardingCostVector(src_strategy_group, shape,
                                                    *output_spec, cluster_env);
-      strategies->leaf_vector.push_back(
+      strategy_group->strategies.push_back(
           ShardingStrategy({name,
                             *output_spec,
                             compute_cost,
@@ -294,38 +296,39 @@ std::unique_ptr<StrategyVector> MaybeFollowInsStrategyVector(
                             {*output_spec}}));
     }
   }
-  return strategies;
+  return strategy_group;
 }
 
-StatusOr<std::unique_ptr<StrategyVector>> FollowReduceStrategy(
+StatusOr<std::unique_ptr<StrategyGroup>> FollowReduceStrategy(
     const HloInstruction* ins, const Shape& output_shape,
     const HloInstruction* operand, const HloInstruction* unit,
     size_t instruction_id, StrategyMap& strategy_map,
-    LeafStrategies& leaf_strategies, const ClusterEnvironment& cluster_env,
+    StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
     bool allow_mixed_mesh_shape, bool crash_at_error) {
-  std::unique_ptr<StrategyVector> strategies;
+  std::unique_ptr<StrategyGroup> strategy_group;
   if (output_shape.IsTuple()) {
-    strategies = CreateTupleStrategyVector(instruction_id);
-    strategies->childs.reserve(ins->shape().tuple_shapes_size());
+    strategy_group = CreateTupleStrategyGroup(instruction_id);
+    strategy_group->childs.reserve(ins->shape().tuple_shapes_size());
     for (size_t i = 0; i < ins->shape().tuple_shapes_size(); ++i) {
       auto child_strategy_status = FollowReduceStrategy(
           ins, ins->shape().tuple_shapes().at(i), ins->operand(i),
           ins->operand(i + ins->shape().tuple_shapes_size()), instruction_id,
-          strategy_map, leaf_strategies, cluster_env, allow_mixed_mesh_shape,
+          strategy_map, strategy_groups, cluster_env, allow_mixed_mesh_shape,
           crash_at_error);
       if (!child_strategy_status.ok()) {
         return child_strategy_status;
       }
       child_strategy_status.value()->tuple_element_idx = i;
-      strategies->childs.push_back(std::move(child_strategy_status.value()));
+      strategy_group->childs.push_back(
+          std::move(child_strategy_status.value()));
     }
   } else if (output_shape.IsArray()) {
-    strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
-                                          leaf_strategies);
-    const StrategyVector* src_strategies = strategy_map.at(operand).get();
+    strategy_group = CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
+                                             strategy_groups);
+    const StrategyGroup* src_strategy_group = strategy_map.at(operand).get();
     // Follows the strategy of the operand.
-    strategies->following = src_strategies;
-    strategies->leaf_vector.reserve(src_strategies->leaf_vector.size());
+    strategy_group->following = src_strategy_group;
+    strategy_group->strategies.reserve(src_strategy_group->strategies.size());
     // Map operand dims to inst dim
     // Example: f32[1,16]{1,0} reduce(f32[1,16,4096]{2,1,0} %param0, f32[]
     // %param1), dimensions={2}
@@ -337,9 +340,9 @@ StatusOr<std::unique_ptr<StrategyVector>> FollowReduceStrategy(
              operand->shape().rank())
         << "Invalid kReduce: output size + reduced dimensions size != op count";
 
-    for (size_t sid = 0; sid < src_strategies->leaf_vector.size(); ++sid) {
+    for (size_t sid = 0; sid < src_strategy_group->strategies.size(); ++sid) {
       HloSharding input_sharding =
-          src_strategies->leaf_vector[sid].output_sharding;
+          src_strategy_group->strategies[sid].output_sharding;
       const auto& tensor_dim_to_mesh = cluster_env.GetTensorDimToMeshDimWrapper(
           operand->shape(), input_sharding,
           /* consider_reverse_device_meshes */ true,
@@ -368,7 +371,7 @@ StatusOr<std::unique_ptr<StrategyVector>> FollowReduceStrategy(
           output_shape, operand_clone.get(), unit_clone.get(),
           ins->dimensions(), ins->to_apply());
       operand_clone->set_sharding(
-          src_strategies->leaf_vector[sid].output_sharding);
+          src_strategy_group->strategies[sid].output_sharding);
       auto s = new_reduce->ReplaceOperandWith(0, operand_clone.get());
       if (!s.ok()) {
         continue;
@@ -399,7 +402,7 @@ StatusOr<std::unique_ptr<StrategyVector>> FollowReduceStrategy(
               operand_strategies, output_shape, input_sharding, cluster_env));
         } else {
           resharding_costs.push_back(std::vector<double>(
-              strategy_map.at(cur_operand)->leaf_vector.size(), 0.0));
+              strategy_map.at(cur_operand)->strategies.size(), 0.0));
         }
       }
       const ShardingStrategy strategy = ShardingStrategy({name,
@@ -409,12 +412,12 @@ StatusOr<std::unique_ptr<StrategyVector>> FollowReduceStrategy(
                                                           memory_cost,
                                                           resharding_costs,
                                                           {input_sharding}});
-      strategies->leaf_vector.push_back(strategy);
+      strategy_group->strategies.push_back(strategy);
     }
   } else {
     LOG(FATAL) << "Unhandled kReduce shape: " << ins->shape().ToString();
   }
-  return strategies;
+  return strategy_group;
 }
 
 std::vector<size_t> FindReplicateStrategyIndices(
@@ -431,7 +434,7 @@ std::vector<size_t> FindReplicateStrategyIndices(
 std::pair<std::vector<std::vector<double>>,
           std::vector<std::optional<HloSharding>>>
 ReshardingCostsForTupleOperand(const HloInstruction* operand,
-                               StrategyVector* operand_strategy_vector) {
+                               StrategyGroup* operand_strategy_vector) {
   // TODO(yuemmawang) Support instructions with more than one tuple operand.
   // Creates resharding costs such that favors when operand strategies are
   // replicated.
@@ -443,22 +446,21 @@ ReshardingCostsForTupleOperand(const HloInstruction* operand,
     auto tuple_element_strategies =
         operand_strategy_vector->childs.at(tuple_element_idx).get();
     std::vector<size_t> indices =
-        FindReplicateStrategyIndices(tuple_element_strategies->leaf_vector);
+        FindReplicateStrategyIndices(tuple_element_strategies->strategies);
     CHECK_GT(indices.size(), 0)
         << "There is no replicated strategy in instruction "
         << operand->ToString() << ".\nStrategies:\n"
         << tuple_element_strategies->ToString();
     resharding_costs.push_back(std::vector<double>(
-        tuple_element_strategies->leaf_vector.size(), kInfinityCost));
+        tuple_element_strategies->strategies.size(), kInfinityCost));
     tuple_element_shardings.push_back(HloSharding::Replicate());
     for (const size_t i : indices) {
       resharding_costs.back().at(i) = 0.0;
     }
   }
-  return std::make_pair(
-      resharding_costs,
-      std::vector<std::optional<HloSharding>>(
-          {HloSharding::Tuple(operand->shape(), tuple_element_shardings)}));
+  return {resharding_costs,
+          std::vector<std::optional<HloSharding>>(
+              {HloSharding::Tuple(operand->shape(), tuple_element_shardings)})};
 }
 
 std::vector<std::vector<double>> CreateZeroReshardingCostsForAllOperands(
@@ -481,12 +483,12 @@ std::vector<std::vector<double>> CreateZeroReshardingCostsForAllOperands(
           auto tuple_element_strategies =
               operand_strategies->childs.at(tuple_element_idx).get();
           resharding_costs.push_back(std::vector<double>(
-              tuple_element_strategies->leaf_vector.size(), 0));
+              tuple_element_strategies->strategies.size(), 0));
         }
       }
     } else {
       resharding_costs.push_back(
-          std::vector<double>(operand_strategies->leaf_vector.size(), 0));
+          std::vector<double>(operand_strategies->strategies.size(), 0));
     }
   }
   return resharding_costs;
@@ -495,7 +497,7 @@ std::vector<std::vector<double>> CreateZeroReshardingCostsForAllOperands(
 void GenerateOutfeedStrategy(const HloInstruction* ins, const Shape& shape,
                              const ClusterEnvironment& cluster_env,
                              const StrategyMap& strategy_map,
-                             std::unique_ptr<StrategyVector>& strategies,
+                             std::unique_ptr<StrategyGroup>& strategy_group,
                              double replicated_penalty) {
   HloSharding output_spec = HloSharding::Replicate();
   std::vector<std::vector<double>> resharding_costs;
@@ -533,13 +535,13 @@ void GenerateOutfeedStrategy(const HloInstruction* ins, const Shape& shape,
   } else {
     for (size_t i = 0; i < tuple_size; ++i) {
       resharding_costs.push_back(std::vector<double>(
-          strategy_map.at(ins->operand(0))->childs[i].get()->leaf_vector.size(),
+          strategy_map.at(ins->operand(0))->childs[i].get()->strategies.size(),
           0));
     }
   }
   resharding_costs.push_back({});
   double memory_cost = GetBytes(shape) / output_spec.NumTiles();
-  strategies->leaf_vector.push_back(ShardingStrategy(
+  strategy_group->strategies.push_back(ShardingStrategy(
       {"R", HloSharding::Replicate(), replicated_penalty, 0, memory_cost,
        std::move(resharding_costs), input_shardings}));
 }
@@ -585,7 +587,7 @@ double ComputeCommunicationCost(
 void AddReplicatedStrategy(
     const HloInstruction* ins, const Shape& shape,
     const ClusterEnvironment& cluster_env, const StrategyMap& strategy_map,
-    std::unique_ptr<StrategyVector>& strategies, double replicated_penalty,
+    std::unique_ptr<StrategyGroup>& strategy_group, double replicated_penalty,
     absl::flat_hash_set<int64_t> operands_to_consider_all_strategies_for = {}) {
   HloSharding replicated_strategy = HloSharding::Replicate();
   HloSharding output_spec = replicated_strategy;
@@ -600,23 +602,23 @@ void AddReplicatedStrategy(
     auto operand_strategies_to_consider = strategy_map.at(operand).get();
     std::vector<std::vector<std::optional<HloSharding>>>
         possible_input_shardings(
-            operand_strategies_to_consider->leaf_vector.size(),
+            operand_strategies_to_consider->strategies.size(),
             std::vector<std::optional<HloSharding>>(ins->operand_count()));
     std::vector<std::vector<std::vector<double>>> possible_resharding_costs(
-        operand_strategies_to_consider->leaf_vector.size(),
+        operand_strategies_to_consider->strategies.size(),
         std::vector<std::vector<double>>(ins->operand_count()));
 
     for (int64_t k = 0; k < ins->operand_count(); ++k) {
       CHECK(!ins->operand(k)->shape().IsTuple());
       if (k == operand_to_consider_all_strategies_for) {
         CHECK_EQ(possible_input_shardings.size(),
-                 operand_strategies_to_consider->leaf_vector.size());
+                 operand_strategies_to_consider->strategies.size());
         for (size_t j = 0; j < possible_input_shardings.size(); ++j) {
           possible_input_shardings[j][k] =
-              operand_strategies_to_consider->leaf_vector[j].output_sharding;
+              operand_strategies_to_consider->strategies[j].output_sharding;
           possible_resharding_costs[j][k] = ReshardingCostVector(
               strategy_map.at(ins->operand(k)).get(), ins->operand(k)->shape(),
-              operand_strategies_to_consider->leaf_vector[j].output_sharding,
+              operand_strategies_to_consider->strategies[j].output_sharding,
               cluster_env);
         }
       } else {
@@ -632,7 +634,7 @@ void AddReplicatedStrategy(
     for (size_t j = 0; j < possible_input_shardings.size(); ++j) {
       double communication_cost = ComputeCommunicationCost(
           ins, possible_input_shardings[j], cluster_env);
-      strategies->leaf_vector.push_back(ShardingStrategy(
+      strategy_group->strategies.push_back(ShardingStrategy(
           {"R", replicated_strategy, replicated_penalty, communication_cost,
            memory_cost, std::move(possible_resharding_costs[j]),
            std::move(possible_input_shardings[j])}));
@@ -654,7 +656,7 @@ void AddReplicatedStrategy(
         auto operand = ins->operand(k);
         if (ins->opcode() == HloOpcode::kConditional) {
           resharding_costs.push_back(std::vector<double>(
-              strategy_map.at(operand)->leaf_vector.size(), 0));
+              strategy_map.at(operand)->strategies.size(), 0));
         } else {
           resharding_costs.push_back(ReshardingCostVector(
               strategy_map.at(operand).get(), ins->operand(k)->shape(),
@@ -663,7 +665,7 @@ void AddReplicatedStrategy(
         }
       }
     }
-    strategies->leaf_vector.push_back(ShardingStrategy(
+    strategy_group->strategies.push_back(ShardingStrategy(
         {"R", HloSharding::Replicate(), replicated_penalty, 0, memory_cost,
          std::move(resharding_costs), input_shardings}));
   }
@@ -687,7 +689,7 @@ void EnumerateAll1DPartition(const HloInstruction* ins, const Shape& shape,
                              const Array<int64_t>& device_mesh,
                              const ClusterEnvironment& cluster_env,
                              const StrategyMap& strategy_map,
-                             std::unique_ptr<StrategyVector>& strategies,
+                             std::unique_ptr<StrategyGroup>& strategy_group,
                              bool only_allow_divisible,
                              const std::string& suffix,
                              const CallGraph& call_graph) {
@@ -720,9 +722,7 @@ void EnumerateAll1DPartition(const HloInstruction* ins, const Shape& shape,
                 ins->operand(0), strategy_map.at(ins->operand(0)).get());
       } else if (ins->opcode() == HloOpcode::kRngBitGenerator &&
                  ins->operand(0)->shape().IsArray()) {
-        auto replicated_sharding = HloSharding::Replicate();
-        input_shardings.push_back(HloSharding::SingleTuple(
-            ins->operand(0)->shape(), replicated_sharding));
+        input_shardings.push_back(HloSharding::Replicate());
         resharding_costs =
             GenerateReshardingCostsAndMissingShardingsForAllOperands(
                 ins, output_spec, strategy_map, cluster_env, call_graph,
@@ -744,7 +744,7 @@ void EnumerateAll1DPartition(const HloInstruction* ins, const Shape& shape,
         communication_cost = ComputeSortCommunicationCost(
             ins->operand(0)->shape().rank() - 1, i, j, shape, cluster_env);
       }
-      strategies->leaf_vector.push_back(ShardingStrategy(
+      strategy_group->strategies.push_back(ShardingStrategy(
           {name, output_spec, compute_cost, communication_cost, memory_cost,
            std::move(resharding_costs), input_shardings}));
     }
@@ -755,7 +755,7 @@ void BuildStrategyAndCostForOp(const HloInstruction* ins, const Shape& shape,
                                const Array<int64_t>& device_mesh,
                                const ClusterEnvironment& cluster_env,
                                const StrategyMap& strategy_map,
-                               std::unique_ptr<StrategyVector>& strategies,
+                               std::unique_ptr<StrategyGroup>& strategy_group,
                                const CallGraph& call_graph,
                                absl::Span<const int64_t> tensor_dims);
 
@@ -764,7 +764,7 @@ void EnumerateAllPartition(const HloInstruction* ins, const Shape& shape,
                            const Array<int64_t>& device_mesh,
                            const ClusterEnvironment& cluster_env,
                            const StrategyMap& strategy_map,
-                           std::unique_ptr<StrategyVector>& strategies,
+                           std::unique_ptr<StrategyGroup>& strategy_group,
                            const InstructionBatchDimMap& batch_dim_map,
                            bool only_allow_divisible,
                            const CallGraph& call_graph,
@@ -773,7 +773,7 @@ void EnumerateAllPartition(const HloInstruction* ins, const Shape& shape,
   const auto tensor_dims_size = tensor_dims.size();
   if (tensor_dims_size == partition_dimensions) {
     BuildStrategyAndCostForOp(ins, shape, device_mesh, cluster_env,
-                              strategy_map, strategies, call_graph,
+                              strategy_map, strategy_group, call_graph,
                               tensor_dims);
     return;
   }
@@ -798,7 +798,7 @@ void EnumerateAllPartition(const HloInstruction* ins, const Shape& shape,
     std::vector<int64_t> next_tensor_dims = tensor_dims;
     next_tensor_dims.push_back(i);
     EnumerateAllPartition(ins, shape, device_mesh, cluster_env, strategy_map,
-                          strategies, batch_dim_map, only_allow_divisible,
+                          strategy_group, batch_dim_map, only_allow_divisible,
                           call_graph, partition_dimensions, next_tensor_dims);
   }
 }
@@ -808,7 +808,7 @@ void BuildStrategyAndCostForOp(const HloInstruction* ins, const Shape& shape,
                                const Array<int64_t>& device_mesh,
                                const ClusterEnvironment& cluster_env,
                                const StrategyMap& strategy_map,
-                               std::unique_ptr<StrategyVector>& strategies,
+                               std::unique_ptr<StrategyGroup>& strategy_group,
                                const CallGraph& call_graph,
                                absl::Span<const int64_t> tensor_dims) {
   std::vector<int64_t> mesh_dims(tensor_dims.size());
@@ -861,19 +861,17 @@ void BuildStrategyAndCostForOp(const HloInstruction* ins, const Shape& shape,
       }
     }
   }
-  strategies->leaf_vector.push_back(ShardingStrategy(
+  strategy_group->strategies.push_back(ShardingStrategy(
       {name, output_spec, compute_cost, communication_cost, memory_cost,
        std::move(resharding_costs), input_shardings}));
 }
 
 // Enumerate all 1d partition strategies for reshape.
-void EnumerateAll1DPartitionReshape(const HloInstruction* ins,
-                                    const Array<int64_t>& device_mesh,
-                                    const ClusterEnvironment& cluster_env,
-                                    const StrategyMap& strategy_map,
-                                    std::unique_ptr<StrategyVector>& strategies,
-                                    bool only_allow_divisible,
-                                    const std::string& suffix) {
+void EnumerateAll1DPartitionReshape(
+    const HloInstruction* ins, const Array<int64_t>& device_mesh,
+    const ClusterEnvironment& cluster_env, const StrategyMap& strategy_map,
+    std::unique_ptr<StrategyGroup>& strategy_group, bool only_allow_divisible,
+    const std::string& suffix) {
   const HloInstruction* operand = ins->operand(0);
 
   for (int64_t i = 0; i < ins->shape().rank(); ++i) {
@@ -905,7 +903,7 @@ void EnumerateAll1DPartitionReshape(const HloInstruction* ins,
       std::vector<std::vector<double>> resharding_costs{
           ReshardingCostVector(strategy_map.at(operand).get(), operand->shape(),
                                *input_spec, cluster_env)};
-      strategies->leaf_vector.push_back(
+      strategy_group->strategies.push_back(
           ShardingStrategy({name,
                             output_spec,
                             compute_cost,
@@ -917,12 +915,11 @@ void EnumerateAll1DPartitionReshape(const HloInstruction* ins,
   }
 }
 
-void BuildStrategyAndCostForReshape(const HloInstruction* ins,
-                                    const Array<int64_t>& device_mesh,
-                                    const ClusterEnvironment& cluster_env,
-                                    const StrategyMap& strategy_map,
-                                    std::unique_ptr<StrategyVector>& strategies,
-                                    absl::Span<const int64_t> tensor_dims);
+void BuildStrategyAndCostForReshape(
+    const HloInstruction* ins, const Array<int64_t>& device_mesh,
+    const ClusterEnvironment& cluster_env, const StrategyMap& strategy_map,
+    std::unique_ptr<StrategyGroup>& strategy_group,
+    absl::Span<const int64_t> tensor_dims);
 
 // Enumerate all partitions for reshape. Batch dim is always partitioned.
 void EnumeratePartitionReshape(const HloInstruction* ins,
@@ -930,14 +927,14 @@ void EnumeratePartitionReshape(const HloInstruction* ins,
                                const ClusterEnvironment& cluster_env,
                                const StrategyMap& strategy_map,
                                const InstructionBatchDimMap& batch_dim_map,
-                               std::unique_ptr<StrategyVector>& strategies,
+                               std::unique_ptr<StrategyGroup>& strategy_group,
                                bool only_allow_divisible,
                                int64_t partition_dimensions,
                                const std::vector<int64_t>& tensor_dims = {}) {
   const auto tensor_dims_size = tensor_dims.size();
   if (tensor_dims_size == partition_dimensions) {
     BuildStrategyAndCostForReshape(ins, device_mesh, cluster_env, strategy_map,
-                                   strategies, tensor_dims);
+                                   strategy_group, tensor_dims);
     return;
   }
   auto iter = batch_dim_map.find(GetBatchDimMapKey(ins));
@@ -964,17 +961,17 @@ void EnumeratePartitionReshape(const HloInstruction* ins,
     std::vector<int64_t> next_tensor_dims = tensor_dims;
     next_tensor_dims.push_back(i);
     EnumeratePartitionReshape(ins, device_mesh, cluster_env, strategy_map,
-                              batch_dim_map, strategies, only_allow_divisible,
-                              partition_dimensions, next_tensor_dims);
+                              batch_dim_map, strategy_group,
+                              only_allow_divisible, partition_dimensions,
+                              next_tensor_dims);
   }
 }
 
-void BuildStrategyAndCostForReshape(const HloInstruction* ins,
-                                    const Array<int64_t>& device_mesh,
-                                    const ClusterEnvironment& cluster_env,
-                                    const StrategyMap& strategy_map,
-                                    std::unique_ptr<StrategyVector>& strategies,
-                                    absl::Span<const int64_t> tensor_dims) {
+void BuildStrategyAndCostForReshape(
+    const HloInstruction* ins, const Array<int64_t>& device_mesh,
+    const ClusterEnvironment& cluster_env, const StrategyMap& strategy_map,
+    std::unique_ptr<StrategyGroup>& strategy_group,
+    absl::Span<const int64_t> tensor_dims) {
   const HloInstruction* operand = ins->operand(0);
   std::vector<int64_t> mesh_dims(tensor_dims.size());
   std::iota(mesh_dims.begin(), mesh_dims.end(), 0);
@@ -994,7 +991,7 @@ void BuildStrategyAndCostForReshape(const HloInstruction* ins,
   std::vector<std::vector<double>> resharding_costs{
       ReshardingCostVector(strategy_map.at(operand).get(), operand->shape(),
                            *input_spec, cluster_env)};
-  strategies->leaf_vector.push_back(
+  strategy_group->strategies.push_back(
       ShardingStrategy({name,
                         output_spec,
                         compute_cost,
@@ -1007,15 +1004,16 @@ void BuildStrategyAndCostForReshape(const HloInstruction* ins,
 // Return the maximum number of tiles among all strategies of an instruction.
 int64_t MaxNumTiles(const StrategyMap& strategy_map,
                     const HloInstruction* ins) {
-  const StrategyVector* strategies = strategy_map.at(ins).get();
+  const StrategyGroup* strategy_group = strategy_map.at(ins).get();
   // TODO(zhuohan): optimize with path compression.
-  while (strategies->following != nullptr) {
-    strategies = strategies->following;
+  while (strategy_group->following != nullptr) {
+    strategy_group = strategy_group->following;
   }
   int64_t max_num_tiles = -1;
-  for (size_t i = 0; i < strategies->leaf_vector.size(); ++i) {
-    max_num_tiles = std::max(
-        max_num_tiles, strategies->leaf_vector[i].output_sharding.NumTiles());
+  for (size_t i = 0; i < strategy_group->strategies.size(); ++i) {
+    max_num_tiles =
+        std::max(max_num_tiles,
+                 strategy_group->strategies[i].output_sharding.NumTiles());
   }
 
   return max_num_tiles;
@@ -1048,7 +1046,7 @@ std::pair<int64_t, bool> ChooseOperandToFollow(
     for (int64_t i = 0; i < ins->operand_count(); ++i) {
       const HloInstruction* operand = ins->operand(i);
       if (operand == it->second) {
-        return std::make_pair(i, false);
+        return {i, false};
       }
     }
   }
@@ -1073,7 +1071,7 @@ std::pair<int64_t, bool> ChooseOperandToFollow(
   }
   CHECK(follow_idx.has_value());
 
-  return std::make_pair(*follow_idx, tie);
+  return {*follow_idx, tie};
 }
 
 // Return whether an instruciton can follow one of its operand when
@@ -1122,89 +1120,89 @@ void DisableIncompatibleMixedMeshShapeAndForceBatchDim(
   }
 }
 
-StatusOr<std::unique_ptr<StrategyVector>> CreateAllStrategiesVector(
+StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
     const HloInstruction* ins, const Shape& shape, size_t instruction_id,
-    LeafStrategies& leaf_strategies, const ClusterEnvironment& cluster_env,
+    StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
     const StrategyMap& strategy_map, const AutoShardingOption& option,
     double replicated_penalty, const InstructionBatchDimMap& batch_dim_map,
     const CallGraph& call_graph, bool only_allow_divisible,
     bool create_replicated_strategies) {
-  std::unique_ptr<StrategyVector> strategies;
+  std::unique_ptr<StrategyGroup> strategy_group;
   if (shape.IsTuple()) {
-    strategies = CreateTupleStrategyVector(instruction_id);
-    strategies->childs.reserve(shape.tuple_shapes_size());
+    strategy_group = CreateTupleStrategyGroup(instruction_id);
+    strategy_group->childs.reserve(shape.tuple_shapes_size());
     for (size_t i = 0; i < shape.tuple_shapes_size(); ++i) {
       auto child_strategies =
-          CreateAllStrategiesVector(ins, shape.tuple_shapes(i), instruction_id,
-                                    leaf_strategies, cluster_env, strategy_map,
-                                    option, replicated_penalty, batch_dim_map,
-                                    call_graph, only_allow_divisible,
-                                    create_replicated_strategies)
+          CreateAllStrategiesGroup(ins, shape.tuple_shapes(i), instruction_id,
+                                   strategy_groups, cluster_env, strategy_map,
+                                   option, replicated_penalty, batch_dim_map,
+                                   call_graph, only_allow_divisible,
+                                   create_replicated_strategies)
               .value();
       child_strategies->tuple_element_idx = i;
-      strategies->childs.push_back(std::move(child_strategies));
+      strategy_group->childs.push_back(std::move(child_strategies));
     }
   } else if (shape.IsArray()) {
-    strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
-                                          leaf_strategies);
+    strategy_group = CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
+                                             strategy_groups);
     EnumerateAll1DPartition(ins, shape, cluster_env.device_mesh_, cluster_env,
-                            strategy_map, strategies, only_allow_divisible, "",
-                            call_graph);
+                            strategy_map, strategy_group, only_allow_divisible,
+                            "", call_graph);
     // Split 2 dims
     if (cluster_env.IsDeviceMesh2D()) {
       EnumerateAllPartition(ins, shape, cluster_env.device_mesh_, cluster_env,
-                            strategy_map, strategies, batch_dim_map,
+                            strategy_map, strategy_group, batch_dim_map,
                             only_allow_divisible, call_graph, /*partitions*/ 2);
     }
     // Split 3 dims
     if (cluster_env.IsDeviceMesh3D()) {
       EnumerateAllPartition(ins, shape, cluster_env.device_mesh_, cluster_env,
-                            strategy_map, strategies, batch_dim_map,
+                            strategy_map, strategy_group, batch_dim_map,
                             only_allow_divisible, call_graph, /*partitions*/ 3);
     }
 
     if (option.allow_mixed_mesh_shape && cluster_env.IsDeviceMesh2D()) {
       // Set penalty for 1d partial tiled layout
-      for (size_t i = 0; i < strategies->leaf_vector.size(); ++i) {
-        strategies->leaf_vector[i].compute_cost += replicated_penalty * 0.8;
+      for (size_t i = 0; i < strategy_group->strategies.size(); ++i) {
+        strategy_group->strategies[i].compute_cost += replicated_penalty * 0.8;
       }
 
       // Split 1 dim, but for 1d mesh
       EnumerateAll1DPartition(ins, shape, cluster_env.device_mesh_1d_,
-                              cluster_env, strategy_map, strategies,
+                              cluster_env, strategy_map, strategy_group,
                               only_allow_divisible, " 1d", call_graph);
     }
-    if (create_replicated_strategies || strategies->leaf_vector.empty()) {
-      AddReplicatedStrategy(ins, shape, cluster_env, strategy_map, strategies,
-                            replicated_penalty);
+    if (create_replicated_strategies || strategy_group->strategies.empty()) {
+      AddReplicatedStrategy(ins, shape, cluster_env, strategy_map,
+                            strategy_group, replicated_penalty);
     }
 
     // If force_batch_dim_to_mesh_dim is set, filter out invalid strategies
     // and only keep the data parallel strategies.
     if (option.force_batch_dim_to_mesh_dim >= 0 &&
         batch_dim_map.contains(GetBatchDimMapKey(ins))) {
-      TF_RETURN_IF_ERROR(FilterStrategy(ins, shape, strategies, cluster_env,
+      TF_RETURN_IF_ERROR(FilterStrategy(ins, shape, strategy_group, cluster_env,
                                         batch_dim_map, option));
     }
   } else if (shape.IsToken()) {
-    strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
-                                          leaf_strategies);
-    AddReplicatedStrategy(ins, shape, cluster_env, strategy_map, strategies,
+    strategy_group = CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
+                                             strategy_groups);
+    AddReplicatedStrategy(ins, shape, cluster_env, strategy_map, strategy_group,
                           replicated_penalty);
   } else {
     LOG(FATAL) << "Unsupported instruction shape: " << shape.DebugString();
   }
-  return strategies;
+  return strategy_group;
 }
 
-StatusOr<std::unique_ptr<StrategyVector>> CreateParameterStrategyVector(
+StatusOr<std::unique_ptr<StrategyGroup>> CreateParameterStrategyGroup(
     const HloInstruction* ins, const Shape& shape, size_t instruction_id,
-    LeafStrategies& leaf_strategies, const ClusterEnvironment& cluster_env,
+    StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
     const StrategyMap& strategy_map, const AutoShardingOption& option,
     double replicated_penalty, const InstructionBatchDimMap& batch_dim_map,
     const CallGraph& call_graph, bool only_allow_divisible) {
-  return CreateAllStrategiesVector(
-      ins, shape, instruction_id, leaf_strategies, cluster_env, strategy_map,
+  return CreateAllStrategiesGroup(
+      ins, shape, instruction_id, strategy_groups, cluster_env, strategy_map,
       option, replicated_penalty, batch_dim_map, call_graph,
       only_allow_divisible, option.allow_replicated_parameters);
 }
@@ -1251,17 +1249,17 @@ bool ShardingIsConsistent(const HloSharding& partial_sharding,
 // HloSharding.
 // These two are distinguished by ShardingIsComplete().
 void TrimOrGenerateStrategiesBasedOnExistingSharding(
-    const Shape& output_shape, StrategyVector* strategies,
+    const Shape& output_shape, StrategyGroup* strategy_group,
     const StrategyMap& strategy_map,
     const std::vector<HloInstruction*> instructions,
     const HloSharding& existing_sharding, const ClusterEnvironment& cluster_env,
     StableHashMap<int64_t, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map,
     const CallGraph& call_graph, bool strict) {
-  if (strategies->is_tuple) {
-    for (size_t i = 0; i < strategies->childs.size(); ++i) {
+  if (strategy_group->is_tuple) {
+    for (size_t i = 0; i < strategy_group->childs.size(); ++i) {
       TrimOrGenerateStrategiesBasedOnExistingSharding(
-          output_shape.tuple_shapes(i), strategies->childs.at(i).get(),
+          output_shape.tuple_shapes(i), strategy_group->childs.at(i).get(),
           strategy_map, instructions, existing_sharding.tuple_elements().at(i),
           cluster_env, pretrimmed_strategy_map, call_graph, strict);
     }
@@ -1269,34 +1267,41 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
     if (ShardingIsComplete(existing_sharding,
                            cluster_env.device_mesh_.num_elements())) {
       // Sharding provided by XLA users, we need to keep them.
-      strategies->following = nullptr;
-      int32_t strategy_index = -1;
-      for (size_t i = 0; i < strategies->leaf_vector.size(); i++) {
-        if (strategies->leaf_vector[i].output_sharding == existing_sharding) {
-          strategy_index = i;
+      strategy_group->following = nullptr;
+      std::vector<int32_t> strategy_indices;
+      for (size_t i = 0; i < strategy_group->strategies.size(); i++) {
+        if (strategy_group->strategies[i].output_sharding ==
+            existing_sharding) {
+          strategy_indices.push_back(i);
         }
       }
-      if (strategy_index >= 0) {
-        VLOG(1) << "Keeping strategy index: " << strategy_index;
+      if (!strategy_indices.empty()) {
+        VLOG(1) << "Keeping strategy indices: "
+                << spmd::ToString(strategy_indices);
         // Stores other strategies in the map, removes them in the vector and
         // only keeps the one we found.
-        ShardingStrategy found_strategy =
-            strategies->leaf_vector[strategy_index];
-        pretrimmed_strategy_map[strategies->node_idx] = strategies->leaf_vector;
-        strategies->leaf_vector.clear();
-        strategies->leaf_vector.push_back(found_strategy);
+        pretrimmed_strategy_map[strategy_group->node_idx] =
+            strategy_group->strategies;
+        std::vector<ShardingStrategy> new_strategies;
+        for (int32_t found_strategy_index : strategy_indices) {
+          ShardingStrategy found_strategy =
+              strategy_group->strategies[found_strategy_index];
+          new_strategies.push_back(found_strategy);
+        }
+        strategy_group->strategies.clear();
+        strategy_group->strategies = new_strategies;
       } else {
         VLOG(1) << "Generate a new strategy based on user sharding.";
         std::string name = ToStringSimple(existing_sharding);
         std::vector<std::vector<double>> resharding_costs;
         std::vector<std::optional<HloSharding>> input_shardings;
-        if (strategies->in_nodes.empty()) {
+        if (strategy_group->in_nodes.empty()) {
           resharding_costs = {};
         } else {
-          HloInstruction* ins = instructions.at(strategies->instruction_id);
-          for (size_t i = 0; i < strategies->in_nodes.size(); i++) {
+          HloInstruction* ins = instructions.at(strategy_group->instruction_id);
+          for (size_t i = 0; i < strategy_group->in_nodes.size(); i++) {
             HloInstruction* operand =
-                instructions.at(strategies->in_nodes.at(i)->instruction_id);
+                instructions.at(strategy_group->in_nodes.at(i)->instruction_id);
             std::optional<HloSharding> input_sharding_or =
                 ShardingPropagation::GetShardingFromUser(*operand, *ins, 10,
                                                          true, call_graph);
@@ -1304,52 +1309,53 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
               input_shardings.push_back(input_sharding_or.value());
             }
 
-            StrategyVector* operand_strategies;
+            StrategyGroup* operand_strategy_group;
             Shape operand_shape;
             if (ins->opcode() == HloOpcode::kGetTupleElement) {
-              operand_strategies =
+              operand_strategy_group =
                   strategy_map.at(operand)->childs[ins->tuple_index()].get();
               operand_shape = operand->shape().tuple_shapes(ins->tuple_index());
             } else {
-              operand_strategies = strategy_map.at(operand).get();
+              operand_strategy_group = strategy_map.at(operand).get();
               operand_shape = operand->shape();
             }
             resharding_costs.push_back(
-                ReshardingCostVector(operand_strategies, operand_shape,
+                ReshardingCostVector(operand_strategy_group, operand_shape,
                                      existing_sharding, cluster_env));
           }
         }
         double memory_cost =
             GetBytes(output_shape) / existing_sharding.NumTiles();
-        if (!strategies->leaf_vector.empty()) {
-          pretrimmed_strategy_map[strategies->node_idx] =
-              strategies->leaf_vector;
+        if (!strategy_group->strategies.empty()) {
+          pretrimmed_strategy_map[strategy_group->node_idx] =
+              strategy_group->strategies;
         }
-        strategies->leaf_vector.clear();
-        strategies->leaf_vector.push_back(
+        strategy_group->strategies.clear();
+        strategy_group->strategies.push_back(
             ShardingStrategy({name, existing_sharding, 0, 0, memory_cost,
                               resharding_costs, input_shardings}));
       }
-      CHECK_EQ(strategies->leaf_vector.size(), 1);
       // If there is only one option for resharding, and the cost computed for
       // that option is kInfinityCost, set the cost to zero. This is okay
       // because there is only one option anyway, and having the costs set to
       // kInfinityCost is problematic for the solver.
-      for (auto& operand_resharding_costs :
-           strategies->leaf_vector[0].resharding_costs) {
-        if (operand_resharding_costs.size() == 1 &&
-            operand_resharding_costs[0] >= kInfinityCost) {
-          operand_resharding_costs[0] = 0;
+      if (strategy_group->strategies.size() == 1) {
+        for (auto& operand_resharding_costs :
+             strategy_group->strategies[0].resharding_costs) {
+          if (operand_resharding_costs.size() == 1 &&
+              operand_resharding_costs[0] >= kInfinityCost) {
+            operand_resharding_costs[0] = 0;
+          }
         }
       }
-    } else if (!strategies->following) {
+    } else if (!strategy_group->following) {
       // If existing sharding is a partial sharding from previous iteration,
       // find the strategies that are 1D&&complete or align with user
       // sharding.
       // It is IMPORTANT that we do this only for instructions that do no follow
       // others, to keep the number of ILP variable small.
       std::vector<ShardingStrategy> new_vector;
-      for (const auto& strategy : strategies->leaf_vector) {
+      for (const auto& strategy : strategy_group->strategies) {
         if (strategy.output_sharding.IsReplicated() ||
             ShardingIsConsistent(existing_sharding, strategy.output_sharding,
                                  strict) ||
@@ -1366,29 +1372,30 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
       // not have to strictly keep those shardings and the only purpose is to
       // reduce problem size for the last iteration.
       if (!new_vector.empty() &&
-          new_vector.size() != strategies->leaf_vector.size()) {
-        strategies->following = nullptr;
-        strategies->leaf_vector = std::move(new_vector);
+          new_vector.size() != strategy_group->strategies.size()) {
+        strategy_group->following = nullptr;
+        strategy_group->strategies = std::move(new_vector);
       }
     }
   }
 }
 
-void CheckMemoryCosts(StrategyVector* strategies, const Shape& shape) {
-  if (strategies->is_tuple) {
-    for (size_t i = 0; i < strategies->childs.size(); i++) {
-      CheckMemoryCosts(strategies->childs[i].get(), shape.tuple_shapes().at(i));
+void CheckMemoryCosts(StrategyGroup* strategy_group, const Shape& shape) {
+  if (strategy_group->is_tuple) {
+    for (size_t i = 0; i < strategy_group->childs.size(); i++) {
+      CheckMemoryCosts(strategy_group->childs[i].get(),
+                       shape.tuple_shapes().at(i));
     }
   } else {
     double full_mem = 0.0;
-    for (const auto& strategy : strategies->leaf_vector) {
+    for (const auto& strategy : strategy_group->strategies) {
       if (strategy.output_sharding.IsReplicated()) {
         full_mem = strategy.memory_cost;
         size_t size = GetInstructionSize(shape);
         CHECK_EQ(strategy.memory_cost, size);
       }
     }
-    for (const auto& strategy : strategies->leaf_vector) {
+    for (const auto& strategy : strategy_group->strategies) {
       if (!strategy.output_sharding.IsReplicated() && full_mem > 0.0) {
         CHECK_EQ(strategy.memory_cost * strategy.output_sharding.NumTiles(),
                  full_mem);
@@ -1398,16 +1405,17 @@ void CheckMemoryCosts(StrategyVector* strategies, const Shape& shape) {
 }
 
 void RemoveInvalidShardingsWithShapes(const Shape& shape,
-                                      StrategyVector* strategies,
+                                      StrategyGroup* strategy_group,
                                       bool instruction_has_user_sharding) {
-  if (strategies->is_tuple) {
-    for (size_t i = 0; i < strategies->childs.size(); i++) {
+  if (strategy_group->is_tuple) {
+    for (size_t i = 0; i < strategy_group->childs.size(); i++) {
       RemoveInvalidShardingsWithShapes(shape.tuple_shapes().at(i),
-                                       strategies->childs[i].get(),
+                                       strategy_group->childs[i].get(),
                                        instruction_has_user_sharding);
     }
   } else {
-    if (instruction_has_user_sharding && strategies->leaf_vector.size() == 1) {
+    if (instruction_has_user_sharding &&
+        strategy_group->strategies.size() == 1) {
       // If an instruction has a specified user sharding, and there is only a
       // single strategy, removing that strategy would mean we won't have any
       // strategy for that instruction. Further, given that the user has
@@ -1416,7 +1424,7 @@ void RemoveInvalidShardingsWithShapes(const Shape& shape,
       return;
     }
     std::vector<ShardingStrategy> new_vector;
-    for (const auto& strategy : strategies->leaf_vector) {
+    for (const auto& strategy : strategy_group->strategies) {
       if (strategy.output_sharding.IsReplicated()) {
         new_vector.push_back(strategy);
         continue;
@@ -1436,49 +1444,50 @@ void RemoveInvalidShardingsWithShapes(const Shape& shape,
         new_vector.push_back(strategy);
       }
     }
-    strategies->leaf_vector = std::move(new_vector);
+    strategy_group->strategies = std::move(new_vector);
   }
 }
 
-void CheckReshardingCostsShape(StrategyVector* strategies) {
-  if (strategies->is_tuple) {
-    for (size_t i = 0; i < strategies->childs.size(); i++) {
-      CheckReshardingCostsShape(strategies->childs[i].get());
+void CheckReshardingCostsShape(StrategyGroup* strategy_group) {
+  if (strategy_group->is_tuple) {
+    for (size_t i = 0; i < strategy_group->childs.size(); i++) {
+      CheckReshardingCostsShape(strategy_group->childs[i].get());
     }
   } else {
-    for (const auto& strategy : strategies->leaf_vector) {
-      if (strategies->in_nodes.size() == 1 &&
-          strategies->in_nodes.at(0)->is_tuple) {
+    for (const auto& strategy : strategy_group->strategies) {
+      if (strategy_group->in_nodes.size() == 1 &&
+          strategy_group->in_nodes.at(0)->is_tuple) {
         // This is when current instruction's only operand is tuple, and the
         // first dimension of resharding_costs should equal its number of
         // tuple elements.
         CHECK_EQ(strategy.resharding_costs.size(),
-                 strategies->in_nodes.at(0)->childs.size())
-            << "Instruction ID: " << strategies->instruction_id << "\n"
-            << strategies->ToString();
+                 strategy_group->in_nodes.at(0)->childs.size())
+            << "Instruction ID: " << strategy_group->instruction_id << "\n"
+            << strategy_group->ToString();
       } else {
         // The rest of the time, the first dimension of resharding_costs
         // should equal its number of operands (in_nodes).
-        CHECK_EQ(strategy.resharding_costs.size(), strategies->in_nodes.size())
-            << "Instruction ID: " << strategies->instruction_id << "\n"
-            << strategies->ToString();
+        CHECK_EQ(strategy.resharding_costs.size(),
+                 strategy_group->in_nodes.size())
+            << "Instruction ID: " << strategy_group->instruction_id << "\n"
+            << strategy_group->ToString();
       }
       for (size_t i = 0; i < strategy.resharding_costs.size(); i++) {
         size_t to_compare;
-        if (strategies->in_nodes.size() == 1 &&
-            strategies->in_nodes.at(0)->is_tuple) {
+        if (strategy_group->in_nodes.size() == 1 &&
+            strategy_group->in_nodes.at(0)->is_tuple) {
           to_compare =
-              strategies->in_nodes.at(0)->childs.at(i)->leaf_vector.size();
-        } else if (strategies->is_tuple) {
-          to_compare = strategies->in_nodes.at(i)->childs.size();
+              strategy_group->in_nodes.at(0)->childs.at(i)->strategies.size();
+        } else if (strategy_group->is_tuple) {
+          to_compare = strategy_group->in_nodes.at(i)->childs.size();
         } else {
-          to_compare = strategies->in_nodes.at(i)->leaf_vector.size();
+          to_compare = strategy_group->in_nodes.at(i)->strategies.size();
         }
         CHECK_EQ(strategy.resharding_costs[i].size(), to_compare)
             << "\nIndex of resharding_costs: " << i
-            << "\nInstruction ID: " << strategies->instruction_id
+            << "\nInstruction ID: " << strategy_group->instruction_id
             << "\nCurrent strategies:\n"
-            << strategies->ToString();
+            << strategy_group->ToString();
       }
     }
   }
@@ -1493,15 +1502,15 @@ bool LeafVectorsAreConsistent(const std::vector<ShardingStrategy>& one,
   return true;
 }
 
-void ScaleCostsWithExecutionCounts(StrategyVector* strategies,
+void ScaleCostsWithExecutionCounts(StrategyGroup* strategy_group,
                                    int64_t execution_count) {
-  if (strategies->is_tuple) {
-    for (size_t i = 0; i < strategies->childs.size(); ++i) {
-      ScaleCostsWithExecutionCounts(strategies->childs[i].get(),
+  if (strategy_group->is_tuple) {
+    for (size_t i = 0; i < strategy_group->childs.size(); ++i) {
+      ScaleCostsWithExecutionCounts(strategy_group->childs[i].get(),
                                     execution_count);
     }
   } else {
-    for (auto& strategy : strategies->leaf_vector) {
+    for (auto& strategy : strategy_group->strategies) {
       strategy.compute_cost *= execution_count;
       strategy.communication_cost *= execution_count;
       for (auto i = 0; i < strategy.resharding_costs.size(); ++i) {
@@ -1515,16 +1524,16 @@ void ScaleCostsWithExecutionCounts(StrategyVector* strategies,
 
 // Enumerates sharding strategies for elementwise operators by following
 // strategies of an operand of the elementwise op.
-std::unique_ptr<StrategyVector> CreateElementwiseOperatorStrategies(
+std::unique_ptr<StrategyGroup> CreateElementwiseOperatorStrategies(
     size_t instruction_id, const HloInstruction* ins,
     const StrategyMap& strategy_map, const ClusterEnvironment& cluster_env,
     const InstructionDepthMap& depth_map, const AliasMap& alias_map,
     const StableHashMap<int64_t, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map,
-    int64_t max_depth, LeafStrategies& leaf_strategies,
+    int64_t max_depth, StrategyGroups& strategy_groups,
     AssociativeDotPairs& associative_dot_pairs) {
-  std::unique_ptr<StrategyVector> strategies = CreateLeafStrategyVector(
-      instruction_id, ins, strategy_map, leaf_strategies);
+  std::unique_ptr<StrategyGroup> strategy_group = CreateLeafStrategyGroup(
+      instruction_id, ins, strategy_map, strategy_groups);
 
   // Choose an operand to follow
   int64_t follow_idx;
@@ -1533,25 +1542,23 @@ std::unique_ptr<StrategyVector> CreateElementwiseOperatorStrategies(
       ChooseOperandToFollow(strategy_map, depth_map, alias_map, max_depth, ins);
 
   if (!tie || AllowTieFollowing(ins)) {
-    strategies->following = strategy_map.at(ins->operand(follow_idx)).get();
+    strategy_group->following = strategy_map.at(ins->operand(follow_idx)).get();
   } else {
-    strategies->following = nullptr;
+    strategy_group->following = nullptr;
   }
 
   // Get all possible sharding specs from operands
   for (int64_t i = 0; i < ins->operand_count(); ++i) {
-    if (strategies->following != nullptr && i != follow_idx) {
+    if (strategy_group->following != nullptr && i != follow_idx) {
       // If ins follows one operand, do not consider sharding specs from
       // other operands.
       continue;
     }
 
-    auto process_src_strategies =
-        [&](const std::vector<ShardingStrategy>& src_strategies_leaf_vector) {
-          for (int64_t sid = 0; sid < src_strategies_leaf_vector.size();
-               ++sid) {
-            HloSharding output_spec =
-                src_strategies_leaf_vector[sid].output_sharding;
+    auto process_src_strategy_group =
+        [&](const std::vector<ShardingStrategy>& src_strategies) {
+          for (int64_t sid = 0; sid < src_strategies.size(); ++sid) {
+            HloSharding output_spec = src_strategies[sid].output_sharding;
             std::string name = ToStringSimple(output_spec);
             double compute_cost = 0, communication_cost = 0;
             double memory_cost =
@@ -1565,18 +1572,18 @@ std::unique_ptr<StrategyVector> CreateElementwiseOperatorStrategies(
               input_shardings.push_back(output_spec);
             }
 
-            strategies->leaf_vector.push_back(ShardingStrategy(
+            strategy_group->strategies.push_back(ShardingStrategy(
                 {name, output_spec, compute_cost, communication_cost,
                  memory_cost, std::move(resharding_costs), input_shardings}));
           }
         };
-    StrategyVector* src_strategies = strategy_map.at(ins->operand(i)).get();
-    CHECK(!src_strategies->is_tuple);
+    StrategyGroup* src_strategy_group = strategy_map.at(ins->operand(i)).get();
+    CHECK(!src_strategy_group->is_tuple);
 
-    process_src_strategies(src_strategies->leaf_vector);
-    if (pretrimmed_strategy_map.contains(src_strategies->node_idx)) {
-      process_src_strategies(
-          pretrimmed_strategy_map.at(src_strategies->node_idx));
+    process_src_strategy_group(src_strategy_group->strategies);
+    if (pretrimmed_strategy_map.contains(src_strategy_group->node_idx)) {
+      process_src_strategy_group(
+          pretrimmed_strategy_map.at(src_strategy_group->node_idx));
     }
   }
   if (ins->opcode() == HloOpcode::kAdd) {
@@ -1594,20 +1601,20 @@ std::unique_ptr<StrategyVector> CreateElementwiseOperatorStrategies(
                                        strategy_map.at(ins->operand(1)).get()});
     }
   }
-  return strategies;
+  return strategy_group;
 }
 
 // Enumerates sharding strategies for reshape operators. The function does so by
 // essentially reshaping the sharding of the operand in a manner similar to the
 // tensor reshape itself.
-std::unique_ptr<StrategyVector> CreateReshapeStrategies(
+std::unique_ptr<StrategyGroup> CreateReshapeStrategies(
     size_t instruction_id, const HloInstruction* ins,
     const StrategyMap& strategy_map, const ClusterEnvironment& cluster_env,
     bool only_allow_divisible, double replicated_penalty,
     const InstructionBatchDimMap& batch_dim_map,
-    const AutoShardingOption& option, LeafStrategies& leaf_strategies) {
-  std::unique_ptr<StrategyVector> strategies = CreateLeafStrategyVector(
-      instruction_id, ins, strategy_map, leaf_strategies);
+    const AutoShardingOption& option, StrategyGroups& strategy_groups) {
+  std::unique_ptr<StrategyGroup> strategy_group = CreateLeafStrategyGroup(
+      instruction_id, ins, strategy_map, strategy_groups);
   const HloInstruction* operand = ins->operand(0);
   const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
   const Array<int64_t>& device_mesh_1d = cluster_env.device_mesh_1d_;
@@ -1615,15 +1622,15 @@ std::unique_ptr<StrategyVector> CreateReshapeStrategies(
   int mesh_nn_dims = VectorGreaterThanOneElementCount(device_mesh.dimensions());
   if (mesh_nn_dims < 2 || !option.allow_mixed_mesh_shape) {
     // Create follow strategies
-    const StrategyVector* src_strategies = strategy_map.at(operand).get();
-    CHECK(!src_strategies->is_tuple);
-    strategies->following = src_strategies;
+    const StrategyGroup* src_strategy_group = strategy_map.at(operand).get();
+    CHECK(!src_strategy_group->is_tuple);
+    strategy_group->following = src_strategy_group;
 
-    for (int64_t sid = 0; sid < src_strategies->leaf_vector.size(); ++sid) {
+    for (int64_t sid = 0; sid < src_strategy_group->strategies.size(); ++sid) {
       std::optional<HloSharding> output_spec =
           hlo_sharding_util::ReshapeSharding(
               operand->shape(), ins->shape(),
-              src_strategies->leaf_vector[sid].output_sharding);
+              src_strategy_group->strategies[sid].output_sharding);
 
       if (!output_spec.has_value()) {
         continue;
@@ -1640,60 +1647,62 @@ std::unique_ptr<StrategyVector> CreateReshapeStrategies(
       double compute_cost = 0, communication_cost = 0;
       double memory_cost = GetBytes(ins->shape()) / output_spec->NumTiles();
       std::vector<double> resharding_costs = ReshardingCostVector(
-          src_strategies, operand->shape(),
-          src_strategies->leaf_vector[sid].output_sharding, cluster_env);
-      strategies->leaf_vector.push_back(ShardingStrategy(
+          src_strategy_group, operand->shape(),
+          src_strategy_group->strategies[sid].output_sharding, cluster_env);
+      strategy_group->strategies.push_back(ShardingStrategy(
           {name,
            *output_spec,
            compute_cost,
            communication_cost,
            memory_cost,
            {resharding_costs},
-           {src_strategies->leaf_vector[sid].output_sharding}}));
+           {src_strategy_group->strategies[sid].output_sharding}}));
     }
   }
 
   // Fail to create follow strategies, enumerate all possible cases
-  if (strategies->leaf_vector.empty()) {
-    strategies->leaf_vector.clear();
-    strategies->following = nullptr;
+  if (strategy_group->strategies.empty()) {
+    strategy_group->strategies.clear();
+    strategy_group->following = nullptr;
 
     // Split 1 dim
     if (cluster_env.IsDeviceMesh1D()) {
       EnumerateAll1DPartitionReshape(ins, device_mesh, cluster_env,
-                                     strategy_map, strategies,
+                                     strategy_map, strategy_group,
                                      only_allow_divisible, "");
     }
     if (option.allow_mixed_mesh_shape && cluster_env.IsDeviceMesh2D()) {
       // Split 1 dim, but for 1d mesh
       EnumerateAll1DPartitionReshape(ins, device_mesh_1d, cluster_env,
-                                     strategy_map, strategies,
+                                     strategy_map, strategy_group,
                                      only_allow_divisible, " 1d");
     }
     if (cluster_env.IsDeviceMesh2D()) {
       // Split 2 dim, one is always the batch dim
       EnumeratePartitionReshape(ins, device_mesh, cluster_env, strategy_map,
-                                batch_dim_map, strategies, only_allow_divisible,
+                                batch_dim_map, strategy_group,
+                                only_allow_divisible,
                                 /*partitions*/ 2);
     }
     if (cluster_env.IsDeviceMesh3D()) {
       // Split 3 dim, one is always the batch dim
       EnumeratePartitionReshape(ins, device_mesh, cluster_env, strategy_map,
-                                batch_dim_map, strategies, only_allow_divisible,
+                                batch_dim_map, strategy_group,
+                                only_allow_divisible,
                                 /*partitions*/ 3);
     }
 
     // Replicate
     AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
-                          strategies, replicated_penalty);
+                          strategy_group, replicated_penalty);
   }
-  return strategies;
+  return strategy_group;
 }
 
 // NOLINTBEGIN(readability/fn_size)
 // TODO(zhuohan): Decompose this function into smaller pieces
 // Build possible sharding strategies and their costs for all instructions.
-StatusOr<std::tuple<StrategyMap, LeafStrategies, AssociativeDotPairs>>
+StatusOr<std::tuple<StrategyMap, StrategyGroups, AssociativeDotPairs>>
 BuildStrategyAndCost(const HloInstructionSequence& sequence,
                      const HloModule* module,
                      const absl::flat_hash_map<const HloInstruction*, int64_t>&
@@ -1714,7 +1723,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
   // doesn't need to strictly follow it. We restore the trimmed strategies in
   // this situation.
   StableHashMap<int64_t, std::vector<ShardingStrategy>> pretrimmed_strategy_map;
-  LeafStrategies leaf_strategies;
+  StrategyGroups strategy_groups;
   AssociativeDotPairs associative_dot_pairs;
 
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
@@ -1734,7 +1743,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
     const HloInstruction* ins = instructions[instruction_id];
     VLOG(2) << "instruction_id = " << instruction_id << ": "
             << ToAdaptiveString(ins);
-    std::unique_ptr<StrategyVector> strategies;
+    std::unique_ptr<StrategyGroup> strategy_group;
 
     HloOpcode opcode = ins->opcode();
 
@@ -1757,29 +1766,31 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       case HloOpcode::kParameter:
       case HloOpcode::kRngBitGenerator:
       case HloOpcode::kRng: {
-        strategies = CreateParameterStrategyVector(
-                         ins, ins->shape(), instruction_id, leaf_strategies,
-                         cluster_env, strategy_map, option, replicated_penalty,
-                         batch_dim_map, call_graph, only_allow_divisible)
-                         .value();
+        strategy_group =
+            CreateParameterStrategyGroup(
+                ins, ins->shape(), instruction_id, strategy_groups, cluster_env,
+                strategy_map, option, replicated_penalty, batch_dim_map,
+                call_graph, only_allow_divisible)
+                .value();
         break;
       }
       case HloOpcode::kConstant: {
-        strategies = CreateLeafStrategyVectorWithoutInNodes(instruction_id,
-                                                            leaf_strategies);
+        strategy_group = CreateLeafStrategyGroupWithoutInNodes(instruction_id,
+                                                               strategy_groups);
         AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
-                              strategies, 0);
+                              strategy_group, 0);
         break;
       }
       case HloOpcode::kScatter: {
-        strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
-                                              leaf_strategies);
+        strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
+                                                 strategy_map, strategy_groups);
         // We follow the first operand (the array we're scattering into)
-        auto src_strategies = strategy_map.at(ins->operand(0)).get();
-        CHECK(!src_strategies->is_tuple);
-        for (int64_t sid = 0; sid < src_strategies->leaf_vector.size(); ++sid) {
+        auto src_strategy_group = strategy_map.at(ins->operand(0)).get();
+        CHECK(!src_strategy_group->is_tuple);
+        for (int64_t sid = 0; sid < src_strategy_group->strategies.size();
+             ++sid) {
           HloSharding output_spec =
-              src_strategies->leaf_vector[sid].output_sharding;
+              src_strategy_group->strategies[sid].output_sharding;
           std::string name = ToStringSimple(output_spec);
           double compute_cost = 0, communication_cost = 0;
           double memory_cost = GetBytes(ins->shape()) / output_spec.NumTiles();
@@ -1795,15 +1806,15 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
             CHECK(sharding_optional.has_value());
           }
 
-          strategies->leaf_vector.push_back(ShardingStrategy(
+          strategy_group->strategies.push_back(ShardingStrategy(
               {name, output_spec, compute_cost, communication_cost, memory_cost,
                std::move(resharding_cost), input_shardings_optional}));
         }
         break;
       }
       case HloOpcode::kGather: {
-        strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
-                                              leaf_strategies);
+        strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
+                                                 strategy_map, strategy_groups);
         const HloInstruction* indices = ins->operand(1);
         const Shape& shape = ins->shape();
         for (int32_t index_dim = 0; index_dim < indices->shape().rank();
@@ -1842,16 +1853,17 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                     ins, output_spec, strategy_map, cluster_env, call_graph,
                     input_shardings_optional);
 
-            strategies->leaf_vector.push_back(ShardingStrategy(
+            strategy_group->strategies.push_back(ShardingStrategy(
                 {name, output_spec, compute_cost, communication_cost,
                  memory_cost, std::move(resharding_cost),
                  input_shardings_optional}));
           }
         }
-        auto src_strategies = strategy_map.at(ins->operand(0)).get();
-        for (int64_t sid = 0; sid < src_strategies->leaf_vector.size(); ++sid) {
+        auto src_strategy_group = strategy_map.at(ins->operand(0)).get();
+        for (int64_t sid = 0; sid < src_strategy_group->strategies.size();
+             ++sid) {
           HloSharding output_spec =
-              src_strategies->leaf_vector[sid].output_sharding;
+              src_strategy_group->strategies[sid].output_sharding;
           auto gather_parallel_dims =
               hlo_sharding_util::GetGatherParallelBatchDims(*ins, call_graph);
           absl::Span<const int64_t> operand_parallel_dims;
@@ -1876,68 +1888,70 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
               GenerateReshardingCostsAndMissingShardingsForAllOperands(
                   ins, *maybe_from_data, strategy_map, cluster_env, call_graph,
                   input_shardings_optional);
-          strategies->leaf_vector.push_back(ShardingStrategy(
+          strategy_group->strategies.push_back(ShardingStrategy(
               {name, *maybe_from_data, compute_cost, communication_cost,
                memory_cost, std::move(resharding_cost),
                input_shardings_optional}));
         }
         AddReplicatedStrategy(
-            ins, ins->shape(), cluster_env, strategy_map, strategies, 0,
+            ins, ins->shape(), cluster_env, strategy_map, strategy_group, 0,
             /* operands_to_consider_all_strategies_for */ {0});
         break;
       }
       case HloOpcode::kBroadcast: {
-        strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
-                                              leaf_strategies);
+        strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
+                                                 strategy_map, strategy_groups);
 
         const HloInstruction* operand = ins->operand(0);
 
-        const StrategyVector* operand_strategies =
+        const StrategyGroup* operand_strategies =
             strategy_map.at(operand).get();
         CHECK(!operand_strategies->is_tuple);
         if (ins->shape().rank() == 1 || cluster_env.IsDeviceMesh1D()) {
           EnumerateAll1DPartition(ins, ins->shape(), cluster_env.device_mesh_,
-                                  cluster_env, strategy_map, strategies,
+                                  cluster_env, strategy_map, strategy_group,
                                   only_allow_divisible, "", call_graph);
         } else {
           EnumerateAllPartition(ins, ins->shape(), cluster_env.device_mesh_,
-                                cluster_env, strategy_map, strategies,
+                                cluster_env, strategy_map, strategy_group,
                                 batch_dim_map, only_allow_divisible, call_graph,
                                 /*partitions*/ 2);
           if (option.allow_mixed_mesh_shape) {
             EnumerateAll1DPartition(ins, ins->shape(),
                                     cluster_env.device_mesh_1d_, cluster_env,
-                                    strategy_map, strategies,
+                                    strategy_map, strategy_group,
                                     only_allow_divisible, "1d", call_graph);
           }
         }
         AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
-                              strategies, replicated_penalty);
+                              strategy_group, replicated_penalty);
 
         break;
       }
       case HloOpcode::kReshape: {
-        strategies = CreateReshapeStrategies(instruction_id, ins, strategy_map,
-                                             cluster_env, only_allow_divisible,
-                                             replicated_penalty, batch_dim_map,
-                                             option, leaf_strategies);
+        strategy_group = CreateReshapeStrategies(
+            instruction_id, ins, strategy_map, cluster_env,
+            only_allow_divisible, replicated_penalty, batch_dim_map, option,
+            strategy_groups);
         break;
       }
       case HloOpcode::kTranspose:
       case HloOpcode::kReverse: {
-        strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
-                                              leaf_strategies);
+        strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
+                                                 strategy_map, strategy_groups);
 
         const HloInstruction* operand = ins->operand(0);
 
         // Create follow strategies
-        const StrategyVector* src_strategies = strategy_map.at(operand).get();
-        CHECK(!src_strategies->is_tuple);
-        strategies->following = src_strategies;
+        const StrategyGroup* src_strategy_group =
+            strategy_map.at(operand).get();
+        CHECK(!src_strategy_group->is_tuple);
+        strategy_group->following = src_strategy_group;
 
-        for (int64_t sid = 0; sid < src_strategies->leaf_vector.size(); ++sid) {
+        for (int64_t sid = 0; sid < src_strategy_group->strategies.size();
+             ++sid) {
           HloSharding output_spec = Undefined();
-          auto input_spec = src_strategies->leaf_vector[sid].output_sharding;
+          auto input_spec = src_strategy_group->strategies[sid].output_sharding;
           if (opcode == HloOpcode::kTranspose) {
             output_spec = hlo_sharding_util::TransposeSharding(
                 input_spec, ins->dimensions());
@@ -1950,8 +1964,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           double compute_cost = 0, communication_cost = 0;
           double memory_cost = GetBytes(ins->shape()) / output_spec.NumTiles();
           auto resharding_costs = ReshardingCostVector(
-              src_strategies, operand->shape(), input_spec, cluster_env);
-          strategies->leaf_vector.push_back(
+              src_strategy_group, operand->shape(), input_spec, cluster_env);
+          strategy_group->strategies.push_back(
               ShardingStrategy({name,
                                 output_spec,
                                 compute_cost,
@@ -1969,8 +1983,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       case HloOpcode::kDynamicUpdateSlice:
       case HloOpcode::kReduceWindow:
       case HloOpcode::kSelectAndScatter: {
-        strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
-                                              leaf_strategies);
+        strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
+                                                 strategy_map, strategy_groups);
         int64_t follow_idx;
         switch (opcode) {
           // TODO(yuemmawang) Re-evaluate the follow_idx choices for the
@@ -1997,14 +2011,15 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         }
         // Create follow strategies
         const HloInstruction* operand = ins->operand(follow_idx);
-        StrategyVector* src_strategies = strategy_map.at(operand).get();
-        CHECK(!src_strategies->is_tuple);
-        strategies->following = src_strategies;
+        StrategyGroup* src_strategy_group = strategy_map.at(operand).get();
+        CHECK(!src_strategy_group->is_tuple);
+        strategy_group->following = src_strategy_group;
 
-        for (int64_t sid = 0; sid < src_strategies->leaf_vector.size(); ++sid) {
+        for (int64_t sid = 0; sid < src_strategy_group->strategies.size();
+             ++sid) {
           std::optional<HloSharding> output_spec;
           HloSharding input_spec =
-              src_strategies->leaf_vector[sid].output_sharding;
+              src_strategy_group->strategies[sid].output_sharding;
 
           // Find output shardings.
           switch (opcode) {
@@ -2048,7 +2063,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                   ins, *output_spec, strategy_map, cluster_env, call_graph,
                   input_shardings);
 
-          strategies->leaf_vector.push_back(
+          strategy_group->strategies.push_back(
               ShardingStrategy({name,
                                 *output_spec,
                                 compute_cost,
@@ -2058,33 +2073,33 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                                 {input_spec}}));
         }
 
-        if (strategies->leaf_vector.empty()) {
-          strategies->following = nullptr;
+        if (strategy_group->strategies.empty()) {
+          strategy_group->following = nullptr;
           AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
-                                strategies, 0);
+                                strategy_group, 0);
         }
 
         break;
       }
       case HloOpcode::kOptimizationBarrier: {
         auto operand_strategies = strategy_map.at(ins->operand(0)).get();
-        strategies = MaybeFollowInsStrategyVector(
+        strategy_group = MaybeFollowInsStrategyGroup(
             operand_strategies, ins->shape(), instruction_id,
-            /* have_memory_cost */ true, leaf_strategies, cluster_env,
+            /* have_memory_cost */ true, strategy_groups, cluster_env,
             pretrimmed_strategy_map);
         break;
       }
       case HloOpcode::kBitcast: {
         if (ins->shape() == ins->operand(0)->shape()) {
-          strategies = CreateElementwiseOperatorStrategies(
+          strategy_group = CreateElementwiseOperatorStrategies(
               instruction_id, ins, strategy_map, cluster_env, depth_map,
-              alias_map, pretrimmed_strategy_map, max_depth, leaf_strategies,
+              alias_map, pretrimmed_strategy_map, max_depth, strategy_groups,
               associative_dot_pairs);
         } else {
-          strategies = CreateReshapeStrategies(
+          strategy_group = CreateReshapeStrategies(
               instruction_id, ins, strategy_map, cluster_env,
               only_allow_divisible, replicated_penalty, batch_dim_map, option,
-              leaf_strategies);
+              strategy_groups);
         }
         break;
       }
@@ -2140,73 +2155,73 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       // Ternary elementwise operations.
       case HloOpcode::kSelect:
       case HloOpcode::kClamp: {
-        strategies = CreateElementwiseOperatorStrategies(
+        strategy_group = CreateElementwiseOperatorStrategies(
             instruction_id, ins, strategy_map, cluster_env, depth_map,
-            alias_map, pretrimmed_strategy_map, max_depth, leaf_strategies,
+            alias_map, pretrimmed_strategy_map, max_depth, strategy_groups,
             associative_dot_pairs);
         break;
       }
       case HloOpcode::kReduce: {
         auto strategies_status = FollowReduceStrategy(
             ins, ins->shape(), ins->operand(0), ins->operand(1), instruction_id,
-            strategy_map, leaf_strategies, cluster_env,
+            strategy_map, strategy_groups, cluster_env,
             option.allow_mixed_mesh_shape, !trying_multiple_mesh_shapes);
         if (strategies_status.ok()) {
-          strategies = std::move(strategies_status.value());
+          strategy_group = std::move(strategies_status.value());
         } else {
           return strategies_status.status();
         }
         break;
       }
       case HloOpcode::kDot: {
-        TF_RETURN_IF_ERROR(HandleDot(strategies, leaf_strategies, strategy_map,
-                                     ins, instruction_id, cluster_env,
-                                     batch_dim_map, option, call_graph));
+        TF_RETURN_IF_ERROR(HandleDot(
+            strategy_group, strategy_groups, strategy_map, ins, instruction_id,
+            cluster_env, batch_dim_map, option, call_graph));
         if (option.allow_replicated_strategy_for_dot_and_conv) {
           AddReplicatedStrategy(
-              ins, ins->shape(), cluster_env, strategy_map, strategies,
+              ins, ins->shape(), cluster_env, strategy_map, strategy_group,
               GetDotConvReplicationPenalty(ins, instruction_id, /* window */ 10,
                                            sequence, hlo_cost_analysis));
         }
         break;
       }
       case HloOpcode::kConvolution: {
-        TF_RETURN_IF_ERROR(HandleConv(strategies, leaf_strategies, strategy_map,
-                                      ins, instruction_id, cluster_env,
-                                      batch_dim_map, option, call_graph));
+        TF_RETURN_IF_ERROR(HandleConv(
+            strategy_group, strategy_groups, strategy_map, ins, instruction_id,
+            cluster_env, batch_dim_map, option, call_graph));
         if (option.allow_replicated_strategy_for_dot_and_conv) {
           AddReplicatedStrategy(
-              ins, ins->shape(), cluster_env, strategy_map, strategies,
+              ins, ins->shape(), cluster_env, strategy_map, strategy_group,
               GetDotConvReplicationPenalty(ins, instruction_id, /* window */ 10,
                                            sequence, hlo_cost_analysis));
         }
         break;
       }
       case HloOpcode::kRngGetAndUpdateState: {
-        strategies = CreateLeafStrategyVectorWithoutInNodes(instruction_id,
-                                                            leaf_strategies);
+        strategy_group = CreateLeafStrategyGroupWithoutInNodes(instruction_id,
+                                                               strategy_groups);
         AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
-                              strategies, 0);
+                              strategy_group, 0);
         break;
       }
       case HloOpcode::kIota: {
-        strategies = CreateLeafStrategyVectorWithoutInNodes(instruction_id,
-                                                            leaf_strategies);
+        strategy_group = CreateLeafStrategyGroupWithoutInNodes(instruction_id,
+                                                               strategy_groups);
         if (cluster_env.IsDeviceMesh1D()) {
           EnumerateAll1DPartition(ins, ins->shape(), device_mesh, cluster_env,
-                                  strategy_map, strategies,
+                                  strategy_map, strategy_group,
                                   only_allow_divisible, "", call_graph);
         }
         if (cluster_env.IsDeviceMesh2D()) {
           // Split 2 dims
           EnumerateAllPartition(ins, ins->shape(), device_mesh, cluster_env,
-                                strategy_map, strategies, batch_dim_map,
+                                strategy_map, strategy_group, batch_dim_map,
                                 only_allow_divisible, call_graph, /*parts*/ 2);
         }
         if (cluster_env.IsDeviceMesh3D()) {
           // Split 3 dims
           EnumerateAllPartition(ins, ins->shape(), device_mesh, cluster_env,
-                                strategy_map, strategies, batch_dim_map,
+                                strategy_map, strategy_group, batch_dim_map,
                                 only_allow_divisible, call_graph, /*parts*/ 3);
         }
         if (cluster_env.IsDeviceMesh2D() && option.allow_mixed_mesh_shape) {
@@ -2214,39 +2229,41 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           // For example, when the mesh shape is (2, 4), we add strategies for
           // mesh shape (1, 8) here in addition.
           EnumerateAll1DPartition(ins, ins->shape(), device_mesh_1d,
-                                  cluster_env, strategy_map, strategies,
+                                  cluster_env, strategy_map, strategy_group,
                                   only_allow_divisible, " 1d", call_graph);
         }
 
         // Replicate
         AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
-                              strategies, replicated_penalty * 5);
+                              strategy_group, replicated_penalty * 5);
 
         break;
       }
       case HloOpcode::kTuple: {
-        strategies = CreateTupleStrategyVector(instruction_id);
-        strategies->childs.reserve(ins->operand_count());
+        strategy_group = CreateTupleStrategyGroup(instruction_id);
+        strategy_group->childs.reserve(ins->operand_count());
         for (size_t i = 0; i < ins->operand_count(); ++i) {
           const HloInstruction* operand = ins->operand(i);
-          const StrategyVector* src_strategies = strategy_map.at(operand).get();
-          auto child_strategies = MaybeFollowInsStrategyVector(
-              src_strategies, operand->shape(), instruction_id,
-              /* have_memory_cost= */ true, leaf_strategies, cluster_env,
+          const StrategyGroup* src_strategy_group =
+              strategy_map.at(operand).get();
+          auto child_strategies = MaybeFollowInsStrategyGroup(
+              src_strategy_group, operand->shape(), instruction_id,
+              /* have_memory_cost= */ true, strategy_groups, cluster_env,
               pretrimmed_strategy_map);
           child_strategies->tuple_element_idx = i;
-          strategies->childs.push_back(std::move(child_strategies));
+          strategy_group->childs.push_back(std::move(child_strategies));
         }
         break;
       }
       case HloOpcode::kGetTupleElement: {
         const HloInstruction* operand = ins->operand(0);
-        const StrategyVector* src_strategies = strategy_map.at(operand).get();
-        CHECK(src_strategies->is_tuple);
-        strategies = MaybeFollowInsStrategyVector(
-            src_strategies->childs[ins->tuple_index()].get(), ins->shape(),
+        const StrategyGroup* src_strategy_group =
+            strategy_map.at(operand).get();
+        CHECK(src_strategy_group->is_tuple);
+        strategy_group = MaybeFollowInsStrategyGroup(
+            src_strategy_group->childs[ins->tuple_index()].get(), ins->shape(),
             instruction_id,
-            /* have_memory_cost= */ true, leaf_strategies, cluster_env,
+            /* have_memory_cost= */ true, strategy_groups, cluster_env,
             pretrimmed_strategy_map);
         break;
       }
@@ -2257,37 +2274,39 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                     operands_to_consider_all_strategies_for = {}) {
               if (ins->shape().IsTuple()) {
                 if (only_replicated) {
-                  strategies = CreateTupleStrategyVector(instruction_id);
-                  strategies->childs.reserve(ins->shape().tuple_shapes_size());
+                  strategy_group = CreateTupleStrategyGroup(instruction_id);
+                  strategy_group->childs.reserve(
+                      ins->shape().tuple_shapes_size());
                   for (size_t i = 0; i < ins->shape().tuple_shapes_size();
                        ++i) {
-                    std::unique_ptr<StrategyVector> child_strategies =
-                        CreateLeafStrategyVector(instruction_id, ins,
-                                                 strategy_map, leaf_strategies);
+                    std::unique_ptr<StrategyGroup> child_strategies =
+                        CreateLeafStrategyGroup(instruction_id, ins,
+                                                strategy_map, strategy_groups);
                     AddReplicatedStrategy(ins, ins->shape().tuple_shapes(i),
                                           cluster_env, strategy_map,
                                           child_strategies, replicated_penalty);
-                    strategies->childs.push_back(std::move(child_strategies));
+                    strategy_group->childs.push_back(
+                        std::move(child_strategies));
                   }
                 } else {
-                  strategies =
-                      CreateAllStrategiesVector(
-                          ins, ins->shape(), instruction_id, leaf_strategies,
+                  strategy_group =
+                      CreateAllStrategiesGroup(
+                          ins, ins->shape(), instruction_id, strategy_groups,
                           cluster_env, strategy_map, option, replicated_penalty,
                           batch_dim_map, call_graph, only_allow_divisible, true)
                           .value();
                 }
               } else {
                 if (only_replicated) {
-                  strategies = CreateLeafStrategyVector(
-                      instruction_id, ins, strategy_map, leaf_strategies);
+                  strategy_group = CreateLeafStrategyGroup(
+                      instruction_id, ins, strategy_map, strategy_groups);
                   AddReplicatedStrategy(ins, ins->shape(), cluster_env,
-                                        strategy_map, strategies,
+                                        strategy_map, strategy_group,
                                         replicated_penalty);
                 } else {
-                  strategies =
-                      CreateAllStrategiesVector(
-                          ins, ins->shape(), instruction_id, leaf_strategies,
+                  strategy_group =
+                      CreateAllStrategiesGroup(
+                          ins, ins->shape(), instruction_id, strategy_groups,
                           cluster_env, strategy_map, option, replicated_penalty,
                           batch_dim_map, call_graph, only_allow_divisible, true)
                           .value();
@@ -2297,11 +2316,12 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
 
         if (IsCustomCallMarker(ins)) {
           const HloInstruction* operand = ins->operand(0);
-          const StrategyVector* src_strategies = strategy_map.at(operand).get();
-          CHECK(src_strategies->is_tuple);
-          strategies = MaybeFollowInsStrategyVector(
-              src_strategies, ins->shape(), instruction_id,
-              /* have_memory_cost= */ true, leaf_strategies, cluster_env,
+          const StrategyGroup* src_strategy_group =
+              strategy_map.at(operand).get();
+          CHECK(src_strategy_group->is_tuple);
+          strategy_group = MaybeFollowInsStrategyGroup(
+              src_strategy_group, ins->shape(), instruction_id,
+              /* have_memory_cost= */ true, strategy_groups, cluster_env,
               pretrimmed_strategy_map);
         } else if (ins->has_sharding()) {
           generate_non_following_strategies(false);
@@ -2312,11 +2332,11 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
             // Follows operand 0's strategies if this custom-call op is
             // shardable and has the same input and output sizes.
             const HloInstruction* operand = ins->operand(0);
-            const StrategyVector* src_strategies =
+            const StrategyGroup* src_strategy_group =
                 strategy_map.at(operand).get();
-            strategies = MaybeFollowInsStrategyVector(
-                src_strategies, ins->shape(), instruction_id,
-                /* have_memory_cost= */ true, leaf_strategies, cluster_env,
+            strategy_group = MaybeFollowInsStrategyGroup(
+                src_strategy_group, ins->shape(), instruction_id,
+                /* have_memory_cost= */ true, strategy_groups, cluster_env,
                 pretrimmed_strategy_map);
           }
         } else if (IsTopKCustomCall(ins)) {
@@ -2328,18 +2348,18 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         break;
       }
       case HloOpcode::kWhile: {
-        strategies = CreateTupleStrategyVector(instruction_id);
-        strategies->childs.reserve(ins->shape().tuple_shapes_size());
-        const StrategyVector* src_strategies =
+        strategy_group = CreateTupleStrategyGroup(instruction_id);
+        strategy_group->childs.reserve(ins->shape().tuple_shapes_size());
+        const StrategyGroup* src_strategy_group =
             strategy_map.at(ins->operand(0)).get();
         for (size_t i = 0; i < ins->shape().tuple_shapes_size(); ++i) {
-          auto child_strategies = MaybeFollowInsStrategyVector(
-              src_strategies->childs[i].get(),
+          auto child_strategies = MaybeFollowInsStrategyGroup(
+              src_strategy_group->childs[i].get(),
               ins->shape().tuple_shapes().at(i), instruction_id,
-              /* have_memory_cost= */ true, leaf_strategies, cluster_env,
+              /* have_memory_cost= */ true, strategy_groups, cluster_env,
               pretrimmed_strategy_map);
           child_strategies->tuple_element_idx = i;
-          strategies->childs.push_back(std::move(child_strategies));
+          strategy_group->childs.push_back(std::move(child_strategies));
         }
 
         break;
@@ -2347,90 +2367,92 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       case HloOpcode::kConditional:
       case HloOpcode::kInfeed:
       case HloOpcode::kSort: {
-        strategies = CreateAllStrategiesVector(
-                         ins, ins->shape(), instruction_id, leaf_strategies,
-                         cluster_env, strategy_map, option, replicated_penalty,
-                         batch_dim_map, call_graph, only_allow_divisible,
-                         /*create_replicated_strategies*/ true)
-                         .value();
+        strategy_group =
+            CreateAllStrategiesGroup(ins, ins->shape(), instruction_id,
+                                     strategy_groups, cluster_env, strategy_map,
+                                     option, replicated_penalty, batch_dim_map,
+                                     call_graph, only_allow_divisible,
+                                     /*create_replicated_strategies*/ true)
+                .value();
         break;
       }
       case HloOpcode::kOutfeed: {
-        strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
-                                              leaf_strategies);
+        strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
+                                                 strategy_map, strategy_groups);
         GenerateOutfeedStrategy(ins, ins->shape(), cluster_env, strategy_map,
-                                strategies, replicated_penalty);
+                                strategy_group, replicated_penalty);
         break;
       }
       case HloOpcode::kAfterAll: {
-        strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
-                                              leaf_strategies);
+        strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
+                                                 strategy_map, strategy_groups);
         AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
-                              strategies, replicated_penalty);
+                              strategy_group, replicated_penalty);
         break;
       }
       default:
         LOG(FATAL) << "Unhandled instruction: " + ins->ToString();
     }
-    RemoveDuplicatedStrategy(strategies);
+    RemoveDuplicatedStrategy(strategy_group);
     if (ins->has_sharding() && ins->opcode() != HloOpcode::kOutfeed) {
       // Finds the sharding strategy that aligns with the given sharding spec
       // Do not merge nodes if this one instruction has annotations.
       TrimOrGenerateStrategiesBasedOnExistingSharding(
-          ins->shape(), strategies.get(), strategy_map, instructions,
+          ins->shape(), strategy_group.get(), strategy_map, instructions,
           ins->sharding(), cluster_env, pretrimmed_strategy_map, call_graph,
           option.nd_sharding_iteratively_strict_search_space);
     }
-    if (!strategies->is_tuple && strategies->following) {
+    if (!strategy_group->is_tuple && strategy_group->following) {
       if (!LeafVectorsAreConsistent(
-              strategies->leaf_vector, strategies->following->leaf_vector,
+              strategy_group->strategies, strategy_group->following->strategies,
               /*is_reshape*/ ins->opcode() == HloOpcode::kReshape)) {
         // It confuses the solver if two instructions have different number of
         // sharding strategies but share the same ILP variable. The solver
         // would run much longer and/or return infeasible solutions.
-        // So if two strategies' leaf_vectors are inconsistent, we unfollow
+        // So if two strategies' strategiess are inconsistent, we unfollow
         // them.
-        strategies->following = nullptr;
+        strategy_group->following = nullptr;
       }
-    } else if (strategies->is_tuple) {
-      for (size_t i = 0; i < strategies->childs.size(); i++) {
-        if (strategies->childs.at(i)->following &&
+    } else if (strategy_group->is_tuple) {
+      for (size_t i = 0; i < strategy_group->childs.size(); i++) {
+        if (strategy_group->childs.at(i)->following &&
             !LeafVectorsAreConsistent(
-                strategies->childs.at(i)->leaf_vector,
-                strategies->childs.at(i)->following->leaf_vector,
+                strategy_group->childs.at(i)->strategies,
+                strategy_group->childs.at(i)->following->strategies,
                 /*is_reshape*/ ins->opcode() == HloOpcode::kReshape)) {
-          strategies->childs.at(i)->following = nullptr;
+          strategy_group->childs.at(i)->following = nullptr;
         }
       }
     }
     RemoveInvalidShardingsWithShapes(
-        ins->shape(), strategies.get(),
+        ins->shape(), strategy_group.get(),
         /* instruction_has_user_sharding */ ins->has_sharding());
 
     if (instruction_execution_counts.contains(ins)) {
-      ScaleCostsWithExecutionCounts(strategies.get(),
+      ScaleCostsWithExecutionCounts(strategy_group.get(),
                                     instruction_execution_counts.at(ins));
     } else {
       VLOG(5) << "No execution count available for " << ins->name();
     }
-    XLA_VLOG_LINES(2, absl::StrCat("strategies:\n", strategies->ToString()));
+    XLA_VLOG_LINES(2,
+                   absl::StrCat("strategies:\n", strategy_group->ToString()));
 
     // Debug options: forcibly set the strategy of some instructions.
     if (option.force_strategy) {
       std::vector<int64_t> inst_indices = option.force_strategy_inst_indices;
       std::vector<std::string> stra_names = option.force_strategy_stra_names;
       CHECK_EQ(inst_indices.size(), stra_names.size());
-      auto it = absl::c_find(inst_indices, strategies->node_idx);
+      auto it = absl::c_find(inst_indices, strategy_group->node_idx);
       if (it != inst_indices.end()) {
-        CHECK(!strategies->is_tuple);
-        std::vector<ShardingStrategy> new_leaf_vector;
+        CHECK(!strategy_group->is_tuple);
+        std::vector<ShardingStrategy> new_strategies;
         int64_t idx = it - inst_indices.begin();
-        for (const auto& stra : strategies->leaf_vector) {
+        for (const auto& stra : strategy_group->strategies) {
           if (stra.name == stra_names[idx]) {
-            new_leaf_vector.push_back(stra);
+            new_strategies.push_back(stra);
           }
         }
-        strategies->leaf_vector = std::move(new_leaf_vector);
+        strategy_group->strategies = std::move(new_strategies);
       }
     }
 
@@ -2441,9 +2463,10 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
     // the mesh shape we're trying does not match with the mesh shape used in
     // user specified shardings. So we disable the check in that situation.
     if (!trying_multiple_mesh_shapes) {
-      CHECK(strategies->is_tuple || !strategies->leaf_vector.empty())
+      CHECK(strategy_group->is_tuple || !strategy_group->strategies.empty())
           << ins->ToString() << " does not have any valid strategies.";
-    } else if (!(strategies->is_tuple || !strategies->leaf_vector.empty())) {
+    } else if (!(strategy_group->is_tuple ||
+                 !strategy_group->strategies.empty())) {
       return Status(absl::StatusCode::kFailedPrecondition,
                     "Could not generate any shardings for an instruction due "
                     "to mismatched mesh shapes.");
@@ -2451,8 +2474,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
     // Checks the shape of resharding_costs is valid. It will check fail if the
     // shape is not as expected.
     // CheckReshardingCostsShape(strategies.get());
-    CheckMemoryCosts(strategies.get(), ins->shape());
-    strategy_map[ins] = std::move(strategies);
+    CheckMemoryCosts(strategy_group.get(), ins->shape());
+    strategy_map[ins] = std::move(strategy_group);
   }  // end of for loop
 
   // If gradient accumulation is used, adjust the cost of all-reduce for
@@ -2462,10 +2485,10 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
     std::vector<const HloInstruction*> grad_insts =
         GetGradientComputationInstructions(instructions);
     for (const HloInstruction* inst : grad_insts) {
-      StrategyVector* stra_vector = strategy_map[inst].get();
+      StrategyGroup* stra_vector = strategy_map[inst].get();
       CHECK(!stra_vector->is_tuple);
 
-      for (auto& stra : stra_vector->leaf_vector) {
+      for (auto& stra : stra_vector->strategies) {
         if (absl::StrContains(stra.name, "allreduce")) {
           stra.communication_cost /= option.grad_acc_num_micro_batches;
         }
@@ -2473,7 +2496,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
     }
   }
 
-  return std::make_tuple(std::move(strategy_map), std::move(leaf_strategies),
+  return std::make_tuple(std::move(strategy_map), std::move(strategy_groups),
                          std::move(associative_dot_pairs));
 }
 
@@ -2482,22 +2505,21 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
 AutoShardingSolverResult CallSolver(
     const HloLiveRange& hlo_live_range,
     const LivenessNodeSet& liveness_node_set, const StrategyMap& strategy_map,
-    const LeafStrategies& leaf_strategies, const CostGraph& cost_graph,
+    const StrategyGroups& strategy_groups, const CostGraph& cost_graph,
     const AliasSet& alias_set, const std::vector<NodeStrategyIdx>& s_hint,
-    int64_t memory_budget_per_device, bool crash_at_infinity_costs_check,
     bool compute_iis, int64_t solver_timeout_in_seconds,
-    bool allow_alias_to_follower_conversion,
+    const AutoShardingOption& option,
     const absl::flat_hash_map<std::string, const HloInstruction*>&
         sharding_propagation_solution) {
   // Serialize edges and edge costs to 1d numpy arrays
   AutoShardingSolverRequest request;
-  request.num_nodes = leaf_strategies.size();
-  request.memory_budget = memory_budget_per_device;
+  request.num_nodes = strategy_groups.size();
+  request.memory_budget = option.memory_budget_per_device;
   request.s_len = cost_graph.node_lens_;
   request.s_follow = cost_graph.follow_idx_;
   request.s_hint = s_hint;
   request.solver_timeout_in_seconds = solver_timeout_in_seconds;
-  request.crash_at_infinity_costs_check = crash_at_infinity_costs_check;
+  request.crash_at_infinity_costs_check = !option.try_multiple_mesh_shapes;
   request.compute_iis = compute_iis;
   for (const auto& iter : cost_graph.edge_costs_) {
     request.e.push_back(iter.first);
@@ -2518,8 +2540,9 @@ AutoShardingSolverResult CallSolver(
   // Serialize node costs
   int num_nodes_without_default = 0;
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes; ++node_idx) {
-    const StrategyVector* strategies = leaf_strategies[node_idx];
-    auto instruction_name = instructions.at(strategies->instruction_id)->name();
+    const StrategyGroup* strategy_group = strategy_groups[node_idx];
+    auto instruction_name =
+        instructions.at(strategy_group->instruction_id)->name();
     request.instruction_names.push_back(
         absl::StrCat(instruction_name, " (id: ", node_idx, ")"));
     std::vector<double> ci, di, mi, pi;
@@ -2528,14 +2551,15 @@ AutoShardingSolverResult CallSolver(
     if (iter != sharding_propagation_solution.end()) {
       CHECK(iter->second->has_sharding()) << iter->second->ToString();
       default_strategy = iter->second->sharding();
-      if (strategies->tuple_element_idx) {
+      if (strategy_group->tuple_element_idx) {
         const auto& tuple_elements = iter->second->sharding().tuple_elements();
-        CHECK_LT(*strategies->tuple_element_idx, tuple_elements.size());
-        default_strategy = tuple_elements.at(*strategies->tuple_element_idx);
+        CHECK_LT(*strategy_group->tuple_element_idx, tuple_elements.size());
+        default_strategy =
+            tuple_elements.at(*strategy_group->tuple_element_idx);
       }
     }
-    for (NodeStrategyIdx j = 0; j < strategies->leaf_vector.size(); ++j) {
-      const ShardingStrategy& strategy = strategies->leaf_vector[j];
+    for (NodeStrategyIdx j = 0; j < strategy_group->strategies.size(); ++j) {
+      const ShardingStrategy& strategy = strategy_group->strategies[j];
       const HloSharding& sharding = strategy.output_sharding;
       ci.push_back(strategy.compute_cost);
       di.push_back(strategy.communication_cost +
@@ -2543,9 +2567,10 @@ AutoShardingSolverResult CallSolver(
       mi.push_back(strategy.memory_cost);
       pi.push_back(default_strategy && sharding == *default_strategy ? 0 : 1);
     }
-    if (*std::min_element(pi.begin(), pi.end()) > 0) {
+    if (option.use_sharding_propagation_for_default_shardings &&
+        *std::min_element(pi.begin(), pi.end()) > 0) {
       LOG(WARNING) << "No default strategy for {node_idx " << node_idx
-                   << ", instruction ID " << strategies->instruction_id
+                   << ", instruction ID " << strategy_group->instruction_id
                    << ", instruction name " << instruction_name << "}";
       ++num_nodes_without_default;
     }
@@ -2560,14 +2585,16 @@ AutoShardingSolverResult CallSolver(
   // spec
   std::vector<std::pair<NodeIdx, NodeIdx>> new_followers;
   for (const auto& pair : alias_set) {
-    const StrategyVector* src_strategies = leaf_strategies[pair.first];
-    const StrategyVector* dst_strategies = leaf_strategies[pair.second];
-    Matrix raw_cost(src_strategies->leaf_vector.size(),
-                    dst_strategies->leaf_vector.size());
-    for (NodeStrategyIdx i = 0; i < src_strategies->leaf_vector.size(); ++i) {
-      for (NodeStrategyIdx j = 0; j < dst_strategies->leaf_vector.size(); ++j) {
-        if (src_strategies->leaf_vector[i].output_sharding ==
-            dst_strategies->leaf_vector[j].output_sharding) {
+    const StrategyGroup* src_strategy_group = strategy_groups[pair.first];
+    const StrategyGroup* dst_strategy_group = strategy_groups[pair.second];
+    Matrix raw_cost(src_strategy_group->strategies.size(),
+                    dst_strategy_group->strategies.size());
+    for (NodeStrategyIdx i = 0; i < src_strategy_group->strategies.size();
+         ++i) {
+      for (NodeStrategyIdx j = 0; j < dst_strategy_group->strategies.size();
+           ++j) {
+        if (src_strategy_group->strategies[i].output_sharding ==
+            dst_strategy_group->strategies[j].output_sharding) {
           raw_cost(i, j) = 0.0;
         } else {
           raw_cost(i, j) = 1.0;
@@ -2608,10 +2635,10 @@ AutoShardingSolverResult CallSolver(
     for (NodeStrategyIdx i = 0; i < row_indices.size() && convertable; ++i) {
       if (vij[i * col_indices.size() + i] != 0.0) convertable = false;
     }
-    if (convertable && allow_alias_to_follower_conversion) {
-      new_followers.push_back(std::make_pair(idx_a, idx_b));
+    if (convertable && option.allow_alias_to_follower_conversion) {
+      new_followers.push_back({idx_a, idx_b});
     } else {
-      request.a.push_back(std::make_pair(idx_a, idx_b));
+      request.a.push_back({idx_a, idx_b});
       request.v.push_back(vij);
     }
   }
@@ -2720,7 +2747,7 @@ void CheckHloSharding(const HloInstructionSequence& sequence,
             std::string str = absl::StrCat("Shardings not consistent (op size ",
                                            op_size, " GB):", ins->ToString(),
                                            "\n Operand: ", op->ToString());
-            size_string.push_back(std::make_pair(op_size, std::move(str)));
+            size_string.push_back({op_size, std::move(str)});
           }
         } else {
           LOG(INFO) << "Instruction " << op->name()
@@ -2761,34 +2788,34 @@ void SetHloSharding(const HloInstructionSequence& sequence,
       continue;
     }
 
-    const StrategyVector* strategies = iter->second.get();
-    if (strategies->is_tuple) {
+    const StrategyGroup* strategy_group = iter->second.get();
+    if (strategy_group->is_tuple) {
       const Shape& out_shape = inst->shape();
       ShapeTree<HloSharding> output_tuple_sharding(out_shape, Undefined());
       std::vector<HloSharding> output_flattened_shardings;
 
-      std::function<void(const StrategyVector*)> extract_tuple_shardings;
+      std::function<void(const StrategyGroup*)> extract_tuple_shardings;
       bool set_tuple_sharding = true;
 
-      extract_tuple_shardings = [&](const StrategyVector* strategies) {
-        if (strategies->is_tuple) {
-          for (const auto& child_strategies : strategies->childs) {
+      extract_tuple_shardings = [&](const StrategyGroup* strategy_group) {
+        if (strategy_group->is_tuple) {
+          for (const auto& child_strategies : strategy_group->childs) {
             extract_tuple_shardings(child_strategies.get());
           }
         } else {
-          NodeIdx node_idx = strategies->node_idx;
+          NodeIdx node_idx = strategy_group->node_idx;
           NodeStrategyIdx stra_idx = s_val[node_idx];
           // Do not set completed sharding before the last iteration
-          if (strategies->leaf_vector[stra_idx]
+          if (strategy_group->strategies[stra_idx]
                   .output_sharding.IsReplicated() &&
               !last_iteration) {
             set_tuple_sharding = false;
           }
           output_flattened_shardings.push_back(
-              strategies->leaf_vector[stra_idx].output_sharding);
+              strategy_group->strategies[stra_idx].output_sharding);
         }
       };
-      extract_tuple_shardings(strategies);
+      extract_tuple_shardings(strategy_group);
 
       // Create Tuple HloSharding.
       int i = 0;
@@ -2959,6 +2986,7 @@ Status SetHloShardingPostProcessing(
         switch (inst->opcode()) {
           case HloOpcode::kReduce:
           case HloOpcode::kCustomCall:
+          case HloOpcode::kRngBitGenerator:
           case HloOpcode::kSort: {
             for (size_t i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
               const ShardingStrategy& stra =
@@ -3087,29 +3115,29 @@ std::string PrintStrategyMap(const StrategyMap& strategy_map,
 std::string PrintAutoShardingSolution(const HloInstructionSequence& sequence,
                                       const LivenessSet& liveness_set,
                                       const StrategyMap& strategy_map,
-                                      const LeafStrategies& leaf_strategies,
+                                      const StrategyGroups& strategy_groups,
                                       const CostGraph& cost_graph,
                                       absl::Span<const NodeStrategyIdx> s_val,
                                       double objective) {
   std::string str("=== Auto sharding strategy ===\n");
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
-  size_t N = leaf_strategies.size();
+  size_t N = strategy_groups.size();
 
   // Print the chosen strategy
   for (NodeIdx node_idx = 0; node_idx < N; ++node_idx) {
     absl::StrAppend(
         &str, node_idx, " ",
         ToAdaptiveString(
-            instructions[leaf_strategies[node_idx]->instruction_id]),
+            instructions[strategy_groups[node_idx]->instruction_id]),
         " ");
     NodeStrategyIdx stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
     if (cost_graph.follow_idx_[node_idx] < 0) {
       absl::StrAppend(
-          &str, leaf_strategies[node_idx]->leaf_vector[stra_idx].ToString(),
+          &str, strategy_groups[node_idx]->strategies[stra_idx].ToString(),
           "\n");
     } else {
       absl::StrAppend(
-          &str, leaf_strategies[node_idx]->leaf_vector[stra_idx].ToString(),
+          &str, strategy_groups[node_idx]->strategies[stra_idx].ToString(),
           " follow ", cost_graph.follow_idx_[node_idx], "\n");
     }
   }
@@ -3124,20 +3152,20 @@ std::string PrintSolutionMemoryUsage(const LivenessSet& liveness_set,
   // Print the memory usage
   std::string str("=== Memory ===\n");
   std::vector<std::pair<LivenessIdx, double>> time_memory_usage;
-  // Function that gets the memory usage of a StrategyVector belongs to one
+  // Function that gets the memory usage of a StrategyGroup belongs to one
   // tensor.
-  std::function<double(const StrategyVector*)> calculate_memory_usage;
-  calculate_memory_usage = [&](const StrategyVector* strategies) {
-    if (strategies->is_tuple) {
+  std::function<double(const StrategyGroup*)> calculate_memory_usage;
+  calculate_memory_usage = [&](const StrategyGroup* strategy_group) {
+    if (strategy_group->is_tuple) {
       double m = 0.0;
-      for (const auto& child : strategies->childs) {
+      for (const auto& child : strategy_group->childs) {
         m += calculate_memory_usage(child.get());
       }
       return m;
     }
-    NodeIdx ins_idx = strategies->node_idx;
+    NodeIdx ins_idx = strategy_group->node_idx;
     NodeStrategyIdx stra_idx = cost_graph.RemapIndex(ins_idx, s_val[ins_idx]);
-    const ShardingStrategy& strategy = strategies->leaf_vector[stra_idx];
+    const ShardingStrategy& strategy = strategy_group->strategies[stra_idx];
     return strategy.memory_cost;
   };
   for (LivenessIdx time_idx = 0; time_idx < liveness_set.size(); ++time_idx) {
@@ -3154,7 +3182,7 @@ std::string PrintSolutionMemoryUsage(const LivenessSet& liveness_set,
                         " MB; mem=", mem / (1024 * 1024), " MB\n");
       }
     }
-    time_memory_usage.push_back(std::make_pair(time_idx, mem));
+    time_memory_usage.push_back({time_idx, mem});
     if (VLOG_IS_ON(6)) {
       absl::StrAppend(&str, "Time ", time_idx, ": ", mem / (1024 * 1024),
                       " MB\n");
@@ -3184,8 +3212,8 @@ std::string PrintSolutionMemoryUsage(const LivenessSet& liveness_set,
       const HloInstruction* ins = val->instruction();
       auto mem = calculate_memory_usage(strategy_map.at(ins).get());
       if (mem > 100 * 1024 * 1024) {
-        instruction_mem.push_back(std::make_pair(
-            absl::StrCat(ins->name(), val->index().ToString()), mem));
+        instruction_mem.push_back(
+            {absl::StrCat(ins->name(), val->index().ToString()), mem});
       }
     }
   }
@@ -3880,7 +3908,7 @@ void AnnotateShardingWithSimpleHeuristic(
 // Filter strategies according to the option.force_batch_dim_to_mesh_dim.
 // This can be used to forcibly generate data-parallel strategies.
 Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
-                      std::unique_ptr<StrategyVector>& strategies,
+                      std::unique_ptr<StrategyGroup>& strategy_group,
                       const ClusterEnvironment& cluster_env,
                       const InstructionBatchDimMap& batch_map,
                       const AutoShardingOption& option) {
@@ -3894,8 +3922,8 @@ Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
         "not divisible by the number of devices");
   }
 
-  std::vector<ShardingStrategy> new_leaf_vector;
-  for (auto& stra : strategies->leaf_vector) {
+  std::vector<ShardingStrategy> new_strategies;
+  for (auto& stra : strategy_group->strategies) {
     std::vector<int64_t> tensor_dim_to_mesh_dim =
         cluster_env.GetTensorDimToMeshDimWrapper(shape, stra.output_sharding);
 
@@ -3903,19 +3931,19 @@ Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
       // If the mesh dim is not one, the output tensor must be
       // tiled along the mesh dim.
       if (tensor_dim_to_mesh_dim[batch_dim] == mesh_dim) {
-        new_leaf_vector.push_back(std::move(stra));
+        new_strategies.push_back(std::move(stra));
       }
     } else {
       // If the mesh dim is one, the output tensor must be replicated
       // on the mesh dim.
       if (tensor_dim_to_mesh_dim[batch_dim] == -1) {
-        new_leaf_vector.push_back(std::move(stra));
+        new_strategies.push_back(std::move(stra));
       }
     }
   }
-  CHECK(!new_leaf_vector.empty())
+  CHECK(!new_strategies.empty())
       << ins->ToString() << " does not have any valid strategies";
-  strategies->leaf_vector = std::move(new_leaf_vector);
+  strategy_group->strategies = std::move(new_strategies);
 
   return OkStatus();
 }
@@ -4358,21 +4386,21 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     ins_depth_map = spmd::BuildInstructionDepthMap(sequence, batch_dim_map);
     // ----- Build strategies and costs -----
     spmd::StrategyMap strategy_map;
-    spmd::LeafStrategies leaf_strategies;
+    spmd::StrategyGroups strategy_groups;
     spmd::AssociativeDotPairs associative_dot_pairs;
 
     TF_ASSIGN_OR_RETURN(
-        std::tie(strategy_map, leaf_strategies, associative_dot_pairs),
+        std::tie(strategy_map, strategy_groups, associative_dot_pairs),
         BuildStrategyAndCost(
             sequence, module, instruction_execution_counts, ins_depth_map,
             batch_dim_map, alias_map, cluster_env, option_, *call_graph,
             hlo_cost_analysis, option_.try_multiple_mesh_shapes));
     spmd::AliasSet alias_set = spmd::BuildAliasSet(module, strategy_map);
-    CheckAliasSetCompatibility(alias_set, leaf_strategies, sequence);
+    CheckAliasSetCompatibility(alias_set, strategy_groups, sequence);
     XLA_VLOG_LINES(8, PrintStrategyMap(strategy_map, sequence));
 
     // ----- Build cost graph and merge unimportant nodes -----
-    spmd::CostGraph cost_graph(leaf_strategies, associative_dot_pairs);
+    spmd::CostGraph cost_graph(strategy_groups, associative_dot_pairs);
     cost_graph.Simplify(option_.simplify_graph);
 
     // ----- Build the liveness node set -----
@@ -4382,12 +4410,13 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
         const HloInstruction* instruction = value->instruction();
         const ShapeIndex& index = value->index();
         if (instruction->shape().IsTuple() && index.empty()) continue;
-        const spmd::StrategyVector* strategies =
+        const spmd::StrategyGroup* strategy_group =
             strategy_map.at(instruction).get();
         const spmd::NodeIdx node_idx =
-            strategies->GetSubStrategyVector(index)->node_idx;
+            strategy_group->GetSubStrategyGroup(index)->node_idx;
         if (node_idx >= 0) liveness_node_set[t].push_back(node_idx);
       }
+      std::sort(liveness_node_set[t].begin(), liveness_node_set[t].end());
     }
 
     // ----- Call the ILP Solver -----
@@ -4396,7 +4425,7 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     double objective = -1.0;
     if (!option_.load_solution_vector) {
       auto solver_result = Solve(
-          *hlo_live_range, liveness_node_set, strategy_map, leaf_strategies,
+          *hlo_live_range, liveness_node_set, strategy_map, strategy_groups,
           cost_graph, alias_set, option_, sharding_propagation_solution);
       if (solver_result.skip_auto_sharding) {
         return AutoShardingResult::kModuleUnchangedNoShardingPerfomed;
@@ -4414,7 +4443,7 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     }
 
     XLA_VLOG_LINES(5, PrintAutoShardingSolution(sequence, liveness_set,
-                                                strategy_map, leaf_strategies,
+                                                strategy_map, strategy_groups,
                                                 cost_graph, s_val, objective));
     XLA_VLOG_LINES(1, PrintSolutionMemoryUsage(liveness_set, strategy_map,
                                                cost_graph, s_val));
@@ -4546,18 +4575,19 @@ StatusOr<bool> AutoSharding::Run(
     }
   }
 
-  bool asymmetrical_mesh_dims = false;
-  for (size_t i = 0; i < option_.device_mesh_shape.size(); ++i) {
-    if (option_.device_mesh_beta[0] != option_.device_mesh_beta[i] ||
-        option_.device_mesh_alpha[0] != option_.device_mesh_alpha[i]) {
-      asymmetrical_mesh_dims = true;
-      break;
-    }
-  }
-
   std::vector<std::vector<int64_t>> mesh_shapes;
   if (option_.try_multiple_mesh_shapes) {
-    mesh_shapes = spmd::CreateDifferentMeshShapesToTry(
+    bool asymmetrical_mesh_dims = false;
+    for (size_t i = 0; i < option_.device_mesh_shape.size(); ++i) {
+      if (option_.device_mesh_beta[0] != option_.device_mesh_beta[i] ||
+          option_.device_mesh_alpha[0] != option_.device_mesh_alpha[i]) {
+        asymmetrical_mesh_dims = true;
+        break;
+      }
+    }
+
+    mesh_shapes = spmd::InferOrEnumerateMeshShapesToTry(
+        *module,
         absl::c_accumulate(option_.device_mesh_shape, 1,
                            [](int64_t a, int64_t b) { return a * b; }),
         option_.device_mesh_shape.size(),
@@ -4571,7 +4601,7 @@ StatusOr<bool> AutoSharding::Run(
   std::unique_ptr<HloModule> module_with_default_solution = nullptr;
   if (option_.use_sharding_propagation_for_default_shardings) {
     module_with_default_solution = CloneModule(module);
-    // TODO(pratikf): Ensure that we're passing the correct customc all sharding
+    // TODO(pratikf): Ensure that we're passing the correct custom call sharding
     // helper to the sharding propagation pass.
     auto sharding_prop = ShardingPropagation(
         /*is_spmd */ true, /*propagate_metadata */ false,

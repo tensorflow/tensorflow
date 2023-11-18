@@ -21,8 +21,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/stream_executor.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 // A device-side comparator that compares buffers.
 class BufferComparator {
@@ -45,21 +44,23 @@ class BufferComparator {
                               se::DeviceMemoryBase expected) const;
 
  private:
-  // Returns a pointer to CUDA C++ device function implementing comparison.
-  static void* fp8_e4m3fn_comparison();
-  static void* fp8_e5m2_comparison();
-  static void* fp16_comparison();
-  static void* bf16_comparison();
-  static void* fp32_comparison();
-  static void* fp64_comparison();
-  static void* int8_comparison();
-  static void* int32_comparison();
-
   Shape shape_;
   HloModuleConfig config_;
 };
 
-}  // namespace gpu
-}  // namespace xla
+namespace buffer_comparator {
+
+// Returns a pointer to CUDA C++ device function implementing comparison.
+void* fp8_e4m3fn_comparison();
+void* fp8_e5m2_comparison();
+void* fp16_comparison();
+void* bf16_comparison();
+void* fp32_comparison();
+void* fp64_comparison();
+void* int8_comparison();
+void* int32_comparison();
+
+}  // namespace buffer_comparator
+}  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_BUFFER_COMPARATOR_H_

@@ -52,12 +52,12 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   }
 
   tsl::Status GetKernel(const MultiKernelLoaderSpec &spec,
-                        KernelBase *kernel) override {
+                        Kernel *kernel) override {
     return tsl::errors::Unimplemented("Not Implemented");
   }
   tsl::Status Launch(Stream *stream, const ThreadDim &thread_dims,
-                     const BlockDim &block_dims, const KernelBase &kernel,
-                     const KernelArgsArrayBase &args) override {
+                     const BlockDim &block_dims, const Kernel &kernel,
+                     const KernelArgs &args) override {
     return tsl::errors::Unimplemented("Not Implemented");
   }
 

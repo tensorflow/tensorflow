@@ -13,13 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <unistd.h>
-
 #include <cstdint>
 #include <memory>
 #include <utility>
 
+#if defined(PLATFORM_WINDOWS)
+#include <windows.h>
+#define PATH_MAX MAX_PATH
+#else
+#include <unistd.h>
+#endif
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
@@ -38,6 +43,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_runtime.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/stream.h"
@@ -45,6 +51,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -174,7 +181,7 @@ tsl::Status GpuExecutor::LoadModuleFromHsaco(const char* hsaco,
 }
 
 tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
-                                   KernelBase* kernel) {
+                                   Kernel* kernel) {
   GpuKernel* cuda_kernel = AsGpuKernel(kernel);
   CUmodule module;
   const std::string* kernel_name;
@@ -239,6 +246,7 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   TF_RETURN_IF_ERROR(GetKernelMetadata(cuda_kernel, &kernel_metadata));
   kernel->set_metadata(kernel_metadata);
   kernel->set_name(*kernel_name);
+  kernel->set_kernel_args_packing(spec.kernel_args_packing());
   return ::tsl::OkStatus();
 }
 
@@ -259,7 +267,7 @@ bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
   return true;
 }
 
-void GpuExecutor::UnloadKernel(const KernelBase* kernel) {
+void GpuExecutor::UnloadKernel(const Kernel* kernel) {
   VLOG(3) << "Unloading kernel " << kernel << " : " << kernel->name();
 
   absl::MutexLock lock{&in_memory_modules_mu_};
@@ -406,10 +414,7 @@ tsl::Status GpuExecutor::GetKernelMetadata(GpuKernel* cuda_kernel,
 
 tsl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                                 const BlockDim& block_dims,
-                                const KernelBase& kernel,
-                                const KernelArgsArrayBase& args) {
-  CHECK_EQ(kernel.Arity() + (args.number_of_shared_bytes() > 0),
-           args.number_of_arguments());
+                                const Kernel& kernel, const KernelArgs& args) {
   CUstream custream = AsGpuStreamValue(stream);
   const GpuKernel* cuda_kernel = AsGpuKernel(&kernel);
   CUfunction cufunc = cuda_kernel->AsGpuFunctionHandle();
@@ -433,13 +438,35 @@ tsl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
         cufunc, cuda_kernel->GetGpuCacheConfig()));
   }
 
-  void** kernel_params = const_cast<void**>(args.argument_addresses().data());
+  // Launch CUDA kernels with packed arguments.
+  auto launch = [&](const KernelArgsPackedArrayBase& packed) {
+    CHECK_EQ(kernel.Arity() + (packed.number_of_shared_bytes() > 0),
+             packed.number_of_arguments());
+    void** params = const_cast<void**>(packed.argument_addresses().data());
+    return GpuDriver::LaunchKernel(
+        context_, kernel.name(), cufunc, block_dims.x, block_dims.y,
+        block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
+        args.number_of_shared_bytes(), custream, params, nullptr /* = extra */);
+  };
 
-  return GpuDriver::LaunchKernel(context_, kernel.name(), cufunc, block_dims.x,
-                                 block_dims.y, block_dims.z, thread_dims.x,
-                                 thread_dims.y, thread_dims.z,
-                                 args.number_of_shared_bytes(), custream,
-                                 kernel_params, nullptr /* = extra */);
+  // If arguments are already packed we can just launch the kernel.
+  if (auto* packed = DynCast<KernelArgsPackedArrayBase>(&args)) {
+    return launch(*packed);
+  }
+
+  // For device memory array we rely on a custom kernel arguments packing.
+  if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
+    auto& pack = kernel.kernel_args_packing();
+    if (!pack)
+      return absl::InternalError(
+          "Kernel is missing a custom arguments packing function for device "
+          "memory arguments array");
+
+    TF_ASSIGN_OR_RETURN(auto packed, pack(*device_mem));
+    return launch(*packed);
+  }
+
+  return absl::InternalError("Unsupported kernel arguments type");
 }
 
 tsl::Status GpuExecutor::Submit(Stream* stream,
@@ -458,7 +485,7 @@ tsl::Status GpuExecutor::Submit(Stream* stream,
 // This is a non-essential operation; if there's a failure, proceed without
 // logging an error. It's nearly certain that in case of failures, we'd never
 // get here in the first place; these are very low-impact routines.
-void GpuExecutor::VlogOccupancyInfo(const KernelBase& kernel,
+void GpuExecutor::VlogOccupancyInfo(const Kernel& kernel,
                                     const ThreadDim& thread_dims,
                                     const BlockDim& block_dims) {
   VLOG(2) << "Computing kernel occupancy for kernel "
@@ -886,6 +913,10 @@ GpuContext* GpuExecutor::gpu_context() { return context_; }
 // turn to gsys' topology modeling.
 static int TryToReadNumaNode(const std::string& pci_bus_id,
                              int device_ordinal) {
+#if defined(PLATFORM_WINDOWS)
+  // Windows support for NUMA is not currently implemented. Return node 0.
+  return 0;
+#else
   VLOG(2) << "trying to read NUMA node for device ordinal: " << device_ordinal;
   static const int kUnknownNumaNode = -1;
 
@@ -936,6 +967,7 @@ static int TryToReadNumaNode(const std::string& pci_bus_id,
 
   fclose(file);
   return kUnknownNumaNode;
+#endif
 }
 
 tsl::StatusOr<std::unique_ptr<DeviceDescription>>

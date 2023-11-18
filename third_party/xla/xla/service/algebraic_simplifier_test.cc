@@ -7532,7 +7532,7 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedReshapeWithoutLayout) {
       HloInstruction::CreateReshape(reshaped_shape, broadcast));
 
   std::unique_ptr<VerifiedHloModule> module = CreateNewVerifiedModule();
-  module->AddEntryComputationWithLayouts(builder.Build());
+  module->AddEntryComputation(builder.Build());
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
@@ -9978,6 +9978,51 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfBroadcastSkipped) {
      ROOT trans = f32[4,2,3,10] transpose(bcast), dimensions={3,1,2,0}
    }
   )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  bool changed =
+      RunHloPass(AlgebraicSimplifier(default_options_), m.get()).value();
+  SCOPED_TRACE(m->ToString());
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(AlgebraicSimplifierTest, DontSinkInstructionsInDUSAsyncComputation) {
+  const char* kModuleStr = R"(
+   HloModule m
+   test {
+     %param_0 = f32[1]{0} parameter(0)
+     %param_1 = f32[10]{0} parameter(1)
+     %constant_1 = s32[] constant(0)
+     %dynamic-update-slice-start = ((f32[10]{0}, f32[1]{0}, s32[]),
+      f32[10]{0}, u32[]) dynamic-update-slice-start(f32[10]{0} %param_1,
+     f32[1]{0} %param_0, s32[] %constant_1)
+     ROOT %dynamic-update-slice-done =
+     f32[10]{0} dynamic-update-slice-done(((f32[10]{0}, f32[1]{0}, s32[]),
+     f32[10]{0}, u32[]) %dynamic-update-slice-start)
+   }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  bool changed =
+      RunHloPass(AlgebraicSimplifier(default_options_), m.get()).value();
+  SCOPED_TRACE(m->ToString());
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(AlgebraicSimplifierTest, DontSinkInstructionsInDSAsyncComputation) {
+  const char* kModuleStr = R"(
+   HloModule m
+   test {
+     %param_0 = f32[10]{0} parameter(0)
+     %constant_1 = s32[] constant(0)
+     %dynamic-slice-start = ((f32[10]{0}, s32[]), f32[1]{0}, u32[])
+      dynamic-slice-start(f32[10]{0} %param_0, s32[] %constant_1),
+      dynamic_slice_sizes={1}
+     ROOT %dynamic-slice-done = f32[1]{0}
+      dynamic-slice-done(((f32[10]{0}, s32[]), f32[1]{0}, u32[])
+        %dynamic-slice-start), dynamic_slice_sizes={1}
+   }
+  )";
+
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   bool changed =
       RunHloPass(AlgebraicSimplifier(default_options_), m.get()).value();

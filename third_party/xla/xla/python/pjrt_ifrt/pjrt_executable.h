@@ -118,6 +118,11 @@ class PjRtExecutable final
     return pjrt_executable_->GetParameterLayouts();
   }
 
+  StatusOr<std::vector<Layout>> GetOutputLayouts() const override {
+    DCHECK(this);
+    return pjrt_executable_->GetOutputLayouts();
+  }
+
   StatusOr<std::optional<std::string>> Fingerprint() const override;
 
   StatusOr<std::string> Serialize() const override;
@@ -221,6 +226,11 @@ class PjRtLoadedExecutable final
   StatusOr<std::vector<Layout>> GetParameterLayouts() const override {
     DCHECK(this);
     return pjrt_loaded_executable_->GetParameterLayouts();
+  }
+
+  StatusOr<std::vector<Layout>> GetOutputLayouts() const override {
+    DCHECK(this);
+    return pjrt_loaded_executable_->GetOutputLayouts();
   }
 
   StatusOr<std::optional<std::string>> Fingerprint() const override;

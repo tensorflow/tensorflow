@@ -88,6 +88,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/side_effect_analysis_util.h"
 
 namespace mlir {
 namespace TF {
@@ -2344,21 +2345,13 @@ void TPUExecuteOp::getEffects(
   effects.emplace_back(MemoryEffects::Write::get(),
                        ResourceEffects::TPUExecute::get());
 
+  // Conservatively mark resource handles as read and write, as without
+  // analyzing TPUCompile, there is not sufficient information to determine
+  // effects on resources. For the MLIR bridge, this op will never be
+  // populated with resource handles and tf.TPUExecuteAndUpdateVariables is
+  // used instead.
   for (Value value : getArgs()) {
-    if (value.getType()
-            .cast<TensorType>()
-            .getElementType()
-            .isa<ResourceType>()) {
-      // Conservatively mark resource handles as read and write, as without
-      // analyzing TPUCompile, there is not sufficient information to determine
-      // effects on resources. For the MLIR bridge, this op will never be
-      // populated with resource handles and tf.TPUExecuteAndUpdateVariables is
-      // used instead.
-      effects.emplace_back(MemoryEffects::Read::get(), value,
-                           ResourceEffects::Variable::get());
-      effects.emplace_back(MemoryEffects::Write::get(), value,
-                           ResourceEffects::Variable::get());
-    }
+    MarkResourceAsReadAndWrite(value, effects);
   }
 }
 
@@ -2373,19 +2366,11 @@ void _XlaRunOp::getEffects(
   effects.emplace_back(MemoryEffects::Write::get(),
                        ResourceEffects::_XlaRun::get());
 
+  // Conservatively mark resource handles as read and write, as without
+  // analyzing _XlaCompile, there is not sufficient information to determine
+  // effects on resources.
   for (Value value : getArgs()) {
-    if (value.getType()
-            .cast<TensorType>()
-            .getElementType()
-            .isa<ResourceType>()) {
-      // Conservatively mark resource handles as read and write, as without
-      // analyzing _XlaCompile, there is not sufficient information to determine
-      // effects on resources.
-      effects.emplace_back(MemoryEffects::Read::get(), value,
-                           ResourceEffects::Variable::get());
-      effects.emplace_back(MemoryEffects::Write::get(), value,
-                           ResourceEffects::Variable::get());
-    }
+    MarkResourceAsReadAndWrite(value, effects);
   }
 }
 
@@ -3059,35 +3044,22 @@ LogicalResult XlaCallModuleOp::verifySymbolUses(
 void XlaLaunchOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects) {
-  effects.reserve(getArgs().size() + 1);
+  effects.reserve(2 * getArgs().size() + 1);
   effects.emplace_back(MemoryEffects::Write::get(),
                        ResourceEffects::XlaLaunch::get());
 
+  // Conservatively mark resource handles as read and write, as without
+  // analyzing XlaLaunch, there is not sufficient information to determine
+  // effects on resources.
   for (Value value : getArgs()) {
-    if (value.getType()
-            .cast<TensorType>()
-            .getElementType()
-            .isa<ResourceType>()) {
-      // Conservatively mark resource handles as read and write, as without
-      // analyzing XlaLaunch, there is not sufficient information to determine
-      // effects on resources.
-      effects.emplace_back(MemoryEffects::Read::get(), value,
-                           ResourceEffects::Variable::get());
-      effects.emplace_back(MemoryEffects::Write::get(), value,
-                           ResourceEffects::Variable::get());
-    }
+    MarkResourceAsReadAndWrite(value, effects);
   }
 }
 
 // For `XlaLaunch` ops the `device` attribute corresponds to the resource
 // instance.
 std::optional<std::string> XlaLaunchOp::GetResourceInstanceStr() {
-  auto device_attr = (*this)->getAttrOfType<StringAttr>("device");
-  // Treat missing device attribute like unspecified (= empty string) attribute.
-  // Note that different op instances with the same string (including empty
-  // string) are seen as dependent (same resource instance).
-  if (!device_attr) return "";
-  return device_attr.str();
+  return GetDeviceAttrAsResourceInstanceStr(*this);
 }
 
 //===----------------------------------------------------------------------===//

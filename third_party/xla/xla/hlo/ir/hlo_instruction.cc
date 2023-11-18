@@ -3599,6 +3599,23 @@ void HloInstruction::PrintExtraAttributes(
       AppendCat(printer, "statistics=", StatisticsVizToString(statistics_viz_));
     });
   }
+
+  if (operation_queue_id_) {
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "operation_queue_id=", *operation_queue_id_);
+    });
+  }
+
+  if (wait_on_operation_queues_.size() > 0) {
+    printer.Next([this, &options](Printer* printer) {
+      printer->Append("wait_on_operation_queues={");
+      AppendJoin(printer, wait_on_operation_queues_, ", ",
+                 [&](Printer* printer, int64_t queue_id) {
+                   printer->Append(queue_id);
+                 });
+      printer->Append("}");
+    });
+  }
 }
 
 std::vector<std::string> HloInstruction::ExtraAttributesToString(

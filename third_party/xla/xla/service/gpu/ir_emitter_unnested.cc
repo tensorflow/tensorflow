@@ -27,12 +27,14 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -99,6 +101,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/fusions/input_slices.h"
 #include "xla/service/gpu/fusions/loop.h"
+#include "xla/service/gpu/fusions/reduction.h"
 #include "xla/service/gpu/fusions/thunk_util.h"
 #include "xla/service/gpu/fusions/transpose.h"
 #include "xla/service/gpu/gemm_thunk.h"
@@ -114,6 +117,8 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_nested.h"
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_thunk.h"
+#include "xla/service/gpu/kernels/custom_fusion.h"
+#include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/nccl_all_gather_thunk.h"
@@ -157,12 +162,12 @@ limitations under the License.
 #include "tsl/protobuf/dnn.pb.h"
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
-#include "xla/service/gpu/cub_sort_thunk.h"
 #include "xla/service/gpu/gpublas_lt_matmul_thunk.h"
-#include "xla/service/gpu/ir_emitter_triton.h"
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "xla/service/gpu/cub_sort_thunk.h"
+#include "xla/service/gpu/ir_emitter_triton.h"
 #include "xla/service/gpu/runtime3/cholesky_thunk.h"
 #include "xla/service/gpu/runtime3/triangular_solve_thunk.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -243,6 +248,13 @@ StatusOr<xla::gpu::CudnnfMHAKind> AsCudnnBackwardfMHAKind(
     case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
         BackwardScaleBiasMaskSoftmaxDropout:
       return xla::gpu::CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout;
+      break;
+    case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::BackwardSoftmax:
+      return xla::gpu::CudnnfMHAKind::kBackwardSoftmax;
+      break;
+    case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::BackwardSoftmaxDropout:
+      return xla::gpu::CudnnfMHAKind::kBackwardSoftmaxDropout;
+      break;
     default:
       return xla::InternalError("Unsupported fused_mha_backward_dag_signature");
   }
@@ -271,17 +283,21 @@ StatusOr<xla::gpu::CudnnfMHAKind> AsCudnnBackwardfMHAKind(
 // ```
 StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkForFusion(
     IrEmitterContext& ir_emitter_context, KernelReuseCache& kernel_cache,
-    mlir::lmhlo::FusionOp fusion_op, const HloComputation* fused_computation,
+    const HloFusionInstruction* fusion, mlir::lmhlo::FusionOp fusion_op,
+    const HloComputation* fused_computation,
     const LaunchDimensions& launch_dimensions, absl::string_view discriminator,
     std::function<Status(std::vector<llvm_ir::IrArray>,
                          std::vector<llvm_ir::IrArray>)>
         kernel_builder_fn,
     llvm::IRBuilder<>* builder) {
-  std::string suggested_kernel_name = GetIrNameFromLoc(fusion_op->getLoc());
+  std::string suggested_kernel_name = std::string(fusion->name());
 
-  TF_ASSIGN_OR_RETURN(
-      auto kernel_arguments,
-      KernelArguments::Create(ir_emitter_context.allocations(), fusion_op));
+  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
+                      ir_emitter_context.emit_ir_from_hlo()
+                          ? KernelArguments::Create(
+                                ir_emitter_context.buffer_assignment(), fusion)
+                          : KernelArguments::Create(
+                                ir_emitter_context.allocations(), fusion_op));
 
   auto kernel_builder_status = OkStatus();
   auto [entry, cached] = kernel_cache.Get(
@@ -289,7 +305,7 @@ StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkForFusion(
       [&]() -> KernelReuseCache::Entry {
         auto [kernel, input_arrays, output_arrays] = BuildKernelPrototype(
             ir_emitter_context, suggested_kernel_name, kernel_arguments.args(),
-            fusion_op.getInputBuffers().size(), launch_dimensions, builder);
+            fusion->operand_count(), launch_dimensions, builder);
         kernel_builder_status = kernel_builder_fn(input_arrays, output_arrays);
         return {kernel->getName().str(), launch_dimensions};
       });
@@ -299,9 +315,27 @@ StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkForFusion(
             << entry.kernel_name;
   }
 
+  std::variant<mlir::Operation*, const HloInstruction*> op;
+  if (ir_emitter_context.emit_ir_from_hlo()) {
+    op = fusion;
+  } else {
+    op = fusion_op;
+  }
+
   return std::make_unique<KernelThunk>(
-      fusion_op, entry.kernel_name, kernel_arguments.args(), launch_dimensions,
+      op, entry.kernel_name, kernel_arguments.args(), launch_dimensions,
       /*shmem_bytes=*/0);
+}
+
+StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
+    IrEmitterContext& ir_emitter_context, const HloFusionInstruction* fusion,
+    CustomKernel custom_kernel) {
+  TF_ASSIGN_OR_RETURN(
+      auto kernel_arguments,
+      KernelArguments::Create(ir_emitter_context.buffer_assignment(), fusion));
+
+  return std::make_unique<CustomKernelThunk>(
+      fusion, std::move(custom_kernel), std::move(kernel_arguments.args()));
 }
 
 // Derives the number of warps to use for processing a Triton Softmax fusion.
@@ -458,8 +492,7 @@ llvm::Value* IrEmitterUnnested::CreateLoad(llvm::Value* address,
   int data_bytes = data_type->getPrimitiveSizeInBits() /
                    primitive_util::BitWidth(PrimitiveType::U8);
   if (alignment_bytes == 0) {
-    return b_.CreateLoad(data_type,
-                         b_.CreateBitCast(address, data_type->getPointerTo()));
+    return b_.CreateLoad(data_type, address);
   }
 
   int alignment_bitwidth =
@@ -488,8 +521,7 @@ void IrEmitterUnnested::CreateStore(llvm::Value* data, llvm::Value* address,
                    primitive_util::BitWidth(PrimitiveType::U8);
   CHECK_GE(data_bytes, alignment_bytes);
   if (alignment_bytes == 0) {
-    b_.CreateStore(data,
-                   b_.CreateBitCast(address, data->getType()->getPointerTo()));
+    b_.CreateStore(data, address);
     return;
   }
 
@@ -504,10 +536,7 @@ void IrEmitterUnnested::CreateStore(llvm::Value* data, llvm::Value* address,
         b_.CreateLShr(data,
                       llvm::ConstantInt::get(b_.getInt32Ty(), offset_bytes)),
         b_.getIntNTy(alignment_bitwidth), "truncated_value");
-    b_.CreateStore(
-        shifted_partial,
-        b_.CreateBitCast(offset_address,
-                         b_.getIntNTy(alignment_bitwidth)->getPointerTo()));
+    b_.CreateStore(shifted_partial, offset_address);
   }
 }
 
@@ -544,8 +573,6 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
   //   int* source_array = input[0];
   //   int* dest_array = output[0];
   llvm::Value* source_buffer = source_array.GetBasePointer();
-  llvm::Value* raw_buffer =
-      b_.CreateBitCast(source_buffer, b_.getInt8Ty()->getPointerTo());
 
   // TODO(jurahul): input_shape here is the static shape of the input (which has
   // a dynamic shape in XLA). Currently, we are mapping that to a static shaped
@@ -566,7 +593,7 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
 
     const int64_t dim_index = i - 1;
     llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
-        b_.getInt8Ty(), raw_buffer,
+        b_.getInt8Ty(), source_buffer,
         raw_data_size + dim_index * sizeof(int32_t));
     llvm::Value* dyn_dim_size =
         CreateLoad(metadata, b_.getInt32Ty(), alignment);
@@ -679,8 +706,6 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
   //   int* dest_array = output[0];
   const llvm_ir::IrArray data_array = input_arrays.back();
   llvm::Value* dest_buffer = data_array.GetBasePointer();
-  llvm::Value* raw_buffer =
-      b_.CreateBitCast(dest_buffer, b_.getInt8Ty()->getPointerTo());
 
   // Load dynamic dimensions from memory.
   std::vector<llvm::Value*> dynamic_dims;
@@ -705,7 +730,7 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
     for (int64_t i = 1; i < slice_to_dynamic.getArgs().size(); ++i) {
       const int64_t dim_index = i - 1;
       llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
-          b_.getInt8Ty(), raw_buffer,
+          b_.getInt8Ty(), dest_buffer,
           raw_data_size + dim_index * sizeof(int32_t));
       // output[i] stores dynamic_dim_(i-1)
       CreateStore(dynamic_dims[dim_index], metadata, alignment);
@@ -1208,6 +1233,11 @@ Status IrEmitterUnnested::EmitFusedMHAThunk(mlir::Operation* op) {
         ShapeUtil::MakeShapeWithDenseLayout(
             GetShape(fmha.getOutput()).element_type(),
             intermediate_tensor_dims_array, intermediate_tensor_layout_array);
+
+    // set if flash attention here
+    descriptor.is_flash_attention = fmha.getIsFlashAttention();
+    // set if causal mask here
+    descriptor.is_causal_mask = fmha.getIsCausalMask();
     return OkStatus();
   };
 
@@ -1235,9 +1265,9 @@ Status IrEmitterUnnested::EmitFusedMHABackwardThunk(mlir::Operation* op) {
   GpufMHABackwardDescriptor descriptor;
   BufferAllocation::Slice bmm1_grad_gemm1_rhs_slice, bmm1_grad_gemm2_rhs_slice,
       bmm2_grad_gemm1_lhs_slice, bmm2_grad_gemm2_rhs_slice, d_output_slice,
-      scratch_slice, mask_slice;
+      scratch_slice, mask_slice, fwd_output_slice, bias_slice;
   BufferAllocation::Slice d_bmm1_lhs_slice, d_bmm1_rhs_slice, d_bmm2_rhs_slice,
-      d_S_slice, d_bias_slice;
+      d_s_slice, softmax_sum_slice, d_Q_accum_slice, d_bias_slice;
 
   auto populate_common = [&](auto fmha) -> Status {
     descriptor.backend_config.set_fmha_scale(
@@ -1267,6 +1297,10 @@ Status IrEmitterUnnested::EmitFusedMHABackwardThunk(mlir::Operation* op) {
       algorithm->mutable_workspace_size()->set_value(workspace_size);
     }
 
+    // set if flash attention here
+    descriptor.is_flash_attention = fmha.getIsFlashAttention();
+    // set if causal mask here
+    descriptor.is_causal_mask = fmha.getIsCausalMask();
     descriptor.bmm1_grad_gemm1_dnums =
         ConvertDotDimensionNumbers(fmha.getBmm1GradGemm1DotDimensionNumbers());
     descriptor.bmm1_grad_gemm2_dnums =
@@ -1290,10 +1324,31 @@ Status IrEmitterUnnested::EmitFusedMHABackwardThunk(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(bmm1_grad_gemm2_rhs_slice,
                         GetAllocationSlice(fmha.getBmm1GradGemm2Rhs()));
 
-    descriptor.bmm2_grad_gemm1_lhs_shape = ShapeUtil::MakeShapeWithDenseLayout(
-        GetShape(fmha.getBmm2GradGemm1Lhs()).element_type(),
-        GetShape(fmha.getBmm2GradGemm1Lhs()).dimensions(),
-        GetShape(fmha.getBmm2GradGemm1Lhs()).layout().minor_to_major());
+    // fwd activation
+    // fmha.getBmm2GradGemm1Lhs() could be bmm2_grad_gemm1_lhs for regular
+    // attention or softmax stats for flash attention here we set the shape to
+    // be bmm2_grad_gemm1_lhs even it is flash attention
+    if (descriptor.is_flash_attention) {
+      // flash attention TODO: make sure the layout is correct for
+      // bmm2_grad_gemm1_lhs
+      TF_ASSIGN_OR_RETURN(auto intermediate_tensor_dims_array,
+                          ConvertMlirArrayAttrToInt64Array(
+                              fmha.getIntermediateTensorDimensions()));
+      TF_ASSIGN_OR_RETURN(
+          auto intermediate_tensor_layout_array,
+          ConvertMlirArrayAttrToInt64Array(fmha.getIntermediateTensorLayout()));
+
+      descriptor.bmm2_grad_gemm1_lhs_shape =
+          ShapeUtil::MakeShapeWithDenseLayout(
+              GetShape(fmha.getDOutput()).element_type(),
+              intermediate_tensor_dims_array, intermediate_tensor_layout_array);
+    } else {
+      descriptor.bmm2_grad_gemm1_lhs_shape =
+          ShapeUtil::MakeShapeWithDenseLayout(
+              GetShape(fmha.getBmm2GradGemm1Lhs()).element_type(),
+              GetShape(fmha.getBmm2GradGemm1Lhs()).dimensions(),
+              GetShape(fmha.getBmm2GradGemm1Lhs()).layout().minor_to_major());
+    }
     TF_ASSIGN_OR_RETURN(bmm2_grad_gemm1_lhs_slice,
                         GetAllocationSlice(fmha.getBmm2GradGemm1Lhs()));
 
@@ -1332,7 +1387,13 @@ Status IrEmitterUnnested::EmitFusedMHABackwardThunk(mlir::Operation* op) {
 
     TF_ASSIGN_OR_RETURN(scratch_slice, GetAllocationSlice(fmha.getScratch()));
 
-    TF_ASSIGN_OR_RETURN(d_S_slice, GetAllocationSlice(fmha.getD_S()));
+    if (fmha.getD_S() != nullptr) {
+      descriptor.d_s_shape = ShapeUtil::MakeShapeWithDenseLayout(
+          GetShape(fmha.getD_S()).element_type(),
+          GetShape(fmha.getD_S()).dimensions(),
+          GetShape(fmha.getD_S()).layout().minor_to_major());
+      TF_ASSIGN_OR_RETURN(d_s_slice, GetAllocationSlice(fmha.getD_S()));
+    }
 
     if (fmha.getDBias() != nullptr) {
       descriptor.d_bias_shape = ShapeUtil::MakeShapeWithDenseLayout(
@@ -1356,6 +1417,33 @@ Status IrEmitterUnnested::EmitFusedMHABackwardThunk(mlir::Operation* op) {
 
       TF_ASSIGN_OR_RETURN(mask_slice, GetAllocationSlice(fmha.getMask()));
     }
+    // add flash attention backward related slice here
+    if (fmha.getBias() != nullptr) {
+      descriptor.bias_shape = ShapeUtil::MakeShapeWithDenseLayout(
+          GetShape(fmha.getBias()).element_type(),
+          GetShape(fmha.getBias()).dimensions(),
+          GetShape(fmha.getBias()).layout().minor_to_major());
+      TF_ASSIGN_OR_RETURN(bias_slice, GetAllocationSlice(fmha.getBias()));
+    }
+
+    if (fmha.getSoftmaxSum() != nullptr) {
+      TF_ASSIGN_OR_RETURN(softmax_sum_slice,
+                          GetAllocationSlice(fmha.getSoftmaxSum()));
+    }
+
+    if (fmha.getD_QAccum() != nullptr) {
+      TF_ASSIGN_OR_RETURN(d_Q_accum_slice,
+                          GetAllocationSlice(fmha.getD_QAccum()));
+    }
+
+    if (fmha.getFwdOutput() != nullptr) {
+      descriptor.fwd_output_shape = ShapeUtil::MakeShapeWithDenseLayout(
+          GetShape(fmha.getFwdOutput()).element_type(),
+          GetShape(fmha.getFwdOutput()).dimensions(),
+          GetShape(fmha.getFwdOutput()).layout().minor_to_major());
+      TF_ASSIGN_OR_RETURN(fwd_output_slice,
+                          GetAllocationSlice(fmha.getFwdOutput()));
+    }
     return OkStatus();
   };
 
@@ -1377,7 +1465,8 @@ Status IrEmitterUnnested::EmitFusedMHABackwardThunk(mlir::Operation* op) {
       bmm1_grad_gemm1_rhs_slice, bmm1_grad_gemm2_rhs_slice,
       bmm2_grad_gemm1_lhs_slice, bmm2_grad_gemm2_rhs_slice, d_output_slice,
       scratch_slice, d_bmm1_lhs_slice, d_bmm1_rhs_slice, d_bmm2_rhs_slice,
-      d_S_slice, mask_slice, d_bias_slice));
+      d_s_slice, softmax_sum_slice, d_Q_accum_slice, mask_slice, d_bias_slice,
+      fwd_output_slice, bias_slice));
 
   return OkStatus();
 }
@@ -1533,6 +1622,9 @@ static StatusOr<CustomCallThunk::AttributesMap> BuildAttributesMap(
       switch (integer.getType().getIntOrFloatBitWidth()) {
         case 32:
           attributes[name] = static_cast<int32_t>(integer.getInt());
+          return OkStatus();
+        case 64:
+          attributes[name] = static_cast<int64_t>(integer.getInt());
           return OkStatus();
         default:
           return absl::InvalidArgumentError(absl::StrCat(
@@ -1865,7 +1957,7 @@ Status IrEmitterUnnested::EmitTriangularSolveCustomCall(mlir::Operation* op) {
 //     %0 = tensor_load %external_memref0
 //     %1 = tensor_load %external_memref1
 //     ...
-//     tensor_store %ret, %external_memref2
+//     materialize_in_destination %ret, %external_memref2
 //   }
 // to
 //   fusion(%external_memref0, %external_memref1) (^bb(%0, %1) {
@@ -1880,7 +1972,7 @@ static Status ProcessFusionForConversion(mlir::Region* region,
                                          std::vector<Shape>* operand_shapes,
                                          std::vector<Shape>* output_shapes) {
   std::vector<mlir::bufferization::ToTensorOp> loads;
-  std::vector<mlir::memref::TensorStoreOp> stores;
+  std::vector<mlir::bufferization::MaterializeInDestinationOp> stores;
 
   region->walk([&](mlir::bufferization::ToTensorOp load) {
     if (load.getMemref().getParentRegion() != region) {
@@ -1888,8 +1980,9 @@ static Status ProcessFusionForConversion(mlir::Region* region,
     }
   });
 
-  region->walk([&](mlir::memref::TensorStoreOp store) {
-    if (store.getMemref().getParentRegion() != region) {
+  region->walk([&](mlir::bufferization::MaterializeInDestinationOp store) {
+    if (!llvm::isa<mlir::TensorType>(store.getDest().getType())) return;
+    if (store.getDest().getParentRegion() != region) {
       stores.push_back(store);
     }
   });
@@ -1904,10 +1997,10 @@ static Status ProcessFusionForConversion(mlir::Region* region,
 
   std::vector<mlir::Value> returned_values;
   for (auto store : stores) {
-    Shape shape = GetShape(store.getMemref());
+    Shape shape = GetShape(store.getDest());
     output_shapes->push_back(shape);
 
-    returned_values.push_back(store.getTensor());
+    returned_values.push_back(store.getSource());
     store.erase();
   }
 
@@ -1919,25 +2012,23 @@ static Status ProcessFusionForConversion(mlir::Region* region,
 }
 
 #if GOOGLE_CUDA
-Status IrEmitterUnnested::EmitTritonFusion(
-    const HloFusionAnalysis& hlo_fusion_analysis, mlir::Operation* op,
-    const TritonGemmConfig& config,
-    const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
-        hlo_for_lmhlo) {
+StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitTritonFusion(
+    const HloFusionAnalysis& hlo_fusion_analysis,
+    const HloFusionInstruction* fusion, mlir::Operation* op) {
   // Note: In this method we can't use `BuildKernelThunk` as usual,
   // because we only get the launch dimensions after code generation. So we
   // implement kernel reuse using lower level APIs, such as
   // `BuildKernelThunkImpl`.
 
   VLOG(3) << llvm_ir::DumpToString(op);
-  auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(op);
-
-  std::string suggested_kernel_name = GetIrNameFromLoc(fusion_op->getLoc());
+  std::string suggested_kernel_name = std::string(fusion->name());
   TF_ASSIGN_OR_RETURN(
       auto kernel_arguments,
-      KernelArguments::Create(ir_emitter_context_->allocations(), fusion_op));
-
-  auto* fusion = Cast<HloFusionInstruction>(hlo_for_lmhlo.at(op));
+      ir_emitter_context_->emit_ir_from_hlo()
+          ? KernelArguments::Create(ir_emitter_context_->buffer_assignment(),
+                                    fusion)
+          : KernelArguments::Create(ir_emitter_context_->allocations(),
+                                    mlir::cast<mlir::lmhlo::FusionOp>(op)));
 
   const HloComputation* hlo_computation =
       fusion->fused_instructions_computation();
@@ -1950,18 +2041,19 @@ Status IrEmitterUnnested::EmitTritonFusion(
             llvm_ir::SanitizeFunctionName(
                 absl::StrCat(suggested_kernel_name, "_impl")));
 
-    FusionBackendConfig backend_config;
-    auto backend_config_str = fusion_op.getBackendConfig()
-                                  .value_or(mlir::Attribute())
-                                  .dyn_cast_or_null<mlir::StringAttr>();
-    CHECK(backend_config_str);
-    TF_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(backend_config_str.str(),
-                                                     &backend_config));
+    TF_ASSIGN_OR_RETURN(auto backend_config,
+                        fusion->backend_config<FusionBackendConfig>());
     absl::string_view fusion_kind = backend_config.kind();
 
     TritonWrapperResult triton_wrapper_result;
     LaunchDimensions launch_dimensions;
     if (fusion_kind == kTritonSoftmaxFusionKind) {
+      auto& triton_config = *backend_config.mutable_triton_gemm_config();
+      triton_config.set_num_stages(1);
+      triton_config.set_num_warps(DeriveNumWarpsFromTritonSoftmaxComputation(
+          fusion->fused_instructions_computation()));
+      TritonGemmConfig config = TritonGemmConfig::FromProto(triton_config);
+
       TF_ASSIGN_OR_RETURN(auto analysis,
                           TritonFusionAnalysis::Execute(*hlo_computation));
       TF_ASSIGN_OR_RETURN(
@@ -1976,6 +2068,20 @@ Status IrEmitterUnnested::EmitTritonFusion(
           hlo_fusion_analysis.fusion_boundary(), config);
     } else {  // Must be a MatMul
       CHECK_EQ(fusion_kind, kTritonGemmFusionKind);
+      if (!backend_config.has_triton_gemm_config()) {
+        LOG(WARNING) << "Using fallback triton GEMM config for op "
+                     << GetIrNameFromLoc(op->getLoc());
+        auto& triton_config = *backend_config.mutable_triton_gemm_config();
+        triton_config.set_block_m(64);
+        triton_config.set_block_k(64);
+        triton_config.set_block_n(64);
+        triton_config.set_split_k(1);
+        triton_config.set_num_stages(1);
+        triton_config.set_num_warps(2);
+      }
+      TritonGemmConfig config =
+          TritonGemmConfig::FromProto(backend_config.triton_gemm_config());
+
       TF_ASSIGN_OR_RETURN(auto analysis, TritonFusionAnalysis::Execute(
                                              *hlo_computation, config.split_k));
       TF_ASSIGN_OR_RETURN(
@@ -2014,10 +2120,19 @@ Status IrEmitterUnnested::EmitTritonFusion(
       /*discriminator=*/"", generate);
   TF_RETURN_IF_ERROR(kernel.status());
 
-  AddThunkToThunkSequence(std::make_unique<KernelThunk>(
-      op, kernel->kernel_name, kernel_arguments.args(),
+  std::variant<mlir::Operation*, const HloInstruction*> fusion_op;
+  if (ir_emitter_context_->emit_ir_from_hlo()) {
+    fusion_op = fusion;
+  } else {
+    fusion_op = op;
+  }
+
+  FusionEmissionResult result;
+  result.thunks.emplace_back(std::make_unique<KernelThunk>(
+      fusion_op, kernel->kernel_name, kernel_arguments.args(),
       kernel->launch_dimensions, kernel->shmem_bytes));
-  return OkStatus();
+
+  return result;
 }
 
 #endif  // GOOGLE_CUDA
@@ -2051,28 +2166,70 @@ bool IsSpecializedLoopFusion(
 
 Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
                                      HloFusionAnalysis& fusion_analysis) {
-  // TODO(anlunx): Support kReduction, kTriton, and kScatter.
-  std::unique_ptr<FusionInterface> emitter;
+  FusionEmissionResult emission_result;
   switch (fusion_analysis.GetEmitterFusionKind()) {
-    case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
-      emitter = std::make_unique<InputSlicesFusion>(fusion_analysis);
+    case HloFusionAnalysis::EmitterFusionKind::kInputSlices: {
+      auto emitter = std::make_unique<InputSlicesFusion>(fusion_analysis);
+      TF_ASSIGN_OR_RETURN(
+          emission_result,
+          emitter->Emit(*ir_emitter_context_, elemental_emitter_, nullptr,
+                        *instr, kernel_reuse_cache_, &b_));
       break;
-    case HloFusionAnalysis::EmitterFusionKind::kLoop:
+    }
+    case HloFusionAnalysis::EmitterFusionKind::kLoop: {
       // TODO(anlunx): Support MemcpyFusion and InPlaceDymaicUpdateSlice.
-      emitter = std::make_unique<LoopFusion>(fusion_analysis);
+      auto emitter = std::make_unique<LoopFusion>(fusion_analysis);
+      TF_ASSIGN_OR_RETURN(
+          emission_result,
+          emitter->Emit(*ir_emitter_context_, elemental_emitter_, nullptr,
+                        *instr, kernel_reuse_cache_, &b_));
       break;
-    case HloFusionAnalysis::EmitterFusionKind::kTranspose:
-      emitter = std::make_unique<TransposeFusion>(fusion_analysis);
+    }
+    case HloFusionAnalysis::EmitterFusionKind::kTranspose: {
+      auto emitter = std::make_unique<TransposeFusion>(fusion_analysis);
+      TF_ASSIGN_OR_RETURN(
+          emission_result,
+          emitter->Emit(*ir_emitter_context_, elemental_emitter_, nullptr,
+                        *instr, kernel_reuse_cache_, &b_));
       break;
+    }
+    case HloFusionAnalysis::EmitterFusionKind::kReduction: {
+      auto emitter = std::make_unique<ReductionFusion>(fusion_analysis);
+      TF_ASSIGN_OR_RETURN(
+          emission_result,
+          emitter->Emit(*ir_emitter_context_, elemental_emitter_, nullptr,
+                        *instr, kernel_reuse_cache_, &b_));
+      break;
+    }
+    case HloFusionAnalysis::EmitterFusionKind::kTriton: {
+      TF_ASSIGN_OR_RETURN(auto backend_config,
+                          instr->backend_config<FusionBackendConfig>());
+#if GOOGLE_CUDA
+      TF_ASSIGN_OR_RETURN(emission_result,
+                          EmitTritonFusion(fusion_analysis, instr, nullptr));
+      break;
+#endif
+      LOG(FATAL) << "Unsupported fusion kind: " << backend_config.kind();
+    }
+    case HloFusionAnalysis::EmitterFusionKind::kScatter: {
+      TF_ASSIGN_OR_RETURN(emission_result,
+                          EmitScatter(instr, nullptr, fusion_analysis));
+      break;
+    }
+    case HloFusionAnalysis::EmitterFusionKind::kCustomFusion: {
+      TF_ASSIGN_OR_RETURN(auto backend_config,
+                          instr->backend_config<FusionBackendConfig>());
+      TF_ASSIGN_OR_RETURN(
+          emission_result,
+          EmitCustomFusion(instr, backend_config.custom_fusion_config()));
+      break;
+    }
     default:
       return FailedPrecondition(
           "Fusion type not supported by the HLO emitter.");
       break;
   }
 
-  TF_ASSIGN_OR_RETURN(auto emission_result,
-                      emitter->Emit(*ir_emitter_context_, elemental_emitter_,
-                                    nullptr, *instr, kernel_reuse_cache_, &b_));
   for (auto& thunk : emission_result.thunks) {
     AddThunkToThunkSequence(std::move(thunk));
   }
@@ -2100,71 +2257,53 @@ Status IrEmitterUnnested::EmitFusion(
     }
   }
 
-  auto* fused_computation = fusion->fused_instructions_computation();
-
   // Create HloFusionAnalysis instance.
   const se::DeviceDescription& device_info =
       ir_emitter_context_->gpu_device_info();
   TF_ASSIGN_OR_RETURN(auto fusion_analysis,
                       HloFusionAnalysis::Create(fusion, &device_info));
 
-  auto emitter = GetFusionEmitter(
-      fusion_analysis, ir_emitter_context_->allocations(), fusion_op);
-  if (emitter != std::nullopt) {
-    TF_ASSIGN_OR_RETURN(
-        auto emission_result,
-        (*emitter)->Emit(*ir_emitter_context_, elemental_emitter_, fusion_op,
-                         *fusion, kernel_reuse_cache_, &b_));
-    for (auto& thunk : emission_result.thunks) {
-      AddThunkToThunkSequence(std::move(thunk));
-    }
-    return OkStatus();
-  }
-
-  // Dispatch to the fusion specific emitter.
+  FusionEmissionResult emission_result;
   auto emitter_fusion_kind = fusion_analysis.GetEmitterFusionKind();
   switch (emitter_fusion_kind) {
-    case HloFusionAnalysis::EmitterFusionKind::kTriton: {
-#if GOOGLE_CUDA
-      if (backend_config.kind() == kTritonGemmFusionKind) {
-        if (!backend_config.has_triton_gemm_config()) {
-          LOG(WARNING) << "Using fallback triton GEMM config for op "
-                       << GetIrNameFromLoc(op->getLoc());
-          auto& triton_config = *backend_config.mutable_triton_gemm_config();
-          triton_config.set_block_m(64);
-          triton_config.set_block_k(64);
-          triton_config.set_block_n(64);
-          triton_config.set_split_k(1);
-          triton_config.set_num_stages(1);
-          triton_config.set_num_warps(2);
-        }
-        return EmitTritonFusion(
-            fusion_analysis, fusion_op,
-            TritonGemmConfig::FromProto(backend_config.triton_gemm_config()),
-            hlo_for_lmhlo);
-      }
-      if (backend_config.kind() == kTritonSoftmaxFusionKind) {
-        auto& triton_config = *backend_config.mutable_triton_gemm_config();
-        triton_config.set_num_stages(1);
-        triton_config.set_num_warps(
-            DeriveNumWarpsFromTritonSoftmaxComputation(fused_computation));
-        return EmitTritonFusion(
-            fusion_analysis, fusion_op,
-            TritonGemmConfig::FromProto(backend_config.triton_gemm_config()),
-            hlo_for_lmhlo);
-      }
-#endif
-      LOG(FATAL) << "Unsupported fusion kind: " << backend_config.kind();
-    }
-    case HloFusionAnalysis::EmitterFusionKind::kScatter:
-      return EmitScatter(fusion_op, fused_computation, fusion_analysis);
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
     case HloFusionAnalysis::EmitterFusionKind::kLoop:
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
-    case HloFusionAnalysis::EmitterFusionKind::kTranspose:
-      return FailedPrecondition(
-          "Fusion should have been handled by GetFusionEmitter.");
+    case HloFusionAnalysis::EmitterFusionKind::kTranspose: {
+      std::optional<std::unique_ptr<FusionInterface>> emitter =
+          GetFusionEmitter(fusion_analysis, ir_emitter_context_->allocations(),
+                           fusion_op);
+      if (emitter == std::nullopt) {
+        return FailedPrecondition(
+            "Fusion should have been handled by GetFusionEmitter.");
+      }
+      TF_ASSIGN_OR_RETURN(
+          emission_result,
+          (*emitter)->Emit(*ir_emitter_context_, elemental_emitter_, fusion_op,
+                           *fusion, kernel_reuse_cache_, &b_));
+      break;
+    }
+    case HloFusionAnalysis::EmitterFusionKind::kTriton: {
+#if GOOGLE_CUDA
+      TF_ASSIGN_OR_RETURN(emission_result,
+                          EmitTritonFusion(fusion_analysis, fusion, fusion_op));
+      break;
+#endif
+      LOG(FATAL) << "Unsupported fusion kind: " << backend_config.kind();
+    }
+    case HloFusionAnalysis::EmitterFusionKind::kScatter: {
+      TF_ASSIGN_OR_RETURN(emission_result,
+                          EmitScatter(fusion, fusion_op, fusion_analysis));
+      break;
+    }
+    case HloFusionAnalysis::EmitterFusionKind::kCustomFusion:
+      LOG(FATAL) << "kCustomFusion is not supported by JitRt runtime";
   }
+
+  for (auto& thunk : emission_result.thunks) {
+    AddThunkToThunkSequence(std::move(thunk));
+  }
+  return OkStatus();
 }
 
 Status IrEmitterUnnested::AssertNonDeterminismIsOkay(
@@ -2478,10 +2617,6 @@ Status IrEmitterUnnested::EmitRngGetAndUpdateState(mlir::Operation* op) {
       llvm_ir::IrArray::Index(
           /*linear=*/b_.getInt64(0), shape, &b_),
       &b_, "rng_state_address");
-  output_address = BitCast(
-      output_address, llvm::PointerType::get(
-                          old_state->getType(),
-                          output_address->getType()->getPointerAddressSpace()));
   Store(old_state, output_address);
 
   return OkStatus();
@@ -2494,11 +2629,18 @@ Status IrEmitterUnnested::EmitScatter(
     std::vector<llvm::Value*> input_scatter_multidim;
     std::vector<int64_t> raw_window_bounds;
 
+    auto get_i64_array = [](absl::Span<const int64_t> container) {
+      return llvm::ArrayRef<int64_t>{container.data(),
+                                     static_cast<size_t>(container.size())};
+    };
+
+    llvm::ArrayRef<int64_t> update_window_dims =
+        get_i64_array(desc.dim_numbers.update_window_dims());
     // Partition the index into window indices and scatter indices.
     for (int64_t i = 0, e = index.size(); i != e; ++i) {
       // For window indices also remember the window size, this comes in handy
       // later.
-      if (llvm::is_contained(desc.dim_numbers.getUpdateWindowDims(), i)) {
+      if (llvm::is_contained(update_window_dims, i)) {
         raw_window_multidim.push_back(index[i]);
         raw_window_bounds.push_back(desc.updates_shape.dimensions(i));
       } else {
@@ -2506,7 +2648,7 @@ Status IrEmitterUnnested::EmitScatter(
       }
     }
     DCHECK_EQ(raw_window_multidim.size(),
-              desc.dim_numbers.getUpdateWindowDims().size());
+              desc.dim_numbers.update_window_dims_size());
 
     // Apply inserted_window_dims to the window dimensions.
     int64_t raw_window_multidim_idx = 0;
@@ -2516,8 +2658,10 @@ Status IrEmitterUnnested::EmitScatter(
     input_window_bounds.reserve(rank);
     input_window_multidim.reserve(rank);
 
+    llvm::ArrayRef<int64_t> inserted_window_dims =
+        get_i64_array(desc.dim_numbers.inserted_window_dims());
     for (int64_t i = 0; i != rank; ++i) {
-      if (llvm::is_contained(desc.dim_numbers.getInsertedWindowDims(), i)) {
+      if (llvm::is_contained(inserted_window_dims, i)) {
         input_window_bounds.push_back(1);  // Trivial dimension.
         input_window_multidim.push_back(index.GetConstantWithIndexType(0));
       } else {
@@ -2532,11 +2676,11 @@ Status IrEmitterUnnested::EmitScatter(
 
     // Insert a 1 dimension at the end if index_vector_dim requests one.
     Shape scatter_indices_shape_fixed = desc.scatter_indices_shape;
-    if (desc.dim_numbers.getIndexVectorDim() ==
+    if (desc.dim_numbers.index_vector_dim() ==
         desc.scatter_indices_shape.rank()) {
       scatter_indices_shape_fixed.add_dimensions(1);
       scatter_indices_shape_fixed.mutable_layout()->add_minor_to_major(
-          desc.dim_numbers.getIndexVectorDim());
+          desc.dim_numbers.index_vector_dim());
     }
 
     // Now load the indices corresponding to the current window from
@@ -2544,21 +2688,22 @@ Status IrEmitterUnnested::EmitScatter(
     std::vector<llvm::Value*> raw_scatter_index_multidim =
         input_scatter_multidim;
     raw_scatter_index_multidim.insert(raw_scatter_index_multidim.begin() +
-                                          desc.dim_numbers.getIndexVectorDim(),
+                                          desc.dim_numbers.index_vector_dim(),
                                       nullptr);
+
+    llvm::ArrayRef<int64_t> scatter_dims_to_operand_dims =
+        get_i64_array(desc.dim_numbers.scatter_dims_to_operand_dims());
     llvm::Value* is_in_bounds = b_.getTrue();
-    for (int64_t i = 0,
-                 e = desc.dim_numbers.getScatterDimsToOperandDims().size();
-         i != e; ++i) {
+    for (int64_t i = 0, e = scatter_dims_to_operand_dims.size(); i != e; ++i) {
       // Our index is stored along index_vector_dim, insert that into the lookup
       // index into scatter_indices.
-      raw_scatter_index_multidim[desc.dim_numbers.getIndexVectorDim()] =
+      raw_scatter_index_multidim[desc.dim_numbers.index_vector_dim()] =
           index.GetConstantWithIndexType(i);
       llvm_ir::IrArray::Index raw_scatter_index_index(
           raw_scatter_index_multidim, scatter_indices_shape_fixed,
           index.GetType());
 
-      int64_t operand_dim = desc.dim_numbers.getScatterDimsToOperandDims()[i];
+      int64_t operand_dim = scatter_dims_to_operand_dims[i];
       if (operand_dim > rank) {
         return absl::OutOfRangeError(
             "The provided scatter_dims_to_operand_dims was out of range.");
@@ -3029,9 +3174,13 @@ Status IrEmitterUnnested::BuildInitializerThunk(
   // initial value must be a scalar memref.
   TF_RET_CHECK(init_value->shape().rank() == 0);
 
-  TF_ASSIGN_OR_RETURN(std::optional<std::unique_ptr<Thunk>> constant_init_thunk,
-                      BuildConstantInitializerThunk(*ir_emitter_context_, op,
-                                                    instr, init_value, dest));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dest_slice,
+                      GetAllocationSlice(dest));
+
+  TF_ASSIGN_OR_RETURN(
+      std::optional<std::unique_ptr<Thunk>> constant_init_thunk,
+      BuildConstantInitializerThunk(*ir_emitter_context_, op, instr, init_value,
+                                    dest, dest_slice));
   if (constant_init_thunk) {
     AddThunkToThunkSequence(*std::move(constant_init_thunk));
     return OkStatus();
@@ -3109,9 +3258,10 @@ Status IrEmitterUnnested::EmitTargetElementLoop(
   return InternalError("This should be unreachable");
 }
 
-Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
-                                      const HloComputation* fused_computation,
-                                      HloFusionAnalysis& fusion_analysis) {
+StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitScatter(
+    const HloFusionInstruction* fusion, mlir::lmhlo::FusionOp fusion_op,
+    HloFusionAnalysis& fusion_analysis) {
+  auto* fused_computation = fusion->fused_instructions_computation();
   auto* root = fused_computation->root_instruction();
 
   // Nothing should have been fused into the first operand of scatter.
@@ -3138,16 +3288,16 @@ Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
           });
     }
 
-    TF_ASSIGN_OR_RETURN(const auto dim_numbers,
-                        mlir::LhloDialectEmitter::GetScatterDimensionNumbers(
-                            root, fusion_op.getContext()));
+    auto* scatter = Cast<HloScatterInstruction>(root);
+    const xla::ScatterDimensionNumbers& xla_scatter_dim =
+        scatter->scatter_dimension_numbers();
 
     ScatterDescriptor desc;
     desc.name = llvm_ir::IrName(root);
     desc.operand_shape = root->operand(0)->shape();
     desc.scatter_indices_shape = root->operand(1)->shape();
     desc.updates_shape = updates_shape;
-    desc.dim_numbers = dim_numbers;
+    desc.dim_numbers = xla_scatter_dim;
     desc.unique_indices = root->unique_indices();
     desc.update_computation = root->called_computations()[0];
     desc.output = outputs.back();
@@ -3161,13 +3311,56 @@ Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
     return EmitScatter(desc, launch_dimensions);
   };
 
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> kernel_thunk,
+                      BuildKernelThunkForFusion(
+                          *ir_emitter_context_, kernel_reuse_cache_, fusion,
+                          fusion_op, fused_computation, launch_dimensions,
+                          /*discriminator=*/"scatter", builder_fn, &b_));
+
+  FusionEmissionResult result;
+  result.thunks.push_back(std::move(kernel_thunk));
+  return result;
+}
+
+StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitCustomFusion(
+    const HloFusionInstruction* fusion, const CustomFusionConfig& config) {
+  VLOG(3) << "Lower HLO fusion to a custom fusion " << config.name();
+
+  auto* registry = CustomFusionRegistry::Default();
+  auto* custom_fusion = registry->Lookup(config.name());
+
+  // If custom fusion is not found it means that some of the build targets might
+  // not be statically linked into the binary.
+  if (custom_fusion == nullptr) {
+    return absl::InternalError(absl::StrCat(
+        "Custom fusion ", config.name(), " not found in a default registry."));
+  }
+
+  // Load custom kernels that can implement a fusion computation.
   TF_ASSIGN_OR_RETURN(
-      auto thunk,
-      BuildKernelThunkForFusion(*ir_emitter_context_, kernel_reuse_cache_,
-                                fusion_op, fused_computation, launch_dimensions,
-                                /*discriminator=*/"scatter", builder_fn, &b_));
-  AddThunkToThunkSequence(std::move(thunk));
-  return OkStatus();
+      std::vector<CustomKernel> kernels,
+      custom_fusion->LoadKernels(fusion->fused_instructions_computation()));
+
+  // This should never happen, it means that compilation pipeline created a
+  // fusion operation that is not supported by a given custom fusion.
+  if (kernels.empty()) {
+    return absl::InternalError(
+        absl::StrCat("Custom fusion ", config.name(),
+                     " returned empty custom kernels for a fused computation"));
+  }
+
+  // TODO(ezhulenev): Add support for auto tuning to select the best kernel.
+  if (kernels.size() != 1) {
+    return absl::InternalError("Expected exactly one custom kernel");
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      auto thunk, BuildCustomKernelThunkForFusion(*ir_emitter_context_, fusion,
+                                                  std::move(kernels[0])));
+
+  FusionEmissionResult result;
+  result.thunks.push_back(std::move(thunk));
+  return result;
 }
 
 Status IrEmitterUnnested::EmitOp(
@@ -3273,14 +3466,8 @@ Status IrEmitterUnnested::EmitOp(
           ir_emitter_context_->gpu_device_info();
       TF_ASSIGN_OR_RETURN(auto fusion_analysis,
                           HloFusionAnalysis::Create(instr, &device_info));
-      HloFusionAnalysis::EmitterFusionKind kind =
-          fusion_analysis.GetEmitterFusionKind();
-      // TODO(anlunx): Add support for emitting kTriton, kScatter, kReduction,
-      // and specialized kLoops.
-      if (kind != HloFusionAnalysis::EmitterFusionKind::kTriton &&
-          kind != HloFusionAnalysis::EmitterFusionKind::kScatter &&
-          kind != HloFusionAnalysis::EmitterFusionKind::kReduction &&
-          !IsSpecializedLoopFusion(op, ir_emitter_context_->allocations(),
+      // TODO(anlunx): Add support for emitting specialized kLoops.
+      if (!IsSpecializedLoopFusion(op, ir_emitter_context_->allocations(),
                                    fusion_analysis)) {
         return EmitFusion(instr, fusion_analysis);
       }

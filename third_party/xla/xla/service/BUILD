@@ -672,6 +672,7 @@ cc_library(
         "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:sharding_op_util",
+        "//xla:status",
         "//xla:status_macros",
         "//xla:statusor",
         "//xla:util",
@@ -4719,6 +4720,7 @@ cc_library(
         "//xla:statusor",
         "//xla:util",
         "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -4892,6 +4894,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -5475,8 +5478,11 @@ cc_library(
     deps = [
         "//xla:printer",
         "//xla:shape_layout",
+        "//xla:shape_util",
+        "//xla:statusor",
         "//xla:types",
         "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -6679,7 +6685,8 @@ cc_library(
         "//xla/client/lib:comparators",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
     ],
 )
@@ -6917,6 +6924,7 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",  # fixdeps: keep
         "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -7216,21 +7224,19 @@ xla_cc_binary(
         ":export_hlo",
         ":hlo_module_config",
         ":symbol_repository",
+        ":xla_compile_result_proto_cc_impl",
         "//xla:autotune_results_proto_cc",
         "//xla:debug_options_flags",
         "//xla:statusor",
         "//xla:util",
-        "//xla/hlo/ir:hlo_module_group",
         "//xla/mlir_hlo",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/service:cpu_plugin",
-        "//xla/service/cpu:cpu_compiler",
-        "//xla/service/cpu:cpu_executable",
         "//xla/service/gpu:autotuner_util",
         "//xla/service/gpu:gpu_symbol_repository",
-        "//xla/stream_executor",
-        "//xla/stream_executor:device_memory_allocator",
         "//xla/tools:hlo_module_loader",
+        "//xla/tools:xla_compile_lib",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:ArithDialect",
@@ -7242,6 +7248,8 @@ xla_cc_binary(
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/platform:status_to_from_proto",
+        "@local_tsl//tsl/platform:types",
         "@local_tsl//tsl/util:command_line_flags",
         "@stablehlo//:register",
     ] + if_cuda_is_configured([
@@ -7461,4 +7469,20 @@ cc_library(
     hdrs = ["time_utils.h"],
     visibility = ["//visibility:public"],
     deps = [],
+)
+
+tf_proto_library(
+    name = "xla_compile_result_proto",
+    srcs = ["xla_compile_result.proto"],
+    make_default_target_header_only = True,
+    protodeps = [
+        ":hlo_proto",
+        "@local_tsl//tsl/protobuf:status_proto",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+exports_files(
+    ["xla_aot_compile_test_gpu_target_config.prototxt"],
+    visibility = ["//visibility:public"],
 )

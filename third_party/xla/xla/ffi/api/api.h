@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -147,6 +148,9 @@ XLA_FFI_Error* Ffi::CheckStructSize(const XLA_FFI_Api* api,
 // Type tags for distinguishing handler argument types
 //===----------------------------------------------------------------------===//
 
+// Forward declare class defined below.
+class RemainingArgs;
+
 namespace internal {
 
 // A type tag to distinguish arguments tied to the attributes in the
@@ -157,6 +161,10 @@ struct AttrTag {};
 // A type tag to distinguish arguments extracted from an execution context.
 template <typename T>
 struct CtxTag {};
+
+// Checks if remaining arguments are in the parameter pack.
+template <typename... Ts>
+using HasRemainingArgs = std::disjunction<std::is_same<RemainingArgs, Ts>...>;
 
 }  // namespace internal
 
@@ -169,6 +177,12 @@ class Binding {
  public:
   template <typename T>
   Binding<Ts..., T> Arg() && {
+    return {std::move(*this)};
+  }
+
+  Binding<Ts..., class RemainingArgs> RemainingArgs() && {
+    static_assert(!internal::HasRemainingArgs<Ts...>::value,
+                  "remaining arguments can be passed just once");
     return {std::move(*this)};
   }
 
@@ -349,6 +363,42 @@ struct Decode<internal::CtxTag<T>> {
 }  // namespace internal
 
 //===----------------------------------------------------------------------===//
+// Type-safe wrapper for accessing a variable number of arguments.
+//===----------------------------------------------------------------------===//
+
+class RemainingArgs {
+ public:
+  RemainingArgs(const XLA_FFI_Args* args, size_t offset)
+      : args_(args), offset_(offset) {
+    assert(offset <= args_->num_args && "illegal remaining args offset");
+  }
+
+  size_t size() const { return args_->num_args - offset_; }
+  bool empty() const { return size() == 0; }
+
+  template <typename T>
+  std::optional<T> get(size_t index) const {
+    size_t idx = offset_ + index;
+    if (idx >= args_->num_args) {
+      return std::nullopt;
+    }
+    return ArgDecoding<T>::Decode(args_->types[idx], args_->args[idx]);
+  }
+
+ private:
+  const XLA_FFI_Args* args_;  // not owned
+  size_t offset_;
+};
+
+template <>
+struct internal::Decode<RemainingArgs> {
+  static std::optional<RemainingArgs> call(DecodingOffsets& offsets,
+                                           DecodingContext& ctx) {
+    return RemainingArgs(&ctx.call_frame->args, offsets.args);
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // Template metaprogramming for decoding handler signature
 //===----------------------------------------------------------------------===//
 
@@ -445,11 +495,20 @@ class Handler : public Ffi {
 
     // Check that the number of passed arguments matches the signature. Each
     // individual argument decoding will check the actual type.
-    if (call_frame->args.num_args != kNumArgs) {
-      return InvalidArgument(
-          call_frame->api,
-          StrCat("Wrong number of arguments: expected ", kNumArgs, " but got ",
-                 call_frame->args.num_args));
+    if (internal::HasRemainingArgs<Ts...>::value) {
+      if (call_frame->args.num_args < kNumArgs - 1) {
+        return InvalidArgument(
+            call_frame->api,
+            StrCat("Wrong number of arguments: expected at least ",
+                   kNumArgs - 1, " but got ", call_frame->args.num_args));
+      }
+    } else {
+      if (call_frame->args.num_args != kNumArgs) {
+        return InvalidArgument(
+            call_frame->api,
+            StrCat("Wrong number of arguments: expected ", kNumArgs,
+                   " but got ", call_frame->args.num_args));
+      }
     }
 
     // Check that the number of passed attributes matches the signature. Each
@@ -556,6 +615,7 @@ class Handler : public Ffi {
   }
 
 XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(int32_t, XLA_FFI_AttrType_I32);
+XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(int64_t, XLA_FFI_AttrType_I64);
 XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(float, XLA_FFI_AttrType_F32);
 
 #undef XLA_FFI_REGISTER_SCALAR_ATTR_DECODING

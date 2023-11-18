@@ -16,15 +16,19 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 #define XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/hlo_traversal.h"
 
 namespace xla {
 namespace gpu {
@@ -46,6 +50,10 @@ inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 64 * 128;
 bool IsMatrixMultiplication(const HloInstruction& dot);
 
 inline constexpr int64_t WarpSize() { return 32; }
+
+// Fusions that implemented with pre-compiled device kernels have
+// FusionBackendConfig.kind requel to this string.
+inline constexpr absl::string_view kCustomFusionKind = "__custom_fusion";
 
 // Fusions that use Triton have FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
@@ -193,7 +201,8 @@ std::optional<TransposeDescription> FindTiledLogicalTranspose(
 std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     const HloInstruction& root, const HloInstruction& hero);
 
-bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
+bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1,
+                    FusionBoundaryFn boundary = nullptr);
 
 // Log the given module if the VLOG level is >= level.
 void VLogModule(int level, const llvm::Module& module);
@@ -221,6 +230,9 @@ std::string GetIrNameFromLoc(mlir::Location loc);
 
 // Whether the module's target is an AMD GPU.
 bool IsAMDGPU(const llvm::Module* module);
+
+Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
+                                        std::vector<uint8_t>* output);
 
 }  // namespace gpu
 }  // namespace xla

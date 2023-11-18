@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/time/clock.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -2205,8 +2206,9 @@ Status Node::FromProto(ModelProto::Node node_proto,
 Model::Model()
     : optimization_period_ms_(kOptimizationPeriodMinMs),
       safe_to_collect_metrics_(std::make_shared<GuardedBool>(true)) {
-  model_gauge_cell_ = metrics::GetTFDataModelGauge(
-      strings::StrCat(reinterpret_cast<uint64>(this)));
+  model_id_ = strings::StrCat(reinterpret_cast<uint64>(this));
+  model_gauge_cell_ = metrics::GetTFDataModelGauge(model_id_);
+
   // Capture `safe_to_collect_metrics_` by value to avoid use-after-free issues
   // when the callback is invoked after the model has been destroyed.
   model_gauge_cell_->Set(
@@ -2237,6 +2239,8 @@ Model::Model()
 Model::~Model() {
   mutex_lock l(safe_to_collect_metrics_->mu);
   safe_to_collect_metrics_->val = false;
+  // Reset the pipeline processing time to 0
+  metrics::RecordPipelineProcessingTime(model_id_, 0);
 }
 
 void Model::AddNode(Node::Factory factory, const string& name,
@@ -2356,6 +2360,36 @@ void Model::Optimize(AutotuneAlgorithm algorithm,
     mutex_lock l(mu_);
     snapshot_ = snapshot;
     optimization_params_ = optimization_params;
+
+    if (snapshot_) {
+      int64_t pipeline_processing_usec = 0;
+      ModelTiming model_timing(snapshot_);
+      auto bfs_stage_roots = model_timing.GetStageRoots();
+      for (const auto& root : bfs_stage_roots) {
+        auto* root_timing = model_timing.GetTiming(root.get());
+        if (root_timing == nullptr) {
+          constexpr int TEN_MINUTES = 60 * 10;
+          LOG_EVERY_N_SEC(ERROR, TEN_MINUTES)
+              << "Encounter an error when computing the pipeline processing "
+                 "time for "
+                 "/tensorflow/data/pipeline_processing_time";
+          pipeline_processing_usec = 0;
+          break;
+        }
+        int64_t root_total_time_usec = root_timing->total_time_nsec *
+                                       root_timing->pipeline_ratio /
+                                       EnvTime::kMicrosToNanos;
+        pipeline_processing_usec =
+            std::max(pipeline_processing_usec, root_total_time_usec);
+      }
+      // Only updates the pipeline processing time when it is greater than 0.
+      // If it is zero, we assume the pipeline processing time is the same
+      // as the previous one and do not update it.
+      if (pipeline_processing_usec > 0) {
+        metrics::RecordPipelineProcessingTime(model_id_,
+                                              pipeline_processing_usec);
+      }
+    }
   }
 }
 

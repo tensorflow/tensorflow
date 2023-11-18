@@ -136,6 +136,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_enable_dumping(true);
 
   opts.set_xla_gpu_enable_xla_runtime_executable(true);
+  opts.set_xla_gpu_enable_custom_fusions(false);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_shared_constants(true);
 
@@ -1066,6 +1067,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_xla_runtime_executable),
       debug_options->xla_gpu_enable_xla_runtime_executable(),
       "Whether to enable XLA runtime for XLA:GPU backend"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_custom_fusions",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_custom_fusions),
+      debug_options->xla_gpu_enable_custom_fusions(),
+      "Whether to enable XLA custom fusions"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_custom_fusions_re",
+      string_setter_for(&DebugOptions::set_xla_gpu_enable_custom_fusions_re),
+      debug_options->xla_gpu_enable_custom_fusions_re(),
+      "Limits custom fusion only to fusions which match this regular "
+      "expression. Default is all custom fusions registerered in a current "
+      "process."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_enable_gpu2_runtime",
                 bool_setter_for(&DebugOptions::set_xla_gpu_enable_gpu2_runtime),

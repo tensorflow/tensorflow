@@ -14,6 +14,7 @@ load(
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
+load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -506,9 +507,11 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
+        "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
         "@local_xla//xla:executable_run_options",
         "@local_xla//xla:protobuf_util",
         "@local_xla//xla:shape_util",
@@ -522,10 +525,11 @@ cc_library(
         "@local_xla//xla/client:xla_computation",
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/service:computation_placer_hdr",
+        "@local_xla//xla/service:hlo_proto_cc",
         "@local_xla//xla/translate/mhlo_to_hlo:layout_util",
     ] + if_libtpu([
         ":xla_tpu_backend_registration",
-    ]),
+    ]) + if_static(["@local_tsl//tsl/platform:tensor_float_32_utils"]),
     alwayslink = 1,
 )
 
@@ -901,6 +905,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
         "@local_xla//xla:literal",
         "@local_xla//xla:literal_util",
         "@local_xla//xla:statusor",
@@ -908,7 +913,7 @@ tf_cc_test(
         "@local_xla//xla/client:local_client",
         "@local_xla//xla/client:xla_computation",
         "@local_xla//xla/service:cpu_plugin",
-    ],
+    ] + if_static(["@local_tsl//tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_cc_test(

@@ -17,6 +17,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <cstring>
 #include <memory>
 #include <string>
 #include <utility>
@@ -388,6 +389,12 @@ std::map<std::string, std::string> FlatBufferModel::ReadAllMetadata(
 bool FlatBufferModel::CheckModelIdentifier() const {
   if (!tflite::ModelBufferHasIdentifier(allocation_->base())) {
     const char* ident = flatbuffers::GetBufferIdentifier(allocation_->base());
+    if (strlen(ident) < 4) {
+      TF_LITE_REPORT_ERROR(
+          error_reporter_,
+          "Model provided must have at least 8 bytes to hold identifier.\n");
+      return false;
+    }
     TF_LITE_REPORT_ERROR(
         error_reporter_,
         "Model provided has model identifier '%c%c%c%c', should be '%s'\n",

@@ -40,6 +40,7 @@ class HloFusionAnalysis {
   // The type of emitted fusion.
   enum class EmitterFusionKind {
     kLoop,
+    kCustomFusion,
     kTriton,
     kReduction,
     kTranspose,
@@ -67,19 +68,27 @@ class HloFusionAnalysis {
 
   // Determines the launch dimensions for the fusion. The fusion kind must not
   // be `kTriton`.
-  StatusOr<LaunchDimensions> GetLaunchDimensions();
+  StatusOr<LaunchDimensions> GetLaunchDimensions() const;
 
   // Calculates the reduction information. Returns `nullptr` if the fusion is
   // not a reduction.
-  const ReductionCodegenInfo* GetReductionCodegenInfo();
+  const ReductionCodegenInfo* GetReductionCodegenInfo() const {
+    return reduction_codegen_info_.has_value() ? &*reduction_codegen_info_
+                                               : nullptr;
+  }
 
   // Calculates the transpose tiling information. Returns `nullptr` if the
   // fusion is not a transpose.
-  const TilingScheme* GetTransposeTilingScheme();
+  const TilingScheme* GetTransposeTilingScheme() const {
+    return transpose_tiling_scheme_.has_value() ? &*transpose_tiling_scheme_
+                                                : nullptr;
+  }
 
   // Calculates the loop fusion config. Returns `nullptr` if the fusion is not a
   // loop.
-  const LaunchDimensionsConfig* GetLoopFusionConfig();
+  const LaunchDimensionsConfig* GetLoopFusionConfig() const {
+    return loop_fusion_config_.has_value() ? &*loop_fusion_config_ : nullptr;
+  }
 
   // Returns the hero reduction of the computation.
   const HloInstruction* FindHeroReduction() const;
@@ -92,16 +101,7 @@ class HloFusionAnalysis {
                     std::vector<const HloInstruction*> fusion_heroes,
                     const se::DeviceDescription* device_info,
                     std::optional<TransposeDescription> tiled_transpose,
-                    bool has_4_bit_input, bool has_4_bit_output)
-      : fusion_backend_config_(std::move(fusion_backend_config)),
-        fusion_roots_(std::move(fusion_roots)),
-        fusion_boundary_fn_(std::move(fusion_boundary_fn)),
-        fusion_arguments_(std::move(fusion_arguments)),
-        fusion_heroes_(std::move(fusion_heroes)),
-        device_info_(device_info),
-        tiled_transpose_(tiled_transpose),
-        has_4_bit_input_(has_4_bit_input),
-        has_4_bit_output_(has_4_bit_output) {}
+                    bool has_4_bit_input, bool has_4_bit_output);
 
   const Shape& GetElementShape() const;
   int SmallestInputDtypeBits() const;
@@ -117,8 +117,9 @@ class HloFusionAnalysis {
                              bool reduction_is_race_free) const;
   int CalculateVirtualThreadScalingFactorForReduction(
       const ReductionDimensions& reduction_dimensions) const;
-  ReductionCodegenInfo ComputeReductionCodegenInfo(
+  std::optional<ReductionCodegenInfo> ComputeReductionCodegenInfo(
       const HloInstruction* hero_reduction) const;
+  std::optional<LaunchDimensionsConfig> ComputeLoopFusionConfig() const;
   bool HasConsistentTransposeHeros() const;
 
   FusionBackendConfig fusion_backend_config_;
@@ -130,13 +131,23 @@ class HloFusionAnalysis {
   std::vector<const HloInstruction*> fusion_heroes_;
   const se::DeviceDescription* device_info_;
   std::optional<TransposeDescription> tiled_transpose_;
-  const bool has_4_bit_input_ = false;
-  const bool has_4_bit_output_ = false;
+  bool has_4_bit_input_ = false;
+  bool has_4_bit_output_ = false;
 
   std::optional<ReductionCodegenInfo> reduction_codegen_info_;
   std::optional<TilingScheme> transpose_tiling_scheme_;
   std::optional<LaunchDimensionsConfig> loop_fusion_config_;
 };
+
+// Creates a HloFusionAnalysis that analyzes a hypothetical fusion of producer
+// into consumer.
+std::optional<HloFusionAnalysis> AnalyzeProducerConsumerFusion(
+    const HloInstruction& producer, const HloInstruction& consumer,
+    const se::DeviceDescription& device_info);
+// Creates a HloFusionAnalysis that analyzes just consumer as a standalone
+// fusion.
+std::optional<HloFusionAnalysis> AnalyzeFusion(
+    const HloInstruction& consumer, const se::DeviceDescription& device_info);
 
 }  // namespace gpu
 }  // namespace xla

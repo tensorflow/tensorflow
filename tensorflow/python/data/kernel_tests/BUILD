@@ -33,7 +33,7 @@ tf_py_strict_test(
     name = "batch_test",
     size = "medium",
     srcs = ["batch_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",

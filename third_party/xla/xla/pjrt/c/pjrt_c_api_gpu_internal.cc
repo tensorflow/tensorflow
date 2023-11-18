@@ -54,7 +54,8 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
                                           args->num_options);
   const auto kExpectedOptionNameAndTypes =
       absl::flat_hash_map<std::string, PJRT_NamedValue_Type>(
-          {{"allocator", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
+          {{"platform_name", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
+           {"allocator", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
            {"memory_fraction", PJRT_NamedValue_Type::PJRT_NamedValue_kFloat},
            {"preallocate", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
            {"visible_devices",
@@ -64,6 +65,11 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   PJRT_RETURN_IF_ERROR(
       ValidateCreateOptions(create_options, kExpectedOptionNameAndTypes));
 
+  std::optional<std::string> platform_name;
+  if (auto it = create_options.find("platform_name");
+      it != create_options.end()) {
+    platform_name.emplace(std::get<std::string>(it->second));
+  }
   xla::GpuAllocatorConfig allocator_config;
   if (auto it = create_options.find("allocator"); it != create_options.end()) {
     auto allocator_name = std::get<std::string>(it->second);
@@ -108,8 +114,8 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
                         xla::GetStreamExecutorGpuClient(
                             /*asynchronous=*/true, allocator_config, node_id,
-                            num_nodes, visible_devices,
-                            /*platform_name=*/std::nullopt, true,
+                            num_nodes, visible_devices, platform_name,
+                            /*should_stage_host_to_device_transfers=*/true,
                             pjrt::ToCppKeyValueGetCallback(
                                 args->kv_get_callback, args->kv_get_user_arg),
                             pjrt::ToCppKeyValuePutCallback(

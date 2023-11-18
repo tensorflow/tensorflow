@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -44,6 +45,7 @@ namespace xla::gpu {
 class CommandBufferCmd {
  public:
   using ExecutableSource = Thunk::ExecutableSource;
+  using Slices = absl::InlinedVector<BufferAllocation::Slice, 4>;
 
   // Run time parameters required for recording commands into the command
   // buffer. For example when we emit command buffer cmd sequence from an HLO
@@ -64,6 +66,10 @@ class CommandBufferCmd {
   // Records command into the command buffer.
   virtual Status Record(const RecordParams& params,
                         se::CommandBuffer* command_buffer) = 0;
+
+  // Returns all buffer slices of the cmd. These will be used to track cmd
+  // updates, thus they need to be consistent across calls to the function.
+  virtual Slices slices() = 0;
 
   virtual ~CommandBufferCmd() = default;
 };
@@ -95,7 +101,17 @@ class CommandBufferCmdSequence {
                 se::CommandBuffer* command_buffer);
 
  private:
+  // Traverse the list of commands and figures out if any of them requires an
+  // update. Also updates `prev_allocs_` with new allocations from `params`.
+  bool ShouldUpdateCmd(const CommandBufferCmd::RecordParams& params);
+
   std::vector<std::unique_ptr<CommandBufferCmd>> commands_;
+  // Mapping from buffer slice index to device memory passed at that index via
+  // the `CommandBufferCmd::RecordParams` in previous invocation of `Record`.
+  // We can just use a vector instead of map because `BufferAllocation` has a
+  // unique identifier assigned contiguously and thus can be used as array
+  // index.
+  std::vector<se::DeviceMemoryBase> prev_allocs_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -114,8 +130,10 @@ class LaunchCmd : public CommandBufferCmd {
   Status Record(const RecordParams& params,
                 se::CommandBuffer* command_buffer) override;
 
+  Slices slices() override;
+
  private:
-  using OwnedKernel = std::unique_ptr<se::KernelBase>;
+  using OwnedKernel = std::unique_ptr<se::Kernel>;
 
   std::string kernel_name_;
   std::vector<BufferAllocation::Slice> args_;
@@ -137,10 +155,39 @@ class MemcpyDeviceToDeviceCmd : public CommandBufferCmd {
   Status Record(const RecordParams& params,
                 se::CommandBuffer* command_buffer) override;
 
+  Slices slices() override;
+
  private:
   BufferAllocation::Slice dst_;
   BufferAllocation::Slice src_;
   int64_t num_bytes_;
+};
+
+//===----------------------------------------------------------------------===//
+// GemmCmd
+//===----------------------------------------------------------------------===//
+
+class GemmCmd : public CommandBufferCmd {
+ public:
+  GemmCmd(GemmConfig config, const BufferAllocation::Slice& lhs_buffer,
+          const BufferAllocation::Slice& rhs_buffer,
+          const BufferAllocation::Slice& output_buffer, bool deterministic);
+
+  Status Initialize(se::StreamExecutor* executor,
+                    ExecutableSource source) override;
+
+  Status Record(const RecordParams& params,
+                se::CommandBuffer* command_buffer) override;
+
+  Slices slices() override;
+
+ private:
+  const GemmConfig config_;
+  const BufferAllocation::Slice lhs_buffer_;
+  const BufferAllocation::Slice rhs_buffer_;
+  const BufferAllocation::Slice output_buffer_;
+  // Whether to run deterministically.
+  const bool deterministic_;
 };
 
 }  // namespace xla::gpu

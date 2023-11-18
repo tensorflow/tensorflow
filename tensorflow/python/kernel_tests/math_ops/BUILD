@@ -1,6 +1,10 @@
 # Tests of TensorFlow math kernels written using the Python API.
 
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
+load(
+    "//tensorflow/tools/test:performance.bzl",
+    "cuda_py_benchmark_test",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -283,7 +287,7 @@ cuda_py_strict_test(
     name = "cwise_ops_unary_test",
     size = "medium",
     srcs = ["cwise_ops_unary_test.py"],
-    shard_count = 50,
+    shard_count = 10,
     tags = [
         "no_windows",  # TODO(b/207048097): re-enable
     ],
@@ -369,7 +373,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "reduce_benchmark_test",
     srcs = ["reduce_benchmark_test.py"],
     deps = [

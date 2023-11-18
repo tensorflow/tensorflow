@@ -19,6 +19,7 @@ class Flag:
     def value(self) -> bool: ...
 
 class Flags:
+    enable_aggressive_constant_replication: Flag
     enable_nested_function_shape_inference: Flag
     enable_quantized_dtypes_training: Flag
     graph_building_optimization: Flag

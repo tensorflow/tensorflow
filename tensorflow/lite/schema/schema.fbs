@@ -459,7 +459,7 @@ enum BuiltinOperator : int32 {
   STABLEHLO_CONVERT = 192, // WARNING: No runtime support
   STABLEHLO_DYNAMIC_SLICE = 193, // WARNING: No runtime support
   STABLEHLO_DYNAMIC_UPDATE_SLICE = 194, // WARNING: No runtime support
-  STABLEHLO_PAD = 195, // WARNING: No runtime support
+  STABLEHLO_PAD = 195,
   STABLEHLO_IOTA = 196, // WARNING: No runtime support
   STABLEHLO_DOT_GENERAL = 197, // WARNING: No runtime support
   STABLEHLO_REDUCE_WINDOW = 198,

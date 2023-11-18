@@ -463,15 +463,6 @@ py_strict_library(
     ],
 )
 
-# Necessary for the pywrap inclusion below.
-tf_pybind_cc_library_wrapper(
-    name = "tfcompile_headers_lib",
-    compatible_with = [],
-    deps = [
-        "//tensorflow/compiler/aot:tfcompile_lib",
-    ],
-)
-
 tf_python_pybind_extension(
     name = "_pywrap_tfcompile",
     srcs = ["tfcompile_wrapper.cc"],
@@ -481,15 +472,13 @@ tf_python_pybind_extension(
         "//tensorflow:windows": [],
     }),
     enable_stub_generation = True,
-    features = ["-layering_check"],
     pytype_srcs = [
         "_pywrap_tfcompile.pyi",
     ],
     static_deps = tf_python_pybind_static_deps(),
     deps = [
-        ":tfcompile_headers_lib",
         "@pybind11",
-        "//third_party/python_runtime:headers",
+        "//tensorflow/compiler/aot:tfcompile_lib",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         # The headers here cannot be brought in via cc_header_only_library
@@ -776,7 +765,6 @@ pywrap_tensorflow_macro(
         "//tensorflow/cc/saved_model:fingerprinting_impl",
         "//tensorflow/cc/saved_model:loader_lite_impl",
         "//tensorflow/cc/saved_model:metrics_impl",
-        "//tensorflow/compiler/mlir/python:mlir",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
@@ -848,7 +836,12 @@ pywrap_tensorflow_macro(
         "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
         "@local_tsl//tsl/python/lib/core:numpy",
         "@local_xla//xla/stream_executor:stream_executor_impl",
-    ] + if_static([
+    ] + select({
+        "//tensorflow/compiler/mlir/python:disable_mlir_config": [],
+        "//conditions:default": [
+            "//tensorflow/compiler/mlir/python:mlir",
+        ],
+    }) + if_static([
         "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/core/platform:enable_tf2_utils",
     ]) + if_google([
@@ -886,7 +879,6 @@ filegroup(
         "//tensorflow/cc/saved_model:metrics_impl",  # SavedModel metrics
         "//tensorflow/compiler/jit:flags",  # tfe
         "//tensorflow/compiler/jit:get_compiler_ir",  # tfe
-        "//tensorflow/compiler/mlir/python:mlir",  # mlir
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",  # quantization
         "//tensorflow/compiler/tf2xla:tf2xla_opset",  # pywrap_xla_ops
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
@@ -961,7 +953,12 @@ filegroup(
         "@local_tsl//tsl/python/lib/core:ml_dtypes_lib",  # bfloat16, float8_e4m3fn, float8_e5m2
         "@local_tsl//tsl/python/lib/core:numpy",  # checkpoint_reader
         "@local_xla//xla/stream_executor",  # stat_summarizer
-    ] + if_xla_available([
+    ] + select({
+        "//tensorflow/compiler/mlir/python:disable_mlir_config": [],
+        "//conditions:default": [
+            "//tensorflow/compiler/mlir/python:mlir",  # mlir
+        ],
+    }) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
         "@local_xla//xla:status_macros",  # tfcompile
         "@local_xla//xla/hlo/ir:hlo",  # tfcompile

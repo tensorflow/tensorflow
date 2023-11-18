@@ -77,7 +77,7 @@ class EventInterface {
 // KernelInterface
 //===----------------------------------------------------------------------===//
 
-// Pointer-to-implementation object type (i.e. the KernelBase class delegates to
+// Pointer-to-implementation object type (i.e. the Kernel class delegates to
 // this interface) with virtual destruction. This class exists for the
 // platform-dependent code to hang any kernel data/resource info/functionality
 // off of.
@@ -130,8 +130,7 @@ class CommandBufferInterface {
 
   // Adds a kernel launch command to the command buffer.
   virtual tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
-                             const KernelBase& kernel,
-                             const KernelArgsArrayBase& args) = 0;
+                             const Kernel& kernel, const KernelArgs& args) = 0;
 
   // Adds a nested command buffer to the command buffer.
   virtual tsl::Status AddNestedCommandBuffer(const CommandBuffer& nested) = 0;
@@ -233,7 +232,7 @@ class StreamExecutorInterface {
   }
 
   virtual tsl::Status GetKernel(const MultiKernelLoaderSpec& spec,
-                                KernelBase* kernel) {
+                                Kernel* kernel) {
     return absl::UnimplementedError("Not Implemented");
   }
   virtual bool UnloadModule(ModuleHandle module_handle) { return false; }
@@ -246,8 +245,8 @@ class StreamExecutorInterface {
     return absl::UnimplementedError("Not Implemented");
   }
   virtual tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
-                             const BlockDim& block_dims, const KernelBase& k,
-                             const KernelArgsArrayBase& args) {
+                             const BlockDim& block_dims, const Kernel& k,
+                             const KernelArgs& args) {
     return absl::UnimplementedError("Not Implemented");
   }
 
@@ -257,7 +256,7 @@ class StreamExecutorInterface {
   }
 
   // Releases any state associated with the kernel.
-  virtual void UnloadKernel(const KernelBase* kernel) {}
+  virtual void UnloadKernel(const Kernel* kernel) {}
   virtual DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) = 0;
   DeviceMemoryBase Allocate(uint64_t size) {
     return Allocate(size, /*memory_space=*/0);

@@ -144,8 +144,11 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
   *(uint64_t*)(&binary_[binary_.size() - 8]) = tsl::random::New64();
 #endif
   if (has_module() && enable_debug_info_manager_) {
+    debug_buffer_assignment_proto_ =
+        std::make_shared<xla::BufferAssignmentProto>(
+            debug_buffer_assignment_->ToProto());
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
-                                               debug_buffer_assignment_);
+                                               debug_buffer_assignment_proto_);
   }
 }
 
@@ -952,7 +955,7 @@ GpuExecutable::GpuExecutable(
       enable_debug_info_manager_(true) {
   if (has_module()) {
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
-                                               debug_buffer_assignment_);
+                                               debug_buffer_assignment_proto_);
   }
 }
 

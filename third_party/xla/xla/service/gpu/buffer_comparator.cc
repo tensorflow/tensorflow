@@ -179,35 +179,35 @@ StatusOr<bool> BufferComparator::CompareEqual(
     case xla::F8E4M3FN:
       return CompareEqualParameterized<tsl::float8_e4m3fn, float>(
           stream, current, expected, shape_, config_, "fp8_e4m3fn_comparison",
-          fp8_e4m3fn_comparison());
+          buffer_comparator::fp8_e4m3fn_comparison());
     case xla::F8E5M2:
       return CompareEqualParameterized<tsl::float8_e5m2, float>(
           stream, current, expected, shape_, config_, "fp8_e5m2_comparison",
-          fp8_e5m2_comparison());
+          buffer_comparator::fp8_e5m2_comparison());
     case xla::F16:
       return CompareEqualParameterized<Eigen::half, float>(
           stream, current, expected, shape_, config_, "fp16_comparison",
-          fp16_comparison());
+          buffer_comparator::fp16_comparison());
     case xla::BF16:
       return CompareEqualParameterized<Eigen::bfloat16, float>(
           stream, current, expected, shape_, config_, "bf16_comparison",
-          bf16_comparison());
+          buffer_comparator::bf16_comparison());
     case xla::F32:
       return CompareEqualParameterized<float, float>(
           stream, current, expected, shape_, config_, "fp32_comparison",
-          fp32_comparison());
+          buffer_comparator::fp32_comparison());
     case xla::F64:
       return CompareEqualParameterized<double, double>(
           stream, current, expected, shape_, config_, "fp64_comparison",
-          fp64_comparison());
+          buffer_comparator::fp64_comparison());
     case xla::S8:
       return CompareEqualParameterized<int8_t, float>(
           stream, current, expected, shape_, config_, "int8_comparison",
-          int8_comparison());
+          buffer_comparator::int8_comparison());
     case xla::S32:
       return CompareEqualParameterized<int32_t, float>(
           stream, current, expected, shape_, config_, "int32_comparison",
-          int32_comparison());
+          buffer_comparator::int32_comparison());
     default:
       return Unimplemented("Unimplemented element type");
   }

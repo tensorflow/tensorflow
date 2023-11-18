@@ -3048,3 +3048,17 @@ func.func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3x
 func.func @main(%arg0: tensor<f32> {mhlo.parameter_replication = [true]}, %arg1: tuple<tensor<2x4xf32>, tuple<tensor<2x4xf32>>> {mhlo.parameter_replication = [false, true]}) -> tensor<f32> {
   return %arg0 : tensor<f32>
 }
+
+// -----
+
+func.func @main(%operand: tensor<?x784xf32>) -> tensor<?x784xf32> {
+  %0 = mhlo.abs %operand : tensor<?x784xf32>
+  func.return %0 : tensor<?x784xf32>
+}
+
+//       CHECK: HloModule {{.*}}, entry_computation_layout={(f32[?,784]{1,0})->f32[?,784]{1,0}}
+// CHECK-EMPTY:
+//  CHECK-NEXT: ENTRY {{.*}} ([[ARG0:.*]]: f32[?,784]) -> f32[?,784] {
+//  CHECK-NEXT:   [[ARG0]] = f32[?,784] parameter(0)
+//  CHECK-NEXT:   ROOT {{.*}} = f32[?,784] abs(f32[?,784] %Arg_0.1), {{.*}}
+//  CHECK-NEXT: }

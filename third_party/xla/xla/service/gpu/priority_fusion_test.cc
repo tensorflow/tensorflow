@@ -69,7 +69,7 @@ class PriorityFusionTest : public HloTestBase {
   }
 
   GpuPriorityFusion priority_fusion_{
-      TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+      /*thread_pool=*/nullptr, TestGpuDeviceInfo::RTXA6000DeviceInfo(),
       GpuHloCostAnalysis::Options{ShapeSizeBytesFunction(),
                                   /*per_second_rates=*/{},
                                   /*count_multiple_input_accesses=*/true}};
@@ -237,10 +237,10 @@ TEST_F(PriorityFusionTest, ReductionEpilogueFusionRegressionTest) {
     }
                                                      )";
 
-  EXPECT_THAT(
-      RunAndGetFusionKinds(kHlo),
-      ::testing::ElementsAre(HloFusionAnalysis::EmitterFusionKind::kLoop,
-                             HloFusionAnalysis::EmitterFusionKind::kReduction));
+  EXPECT_THAT(RunAndGetFusionKinds(kHlo),
+              ::testing::UnorderedElementsAre(
+                  HloFusionAnalysis::EmitterFusionKind::kLoop,
+                  HloFusionAnalysis::EmitterFusionKind::kReduction));
 
   RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
 CHECK: ENTRY
@@ -546,6 +546,73 @@ TEST_F(PriorityFusionTest, DoNotFuseReduceIntoReduceEvenIfOccupancyIsHigh) {
   RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
 CHECK: ROOT {{.*}} reduce(
 CHECK: ROOT {{.*}} reduce(
+  )");
+}
+
+TEST_F(PriorityFusionTest, FuseReductionEpilogueWithMultipleUsers) {
+  // Regression test that verifies we correctly fuse the `log` into the reduce.
+  constexpr absl::string_view kHlo = R"(
+    HloModule test_module
+
+    add {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT add = f32[] add(x, y)
+    }
+
+    fused_computation {
+      p0 = f32[64,16384]{1,0} parameter(0)
+      c0 = f32[] constant(0)
+      ROOT reduce.858 = f32[64]{0} reduce(p0, c0), dimensions={1}, to_apply=add
+    }
+
+    ENTRY main {
+      p0 = f32[64,16384]{1,0} parameter(0)
+      fusion = f32[64]{0} fusion(p0), kind=kInput, calls=fused_computation
+      log = f32[64]{0} log(fusion)
+      negate = f32[64]{0} custom-call(log), custom_call_target="negate"
+      ROOT add = f32[64]{0} add(negate, log)
+    }
+  )";
+
+  RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
+    CHECK: ENTRY
+    CHECK: %[[PARAM:.*]] = {{.*}} parameter(0)
+    CHECK: %[[FUSION:.*]] = {{.*}} fusion(%[[PARAM]])
+    CHECK: custom-call(%[[FUSION]])
+  )");
+}
+
+TEST_F(PriorityFusionTest, EpilogueFusion) {
+  absl::string_view kHlo = R"(
+    HloModule test_module
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add.13235 = f32[] add(p0, p1)
+    }
+
+    fused_computation.1 {
+      p0 = f32[8,4,128,226]{3,2,1,0} parameter(0)
+      c0 = f32[] constant(0)
+      ROOT r0 = f32[8,4,128]{2,1,0} reduce(p0, c0), dimensions={3}, to_apply=add
+    }
+
+    fused_computation.2 {
+      p0 = f32[8,4,128]{2,1,0} parameter(0)
+      r1 = f32[8,4,128]{2,1,0} log(p0)
+      ROOT r2 = f32[8,4,128]{2,1,0} log(r1)
+    }
+
+    ENTRY main {
+      p0 = f32[8,4,128,226]{3,2,1,0} parameter(0)
+      f1 = f32[8,4,128]{2,1,0} fusion(p0), kind=kInput, calls=%fused_computation.1
+      ROOT fusion = f32[8,4,128]{2,1,0} fusion(f1), kind=kLoop, calls=%fused_computation.2
+    })";
+
+  RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
+CHECK: ROOT %fusion = f32[8,4,128]{2,1,0} fusion(%p{{.*}}), kind=kInput, calls=%fused_computation
   )");
 }
 

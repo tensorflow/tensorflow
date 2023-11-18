@@ -151,7 +151,7 @@ TEST(SharedMemoryUseTest, ArrayReversalWorks) {
       se::CompileGpuAsm(executor->device_ordinal(), kPTX.data(),
                         PtxOptsFromDebugOptions(DebugOptions{}))
           .value();
-  std::unique_ptr<stream_executor::KernelBase> kernel =
+  std::unique_ptr<stream_executor::Kernel> kernel =
       CreateKernel("dyn_shmem_kernel", /*num_args=*/3,
                    reinterpret_cast<char*>(compiled_ptx.data()),
                    /*cubin_data=*/{}, executor,

@@ -79,8 +79,11 @@ namespace wrap {
   __macro(hipDeviceGetName)                         \
   __macro(hipDeviceGetPCIBusId)                     \
   __macro(hipDeviceGetSharedMemConfig)              \
+  __macro(hipDeviceGraphMemTrim)                    \
   __macro(hipDevicePrimaryCtxGetState)              \
   __macro(hipDevicePrimaryCtxSetFlags)              \
+  __macro(hipDevicePrimaryCtxRetain)                \
+  __macro(hipDevicePrimaryCtxRelease)               \
   __macro(hipDeviceSetSharedMemConfig)              \
   __macro(hipDeviceSynchronize)                     \
   __macro(hipDeviceTotalMem)                        \
@@ -94,6 +97,7 @@ namespace wrap {
   __macro(hipFree)                                  \
   __macro(hipFuncSetCacheConfig)                    \
   __macro(hipFuncGetAttribute)                      \
+  __macro(hipFuncSetAttribute)                      \
   __macro(hipGetDevice)                             \
   __macro(hipGetDeviceCount)                        \
   __macro(hipGetDeviceProperties)                   \
@@ -102,6 +106,7 @@ namespace wrap {
   __macro(hipGraphAddChildGraphNode)                \
   __macro(hipGraphAddMemcpyNode)                    \
   __macro(hipGraphAddMemcpyNode1D)                  \
+  __macro(hipGraphExecChildGraphNodeSetParams)      \
   __macro(hipGraphCreate)                           \
   __macro(hipGraphDebugDotPrint)                    \
   __macro(hipGraphDestroy)                          \
@@ -138,6 +143,7 @@ namespace wrap {
   __macro(hipModuleLaunchKernel)                    \
   __macro(hipModuleLoadData)                        \
   __macro(hipModuleUnload)                          \
+  __macro(hipPointerGetAttribute)                   \
   __macro(hipPointerGetAttributes)                  \
   __macro(hipSetDevice)                             \
   __macro(hipDeviceGetStreamPriorityRange)          \

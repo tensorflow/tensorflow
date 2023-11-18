@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_test_kernels.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
@@ -34,6 +35,8 @@ namespace stream_executor::cuda {
 
 using AddI32Kernel = TypedKernel<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
                                  DeviceMemory<int32_t>>;
+
+using AddI32Ptrs3 = TypedKernel<internal::Ptrs3<int32_t>>;
 
 static constexpr auto nested = CommandBuffer::Mode::kNested;    // NOLINT
 static constexpr auto primary = CommandBuffer::Mode::kPrimary;  // NOLINT
@@ -103,10 +106,21 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
   stream.Init();
   ASSERT_TRUE(stream.ok());
 
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
+  AddI32Ptrs3 add(executor);
 
-  AddI32Kernel add(executor);
+  // Register a kernel with a custom arguments packing function that packs
+  // device memory arguments into a struct with pointers.
+  MultiKernelLoaderSpec spec(/*arity=*/1, [&](const KernelArgs& args) {
+    auto bufs = Cast<KernelArgsDeviceMemoryArray>(&args)->device_memory_args();
+    auto cast = [](auto m) { return reinterpret_cast<int32_t*>(m.opaque()); };
+    return PackKernelArgs(add, internal::Ptrs3<int32_t>{
+                                   cast(bufs[0]),
+                                   cast(bufs[1]),
+                                   cast(bufs[2]),
+                               });
+  });
+  spec.AddInProcessSymbol(internal::GetAddI32Ptrs3CudaKernel(), "add");
+
   TF_ASSERT_OK(executor->GetKernel(spec, &add));
 
   int64_t length = 4;
@@ -121,9 +135,12 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
   stream.ThenMemset32(&b, 2, byte_length);
   stream.ThenMemZero(&c, byte_length);
 
+  // Use an array of device memory base pointers as argument to test packing.
+  KernelArgsDeviceMemoryArray args({a, b, c}, 0);
+
   // Create a command buffer by tracing kernel launch operations.
   auto cmd_buffer = CommandBuffer::Trace(executor, [&](Stream* stream) {
-    return stream->ThenLaunch(ThreadDim(), BlockDim(4), add, a, b, c);
+    return executor->Launch(stream, ThreadDim(), BlockDim(4), add, args);
   });
 
   TF_ASSERT_OK(cmd_buffer.status());
@@ -177,6 +194,25 @@ TEST(CudaCommandBufferTest, LaunchNestedCommandBuffer) {
   stream.ThenMemcpy(dst.data(), c, byte_length);
 
   std::vector<int32_t> expected = {3, 3, 3, 3};
+  ASSERT_EQ(dst, expected);
+
+  // Prepare argument for graph update: d = 0
+  DeviceMemory<int32_t> d = executor->AllocateArray<int32_t>(length, 0);
+  stream.ThenMemZero(&d, byte_length);
+
+  // Update command buffer to write into `d` buffer by creating a new nested
+  // command buffer.
+  nested_cmd = CommandBuffer::Create(executor, nested).value();
+  TF_ASSERT_OK(nested_cmd.Launch(add, ThreadDim(), BlockDim(4), a, b, d));
+  TF_ASSERT_OK(primary_cmd.Update());
+  TF_ASSERT_OK(primary_cmd.AddNestedCommandBuffer(nested_cmd));
+  TF_ASSERT_OK(primary_cmd.Finalize());
+
+  TF_ASSERT_OK(executor->Submit(&stream, primary_cmd));
+
+  // Copy `d` data back to host.
+  std::fill(dst.begin(), dst.end(), 42);
+  stream.ThenMemcpy(dst.data(), d, byte_length);
   ASSERT_EQ(dst, expected);
 }
 

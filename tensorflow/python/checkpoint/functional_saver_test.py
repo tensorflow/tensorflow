@@ -15,6 +15,7 @@
 """Tests for the functional saver."""
 
 import os
+import time
 
 from tensorflow.python.checkpoint import checkpoint
 from tensorflow.python.checkpoint import checkpoint_options
@@ -29,12 +30,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.module import module
+from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.training import server_lib
-from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
-
 
 LOCALHOST = "/job:localhost/replica:0/task:0/device:CPU:0"
 
@@ -53,35 +53,22 @@ class SaverTest(test.TestCase):
     self.local_options = checkpoint_options.CheckpointOptions(
         experimental_io_device=LOCALHOST)
 
-  def _get_shardable_tensors(self, serialized_tensors):
-    shardable_tensors = []
-    for obj, tensor_dict in serialized_tensors.items():
-      # Divide tensor_dict by device.
-      for checkpoint_key, tensor_slice_dict in tensor_dict.items():
-        if not isinstance(tensor_slice_dict, dict):
-          # Make sure that maybe_tensor is structured as {slice_spec -> tensor}.
-          tensor_slice_dict = {"": tensor_slice_dict}
-        for slice_spec, tensor_save_spec in tensor_slice_dict.items():
-          if not isinstance(tensor_save_spec, saveable_object.SaveSpec):
-            tensor_save_spec = saveable_object.SaveSpec(
-                tensor=tensor_save_spec,
-                slice_spec=slice_spec,
-                name=checkpoint_key,
-                dtype=tensor_save_spec.dtype,
-                device=tensor_save_spec.device)
-          save_spec_tensor = tensor_save_spec.tensor
-          shardable_tensors.append(
-              functional_saver.ShardableTensor(
-                  _tensor_save_spec=tensor_save_spec,
-                  tensor=save_spec_tensor,
-                  dtype=tensor_save_spec.dtype,
-                  device=tensor_save_spec.device,
-                  name=tensor_save_spec.name,
-                  shape=save_spec_tensor.shape,
-                  slice_spec=slice_spec,
-                  checkpoint_key=checkpoint_key,
-                  trackable=obj))
-    return shardable_tensors
+  def _get_tensors_by_task(self, root):
+    serialized_tensors, _, _, _ = (
+        checkpoint.TrackableSaver(graph_view.ObjectGraphView(root))
+        ._gather_serialized_tensors(None))
+
+    tensors_by_task = {}
+    for tensor_dict in serialized_tensors.values():
+      for checkpoint_key, maybe_tensor in tensor_dict.items():
+        if not isinstance(maybe_tensor, dict):
+          maybe_tensor = {"": maybe_tensor}
+        for slice_spec, tensor in maybe_tensor.items():
+          tensor_task = saveable_object_util.set_cpu0(tensor.device)
+          (tensors_by_task
+           .setdefault(tensor_task, {})
+           .setdefault(checkpoint_key, {})[slice_spec]) = tensor
+    return tensors_by_task
 
   @test_util.run_in_graph_and_eager_modes
   def test_resource_variable(self):
@@ -220,40 +207,49 @@ class SaverTest(test.TestCase):
         if op.type in ("SaveV2", "RestoreV2", "MergeV2Checkpoints"):
           self.assertEqual(LOCALHOST, op.device)
 
-  def test_ShardByDevicePolicy(self):
+  def test_single_task_save_singlehost_multidevice(self):
     root = module.Module()
     with ops.device("cpu:0"):
-      v0 = resource_variable_ops.ResourceVariable(0.0, name="v0")
+      v0 = resource_variable_ops.ResourceVariable(0.)
     with ops.device("cpu:1"):
-      v1 = resource_variable_ops.ResourceVariable(1.0, name="v1")
+      v1 = resource_variable_ops.ResourceVariable(1.)
     with ops.device("cpu:2"):
-      v2 = resource_variable_ops.ResourceVariable(2.0, name="v2")
+      v2 = resource_variable_ops.ResourceVariable(2.)
     root.v0 = v0
     root.v1 = v1
     root.v2 = v2
-    serialized_tensors, _, _, _ = (
-        checkpoint.TrackableSaver(graph_view.ObjectGraphView(root))
-        ._gather_serialized_tensors(None))
-    shardable_tensors = self._get_shardable_tensors(serialized_tensors)
 
-    callback = functional_saver.ShardByDevicePolicy()
-    shards = callback(shardable_tensors)
+    tensors_by_task = self._get_tensors_by_task(root)
+    var_names = [
+        "v0/.ATTRIBUTES/VARIABLE_VALUE",
+        "v1/.ATTRIBUTES/VARIABLE_VALUE",
+        "v2/.ATTRIBUTES/VARIABLE_VALUE"
+    ]
+    vars_numpy = [v0.numpy(), v1.numpy(), v2.numpy()]
+    tmp_dir = self.get_temp_dir()
 
-    self.assertAllEqual(
-        [list(shard.keys()) for shard in shards],
-        [[
-            "v0/.ATTRIBUTES/VARIABLE_VALUE",
-            "v1/.ATTRIBUTES/VARIABLE_VALUE",
-            "v2/.ATTRIBUTES/VARIABLE_VALUE",
-            "_CHECKPOINTABLE_OBJECT_GRAPH"
-        ]])
+    for device in ["cpu:0", "cpu:1", "cpu:2"]:
+      for shard, (_, tensor_slice_dict) in enumerate(
+          sorted(tensors_by_task.items())[1:]):
+        with ops.device(device):
+          shard_prefix = gen_io_ops.sharded_filename(
+              os.path.join(tmp_dir, str(shard)), shard, 3)
+          functional_saver._single_task_save(
+              shard_prefix, tensor_slice_dict)
 
-    self.assertEqual(shards[0]["v0/.ATTRIBUTES/VARIABLE_VALUE"][""].numpy(),
-                     v0.numpy())
-    self.assertEqual(shards[0]["v1/.ATTRIBUTES/VARIABLE_VALUE"][""].numpy(),
-                     v1.numpy())
-    self.assertEqual(shards[0]["v2/.ATTRIBUTES/VARIABLE_VALUE"][""].numpy(),
-                     v2.numpy())
+        start_time = time.time()
+        max_save_time = start_time + 5  # seconds
+        while not (gfile.ListDirectory(tmp_dir) or time.time() > max_save_time):
+          pass  # eager execution is lovely
+        self.assertNotEmpty(gfile.ListDirectory(tmp_dir))
+
+        with ops.device(device):
+          restored_dict = functional_saver._single_task_restore(
+              shard_prefix, tensor_slice_dict)
+          self.evaluate(restored_dict)
+          self.assertEqual(
+              restored_dict[var_names[shard]][""].numpy(),
+              vars_numpy[shard])
 
 
 if __name__ == "__main__":

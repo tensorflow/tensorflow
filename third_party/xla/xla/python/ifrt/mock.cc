@@ -119,6 +119,9 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
   ON_CALL(*this, platform_id).WillByDefault([this]() {
     return delegated_->platform_id();
   });
+  ON_CALL(*this, attributes).WillByDefault([this]() {
+    return delegated_->attributes();
+  });
   ON_CALL(*this, device_count).WillByDefault([this]() {
     return delegated_->device_count();
   });

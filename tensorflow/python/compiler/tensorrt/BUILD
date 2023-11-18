@@ -32,12 +32,10 @@ py_strict_library(
 
 py_strict_library(
     name = "trt_convert_py",
-    srcs = [
-        "trt_convert.py",
-        "utils.py",
-    ],
+    srcs = ["trt_convert.py"],
     srcs_version = "PY3",
     deps = [
+        ":utils",
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
         "//tensorflow/compiler/tf2tensorrt:trt_ops_loader",
         "//tensorflow/core:protos_all_py",
@@ -69,19 +67,30 @@ py_strict_library(
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
-        "@pypi_packaging//:pkg",
         "@six_archive//:six",
     ],
 )
 
 py_strict_library(
+    name = "utils",
+    srcs = ["utils.py"],
+    deps = [
+        "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/framework:dtypes",
+        "@pypi_packaging//:pkg",
+    ],
+)
+
+py_strict_library(
     name = "tf_trt_integration_test_base",
-    srcs = ["//tensorflow/python/compiler/tensorrt/test:tf_trt_integration_test_base_srcs"],
     srcs_version = "PY3",
     deps = [
         ":trt_convert_py",
+        ":utils",
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/compiler/tensorrt/test:tf_trt_integration_test_base_srcs",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:graph_io",
@@ -121,6 +130,8 @@ cuda_py_strict_test(
         "no_oss",
         "no_pip",
         "nomac",
+        # TODO(b/303453873): Re-enable tests once TensorRT has been updated
+        "notap",
     ],
     xla_enable_strict_auto_jit = False,
     deps = [

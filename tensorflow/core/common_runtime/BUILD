@@ -131,14 +131,12 @@ cc_library(
     srcs = ["collective_test_util.cc"],
     hdrs = ["collective_test_util.h"],
     copts = tf_copts(),
-    features = ["-layering_check"],
     deps = [
         ":device_resolver_local",
         ":process_util",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:session_options",
         "//tensorflow/core:testlib",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/framework:device_attributes_proto_cc",
@@ -146,6 +144,8 @@ cc_library(
         "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/platform:refcount",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:unbounded_work_queue",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 

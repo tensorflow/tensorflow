@@ -68,7 +68,7 @@ class CustomCallThunk : public Thunk {
     Shape shape;
   };
 
-  using Attribute = std::variant<int32_t, float, std::string>;
+  using Attribute = std::variant<int32_t, int64_t, float, std::string>;
   using AttributesMap = absl::flat_hash_map<std::string, Attribute>;
 
   CustomCallThunk(ThunkInfo thunk_info, CustomCallTarget call_target,

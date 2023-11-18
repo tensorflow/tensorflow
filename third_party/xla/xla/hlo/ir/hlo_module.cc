@@ -379,6 +379,14 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
                });
     printer->Append("}");
   }
+  if (config.replica_count() != 1) {
+    printer->Append(", replica_count=");
+    printer->Append(config.replica_count());
+  }
+  if (config.num_partitions() != 1) {
+    printer->Append(", num_partitions=");
+    printer->Append(config.num_partitions());
+  }
   if (!frontend_attributes_.map().empty()) {
     AppendCat(printer, ", frontend_attributes=",
               FrontendAttributesToString(frontend_attributes_));

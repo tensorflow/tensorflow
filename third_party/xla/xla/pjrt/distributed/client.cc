@@ -16,32 +16,23 @@ limitations under the License.
 #include "xla/pjrt/distributed/client.h"
 
 #include <algorithm>
-#include <chrono>  // NOLINT
 #include <memory>
-#include <optional>
-#include <random>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
-#include "absl/synchronization/mutex.h"
-#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "grpcpp/channel.h"
-#include "xla/pjrt/distributed/protocol.h"
-#include "xla/pjrt/distributed/util.h"
-#include "xla/util.h"
 #include "tsl/distributed_runtime/coordination/coordination_client.h"
 #include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tsl/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/random.h"
 #include "tsl/protobuf/coordination_config.pb.h"
 #include "tsl/protobuf/coordination_service.pb.h"
 
 namespace xla {
-
 
 class DistributedRuntimeCoordinationServiceClient
     : public DistributedRuntimeClient {
@@ -55,14 +46,13 @@ class DistributedRuntimeCoordinationServiceClient
 
   xla::Status Connect() override;
   xla::Status Shutdown() override;
-  xla::Status EnumerateDevices(const LocalTopologyProto& local_topology,
-                               GlobalTopologyProto* global_topology) override;
   xla::StatusOr<std::string> BlockingKeyValueGet(
-      std::string key, absl::Duration timeout) override;
+      std::string_view key, absl::Duration timeout) override;
   xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
-  KeyValueDirGet(absl::string_view key) override;
-  xla::Status KeyValueSet(std::string key, std::string value) override;
-  xla::Status KeyValueDelete(std::string key) override;
+  KeyValueDirGet(std::string_view key) override;
+  xla::Status KeyValueSet(std::string_view key,
+                          std::string_view value) override;
+  xla::Status KeyValueDelete(std::string_view key) override;
   xla::Status WaitAtBarrier(std::string barrier_id,
                             absl::Duration timeout) override;
   xla::StatusOr<tsl::CoordinationServiceAgent*> GetCoordinationServiceAgent()
@@ -143,35 +133,15 @@ xla::Status DistributedRuntimeCoordinationServiceClient::Shutdown() {
   return s;
 }
 
-xla::Status DistributedRuntimeCoordinationServiceClient::EnumerateDevices(
-    const LocalTopologyProto& local_topology,
-    GlobalTopologyProto* global_topology) {
-  LocalTopologyProto local_device = local_topology;
-  local_device.set_node_id(task_id_);
-  tensorflow::DeviceInfo devices;
-  devices.mutable_device()->Add()->PackFrom(local_device);
-  // Client sends LocalTopologyProto.
-  Status s = coord_agent_->WaitForAllTasks(devices);
-  if (!s.ok()) return s;
-  // Server responds with GlobalTopologyProto (refer to service.cc for details).
-  tensorflow::DeviceInfo global_devices = coord_agent_->GetClusterDeviceInfo();
-  if (global_devices.device_size() != 1) {
-    return tsl::errors::Internal(
-        "Unexpected cluster device response from EnumerateDevices().");
-  }
-  global_devices.device().Get(0).UnpackTo(global_topology);
-  return OkStatus();
-}
-
 xla::StatusOr<std::string>
 DistributedRuntimeCoordinationServiceClient::BlockingKeyValueGet(
-    std::string key, absl::Duration timeout) {
+    std::string_view key, absl::Duration timeout) {
   return coord_agent_->GetKeyValue(key, timeout);
 }
 
 xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
 DistributedRuntimeCoordinationServiceClient::KeyValueDirGet(
-    absl::string_view key) {
+    std::string_view key) {
   // TODO(hanyangtay): Migrate to string_view for both client and coordination
   // agent APIs.
   TF_ASSIGN_OR_RETURN(const auto results,
@@ -189,12 +159,12 @@ DistributedRuntimeCoordinationServiceClient::KeyValueDirGet(
 }
 
 xla::Status DistributedRuntimeCoordinationServiceClient::KeyValueDelete(
-    std::string key) {
+    std::string_view key) {
   return coord_agent_->DeleteKeyValue(key);
 }
 
 xla::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
-    std::string key, std::string value) {
+    std::string_view key, std::string_view value) {
   return coord_agent_->InsertKeyValue(key, value);
 }
 

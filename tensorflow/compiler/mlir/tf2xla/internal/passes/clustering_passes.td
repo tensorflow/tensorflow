@@ -208,3 +208,94 @@ def ExtractOutsideCompilationPass : Pass<"tf-extract-outside-compilation", "Modu
 
   let constructor = "tensorflow::tf2xla::internal::CreateExtractOutsideCompilationPass()";
 }
+
+def XlaClusterFormationPass : Pass<"tf-xla-cluster-formation", "ModuleOp"> {
+  let summary = "Encapsulate partitioned calls within a Cluster op";
+  let description = [{
+    This pass clusters `tf.PartitionedCall` and `tf.StatefulPartitionedCall`
+    with `_xla_compile_device_type` attribute into a `tf_device.cluster`.
+    Notice this pass will only rewrite the outermost call if there are nested
+    calls to avoid nested `tf.XlaLaunch` operations from being created later.
+
+    For example, the following code
+
+    ```mlir
+    func.func @main() -> tensor<i32> {
+      %0 = "tf.StatefulPartitionedCall"() {_xla_compile_device_type = "CPU", f = @stateful_pcall_func} : () -> (tensor<i32>)
+      func.return %0 : tensor<i32>
+    }
+
+    func.func @stateful_pcall_func() -> tensor<i32> {
+      %0 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+      func.return %0 : tensor<i32>
+    }
+    ```
+
+    will be transformed into,
+
+    ```mlir
+    func.func @main() -> tensor<i32> {
+      %0 = "tf_device.cluster"() ({
+        %1 = "tf.StatefulPartitionedCall"() {_xla_compile_device_type = "CPU", f = @stateful_pcall_func} : () -> tensor<i32>
+        tf_device.return %1 : tensor<i32>
+      }) : () -> tensor<i32>
+      func.return %0 : tensor<i32>
+    }
+
+    func.func @stateful_pcall_func() -> tensor<i32> {
+      %0 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+      func.return %0 : tensor<i32>
+    }
+
+    ```
+  }];
+  let constructor = "tensorflow::tf2xla::internal::CreateXlaClusterFormationPass()";
+  let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
+}
+
+def MarkOpsForOutsideCompilationPass : Pass<"tf-mark-ops-for-outside-compilation", "ModuleOp"> {
+  let summary = "Marks ops in device cluster for outside compilation if they are unsupported on device.";
+
+  let description = [{
+    This pass marks unsupported ops in a device cluster with
+    `_xla_outside_compilation` attribute so the operations will run on the host
+    instead of the device. Unsupported ops are ops that can not be code
+    generated to run on the device for the cluster including:
+
+    1. String operations on TPUs.
+    2. Operations that don't have a kernel defined for the device.
+
+    This pass is conservative in that it will mark all ops for outside compilation
+    that can not be compiled for the device.  Exceptions for this are added for ops
+    that will be rewritten or decomposed before compiling on device.
+
+
+    For example, tf_device.cluster op with an unsupported op, tf.UnsupportedOp:
+
+    ```mlir
+    func @unsupported_op() -> tensor<i32> {
+      %0 = "tf_device.cluster"() ( {
+        %1 = "tf.UnsupportedOp"() : () -> tensor<i32>
+        %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
+        tf_device.return %2 : tensor<i32>
+      }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<i32>
+      return %0 : tensor<i32>
+    }
+    ```
+
+    will mark tf.UnsupportedOp with `_xla_outside_compilation` attribute:
+
+    ```mlir
+    func @unsupported_op() -> tensor<i32> {
+      %0 = "tf_device.cluster"() ( {
+        %1 = "tf.UnsupportedOp"() {_xla_outside_compilation = "auto0"} : () -> tensor<i32>
+        %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
+        tf_device.return %2 : tensor<i32>
+      }) {allow_soft_placement = true, device_assignment = [], num_cores_per_replica = 1 : i64, topology = ""} : () -> tensor<i32>
+      return %0 : tensor<i32>
+    }
+    ```
+  }];
+
+  let constructor = "tensorflow::tf2xla::internal::CreateMarkOpsForOutsideCompilationPass()";
+}

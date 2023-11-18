@@ -42,7 +42,7 @@ class CallFrame;  // forward declare
 
 class CallFrameBuilder {
  public:
-  using Attribute = std::variant<int32_t, float, std::string>;
+  using Attribute = std::variant<int32_t, int64_t, float, std::string>;
   using AttributesMap = absl::flat_hash_map<std::string, Attribute>;
 
   CallFrame Build();
@@ -51,6 +51,7 @@ class CallFrameBuilder {
                     absl::Span<const int64_t> dims);
 
   void AddI32Attr(std::string name, int32_t value);
+  void AddI64Attr(std::string name, int64_t value);
   void AddF32Attr(std::string name, float value);
   void AddStringAttr(std::string name, std::string value);
 
@@ -91,7 +92,7 @@ class CallFrame {
   struct NamedAttribute;
   struct String;
 
-  using Attribute = std::variant<int32_t, float, String>;
+  using Attribute = std::variant<int32_t, int64_t, float, String>;
 
   CallFrame(absl::Span<const CallFrameBuilder::Buffer> args,
             const CallFrameBuilder::AttributesMap& attrs);

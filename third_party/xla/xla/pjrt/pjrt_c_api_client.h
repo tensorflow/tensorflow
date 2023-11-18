@@ -258,6 +258,11 @@ class PjRtCApiClient : public PjRtClient {
 
   absl::string_view platform_version() const override;
 
+  std::optional<PjRtPluginAttributes> plugin_attributes() const override {
+    return PjRtPluginAttributes{c_api_->pjrt_api_version.major_version,
+                                c_api_->pjrt_api_version.minor_version};
+  }
+
   // TODO(b/244756954): Rethink this function altogether
   PjRtRuntimeType runtime_type() const override {
     return PjRtRuntimeType::kTfrt;
@@ -723,7 +728,8 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
       std::vector<std::vector<PJRT_Buffer*>>& c_output_lists_storage,
       std::vector<PJRT_Buffer**>& c_output_lists,
       std::optional<std::vector<PJRT_Event*>>& device_complete_events,
-      SendRecvCallbackData& send_recv_callback_data);
+      SendRecvCallbackData& send_recv_callback_data,
+      std::vector<int64_t>& non_donatable_input_indices_storage);
 
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteWithSingleDevice(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,

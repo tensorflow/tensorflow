@@ -20,8 +20,8 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
-#include "absl/types/span.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -44,8 +44,7 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
                     absl::AnyInvocable<tsl::Status()> function) override;
 
   tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
-                     const KernelBase& kernel,
-                     const KernelArgsArrayBase& args) override;
+                     const Kernel& kernel, const KernelArgs& args) override;
 
   tsl::Status AddNestedCommandBuffer(const CommandBuffer& nested) override;
 
@@ -84,7 +83,8 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   // TODO(ezhulenev): Currently we serialize all Gpu nodes by adding a
   // dependency between all nodes added to a command buffer. We need a concept
   // of a barrier at a command buffer level.
-  absl::Span<GpuGraphNodeHandle> GetDependencies();
+  using Dependencies = absl::InlinedVector<GpuGraphNodeHandle, 1>;
+  Dependencies GetDependencies();
 
   // Returns OK status if command buffer is not finalized and it is still
   // possible to add new commands to it, otherwise returns internal error.

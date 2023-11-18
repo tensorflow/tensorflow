@@ -108,5 +108,18 @@ XLA_TEST_F(HloTestBase, OddNumberOfElements) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
+XLA_TEST_F(HloTestBase, Scalar) {
+  // Tests reading an int4 scalar value
+  const std::string hlo_text = R"(
+  HloModule Scalar
+  ENTRY main {
+    x = s4[] parameter(0)
+    y = s8[] convert(x)
+    ROOT z = s8[3, 3] broadcast(y), dimensions={}
+  }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
+}
+
 }  // namespace
 }  // namespace xla

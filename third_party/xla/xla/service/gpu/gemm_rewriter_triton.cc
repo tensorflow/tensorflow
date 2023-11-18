@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/tensor_float_32_utils.h"
 
 namespace xla {
 namespace gpu {
@@ -1237,8 +1238,8 @@ void FusionContext::TryToFuseWithInputsRecursively(
     HloInstruction* hlo = to_visit.front();
     to_visit.pop();
     // Watch the total number of fusion parameters.
-    if (inputs.size() >= TritonFusionAnalysis::kMaxParameterPerScope &&
-        NumAddedParameters(*hlo) > 0) {
+    if (inputs.size() + NumAddedParameters(*hlo) >
+        TritonFusionAnalysis::kMaxParameterPerScope) {
       // Re-queue: the number of parameters may go down when other instructions
       // are processed.
       to_visit.push(hlo);
@@ -1321,8 +1322,10 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
     context.TryToFuseWithInputsRecursively(*dot.mutable_operand(operand_number),
                                            gpu_version, old_to_new_mapping,
                                            fusion_inputs, builder);
-    TF_RET_CHECK(fusion_inputs.size() - operand_count_before <=
-                 TritonFusionAnalysis::kMaxParameterPerScope);
+    const int new_parameters = fusion_inputs.size() - operand_count_before;
+    TF_RET_CHECK(new_parameters <= TritonFusionAnalysis::kMaxParameterPerScope)
+        << "Too many new parameters: " << new_parameters << " > "
+        << TritonFusionAnalysis::kMaxParameterPerScope;
     return context;
   };
 
@@ -1661,6 +1664,7 @@ const DimIterationSpec* TritonFusionAnalysis::IterSpec(
 FusionDecision CanTritonHandleGEMM(const HloInstruction& dot,
                                    const se::GpuComputeCapability gpu_version) {
   if (dot.opcode() != HloOpcode::kDot ||
+      !tsl::tensor_float_32_execution_enabled() ||
       absl::c_any_of(dot.precision_config().operand_precision(),
                      [](int x) { return x != PrecisionConfig::DEFAULT; })) {
     return "Non-default precision.";

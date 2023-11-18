@@ -5049,7 +5049,7 @@ StatusOr<bool> SpmdPartitioner::Run(
   } else {
     // Fix up some bad tiling in entry computation layout.
     auto update_shape = [this](Shape* subshape, const xla::ShapeIndex& index) {
-      if (subshape->IsArray()) {
+      if (subshape->IsArray() && subshape->has_layout()) {
         UpdateLayout(subshape);
       }
     };
