@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/call_graph.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace hlo_sharding_util {
@@ -466,6 +467,13 @@ std::optional<GatherScatterParallelDims> GetGatherScatterBatchParallelDims(
 // Returns the sharding of an output of an instruction. Some instructions have
 // special handling like Outfeed and this function takes care of those.
 std::optional<HloSharding> GetOutputSharding(const HloInstruction* instruction);
+
+// Returns the un-tiled shape.
+Shape UntileShape(const HloSharding& sharding, const Shape& shape);
+
+// Returns the un-tiled shape.
+// REQUIRES: !sharding.IsTuple()
+Shape UntileLeafShape(const HloSharding& sharding, const Shape& shape);
 
 }  // namespace hlo_sharding_util
 }  // namespace xla
