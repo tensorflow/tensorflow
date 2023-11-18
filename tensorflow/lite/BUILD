@@ -254,9 +254,10 @@ cc_test(
         ":arena_planner_with_profiler",
         ":builtin_ops",
         ":graph_info",
-        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/testing:util",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1051,7 +1052,6 @@ cc_test(
     deps = [
         ":simple_memory_arena",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
 )

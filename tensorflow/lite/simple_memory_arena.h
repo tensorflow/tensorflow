@@ -58,9 +58,7 @@ struct ArenaAllocWithUsageInterval {
 class ResizableAlignedBuffer {
  public:
   explicit ResizableAlignedBuffer(size_t alignment, int subgraph_index)
-      : allocation_size_(0),
-        alignment_(alignment),
-        subgraph_index_(subgraph_index) {
+      : data_size_(0), alignment_(alignment), subgraph_index_(subgraph_index) {
     // To silence unused private member warning, only used with
     // TF_LITE_TENSORFLOW_PROFILER
     (void)subgraph_index_;
@@ -75,8 +73,12 @@ class ResizableAlignedBuffer {
 
   // Pointer to the data array.
   char* GetPtr() const { return aligned_ptr_; }
+  // Size of the data array (NOT of the allocation).
+  size_t GetDataSize() const { return data_size_; }
   // Size of the allocation (NOT of the data array).
-  size_t GetAllocationSize() const { return allocation_size_; }
+  size_t GetAllocationSize() const {
+    return RequiredAllocationSize(data_size_);
+  }
   // Alignment of the data array.
   size_t GetAlignment() const { return alignment_; }
 
@@ -86,7 +88,7 @@ class ResizableAlignedBuffer {
   }
 
   std::unique_ptr<char[]> buffer_;
-  size_t allocation_size_;
+  size_t data_size_;
   size_t alignment_;
   char* aligned_ptr_;
 
