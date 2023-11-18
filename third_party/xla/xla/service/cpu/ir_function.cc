@@ -28,17 +28,13 @@ namespace cpu {
 
 static std::vector<llvm::Type*> GetComputeFunctionParams(
     llvm::Module* llvm_module, const int64_t num_dynamic_loop_bounds) {
-  llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(llvm_module->getContext());
-  llvm::Type* i8_ptr_ptr_type = i8_ptr_type->getPointerTo();
-  llvm::Type* i64_ptr_type =
-      llvm::PointerType::get(llvm_module->getContext(), 0);
-  std::vector<llvm::Type*> compute_function_params(
-      {i8_ptr_type, i8_ptr_type, i8_ptr_ptr_type, i8_ptr_ptr_type,
-       i8_ptr_type});
+  llvm::Type* ptr_type =
+      llvm::PointerType::getUnqual(llvm_module->getContext());
+  std::vector<llvm::Type*> compute_function_params(5, ptr_type);
   if (num_dynamic_loop_bounds > 0) {
-    compute_function_params.push_back(i64_ptr_type);
+    compute_function_params.push_back(ptr_type);
   }
-  compute_function_params.push_back(i64_ptr_type);
+  compute_function_params.push_back(ptr_type);
   return compute_function_params;
 }
 
@@ -203,21 +199,17 @@ llvm::Value* EncodeArrayFunctionArguments(
     absl::Span<llvm::Value* const> arguments, absl::string_view name,
     llvm::IRBuilder<>* b) {
   llvm::Value* arguments_buffer;
-  llvm::Type* int8ptr_ty = b->getInt8PtrTy();
   if (arguments.empty()) {
-    arguments_buffer = llvm::Constant::getNullValue(int8ptr_ty->getPointerTo());
+    arguments_buffer = llvm::Constant::getNullValue(b->getPtrTy());
   } else {
     arguments_buffer = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
-        int8ptr_ty, b->getInt32(arguments.size()),
+        b->getPtrTy(), b->getInt32(arguments.size()),
         absl::StrCat(name, "_parameter_addresses"), b);
 
     for (size_t i = 0; i < arguments.size(); i++) {
-      llvm::Value* parameter_as_i8ptr = b->CreateBitCast(
-          arguments[i], b->getInt8PtrTy(),
-          absl::StrCat(name, "_parameter_", i, "_address_as_i8ptr"));
       llvm::Value* slot_in_param_addresses =
-          b->CreateInBoundsGEP(int8ptr_ty, arguments_buffer, b->getInt64(i));
-      b->CreateStore(parameter_as_i8ptr, slot_in_param_addresses);
+          b->CreateInBoundsGEP(b->getPtrTy(), arguments_buffer, b->getInt64(i));
+      b->CreateStore(arguments[i], slot_in_param_addresses);
     }
   }
   return arguments_buffer;
@@ -235,15 +227,9 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
   llvm::Value* parameter_addresses_buffer =
       EncodeArrayFunctionArguments(parameter_addresses, name, b);
 
-  const auto to_int8_ptr = [=](llvm::Value* ptr) {
-    return b->CreatePointerCast(ptr, b->getInt8PtrTy());
-  };
-  return std::vector<llvm::Value*>{to_int8_ptr(return_value_buffer),
-                                   to_int8_ptr(exec_run_options_arg),
-                                   parameter_addresses_buffer,
-                                   buffer_table_arg,
-                                   status_arg,
-                                   profile_counters_arg};
+  return std::vector<llvm::Value*>{
+      return_value_buffer, exec_run_options_arg, parameter_addresses_buffer,
+      buffer_table_arg,    status_arg,           profile_counters_arg};
 }
 
 // Emits a call to a runtime fork/join function which dispatches parallel

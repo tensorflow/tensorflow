@@ -92,6 +92,8 @@ class EinsumDepthAnalysis : public DfsHloVisitorWithDefault {
                      const std::optional<ShapeTree<int>>& root_depth);
   EinsumDepthMap::iterator GetOrCreateDepthTree(HloInstruction* instruction);
   Status SetInstructionDepth(HloInstruction* instruction, int depth);
+  Status SetInstructionDepth(HloInstruction* instruction,
+                             const ShapeTree<int>& depth);
   Status HandleDepthIncrementInstruction(HloInstruction* instruction);
   Status HandleCalledComputation(const HloComputation& called_computation,
                                  const ShapeTree<int>& root_depth,
@@ -238,6 +240,7 @@ class HloValueSemanticsPropagation : public DfsHloVisitorWithDefault {
   Status HandleAsyncDone(HloInstruction* async_done) override;
   Status HandleInfeed(HloInstruction* infeed) override;
   Status HandleDomain(HloInstruction* domain) override;
+  Status HandleRngBitGenerator(HloInstruction* rng_bit_generator) override;
 
  protected:
   HloValueSemantics CopySemantics(const HloValueSemantics& semantics) const;

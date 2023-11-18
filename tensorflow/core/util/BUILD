@@ -1,11 +1,4 @@
-load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library",
-)
-load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_library",
-)
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
@@ -20,10 +13,17 @@ load(
 )
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable", "tf_version_info_genrule")
 load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
+load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
@@ -37,7 +37,6 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = default_package_visibility,
     features = [
-        "-layering_check",
         "-parse_headers",
     ],
     licenses = ["notice"],
@@ -726,6 +725,7 @@ tf_kernel_library(
     srcs = ["cuda_solvers.cc"],
     hdrs = ["gpu_solvers.h"],
     compatible_with = [],
+    features = ["-layering_check"],
     # @local_config_cuda//cuda:cusolver_static, //third_party/eigen3:blas,
     # and //third_party/libf2c all contain various parts of BLAS, LAPACK,
     # and f2c helper functions in global namespace. Tell the compiler to
@@ -739,8 +739,8 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@local_tsl//tsl/cuda:cusolver",
         "@local_xla//xla/stream_executor/cuda:cublas_plugin",
-        "@local_xla//xla/stream_executor/cuda:cusolver_lib",
     ],
 )
 
@@ -773,14 +773,15 @@ tf_kernel_library(
         "gpu_solvers.h",
     ],
     compatible_with = [],
+    features = ["-layering_check"],
     deps = [
         ":cuda_solvers",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ] + if_cuda([
-        "@local_xla//xla/stream_executor/cuda:cusparse_lib",
         "@local_xla//xla/stream_executor/cuda:cuda_blas_utils",
-        "@local_xla//xla/stream_executor:data_type",
+        "@local_xla//xla/stream_executor",
+        "@local_tsl//tsl/cuda:cusparse",
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
         "@local_xla//xla/stream_executor/rocm:rocsolver_wrapper",
@@ -852,6 +853,7 @@ tf_cuda_only_cc_test(
     srcs = [
         "gpu_kernel_helper_test.cu.cc",
     ],
+    features = ["-layering_check"],
     tags = [
         "no_cuda_asan",  # TODO(b/171342366): re-enable.
     ],
@@ -890,6 +892,7 @@ tf_cc_tests(
         "tensor_slice_writer_test.cc",
         "work_sharder_test.cc",
     ],
+    features = ["-layering_check"],
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],

@@ -1622,10 +1622,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, PowNonIntegerF32s) {
 XLA_TEST_F(ArrayElementwiseOpTest, PowC64s) {
   SetFastMathDisabled(true);
   XlaBuilder builder(TestName());
-  auto lhs = ConstantR1<complex64>(
-      &builder, {-2.0f, -0.6f, -0.6f, 0.0f, 0.0f, 0.0f, 1.0f});
-  auto rhs = ConstantR1<complex64>(
-      &builder, {0.5f, 0.6f, -0.6f, 0.5f, 0.6f, 0.0f, INFINITY});
+  auto lhs = ConstantR1<complex64>(&builder, {-2.0f, -0.6f, -0.6f, 0.0f, 0.0f,
+                                              0.0f, 1.0f, INFINITY, INFINITY});
+  auto rhs = ConstantR1<complex64>(&builder, {0.5f, 0.6f, -0.6f, 0.5f, 0.6f,
+                                              0.0f, INFINITY, 1.0f, -1.1234f});
   Pow(lhs, rhs);
 
   ComputeAndCompareR1<complex64>(&builder,
@@ -1637,6 +1637,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, PowC64s) {
                                      {0, 0},
                                      {1, 0},
                                      {1, 0},
+                                     {INFINITY, 0},
+                                     {0, 0},
                                  },
                                  {}, error_spec_);
 }

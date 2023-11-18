@@ -72,6 +72,12 @@ struct PassConfig {
   // the case where a saved model contains both TF module and serialized
   // StableHLO module.
   bool enable_hlo_to_tf_conversion = false;
+  // Whether to disable the direct hlo/stablehlo to Tensorflow Lite conversion.
+  //
+  // This prevents from directly converting from HLO to TFLite without going
+  // through TF for some of the ops. Some conversions are only supported through
+  // this path.
+  bool disable_hlo_to_tfl_conversion = false;
   // Whether to enable to use DynamicUpdateSlice op.
   bool enable_dynamic_update_slice = false;
   // Whether to preserve AssertOp during legalization.

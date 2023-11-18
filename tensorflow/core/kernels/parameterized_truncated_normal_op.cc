@@ -726,7 +726,9 @@ class ParameterizedTruncatedNormalOp : public OpKernel {
  private:
   GuardedPhiloxRandom generator_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ParameterizedTruncatedNormalOp);
+  ParameterizedTruncatedNormalOp(const ParameterizedTruncatedNormalOp&) =
+      delete;
+  void operator=(const ParameterizedTruncatedNormalOp&) = delete;
 };
 
 // Samples from a truncated normal distribution, using the given parameters.
@@ -815,7 +817,9 @@ class StatelessParameterizedTruncatedNormal : public OpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessParameterizedTruncatedNormal);
+  StatelessParameterizedTruncatedNormal(
+      const StatelessParameterizedTruncatedNormal&) = delete;
+  void operator=(const StatelessParameterizedTruncatedNormal&) = delete;
 };
 
 }  // namespace

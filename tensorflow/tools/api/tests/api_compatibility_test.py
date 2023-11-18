@@ -486,9 +486,9 @@ class ApiCompatibilityTest(test.TestCase):
         api_version=api_version)
 
   def testAPIBackwardsCompatibility(self):
-    if sys.version_info.major == 3 and sys.version_info.minor == 11:
+    if sys.version_info.major == 3 and sys.version_info.minor in (11, 12):
       # TODO(b/264951243)
-      self.skipTest('Not working in Python 3.11')
+      self.skipTest('Not working in Python 3.11+')
     api_version = 1
     if hasattr(tf, '_major_api_version') and tf._major_api_version == 2:
       api_version = 2
@@ -517,9 +517,9 @@ class ApiCompatibilityTest(test.TestCase):
     self.assertTrue(api_version == 1 or not hasattr(tf, 'contrib'))
 
   def testAPIBackwardsCompatibilityV1(self):
-    if sys.version_info.major == 3 and sys.version_info.minor == 11:
+    if sys.version_info.major == 3 and sys.version_info.minor in (11, 12):
       # TODO(b/264951243)
-      self.skipTest('Not working in Python 3.11')
+      self.skipTest('Not working in Python 3.11+')
     api_version = 1
     golden_file_patterns = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
@@ -535,9 +535,9 @@ class ApiCompatibilityTest(test.TestCase):
         omit_golden_symbols_map={'tensorflow': ['pywrap_tensorflow']})
 
   def testAPIBackwardsCompatibilityV2(self):
-    if sys.version_info.major == 3 and sys.version_info.minor == 11:
+    if sys.version_info.major == 3 and sys.version_info.minor in (11, 12):
       # TODO(b/264951243)
-      self.skipTest('Not working in Python 3.11')
+      self.skipTest('Not working in Python 3.11+')
     api_version = 2
     golden_file_patterns = [
         os.path.join(resource_loader.get_root_dir_with_all_resources(),

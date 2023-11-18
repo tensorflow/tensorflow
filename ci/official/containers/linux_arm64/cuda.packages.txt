@@ -1,0 +1,3 @@
+# CuDNN: https://docs.nvidia.com/deeplearning/sdk/cudnn-install/index.html#ubuntu-network-installation
+libcudnn8=8.9.4.25-1+cuda12.2
+libcudnn8-dev=8.9.4.25-1+cuda12.2

@@ -50,12 +50,12 @@ class HostExecutor : public internal::StreamExecutorInterface {
   tsl::Status Init(int device_ordinal, DeviceOptions device_options) override;
 
   tsl::Status GetKernel(const MultiKernelLoaderSpec& spec,
-                        KernelBase* kernel) override {
+                        Kernel* kernel) override {
     return tsl::errors::Unimplemented("Not Implemented");
   }
   tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
-                     const BlockDim& block_dims, const KernelBase& kernel,
-                     const KernelArgsArrayBase& args) override {
+                     const BlockDim& block_dims, const Kernel& kernel,
+                     const KernelArgs& args) override {
     return tsl::errors::Unimplemented("Not Implemented");
   }
 
@@ -150,8 +150,6 @@ class HostExecutor : public internal::StreamExecutorInterface {
   }
 
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
-
-  void* GpuContextHack() override { return nullptr; }
 
  private:
   // Size of thread stacks for streams in bytes. '0' means "the default size".

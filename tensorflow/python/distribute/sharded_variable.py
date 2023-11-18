@@ -787,25 +787,16 @@ class ShardedVariableMixin(trackable.Trackable):
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
   def _copy_trackable_to_cpu(self, object_map):
-    """For implementing `Trackable`."""
-    if self in object_map:
-      # If populated already, simply loop through sub-variables to copy values.
-      for v in self._variables:
-        v._copy_trackable_to_cpu(object_map)  # pylint: disable=protected-access
-    else:
-      # If not populated, populate first, then copy.
-      copied_vars = []
-      for v in self._variables:
-        # This step will both instantiate `v`'s CPU copy and copy its value.
-        v._copy_trackable_to_cpu(object_map)  # pylint: disable=protected-access
-        copied_vars.append(object_map[v])
-      new_var = ShardedVariable(copied_vars, name=self.name)
-      object_map[self] = new_var
+    """For implementing `Trackable` async checkpointing."""
+    # This is not implemented in the ShardedVariableMixin class because multiple
+    # classes inherit from it. If your class contains values that should be
+    # copied to CPU for async checkpointing, please implement this in the class
+    # definition.
 
   def _export_to_saved_model_graph(
       self, object_map, tensor_map, options, **kwargs
   ):
-    """For implementing `Trackable`."""
+    """For implementing `Trackable` SavedModel export."""
     resource_list = []
     for v in self._variables + [self._saving_variable]:
       resource_list.extend(
@@ -939,6 +930,22 @@ class ShardedVariable(ShardedVariableMixin, composite_tensor.CompositeTensor):
     resource_variable_ops.write_object_proto_for_resource_variable(
         self._saving_variable, proto, options, enforce_naming=False
     )
+
+  def _copy_trackable_to_cpu(self, object_map):
+    """For implementing `Trackable` async checkpointing."""
+    if self in object_map:
+      # If populated already, simply loop through sub-variables to copy values.
+      for v in self._variables:
+        v._copy_trackable_to_cpu(object_map)  # pylint: disable=protected-access
+    else:
+      # If not populated, populate first, then copy.
+      copied_vars = []
+      for v in self._variables:
+        # This step will both instantiate `v`'s CPU copy and copy its value.
+        v._copy_trackable_to_cpu(object_map)  # pylint: disable=protected-access
+        copied_vars.append(object_map[v])
+      new_var = ShardedVariable(copied_vars, name=self.name)
+      object_map[self] = new_var
 
 
 def _var_to_tensor(var, dtype=None, name=None, as_ref=False):

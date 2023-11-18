@@ -131,8 +131,7 @@ tsl::StatusOr<StreamExecutor*> ROCmPlatform::GetExecutor(
 tsl::StatusOr<std::unique_ptr<StreamExecutor>>
 ROCmPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto executor = std::make_unique<StreamExecutor>(
-      this, std::make_unique<GpuExecutor>(config.plugin_config),
-      config.ordinal);
+      this, std::make_unique<GpuExecutor>(), config.ordinal);
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
     return tsl::Status{

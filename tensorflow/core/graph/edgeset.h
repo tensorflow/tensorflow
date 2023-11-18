@@ -86,7 +86,8 @@ class EdgeSet {
   void RegisterMutation() { mutations_++; }
 #endif
 
-  TF_DISALLOW_COPY_AND_ASSIGN(EdgeSet);
+  EdgeSet(const EdgeSet&) = delete;
+  void operator=(const EdgeSet&) = delete;
 };
 
 class EdgeSet::const_iterator {

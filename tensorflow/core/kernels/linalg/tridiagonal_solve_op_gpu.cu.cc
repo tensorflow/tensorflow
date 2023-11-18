@@ -27,9 +27,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/cuda_sparse.h"
-#include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
-#include "tensorflow/core/util/gpu_launch_config.h"
 #include "tensorflow/core/util/gpu_solvers.h"
 
 namespace tensorflow {
@@ -278,7 +276,8 @@ class TridiagonalSolveOpGpu : public OpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(TridiagonalSolveOpGpu);
+  TridiagonalSolveOpGpu(const TridiagonalSolveOpGpu&) = delete;
+  void operator=(const TridiagonalSolveOpGpu&) = delete;
 
   void ComputeWithGtsvBatched(OpKernelContext* context, const Tensor& lhs,
                               const Tensor& rhs, const int batch_size) {

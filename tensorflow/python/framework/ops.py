@@ -81,6 +81,9 @@ from tensorflow.python.util.tf_export import kwarg_only
 from tensorflow.python.util.tf_export import tf_export
 
 
+# TODO(b/307794935): Remove after bug is fixed.
+is_oss = True  # Updated by copybara
+
 # Temporary global switches determining if we should enable the work-in-progress
 # calls to the C API. These will be removed once all functionality is supported.
 _USE_C_API: bool = True
@@ -2052,10 +2055,6 @@ class Graph(pywrap_tf_session.PyGraph):
 
     # Cache for OpDef protobufs retrieved via the C API.
     self._op_def_cache = {}
-    # Cache for constant results of `broadcast_gradient_args()`. The keys are
-    # tuples of fully-defined shapes: (x_shape_tuple, y_shape_tuple), and the
-    # values are tuples of reduction indices: (rx, ry).
-    self._bcast_grad_args_cache = {}
     # Cache for constant results of `reduced_shape()`. The keys are pairs of
     # tuples: (input_shape_tuple, reduction_indices_tuple), and the values
     # are pairs of tuples: (output_shape_kept_dims, tile_scaling).
@@ -2410,7 +2409,9 @@ class Graph(pywrap_tf_session.PyGraph):
 
     return graph, self.version
 
-  def as_graph_def(self, from_version=None, add_shapes=False):
+  def as_graph_def(
+      self, from_version=None, add_shapes=False, use_pybind11_proto=False
+  ):
     # pylint: disable=line-too-long
     """Returns a serialized `GraphDef` representation of this graph.
 
@@ -2426,6 +2427,9 @@ class Graph(pywrap_tf_session.PyGraph):
         property had the given value.
       add_shapes: If true, adds an "_output_shapes" list attr to each node with
         the inferred shapes of each of its outputs.
+      use_pybind11_proto: If true, If true, uses the c++ pybind11_proto api to
+        get the GraphDef proto directly from c++, instead of through a TF
+        buffer. See https://github.com/pybind/pybind11_protobuf for reference.
 
     Returns:
       A
@@ -2436,7 +2440,11 @@ class Graph(pywrap_tf_session.PyGraph):
       ValueError: If the `graph_def` would be too large.
     """
     # pylint: enable=line-too-long
-    result, _ = self._as_graph_def(from_version, add_shapes)
+    if is_oss:
+      use_pybind11_proto = False
+    result, _ = self._as_graph_def(
+        from_version, add_shapes, use_pybind11_proto=use_pybind11_proto
+    )
     return result
 
   def _is_function(self, name):

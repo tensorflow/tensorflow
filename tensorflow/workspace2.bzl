@@ -31,6 +31,7 @@ load("//third_party/gemmlowp:workspace.bzl", gemmlowp = "repo")
 load("//third_party/hexagon:workspace.bzl", hexagon_nn = "repo")
 load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
+load("//third_party/implib_so:workspace.bzl", implib_so = "repo")
 load("//third_party/icu:workspace.bzl", icu = "repo")
 load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
 load("//third_party/libprotobuf_mutator:workspace.bzl", libprotobuf_mutator = "repo")
@@ -72,6 +73,7 @@ def _initialize_third_party():
     highwayhash()
     hwloc()
     icu()
+    implib_so()
     jpeg()
     kissfft()
     libprotobuf_mutator()
@@ -148,9 +150,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "ddf332a63e2e3b05e8993f40b22ce529ae54f854771dd28ad8230ebaaa861798",
-        strip_prefix = "XNNPACK-60c997b99b3d98b8d146d267072cd4edb68535bd",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/60c997b99b3d98b8d146d267072cd4edb68535bd.zip"),
+        sha256 = "88e0158aff1e1498e34dfcaf08d948a73a3246a04fe96e548da71f6b9245a009",
+        strip_prefix = "XNNPACK-c7e7cde37615a81a529c326aa278bfab4cd6fe5a",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/c7e7cde37615a81a529c326aa278bfab4cd6fe5a.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -195,9 +197,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "onednn",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "2f76b407ef8893cca71340f88cd800019a1f14f8ac1bbdbb89a84be1370b52e3",
-        strip_prefix = "oneDNN-3.2.1",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.2.1.tar.gz"),
+        sha256 = "8d150a77025f38bff182aaef4dd643625563b2f311c635f86cf4b769b04d7b48",
+        strip_prefix = "oneDNN-3.3",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.3.tar.gz"),
     )
 
     tf_http_archive(
@@ -205,18 +207,14 @@ def _tf_repositories():
         build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
         patch_file = [
             "//third_party/mkl_dnn:onednn_acl_threadcap.patch",
-            "//third_party/mkl_dnn:onednn_acl_remove_winograd.patch",
-            "//third_party/mkl_dnn:onednn_acl_fixed_format_kernels.patch",
-            "//third_party/mkl_dnn:onednn_acl_depthwise_convolution.patch",
-            "//third_party/mkl_dnn:onednn_acl_threadpool_scheduler.patch",
-            "//third_party/mkl_dnn:onednn_acl_reorder_padded.patch",
-            "//third_party/mkl_dnn:onednn_acl_reorder_update.patch",
             "//third_party/mkl_dnn:onednn_acl_reorder.patch",
             "//third_party/mkl_dnn:onednn_acl_thread_local_scheduler.patch",
+            "//third_party/mkl_dnn:onednn_acl_fp32_bf16_reorder.patch",
+            "//third_party/mkl_dnn:onednn_acl_bf16_capability_detection_for_ubuntu20.04.patch",
         ],
-        sha256 = "a50993aa6265b799b040fe745e0010502f9f7103cc53a9525d59646aef006633",
-        strip_prefix = "oneDNN-2.7.3",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.7.3.tar.gz"),
+        sha256 = "2f76b407ef8893cca71340f88cd800019a1f14f8ac1bbdbb89a84be1370b52e3",
+        strip_prefix = "oneDNN-3.2.1",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.2.1.tar.gz"),
     )
 
     tf_http_archive(
@@ -333,7 +331,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "gif",
         build_file = "//third_party:gif.BUILD",
-        patch_file = ["//third_party:gif_fix_strtok_r.patch"],
+        patch_file = [
+            "//third_party:gif_fix_strtok_r.patch",
+            "//third_party:gif_fix_image_counter.patch",
+        ],
         sha256 = "31da5562f44c5f15d63340a09a4fd62b48c45620cd302f77a6d9acf0077879bd",
         strip_prefix = "giflib-5.2.1",
         system_build_file = "//third_party/systemlibs:gif.BUILD",
@@ -409,10 +410,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "f98bdb06c0f52bdd19e63c4a77b5eb19b243bcbbd0f5b002b9f3cba7295a3a42",
-        strip_prefix = "curl-8.2.1",
+        sha256 = "816e41809c043ff285e8c0f06a75a1fa250211bbfb2dc0a037eeef39f1a9e427",
+        strip_prefix = "curl-8.4.0",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-8.2.1.tar.gz"),
+        urls = tf_mirror_urls("https://curl.se/download/curl-8.4.0.tar.gz"),
     )
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
@@ -506,9 +507,9 @@ def _tf_repositories():
         name = "nccl_archive",
         build_file = "//third_party:nccl/archive.BUILD",
         patch_file = ["//third_party/nccl:archive.patch"],
-        sha256 = "0e3d7b6295beed81dc15002e88abf7a3b45b5c686b13b779ceac056f5612087f",
-        strip_prefix = "nccl-2.16.5-1",
-        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.16.5-1.tar.gz"),
+        sha256 = "16ac98f3e926c024ce48e10ab220e19ce734adc48c423cfd55ad6f509bd1179f",
+        strip_prefix = "nccl-2.18.5-1",
+        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.18.5-1.tar.gz"),
     )
 
     java_import_external(
@@ -609,10 +610,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "cython",
         build_file = "//third_party:cython.BUILD",
-        sha256 = "08dbdb6aa003f03e65879de8f899f87c8c718cd874a31ae9c29f8726da2f5ab0",
-        strip_prefix = "cython-3.0.0a11",
+        sha256 = "0c2eae8a4ceab7955be1e11a4ddc5dcc3aa06ce22ad594262f1555b9d10667f0",
+        strip_prefix = "cython-3.0.3",
         system_build_file = "//third_party/systemlibs:cython.BUILD",
-        urls = tf_mirror_urls("https://github.com/cython/cython/archive/3.0.0a11.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/cython/cython/archive/3.0.3.tar.gz"),
     )
 
     # LINT.IfChange
@@ -730,8 +731,8 @@ def _tf_repositories():
     # https://github.com/bazelbuild/rules_swift/releases
     tf_http_archive(
         name = "build_bazel_rules_swift",
-        sha256 = "12057b7aa904467284eee640de5e33853e51d8e31aae50b3fb25d2823d51c6b8",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_swift/releases/download/1.0.0/rules_swift.1.0.0.tar.gz"),
+        sha256 = "32f95dbe6a88eb298aaa790f05065434f32a662c65ec0a6aabdaf6881e4f169f",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_swift/releases/download/1.5.0/rules_swift.1.5.0.tar.gz"),
     )
 
     # https://github.com/bazelbuild/apple_support/releases

@@ -48,7 +48,6 @@ limitations under the License.
 #include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_pass_pipeline.h"
-#include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/service/spmd/custom_call_handler.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
@@ -4730,10 +4729,16 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
           for (int64_t i = 0; i < num_replicas; ++i) {
             groups[i].add_replica_ids(i);
           }
-          return b->AddInstruction(HloInstruction::CreateAllReduce(
-              operand->shape(), {operand}, reduction, groups,
-              /*constrain_layout=*/false, channel_id,
-              /*use_global_device_ids=*/false));
+          HloComputation* reduction_clone =
+              reduction->parent()->AddComputationAndUnifyNamesAndIds(
+                  reduction->Clone(), false);
+          HloInstruction* all_reduce =
+              b->AddInstruction(HloInstruction::CreateAllReduce(
+                  operand->shape(), {operand}, reduction_clone, groups,
+                  /*constrain_layout=*/false, channel_id,
+                  /*use_global_device_ids=*/false));
+          reduction_clone->SetCollectiveCallInstruction(all_reduce);
+          return all_reduce;
         }
 
         std::vector<ReplicaGroup> device_groups;
@@ -4746,10 +4751,16 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
             }
           }
         }
-        return b->AddInstruction(HloInstruction::CreateAllReduce(
-            operand->shape(), {operand}, reduction, device_groups,
-            /*constrain_layout=*/false, channel_id,
-            /*use_global_device_ids=*/true));
+        HloComputation* reduction_clone =
+            reduction->parent()->AddComputationAndUnifyNamesAndIds(
+                reduction->Clone(), false);
+        HloInstruction* all_reduce =
+            b->AddInstruction(HloInstruction::CreateAllReduce(
+                operand->shape(), {operand}, reduction_clone, device_groups,
+                /*constrain_layout=*/false, channel_id,
+                /*use_global_device_ids=*/true));
+        reduction_clone->SetCollectiveCallInstruction(all_reduce);
+        return all_reduce;
       },
       [num_partitions](SpmdBuilder* b, HloInstruction* operand,
                        std::vector<std::pair<int64_t, int64_t>>& src_dst_pairs,
@@ -5038,7 +5049,7 @@ StatusOr<bool> SpmdPartitioner::Run(
   } else {
     // Fix up some bad tiling in entry computation layout.
     auto update_shape = [this](Shape* subshape, const xla::ShapeIndex& index) {
-      if (subshape->IsArray()) {
+      if (subshape->IsArray() && subshape->has_layout()) {
         UpdateLayout(subshape);
       }
     };

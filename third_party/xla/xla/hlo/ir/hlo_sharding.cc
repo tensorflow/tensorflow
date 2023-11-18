@@ -47,7 +47,10 @@ namespace {
 
 using absl::StrCat;
 
-void GroupMinorIotaDimsSorted(absl::Span<const int64_t> dims,
+// Helper to group minor dimensions totaling a given group size while preserving
+// V2 format. Returns true if such grouping is successful, otherwise returns
+// false and will need to fallback to V1 sharding.
+bool GroupMinorIotaDimsSorted(absl::Span<const int64_t> dims,
                               absl::Span<const int> perm, int64_t group_size,
                               absl::InlinedVector<int64_t, 6>& new_dims,
                               absl::InlinedVector<int, 6>& new_perm) {
@@ -58,11 +61,15 @@ void GroupMinorIotaDimsSorted(absl::Span<const int64_t> dims,
     const int dim = perm[i];
     const int64_t dim_size = dims[dim];
     if (dim_size <= group_size) {
-      CHECK_EQ(group_size % dim_size, 0);
+      if (group_size % dim_size != 0) {
+        return false;
+      }
       group_size /= dim_size;
       ++grouped_dims;
     } else {
-      CHECK_EQ(dim_size % group_size, 0);
+      if (dim_size % group_size != 0) {
+        return false;
+      }
       split_dim_and_size.emplace(dim, dim_size / group_size);
       ++grouped_dims;
       group_size = 1;
@@ -73,7 +80,7 @@ void GroupMinorIotaDimsSorted(absl::Span<const int64_t> dims,
     new_dims.assign(dims.begin(), dims.end());
     new_perm.assign(perm.begin(), perm.end());
     std::stable_sort(new_perm.end() - grouped_dims, new_perm.end());
-    return;
+    return true;
   }
   new_dims.resize(dims.size() + 1);
   new_perm.resize(perm.size() + 1);
@@ -101,6 +108,7 @@ void GroupMinorIotaDimsSorted(absl::Span<const int64_t> dims,
     new_perm[i] = perm_dim <= split_i ? perm_dim : (perm_dim + 1);
   }
   std::stable_sort(new_perm.end() - grouped_dims, new_perm.end());
+  return true;
 }
 
 }  // namespace
@@ -148,11 +156,13 @@ HloSharding HloSharding::PartialTile(
     }
     absl::InlinedVector<int64_t, 6> new_reshape_dims;
     absl::InlinedVector<int, 6> new_transpose_perm;
-    GroupMinorIotaDimsSorted(iota.reshape_dims(), iota.transpose_perm(),
-                             group_size, new_reshape_dims, new_transpose_perm);
-    return HloSharding(
-        TileAssignment(iota.dims(), new_reshape_dims, new_transpose_perm),
-        /*replicate_on_last_tile_dim=*/true, metadata);
+    if (GroupMinorIotaDimsSorted(iota.reshape_dims(), iota.transpose_perm(),
+                                 group_size, new_reshape_dims,
+                                 new_transpose_perm)) {
+      return HloSharding(
+          TileAssignment(iota.dims(), new_reshape_dims, new_transpose_perm),
+          /*replicate_on_last_tile_dim=*/true, metadata);
+    }
   }
   // Full array representation handling.
   std::vector<int64_t> sorted_groups(
@@ -622,11 +632,6 @@ StatusOr<ShapeTree<HloSharding>> HloSharding::AsShapeTree(
     auto it = tuple_elements_.begin();
     for (auto& index_to_sharding : result.leaves()) {
       index_to_sharding.second = *it++;
-    }
-    if (ShapeUtil::IsEmptyTuple(shape)) {
-      // Empty tuples have no leaves, but we want to assign them a sharding
-      // anyway, so we use the root element sharding.
-      *result.mutable_element(ShapeIndex({})) = *it;
     }
     return std::move(result);
   } else {

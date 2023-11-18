@@ -80,12 +80,6 @@ class ServiceOptions {
 // (target-specific compiler, StreamExecutor).
 class Service : public ServiceInterface {
  public:
-  // Factory method for creating a new Service.
-  static StatusOr<std::unique_ptr<Service>> NewService(
-      se::Platform* platform = nullptr);
-  static StatusOr<std::unique_ptr<Service>> NewService(
-      const ServiceOptions& options);
-
   // Unregisters a previously-allocated global handle.
   //
   // If the handle given is not currently allocated, a NOT_FOUND status is
@@ -123,13 +117,6 @@ class Service : public ServiceInterface {
   // replica id 0.
   Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
                           GetDeviceHandlesResponse* result) override;
-
-  // Waits until the specified execution is complete and returns the result.
-  // Calling this API multiple times with the same execution handle returns the
-  // method with an error since the execution handle is destroyed after the
-  // first call.
-  Status WaitForExecution(const WaitForExecutionRequest* arg,
-                          WaitForExecutionResponse* result) override;
 
   // Requests that global data be transferred to the client in literal form.
   Status TransferToClient(const TransferToClientRequest* arg,
@@ -189,6 +176,12 @@ class Service : public ServiceInterface {
       absl::Span<const Shape* const> argument_shapes,
       const ExecutionOptions* execution_options,
       const AotCompilationOptions* aot_options = nullptr);
+
+  // Convenience function which checks whether the given client_shape
+  // (presumably passed by the client to set the result layout) is valid for the
+  // given computation result shape.
+  static Status ValidateResultShape(const Shape& client_shape,
+                                    const Shape& result_shape);
 
  private:
   // A private overload for Service itself, used by other methods within this
@@ -272,12 +265,6 @@ class Service : public ServiceInterface {
       absl::Span<const std::vector<std::vector<const ShapedBuffer*>>> arguments,
       Backend* backend, absl::Span<const DeviceHandle> device_handles,
       absl::Span<const std::string> result_tags, ExecutionProfile* profile);
-
-  // Convenience function which checks whether the given client_shape
-  // (presumably passed by the client to set the result layout) is valid for the
-  // given computation result shape.
-  Status ValidateResultShape(const Shape& client_shape,
-                             const Shape& result_shape) const;
 
   // Returns the stream executors assigned to the replicas represented by the
   // given device handle. Each device_handle is a virtual replicated device that

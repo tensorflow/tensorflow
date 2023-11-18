@@ -19,8 +19,8 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -57,16 +57,19 @@ class LaunchDimensions {
 
   Dim3D thread_counts_per_block() const { return thread_counts_per_block_; }
 
+  // Returns the total number of blocks.
+  int64_t num_blocks() const {
+    return block_counts_.x * block_counts_.y * block_counts_.z;
+  }
+
   // Returns the total number of threads in a block.
-  int64_t total_nb_threads() const {
+  int64_t num_threads_per_block() const {
     return thread_counts_per_block_.x * thread_counts_per_block_.y *
            thread_counts_per_block_.z;
   }
 
   int64_t launch_bound() const {
-    return block_counts_.x * thread_counts_per_block_.x * block_counts_.y *
-           thread_counts_per_block_.y * block_counts_.z *
-           thread_counts_per_block_.z;
+    return num_blocks() * num_threads_per_block();
   }
 
   std::string ToString() const {
@@ -119,13 +122,13 @@ struct LaunchDimensionsConfig {
 
 // Returns -1 if the shape doesn't allow the row vectorization code path.
 // If supported, return the number of threads to use in that case.
-int64_t ThreadsPerBlockRowVectorized(const Shape& shape,
-                                     const GpuDeviceInfo& gpu_device_info,
-                                     LaunchDimensionsConfig dim_config);
+int64_t ThreadsPerBlockRowVectorized(
+    const Shape& shape, const se::DeviceDescription& gpu_device_info,
+    LaunchDimensionsConfig dim_config);
 
 // Calculates the launch dimensions used to invoke `hlo`.
 StatusOr<LaunchDimensions> CalculateLaunchDimensions(
-    const Shape& shape, const GpuDeviceInfo& gpu_device_info,
+    const Shape& shape, const se::DeviceDescription& gpu_device_info,
     LaunchDimensionsConfig dim_config = {});
 
 }  // namespace gpu

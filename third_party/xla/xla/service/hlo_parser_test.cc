@@ -27,10 +27,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_frontend_attributes.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/window_util.h"
@@ -1814,7 +1817,7 @@ ENTRY CRS {
 // all-reduce with subgroups
 {
 "AllReduceWithSubgroups",
-R"(HloModule CRS_Subgroups, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}
+R"(HloModule CRS_Subgroups, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}, replica_count=4
 
 add {
   lhs = f32[] parameter(0)
@@ -1931,7 +1934,7 @@ ENTRY AllGather {
 // all-gather with subgroups
 {
 "AllGatherWithSubgroups",
-R"(HloModule AllGatherWithSubgroups, entry_computation_layout={(f32[128,32]{0,1})->f32[128,64]{0,1}}
+R"(HloModule AllGatherWithSubgroups, entry_computation_layout={(f32[128,32]{0,1})->f32[128,64]{0,1}}, replica_count=4
 
 ENTRY AllGatherWithSubgroups {
   input = f32[128,32]{0,1} parameter(0)
@@ -1956,7 +1959,7 @@ ENTRY AllToAll {
 // all-to-all with subgroups
 {
 "AllToAllWithSubgroups",
-R"(HloModule AllToAllWithSubgroups, entry_computation_layout={(f32[128,32]{0,1}, f32[128,32]{0,1})->(f32[128,32]{0,1}, f32[128,32]{0,1})}
+R"(HloModule AllToAllWithSubgroups, entry_computation_layout={(f32[128,32]{0,1}, f32[128,32]{0,1})->(f32[128,32]{0,1}, f32[128,32]{0,1})}, replica_count=4
 
 ENTRY AllToAllWithSubgroups {
   p0 = f32[128,32]{0,1} parameter(0)
@@ -1970,7 +1973,7 @@ ENTRY AllToAllWithSubgroups {
 // collective-permute
 {
 "CollectivePermute",
-R"(HloModule CollectivePermute, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}
+R"(HloModule CollectivePermute, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}, replica_count=4
 
 ENTRY CollectivePermute {
   input = f32[128,32]{0,1} parameter(0)
@@ -1983,7 +1986,7 @@ ENTRY CollectivePermute {
 // collective-permute with in-place updates
 {
 "CollectivePermuteInPlaceUpdate",
-R"(HloModule CollectivePermuteInPlaceUpdate, entry_computation_layout={(f32[128,32]{0,1})->f32[128,128]{0,1}}
+R"(HloModule CollectivePermuteInPlaceUpdate, entry_computation_layout={(f32[128,32]{0,1})->f32[128,128]{0,1}}, replica_count=4
 
 ENTRY CollectivePermuteInPlaceUpdate {
   input = f32[128,32]{0,1} parameter(0)
@@ -2002,7 +2005,7 @@ ENTRY CollectivePermuteInPlaceUpdate {
 // collective-permute with in-place updates with multiple targets per source
 {
 "CollectivePermuteInPlaceUpdateMultipleReadWrite",
-R"(HloModule CollectivePermuteInPlaceUpdateMultipleReadWrite, entry_computation_layout={(f32[8,8,128]{2,1,0})->f32[8,8,128]{2,1,0}}
+R"(HloModule CollectivePermuteInPlaceUpdateMultipleReadWrite, entry_computation_layout={(f32[8,8,128]{2,1,0})->f32[8,8,128]{2,1,0}}, replica_count=4
 
 ENTRY CollectivePermuteInPlaceUpdate {
   constant.3 = s32[] constant(2)
@@ -2026,7 +2029,7 @@ ENTRY CollectivePermuteInPlaceUpdate {
 },
 {
 "CollectivePermuteInPlaceUpdateTupleMultipleReadWrite",
-R"(HloModule hlo_runner_test_0.1, entry_computation_layout={()->(u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)})}
+R"(HloModule hlo_runner_test_0.1, entry_computation_layout={()->(u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)})}, replica_count=4
 
 ENTRY hlo_runner_test_0.1 {
   replica_id = u32[] replica-id()
@@ -2057,7 +2060,7 @@ ENTRY hlo_runner_test_0.1 {
 // collective-permute tuple with in-place updates
 {
 "CollectivePermuteTupleInPlaceUpdate",
-R"(HloModule CollectivePermuteTupleInPlaceUpdate, entry_computation_layout={(f32[128,32]{0,1})->(f32[128,128]{0,1}, f32[128,128]{0,1})}
+R"(HloModule CollectivePermuteTupleInPlaceUpdate, entry_computation_layout={(f32[128,32]{0,1})->(f32[128,128]{0,1}, f32[128,128]{0,1})}, replica_count=4
 
 ENTRY CollectivePermuteInPlaceUpdate {
   input = f32[128,32]{0,1} parameter(0)
@@ -2082,7 +2085,7 @@ ENTRY CollectivePermuteInPlaceUpdate {
 // collective-permute-start and -done with inplace update
 {
 "CollectivePermuteStartAndDone",
-R"(HloModule CollectivePermuteStartAndDone, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}
+R"(HloModule CollectivePermuteStartAndDone, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}, replica_count=4
 
 ENTRY CollectivePermuteStartAndDone {
   input = f32[128,32]{0,1} parameter(0)
@@ -2096,7 +2099,7 @@ ENTRY CollectivePermuteStartAndDone {
 // collective-permute-start and -done
 {
 "CollectivePermuteStartAndDoneInplaceUpdate",
-R"(HloModule CollectivePermuteStartAndDoneInplaceUpdate, entry_computation_layout={(f32[128,32]{0,1})->f32[128,128]{0,1}}
+R"(HloModule CollectivePermuteStartAndDoneInplaceUpdate, entry_computation_layout={(f32[128,32]{0,1})->f32[128,128]{0,1}}, replica_count=4
 
 ENTRY CollectivePermuteStartAndDoneInplaceUpdate {
   input = f32[128,32]{0,1} parameter(0)
@@ -4067,6 +4070,16 @@ TEST_F(HloParserTest, ParseShapeStringR2F32) {
       << "actual:   " << ShapeUtil::HumanString(actual);
 }
 
+TEST_F(HloParserTest, ParseShapeStringUnbounded) {
+  std::string shape_string = "f32[?,784]";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected =
+      ShapeUtil::MakeShape(F32, {Shape::kUnboundedSize, 784}, {true, false});
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
 TEST_F(HloParserTest, ParseShapeStringTupleOfArrays) {
   std::string shape_string = "(f32[1572864],s8[5120,1024])";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
@@ -4402,6 +4415,19 @@ ENTRY InferTernaryShape {
       ShapeUtil::MakeScalarShape(S32)));
 }
 
+TEST_F(HloParserTest, TupleTypo) {
+  constexpr char text[] = R"(HloModule TupleTypoTest
+ENTRY TupleTypo {
+  pow = s32[] constant(42)
+  ROOT v = (s32[]) tuple(power)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(text);
+  EXPECT_THAT(result.status(),
+              tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+                                     HasSubstr("instruction does not exist")));
+}
+
 TEST_F(HloParserTest, InferDotShape) {
   constexpr char text[] = R"(HloModule InferDotShapeTest
 ENTRY InferDotShape {
@@ -4470,6 +4496,56 @@ ENTRY TestComputation {
   auto result = ParseAndReturnVerifiedModule(hlo_string);
   TF_EXPECT_OK(result.status());
   EXPECT_TRUE(result.value()->config().alias_passthrough_params());
+}
+
+TEST_F(HloParserTest, CheckReplicaCount) {
+  const char* const hlo_string = R"(
+HloModule TestModule, replica_count=5
+
+ENTRY TestComputation {
+    p0 = f16[2048,1024] parameter(0)
+    p1 = f16[2048,1024] parameter(1)
+    ROOT root = (f16[2048,1024], f16[2048,1024]) tuple(p0, p1)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(hlo_string);
+  TF_EXPECT_OK(result.status());
+  EXPECT_EQ(result.value()->config().replica_count(), 5);
+}
+
+TEST_F(HloParserTest, CheckNumPartitions) {
+  const char* const hlo_string = R"(
+HloModule TestModule, num_partitions=3
+
+ENTRY TestComputation {
+    p0 = f16[2048,1024] parameter(0)
+    p1 = f16[2048,1024] parameter(1)
+    ROOT root = (f16[2048,1024], f16[2048,1024]) tuple(p0, p1)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(hlo_string);
+  TF_EXPECT_OK(result.status());
+  EXPECT_EQ(result.value()->config().num_partitions(), 3);
+  EXPECT_TRUE(result.value()->config().use_spmd_partitioning());
+}
+
+TEST_F(HloParserTest, CheckFrontendAttributes) {
+  const char* const hlo_string = R"(
+HloModule TestModule, frontend_attributes={attr_name="attr_value"}
+
+ENTRY TestComputation {
+    p0 = f16[2048,1024] parameter(0)
+    p1 = f16[2048,1024] parameter(1)
+    ROOT root = (f16[2048,1024], f16[2048,1024]) tuple(p0, p1)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(hlo_string);
+  TF_EXPECT_OK(result.status());
+  EXPECT_EQ(result.value()->frontend_attributes().map().size(), 1);
+  EXPECT_EQ(result.value()->frontend_attributes().map().begin()->first,
+            "attr_name");
+  EXPECT_EQ(result.value()->frontend_attributes().map().begin()->second,
+            "attr_value");
 }
 
 TEST_F(HloParserTest, CheckAllowSpmdShardingPropagationToOutput) {
@@ -4680,6 +4756,40 @@ comp2 {
   EXPECT_EQ(
       module->entry_computation()->ComputeProgramShape().result().layout(),
       Layout({1, 0, 2, 3}));
+}
+
+// Note that nontrivial async op is not legal semantics and should be rejected
+// by HloVerifier, but illegal modules should still be inspectable during
+// debugging.
+TEST_F(HloParserTest, NontrivialAsyncOpRoundTrip) {
+  const std::string original = R"(
+HloModule module
+
+%async_wrapped {
+  %async_param.1 = s32[1024]{0} parameter(0)
+  %copy = s32[1024]{0} copy(s32[1024]{0} %async_param.1)
+  %async_param.2 = s32[256]{0} parameter(1)
+  %async_param.3 = s32[] parameter(2)
+  ROOT %dus = s32[1024]{0} dynamic-update-slice(s32[1024]{0} %copy, s32[256]{0} %async_param.2, s32[] %async_param.3)
+}
+
+ENTRY %main {
+  %input.5 = s32[] parameter(1)
+  %broadcast = s32[1024]{0} broadcast(s32[] %input.5), dimensions={}
+  %input.0 = s32[256]{0} parameter(0)
+  %async-start = ((s32[1024]{0}, s32[256]{0}, s32[]), s32[1024]{0}, u32[]) async-start(%broadcast, %input.0, %input.5), async_group_id=0, calls=%async_wrapped
+  ROOT %async-done = s32[1024]{0} async-done(((s32[1024]{0}, s32[256]{0}, s32[]), s32[1024]{0}, u32[]) %async-start), async_group_id=0, calls=%async_wrapped
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(original));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto roundtrip_module,
+      ParseAndReturnUnverifiedModule(module->ToString(
+          HloPrintOptions().set_syntax_sugar_async_ops(true))));
+  auto fp_options = HloPrintOptions::Fingerprint();
+  EXPECT_EQ(roundtrip_module->ToString(fp_options),
+            module->ToString(fp_options));
 }
 
 TEST_F(HloParserTest, LexesAsJsonDict) {

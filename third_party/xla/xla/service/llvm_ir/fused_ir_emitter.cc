@@ -109,11 +109,7 @@ FusedIrEmitter::IndexedGenerator FusedIrEmitter::HandleConstant(
   global->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
 
   llvm::Type* shape_type = llvm_ir::ShapeToIrType(constant.shape(), module);
-  llvm::Constant* global_with_shape =
-      llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(
-          global, shape_type->getPointerTo());
-
-  IrArray array(global_with_shape, shape_type, constant.shape());
+  IrArray array(global, shape_type, constant.shape());
 
   return [&, b, array = std::move(array)](const IrArray::Index& index) {
     return array.EmitReadArrayElement(index, b, constant.name());

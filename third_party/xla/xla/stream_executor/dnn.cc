@@ -217,8 +217,20 @@ DnnSupport::FusedConvolveRunnerFromDesc(
       "FusedConvolveRunnerFromDesc not implemented.");
 }
 
-tsl::StatusOr<std::unique_ptr<const dnn::FusedMHASoftmaxRunner>>
-DnnSupport::FusedMHASoftmaxRunnerFromDesc(
+tsl::StatusOr<std::unique_ptr<const dnn::NormRunner>>
+DnnSupport::NormRunnerFromDesc(
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc, double epsilon,
+    const dnn::TensorDescriptor& input_descriptor,
+    const dnn::TensorDescriptor& scale_descriptor,
+    const dnn::TensorDescriptor& bias_descriptor,
+    const dnn::TensorDescriptor& output_descriptor,
+    std::optional<dnn::TensorDescriptor> expectation_descriptor,
+    std::optional<dnn::TensorDescriptor> norm_factor_descriptor) {
+  return absl::UnimplementedError("NormRunnerFromDesc not implemented.");
+}
+
+tsl::StatusOr<std::unique_ptr<const dnn::FusedMHARunner>>
+DnnSupport::FusedMHARunnerFromDesc(
     Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
     dnn::FusedMHAKind kind,
     const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
@@ -227,62 +239,15 @@ DnnSupport::FusedMHASoftmaxRunnerFromDesc(
     const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
     const dnn::TensorDescriptor& output_descriptor,
     std::optional<dnn::TensorDescriptor> activation_descriptor,
-    std::optional<double> dropout_rate, std::optional<int64_t> seed) {
-  return absl::UnimplementedError(
-      "FusedMHASoftmaxRunnerFromDesc not implemented.");
+    std::optional<dnn::TensorDescriptor> mask_descriptor,
+    std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
+    std::optional<double> dropout_rate, std::optional<int64_t> seed,
+    bool is_flash_attention, bool is_causal_mask) {
+  return absl::UnimplementedError("FusedMHARunnerFromDesc not implemented.");
 }
 
-tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskRunner>>
-DnnSupport::FusedMHAScaleMaskSoftmaxRunnerFromDesc(
-    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
-    dnn::FusedMHAKind kind,
-    const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
-    const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
-    const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
-    const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
-    const dnn::TensorDescriptor& output_descriptor,
-    std::optional<dnn::TensorDescriptor> activation_descriptor,
-    const dnn::TensorDescriptor& mask_descriptor, double scale,
-    std::optional<double> dropout_rate, std::optional<int64_t> seed) {
-  return absl::UnimplementedError(
-      "FusedMHAScaleMaskSoftmaxRunnerFromDesc not implemented.");
-}
-
-tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABiasMaskRunner>>
-DnnSupport::FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc(
-    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
-    dnn::FusedMHAKind kind,
-    const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
-    const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
-    const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
-    const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
-    const dnn::TensorDescriptor& output_descriptor,
-    std::optional<dnn::TensorDescriptor> activation_descriptor,
-    const dnn::TensorDescriptor& mask_descriptor,
-    const dnn::TensorDescriptor& bias_descriptor, double scale,
-    std::optional<double> dropout_rate, std::optional<int64_t> seed) {
-  return absl::UnimplementedError(
-      "FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc not implemented.");
-}
-
-tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABiasRunner>>
-DnnSupport::FusedMHAScaleBiasSoftmaxRunnerFromDesc(
-    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
-    dnn::FusedMHAKind kind,
-    const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
-    const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
-    const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
-    const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
-    const dnn::TensorDescriptor& output_descriptor,
-    std::optional<dnn::TensorDescriptor> activation_descriptor,
-    const dnn::TensorDescriptor& bias_descriptor, double scale,
-    std::optional<double> dropout_rate, std::optional<int64_t> seed) {
-  return absl::UnimplementedError(
-      "FusedMHAScaleBiasSoftmaxRunnerFromDesc not implemented.");
-}
-
-tsl::StatusOr<std::unique_ptr<const dnn::FusedMHASoftmaxBackwardRunner>>
-DnnSupport::FusedMHASoftmaxBackwardRunnerFromDesc(
+tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABackwardRunner>>
+DnnSupport::FusedMHABackwardRunnerFromDesc(
     Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
     dnn::FusedMHAKind kind,
     const MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor,
@@ -293,31 +258,15 @@ DnnSupport::FusedMHASoftmaxBackwardRunnerFromDesc(
     const TensorDescriptor& d_bmm1_lhs_descriptor,
     const TensorDescriptor& d_bmm1_rhs_descriptor,
     const TensorDescriptor& d_bmm2_rhs_descriptor,
-    const TensorDescriptor& d_s_descriptor,
-    std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
-    std::optional<double> dropout_rate, std::optional<int64_t> seed) {
+    std::optional<dnn::TensorDescriptor> d_s_descriptor,
+    std::optional<dnn::TensorDescriptor> mask_descriptor,
+    std::optional<dnn::TensorDescriptor> d_bias_descriptor,
+    std::optional<dnn::TensorDescriptor> fwd_output_descriptor,
+    std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
+    std::optional<double> dropout_rate, std::optional<int64_t> seed,
+    bool is_flash_attention, bool is_causal_mask) {
   return absl::UnimplementedError(
-      "FusedMHASoftmaxBackwardRunnerFromDesc not implemented.");
-}
-
-tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskBackwardRunner>>
-DnnSupport::FusedMHAScaleMaskSoftmaxBackwardRunnerFromDesc(
-    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
-    dnn::FusedMHAKind kind,
-    const MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor,
-    const MatmulTensorDescriptor& bmm1_grad_gemm2_rhs_descriptor,
-    const MatmulTensorDescriptor& bmm2_grad_gemm1_lhs_descriptor,
-    const MatmulTensorDescriptor& bmm2_grad_gemm2_rhs_descriptor,
-    const MatmulTensorDescriptor& d_output_descriptor,
-    const TensorDescriptor& d_bmm1_lhs_descriptor,
-    const TensorDescriptor& d_bmm1_rhs_descriptor,
-    const TensorDescriptor& d_bmm2_rhs_descriptor,
-    const TensorDescriptor& d_s_descriptor,
-    const TensorDescriptor& mask_descriptor,
-    std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
-    std::optional<double> dropout_rate, std::optional<int64_t> seed) {
-  return absl::UnimplementedError(
-      "FusedMHAScaleMaskSoftmaxBackwardRunnerFromDesc not implemented.");
+      "FusedMHABackwardRunnerFromDesc not implemented.");
 }
 
 bool DnnSupport::GetMIOpenConvolveAlgorithms(

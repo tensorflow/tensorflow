@@ -13,8 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import List
-
 class FunctionParameterCanonicalizer:
-    def __init__(self, arg0: List[str], arg1: tuple) -> None: ...
+    def __init__(self, arg0: list[str], arg1: tuple) -> None: ...
     def canonicalize(self, *args, **kwargs) -> list: ...

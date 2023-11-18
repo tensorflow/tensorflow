@@ -33,8 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
 
-namespace mlir {
-namespace stablehlo {
+namespace mlir::quant::tensorflow {
 
 bool IsTFQintType(Type type) {
   return type.isa<TF::Qint8Type, TF::Qint16Type, TF::Qint32Type, TF::Quint8Type,
@@ -62,25 +61,25 @@ Type GetIntTypeFromTFQint(Type type) {
 
 FailureOr<mlir::DenseElementsAttr> GetDenseAttrFromTensorProtoAttr(
     llvm::StringRef mangled_tensor_proto, TensorType tensor_type) {
-  tensorflow::TensorProto tensor_proto;
-  tensorflow::Status status = tensorflow::mangling_util::DemangleTensor(
+  ::tensorflow::TensorProto tensor_proto;
+  ::tensorflow::Status status = ::tensorflow::mangling_util::DemangleTensor(
       mangled_tensor_proto, &tensor_proto);
   if (!status.ok()) {
     return failure();
   }
 
-  tensorflow::Tensor t;
+  ::tensorflow::Tensor t;
   if (!t.FromProto(tensor_proto)) {
     return failure();
   }
 
-  if (t.dtype() == tensorflow::DT_QINT8) {
-    auto arr = t.flat<tensorflow::qint8>();
+  if (t.dtype() == ::tensorflow::DT_QINT8) {
+    auto arr = t.flat<::tensorflow::qint8>();
     return mlir::DenseElementsAttr::get(
         tensor_type.clone(IntegerType::get(tensor_type.getContext(), 8)),
         llvm::ArrayRef(arr.data(), arr.size()));
-  } else if (t.dtype() == tensorflow::DT_QINT32) {
-    auto arr = t.flat<tensorflow::qint32>();
+  } else if (t.dtype() == ::tensorflow::DT_QINT32) {
+    auto arr = t.flat<::tensorflow::qint32>();
     return mlir::DenseElementsAttr::get(
         tensor_type.clone(IntegerType::get(tensor_type.getContext(), 32)),
         llvm::ArrayRef(arr.data(), arr.size()));
@@ -107,5 +106,4 @@ bool IsTFUniformQuantizedOp(Operation *op) {
       >(op);
 }
 
-}  // namespace stablehlo
-}  // namespace mlir
+}  // namespace mlir::quant::tensorflow

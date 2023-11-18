@@ -1,8 +1,8 @@
-load("//xla:xla.bzl", "xla_cc_test")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("//xla:xla.bzl", "xla_cc_test")
+load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@local_tsl//tsl/platform:build_config.bzl", "if_llvm_system_z_available")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -33,6 +33,7 @@ cc_library(
         "convert_asserts.cc",
         "convert_custom_calls.cc",
         "export_functions.cc",
+        "move_allocas_to_entry_block.cc",
         "ordinal_assignment.cc",
         "rt_to_llvm.cc",
     ],
@@ -47,20 +48,20 @@ cc_library(
         "//xla/runtime:custom_call",
         "//xla/runtime:tracing",
         "//xla/runtime:type_id",
+        "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:ControlFlowDialect",
         "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:FuncToLLVM",
         "@llvm-project//mlir:FuncTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -103,11 +104,11 @@ cc_library(
     deps = [
         ":compilation_pipeline_options",
         ":compiler",
-        ":custom_call_encoding",
         ":passes",
         "//xla/mlir/backends/cpu/transforms:passes",
         "//xla/mlir/math/transforms:passes",
         "//xla/mlir/memref/transforms:passes",
+        "//xla/mlir/runtime/ir:rt",
         "//xla/mlir_hlo:transforms_passes",
         "//xla/runtime:compiler",
         "@llvm-project//mlir:AMXToLLVMIRTranslation",
@@ -125,24 +126,21 @@ cc_library(
         "@llvm-project//mlir:ControlFlowDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",
-        "@llvm-project//mlir:FuncToLLVM",
         "@llvm-project//mlir:GPUToGPURuntimeTransforms",
         "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
+        "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MathToLLVM",
-        "@llvm-project//mlir:MathToLibm",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:MemRefToLLVM",
         "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:SCFToControlFlow",
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Transforms",
-        "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:X86VectorToLLVMIRTranslation",
     ],
     alwayslink = 1,  # has pipeline registration
@@ -218,7 +216,7 @@ cc_library(
         "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:Support",
-        "@tf_runtime//:async_value",
+        "@local_tsl//tsl/concurrency:async_value",
     ],
 )
 

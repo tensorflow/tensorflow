@@ -43,7 +43,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/map_util.h"
-#include "xla/service/memory_space_assignment_repacking.h"
+#include "xla/service/memory_space_assignment/repacking.h"
+#include "xla/service/time_utils.h"
 #include "xla/status.h"
 #include "xla/util.h"
 
@@ -757,7 +758,7 @@ bool BufferIntervalTree::Remove(int64_t start, int64_t end,
     //      /
     //    left
     if (root_ == to_delete) {
-      // Deleting root is simply reseting root;
+      // Deleting root is simply resetting root;
       root_ = to_delete->left;
       return true;
     }
@@ -927,14 +928,27 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedBufferInterval::Slice(
 
 template <typename BufferType>
 void GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedBufferInterval::
-    UpdateSliceStartTimes(const std::vector<int64_t>& start_times) {
-  CHECK_EQ(start_times.size(), num_slices());
+    UpdateExclusiveSliceStartTimes(
+        const std::vector<int64_t>& exclusive_start_times) {
+  std::vector<int64_t> inclusive_start_times = exclusive_start_times;
+  absl::c_for_each(inclusive_start_times,
+                   [](int64_t& t) { t = ExclusiveToInclusiveStartTime(t); });
+  UpdateInclusiveSliceStartTimes(inclusive_start_times);
+}
+
+template <typename BufferType>
+void GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedBufferInterval::
+    UpdateInclusiveSliceStartTimes(
+        const std::vector<int64_t>& inclusive_start_times) {
+  CHECK_EQ(inclusive_start_times.size(), num_slices());
   CHECK(mutable_full_buffer_interval_ != nullptr);
-  mutable_full_buffer_interval_->start = start_times.front();
+  mutable_full_buffer_interval_->start = inclusive_start_times.front();
   for (size_t slice_time = 0; slice_time < num_slices(); ++slice_time) {
-    make_free_chunks_intervals_[slice_time].start = start_times[slice_time];
+    make_free_chunks_intervals_[slice_time].start =
+        inclusive_start_times[slice_time];
     if (slice_time != num_slices() - 1) {
-      make_free_chunks_intervals_[slice_time].end = start_times[slice_time + 1];
+      make_free_chunks_intervals_[slice_time].end =
+          ExclusiveToInclusiveEndTime(inclusive_start_times[slice_time + 1]);
     } else {
       make_free_chunks_intervals_[slice_time].end = full_buffer_interval_.end;
     }
@@ -1493,7 +1507,7 @@ Status GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
 
 namespace {
 
-// An iterator for iterating through permuations of slice times.
+// An iterator for iterating through permutations of slice times.
 class SliceTimePermutationIterator {
  public:
   explicit SliceTimePermutationIterator(int64_t latest_slice_time)
@@ -1890,7 +1904,7 @@ ChooseBestHeapAlgorithm<BufferType>::Finish() {
 
 template class GlobalDecreasingSizeBestFitHeap<HloValue>;
 template class GlobalDecreasingSizeBestFitHeap<
-    MemorySpaceAssignmentRepacker::AllocationBlock>;
+    memory_space_assignment::MemorySpaceAssignmentRepacker::AllocationBlock>;
 template class ChooseBestHeapAlgorithm<HloValue>;
 
 }  // namespace xla

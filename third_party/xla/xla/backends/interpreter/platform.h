@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "xla/backends/interpreter/platform_id.h"
 #include "xla/stream_executor/executor_cache.h"
-#include "xla/stream_executor/plugin.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/trace_listener.h"
 
@@ -60,7 +59,8 @@ class XlaInterpreterPlatform : public Platform {
   // Cache of created StreamExecutors.
   ExecutorCache executor_cache_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(XlaInterpreterPlatform);
+  XlaInterpreterPlatform(const XlaInterpreterPlatform&) = delete;
+  void operator=(const XlaInterpreterPlatform&) = delete;
 };
 
 }  // namespace interpreter

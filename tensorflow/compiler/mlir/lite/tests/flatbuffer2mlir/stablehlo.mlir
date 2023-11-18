@@ -1,4 +1,4 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_translate --tflite-flatbuffer-to-mlir - -o - | FileCheck %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer --emit-stablehlo-ops=true %s -o - | flatbuffer_translate --tflite-flatbuffer-to-mlir - -o - | FileCheck %s
 // test stablehlo roundtrip
 
 // Identity function to make the exporter happy
@@ -355,7 +355,7 @@ func.func @reduce_window(%arg0: tensor<1x160x1xf32>, %arg1: tensor<f32>) -> tens
     ^bb0(%arg23: tensor<f32>, %arg24: tensor<f32>):
       %1112 = stablehlo.add %arg23, %arg24 : tensor<f32>
       stablehlo.return %1112 : tensor<f32>
-    }) {padding = dense<[[0, 0], [159, 0], [0, 0]]> : tensor<3x2xi64>, window_dimensions = dense<[1, 160, 1]> : tensor<3xi64>, window_strides = dense<1> : tensor<3xi64>} : (tensor<1x160x1xf32>, tensor<f32>) -> tensor<1x160x1xf32>
+    }) {base_dilations = dense<1> : tensor<3xi64>, padding = dense<[[0, 0], [159, 0], [0, 0]]> : tensor<3x2xi64>, window_dilations = dense<1> : tensor<3xi64>, window_dimensions = dense<[1, 160, 1]> : tensor<3xi64>, window_strides = dense<1> : tensor<3xi64>} : (tensor<1x160x1xf32>, tensor<f32>) -> tensor<1x160x1xf32>
   return %0 : tensor<1x160x1xf32>
 }
 
@@ -364,7 +364,7 @@ func.func @reduce_window(%arg0: tensor<1x160x1xf32>, %arg1: tensor<f32>) -> tens
 //CHECK-NEXT:  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
 //CHECK-NEXT:   %1 = stablehlo.add %arg2, %arg3 : tensor<f32>
 //CHECK-NEXT:   stablehlo.return %1 : tensor<f32>
-//CHECK-NEXT{LITERAL}:  }) {padding = dense<[[0, 0], [159, 0], [0, 0]]> : tensor<3x2xi64>, window_dimensions = dense<[1, 160, 1]> : tensor<3xi64>, window_strides = dense<1> : tensor<3xi64>} : (tensor<1x160x1xf32>, tensor<f32>) -> tensor<1x160x1xf32>
+//CHECK-NEXT{LITERAL}:  }) {base_dilations = dense<1> : tensor<3xi64>, padding = dense<[[0, 0], [159, 0], [0, 0]]> : tensor<3x2xi64>, window_dilations = dense<1> : tensor<3xi64>, window_dimensions = dense<[1, 160, 1]> : tensor<3xi64>, window_strides = dense<1> : tensor<3xi64>} : (tensor<1x160x1xf32>, tensor<f32>) -> tensor<1x160x1xf32>
 //CHECK-NEXT: return %0 : tensor<1x160x1xf32>
 //CHECK-NEXT:}
 
@@ -529,6 +529,37 @@ func.func @transpose(%arg0: tensor<2x3x2xi32>) -> tensor<2x3x2xi32> {
 }
 
 // CHECK:func.func private @transpose(%arg0: tensor<2x3x2xi32>) -> tensor<2x3x2xi32> {
-// CHECK-NEXT:  %0 = stablehlo.transpose %arg0, dims = [2, 1, 0] : (tensor<2x3x2xi32>) -> tensor<2x3x2xi32> 
+// CHECK-NEXT:  %0 = stablehlo.transpose %arg0, dims = [2, 1, 0] : (tensor<2x3x2xi32>) -> tensor<2x3x2xi32>
 // CHECK-NEXT:  return %0 : tensor<2x3x2xi32>
+// CHECK-NEXT:}
+
+func.func @rng_bit_generator(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui32>) {
+  %output_state, %output = "stablehlo.rng_bit_generator"(%arg0) {rng_algorithm = #stablehlo<rng_algorithm DEFAULT>} : (tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui32>)
+  func.return %output_state, %output : tensor<2xui64>, tensor<10x12xui32>
+}
+
+// CHECK:func.func private @rng_bit_generator(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui32>) {
+// CHECK-NEXT:  %output_state, %output = stablehlo.rng_bit_generator %arg0, algorithm = DEFAULT : (tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui32>)
+// CHECK-NEXT:  return %output_state, %output : tensor<2xui64>, tensor<10x12xui32>
+// CHECK-NEXT:}
+
+func.func @rng_bit_generator_threefry(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui64>) {
+  %output_state, %output = "stablehlo.rng_bit_generator"(%arg0) {rng_algorithm = #stablehlo<rng_algorithm THREE_FRY>} : (tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui64>)
+  func.return %output_state, %output : tensor<2xui64>, tensor<10x12xui64>
+}
+
+// CHECK:func.func private @rng_bit_generator_threefry(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui64>) {
+// CHECK-NEXT:  %output_state, %output = stablehlo.rng_bit_generator %arg0, algorithm = THREE_FRY : (tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui64>)
+// CHECK-NEXT:  return %output_state, %output : tensor<2xui64>, tensor<10x12xui64>
+// CHECK-NEXT:}
+
+
+func.func @rng_bit_generator_philox(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xi32>) {
+  %output_state, %output = "stablehlo.rng_bit_generator"(%arg0) {rng_algorithm = #stablehlo<rng_algorithm PHILOX>} : (tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xi32>)
+  func.return %output_state, %output : tensor<2xui64>, tensor<10x12xi32>
+}
+
+// CHECK:func.func private @rng_bit_generator_philox(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xi32>) {
+// CHECK-NEXT:  %output_state, %output = stablehlo.rng_bit_generator %arg0, algorithm = PHILOX : (tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xi32>)
+// CHECK-NEXT:  return %output_state, %output : tensor<2xui64>, tensor<10x12xi32>
 // CHECK-NEXT:}

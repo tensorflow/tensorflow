@@ -259,15 +259,18 @@ class AsyncCheckpointHelper:
     # 2. Slot variables: they need to be handled differently as they cannot be
     # retrieved from `TrackableView.descendants()`.
 
-    # Special case 1: TPU Embedding, populate object_map here
-    for t in self._saveable_trackables:
-      if hasattr(t, _TPU_EMBEDDING_ATTR):
-        self._handle_tpu_embedding(t)
-
     # Note: dir() is used rather than hasattr() here to avoid triggering
     # custom __getattr__ code, see b/152031870 for context.
-    # Special case 2: slot variables, populate object_map later
     for t in all_trackables:
+      # Special case 1: TPU Embedding, populate object_map here
+      # Special case 1: Handle TPU Embedding by addnig a dummy instance to the
+      # object map. Also add TPUEmbedding to separate list for special handling
+      # with values copy.
+      if hasattr(type(t), _TPU_EMBEDDING_ATTR):
+        self._handle_tpu_embedding(t)
+      # Special case 2: handle slot variables. The object_map is populated later
+      # when the variable values are being copied to host CPU for the first
+      # time.
       if "get_slot_names" in dir(t):
         slot_names = t.get_slot_names()
         for slot_name in slot_names:
@@ -411,9 +414,9 @@ class AsyncCheckpointHelper:
     Raises:
       AttributeError: if the input trackable is not TPUEmbedding type.
     """
-    if not hasattr(
-        tpu_embedding, _TPU_EMBEDDING_ATTR
-    ) or not callable(tpu_embedding._create_copy_for_async_checkpoint):  # pylint: disable=protected-access
+    if not hasattr(type(tpu_embedding), _TPU_EMBEDDING_ATTR) or not callable(
+        tpu_embedding._create_copy_for_async_checkpoint  # pylint: disable=protected-access
+    ):
       raise AttributeError(
           "Expecting TPUEmbedding type; got %s" % type(tpu_embedding)
       )

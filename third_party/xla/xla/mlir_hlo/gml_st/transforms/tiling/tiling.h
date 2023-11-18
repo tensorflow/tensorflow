@@ -26,7 +26,8 @@ limitations under the License.
 namespace mlir::gml_st {
 
 // Creates SCFTilingOptions from the list of tile sizes.
-scf::SCFTilingOptions getSCFTilingOptions(ArrayRef<int64_t> tileSizes);
+scf::SCFTilingOptions getSCFTilingOptions(MLIRContext *context,
+                                          ArrayRef<int64_t> tileSizes);
 
 /// Returns `failure`, when there occurs a problem during tiling. If the tile
 /// sizes are smaller then the iteration domain of the op, it will still create

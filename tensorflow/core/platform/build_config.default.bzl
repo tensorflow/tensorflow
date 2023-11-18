@@ -1,23 +1,22 @@
 """OSS versions of Bazel macros that can't be migrated to TSL."""
 
-load(
-    "//tensorflow/core/platform:build_config_root.bzl",
-    "if_static",
-)
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "@local_xla//xla:xla.bzl",
     _xla_clean_dep = "clean_dep",
 )
 load(
-    "@local_tsl//tsl:tsl.bzl",
-    "if_libtpu",
-    _tsl_clean_dep = "clean_dep",
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl_ml",
+)
+load(
+    "@local_tsl//tsl:tsl.bzl",
+    "if_libtpu",
+    _tsl_clean_dep = "clean_dep",
 )
 
 def tf_tpu_dependencies():
@@ -34,11 +33,7 @@ def tf_additional_binary_deps():
         # core.
         str(Label("//tensorflow/core/kernels:lookup_util")),
         str(Label("//tensorflow/core/util/tensor_bundle")),
-    ] + if_cuda(
-        [
-            str(Label("@local_xla//xla/stream_executor:cuda_platform")),
-        ],
-    ) + if_rocm(
+    ] + if_rocm(
         [
             str(Label("@local_xla//xla/stream_executor:rocm_platform")),
             str(Label("@local_xla//xla/stream_executor/rocm:rocm_rpath")),
@@ -54,6 +49,7 @@ def tf_protos_all():
         extra_deps = [
             str(Label("//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl")),
             str(Label("//tensorflow/core:protos_all_cc_impl")),
+            _xla_clean_dep("@local_xla//xla:autotune_results_proto_cc_impl"),
             _xla_clean_dep("@local_xla//xla:autotuning_proto_cc_impl"),
             _tsl_clean_dep("@local_tsl//tsl/protobuf:protos_all_cc_impl"),
         ],

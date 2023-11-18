@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
+#include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/python/py_buffer.h"
 #include "xla/python/py_values.h"
 #include "xla/python/python_ref_manager.h"
@@ -711,6 +713,9 @@ StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(
     GlobalPyRefManager()->CollectGarbage();
     py::gil_scoped_release gil_release;
     std::shared_ptr<const ifrt::Sharding> ifrt_sharding;
+    // The sharding conversions are tried in the order of narrowness (e.g.,
+    // ShardingParamSharding is an IFRT-level sharding, whereas HloSharding is
+    // a IFRT-XLA level sharding).
     if (llvm::isa<ifrt::SingleDeviceSharding>(ifrt_array_ptr->sharding())) {
       ifrt_sharding =
           ifrt::SingleDeviceSharding::Create(devices[0], dst_memory_kind);
@@ -732,11 +737,25 @@ StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(
       ifrt_sharding = ifrt::ConcreteEvenSharding::Create(
           std::move(devices), dst_memory_kind, in_sharding->shape(),
           in_sharding->shard_shape());
+    } else if (const auto* in_sharding =
+                   llvm::dyn_cast<ifrt::ShardingParamSharding>(
+                       &ifrt_array_ptr->sharding());
+               in_sharding != nullptr) {
+      TF_ASSIGN_OR_RETURN(ifrt_sharding,
+                          ifrt::ShardingParamSharding::Create(
+                              in_sharding->sharding_param(), std::move(devices),
+                              dst_memory_kind));
+    } else if (const auto* in_sharding = llvm::dyn_cast<ifrt::HloSharding>(
+                   &ifrt_array_ptr->sharding());
+               in_sharding != nullptr) {
+      ifrt_sharding = ifrt::HloSharding::Create(
+          std::move(devices), dst_memory_kind, in_sharding->xla_hlo_sharding());
     } else {
       return InvalidArgument(
           "resharding only supported for ifrt::SingleDeviceSharding, "
-          "ifrt::OpaqueSharding, ifrt::ConcreteSharding, and "
-          "ifrt::ConcreteEvenSharding");
+          "ifrt::OpaqueSharding, ifrt::ConcreteSharding, "
+          "ifrt::ConcreteEvenSharding, ifrt::ShardingParamSharding, and "
+          "ifrt::HloSharding.");
     }
     TF_ASSIGN_OR_RETURN(out_array, ifrt_array_ptr->Reshard(
                                        std::move(ifrt_sharding),
@@ -1110,7 +1129,14 @@ Status PyArray::RegisterTypes(py::module& m) {
       },
       py::is_method(type));
   type.attr("platform") = py::cpp_function(
-      [](PyArray self) { return self.ifrt_array()->client()->platform_name(); },
+      [](PyArray self) {
+        if (self.ifrt_array()->client()->platform_name() == "cuda" ||
+            self.ifrt_array()->client()->platform_name() == "rocm") {
+          return absl::string_view("gpu");
+        } else {
+          return self.ifrt_array()->client()->platform_name();
+        }
+      },
       py::is_method(type));
   type.attr("is_ready") = py::cpp_function(
       [](PyArray self) { return xla::ValueOrThrow(self.IsReady()); },

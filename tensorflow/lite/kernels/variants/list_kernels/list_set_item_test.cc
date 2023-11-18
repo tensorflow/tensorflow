@@ -29,12 +29,13 @@ limitations under the License.
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
-using ::testing::Each;
 
 namespace tflite {
 namespace variants {
 namespace ops {
 namespace {
+
+using ::testing::AllOf;
 
 template <typename T>
 class SetItemWithTypeTest : public ::testing::Test {};
@@ -69,44 +70,6 @@ class ListSetItemModel : public ListOpModel {
   int list_output_;
 };
 
-template <typename TypeParam>
-void CheckItemAt(const TensorArray& arr, int idx,
-                 const std::vector<int>& expected_dims,
-                 TfLiteType expected_type, int expected_fill_value) {
-  const TfLiteTensor* tensor = arr.At(idx);
-  ASSERT_NE(tensor, nullptr);
-  ASSERT_EQ(tensor->type, expected_type);
-
-  std::optional<size_t> type_size = TfLiteTypeSizeOf(expected_type);
-  TFLITE_CHECK(type_size.has_value());
-
-  EXPECT_EQ(tensor->bytes, type_size.value() * NumElements(tensor));
-  ASSERT_THAT(tensor, DimsAre(expected_dims));
-
-  const TypeParam* element_data =
-      reinterpret_cast<TypeParam*>(tensor->data.data);
-  ASSERT_NE(element_data, nullptr);
-
-  EXPECT_THAT(
-      std::vector<TypeParam>(element_data, element_data + NumElements(tensor)),
-      Each(expected_fill_value));
-}
-
-std::optional<TensorType> TflToTensorType(TfLiteType tfl_type) {
-  switch (tfl_type) {
-    case kTfLiteInt32:
-      return TensorType_INT32;
-    case kTfLiteFloat32:
-      return TensorType_FLOAT32;
-    case kTfLiteInt64:
-      return TensorType_INT64;
-    case kTfLiteBool:
-      return TensorType_BOOL;
-    default:
-      return std::nullopt;
-  }
-}
-
 constexpr int kNumElements = 4;
 
 TYPED_TEST_SUITE_P(SetItemWithTypeTest);
@@ -133,22 +96,8 @@ TYPED_TEST_P(SetItemWithTypeTest, SetItemOnEmptyTensorList_ListShapeDefined) {
     EXPECT_EQ(arr->At(i), nullptr);
   }
 
-  const TfLiteTensor* element_tensor = arr->At(0);
-  ASSERT_NE(element_tensor, nullptr);
-
-  std::optional<size_t> type_size = TfLiteTypeSizeOf(tfl_type);
-  TFLITE_CHECK(type_size.has_value());
-
-  EXPECT_EQ(element_tensor->type, tfl_type);
-  EXPECT_EQ(element_tensor->bytes, type_size.value() * 4);
-  ASSERT_THAT(element_tensor, DimsAre({2, 2}));
-
-  const TypeParam* element_data =
-      reinterpret_cast<TypeParam*>(element_tensor->data.data);
-  ASSERT_NE(element_data, nullptr);
-
-  EXPECT_THAT(std::vector<TypeParam>(element_data, element_data + kNumElements),
-              Each(0));
+  EXPECT_THAT(arr->At(0), AllOf(IsAllocatedAs(tfl_type), DimsAre({2, 2}),
+                                FilledWith(static_cast<TypeParam>(0))));
 }
 
 TYPED_TEST_P(SetItemWithTypeTest, SetItemOnEmptyTensorList_ListShapeUnranked) {
@@ -173,8 +122,8 @@ TYPED_TEST_P(SetItemWithTypeTest, SetItemOnEmptyTensorList_ListShapeUnranked) {
     EXPECT_EQ(arr->At(i), nullptr);
   }
 
-  CheckItemAt<TypeParam>(*arr, /*idx=*/0, {2, 2}, tfl_type,
-                         /*expected_fill_value=*/0);
+  EXPECT_THAT(arr->At(0), AllOf(IsAllocatedAs(tfl_type), DimsAre({2, 2}),
+                                FilledWith(static_cast<TypeParam>(0))));
 }
 
 TYPED_TEST_P(SetItemWithTypeTest, OverwriteSetItem_ItemsSameShape) {
@@ -203,8 +152,8 @@ TYPED_TEST_P(SetItemWithTypeTest, OverwriteSetItem_ItemsSameShape) {
     EXPECT_EQ(arr->At(i), nullptr);
   }
 
-  CheckItemAt<TypeParam>(*arr, /*idx=*/0, {2, 2}, tfl_type,
-                         /*expected_fill_value=*/0);
+  EXPECT_THAT(arr->At(0), AllOf(IsAllocatedAs(tfl_type), DimsAre({2, 2}),
+                                FilledWith(static_cast<TypeParam>(0))));
 }
 
 TYPED_TEST_P(SetItemWithTypeTest,
@@ -234,10 +183,10 @@ TYPED_TEST_P(SetItemWithTypeTest,
     EXPECT_EQ(arr->At(i), nullptr);
   }
 
-  CheckItemAt<TypeParam>(*arr, /*idx=*/0, {2, 2}, tfl_type,
-                         /*expected_fill_value=*/1);
-  CheckItemAt<TypeParam>(*arr, /*idx=*/1, {2, 2}, tfl_type,
-                         /*expected_fill_value=*/0);
+  EXPECT_THAT(arr->At(0), AllOf(IsAllocatedAs(tfl_type), DimsAre({2, 2}),
+                                FilledWith(static_cast<TypeParam>(1))));
+  EXPECT_THAT(arr->At(1), AllOf(IsAllocatedAs(tfl_type), DimsAre({2, 2}),
+                                FilledWith(static_cast<TypeParam>(0))));
 }
 
 TYPED_TEST_P(SetItemWithTypeTest, OverwriteSetItem_ItemsDifferentShape) {
@@ -266,8 +215,8 @@ TYPED_TEST_P(SetItemWithTypeTest, OverwriteSetItem_ItemsDifferentShape) {
     EXPECT_EQ(arr->At(i), nullptr);
   }
 
-  CheckItemAt<TypeParam>(*arr, /*idx=*/0, {2}, tfl_type,
-                         /*expected_fill_value=*/0);
+  EXPECT_THAT(arr->At(0), AllOf(IsAllocatedAs(tfl_type), DimsAre({2}),
+                                FilledWith(static_cast<TypeParam>(0))));
 }
 
 REGISTER_TYPED_TEST_SUITE_P(SetItemWithTypeTest,

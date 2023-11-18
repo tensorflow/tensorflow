@@ -95,8 +95,8 @@ std::optional<std::tuple<DimLevelType, bool, bool>> ConvertDimLevelType(
       return std::make_tuple(DimLevelType::DIM_COMPRESSED, unique, ordered);
     case mlir::sparse_tensor::LevelFormat::Dense:
       return std::make_tuple(DimLevelType::DIM_DENSE, unique, ordered);
-    case mlir::sparse_tensor::LevelFormat::CompressedWithHi:
-      return std::make_tuple(DimLevelType::DIM_COMPRESSED_WITH_HI, unique,
+    case mlir::sparse_tensor::LevelFormat::LooseCompressed:
+      return std::make_tuple(DimLevelType::DIM_LOOSE_COMPRESSED, unique,
                              ordered);
     default:
       return std::nullopt;
@@ -178,12 +178,11 @@ Shape TypeToShape(mlir::Type type) {
     llvm::SmallVector<int64_t, 4> shape(rank, mlir::ShapedType::kDynamic);
     std::vector<bool> is_dynamic(rank, false);
     for (int64_t dim = 0; dim < rank; ++dim) {
-      // Only fully static shapes are supported.
-      // TODO(b/115638799): Update once xla::Shape can support dynamic shapes.
       int64_t size = t.getDimSize(dim);
       if (size == ShapedType::kDynamic) {
-        if (bounds[dim] == ShapedType::kDynamic) return {};
-        shape[dim] = bounds[dim];
+        shape[dim] = bounds[dim] != ShapedType::kDynamic
+                         ? bounds[dim]
+                         : Shape::kUnboundedSize;
         is_dynamic[dim] = true;
       } else {
         if (bounds[dim] != ShapedType::kDynamic) return {};

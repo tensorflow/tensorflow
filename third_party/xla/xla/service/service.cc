@@ -130,30 +130,6 @@ const std::optional<std::set<int>>& ServiceOptions::allowed_devices() const {
   return allowed_devices_;
 }
 
-/* static */ StatusOr<std::unique_ptr<Service>> Service::NewService(
-    se::Platform* platform) {
-  ServiceOptions default_options;
-  default_options.set_platform(platform);
-  return NewService(default_options);
-}
-
-/* static */ StatusOr<std::unique_ptr<Service>> Service::NewService(
-    const ServiceOptions& options) {
-  se::Platform* platform = options.platform();
-  std::unique_ptr<Backend> execute_backend;
-  if (platform == nullptr) {
-    TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
-  }
-  BackendOptions backend_options;
-  backend_options.set_platform(platform);
-  backend_options.set_allowed_devices(options.allowed_devices());
-  TF_ASSIGN_OR_RETURN(execute_backend, Backend::CreateBackend(backend_options));
-
-  std::unique_ptr<Service> service(
-      new Service(options, std::move(execute_backend)));
-  return std::move(service);
-}
-
 Service::Service(const ServiceOptions& options,
                  std::unique_ptr<Backend> execute_backend)
     : options_(options),
@@ -215,7 +191,7 @@ Status Service::DeconstructTuple(const DeconstructTupleRequest* arg,
 }
 
 Status Service::ValidateResultShape(const Shape& client_shape,
-                                    const Shape& result_shape) const {
+                                    const Shape& result_shape) {
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(client_shape));
   if (!ShapeUtil::Compatible(client_shape, result_shape)) {
     return InvalidArgument(
@@ -925,21 +901,6 @@ Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
   return OkStatus();
 }
 
-Status Service::WaitForExecution(const WaitForExecutionRequest* arg,
-                                 WaitForExecutionResponse* result) {
-  TF_ASSIGN_OR_RETURN(const auto execution,
-                      execution_tracker_.Resolve(arg->execution()));
-
-  TF_RETURN_IF_ERROR(execution->BlockUntilDone());
-
-  *result->mutable_output() = execution->result();
-  *result->mutable_profile() = execution->profile();
-
-  TF_RETURN_IF_ERROR(execution_tracker_.Unregister(arg->execution()));
-  VLOG(1) << "successfully completed 'wait-for-execution' request";
-  return OkStatus();
-}
-
 Status Service::TransferToClient(const TransferToClientRequest* arg,
                                  TransferToClientResponse* result) {
   TF_ASSIGN_OR_RETURN(const ShapedBuffer* shaped_buffer,
@@ -951,8 +912,19 @@ Status Service::TransferToClient(const TransferToClientRequest* arg,
     if (!LayoutUtil::HasLayout(return_shape)) {
       return InvalidArgument("shape_with_layout must have layout if present.");
     }
+    if (return_shape.has_layout() &&
+        return_shape.layout().element_size_in_bits() != 0) {
+      return InvalidArgument(
+          "shape_with_layout cannot have layout's element_size_in_bits field "
+          "set");
+    }
   } else {
     return_shape = Shape(shaped_buffer->on_device_shape());
+    if (return_shape.has_layout() &&
+        return_shape.layout().element_size_in_bits() != 0) {
+      // Literals do not support element_size_in_bits
+      return_shape.mutable_layout()->set_element_size_in_bits(0);
+    }
   }
 
   TF_ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(

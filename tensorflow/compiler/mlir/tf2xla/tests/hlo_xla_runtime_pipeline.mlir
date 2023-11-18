@@ -9,7 +9,7 @@ func.func @simple_add(%arg0: tensor<f64>) -> tensor<f64> {
 
 // -----
 
-#CSR = #sparse_tensor.encoding<{lvlTypes = [ "dense", "compressed" ]}>
+#CSR = #sparse_tensor.encoding<{map = (d0, d1) -> (d0 : dense, d1 : compressed)}>
 
 // CHECK-LABEL: func.func @csr_gendot(
 // CHECK-SAME:    %[[PTR:.*0]]: memref<?xindex>,
@@ -53,8 +53,8 @@ func.func @csr_gendot(%arg0: tensor<32x64xf64, #CSR>,
 
 // -----
 
-#CSR  = #sparse_tensor.encoding<{ lvlTypes = ["dense", "compressed"] }>
-#DCSR = #sparse_tensor.encoding<{ lvlTypes = ["compressed", "compressed"] }>
+#CSR  = #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>
+#DCSR = #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : compressed, d1 : compressed) }>
 
 // CHECK-LABEL: func.func @convert_nop(
 // CHECK-SAME:    %[[PTR:.*0]]: memref<?xindex>,

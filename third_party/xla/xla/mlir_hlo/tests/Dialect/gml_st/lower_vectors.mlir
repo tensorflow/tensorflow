@@ -161,8 +161,7 @@ func.func @optimize_pack_with_transpose(%arg0: memref<1024x1024xf32>) ->
 // FLATTEN-NOT:     vector.transpose
 // FLATTEN:         %[[COLLAPSE:.*]] = memref.collapse_shape %[[ALLOC]]
 // FLATTEN-SAME:    memref<128x1024x8x1xf32> into memref<128x1024x8xf32>
-// FLATTEN:         %[[SHAPE_CAST:.*]] = vector.shape_cast %{{.*}}
-// FLATTEN:         vector.transfer_write %[[SHAPE_CAST]], %[[COLLAPSE]]
+// FLATTEN:         vector.transfer_write %[[READ]], %[[COLLAPSE]]
 
 // -----
 

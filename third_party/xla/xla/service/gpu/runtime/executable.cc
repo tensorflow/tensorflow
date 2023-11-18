@@ -26,22 +26,24 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "xla/runtime/executable.h"
-#include "xla/runtime/ffi.h"
 #include "xla/runtime/jit_executable.h"
 #include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "xla/service/gpu/runtime/cholesky.h"
 #include "xla/service/gpu/runtime/concurrent_region.h"
 #include "xla/service/gpu/runtime/conv.h"
 #include "xla/service/gpu/runtime/conv_reorder.h"
-#include "xla/service/gpu/runtime/cublas_lt_matmul.h"
+#include "xla/service/gpu/runtime/cub_sort.h"
 #include "xla/service/gpu/runtime/custom_call.h"
+#include "xla/service/gpu/runtime/custom_call_registry.h"
 #include "xla/service/gpu/runtime/fft.h"
 #include "xla/service/gpu/runtime/fused_attention.h"
 #include "xla/service/gpu/runtime/gemm.h"
+#include "xla/service/gpu/runtime/gpublas_lt_matmul.h"
 #include "xla/service/gpu/runtime/graph_launch.h"
 #include "xla/service/gpu/runtime/io_feed.h"
 #include "xla/service/gpu/runtime/memcpy.h"
 #include "xla/service/gpu/runtime/memset.h"
+#include "xla/service/gpu/runtime/norm.h"
 #include "xla/service/gpu/runtime/send_recv.h"
 #include "xla/service/gpu/runtime/stream_synchronization.h"
 #include "xla/service/gpu/runtime/support.h"
@@ -53,10 +55,6 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/protobuf/dnn.pb.h"
-
-#if GOOGLE_CUDA
-#include "xla/stream_executor/gpu/gpu_stream.h"
-#endif  // #if GOOGLE_CUDA
 
 namespace xla {
 namespace gpu {
@@ -71,25 +69,12 @@ using ::xla::runtime::TypeIDNameRegistry;
 using ::xla::runtime::CustomCall;
 using ::xla::runtime::DiagnosticEngine;
 using ::xla::runtime::ExportModules;
-using ::xla::runtime::ffi::ExportFfiModules;
-using ::xla::runtime::ffi::FfiStateVector;
-using ::xla::runtime::ffi::RegisterXlaFfiStreamProvider;
-
-#if GOOGLE_CUDA
-static XLA_FFI_Stream* GetXlaFfiGpuStream(const CustomCall::UserData* user_data,
-                                          const DiagnosticEngine* diagnostic) {
-  auto run_opts = user_data->getIfExists<const ServiceExecutableRunOptions>();
-  if (!run_opts) return nullptr;
-  auto stream = se::gpu::AsGpuStreamValue(run_opts->stream());
-  return reinterpret_cast<XLA_FFI_Stream*>(stream);
-}
-#endif  // GOOGLE_CUDA
 
 void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
-#if GOOGLE_CUDA
-  RegisterXlaFfiStreamProvider(GetXlaFfiGpuStream);
-#endif  // GOOGLE_CUDA
+  // Register custom calls from a static XLA:GPU registry.
+  RegisterDirectCustomCalls(registry);
 
+  // Register builtin XLA:GPU custom calls (aka GPU runtime).
   RegisterKernelLaunchCustomCalls(registry);
   RegisterTracingCustomCalls(registry);
   RegisterFftCustomCalls(registry);
@@ -102,10 +87,12 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
   RegisterIoFeedCustomCalls(registry);
   RegisterMemsetCustomCalls(registry);
   RegisterSendRecvCustomCalls(registry);
-  RegisterTopkCustomCall(registry);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TF_HIPBLASLT
   RegisterMatmulCustomCalls(registry);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
+  RegisterNormCustomCalls(registry);
   RegisterFusedAttentionCustomCalls(registry);
   RegisterFusedAttentionBackwardCustomCalls(registry);
 #endif  // GOOGLE_CUDA
@@ -114,8 +101,9 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
   RegisterGraphLaunchCustomCalls(registry);
   RegisterConcurrentRegionCustomCalls(registry);
   RegisterStreamSynchronizationCustomCalls(registry);
-
+  RegisterCubSortCustomCalls(registry);
   RegisterXlaClassicCustomCalls(registry);
+  RegisterTopkCustomCall(registry);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
@@ -132,8 +120,9 @@ void RegisterXlaGpuTypeIdNames(TypeIDNameRegistry& registry) {
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
   registry.Register<Tagged<se::gpu::BlasLt::Epilogue>>(
-      "__type_id_se_cublas_lt_epilogue");
+      "__type_id_se_gpublas_lt_epilogue");
   RegisterFusedAttentionTypeIdNames(registry);
+  RegisterNormTypeIdNames(registry);
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
 }
 
@@ -148,6 +137,7 @@ void RegisterXlaGpuAttrEncoding(CustomCallAttrEncodingSet& encoding) {
   PopulateFusedAttentionAlgorithmConfigAttrEncoding(encoding);
   PopulateFusedAttentionForwardDAGSignatureAttrEncoding(encoding);
   PopulateFusedAttentionBackwardDAGSignatureAttrEncoding(encoding);
+  PopulateNormAlgorithmConfigAttrEncoding(encoding);
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
 }
 
@@ -160,36 +150,36 @@ static int64_t GetNumGraphs(const runtime::Executable& executable) {
 
 GpuRuntimeExecutable::GpuRuntimeExecutable(
     std::string module_name, std::vector<int64_t> buffer_sizes,
+    std::vector<std::vector<int64_t>> allocation_indices,
     std::unique_ptr<JitExecutable> jit_executable, DebugOptions debug_options,
-    ModulesState modules_state, FfiModulesState ffi_modules_state)
+    ModulesState modules_state)
     : module_name_(std::move(module_name)),
       buffer_sizes_(std::move(buffer_sizes)),
+      allocation_indices_(std::move(allocation_indices)),
       executable_(std::move(jit_executable)),
       debug_options_(std::move(debug_options)),
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       graph_instances_(module_name_, GetNumGraphs(executable())),
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-      modules_state_(std::move(modules_state)),
-      ffi_modules_state_(std::move(ffi_modules_state)) {
-  ExportModules(dynamic_custom_calls_);     // export runtime modules
-  ExportFfiModules(dynamic_custom_calls_);  // export FFI modules
+      modules_state_(std::move(modules_state)) {
+  ExportModules(dynamic_custom_calls_);  // export runtime modules
 }
 
 GpuRuntimeExecutable::GpuRuntimeExecutable(
     std::string module_name, std::vector<int64_t> buffer_sizes,
+    std::vector<std::vector<int64_t>> allocation_indices,
     std::unique_ptr<Executable> aot_executable, DebugOptions debug_options,
-    ModulesState modules_state, FfiModulesState ffi_modules_state)
+    ModulesState modules_state)
     : module_name_(std::move(module_name)),
       buffer_sizes_(std::move(buffer_sizes)),
+      allocation_indices_(std::move(allocation_indices)),
       executable_(std::move(aot_executable)),
       debug_options_(std::move(debug_options)),
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       graph_instances_(module_name_, GetNumGraphs(executable())),
 #endif  // GOOGL_CUDA || TENSORFLOW_USE_ROCM
-      modules_state_(std::move(modules_state)),
-      ffi_modules_state_(std::move(ffi_modules_state)) {
-  ExportModules(dynamic_custom_calls_);     // export runtime modules
-  ExportFfiModules(dynamic_custom_calls_);  // export FFI modules
+      modules_state_(std::move(modules_state)) {
+  ExportModules(dynamic_custom_calls_);  // export runtime modules
 }
 
 //===----------------------------------------------------------------------===//
@@ -211,6 +201,8 @@ GpuRuntimeExecutable::Create(std::string module_name,
   // Options for constructing XLA runtime JitExecutable.
   JitExecutable::Options opts;
   opts.specialization = JitExecutable::Specialization::kDisabled;
+  opts.compiler.verification_level =
+      program->debug_options.xla_gpu_llvm_verification_level();
   opts.compiler.register_dialects =
       runtime::RegisterDefaultXlaGpuRuntimeDialects;
 
@@ -230,7 +222,7 @@ GpuRuntimeExecutable::Create(std::string module_name,
 
   // Do not run expensive optimization passes because we do not expect any
   // non-trivial host code in XLA:GPU host executables.
-  opts.compiler.jit_code_opt_level = llvm::CodeGenOpt::None;
+  opts.compiler.jit_code_opt_level = llvm::CodeGenOptLevel::None;
 
   // Instantiate new JitExecutable from the MLIR source.
   auto jit_executable =
@@ -245,17 +237,11 @@ GpuRuntimeExecutable::Create(std::string module_name,
     return InternalError("Failed to instantiate modules state: %s",
                          modules_state.status().message());
 
-  // Instantiate state for all registered FFI modules.
-  auto ffi_modules_state = FfiModulesState::Instantiate();
-  if (!ffi_modules_state.ok())
-    return InternalError("Failed to instantiate FFI modules state: %s",
-                         ffi_modules_state.status().message());
-
   return std::unique_ptr<GpuRuntimeExecutable>(new GpuRuntimeExecutable(
       std::move(module_name), std::move(program->buffer_sizes),
+      std::move(program->allocation_indices),
       std::make_unique<JitExecutable>(std::move(*jit_executable)),
-      std::move(program->debug_options), std::move(*modules_state),
-      std::move(*ffi_modules_state)));
+      std::move(program->debug_options), std::move(*modules_state)));
 }
 
 //===----------------------------------------------------------------------===//
@@ -263,28 +249,21 @@ GpuRuntimeExecutable::Create(std::string module_name,
 //===----------------------------------------------------------------------===//
 
 /*static*/ StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
-GpuRuntimeExecutable::Create(std::string module_name,
-                             absl::Span<const int64_t> buffer_sizes,
-                             Executable executable,
-                             DebugOptions debug_options) {
+GpuRuntimeExecutable::Create(
+    std::string module_name, std::vector<int64_t> buffer_sizes,
+    std::vector<std::vector<int64_t>> allocation_indices, Executable executable,
+    DebugOptions debug_options) {
   // Instantiate state for all registered runtime modules.
   auto modules_state = ModulesState::Instantiate();
   if (!modules_state.ok())
     return InternalError("Failed to instantiate modules state: %s",
                          modules_state.status().message());
 
-  // Instantiate state for all registered FFI modules.
-  auto ffi_modules_state = FfiModulesState::Instantiate();
-  if (!ffi_modules_state.ok())
-    return InternalError("Failed to instantiate FFI modules state: %s",
-                         ffi_modules_state.status().message());
-
   return std::unique_ptr<GpuRuntimeExecutable>(new GpuRuntimeExecutable(
-      std::move(module_name),
-      std::vector<int64_t>(buffer_sizes.begin(), buffer_sizes.end()),
+      std::move(module_name), std::move(buffer_sizes),
+      std::move(allocation_indices),
       std::make_unique<Executable>(std::move(executable)),
-      std::move(debug_options), std::move(*modules_state),
-      std::move(*ffi_modules_state)));
+      std::move(debug_options), std::move(*modules_state)));
 }
 
 //===----------------------------------------------------------------------===//
@@ -430,33 +409,35 @@ Status GpuRuntimeExecutable::Execute(
   GemmConfigs::Snapshot gemm_configs = gemm_configs_.snapshot();
   FftPlans::Snapshot fft_plans = fft_plans_.snapshot();
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  MatmulPlans::Snapshot matmul_plans = cublas_lt_matmul_plans_.snapshot();
+#if GOOGLE_CUDA || TF_HIPBLASLT
+  MatmulPlans::Snapshot matmul_plans = gpublas_lt_matmul_plans_.snapshot();
+#endif
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  StreamExecutorNormRunners::Snapshot norm_runners =
+      norm_runners_(executor)->snapshot();
   StreamExecutorFusedAttentionRunners::Snapshot fused_attention_runners =
       fused_attention_runners_(executor)->snapshot();
   StreamExecutorFusedAttentionBackwardRunners::Snapshot
       fused_attention_backward_runners =
           fused_attention_backward_runners_(executor)->snapshot();
-#endif  // GOOGLE_CUDA
-
-  // Initialize state required for running functions exported from FFI modules.
-  TF_ASSIGN_OR_RETURN(FfiStateVector ffi_state,
-                      ffi_modules_state_.state_vector());
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   // Pass auxiliary data to the custom call handlers.
   runtime::CustomCall::UserData user_data(
       run_options, &executable, &debug_options_, &temp_buffer, &asm_text,
-      &ffi_state, &binary, &kernels, &gemm_configs, &conv_runners,
-      &collectives_, &fft_plans, &send_recv_events, &gpu_lock,
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-      // Auxiliary data that is available only if compiled with CUDA support.
+      &binary, &kernels, &gemm_configs, &conv_runners, &collectives_,
+      &fft_plans, &send_recv_events, &gpu_lock,
+#if GOOGLE_CUDA || TF_HIPBLASLT
       &matmul_plans,
+#endif
 #if GOOGLE_CUDA
       // Auxiliary data that is available only if compiled with CUDA support
       // only.
-      &fused_attention_runners, &fused_attention_backward_runners,
+      &norm_runners, &fused_attention_runners,
+      &fused_attention_backward_runners,
 #endif  // GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       &graph_instances, &execution_count,
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       &concurrent_region_status,
@@ -476,24 +457,9 @@ Status GpuRuntimeExecutable::Execute(
   // Instantiate all CUDA graphs before executing the main function.
   if (debug_options_.xla_gpu_graph_num_runs_to_instantiate() < 0 &&
       !graph_instances_.InstantiatedAllGraphs(run_options, executable)) {
-    // To instantiate all Gpu graphs we have to pass a valid device pointer
-    // because some device operations in XLA (e.g. memcpy) query device
-    // information from a pointer. We have to find the largest allocation
-    // available, to guarantee that all memref slices are within bounds,
-    // otherwise we might get crashes from a Gpu driver.
-    void* device_ptr = temp_buffer.opaque();
-    size_t device_ptr_size = temp_buffer.size();
-
-    for (unsigned i = 0; i < buffer_allocations.size(); ++i) {
-      auto mem = buffer_allocations.GetDeviceAddress(i);
-      if (mem.size() > device_ptr_size) {
-        device_ptr = mem.opaque();
-        device_ptr_size = mem.size();
-      }
-    }
-
     if (auto instantiated = graph_instances_.InstantiateAllGraphs(
-            run_options, executable, user_data, device_ptr,
+            run_options, executable, user_data, buffer_allocations,
+            buffer_sizes_, allocation_indices_,
             debug_options_.xla_gpu_graph_eviction_timeout_seconds());
         !instantiated.ok()) {
       return InternalError("Failed to instantiate GPU graphs: %s",

@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
-#include "xla/service/gpu/gpu_types.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/types.h"
 #include "xla/xla.pb.h"
 
@@ -51,7 +51,7 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
 // thread safety, but note that LLVM's multithreaded support is very
 // preliminary; multithreaded use is not recommended at this time.
 StatusOr<std::string> CompileToPtx(
-    llvm::Module* module, GpuVersion gpu_version,
+    llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options,
     std::function<void(llvm::TargetMachine*)> configure_target = nullptr);
 }  // namespace nvptx
@@ -61,7 +61,7 @@ namespace amdgpu {
 // rocdl_dir_path is the parent directory of ROCm-Device-Libs bitcode libraries.
 // The contents of the module may be changed.
 StatusOr<std::vector<uint8_t>> CompileToHsaco(
-    llvm::Module* module, GpuVersion gpu_version,
+    llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options, const std::string& rocdl_dir_path,
     const std::string& module_config_cache_key);
 }  // namespace amdgpu

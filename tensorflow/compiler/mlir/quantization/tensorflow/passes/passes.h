@@ -42,8 +42,8 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateConvertFakeQuantToQdqPass();
 
 // Lifts the quantizable spots as composite functions.
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateLiftQuantizableSpotsAsFunctionsPass(OpSet target_opset,
-                                          bool enable_two_input_tensors);
+CreateLiftQuantizableSpotsAsFunctionsPass(
+    const tensorflow::quantization::QuantizationOptions& quant_options);
 
 // Apply graph optimizations such as fusing and constant folding to prepare
 // lifting.
@@ -240,6 +240,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreatePropagateQuantizeTypePass();
 std::unique_ptr<OperationPass<ModuleOp>> CreateAddDumpTensorOpPass(
     tensorflow::quantization::DebuggerOptions::DebuggerType debugger_type,
     std::string log_dir_path);
+
+// Creates a pass that add QuantizationUnitLoc to quantizable layers.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateAddQuantizationUnitLocPass();
 
 }  // namespace quant
 }  // namespace mlir

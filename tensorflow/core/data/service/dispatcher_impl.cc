@@ -91,11 +91,11 @@ constexpr char kDatasetsDir[] = "datasets";
 // than two snapshots at a time across all ongoing snapshots. Allowing two
 // concurrent streams, rather than one, helps minimize a worker's inactivity
 // between completing a stream and getting assigned a new one.
-constexpr int kDefaultWorkerMaxConcurrentSnapshots = 2;
+constexpr int kDefaultWorkerMaxConcurrentSnapshots = 3;
 
 constexpr absl::Duration kDefaultIterationGcCheckInterval = absl::Minutes(10);
 constexpr absl::Duration kDefaultIterationGcTimeout = absl::Minutes(5);
-constexpr absl::Duration kDefaultClientTimeout = absl::Minutes(2);
+constexpr absl::Duration kDefaultClientTimeout = absl::Minutes(5);
 constexpr absl::Duration kDefaultWorkerTimeout = absl::Minutes(10);
 
 constexpr std::array<const char*, 8> kNodeNameSharingOps = {
@@ -390,7 +390,7 @@ void DataServiceDispatcherImpl::ReportProcessingTimesFromActiveTasks(
 Status DataServiceDispatcherImpl::WorkerHeartbeat(
     const WorkerHeartbeatRequest* request, WorkerHeartbeatResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-  VLOG(4) << "Received worker heartbeat request from worker "
+  VLOG(3) << "Received worker heartbeat request from worker "
           << request->worker_address();
   {
     mutex_lock l(mu_);
@@ -441,7 +441,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     TF_RETURN_IF_ERROR(snapshot_manager->WorkerHeartbeat(*request, *response));
   }
 
-  VLOG(4) << "Finished worker heartbeat for worker at address "
+  VLOG(3) << "Finished worker heartbeat for worker at address "
           << request->worker_address();
   return OkStatus();
 }

@@ -15,21 +15,38 @@ limitations under the License.
 
 #include "xla/service/gpu/kernel_thunk.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
-#include "xla/service/gpu/gpu_executable.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/kernel_arguments.h"
+#include "xla/service/gpu/kernels/custom_kernel.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/gpu/thunk.h"
+#include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
 namespace {
+
+//===----------------------------------------------------------------------===//
+// KernelThunk
+//===----------------------------------------------------------------------===//
 
 mlir::Value RemoveTransformingOperations(mlir::Value value) {
   mlir::Operation* defining_op = value.getDefiningOp();
@@ -42,11 +59,15 @@ mlir::Value RemoveTransformingOperations(mlir::Value value) {
 
 }  // namespace
 
-KernelThunk::KernelThunk(mlir::Operation* op, std::string kernel_name,
-                         absl::Span<const KernelArgument> kernel_arguments,
-                         LaunchDimensions launch_dimensions,
-                         int64_t shmem_bytes)
-    : Thunk(Kind::kKernel, Thunk::ThunkInfo::WithProfileAnnotation(op)),
+KernelThunk::KernelThunk(
+    std::variant<mlir::Operation*, const HloInstruction*> op,
+    std::string kernel_name, absl::Span<const KernelArgument> kernel_arguments,
+    LaunchDimensions launch_dimensions, int64_t shmem_bytes)
+    : Thunk(Kind::kKernel, std::holds_alternative<mlir::Operation*>(op)
+                               ? Thunk::ThunkInfo::WithProfileAnnotation(
+                                     std::get<mlir::Operation*>(op))
+                               : Thunk::ThunkInfo::WithProfileAnnotation(
+                                     std::get<const HloInstruction*>(op))),
       kernel_name_(std::move(kernel_name)),
       launch_dimensions_(std::move(launch_dimensions)),
       shmem_bytes_(shmem_bytes) {
@@ -57,6 +78,11 @@ KernelThunk::KernelThunk(mlir::Operation* op, std::string kernel_name,
       args_.push_back(kernel_argument.slice());
       written_.push_back(kernel_argument.written());
     }
+  }
+
+  if (std::holds_alternative<const HloInstruction*>(op)) {
+    // Skip populating MLIR values_ if emitting from HLO.
+    return;
   }
 
   values_.reserve(kernel_arguments.size());
@@ -72,8 +98,8 @@ std::string KernelThunk::ToStringExtra(int indent) const {
                          launch_dimensions_.ToString());
 }
 
-Status KernelThunk::Initialize(const GpuExecutable& executable,
-                               se::StreamExecutor* executor) {
+Status KernelThunk::Initialize(se::StreamExecutor* executor,
+                               ExecutableSource src) {
   absl::MutexLock lock(&mutex_);
 
   // Load the kernel into the device if necessary.
@@ -83,10 +109,9 @@ Status KernelThunk::Initialize(const GpuExecutable& executable,
   // profiles.
   auto it = kernel_cache_.find(executor);
   if (kernel_cache_.end() == it) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<se::KernelBase> kernel,
-        CreateKernel(kernel_name_, args_.size(), executable.text(),
-                     executable.binary(), executor, shmem_bytes_));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
+                        CreateKernel(kernel_name_, args_.size(), src.text,
+                                     src.binary, executor, shmem_bytes_));
 
     kernel_cache_.emplace(executor, std::move(kernel));
   }
@@ -100,7 +125,7 @@ static void PrintBufferContents(
   for (const se::DeviceMemoryBase& buf : buffer_args) {
     auto host_buffer = std::make_unique<char[]>(buf.size());
     CHECK(stream->ThenMemcpy(host_buffer.get(), buf, buf.size()).ok());
-    CHECK(stream->BlockHostUntilDone().ok());
+    CHECK_OK(stream->BlockHostUntilDone());
 
     std::string buffer_contents;
     for (int i = 0; i < buf.size(); i++) {
@@ -115,7 +140,7 @@ Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Load the kernel.
   se::StreamExecutor* executor = params.stream->parent();
   LaunchDimensions launch_dimensions;
-  const se::KernelBase* kernel = nullptr;
+  const se::Kernel* kernel = nullptr;
 
   {
     absl::MutexLock lock(&mutex_);
@@ -141,6 +166,73 @@ Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   return ExecuteKernelOnStream(*kernel, buffer_args, launch_dimensions,
                                params.stream);
+}
+
+//===----------------------------------------------------------------------===//
+// CustomKernelThunk
+//===----------------------------------------------------------------------===//
+
+CustomKernelThunk::CustomKernelThunk(
+    const HloInstruction* instr, CustomKernel custom_kernel,
+    absl::Span<const KernelArgument> kernel_arguments)
+    : Thunk(Kind::kKernel, Thunk::ThunkInfo::WithProfileAnnotation(instr)),
+      custom_kernel_(std::move(custom_kernel)) {
+  args_.reserve(kernel_arguments.size());
+  written_.reserve(kernel_arguments.size());
+  for (const auto& kernel_argument : kernel_arguments) {
+    if (!kernel_argument.first_with_same_slice().has_value()) {
+      args_.push_back(kernel_argument.slice());
+      written_.push_back(kernel_argument.written());
+    }
+  }
+}
+
+std::string CustomKernelThunk::ToStringExtra(int indent) const {
+  return custom_kernel_.ToString();
+}
+
+Status CustomKernelThunk::Initialize(se::StreamExecutor* executor,
+                                     ExecutableSource src) {
+  absl::MutexLock lock(&mutex_);
+
+  auto it = kernel_cache_.find(executor);
+  if (kernel_cache_.end() == it) {
+    auto kernel = std::make_unique<se::Kernel>(executor);
+    TF_RETURN_IF_ERROR(
+        executor->GetKernel(custom_kernel_.kernel_spec(), kernel.get()));
+    kernel_cache_.emplace(executor, std::move(kernel));
+  }
+
+  return OkStatus();
+}
+
+Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
+  se::StreamExecutor* executor = params.stream->parent();
+
+  const se::Kernel* kernel = [&] {
+    absl::MutexLock lock(&mutex_);
+    return kernel_cache_[executor].get();
+  }();
+
+  VLOG(3) << "Launching " << custom_kernel_.ToString() << " as device kernel "
+          << kernel->name();
+
+  absl::InlinedVector<se::DeviceMemoryBase, 4> buffer_args;
+  for (const BufferAllocation::Slice& arg : args_) {
+    se::DeviceMemoryBase buf = params.buffer_allocations->GetDeviceAddress(arg);
+    VLOG(3) << "  Arg: alloc #" << arg.index() << ", offset: " << arg.offset()
+            << ": " << buf.opaque() << " (" << buf.size() << "B)";
+    buffer_args.push_back(buf);
+  }
+
+  if (VLOG_IS_ON(100)) {
+    PrintBufferContents(params.stream, buffer_args);
+  }
+
+  se::KernelArgsDeviceMemoryArray args(buffer_args,
+                                       custom_kernel_.shared_memory_bytes());
+  return executor->Launch(params.stream, custom_kernel_.thread_dims(),
+                          custom_kernel_.block_dims(), *kernel, args);
 }
 
 }  // namespace gpu

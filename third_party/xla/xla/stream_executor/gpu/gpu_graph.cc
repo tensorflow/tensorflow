@@ -19,14 +19,17 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
-#include <sstream>
+#include <cstring>
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/kernel.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
@@ -41,6 +44,14 @@ namespace gpu {
 
 std::atomic<size_t> GpuGraphSupport::allocated_gpu_graph_execs_;
 std::atomic<size_t> GpuGraphSupport::alive_gpu_graph_execs_;
+
+/*static*/ void GpuGraphSupport::TrimDeviceMemory(StreamExecutor* executor) {
+  auto* gpu_executor = ExtractGpuExecutor(executor);
+  auto st = GpuDriver::DeviceGraphMemTrim(gpu_executor->device());
+  if (!st.ok()) {
+    LOG(ERROR) << "Failed to trim Gpu device graph memory: " << st.message();
+  }
+}
 
 /*static*/ size_t GpuGraphSupport::NotifyGraphExecCreated() {
   alive_gpu_graph_execs_.fetch_add(1, std::memory_order_relaxed);
@@ -94,8 +105,40 @@ tsl::StatusOr<std::string> GraphExecUpdateResultToString(
   return tsl::errors::Internal("Unexpected value for GraphExecUpdateResult");
 }
 
-tsl::StatusOr<OwnedGpuGraphExec::UpdateResult> OwnedGpuGraphExec::Update(
-    OwnedGpuGraph graph) {
+tsl::StatusOr<std::string> GraphNodeTypeToString(
+    GpuDriver::GraphNodeType node_type) {
+  switch (node_type) {
+    case GpuDriver::GraphNodeType::kKernel:
+      return "kKernel";
+    case GpuDriver::GraphNodeType::kMemcpy:
+      return "kMemcpy";
+    case GpuDriver::GraphNodeType::kMemset:
+      return "kMemset";
+    case GpuDriver::GraphNodeType::kHost:
+      return "kHost";
+    case GpuDriver::GraphNodeType::kGraph:
+      return "kGraph";
+    case GpuDriver::GraphNodeType::kEmpty:
+      return "kEmpty";
+    case GpuDriver::GraphNodeType::kWaitEvent:
+      return "kWaitEvent";
+    case GpuDriver::GraphNodeType::kEventRecord:
+      return "kEventRecord";
+    case GpuDriver::GraphNodeType::kExtSemasSignal:
+      return "kExtSemasSignal";
+    case GpuDriver::GraphNodeType::kExtSemasWait:
+      return "kExtSemasWait";
+    case GpuDriver::GraphNodeType::kMemAlloc:
+      return "kMemAlloc";
+    case GpuDriver::GraphNodeType::kMemFree:
+      return "kMemFree";
+    case GpuDriver::GraphNodeType::kBatchMemOp:
+      return "kBatchMemOp";
+  }
+  return tsl::errors::Internal("Unexpected value for GraphNodeType");
+}
+
+tsl::Status OwnedGpuGraphExec::Update(OwnedGpuGraph graph) {
   VLOG(3) << "Update gpu graph exec with a new graph after " << num_launches_
           << " launches since last update"
           << " #" << num_updates_++;
@@ -104,54 +147,40 @@ tsl::StatusOr<OwnedGpuGraphExec::UpdateResult> OwnedGpuGraphExec::Update(
 
   uint64_t start_nanos = tsl::Env::Default()->NowNanos();
   GpuDriver::GraphExecUpdateResultInfo result;
+  memset(&result, 0, sizeof(result));
   auto st = GpuDriver::GraphExecUpdate(get(), graph.get(), &result);
   uint64_t end_nanos = tsl::Env::Default()->NowNanos();
+
+  if (!st.ok()) {
+    TF_ASSIGN_OR_RETURN(std::string result_str,
+                        GraphExecUpdateResultToString(result.result));
+    std::string error_message = absl::StrCat(
+        "Failed to update gpu graph: Graph update result=", result_str);
+
+    if (result.error_node) {
+      TF_ASSIGN_OR_RETURN(GpuDriver::GraphNodeType node_type,
+                          GpuDriver::GraphNodeGetType(result.error_node));
+      TF_ASSIGN_OR_RETURN(std::string node_type_str,
+                          GraphNodeTypeToString(node_type));
+      absl::StrAppend(&error_message, ", Error node name=", node_type_str);
+    }
+
+    if (result.error_from_node) {
+      TF_ASSIGN_OR_RETURN(GpuDriver::GraphNodeType node_type,
+                          GpuDriver::GraphNodeGetType(result.error_from_node));
+      TF_ASSIGN_OR_RETURN(std::string node_type_str,
+                          GraphNodeTypeToString(node_type));
+      absl::StrAppend(&error_message, ", Error from node name=", node_type_str);
+    }
+
+    absl::StrAppend(&error_message, ": ", st.message());
+    return tsl::errors::Internal(error_message);
+  }
 
   VLOG(5) << "Updated gpu graph exec #" << id_ << " (took "
           << (end_nanos - start_nanos) / 1000 << " us)";
 
-  // TODO(b/297051365): We currently fallback to op-by-op mode because CUBLAS
-  // generate a memset node which causes graph update to fail. We should remove
-  // the fallback mechanism once cuBLAS completely works in gpu graphs.
-  auto compute_should_fallback = [&]() -> tsl::StatusOr<bool> {
-    if (result.result != GpuDriver::GraphExecUpdateResult::kError) return false;
-
-    if (result.error_node == nullptr) return false;
-    TF_ASSIGN_OR_RETURN(GpuDriver::GraphNodeType node_type,
-                        GpuDriver::GraphNodeGetType(result.error_node));
-    if (node_type != GpuDriver::GraphNodeType::kMemset) return false;
-
-    if (result.error_from_node != nullptr) return false;
-
-    return true;
-  };
-
-  if (!st.ok() || result.result != GpuDriver::GraphExecUpdateResult::kSuccess) {
-    TF_ASSIGN_OR_RETURN(bool should_fallback, compute_should_fallback());
-    if (should_fallback) {
-      return UpdateResult::kFallback;
-    }
-
-    TF_ASSIGN_OR_RETURN(std::string result_str,
-                        GraphExecUpdateResultToString(result.result));
-    GpuGraphNodeHandle error_from_node = result.error_from_node;
-    std::ostringstream error_from_node_ptr;
-    error_from_node_ptr << reinterpret_cast<void*>(error_from_node);
-    std::string error_from_node_str = error_from_node_ptr.str();
-
-    GpuGraphNodeHandle error_node = result.error_node;
-    std::ostringstream error_node_ptr;
-    error_node_ptr << reinterpret_cast<void*>(error_node);
-    std::string error_node_str = error_node_ptr.str();
-
-    return tsl::errors::Internal(
-        absl::StrCat("Failed to update gpu graph: ", "Graph update result=",
-                     result_str, ", Error node handle=", error_node_str,
-                     ", Error from node handle=", error_from_node_str, ": "),
-        st.message());
-  }
-
-  return UpdateResult::kSuccess;
+  return tsl::OkStatus();
 }
 
 tsl::Status OwnedGpuGraphExec::Launch(stream_executor::Stream* stream) {
@@ -181,12 +210,17 @@ tsl::StatusOr<OwnedGpuGraph> CreateGpuGraph() {
 
 tsl::StatusOr<GpuGraphNodeHandle> AddKernelNode(
     GpuGraphHandle graph, absl::Span<GpuGraphNodeHandle> deps,
-    ThreadDim threads, BlockDim blocks, const KernelBase& kernel,
-    const KernelArgsArrayBase& args) {
+    ThreadDim threads, BlockDim blocks, const Kernel& kernel,
+    const KernelArgs& args) {
   const GpuKernel* gpu_kernel = AsGpuKernel(&kernel);
   GpuFunctionHandle gpu_func = gpu_kernel->AsGpuFunctionHandle();
 
-  void** kernel_params = const_cast<void**>(args.argument_addresses().data());
+  auto* packed_args = DynCast<KernelArgsPackedArrayBase>(&args);
+  if (!packed_args)
+    return absl::InternalError("Unsupported kernel arguments type");
+
+  void** kernel_params =
+      const_cast<void**>(packed_args->argument_addresses().data());
 
   GpuGraphNodeHandle node;
   TF_RETURN_IF_ERROR(GpuDriver::GraphAddKernelNode(

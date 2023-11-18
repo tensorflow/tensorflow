@@ -462,6 +462,7 @@ tensorflow::metrics::SavedModelReadPathAndSingleprint
 tensorflow::metrics::MakeFingerprintJson
 tensorflow::metrics::MakeSavedModelPathAndSingleprint
 tensorflow::metrics::ParseSavedModelPathAndSingleprint
+tensorflow::metrics::SavedModelFoundFingerprintOnLoad
 tensorflow::metrics::CheckpointReadDuration
 tensorflow::metrics::CheckpointWriteDuration
 tensorflow::metrics::AsyncCheckpointWriteDuration

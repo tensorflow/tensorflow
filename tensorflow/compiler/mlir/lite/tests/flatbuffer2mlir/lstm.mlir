@@ -8,8 +8,8 @@ func.func @main(%arg0: tensor<1x4xf32>, %arg1: tensor<4x4xf32>, %arg2: tensor<4x
   func.return %24 : tensor<1x4xf32>
 // CHECK-LABEL: main
 // separate lines since there is no region for this op. third_party/tensorflow/compiler/mlir/lite/ir/tfl_ops.td: 3252
-// CHECK-DAG: %[[RES0:.*]] = "tfl.pseudo_const"() {value = dense<{{.*}}> : tensor<1x4xf32>} : () -> tensor<1x4xf32>
-// CHECK-DAG: %[[RES1:.*]] = "tfl.pseudo_const"() {value = dense<{{.*}}> : tensor<1x4xf32>} : () -> tensor<1x4xf32>
+// CHECK-DAG: %[[RES0:.*]] = "tfl.pseudo_const"() {tfl.is_variable, value = dense<{{.*}}> : tensor<1x4xf32>} : () -> tensor<1x4xf32>
+// CHECK-DAG: %[[RES1:.*]] = "tfl.pseudo_const"() {tfl.is_variable, value = dense<{{.*}}> : tensor<1x4xf32>} : () -> tensor<1x4xf32>
 // CHECK: %[[RES2:.*]] = "tfl.lstm"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15, %arg16, %arg17, %[[RES0]], %[[RES1]], %arg18, %arg19, %arg20, %arg21) ({
 // CHECK:  }) {asymmetric_quantize_inputs = false, cell_clip = 0.000000e+00 : f32, fused_activation_function = "NONE", kernel_type = #tfl<lstm_kernel_type_attr FULL>, proj_clip = 0.000000e+00 : f32} : (tensor<1x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<1x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<1x4xf32>, tensor<1x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
 // CHECK: return %[[RES2]]
@@ -46,8 +46,8 @@ func.func @testLSTMAsymAttributeTrue(%arg0: tensor<1x4xf32>, %arg1: tensor<4x4xf
   %24 = "tfl.lstm"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15, %arg16, %arg17, %cst0, %cst1, %arg18, %arg19, %arg20, %arg21) ({}) {asymmetric_quantize_inputs = true, cell_clip = 0.000000e+00 : f32, fused_activation_function = "NONE", kernel_type = #tfl<lstm_kernel_type_attr FULL>, proj_clip = 0.000000e+00 : f32} : (tensor<1x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<1x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<1x4xf32>, tensor<1x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
   func.return %24 : tensor<1x4xf32>
 
-// CHECK-DAG: %[[RES0:.*]] = "tfl.pseudo_const"() {value = dense<{{.*}}> : tensor<1x4xf32>} : () -> tensor<1x4xf32>
-// CHECK-DAG: %[[RES1:.*]] = "tfl.pseudo_const"() {value = dense<{{.*}}> : tensor<1x4xf32>} : () -> tensor<1x4xf32>
+// CHECK-DAG: %[[RES0:.*]] = "tfl.pseudo_const"() {tfl.is_variable, value = dense<{{.*}}> : tensor<1x4xf32>} : () -> tensor<1x4xf32>
+// CHECK-DAG: %[[RES1:.*]] = "tfl.pseudo_const"() {tfl.is_variable, value = dense<{{.*}}> : tensor<1x4xf32>} : () -> tensor<1x4xf32>
 // CHECK: %[[RES2:.*]] = "tfl.lstm"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15, %arg16, %arg17, %[[RES0]], %[[RES1]], %arg18, %arg19, %arg20, %arg21) ({
 // CHECK:  }) {asymmetric_quantize_inputs = true, cell_clip = 0.000000e+00 : f32, fused_activation_function = "NONE", kernel_type = #tfl<lstm_kernel_type_attr FULL>, proj_clip = 0.000000e+00 : f32} : (tensor<1x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<1x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<1x4xf32>, tensor<1x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
 // CHECK: return %[[RES2]]
@@ -63,8 +63,8 @@ func.func @testLSTMAsymAttributeFalse(%arg0: tensor<1x4xf32>, %arg1: tensor<4x4x
   %24 = "tfl.lstm"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15, %arg16, %arg17, %cst0, %cst1, %arg18, %arg19, %arg20, %arg21) ({}) {asymmetric_quantize_inputs = false, cell_clip = 0.000000e+00 : f32, fused_activation_function = "NONE", kernel_type = #tfl<lstm_kernel_type_attr FULL>, proj_clip = 0.000000e+00 : f32} : (tensor<1x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<1x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<1x4xf32>, tensor<1x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
   func.return %24 : tensor<1x4xf32>
 
-// CHECK-DAG: %[[RES0:.*]] = "tfl.pseudo_const"() {value = dense<{{.*}}> : tensor<1x4xf32>} : () -> tensor<1x4xf32>
-// CHECK-DAG: %[[RES1:.*]] = "tfl.pseudo_const"() {value = dense<{{.*}}> : tensor<1x4xf32>} : () -> tensor<1x4xf32>
+// CHECK-DAG: %[[RES0:.*]] = "tfl.pseudo_const"() {tfl.is_variable, value = dense<{{.*}}> : tensor<1x4xf32>} : () -> tensor<1x4xf32>
+// CHECK-DAG: %[[RES1:.*]] = "tfl.pseudo_const"() {tfl.is_variable, value = dense<{{.*}}> : tensor<1x4xf32>} : () -> tensor<1x4xf32>
 // CHECK: %[[RES2:.*]] = "tfl.lstm"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15, %arg16, %arg17, %[[RES0]], %[[RES1]], %arg18, %arg19, %arg20, %arg21) ({
 // CHECK:  }) {asymmetric_quantize_inputs = false, cell_clip = 0.000000e+00 : f32, fused_activation_function = "NONE", kernel_type = #tfl<lstm_kernel_type_attr FULL>, proj_clip = 0.000000e+00 : f32} : (tensor<1x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<1x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<1x4xf32>, tensor<1x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
 // CHECK: return %[[RES2]]
@@ -80,8 +80,8 @@ func.func @testLSTMAsymAttributeDefault(%arg0: tensor<1x4xf32>, %arg1: tensor<4x
   %24 = "tfl.lstm"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15, %arg16, %arg17, %cst0, %cst1, %arg18, %arg19, %arg20, %arg21) ({}) {cell_clip = 0.000000e+00 : f32, fused_activation_function = "NONE", kernel_type = #tfl<lstm_kernel_type_attr FULL>, proj_clip = 0.000000e+00 : f32} : (tensor<1x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<1x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<1x4xf32>, tensor<1x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
   func.return %24 : tensor<1x4xf32>
 
-// CHECK-DAG: %[[RES0:.*]] = "tfl.pseudo_const"() {value = dense<{{.*}}> : tensor<1x4xf32>} : () -> tensor<1x4xf32>
-// CHECK-DAG: %[[RES1:.*]] = "tfl.pseudo_const"() {value = dense<{{.*}}> : tensor<1x4xf32>} : () -> tensor<1x4xf32>
+// CHECK-DAG: %[[RES0:.*]] = "tfl.pseudo_const"() {tfl.is_variable, value = dense<{{.*}}> : tensor<1x4xf32>} : () -> tensor<1x4xf32>
+// CHECK-DAG: %[[RES1:.*]] = "tfl.pseudo_const"() {tfl.is_variable, value = dense<{{.*}}> : tensor<1x4xf32>} : () -> tensor<1x4xf32>
 // CHECK: %[[RES2:.*]] = "tfl.lstm"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15, %arg16, %arg17, %[[RES0]], %[[RES1]], %arg18, %arg19, %arg20, %arg21) ({
 // CHECK:  }) {asymmetric_quantize_inputs = false, cell_clip = 0.000000e+00 : f32, fused_activation_function = "NONE", kernel_type = #tfl<lstm_kernel_type_attr FULL>, proj_clip = 0.000000e+00 : f32} : (tensor<1x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<1x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<1x4xf32>, tensor<1x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
 // CHECK: return %[[RES2]]

@@ -164,7 +164,8 @@ class BundleWriter {
   std::map<std::string, BundleEntryProto> entries_;
   Status status_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BundleWriter);
+  BundleWriter(const BundleWriter&) = delete;
+  void operator=(const BundleWriter&) = delete;
 };
 
 // Merges a set of bundles (given their prefixes) into a single bundle with the
@@ -343,7 +344,8 @@ class BundleReader {
 
   bool enable_multi_threading_for_testing_ = false;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BundleReader);
+  BundleReader(const BundleReader&) = delete;
+  void operator=(const BundleReader&) = delete;
 };
 
 template <class T>

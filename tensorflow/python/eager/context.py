@@ -49,6 +49,9 @@ from tensorflow.python.util.tf_export import tf_export
 from tsl.protobuf import coordination_config_pb2
 
 
+# TODO(b/307794935): Remove after a solution is found.
+is_oss = True  # updated by copybara
+
 GRAPH_MODE = 0
 EAGER_MODE = 1
 
@@ -508,6 +511,11 @@ class Context:
 
     self._is_global_context = False
 
+    # Number of retries to give the SetServerDef step. This is useful for fault
+    # tolerant initial connection in high-preemption settings like
+    # ParameterServerStrategy training.
+    self._set_server_def_retries = 0
+
   # pylint: enable=redefined-outer-name
 
   def _set_global_seed(self, seed):
@@ -603,8 +611,10 @@ class Context:
           "moment. If this is important to you, please file an issue.")
       if self._server_def is not None:
         server_def_str = self._server_def.SerializeToString()
-        pywrap_tfe.TFE_ContextSetServerDef(context_handle, _KEEP_ALIVE_SECS,
-                                           server_def_str)
+        timeout = 0  # Indicates no timeout.
+        pywrap_tfe.TFE_ContextSetServerDefWithTimeoutAndRetries(
+            context_handle, _KEEP_ALIVE_SECS, server_def_str, timeout,
+            self._set_server_def_retries)
       elif self._collective_ops_server_def is not None:
         server_def_str = self._collective_ops_server_def.SerializeToString()
         pywrap_tfe.TFE_EnableCollectiveOps(context_handle, server_def_str)
@@ -1368,9 +1378,13 @@ class Context:
       fdef: A FunctionDef protocol buffer message.
     """
     self.ensure_initialized()
-    fdef_string = fdef.SerializeToString()
-    pywrap_tfe.TFE_ContextAddFunctionDef(self._handle, fdef_string,
-                                         len(fdef_string))
+    if is_oss:
+      fdef_string = fdef.SerializeToString()
+      pywrap_tfe.TFE_ContextAddFunctionDef(
+          self._handle, fdef_string, len(fdef_string)
+      )
+    else:
+      pywrap_tfe.TFE_ContextAddFunctionDefNoSerialization(self._handle, fdef)
 
   def get_function_def(self, name):
     """Get a function definition from the context.
@@ -1384,12 +1398,16 @@ class Context:
     Raises:
       tf.errors.NotFoundError: if name is not the name of a registered function.
     """
-    with c_api_util.tf_buffer() as buffer_:
-      pywrap_tfe.TFE_ContextGetFunctionDef(self._handle, name, buffer_)
-      proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
-    function_def = function_pb2.FunctionDef()
-    function_def.ParseFromString(proto_data)
-
+    if is_oss:
+      with c_api_util.tf_buffer() as buffer_:
+        pywrap_tfe.TFE_ContextGetFunctionDef(self._handle, name, buffer_)
+        proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
+      function_def = function_pb2.FunctionDef()
+      function_def.ParseFromString(proto_data)
+    else:
+      function_def = pywrap_tfe.TFE_ContextGetFunctionDefNoSerialization(
+          self._handle, name
+      )
     return function_def
 
   def get_graph_debug_info(self, name):
@@ -1855,11 +1873,29 @@ class Context:
   def get_compiler_ir(
       self,
       device_name,
+      platform_name,
       function_name,
       flat_args,
       captured_inputs,
       stage="hlo",
   ):
+    """Get the compiler IR bytes.
+
+    Args:
+      device_name: The name of the device with the form as
+        "/job:localhost/replica:0/task:0/device:CPU:0", "/device:TPU:0" etc.
+        When this is used, actual device is needed for getting the compiler IR.
+      platform_name: The name of the platform, e.g. "TPU". When this is used, no
+        actual device is needed but the compiler IR is obtained as if using that
+        device. The scenarios supported are more limited.
+      function_name: The name of the function to get the compiler IR.
+      flat_args: The flat argument inputs.
+      captured_inputs: The inputs that are captured.
+      stage: The exported stage for the given function.
+
+    Returns:
+      The compiler IR bytes.
+    """
     return pywrap_tfe.TF_GetCompilerIr(
         self._context_handle,
         function_name,
@@ -1867,6 +1903,7 @@ class Context:
         device_name,
         flat_args,
         captured_inputs,
+        platform_name,
     )
 
   @deprecated(
@@ -2118,6 +2155,20 @@ class Context:
     run_metadata = config_pb2.RunMetadata()
     run_metadata.ParseFromString(compat.as_bytes(proto_data))
     return run_metadata
+
+  def set_server_def_retries(self, retries):
+    """Set the number of retries to use when calling SetServerDef.
+
+    In cases where many servers run in high-preemption environments, jobs could
+    be preempted during startup and initial connection via SetServerDef. Retries
+    allow for more robust connection in these environments.
+
+    Args:
+      retries: int specifying the number of connection retries before failing.
+        Retries follow an exponential backoff waiting period with min value 1ms,
+        max value 10s, and exponent 1.3.
+    """
+    self._set_server_def_retries = retries
 
   @property
   def context_switches(self):
@@ -2722,6 +2773,22 @@ def get_server_def():
 
 def set_server_def(server_def):
   context().set_server_def(server_def)
+
+
+def set_server_def_retries(retries):
+  """Set the number of retries to use when calling SetServerDef.
+
+  In cases where many servers run in high-preemption environments, jobs could
+  be preempted during startup and initial connection via SetServerDef. Retries
+  allow for more robust connection in these environments.
+
+
+  Args:
+    retries: int specifying the number of connection retries before failing.
+      Retries follow an exponential backoff waiting period with min value 1ms,
+      max value 10s, and exponent 1.3.
+  """
+  context().set_server_def_retries(retries)
 
 
 def update_server_def(server_def):

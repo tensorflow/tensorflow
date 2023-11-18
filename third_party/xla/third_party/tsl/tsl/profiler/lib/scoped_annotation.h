@@ -153,7 +153,8 @@ class ScopedAnnotationT {
   // signals that annotation is disabled at the constructor.
   static constexpr size_t kInvalidLength = static_cast<size_t>(-1);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedAnnotationT);
+  ScopedAnnotationT(const ScopedAnnotationT&) = delete;
+  void operator=(const ScopedAnnotationT&) = delete;
 
   size_t old_length_ = kInvalidLength;
 };

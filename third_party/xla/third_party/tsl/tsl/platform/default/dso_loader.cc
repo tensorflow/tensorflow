@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/cuda_config.h"
+#include "third_party/nccl/nccl_config.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -44,6 +45,7 @@ string GetCublasVersion() { return TF_CUBLAS_VERSION; }
 string GetCusolverVersion() { return TF_CUSOLVER_VERSION; }
 string GetCufftVersion() { return TF_CUFFT_VERSION; }
 string GetCusparseVersion() { return TF_CUSPARSE_VERSION; }
+string GetNcclVersion() { return TF_NCCL_VERSION; }
 string GetTensorRTVersion() { return TF_TENSORRT_VERSION; }
 
 StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
@@ -117,6 +119,10 @@ StatusOr<void*> GetCuptiDsoHandle() {
 
 StatusOr<void*> GetCudnnDsoHandle() {
   return GetDsoHandle("cudnn", GetCudnnVersion());
+}
+
+StatusOr<void*> GetNcclDsoHandle() {
+  return GetDsoHandle("nccl", GetNcclVersion());
 }
 
 StatusOr<void*> GetNvInferDsoHandle() {

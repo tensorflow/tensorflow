@@ -515,11 +515,12 @@ py_strict_test(
     srcs = ["ram_file_system_test.py"],
     python_version = "PY3",
     deps = [
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/module",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",
@@ -1101,15 +1102,15 @@ tf_cuda_library(
         "@local_tsl//tsl/platform",
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:dnn",
-        "@local_xla//xla/stream_executor:event",
         "@local_xla//xla/stream_executor:multi_platform_manager",
-        "@local_xla//xla/stream_executor:scratch_allocator",
         "@local_xla//xla/stream_executor/cuda:cuda_activation_header",
         "@local_xla//xla/stream_executor/cuda:cuda_platform_id",
         "@local_xla//xla/stream_executor/host:host_platform_id",
         "@local_xla//xla/stream_executor/platform:dso_loader",
         "@local_xla//xla/stream_executor/rocm:rocm_platform_id",
-    ],
+    ] + if_rocm_is_configured([
+        "@local_xla//xla/stream_executor/rocm:miopen_plugin",
+    ]),
 )
 
 # Like stream_executor library, but compiles without --config=cuda
@@ -1124,9 +1125,7 @@ cc_library(
     deps = [
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:dnn",
-        "@local_xla//xla/stream_executor:event",
         "@local_xla//xla/stream_executor:multi_platform_manager",
-        "@local_xla//xla/stream_executor:scratch_allocator",
         "@local_xla//xla/stream_executor/cuda:cuda_platform_id",
         "@local_xla//xla/stream_executor/host:host_platform",
         "@local_xla//xla/stream_executor/host:host_platform_id",

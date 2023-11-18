@@ -16,13 +16,19 @@ limitations under the License.
 #include "xla/client/lib/slicing.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "xla/client/lib/arithmetic.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/xla_builder.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -287,8 +293,9 @@ XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64_t dim,
       ShapeUtil::AppendMajorDimension(1, &index_shape);
       std::vector<XlaOp> to_concat;
       to_concat.reserve(batch_dims + 1);
+      xla::Shape iota_shape = xla::ShapeUtil::MakeStaticShape(index_shape);
       for (int64_t batch_dim = 0; batch_dim < batch_dims; ++batch_dim) {
-        to_concat.push_back(Iota(builder, index_shape, batch_dim));
+        to_concat.push_back(Iota(builder, iota_shape, batch_dim));
       }
       to_concat.push_back(Reshape(index, index_shape.dimensions()));
       index = ConcatInDim(builder, to_concat, gather_dnums.index_vector_dim());

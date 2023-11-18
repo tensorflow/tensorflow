@@ -20,6 +20,11 @@ limitations under the License.
 
 enum class StatsType {
   NUM_MINIBATCHES_PER_SC,
+  MAX_IDS_PER_PARTITION,
+  MAX_UNIQUE_IDS_PER_PARTITION,
+  IDS_PER_PARTITION,
+  UNIQUE_IDS_PER_PARTITION,
+  DROPPED_ID_COUNT,
 };
 
 class SparseCoreOpsStatsHandler {

@@ -26,8 +26,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/tracked_tfrt_cpu_device_buffer.h"
@@ -37,7 +43,10 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
-#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
+#include "xla/xla_data.pb.h"
+#include "tsl/concurrency/async_value.h"
+#include "tsl/concurrency/async_value_ref.h"
+#include "tsl/concurrency/ref_count.h"
 
 namespace xla {
 
@@ -48,7 +57,7 @@ namespace xla {
 // robust by using setting the AsyncValue in the destructor.
 class MarkEventReadyOnExit {
  public:
-  explicit MarkEventReadyOnExit(tfrt::AsyncValueRef<runtime::CpuEvent> event)
+  explicit MarkEventReadyOnExit(tsl::AsyncValueRef<runtime::CpuEvent> event)
       : event_(std::move(event)) {}
 
   MarkEventReadyOnExit(const MarkEventReadyOnExit&) = delete;
@@ -60,12 +69,12 @@ class MarkEventReadyOnExit {
     if (event_) event_.SetStateConcrete();
   }
 
-  tfrt::AsyncValueRef<runtime::CpuEvent> Release() && {
+  tsl::AsyncValueRef<runtime::CpuEvent> Release() && {
     return std::move(event_);
   }
 
  private:
-  tfrt::AsyncValueRef<runtime::CpuEvent> event_;
+  tsl::AsyncValueRef<runtime::CpuEvent> event_;
 };
 
 // Async work runner abstracts away the implementation of the underlying thread
@@ -74,6 +83,7 @@ class AsyncWorkRunner {
  public:
   virtual ~AsyncWorkRunner() = default;
 
+  // `work` euqueued by `Schedule` may run on the calling thread.
   virtual void Schedule(absl::AnyInvocable<void()> work) = 0;
   virtual void ScheduleWhenReady(
       absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
@@ -171,7 +181,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   // nullptr if the buffer is already donated or there is outstanding external
   // references.
   TrackedTfrtCpuDeviceBuffer* AcquireUsage(
-      tfrt::AsyncValueRef<runtime::CpuEvent> usage_event);
+      tsl::AsyncValueRef<runtime::CpuEvent> usage_event);
 
   // A helper class for managing a pending donation. It should be committed upon
   // success. Otherwise, the donated buffer is returned to the
@@ -230,7 +240,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   // the underlying thread pool or work queue (usually owned by the client).
   void CopyFromLiteral(
       const LiteralSlice& literal, const Shape& shape,
-      absl::InlinedVector<tfrt::RCReference<tfrt::AsyncValue>, 4>* avs,
+      absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4>* avs,
       AsyncWorkRunner* async_work_runner);
 
   // Allocates a new `TrackedTfrtCpuDeviceBuffer` with the given shape and
@@ -238,7 +248,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   static StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
   AllocateTrackedDeviceBuffer(
       const Shape& on_device_shape,
-      absl::InlinedVector<tfrt::AsyncValueRef<runtime::CpuEvent>, 4>
+      absl::InlinedVector<tsl::AsyncValueRef<runtime::CpuEvent>, 4>
           definition_events);
 
   // Allocates new cpu events to `avs` and `definition_events`. If `shape` is a
@@ -246,8 +256,8 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   // `definition_events` will only contain one event.
   static void AllocateAvsAndEvents(
       const Shape& shape,
-      absl::InlinedVector<tfrt::RCReference<tfrt::AsyncValue>, 4>* avs,
-      absl::InlinedVector<tfrt::AsyncValueRef<runtime::CpuEvent>, 4>*
+      absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4>* avs,
+      absl::InlinedVector<tsl::AsyncValueRef<runtime::CpuEvent>, 4>*
           definition_events);
 
   // A helper function for PjRtClient::BufferFromHostBuffer. Creates a new cpu
@@ -325,7 +335,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   // If this buffer has external references when Delete() is called, this event
   // is populated by Delete(). When the last external reference is released,
   // the event is triggered, which is a precondition for the buffer being
-  std::optional<tfrt::AsyncValueRef<runtime::CpuEvent>>
+  std::optional<tsl::AsyncValueRef<runtime::CpuEvent>>
       external_references_dropped_event_ ABSL_GUARDED_BY(mu_);
 
   // `pending_donation_` indicates whether a donation is pending. The destructor
@@ -333,6 +343,80 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   // donation might fail. Note that concurrent calls to AcquireUsage() and
   // AcquireDonation() might fail even if the pending donation is aborted later.
   bool pending_donation_ ABSL_GUARDED_BY(mu_) = false;
+};
+
+class AbstractAsyncHostToHostMemoryTransferManager
+    : public PjRtClient::AsyncHostToDeviceTransferManager {
+ public:
+  ~AbstractAsyncHostToHostMemoryTransferManager() override;
+
+  size_t buffer_count() const override { return buffer_sizes_.size(); }
+
+  size_t buffer_size(int buffer_index) const override;
+
+  std::unique_ptr<PjRtBuffer> RetrieveBuffer(int buffer_index) override;
+
+  Status TransferLiteralToBuffer(
+      int buffer_index, const LiteralSlice& literal,
+      absl::AnyInvocable<void() &&> on_done) override;
+
+  Status TransferRawDataToBuffer(
+      int buffer_index, absl::string_view data,
+      absl::AnyInvocable<void() &&> on_done) override;
+
+  Status TransferRawDataToSubBuffer(
+      int buffer_index, const void* data, int64_t offset, int64_t transfer_size,
+      bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) override;
+
+  void SetBufferError(int buffer_index, Status error) override;
+
+  void AddTransferMetadata(const TransferMetadata& meta) override {
+    LOG(WARNING) << "AddTransferMetadata not implemented for "
+                    "AbstractAsyncHostToHostMemoryTransferManager";
+  }
+
+ protected:
+  AbstractAsyncHostToHostMemoryTransferManager(
+      absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4> avs,
+      absl::InlinedVector<std::unique_ptr<AbstractTfrtCpuBuffer>, 4> buffers,
+      absl::InlinedVector<TrackedTfrtCpuDeviceBuffer*, 4> device_buffers,
+      absl::InlinedVector<size_t, 4> buffer_sizes,
+      absl::InlinedVector<int64_t, 4> buffer_transfers_in_flight,
+      absl::InlinedVector<bool, 4> last_transfer_finished,
+      AsyncWorkRunner* async_work_runner);
+
+  // Initialize `device_buffers`, `buffer_sizes`, `buffer_transfers_in_flight`,
+  // and `last_transfer_finished` from `buffers`.
+  static Status PopulateAsyncTransferManagerData(
+      absl::Span<const std::unique_ptr<AbstractTfrtCpuBuffer>> buffers,
+      absl::InlinedVector<TrackedTfrtCpuDeviceBuffer*, 4>& device_buffers,
+      absl::InlinedVector<size_t, 4>& buffer_sizes,
+      absl::InlinedVector<int64_t, 4>& buffer_transfers_in_flight,
+      absl::InlinedVector<bool, 4>& last_transfer_finished);
+
+  mutable absl::Mutex mu_;
+  // The number of transfers that are currently in flight.
+  int transfers_in_flight_ ABSL_GUARDED_BY(mu_);
+  // AsyncValues used to mark buffers as ready for consumption.
+  absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4> avs_
+      ABSL_GUARDED_BY(mu_);
+  // Holds the number of in-flight transfers for each buffer.
+  absl::InlinedVector<int64_t, 4> buffer_transfers_in_flight_
+      ABSL_GUARDED_BY(mu_);
+  // Flag to indicate whether we have seen the last transfer of each buffer.
+  absl::InlinedVector<bool, 4> last_transfer_finished_ ABSL_GUARDED_BY(mu_);
+  // The newly created buffers, which will be returned to the caller via
+  // Retrieve.
+  absl::InlinedVector<std::unique_ptr<AbstractTfrtCpuBuffer>, 4> buffers_
+      ABSL_GUARDED_BY(mu_);
+  // Device buffers which we use to get the underlying memory to populate.
+  absl::InlinedVector<TrackedTfrtCpuDeviceBuffer*, 4> device_buffers_
+      ABSL_GUARDED_BY(mu_);
+  // Cached versions of the sizes of all the buffers. Not modified after
+  // creation, so not guarded by mu_.
+  absl::InlinedVector<size_t, 4> buffer_sizes_;
+
+  AsyncWorkRunner* async_work_runner_;
 };
 
 }  // namespace xla

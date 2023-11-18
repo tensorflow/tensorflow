@@ -269,7 +269,9 @@ class HloPrintOptions {
   }
 
   // If true, uses the async operation syntax sugar to print async-start,
-  // async-update, and async-done HLOs. If the syntax sugar is enabled, the
+  // async-update, and async-done HLOs. If the syntax sugar is enabled and the
+  // async computation is trivial (i.e. only a single instruction taking
+  // computation parameters as operands, and otherwise is illegal), the
   // computations called by these instructions will not be printed and instead
   // the root of the called computation will be printed instead of these
   // instructions and -start, -update, and -done suffixes will be appended to
@@ -539,7 +541,7 @@ class HloInstruction {
   // instruction from each operand's user set and user's operand set.
   void DetachFromOperandsAndUsers();
 
-  // Adds a derived instruciton to the parent computation of this instruction.
+  // Adds a derived instruction to the parent computation of this instruction.
   // Also update setup the new instruction as a derived instruction.
   HloInstruction* AddInstruction(
       std::unique_ptr<HloInstruction> derived_instruction);
@@ -1715,6 +1717,11 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context = nullptr) const;
 
+  // Clones the HLO instruction with new shape, operands and suffix.
+  std::unique_ptr<HloInstruction> CloneWithNewOperands(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      const std::string& suffix, HloCloneContext* context = nullptr) const;
+
   // Returns the computations this instruction directly calls (if any).
   const std::vector<HloComputation*>& called_computations() const {
     return called_computations_;
@@ -1901,6 +1908,26 @@ class HloInstruction {
 
   bool is_default_config() const { return is_default_config_; }
   void set_default_config() { is_default_config_ = true; }
+
+  void set_operation_queue_id(int64_t operation_queue_id) {
+    operation_queue_id_ = operation_queue_id;
+  }
+
+  const std::optional<int64_t> operation_queue_id() const {
+    return operation_queue_id_;
+  }
+
+  void set_wait_on_operation_queues(std::vector<int64_t>& operation_queue_ids) {
+    wait_on_operation_queues_ = operation_queue_ids;
+  }
+
+  const std::vector<int64_t> wait_on_operation_queues() const {
+    return wait_on_operation_queues_;
+  }
+
+  void add_wait_on_operation_queues(int64_t operation_queue_id) {
+    wait_on_operation_queues_.push_back(operation_queue_id);
+  }
 
   // Returns a string representation of a proto in the format used by
   // raw_backend_config_string.
@@ -2336,6 +2363,9 @@ class HloInstruction {
     kFalseComputationIndex = 1,
   };
 
+  // Change instruction's name to have a given suffix.
+  void AddSuffixToInstructionName(const absl::string_view suffix);
+
  private:
   friend class HloComputation;
   // Wrapper class of string format and protobuf format of BackendConfig.
@@ -2510,6 +2540,12 @@ class HloInstruction {
   // Intrusive flag used by HloComputation, whether this instruction has
   // been marked as dead.
   bool marked_as_dead_;
+
+  // ID of the operation queue to run this instruction.
+  std::optional<int64_t> operation_queue_id_;
+
+  // IDs of operation queues to await before running this instruction.
+  std::vector<int64_t> wait_on_operation_queues_;
 };
 
 // Explicit instantiations in hlo_instruction.cc.
@@ -2526,8 +2562,6 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
 // Custom (de)stringification functions for protos that live inside
 // HloInstruction.
 std::string PaddingConfigToString(const PaddingConfig& padding);
-std::string FrontendAttributesToString(
-    const FrontendAttributes& frontend_attributes);
 std::string StatisticsVizToString(const StatisticsViz& statistics_viz);
 std::string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 std::string RandomDistributionToString(const RandomDistribution& distribution);

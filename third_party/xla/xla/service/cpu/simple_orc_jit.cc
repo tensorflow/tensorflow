@@ -289,7 +289,7 @@ bool ContiguousSectionMemoryManager::finalizeMemory(std::string* err_msg) {
 /*static*/ std::unique_ptr<llvm::TargetMachine>
 SimpleOrcJIT::InferTargetMachineForJIT(
     const llvm::TargetOptions& target_options,
-    llvm::CodeGenOpt::Level opt_level) {
+    llvm::CodeGenOptLevel opt_level) {
   std::unique_ptr<llvm::TargetMachine> target_machine(
       llvm::EngineBuilder()
           .setTargetOptions(target_options)
@@ -305,10 +305,9 @@ SimpleOrcJIT::InferTargetMachineForJIT(
 SimpleOrcJIT::SimpleOrcJIT(
     std::unique_ptr<llvm::orc::ExecutorProcessControl> target_process_control,
     std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
-    const llvm::TargetOptions& target_options,
-    llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
-    bool disable_expensive_passes, bool disable_slp_vectorizer,
-    llvm::FastMathFlags fast_math_flags,
+    const llvm::TargetOptions& target_options, llvm::CodeGenOptLevel opt_level,
+    bool optimize_for_size, bool disable_expensive_passes,
+    bool disable_slp_vectorizer, llvm::FastMathFlags fast_math_flags,
     LLVMCompiler::ModuleHook pre_optimization_hook,
     LLVMCompiler::ModuleHook post_optimization_hook,
     std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook)
@@ -325,8 +324,9 @@ SimpleOrcJIT::SimpleOrcJIT(
       compile_layer_(
           *execution_session_, object_layer_,
           std::make_unique<CompilerFunctor>(
-              target_machine_.get(), opt_level, optimize_for_size,
-              disable_expensive_passes, disable_slp_vectorizer, fast_math_flags,
+              target_machine_.get(), static_cast<int>(opt_level),
+              optimize_for_size, disable_expensive_passes,
+              disable_slp_vectorizer, fast_math_flags,
               std::move(pre_optimization_hook),
               std::move(post_optimization_hook), std::move(post_codegen_hook))),
       main_jit_dylib_(&execution_session_->createBareJITDylib("<main>")),
@@ -382,10 +382,9 @@ SimpleOrcJIT::~SimpleOrcJIT() {
 }
 
 llvm::Expected<std::unique_ptr<SimpleOrcJIT>> SimpleOrcJIT::Create(
-    const llvm::TargetOptions& target_options,
-    llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
-    bool disable_expensive_passes, bool disable_slp_vectorizer,
-    llvm::FastMathFlags fast_math_flags,
+    const llvm::TargetOptions& target_options, llvm::CodeGenOptLevel opt_level,
+    bool optimize_for_size, bool disable_expensive_passes,
+    bool disable_slp_vectorizer, llvm::FastMathFlags fast_math_flags,
     LLVMCompiler::ModuleHook pre_optimization_hook,
     LLVMCompiler::ModuleHook post_optimization_hook,
     std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook) {
@@ -494,7 +493,7 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConv2DF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConv3DF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConv3DF32);
-  REGISTER_CPU_RUNTIME_SYMBOL(EigenFft);
+  REGISTER_CPU_RUNTIME_SYMBOL(DuccFft);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF64);
@@ -509,7 +508,7 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv2DF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv3DF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv3DF32);
-  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedFft);
+  REGISTER_CPU_RUNTIME_SYMBOL(DuccSingleThreadedFft);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF64);

@@ -263,7 +263,8 @@ class DebugEventsWriter {
   std::unique_ptr<SingleDebugEventFileWriter> execution_writer_;
   std::unique_ptr<SingleDebugEventFileWriter> graph_execution_traces_writer_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DebugEventsWriter);
+  DebugEventsWriter(const DebugEventsWriter&) = delete;
+  void operator=(const DebugEventsWriter&) = delete;
 
   friend class DebugEventsWriterTest;
 };

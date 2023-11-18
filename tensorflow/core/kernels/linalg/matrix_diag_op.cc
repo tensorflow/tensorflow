@@ -153,7 +153,8 @@ class MatrixDiagPartOp : public OpKernel {
   bool left_align_superdiagonal_ = true;
   bool left_align_subdiagonal_ = true;
   static constexpr int kNumV1Inputs = 1;
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixDiagPartOp);
+  MatrixDiagPartOp(const MatrixDiagPartOp&) = delete;
+  void operator=(const MatrixDiagPartOp&) = delete;
 };
 
 template <typename Device, typename T>
@@ -290,7 +291,8 @@ class MatrixDiagOp : public OpKernel {
   bool left_align_superdiagonal_ = true;
   bool left_align_subdiagonal_ = true;
   static constexpr int kNumV1Inputs = 1;
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixDiagOp);
+  MatrixDiagOp(const MatrixDiagOp&) = delete;
+  void operator=(const MatrixDiagOp&) = delete;
 };
 
 #define REGISTER_MATRIX_DIAG(type)                                           \

@@ -16,20 +16,27 @@ limitations under the License.
 #include "xla/stream_executor/executor_cache.h"
 
 #include <memory>
+#include <utility>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
+ExecutorCache::ExecutorCache() = default;
+ExecutorCache::~ExecutorCache() { DestroyAllExecutors(); }
+
 tsl::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
-    const StreamExecutorConfig& config,
-    const std::function<ExecutorFactory>& factory) {
+    const StreamExecutorConfig& config, const ExecutorFactory& factory) {
   // In the fast path case, the cache already has an entry and we can just
   // return after Get() which only takes a shared lock and not a unique lock.
   // If we need to create, we take a unique lock on cache_.
-  auto fast_result = Get(config);
-  if (fast_result.ok()) {
+  if (auto fast_result = Get(config); fast_result.ok()) {
     return fast_result;
   }
 
@@ -38,7 +45,7 @@ tsl::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
     absl::MutexLock lock{&mutex_};
     entry = &cache_[config.ordinal];
     // Release the map lock; the address of 'entry' is stable because
-    // std::map guarantees reference stability.
+    // absl::node_hash_map guarantees reference stability.
   }
 
   // Acquire the per-Entry mutex without holding the map mutex. Initializing
@@ -70,47 +77,43 @@ tsl::StatusOr<StreamExecutor*> ExecutorCache::Get(
   {
     absl::ReaderMutexLock lock{&mutex_};
 
-    {
-      if (config.gpu_stream) {
-        // Need to iterate through all stored executors.
-        for (auto& [ordinal, e] : cache_) {
-          absl::ReaderMutexLock l{&e.configurations_mutex};
-          for (auto& [c, executor] : e.configurations) {
-            if (executor->FindAllocatedStream(config.gpu_stream)) {
-              return executor.get();
-            }
+    // If gpu stream is not nullptr we have to find StreamExecutor that owns it,
+    // and return NOT_FOUND error if we can't find it.
+    if (config.gpu_stream) {
+      for (auto& [ordinal, e] : cache_) {
+        absl::ReaderMutexLock l{&e.configurations_mutex};
+        for (auto& [c, executor] : e.configurations) {
+          if (executor->FindAllocatedStream(config.gpu_stream)) {
+            return executor.get();
           }
         }
-        return tsl::Status(
-            absl::StatusCode::kNotFound,
-            absl::StrFormat("No executors own stream %p", config.gpu_stream));
       }
+      return absl::NotFoundError(
+          absl::StrFormat("No executors own stream %p", config.gpu_stream));
     }
 
-    auto it = cache_.find(config.ordinal);
-    if (it != cache_.end()) {
+    if (auto it = cache_.find(config.ordinal); it != cache_.end()) {
       entry = &it->second;
     } else {
-      return tsl::Status(
-          absl::StatusCode::kNotFound,
-          absl::StrFormat("No executors registered for ordinal %d",
-                          config.ordinal));
+      return absl::NotFoundError(absl::StrFormat(
+          "No executors registered for ordinal %d", config.ordinal));
     }
   }
+
   absl::ReaderMutexLock lock{&entry->configurations_mutex};
   if (entry->configurations.empty()) {
-    return tsl::Status(absl::StatusCode::kNotFound,
-                       absl::StrFormat("No executors registered for ordinal %d",
-                                       config.ordinal));
+    return absl::NotFoundError(absl::StrFormat(
+        "No executors registered for ordinal %d", config.ordinal));
   }
-  for (const auto& iter : entry->configurations) {
-    if (iter.first.device_options == config.device_options) {
+
+  for (auto& [entry_config, entry_executor] : entry->configurations) {
+    if (entry_config.device_options == config.device_options) {
       VLOG(2) << "hit in cache for device ordinal " << config.ordinal;
-      return iter.second.get();
+      return entry_executor.get();
     }
   }
-  return tsl::Status(absl::StatusCode::kNotFound,
-                     "No executor found with a matching config.");
+
+  return absl::NotFoundError("No executor found with a matching config.");
 }
 
 void ExecutorCache::DestroyAllExecutors() {

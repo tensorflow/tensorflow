@@ -41,9 +41,6 @@ class CudnnRnnSequenceTensorDescriptor;
 class CudnnRnnStateTensorDescriptor;
 class CudnnCtcLossDescriptor;
 
-// Opaque and unique identifier for the cuDNN plugin.
-extern const PluginId kCuDnnPlugin;
-
 using BatchDescriptorSlice = absl::Span<const dnn::BatchDescriptor>;
 
 template <typename T>
@@ -298,8 +295,17 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       dnn::ActivationMode activation_mode) override;
 
-  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHASoftmaxRunner>>
-  FusedMHASoftmaxRunnerFromDesc(
+  tsl::StatusOr<std::unique_ptr<const dnn::NormRunner>> NormRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc, double epsilon,
+      const dnn::TensorDescriptor& input_descriptor,
+      const dnn::TensorDescriptor& scale_descriptor,
+      const dnn::TensorDescriptor& bias_descriptor,
+      const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> expectation_descriptor,
+      std::optional<dnn::TensorDescriptor> norm_factor_descriptor) override;
+
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHARunner>>
+  FusedMHARunnerFromDesc(
       Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
       dnn::FusedMHAKind kind,
       const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
@@ -308,50 +314,13 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const dnn::TensorDescriptor& output_descriptor,
       std::optional<dnn::TensorDescriptor> activation_descriptor,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
+      std::optional<dnn::TensorDescriptor> mask_descriptor,
+      std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed,
+      bool is_flash_attention, bool is_causal_mask) override;
 
-  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskRunner>>
-  FusedMHAScaleMaskSoftmaxRunnerFromDesc(
-      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
-      dnn::FusedMHAKind kind,
-      const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
-      const dnn::TensorDescriptor& output_descriptor,
-      std::optional<dnn::TensorDescriptor> activation_descriptor,
-      const dnn::TensorDescriptor& mask_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
-
-  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABiasMaskRunner>>
-  FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc(
-      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
-      dnn::FusedMHAKind kind,
-      const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
-      const dnn::TensorDescriptor& output_descriptor,
-      std::optional<dnn::TensorDescriptor> activation_descriptor,
-      const dnn::TensorDescriptor& mask_descriptor,
-      const dnn::TensorDescriptor& bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
-
-  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABiasRunner>>
-  FusedMHAScaleBiasSoftmaxRunnerFromDesc(
-      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
-      dnn::FusedMHAKind kind,
-      const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
-      const dnn::TensorDescriptor& output_descriptor,
-      std::optional<dnn::TensorDescriptor> activation_descriptor,
-      const dnn::TensorDescriptor& bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
-
-  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHASoftmaxBackwardRunner>>
-  FusedMHASoftmaxBackwardRunnerFromDesc(
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABackwardRunner>>
+  FusedMHABackwardRunnerFromDesc(
       Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
       dnn::FusedMHAKind kind,
       const dnn::MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor,
@@ -362,26 +331,13 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::TensorDescriptor& d_bmm1_lhs_descriptor,
       const dnn::TensorDescriptor& d_bmm1_rhs_descriptor,
       const dnn::TensorDescriptor& d_bmm2_rhs_descriptor,
-      const dnn::TensorDescriptor& d_s_descriptor,
-      std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
-
-  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskBackwardRunner>>
-  FusedMHAScaleMaskSoftmaxBackwardRunnerFromDesc(
-      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
-      dnn::FusedMHAKind kind,
-      const dnn::MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm1_grad_gemm2_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm2_grad_gemm1_lhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm2_grad_gemm2_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& d_output_descriptor,
-      const dnn::TensorDescriptor& d_bmm1_lhs_descriptor,
-      const dnn::TensorDescriptor& d_bmm1_rhs_descriptor,
-      const dnn::TensorDescriptor& d_bmm2_rhs_descriptor,
-      const dnn::TensorDescriptor& d_s_descriptor,
-      const dnn::TensorDescriptor& mask_descriptor,
-      std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
+      std::optional<dnn::TensorDescriptor> d_s_descriptor,
+      std::optional<dnn::TensorDescriptor> mask_descriptor,
+      std::optional<dnn::TensorDescriptor> d_bias_descriptor,
+      std::optional<dnn::TensorDescriptor> fwd_output_descriptor,
+      std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed,
+      bool is_flash_attention, bool is_causal_mask);
   bool GetRnnAlgorithms(
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
@@ -505,32 +461,6 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemory<int8_t>* filter_output,
       std::optional<const DeviceMemory<float>> bias_input,
       std::optional<DeviceMemory<float>> bias_output) override;
-
-  bool DoConvolveQuantized(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<float>& input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<int8_t>& filter_coefficients,
-      const DeviceMemory<float>& coefficient_scales,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data) override {
-    LOG(ERROR) << "DoConvolveQuantized not supported by cuDNN";
-    return false;
-  }
-
-  bool DoConvolveQuantized(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<float>& input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<int16>& filter_coefficients,
-      const DeviceMemory<float>& coefficient_scales,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data) override {
-    LOG(ERROR) << "DoConvolveQuantized not supported by cuDNN";
-    return false;
-  }
 
   bool DoSeparableConvolve(
       Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
@@ -824,7 +754,8 @@ class CudnnSupport : public dnn::DnnSupport {
       ScratchAllocator* scratch_allocator,
       DeviceMemory<uint8_t>* scratch_memory, int* ctc_loss_algo_id) override;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(CudnnSupport);
+  CudnnSupport(const CudnnSupport&) = delete;
+  void operator=(const CudnnSupport&) = delete;
 };
 
 }  // namespace gpu

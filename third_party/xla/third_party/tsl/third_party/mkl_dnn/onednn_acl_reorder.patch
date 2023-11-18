@@ -16,7 +16,7 @@
  *******************************************************************************
 diff --git a/src/cpu/aarch64/acl_reorder.cpp b/src/cpu/aarch64/acl_reorder.cpp
 new file mode 100644
-index 0000000000..061751b555
+index 000000000..061751b55
 --- /dev/null
 +++ b/src/cpu/aarch64/acl_reorder.cpp
 @@ -0,0 +1,52 @@
@@ -341,10 +341,10 @@ index 0000000000..edbc38914d
 +
 +#endif // CPU_AARCH64_ACL_REORDER_HPP
 diff --git a/src/cpu/reorder/cpu_reorder_regular_f32_f32.cpp b/src/cpu/reorder/cpu_reorder_regular_f32_f32.cpp
-index bccd2f75f4..5e5ea331ba 100644
+index a4150b619..f4d6b4de3 100644
 --- a/src/cpu/reorder/cpu_reorder_regular_f32_f32.cpp
 +++ b/src/cpu/reorder/cpu_reorder_regular_f32_f32.cpp
-@@ -15,6 +15,7 @@
+@@ -16,6 +16,7 @@
  *******************************************************************************/
  
  #include "cpu/reorder/cpu_reorder.hpp"
@@ -352,19 +352,20 @@ index bccd2f75f4..5e5ea331ba 100644
  
  namespace dnnl {
  namespace impl {
-@@ -27,6 +28,7 @@ const impl_list_map_t &regular_f32_f32_impl_list_map() {
+@@ -28,6 +29,7 @@ const impl_list_map_t &regular_f32_f32_impl_list_map() {
          // f32 -> f32
          {{f32, f32, 0}, {
              REG_FAST_DIRECT_COPY_F32_F32
 +            DNNL_AARCH64_ONLY(CPU_REORDER_INSTANCE(aarch64::acl_reorder_fwd_t))
  
+             DNNL_X64_ONLY(CPU_REORDER_INSTANCE(x64::brgemm_matmul_matrix_B_reorder_t))
              DNNL_X64_ONLY(CPU_REORDER_INSTANCE(x64::jit_blk_reorder_t))
-             DNNL_X64_ONLY(CPU_REORDER_INSTANCE(x64::jit_uni_reorder_t))
-@@ -64,6 +66,7 @@ const impl_list_map_t &regular_f32_f32_impl_list_map() {
+@@ -69,6 +71,8 @@ const impl_list_map_t &regular_f32_f32_impl_list_map() {
              nullptr,
          }},
          {{f32, f32, 4}, {
++
 +            DNNL_AARCH64_ONLY(CPU_REORDER_INSTANCE(aarch64::acl_reorder_fwd_t))
-             DNNL_X64_ONLY(CPU_REORDER_INSTANCE(x64::wino_reorder_t<f32, f32>))
- 
              CPU_REORDER_INSTANCE(rnn_weights_reorder_t<f32, f32>)
+ 
+             REG_FAST_DIRECT_COPY_F32_F32

@@ -1,11 +1,12 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//tensorflow/compiler/mlir/tf2xla/api/v0:__subpackages__",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:__pkg__",
         "//tensorflow/compiler/mlir/tf2xla/api/v1:__subpackages__",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:__subpackages__",
     ],
 )
 
@@ -70,7 +71,7 @@ tf_cc_test(
     srcs = ["mlir_pass_instrumentation_test.cc"],
     deps = [
         ":mlir_pass_instrumentation",
-        "//tensorflow/compiler/mlir/tf2xla/api/v0:compile_mlir_util_no_tf_dialect_passes",
+        "//tensorflow/compiler/mlir/tf2xla/api/v1:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/core:test",
         "@com_google_googletest//:gtest_main",
     ],
@@ -106,30 +107,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "legalize_tf_to_hlo",
-    srcs = ["legalize_tf_to_hlo.cc"],
-    hdrs = ["legalize_tf_to_hlo.h"],
-    deps = [
-        ":compilation_timer",
-        ":legalize_tf_mlir",
-        "//tensorflow/compiler/mlir/tf2xla/api/v0:compile_tf_graph",
-        "//tensorflow/compiler/tf2xla:layout_util",
-        "//tensorflow/compiler/tf2xla:xla_helpers",
-        "//tensorflow/compiler/tf2xla:xla_tpu_backend_registration",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
-        "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla/client:compile_only_client",
-    ],
-)
-
 tf_cc_test(
     name = "legalize_tf_mlir_test",
     srcs = ["legalize_tf_mlir_test.cc"],
@@ -149,6 +126,30 @@ tf_cc_test(
         "@llvm-project//mlir:Pass",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
+    ],
+)
+
+cc_library(
+    name = "legalize_tf_to_hlo",
+    srcs = ["legalize_tf_to_hlo.cc"],
+    hdrs = ["legalize_tf_to_hlo.h"],
+    deps = [
+        ":compilation_timer",
+        ":legalize_tf_mlir",
+        "//tensorflow/compiler/mlir/tf2xla/api/v1:compile_tf_graph",
+        "//tensorflow/compiler/tf2xla:layout_util",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_tpu_backend_registration",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+        "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Pass",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla/client:compile_only_client",
     ],
 )
 
@@ -175,5 +176,69 @@ tf_cc_test(
         "@local_xla//xla:shape_util",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/stream_executor",
+    ],
+)
+
+cc_library(
+    name = "clustering_bridge_passes",
+    srcs = ["clustering_bridge_passes.cc"],
+    hdrs = ["clustering_bridge_passes.h"],
+    deps = [
+        "//tensorflow/compiler/jit:flags_headers",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
+        "//tensorflow/compiler/mlir/tf2xla/internal/passes:clustering_passes",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+tf_cc_test(
+    name = "clustering_bridge_passes_test",
+    srcs = ["clustering_bridge_passes_test.cc"],
+    deps = [
+        ":clustering_bridge_passes",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
+    name = "logging_hooks",
+    srcs = ["logging_hooks.cc"],
+    hdrs = ["logging_hooks.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
+        "//tensorflow/core:framework",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+tf_cc_test(
+    name = "logging_hooks_test",
+    srcs = ["logging_hooks_test.cc"],
+    data = [
+        "testdata/dead_const.mlir",
+    ],
+    deps = [
+        ":logging_hooks",
+        "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:resource_loader",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:status",
     ],
 )

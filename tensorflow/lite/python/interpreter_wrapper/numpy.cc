@@ -91,6 +91,8 @@ TfLiteType TfLiteTypeFromPyType(int py_type) {
       return kTfLiteUInt32;
     case NPY_INT16:
       return kTfLiteInt16;
+    case NPY_UINT16:
+      return kTfLiteUInt16;
     case NPY_UINT8:
       return kTfLiteUInt8;
     case NPY_INT8:

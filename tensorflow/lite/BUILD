@@ -3,7 +3,7 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_not_windows", "if_oss", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_copts_warnings", "tflite_linkopts_no_undefined", "tflite_self_contained_libs_test_suite")
-load("//tensorflow/lite:special_rules.bzl", "SPECIAL_RULES_DEPS", "internal_visibility_allowlist", "tflite_portable_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "SPECIAL_RULES_DEPS", "internal_visibility_allowlist", "tflite_internal_cc_3p_api_deps_src_all_visibility_allowlist", "tflite_portable_test_suite")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "alias_with_tflite", "cc_library_with_tflite")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
@@ -87,15 +87,13 @@ bool_flag(
 
 config_setting(
     name = "fuchsia_mmap_disabled",
-    flag_values = if_google(
-        {
-            ":enable_fuchsia_mmap": "False",
-            "//tools/cpp:cc_target_os": "fuchsia",
-        },
-        {
-            ":enable_fuchsia_mmap": "False",
-        },
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:fuchsia"],
+        [],
     ),
+    flag_values = {
+        ":enable_fuchsia_mmap": "False",
+    },
     values = if_oss(
         # TODO(b/149248802) When we have a Fuchsia Bazel SDK update to use the values it sets.
         {"cpu": "fuchsia"},
@@ -116,6 +114,51 @@ selects.config_setting_group(
         ":fuchsia_mmap_disabled",
         ":tflite_mmap_disabled_true",
         "//tensorflow:windows",
+    ],
+)
+
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src_all",
+    srcs = [
+        ":tflite_internal_cc_3p_api_deps_src",
+        "//tensorflow/lite/core:macros.h",
+        "//tensorflow/lite/core/acceleration/configuration/c:tflite_internal_cc_3p_api_deps_src",
+        "//tensorflow/lite/core/api:tflite_internal_cc_3p_api_deps_src",
+        "//tensorflow/lite/core/c:tflite_internal_cc_3p_api_deps_src",
+        "//tensorflow/lite/kernels:tflite_internal_cc_3p_api_deps_src",
+        "//tensorflow/lite/kernels/internal:tflite_internal_cc_3p_api_deps_src",
+        "//tensorflow/lite/schema:tflite_internal_cc_3p_api_deps_src",
+    ],
+    visibility = tflite_internal_cc_3p_api_deps_src_all_visibility_allowlist(),
+)
+
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = [
+        ":allocation.cc",
+        ":allocation.h",
+        ":array.cc",
+        ":array.h",
+        ":builtin_ops.h",
+        ":logger.h",
+        ":minimal_logging.cc",
+        ":minimal_logging.h",
+        ":minimal_logging_android.cc",
+        ":mmap_allocation.cc",
+        ":mutable_op_resolver.cc",
+        ":mutable_op_resolver.h",
+        ":op_resolver.h",
+        ":portable_type_to_tflitetype.h",
+        ":stderr_reporter.cc",
+        ":stderr_reporter.h",
+        ":tensorflow_profiler_logger.h",
+        ":tensorflow_profiler_logger_shim.cc",
+        ":type_to_tflitetype.h",
+        ":util.cc",
+        ":util.h",
+    ],
+    visibility = [
+        "//visibility:private",
     ],
 )
 
@@ -177,7 +220,6 @@ cc_library(
     copts = tflite_copts_warnings(),
     deps = [
         ":graph_info",
-        ":kernel_api",
         ":memory_planner",
         ":simple_memory_arena",
         ":util",
@@ -194,7 +236,6 @@ cc_library(
     copts = tflite_copts_warnings() + ["-DTF_LITE_TENSORFLOW_PROFILER"],
     deps = [
         ":graph_info",
-        ":kernel_api",
         ":memory_planner",
         ":simple_memory_arena_with_profiler",
         ":util",
@@ -448,9 +489,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     deps = [
-        ":string",
         "//tensorflow/lite/core/api:error_reporter",
-        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -1380,6 +1419,7 @@ bzl_library(
 cc_library_with_tflite(
     name = "namespace",
     hdrs = ["namespace.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//visibility:public",
     ],

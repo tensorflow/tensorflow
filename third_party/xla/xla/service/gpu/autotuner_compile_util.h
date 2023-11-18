@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -40,8 +42,14 @@ namespace gpu {
 // separate target, as runtime autotuning cannot perform compilation.
 class AutotunerCompileUtil {
  public:
+  // The GenerateModuleFn must generate/extract a module using the provided
+  // debug options. Typically it should set the debug options of the extracted
+  // module before it would transform it, to ensure that the transforms can use
+  // the debug options. In justified cases, it may override some of the provided
+  // debug options.
   using GenerateModuleFn =
-      absl::AnyInvocable<StatusOr<std::unique_ptr<HloModule>>()>;
+      absl::AnyInvocable<StatusOr<std::unique_ptr<HloModule>>(
+          const DebugOptions&)>;
 
   // Generates a compile util for a platform associated with the `stream`.
   //
@@ -75,9 +83,14 @@ class AutotunerCompileUtil {
   //  - `nullptr` on *expected* failure
   //  - `Executable` if everything goes fine.
   //  - `Status` on *unexpected* failure.
-  StatusOr<std::unique_ptr<Executable>> Compile(
-      AutotunerCompileUtil::GenerateModuleFn extractor,
-      bool force_disable_gpu_runtime = false);
+  StatusOr<std::unique_ptr<Executable>> Compile(GenerateModuleFn extractor);
+
+  // Generic method to extract an HLO using the debug options of the
+  // AutotunerCompileUtil.
+  //
+  // Typically we can use Compile directly.
+  StatusOr<std::unique_ptr<HloModule>> ExtractModule(
+      GenerateModuleFn extractor);
 
  private:
   AutotunerCompileUtil(const AutotuneConfig& config, Compiler* compiler,

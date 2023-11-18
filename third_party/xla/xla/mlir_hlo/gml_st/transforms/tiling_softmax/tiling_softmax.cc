@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir::gml_st {
@@ -157,9 +158,8 @@ struct TilePartialSoftmaxPattern
           // Populate tiling options.
           scf::SCFTilingOptions tilingOptions;
           tilingOptions.setTileSizeComputationFunction(
-              [&](OpBuilder &b, Operation *op) -> SmallVector<Value> {
-                Location loc = op->getLoc();
-                SmallVector<Value> tileSizeValues;
+              [&](OpBuilder &b, Operation *op) -> SmallVector<OpFoldResult> {
+                SmallVector<OpFoldResult> tileSizeValues;
                 for (int64_t i = 0; i < static_cast<int64_t>(tileSizes.size());
                      i++) {
                   // Skip tiling the reduction dimension. By convention, this is
@@ -167,7 +167,7 @@ struct TilePartialSoftmaxPattern
                   int64_t tileSizeInDim =
                       i == commonReductionDim ? 0 : tileSizes[i];
                   tileSizeValues.push_back(
-                      b.create<arith::ConstantIndexOp>(loc, tileSizeInDim));
+                      getAsIndexOpFoldResult(b.getContext(), tileSizeInDim));
                 }
                 return tileSizeValues;
               });

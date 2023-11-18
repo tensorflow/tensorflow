@@ -18,9 +18,31 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/strings/str_cat.h"
+#include "xla/stream_executor/device_memory.h"
 
 namespace stream_executor {
 namespace blas {
+
+// TODO(ezhulenev): We need a scoped thread local map-like container to make
+// sure that we can have multiple BlasSupport instances that do not overwrite
+// each others workspaces. For not it's ok as we know that this can't happen.
+static thread_local DeviceMemoryBase* workspace_thread_local = nullptr;
+
+BlasSupport::ScopedWorkspace::ScopedWorkspace(BlasSupport* blas,
+                                              DeviceMemoryBase* workspace)
+    : blas_(blas) {
+  blas->SetWorkspace(workspace);
+}
+
+BlasSupport::ScopedWorkspace::~ScopedWorkspace() { blas_->ResetWorkspace(); }
+
+DeviceMemoryBase* BlasSupport::GetWorkspace() { return workspace_thread_local; }
+
+void BlasSupport::SetWorkspace(DeviceMemoryBase* workspace) {
+  workspace_thread_local = workspace;
+}
+
+void BlasSupport::ResetWorkspace() { workspace_thread_local = nullptr; }
 
 std::string TransposeString(Transpose t) {
   switch (t) {

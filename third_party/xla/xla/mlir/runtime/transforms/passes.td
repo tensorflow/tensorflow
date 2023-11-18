@@ -148,6 +148,17 @@ def ConvertCustomCalls : Pass<"xla-rt-convert-custom-calls", "ModuleOp"> {
   let dependentDialects = ["xla::runtime::RuntimeDialect"];
 }
 
+def MoveAllocasToEntryBlock : Pass<"xla-rt-move-allocas-to-entry-block", "ModuleOp"> {
+  let summary = "Move all `memref.alloca` to entry block for all functions";
+
+  let description = [{
+    For all functions, move `memref.alloca` to entry block for coroutine stack safety.
+  }];
+
+  let constructor = "xla::runtime::CreateMoveAllocasToEntryBlockPass()";
+  let dependentDialects = ["xla::runtime::RuntimeDialect"];
+}
+
 def ConvertAsserts : Pass<"xla-rt-convert-asserts", "ModuleOp"> {
   let summary = "Converts asserts in exported functions to run-time errors";
 

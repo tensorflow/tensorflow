@@ -97,7 +97,7 @@ GraphExecutionState::~GraphExecutionState() {
 #endif  // __ANDROID__
 
   auto flib_def = std::make_unique<FunctionLibraryDefinition>(
-      OpRegistry::Global(), graph_def.library());
+      OpRegistry::Global(), graph_def);
 
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&graph_def, *flib_def, 0));
 
@@ -822,7 +822,7 @@ Status GraphExecutionState::OptimizeGraph(
     // Optimized graph might have new functions specialized for it's
     // instantiation context (see Grappler function optimizer), and modified
     // function body for the existing functions.
-    optimized_flib->reset(new FunctionLibraryDefinition(*flib_def));
+    *optimized_flib = std::make_unique<FunctionLibraryDefinition>(*flib_def);
 
     for (const FunctionDef& fdef : new_graph.library().function()) {
       const string& func_name = fdef.signature().name();
@@ -880,7 +880,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
     // optimize it.
     optimized_graph.reset(new Graph(flib_def_.get()));
     CopyGraph(*graph_, optimized_graph.get());
-    optimized_flib.reset(new FunctionLibraryDefinition(*flib_def_));
+    optimized_flib = std::make_unique<FunctionLibraryDefinition>(*flib_def_);
   }
 
   subgraph::RewriteGraphMetadata rewrite_metadata;

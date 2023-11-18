@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/shape_util.h"
@@ -127,9 +128,8 @@ Status RunAllToAll(bool has_split_dimension,
       TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
                           ToNcclDataTypeAndCountMultiplier(
                               buffer.element_type, Thunk::kNcclAllToAll));
-      ncclDataType_t dtype = dtype_and_multiplier.first;
-      int64_t element_count =
-          buffer.element_count * dtype_and_multiplier.second;
+      auto [dtype, multiplier] = dtype_and_multiplier;
+      int64_t element_count = buffer.element_count;
 
       TF_RET_CHECK(element_count % num_participants == 0)
           << "Buffer was not an exact multiple of the number of participants.";
@@ -138,12 +138,24 @@ Status RunAllToAll(bool has_split_dimension,
                                                 buffer.element_type);
 
       for (int rank = 0; rank < num_participants; ++rank) {
+        VLOG(3) << absl::StreamFormat(
+            "Calling ncclSend(sendbuff=%p, count=%d, peer=%d "
+            "comm=%p, stream=%p)",
+            send_buffer + rank * chunk_bytes, chunk_elements * multiplier, rank,
+            static_cast<const void*>(comm), gpu_stream);
         XLA_CUDA_RETURN_IF_ERROR(ncclSend(send_buffer + rank * chunk_bytes,
-                                          chunk_elements, dtype, rank, comm,
-                                          gpu_stream));
+                                          chunk_elements * multiplier, dtype,
+                                          rank, comm, gpu_stream));
+
+        VLOG(3) << absl::StreamFormat(
+            "Calling ncclRecv(recvbuff=%p, count=%d, peer=%d "
+            "comm=%p, stream=%p)",
+            recv_buffer + rank * chunk_bytes, chunk_elements * multiplier, rank,
+            static_cast<const void*>(comm), gpu_stream);
+
         XLA_CUDA_RETURN_IF_ERROR(ncclRecv(recv_buffer + rank * chunk_bytes,
-                                          chunk_elements, dtype, rank, comm,
-                                          gpu_stream));
+                                          chunk_elements * multiplier, dtype,
+                                          rank, comm, gpu_stream));
       }
     }
   } else {
@@ -160,12 +172,24 @@ Status RunAllToAll(bool has_split_dimension,
       TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
                           ToNcclDataTypeAndCountMultiplier(
                               buffer.element_type, Thunk::kNcclAllToAll));
-      ncclDataType_t dtype = dtype_and_multiplier.first;
-      int64_t element_count =
-          buffer.element_count * dtype_and_multiplier.second;
+      auto [dtype, multiplier] = dtype_and_multiplier;
+      int64_t element_count = buffer.element_count * multiplier;
+
+      VLOG(3) << absl::StreamFormat(
+          "Calling ncclSend(sendbuff=%p, count=%d, peer=%d "
+          "comm=%p, stream=%p)",
+          send_buffer, element_count, i, static_cast<const void*>(comm),
+          gpu_stream);
 
       XLA_CUDA_RETURN_IF_ERROR(ncclSend(send_buffer, element_count, dtype,
                                         /*rank=*/i, comm, gpu_stream));
+
+      VLOG(3) << absl::StreamFormat(
+          "Calling ncclRecv(recvbuff=%p, count=%d, peer=%d "
+          "comm=%p, stream=%p)",
+          recv_buffer, element_count, i, static_cast<const void*>(comm),
+          gpu_stream);
+
       XLA_CUDA_RETURN_IF_ERROR(ncclRecv(recv_buffer, element_count, dtype,
                                         /*rank=*/i, comm, gpu_stream));
     }

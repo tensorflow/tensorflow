@@ -254,8 +254,6 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
   def testBfloat16(self):
     test_type = dtypes.bfloat16.as_numpy_dtype
     t = tensor_util.make_tensor_proto(np.array([10.0, 20.0], dtype=test_type))
-    # 10.0: 16672 = 010000010(130) 0100000: (1+0/2+1/4) * 2^(130-127)
-    # 20.0: 16800 = 010000011(131) 0100000: (1+0/2+1/4) * 2^(131-127)
     self.assertProtoEquals("""
       dtype: DT_BFLOAT16
       tensor_shape {
@@ -263,8 +261,7 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
           size: 2
         }
       }
-      half_val: 16672
-      half_val: 16800
+      tensor_content: "\x20\x41\x5C\x32\x34\x30\x41"
       """, t)
 
     a = tensor_util.MakeNdarray(t)

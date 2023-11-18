@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -1219,6 +1220,33 @@ TEST_F(HloVerifierTest, AsyncUpdateWrongType) {
           "async-update expects the shape of operand and output to match"));
 }
 
+TEST_F(HloVerifierTest, AsyncOpComputationNotTrivial) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  async_computation {
+    p = f32[2,3] parameter(0)
+    copy = f32[2,3] copy(p)
+    ROOT custom-call = f32[3,2] custom-call(copy), custom_call_target="foo"
+  }
+
+  ENTRY AsyncStartAndAsyncDone {
+    p0 = f32[2,3] parameter(0)
+    async-start = ((f32[2,3]), f32[3,2], u32[]) async-start(p0), calls=async_computation
+    ROOT async-done = f32[3,2] async-done(async-start), calls=async_computation
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr(
+          "expected to contain only the root and parameter instructions"));
+}
+
 TEST_F(HloVerifierTestLayoutSensitive, AsyncDoneWrongGroupId) {
   const char* const hlo_string = R"(
   HloModule Module
@@ -1593,7 +1621,7 @@ TEST_F(HloVerifierTest, AllReduceDoneWithoutStart) {
   ENTRY entry {
     p0 = f32[2,3] parameter(0)
     p1 = u32[] parameter(1)
-    tuple = (f32[2,3], f32[2,3]) tuple(p0, p0, p1, p1)
+    tuple = (f32[2,3], f32[2,3], u32[], u32[]) tuple(p0, p0, p1, p1)
     ROOT done = f32[2,3] all-reduce-done(tuple)
   }
   )";
@@ -2683,7 +2711,7 @@ TEST_F(HloVerifierTest, InconsistentConditionSharding) {
       HasSubstr("Inconsistent conditional sharding among instructions"));
 }
 
-TEST_F(HloVerifierTest, InvalidS4Usage) {
+TEST_F(HloVerifierTest, DisableS4Veridication) {
   const char* const hlo = R"(
   HloModule Module
 
@@ -2694,29 +2722,9 @@ TEST_F(HloVerifierTest, InvalidS4Usage) {
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_FALSE(status.ok());
-  EXPECT_THAT(
-      status.message(),
-      HasSubstr("S4/U4 is currently only supported in matmul and convolution"));
-}
-
-TEST_F(HloVerifierTest, InvalidU4Usage) {
-  const char* const hlo = R"(
-  HloModule Module
-
-  ENTRY entry {
-    param0 = u32[] parameter(0)
-    x = u4[] convert(param0)
-    ROOT add = u4[] add(x, x)
-  }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_FALSE(status.ok());
-  EXPECT_THAT(
-      status.message(),
-      HasSubstr("S4/U4 is currently only supported in matmul and convolution"));
+  HloVerifier verifier{HloVerifierOpts{}.WithVerifyS4U4Usage(false)};
+  auto status = verifier.Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
 }
 
 TEST(MetadataTrackerTest, MetadataTrackerLogsInfo) {
@@ -2924,6 +2932,34 @@ ENTRY entry {
   Status status = verifier().Run(module.get()).status();
 
   TF_ASSERT_OK(status);
+}
+
+TEST_F(HloVerifierTest, UnboundedDynamism) {
+  const char* const hlo = R"(
+  HloModule Module
+
+  ENTRY entry {
+    ROOT param0 = f32[?,784] parameter(0)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("Unbounded dynamism is disabled"));
+}
+
+TEST_F(HloVerifierTest, EnableUnboundedDynamism) {
+  const char* const hlo = R"(
+  HloModule Module
+
+  ENTRY entry {
+    ROOT param0 = f32[?,784] parameter(0)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloVerifier verifier{HloVerifierOpts{}.WithAllowUnboundedDynamism(true)};
+  auto status = verifier.Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
 }
 
 }  // namespace

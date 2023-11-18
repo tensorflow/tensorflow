@@ -103,7 +103,8 @@ class MirrorPadOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(MirrorPadOp);
+  MirrorPadOp(const MirrorPadOp&) = delete;
+  void operator=(const MirrorPadOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("MirrorPad").CompileTimeConstantInput("paddings"),
@@ -203,7 +204,8 @@ class MirrorPadGradOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(MirrorPadGradOp);
+  MirrorPadGradOp(const MirrorPadGradOp&) = delete;
+  void operator=(const MirrorPadGradOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("MirrorPadGrad").CompileTimeConstantInput("paddings"),

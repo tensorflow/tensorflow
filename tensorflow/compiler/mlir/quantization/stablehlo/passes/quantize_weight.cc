@@ -44,14 +44,19 @@ limitations under the License.
 //===----------------------------------------------------------------------===//
 // The Quantization Pass for Weight.
 //===----------------------------------------------------------------------===//
-namespace mlir {
-namespace stablehlo {
 
-namespace {
+namespace mlir::quant::stablehlo {
+
+// Put the definitions inside the ::mlir::quant::stablehlo namespace, to match
+// the declarations in passes.h.
 #define GEN_PASS_DEF_QUANTIZEWEIGHTPASS
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"
 
+namespace {
+
 using QuantizationUnits = llvm::SetVector<std::pair<Operation*, int>>;
+using mlir::stablehlo::ConstantOp;
+using mlir::stablehlo::ConvertOp;
 using ::stablehlo::quantization::QuantizationComponentSpec;
 
 // Min/Max values used for creating ConstantOp.
@@ -61,21 +66,9 @@ constexpr float kMinFloat16Value = -65504.f;
 class QuantizeWeightPass
     : public impl::QuantizeWeightPassBase<QuantizeWeightPass> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizeWeightPass)
-
   explicit QuantizeWeightPass(
       QuantizationComponentSpec quantization_component_spec)
       : quantization_component_spec_(quantization_component_spec) {}
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "stablehlo-quantize-weight";
-  }
-
-  StringRef getDescription() const final {
-    return "Apply the specified quantization methods to weights.";
-  }
 
  private:
   void runOnOperation() override;
@@ -245,8 +238,8 @@ void QuantizeWeightPass::runOnOperation() {
 
 // Creates an instance of the StableHLO dialect Quantize Weight pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizeWeightPass(
-    QuantizationComponentSpec quantization_component_spec) {
+    const QuantizationComponentSpec& quantization_component_spec) {
   return std::make_unique<QuantizeWeightPass>(quantization_component_spec);
 }
-}  // namespace stablehlo
-}  // namespace mlir
+
+}  // namespace mlir::quant::stablehlo

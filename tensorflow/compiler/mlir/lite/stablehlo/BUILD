@@ -1,7 +1,7 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -193,10 +193,12 @@ cc_library(
         ":drop_savedmodel_semantics",
         ":fold_broadcast_pass",
         ":fuse_convolution_pass",
+        ":legalize_tf_xla_call_module_to_stablehlo_pass",
         ":optimize",
         ":rename_entrypoint_to_main",
         ":smuggle_disallowed_ops",
         ":tf_stablehlo",
+        ":unfold_splat_constant_pass",
         ":unfuse_batch_norm_pass",
         "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
@@ -367,6 +369,31 @@ cc_library(
 )
 
 cc_library(
+    name = "unfold_splat_constant_pass",
+    srcs = [
+        "transforms/unfold_splat_constant_pass.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        ":passes_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@local_xla//xla/mlir_hlo",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "legalize_tf_xla_call_module_to_stablehlo_pass",
     srcs = [
         "transforms/legalize_tf_xla_call_module_to_stablehlo_pass.cc",
@@ -427,6 +454,7 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:uniform_quantized_types",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
@@ -460,6 +488,55 @@ gentbl_cc_library(
     ],
 )
 
+gentbl_cc_library(
+    name = "hlo_legalize_tflite_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "transforms/generated_tflite_legalize_hlo.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/tflite_legalize_hlo_patterns.td",
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncTdFiles",
+        "@local_xla//xla/mlir_hlo:hlo_ops_td_files",
+    ],
+)
+
+cc_library(
+    name = "tfl_legalize_hlo",
+    srcs = [
+        "transforms/tflite_legalize_hlo.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        ":hlo_legalize_tflite_inc_gen",
+        ":passes_inc_gen",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:custom_call",
+        "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:dot_general",
+        "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:util",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@local_xla//xla/mlir_hlo",
+    ],
+    alwayslink = True,
+)
+
 cc_library(
     name = "tf_legalize_hlo",
     srcs = [
@@ -474,7 +551,9 @@ cc_library(
         "-Ithird_party",
     ],
     deps = [
+        ":hlo_legalize_tf_inc_gen",
         ":passes_inc_gen",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:util",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:lower_tf_lib",
@@ -555,6 +634,7 @@ tf_cc_binary(
         ":stablehlo_tfl",
         ":tf_legalize_hlo",
         ":tf_stablehlo",
+        ":tfl_legalize_hlo",
         ":tfl_stablehlo",
         ":unfuse_batch_norm_pass",
         ":uniform_quantized_stablehlo_to_tfl_pass",

@@ -12,29 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Import core names of TensorFlow.
+"""TensorFlow Python init file."""
 
-Programs that want to build TensorFlow Ops and Graphs without having to import
-the constructors and utilities individually can import this file:
+# Do not add code to //third_party/tensorflow/python/__init__.py.
+# This file is imported whenever TensorFlow is imported.
+# Additional imports in this file could cause the internal
+# import time of TensorFlow to increase by multiple seconds.
 
-
-import tensorflow as tf
-"""
-
-import ctypes
-import importlib
-import sys
-import traceback
-
-# We aim to keep this file minimal and ideally remove completely.
-# If you are adding a new file with @tf_export decorators,
-# import it in modules_with_exports.py instead.
-
-# pylint: disable=g-bad-import-order,g-import-not-at-top
-
-# from tensorflow.python import keras
-# from tensorflow.python.layers import layers
-from tensorflow.python.tpu import api
 
 # Special dunders that we choose to export:
 _exported_dunders = set([
@@ -48,7 +32,3 @@ _exported_dunders = set([
 # Expose symbols minus dunders, unless they are allowlisted above.
 # This is necessary to export our dunders.
 __all__ = [s for s in dir() if s in _exported_dunders or not s.startswith('_')]
-
-# TODO(b/296442875): remove this when we remove the tf.distribution package.
-# This import is needed for tf.compat.v1.distributions.
-from tensorflow.python.ops.distributions import distributions

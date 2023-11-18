@@ -15,15 +15,12 @@ limitations under the License.
 
 #include "xla/stream_executor/device_description.h"
 
-#include <algorithm>
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <string>
 
-#include "absl/strings/str_cat.h"
 #include "tsl/lib/math/math_util.h"
-#include "tsl/platform/numbers.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 
@@ -57,67 +54,77 @@ DeviceDescription::DeviceDescription()
       core_count_(-1),
       ecc_enabled_(false) {}
 
-std::unique_ptr<std::map<std::string, std::string>> DeviceDescription::ToMap()
-    const {
-  std::unique_ptr<std::map<std::string, std::string>> owned_result{
-      new std::map<std::string, std::string>};
-  std::map<std::string, std::string> &result = *owned_result;
-  result["Device Vendor"] = device_vendor();
-  result["Platform Version"] = platform_version();
-  result["Driver Version"] = driver_version();
-  result["Runtime Version"] = runtime_version();
-  result["PCI bus ID"] = pci_bus_id_;
-  result["Device Name"] = name_;
-  result["Device Description"] = model_str_;
-
-  const ThreadDim &thread_dim = thread_dim_limit();
-  result["ThreadDim Limit"] =
-      absl::StrCat(thread_dim.x, ",", thread_dim.y, ",", thread_dim.z);
-  const BlockDim &block_dim = block_dim_limit();
-  result["BlockDim Limit"] =
-      absl::StrCat(block_dim.x, ",", block_dim.y, ",", block_dim.z);
-
-  result["Threads Per Core Limit"] = absl::StrCat(threads_per_core_limit());
-  result["Threads Per Block Limit"] = absl::StrCat(threads_per_block_limit());
-  result["Registers Per Block Limit"] =
-      absl::StrCat(registers_per_block_limit());
-
-  result["Device Address Bits"] = absl::StrCat(device_address_bits());
-  result["Device Memory Size"] =
-      tsl::strings::HumanReadableNumBytes(device_memory_size());
-  result["Memory Bandwidth"] = absl::StrCat(
-      tsl::strings::HumanReadableNumBytes(memory_bandwidth_), "/s");
-
-  result["Shared Memory Per Core"] =
-      tsl::strings::HumanReadableNumBytes(shared_memory_per_core_);
-  result["Shared Memory Per Block"] =
-      tsl::strings::HumanReadableNumBytes(shared_memory_per_block_);
-
-  result["Clock Rate GHz"] = absl::StrCat(clock_rate_ghz());
-
-  result["CUDA Compute Capability"] = cuda_compute_capability().ToString();
-
-  result["AMDGPU GCN Arch Name"] = rocm_compute_capability().gcn_arch_name();
-
-  result["NUMA Node"] = absl::StrCat(numa_node());
-  result["Core Count"] = absl::StrCat(core_count());
-  result["ECC Enabled"] = absl::StrCat(ecc_enabled());
-  return owned_result;
+DeviceDescription::DeviceDescription(const GpuDeviceInfoProto &proto) {
+  if (proto.has_cuda_compute_capability()) {
+    gpu_compute_capability_ =
+        stream_executor::CudaComputeCapability(proto.cuda_compute_capability());
+  } else {
+    gpu_compute_capability_ =
+        stream_executor::RocmComputeCapability(proto.rocm_compute_capability());
+  }
+  threads_per_block_limit_ = proto.threads_per_block_limit();
+  threads_per_warp_ = proto.threads_per_warp();
+  shared_memory_per_block_ = proto.shared_memory_per_block();
+  shared_memory_per_block_optin_ = proto.shared_memory_per_block_optin();
+  shared_memory_per_core_ = proto.shared_memory_per_core();
+  threads_per_core_limit_ = proto.threads_per_core_limit();
+  core_count_ = proto.core_count();
+  fpus_per_core_ = proto.fpus_per_core();
+  block_dim_limit_ =
+      BlockDim(proto.block_dim_limit_x(), proto.block_dim_limit_y(),
+               proto.block_dim_limit_z());
+  memory_bandwidth_ = proto.memory_bandwidth();
+  l2_cache_size_ = proto.l2_cache_size();
+  clock_rate_ghz_ = proto.clock_rate_ghz();
+  device_memory_size_ = proto.device_memory_size();
 }
 
-namespace internal {
+GpuDeviceInfoProto DeviceDescription::ToGpuProto() const {
+  stream_executor::GpuDeviceInfoProto proto;
+  if (auto *ptr = std::get_if<stream_executor::CudaComputeCapability>(
+          &gpu_compute_capability_))
+    *proto.mutable_cuda_compute_capability() = ptr->ToProto();
+  if (auto *ptr = std::get_if<stream_executor::RocmComputeCapability>(
+          &gpu_compute_capability_))
+    *proto.mutable_rocm_compute_capability() = ptr->ToProto();
 
-DeviceDescriptionBuilder::DeviceDescriptionBuilder()
-    : device_description_(new DeviceDescription) {}
+  proto.set_threads_per_block_limit(threads_per_block_limit_);
+  proto.set_threads_per_warp(threads_per_warp_);
+  proto.set_shared_memory_per_block(shared_memory_per_block_);
+  proto.set_shared_memory_per_block_optin(shared_memory_per_block_optin_);
+  proto.set_shared_memory_per_core(shared_memory_per_core_);
+  proto.set_threads_per_core_limit(threads_per_core_limit_);
+  proto.set_core_count(core_count_);
+  proto.set_fpus_per_core(fpus_per_core_);
+  proto.set_block_dim_limit_x(block_dim_limit().x);
+  proto.set_block_dim_limit_y(block_dim_limit().y);
+  proto.set_block_dim_limit_z(block_dim_limit().z);
+  proto.set_memory_bandwidth(memory_bandwidth_);
+  proto.set_l2_cache_size(l2_cache_size_);
+  proto.set_clock_rate_ghz(clock_rate_ghz_);
+  proto.set_device_memory_size(device_memory_size_);
+  return proto;
+}
 
-}  // namespace internal
+const GpuComputeCapability &DeviceDescription::gpu_compute_capability() const {
+  return gpu_compute_capability_;
+}
 
 CudaComputeCapability DeviceDescription::cuda_compute_capability() const {
-  return cuda_compute_capability_;
+  if (auto *ptr =
+          std::get_if<CudaComputeCapability>(&gpu_compute_capability_)) {
+    return *ptr;
+  }
+  // Fallback for backwards compatibility.
+  return CudaComputeCapability{-1, -1};
 }
 
 RocmComputeCapability DeviceDescription::rocm_compute_capability() const {
-  return rocm_compute_capability_;
+  if (auto *ptr =
+          std::get_if<RocmComputeCapability>(&gpu_compute_capability_)) {
+    return *ptr;
+  }
+  return RocmComputeCapability{};
 }
 
 bool ThreadDimOk(const DeviceDescription &device_description,

@@ -17,10 +17,7 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//tensorflow:internal",
-        "//tensorflow_models:__subpackages__",
-    ],
+    default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
 
@@ -395,6 +392,7 @@ tf_cuda_library(
             "//tensorflow/core:session_options",
             "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle_data",
             "//tensorflow/core/profiler/lib:traceme",
+            "@com_google_absl//absl/status",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/types:variant",
         ],

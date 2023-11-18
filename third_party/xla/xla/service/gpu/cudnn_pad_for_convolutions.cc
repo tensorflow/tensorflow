@@ -191,6 +191,13 @@ static StatusOr<bool> TryResolvePaddedShapesForTensorCore(
     return false;
   }
 
+  // When convolution is grouped, the shapes are in agreement with the group
+  // size. We cannot pad them independently.
+  if (conv->feature_group_count() > 1 || conv->batch_group_count() > 1) {
+    VLOG(2) << "Do not pad grouped convolution.";
+    return false;
+  }
+
   // TODO(timshen): Don't skip forward-activation convs if we find a benchmark
   // where there's a speedup.
   if (kind == CudnnConvKind::kForwardActivation) {

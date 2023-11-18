@@ -6660,6 +6660,31 @@ func ComputeBatchSize(scope *Scope, input_dataset tf.Output) (batch_size tf.Outp
 	return op.Output(0)
 }
 
+// An op computes the size of the deduplication data from embedding core and returns the updated config.
+//
+// This op is to compute size of the deduplication data so to provide this
+// information to the op that computes the tuple mask of deduplication data can
+// have static output shape.
+//
+// Arguments:
+//
+//	config: Serialized TPUEmbeddingConfiguration proto.
+//
+// Returns The size of the deduplicated data from infeed.
+func ComputeDedupDataSize(scope *Scope, config string) (num_elements tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"config": config}
+	opspec := tf.OpSpec{
+		Type: "ComputeDedupDataSize",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // An op computes tuple mask of deduplication data from embedding core.
 //
 // The deduplication data receiving from embedding core is a Tensor with
@@ -14010,7 +14035,7 @@ func DynamicPartition(scope *Scope, data tf.Output, partitions tf.Output, num_pa
 // must have `data[i].shape = indices[i].shape + constant`.  In terms of this
 // `constant`, the output shape is
 //
-//	merged.shape = [max(indices)] + constant
+//	merged.shape = [max(indices) + 1] + constant
 //
 // Values are merged in order, so if an index appears in both `indices[m][i]` and
 // `indices[n][j]` for `(m,i) < (n,j)` the slice `data[n][j]` will appear in the
@@ -51681,6 +51706,31 @@ func TPUCompileSucceededAssert(scope *Scope, compilation_status tf.Output) (o *t
 	return scope.AddOperation(opspec)
 }
 
+// Op that copies host tensor to device with dynamic shape support.
+// For internal use only.
+func TPUCopyWithDynamicShape(scope *Scope, tensors []tf.Output, unpadded_sizes []tf.Output) (tpu_tensors []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TPUCopyWithDynamicShape",
+		Input: []tf.Input{
+			tf.OutputList(tensors), tf.OutputList(unpadded_sizes),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if tpu_tensors, idx, err = makeOutputList(op, idx, "tpu_tensors"); err != nil {
+		scope.UpdateErr("TPUCopyWithDynamicShape", err)
+		return
+	}
+	return tpu_tensors
+}
+
 // An op enabling differentiation of TPU Embeddings.
 //
 // This op simply returns its first input, which is assumed to have been sliced
@@ -54533,7 +54583,7 @@ func ThreadUnsafeUnigramCandidateSampler(scope *Scope, true_classes tf.Output, n
 //
 // Arguments:
 //
-//	input: 1-D or higher.
+//	input: Can be of any rank.
 //	multiples: 1-D. Length must be the same as the number of dimensions in `input`
 func Tile(scope *Scope, input tf.Output, multiples tf.Output) (output tf.Output) {
 	if scope.Err() != nil {

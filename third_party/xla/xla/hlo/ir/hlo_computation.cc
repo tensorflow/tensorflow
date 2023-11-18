@@ -77,7 +77,9 @@ HloComputation::HloComputation(
       fusion_instruction_(fusion_instruction),
       is_fusion_computation_(fusion_instruction != nullptr),
       custom_call_instruction_(nullptr),
-      is_custom_call_computation_(false) {
+      is_custom_call_computation_(false),
+      collective_call_instruction_(nullptr),
+      is_collective_called_computation_(false) {
   param_instructions_.resize(parameter_count, nullptr);
   bool root_found = false;
   for (auto& instruction : *instructions) {
@@ -441,7 +443,6 @@ void HloComputation::ForEachInstructionPostOrderImpl(
     }
 
     // Add channel dependencies.
-    // A RecvDone op must be preceded by the corresponding Send op.
     // Collectives with the same channel ID must be performed together, as these
     // represent MPMD-partitioned that will later be split into separate modules
     // and the order must be preserved.
@@ -475,28 +476,10 @@ HloComputation::ChannelDependencies HloComputation::ComputeChannelDependencies()
   using Instructions = absl::InlinedVector<HloInstruction*, 1>;
   absl::flat_hash_map<int64_t, Instructions> channel_groups;
 
-  // Create dependencies RecvDone -> Send, and between partitioned collectives.
+  // Create dependencies between partitioned collectives.
   ChannelDependencies dependencies;
   for (const auto& instruction : instructions_) {
     switch (instruction->opcode()) {
-      case HloOpcode::kSend: {
-        Instructions& group = channel_groups[*instruction->channel_id()];
-        if (group.empty()) {
-          group.push_back(instruction.get());
-        } else {
-          dependencies[group[0]] = {instruction.get()};
-        }
-        break;
-      }
-      case HloOpcode::kRecvDone: {
-        Instructions& group = channel_groups[*instruction->channel_id()];
-        if (group.empty()) {
-          group.push_back(instruction.get());
-        } else {
-          dependencies[instruction.get()] = {group[0]};
-        }
-        break;
-      }
       case HloOpcode::kAllReduce:
       case HloOpcode::kAllGather:
       case HloOpcode::kAllToAll:
@@ -1525,4 +1508,12 @@ HloInstruction* HloComputation::GetInstructionWithName(absl::string_view name) {
 bool HloComputation::IsEntryComputation() const {
   return parent()->entry_computation() == this;
 }
+
+bool HloComputation::CanExpandIntoSingleInstruction() const {
+  return absl::c_all_of(
+      instructions(), [root = root_instruction()](const HloInstruction* instr) {
+        return root == instr || instr->opcode() == HloOpcode::kParameter;
+      });
+}
+
 }  // namespace xla

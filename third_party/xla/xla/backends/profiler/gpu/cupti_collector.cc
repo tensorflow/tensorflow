@@ -606,7 +606,8 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
 
   absl::FixedArray<PerDeviceCollector> per_device_collector_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CuptiTraceCollectorImpl);
+  CuptiTraceCollectorImpl(const CuptiTraceCollectorImpl&) = delete;
+  void operator=(const CuptiTraceCollectorImpl&) = delete;
 };
 
 std::unique_ptr<CuptiTraceCollector> CreateCuptiCollector(

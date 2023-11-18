@@ -19,7 +19,7 @@ func.func @alloc(%ctx: !tf_framework.op_kernel_context,
 // CHECK: [[NUM_ELEMS:%.*]] = llvm.mul [[NUM_ELEM_0]], [[SIZE_2]] : i64
 
 // Compute the size of an individual element.
-// CHECK: [[NULL:%.*]] = llvm.mlir.null : !llvm.ptr
+// CHECK: [[NULL:%.*]] = llvm.mlir.zero : !llvm.ptr
 // CHECK: [[GEP:%.*]] = llvm.getelementptr [[NULL]]{{\[}}1]
 // CHECK-SAME:            (!llvm.ptr) -> !llvm.ptr, f32
 // CHECK: [[SIZE_OF_FLOAT:%.*]] = llvm.ptrtoint [[GEP]]
@@ -28,7 +28,7 @@ func.func @alloc(%ctx: !tf_framework.op_kernel_context,
 // Compute output index (-1) and candidate indices (0, NULL).
 // CHECK: [[OUTPUT_INDEX:%.*]] = llvm.mlir.constant(-1 : i32) : i32
 // CHECK-NEXT: [[NUM_CANDIDATES:%.*]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK-NEXT: [[CANDIDATES_PTR:%.*]] = llvm.mlir.null : !llvm.ptr
+// CHECK-NEXT: [[CANDIDATES_PTR:%.*]] = llvm.mlir.zero : !llvm.ptr
 
 // Allocate memory.
 // CHECK: [[BYTES_PTR:%.*]] = llvm.call @{{.*}}([[TF_CTX]], [[NUM_ELEMS]],
@@ -115,8 +115,8 @@ func.func @ranked_null_memref() {
 // CHECK-NEXT: %[[C2:.*]] = llvm.mlir.constant(2 : index) : i64
 // CHECK-NEXT: %[[C1_:.*]] = llvm.mlir.constant(1 : index) : i64
 
-// CHECK: llvm.mlir.null
-// CHECK: %[[NULL:.*]] = llvm.mlir.null : !llvm.ptr
+// CHECK: llvm.mlir.zero
+// CHECK: %[[NULL:.*]] = llvm.mlir.zero : !llvm.ptr
 // CHECK-NEXT: %[[DESC_0:.*]] = llvm.mlir.undef :
 // CHECK-SAME:   !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
 // CHECK-NEXT: %[[DESC_1:.*]] = llvm.insertvalue %[[NULL]], %[[DESC_0]][0]
@@ -143,7 +143,7 @@ func.func @is_valid_memref(%buf: memref<?xf32>) -> i1 {
 // CHECK-NEXT: %[[IS_EMPTY_:.*]] =  llvm.or %[[IS_EMPTY]], %[[IS_ZERO]] : i1
 
 // CHECK-NEXT: %[[PTR_F32:.*]] = llvm.extractvalue %[[MEMREF]][0]
-// CHECK-NEXT: %[[NULL_PTR:.*]] = llvm.mlir.null : !llvm.ptr
+// CHECK-NEXT: %[[NULL_PTR:.*]] = llvm.mlir.zero : !llvm.ptr
 // CHECK-NEXT: %[[NOT_NULL:.*]] = llvm.icmp "ne" %[[PTR_F32]], %[[NULL_PTR]]
 
 // CHECK-NEXT: %[[PRED:.*]] = llvm.or %[[NOT_NULL]], %[[IS_EMPTY_]]  : i1

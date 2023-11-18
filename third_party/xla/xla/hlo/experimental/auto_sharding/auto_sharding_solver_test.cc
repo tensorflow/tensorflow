@@ -12,6 +12,7 @@ limitations under the License.
 
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -78,6 +79,7 @@ AutoShardingSolverRequest DefaultAutoShardingSolverRequest() {
                 1, 0, 1,
                 1, 1, 0}};
   request.instruction_names = {"A", "B", "C", "D", "E"};
+  request.overbudget_coeff = std::nullopt;
   return request;
 }
 

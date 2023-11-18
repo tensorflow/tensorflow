@@ -243,9 +243,9 @@ config_setting(
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "android"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:android"],
+        [],
     ),
     values = if_oss(
         {"crosstool_top": "//external:android/crosstool"},
@@ -256,9 +256,9 @@ config_setting(
 
 config_setting(
     name = "android_x86",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "android"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:android"],
+        [],
     ),
     values = dict(
         if_oss(
@@ -271,9 +271,9 @@ config_setting(
 
 config_setting(
     name = "android_x86_64",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "android"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:android"],
+        [],
     ),
     values = dict(
         if_oss(
@@ -286,9 +286,9 @@ config_setting(
 
 config_setting(
     name = "android_armeabi",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "android"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:android"],
+        [],
     ),
     values = dict(
         if_oss(
@@ -302,21 +302,21 @@ config_setting(
 # copybara:uncomment_begin(google-only)
 # config_setting(
 #     name = "chromiumos_x86_64",
-#     flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
+#     constraint_values = ["//third_party/bazel_platforms/os:chromiumos"],
 #     values = {"cpu": "k8"},
 #     visibility = ["//visibility:public"],
 # )
 #
 # config_setting(
 #     name = "chromiumos_arm64",
-#     flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
+#     constraint_values = ["//third_party/bazel_platforms/os:chromiumos"],
 #     values = {"cpu": "arm"},
 #     visibility = ["//visibility:public"],
 # )
 #
 # config_setting(
 #     name = "chromiumos_armv7",
-#     flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
+#     constraint_values = ["//third_party/bazel_platforms/os:chromiumos"],
 #     values = {"cpu": "armeabi-v7a"},
 #     visibility = ["//visibility:public"],
 # )
@@ -324,9 +324,9 @@ config_setting(
 
 config_setting(
     name = "emscripten",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "emscripten"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/cpu:wasm32"],
+        [],
     ),
     values = if_oss(
         {"crosstool_top": "//external:android/emscripten"},
@@ -346,9 +346,9 @@ config_setting(
 
 config_setting(
     name = "android_arm",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "android"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:android"],
+        [],
     ),
     values = dict(
         if_oss(
@@ -361,9 +361,9 @@ config_setting(
 
 config_setting(
     name = "android_arm64",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "android"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:android"],
+        [],
     ),
     values = dict(
         if_oss(
@@ -392,13 +392,13 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# TODO(jakeharmon): Remove in favor of TSL version
+# TODO(jakeharmon8): Remove in favor of TSL version
 config_setting(
     name = "windows",
     # Internal builds query the target OS.
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "windows"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:windows"],
+        [],
     ),
     # OSS builds query the CPU type.
     values = if_oss(
@@ -420,9 +420,9 @@ config_setting(
 # Google builds.
 config_setting(
     name = "macos_x86_64_default",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "apple"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:macos"],
+        [],
     ),
     values = {
         "apple_platform_type": "macos",
@@ -432,9 +432,9 @@ config_setting(
 
 config_setting(
     name = "macos_x86_64_crosscompile",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "apple"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:macos"],
+        [],
     ),
     values = {
         "apple_platform_type": "macos",
@@ -453,9 +453,9 @@ selects.config_setting_group(
 
 config_setting(
     name = "macos_arm64",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "apple"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:macos"],
+        [],
     ),
     values = {
         "apple_platform_type": "macos",
@@ -464,7 +464,7 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# TODO(jakeharmon): Remove in favor of TSL version
+# TODO(jakeharmon8): Remove in favor of TSL version
 selects.config_setting_group(
     name = "macos",
     match_any = [
@@ -476,9 +476,9 @@ selects.config_setting_group(
 
 config_setting(
     name = "ios",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "apple"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:ios"],
+        [],
     ),
     values = if_oss(
         {"apple_platform_type": "ios"},
@@ -487,12 +487,12 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# TODO(jakeharmon): Remove in favor of TSL version
+# TODO(jakeharmon8): Remove in favor of TSL version
 config_setting(
     name = "fuchsia",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "fuchsia"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:fuchsia"],
+        [],
     ),
     values = if_oss(
         # TODO(b/149248802) When we have a Fuchsia Bazel SDK update to use the values it sets.
@@ -504,9 +504,9 @@ config_setting(
 
 config_setting(
     name = "fuchsia_x86_64",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "fuchsia"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:fuchsia"],
+        [],
     ),
     values = {
         "cpu": "x86_64",
@@ -516,9 +516,9 @@ config_setting(
 
 config_setting(
     name = "ios_x86_64",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "apple"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:ios"],
+        [],
     ),
     values = dict(
         if_oss(
@@ -531,9 +531,9 @@ config_setting(
 
 config_setting(
     name = "chromiumos",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "chromiumos"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:chromiumos"],
+        [],
     ),
     values = if_oss(
         {"crosstool_top": "//external:android/chromiumos"},
@@ -896,7 +896,7 @@ selects.config_setting_group(
     match_any = [
         ":android",
         ":chromiumos",
-        # TODO(jakeharmon): Move all platform configs to TSL with fuchsia (non-blocking)
+        # TODO(jakeharmon8): Move all platform configs to TSL with fuchsia (non-blocking)
         ":fuchsia",
         ":emscripten",
         ":ios",
@@ -1049,11 +1049,13 @@ package_group(
         "//tensorflow/...",
         "//tensorflow_decision_forests/...",
         "//tensorflow_federated/...",
+        "//tensorflow_models/google/recml/...",
         "//third_party/cloud_tpu/convergence_tools/sdc_monitoring/...",
         "//third_party/cloud_tpu/inference_converter/...",
         "//third_party/py/cloud_ml_autoflow/...",
         "//third_party/py/envlogger/...",
         "//third_party/py/gldm/...",
+        "//third_party/py/guesslang/...",
         "//third_party/py/keras/...",
         "//third_party/py/tf_keras/...",
         "//third_party/yggdrasil_decision_forests/...",
@@ -1117,7 +1119,7 @@ bzl_library(
     deps = [":tensorflow_bzl"],
 )
 
-# TODO(jakeharmon): Remove these in favor of tsl:grpc
+# TODO(jakeharmon8): Remove these in favor of tsl:grpc
 # copybara:comment_begin(oss-only)
 cc_library(
     name = "grpc",
@@ -1364,7 +1366,6 @@ tf_cc_shared_library(
         "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_model",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/sparsity:sparsify_model",
-        "//tensorflow/compiler/mlir/python:mlir",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
@@ -1447,9 +1448,14 @@ tf_cc_shared_library(
         "//tensorflow/lite:util",
         "//tensorflow/python/grappler:cost_analyzer_lib",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
-    ] + (tf_monitoring_python_deps() +
-         tf_additional_plugin_deps() +
-         tf_additional_profiler_deps()) + if_xla_available([
+    ] + select({
+        "//tensorflow/compiler/mlir/python:disable_mlir_config": [],
+        "//conditions:default": [
+            "//tensorflow/compiler/mlir/python:mlir",
+        ],
+    }) + (tf_monitoring_python_deps() +
+          tf_additional_plugin_deps() +
+          tf_additional_profiler_deps()) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
     ]) + if_static(extra_deps = [
         "//tensorflow/core/platform:tensor_float_32_utils",

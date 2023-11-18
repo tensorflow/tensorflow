@@ -299,7 +299,8 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
   options.saved_model_tags = saved_model_tags;
   options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
   options.metadata[tflite::kModelUseStablehloTensorKey] = "true";
-  if (!tflite::MlirToFlatBufferTranslateFunction(module, options, result)) {
+  if (!tflite::MlirToFlatBufferTranslateFunction(module, options, result,
+                                                 true)) {
     auto s = statusHandler.ConsumeStatus();
     std::string message = "Could not translate MLIR to FlatBuffer.";
     if (!s.ok()) {

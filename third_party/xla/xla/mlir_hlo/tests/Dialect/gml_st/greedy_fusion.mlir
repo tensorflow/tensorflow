@@ -21,7 +21,7 @@ transform.sequence failures(propagate) {
   ^bb0(%arg1: !transform.any_op):
     %0 = transform.structured.match ops{["linalg.map"]} in %arg1
       : (!transform.any_op) -> !transform.any_op
-    %forall_op, %tiled_op = transform.structured.tile_to_forall_op %0 num_threads [10, 20] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    %forall_op, %tiled_op = transform.structured.tile_using_forall %0 num_threads [10, 20] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // CHECK:      %[[INIT:.*]] = tensor.empty()
@@ -65,7 +65,7 @@ transform.sequence failures(propagate) {
   ^bb0(%arg1: !transform.any_op):
     %0 = transform.structured.match ops{["linalg.map"]} in %arg1
       : (!transform.any_op) -> !transform.any_op
-    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [0, 2] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    %loop, %1 = transform.structured.tile_using_forall %0 tile_sizes [0, 2] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // CHECK: tensor.empty
@@ -96,7 +96,7 @@ transform.sequence failures(propagate) {
   ^bb0(%arg1: !transform.any_op):
     %0 = transform.structured.match ops{["linalg.map"]} in %arg1
       : (!transform.any_op) -> !transform.any_op
-    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [2] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    %loop, %1 = transform.structured.tile_using_forall %0 tile_sizes [2] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // CHECK:      %[[INIT:.*]] = tensor.empty()
@@ -179,7 +179,7 @@ transform.sequence failures(propagate) {
     %0 = transform.structured.match ops{["linalg.map"]}
                                     attributes{op_label="root"} in %arg1
       : (!transform.any_op) -> !transform.any_op
-    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    %loop, %1 = transform.structured.tile_using_forall %0 tile_sizes [1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // -----
@@ -210,7 +210,7 @@ transform.sequence failures(propagate) {
     %0 = transform.structured.match ops{["linalg.map"]}
                                     attributes{op_label="root"} in %arg1
       : (!transform.any_op) -> !transform.any_op
-    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    %loop, %1 = transform.structured.tile_using_forall %0 tile_sizes [1, 8] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // CHECK-LABEL: func @fuse_reshape_middle_unit_dim_map
@@ -254,7 +254,7 @@ transform.sequence failures(propagate) {
     %0 = transform.structured.match ops{["linalg.map"]}
                                     attributes{op_label="root"} in %arg1
       : (!transform.any_op) -> !transform.any_op
-    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    %loop, %1 = transform.structured.tile_using_forall %0 tile_sizes [1, 8] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // CHECK-LABEL: func @fuse_reshape_trailing_unit_dim_map
@@ -298,7 +298,7 @@ transform.sequence failures(propagate) {
     %0 = transform.structured.match ops{["linalg.map"]}
                                     attributes{op_label="root"} in %arg1
       : (!transform.any_op) -> !transform.any_op
-    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    %loop, %1 = transform.structured.tile_using_forall %0 tile_sizes [1, 8] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // CHECK-LABEL: func @fuse_reshape_leading_unit_dim_map
@@ -342,7 +342,7 @@ transform.sequence failures(propagate) {
     %0 = transform.structured.match ops{["linalg.map"]}
                                     attributes{op_label="root"} in %arg1
       : (!transform.any_op) -> !transform.any_op
-    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    %loop, %1 = transform.structured.tile_using_forall %0 tile_sizes [1, 8] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // CHECK-LABEL: func @fuse_reshape_multiple_unit_dims_map
@@ -386,7 +386,7 @@ transform.sequence failures(propagate) {
     %0 = transform.structured.match ops{["linalg.map"]}
                                     attributes{op_label="root"} in %arg1
       : (!transform.any_op) -> !transform.any_op
-    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    %loop, %1 = transform.structured.tile_using_forall %0 tile_sizes [1, 8] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // CHECK-LABEL: func @fuse_reshape_reassoc_only_unit_dims_map
@@ -430,7 +430,7 @@ transform.sequence failures(propagate) {
     %0 = transform.structured.match ops{["linalg.map"]}
                                     attributes{op_label="root"} in %arg1
       : (!transform.any_op) -> !transform.any_op
-    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    %loop, %1 = transform.structured.tile_using_forall %0 tile_sizes [1, 8] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // CHECK-LABEL: func @do_not_fuse_collapse_shape
@@ -475,7 +475,7 @@ transform.sequence failures(propagate) {
     %0 = transform.structured.match ops{["linalg.map"]}
                                     attributes{op_label="root"} in %arg1
       : (!transform.any_op) -> !transform.any_op
-    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    %loop, %1 = transform.structured.tile_using_forall %0 tile_sizes [1, 8] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // CHECK-LABEL: func @do_not_fuse_expand_shape

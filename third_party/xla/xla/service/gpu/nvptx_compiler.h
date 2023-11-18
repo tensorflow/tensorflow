@@ -40,37 +40,37 @@ class NVPTXCompiler : public GpuCompiler {
   NVPTXCompiler();
 
   Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, GpuVersion gpu_version,
+      HloModule* hlo_module, se::GpuComputeCapability gpu_version,
       se::dnn::VersionInfo dnn_version,
       se::DeviceMemoryAllocator* device_allocator) override;
 
   Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-      const AutotuneResults* autotune_results,
+      const CompileOptions& options, const TargetConfig& gpu_target_config,
       tsl::thread::ThreadPool* thread_pool) override;
 
   bool RequiresCollectiveScheduleLinearizer(
       const HloModule* module, se::StreamExecutor* stream_exec) override;
 
-  Status AddAutotuningPasses(HloPassPipeline* pipeline, HloModule* hlo_module,
-                             AutotuneConfig& autotune_config,
-                             tsl::thread::ThreadPool* thread_pool) override;
+  Status AddConvAndGemmAutotuningPasses(
+      HloPassPipeline* pipeline, HloModule* hlo_module,
+      AutotuneConfig& autotune_config,
+      tsl::thread::ThreadPool* thread_pool) override;
 
-  Status LoadAutotuneResultsFromFile(
-      const DebugOptions& debug_options) override;
+  Status AddTritonGemmAutotuningPasses(
+      HloPassPipeline* pipeline, HloModule* hlo_module,
+      AutotuneConfig& autotune_config,
+      tsl::thread::ThreadPool* thread_pool) override;
 
-  Status SerializeAutotuneResultsToFile(
-      const DebugOptions& debug_options) override;
+  Status AddCustomKernelReplacementPasses(
+      HloPassPipeline* pipeline, const DebugOptions& debug_options) override;
 
-  HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() override;
+  HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const override;
 
-  GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) override;
-
-  StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
+  StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
-      GpuVersion gpu_version, bool relocatable, const HloModule* debug_module,
-      const CompileOptions& options) override;
+      se::GpuComputeCapability gpu_version, bool relocatable,
+      const HloModule* debug_module, const CompileOptions& options) override;
 
  private:
   StatusOr<bool> CanUseLinkModules(
@@ -95,8 +95,8 @@ class NVPTXCompiler : public GpuCompiler {
       const std::string& preferred_cuda_dir);
 
   // Tries to compile the given ptx string to cubin.  Returns a vector with the
-  // compiled cubin.  If compilation was unsuccessful, returns an empty vector.
-  std::vector<uint8_t> CompileGpuAsmOrGetCachedResult(
+  // compiled cubin if compilation succeeded.
+  StatusOr<std::vector<uint8_t>> CompileGpuAsmOrGetCachedResult(
       const std::string& ptx, se::CudaComputeCapability cc,
       const HloModuleConfig& hlo_module_config, absl::string_view module_name,
       bool relocatable, const CompileOptions& options);

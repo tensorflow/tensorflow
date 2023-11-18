@@ -1,5 +1,5 @@
  *******************************************************************************
- Copyright 2022 Arm Limited and affiliates.
+ Copyright 2023 Arm Limited and affiliates.
  SPDX-License-Identifier: Apache-2.0
 
  Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,19 +15,19 @@
  limitations under the License.
  *******************************************************************************
 diff --git a/src/cpu/aarch64/acl_thread.cpp b/src/cpu/aarch64/acl_thread.cpp
-index d7d83badc..5a263b8d5 100644
+index fd2c76d01..2d7c76d48 100644
 --- a/src/cpu/aarch64/acl_thread.cpp
 +++ b/src/cpu/aarch64/acl_thread.cpp
 @@ -17,6 +17,8 @@
-
+ #include "cpu/aarch64/acl_thread.hpp"
  #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
  #include "cpu/aarch64/acl_threadpool_scheduler.hpp"
 +#elif DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
 +#include <thread>
  #endif
-
- namespace dnnl {
-@@ -29,9 +31,10 @@ namespace acl_thread_utils {
+ #include "cpu/aarch64/acl_benchmark_scheduler.hpp"
+ 
+@@ -30,9 +32,10 @@ namespace acl_thread_utils {
  #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
  void acl_thread_bind() {
      static std::once_flag flag_once;

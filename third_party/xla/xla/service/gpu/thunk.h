@@ -16,14 +16,18 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_THUNK_H_
 #define XLA_SERVICE_GPU_THUNK_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <ostream>
 #include <string>
+#include <string_view>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/service_executable_run_options.h"
@@ -64,6 +68,8 @@ class Thunk {
     kConvolution,
     kConvolutionReorder,
     kCopy,
+    kCommandBuffer,
+    kCubSort,
     kCublasLtMatmul,
     kCustomCall,
     kFft,
@@ -90,6 +96,7 @@ class Thunk {
     kNcclAllToAllDone,
     kNcclSend,
     kNcclRecv,
+    kNorm,
     kOutfeed,
     kReplicaId,
     kPartitionId,
@@ -99,13 +106,24 @@ class Thunk {
     kFusedMHA
   };
 
+  // TODO(ezhulenev): This should become a part of StreamExecutor library, but
+  // for now we keep it here as a Thunk implementation detail. It's not yet
+  // clear what else should become a part of "executable source", we likely
+  // need to keep some information about available symbols and signatures.
+  struct ExecutableSource {
+    std::string_view text;             // PTX for NVIDIA backend
+    absl::Span<const uint8_t> binary;  // CUBIN for NVIDIA backends
+  };
+
   struct ThunkInfo {
     explicit ThunkInfo(mlir::Operation* op) : op(op) {}
-    std::optional<int64_t> profile_index;
-    std::string profile_annotation;
-    mlir::Operation* op;
-
     static ThunkInfo WithProfileAnnotation(mlir::Operation* op);
+    static ThunkInfo WithProfileAnnotation(const HloInstruction* instr);
+
+    std::string profile_annotation;
+    // TODO(b/304613751): This is only needed by the LMHLO. Remove this when
+    // LMHLO is removed from the runtime pipeline.
+    mlir::Operation* op;
   };
 
   // The hlo_instruction argument is meant to be the instruction this thunk was
@@ -113,7 +131,6 @@ class Thunk {
   // to Thunk::hlo_instruction, so it can be null.
   Thunk(Kind kind, ThunkInfo thunk_info)
       : kind_(kind),
-        profile_index_(thunk_info.profile_index),
         profile_annotation_(thunk_info.profile_annotation),
         op_(thunk_info.op) {}
   virtual ~Thunk() = default;
@@ -133,8 +150,7 @@ class Thunk {
   // This may be called multiple times.  Its main purpose is to give us a chance
   // to do initialization outside of ExecuteOnStream() so that the
   // time spent initializing doesn't count towards our execution profile.
-  virtual Status Initialize(const GpuExecutable& /*executable*/,
-                            se::StreamExecutor* /*executor*/) {
+  virtual Status Initialize(se::StreamExecutor*, ExecutableSource) {
     return OkStatus();
   }
 
@@ -164,12 +180,8 @@ class Thunk {
 
   static absl::string_view KindToString(Thunk::Kind kind);
 
- protected:
-  std::optional<int64_t> profile_index() const { return profile_index_; }
-
  private:
   Kind kind_;
-  std::optional<int64_t> profile_index_;
   std::string profile_annotation_;
   mlir::Operation* op_;
 };

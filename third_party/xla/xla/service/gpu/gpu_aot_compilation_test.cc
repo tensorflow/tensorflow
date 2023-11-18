@@ -45,6 +45,11 @@ ENTRY main {
   // Compile AOT.
   auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
   AotCompilationOptions aot_options(compiler.PlatformId());
+  // ToDo: Remove after unification of AOT compiler
+  if (!aot_options.debug_options().xla_gpu_enable_xla_runtime_executable()) {
+    return;
+  }
+
   aot_options.set_executor(stream_exec);
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
@@ -83,11 +88,13 @@ ENTRY main {
   auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
 
   // Stream executor is not passed as an option.
-  GpuTargetConfig gpu_target_config;
-  gpu_target_config.gpu_device_info = GetGpuDeviceInfo(stream_exec);
-  gpu_target_config.platform_name = stream_exec->platform()->Name();
-
+  Compiler::TargetConfig gpu_target_config(stream_exec);
   AotCompilationOptions aot_options(compiler.PlatformId());
+  // ToDo: Remove after unification of AOT compiler
+  if (!aot_options.debug_options().xla_gpu_enable_xla_runtime_executable()) {
+    return;
+  }
+
   aot_options.set_target_config(gpu_target_config);
 
   TF_ASSERT_OK_AND_ASSIGN(

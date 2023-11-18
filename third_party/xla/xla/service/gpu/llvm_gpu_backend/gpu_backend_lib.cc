@@ -114,7 +114,10 @@ static std::string GetSmName(se::CudaComputeCapability compute_capability) {
                  << ". Defaulting to telling LLVM that we're compiling for sm_"
                  << sm_version;
   }
-  return absl::StrCat("sm_", sm_version);
+  // If the target is sm_90, hard code it to sm_90a so that all instructions
+  // can be used. We don't need the portability that sm_90 gives.
+  std::string_view extension = sm_version == 90 ? "a" : "";
+  return absl::StrCat("sm_", sm_version, extension);
 }
 
 // Convenience function for producing a name of a temporary compilation product
@@ -159,19 +162,19 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
 
   // The selection of codegen optimization level is copied from function
   // GetCodeGenOptLevel in //third_party/llvm/llvm/tools/opt/opt.cpp.
-  llvm::CodeGenOpt::Level codegen_opt_level;
+  llvm::CodeGenOptLevel codegen_opt_level;
   switch (debug_options.xla_backend_optimization_level()) {
     case 1:
-      codegen_opt_level = llvm::CodeGenOpt::Less;
+      codegen_opt_level = llvm::CodeGenOptLevel::Less;
       break;
     case 2:
-      codegen_opt_level = llvm::CodeGenOpt::Default;
+      codegen_opt_level = llvm::CodeGenOptLevel::Default;
       break;
     case 3:
-      codegen_opt_level = llvm::CodeGenOpt::Aggressive;
+      codegen_opt_level = llvm::CodeGenOptLevel::Aggressive;
       break;
     default:
-      codegen_opt_level = llvm::CodeGenOpt::None;
+      codegen_opt_level = llvm::CodeGenOptLevel::None;
   }
   return absl::WrapUnique(target->createTargetMachine(
       triple.str(), llvm_ir::AsStringRef(cpu_name),
@@ -191,7 +194,7 @@ std::string EmitModuleToPTX(llvm::Module* module,
   pm.add(new llvm::TargetLibraryInfoWrapperPass(
       llvm::Triple(module->getTargetTriple())));
   target_machine->addPassesToEmitFile(pm, pstream, nullptr,
-                                      llvm::CGFT_AssemblyFile);
+                                      llvm::CodeGenFileType::AssemblyFile);
   pm.run(*module);
   return ptx;
 }
@@ -259,7 +262,8 @@ Status LinkWithBitcodeVector(
   return OkStatus();
 }
 
-Status NVPTXTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
+Status NVPTXTargetModuleLinker(llvm::Module* module,
+                               se::GpuComputeCapability gpu_version,
                                const DebugOptions& debug_options,
                                const std::string& device_bitcode_path) {
   // Link the input module with libdevice, to pull in implementations of some
@@ -295,8 +299,9 @@ std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
                           debug_options, ptx_ver);
 }
 
-using TargetModuleLinker = std::function<Status(
-    llvm::Module*, GpuVersion, const DebugOptions&, const std::string&)>;
+using TargetModuleLinker =
+    std::function<Status(llvm::Module*, se::GpuComputeCapability,
+                         const DebugOptions&, const std::string&)>;
 
 void DumpModule(const std::string output_filename, const llvm::Module* module) {
   std::error_code ec;
@@ -347,13 +352,11 @@ auto DumpCallbackForModule(std::string module_identifier,
   };
 }
 
-Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
-                             const DebugOptions& debug_options,
-                             const std::string& device_bitcode_path,
-                             TargetModuleLinker module_linker,
-                             llvm::Triple default_target_triple,
-                             llvm::TargetMachine* target_machine,
-                             int inline_threshold) {
+Status LinkAndOptimizeModule(
+    llvm::Module* module, se::GpuComputeCapability gpu_version,
+    const DebugOptions& debug_options, const std::string& device_bitcode_path,
+    TargetModuleLinker module_linker, llvm::Triple default_target_triple,
+    llvm::TargetMachine* target_machine, int inline_threshold) {
   TF_RETURN_IF_ERROR(
       module_linker(module, gpu_version, debug_options, device_bitcode_path));
 
@@ -550,7 +553,7 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
 }
 
 StatusOr<std::string> CompileToPtx(
-    llvm::Module* module, GpuVersion gpu_version,
+    llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options,
     std::function<void(llvm::TargetMachine*)> configure_target) {
   static absl::once_flag backend_init_flag;
@@ -754,7 +757,7 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
       new llvm::raw_fd_ostream(isabin_path, ec, llvm::sys::fs::OF_Text));
   module->setDataLayout(target_machine->createDataLayout());
   target_machine->addPassesToEmitFile(pm, *isabin_fs, nullptr,
-                                      llvm::CGFT_ObjectFile);
+                                      llvm::CodeGenFileType::ObjectFile);
   pm.run(*module);
   isabin_fs->flush();
 
@@ -816,7 +819,8 @@ Status LinkROCDLIfNecessary(llvm::Module* module, std::string gcn_arch_name,
                                GetROCDLPaths(gcn_arch_name, rocdl_dir_path));
 }
 
-Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
+Status AMDGPUTargetModuleLinker(llvm::Module* module,
+                                se::GpuComputeCapability gpu_version,
                                 const DebugOptions& debug_options,
                                 const std::string& device_bitcode_dir_path) {
   // Link the input module with ROCDL.
@@ -889,7 +893,7 @@ std::pair<std::string, std::string> GetFeatureStrFromGCNArchName(
 }
 
 std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
-    llvm::Triple target_triple, GpuVersion gpu_version,
+    llvm::Triple target_triple, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options) {
   auto compute_capability =
       std::get_if<se::RocmComputeCapability>(&gpu_version);
@@ -923,7 +927,7 @@ void AMDGPUBackendInit(const DebugOptions& debug_options) {
 
 namespace amdgpu {
 StatusOr<std::vector<uint8_t>> CompileToHsaco(
-    llvm::Module* module, GpuVersion gpu_version,
+    llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options, const std::string& rocdl_dir_path,
     const std::string& module_config_cache_key) {
   static absl::once_flag backend_init_flag;

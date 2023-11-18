@@ -30,8 +30,8 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variables_toggle
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -96,7 +96,7 @@ class SavedModelTestBase(test.TestCase):
     index = "0"
     if ":" in name:
       name, index = name.split(":")
-    if variable_scope.resource_variables_enabled():
+    if resource_variables_toggle.resource_variables_enabled():
       name = name + "/Read/ReadVariableOp"
     return self.evaluate(name + ":" + index)
 
@@ -934,7 +934,7 @@ class SavedModelTest(SavedModelTestBase):
         meta_graph_def = loader.load(sess, ["foo"], export_dir)
         self.assertEqual(3, self._eval("v1"))
         self.assertEqual(2, self._eval("v2"))
-        if variable_scope.resource_variables_enabled():
+        if resource_variables_toggle.resource_variables_enabled():
           self.assertEqual(
               loader_impl.get_train_op(meta_graph_def).type,
               "AssignAddVariableOp")
@@ -990,7 +990,7 @@ class SavedModelTest(SavedModelTestBase):
 
       with self.session(graph=ops.Graph()) as sess:
         meta_graph_def = loader.load(sess, ["foo"], export_dir)
-        if variable_scope.resource_variables_enabled():
+        if resource_variables_toggle.resource_variables_enabled():
           self.assertEqual(
               loader_impl.get_train_op(meta_graph_def).type,
               "AssignAddVariableOp")

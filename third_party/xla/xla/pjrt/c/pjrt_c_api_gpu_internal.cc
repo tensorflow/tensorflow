@@ -24,20 +24,28 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "xla/backends/profiler/plugin/plugin_tracer_impl.h"
+#include "xla/backends/profiler/plugin/profiler_c_api.h"
+#include "xla/backends/profiler/plugin/profiler_error.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_gpu_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/service/custom_call_target_registry.h"
 #include "tsl/platform/errors.h"
 
 namespace pjrt {
 namespace gpu_plugin {
 
+#define PJRT_GPU_PLUGIN_PLATFORM_NAME "CUDA"
+
 PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
-  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Client_Create_Args", PJRT_Client_Create_Args_STRUCT_SIZE,
       args->struct_size));
 
@@ -46,7 +54,8 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
                                           args->num_options);
   const auto kExpectedOptionNameAndTypes =
       absl::flat_hash_map<std::string, PJRT_NamedValue_Type>(
-          {{"allocator", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
+          {{"platform_name", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
+           {"allocator", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
            {"memory_fraction", PJRT_NamedValue_Type::PJRT_NamedValue_kFloat},
            {"preallocate", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
            {"visible_devices",
@@ -56,6 +65,11 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   PJRT_RETURN_IF_ERROR(
       ValidateCreateOptions(create_options, kExpectedOptionNameAndTypes));
 
+  std::optional<std::string> platform_name;
+  if (auto it = create_options.find("platform_name");
+      it != create_options.end()) {
+    platform_name.emplace(std::get<std::string>(it->second));
+  }
   xla::GpuAllocatorConfig allocator_config;
   if (auto it = create_options.find("allocator"); it != create_options.end()) {
     auto allocator_name = std::get<std::string>(it->second);
@@ -86,7 +100,7 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   if (auto it = create_options.find("visible_devices");
       it != create_options.end()) {
     const auto& vec = std::get<std::vector<int64_t>>(it->second);
-    visible_devices->insert(vec.begin(), vec.end());
+    visible_devices.emplace(vec.begin(), vec.end());
   }
   int node_id = 0;
   if (auto it = create_options.find("node_id"); it != create_options.end()) {
@@ -100,8 +114,8 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
                         xla::GetStreamExecutorGpuClient(
                             /*asynchronous=*/true, allocator_config, node_id,
-                            num_nodes, visible_devices,
-                            /*platform_name=*/std::nullopt, true,
+                            num_nodes, visible_devices, platform_name,
+                            /*should_stage_host_to_device_transfers=*/true,
                             pjrt::ToCppKeyValueGetCallback(
                                 args->kv_get_callback, args->kv_get_user_arg),
                             pjrt::ToCppKeyValuePutCallback(
@@ -116,10 +130,46 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
       "Topology not supported for GPU compilation.")};
 }
 
-constexpr PJRT_Api pjrt_api =
-    pjrt::CreatePjrtApi(pjrt::gpu_plugin::PJRT_Client_Create,
-                        pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
-                        pjrt::PJRT_Plugin_Initialize_NoOp);
+PLUGIN_Profiler_Api profiler_api{
+    /*struct_size=*/PLUGIN_Profiler_Api_STRUCT_SIZE,
+    /*priv=*/nullptr,
+    /*error_destroy=*/xla::profiler::PLUGIN_Profiler_Error_Destroy,
+    /*error_message=*/xla::profiler::PLUGIN_Profiler_Error_Message,
+    /*error_get_code=*/xla::profiler::PLUGIN_Profiler_Error_GetCode,
+    /*create=*/xla::profiler::PLUGIN_Profiler_Create,
+    /*destroy=*/xla::profiler::PLUGIN_Profiler_Destroy,
+    /*start=*/xla::profiler::PLUGIN_Profiler_Start,
+    /*stop=*/xla::profiler::PLUGIN_Profiler_Stop,
+    /*collect_data=*/xla::profiler::PLUGIN_Profiler_CollectData,
+};
+
+PJRT_Profiler_Extension profiler_extension{
+    /*type=*/PJRT_Structure_Type::PJRT_Structure_Type_Profiler,
+    /*next=*/nullptr,
+    /*profiler_api=*/&profiler_api,
+};
+
+PJRT_Error* PJRT_Gpu_Register_Custom_Call(
+    PJRT_Gpu_Register_Custom_Call_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Gpu_Register_Custom_Call_Args",
+      PJRT_Gpu_Register_Custom_Call_Args_STRUCT_SIZE, args->struct_size));
+  std::string function_name(args->function_name, args->function_name_size);
+  xla::CustomCallTargetRegistry::Global()->Register(
+      function_name, args->custom_call_function, PJRT_GPU_PLUGIN_PLATFORM_NAME);
+  return nullptr;
+}
+
+PJRT_Gpu_Custom_Call custom_call{
+    /*type=*/PJRT_Structure_Type::PJRT_Structure_Type_Gpu_Custom_Call,
+    /*next=*/&profiler_extension,
+    /*custom_call=*/PJRT_Gpu_Register_Custom_Call,
+};
+
+constexpr PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
+    pjrt::gpu_plugin::PJRT_Client_Create,
+    pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
+    pjrt::PJRT_Plugin_Initialize_NoOp, static_cast<void*>(&custom_call));
 
 const PJRT_Api* GetGpuPjrtApi() { return &pjrt_api; }
 

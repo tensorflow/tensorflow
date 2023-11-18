@@ -46,8 +46,9 @@ namespace xla {
 // CompilationEnvironments is not thread-safe.
 class CompilationEnvironments {
  public:
-  using ProcessNewEnvFn = std::function<std::unique_ptr<tsl::protobuf::Message>(
-      std::unique_ptr<tsl::protobuf::Message>)>;
+  using ProcessNewEnvFn =
+      std::function<StatusOr<std::unique_ptr<tsl::protobuf::Message>>(
+          std::unique_ptr<tsl::protobuf::Message>)>;
 
   CompilationEnvironments() = default;
   CompilationEnvironments(const CompilationEnvironments& rhs) { *this = rhs; }

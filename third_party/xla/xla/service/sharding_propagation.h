@@ -26,10 +26,26 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/custom_call_sharding_helper.h"
+#include "xla/service/dot_as_convolution_util.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/statusor.h"
 
 namespace xla {
+
+// Infers the shardings for a dot HLO op from the shardings on its operands,
+// which are expected to have sharding annotations.
+bool InferDotShardingFromOperands(
+    HloInstruction* instruction, const CallGraph& call_graph,
+    const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
+    bool may_combine_partial_sharding, bool is_spmd);
+
+// Infers the shardings for a convolution HLO op from the shardings on its
+// operands, which are expected to have sharding annotations.
+bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
+                                          const CallGraph& call_graph,
+                                          int64_t aggressiveness,
+                                          bool may_combine_partial_sharding,
+                                          bool is_spmd);
 
 // Remove Sharding custom-call instruction by folding the sharding attribute
 // to its operand. If the operand already has a different sharding, insert a
@@ -132,10 +148,10 @@ class ShardingPropagation : public HloModulePass {
       HloInstruction* instruction, const ComputationMap& computation_map,
       int64_t aggressiveness,
       const absl::flat_hash_set<HloInstruction*>& shard_group);
-  bool InferShardingFromOperands(HloInstruction* instruction,
-                                 const ComputationMap& computation_map,
-                                 int64_t aggressiveness,
-                                 const CallGraph& call_graph);
+  bool InferShardingFromOperands(
+      HloInstruction* instruction, const ComputationMap& computation_map,
+      int64_t aggressiveness, const CallGraph& call_graph,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
   bool InferShardingFromUsers(
       HloInstruction* instruction,
       const ShardingPropagation::ComputationMap& computation_map,

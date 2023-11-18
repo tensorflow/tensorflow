@@ -78,6 +78,18 @@ def verifier_internal_visibility_allowlist():
     This is a no-op outside of Google."""
     return []
 
+def xnnpack_plugin_impl_visibility_allowlist():
+    """Returns a list of packages that can depend on tensorflow/lite/core/acceleration/configuration:xnnpack_plugin.
+
+    This is a no-op outside of Google."""
+    return []
+
+def tflite_internal_cc_3p_api_deps_src_all_visibility_allowlist():
+    """Returns a list of packages that can depend on tensorflow/lite:tflite_internal_cc_3p_api_deps_src_all.
+
+    This is a no-op outside of Google."""
+    return []
+
 def tflite_extra_gles_deps():
     """This is a no-op outside of Google."""
     return []
@@ -137,12 +149,12 @@ def flex_portable_tensorflow_deps():
 
     return [
         "//third_party/fft2d:fft2d_headers",
-        "//third_party/eigen3",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
+        "@eigen_archive//:eigen3",
         "@gemmlowp",
         "@icu//:common",
         "//third_party/icu/data:conversion_data",

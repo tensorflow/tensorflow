@@ -151,7 +151,7 @@ extern "C" void _mlir_ciface_tf_launch_kernel(void *ctx, void *module_blob,
   // Get the GPU module.
   stream_executor::Stream *se_stream =
       op_kernel_ctx->op_device_context()->stream();
-  void *stream = se_stream->implementation()->GpuStreamHack();
+  void *stream = se_stream->platform_specific_handle().stream;
   GPURuntimeCache::GPUModule module = cache->LookupOrLoadModule(module_blob);
   GPURuntimeCache::GPUFunction function =
       cache->LookupOrGetFunction(module, kernel_name);

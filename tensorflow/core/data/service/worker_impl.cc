@@ -24,6 +24,7 @@ limitations under the License.
 #include "grpcpp/create_channel.h"
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -53,12 +54,14 @@ limitations under the License.
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/dump_graph.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
@@ -407,6 +410,11 @@ DataServiceWorkerImpl::MakeDataset(const DatasetDef& dataset_def,
   TF_ASSIGN_OR_RETURN(bool compression_disabled_at_runtime,
                       DisableCompressionAtRuntime(task_def.dataset_id()));
   GraphDef graph = dataset_def.graph();
+  if (VLOG_IS_ON(1)) {
+    std::string prefix = absl::StrCat(task_def.dataset_id(), "_", worker_uid_);
+    DumpGraphDefToFile(absl::StrCat(prefix, "-prerewrite_GraphDef"), graph);
+    DumpProtoToFile(absl::StrCat(prefix, "-prerewrite_TaskDef"), task_def);
+  }
   if (compression_disabled_at_runtime) {
     RemoveCompressionMapRewriter remove_compression_map_rewriter;
     TF_ASSIGN_OR_RETURN(

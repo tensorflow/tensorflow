@@ -218,6 +218,17 @@ TEST_F(LiteralUtilTest, R2DynamicToString) {
   EXPECT_EQ(expected2, literal2.ToString());
 }
 
+TEST_F(LiteralUtilTest, R2BoolDynamicToString) {
+  auto literal = LiteralUtil::CreateR2<bool>(
+      {{true, true, true}, {true, true, true}, {true, true, true}});
+  literal.SetDynamicSize(0, {}, 2);
+  const std::string expected = R"(pred[<=3,3](2,3) {
+  { 1, 1, 1 },
+  { 1, 1, 1 }
+})";
+  EXPECT_EQ(expected, literal.ToString());
+}
+
 TEST_F(LiteralUtilTest, R3ToString) {
   const auto literal =
       LiteralUtil::CreateR3({{{1}, {2}}, {{3}, {4}}, {{5}, {6}}});
@@ -2389,6 +2400,17 @@ TEST_F(LiteralUtilTest, DynamicBroadcast) {
                         /*dimensions=*/{1}));
   EXPECT_EQ(broadcasted_literal, LiteralUtil::CreateR2<int64_t>({{1}, {1}}));
   EXPECT_EQ(broadcasted_literal.GetDynamicSize(1), 1);
+}
+
+TEST_F(LiteralUtilTest, GetAsScalarInt64) {
+  auto scalar1 = LiteralUtil::CreateR0<int32_t>(12);
+  EXPECT_EQ(LiteralUtil::LiteralAsScalarInt64(scalar1).value(), (int64_t)12);
+  auto scalar2 = LiteralUtil::CreateR0<int8_t>(12);
+  EXPECT_EQ(LiteralUtil::LiteralAsScalarInt64(scalar2).value(), (int64_t)12);
+  auto non_scalar1 = LiteralUtil::CreateR2<int32_t>({{1, 2}, {3, 4}});
+  EXPECT_FALSE(LiteralUtil::LiteralAsScalarInt64(non_scalar1).has_value());
+  auto non_scalar2 = LiteralUtil::CreateR1<int32_t>({{1, 2}});
+  EXPECT_FALSE(LiteralUtil::LiteralAsScalarInt64(non_scalar2).has_value());
 }
 
 TEST_F(LiteralUtilTest, GetAsDouble) {

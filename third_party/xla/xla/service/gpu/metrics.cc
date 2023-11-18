@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "xla/service/gpu/metrics.h"
 
+#include <cstdint>
+
 #include "tsl/lib/monitoring/counter.h"
+#include "tsl/lib/monitoring/gauge.h"
 #include "tsl/lib/monitoring/sampler.h"
 
 namespace xla {
@@ -32,6 +35,10 @@ auto* compile_time_usecs_histogram = tsl::monitoring::Sampler<1>::New(
 
 auto* compiled_programs_count = tsl::monitoring::Counter<0>::New(
     "/xla/service/gpu/compiled_programs_count", "Number of compiled programs.");
+
+auto* xla_device_binary_size = tsl::monitoring::Gauge<int64_t, 0>::New(
+    "/xla/service/gpu/xla_device_binary_size",
+    "The size of the XLA binary loaded onto the GPU device.");
 
 }  // namespace
 
@@ -76,6 +83,10 @@ void IncrementCompiledProgramsCount() {
 
 int64_t GetCompiledProgramsCount() {
   return compiled_programs_count->GetCell()->value();
+}
+
+void RecordXlaDeviceBinarySize(const int64_t size) {
+  xla_device_binary_size->GetCell()->Set(size);
 }
 
 }  // namespace xla

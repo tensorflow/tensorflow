@@ -16,20 +16,34 @@ limitations under the License.
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_query.h"
-#include "xla/service/gpu/gpu_device_info.h"
+#include "xla/service/backend.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_ordering.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla {
@@ -44,11 +58,12 @@ class GpuHloScheduleTest : public HloTestBase {
 
   SequentialHloOrdering BuildHloOrdering(HloModule* module) {
     Backend& test_backend = backend();
-    const GpuDeviceInfo gpu_device_info =
-        GetGpuDeviceInfo(test_backend.default_stream_executor());
+    const se::DeviceDescription& gpu_device_info =
+        test_backend.default_stream_executor()->GetDeviceDescription();
     TF_CHECK_OK(ScheduleGpuModule(
         module, /*pointer_size=*/8,
-        /*memory_size=*/gpu_device_info.device_memory_size * 8 / 10));
+        /*memory_limit=*/gpu_device_info.device_memory_size() * 8 / 10,
+        gpu_device_info));
     return SequentialHloOrdering{module->schedule()};
   }
 
@@ -511,11 +526,11 @@ TEST_F(GpuHloScheduleTest, LHSSendRecv) {
       _xla_send_recv_source_target_pairs="{{0, 1}}"
     }
     send = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all),
-      channel_id=1, control-predecessors={recv}, frontend_attributes={
+      channel_id=1, frontend_attributes={
       _xla_send_recv_source_target_pairs="{{0, 1}}"
     }
     recv-done = (f32[1, 1024, 1024], token[]) recv-done(recv), channel_id=1
-    send-done = token[] send-done(send), control-predecessors={recv-done}, channel_id=1
+    send-done = token[] send-done(send), channel_id=1
     recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done), index=0
 
     c1 = u32[] constant(1)
@@ -592,11 +607,11 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPairs2) {
       _xla_send_recv_source_target_pairs="{{0, 1}}"
     }
     send-0 = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all-0),
-      channel_id=1, control-predecessors={recv-0}, frontend_attributes={
+      channel_id=1, frontend_attributes={
       _xla_send_recv_source_target_pairs="{{0, 1}}"
     }
     recv-done-0 = (f32[1, 1024, 1024], token[]) recv-done(recv-0), channel_id=1
-    send-done-0 = token[] send-done(send-0), control-predecessors={recv-done-0}, channel_id=1
+    send-done-0 = token[] send-done(send-0), channel_id=1
     recv-data-0 = f32[1, 1024, 1024] get-tuple-element(recv-done-0), index=0
 
     c1 = u32[] constant(1)
@@ -614,11 +629,11 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPairs2) {
       _xla_send_recv_source_target_pairs="{{1, 0}}"
     }
     send-1 = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all-1),
-      channel_id=2, control-predecessors={recv-1}, frontend_attributes={
+      channel_id=2, frontend_attributes={
       _xla_send_recv_source_target_pairs="{{1, 0}}"
     }
     recv-done-1 = (f32[1, 1024, 1024], token[]) recv-done(recv-1), channel_id=2
-    send-done-1 = token[] send-done(send-1), control-predecessors={recv-done-1}, channel_id=2
+    send-done-1 = token[] send-done(send-1), channel_id=2
     recv-data-1 = f32[1, 1024, 1024] get-tuple-element(recv-done-1), index=0
 
     s2 = f32[1, 1024, 1024] add(recv-data-0, s1)
@@ -659,11 +674,10 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPairs2) {
 
   EXPECT_LT(get_index("recv-1"), get_index("send-1"));
   EXPECT_LT(get_index("send-1"), get_index("recv-done-1"));
-  EXPECT_GE(get_index("send-done-1") - get_index("send-1"), 14);
-  EXPECT_LT(abs(get_index("send-done-1") - get_index("result")), 2);
+  EXPECT_GT(get_index("send-done-1"), get_index("send-1"));
 
-  EXPECT_LT(get_index("recv-done-0"), get_index("recv-1"));
-  EXPECT_LT(get_index("send-done-0"), get_index("send-1"));
+  EXPECT_LT(get_index("send-done-1"), get_index("recv-0"));
+  EXPECT_LT(abs(get_index("send-done-0") - get_index("result")), 2);
 }
 
 // Checks that asynchronous AllReduce is scheduled to interleave with the Send
@@ -695,11 +709,11 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvAllReduce) {
       _xla_send_recv_source_target_pairs="{{0, 1}}"
     }
     send = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all),
-      channel_id=1, control-predecessors={recv}, frontend_attributes={
+      channel_id=1, frontend_attributes={
       _xla_send_recv_source_target_pairs="{{0, 1}}"
     }
-    recv-done = (f32[1, 1024, 1024], token[]) recv-done(recv), channel_id=1, control-predecessors={send}
-    send-done = token[] send-done(send), control-predecessors={recv-done}, channel_id=1
+    recv-done = (f32[1, 1024, 1024], token[]) recv-done(recv), channel_id=1
+    send-done = token[] send-done(send), channel_id=1
     recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done), index=0
 
     c1 = u32[] constant(1)
@@ -753,9 +767,174 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvAllReduce) {
 
   EXPECT_LT(get_index("recv"), get_index("send"));
   EXPECT_LT(get_index("send"), get_index("recv-done"));
-  EXPECT_GE(get_index("send-done") - get_index("recv-done"), 9);
-  EXPECT_GT(get_index("send-done"), get_index("all-reduce-done"));
+  EXPECT_GE(get_index("send-done") - get_index("recv-done"), 3);
+  EXPECT_LT(get_index("send-done"), get_index("all-reduce-start"));
   EXPECT_TRUE(HasValidFingerprint(module.get()));
+}
+
+// Checks that with the dependence added by the gpu-hlo-scheduler, the
+// pipelined Send and Recv instructions are scheduled correctly.
+TEST_F(GpuHloScheduleTest, LHSSendRecvPipelined) {
+  const char* hlo_text = R"(
+  HloModule test
+
+  while_cond {
+    param = (u32[], f32[1, 1024, 1024], f32[1, 1024, 1024]) parameter(0)
+    count = get-tuple-element(param), index=0
+    ub = u32[] constant(25)
+    ROOT cond-result = pred[] compare(count, ub), direction=LT
+  }
+
+while_body {
+    param = (u32[], f32[1, 1024, 1024], f32[1, 1024, 1024]) parameter(0)
+    count = get-tuple-element(param), index=0
+    send-data = get-tuple-element(param), index=1
+    recv-data = get-tuple-element(param), index=2
+
+    after-all.1 = token[] after-all()
+    send.1 = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all.1),
+      channel_id=1, frontend_attributes={
+      _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
+    }
+    send-done.1 = token[] send-done(send.1), channel_id=1
+    recv.1 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all.1), channel_id=1,
+      frontend_attributes={
+       _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
+    }
+
+    c1 = u32[] constant(1)
+    new-count = u32[] add(count, c1)
+    replica = u32[] replica-id()
+    c10 = u32[] constant(10)
+    sum = u32[] add(replica, c10)
+    sum2 = u32[] add(sum, count)
+    conv = f32[] convert(sum2)
+    p = f32[1, 1024, 1024] broadcast(conv), dimensions={}
+    b = f32[1, 1024, 1024] add(p, recv-data)
+    c = f32[1, 1024, 1024] multiply(b, b)
+    d = f32[1, 1024, 1024] tan(c)
+    s = f32[1, 1024, 1024] dot(c, d), lhs_batch_dims={0},
+      lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+    new-data-0 = f32[1, 1024, 1024] add(c, s)
+
+    recv-done.1 = (f32[1, 1024, 1024], token[]) recv-done(recv.1), channel_id=1
+    new-recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done.1), index=0
+
+    after-all.4 = token[] after-all()
+    send.4 = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all.4),
+      channel_id=4, frontend_attributes={
+      _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
+    }
+    send-done.4 = token[] send-done(send.4), channel_id=4
+    recv.4 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all.4), channel_id=4,
+      frontend_attributes={
+       _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
+    }
+    recv-done.4 = (f32[1, 1024, 1024], token[]) recv-done(recv.4), channel_id=4
+    recv-data-4 = f32[1, 1024, 1024] get-tuple-element(recv-done.4), index=0
+    new-data = f32[1, 1024, 1024] add(new-data-0, recv-data-4)
+
+    ROOT body-result = (u32[], f32[1, 1024, 1024], f32[1, 1024, 1024]) tuple(new-count, new-data, new-recv-data)
+  }
+
+  ENTRY main {
+    c0 = u32[] constant(0)
+    f0 = f32[] constant(0.0)
+    init = f32[1, 1024, 1024] broadcast(f0), dimensions={}
+
+    after-all.2 = token[] after-all()
+    recv.2 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all.2), channel_id=1,
+      frontend_attributes={
+       _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
+    }
+    recv-done.2 = (f32[1, 1024, 1024], token[]) recv-done(recv.2), channel_id=1
+    recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done.2), index=0
+
+    while-init =  (u32[], f32[1, 1024, 1024], f32[1, 1024, 1024]) tuple(c0, init, recv-data)
+    while-result = (u32[], f32[1, 1024, 1024], f32[1, 1024, 1024]) while(while-init),
+      body=while_body, condition=while_cond,
+      backend_config={"known_trip_count":{"n":"25"}}
+
+    send-data = f32[1, 1024, 1024] get-tuple-element(while-result), index=2
+    send.2 = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all.2),
+      channel_id=1, frontend_attributes={
+      _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
+    }
+    send-done.2 = token[] send-done(send.2), channel_id=1
+
+    ROOT entry-result = f32[1, 1024, 1024] get-tuple-element(while-result), index=1
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(
+          hlo_text, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
+                                    /*enable_gpu_async_tracker=*/true)));
+  SequentialHloOrdering order = BuildHloOrdering(module.get());
+  const std::vector<HloInstruction*>& while_body =
+      order.SequentialOrder(*module->GetComputationWithName("while_body"))
+          ->instructions();
+  const std::vector<HloInstruction*>& main =
+      order.SequentialOrder(*module->GetComputationWithName("main"))
+          ->instructions();
+  auto get_index =
+      [](absl::string_view hlo_name,
+         const std::vector<HloInstruction*>& instruction_sequence) {
+        return absl::c_find_if(instruction_sequence,
+                               [hlo_name](HloInstruction* instruction) {
+                                 return instruction->name() == hlo_name;
+                               }) -
+               instruction_sequence.begin();
+      };
+
+  EXPECT_TRUE(HasValidFingerprint(module.get()));
+
+  // The pipelined Send-Recv in the main.
+  EXPECT_LT(get_index("recv-done.2", main), get_index("while-result", main));
+  EXPECT_LT(get_index("while-result", main), get_index("send.2", main));
+
+  // The pipelined Send-Recv in the while-body.
+  EXPECT_LT(get_index("send.1", while_body), get_index("recv.1", while_body));
+
+  // The unpipelined Send-Recv in the while-body is scheduled after the
+  // pipelined Send-Done and before the pipelined Recv.
+  EXPECT_LT(get_index("send-done.1", while_body),
+            get_index("recv.4", while_body));
+  EXPECT_LT(get_index("recv-done.4", while_body),
+            get_index("recv.1", while_body));
+}
+
+TEST_F(GpuHloScheduleTest, SkipAlreadyScheduled) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m, is_scheduled=true
+
+fused_computation {
+  param_0 = f32[1024,1024]{1,0} parameter(0)
+  ROOT exponential.1 = f32[1024,1024]{1,0} exponential(param_0)
+}
+
+fused_computation.1 {
+  param_0.1 = f32[1024,1024]{1,0} parameter(0)
+  ROOT negate.1 = f32[1024,1024]{1,0} negate(param_0.1)
+}
+
+ENTRY e {
+  p = f32[1024,1024]{1,0} parameter(0)
+  wrapped_negate = f32[1024,1024]{1,0} fusion(p), kind=kLoop, calls=fused_computation.1
+  wrapped_exponential = f32[1024,1024]{1,0} fusion(p), kind=kLoop, calls=fused_computation
+  ROOT t = (f32[1024,1024]{1,0}, f32[1024,1024]{1,0}) tuple(wrapped_exponential, wrapped_negate)
+})")
+                    .value();
+  TF_CHECK_OK(ScheduleGpuModule(
+      module.get(), /*pointer_size=*/8,
+      /*memory_limit=*/1024 * 1024 * 1024,
+      backend().default_stream_executor()->GetDeviceDescription()));
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+// CHECK: ENTRY
+// CHECK: wrapped_negate = f32[1024,1024]{1,0}
+// CHECK: wrapped_exponential = f32[1024,1024]{1,0}
+)"));
 }
 
 class GpuHloScheduleParameterizedTest

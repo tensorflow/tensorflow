@@ -30,8 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tsl/platform/statusor.h"
 
-namespace mlir {
-namespace stablehlo {
+namespace mlir::quant::stablehlo {
 namespace {
 
 using ::mlir::DialectRegistry;
@@ -54,7 +53,7 @@ class LegalizeTfTypesTest : public ::testing::Test {
 
     pm_ = std::make_unique<mlir::PassManager>(&context_);
     pm_->addNestedPass<mlir::func::FuncOp>(
-        mlir::stablehlo::CreateConvertTFQuantTypesPass());
+        quant::stablehlo::CreateConvertTFQuantTypesPass());
   }
   mlir::LogicalResult Run() { return pm_->run(module_.get()); }
 
@@ -105,5 +104,4 @@ TEST_F(LegalizeTfTypesTest, RecordsStreamzNoQuantOps) {
 }
 
 }  // namespace
-}  // namespace stablehlo
-}  // namespace mlir
+}  // namespace mlir::quant::stablehlo

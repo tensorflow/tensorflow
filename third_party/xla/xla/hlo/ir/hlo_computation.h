@@ -663,6 +663,26 @@ class HloComputation {
     is_custom_call_computation_ |= (custom_call_instruction != nullptr);
   }
 
+  // Returns if this computation is a to_apply region of a collective.
+  bool IsCollectiveCalledComputation() const {
+    return is_collective_called_computation_;
+  }
+
+  // Returns the owning collective call instruction, or nullptr if this is not a
+  // collective call computation.
+  HloInstruction* CollectiveCallInstruction() const {
+    return collective_call_instruction_;
+  }
+
+  void SetCollectiveCallInstruction(
+      HloInstruction* collective_call_instruction) {
+    CHECK(!IsFusionComputation() && !IsAsyncComputation() &&
+          !IsCustomCallComputation());
+    collective_call_instruction_ = collective_call_instruction;
+    is_collective_called_computation_ |=
+        (collective_call_instruction != nullptr);
+  }
+
   // Returns if this computation is an async computation.
   bool IsAsyncComputation() const { return !async_instructions_.empty(); }
 
@@ -734,6 +754,9 @@ class HloComputation {
 
   // Returns true if a given instruction is marked dead in this computation.
   bool IsMarkedAsDead(const HloInstruction* inst);
+
+  // Returns true iff this computation can be inlined as a single instruction.
+  bool CanExpandIntoSingleInstruction() const;
 
  private:
   explicit HloComputation(
@@ -809,6 +832,13 @@ class HloComputation {
 
   // Determines whether this computation is a custom-call computation.
   bool is_custom_call_computation_;
+
+  // If this computation is a collective sub-computation, this field points to
+  // the corresponding collective instruction. Otherwise, this is null.
+  HloInstruction* collective_call_instruction_;
+
+  // Determines whether this computation is a collective sub-computation.
+  bool is_collective_called_computation_;
 
   // If this computation is an async computation, this field points to the
   // corresponding async instructions (if live) that call this computation.

@@ -49,6 +49,13 @@ class Flags {
   TF_DECLARE_FLAG(more_stack_traces, false,
                   "Enable experimental code that preserves and propagates "
                   "graph node stack traces in C++.");
+  TF_DECLARE_FLAG(publish_function_graphs, true,
+                  "Enables the publication of partitioned function graphs "
+                  "via StatsPublisherInterface. Disabling this flag can "
+                  "reduce memory consumption.");
+  TF_DECLARE_FLAG(enable_aggressive_constant_replication, true,
+                  "Replicate constants across CPU devices and even for local "
+                  "CPUs within the same task if available.")
   // LINT.ThenChange(//tensorflow/core/config/flags_api_wrapper.cc)
 };
 

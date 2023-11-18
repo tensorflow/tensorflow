@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/util.h"
 
-#include <stdint.h>
-
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <utility>
 
+#include "absl/algorithm/container.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -26,11 +29,14 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
@@ -156,6 +162,75 @@ LogicalResult MatchBinaryReduceFunction<void>(mlir::Region& function) {
   if (return_op.getNumOperands() != 1) return failure();
   if (return_op.getOperands().front() != body.getArgument(1)) return failure();
   return success();
+}
+
+bool NeedsReformatTypeAndPermutation(int batch_dim, int feature_dim,
+                                     int spatial_dim_start,
+                                     int default_batch_dim,
+                                     int default_feature_dim,
+                                     int default_spatial_dim_start) {
+  return batch_dim != default_batch_dim || feature_dim != default_feature_dim ||
+         spatial_dim_start != default_spatial_dim_start;
+}
+
+std::pair<RankedTensorType, DenseIntElementsAttr> GetReformatTypeAndPermutation(
+    int batch_dim, int feature_dim, int spatial_dim_start,
+    int default_batch_dim, int default_feature_dim,
+    int default_spatial_dim_start, int num_spatial_dims, RankedTensorType type,
+    ConversionPatternRewriter& rewriter) {
+  auto shape = type.getShape();
+  llvm::SmallVector<int64_t, 4> permutation_array(num_spatial_dims + 2);
+  permutation_array[default_batch_dim] = batch_dim;
+  permutation_array[default_feature_dim] = feature_dim;
+  llvm::SmallVector<int64_t, 4> transposed_shape(num_spatial_dims + 2);
+  transposed_shape[default_batch_dim] = shape[batch_dim];
+  transposed_shape[default_feature_dim] = shape[feature_dim];
+  for (int i : llvm::seq<int>(0, num_spatial_dims)) {
+    permutation_array[default_spatial_dim_start + i] = spatial_dim_start + i;
+    transposed_shape[default_spatial_dim_start + i] =
+        shape[spatial_dim_start + i];
+  }
+  auto new_type =
+      RankedTensorType::get(transposed_shape, type.getElementType());
+  auto permutation = DenseIntElementsAttr::get(
+      RankedTensorType::get({type.getRank()}, rewriter.getI64Type()),
+      permutation_array);
+  return {new_type, permutation};
+}
+
+Value InsertTranspose(Value value, int batch_dim, int feature_dim,
+                      ArrayRef<int64_t> spatial_dimensions,
+                      int default_batch_dim, int default_feature_dim,
+                      int default_spatial_dim_start, int num_spatial_dims,
+                      ConversionPatternRewriter& rewriter) {
+  auto type = value.getType().cast<RankedTensorType>();
+  DenseIntElementsAttr permutation;
+  const int spatial_dim_start = spatial_dimensions.front();
+  if (!NeedsReformatTypeAndPermutation(
+          batch_dim, feature_dim, spatial_dim_start, default_batch_dim,
+          default_feature_dim, default_spatial_dim_start)) {
+    // Transpose is not needed because the current format is the same a default
+    // format.
+    return value;
+  }
+  std::pair<RankedTensorType&, DenseIntElementsAttr&>(type, permutation) =
+      GetReformatTypeAndPermutation(batch_dim, feature_dim, spatial_dim_start,
+                                    default_batch_dim, default_feature_dim,
+                                    default_spatial_dim_start, num_spatial_dims,
+                                    type, rewriter);
+  return rewriter.create<mhlo::TransposeOp>(value.getLoc(), type, value,
+                                            permutation);
+}
+
+Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
+  IntegerType new_ele_type = rewriter.getIntegerType(32);
+  if (auto shaped_type = val.getType().dyn_cast<RankedTensorType>()) {
+    ShapedType new_type =
+        RankedTensorType::get(shaped_type.getShape(), new_ele_type);
+    return rewriter.create<TFL::CastOp>(loc, new_type, val);
+  }
+  return rewriter.create<TFL::CastOp>(
+      loc, UnrankedTensorType::get(new_ele_type), val);
 }
 
 }  // namespace odml

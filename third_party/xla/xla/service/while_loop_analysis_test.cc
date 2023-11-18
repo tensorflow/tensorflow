@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/service/while_loop_analysis.h"
 
+#include <gtest/gtest.h>
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
@@ -85,6 +88,46 @@ TEST_F(WhileLoopAnalysisTest, NoUpperBound) {
 
   HloInstruction* while_op = module->entry_computation()->root_instruction();
   EXPECT_EQ(ComputeWhileLoopTripCountUpperBound(while_op), std::nullopt);
+}
+
+TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialTripCount) {
+  const char* const kHloModule = R"(
+    HloModule ModuleWithWhile
+
+    body {
+      p_body = (f32[2], s32[]) parameter(0)
+      val = f32[2] get-tuple-element(p_body), index=0
+      index = s32[] get-tuple-element(p_body), index=1
+      one = s32[] constant(1)
+      inc = s32[] add(index, one)
+      ROOT root = (f32[2], s32[]) tuple(val, inc)
+    }
+
+    condition {
+      p_cond = (f32[2], s32[]) parameter(0)
+      gte = s32[] get-tuple-element(p_cond), index=1
+      const = s32[] constant(42)
+      ROOT result = pred[] compare(gte, const), direction=LT
+    }
+
+    ENTRY entry {
+      param.0 = f32[2] parameter(0)
+      param.1 = s32[] constant(0)
+      while_init = (f32[2], s32[]) tuple(param.0, param.1)
+      ROOT while = (f32[2], s32[]) while(while_init), condition=condition, body=body
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+
+  HloInstruction* while_op = module->entry_computation()->root_instruction();
+
+  EXPECT_EQ(
+      *MatchTrivialLoopTripCount(
+          while_op, 1,
+          Cast<HloConstantInstruction>(module->GetComputationWithName("entry")
+                                           ->GetInstructionWithName("param.1"))
+              ->literal()),
+      42);
 }
 
 TEST_F(WhileLoopAnalysisTest, ExactBound) {

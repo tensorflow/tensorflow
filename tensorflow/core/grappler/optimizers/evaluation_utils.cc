@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/evaluation_utils.h"
 
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/denormal.h"
@@ -69,7 +71,7 @@ Status EvaluateNode(const NodeDef& node, const TensorVector& inputs,
   }
 
   std::unique_ptr<OpKernel> op_kernel(
-      CreateOpKernel("CPU", cpu_device, cpu_device->GetAllocator({}), node,
+      CreateOpKernel(DEVICE_CPU, cpu_device, cpu_device->GetAllocator({}), node,
                      TF_GRAPH_DEF_VERSION, &status));
   TF_RETURN_IF_ERROR(status);
   OpKernelContext::Params params;

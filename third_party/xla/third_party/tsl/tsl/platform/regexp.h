@@ -18,12 +18,7 @@ limitations under the License.
 
 #include "tsl/platform/platform.h"
 
-
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
-    defined(PLATFORM_GOOGLE_IOS) || defined(PLATFORM_PORTABLE_GOOGLE)
-#include "third_party/re2/re2.h"
-#else
+// TODO(b/305283688): make a platform macro for internal windows builds
 #include "re2/re2.h"
-#endif
 
 #endif  // TENSORFLOW_TSL_PLATFORM_REGEXP_H_

@@ -1694,12 +1694,21 @@ std::optional<int64_t> MemoryUsageTracker::GetCostOfHostOffload(
     return {};
   }
 
-  // TODO(b/291823800): Bitcasts complicate things. Skip for now.
+  // TODO(b/291823800): Bitcasts and tuples complicate things. Skip for now.
   for (auto buffer_id : candidate_item->buffers_defined) {
     for (auto use : buffers_.at(buffer_id).users) {
       if (use.user->instruction->opcode() == HloOpcode::kBitcast) {
         VLOG(3) << "  " << candidate_item->instruction->name()
-                << " has a user which is a bitcast instruction; cannot offload "
+                << " has a user which is a bitcast instruction("
+                << use.user->instruction->name()
+                << "); cannot offload "
+                   "to host.";
+        return {};
+      } else if (use.user->instruction->opcode() == HloOpcode::kTuple) {
+        VLOG(3) << "  " << candidate_item->instruction->name()
+                << " has a user which is a tuple instruction("
+                << use.user->instruction->name()
+                << "); cannot offload "
                    "to host.";
         return {};
       }

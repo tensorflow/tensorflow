@@ -340,7 +340,8 @@ bool IsCpuCompatibleDataType(const NodeDef* contraction,
     return (IsConv2D(*contraction) || IsDepthwiseConv2dNative(*contraction) ||
             IsConv3D(*contraction) || IsAnyBatchMatMul(*contraction) ||
             is_supported_matmul) &&
-           (dtype == DT_FLOAT || dtype == DT_BFLOAT16);
+           (dtype == DT_FLOAT ||
+            (dtype == DT_BFLOAT16 && IsBF16SupportedByOneDNNOnThisCPU()));
   }
   if (IsConv2D(*contraction)) {
     return dtype == DT_FLOAT || dtype == DT_DOUBLE;
@@ -517,7 +518,7 @@ bool IsGpuCompatible(const RemapperContext& ctx,
                      const ContractionWithBiasAddAndActivation& matched,
                      const Cluster* cluster) {
 #if TENSORFLOW_USE_ROCM
-  // ROCm does not support _FusedConv2D
+  // TODO: add a hipblaslt pathway
   return false;
 #endif
   // The TF->XLA bridge does not support `_Fused[Conv2D|MatMul]` so we avoid
@@ -590,7 +591,7 @@ bool IsGpuCompatible(const RemapperContext& ctx,
 bool IsGpuCompatible(const RemapperContext& ctx,
                      const ContractionWithBiasAdd& matched,
                      const Cluster* cluster) {
-#if TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM && !TF_HIPBLASLT
   // ROCm does not support _FusedMatMul
   return false;
 #endif
@@ -4650,6 +4651,16 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
 
     if (IsMKLEnabled()) {
+      // Check if BF16 data type is supported by oneDNN,
+      // skipping fusions if it is not supported.
+      const auto* node_view = ctx.graph_view.GetNode(i);
+      const auto* node_def = node_view->node();
+      const string& type_attr = "T";
+      DataType dtype = GetDataTypeFromAttr(*node_def, type_attr);
+      if (dtype == DT_BFLOAT16 && !IsBF16SupportedByOneDNNOnThisCPU()) {
+        continue;
+      }
+
       // Remap Conv2D+BiasAdd+Add+relu into the _FusedConv2D.
       // or Remap Conv3D+BiasAdd+Add+relu into _FusedConv3D
       if (FindContractionWithBiasAndAddActivation(

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <optional>
@@ -22,21 +24,39 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/model/analytical_latency_estimator.h"
 #include "xla/service/hlo_memory_scheduler.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/service/p2p_schedule_preparation.h"
 #include "xla/service/profile_guided_latency_estimator.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/protobuf.h"
@@ -596,7 +616,11 @@ int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
 }
 
 Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
-                         int64_t memory_limit) {
+                         int64_t memory_limit,
+                         const se::DeviceDescription& gpu_device_info) {
+  if (module->has_schedule()) {
+    return OkStatus();
+  }
   HloPassPipeline prepare_pipeline("p2p-schedule-preparation");
   prepare_pipeline.AddPass<P2PSchedulePreparation>();
   TF_RETURN_IF_ERROR(prepare_pipeline.Run(module).status());
@@ -632,6 +656,11 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
   std::unique_ptr<LatencyEstimator> latency_estimator;
   std::optional<tensorflow::profiler::ProfiledInstructionsProto> profile =
       ReadPGLEProfile(module, fingerprint);
+
+  const bool enable_analytical_latency_estimator =
+      module->config()
+          .debug_options()
+          .xla_gpu_enable_analytical_latency_estimator();
   if (profile.has_value()) {
     latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
         config, std::move(gpu_latency_estimator), profile.value());
@@ -642,6 +671,14 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
                    "still be used : "
                 << s.message();
     }
+  } else if (enable_analytical_latency_estimator) {
+    latency_estimator = std::make_unique<AnalyticalLatencyEstimator>(
+        config, std::move(gpu_latency_estimator), gpu_device_info,
+        [input_pointer_size = pointer_size](const Shape& shape) {
+          return GetSizeOfShape(shape, input_pointer_size);
+        },
+        module->entry_computation());
+    LOG(INFO) << "Using analytical latency estimator";
   } else {
     latency_estimator = std::move(gpu_latency_estimator);
   }
@@ -678,7 +715,7 @@ HloInstructionSequence PostProcessSchedule(
 // Compute the device memory limit to be used by passes like scheduler and
 // HLO rematerialization.
 int64_t GetSchedulerMemoryLimit(const HloModule* module,
-                                const GpuDeviceInfo& gpu_device_info,
+                                const se::DeviceDescription& gpu_device_info,
                                 int pointer_size) {
   // There is a "base" value which is either specified in HloModuleConfig (this
   // value should take into account the fact that we need to leave some memory
@@ -691,7 +728,7 @@ int64_t GetSchedulerMemoryLimit(const HloModule* module,
   const int64_t base_limit =
       module->config().device_memory_size() != 0
           ? module->config().device_memory_size()
-          : gpu_device_info.device_memory_size * 80 / 100;
+          : gpu_device_info.device_memory_size() * 80 / 100;
 
   // Find the total size of inputs and outputs.
   int64_t total_io_size = 0;
@@ -718,7 +755,10 @@ int64_t GetSchedulerMemoryLimit(const HloModule* module,
         total_io_size -= GetSizeOfShape(subshape, pointer_size);
       });
 
-  return (base_limit - total_io_size) * 95 / 100;
+  int64_t limit =
+      (base_limit - total_io_size) *
+      module->config().debug_options().xla_gpu_memory_limit_slop_factor() / 100;
+  return limit;
 }
 
 }  // namespace gpu

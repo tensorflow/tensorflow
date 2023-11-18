@@ -15,19 +15,18 @@ limitations under the License.
 
 #include "tensorflow/lite/simple_memory_arena.h"
 
-#include <stddef.h>
-#include <stdint.h>
-
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 #include <cstring>
-#include <iterator>
 #include <limits>
-#include <memory>
 #include <string>
 #include <vector>
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/macros.h"
+
 #ifdef TF_LITE_TENSORFLOW_PROFILER
 #include "tensorflow/lite/tensorflow_profiler_logger.h"
 #endif  // TF_LITE_TENSORFLOW_PROFILER
@@ -43,6 +42,60 @@ T AlignTo(size_t alignment, T offset) {
 }  // namespace
 
 namespace tflite {
+
+bool ResizableAlignedBuffer::Resize(size_t new_size) {
+  const size_t new_allocation_size = RequiredAllocationSize(new_size);
+  if (new_allocation_size <= allocation_size_) {
+    // Skip reallocation when resizing down.
+    return false;
+  }
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+  PauseHeapMonitoring(/*pause=*/true);
+  OnTfLiteArenaAlloc(subgraph_index_, reinterpret_cast<std::uintptr_t>(this),
+                     new_allocation_size);
+#endif
+  char* new_buffer = reinterpret_cast<char*>(std::malloc(new_allocation_size));
+  char* new_aligned_ptr = reinterpret_cast<char*>(
+      AlignTo(alignment_, reinterpret_cast<std::uintptr_t>(new_buffer)));
+  if (new_size > 0 && allocation_size_ > 0) {
+    // Copy data when both old and new buffers are bigger than 0 bytes.
+    const size_t new_alloc_alignment_adjustment = new_aligned_ptr - new_buffer;
+    const size_t old_alloc_alignment_adjustment = aligned_ptr_ - buffer_;
+    const size_t copy_amount =
+        std::min(allocation_size_ - old_alloc_alignment_adjustment,
+                 new_allocation_size - new_alloc_alignment_adjustment);
+    std::memcpy(new_aligned_ptr, aligned_ptr_, copy_amount);
+  }
+  std::free(buffer_);
+  buffer_ = new_buffer;
+  aligned_ptr_ = new_aligned_ptr;
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+  if (allocation_size_ > 0) {
+    OnTfLiteArenaDealloc(subgraph_index_,
+                         reinterpret_cast<std::uintptr_t>(this),
+                         allocation_size_);
+  }
+#endif
+  allocation_size_ = new_allocation_size;
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+  PauseHeapMonitoring(/*pause=*/false);
+#endif
+  return true;
+}
+
+void ResizableAlignedBuffer::Release() {
+  if (buffer_ == nullptr) {
+    return;
+  }
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+  OnTfLiteArenaDealloc(subgraph_index_, reinterpret_cast<std::uintptr_t>(this),
+                       allocation_size_);
+#endif
+  std::free(buffer_);
+  buffer_ = nullptr;
+  allocation_size_ = 0;
+  aligned_ptr_ = nullptr;
+}
 
 void SimpleMemoryArena::PurgeAfter(int32_t node) {
   for (int i = 0; i < active_allocs_.size(); ++i) {
@@ -91,7 +144,7 @@ TfLiteStatus SimpleMemoryArena::Allocate(
     TfLiteContext* context, size_t alignment, size_t size, int32_t tensor,
     int32_t first_node, int32_t last_node,
     ArenaAllocWithUsageInterval* new_alloc) {
-  TF_LITE_ENSURE(context, alignment <= arena_alignment_);
+  TF_LITE_ENSURE(context, alignment <= underlying_buffer_.GetAlignment());
   new_alloc->tensor = tensor;
   new_alloc->first_node = first_node;
   new_alloc->last_node = last_node;
@@ -141,50 +194,13 @@ TfLiteStatus SimpleMemoryArena::Allocate(
   return kTfLiteOk;
 }
 
-TfLiteStatus SimpleMemoryArena::Commit(TfLiteContext* context,
-                                       bool* arena_reallocated) {
-  size_t required_size = RequiredBufferSize();
-  if (required_size > underlying_buffer_size_) {
-    *arena_reallocated = true;
-#ifdef TF_LITE_TENSORFLOW_PROFILER
-    PauseHeapMonitoring(/*pause=*/true);
-    OnTfLiteArenaAlloc(subgraph_index_, reinterpret_cast<std::uintptr_t>(this),
-                       required_size);
-#endif
-    char* new_alloc = new char[required_size];
-    char* new_underlying_buffer_aligned_ptr = reinterpret_cast<char*>(
-        AlignTo(arena_alignment_, reinterpret_cast<intptr_t>(new_alloc)));
-
-    // If the arena had been previously allocated, copy over the old memory.
-    // Since Alloc pointers are offset based, they will remain valid in the new
-    // memory block.
-    if (high_water_mark_ > 0 && underlying_buffer_size_ > 0) {
-      size_t copy_amount = std::min(
-          underlying_buffer_.get() + underlying_buffer_size_ -
-              underlying_buffer_aligned_ptr_,
-          new_alloc + required_size - new_underlying_buffer_aligned_ptr);
-      memcpy(new_underlying_buffer_aligned_ptr, underlying_buffer_aligned_ptr_,
-             copy_amount);
-    }
-
-#ifdef TF_LITE_TENSORFLOW_PROFILER
-    if (underlying_buffer_size_ > 0) {
-      OnTfLiteArenaDealloc(subgraph_index_,
-                           reinterpret_cast<std::uintptr_t>(this),
-                           underlying_buffer_size_);
-    }
-#endif
-    underlying_buffer_.reset(new_alloc);
-    underlying_buffer_size_ = required_size;
-    underlying_buffer_aligned_ptr_ = new_underlying_buffer_aligned_ptr;
-#ifdef TF_LITE_TENSORFLOW_PROFILER
-    PauseHeapMonitoring(/*pause=*/false);
-#endif
-  } else {
-    *arena_reallocated = false;
-  }
+TfLiteStatus SimpleMemoryArena::Commit(bool* arena_reallocated) {
+  // Resize the arena to the high water mark (calculated by Allocate), retaining
+  // old contents and alignment in the process. Since Alloc pointers are offset
+  // based, they will remain valid in the new memory block.
+  *arena_reallocated = underlying_buffer_.Resize(high_water_mark_);
   committed_ = true;
-  return underlying_buffer_ != nullptr ? kTfLiteOk : kTfLiteError;
+  return kTfLiteOk;
 }
 
 TfLiteStatus SimpleMemoryArena::ResolveAlloc(
@@ -192,12 +208,12 @@ TfLiteStatus SimpleMemoryArena::ResolveAlloc(
     char** output_ptr) {
   TF_LITE_ENSURE(context, committed_);
   TF_LITE_ENSURE(context, output_ptr != nullptr);
-  TF_LITE_ENSURE(context,
-                 underlying_buffer_size_ >= (alloc.offset + alloc.size));
+  TF_LITE_ENSURE(context, underlying_buffer_.GetAllocationSize() >=
+                              (alloc.offset + alloc.size));
   if (alloc.size == 0) {
     *output_ptr = nullptr;
   } else {
-    *output_ptr = underlying_buffer_aligned_ptr_ + alloc.offset;
+    *output_ptr = underlying_buffer_.GetPtr() + alloc.offset;
   }
   return kTfLiteOk;
 }
@@ -211,13 +227,7 @@ TfLiteStatus SimpleMemoryArena::ClearPlan() {
 
 TfLiteStatus SimpleMemoryArena::ReleaseBuffer() {
   committed_ = false;
-#ifdef TF_LITE_TENSORFLOW_PROFILER
-  OnTfLiteArenaDealloc(subgraph_index_, reinterpret_cast<std::uintptr_t>(this),
-                       underlying_buffer_size_);
-#endif
-  underlying_buffer_size_ = 0;
-  underlying_buffer_aligned_ptr_ = nullptr;
-  underlying_buffer_.reset();
+  underlying_buffer_.Release();
   return kTfLiteOk;
 }
 
@@ -229,8 +239,8 @@ TFLITE_ATTRIBUTE_WEAK void DumpArenaInfo(
 
 void SimpleMemoryArena::DumpDebugInfo(
     const std::string& name, const std::vector<int>& execution_plan) const {
-  tflite::DumpArenaInfo(name, execution_plan, underlying_buffer_size_,
-                        active_allocs_);
+  tflite::DumpArenaInfo(name, execution_plan,
+                        underlying_buffer_.GetAllocationSize(), active_allocs_);
 }
 
 }  // namespace tflite

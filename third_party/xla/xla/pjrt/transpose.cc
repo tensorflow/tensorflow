@@ -79,6 +79,7 @@ limitations under the License.
 #include <stack>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -97,6 +98,16 @@ limitations under the License.
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
+
+namespace {
+#ifdef __AVX__
+static constexpr int kMaxInnerBlockSizeBytes = sizeof(__m256i);
+#elif defined(XLA_HAS_VEC128)
+static constexpr int kMaxInnerBlockSizeBytes = sizeof(Vec128);
+#else
+static constexpr int kMaxInnerBlockSizeBytes = 16;
+#endif
+}  // namespace
 
 // A plan is a data structure that describes a loop nest.
 // TODO(phawkins): consider shrinking Node so it fits in a cache line.
@@ -142,7 +153,7 @@ void MacroKernel(const char* __restrict a, int64_t lda, int outer_bs_a,
 
   // TODO(phawkins): consider adding prefetching and streaming stores.
 
-  if (transformation == TransposePlan::Transformation::kF64ToEf57) {
+  if constexpr (transformation == TransposePlan::Transformation::kF64ToEf57) {
     DCHECK_EQ(outer_bs_a * inner_bs % 2, 0);
     float* p = reinterpret_cast<float*>(scratch);
     for (int i = 0; i < outer_bs_b * inner_bs; ++i) {
@@ -389,76 +400,36 @@ void TransposePlan::ExecuteTyped(const char* a, char* b,
     if (scratch_size_ > 0) {
       scratch.reset(new char[scratch_size_]);
     }
+    DCHECK_LE(sizeof(T) * inner_block_elems_, kMaxInnerBlockSizeBytes);
+    auto handle_inner_block_elems = [&](auto const_inner_block_elems) {
+      if (nodes.size() > 1) {
+        Transpose<T, const_inner_block_elems, transformation>(
+            a, outer_block_elems_a_, b, outer_block_elems_b_, nodes.data(),
+            scratch.get());
+      } else {
+        MacroKernel<T, const_inner_block_elems, transformation>(
+            a, nodes.back().lda, outer_block_elems_a_, b, nodes.back().ldb,
+            outer_block_elems_b_, scratch.get());
+      }
+    };
     switch (inner_block_elems_) {
       case 1:
-        if (nodes.size() > 1) {
-          Transpose<T, 1, transformation>(a, outer_block_elems_a_, b,
-                                          outer_block_elems_b_, nodes.data(),
-                                          scratch.get());
-        } else {
-          MacroKernel<T, 1, transformation>(
-              a, nodes.back().lda, outer_block_elems_a_, b, nodes.back().ldb,
-              outer_block_elems_b_, scratch.get());
-        }
+        handle_inner_block_elems(std::integral_constant<int, 1>{});
         break;
       case 2:
-        if (nodes.size() > 1) {
-          Transpose<T, 2, transformation>(a, outer_block_elems_a_, b,
-                                          outer_block_elems_b_, nodes.data(),
-                                          scratch.get());
-        } else {
-          MacroKernel<T, 2, transformation>(
-              a, nodes.back().lda, outer_block_elems_a_, b, nodes.back().ldb,
-              outer_block_elems_b_, scratch.get());
-        }
+        handle_inner_block_elems(std::integral_constant<int, 2>{});
         break;
       case 4:
-
-        if (nodes.size() > 1) {
-          Transpose<T, 4, transformation>(a, outer_block_elems_a_, b,
-                                          outer_block_elems_b_, nodes.data(),
-                                          scratch.get());
-        } else {
-          MacroKernel<T, 4, transformation>(
-              a, nodes.back().lda, outer_block_elems_a_, b, nodes.back().ldb,
-              outer_block_elems_b_, scratch.get());
-        }
+        handle_inner_block_elems(std::integral_constant<int, 4>{});
         break;
       case 8:
-        if (nodes.size() > 1) {
-          Transpose<T, 8, transformation>(a, outer_block_elems_a_, b,
-                                          outer_block_elems_b_, nodes.data(),
-                                          scratch.get());
-        } else {
-          MacroKernel<T, 8, transformation>(
-              a, nodes.back().lda, outer_block_elems_a_, b, nodes.back().ldb,
-              outer_block_elems_b_, scratch.get());
-        }
+        handle_inner_block_elems(std::integral_constant<int, 8>{});
         break;
       case 16:
-        if (nodes.size() > 1) {
-          Transpose<T, 16, transformation>(a, outer_block_elems_a_, b,
-                                           outer_block_elems_b_, nodes.data(),
-                                           scratch.get());
-        } else {
-          MacroKernel<T, 16, transformation>(
-              a, nodes.back().lda, outer_block_elems_a_, b, nodes.back().ldb,
-              outer_block_elems_b_, scratch.get());
-        }
-        break;
-      case 32:
-        if (nodes.size() > 1) {
-          Transpose<T, 32, transformation>(a, outer_block_elems_a_, b,
-                                           outer_block_elems_b_, nodes.data(),
-                                           scratch.get());
-        } else {
-          MacroKernel<T, 32, transformation>(
-              a, nodes.back().lda, outer_block_elems_a_, b, nodes.back().ldb,
-              outer_block_elems_b_, scratch.get());
-        }
+        handle_inner_block_elems(std::integral_constant<int, 16>{});
         break;
       default:
-        LOG(FATAL) << "Invalid inner_block_size " << inner_block_elems_;
+        LOG(FATAL) << "Invalid inner_block_elems_ " << inner_block_elems_;
     }
   }
 }
@@ -1112,6 +1083,7 @@ void TransposePlan::Initialize() {
     b_stride1_size = std::min(b_stride1_size, b_dims_.back());
   }
 
+  constexpr int kMaxOuterBlockElems = 16;
   if (inner_kernel_is_memcpy_) {
     inner_block_elems_ = -1;
     outer_block_elems_a_ = -1;
@@ -1121,23 +1093,14 @@ void TransposePlan::Initialize() {
     // vectorized kernel for this element size?
     int min_inner_block_elems;
     int max_inner_block_elems;
-#if defined(__AVX__)
     switch (elem_size_in_bytes_) {
       case 1:
-        min_inner_block_elems = 4;
-        max_inner_block_elems = sizeof(__m256i) / sizeof(uint8_t);
-        break;
       case 2:
-        min_inner_block_elems = 4;
-        max_inner_block_elems = sizeof(__m256i) / sizeof(uint16_t);
-        break;
       case 4:
-        min_inner_block_elems = sizeof(__m128i) / sizeof(uint32_t);
-        max_inner_block_elems = sizeof(__m256i) / sizeof(uint32_t);
-        break;
       case 8:
-        min_inner_block_elems = sizeof(__m128i) / sizeof(uint64_t);
-        max_inner_block_elems = sizeof(__m256i) / sizeof(uint64_t);
+        min_inner_block_elems = 1;
+        max_inner_block_elems = std::min<int>(
+            kMaxOuterBlockElems, kMaxInnerBlockSizeBytes / elem_size_in_bytes_);
         break;
       case 16:
         min_inner_block_elems = 1;
@@ -1146,45 +1109,6 @@ void TransposePlan::Initialize() {
       default:
         LOG(FATAL) << "Unreachable: element size " << elem_size_in_bytes_;
     }
-#elif defined(XLA_HAS_SSE2)
-    switch (elem_size_in_bytes_) {
-      case 1:
-        min_inner_block_elems = 4;
-        max_inner_block_elems = sizeof(__m128i) / sizeof(uint8_t);
-        break;
-      case 2:
-        min_inner_block_elems = 4;
-        max_inner_block_elems = sizeof(__m128i) / sizeof(uint16_t);
-        break;
-      case 4:
-        min_inner_block_elems = sizeof(__m128i) / sizeof(uint32_t);
-        max_inner_block_elems = sizeof(__m128i) / sizeof(uint32_t);
-        break;
-      case 8:
-        min_inner_block_elems = sizeof(__m128i) / sizeof(uint64_t);
-        max_inner_block_elems = sizeof(__m128i) / sizeof(uint64_t);
-        break;
-      case 16:
-        min_inner_block_elems = 1;
-        max_inner_block_elems = 1;
-        break;
-      default:
-        LOG(FATAL) << "Unreachable: element size " << elem_size_in_bytes_;
-    }
-#else
-    switch (elem_size_in_bytes_) {
-      case 1:
-      case 2:
-      case 4:
-      case 8:
-      case 16:
-        min_inner_block_elems = 1;
-        max_inner_block_elems = 16 / elem_size_in_bytes_;
-        break;
-      default:
-        LOG(FATAL) << "Unreachable: element size " << elem_size_in_bytes_;
-    }
-#endif
     inner_block_elems_ = max_inner_block_elems;
     while (inner_block_elems_ > std::min(a_stride1_size, b_stride1_size)) {
       inner_block_elems_ /= 2;
@@ -1195,10 +1119,12 @@ void TransposePlan::Initialize() {
       inner_block_elems_ = 1;
     }
     outer_block_elems_a_ = FloorOfRatio<int64_t>(
-        std::min<int64_t>(16, a_stride1_size), inner_block_elems_);
+        std::min<int64_t>(kMaxOuterBlockElems, a_stride1_size),
+        inner_block_elems_);
     outer_block_elems_a_ = std::max<int64_t>(outer_block_elems_a_, 1);
     outer_block_elems_b_ = FloorOfRatio<int64_t>(
-        std::min<int64_t>(16, b_stride1_size), inner_block_elems_);
+        std::min<int64_t>(kMaxOuterBlockElems, b_stride1_size),
+        inner_block_elems_);
     outer_block_elems_b_ = std::max<int64_t>(outer_block_elems_b_, 1);
   }
 

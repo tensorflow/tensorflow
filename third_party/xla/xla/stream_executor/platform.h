@@ -21,12 +21,11 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <string>
 
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/platform/port.h"
-#include "xla/stream_executor/plugin.h"
-#include "xla/stream_executor/trace_listener.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -145,7 +144,8 @@ class Platform {
   Platform() = default;
 
  private:
-  SE_DISALLOW_COPY_AND_ASSIGN(Platform);
+  Platform(const Platform&) = delete;
+  void operator=(const Platform&) = delete;
 };
 
 }  // namespace stream_executor

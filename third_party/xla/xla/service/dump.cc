@@ -20,6 +20,7 @@ limitations under the License.
 #include <queue>
 #include <utility>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallString.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_proto_util.h"
+#include "xla/status.h"
 #include "xla/util.h"
 #include "tsl/lib/io/zlib_compression_options.h"
 #include "tsl/lib/io/zlib_outputbuffer.h"
@@ -85,7 +87,7 @@ struct CanonicalDebugOptions {
     }
 
     // Disable dumping if specified by the user.
-    if (!opts.xla_detailed_logging_and_dumping()) {
+    if (!opts.xla_enable_dumping()) {
       dump_to = "";
     }
 
@@ -472,7 +474,7 @@ static std::vector<std::string> DumpHloModuleImpl(
       if (!rendered_graph.ok()) {
         VLOG(1) << "Skipping fusion visualization"
                 << " for computation " << computation->name()
-                << " due to: " << rendered_graph.status().ToString();
+                << " due to: " << rendered_graph.status();
         continue;
       }
       file_paths.push_back(DumpToFileInDirImpl(
@@ -634,7 +636,10 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
 
 void DumpProtobufToFile(const tsl::protobuf::Message& proto,
                         const DebugOptions& debug_options,
-                        absl::string_view filename) {
+                        absl::string_view filename,
+                        absl::AnyInvocable<StatusOr<std::string>(
+                            tsl::Env*, const tsl::protobuf::Message&)>
+                            text_formatter) {
   CanonicalDebugOptions opts(debug_options);
   tsl::Env* env = tsl::Env::Default();
   const std::string& dir = opts.dump_to;
@@ -642,31 +647,45 @@ void DumpProtobufToFile(const tsl::protobuf::Message& proto,
     auto status = env->RecursivelyCreateDir(dir);
     if (!status.ok()) {
       LOG(ERROR) << "Could not create directory " << dir
-                 << " for dumping XLA execution options: " << status;
+                 << " for dumping: " << status;
       return;
     }
   }
-  if (env->IsDirectory(dir).ok()) {
-    const std::string path = tsl::io::JoinPath(dir, filename);
-    Status status;
-    if (opts.dump_as_text) {
-      status = tsl::WriteTextProto(env, absl::StrCat(path, ".txt"), proto);
+  if (!env->IsDirectory(dir).ok()) {
+    return;
+  }
+  const std::string path = tsl::io::JoinPath(dir, filename);
+  Status status;
+  if (opts.dump_as_text) {
+    if (text_formatter) {
+      auto written_proto = text_formatter(env, proto);
+      if (!written_proto.status().ok()) {
+        LOG(ERROR) << "Failure with custom proto text formatting function. "
+                   << "Could not write XLA data to " << filename << ": "
+                   << written_proto.status();
+        return;
+      }
+      status = tsl::WriteStringToFile(env, absl::StrCat(path, ".txt"),
+                                      written_proto.value());
     } else {
-      status = tsl::WriteBinaryProto(env, absl::StrCat(path, ".pb"), proto);
+      status = tsl::WriteTextProto(env, absl::StrCat(path, ".txt"), proto);
     }
-    if (!status.ok()) {
-      LOG(ERROR) << "Could not write XLA debug data to " << filename << ": "
-                 << status;
-    }
+  } else {
+    status = tsl::WriteBinaryProto(env, absl::StrCat(path, ".pb"), proto);
+  }
+  if (!status.ok()) {
+    LOG(ERROR) << "Could not write XLA data to " << filename << ": " << status;
   }
 }
 
-void DumpPerModuleProtobufToFile(const HloModule& module,
-                                 const tsl::protobuf::Message& proto,
-                                 const DebugOptions& debug_options,
-                                 absl::string_view name) {
+void DumpPerModuleProtobufToFile(
+    const HloModule& module, const tsl::protobuf::Message& proto,
+    const DebugOptions& debug_options, absl::string_view name,
+    absl::AnyInvocable<StatusOr<std::string>(tsl::Env*,
+                                             const tsl::protobuf::Message&)>
+        text_formatter) {
   const std::string filename = FilenameFor(module, TimestampFor(module), name);
-  DumpProtobufToFile(proto, debug_options, filename);
+  DumpProtobufToFile(proto, debug_options, filename, std::move(text_formatter));
 }
 
 void DumpHloModuleIfEnabled(const HloModule& module, string_view name) {

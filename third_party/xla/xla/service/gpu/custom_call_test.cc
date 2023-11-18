@@ -13,8 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <sstream>
 #include <string>
+
+#include "absl/strings/str_cat.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -26,14 +29,22 @@ limitations under the License.
 #define PLATFORM "ROCM"
 #endif
 
+#include "absl/status/status.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/xla_builder.h"
-#include "xla/runtime/ffi/ffi_api.h"
+#include "xla/ffi/ffi.h"
+#include "xla/runtime/custom_call.h"
+#include "xla/runtime/custom_call_registry.h"
+#include "xla/runtime/executable.h"
+#include "xla/runtime/memref_view.h"
 #include "xla/runtime/module.h"
 #include "xla/runtime/module_registry.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
-#include "xla/status_macros.h"
+#include "xla/service/gpu/runtime/custom_call_registry.h"
+#include "xla/service/gpu/runtime/support.h"
+#include "xla/service/service_executable_run_options.h"
+#include "xla/status.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/client_library_test_base.h"
@@ -329,153 +340,116 @@ TEST_F(CustomCallTest, WithStatusFailed) {
 }
 
 //===----------------------------------------------------------------------===//
-// Custom calls based on XLA runtime modules.
+// XLA runtime custom calls provides type-safe custom call API
 //===----------------------------------------------------------------------===//
 
-struct TestModule : runtime::StatelessModule {
-  TestModule() : StatelessModule("TestModule") {}
+// WARNING: We currently rely on a magic custom call prefix `__gpu$` to detect
+// "internal" custom calls that linked statically into the binary. Without this
+// prefix custom calls expected to be registered as XLA:FFI custom calls, and
+// this is not yet fully supported.
+//
+// TODO(ezhulenev): Unify runtime custom calls and XLA:FFI.
 
-  // Check that we can use absl::Status to return errors back to the caller.
-  static absl::Status AlwaysFail(runtime::StridedMemrefView arg) {
-    return absl::InternalError("Uh oh, too bad");
-  }
+// (1) Declare custom call implementations as static functions.
 
-  // Check that we can get access to the stream and launch on device.
-  static absl::Status Memcpy(const ServiceExecutableRunOptions* run_options,
-                             runtime::FlatMemrefView src,
-                             runtime::FlatMemrefView dst) {
-    se::DeviceMemoryBase src_mem(src.data);
-    se::DeviceMemoryBase dst_mem(dst.data);
+static absl::Status AlwaysFailImpl(runtime::MemrefView arg, int32_t value) {
+  return absl::InternalError(absl::StrCat("Uh oh, wrong value: ", value));
+}
 
-    if (src.size_in_bytes != dst.size_in_bytes) {
-      return absl::InternalError("Size in bytes must match");
-    }
+static absl::Status MemcpyImpl(const ServiceExecutableRunOptions* run_options,
+                               runtime::MemrefView src,
+                               runtime::MemrefView dst) {
+  auto src_mem = gpu::GetDeviceAddress(src);
+  auto dst_mem = gpu::GetDeviceAddress(dst);
+  run_options->stream()->ThenMemcpyD2D(&dst_mem, src_mem, src_mem.size());
+  return absl::OkStatus();
+}
 
-    run_options->stream()->ThenMemcpyD2D(&dst_mem, src_mem, src.size_in_bytes);
-    return absl::OkStatus();
-  }
+// (2) Declare custom call binding signature. At compile time we check that
+// declared signature matches function handlers, and at run time we check that
+// passed arguments match the signature (number of arguments and their types).
 
-  // Write bindings for custom calls and register with runtime.
-  void Export(runtime::DynamicCustomCallRegistry& registry) const final {
-    registry.Register(runtime::CustomCall::Bind("test.always_fail")
-                          .Arg<runtime::StridedMemrefView>()
-                          .To(AlwaysFail));
+// TODO(ezhulenev): Remove these custom calls once we switch to thunks runtime.
 
-    registry.Register(runtime::CustomCall::Bind("test.memcpy")
-                          .UserData<const ServiceExecutableRunOptions*>()
-                          .Arg<runtime::FlatMemrefView>()
-                          .Arg<runtime::FlatMemrefView>()
-                          .To(Memcpy));
-  }
-};
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    AlwaysFail, AlwaysFailImpl, runtime::CustomCall::RuntimeChecks::kDefault,
+    runtime::CustomCall::Bind("__gpu$xla.gpu.ext.always_fail")
+        .Arg<runtime::MemrefView>()  // arg
+        .Attr<int32_t>("value")      // value
+);
 
-XLA_REGISTER_RUNTIME_MODULE(std::make_unique<TestModule>());
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    Memcpy, MemcpyImpl, runtime::CustomCall::RuntimeChecks::kDefault,
+    runtime::CustomCall::Bind("__gpu$xla.gpu.ext.memcpy")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .Arg<runtime::MemrefView>()  // src
+        .Arg<runtime::MemrefView>()  // dst
+);
 
-TEST_F(CustomCallTest, ExportedAlwaysFail) {
-  // TODO(ezhulenev): Remove once XLA runtime is enabled by default.
-  mutable_debug_options()->set_xla_gpu_enable_xla_runtime_executable(true);
+// (3) Declare FFI handlers as adaptors for legacy XLA runtime custom calls.
+//
+// TODO(ezhulenev): This is a long term replacement for "legacy" custom calls
+// (custom calls with void** arguments) and a type safe xla runtime custom
+// calls (see above). XLA FFI unifies internal custom calls (static linking)
+// with external custom calls (dynamically loaded libraries). Make this the only
+// example, once it's fully supported.
 
+namespace impl {
+static Status AlwaysFail(ffi::Buffer arg, int32_t value) {
+  return AlwaysFailImpl(arg, value);
+}
+
+static Status Memcpy(const ServiceExecutableRunOptions* run_options,
+                     ffi::Buffer src, ffi::Buffer dst) {
+  return MemcpyImpl(run_options, src, dst);
+}
+}  // namespace impl
+
+XLA_FFI_DEFINE_HANDLER(kAlwaysFail, impl::AlwaysFail,
+                       ffi::Ffi::Bind()
+                           .Arg<ffi::Buffer>()      // arg
+                           .Attr<int32_t>("value")  // value
+);
+
+XLA_FFI_DEFINE_HANDLER(kMemcpy, impl::Memcpy,
+                       ffi::Ffi::Bind()
+                           .Ctx<ServiceExecutableRunOptions>()
+                           .Arg<ffi::Buffer>()  // src
+                           .Arg<ffi::Buffer>()  // dst
+);
+
+// (4) Register custom calls handlers with XLA runtime.
+
+static void RegisterCustomCalls(runtime::DirectCustomCallRegistry& registry) {
+  registry.Register("__gpu$xla.gpu.ext.always_fail", AlwaysFail);
+  registry.Register("__gpu$xla.gpu.ext.memcpy", Memcpy);
+}
+
+XLA_GPU_REGISTER_RUNTIME_CUSTOM_CALL(RegisterCustomCalls);
+
+// (5) Register XLA FFI handlers with XLA runtime.
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__gpu$xla.gpu.ext.always_fail",
+                         kAlwaysFail);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__gpu$xla.gpu.ext.memcpy",
+                         kMemcpy);
+
+TEST_F(CustomCallTest, RuntimeCustomCallAlwaysFail) {
   XlaBuilder b(TestName());
-  CustomCall(&b, "test.always_fail", /*operands=*/{},
-             ShapeUtil::MakeShape(F32, {}), /*opaque=*/"",
+  CustomCall(&b, "__gpu$xla.gpu.ext.always_fail", /*operands=*/{},
+             ShapeUtil::MakeShape(F32, {}), /*opaque=*/"{value = 42 : i32}",
              /*has_side_effect=*/false,
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
   auto status = Execute(&b, {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
-  VLOG(0) << status.message();
-  EXPECT_THAT(status.message(), ::testing::HasSubstr("Uh oh, too bad"));
-}
-
-TEST_F(CustomCallTest, ExportedMemcpy) {
-  // TODO(ezhulenev): Remove once XLA runtime is enabled by default.
-  mutable_debug_options()->set_xla_gpu_enable_xla_runtime_executable(true);
-
-  XlaBuilder b(TestName());
-  CustomCall(&b, "test.memcpy",
-             /*operands=*/{Broadcast(ConstantR0WithType(&b, F32, 42.0), {128})},
-             ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"",
-             /*has_side_effect=*/false,
-             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
-             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
-             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
-  EXPECT_THAT(result.data<float>(), ::testing::Each(42));
-}
-
-//===----------------------------------------------------------------------===//
-// XLA runtime FFI modules is an external version of custom calls (C API based).
-//===----------------------------------------------------------------------===//
-
-namespace ffi = ::xla::runtime::ffi;
-
-struct TestFfiModule : ffi::StatelessModule {
-  explicit TestFfiModule(const XLA_FFI_Api* api)
-      : StatelessModule(
-            api, "TestFfiModule",
-            {{"ffi.always_fail", FFI_AlwaysFail}, {"ffi.memcpy", FFI_Memcpy}}) {
-  }
-
-  XLA_FFI_DEFINE_FUNCTION(FFI_AlwaysFail, AlwaysFail,
-                          ffi::Ffi::Binding().Arg<ffi::StridedBufferArg>());
-
-  XLA_FFI_DEFINE_FUNCTION(FFI_Memcpy, Memcpy,
-                          ffi::Ffi::Binding()
-                              .Stream<se::gpu::GpuStreamHandle>()
-                              .Arg<ffi::StridedBufferArg>()
-                              .Arg<ffi::StridedBufferArg>());
-
-  // Check that we can use `FfiStatus` to return errors back to the caller.
-  static ffi::FfiStatus AlwaysFail(ffi::StridedBufferArg arg) {
-    return ffi::FfiStatus::Internal("Uh oh, too bad");
-  }
-
-  // Check that we can get access to the stream and launch on device.
-  static ffi::FfiStatus Memcpy(se::gpu::GpuStreamHandle stream,
-                               ffi::StridedBufferArg src,
-                               ffi::StridedBufferArg dst) {
-    se::DeviceMemoryBase src_mem(src.data);
-    se::DeviceMemoryBase dst_mem(dst.data);
-
-    int64_t size_in_bytes = sizeof(float);
-    for (unsigned d = 0; d < src.sizes.size(); ++d)
-      size_in_bytes *= src.sizes[d];
-
-    auto err = gpuMemcpyAsync(dst.data, src.data, size_in_bytes,
-                              gpuMemcpyDeviceToDevice, stream);
-    if (err != gpuSuccess)
-      return ffi::FfiStatus::Internal("Failed to launch memcpy");
-
-    return ffi::FfiStatus::Ok();
-  }
-};
-
-XLA_REGISTER_FFI_MODULE(std::make_unique<TestFfiModule>(GetXlaFfiApi()));
-
-TEST_F(CustomCallTest, ExportedFfiAlwaysFail) {
-  // TODO(ezhulenev): Remove once XLA runtime is enabled by default.
-  mutable_debug_options()->set_xla_gpu_enable_xla_runtime_executable(true);
-
-  XlaBuilder b(TestName());
-  CustomCall(&b, "ffi.always_fail", /*operands=*/{},
-             ShapeUtil::MakeShape(F32, {}), /*opaque=*/"",
-             /*has_side_effect=*/false,
-             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
-             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
-             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  auto status = Execute(&b, {}).status();
-  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
-  VLOG(0) << status.message();
-  EXPECT_THAT(status.message(), ::testing::HasSubstr("Uh oh, too bad"));
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("Uh oh, wrong value: 42"));
 }
 
 TEST_F(CustomCallTest, ExportedFfiMemcpy) {
-  // TODO(ezhulenev): Remove once XLA runtime is enabled by default.
-  mutable_debug_options()->set_xla_gpu_enable_xla_runtime_executable(true);
-
   XlaBuilder b(TestName());
-  CustomCall(&b, "ffi.memcpy",
+  CustomCall(&b, "__gpu$xla.gpu.ext.memcpy",
              /*operands=*/{Broadcast(ConstantR0WithType(&b, F32, 42.0), {128})},
              ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"",
              /*has_side_effect=*/false,

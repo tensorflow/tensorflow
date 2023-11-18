@@ -1,9 +1,9 @@
 # Description:
 #   XLA client libraries.
 
+load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("//xla:xla.bzl", "xla_cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -142,7 +142,6 @@ cc_library(
         "//xla/service:stream_pool",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory_allocator",
-        "//xla/stream_executor:stream_executor_pimpl",  # fixdeps: keep
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -257,6 +256,10 @@ cc_library(
         ":padding",
         ":sharding_builder",
         ":xla_computation",
+        "//xla:array",
+        "//xla:array2d",
+        "//xla:array3d",
+        "//xla:array4d",
         "//xla:comparison_util",
         "//xla:literal",
         "//xla:literal_util",
@@ -275,12 +278,16 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/core:bitmap",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:stacktrace",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

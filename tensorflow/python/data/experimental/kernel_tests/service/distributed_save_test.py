@@ -104,11 +104,14 @@ class DistributedSaveTest(
     dataset = dataset_ops.Dataset.load(self._test_dir)
     self.assertDatasetProduces(dataset, list(range(10)))
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testRepeatedDataset(self):
-    cluster = data_service_test_base.TestCluster(num_workers=1)
-    dataset = dataset_ops.Dataset.range(10)
-    dataset = dataset.repeat(3)
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_workers=[1, 3], num_repetitions=[1, 5])))
+  def testRepeatedDataset(self, num_workers, num_repetitions):
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
+    dataset = dataset_ops.Dataset.range(1000)
+    dataset = dataset.repeat(num_repetitions)
     self.evaluate(distributed_save_op.distributed_save(
         dataset,
         self._test_dir,
@@ -117,7 +120,8 @@ class DistributedSaveTest(
     _wait_for_snapshot(self._test_dir)
 
     dataset = dataset_ops.Dataset.load(self._test_dir)
-    self.assertDatasetProduces(dataset, list(range(10)) * 3)
+    self.assertDatasetProduces(
+        dataset, list(range(1000)) * num_repetitions, assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def testChooseFromDatasets(self):
@@ -143,17 +147,18 @@ class DistributedSaveTest(
     datasets = [
         dataset_ops.Dataset.from_tensors("a").repeat(5),
         dataset_ops.Dataset.from_tensors("b").repeat(5),
-        dataset_ops.Dataset.from_tensors("c").repeat(5),
+        dataset_ops.Dataset.from_tensors("c").repeat(10),
     ]
     choice_dataset = dataset_ops.Dataset.range(3).repeat()
-    dataset = dataset_ops.Dataset.choose_from_datasets(datasets, choice_dataset)
+    dataset = dataset_ops.Dataset.choose_from_datasets(
+        datasets, choice_dataset, stop_on_empty_dataset=False)
     self.evaluate(distributed_save_op.distributed_save(
         dataset, self._test_dir, cluster.dispatcher_address()
     ))
     _wait_for_snapshot(self._test_dir)
 
     dataset = dataset_ops.Dataset.load(self._test_dir)
-    self.assertDatasetProduces(dataset, [b"a", b"b", b"c"] * 5)
+    self.assertDatasetProduces(dataset, [b"a", b"b", b"c"] * 5 + [b"c"] * 5)
 
   @combinations.generate(
       combinations.times(

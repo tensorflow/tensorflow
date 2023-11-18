@@ -22,38 +22,48 @@ limitations under the License.
 namespace {
 // Returns DSO handle or null if loading the DSO fails.
 void* GetDsoHandle() {
-#ifdef PLATFORM_GOOGLE
-  return nullptr;
-#else
   static auto handle = []() -> void* {
-    auto handle_or =
-        tsl::internal::DsoLoader::GetCublasLtDsoHandle();
+    auto handle_or = tsl::internal::DsoLoader::GetCublasLtDsoHandle();
     if (!handle_or.ok()) return nullptr;
     return handle_or.value();
   }();
   return handle;
-#endif
 }
 
-template <typename T>
-T LoadSymbol(const char* symbol_name) {
+void* LoadSymbol(const char* symbol_name) {
   void* symbol = nullptr;
   if (auto handle = GetDsoHandle()) {
     tsl::Env::Default()
         ->GetSymbolFromLibrary(handle, symbol_name, &symbol)
         .IgnoreError();
   }
-  return reinterpret_cast<T>(symbol);
+  return symbol;
 }
 
-void LogFatalSymbolNotFound(const char* symbol_name) {
-  LOG(FATAL) << symbol_name << " symbol not found.";
-}
+const char* kSymbols[] = {
+#include "tsl/cuda/cublasLt.inc"
+};
 
-cublasStatus_t GetSymbolNotFoundError() { return CUBLAS_STATUS_INTERNAL_ERROR; }
+constexpr size_t kNumSymbols = sizeof(kSymbols) / sizeof(const char*);
+
 }  // namespace
 
-// We only use cublasLt from CUDA 11.0 onward.
-#if CUDA_VERSION >= 11000
-#include "tsl/cuda/cublasLt_11_0.inc"
-#endif
+extern "C" {
+
+static cublasStatus_t GetSymbolNotFoundError() {
+  return CUBLAS_STATUS_INTERNAL_ERROR;
+}
+
+extern void* _cublasLt_tramp_table[];
+
+void _cublasLt_tramp_resolve(int i) {
+  CHECK_LE(0, i);
+  CHECK_LT(i, kNumSymbols);
+  void* p = LoadSymbol(kSymbols[i]);
+  if (!p) {
+    p = reinterpret_cast<void*>(&GetSymbolNotFoundError);
+  }
+  _cublasLt_tramp_table[i] = p;
+}
+
+}  // extern "C"

@@ -204,7 +204,8 @@ class FftSupport {
   FftSupport() {}
 
  private:
-  SE_DISALLOW_COPY_AND_ASSIGN(FftSupport);
+  FftSupport(const FftSupport &) = delete;
+  void operator=(const FftSupport &) = delete;
 };
 
 // Macro used to quickly declare overrides for abstract virtuals in the

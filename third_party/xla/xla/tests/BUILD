@@ -2,18 +2,26 @@
 #   Base testing infrastructure for XLA.
 
 load("//xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
-load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
-    "tf_cuda_tests_tags",
-)
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
 load("@local_tsl//tsl:tsl.bzl", "tsl_copts")
+load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
+load(
+    "@local_tsl//tsl/platform:build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load(
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 package(
     default_visibility = ["//visibility:public"],
@@ -845,6 +853,27 @@ xla_test(
     ],
 )
 
+# Repeat fft_test with single-threaded runtime.
+xla_test(
+    name = "fft_single_threaded_test",
+    srcs = ["fft_test.cc"],
+    backend_args = {
+        "cpu": [
+            "--xla_cpu_multi_thread_eigen=false",
+        ],
+    },
+    tags = [
+        "optonly",
+    ],
+    deps = [
+        ":hlo_test_base",
+        ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 xla_test(
     name = "dot_operation_test",
     srcs = ["dot_operation_test.cc"],
@@ -954,6 +983,7 @@ xla_test(
         ":hlo_test_base",
         ":test_macros_header",
         ":xla_internal_test_main",
+        "//xla:array",
         "//xla:execution_options_util",
         "//xla:literal_util",
         "//xla:status_macros",
@@ -965,6 +995,10 @@ xla_test(
 xla_test(
     name = "scatter_test",
     srcs = ["scatter_test.cc"],
+    backend_tags = {
+        # TODO(b/305008247)
+        "ghostfish_grm": ["broken"],
+    },
     tags = ["test_hlo_pjrt_runner"],
     deps = [
         ":client_library_test_base",
@@ -1351,6 +1385,10 @@ xla_test(
 xla_test(
     name = "float8_test",
     srcs = ["float8_test.cc"],
+    backend_tags = {
+        # TODO(b/305009586)
+        "ghostfish_grm": ["broken"],
+    },
     deps = [
         ":client_library_test_base",
         ":xla_internal_test_main",
@@ -1376,6 +1414,24 @@ xla_test(
         "//xla:test",
         "//xla:test_helpers",
         "//xla/client:xla_builder",
+    ],
+)
+
+xla_test(
+    name = "int4_test",
+    srcs = ["int4_test.cc"],
+    backends = [
+        "cpu",
+        "gpu",
+        "interpreter",
+    ],
+    deps = [
+        ":client_library_test_base",
+        ":hlo_test_base",
+        ":xla_internal_test_main",
+        "//xla:test",
+        "//xla/client:xla_builder",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -1929,12 +1985,17 @@ xla_test(
 xla_test(
     name = "convert_test",
     srcs = ["convert_test.cc"],
+    backend_tags = {
+        # TODO(b/305009066)
+        "ghostfish_grm": ["broken"],
+    },
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
         ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:shape_util",
+        "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/client:local_client",
         "//xla/client:xla_builder",
@@ -2084,6 +2145,10 @@ xla_test(
 xla_test(
     name = "bitcast_convert_test",
     srcs = ["bitcast_convert_test.cc"],
+    backend_tags = {
+        # TODO(b/305008729)
+        "ghostfish_grm": ["broken"],
+    },
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
@@ -2298,6 +2363,9 @@ xla_test(
 xla_cc_test(
     name = "llvm_compiler_test",
     srcs = if_gpu_is_configured(["llvm_compiler_test.cc"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM",
+    ]),
     tags = tf_cuda_tests_tags(),
     deps = if_gpu_is_configured([
         ":verified_hlo_module",
@@ -2314,6 +2382,10 @@ xla_cc_test(
         "//xla/stream_executor",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test_main",
+    ]) + if_cuda_is_configured([
+        "//xla/stream_executor/cuda:cuda_platform_id",
+    ]) + if_rocm_is_configured([
+        "//xla/stream_executor/rocm:rocm_platform_id",
     ]),
 )
 
@@ -2639,6 +2711,10 @@ xla_test(
 xla_test(
     name = "iota_test",
     srcs = ["iota_test.cc"],
+    backend_tags = {
+        # TODO(b/305011394)
+        "ghostfish_grm": ["broken"],
+    },
     shard_count = 30,
     tags = [
         # Require optimized builds, iota_test_cpu is very slow in fastbuild.
@@ -2762,26 +2838,6 @@ xla_test(
         ":xla_internal_test_main",
         "//xla:test",
         "//xla:types",
-    ],
-)
-
-# TODO(ezhulenev): Move this tests to xla/tests once all XLA backends
-# support XLA runtime FFI calls.
-xla_test(
-    name = "xla_ffi_test",
-    srcs = ["xla_ffi_test.cc"],
-    backends = ["gpu"],
-    deps = [
-        ":hlo_test_base",
-        ":literal_test_util",
-        ":test_macros_header",
-        "//xla/pjrt:mlir_to_hlo",
-        "//xla/runtime:ffi",  # fixdeps: keep
-        "//xla/runtime/ffi:ffi_api",
-        "//xla/service:custom_call_target_registry",  # fixdeps: keep
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 

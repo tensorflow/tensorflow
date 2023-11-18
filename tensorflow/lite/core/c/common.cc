@@ -420,4 +420,128 @@ void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate) {
   return tflite_delegate->opaque_delegate_builder->data;
 }
 
+// Returns a tensor data allocation strategy.
+TfLiteAllocationStrategy TfLiteTensorGetAllocationStrategy(
+    const TfLiteTensor* const t) {
+  switch (t->allocation_type) {
+    case kTfLiteMemNone:
+      return kTfLiteAllocationStrategyNone;
+    case kTfLiteMmapRo:
+      return kTfLiteAllocationStrategyMMap;
+    case kTfLiteArenaRw:
+      return kTfLiteAllocationStrategyArena;
+    case kTfLiteArenaRwPersistent:
+      return kTfLiteAllocationStrategyArena;
+    case kTfLiteDynamic:
+      return kTfLiteAllocationStrategyMalloc;
+    case kTfLitePersistentRo:
+      return kTfLiteAllocationStrategyUnknown;
+    case kTfLiteCustom:
+      return kTfLiteAllocationStrategyUnknown;
+    case kTfLiteVariantObject:
+      return kTfLiteAllocationStrategyNew;
+  }
+  return kTfLiteAllocationStrategyUnknown;
+}
+
+// Returns how stable a tensor data buffer address is across runs.
+TfLiteRunStability TfLiteTensorGetBufferAddressStability(
+    const TfLiteTensor* const t) {
+  switch (t->allocation_type) {
+    case kTfLiteMemNone:
+      return kTfLiteRunStabilityAcrossRuns;
+    case kTfLiteMmapRo:
+      return kTfLiteRunStabilityAcrossRuns;
+    case kTfLiteArenaRw:
+      return kTfLiteRunStabilityUnstable;
+    case kTfLiteArenaRwPersistent:
+      return kTfLiteRunStabilityUnstable;
+    case kTfLiteDynamic:
+      return kTfLiteRunStabilitySingleRun;
+    case kTfLitePersistentRo:
+      return kTfLiteRunStabilitySingleRun;
+    case kTfLiteCustom:
+      return kTfLiteRunStabilityUnknown;
+    case kTfLiteVariantObject:
+      return kTfLiteRunStabilityAcrossRuns;
+  }
+  return kTfLiteRunStabilityUnknown;
+}
+
+// Returns how stable a tensor data values are across runs.
+TfLiteRunStability TfLiteTensorGetDataStability(const TfLiteTensor* const t) {
+  switch (t->allocation_type) {
+    case kTfLiteMemNone:
+      return kTfLiteRunStabilityAcrossRuns;
+    case kTfLiteMmapRo:
+      return kTfLiteRunStabilityAcrossRuns;
+    case kTfLiteArenaRw:
+      return kTfLiteRunStabilitySingleRun;
+    case kTfLiteArenaRwPersistent:
+      return kTfLiteRunStabilityAcrossRuns;
+    case kTfLiteDynamic:
+      return kTfLiteRunStabilitySingleRun;
+    case kTfLitePersistentRo:
+      return kTfLiteRunStabilitySingleRun;
+    case kTfLiteCustom:
+      return kTfLiteRunStabilityUnknown;
+    case kTfLiteVariantObject:
+      return kTfLiteRunStabilitySingleRun;
+  }
+  return kTfLiteRunStabilityUnknown;
+}
+
+// Returns the operation step when the data of a tensor is populated.
+//
+// Some operations can precompute their results before the evaluation step. This
+// makes the data available earlier for subsequent operations.
+TfLiteRunStep TfLiteTensorGetDataKnownStep(const TfLiteTensor* t) {
+  switch (t->allocation_type) {
+    case kTfLiteMemNone:
+      return kTfLiteRunStepInit;
+    case kTfLiteMmapRo:
+      return kTfLiteRunStepInit;
+    case kTfLiteArenaRw:
+      return kTfLiteRunStepEval;
+    case kTfLiteArenaRwPersistent:
+      return kTfLiteRunStepEval;
+    case kTfLiteDynamic:
+      return kTfLiteRunStepEval;
+    case kTfLitePersistentRo:
+      return kTfLiteRunStepPrepare;
+    case kTfLiteCustom:
+      return kTfLiteRunStepUnknown;
+    case kTfLiteVariantObject:
+      return kTfLiteRunStepEval;
+  }
+  return kTfLiteRunStepUnknown;
+}
+
+// Returns the operation steop when the shape of a tensor is computed.
+//
+// Some operations can precompute the shape of their results before the
+// evaluation step. This makes the shape available earlier for subsequent
+// operations.
+TfLiteRunStep TfLiteTensorGetShapeKnownStep(const TfLiteTensor* t) {
+  switch (t->allocation_type) {
+    case kTfLiteMemNone:
+      return kTfLiteRunStepInit;
+    case kTfLiteMmapRo:
+      return kTfLiteRunStepInit;
+    case kTfLiteArenaRw:
+      return kTfLiteRunStepPrepare;
+    case kTfLiteArenaRwPersistent:
+      return kTfLiteRunStepPrepare;
+    case kTfLiteDynamic:
+      return kTfLiteRunStepEval;
+    case kTfLitePersistentRo:
+      return kTfLiteRunStepPrepare;
+    case kTfLiteCustom:
+      return kTfLiteRunStepUnknown;
+    case kTfLiteVariantObject:
+      return kTfLiteRunStepEval;
+  }
+  return kTfLiteRunStepUnknown;
+}
+
 }  // extern "C"

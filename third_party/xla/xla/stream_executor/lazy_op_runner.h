@@ -213,6 +213,30 @@ struct FusedConvOp {
   }
 };
 
+// Implementation of the concept required by LazyOpRunner, for NormRunner.
+struct NormOp {
+  using Signature = NormSignature;
+
+  struct Config {
+    double epsilon;
+    const TensorDescriptor& input_descriptor;
+    const TensorDescriptor& scale_descriptor;
+    const TensorDescriptor& bias_descriptor;
+    const TensorDescriptor& output_descriptor;
+    std::optional<dnn::TensorDescriptor> expectation_descriptor;
+    std::optional<dnn::TensorDescriptor> norm_factor_descriptor;
+  };
+
+  static tsl::StatusOr<std::unique_ptr<const OpRunner<Signature>>>
+  RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
+                          Stream* stream) {
+    return stream->NormRunnerFromDesc(
+        desc, config.epsilon, config.input_descriptor, config.scale_descriptor,
+        config.bias_descriptor, config.output_descriptor,
+        config.expectation_descriptor, config.norm_factor_descriptor);
+  }
+};
+
 // Implementation of the concept required by LazyOpRunner, for FusedMatmul.
 struct FusedMatmulOp {
   using Signature = FusedMatmulSignature;
@@ -229,36 +253,8 @@ struct FusedMatmulOp {
   }
 };
 
-struct FusedMHASoftmaxOp {
-  using Signature = FusedMHASoftmaxSignature;
-
-  struct Config {
-    FusedMHAKind kind;
-    const MatmulTensorDescriptor& bmm1_lhs_descriptor;
-    const MatmulTensorDescriptor& bmm1_rhs_descriptor;
-    const MatmulTensorDescriptor& bmm2_rhs_descriptor;
-    const MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor;
-    const TensorDescriptor& output_descriptor;
-    std::optional<TensorDescriptor> activation_descriptor;
-    std::optional<double> dropout_rate;
-    std::optional<int64_t> seed;
-  };
-
-  static tsl::StatusOr<
-      std::unique_ptr<const OpRunner<FusedMHASoftmaxSignature>>>
-  RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
-                          Stream* stream) {
-    return stream->FusedMHASoftmaxRunnerFromDesc(
-        desc, config.kind, config.bmm1_lhs_descriptor,
-        config.bmm1_rhs_descriptor, config.bmm2_rhs_descriptor,
-        config.intermediate_bmm2_lhs_descriptor, config.output_descriptor,
-        config.activation_descriptor, config.dropout_rate, config.seed);
-  }
-};
-
-struct FusedMHAScaleMaskSoftmaxOp {
-  using Signature = FusedMHAMaskSignature;
-
+struct FusedMHAOp {
+  using Signature = FusedMHASignature;
   struct Config {
     FusedMHAKind kind;
     double scale;
@@ -267,84 +263,30 @@ struct FusedMHAScaleMaskSoftmaxOp {
     const MatmulTensorDescriptor& bmm2_rhs_descriptor;
     const MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor;
     const TensorDescriptor& output_descriptor;
-    const TensorDescriptor& mask_descriptor;
+    std::optional<TensorDescriptor> bias_descriptor;
+    std::optional<TensorDescriptor> mask_descriptor;
     std::optional<TensorDescriptor> activation_descriptor;
     std::optional<double> dropout_rate;
     std::optional<int64_t> seed;
+    bool is_flash_attention;
+    bool is_causal_mask;
   };
 
-  static tsl::StatusOr<std::unique_ptr<const OpRunner<FusedMHAMaskSignature>>>
+  static tsl::StatusOr<std::unique_ptr<const OpRunner<FusedMHASignature>>>
   RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
                           Stream* stream) {
-    return stream->FusedMHAScaleMaskSoftmaxRunnerFromDesc(
-        desc, config.kind, config.bmm1_lhs_descriptor,
-        config.bmm1_rhs_descriptor, config.bmm2_rhs_descriptor,
-        config.intermediate_bmm2_lhs_descriptor, config.output_descriptor,
-        config.activation_descriptor, config.mask_descriptor, config.scale,
-        config.dropout_rate, config.seed);
-  }
-};
-
-struct FusedMHAScaleBiasMaskSoftmaxOp {
-  using Signature = FusedMHABiasMaskSignature;
-  struct Config {
-    FusedMHAKind kind;
-    double scale;
-    const MatmulTensorDescriptor& bmm1_lhs_descriptor;
-    const MatmulTensorDescriptor& bmm1_rhs_descriptor;
-    const MatmulTensorDescriptor& bmm2_rhs_descriptor;
-    const MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor;
-    const TensorDescriptor& output_descriptor;
-    const TensorDescriptor& bias_descriptor;
-    const TensorDescriptor& mask_descriptor;
-    std::optional<TensorDescriptor> activation_descriptor;
-    std::optional<double> dropout_rate;
-    std::optional<int64_t> seed;
-  };
-
-  static tsl::StatusOr<
-      std::unique_ptr<const OpRunner<FusedMHABiasMaskSignature>>>
-  RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
-                          Stream* stream) {
-    return stream->FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc(
+    return stream->FusedMHARunnerFromDesc(
         desc, config.kind, config.bmm1_lhs_descriptor,
         config.bmm1_rhs_descriptor, config.bmm2_rhs_descriptor,
         config.intermediate_bmm2_lhs_descriptor, config.output_descriptor,
         config.activation_descriptor, config.mask_descriptor,
-        config.bias_descriptor, config.scale, config.dropout_rate, config.seed);
+        config.bias_descriptor, config.scale, config.dropout_rate, config.seed,
+        config.is_flash_attention, config.is_causal_mask);
   }
 };
 
-struct FusedMHAScaleBiasSoftmaxOp {
-  using Signature = FusedMHABiasSignature;
-  struct Config {
-    FusedMHAKind kind;
-    double scale;
-    const MatmulTensorDescriptor& bmm1_lhs_descriptor;
-    const MatmulTensorDescriptor& bmm1_rhs_descriptor;
-    const MatmulTensorDescriptor& bmm2_rhs_descriptor;
-    const MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor;
-    const TensorDescriptor& output_descriptor;
-    const TensorDescriptor& bias_descriptor;
-    std::optional<TensorDescriptor> activation_descriptor;
-    std::optional<double> dropout_rate;
-    std::optional<int64_t> seed;
-  };
-
-  static tsl::StatusOr<std::unique_ptr<const OpRunner<FusedMHABiasSignature>>>
-  RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
-                          Stream* stream) {
-    return stream->FusedMHAScaleBiasSoftmaxRunnerFromDesc(
-        desc, config.kind, config.bmm1_lhs_descriptor,
-        config.bmm1_rhs_descriptor, config.bmm2_rhs_descriptor,
-        config.intermediate_bmm2_lhs_descriptor, config.output_descriptor,
-        config.activation_descriptor, config.bias_descriptor, config.scale,
-        config.dropout_rate, config.seed);
-  }
-};
-
-struct FusedMHASoftmaxBackwardOp {
-  using Signature = FusedMHASoftmaxBackwardSignature;
+struct FusedMHABackwardOp {
+  using Signature = FusedMHABackwardSignature;
 
   struct Config {
     FusedMHAKind kind;
@@ -357,62 +299,32 @@ struct FusedMHASoftmaxBackwardOp {
     const TensorDescriptor& d_bmm1_lhs_descriptor;
     const TensorDescriptor& d_bmm1_rhs_descriptor;
     const TensorDescriptor& d_bmm2_rhs_descriptor;
-    const TensorDescriptor& d_s_descriptor;
+    std::optional<TensorDescriptor> d_s_descriptor;
+    std::optional<TensorDescriptor> mask_descriptor;
     std::optional<TensorDescriptor> d_bias_descriptor;
+    std::optional<TensorDescriptor> fwd_output_descriptor;
+    std::optional<TensorDescriptor> bias_descriptor;
     std::optional<double> dropout_rate;
     std::optional<int64_t> seed;
+    bool is_flash_attention;
+    bool is_causal_mask;
   };
 
   static tsl::StatusOr<
-      std::unique_ptr<const OpRunner<FusedMHASoftmaxBackwardSignature>>>
+      std::unique_ptr<const OpRunner<FusedMHABackwardSignature>>>
   RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
                           Stream* stream) {
-    return stream->FusedMHASoftmaxBackwardRunnerFromDesc(
+    return stream->FusedMHABackwardRunnerFromDesc(
         desc, config.kind, config.bmm1_grad_gemm1_rhs_descriptor,
         config.bmm1_grad_gemm2_rhs_descriptor,
         config.bmm2_grad_gemm1_lhs_descriptor,
         config.bmm2_grad_gemm2_rhs_descriptor, config.d_output_descriptor,
         config.d_bmm1_lhs_descriptor, config.d_bmm1_rhs_descriptor,
         config.d_bmm2_rhs_descriptor, config.d_s_descriptor,
-        config.d_bias_descriptor, config.scale, config.dropout_rate,
-        config.seed);
-  }
-};
-
-struct FusedMHAScaleMaskSoftmaxBackwardOp {
-  using Signature = FusedMHAMaskBackwardSignature;
-
-  struct Config {
-    FusedMHAKind kind;
-    double scale;
-    const MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor;
-    const MatmulTensorDescriptor& bmm1_grad_gemm2_rhs_descriptor;
-    const MatmulTensorDescriptor& bmm2_grad_gemm1_lhs_descriptor;
-    const MatmulTensorDescriptor& bmm2_grad_gemm2_rhs_descriptor;
-    const MatmulTensorDescriptor& d_output_descriptor;
-    const TensorDescriptor& d_bmm1_lhs_descriptor;
-    const TensorDescriptor& d_bmm1_rhs_descriptor;
-    const TensorDescriptor& d_bmm2_rhs_descriptor;
-    const TensorDescriptor& d_s_descriptor;
-    const TensorDescriptor& mask_descriptor;
-    std::optional<TensorDescriptor> d_bias_descriptor;
-    std::optional<double> dropout_rate;
-    std::optional<int64_t> seed;
-  };
-
-  static tsl::StatusOr<
-      std::unique_ptr<const OpRunner<FusedMHAMaskBackwardSignature>>>
-  RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
-                          Stream* stream) {
-    return stream->FusedMHAScaleMaskSoftmaxBackwardRunnerFromDesc(
-        desc, config.kind, config.bmm1_grad_gemm1_rhs_descriptor,
-        config.bmm1_grad_gemm2_rhs_descriptor,
-        config.bmm2_grad_gemm1_lhs_descriptor,
-        config.bmm2_grad_gemm2_rhs_descriptor, config.d_output_descriptor,
-        config.d_bmm1_lhs_descriptor, config.d_bmm1_rhs_descriptor,
-        config.d_bmm2_rhs_descriptor, config.d_s_descriptor,
-        config.mask_descriptor, config.d_bias_descriptor, config.scale,
-        config.dropout_rate, config.seed);
+        config.mask_descriptor, config.d_bias_descriptor,
+        config.fwd_output_descriptor, config.bias_descriptor, config.scale,
+        config.dropout_rate, config.seed, config.is_flash_attention,
+        config.is_causal_mask);
   }
 };
 

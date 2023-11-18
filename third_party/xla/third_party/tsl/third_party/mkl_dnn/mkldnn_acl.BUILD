@@ -27,6 +27,7 @@ _DNNL_RUNTIME_THREADPOOL = {
     "#cmakedefine DNNL_SYCL_HIP": "#undef DNNL_SYCL_HIP",
     "#cmakedefine DNNL_ENABLE_STACK_CHECKER": "#undef DNNL_ENABLE_STACK_CHECKER",
     "#cmakedefine DNNL_EXPERIMENTAL": "#undef DNNL_EXPERIMENTAL",
+    "#cmakedefine ONEDNN_BUILD_GRAPH": "#undef ONEDNN_BUILD_GRAPH",
     "#cmakedefine01 BUILD_TRAINING": "#define BUILD_TRAINING 1",
     "#cmakedefine01 BUILD_INFERENCE": "#define BUILD_INFERENCE 0",
     "#cmakedefine01 BUILD_PRIMITIVE_ALL": "#define BUILD_PRIMITIVE_ALL 1",
@@ -74,6 +75,7 @@ _DNNL_RUNTIME_OMP = {
     "#cmakedefine DNNL_SYCL_HIP": "#undef DNNL_SYCL_HIP",
     "#cmakedefine DNNL_ENABLE_STACK_CHECKER": "#undef DNNL_ENABLE_STACK_CHECKER",
     "#cmakedefine DNNL_EXPERIMENTAL": "#undef DNNL_EXPERIMENTAL",
+    "#cmakedefine ONEDNN_BUILD_GRAPH": "#undef ONEDNN_BUILD_GRAPH",
     "#cmakedefine01 BUILD_TRAINING": "#define BUILD_TRAINING 1",
     "#cmakedefine01 BUILD_INFERENCE": "#define BUILD_INFERENCE 0",
     "#cmakedefine01 BUILD_PRIMITIVE_ALL": "#define BUILD_PRIMITIVE_ALL 1",
@@ -124,9 +126,9 @@ expand_template(
     name = "dnnl_version_h",
     out = "include/oneapi/dnnl/dnnl_version.h",
     substitutions = {
-        "@DNNL_VERSION_MAJOR@": "2",
-        "@DNNL_VERSION_MINOR@": "7",
-        "@DNNL_VERSION_PATCH@": "3",
+        "@DNNL_VERSION_MAJOR@": "3",
+        "@DNNL_VERSION_MINOR@": "2",
+        "@DNNL_VERSION_PATCH@": "1",
         "@DNNL_VERSION_HASH@": "N/A",
     },
     template = "include/oneapi/dnnl/dnnl_version.h.in",
@@ -142,6 +144,7 @@ cc_library(
         ],
         exclude = [
             "src/cpu/x64/**",
+            "src/cpu/rv64/**",
         ],
     ),
     copts = select({

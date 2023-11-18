@@ -353,7 +353,6 @@ typedef struct SE_TpuTopology SE_TpuTopology;
 typedef struct SE_TpuTopology_Core SE_TpuTopology_Core;
 typedef struct SE_TpuTopology_Core SE_TpuTopology_Host;
 
-typedef struct OpaqueTransferManagerImpl OpaqueTransferManagerImpl;
 typedef struct SE_OutsideCompilationParams SE_OutsideCompilationParams;
 
 #ifdef __cplusplus

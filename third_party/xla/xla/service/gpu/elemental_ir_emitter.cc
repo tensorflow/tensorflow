@@ -47,9 +47,6 @@ namespace xla {
 namespace gpu {
 
 using absl::StrAppend;
-using llvm_ir::IrArray;
-using llvm_ir::IrName;
-using llvm_ir::SetToFirstInsertPoint;
 
 namespace {
 // Returns whether operand is a floating-point literal with the given value.
@@ -324,6 +321,12 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexAbs(
   return EmitDeviceMathCall(TargetDeviceFunctionID::kHypot,
                             {EmitExtractReal(value), EmitExtractImag(value)},
                             {prim_type, prim_type}, prim_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitCbrt(PrimitiveType prim_type,
+                                                       llvm::Value* value) {
+  return EmitDeviceMathCall(TargetDeviceFunctionID::kCbrt, {value}, {prim_type},
+                            prim_type);
 }
 
 llvm::Value* GpuElementalIrEmitter::EmitThreadId() {

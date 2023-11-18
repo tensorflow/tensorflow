@@ -1,17 +1,16 @@
+"""Configurations for StreamExecutor builds"""
+
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 
 def stream_executor_friends():
     return ["//..."]
 
+def stream_executor_internal():
+    return ["//..."]
+
 def tf_additional_cuda_platform_deps():
     return []
-
-def tf_additional_cuda_driver_deps():
-    return ["@local_tsl//tsl/cuda:cuda_stub"]
-
-def tf_additional_cupti_deps():
-    return ["@local_xla//xla/stream_executor/cuda:cupti_stub"]
 
 def tf_additional_cudnn_plugin_deps():
     return []

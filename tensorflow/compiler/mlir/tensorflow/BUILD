@@ -353,11 +353,15 @@ cc_library(
         ":attribute_utils",
         ":convert_type",
         ":dynamic_shape_utils",
+        ":side_effect_analysis_util",
+        ":tensorflow_all_ops_inc_gen",
         ":tensorflow_attributes",
         ":tensorflow_op_interfaces",
         ":tensorflow_op_interfaces_inc_gen",
+        ":tensorflow_remaining_ops_inc_gen",
         ":tensorflow_side_effects",
         ":tensorflow_structs",
+        ":tensorflow_tfrt_ops_inc_gen",
         ":tensorflow_traits",
         ":tensorflow_types",
         ":tf_arith_ops_folder",
@@ -369,6 +373,8 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_canonicalize_inc_gen",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:DerivedAttributeOpInterface",
@@ -400,7 +406,9 @@ cc_library(
         "ir/tfrt_ops.h.inc",
     ] + ["ir/tf_" + target["name"] + ".h.inc" for target in tf_ops_category_list],
     deps = [
+        ":attribute_utils",
         ":serialize_mlir_module_utils",
+        ":side_effect_analysis_util",
         ":tensorflow_attributes",
         ":tensorflow_op_interfaces",
         ":tensorflow_op_interfaces_inc_gen",
@@ -445,6 +453,7 @@ cc_library(
         "ir/tf_remaining_ops.h.inc",
     ] + ["ir/tf_" + target["name"] + ".h.inc" for target in tf_ops_category_list],
     deps = [
+        ":side_effect_analysis_util",
         ":tensorflow_attributes",
         ":tensorflow_op_interfaces",
         ":tensorflow_op_interfaces_inc_gen",
@@ -486,6 +495,7 @@ cc_library(
         "ir/tfrt_ops.h",
     ] + ["ir/tf_" + target["name"] + ".h" for target in tf_ops_category_list],
     deps = [
+        ":side_effect_analysis_util",
         ":tensorflow_all_ops_inc_gen",
         ":tensorflow_attributes",
         ":tensorflow_op_interfaces",
@@ -722,6 +732,8 @@ cc_library(
         ":tensorflow_op_interfaces",
         ":tensorflow_side_effects",
         ":tensorflow_types",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:node_hash_map",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
@@ -1573,6 +1585,7 @@ tf_cc_test(
     deps = [
         ":dump_mlir_util",
         ":tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:bridge",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1966,6 +1979,22 @@ tf_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "side_effect_analysis_util",
+    srcs = [
+        "utils/side_effect_analysis_util.cc",
+    ],
+    hdrs = [
+        "utils/side_effect_analysis_util.h",
+    ],
+    deps = [
+        "tensorflow_side_effects",
+        "tensorflow_types",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
