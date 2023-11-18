@@ -16,6 +16,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_COMMAND_BUFFER_SCHEDULING_H_
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -79,7 +80,8 @@ class CommandBufferScheduling : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   static std::vector<HloInstructionSequence> CollectCommandBufferSequences(
-      HloInstructionSequence inst_sequence);
+      HloInstructionSequence inst_sequence,
+      std::function<bool(const HloInstruction*)> is_command);
   static void MoveParametersToFront(HloComputation* computation);
 
   struct BuildCommandBufferResult {
