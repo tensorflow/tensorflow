@@ -244,7 +244,8 @@ class LHLOGPU_AsyncCollectiveCommunicationOp<string name, list<Trait> traits = [
     DefaultValuedOptionalAttr<BoolAttr, "false">:$constrain_layout,
     OptionalAttr<MHLO_ChannelHandle>:$channel_id,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$use_global_device_ids,
-    BoolAttr:$is_sync
+    BoolAttr:$is_sync,
+    BoolAttr:$no_parallel_custom_call
   );
 }
 
@@ -271,7 +272,8 @@ def LHLOGPU_CollectivePermuteStartOp :
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
     I64ElementsAttr:$source_target_pairs,
     OptionalAttr<MHLO_ChannelHandle>:$channel_id,
-    BoolAttr:$is_sync
+    BoolAttr:$is_sync,
+    BoolAttr:$no_parallel_custom_call
   );
 }
 
