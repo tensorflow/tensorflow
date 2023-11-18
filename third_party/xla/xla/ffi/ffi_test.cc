@@ -103,14 +103,18 @@ TEST(FfiTest, BuiltinAttributes) {
 TEST(FfiTest, DecodingErrors) {
   CallFrameBuilder builder;
   builder.AddI32Attr("i32", 42);
+  builder.AddI64Attr("i64", 42);
   builder.AddF32Attr("f32", 42.0f);
   builder.AddStringAttr("str", "foo");
   auto call_frame = builder.Build();
 
-  auto fn = [](int32_t, float, std::string_view) { return absl::OkStatus(); };
+  auto fn = [](int32_t, int64_t, float, std::string_view) {
+    return absl::OkStatus();
+  };
 
   auto handler = Ffi::Bind()
                      .Attr<int32_t>("not_i32_should_fail")
+                     .Attr<int64_t>("not_i64_should_fail")
                      .Attr<float>("f32")
                      .Attr<std::string_view>("not_str_should_fail")
                      .To(fn);
@@ -119,7 +123,7 @@ TEST(FfiTest, DecodingErrors) {
 
   ASSERT_EQ(
       status.message(),
-      "Failed to decode all FFI handler operands (bad operands at: 0, 2)");
+      "Failed to decode all FFI handler operands (bad operands at: 0, 1, 3)");
 }
 
 TEST(FfiTest, BufferArgument) {

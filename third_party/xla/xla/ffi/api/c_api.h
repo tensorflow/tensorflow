@@ -153,8 +153,9 @@ typedef enum {
 
 typedef enum {
   XLA_FFI_AttrType_I32 = 1,
-  XLA_FFI_AttrType_F32 = 2,
-  XLA_FFI_AttrType_STRING = 3,
+  XLA_FFI_AttrType_I64 = 2,
+  XLA_FFI_AttrType_F32 = 3,
+  XLA_FFI_AttrType_STRING = 4,
 } XLA_FFI_AttrType;
 
 //===----------------------------------------------------------------------===//

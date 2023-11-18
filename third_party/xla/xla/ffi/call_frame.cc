@@ -47,6 +47,10 @@ void CallFrameBuilder::AddI32Attr(std::string name, int32_t value) {
   attrs_.try_emplace(std::move(name), value);
 }
 
+void CallFrameBuilder::AddI64Attr(std::string name, int64_t value) {
+  attrs_.try_emplace(std::move(name), value);
+}
+
 void CallFrameBuilder::AddF32Attr(std::string name, float value) {
   attrs_.try_emplace(std::move(name), value);
 }
@@ -228,6 +232,8 @@ struct CallFrame::FixupAttribute {
 // An std::visit overload set to get CallFrame::Attribute XLA FFI type.
 struct CallFrame::AttributeType {
   XLA_FFI_AttrType operator()(int32_t&) { return XLA_FFI_AttrType_I32; }
+
+  XLA_FFI_AttrType operator()(int64_t&) { return XLA_FFI_AttrType_I64; }
 
   XLA_FFI_AttrType operator()(float&) { return XLA_FFI_AttrType_F32; }
 

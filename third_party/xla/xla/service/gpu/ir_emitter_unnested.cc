@@ -1623,6 +1623,9 @@ static StatusOr<CustomCallThunk::AttributesMap> BuildAttributesMap(
         case 32:
           attributes[name] = static_cast<int32_t>(integer.getInt());
           return OkStatus();
+        case 64:
+          attributes[name] = static_cast<int64_t>(integer.getInt());
+          return OkStatus();
         default:
           return absl::InvalidArgumentError(absl::StrCat(
               "Unsupported integer attribute bit width for attribute: ", name));
