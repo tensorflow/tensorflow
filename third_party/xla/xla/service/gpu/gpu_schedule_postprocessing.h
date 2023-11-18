@@ -22,13 +22,13 @@ namespace xla {
 namespace gpu {
 
 // Amends a schedule result with the needed information to support a runtime
-// implementation. Currently, this pass refines attribute no_parallel_gpu_op
-// for asynchronous collective operations to support runtime optimization, such
-// as skipping rendezvous of all participating threads for NCCL collective
-// operations. In particular, it sets the attribute value for Collective-start
-// operations with is_sync=false; it also keeps the attribute value untouch for
-// the operations with is_sync=true and for P2P operations, assumming the
-// runtime won't use those values.
+// implementation. Currently, this pass refines attribute
+// no_parallel_custom_call for asynchronous collective operations to support
+// runtime optimization, such as skipping rendezvous of all participating
+// threads for NCCL collective operations. In particular, it sets the attribute
+// value for Collective-start operations with is_sync=false; it also keeps the
+// attribute value untouch for the operations with is_sync=true and for P2P
+// operations, assumming the runtime won't use those values.
 //
 class GpuSchedulePostprocessing : public HloModulePass {
  public:

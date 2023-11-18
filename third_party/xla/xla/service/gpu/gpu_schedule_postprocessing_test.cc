@@ -96,7 +96,7 @@ TEST_F(GpuSchedulePostprocessingTest, AsynchronousOpsChanged) {
   HloInstruction* start = FindInstruction(module.get(), "all-gather-start");
   TF_ASSERT_OK_AND_ASSIGN(CollectiveBackendConfig collective_backend_config,
                           start->backend_config<CollectiveBackendConfig>());
-  EXPECT_TRUE(collective_backend_config.no_parallel_gpu_op());
+  EXPECT_TRUE(collective_backend_config.no_parallel_custom_call());
 }
 
 TEST_F(GpuSchedulePostprocessingTest, AsynchronousOpsWithParallelCustomcall) {
@@ -120,7 +120,7 @@ TEST_F(GpuSchedulePostprocessingTest, AsynchronousOpsWithParallelCustomcall) {
   HloInstruction* start = FindInstruction(module.get(), "all-gather-start");
   TF_ASSERT_OK_AND_ASSIGN(CollectiveBackendConfig collective_backend_config,
                           start->backend_config<CollectiveBackendConfig>());
-  EXPECT_FALSE(collective_backend_config.no_parallel_gpu_op());
+  EXPECT_FALSE(collective_backend_config.no_parallel_custom_call());
 }
 
 TEST_F(GpuSchedulePostprocessingTest,
@@ -149,7 +149,7 @@ TEST_F(GpuSchedulePostprocessingTest,
   HloInstruction* start = FindInstruction(module.get(), "all-gather-start");
   TF_ASSERT_OK_AND_ASSIGN(CollectiveBackendConfig collective_backend_config,
                           start->backend_config<CollectiveBackendConfig>());
-  EXPECT_FALSE(collective_backend_config.no_parallel_gpu_op());
+  EXPECT_FALSE(collective_backend_config.no_parallel_custom_call());
 }
 
 }  // namespace
