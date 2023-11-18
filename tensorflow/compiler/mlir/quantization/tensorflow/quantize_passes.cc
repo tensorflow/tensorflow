@@ -50,7 +50,7 @@ void AddStablehloQuantToIntPasses(mlir::PassManager &pm) {
 }
 
 void AddStaticRangeQuantizationPass(
-    mlir::PassManager &pm, const QuantizationOptions &quantization_options,
+    mlir::PassManager &pm,
     std::optional<const absl::string_view> mlir_dump_file_prefix) {
   pm.addPass(mlir::quant::stablehlo::createQuantizeCompositeFunctionsPass());
 }
@@ -231,7 +231,6 @@ void AddQuantizePtqPostCalibrationPasses(
 }
 
 // StableHLO Quantization passes that are ran if StableHLO opset is selected.
-// TODO: b/298581932 - Add tests for passes below once migration is complete.
 void AddQuantizePtqPreCalibrationStablehloPasses(
     mlir::PassManager &pm, const QuantizationOptions &quantization_options) {
   pm.addPass(
@@ -246,9 +245,8 @@ void AddQuantizePtqPreCalibrationStablehloPasses(
   AddCallModuleSerializationPasses(pm);
 }
 
-// TODO: b/298581932 - Migrate and add passes below.
 void AddQuantizePtqPostCalibrationStablehloPasses(
-    mlir::PassManager &pm, const QuantizationOptions &quantization_options,
+    mlir::PassManager &pm,
     std::optional<const absl::string_view> mlir_dump_file_prefix) {
   // Deserializes the StableHLO module embedded in tf.XlaCallModule and lifts
   // the StableHLO functions to the top level module. This is needed for
@@ -257,8 +255,7 @@ void AddQuantizePtqPostCalibrationStablehloPasses(
   pm.addPass(mlir::quant::stablehlo::createRestoreFunctionNamePass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertCustomAggregationOpToQuantStatsPass());
-  AddStaticRangeQuantizationPass(pm, quantization_options,
-                                 mlir_dump_file_prefix);
+  AddStaticRangeQuantizationPass(pm, mlir_dump_file_prefix);
   AddStablehloQuantToIntPasses(pm);
   AddCallModuleSerializationPasses(pm);
 }

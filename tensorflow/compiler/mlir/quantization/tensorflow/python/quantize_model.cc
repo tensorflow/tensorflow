@@ -636,10 +636,9 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
     TF_QUANT_RETURN_IF_ERROR(RunPasses(
         /*name=*/kTfQuantPtqPostCalibrationStepStableHloName,
         /*add_passes_func=*/
-        [&quantization_options](mlir::PassManager &pm) {
+        [](mlir::PassManager &pm) {
           AddQuantizePtqPostCalibrationStablehloPasses(
-              pm, quantization_options,
-              kTfQuantPtqPostCalibrationStepStableHloName);
+              pm, kTfQuantPtqPostCalibrationStepStableHloName);
         },
         context, *module_ref));
   } else {
