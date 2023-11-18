@@ -147,6 +147,27 @@ TEST(FfiTest, BufferArgument) {
   TF_ASSERT_OK(status);
 }
 
+TEST(FfiTest, RemainingArgs) {
+  std::vector<float> storage(4, 0.0f);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+
+  CallFrameBuilder builder;
+  builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  auto call_frame = builder.Build();
+
+  auto fn = [&](RemainingArgs args) {
+    EXPECT_EQ(args.size(), 1);
+    EXPECT_TRUE(args.get<Buffer>(0).has_value());
+    EXPECT_FALSE(args.get<Buffer>(1).has_value());
+    return absl::OkStatus();
+  };
+
+  auto handler = Ffi::Bind().Arg<RemainingArgs>().To(fn);
+  auto status = Call(*handler, call_frame);
+
+  TF_ASSERT_OK(status);
+}
+
 TEST(FfiTest, RunOptionsCtx) {
   auto call_frame = CallFrameBuilder().Build();
   auto* expected = reinterpret_cast<ServiceExecutableRunOptions*>(0x01234567);
