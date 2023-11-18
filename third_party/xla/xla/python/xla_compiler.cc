@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/python/exceptions.h"
 #include "xla/python/py_client.h"
@@ -299,7 +300,24 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                         const Layout& other) { return layout != other; })
       .def("__hash__",
            [](const Layout& layout) { return absl::HashOf(layout); })
-      .def("to_string", &Layout::ToString);
+      .def("to_string", &Layout::ToString)
+      .def(py::pickle(
+          [](const Layout& self) -> py::tuple {
+            auto proto = self.ToProto();
+            std::string result;
+            if (!tsl::SerializeToStringDeterministic(proto, &result)) {
+              // throw converted by PyBind to a Python RuntimeError.
+              throw XlaRuntimeError(
+                  absl::StrCat("Layout.py_pickle: ",
+                               "SerializeToStringDeterministic failed"));
+            }
+            return py::make_tuple(py::bytes(result));
+          },
+          [](py::tuple t) {
+            LayoutProto result;
+            result.ParseFromString(t[0].cast<std::string>());
+            return Layout::CreateFromProto(result);
+          }));
 
   py::class_<Shape> shape_class(m, "Shape");
   shape_class
