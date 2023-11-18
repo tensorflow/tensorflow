@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/ffi/call_frame.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/xla_data.pb.h"

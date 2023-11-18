@@ -84,6 +84,7 @@ typedef struct XLA_FFI_Error XLA_FFI_Error;
 
 // Codes are based on https://abseil.io/docs/cpp/guides/status-codes
 typedef enum {
+  XLA_FFI_Error_Code_OK = 0,
   XLA_FFI_Error_Code_CANCELLED = 1,
   XLA_FFI_Error_Code_UNKNOWN = 2,
   XLA_FFI_Error_Code_INVALID_ARGUMENT = 3,

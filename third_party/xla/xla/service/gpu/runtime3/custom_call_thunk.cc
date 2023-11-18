@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/call_frame.h"
-#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
