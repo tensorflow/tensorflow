@@ -16,35 +16,75 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 
 #include <algorithm>
+#include <climits>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <functional>
 #include <optional>
 #include <queue>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/FPEnv.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicsNVPTX.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/primitive_util.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/status_macros.h"
+#include "xla/statusor.h"
 #include "xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/ml_dtypes.h"
 
 namespace xla {
 namespace gpu {
@@ -963,6 +1003,106 @@ std::string GetIrNameFromLoc(mlir::Location loc) {
 
 bool IsAMDGPU(const llvm::Module* module) {
   return llvm::Triple(module->getTargetTriple()).isAMDGPU();
+}
+
+namespace {
+template <typename T>
+void CopyDenseElementsBy(mlir::DenseElementsAttr data,
+                         std::vector<uint8_t>* output) {
+  output->resize(data.getNumElements() * sizeof(T));
+  int64_t i = 0;
+  for (T element : data.getValues<T>()) {
+    std::memcpy(&(*output)[i], &element, sizeof(T));
+    i += sizeof(T);
+  }
+}
+
+template <>
+void CopyDenseElementsBy<u4>(mlir::DenseElementsAttr data,
+                             std::vector<uint8_t>* output) {
+  output->resize(CeilOfRatio(data.getNumElements(), int64_t{2}));
+  absl::Span<char> output_span =
+      absl::MakeSpan(reinterpret_cast<char*>(output->data()), output->size());
+  PackInt4(data.getRawData(), output_span);
+}
+}  // namespace
+
+Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
+                                        std::vector<uint8_t>* output) {
+  mlir::Type element_type = data.getType().getElementType();
+
+  // TODO(hinsu): Support remaining XLA primitive types.
+  if (element_type.isInteger(1)) {
+    CopyDenseElementsBy<bool>(data, output);
+    return OkStatus();
+  }
+  if (element_type.isInteger(4)) {
+    CopyDenseElementsBy<u4>(data, output);
+    return OkStatus();
+  }
+  if (element_type.isInteger(8)) {
+    CopyDenseElementsBy<uint8_t>(data, output);
+    return OkStatus();
+  }
+  if (element_type.isInteger(16)) {
+    CopyDenseElementsBy<uint16_t>(data, output);
+    return OkStatus();
+  }
+  if (element_type.isInteger(32)) {
+    CopyDenseElementsBy<uint32_t>(data, output);
+    return OkStatus();
+  }
+  if (element_type.isInteger(64)) {
+    CopyDenseElementsBy<uint64_t>(data, output);
+    return OkStatus();
+  }
+  if (element_type.isFloat8E5M2()) {
+    CopyDenseElementsBy<tsl::float8_e5m2>(data, output);
+    return OkStatus();
+  }
+  if (element_type.isFloat8E4M3FN()) {
+    CopyDenseElementsBy<tsl::float8_e4m3fn>(data, output);
+    return OkStatus();
+  }
+  if (element_type.isFloat8E4M3B11FNUZ()) {
+    CopyDenseElementsBy<tsl::float8_e4m3b11>(data, output);
+    return OkStatus();
+  }
+  if (element_type.isFloat8E5M2FNUZ()) {
+    CopyDenseElementsBy<tsl::float8_e5m2fnuz>(data, output);
+    return OkStatus();
+  }
+  if (element_type.isFloat8E4M3FNUZ()) {
+    CopyDenseElementsBy<tsl::float8_e4m3fnuz>(data, output);
+    return OkStatus();
+  }
+  if (element_type.isBF16()) {
+    CopyDenseElementsBy<bfloat16>(data, output);
+    return OkStatus();
+  }
+  if (element_type.isF16()) {
+    CopyDenseElementsBy<half>(data, output);
+    return OkStatus();
+  }
+  if (element_type.isF32()) {
+    CopyDenseElementsBy<float>(data, output);
+    return OkStatus();
+  }
+  if (element_type.isF64()) {
+    CopyDenseElementsBy<double>(data, output);
+    return OkStatus();
+  }
+  if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
+    if (complex_type.getElementType().isF32()) {
+      CopyDenseElementsBy<complex64>(data, output);
+      return OkStatus();
+    }
+    if (complex_type.getElementType().isF64()) {
+      CopyDenseElementsBy<complex128>(data, output);
+      return OkStatus();
+    }
+  }
+  return Internal("Unsupported type in CopyDenseElementsDataToXlaFormat");
 }
 
 }  // namespace gpu

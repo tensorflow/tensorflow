@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 #define XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -23,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
@@ -228,6 +230,9 @@ std::string GetIrNameFromLoc(mlir::Location loc);
 
 // Whether the module's target is an AMD GPU.
 bool IsAMDGPU(const llvm::Module* module);
+
+Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
+                                        std::vector<uint8_t>* output);
 
 }  // namespace gpu
 }  // namespace xla

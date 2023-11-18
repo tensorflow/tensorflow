@@ -34,9 +34,6 @@ namespace xla {
 StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
     const LiteralBase& literal, mlir::Builder builder);
 
-Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
-                                        std::vector<uint8_t>* output);
-
 StatusOr<int> GetElementTypeBytes(mlir::Type type);
 
 // Creates an DenseIntElementsAttr using the elements of the vector and the
