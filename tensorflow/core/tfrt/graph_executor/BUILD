@@ -205,6 +205,7 @@ tf_proto_library(
     name = "test_config_proto",
     testonly = True,
     srcs = ["test_config.proto"],
+    visibility = ["//visibility:public"],
 )
 
 tf_cc_test(
