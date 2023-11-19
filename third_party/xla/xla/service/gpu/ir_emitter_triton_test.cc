@@ -775,8 +775,9 @@ ENTRY entry {
                     se::CudaComputeCapability{se::CudaComputeCapability::AMPERE,
                                               /*minor=*/0},
                     dev_info, config, &llvm_module, &EmitMatMul, mlir_context),
-      tsl::testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
-                             "Shared memory size limit exceeded."));
+      tsl::testing::StatusIs(
+          tsl::error::RESOURCE_EXHAUSTED,
+          ::testing::HasSubstr("Shared memory size limit exceeded")));
 
   config.block_m = 64;
   config.block_n = 128;

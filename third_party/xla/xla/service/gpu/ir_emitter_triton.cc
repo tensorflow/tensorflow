@@ -1923,7 +1923,9 @@ StatusOr<TritonWrapperResult> TritonWrapper(
           .getInt();
   VLOG(2) << "Shared memory usage: " << shared_mem_bytes << " B";
   if (shared_mem_bytes > device_info.shared_memory_per_block_optin()) {
-    return ResourceExhausted("Shared memory size limit exceeded.");
+    return absl::ResourceExhaustedError(absl::StrFormat(
+        "Shared memory size limit exceeded: requested %d, available: %d",
+        shared_mem_bytes, device_info.shared_memory_per_block_optin()));
   }
 
   TF_ASSIGN_OR_RETURN(
