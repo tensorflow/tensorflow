@@ -28,8 +28,8 @@ limitations under the License.
 namespace xla::ffi {
 
 TEST(FfiTest, DataTypeEnumValue) {
-  // C API passes primitive type as `uint8_t`, and we need to guarantee that
-  // PrimitiveType and DataType use same values for all supported data types.
+  // Verify that xla::PrimitiveType and xla::ffi::DataType use the same
+  // integer value for encoding data types.
   auto encoded = [](auto value) { return static_cast<uint8_t>(value); };
 
   EXPECT_EQ(encoded(PrimitiveType::PRED), encoded(DataType::PRED));
@@ -61,7 +61,7 @@ TEST(FfiTest, BufferArgument) {
 
   auto fn = [&](BufferBase buffer) {
     EXPECT_EQ(buffer.data, storage.data());
-    EXPECT_EQ(buffer.primitive_type, DataType::F32);
+    EXPECT_EQ(buffer.dtype, DataType::F32);
     EXPECT_EQ(buffer.dimensions.size(), 2);
     return Error::Success();
   };

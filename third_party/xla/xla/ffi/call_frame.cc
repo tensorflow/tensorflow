@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
@@ -170,12 +171,37 @@ CallFrame::~CallFrame() = default;
     absl::Span<const CallFrameBuilder::Buffer> bargs) {
   auto res = std::make_unique<Arguments>(bargs.size());
 
+  // We rely on casting to and from underlying integral type to convert from
+  // PrimitiveType to XLA FFI DataType, and for safety convert all unknown types
+  // to invalid type, otherwise we can accidentally cause UB.
+  auto to_data_type = [](PrimitiveType primitive_type) {
+    switch (primitive_type) {
+      case PrimitiveType::PRIMITIVE_TYPE_INVALID:
+      case PrimitiveType::S8:
+      case PrimitiveType::S16:
+      case PrimitiveType::S32:
+      case PrimitiveType::S64:
+      case PrimitiveType::U8:
+      case PrimitiveType::U16:
+      case PrimitiveType::U32:
+      case PrimitiveType::U64:
+      case PrimitiveType::F16:
+      case PrimitiveType::F32:
+      case PrimitiveType::F64:
+      case PrimitiveType::BF16:
+        return static_cast<XLA_FFI_DataType>(primitive_type);
+      default:
+        DCHECK(false) << "Unsupported primitive type" << primitive_type;
+        return XLA_FFI_DataType_INVALID;
+    }
+  };
+
   // Convert call frame builder arguments to call frame arguments.
   for (const CallFrameBuilder::Buffer& barg : bargs) {
     Buffer buffer;
     buffer.dims = barg.dims;
     buffer.buffer.data = const_cast<void*>(barg.memory.opaque());
-    buffer.buffer.primitive_type = static_cast<uint8_t>(barg.type);
+    buffer.buffer.dtype = to_data_type(barg.type);
     buffer.buffer.rank = buffer.dims.size();
     res->arguments.push_back(std::move(buffer));
   }

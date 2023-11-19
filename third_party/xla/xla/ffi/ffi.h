@@ -44,14 +44,14 @@ namespace xla::ffi {
 //===----------------------------------------------------------------------===//
 
 struct Buffer {
-  PrimitiveType primitive_type;
+  PrimitiveType dtype;
   se::DeviceMemoryBase data;
   absl::Span<const int64_t> dimensions;
 
   // TODO(ezhulenev): Remove this implicit conversion once we'll migrate to FFI
   // handlers from runtime custom calls.
   operator runtime::MemrefView() {  // NOLINT
-    return runtime::MemrefView{primitive_type, data.opaque(), dimensions};
+    return runtime::MemrefView{dtype, data.opaque(), dimensions};
   }
 };
 
@@ -66,7 +66,7 @@ struct ArgDecoding<Buffer> {
     auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
 
     Buffer buffer;
-    buffer.primitive_type = PrimitiveType(buf->primitive_type);
+    buffer.dtype = PrimitiveType(buf->dtype);
     buffer.data = se::DeviceMemoryBase(buf->data);
     buffer.dimensions = absl::MakeConstSpan(buf->dims, buf->rank);
     return buffer;

@@ -36,47 +36,21 @@ limitations under the License.
 
 namespace xla::ffi {
 
-// Because we can't depend on any of the XLA libraries (any libraries at all
-// really) in public XLA FFI API, we have to duplicate some of the enums/types
-// widely used in XLA code base, and some of the basic types available in ABSL.
-
-//===----------------------------------------------------------------------===//
-// XLA types
-//===----------------------------------------------------------------------===//
-
-// This enum corresponds to xla::PrimitiveType enum defined in `hlo.proto`.
 enum class DataType : uint8_t {
-  // Invalid primitive type to serve as default.
-  PRIMITIVE_TYPE_INVALID = 0,
-
-  // Predicates are two-state booleans.
-  PRED = 1,
-
-  // Signed integral values of fixed width.
-  S8 = 2,
-  S16 = 3,
-  S32 = 4,
-  S64 = 5,
-
-  // Unsigned integral values of fixed width.
-  U8 = 6,
-  U16 = 7,
-  U32 = 8,
-  U64 = 9,
-
-  // Floating-point values of fixed width.
-  //
-  // Note: if f16s are not natively supported on the device, they will be
-  // converted to f16 from f32 at arbitrary points in the computation.
-  F16 = 10,
-  F32 = 11,
-
-  // Truncated 16 bit floating-point format. This is similar to IEEE's 16 bit
-  // floating-point format, but uses 1 bit for the sign, 8 bits for the exponent
-  // and 7 bits for the mantissa.
-  BF16 = 16,
-
-  F64 = 12,
+  INVALID = XLA_FFI_DataType_INVALID,
+  PRED = XLA_FFI_DataType_PRED,
+  S8 = XLA_FFI_DataType_S8,
+  S16 = XLA_FFI_DataType_S16,
+  S32 = XLA_FFI_DataType_S32,
+  S64 = XLA_FFI_DataType_S64,
+  U8 = XLA_FFI_DataType_U8,
+  U16 = XLA_FFI_DataType_U16,
+  U32 = XLA_FFI_DataType_U32,
+  U64 = XLA_FFI_DataType_U64,
+  F16 = XLA_FFI_DataType_F16,
+  F32 = XLA_FFI_DataType_F32,
+  F64 = XLA_FFI_DataType_F64,
+  BF16 = XLA_FFI_DataType_BF16,
 };
 
 //===----------------------------------------------------------------------===//
@@ -131,7 +105,7 @@ class Error {
 //===----------------------------------------------------------------------===//
 
 struct BufferBase {
-  DataType primitive_type;
+  DataType dtype;
   void* data;
   Span<const int64_t> dimensions;
 };
@@ -146,7 +120,7 @@ struct ArgDecoding<BufferBase> {
     if (type != XLA_FFI_ArgType_BUFFER) return std::nullopt;
     auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
 
-    return BufferBase{static_cast<DataType>(buf->primitive_type), buf->data,
+    return BufferBase{static_cast<DataType>(buf->dtype), buf->data,
                       Span<const int64_t>(buf->dims, buf->rank)};
   }
 };
