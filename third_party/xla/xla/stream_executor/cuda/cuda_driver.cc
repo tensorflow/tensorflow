@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -59,17 +60,17 @@ static constexpr bool FLAGS_gpuexec_cuda_driver_inject_init_error = false;
 static constexpr bool FLAGS_gpuexec_cuda_sync_around_driver_calls = false;
 static constexpr bool FLAGS_gpuexec_cuda_device_0_only = false;
 
-#define RETURN_IF_CUDA_RES_ERROR(expr, ...)                                   \
-  do {                                                                        \
-    CUresult _res = (expr);                                                   \
-    if (ABSL_PREDICT_FALSE(_res != CUDA_SUCCESS)) {                           \
-      if (_res == CUDA_ERROR_OUT_OF_MEMORY)                                   \
-        return tsl::errors::ResourceExhausted(                                \
-            __VA_ARGS__, ":", ::stream_executor::gpu::ToString(_res));        \
-      else                                                                    \
-        return tsl::errors::Internal(__VA_ARGS__, ": ",                       \
-                                     ::stream_executor::gpu::ToString(_res)); \
-    }                                                                         \
+#define RETURN_IF_CUDA_RES_ERROR(expr, ...)                              \
+  do {                                                                   \
+    CUresult _res = (expr);                                              \
+    if (ABSL_PREDICT_FALSE(_res != CUDA_SUCCESS)) {                      \
+      if (_res == CUDA_ERROR_OUT_OF_MEMORY)                              \
+        return absl::ResourceExhaustedError(absl::StrCat(                \
+            __VA_ARGS__, ":", ::stream_executor::gpu::ToString(_res)));  \
+      else                                                               \
+        return absl::InternalError(absl::StrCat(                         \
+            __VA_ARGS__, ": ", ::stream_executor::gpu::ToString(_res))); \
+    }                                                                    \
   } while (0)
 
 #define FAIL_IF_CUDA_RES_ERROR(expr, ...)                   \
@@ -713,6 +714,65 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
                            "Failed to check stream capturing status");
 
   return status == CU_STREAM_CAPTURE_STATUS_ACTIVE;
+}
+
+/* static */ tsl::Status GpuDriver::GraphConditionalHandleCreate(
+    GpuGraphConditionalHandle* handle, CUgraph graph, GpuContext* context,
+    unsigned int default_launch_value, unsigned int flags) {
+  VLOG(2) << "Create conditional handle for a graph " << graph
+          << "; context: " << context
+          << "; default_launch_value: " << default_launch_value
+          << "; flags: " << flags;
+
+#if CUDA_VERSION >= 12030
+  RETURN_IF_CUDA_RES_ERROR(
+      cuGraphConditionalHandleCreate(handle, graph, context->context(),
+                                     default_launch_value, flags),
+      "Failed to create conditional handle for a CUDA graph");
+#else
+  return absl::UnimplementedError(
+      "CUDA graph conditional nodes are not implemented");
+#endif  // CUDA_VERSION >= 12030
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::StatusOr<GpuDriver::GpuGraphNodeResult>
+GpuDriver::GraphAddNode(CUgraphNode* node, CUgraph graph,
+                        absl::Span<CUgraphNode> deps,
+                        const GpuGraphNodeParams& params) {
+#if CUDA_VERSION >= 12030
+  // Add conditional node to a graph.
+  if (auto* conditional = std::get_if<GpuGraphConditionalNodeParams>(&params)) {
+    VLOG(2) << "Add conditional node to a graph " << graph
+            << "; deps: " << deps.size();
+
+    CUgraphNodeParams cu_params;
+    memset(&cu_params, 0, sizeof(cu_params));
+
+    cu_params.type = CU_GRAPH_NODE_TYPE_CONDITIONAL;
+    cu_params.conditional.handle = conditional->handle;
+    cu_params.conditional.ctx = conditional->context->context();
+    cu_params.conditional.size = 1;
+
+    switch (conditional->type) {
+      case GpuDriver::GpuGraphConditionalNodeParams::Type::kIf:
+        cu_params.conditional.type = CU_GRAPH_COND_TYPE_IF;
+        break;
+    }
+
+    RETURN_IF_CUDA_RES_ERROR(
+        cuGraphAddNode(node, graph, deps.data(), deps.size(), &cu_params),
+        "Failed to add conditional node to a CUDA graph");
+
+    GpuGraphConditionalNodeParams::Result result;
+    result.graph = cu_params.conditional.phGraph_out[0];
+
+    VLOG(2) << "Created conditional CUDA graph " << result.graph;
+    return result;
+  }
+#endif  // CUDA_VERSION >= 12030
+
+  return absl::UnimplementedError("unsupported node type");
 }
 
 /* static */ tsl::Status GpuDriver::GraphAddKernelNode(

@@ -21,7 +21,9 @@ limitations under the License.
 #include <stddef.h>
 
 #include <cstdint>
+#include <variant>
 
+#include "absl/types/span.h"
 #include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/platform.h"
@@ -423,6 +425,42 @@ class GpuDriver {
   // graphs back to the OS.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g57c87f4ba6af41825627cdd4e5a8c52b
   static tsl::Status DeviceGraphMemTrim(GpuDeviceHandle device);
+
+  // Creates a conditional handle.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gece6f3b9e85d0edb8484d625fe567376
+  static tsl::Status GraphConditionalHandleCreate(
+      GpuGraphConditionalHandle* handle, GpuGraphHandle graph,
+      GpuContext* context, unsigned int default_launch_value,
+      unsigned int flags);
+
+  // Conditional node parameters.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/structCUDA__CONDITIONAL__NODE__PARAMS.html#structCUDA__CONDITIONAL__NODE__PARAMS
+  struct GpuGraphConditionalNodeParams {
+    // Conditional node type.
+    // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html#group__CUDA__TYPES_1g04ade961d0263336423eb216fbe514da
+    enum class Type { kIf };
+
+    // A struct for returning output arguments back to the caller.
+    struct Result {
+      GpuGraphHandle graph;
+    };
+
+    Type type;
+    GpuGraphConditionalHandle handle;
+    GpuContext* context;
+  };
+
+  // Graph node parameters
+  // https://docs.nvidia.com/cuda/cuda-driver-api/structCUgraphNodeParams.html#structCUgraphNodeParams
+  using GpuGraphNodeParams = std::variant<GpuGraphConditionalNodeParams>;
+  using GpuGraphNodeResult =
+      std::variant<GpuGraphConditionalNodeParams::Result>;
+
+  // Adds a node of arbitrary type to a graph.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g4210c258cbba352040a26d1b4e658f9d
+  static tsl::StatusOr<GpuGraphNodeResult> GraphAddNode(
+      GpuGraphNodeHandle* node, GpuGraphHandle graph,
+      absl::Span<GpuGraphNodeHandle> deps, const GpuGraphNodeParams& params);
 
   // Creates a kernel execution node and adds it to a graph.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g50d871e3bd06c1b835e52f2966ef366b

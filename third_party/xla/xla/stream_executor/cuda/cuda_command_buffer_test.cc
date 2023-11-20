@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
@@ -214,6 +215,76 @@ TEST(CudaCommandBufferTest, LaunchNestedCommandBuffer) {
   std::fill(dst.begin(), dst.end(), 42);
   stream.ThenMemcpy(dst.data(), d, byte_length);
   ASSERT_EQ(dst, expected);
+}
+
+TEST(CudaCommandBufferTest, ConditionalIf) {
+#if CUDA_VERSION < 12030
+  GTEST_SKIP() << "CUDA graph conditionals are not supported";
+#endif
+
+  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  Stream stream(executor);
+  stream.Init();
+  ASSERT_TRUE(stream.ok());
+
+  AddI32Kernel add(executor);
+
+  {  // Load addition kernel.
+    MultiKernelLoaderSpec spec(/*arity=*/3);
+    spec.AddInProcessSymbol(internal::GetAddI32CudaKernel(), "add");
+    TF_ASSERT_OK(executor->GetKernel(spec, &add));
+  }
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: a=1, b=2, c=0, pred=true
+  DeviceMemory<bool> pred = executor->AllocateArray<bool>(1, 0);
+  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+
+  constexpr bool kTrue = true;
+  stream.ThenMemcpy(&pred, &kTrue, 1);
+  stream.ThenMemset32(&a, 1, byte_length);
+  stream.ThenMemset32(&b, 2, byte_length);
+  stream.ThenMemZero(&c, byte_length);
+
+  // if (pred == true) c = a + b
+  CommandBuffer::Builder then_builder = [&](CommandBuffer* then_cmd) {
+    return then_cmd->Launch(add, ThreadDim(), BlockDim(4), a, b, c);
+  };
+
+  // Create a command buffer with a single conditional operation.
+  auto cmd_buffer = CommandBuffer::Create(executor).value();
+  TF_ASSERT_OK(cmd_buffer.If(pred, then_builder));
+  TF_ASSERT_OK(cmd_buffer.Finalize());
+
+  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+
+  // Copy `c` data back to host.
+  std::vector<int32_t> dst(4, 42);
+  stream.ThenMemcpy(dst.data(), c, byte_length);
+
+  std::vector<int32_t> expected = {3, 3, 3, 3};
+  ASSERT_EQ(dst, expected);
+
+  // Reset predicate to false and clear output buffer.
+  constexpr bool kFalse = false;
+  stream.ThenMemcpy(&pred, &kFalse, 1);
+  stream.ThenMemZero(&c, byte_length);
+
+  // Submit the same command buffer, but this time it should not execute
+  // conditional branch as conditional handle should be updated to false.
+  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+
+  stream.ThenMemcpy(dst.data(), c, byte_length);
+  std::vector<int32_t> zeroes = {0, 0, 0, 0};
+  ASSERT_EQ(dst, zeroes);
+
+  // TODO(ezhulenev): Test conditional command buffer updates.
 }
 
 //===----------------------------------------------------------------------===//

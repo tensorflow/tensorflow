@@ -27,12 +27,14 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -89,8 +91,11 @@ static int64_t NotifyExecDestroyed() {
 //===----------------------------------------------------------------------===//
 
 GpuCommandBuffer::GpuCommandBuffer(Mode mode, GpuExecutor* parent,
-                                   GpuGraphHandle graph)
-    : mode_(mode), parent_(parent), graph_(graph) {}
+                                   GpuGraphHandle graph, bool is_owned_graph)
+    : mode_(mode),
+      parent_(parent),
+      graph_(graph),
+      is_owned_graph_(is_owned_graph) {}
 
 GpuCommandBuffer::~GpuCommandBuffer() {
   if (exec_ != nullptr) {
@@ -100,7 +105,7 @@ GpuCommandBuffer::~GpuCommandBuffer() {
     auto st = GpuDriver::DestroyGraphExec(exec_);
     CHECK(st.ok()) << "Failed to destroy GPU graph exec: " << st.message();
   }
-  if (graph_ != nullptr) {
+  if (graph_ != nullptr && is_owned_graph_) {
     auto st = GpuDriver::DestroyGraph(graph_);
     CHECK(st.ok()) << "Failed to destroy GPU graph: " << st.message();
   }
@@ -238,6 +243,67 @@ tsl::Status GpuCommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
         parent_->gpu_context(), node, graph_, absl::MakeSpan(deps),
         AsDevicePtr(*dst), AsDevicePtr(src), size);
   }
+
+  return UnsupportedStateError(state_);
+}
+
+tsl::Status GpuCommandBuffer::If(StreamExecutor* executor,
+                                 DeviceMemory<bool> predicate,
+                                 CommandBuffer::Builder then_builder) {
+  DCHECK(executor->implementation() == parent_);  // NOLINT
+
+  SetConditionKernel set_condition(executor);
+
+  {  // Load kernels that update condition handle value.
+    MultiKernelLoaderSpec spec(/*arity=*/1);
+    spec.AddInProcessSymbol(gpu::GetSetConditionKernel(), "set_condition");
+    TF_RETURN_IF_ERROR(executor->GetKernel(spec, &set_condition));
+  }
+
+  using ConditionalParams = GpuDriver::GpuGraphConditionalNodeParams;
+  using ConditionalResult = GpuDriver::GpuGraphConditionalNodeParams::Result;
+
+  // Conditional command buffers always created in nested mode.
+  CommandBuffer::Mode nested = CommandBuffer::Mode::kNested;
+
+  if (state_ == State::kCreate) {
+    // Create a handle for a conditional node.
+    GpuGraphConditionalHandle handle;
+    TF_RETURN_IF_ERROR(GpuDriver::GraphConditionalHandleCreate(
+        &handle, graph_, parent_->gpu_context(), 0, 0));
+
+    // Add a kernel to update conditional handle value based on a predicate.
+    TF_RETURN_IF_ERROR(
+        Launch(set_condition, ThreadDim(), BlockDim(), handle, predicate));
+
+    // Add conditional node to the graph.
+    Dependencies deps = GetDependencies();
+    GpuGraphNodeHandle* node = &nodes_.emplace_back();
+
+    ConditionalParams params;
+    params.type = ConditionalParams::Type::kIf;
+    params.handle = handle;
+    params.context = parent_->gpu_context();
+
+    TF_ASSIGN_OR_RETURN(
+        GpuDriver::GpuGraphNodeResult result,
+        GpuDriver::GraphAddNode(node, graph_, absl::MakeSpan(deps), params));
+
+    // Set up conditional command buffer.
+    GpuGraphHandle then_graph = std::get<ConditionalResult>(result).graph;
+
+    // Wrap conditional graph into command buffer and pass it to the builder.
+    auto then_command_buffer = CommandBuffer::Wrap(
+        executor,
+        parent_->GetCommandBufferImplementation(nested, then_graph, false));
+    TF_RETURN_IF_ERROR(then_builder(&then_command_buffer));
+
+    return tsl::OkStatus();
+  }
+
+  // TODO(ezhulenev): For command buffer update we need to keep conditional
+  // handle for the command and command buffer itself as it has a mapping to
+  // node handles required for updates.
 
   return UnsupportedStateError(state_);
 }

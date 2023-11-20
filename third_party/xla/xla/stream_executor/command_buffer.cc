@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
@@ -70,6 +71,20 @@ CommandBuffer& CommandBuffer::operator=(CommandBuffer&&) = default;
   return command_buffer;
 }
 
+const internal::CommandBufferInterface* CommandBuffer::implementation() const {
+  return implementation_.get();
+}
+
+internal::CommandBufferInterface* CommandBuffer::implementation() {
+  return implementation_.get();
+}
+
+/*static*/ CommandBuffer CommandBuffer::Wrap(
+    StreamExecutor* executor,
+    std::unique_ptr<internal::CommandBufferInterface> implementation) {
+  return CommandBuffer(executor, std::move(implementation));
+}
+
 CommandBuffer::CommandBuffer(
     StreamExecutor* executor,
     std::unique_ptr<internal::CommandBufferInterface> implementation)
@@ -89,6 +104,10 @@ tsl::Status CommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                                 const DeviceMemoryBase& src,
                                                 uint64_t size) {
   return implementation_->MemcpyDeviceToDevice(dst, src, size);
+}
+
+tsl::Status CommandBuffer::If(DeviceMemory<bool> pred, Builder then_builder) {
+  return implementation_->If(executor_, pred, std::move(then_builder));
 }
 
 CommandBuffer::Mode CommandBuffer::mode() const {

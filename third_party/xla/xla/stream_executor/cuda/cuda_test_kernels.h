@@ -85,6 +85,9 @@ struct Ptrs3 {
 // Returns a pointer to device kernel compiled from the CUDA C++ code above.
 void* GetAddI32CudaKernel();
 
+// Returns a pointer to device kernel doing multiplication instead of addition.
+void* GetMulI32CudaKernel();
+
 // Returns a pointer to device kernel compiled from the CUDA C++ but with all
 // three pointers passed to argument as an instance of `Ptr3` template to test
 // StreamExecutor arguments packing for custom C++ types.

@@ -23,11 +23,13 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor_internal.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 
 namespace stream_executor::gpu {
@@ -37,7 +39,7 @@ namespace stream_executor::gpu {
 class GpuCommandBuffer : public internal::CommandBufferInterface {
  public:
   GpuCommandBuffer(CommandBuffer::Mode mode, GpuExecutor* parent,
-                   GpuGraphHandle graph);
+                   GpuGraphHandle graph, bool is_owned_graph = true);
   ~GpuCommandBuffer() override;
 
   tsl::Status Trace(Stream* stream,
@@ -52,6 +54,9 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
                                    const DeviceMemoryBase& src,
                                    uint64_t size) override;
 
+  tsl::Status If(StreamExecutor* executor, DeviceMemory<bool> predicate,
+                 CommandBuffer::Builder then_builder) override;
+
   tsl::Status Finalize() override;
   tsl::Status Update() override;
 
@@ -60,6 +65,12 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
 
   CommandBuffer::Mode mode() const override { return mode_; }
   CommandBuffer::State state() const override { return state_; }
+
+  // A helper template for launching typed kernels.
+  template <typename... Params, typename... Args>
+  tsl::Status Launch(const TypedKernel<Params...>& kernel,
+                     const ThreadDim& threads, const BlockDim& blocks,
+                     Args... args);
 
   // We track the total number of allocated and alive executable graphs in the
   // process to track the command buffers resource usage. Executable graph
@@ -80,6 +91,9 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   }
 
  private:
+  using SetConditionKernel =
+      TypedKernel<GpuGraphConditionalHandle, DeviceMemory<bool>>;
+
   // TODO(ezhulenev): Currently we serialize all Gpu nodes by adding a
   // dependency between all nodes added to a command buffer. We need a concept
   // of a barrier at a command buffer level.
@@ -105,8 +119,9 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   CommandBuffer::State state_ = CommandBuffer::State::kCreate;
 
   GpuExecutor* parent_;                // not owned, must outlive *this
-  GpuGraphHandle graph_ = nullptr;     // owned handle
-  GpuGraphExecHandle exec_ = nullptr;  // owned handle
+  GpuGraphHandle graph_ = nullptr;     // owned if `is_owned_graph_ == true`
+  bool is_owned_graph_ = true;         // ownership of `graph_`
+  GpuGraphExecHandle exec_ = nullptr;  // owned
 
   // Handles to graph nodes corresponding to command buffer commands. Owned by
   // the `graph_` instance.
@@ -119,6 +134,26 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   // Track the number of command buffer updates for debugging.
   int64_t num_updates_ = 0;
 };
+
+template <typename... Params, typename... Args>
+inline tsl::Status GpuCommandBuffer::Launch(
+    const TypedKernel<Params...>& kernel, const ThreadDim& threads,
+    const BlockDim& blocks, Args... args) {
+  auto kernel_args = PackKernelArgs(kernel, args...);
+  TF_RETURN_IF_ERROR(Launch(threads, blocks, kernel, *kernel_args));
+  return tsl::OkStatus();
+}
+
+//===----------------------------------------------------------------------===//
+// Implementation details device kernels required by GpuCommandBuffer.
+//===----------------------------------------------------------------------===//
+
+// See `cuda_conditional_kernels.cu.cc` for CUDA implementations. These are
+// various kernels that update Gpu conditionals based on the device memory
+// values, and allow implementing on-device control flow via conditional command
+// buffers.
+
+void* GetSetConditionKernel();
 
 }  // namespace stream_executor::gpu
 
