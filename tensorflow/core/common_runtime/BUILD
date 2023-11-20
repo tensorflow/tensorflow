@@ -329,7 +329,6 @@ cc_library(
     srcs = ["all_to_all.cc"],
     hdrs = ["all_to_all.h"],
     copts = tf_copts(),
-    features = ["-layering_check"],
     deps = [
         ":base_collective_executor",
         ":collective_rma_local",
@@ -341,7 +340,7 @@ cc_library(
         ":process_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/platform:blocking_counter",
     ],
     alwayslink = 1,
 )
