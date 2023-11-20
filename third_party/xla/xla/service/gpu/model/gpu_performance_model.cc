@@ -325,6 +325,19 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
   return {flops, bytes_written, num_threads, write_time, exec_time};
 }
 
+// Returns utilization of operand by instruction. Returns 0, if the operand is
+// not used by the instruction.
+float GetOperandUtilization(const GpuHloCostAnalysis* cost_analysis,
+                            const HloInstruction* instr,
+                            const HloInstruction* operand) {
+  if (!instr->IsUserOf(operand)) {
+    return 0.f;
+  }
+
+  return cost_analysis->operand_utilization(*instr,
+                                            instr->operand_index(operand));
+}
+
 // Returns utilization `overlap` between a common operand of producer and
 // consumer on merge. `utilization > 0` means that the operand will be accessed
 // more efficiently after fusion.
@@ -334,14 +347,13 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
 //    a fusion or just be an elementwise instruction.
 // 2) Consumer has to have common elementwise roots for the producer and the
 //    common operand if it is a fusion or just be an elementwise instruction.
-float GetCommonUtilization(
-    const HloInstruction* producer, int64_t producer_idx_of_operand,
-    const HloInstruction* consumer,
-    const ConstHloInstructionMap<int64_t>& consumer_operands,
-    const GpuHloCostAnalysis* cost_analysis) {
-  auto consumer_idx_of_operand =
-      consumer_operands.find(producer->operand(producer_idx_of_operand));
-  if (consumer_idx_of_operand == consumer_operands.end()) {
+float GetCommonUtilization(const GpuHloCostAnalysis* cost_analysis,
+                           const HloInstruction* producer,
+                           int64_t producer_idx_of_operand,
+                           const HloInstruction* consumer) {
+  const auto* operand = producer->operand(producer_idx_of_operand);
+
+  if (!consumer || !consumer->IsUserOf(operand)) {
     return 0.f;
   }
 
@@ -350,9 +362,10 @@ float GetCommonUtilization(
        FusionUsesParameterElementwiseFromRoot(producer, producer_idx_of_operand,
                                               cost_analysis))) {
     if (consumer->opcode() == HloOpcode::kFusion) {
-      int64_t consumer_idx_of_producer = consumer_operands.at(producer);
+      int64_t consumer_idx_of_common_operand = consumer->operand_index(operand);
+      int64_t consumer_idx_of_producer = consumer->operand_index(producer);
       return cost_analysis->CommonElementwiseUtilization(
-          consumer->fused_parameter(consumer_idx_of_operand->second),
+          consumer->fused_parameter(consumer_idx_of_common_operand),
           consumer->fused_parameter(consumer_idx_of_producer));
     } else {
       if (consumer->IsElementwise()) {
@@ -374,15 +387,10 @@ float GetCommonUtilization(
     const GpuPerformanceModelOptions& config,
     const HloInstruction* fused_consumer) {
   absl::Duration ret = absl::ZeroDuration();
-  float producer_output_utilization = 1.f;
-  ConstHloInstructionMap<int64_t> consumer_operands;
-  if (fused_consumer) {
-    producer_output_utilization = cost_analysis->operand_utilization(
-        *fused_consumer, fused_consumer->operand_index(producer));
-    for (int64_t i = 0; i < fused_consumer->operand_count(); ++i) {
-      consumer_operands[fused_consumer->operand(i)] = i;
-    }
-  }
+  float producer_output_utilization =
+      fused_consumer
+          ? GetOperandUtilization(cost_analysis, fused_consumer, producer)
+          : 1.f;
 
   // TODO(jreiffers): We should be checking each operand.
   bool coalesced =
@@ -405,10 +413,8 @@ float GetCommonUtilization(
 
     // Look if common operand of producer and consumer will be accessed more
     // efficiently on merge.
-    float common_utilization =
-        GetCommonUtilization(producer,
-                             /*producer_idx_of_operand=*/i, fused_consumer,
-                             consumer_operands, cost_analysis);
+    float common_utilization = GetCommonUtilization(
+        cost_analysis, producer, /*producer_idx_of_operand=*/i, fused_consumer);
 
     const auto& operand_shape = producer->operand(i)->shape();
 
@@ -444,8 +450,8 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
 
   for (const HloInstruction* fused_consumer : fused_consumers) {
     VLOG(8) << "Unfused consumer: " << fused_consumer->name();
-    float utilization_by_this_consumer = cost_analysis->operand_utilization(
-        *fused_consumer, fused_consumer->operand_index(producer));
+    float utilization_by_this_consumer =
+        GetOperandUtilization(cost_analysis, fused_consumer, producer);
 
     auto analysis_unfused = AnalyzeFusion(*fused_consumer, *device_info);
 
