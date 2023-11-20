@@ -1239,7 +1239,7 @@ void FusionContext::TryToFuseWithInputsRecursively(
     to_visit.pop();
     // Watch the total number of fusion parameters.
     if (inputs.size() + NumAddedParameters(*hlo) >
-        TritonFusionAnalysis::kMaxParameterPerScope) {
+        TritonFusionAnalysis::kMaxParameterPerDotScope) {
       // Re-queue: the number of parameters may go down when other instructions
       // are processed.
       to_visit.push(hlo);
@@ -1323,9 +1323,10 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
                                            gpu_version, old_to_new_mapping,
                                            fusion_inputs, builder);
     const int new_parameters = fusion_inputs.size() - operand_count_before;
-    TF_RET_CHECK(new_parameters <= TritonFusionAnalysis::kMaxParameterPerScope)
+    TF_RET_CHECK(new_parameters <=
+                 TritonFusionAnalysis::kMaxParameterPerDotScope)
         << "Too many new parameters: " << new_parameters << " > "
-        << TritonFusionAnalysis::kMaxParameterPerScope;
+        << TritonFusionAnalysis::kMaxParameterPerDotScope;
     return context;
   };
 
