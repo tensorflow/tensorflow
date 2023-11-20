@@ -257,6 +257,35 @@ LaunchDimensions EstimateFusionLaunchDimensions(
   return LaunchDimensions(num_blocks, block_size);
 }
 
+// Returns true if all input reads are coalesced. If consumer is not nullptr,
+// producer and consumer are considered as one fusion, otherwise it's only the
+// producer.
+//
+// This is a crude heuristic until we get proper tile analysis.
+bool IsReadCoalesced(const std::optional<HloFusionAnalysis>& fusion_analysis,
+                     const GpuPerformanceModelOptions& config,
+                     const HloInstruction* producer,
+                     const HloInstruction* consumer = nullptr) {
+  if (!config.consider_coalescing) return true;
+
+  bool coalesced = (fusion_analysis &&
+                    fusion_analysis->GetEmitterFusionKind() ==
+                        HloFusionAnalysis::EmitterFusionKind::kTranspose) ||
+                   (!TransposesMinorDimension(producer) &&
+                    !(consumer && TransposesMinorDimension(consumer)));
+
+  if (consumer) {
+    // Fusing two row reductions breaks coalescing.
+    coalesced &= (fusion_analysis &&
+                  fusion_analysis->GetEmitterFusionKind() !=
+                      HloFusionAnalysis::EmitterFusionKind::kReduction) ||
+                 !IsInputFusibleReduction(*producer) ||
+                 !IsInputFusibleReduction(*consumer);
+  }
+
+  return coalesced;
+}
+
 }  // namespace
 
 /*static*/ EstimateRunTimeData
@@ -347,9 +376,7 @@ float GetCommonUtilization(
   absl::Duration ret = absl::ZeroDuration();
   float producer_output_utilization = 1.f;
   ConstHloInstructionMap<int64_t> consumer_operands;
-  bool consumer_transposes = false;
   if (fused_consumer) {
-    consumer_transposes = TransposesMinorDimension(fused_consumer);
     producer_output_utilization = cost_analysis->operand_utilization(
         *fused_consumer, fused_consumer->operand_index(producer));
     for (int64_t i = 0; i < fused_consumer->operand_count(); ++i) {
@@ -357,7 +384,9 @@ float GetCommonUtilization(
     }
   }
 
-  bool producer_transposes = TransposesMinorDimension(producer);
+  // TODO(jreiffers): We should be checking each operand.
+  bool coalesced =
+      IsReadCoalesced(fusion_analysis, config, producer, fused_consumer);
   for (int i = 0; i < producer->operand_count(); ++i) {
     // Information about data read taking into account utilization.
     // If `operand_utilization` is 0, `operand_bytes_accessed` should be also 0.
@@ -381,25 +410,13 @@ float GetCommonUtilization(
                              /*producer_idx_of_operand=*/i, fused_consumer,
                              consumer_operands, cost_analysis);
 
-    // TODO(jreiffers): We should be checking each operand here.
-    bool coalesced = (fusion_analysis &&
-                      fusion_analysis->GetEmitterFusionKind() ==
-                          HloFusionAnalysis::EmitterFusionKind::kTranspose) ||
-                     (!producer_transposes && !consumer_transposes);
-    // Fusing two row reductions breaks coalescing.
-    coalesced &= ((fusion_analysis &&
-                   fusion_analysis->GetEmitterFusionKind() !=
-                       HloFusionAnalysis::EmitterFusionKind::kReduction) ||
-                  !fused_consumer || !IsInputFusibleReduction(*producer) ||
-                  !IsInputFusibleReduction(*fused_consumer));
     const auto& operand_shape = producer->operand(i)->shape();
 
     CHECK_LE(common_utilization, producer_output_utilization);
     float n_bytes_total = operand_bytes_accessed *
                           (producer_output_utilization - common_utilization);
     ret += ReadTime(gpu_device_info, num_blocks, /*n_bytes_net=*/n_bytes_net,
-                    n_bytes_total, operand_shape.element_type(),
-                    coalesced || !config.consider_coalescing,
+                    n_bytes_total, operand_shape.element_type(), coalesced,
                     config.first_read_from_dram);
   }
   return ret;
@@ -440,10 +457,11 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
                                          utilization_by_this_consumer);
     int64_t n_bytes_net = std::min(producer_data.bytes_written, n_bytes_total);
 
+    bool coalesced =
+        IsReadCoalesced(analysis_unfused, config, /*producer=*/fused_consumer);
     auto read_time_unfused = ReadTime(
         *device_info, launch_dimensions_unfused.num_blocks(), n_bytes_net,
-        n_bytes_total, fused_consumer->shape().element_type(),
-        /*coalesced=*/!TransposesMinorDimension(fused_consumer),
+        n_bytes_total, fused_consumer->shape().element_type(), coalesced,
         config.first_read_from_dram);
 
     VLOG(10) << "  Read time unfused: " << read_time_unfused;
