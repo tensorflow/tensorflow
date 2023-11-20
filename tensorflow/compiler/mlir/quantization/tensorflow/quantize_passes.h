@@ -51,7 +51,7 @@ void AddQuantizePtqPostCalibrationPasses(
 
 // StableHLO Quantization passes that are ran if StableHLO opset is selected.
 void AddQuantizePtqPreCalibrationStablehloPasses(
-    mlir::PassManager &pm, const QuantizationOptions &quantization_options);
+    mlir::PassManager &pm, const CalibrationOptions &quantization_options);
 
 void AddQuantizePtqPostCalibrationStablehloPasses(
     mlir::PassManager &pm,

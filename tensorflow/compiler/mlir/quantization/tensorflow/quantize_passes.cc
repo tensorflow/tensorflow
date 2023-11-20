@@ -232,12 +232,11 @@ void AddQuantizePtqPostCalibrationPasses(
 
 // StableHLO Quantization passes that are ran if StableHLO opset is selected.
 void AddQuantizePtqPreCalibrationStablehloPasses(
-    mlir::PassManager &pm, const QuantizationOptions &quantization_options) {
+    mlir::PassManager &pm, const CalibrationOptions &calibration_options) {
   pm.addPass(
       mlir::quant::stablehlo::createLiftQuantizableSpotsAsFunctionsPass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::CreateInsertCustomAggregationOpsPass(
-          quantization_options.calibration_options()));
+      mlir::quant::CreateInsertCustomAggregationOpsPass(calibration_options));
   pm.addPass(mlir::quant::CreateIssueIDsOfCustomAggregationOpsPass());
   // NOMUTANTS -- Add tests after all passes in function below are migrated.
   // StableHLO Quantizer currently uses TF's calibration passes. Serialize
