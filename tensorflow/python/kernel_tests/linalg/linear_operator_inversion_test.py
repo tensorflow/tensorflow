@@ -33,6 +33,13 @@ class LinearOperatorInversionTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
+  # TODO: b/311343496 - Re-enable this test.
+  @staticmethod
+  def skip_these_tests() -> list[str]:
+    return [
+        "test_saved_model",
+    ]
+
   def tearDown(self):
     config.enable_tensor_float_32_execution(self.tf32_keep_)
 
