@@ -18,7 +18,16 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":sharding_util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:string_ops",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/training/saving:saveable_object_util",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -32,9 +41,13 @@ tf_py_strict_test(
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:graph_view",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/module",
         "//tensorflow/python/ops:resource_variable_ops",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/training/saving:saveable_object",
     ],
 )
