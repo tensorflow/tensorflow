@@ -54,3 +54,27 @@ py_strict_library(
         "//tensorflow/python/training/saving:saveable_object",
     ],
 )
+
+tf_py_strict_test(
+    name = "sharding_util_test",
+    srcs = ["sharding_util_test.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":sharding_policies",
+        ":sharding_util",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:graph_view",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/module",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:resource_variable_ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/training:server_lib",
+        "//tensorflow/python/training/saving:saveable_object",
+    ],
+)
