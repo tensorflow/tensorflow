@@ -148,23 +148,59 @@ XLA_FFI_Error* Ffi::CheckStructSize(const XLA_FFI_Api* api,
 // Type tags for distinguishing handler argument types
 //===----------------------------------------------------------------------===//
 
-// Forward declare class defined below.
-class RemainingArgs;
-
 namespace internal {
+
+// WARNING: A lot of template metaprogramming on top of C++ variadic templates
+// parameter packs. We need this to be able to pattern match FFI handler
+// signature at compile time.
+
+// A type tag to forward all remaining args as `RemainingArgs`.
+struct RemainingArgsTag {};
 
 // A type tag to distinguish arguments tied to the attributes in the
 // `Binding` variadic template argument.
 template <typename T>
 struct AttrTag {};
 
+// A type tag to forward all attributes as `Dictionary`.
+struct AttrsTag {};
+
 // A type tag to distinguish arguments extracted from an execution context.
 template <typename T>
 struct CtxTag {};
 
+//----------------------------------------------------------------------------//
+// A template for counting tagged arguments in the Ts pack (i.e. attributes).
+//----------------------------------------------------------------------------//
+
+template <template <typename> class Tag, typename... Ts>
+struct NumTagged;
+
+template <template <typename> class Tag>
+struct NumTagged<Tag> {
+  static constexpr int64_t value = 0;
+};
+
+template <template <typename> class Tag, typename T, typename... Ts>
+struct NumTagged<Tag, Tag<T>, Ts...> {
+  static constexpr int64_t value = 1 + NumTagged<Tag, Ts...>::value;
+};
+
+template <template <typename> class Tag, typename T, typename... Ts>
+struct NumTagged<Tag, T, Ts...> {
+  static constexpr int64_t value = 0 + NumTagged<Tag, Ts...>::value;
+};
+
+//----------------------------------------------------------------------------//
+
 // Checks if remaining arguments are in the parameter pack.
 template <typename... Ts>
-using HasRemainingArgs = std::disjunction<std::is_same<RemainingArgs, Ts>...>;
+using HasRemainingArgsTag =
+    std::disjunction<std::is_same<RemainingArgsTag, Ts>...>;
+
+// Checks if dictionary attribute is in the parameter pack.
+template <typename... Ts>
+using HasAttrsTag = std::disjunction<std::is_same<AttrsTag, Ts>...>;
 
 }  // namespace internal
 
@@ -180,8 +216,8 @@ class Binding {
     return {std::move(*this)};
   }
 
-  Binding<Ts..., class RemainingArgs> RemainingArgs() && {
-    static_assert(!internal::HasRemainingArgs<Ts...>::value,
+  Binding<Ts..., internal::RemainingArgsTag> RemainingArgs() && {
+    static_assert(!internal::HasRemainingArgsTag<Ts...>::value,
                   "remaining arguments can be passed just once");
     return {std::move(*this)};
   }
@@ -193,7 +229,15 @@ class Binding {
 
   template <typename T>
   Binding<Ts..., internal::AttrTag<T>> Attr(std::string attr) && {
+    static_assert(!internal::HasAttrsTag<Ts...>::value,
+                  "dictionary attributes can't be mixed with regular ones");
     attrs_.push_back(std::move(attr));
+    return {std::move(*this)};
+  }
+
+  Binding<Ts..., internal::AttrsTag> Attrs() && {
+    static_assert(internal::NumTagged<internal::AttrTag, Ts...>::value == 0,
+                  "dictionary attributes can't be mixed with regular ones");
     return {std::move(*this)};
   }
 
@@ -325,42 +369,42 @@ struct Decode {
   }
 };
 
+}  // namespace internal
+
 template <typename T>
-struct Decode<internal::AttrTag<T>> {
+struct internal::Decode<internal::AttrTag<T>> {
   static std::optional<T> call(DecodingOffsets& offsets, DecodingContext& ctx) {
     // Find decoded attribute corresponding to the given attribute index.
-    int64_t idx = offsets.attrs++;
+    int64_t i = offsets.attrs++;
 
     // Get mapping from the attribute to its index in the sorted array.
-    size_t i = ctx.attrs_idx[idx];
+    size_t idx = ctx.attrs_idx[i];
 
     // Load attribute from call frame using index into the sorted array.
-    XLA_FFI_AttrType type = ctx.call_frame->attrs.types[i];
-    XLA_FFI_ByteSpan* name = ctx.call_frame->attrs.names[i];
-    void* attr = ctx.call_frame->attrs.attrs[i];
+    XLA_FFI_AttrType attr_type = ctx.call_frame->attrs.types[idx];
+    XLA_FFI_ByteSpan* attr_name = ctx.call_frame->attrs.names[idx];
+    void* attr = ctx.call_frame->attrs.attrs[idx];
 
     // TODO(ezhulenev): Currently we require that attributes passed to the FFI
     // handler must match attributes referenced in a binding, however
     // we could safely ignore extra attributes. Relax this if needed.
 
     // Attribute name does not match.
-    std::string_view name_view = {name->ptr, name->len};
-    if (name_view != ctx.attrs_names[idx]) return std::nullopt;
+    std::string_view attr_name_view = {attr_name->ptr, attr_name->len};
+    if (attr_name_view != ctx.attrs_names[i]) return std::nullopt;
 
-    return AttrDecoding<T>::Decode(name_view, type, attr);
+    return AttrDecoding<T>::Decode(attr_name_view, attr_type, attr);
   }
 };
 
 template <typename T>
-struct Decode<internal::CtxTag<T>> {
+struct internal::Decode<internal::CtxTag<T>> {
   using R = typename CtxDecoding<T>::Type;
 
   static std::optional<R> call(DecodingOffsets& offsets, DecodingContext& ctx) {
     return CtxDecoding<T>::Decode(ctx.call_frame->api, ctx.call_frame->ctx);
   }
 };
-
-}  // namespace internal
 
 //===----------------------------------------------------------------------===//
 // Type-safe wrapper for accessing a variable number of arguments.
@@ -379,9 +423,8 @@ class RemainingArgs {
   template <typename T>
   std::optional<T> get(size_t index) const {
     size_t idx = offset_ + index;
-    if (idx >= args_->num_args) {
-      return std::nullopt;
-    }
+    if (idx >= args_->num_args) return std::nullopt;
+
     return ArgDecoding<T>::Decode(args_->types[idx], args_->args[idx]);
   }
 
@@ -391,10 +434,63 @@ class RemainingArgs {
 };
 
 template <>
-struct internal::Decode<RemainingArgs> {
+struct internal::Decode<internal::RemainingArgsTag> {
   static std::optional<RemainingArgs> call(DecodingOffsets& offsets,
                                            DecodingContext& ctx) {
     return RemainingArgs(&ctx.call_frame->args, offsets.args);
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// Type-safe wrapper for accessing dictionary attributes.
+//===----------------------------------------------------------------------===//
+
+class Dictionary {
+ public:
+  explicit Dictionary(const XLA_FFI_Attrs* attrs) : attrs_(attrs) {}
+
+  size_t size() const { return attrs_->num_attrs; }
+
+  bool contains(std::string_view name) const {
+    return Find(name) < attrs_->num_attrs;
+  }
+
+  template <typename T>
+  std::optional<T> get(std::string_view name) const {
+    size_t idx = Find(name);
+    if (idx >= attrs_->num_attrs) return std::nullopt;
+
+    XLA_FFI_AttrType attr_type = attrs_->types[idx];
+    XLA_FFI_ByteSpan* attr_name = attrs_->names[idx];
+    void* attr = attrs_->attrs[idx];
+
+    std::string_view attr_name_view = {attr_name->ptr, attr_name->len};
+    return AttrDecoding<T>::Decode(attr_name_view, attr_type, attr);
+  }
+
+ private:
+  size_t Find(std::string_view name) const {
+    XLA_FFI_ByteSpan** begin = attrs_->names;
+    XLA_FFI_ByteSpan** end = begin + attrs_->num_attrs;
+
+    auto name_eq = [&](XLA_FFI_ByteSpan* attr) {
+      std::string_view name_view = {attr->ptr, attr->len};
+      return name_view == name;
+    };
+
+    // TODO(ezhulenev): Attributes names sorted by name. We can use a binary
+    // search here instead of a linear scan.
+    return std::distance(begin, std::find_if(begin, end, name_eq));
+  }
+
+  const XLA_FFI_Attrs* attrs_;
+};
+
+template <>
+struct internal::Decode<internal::AttrsTag> {
+  static std::optional<Dictionary> call(DecodingOffsets& offsets,
+                                        DecodingContext& ctx) {
+    return Dictionary(&ctx.call_frame->attrs);
   }
 };
 
@@ -422,13 +518,28 @@ struct FnArgType<internal::CtxTag<T>> {
   using Type = typename CtxDecoding<T>::Type;
 };
 
-// A template for checking if type is a wrapped attribute or user data.
+template <>
+struct FnArgType<internal::RemainingArgsTag> {
+  using Type = RemainingArgs;
+};
+
+template <>
+struct FnArgType<internal::AttrsTag> {
+  using Type = Dictionary;
+};
+
+// A template for checking if type in a parameter pack is a tagged one and has
+// a special decoding rule defined by template specialization.
 template <typename>
-struct IsWrapped : std::false_type {};
+struct IsTagged : std::false_type {};
 template <typename T>
-struct IsWrapped<AttrTag<T>> : std::true_type {};
+struct IsTagged<AttrTag<T>> : std::true_type {};
 template <typename T>
-struct IsWrapped<CtxTag<T>> : std::true_type {};
+struct IsTagged<CtxTag<T>> : std::true_type {};
+template <>
+struct IsTagged<RemainingArgsTag> : std::true_type {};
+template <>
+struct IsTagged<AttrsTag> : std::true_type {};
 
 // A template for counting regular arguments in the Ts pack.
 template <typename... Ts>
@@ -441,26 +552,7 @@ struct NumArgs<> {
 
 template <typename T, typename... Ts>
 struct NumArgs<T, Ts...> {
-  static constexpr int64_t value = !IsWrapped<T>::value + NumArgs<Ts...>::value;
-};
-
-// A template for counting tagged arguments in the Ts pack (i.e. attributes).
-template <template <typename> class Tag, typename... Ts>
-struct NumTagged;
-
-template <template <typename> class Tag>
-struct NumTagged<Tag> {
-  static constexpr int64_t value = 0;
-};
-
-template <template <typename> class Tag, typename T, typename... Ts>
-struct NumTagged<Tag, Tag<T>, Ts...> {
-  static constexpr int64_t value = 1 + NumTagged<Tag, Ts...>::value;
-};
-
-template <template <typename> class Tag, typename T, typename... Ts>
-struct NumTagged<Tag, T, Ts...> {
-  static constexpr int64_t value = 0 + NumTagged<Tag, Ts...>::value;
+  static constexpr int64_t value = !IsTagged<T>::value + NumArgs<Ts...>::value;
 };
 
 }  // namespace internal
@@ -495,8 +587,8 @@ class Handler : public Ffi {
 
     // Check that the number of passed arguments matches the signature. Each
     // individual argument decoding will check the actual type.
-    if (internal::HasRemainingArgs<Ts...>::value) {
-      if (call_frame->args.num_args < kNumArgs - 1) {
+    if (internal::HasRemainingArgsTag<Ts...>::value) {
+      if (call_frame->args.num_args < kNumArgs) {
         return InvalidArgument(
             call_frame->api,
             StrCat("Wrong number of arguments: expected at least ",
@@ -512,12 +604,16 @@ class Handler : public Ffi {
     }
 
     // Check that the number of passed attributes matches the signature. Each
-    // individual attribute decoding will check the actual type.
-    if (call_frame->attrs.num_attrs != kNumAttrs) {
-      return InvalidArgument(
-          call_frame->api,
-          StrCat("Wrong number of attributes: expected ", kNumAttrs,
-                 " but got ", call_frame->attrs.num_attrs));
+    // individual attribute decoding will check the actual type. If we decode
+    // attributes into a dictionary, then there is no need to check attributes,
+    // as the FFI handler should be responsible for it.
+    if (!internal::HasAttrsTag<Ts...>::value) {
+      if (call_frame->attrs.num_attrs != kNumAttrs) {
+        return InvalidArgument(
+            call_frame->api,
+            StrCat("Wrong number of attributes: expected ", kNumAttrs,
+                   " but got ", call_frame->attrs.num_attrs));
+      }
     }
 
     // Define index sequences to access custom call operands.
@@ -631,6 +727,19 @@ struct AttrDecoding<std::string_view> {
 
     auto* span = reinterpret_cast<XLA_FFI_ByteSpan*>(attr);
     return std::string_view(span->ptr, span->len);
+  }
+};
+
+template <>
+struct AttrDecoding<Dictionary> {
+  static std::optional<Dictionary> Decode(std::string_view name,
+                                          XLA_FFI_AttrType type, void* attr) {
+    if (type != XLA_FFI_AttrType_DICTIONARY) {
+      return std::nullopt;
+    }
+
+    auto* attrs = reinterpret_cast<XLA_FFI_Attrs*>(attr);
+    return Dictionary(attrs);
   }
 };
 

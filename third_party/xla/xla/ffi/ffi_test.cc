@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <string_view>
-#include <vector>
 
 #include "absl/status/status.h"
 #include "xla/ffi/call_frame.h"
@@ -62,9 +61,12 @@ TEST(FfiTest, WrongNumArgs) {
 }
 
 TEST(FfiTest, WrongNumAttrs) {
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("i32", 42);
+  attrs.Insert("f32", 42.0f);
+
   CallFrameBuilder builder;
-  builder.AddI32Attr("i32", 42);
-  builder.AddF32Attr("f32", 42.0f);
+  builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
   auto handler = Ffi::Bind().Attr<int32_t>("i32").To(
@@ -77,10 +79,13 @@ TEST(FfiTest, WrongNumAttrs) {
 }
 
 TEST(FfiTest, BuiltinAttributes) {
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("i32", 42);
+  attrs.Insert("f32", 42.0f);
+  attrs.Insert("str", "foo");
+
   CallFrameBuilder builder;
-  builder.AddI32Attr("i32", 42);
-  builder.AddF32Attr("f32", 42.0f);
-  builder.AddStringAttr("str", "foo");
+  builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
   auto fn = [&](int32_t i32, float f32, std::string_view str) {
@@ -101,12 +106,99 @@ TEST(FfiTest, BuiltinAttributes) {
   TF_ASSERT_OK(status);
 }
 
-TEST(FfiTest, DecodingErrors) {
+TEST(FfiTest, AttrsAsDictionary) {
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("i32", 42);
+  attrs.Insert("f32", 42.0f);
+  attrs.Insert("str", "foo");
+
   CallFrameBuilder builder;
-  builder.AddI32Attr("i32", 42);
-  builder.AddI64Attr("i64", 42);
-  builder.AddF32Attr("f32", 42.0f);
-  builder.AddStringAttr("str", "foo");
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto fn = [&](Dictionary dict) {
+    EXPECT_EQ(dict.size(), 3);
+
+    EXPECT_TRUE(dict.contains("i32"));
+    EXPECT_TRUE(dict.contains("f32"));
+    EXPECT_TRUE(dict.contains("str"));
+
+    auto i32 = dict.get<int32_t>("i32");
+    auto f32 = dict.get<float>("f32");
+    auto str = dict.get<std::string_view>("str");
+
+    EXPECT_TRUE(i32.has_value());
+    EXPECT_TRUE(f32.has_value());
+    EXPECT_TRUE(str.has_value());
+
+    if (i32) EXPECT_EQ(*i32, 42);
+    if (f32) EXPECT_EQ(*f32, 42.0f);
+    if (str) EXPECT_EQ(*str, "foo");
+
+    EXPECT_FALSE(dict.contains("i64"));
+    EXPECT_FALSE(dict.get<int64_t>("i32").has_value());
+    EXPECT_FALSE(dict.get<int64_t>("i64").has_value());
+
+    return absl::OkStatus();
+  };
+
+  auto handler = Ffi::Bind().Attrs().To(fn);
+  auto status = Call(*handler, call_frame);
+
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, DictionaryAttr) {
+  CallFrameBuilder::FlatAttributesMap dict0;
+  dict0.try_emplace("i32", 42);
+
+  CallFrameBuilder::FlatAttributesMap dict1;
+  dict1.try_emplace("f32", 42.0f);
+
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("dict0", dict0);
+  attrs.Insert("dict1", dict1);
+
+  CallFrameBuilder builder;
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto fn = [&](Dictionary dict0, Dictionary dict1) {
+    EXPECT_EQ(dict0.size(), 1);
+    EXPECT_EQ(dict1.size(), 1);
+
+    EXPECT_TRUE(dict0.contains("i32"));
+    EXPECT_TRUE(dict1.contains("f32"));
+
+    auto i32 = dict0.get<int32_t>("i32");
+    auto f32 = dict1.get<float>("f32");
+
+    EXPECT_TRUE(i32.has_value());
+    EXPECT_TRUE(f32.has_value());
+
+    if (i32) EXPECT_EQ(*i32, 42);
+    if (f32) EXPECT_EQ(*f32, 42.0f);
+
+    return absl::OkStatus();
+  };
+
+  auto handler =
+      Ffi::Bind().Attr<Dictionary>("dict0").Attr<Dictionary>("dict1").To(fn);
+
+  auto status = Call(*handler, call_frame);
+
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, DecodingErrors) {
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("i32", 42);
+  attrs.Insert("i64", 42);
+  attrs.Insert("f32", 42.0f);
+  attrs.Insert("str", "foo");
+
+  CallFrameBuilder builder;
+  builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
   auto fn = [](int32_t, int64_t, float, std::string_view) {
@@ -163,7 +255,7 @@ TEST(FfiTest, RemainingArgs) {
     return absl::OkStatus();
   };
 
-  auto handler = Ffi::Bind().Arg<RemainingArgs>().To(fn);
+  auto handler = Ffi::Bind().RemainingArgs().To(fn);
   auto status = Call(*handler, call_frame);
 
   TF_ASSERT_OK(status);

@@ -38,34 +38,56 @@ namespace xla::ffi {
 // CallFrameBuilder
 //===----------------------------------------------------------------------===//
 
+struct CallFrameBuilder::Buffer {
+  se::DeviceMemoryBase memory;
+  PrimitiveType type;
+  std::vector<int64_t> dims;
+};
+
+CallFrameBuilder::AttributesMap CallFrameBuilder::AttributesBuilder::Build() {
+  return std::move(attrs_);
+}
+
+static CallFrameBuilder::Attribute FromFlatAttribute(
+    CallFrameBuilder::FlatAttribute attr) {
+  return std::visit(
+      [](auto& attr) { return CallFrameBuilder::Attribute{attr}; }, attr);
+}
+
+CallFrameBuilder::AttributesBuilder::AttributesBuilder() = default;
+CallFrameBuilder::AttributesBuilder::~AttributesBuilder() = default;
+
+void CallFrameBuilder::AttributesBuilder::Insert(std::string name,
+                                                 FlatAttribute attr) {
+  attrs_.try_emplace(std::move(name), FromFlatAttribute(std::move(attr)));
+}
+
+void CallFrameBuilder::AttributesBuilder::Insert(std::string name,
+                                                 FlatAttributesMap attrs) {
+  AttributesBuilder builder;
+  for (auto& [name, attr] : attrs) builder.Insert(name, std::move(attr));
+
+  auto attrs_map = std::make_unique<AttributesMap>(builder.Build());
+  attrs_.try_emplace(std::move(name), Dictionary{std::move(attrs_map)});
+}
+
+void CallFrameBuilder::AttributesBuilder::Append(FlatAttributesMap attrs) {
+  for (auto& [name, attr] : attrs) Insert(name, std::move(attr));
+}
+
+CallFrameBuilder::CallFrameBuilder() = default;
+CallFrameBuilder::~CallFrameBuilder() = default;
+
 void CallFrameBuilder::AddBufferArg(se::DeviceMemoryBase memory,
                                     PrimitiveType type,
                                     absl::Span<const int64_t> dims) {
   args_.push_back(Buffer{memory, type, {dims.begin(), dims.end()}});
 }
 
-void CallFrameBuilder::AddI32Attr(std::string name, int32_t value) {
-  attrs_.try_emplace(std::move(name), value);
-}
-
-void CallFrameBuilder::AddI64Attr(std::string name, int64_t value) {
-  attrs_.try_emplace(std::move(name), value);
-}
-
-void CallFrameBuilder::AddF32Attr(std::string name, float value) {
-  attrs_.try_emplace(std::move(name), value);
-}
-
-void CallFrameBuilder::AddStringAttr(std::string name, std::string value) {
-  attrs_.try_emplace(std::move(name), value);
-}
-
-void CallFrameBuilder::AddAttribute(std::string name, Attribute attr) {
-  attrs_.try_emplace(std::move(name), attr);
-}
-
-void CallFrameBuilder::AddAttributes(const AttributesMap& attrs) {
-  attrs_.insert(attrs.begin(), attrs.end());
+void CallFrameBuilder::AddAttributes(AttributesMap attrs) {
+  for (auto& [name, attr] : attrs) {
+    attrs_.try_emplace(std::move(name), std::move(attr));
+  }
 }
 
 CallFrame CallFrameBuilder::Build() { return CallFrame(args_, attrs_); }
@@ -96,6 +118,21 @@ struct CallFrame::Buffer {
   XLA_FFI_Buffer buffer = {XLA_FFI_Buffer_STRUCT_SIZE, nullptr};
 };
 
+struct CallFrame::Dictionary {
+  std::unique_ptr<Attributes> attrs;
+};
+
+struct CallFrame::String {
+  std::string value;  // XLA_FFI_ByteSpan::ptr
+
+  XLA_FFI_ByteSpan span = {XLA_FFI_ByteSpan_STRUCT_SIZE, nullptr};
+};
+
+struct CallFrame::NamedAttribute {
+  String name;
+  Attribute value;
+};
+
 struct CallFrame::Arguments {
   explicit Arguments(size_t size) {
     arguments.reserve(size);
@@ -109,21 +146,6 @@ struct CallFrame::Arguments {
   std::vector<void*> args;             // XLA_FFI_Args::args
 
   XLA_FFI_Args ffi_args = {XLA_FFI_Args_STRUCT_SIZE, nullptr};
-};
-
-//----------------------------------------------------------------------------//
-// Attributes storage + reference types
-//----------------------------------------------------------------------------//
-
-struct CallFrame::String {
-  std::string value;  // XLA_FFI_ByteSpan::ptr
-
-  XLA_FFI_ByteSpan span = {XLA_FFI_ByteSpan_STRUCT_SIZE, nullptr};
-};
-
-struct CallFrame::NamedAttribute {
-  String name;
-  Attribute value;
 };
 
 struct CallFrame::Attributes {
@@ -241,6 +263,10 @@ struct CallFrame::ConvertAttribute {
   CallFrame::Attribute operator()(const std::string& str) {
     return CallFrame::String{str};
   }
+
+  CallFrame::Attribute operator()(const CallFrameBuilder::Dictionary& dict) {
+    return CallFrame::Dictionary{InitAttrs(*dict.attrs)};
+  }
 };
 
 // An std::visit overload set to fix up CallFrame::Attribute storage and
@@ -266,6 +292,10 @@ struct CallFrame::AttributeType {
   XLA_FFI_AttrType operator()(CallFrame::String&) {
     return XLA_FFI_AttrType_STRING;
   }
+
+  XLA_FFI_AttrType operator()(CallFrame::Dictionary&) {
+    return XLA_FFI_AttrType_DICTIONARY;
+  }
 };
 
 // An std::visit overload set to get CallFrame::Attribute storage pointer.
@@ -276,6 +306,10 @@ struct CallFrame::AttributeStorage {
   }
 
   void* operator()(CallFrame::String& str) { return &str.span; }
+
+  void* operator()(CallFrame::Dictionary& dict) {
+    return &dict.attrs->ffi_attrs;
+  }
 };
 
 /*static*/ std::unique_ptr<CallFrame::Attributes> CallFrame::InitAttrs(
