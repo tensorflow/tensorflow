@@ -48,6 +48,7 @@ xla_test(
     name = "command_buffer_cmd_test",
     srcs = if_gpu_is_configured(["command_buffer_cmd_test.cc"]),
     backends = ["gpu"],
+    tags = ["no_rocm"],
     deps = [
         ":command_buffer_cmd",
         "//xla:types",
@@ -119,6 +120,7 @@ xla_test(
     name = "command_buffer_thunk_test",
     srcs = if_gpu_is_configured(["command_buffer_thunk_test.cc"]),
     backends = ["gpu"],
+    tags = ["no_rocm"],
     deps = [
         ":command_buffer_cmd",
         ":command_buffer_thunk",

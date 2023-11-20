@@ -2558,6 +2558,7 @@ distribute_py_strict_test(
         "multi_and_single_gpu",
         "nomac",  # TODO(b/201788023): Attempt MultiProcessCluster to fix this.
         "notpu",
+        "no_rocm", #times out
     ],
     deps = [
         ":distribute_lib",

@@ -240,7 +240,7 @@ cc_library(
 xla_cc_test(
     name = "pjrt_c_api_gpu_test",
     srcs = ["pjrt_c_api_gpu_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + ["no_rocm"],
     deps = [
         ":pjrt_c_api_gpu",
         ":pjrt_c_api_gpu_extension_hdrs",

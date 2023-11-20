@@ -967,6 +967,7 @@ xla_test(
     name = "load_autotune_results_from_test_workspace_test",
     srcs = [],
     backends = ["gpu"],
+    tags = ["no_rocm"],
     # Data dependency must be declared for the cache.
     data = ["test_autotune_cache.textproto"],
     env = {"XLA_FLAGS": "--xla_gpu_load_autotune_results_from=TEST_WORKSPACE/" +
