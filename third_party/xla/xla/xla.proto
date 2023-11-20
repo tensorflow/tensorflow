@@ -672,7 +672,10 @@ message DebugOptions {
   // Enable radix sort using CUB.
   bool xla_gpu_enable_cub_radix_sort = 259;
 
-  // Next id: 265
+  // Threshold to enable windowed einsum (collective matmul) in MB.
+  int64 xla_gpu_threshold_for_windowed_einsum_mib = 265;
+
+  // Next id: 266
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

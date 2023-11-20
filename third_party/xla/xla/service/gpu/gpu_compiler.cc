@@ -521,7 +521,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
         /*is_spmd=*/true, /*propagate_metadata=*/false,
         hlo_module->config().allow_spmd_sharding_propagation_to_output());
     spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
-        num_partitions, hlo_module->config().replica_count());
+        num_partitions, hlo_module->config().replica_count(),
+        debug_options.xla_gpu_threshold_for_windowed_einsum_mib());
     spmd_pipeline.AddPass<CollectivePermuteMotion>();
     TF_RETURN_IF_ERROR(spmd_pipeline.Run(hlo_module).status());
   } else {
