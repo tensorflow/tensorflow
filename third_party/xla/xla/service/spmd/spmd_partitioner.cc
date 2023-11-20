@@ -1894,12 +1894,11 @@ PatternMatchUnmergeSharding(const Shape& shape, const Shape& base_shape,
             0) {
       auto get_reshaped_sharding =
           [&](int64_t target_dim) -> std::optional<HloSharding> {
-        if (source.tile_assignment().dim(target_dim) != 1) {
-          return std::nullopt;
-        }
-        if (source.tile_assignment().dim(i) !=
-            target.tile_assignment().dim(i) *
-                target.tile_assignment().dim(target_dim)) {
+        if (source.tile_assignment().dim(target_dim) ==
+                target.tile_assignment().dim(target_dim) ||
+            source.tile_assignment().dim(i) !=
+                target.tile_assignment().dim(i) *
+                    target.tile_assignment().dim(target_dim)) {
           VLOG(10) << "Skipped for target dim different from dimension_size "
                    << target_dim
                    << " src size: " << source.tile_assignment().dim(i)
@@ -1912,7 +1911,7 @@ PatternMatchUnmergeSharding(const Shape& shape, const Shape& base_shape,
       };
       for (int j = i - 1; j >= 0; --j) {
         if (auto reshaped_sharding = get_reshaped_sharding(j)) {
-          VLOG(10) << "Triggered Unmerge to Right";
+          VLOG(10) << "Triggered Unmerge to Right i = " << i << ",j = " << j;
           std::vector<int64_t> dimensions(
               reshaped_sharding->tile_assignment().dimensions().begin(),
               reshaped_sharding->tile_assignment().dimensions().end());
@@ -1934,7 +1933,7 @@ PatternMatchUnmergeSharding(const Shape& shape, const Shape& base_shape,
       }
       for (int j = i + 1; j < target.TiledDataRank(); ++j) {
         if (auto reshaped_sharding = get_reshaped_sharding(j)) {
-          VLOG(10) << "Triggered Unmerge to Left";
+          VLOG(10) << "Triggered Unmerge to Left i = " << i << ",j = " << j;
           std::vector<int64_t> dimensions(
               reshaped_sharding->tile_assignment().dimensions().begin(),
               reshaped_sharding->tile_assignment().dimensions().end());
@@ -2092,6 +2091,7 @@ std::optional<PartitionedHlo> PartitionedHlo::TryComplexReshardHandling(
     VLOG(10) << "Reshaped shape: " << reshaped.hlo()->shape().ToString();
     VLOG(10) << "Reshaped base_shape: " << reshaped.base_shape().ToString();
     VLOG(10) << "Before sharding: " << before_sharding.ToString();
+    VLOG(10) << "Reshaped: " << reshaped.hlo()->ToString();
     auto reshard = reshaped.ReshardNoCache(new_reshaped_sharding,
                                            /*pad_value=*/std::nullopt,
                                            /*allow_full_replication=*/false);
