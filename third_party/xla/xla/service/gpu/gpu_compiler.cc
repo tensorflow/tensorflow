@@ -1686,13 +1686,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   std::vector<BufferAllocation> allocations;
   if (res.compile_module_results.use_original_allocations) {
     if (!options.is_autotuning_compilation) {
-      std::vector<BufferAllocation> original_allocations =
-          buffer_assignment->ReleaseAllocations();
-      allocations = std::move(original_allocations);
+      allocations = buffer_assignment->ReleaseAllocations();
     } else {
-      std::vector<BufferAllocation> original_allocations =
+      allocations =
           res.compile_module_results.buffer_assignment->ReleaseAllocations();
-      allocations = std::move(original_allocations);
     }
   } else {
     allocations = std::move(res.compile_module_results.allocations);
