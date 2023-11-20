@@ -689,7 +689,9 @@ xla_test(
         ":data/add.hlo",
         "//xla/service:xla_aot_compile_test_gpu_target_config.prototxt",
     ],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     deps = [
         ":xla_compile_lib",
         "//xla:util",
