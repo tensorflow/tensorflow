@@ -44,6 +44,21 @@ limitations under the License.
 
 namespace xla {
 
+std::string RenderGraph(absl::string_view label, const HloModule& module,
+                        RenderedGraphFormat format,
+                        bool show_fusion_subcomputations) {
+  HloRenderOptions hlo_render_options;
+  hlo_render_options.show_fusion_subcomputations = show_fusion_subcomputations;
+  StatusOr<std::string> rendered_graph =
+      RenderGraph(*module.entry_computation(), label,
+                  module.config().debug_options(), format, hlo_render_options);
+  if (rendered_graph.ok()) {
+    return std::move(rendered_graph).value();
+  }
+  return absl::StrFormat("Error rendering graph: %s",
+                         rendered_graph.status().ToString());
+}
+
 namespace {
 
 using absl::StrCat;
@@ -428,36 +443,22 @@ static std::vector<std::string> DumpHloModuleImpl(
         pb, opts, opts.dump_compress_protos));
   }
 
-  auto render_graph = [&](RenderedGraphFormat format,
-                          bool show_fusion_subcomputations = true) {
-    HloRenderOptions hlo_render_options;
-    hlo_render_options.show_fusion_subcomputations =
-        show_fusion_subcomputations;
-    StatusOr<std::string> rendered_graph =
-        RenderGraph(*module.entry_computation(),
-                    /*label=*/filename, module.config().debug_options(), format,
-                    hlo_render_options);
-    if (rendered_graph.ok()) {
-      return std::move(rendered_graph).value();
-    }
-    return StrFormat("Error rendering graph: %s",
-                     rendered_graph.status().ToString());
-  };
 
   if (opts.dump_as_dot) {
-    file_paths.push_back(
-        DumpToFileInDirImpl(StrFormat("%s.dot", filename),
-                            render_graph(RenderedGraphFormat::kDot), opts));
+    file_paths.push_back(DumpToFileInDirImpl(
+        StrFormat("%s.dot", filename),
+        RenderGraph(filename, module, RenderedGraphFormat::kDot), opts));
   }
 
   if (opts.dump_as_html) {
-    file_paths.push_back(
-        DumpToFileInDirImpl(StrFormat("%s.html", filename),
-                            render_graph(RenderedGraphFormat::kHtml), opts));
+    file_paths.push_back(DumpToFileInDirImpl(
+        StrFormat("%s.html", filename),
+        RenderGraph(filename, module, RenderedGraphFormat::kHtml), opts));
     if (absl::StrContains(filename, kAfterOptimizationsDumpName)) {
       file_paths.push_back(DumpToFileInDirImpl(
           StrFormat("%s.top_level.html", filename),
-          render_graph(RenderedGraphFormat::kHtml, false), opts));
+          RenderGraph(filename, module, RenderedGraphFormat::kHtml, false),
+          opts));
     }
   }
 
@@ -486,7 +487,7 @@ static std::vector<std::string> DumpHloModuleImpl(
   // Special case for rendering graphs as URLs.  We'll dump them to a file
   // because why not, but we always log them to stdout as well.
   if (opts.dump_as_url) {
-    std::string url = render_graph(RenderedGraphFormat::kUrl);
+    std::string url = RenderGraph(filename, module, RenderedGraphFormat::kUrl);
     std::cout << filename << " --> " << url << std::endl;
     if (!opts.dumping_to_stdout()) {
       file_paths.push_back(

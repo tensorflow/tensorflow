@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/hlo_graph_dumper.h"
 #include "xla/status.h"
 #include "xla/xla.pb.h"
 
@@ -91,6 +92,11 @@ void DumpProtobufToFile(const tsl::protobuf::Message& proto,
                         absl::AnyInvocable<StatusOr<std::string>(
                             tsl::Env*, const tsl::protobuf::Message&)>
                             text_formatter = nullptr);
+
+// Render graph in a given format.
+std::string RenderGraph(absl::string_view label, const HloModule& module,
+                        RenderedGraphFormat format,
+                        bool show_fusion_subcomputations = true);
 
 // Similar to above, but the filename depends on module's information and the
 // given name. Also allows for the optional serialization function.
