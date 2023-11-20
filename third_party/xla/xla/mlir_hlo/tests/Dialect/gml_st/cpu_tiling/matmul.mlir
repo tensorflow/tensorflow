@@ -129,7 +129,7 @@ func.func @matmul_narrow_static(%lhs: tensor<2x16xf32>, %rhs: tensor<16x64xf32>,
 
 // PACKED:       tensor.empty() : tensor<8x16x8x1xf32>
 // PACKED-COUNT: scf.for
-// PACKED:           vector.transpose
+// PACKED:           vector.shape_cast
 // PACKED:           scf.yield %{{.*}} : tensor<8x16x8x1xf32>
 // PACKED:         scf.yield %{{.*}} : tensor<8x16x8x1xf32>
 

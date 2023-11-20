@@ -360,7 +360,7 @@ ENTRY fusion {
   std::vector<HloInstruction*> consumers{
       module->entry_computation()->GetInstructionWithName("reduce.1")};
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-      producer, &analysis_, GpuPerformanceModelOptions::PriorityFusion(nullptr),
+      producer, &analysis_, GpuPerformanceModelOptions::PriorityFusion(),
       consumers);
 
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 105, 10);

@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -8245,6 +8246,7 @@ tsl::Status CreateOpRunners(
   auto maybe_json_handle_runtime = CudnnExecutionPlanEngineFilterRuntime();
 
   out_runners->clear();
+  absl::flat_hash_set<dnn::AlgorithmDesc> algorithm_deduplication;
   for (int i = 0; i < filtered_configs.size(); i++) {
     auto plan = cudnn_frontend::ExecutionPlanBuilder()
                     .setHandle(cudnn.handle())
@@ -8278,6 +8280,13 @@ tsl::Status CreateOpRunners(
       VLOG(4) << "Failed building runner from ExecutionPlan (i.e. failed "
                  "getting its workspace size): "
               << runner_or.status();
+      continue;
+    }
+    // We currently collect a list of algorithms using heuristics_mode_a and
+    // heuristics_mode_b, so we can potentially have duplicates. But we should
+    // not actually autotune the same algorithm twice!
+    if (!algorithm_deduplication.insert(runner_or->ToAlgorithmDesc().value())
+             .second) {
       continue;
     }
 

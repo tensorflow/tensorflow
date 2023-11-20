@@ -550,7 +550,8 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
         /*name=*/kTfQuantPtqPreCalibrationStepStableHloName,
         /*add_passes_func=*/
         [&quantization_options](mlir::PassManager &pm) {
-          AddQuantizePtqPreCalibrationStablehloPasses(pm, quantization_options);
+          AddQuantizePtqPreCalibrationStablehloPasses(
+              pm, quantization_options.calibration_options());
         },
         context, *module_ref));
   } else {

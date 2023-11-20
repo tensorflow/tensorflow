@@ -22,7 +22,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
-#include <string_view>
 
 // IWYU pragma: begin_exports
 #include "xla/ffi/api/api.h"
@@ -31,11 +30,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
-#include "xla/ffi/call_frame.h"
 #include "xla/runtime/memref_view.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
@@ -47,14 +44,14 @@ namespace xla::ffi {
 //===----------------------------------------------------------------------===//
 
 struct Buffer {
-  PrimitiveType primitive_type;
+  PrimitiveType dtype;
   se::DeviceMemoryBase data;
   absl::Span<const int64_t> dimensions;
 
   // TODO(ezhulenev): Remove this implicit conversion once we'll migrate to FFI
   // handlers from runtime custom calls.
   operator runtime::MemrefView() {  // NOLINT
-    return runtime::MemrefView{primitive_type, data.opaque(), dimensions};
+    return runtime::MemrefView{dtype, data.opaque(), dimensions};
   }
 };
 
@@ -69,7 +66,7 @@ struct ArgDecoding<Buffer> {
     auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
 
     Buffer buffer;
-    buffer.primitive_type = PrimitiveType(buf->primitive_type);
+    buffer.dtype = PrimitiveType(buf->dtype);
     buffer.data = se::DeviceMemoryBase(buf->data);
     buffer.dimensions = absl::MakeConstSpan(buf->dims, buf->rank);
     return buffer;
@@ -101,38 +98,6 @@ struct ResultEncoding<Status> {
     return api->internal_api->XLA_FFI_Error_Forward(&status);
   }
 };
-
-//===----------------------------------------------------------------------===//
-// Result encoding
-//===----------------------------------------------------------------------===//
-
-// Takes ownership of the XLA FFI error and returns underlying status. Frees
-// `error` if it's not nullptr; returns OK status otherwise.
-Status TakeStatus(XLA_FFI_Error* error);
-
-struct CallOptions {
-  const ServiceExecutableRunOptions* run_options = nullptr;
-};
-
-Status Call(Ffi& handler, CallFrame& call_frame,
-            const CallOptions& options = {});
-
-Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
-            const CallOptions& options = {});
-
-//===----------------------------------------------------------------------===//
-// XLA FFI registry
-//===----------------------------------------------------------------------===//
-
-// Returns registered FFI handler for a given name, or an error if it's not
-// found in the static registry.
-StatusOr<XLA_FFI_Handler*> FindHandler(std::string_view name);
-
-//===----------------------------------------------------------------------===//
-// XLA FFI Api Implementation
-//===----------------------------------------------------------------------===//
-
-XLA_FFI_Api* GetXlaFfiApi();
 
 }  // namespace xla::ffi
 

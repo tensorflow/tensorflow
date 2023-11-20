@@ -224,7 +224,7 @@ float GetMaxSysBwFromGpu(const se::CudaComputeCapability cc,
 // that the IR emitter will use.
 LaunchDimensions EstimateFusionLaunchDimensions(
     int64_t estimated_num_threads,
-    const std::optional<HloFusionAnalysis>& fusion_analysis,
+    std::optional<HloFusionAnalysis>& fusion_analysis,
     const se::DeviceDescription& device_info) {
   if (fusion_analysis) {
     // TODO(jreiffers): This is the wrong place for this DUS analysis.
@@ -257,6 +257,35 @@ LaunchDimensions EstimateFusionLaunchDimensions(
   return LaunchDimensions(num_blocks, block_size);
 }
 
+// Returns true if all input reads are coalesced. If consumer is not nullptr,
+// producer and consumer are considered as one fusion, otherwise it's only the
+// producer.
+//
+// This is a crude heuristic until we get proper tile analysis.
+bool IsReadCoalesced(const std::optional<HloFusionAnalysis>& fusion_analysis,
+                     const GpuPerformanceModelOptions& config,
+                     const HloInstruction* producer,
+                     const HloInstruction* consumer = nullptr) {
+  if (!config.consider_coalescing) return true;
+
+  bool coalesced = (fusion_analysis &&
+                    fusion_analysis->GetEmitterFusionKind() ==
+                        HloFusionAnalysis::EmitterFusionKind::kTranspose) ||
+                   (!TransposesMinorDimension(producer) &&
+                    !(consumer && TransposesMinorDimension(consumer)));
+
+  if (consumer) {
+    // Fusing two row reductions breaks coalescing.
+    coalesced &= (fusion_analysis &&
+                  fusion_analysis->GetEmitterFusionKind() !=
+                      HloFusionAnalysis::EmitterFusionKind::kReduction) ||
+                 !IsInputFusibleReduction(*producer) ||
+                 !IsInputFusibleReduction(*consumer);
+  }
+
+  return coalesced;
+}
+
 }  // namespace
 
 /*static*/ EstimateRunTimeData
@@ -269,15 +298,7 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
   int64_t bytes_written = cost_analysis->output_bytes_accessed(*instr);
   int64_t bytes_read = cost_analysis->bytes_accessed(*instr) - bytes_written;
 
-  // Use the analysis cache if present.
-  // TODO(jreiffers): Remove this once all callers use a cache.
-  std::optional<HloFusionAnalysis> local_analysis =
-      config.fusion_analysis_cache
-          ? std::nullopt
-          : AnalyzeFusion(*instr, *cost_analysis->device_info_);
-  const auto& fusion_analysis = config.fusion_analysis_cache
-                                    ? config.fusion_analysis_cache->Get(*instr)
-                                    : local_analysis;
+  auto fusion_analysis = AnalyzeFusion(*instr, *cost_analysis->device_info_);
   LaunchDimensions launch_dimensions = EstimateFusionLaunchDimensions(
       ShapeUtil::ElementsInRecursive(instr->shape()), fusion_analysis,
       *device_info);
@@ -304,6 +325,19 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
   return {flops, bytes_written, num_threads, write_time, exec_time};
 }
 
+// Returns utilization of operand by instruction. Returns 0, if the operand is
+// not used by the instruction.
+float GetOperandUtilization(const GpuHloCostAnalysis* cost_analysis,
+                            const HloInstruction* instr,
+                            const HloInstruction* operand) {
+  if (!instr->IsUserOf(operand)) {
+    return 0.f;
+  }
+
+  return cost_analysis->operand_utilization(*instr,
+                                            instr->operand_index(operand));
+}
+
 // Returns utilization `overlap` between a common operand of producer and
 // consumer on merge. `utilization > 0` means that the operand will be accessed
 // more efficiently after fusion.
@@ -313,14 +347,13 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
 //    a fusion or just be an elementwise instruction.
 // 2) Consumer has to have common elementwise roots for the producer and the
 //    common operand if it is a fusion or just be an elementwise instruction.
-float GetCommonUtilization(
-    const HloInstruction* producer, int64_t producer_idx_of_operand,
-    const HloInstruction* consumer,
-    const ConstHloInstructionMap<int64_t>& consumer_operands,
-    const GpuHloCostAnalysis* cost_analysis) {
-  auto consumer_idx_of_operand =
-      consumer_operands.find(producer->operand(producer_idx_of_operand));
-  if (consumer_idx_of_operand == consumer_operands.end()) {
+float GetCommonUtilization(const GpuHloCostAnalysis* cost_analysis,
+                           const HloInstruction* producer,
+                           int64_t producer_idx_of_operand,
+                           const HloInstruction* consumer) {
+  const auto* operand = producer->operand(producer_idx_of_operand);
+
+  if (!consumer || !consumer->IsUserOf(operand)) {
     return 0.f;
   }
 
@@ -329,9 +362,10 @@ float GetCommonUtilization(
        FusionUsesParameterElementwiseFromRoot(producer, producer_idx_of_operand,
                                               cost_analysis))) {
     if (consumer->opcode() == HloOpcode::kFusion) {
-      int64_t consumer_idx_of_producer = consumer_operands.at(producer);
+      int64_t consumer_idx_of_common_operand = consumer->operand_index(operand);
+      int64_t consumer_idx_of_producer = consumer->operand_index(producer);
       return cost_analysis->CommonElementwiseUtilization(
-          consumer->fused_parameter(consumer_idx_of_operand->second),
+          consumer->fused_parameter(consumer_idx_of_common_operand),
           consumer->fused_parameter(consumer_idx_of_producer));
     } else {
       if (consumer->IsElementwise()) {
@@ -349,23 +383,18 @@ float GetCommonUtilization(
     const GpuHloCostAnalysis* cost_analysis,
     const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
     const HloInstruction* producer,
-    const std::optional<HloFusionAnalysis>& fusion_analysis,
+    std::optional<HloFusionAnalysis>& fusion_analysis,
     const GpuPerformanceModelOptions& config,
     const HloInstruction* fused_consumer) {
   absl::Duration ret = absl::ZeroDuration();
-  float producer_output_utilization = 1.f;
-  ConstHloInstructionMap<int64_t> consumer_operands;
-  bool consumer_transposes = false;
-  if (fused_consumer) {
-    consumer_transposes = TransposesMinorDimension(fused_consumer);
-    producer_output_utilization = cost_analysis->operand_utilization(
-        *fused_consumer, fused_consumer->operand_index(producer));
-    for (int64_t i = 0; i < fused_consumer->operand_count(); ++i) {
-      consumer_operands[fused_consumer->operand(i)] = i;
-    }
-  }
+  float producer_output_utilization =
+      fused_consumer
+          ? GetOperandUtilization(cost_analysis, fused_consumer, producer)
+          : 1.f;
 
-  bool producer_transposes = TransposesMinorDimension(producer);
+  // TODO(jreiffers): We should be checking each operand.
+  bool coalesced =
+      IsReadCoalesced(fusion_analysis, config, producer, fused_consumer);
   for (int i = 0; i < producer->operand_count(); ++i) {
     // Information about data read taking into account utilization.
     // If `operand_utilization` is 0, `operand_bytes_accessed` should be also 0.
@@ -384,30 +413,16 @@ float GetCommonUtilization(
 
     // Look if common operand of producer and consumer will be accessed more
     // efficiently on merge.
-    float common_utilization =
-        GetCommonUtilization(producer,
-                             /*producer_idx_of_operand=*/i, fused_consumer,
-                             consumer_operands, cost_analysis);
+    float common_utilization = GetCommonUtilization(
+        cost_analysis, producer, /*producer_idx_of_operand=*/i, fused_consumer);
 
-    // TODO(jreiffers): We should be checking each operand here.
-    bool coalesced = (fusion_analysis &&
-                      fusion_analysis->GetEmitterFusionKind() ==
-                          HloFusionAnalysis::EmitterFusionKind::kTranspose) ||
-                     (!producer_transposes && !consumer_transposes);
-    // Fusing two row reductions breaks coalescing.
-    coalesced &= ((fusion_analysis &&
-                   fusion_analysis->GetEmitterFusionKind() !=
-                       HloFusionAnalysis::EmitterFusionKind::kReduction) ||
-                  !fused_consumer || !IsInputFusibleReduction(*producer) ||
-                  !IsInputFusibleReduction(*fused_consumer));
     const auto& operand_shape = producer->operand(i)->shape();
 
     CHECK_LE(common_utilization, producer_output_utilization);
     float n_bytes_total = operand_bytes_accessed *
                           (producer_output_utilization - common_utilization);
     ret += ReadTime(gpu_device_info, num_blocks, /*n_bytes_net=*/n_bytes_net,
-                    n_bytes_total, operand_shape.element_type(),
-                    coalesced || !config.consider_coalescing,
+                    n_bytes_total, operand_shape.element_type(), coalesced,
                     config.first_read_from_dram);
   }
   return ret;
@@ -435,19 +450,10 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
 
   for (const HloInstruction* fused_consumer : fused_consumers) {
     VLOG(8) << "Unfused consumer: " << fused_consumer->name();
-    float utilization_by_this_consumer = cost_analysis->operand_utilization(
-        *fused_consumer, fused_consumer->operand_index(producer));
+    float utilization_by_this_consumer =
+        GetOperandUtilization(cost_analysis, fused_consumer, producer);
 
-    // Use the analysis cache if present.
-    // TODO(jreiffers): Remove this once all callers use a cache.
-    std::optional<HloFusionAnalysis> local_analysis =
-        config.fusion_analysis_cache
-            ? std::nullopt
-            : AnalyzeFusion(*fused_consumer, *device_info);
-    const auto& analysis_unfused =
-        config.fusion_analysis_cache
-            ? config.fusion_analysis_cache->Get(*fused_consumer)
-            : local_analysis;
+    auto analysis_unfused = AnalyzeFusion(*fused_consumer, *device_info);
 
     LaunchDimensions launch_dimensions_unfused = EstimateFusionLaunchDimensions(
         ShapeUtil::ElementsInRecursive(fused_consumer->shape()),
@@ -457,10 +463,11 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
                                          utilization_by_this_consumer);
     int64_t n_bytes_net = std::min(producer_data.bytes_written, n_bytes_total);
 
+    bool coalesced =
+        IsReadCoalesced(analysis_unfused, config, /*producer=*/fused_consumer);
     auto read_time_unfused = ReadTime(
         *device_info, launch_dimensions_unfused.num_blocks(), n_bytes_net,
-        n_bytes_total, fused_consumer->shape().element_type(),
-        /*coalesced=*/!TransposesMinorDimension(fused_consumer),
+        n_bytes_total, fused_consumer->shape().element_type(), coalesced,
         config.first_read_from_dram);
 
     VLOG(10) << "  Read time unfused: " << read_time_unfused;
@@ -496,15 +503,8 @@ absl::Duration GpuPerformanceModel::EstimateFusedExecTime(
     //
     // TODO(shyshkov): Add calculations for consumer epilogue in the formula to
     // make it complete.
-    std::optional<HloFusionAnalysis> local_analysis_fused =
-        config.fusion_analysis_cache
-            ? std::nullopt
-            : AnalyzeProducerConsumerFusion(*producer, *fused_consumer,
-                                            *device_info);
-    const auto& analysis_fused =
-        config.fusion_analysis_cache
-            ? config.fusion_analysis_cache->Get(*producer, *fused_consumer)
-            : local_analysis_fused;
+    auto analysis_fused =
+        AnalyzeProducerConsumerFusion(*producer, *fused_consumer, *device_info);
 
     LaunchDimensions launch_dimensions_fused = EstimateFusionLaunchDimensions(
         producer_data.num_threads * utilization_by_this_consumer,

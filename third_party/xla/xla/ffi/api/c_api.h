@@ -84,6 +84,7 @@ typedef struct XLA_FFI_Error XLA_FFI_Error;
 
 // Codes are based on https://abseil.io/docs/cpp/guides/status-codes
 typedef enum {
+  XLA_FFI_Error_Code_OK = 0,
   XLA_FFI_Error_Code_CANCELLED = 1,
   XLA_FFI_Error_Code_UNKNOWN = 2,
   XLA_FFI_Error_Code_INVALID_ARGUMENT = 3,
@@ -128,6 +129,30 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Error_Destroy_Args, error);
 typedef void XLA_FFI_Error_Destroy(XLA_FFI_Error_Destroy_Args* args);
 
 //===----------------------------------------------------------------------===//
+// DataType
+//===----------------------------------------------------------------------===//
+
+// This enum corresponds to xla::PrimitiveType enum defined in `xla_data.proto`.
+// LINT.IfChange
+typedef enum {
+  XLA_FFI_DataType_INVALID = 0,
+  XLA_FFI_DataType_PRED = 1,
+  XLA_FFI_DataType_S8 = 2,
+  XLA_FFI_DataType_S16 = 3,
+  XLA_FFI_DataType_S32 = 4,
+  XLA_FFI_DataType_S64 = 5,
+  XLA_FFI_DataType_U8 = 6,
+  XLA_FFI_DataType_U16 = 7,
+  XLA_FFI_DataType_U32 = 8,
+  XLA_FFI_DataType_U64 = 9,
+  XLA_FFI_DataType_F16 = 10,
+  XLA_FFI_DataType_F32 = 11,
+  XLA_FFI_DataType_F64 = 12,
+  XLA_FFI_DataType_BF16 = 16,
+} XLA_FFI_DataType;
+// LINT.ThenChange(ffi_test.cc)
+
+//===----------------------------------------------------------------------===//
 // Builtin argument types
 //===----------------------------------------------------------------------===//
 
@@ -135,8 +160,8 @@ struct XLA_FFI_Buffer {
   size_t struct_size;
   void* priv;
 
+  XLA_FFI_DataType dtype;
   void* data;
-  uint8_t primitive_type;
   int64_t rank;
   int64_t* dims;  // length == rank
 };

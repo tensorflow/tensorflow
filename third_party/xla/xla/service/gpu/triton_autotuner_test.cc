@@ -220,10 +220,11 @@ class TritonAutotunerTest : public HloTestBase {
 
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                             ParseAndReturnVerifiedModule(hlo));
-    auto status_or = HloTestBase::RunHloPass(&pipeline, module.get());
-    EXPECT_TRUE(tsl::errors::IsInternal(status_or.status()));
-    EXPECT_EQ("Expect autotune result cache hit for deviceless compilation.",
-              status_or.status().message());
+    EXPECT_THAT(HloTestBase::RunHloPass(&pipeline, module.get()),
+                tsl::testing::StatusIs(
+                    tsl::error::INTERNAL,
+                    ::testing::HasSubstr(
+                        "Expect autotune result cache hit for deviceless")));
   }
 };
 

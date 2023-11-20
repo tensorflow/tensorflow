@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/ffi/call_frame.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/xla_data.pb.h"
@@ -135,8 +136,8 @@ TEST(FfiTest, BufferArgument) {
   auto call_frame = builder.Build();
 
   auto fn = [&](Buffer buffer) {
+    EXPECT_EQ(buffer.dtype, PrimitiveType::F32);
     EXPECT_EQ(buffer.data.opaque(), storage.data());
-    EXPECT_EQ(buffer.primitive_type, PrimitiveType::F32);
     EXPECT_EQ(buffer.dimensions.size(), 2);
     return absl::OkStatus();
   };

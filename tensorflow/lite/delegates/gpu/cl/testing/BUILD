@@ -1,3 +1,5 @@
+load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gtest_main_no_heapcheck_deps")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
@@ -35,8 +37,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/cl/kernels:cl_test",
         "//tensorflow/lite/delegates/gpu/common:gpu_model_test_util",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "@com_google_googletest//:gtest_main_no_heapcheck",  # constant buffers leak on nvidia
-    ],
+    ] + gtest_main_no_heapcheck_deps(),  # constant buffers leak on nvidia
 )
 
 cc_binary(

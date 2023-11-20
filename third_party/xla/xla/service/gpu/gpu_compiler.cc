@@ -521,7 +521,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
         /*is_spmd=*/true, /*propagate_metadata=*/false,
         hlo_module->config().allow_spmd_sharding_propagation_to_output());
     spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
-        num_partitions, hlo_module->config().replica_count());
+        num_partitions, hlo_module->config().replica_count(),
+        debug_options.xla_gpu_threshold_for_windowed_einsum_mib());
     spmd_pipeline.AddPass<CollectivePermuteMotion>();
     TF_RETURN_IF_ERROR(spmd_pipeline.Run(hlo_module).status());
   } else {
@@ -1685,13 +1686,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   std::vector<BufferAllocation> allocations;
   if (res.compile_module_results.use_original_allocations) {
     if (!options.is_autotuning_compilation) {
-      std::vector<BufferAllocation> original_allocations =
-          buffer_assignment->ReleaseAllocations();
-      allocations = std::move(original_allocations);
+      allocations = buffer_assignment->ReleaseAllocations();
     } else {
-      std::vector<BufferAllocation> original_allocations =
+      allocations =
           res.compile_module_results.buffer_assignment->ReleaseAllocations();
-      allocations = std::move(original_allocations);
     }
   } else {
     allocations = std::move(res.compile_module_results.allocations);

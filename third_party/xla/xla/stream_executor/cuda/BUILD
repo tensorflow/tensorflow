@@ -1,8 +1,8 @@
 # Description:
 #   CUDA-platform specific StreamExecutor support code.
 
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load("//xla/tests:build_defs.bzl", "xla_test")
+load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load(
     "//xla:xla.bzl",
     "xla_cc_test",
@@ -390,6 +390,7 @@ cc_library(
         ":cuda_stream",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
@@ -558,7 +559,7 @@ cc_library(
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:plugin_registry",
-        "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor:stream_executor",
         "//xla/stream_executor:stream_executor_internal",
         "//xla/stream_executor/gpu:asm_compiler",
         "//xla/stream_executor/gpu:gpu_command_buffer",

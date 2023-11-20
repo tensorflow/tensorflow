@@ -107,6 +107,18 @@ bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
   return UnloadGpuBinary(gpu_binary);
 }
 
+namespace {
+int fpus_per_core(std::string gcn_arch_name) {
+  // Source:
+  // https://www.amd.com/content/dam/amd/en/documents/instinct-business-docs/white-papers/amd-cdna2-white-paper.pdf
+  int n = 128;  // gfx90a and gfx908 -> 128
+  if (gcn_arch_name.substr(0, 6) == "gfx906") {
+    n = 64;
+  }
+  return n;
+}
+}  // namespace
+
 tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 GpuExecutor::CreateOrShareConstant(Stream* stream,
                                    const std::vector<uint8_t>& content) {
@@ -893,6 +905,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
       GpuDriver::GetMaxSharedMemoryPerBlock(device).value());
   int core_count = GpuDriver::GetMultiprocessorCount(device).value();
   builder.set_core_count(core_count);
+  builder.set_fpus_per_core(fpus_per_core(gcn_arch_name));
   builder.set_threads_per_core_limit(
       GpuDriver::GetMaxThreadsPerMultiprocessor(device).value());
   builder.set_registers_per_block_limit(

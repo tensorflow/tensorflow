@@ -365,9 +365,15 @@ StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::Compile(
   auto* pjrt_compatible_client =
       llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(ifrt_client_.get());
   if (pjrt_compatible_client != nullptr) {
-    auto devices = pjrt_compatible_client->pjrt_client()->devices();
-    if (!devices.empty()) {
-      auto stats = devices[0]->GetAllocatorStats();
+    auto addressable_devices =
+        pjrt_compatible_client->pjrt_client()->addressable_devices();
+    if (!addressable_devices.empty()) {
+      int device_ordinal = options.executable_build_options.device_ordinal();
+      if (device_ordinal < 0) {
+        device_ordinal = 0;
+      }
+      CHECK_LT(device_ordinal, addressable_devices.size());
+      auto stats = addressable_devices[device_ordinal]->GetAllocatorStats();
       if (stats.ok() && stats->bytes_limit) {
         options.executable_build_options.set_device_memory_size(
             *stats->bytes_limit);

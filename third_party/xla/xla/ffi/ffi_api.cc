@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
 
 #include <cstddef>
 #include <string>
@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/call_frame.h"
@@ -46,6 +47,13 @@ struct XLA_FFI_ExecutionContext {
 //===----------------------------------------------------------------------===//
 
 namespace xla::ffi {
+
+//===----------------------------------------------------------------------===//
+// Calling XLA FFI handlers
+//===----------------------------------------------------------------------===//
+
+// WARNING: These functions defined in `call_frame.h` as we need to make them
+// available without having to depend on `ffi.h` header.
 
 Status TakeStatus(XLA_FFI_Error* error) {
   if (error == nullptr) return absl::OkStatus();
@@ -121,6 +129,8 @@ static Status ActualStructSizeIsGreaterOrEqual(std::string_view struct_name,
 
 static absl::StatusCode ToStatusCode(XLA_FFI_Error_Code errc) {
   switch (errc) {
+    case XLA_FFI_Error_Code_OK:
+      return absl::StatusCode::kOk;
     case XLA_FFI_Error_Code_CANCELLED:
       return absl::StatusCode::kCancelled;
     case XLA_FFI_Error_Code_UNKNOWN:

@@ -1121,7 +1121,7 @@ ENTRY e {
   EXPECT_EQ(module->entry_computation()->root_instruction()->fusion_kind(),
             HloInstruction::FusionKind::kCustom);
   EXPECT_LE(module->entry_computation()->root_instruction()->operand_count(),
-            TritonFusionAnalysis::kMaxParameterPerScope * 2);
+            TritonFusionAnalysis::kMaxParameterPerDotScope * 2);
 }
 
 TEST_F(GemmRewriterTritonLevel2Test,
@@ -1149,7 +1149,7 @@ ENTRY e {
   EXPECT_EQ(module->entry_computation()->root_instruction()->fusion_kind(),
             HloInstruction::FusionKind::kCustom);
   EXPECT_LE(module->entry_computation()->root_instruction()->operand_count(),
-            TritonFusionAnalysis::kMaxParameterPerScope + 1);
+            TritonFusionAnalysis::kMaxParameterPerDotScope + 1);
 }
 
 TEST_F(GemmRewriterTritonLevel2Test,

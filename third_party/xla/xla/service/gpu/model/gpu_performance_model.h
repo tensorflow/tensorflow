@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -63,25 +62,20 @@ struct GpuPerformanceModelOptions {
   // re-reads can happen from cache.
   bool first_read_from_dram = false;
 
-  // If present, use this to retrieve fusion analyses.
-  HloFusionAnalysisCache* fusion_analysis_cache = nullptr;
-
   static GpuPerformanceModelOptions Default() {
     return GpuPerformanceModelOptions();
   }
 
-  static GpuPerformanceModelOptions PriorityFusion(
-      HloFusionAnalysisCache* fusion_analysis_cache) {
+  static GpuPerformanceModelOptions PriorityFusion() {
     GpuPerformanceModelOptions config;
     config.consider_coalescing = true;
     config.first_read_from_dram = true;
-    config.fusion_analysis_cache = fusion_analysis_cache;
     return config;
   }
 
   static GpuPerformanceModelOptions ForModule(const HloModule* module) {
     return module->config().debug_options().xla_gpu_enable_priority_fusion()
-               ? PriorityFusion(nullptr)  // Only cache within priority fusion.
+               ? PriorityFusion()
                : Default();
   }
 };
@@ -127,7 +121,7 @@ class GpuPerformanceModel {
       const GpuHloCostAnalysis* cost_analysis,
       const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
       const HloInstruction* producer,
-      const std::optional<HloFusionAnalysis>& fusion_analysis,
+      std::optional<HloFusionAnalysis>& fusion_analysis,
       const GpuPerformanceModelOptions& config,
       const HloInstruction* fused_consumer = nullptr);
 };

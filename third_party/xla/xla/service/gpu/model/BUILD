@@ -67,34 +67,6 @@ xla_test(
 )
 
 cc_library(
-    name = "fusion_analysis_cache",
-    srcs = ["fusion_analysis_cache.cc"],
-    hdrs = ["fusion_analysis_cache.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//xla/hlo/ir:hlo",
-        "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/stream_executor:device_description",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-xla_cc_test(
-    name = "fusion_analysis_cache_test",
-    srcs = ["fusion_analysis_cache_test.cc"],
-    deps = [
-        ":fusion_analysis_cache",
-        "//xla/service:hlo_parser",
-        "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/stream_executor:device_description",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
-    ],
-)
-
-cc_library(
     name = "gpu_cost_model_stats_collection",
     srcs = ["gpu_cost_model_stats_collection.cc"],
     hdrs = ["gpu_cost_model_stats_collection.h"],
@@ -177,7 +149,6 @@ cc_library(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     visibility = ["//visibility:public"],
     deps = [
-        ":fusion_analysis_cache",
         ":gpu_hlo_cost_analysis",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
