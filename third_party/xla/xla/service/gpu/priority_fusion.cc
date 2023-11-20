@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/fusion_queue.h"
 #include "xla/service/gpu/fusion_process_dump.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/instruction_fusion.h"
@@ -466,8 +467,21 @@ FusionDecision GpuPriorityFusion::ShouldFuse(HloInstruction* consumer,
     return can_fuse;
   }
 
-  // Avoid cases where we'd create a fusion that hit limitations in ptxas. Would
-  // be nice to model this with cost instead.
+  // Avoid fusing reduce into reduce. Our cost model doesn't currently
+  // understand this case due to a lack of tiling analysis.
+  // TODO(b/312200883): Remove this.
+  auto contains_reduce = [&](const HloInstruction* instr) {
+    return HloAnyOf({instr}, MakeSingleInstructionFusion(*instr),
+                    [](const HloInstruction& node) {
+                      return node.opcode() == HloOpcode::kReduce;
+                    });
+  };
+  if (contains_reduce(producer) && contains_reduce(consumer)) {
+    return "both the producer and the consumer contain a reduce";
+  }
+
+  // Avoid cases where we'd create a fusion that hit limitations in ptxas.
+  // Would be nice to model this with cost instead.
   if (auto fits_budget =
           FusionFitsInBudget(*consumer, *producer, device_info_,
                              /*is_consumer_producer_fusion=*/true);

@@ -2083,6 +2083,7 @@ cc_library(
     deps = [
         ":fusion_process_dump_proto_cc",
         ":gpu_fusible",
+        ":hlo_traversal",
         "//xla:shape_util",
         "//xla:statusor",
         "//xla:xla_data_proto_cc",
