@@ -61,6 +61,8 @@ enum class DataType : uint8_t {
 template <typename T>
 class Span {
  public:
+  constexpr Span() : data_(nullptr), size_(0) {}
+
   Span(T* data, size_t size) : data_(data), size_(size) {}
   Span(const std::vector<std::remove_const_t<T>>& vec)  // NOLINT
       : Span(vec.data(), vec.size()) {}
