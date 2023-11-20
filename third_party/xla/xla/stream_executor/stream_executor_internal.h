@@ -31,6 +31,7 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -241,7 +242,7 @@ class StreamExecutorInterface {
     return absl::UnimplementedError("Not Implemented");
   }
   virtual tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
-  CreateOrShareConstant(Stream* stream, const std::vector<uint8_t>& content) {
+  CreateOrShareConstant(Stream* stream, absl::Span<const uint8_t> content) {
     return absl::UnimplementedError("Not Implemented");
   }
   virtual tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,

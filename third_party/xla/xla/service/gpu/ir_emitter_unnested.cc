@@ -83,6 +83,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout_util.h"
+#include "xla/literal.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -405,27 +406,19 @@ Status IrEmitterUnnested::EmitUnreachable(mlir::Operation* op,
   return OkStatus();
 }
 
-Status IrEmitterUnnested::EmitConstant(mlir::Operation* op) {
+Status IrEmitterUnnested::EmitConstant(mlir::Operation* op,
+                                       const Literal& literal) {
   auto get_global = mlir::cast<mlir::memref::GetGlobalOp>(op);
   auto module = get_global->getParentOfType<mlir::ModuleOp>();
   auto global = mlir::cast<mlir::memref::GlobalOp>(
       module.lookupSymbol(get_global.getName()));
-  auto literal = global.getInitialValue()->dyn_cast<mlir::DenseElementsAttr>();
-  TF_RET_CHECK(literal);
-  std::vector<uint8_t> content;
-  TF_RETURN_IF_ERROR(CopyDenseElementsDataToXlaFormat(literal, &content));
-  int num_elements, element_bytes;
-  if (literal.getType().getElementType().isInteger(4)) {
-    // Treat int4 constant as int8 constant with half the number of elements
-    TF_RET_CHECK(content.size() ==
-                 (literal.getType().getNumElements() + 1) / 2);
-    num_elements = content.size();
-    element_bytes = 1;
-  } else {
-    num_elements = literal.getType().getNumElements();
-    TF_ASSIGN_OR_RETURN(
-        element_bytes, GetElementTypeBytes(literal.getType().getElementType()));
-  }
+  TF_ASSIGN_OR_RETURN(DenseDataIntermediate content,
+                      LiteralToXlaFormat(literal));
+
+  int element_bytes = primitive_util::ByteWidth(literal.shape().element_type());
+  TF_RET_CHECK(content.span().size() % element_bytes == 0);
+  // Treat int4 constant as int8 constant with half the number of elements.
+  int num_elements = content.span().size() / element_bytes;
 
   int64_t arg_index =
       global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
@@ -433,7 +426,7 @@ Status IrEmitterUnnested::EmitConstant(mlir::Operation* op) {
 
   ir_emitter_context_->emit_constant(num_elements, element_bytes,
                                      global.getSymName(), allocation_index,
-                                     content, &b_);
+                                     std::move(content), &b_);
   return OkStatus();
 }
 
@@ -3375,7 +3368,10 @@ Status IrEmitterUnnested::EmitOp(
   }
 
   if (mlir::isa<mlir::memref::GetGlobalOp>(op)) {
-    return EmitConstant(op);
+    const HloConstantInstruction* hlo_const_instr =
+        DynCast<HloConstantInstruction>(hlo_for_lmhlo.at(op));
+    TF_RET_CHECK(hlo_const_instr);
+    return EmitConstant(op, hlo_const_instr->literal());
   }
 
   if (auto call = mlir::dyn_cast<mlir::lmhlo::CustomCallOp>(op)) {

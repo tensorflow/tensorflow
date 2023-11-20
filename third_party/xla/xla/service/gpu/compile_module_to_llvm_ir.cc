@@ -465,7 +465,7 @@ void RemoveUnusedAndUninitializedGlobals(
   for (const auto& info : constants) {
     // Empty content means the constant is initialized in the LLVM IR, so we
     // must not remove it.
-    if (!info.content.empty()) {
+    if (!info.content.span().empty()) {
       llvm::GlobalVariable* global =
           llvm_module->getGlobalVariable(info.symbol_name);
       CHECK(global != nullptr);

@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_driver.h"
@@ -346,7 +347,7 @@ int fpus_per_core(int cc_major, int cc_minor) {
 
 tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 GpuExecutor::CreateOrShareConstant(Stream* stream,
-                                   const std::vector<uint8_t>& content) {
+                                   absl::Span<const uint8_t> content) {
   absl::MutexLock lock{&shared_constants_mu_};
   // We assume all constants are uniquely identified by this hash. In the
   // (highly unlikely) event of a hash collision, the program will likely crash

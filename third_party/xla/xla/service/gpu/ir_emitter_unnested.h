@@ -127,7 +127,7 @@ class IrEmitterUnnested : public IrEmitter {
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter. It also mixes in some special handling for custom kernels
   // via the ThunkEmitter.
-  Status EmitConstant(mlir::Operation* op);
+  Status EmitConstant(mlir::Operation* op, const Literal& literal);
 
   Status EmitConditional(
       mlir::Operation* op,

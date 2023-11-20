@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/primitive_util.h"
@@ -1005,104 +1006,26 @@ bool IsAMDGPU(const llvm::Module* module) {
   return llvm::Triple(module->getTargetTriple()).isAMDGPU();
 }
 
-namespace {
-template <typename T>
-void CopyDenseElementsBy(mlir::DenseElementsAttr data,
-                         std::vector<uint8_t>* output) {
-  output->resize(data.getNumElements() * sizeof(T));
-  int64_t i = 0;
-  for (T element : data.getValues<T>()) {
-    std::memcpy(&(*output)[i], &element, sizeof(T));
-    i += sizeof(T);
+StatusOr<DenseDataIntermediate> LiteralToXlaFormat(const Literal& literal) {
+  PrimitiveType element_type = literal.shape().element_type();
+  if (!primitive_util::IsArrayType(element_type)) {
+    return Internal("Unsupported type in LiteralToXlaFormat");
   }
-}
 
-template <>
-void CopyDenseElementsBy<u4>(mlir::DenseElementsAttr data,
-                             std::vector<uint8_t>* output) {
-  output->resize(CeilOfRatio(data.getNumElements(), int64_t{2}));
-  absl::Span<char> output_span =
-      absl::MakeSpan(reinterpret_cast<char*>(output->data()), output->size());
-  PackInt4(data.getRawData(), output_span);
-}
-}  // namespace
+  int64_t byte_size = literal.size_bytes();
+  if (primitive_util::Is4BitType(element_type)) {
+    std::vector<uint8_t> output(CeilOfRatio(byte_size, int64_t{2}));
+    absl::Span<char> output_span =
+        absl::MakeSpan(reinterpret_cast<char*>(output.data()), output.size());
+    PackInt4(
+        absl::MakeSpan(reinterpret_cast<const char*>(literal.untyped_data()),
+                       byte_size),
+        output_span);
+    return DenseDataIntermediate::Own(std::move(output));
+  }
 
-Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
-                                        std::vector<uint8_t>* output) {
-  mlir::Type element_type = data.getType().getElementType();
-
-  // TODO(hinsu): Support remaining XLA primitive types.
-  if (element_type.isInteger(1)) {
-    CopyDenseElementsBy<bool>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isInteger(4)) {
-    CopyDenseElementsBy<u4>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isInteger(8)) {
-    CopyDenseElementsBy<uint8_t>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isInteger(16)) {
-    CopyDenseElementsBy<uint16_t>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isInteger(32)) {
-    CopyDenseElementsBy<uint32_t>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isInteger(64)) {
-    CopyDenseElementsBy<uint64_t>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isFloat8E5M2()) {
-    CopyDenseElementsBy<tsl::float8_e5m2>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isFloat8E4M3FN()) {
-    CopyDenseElementsBy<tsl::float8_e4m3fn>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isFloat8E4M3B11FNUZ()) {
-    CopyDenseElementsBy<tsl::float8_e4m3b11>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isFloat8E5M2FNUZ()) {
-    CopyDenseElementsBy<tsl::float8_e5m2fnuz>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isFloat8E4M3FNUZ()) {
-    CopyDenseElementsBy<tsl::float8_e4m3fnuz>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isBF16()) {
-    CopyDenseElementsBy<bfloat16>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isF16()) {
-    CopyDenseElementsBy<half>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isF32()) {
-    CopyDenseElementsBy<float>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isF64()) {
-    CopyDenseElementsBy<double>(data, output);
-    return OkStatus();
-  }
-  if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
-    if (complex_type.getElementType().isF32()) {
-      CopyDenseElementsBy<complex64>(data, output);
-      return OkStatus();
-    }
-    if (complex_type.getElementType().isF64()) {
-      CopyDenseElementsBy<complex128>(data, output);
-      return OkStatus();
-    }
-  }
-  return Internal("Unsupported type in CopyDenseElementsDataToXlaFormat");
+  return DenseDataIntermediate::Alias(absl::MakeSpan(
+      reinterpret_cast<const uint8_t*>(literal.untyped_data()), byte_size));
 }
 
 }  // namespace gpu

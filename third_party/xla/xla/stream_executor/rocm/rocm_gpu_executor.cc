@@ -121,7 +121,7 @@ int fpus_per_core(std::string gcn_arch_name) {
 
 tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 GpuExecutor::CreateOrShareConstant(Stream* stream,
-                                   const std::vector<uint8_t>& content) {
+                                   absl::Span<const uint8_t> content) {
   return tsl::errors::Unimplemented("Not implemented for ROCm");
 }
 

@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "xla/service/gpu/runtime/executable.h"
 #include "xla/service/gpu/thunk.h"
@@ -64,7 +65,7 @@ class GpuExecutable : public Executable {
 
   struct ConstantInfo {
     std::string symbol_name;
-    std::vector<uint8_t> content;
+    DenseDataIntermediate content;
     int allocation_index = -1;
   };
 

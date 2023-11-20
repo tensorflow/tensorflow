@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "mlir/Parser/Parser.h"  // from @llvm-project
@@ -337,19 +338,20 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
       VLOG(3) << "Resolved global " << info.symbol_name << " to "
               << global.opaque();
 
-      if (!info.content.empty()) {
+      if (!info.content.span().empty()) {
         // This means the constant did not have an initializer in the PTX and
         // therefore must be initialized by XLA here.
-        stream->ThenMemcpy(&global, info.content.data(), info.content.size());
+        stream->ThenMemcpy(&global, info.content.span().data(),
+                           info.content.span().size());
         submitted_mem_copies = true;
       }
     } else {
       // The constant was not defined in the PTX and therefore must be both
       // allocated and initialized by XLA here.
-      CHECK(!info.content.empty());
+      CHECK(!info.content.span().empty());
 
-      TF_ASSIGN_OR_RETURN(
-          auto shared, executor->CreateOrShareConstant(stream, info.content));
+      TF_ASSIGN_OR_RETURN(auto shared, executor->CreateOrShareConstant(
+                                           stream, info.content.span()));
       global = *shared;
       VLOG(3) << "Allocated (or shared) global " << info.symbol_name << " at "
               << global.opaque();
