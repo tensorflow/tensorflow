@@ -232,6 +232,7 @@ absl::Status P2PImplCommon(const ServiceExecutableRunOptions* run_options,
                            const DebugOptions* debug_options,
                            se::Stream* stream, CustomCall::RemainingArgs args,
                            int64_t group_mode, int64_t op_id,
+                           bool no_parallel_custom_call,
                            absl::Span<const int64_t> replica_group_offsets,
                            absl::Span<const int64_t> replica_group_values,
                            absl::Span<const int64_t> source_peers,
@@ -239,6 +240,7 @@ absl::Status P2PImplCommon(const ServiceExecutableRunOptions* run_options,
                            NcclP2PRunner runner,
                            DeviceBuffersGetter device_buffers_getter,
                            uint64_t stream_id) {
+  (void)no_parallel_custom_call;
   NcclExecuteParams params(*run_options, stream->parent());
 
   const std::string device_string =
@@ -287,12 +289,14 @@ absl::Status CollectivePermuteImpl(
     const DebugOptions* debug_options, CollectivesSupport* collectives,
     AsyncCollectivesSupport* async_collectives, CustomCall::RemainingArgs args,
     int32_t uid, int64_t group_mode, int64_t op_id, bool is_async,
+    bool no_parallel_custom_call,
     absl::Span<const int64_t> replica_group_offsets,
     absl::Span<const int64_t> replica_group_values,
     absl::Span<const int64_t> source_peers,
     absl::Span<const int64_t> target_peers) {
 #if XLA_ENABLE_XCCL
-  VLOG(3) << "Running CollectivePermute " << (is_async ? "(Async)" : "(Sync)");
+  VLOG(3) << "Running CollectivePermute " << (is_async ? "(Async) " : "(Sync) ")
+          << no_parallel_custom_call;
   return RunSyncOrAsync(
       run_options, collectives, async_collectives, uid, is_async,
       [&](se::Stream* stream) {
@@ -302,10 +306,10 @@ absl::Status CollectivePermuteImpl(
           return NcclMockImplCommon(stream);
         }
         return P2PImplCommon(run_options, debug_options, stream, args,
-                             group_mode, op_id, replica_group_offsets,
-                             replica_group_values, source_peers, target_peers,
-                             RunCollectivePermute, GetDeviceBufferPairs,
-                             GetStreamId(is_async));
+                             group_mode, op_id, no_parallel_custom_call,
+                             replica_group_offsets, replica_group_values,
+                             source_peers, target_peers, RunCollectivePermute,
+                             GetDeviceBufferPairs, GetStreamId(is_async));
       });
 #else   // XLA_ENABLE_XCCL
   return absl::InternalError("NCCL disabled");
@@ -324,6 +328,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
         .Attr<int64_t>("op_id")
         .Attr<bool>("is_async")
+        .Attr<bool>("no_parallel_custom_call")
         .Attr<absl::Span<const int64_t>>("replica_group_offsets")
         .Attr<absl::Span<const int64_t>>("replica_group_values")
         .Attr<absl::Span<const int64_t>>("source_peers")
@@ -339,7 +344,7 @@ static absl::Status P2PSendImpl(const ServiceExecutableRunOptions* run_options,
                                 AsyncCollectivesSupport* async_collectives,
                                 CustomCall::RemainingArgs args, int32_t uid,
                                 int64_t group_mode, int64_t op_id,
-                                bool is_async,
+                                bool is_async, bool no_parallel_custom_call,
                                 absl::Span<const int64_t> replica_group_offsets,
                                 absl::Span<const int64_t> replica_group_values,
                                 absl::Span<const int64_t> source_peers,
@@ -351,9 +356,10 @@ static absl::Status P2PSendImpl(const ServiceExecutableRunOptions* run_options,
       run_options, collectives, async_collectives, uid, is_async,
       [&](se::Stream* stream) {
         return P2PImplCommon(run_options, debug_options, stream, args,
-                             group_mode, op_id, replica_group_offsets,
-                             replica_group_values, source_peers, target_peers,
-                             RunSend, GetSingleArgAsDeviceBufferPair,
+                             group_mode, op_id, no_parallel_custom_call,
+                             replica_group_offsets, replica_group_values,
+                             source_peers, target_peers, RunSend,
+                             GetSingleArgAsDeviceBufferPair,
                              GetStreamId(is_async, kAsyncStreamP2P));
       },
       kAsyncStreamP2P);
@@ -374,6 +380,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
         .Attr<int64_t>("op_id")
         .Attr<bool>("is_async")
+        .Attr<bool>("no_parallel_custom_call")
         .Attr<absl::Span<const int64_t>>("replica_group_offsets")
         .Attr<absl::Span<const int64_t>>("replica_group_values")
         .Attr<absl::Span<const int64_t>>("source_peers")
@@ -389,7 +396,7 @@ static absl::Status P2PRecvImpl(const ServiceExecutableRunOptions* run_options,
                                 AsyncCollectivesSupport* async_collectives,
                                 CustomCall::RemainingArgs args, int32_t uid,
                                 int64_t group_mode, int64_t op_id,
-                                bool is_async,
+                                bool is_async, bool no_parallel_custom_call,
                                 absl::Span<const int64_t> replica_group_offsets,
                                 absl::Span<const int64_t> replica_group_values,
                                 absl::Span<const int64_t> source_peers,
@@ -401,9 +408,10 @@ static absl::Status P2PRecvImpl(const ServiceExecutableRunOptions* run_options,
       run_options, collectives, async_collectives, uid, is_async,
       [&](se::Stream* stream) {
         return P2PImplCommon(run_options, debug_options, stream, args,
-                             group_mode, op_id, replica_group_offsets,
-                             replica_group_values, source_peers, target_peers,
-                             RunRecv, GetSingleArgAsDeviceBufferPair,
+                             group_mode, op_id, no_parallel_custom_call,
+                             replica_group_offsets, replica_group_values,
+                             source_peers, target_peers, RunRecv,
+                             GetSingleArgAsDeviceBufferPair,
                              GetStreamId(is_async, kAsyncStreamP2P));
       },
       kAsyncStreamP2P);
@@ -424,6 +432,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
         .Attr<int64_t>("op_id")
         .Attr<bool>("is_async")
+        .Attr<bool>("no_parallel_custom_call")
         .Attr<absl::Span<const int64_t>>("replica_group_offsets")
         .Attr<absl::Span<const int64_t>>("replica_group_values")
         .Attr<absl::Span<const int64_t>>("source_peers")
@@ -439,9 +448,10 @@ absl::Status AllGatherImplCommon(
     const DebugOptions* debug_options, se::Stream* stream,
     CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
     absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values, bool is_async) {
+    absl::Span<const int64_t> replica_group_values, bool is_async,
+    bool no_parallel_custom_call) {
   NcclExecuteParams params(*run_options, stream->parent());
-
+  (void)no_parallel_custom_call;
   TF_ASSIGN_OR_RETURN(
       auto comm,
       GetNcclComm(params, group_mode, op_id, replica_group_offsets,
@@ -462,10 +472,12 @@ absl::Status AllGatherImpl(const ServiceExecutableRunOptions* run_options,
                            AsyncCollectivesSupport* async_collectives,
                            CustomCall::RemainingArgs args, int32_t uid,
                            int64_t group_mode, int64_t op_id, bool is_async,
+                           bool no_parallel_custom_call,
                            absl::Span<const int64_t> replica_group_offsets,
                            absl::Span<const int64_t> replica_group_values) {
 #if XLA_ENABLE_XCCL
-  VLOG(3) << "Running AllGather " << (is_async ? "(Async)" : "(Sync)");
+  VLOG(3) << "Running AllGather " << (is_async ? "(Async) " : "(Sync) ")
+          << no_parallel_custom_call;
   return RunSyncOrAsync(
       run_options, collectives, async_collectives, uid, is_async,
       [&](se::Stream* stream) {
@@ -476,7 +488,8 @@ absl::Status AllGatherImpl(const ServiceExecutableRunOptions* run_options,
         }
         return AllGatherImplCommon(run_options, debug_options, stream, args,
                                    group_mode, op_id, replica_group_offsets,
-                                   replica_group_values, is_async);
+                                   replica_group_values, is_async,
+                                   no_parallel_custom_call);
       });
 #else   // XLA_ENABLE_XCCL
   return absl::InternalError("NCCL diasbled");
@@ -495,6 +508,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
         .Attr<int64_t>("op_id")
         .Attr<bool>("is_async")
+        .Attr<bool>("no_parallel_custom_call")
         .Attr<absl::Span<const int64_t>>("replica_group_offsets")
         .Attr<absl::Span<const int64_t>>("replica_group_values"));
 
@@ -508,7 +522,9 @@ absl::Status AllReduceImplCommon(
     const DebugOptions* debug_options, se::Stream* stream,
     CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
     int64_t reduction_kind, absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values, bool is_async) {
+    absl::Span<const int64_t> replica_group_values, bool is_async,
+    bool no_parallel_custom_call) {
+  (void)no_parallel_custom_call;
   NcclExecuteParams params(*run_options, stream->parent());
 
   TF_ASSIGN_OR_RETURN(
@@ -533,11 +549,12 @@ absl::Status AllReduceImpl(const ServiceExecutableRunOptions* run_options,
                            AsyncCollectivesSupport* async_collectives,
                            CustomCall::RemainingArgs args, int32_t uid,
                            int64_t group_mode, int64_t op_id, bool is_async,
-                           int64_t reduction_kind,
+                           bool no_parallel_custom_call, int64_t reduction_kind,
                            absl::Span<const int64_t> replica_group_offsets,
                            absl::Span<const int64_t> replica_group_values) {
 #if XLA_ENABLE_XCCL
-  VLOG(3) << "Running AllReduce " << (is_async ? "(Async)" : "(Sync)");
+  VLOG(3) << "Running AllReduce " << (is_async ? "(Async) " : "(Sync) ")
+          << no_parallel_custom_call;
   return RunSyncOrAsync(
       run_options, collectives, async_collectives, uid, is_async,
       [&](se::Stream* stream) {
@@ -549,7 +566,7 @@ absl::Status AllReduceImpl(const ServiceExecutableRunOptions* run_options,
         return AllReduceImplCommon(run_options, debug_options, stream, args,
                                    group_mode, op_id, reduction_kind,
                                    replica_group_offsets, replica_group_values,
-                                   is_async);
+                                   is_async, no_parallel_custom_call);
       });
 #else   // XLA_ENABLE_XCCL
   // NCCL disabled.
@@ -569,6 +586,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
         .Attr<int64_t>("op_id")
         .Attr<bool>("is_async")
+        .Attr<bool>("no_parallel_custom_call")
         .Attr<int64_t>("reduction_kind")  // ReductionKind
         .Attr<absl::Span<const int64_t>>("replica_group_offsets")
         .Attr<absl::Span<const int64_t>>("replica_group_values"));
@@ -586,7 +604,8 @@ absl::Status AllToAllImplCommon(const ServiceExecutableRunOptions* run_options,
                                 int64_t op_id,
                                 absl::Span<const int64_t> replica_group_offsets,
                                 absl::Span<const int64_t> replica_group_values,
-                                bool is_async) {
+                                bool is_async, bool no_parallel_custom_call) {
+  (void)no_parallel_custom_call;
   NcclExecuteParams params(*run_options, stream->parent());
 
   TF_ASSIGN_OR_RETURN(
@@ -611,10 +630,12 @@ absl::Status AllToAllImpl(const ServiceExecutableRunOptions* run_options,
                           CustomCall::RemainingArgs args, int32_t uid,
                           int64_t group_mode, bool has_split_dimension,
                           int64_t op_id, bool is_async,
+                          bool no_parallel_custom_call,
                           absl::Span<const int64_t> replica_group_offsets,
                           absl::Span<const int64_t> replica_group_values) {
 #if XLA_ENABLE_XCCL
-  VLOG(3) << "Running AllToAll " << (is_async ? "(Async)" : "(Sync)");
+  VLOG(3) << "Running AllToAll " << (is_async ? "(Async) " : "(Sync) ")
+          << no_parallel_custom_call;
   return RunSyncOrAsync(
       run_options, collectives, async_collectives, uid, is_async,
       [&](se::Stream* stream) {
@@ -626,7 +647,7 @@ absl::Status AllToAllImpl(const ServiceExecutableRunOptions* run_options,
         return AllToAllImplCommon(run_options, debug_options, stream, args,
                                   group_mode, has_split_dimension, op_id,
                                   replica_group_offsets, replica_group_values,
-                                  is_async);
+                                  is_async, no_parallel_custom_call);
       });
 #else   // XLA_ENABLE_XCCL
   return absl::InternalError("NCCL disabled");
@@ -646,6 +667,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<bool>("has_split_dimension")
         .Attr<int64_t>("op_id")
         .Attr<bool>("is_async")
+        .Attr<bool>("no_parallel_custom_call")
         .Attr<absl::Span<const int64_t>>("replica_group_offsets")
         .Attr<absl::Span<const int64_t>>("replica_group_values"));
 
@@ -659,7 +681,9 @@ absl::Status ReduceScatterImplCommon(
     const DebugOptions* debug_options, se::Stream* stream,
     CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
     int64_t reduction_kind, absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values, bool is_async) {
+    absl::Span<const int64_t> replica_group_values, bool is_async,
+    bool no_parallel_custom_call) {
+  (void)no_parallel_custom_call;
   NcclExecuteParams params(*run_options, stream->parent());
 
   TF_ASSIGN_OR_RETURN(
@@ -684,11 +708,13 @@ absl::Status ReduceScatterImpl(const ServiceExecutableRunOptions* run_options,
                                AsyncCollectivesSupport* async_collectives,
                                CustomCall::RemainingArgs args, int32_t uid,
                                int64_t group_mode, int64_t op_id, bool is_async,
+                               bool no_parallel_custom_call,
                                int64_t reduction_kind,
                                absl::Span<const int64_t> replica_group_offsets,
                                absl::Span<const int64_t> replica_group_values) {
 #if XLA_ENABLE_XCCL
-  VLOG(3) << "Running ReduceScatter " << (is_async ? "(Async)" : "(Sync)");
+  VLOG(3) << "Running ReduceScatter " << (is_async ? "(Async) " : "(Sync) ")
+          << no_parallel_custom_call;
   return RunSyncOrAsync(
       run_options, collectives, async_collectives, uid, is_async,
       [&](se::Stream* stream) {
@@ -697,10 +723,10 @@ absl::Status ReduceScatterImpl(const ServiceExecutableRunOptions* run_options,
         if (gpu_opts && gpu_opts->enable_mock_nccl_collectives()) {
           return NcclMockImplCommon(stream);
         }
-        return ReduceScatterImplCommon(run_options, debug_options, stream, args,
-                                       group_mode, op_id, reduction_kind,
-                                       replica_group_offsets,
-                                       replica_group_values, is_async);
+        return ReduceScatterImplCommon(
+            run_options, debug_options, stream, args, group_mode, op_id,
+            reduction_kind, replica_group_offsets, replica_group_values,
+            is_async, no_parallel_custom_call);
       });
 #else   // XLA_ENABLE_XCCL
   return absl::InternalError("NCCL disabled");
@@ -719,6 +745,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
         .Attr<int64_t>("op_id")
         .Attr<bool>("is_async")
+        .Attr<bool>("no_parallel_custom_call")
         .Attr<int64_t>("reduction_kind")  // ReductionKind
         .Attr<absl::Span<const int64_t>>("replica_group_offsets")
         .Attr<absl::Span<const int64_t>>("replica_group_values"));
