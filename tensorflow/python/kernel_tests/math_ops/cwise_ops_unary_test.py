@@ -445,8 +445,6 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, compute_f32(np.vectorize(math.erfc)), math_ops.erfc)
     self._compareBoth(x, compute_f32(np.square), math_ops.square)
 
-  @test.disable_with_predicate(
-      pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")
   def testInt8Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int8)
     self._compareCpu(x, np.abs, math_ops.abs)
@@ -455,14 +453,10 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.negative, _NEG)
     self._compareBoth(x, np.sign, math_ops.sign)
 
-  @test.disable_with_predicate(
-      pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")
   def testUInt8Basic(self):
     x = np.arange(6).reshape(1, 3, 2).astype(np.uint8)
     self._compareBoth(x, np.square, math_ops.square)
 
-  @test.disable_with_predicate(
-      pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")
   def testInt16Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int16)
     self._compareCpu(x, np.abs, math_ops.abs)
@@ -471,8 +465,6 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.negative, _NEG)
     self._compareBoth(x, np.sign, math_ops.sign)
 
-  @test.disable_with_predicate(
-      pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")
   def testUInt16Basic(self):
     x = np.arange(6).reshape(1, 3, 2).astype(np.uint16)
     self._compareBoth(x, np.square, math_ops.square)
@@ -491,8 +483,6 @@ class UnaryOpTest(test.TestCase):
     self._compareBothSparse(x, np.square, math_ops.square)
     self._compareBothSparse(x, np.sign, math_ops.sign)
 
-  @test.disable_with_predicate(
-      pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")
   def testUInt32Basic(self):
     x = np.arange(6).reshape(1, 3, 2).astype(np.uint32)
     self._compareBoth(x, np.square, math_ops.square)
@@ -514,8 +504,6 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.square, math_ops.square)
     self._compareBothSparse(x, np.square, math_ops.square)
 
-  @test.disable_with_predicate(
-      pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")
   def testUInt64Basic(self):
     x = np.arange(6).reshape(1, 3, 2).astype(np.uint64)
     self._compareBoth(x, np.square, math_ops.square)
