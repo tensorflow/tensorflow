@@ -647,6 +647,47 @@ CHECK:        }
               tsl::testing::IsOkAndHolds(true));
 }
 
+TEST_F(TritonFilecheckTest, PredParametersAreTruncatedToI1) {
+  const std::string kHloText = R"(
+HloModule m
+
+triton_gemm_computation {
+  p = pred[2,2]{1,0} parameter(0)
+  a = f32[2,2]{1,0} parameter(1)
+  b = f32[2,2]{1,0} parameter(2)
+  c = f32[2,2]{1,0} parameter(3)
+  compare = pred[2,2]{1,0} compare(a, b), direction=LT
+  and = pred[2,2]{1,0} and(p, compare)
+  convert = f32[2,2]{1,0} convert(and)
+  ROOT r = f32[2,2]{1,0} dot(convert, c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p = pred[2,2]{1,0} parameter(0)
+  a = f32[2,2]{1,0} parameter(1)
+  b = f32[2,2]{1,0} parameter(2)
+  c = f32[2,2]{1,0} parameter(3)
+  ROOT triton_gemm = f32[2,2]{1,0} fusion(p, a, b, c), kind=kCustom,
+    calls=triton_gemm_computation,
+    backend_config={kind: "__triton_gemm",
+      triton_gemm_config: {
+        "block_m":16,"block_n":16,"block_k":16,
+        "split_k":1,"num_stages":1,"num_warps":1
+      }
+    }
+}
+)";
+  TritonGemmConfig config(16, 16, 16, 1, 1, 1);
+  ASSERT_THAT(CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul,
+                                         "triton_gemm_computation", R"(
+CHECK: %[[LOAD:.*]] = tt.load %{{.*}} {{.*}} : !tt.ptr<tensor<16x16xi8>, 1> -> tensor<16x16xi8>
+CHECK: %[[TRUNCI:.*]] = arith.trunci %[[LOAD]] : tensor<16x16xi8> to tensor<16x16xi1>
+CHECK: %{{.*}} = arith.andi %[[TRUNCI]], %{{.*}} : tensor<16x16xi1>
+)"),
+              tsl::testing::IsOkAndHolds(true));
+}
+
 TEST_F(TritonGemmTest, DoNotUseTensorCoresWithNonDefaultPrecision) {
   const std::string kHloText = R"(
 triton_gemm_r {
@@ -2141,6 +2182,32 @@ ENTRY e {
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonGemmLevel2Test, SupportPredParametersUsedInExpressions) {
+  const std::string kHloText = R"(
+ENTRY e {
+  p = pred[2,2]{1,0} parameter(0)
+  a = f32[2,2]{1,0} parameter(1)
+  b = f32[2,2]{1,0} parameter(2)
+  c = f32[2,2]{1,0} parameter(3)
+  compare = pred[2,2]{1,0} compare(a, b), direction=LT
+  and = pred[2,2]{1,0} and(p, compare)
+  convert = f32[2,2]{1,0} convert(and)
+  ROOT r = f32[2,2]{1,0} dot(convert, c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter(),
+                           m::Parameter())
+                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
 }
 
 TEST_F(TritonGemmTest, Naming) {
