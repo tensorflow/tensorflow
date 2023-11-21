@@ -165,6 +165,72 @@ class PjRtCApiDevice : public PjRtDevice {
   std::vector<PjRtMemorySpace*> memory_spaces_;
 };
 
+class PjRtCApiCompiler : public PjRtCompiler {
+ public:
+  explicit PjRtCApiCompiler(const PJRT_Api* c_api) : c_api_(c_api) {}
+
+  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      CompileOptions options, const XlaComputation& computation,
+      const PjRtTopologyDescription& topology, PjRtClient* client) override;
+
+  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      CompileOptions options, mlir::ModuleOp module,
+      const PjRtTopologyDescription& topology, PjRtClient* client) override;
+
+ private:
+  const PJRT_Api* c_api_;
+};
+
+class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
+ public:
+  PjRtCApiTopologyDescription(const PJRT_Api* c_api,
+                              PJRT_TopologyDescription* c_topology, bool owned);
+
+  // Does not take ownership of `c_topology`.
+  PjRtCApiTopologyDescription(const PJRT_Api* c_api,
+                              const PJRT_TopologyDescription* c_topology);
+
+  PjRtPlatformId platform_id() const override {
+    CHECK(false) << "PJRT C API does not support platform_id.";
+  }
+
+  absl::string_view platform_name() const override;
+
+  absl::string_view platform_version() const override;
+
+  std::optional<PjRtCompiler*> compiler() const override {
+    return compiler_.get();
+  }
+
+  PJRT_TopologyDescription* c_topology() const { return c_topology_; }
+
+  std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
+      const override;
+
+  absl::StatusOr<std::string> Serialize() const override;
+
+  // Returns vendor specific attributes about the topology.
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    return attributes_;
+  }
+
+ private:
+  std::unique_ptr<PjRtCApiCompiler> compiler_;
+  const PJRT_Api* c_api_;
+  // nullptr iff the PJRT_TopologyDescription isn't owned by this wrapper
+  // (i.e. by the caller).
+  std::unique_ptr<PJRT_TopologyDescription,
+                  ::pjrt::PJRT_TopologyDescriptionDeleter>
+      owned_c_topology_;
+  PJRT_TopologyDescription* c_topology_;
+  // Device specific attributes with corresponding values.
+  absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
+
+  // Initializes device specific attributes.
+  void InitAttributes();
+};
+
 class PjRtCApiClient : public PjRtClient {
  public:
   PjRtCApiClient(
@@ -224,6 +290,9 @@ class PjRtCApiClient : public PjRtClient {
     return Unimplemented(
         "PJRT C API does not support CreateUninitializedBuffer");
   }
+
+  StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
+      const override;
 
   StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
@@ -352,6 +421,10 @@ class PjRtCApiClient : public PjRtClient {
   // supported.
   std::vector<PjRtMemorySpace*> addressable_memory_spaces_;
   absl::flat_hash_map<PJRT_Memory*, PjRtCApiMemorySpace*> c_to_cpp_memory_map_;
+  // There may be an error fetching the topology desc via the C API
+  // (e.g. unimplemented). Save the error during client init so we can return it
+  // from GetTopologyDescription().
+  StatusOr<const PjRtCApiTopologyDescription> topo_desc_;
 
   const std::string platform_version_;
   const std::string platform_name_;
@@ -518,6 +591,8 @@ class PjRtCApiExecutable : public PjRtExecutable {
 
   StatusOr<std::string> SerializeExecutable() const override;
 
+  StatusOr<std::string> FingerprintExecutable() const override;
+
  private:
   const PJRT_Api* c_api_;
   std::unique_ptr<PJRT_Executable, ::pjrt::PJRT_ExecutableDeleter> executable_;
@@ -661,67 +736,6 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   std::vector<PjRtDevice*> addressable_devices_;
 
   void InitDevices();
-};
-
-class PjRtCApiCompiler : public PjRtCompiler {
- public:
-  explicit PjRtCApiCompiler(const PJRT_Api* c_api) : c_api_(c_api) {}
-
-  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      CompileOptions options, const XlaComputation& computation,
-      const PjRtTopologyDescription& topology, PjRtClient* client) override;
-
-  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      CompileOptions options, mlir::ModuleOp module,
-      const PjRtTopologyDescription& topology, PjRtClient* client) override;
-
- private:
-  const PJRT_Api* c_api_;
-};
-
-class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
- public:
-  PjRtCApiTopologyDescription(const PJRT_Api* c_api,
-                              PJRT_TopologyDescription* c_topology);
-
-  PjRtPlatformId platform_id() const override {
-    CHECK(false) << "PJRT C API does not support platform_id.";
-  }
-
-  absl::string_view platform_name() const override;
-
-  absl::string_view platform_version() const override;
-
-  std::optional<PjRtCompiler*> compiler() const override {
-    return compiler_.get();
-  }
-
-  const PJRT_TopologyDescription* c_topology() const {
-    return c_topology_.get();
-  }
-
-  std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
-      const override;
-
-  absl::StatusOr<std::string> Serialize() const override;
-
-  // Returns vendor specific attributes about the topology.
-  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-      const override {
-    return attributes_;
-  }
-
- private:
-  std::unique_ptr<PjRtCApiCompiler> compiler_;
-  const PJRT_Api* c_api_;
-  std::unique_ptr<PJRT_TopologyDescription,
-                  ::pjrt::PJRT_TopologyDescriptionDeleter>
-      c_topology_;
-  // Device specific attributes with corresponding values.
-  absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
-
-  // Initializes device specific attributes.
-  void InitAttributes();
 };
 
 class CApiCopyToDeviceStream : public CopyToDeviceStream {

@@ -159,6 +159,28 @@ cc_library(
 )
 
 cc_library(
+    name = "fft_thunk",
+    srcs = ["fft_thunk.cc"],
+    hdrs = ["fft_thunk.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:types",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/service/gpu:thunk",
+        "//xla/stream_executor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:status",
+    ],
+)
+
+cc_library(
     name = "triangular_solve_thunk",
     srcs = if_gpu_is_configured(["triangular_solve_thunk.cc"]),
     hdrs = if_gpu_is_configured(["triangular_solve_thunk.h"]),

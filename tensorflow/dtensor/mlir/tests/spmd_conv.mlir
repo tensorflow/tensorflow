@@ -221,8 +221,8 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK:         "tf_device.cluster"
 
   // Build left halo on height dim.
-  // CHECK:           %[[SLICE_H_LEFT_BEGIN:.*]] = "tf.Const"() {value = dense<[0, 3, 0, 0]> : tensor<4xi32>} : () -> tensor<4xi32>
-  // CHECK-NEXT:      %[[SLICE_H_LEFT_SIZE:.*]] = "tf.Const"() {value = dense<[8, 1, 4, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // CHECK:           %[[SLICE_H_LEFT_BEGIN:.*]] = "tf.Const"() <{value = dense<[0, 3, 0, 0]> : tensor<4xi32>}> : () -> tensor<4xi32>
+  // CHECK-NEXT:      %[[SLICE_H_LEFT_SIZE:.*]] = "tf.Const"() <{value = dense<[8, 1, 4, 3]> : tensor<4xi32>}> : () -> tensor<4xi32>
   // CHECK-NEXT:      %[[SLICE_H_LEFT:.*]] = "tf.Slice"(%arg1, %[[SLICE_H_LEFT_BEGIN]], %[[SLICE_H_LEFT_SIZE]])
   // CHECK-SAME:          (tensor<8x4x4x3xf32>, tensor<4xi32>, tensor<4xi32>) -> tensor<8x1x4x3xf32>
   // CHECK-NEXT:      %[[HALO_H_LEFT:.*]] = "tf.SelectV2"
@@ -231,8 +231,8 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[EXCHANGED_HALO_H_LEFT:.*]] = "tf.CollectivePermute"(%[[HALO_H_LEFT]], %[[PAIRS_H_LEFT]])
   // CHECK-SAME:          (tensor<8x1x4x3xf32>, tensor<4x2xi32>) -> tensor<8x1x4x3xf32>
   // Build right halo on height dim.
-  // CHECK:           %[[SLICE_H_RIGHT_BEGIN:.*]] = "tf.Const"() {value = dense<0> : tensor<4xi32>} : () -> tensor<4xi32>
-  // CHECK-NEXT:      %[[SLICE_H_RIGHT_SIZE:.*]] = "tf.Const"() {value = dense<[8, 1, 4, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // CHECK:           %[[SLICE_H_RIGHT_BEGIN:.*]] = "tf.Const"() <{value = dense<0> : tensor<4xi32>}> : () -> tensor<4xi32>
+  // CHECK-NEXT:      %[[SLICE_H_RIGHT_SIZE:.*]] = "tf.Const"() <{value = dense<[8, 1, 4, 3]> : tensor<4xi32>}> : () -> tensor<4xi32>
   // CHECK-NEXT:      %[[SLICE_H_RIGHT:.*]] = "tf.Slice"(%arg1, %[[SLICE_H_RIGHT_BEGIN]], %[[SLICE_H_RIGHT_SIZE]])
   // CHECK-SAME:          (tensor<8x4x4x3xf32>, tensor<4xi32>, tensor<4xi32>) -> tensor<8x1x4x3xf32>
   // CHECK-NEXT:      %[[HALO_H_RIGHT:.*]] = "tf.SelectV2"
@@ -241,13 +241,13 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[EXCHANGED_HALO_H_RIGHT:.*]] = "tf.CollectivePermute"(%[[HALO_H_RIGHT]], %[[PAIRS_H_RIGHT]])
   // CHECK-SAME:          (tensor<8x1x4x3xf32>, tensor<4x2xi32>) -> tensor<8x1x4x3xf32>
   // Concat the halos with the shard on the height dim.
-  // CHECK-NEXT:      %[[CONCAT_H_AXIS:.*]] = "tf.Const"() {value = dense<1> : tensor<i64>} : () -> tensor<i64>
+  // CHECK-NEXT:      %[[CONCAT_H_AXIS:.*]] = "tf.Const"() <{value = dense<1> : tensor<i64>}> : () -> tensor<i64>
   // CHECK-NEXT:      %[[CONCAT_H_TENSOR:.*]] = "tf.ConcatV2"(%[[EXCHANGED_HALO_H_LEFT]], %arg1, %[[EXCHANGED_HALO_H_RIGHT]], %[[CONCAT_H_AXIS]])
   // CHECK-SAME:          (tensor<8x1x4x3xf32>, tensor<8x4x4x3xf32>, tensor<8x1x4x3xf32>, tensor<i64>) -> tensor<8x6x4x3xf32>
 
   // Build left halo on width dim.
-  // CHECK:           %[[SLICE_W_LEFT_BEGIN:.*]] = "tf.Const"() {value = dense<[0, 0, 3, 0]> : tensor<4xi32>} : () -> tensor<4xi32>
-  // CHECK-NEXT:      %[[SLICE_W_LEFT_SIZE:.*]] = "tf.Const"() {value = dense<[8, 6, 1, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // CHECK:           %[[SLICE_W_LEFT_BEGIN:.*]] = "tf.Const"() <{value = dense<[0, 0, 3, 0]> : tensor<4xi32>}> : () -> tensor<4xi32>
+  // CHECK-NEXT:      %[[SLICE_W_LEFT_SIZE:.*]] = "tf.Const"() <{value = dense<[8, 6, 1, 3]> : tensor<4xi32>}> : () -> tensor<4xi32>
   // CHECK-NEXT:      %[[SLICE_W_LEFT:.*]] = "tf.Slice"(%[[CONCAT_H_TENSOR]], %[[SLICE_W_LEFT_BEGIN]], %[[SLICE_W_LEFT_SIZE]])
   // CHECK-SAME:          (tensor<8x6x4x3xf32>, tensor<4xi32>, tensor<4xi32>) -> tensor<8x6x1x3xf32>
   // CHECK-NEXT:      %[[HALO_W_LEFT:.*]] = "tf.SelectV2"
@@ -256,8 +256,8 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[EXCHANGED_HALO_W_LEFT:.*]] = "tf.CollectivePermute"(%[[HALO_W_LEFT]], %[[PAIRS_W_LEFT]])
   // CHECK-SAME:          (tensor<8x6x1x3xf32>, tensor<4x2xi32>) -> tensor<8x6x1x3xf32>
   // Build right halo on width dim.
-  // CHECK:           %[[SLICE_W_RIGHT_BEGIN:.*]] = "tf.Const"() {value = dense<0> : tensor<4xi32>} : () -> tensor<4xi32>
-  // CHECK-NEXT:      %[[SLICE_W_RIGHT_SIZE:.*]] = "tf.Const"() {value = dense<[8, 6, 1, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // CHECK:           %[[SLICE_W_RIGHT_BEGIN:.*]] = "tf.Const"() <{value = dense<0> : tensor<4xi32>}> : () -> tensor<4xi32>
+  // CHECK-NEXT:      %[[SLICE_W_RIGHT_SIZE:.*]] = "tf.Const"() <{value = dense<[8, 6, 1, 3]> : tensor<4xi32>}> : () -> tensor<4xi32>
   // CHECK-NEXT:      %[[SLICE_W_RIGHT:.*]] = "tf.Slice"(%[[CONCAT_H_TENSOR]], %[[SLICE_W_RIGHT_BEGIN]], %[[SLICE_W_RIGHT_SIZE]])
   // CHECK-SAME:          (tensor<8x6x4x3xf32>, tensor<4xi32>, tensor<4xi32>) -> tensor<8x6x1x3xf32>
   // CHECK-NEXT:      %[[HALO_W_RIGHT:.*]] = "tf.SelectV2"
@@ -266,7 +266,7 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[EXCHANGED_HALO_W_RIGHT:.*]] = "tf.CollectivePermute"(%[[HALO_W_RIGHT]], %[[PAIRS_W_RIGHT]])
   // CHECK-SAME:          (tensor<8x6x1x3xf32>, tensor<4x2xi32>) -> tensor<8x6x1x3xf32>
   // Concat the halos with the shard on the width dim.
-  // CHECK-NEXT:      %[[CONCAT_W_AXIS:.*]] = "tf.Const"() {value = dense<2> : tensor<i64>} : () -> tensor<i64>
+  // CHECK-NEXT:      %[[CONCAT_W_AXIS:.*]] = "tf.Const"() <{value = dense<2> : tensor<i64>}> : () -> tensor<i64>
   // CHECK-NEXT:      %[[CONCAT_HW_TENSOR:.*]] = "tf.ConcatV2"(%[[EXCHANGED_HALO_W_LEFT]], %[[CONCAT_H_TENSOR]], %[[EXCHANGED_HALO_W_RIGHT]], %[[CONCAT_W_AXIS]])
   // CHECK-SAME:          (tensor<8x6x1x3xf32>, tensor<8x6x4x3xf32>, tensor<8x6x1x3xf32>, tensor<i64>) -> tensor<8x6x6x3xf32>
 
@@ -293,8 +293,8 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK:         "tf_device.cluster"
 
   // Build left halo on depth dim.
-  // CHECK:           %[[SLICE_D_LEFT_BEGIN:.*]] = "tf.Const"() {value = dense<[0, 3, 0, 0, 0]> : tensor<5xi32>} : () -> tensor<5xi32>
-  // CHECK-NEXT:      %[[SLICE_D_LEFT_SIZE:.*]] = "tf.Const"() {value = dense<[8, 1, 4, 4, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
+  // CHECK:           %[[SLICE_D_LEFT_BEGIN:.*]] = "tf.Const"() <{value = dense<[0, 3, 0, 0, 0]> : tensor<5xi32>}> : () -> tensor<5xi32>
+  // CHECK-NEXT:      %[[SLICE_D_LEFT_SIZE:.*]] = "tf.Const"() <{value = dense<[8, 1, 4, 4, 3]> : tensor<5xi32>}> : () -> tensor<5xi32>
   // CHECK-NEXT:      %[[SLICE_D_LEFT:.*]] = "tf.Slice"(%arg1, %[[SLICE_D_LEFT_BEGIN]], %[[SLICE_D_LEFT_SIZE]])
   // CHECK-SAME:          (tensor<8x4x4x4x3xf32>, tensor<5xi32>, tensor<5xi32>) -> tensor<8x1x4x4x3xf32>
   // CHECK-NEXT:      %[[HALO_D_LEFT:.*]] = "tf.SelectV2"
@@ -303,8 +303,8 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[EXCHANGED_HALO_D_LEFT:.*]] = "tf.CollectivePermute"(%[[HALO_D_LEFT]], %[[PAIRS_D_LEFT]])
   // CHECK-SAME:          (tensor<8x1x4x4x3xf32>, tensor<8x2xi32>) -> tensor<8x1x4x4x3xf32>
   // Build right halo on depth dim.
-  // CHECK:           %[[SLICE_D_RIGHT_BEGIN:.*]] = "tf.Const"() {value = dense<0> : tensor<5xi32>} : () -> tensor<5xi32>
-  // CHECK-NEXT:      %[[SLICE_D_RIGHT_SIZE:.*]] = "tf.Const"() {value = dense<[8, 1, 4, 4, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
+  // CHECK:           %[[SLICE_D_RIGHT_BEGIN:.*]] = "tf.Const"() <{value = dense<0> : tensor<5xi32>}> : () -> tensor<5xi32>
+  // CHECK-NEXT:      %[[SLICE_D_RIGHT_SIZE:.*]] = "tf.Const"() <{value = dense<[8, 1, 4, 4, 3]> : tensor<5xi32>}> : () -> tensor<5xi32>
   // CHECK-NEXT:      %[[SLICE_D_RIGHT:.*]] = "tf.Slice"(%arg1, %[[SLICE_D_RIGHT_BEGIN]], %[[SLICE_D_RIGHT_SIZE]])
   // CHECK-SAME:          (tensor<8x4x4x4x3xf32>, tensor<5xi32>, tensor<5xi32>) -> tensor<8x1x4x4x3xf32>
   // CHECK-NEXT:      %[[HALO_D_RIGHT:.*]] = "tf.SelectV2"
@@ -313,13 +313,13 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[EXCHANGED_HALO_D_RIGHT:.*]] = "tf.CollectivePermute"(%[[HALO_D_RIGHT]], %[[PAIRS_D_RIGHT]])
   // CHECK-SAME:          (tensor<8x1x4x4x3xf32>, tensor<8x2xi32>) -> tensor<8x1x4x4x3xf32>
   // Concat the halos with the shard on the depth dim.
-  // CHECK-NEXT:      %[[CONCAT_D_AXIS:.*]] = "tf.Const"() {value = dense<1> : tensor<i64>} : () -> tensor<i64>
+  // CHECK-NEXT:      %[[CONCAT_D_AXIS:.*]] = "tf.Const"() <{value = dense<1> : tensor<i64>}> : () -> tensor<i64>
   // CHECK-NEXT:      %[[CONCAT_D_TENSOR:.*]] = "tf.ConcatV2"(%[[EXCHANGED_HALO_D_LEFT]], %arg1, %[[EXCHANGED_HALO_D_RIGHT]], %[[CONCAT_D_AXIS]])
   // CHECK-SAME:          (tensor<8x1x4x4x3xf32>, tensor<8x4x4x4x3xf32>, tensor<8x1x4x4x3xf32>, tensor<i64>) -> tensor<8x6x4x4x3xf32>
 
   // Build left halo on height dim.
-  // CHECK:           %[[SLICE_H_LEFT_BEGIN:.*]] = "tf.Const"() {value = dense<[0, 0, 3, 0, 0]> : tensor<5xi32>} : () -> tensor<5xi32>
-  // CHECK-NEXT:      %[[SLICE_H_LEFT_SIZE:.*]] = "tf.Const"() {value = dense<[8, 6, 1, 4, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
+  // CHECK:           %[[SLICE_H_LEFT_BEGIN:.*]] = "tf.Const"() <{value = dense<[0, 0, 3, 0, 0]> : tensor<5xi32>}> : () -> tensor<5xi32>
+  // CHECK-NEXT:      %[[SLICE_H_LEFT_SIZE:.*]] = "tf.Const"() <{value = dense<[8, 6, 1, 4, 3]> : tensor<5xi32>}> : () -> tensor<5xi32>
   // CHECK-NEXT:      %[[SLICE_H_LEFT:.*]] = "tf.Slice"(%[[CONCAT_D_TENSOR]], %[[SLICE_H_LEFT_BEGIN]], %[[SLICE_H_LEFT_SIZE]])
   // CHECK-SAME:          (tensor<8x6x4x4x3xf32>, tensor<5xi32>, tensor<5xi32>) -> tensor<8x6x1x4x3xf32>
   // CHECK-NEXT:      %[[HALO_H_LEFT:.*]] = "tf.SelectV2"
@@ -328,8 +328,8 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[EXCHANGED_HALO_H_LEFT:.*]] = "tf.CollectivePermute"(%[[HALO_H_LEFT]], %[[PAIRS_H_LEFT]])
   // CHECK-SAME:          (tensor<8x6x1x4x3xf32>, tensor<8x2xi32>) -> tensor<8x6x1x4x3xf32>
   // Build right halo on height dim.
-  // CHECK:           %[[SLICE_H_RIGHT_BEGIN:.*]] = "tf.Const"() {value = dense<0> : tensor<5xi32>} : () -> tensor<5xi32>
-  // CHECK-NEXT:      %[[SLICE_H_RIGHT_SIZE:.*]] = "tf.Const"() {value = dense<[8, 6, 1, 4, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
+  // CHECK:           %[[SLICE_H_RIGHT_BEGIN:.*]] = "tf.Const"() <{value = dense<0> : tensor<5xi32>}> : () -> tensor<5xi32>
+  // CHECK-NEXT:      %[[SLICE_H_RIGHT_SIZE:.*]] = "tf.Const"() <{value = dense<[8, 6, 1, 4, 3]> : tensor<5xi32>}> : () -> tensor<5xi32>
   // CHECK-NEXT:      %[[SLICE_H_RIGHT:.*]] = "tf.Slice"(%[[CONCAT_D_TENSOR]], %[[SLICE_H_RIGHT_BEGIN]], %[[SLICE_H_RIGHT_SIZE]])
   // CHECK-SAME:          (tensor<8x6x4x4x3xf32>, tensor<5xi32>, tensor<5xi32>) -> tensor<8x6x1x4x3xf32>
   // CHECK-NEXT:      %[[HALO_H_RIGHT:.*]] = "tf.SelectV2"
@@ -338,13 +338,13 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[EXCHANGED_HALO_H_RIGHT:.*]] = "tf.CollectivePermute"(%[[HALO_H_RIGHT]], %[[PAIRS_H_RIGHT]])
   // CHECK-SAME:          (tensor<8x6x1x4x3xf32>, tensor<8x2xi32>) -> tensor<8x6x1x4x3xf32>
   // Concat the halos with the shard on the height dim.
-  // CHECK-NEXT:      %[[CONCAT_H_AXIS:.*]] = "tf.Const"() {value = dense<2> : tensor<i64>} : () -> tensor<i64>
+  // CHECK-NEXT:      %[[CONCAT_H_AXIS:.*]] = "tf.Const"() <{value = dense<2> : tensor<i64>}> : () -> tensor<i64>
   // CHECK-NEXT:      %[[CONCAT_DH_TENSOR:.*]] = "tf.ConcatV2"(%[[EXCHANGED_HALO_H_LEFT]], %[[CONCAT_D_TENSOR]], %[[EXCHANGED_HALO_H_RIGHT]], %[[CONCAT_H_AXIS]])
   // CHECK-SAME:          (tensor<8x6x1x4x3xf32>, tensor<8x6x4x4x3xf32>, tensor<8x6x1x4x3xf32>, tensor<i64>) -> tensor<8x6x6x4x3xf32>
 
   // Build left halo on width dim.
-  // CHECK:           %[[SLICE_W_LEFT_BEGIN:.*]] = "tf.Const"() {value = dense<[0, 0, 0, 3, 0]> : tensor<5xi32>} : () -> tensor<5xi32>
-  // CHECK-NEXT:      %[[SLICE_W_LEFT_SIZE:.*]] = "tf.Const"() {value = dense<[8, 6, 6, 1, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
+  // CHECK:           %[[SLICE_W_LEFT_BEGIN:.*]] = "tf.Const"() <{value = dense<[0, 0, 0, 3, 0]> : tensor<5xi32>}> : () -> tensor<5xi32>
+  // CHECK-NEXT:      %[[SLICE_W_LEFT_SIZE:.*]] = "tf.Const"() <{value = dense<[8, 6, 6, 1, 3]> : tensor<5xi32>}> : () -> tensor<5xi32>
   // CHECK-NEXT:      %[[SLICE_W_LEFT:.*]] = "tf.Slice"(%[[CONCAT_DH_TENSOR]], %[[SLICE_W_LEFT_BEGIN]], %[[SLICE_W_LEFT_SIZE]])
   // CHECK-SAME:          (tensor<8x6x6x4x3xf32>, tensor<5xi32>, tensor<5xi32>) -> tensor<8x6x6x1x3xf32>
   // CHECK-NEXT:      %[[HALO_W_LEFT:.*]] = "tf.SelectV2"
@@ -353,8 +353,8 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[EXCHANGED_HALO_W_LEFT:.*]] = "tf.CollectivePermute"(%[[HALO_W_LEFT]], %[[PAIRS_W_LEFT]])
   // CHECK-SAME:          (tensor<8x6x6x1x3xf32>, tensor<8x2xi32>) -> tensor<8x6x6x1x3xf32>
   // Build right halo on width dim.
-  // CHECK:           %[[SLICE_W_RIGHT_BEGIN:.*]] = "tf.Const"() {value = dense<0> : tensor<5xi32>} : () -> tensor<5xi32>
-  // CHECK-NEXT:      %[[SLICE_W_RIGHT_SIZE:.*]] = "tf.Const"() {value = dense<[8, 6, 6, 1, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
+  // CHECK:           %[[SLICE_W_RIGHT_BEGIN:.*]] = "tf.Const"() <{value = dense<0> : tensor<5xi32>}> : () -> tensor<5xi32>
+  // CHECK-NEXT:      %[[SLICE_W_RIGHT_SIZE:.*]] = "tf.Const"() <{value = dense<[8, 6, 6, 1, 3]> : tensor<5xi32>}> : () -> tensor<5xi32>
   // CHECK-NEXT:      %[[SLICE_W_RIGHT:.*]] = "tf.Slice"(%[[CONCAT_DH_TENSOR]], %[[SLICE_W_RIGHT_BEGIN]], %[[SLICE_W_RIGHT_SIZE]])
   // CHECK-SAME:          (tensor<8x6x6x4x3xf32>, tensor<5xi32>, tensor<5xi32>) -> tensor<8x6x6x1x3xf32>
   // CHECK-NEXT:      %[[HALO_W_RIGHT:.*]] = "tf.SelectV2"
@@ -363,7 +363,7 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[EXCHANGED_HALO_W_RIGHT:.*]] = "tf.CollectivePermute"(%[[HALO_W_RIGHT]], %[[PAIRS_W_RIGHT]])
   // CHECK-SAME:          (tensor<8x6x6x1x3xf32>, tensor<8x2xi32>) -> tensor<8x6x6x1x3xf32>
   // Concat the halos with the shard on the width dim.
-  // CHECK-NEXT:      %[[CONCAT_W_AXIS:.*]] = "tf.Const"() {value = dense<3> : tensor<i64>} : () -> tensor<i64>
+  // CHECK-NEXT:      %[[CONCAT_W_AXIS:.*]] = "tf.Const"() <{value = dense<3> : tensor<i64>}> : () -> tensor<i64>
   // CHECK-NEXT:      %[[CONCAT_DHW_TENSOR:.*]] = "tf.ConcatV2"(%[[EXCHANGED_HALO_W_LEFT]], %[[CONCAT_DH_TENSOR]], %[[EXCHANGED_HALO_W_RIGHT]], %[[CONCAT_W_AXIS]])
   // CHECK-SAME:          (tensor<8x6x6x1x3xf32>, tensor<8x6x6x4x3xf32>, tensor<8x6x6x1x3xf32>, tensor<i64>) -> tensor<8x6x6x6x3xf32>
 
@@ -390,8 +390,8 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK:         "tf_device.cluster"
 
   // Build left halo on height dim.
-  // CHECK:           %[[SLICE_H_LEFT_BEGIN:.*]] = "tf.Const"() {value = dense<[0, 3, 0, 0]> : tensor<4xi32>} : () -> tensor<4xi32>
-  // CHECK-NEXT:      %[[SLICE_H_LEFT_SIZE:.*]] = "tf.Const"() {value = dense<[8, 1, 4, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // CHECK:           %[[SLICE_H_LEFT_BEGIN:.*]] = "tf.Const"() <{value = dense<[0, 3, 0, 0]> : tensor<4xi32>}> : () -> tensor<4xi32>
+  // CHECK-NEXT:      %[[SLICE_H_LEFT_SIZE:.*]] = "tf.Const"() <{value = dense<[8, 1, 4, 3]> : tensor<4xi32>}> : () -> tensor<4xi32>
   // CHECK-NEXT:      %[[SLICE_H_LEFT:.*]] = "tf.Slice"(%arg1, %[[SLICE_H_LEFT_BEGIN]], %[[SLICE_H_LEFT_SIZE]])
   // CHECK-SAME:          (tensor<8x4x4x3xf32>, tensor<4xi32>, tensor<4xi32>) -> tensor<8x1x4x3xf32>
   // CHECK-NEXT:      %[[HALO_H_LEFT:.*]] = "tf.SelectV2"
@@ -400,8 +400,8 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[EXCHANGED_HALO_H_LEFT:.*]] = "tf.CollectivePermute"(%[[HALO_H_LEFT]], %[[PAIRS_H_LEFT]])
   // CHECK-SAME:          (tensor<8x1x4x3xf32>, tensor<4x2xi32>) -> tensor<8x1x4x3xf32>
   // Build right halo on height dim.
-  // CHECK:           %[[SLICE_H_RIGHT_BEGIN:.*]] = "tf.Const"() {value = dense<0> : tensor<4xi32>} : () -> tensor<4xi32>
-  // CHECK-NEXT:      %[[SLICE_H_RIGHT_SIZE:.*]] = "tf.Const"() {value = dense<[8, 1, 4, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // CHECK:           %[[SLICE_H_RIGHT_BEGIN:.*]] = "tf.Const"() <{value = dense<0> : tensor<4xi32>}> : () -> tensor<4xi32>
+  // CHECK-NEXT:      %[[SLICE_H_RIGHT_SIZE:.*]] = "tf.Const"() <{value = dense<[8, 1, 4, 3]> : tensor<4xi32>}> : () -> tensor<4xi32>
   // CHECK-NEXT:      %[[SLICE_H_RIGHT:.*]] = "tf.Slice"(%arg1, %[[SLICE_H_RIGHT_BEGIN]], %[[SLICE_H_RIGHT_SIZE]])
   // CHECK-SAME:          (tensor<8x4x4x3xf32>, tensor<4xi32>, tensor<4xi32>) -> tensor<8x1x4x3xf32>
   // CHECK-NEXT:      %[[HALO_H_RIGHT:.*]] = "tf.SelectV2"
@@ -410,21 +410,21 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[EXCHANGED_HALO_H_RIGHT:.*]] = "tf.CollectivePermute"(%[[HALO_H_RIGHT]], %[[PAIRS_H_RIGHT]])
   // CHECK-SAME:          (tensor<8x1x4x3xf32>, tensor<4x2xi32>) -> tensor<8x1x4x3xf32>
   // Concat the halos with the shard on the height dim.
-  // CHECK-NEXT:      %[[CONCAT_H_AXIS:.*]] = "tf.Const"() {value = dense<1> : tensor<i64>} : () -> tensor<i64>
+  // CHECK-NEXT:      %[[CONCAT_H_AXIS:.*]] = "tf.Const"() <{value = dense<1> : tensor<i64>}> : () -> tensor<i64>
   // CHECK-NEXT:      %[[CONCAT_H_TENSOR:.*]] = "tf.ConcatV2"(%[[EXCHANGED_HALO_H_LEFT]], %arg1, %[[EXCHANGED_HALO_H_RIGHT]], %[[CONCAT_H_AXIS]])
   // CHECK-SAME:          (tensor<8x1x4x3xf32>, tensor<8x4x4x3xf32>, tensor<8x1x4x3xf32>, tensor<i64>) -> tensor<8x6x4x3xf32>
   // Dynamically slice the concatenated tensor to get correct size for VALID padding.
-  // CHECK-NEXT:      %[[HALO_SIZES_H:.*]] = "tf.Const"() {value = dense<[0, 1, 0, 0]> : tensor<4xi32>} : () -> tensor<4xi32>
-  // CHECK-NEXT:      %[[HALO_INCREMENTS_H:.*]] = "tf.Const"() {value = dense<[0, 1, 0, 0]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // CHECK-NEXT:      %[[HALO_SIZES_H:.*]] = "tf.Const"() <{value = dense<[0, 1, 0, 0]> : tensor<4xi32>}> : () -> tensor<4xi32>
+  // CHECK-NEXT:      %[[HALO_INCREMENTS_H:.*]] = "tf.Const"() <{value = dense<[0, 1, 0, 0]> : tensor<4xi32>}> : () -> tensor<4xi32>
   // CHECK-NEXT:      %[[VALID_OFFSET_H:.*]] = "tf.Mul"
   // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_H:.*]] = "tf.Sub"(%[[HALO_SIZES_H]], %[[VALID_OFFSET_H]])
-  // CHECK-NEXT:      %[[VALID_SLICE_SIZE_H:.*]] = "tf.Const"() {value = dense<[8, 5, 4, 3]> : tensor<4xi64>} : () -> tensor<4xi64>
-  // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_CAST_I64_H:.*]] = "tf.Cast"(%[[VALID_SLICE_BEGIN_H]]) {Truncate = false} : (tensor<4xi32>) -> tensor<4xi64>
+  // CHECK-NEXT:      %[[VALID_SLICE_SIZE_H:.*]] = "tf.Const"() <{value = dense<[8, 5, 4, 3]> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_CAST_I64_H:.*]] = "tf.Cast"(%[[VALID_SLICE_BEGIN_H]]) <{Truncate = false}> : (tensor<4xi32>) -> tensor<4xi64>
   // CHECK-NEXT:      %[[VALID_SLICE_H_TENSOR:.*]] = "tf.Slice"(%[[CONCAT_H_TENSOR]], %[[VALID_SLICE_BEGIN_CAST_I64_H]], %[[VALID_SLICE_SIZE_H]])
 
   // Build left halo on width dim.
-  // CHECK:           %[[SLICE_W_LEFT_BEGIN:.*]] = "tf.Const"() {value = dense<[0, 0, 3, 0]> : tensor<4xi32>} : () -> tensor<4xi32>
-  // CHECK-NEXT:      %[[SLICE_W_LEFT_SIZE:.*]] = "tf.Const"() {value = dense<[8, 5, 1, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // CHECK:           %[[SLICE_W_LEFT_BEGIN:.*]] = "tf.Const"() <{value = dense<[0, 0, 3, 0]> : tensor<4xi32>}> : () -> tensor<4xi32>
+  // CHECK-NEXT:      %[[SLICE_W_LEFT_SIZE:.*]] = "tf.Const"() <{value = dense<[8, 5, 1, 3]> : tensor<4xi32>}> : () -> tensor<4xi32>
   // CHECK-NEXT:      %[[SLICE_W_LEFT:.*]] = "tf.Slice"(%[[VALID_SLICE_H_TENSOR]], %[[SLICE_W_LEFT_BEGIN]], %[[SLICE_W_LEFT_SIZE]])
   // CHECK-SAME:          (tensor<8x5x4x3xf32>, tensor<4xi32>, tensor<4xi32>) -> tensor<8x5x1x3xf32>
   // CHECK-NEXT:      %[[HALO_W_LEFT:.*]] = "tf.SelectV2"
@@ -433,8 +433,8 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[EXCHANGED_HALO_W_LEFT:.*]] = "tf.CollectivePermute"(%[[HALO_W_LEFT]], %[[PAIRS_W_LEFT]])
   // CHECK-SAME:          (tensor<8x5x1x3xf32>, tensor<4x2xi32>) -> tensor<8x5x1x3xf32>
   // Build right halo on width dim.
-  // CHECK:           %[[SLICE_W_RIGHT_BEGIN:.*]] = "tf.Const"() {value = dense<0> : tensor<4xi32>} : () -> tensor<4xi32>
-  // CHECK-NEXT:      %[[SLICE_W_RIGHT_SIZE:.*]] = "tf.Const"() {value = dense<[8, 5, 1, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // CHECK:           %[[SLICE_W_RIGHT_BEGIN:.*]] = "tf.Const"() <{value = dense<0> : tensor<4xi32>}> : () -> tensor<4xi32>
+  // CHECK-NEXT:      %[[SLICE_W_RIGHT_SIZE:.*]] = "tf.Const"() <{value = dense<[8, 5, 1, 3]> : tensor<4xi32>}> : () -> tensor<4xi32>
   // CHECK-NEXT:      %[[SLICE_W_RIGHT:.*]] = "tf.Slice"(%[[VALID_SLICE_H_TENSOR]], %[[SLICE_W_RIGHT_BEGIN]], %[[SLICE_W_RIGHT_SIZE]])
   // CHECK-SAME:          (tensor<8x5x4x3xf32>, tensor<4xi32>, tensor<4xi32>) -> tensor<8x5x1x3xf32>
   // CHECK-NEXT:      %[[HALO_W_RIGHT:.*]] = "tf.SelectV2"
@@ -443,16 +443,16 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[EXCHANGED_HALO_W_RIGHT:.*]] = "tf.CollectivePermute"(%[[HALO_W_RIGHT]], %[[PAIRS_W_RIGHT]])
   // CHECK-SAME:          (tensor<8x5x1x3xf32>, tensor<4x2xi32>) -> tensor<8x5x1x3xf32>
   // Concat the halos with the shard on the width dim.
-  // CHECK-NEXT:      %[[CONCAT_W_AXIS:.*]] = "tf.Const"() {value = dense<2> : tensor<i64>} : () -> tensor<i64>
+  // CHECK-NEXT:      %[[CONCAT_W_AXIS:.*]] = "tf.Const"() <{value = dense<2> : tensor<i64>}> : () -> tensor<i64>
   // CHECK-NEXT:      %[[CONCAT_HW_TENSOR:.*]] = "tf.ConcatV2"(%[[EXCHANGED_HALO_W_LEFT]], %[[VALID_SLICE_H_TENSOR]], %[[EXCHANGED_HALO_W_RIGHT]], %[[CONCAT_W_AXIS]])
   // CHECK-SAME:          (tensor<8x5x1x3xf32>, tensor<8x5x4x3xf32>, tensor<8x5x1x3xf32>, tensor<i64>) -> tensor<8x5x6x3xf32>
   // Dynamically slice the concatenated tensor to get correct size for VALID padding.
-  // CHECK-NEXT:      %[[HALO_SIZES_W:.*]] = "tf.Const"() {value = dense<[0, 0, 1, 0]> : tensor<4xi32>} : () -> tensor<4xi32>
-  // CHECK-NEXT:      %[[HALO_INCREMENTS_W:.*]] = "tf.Const"() {value = dense<[0, 0, 1, 0]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // CHECK-NEXT:      %[[HALO_SIZES_W:.*]] = "tf.Const"() <{value = dense<[0, 0, 1, 0]> : tensor<4xi32>}> : () -> tensor<4xi32>
+  // CHECK-NEXT:      %[[HALO_INCREMENTS_W:.*]] = "tf.Const"() <{value = dense<[0, 0, 1, 0]> : tensor<4xi32>}> : () -> tensor<4xi32>
   // CHECK-NEXT:      %[[VALID_OFFSET_W:.*]] = "tf.Mul"
   // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_W:.*]] = "tf.Sub"(%[[HALO_SIZES_W]], %[[VALID_OFFSET_W]])
-  // CHECK-NEXT:      %[[VALID_SLICE_SIZE_W:.*]] = "tf.Const"() {value = dense<[8, 5, 5, 3]> : tensor<4xi64>} : () -> tensor<4xi64>
-  // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_CAST_I64_W:.*]] = "tf.Cast"(%[[VALID_SLICE_BEGIN_W]]) {Truncate = false} : (tensor<4xi32>) -> tensor<4xi64>
+  // CHECK-NEXT:      %[[VALID_SLICE_SIZE_W:.*]] = "tf.Const"() <{value = dense<[8, 5, 5, 3]> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_CAST_I64_W:.*]] = "tf.Cast"(%[[VALID_SLICE_BEGIN_W]]) <{Truncate = false}> : (tensor<4xi32>) -> tensor<4xi64>
   // CHECK-NEXT:      %[[VALID_SLICE_HW_TENSOR:.*]] = "tf.Slice"(%[[CONCAT_HW_TENSOR]], %[[VALID_SLICE_BEGIN_CAST_I64_W]], %[[VALID_SLICE_SIZE_W]])
 
   // CHECK-NEXT:      "tf.Conv2D"(%[[VALID_SLICE_HW_TENSOR]], %arg2)
@@ -478,8 +478,8 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK:         "tf_device.cluster"
 
   // Build left halo on depth dim.
-  // CHECK:           %[[SLICE_D_LEFT_BEGIN:.*]] = "tf.Const"() {value = dense<[0, 3, 0, 0, 0]> : tensor<5xi32>} : () -> tensor<5xi32>
-  // CHECK-NEXT:      %[[SLICE_D_LEFT_SIZE:.*]] = "tf.Const"() {value = dense<[8, 1, 4, 4, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
+  // CHECK:           %[[SLICE_D_LEFT_BEGIN:.*]] = "tf.Const"() <{value = dense<[0, 3, 0, 0, 0]> : tensor<5xi32>}> : () -> tensor<5xi32>
+  // CHECK-NEXT:      %[[SLICE_D_LEFT_SIZE:.*]] = "tf.Const"() <{value = dense<[8, 1, 4, 4, 3]> : tensor<5xi32>}> : () -> tensor<5xi32>
   // CHECK-NEXT:      %[[SLICE_D_LEFT:.*]] = "tf.Slice"(%arg1, %[[SLICE_D_LEFT_BEGIN]], %[[SLICE_D_LEFT_SIZE]])
   // CHECK-SAME:          (tensor<8x4x4x4x3xf32>, tensor<5xi32>, tensor<5xi32>) -> tensor<8x1x4x4x3xf32>
   // CHECK-NEXT:      %[[HALO_D_LEFT:.*]] = "tf.SelectV2"
@@ -488,8 +488,8 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[EXCHANGED_HALO_D_LEFT:.*]] = "tf.CollectivePermute"(%[[HALO_D_LEFT]], %[[PAIRS_D_LEFT]])
   // CHECK-SAME:          (tensor<8x1x4x4x3xf32>, tensor<8x2xi32>) -> tensor<8x1x4x4x3xf32>
   // Build right halo on depth dim.
-  // CHECK:           %[[SLICE_D_RIGHT_BEGIN:.*]] = "tf.Const"() {value = dense<0> : tensor<5xi32>} : () -> tensor<5xi32>
-  // CHECK-NEXT:      %[[SLICE_D_RIGHT_SIZE:.*]] = "tf.Const"() {value = dense<[8, 1, 4, 4, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
+  // CHECK:           %[[SLICE_D_RIGHT_BEGIN:.*]] = "tf.Const"() <{value = dense<0> : tensor<5xi32>}> : () -> tensor<5xi32>
+  // CHECK-NEXT:      %[[SLICE_D_RIGHT_SIZE:.*]] = "tf.Const"() <{value = dense<[8, 1, 4, 4, 3]> : tensor<5xi32>}> : () -> tensor<5xi32>
   // CHECK-NEXT:      %[[SLICE_D_RIGHT:.*]] = "tf.Slice"(%arg1, %[[SLICE_D_RIGHT_BEGIN]], %[[SLICE_D_RIGHT_SIZE]])
   // CHECK-SAME:          (tensor<8x4x4x4x3xf32>, tensor<5xi32>, tensor<5xi32>) -> tensor<8x1x4x4x3xf32>
   // CHECK-NEXT:      %[[HALO_D_RIGHT:.*]] = "tf.SelectV2"
@@ -498,21 +498,21 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[EXCHANGED_HALO_D_RIGHT:.*]] = "tf.CollectivePermute"(%[[HALO_D_RIGHT]], %[[PAIRS_D_RIGHT]])
   // CHECK-SAME:          (tensor<8x1x4x4x3xf32>, tensor<8x2xi32>) -> tensor<8x1x4x4x3xf32>
   // Concat the halos with the shard on the depth dim.
-  // CHECK-NEXT:      %[[CONCAT_D_AXIS:.*]] = "tf.Const"() {value = dense<1> : tensor<i64>} : () -> tensor<i64>
+  // CHECK-NEXT:      %[[CONCAT_D_AXIS:.*]] = "tf.Const"() <{value = dense<1> : tensor<i64>}> : () -> tensor<i64>
   // CHECK-NEXT:      %[[CONCAT_D_TENSOR:.*]] = "tf.ConcatV2"(%[[EXCHANGED_HALO_D_LEFT]], %arg1, %[[EXCHANGED_HALO_D_RIGHT]], %[[CONCAT_D_AXIS]])
   // CHECK-SAME:          (tensor<8x1x4x4x3xf32>, tensor<8x4x4x4x3xf32>, tensor<8x1x4x4x3xf32>, tensor<i64>) -> tensor<8x6x4x4x3xf32>
   // Dynamically slice the concatenated tensor to get correct size for VALID padding.
-  // CHECK-NEXT:      %[[HALO_SIZES_D:.*]] = "tf.Const"() {value = dense<[0, 1, 0, 0, 0]> : tensor<5xi32>} : () -> tensor<5xi32>
-  // CHECK-NEXT:      %[[HALO_INCREMENTS_D:.*]] = "tf.Const"() {value = dense<[0, 1, 0, 0, 0]> : tensor<5xi32>} : () -> tensor<5xi32>
+  // CHECK-NEXT:      %[[HALO_SIZES_D:.*]] = "tf.Const"() <{value = dense<[0, 1, 0, 0, 0]> : tensor<5xi32>}> : () -> tensor<5xi32>
+  // CHECK-NEXT:      %[[HALO_INCREMENTS_D:.*]] = "tf.Const"() <{value = dense<[0, 1, 0, 0, 0]> : tensor<5xi32>}> : () -> tensor<5xi32>
   // CHECK-NEXT:      %[[VALID_OFFSET_D:.*]] = "tf.Mul"
   // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_D:.*]] = "tf.Sub"(%[[HALO_SIZES_D]], %[[VALID_OFFSET_D]])
-  // CHECK-NEXT:      %[[VALID_SLICE_SIZE_D:.*]] = "tf.Const"() {value = dense<[8, 5, 4, 4, 3]> : tensor<5xi64>} : () -> tensor<5xi64>
-  // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_CAST_I64_D:.*]] = "tf.Cast"(%[[VALID_SLICE_BEGIN_D]]) {Truncate = false} : (tensor<5xi32>) -> tensor<5xi64>
+  // CHECK-NEXT:      %[[VALID_SLICE_SIZE_D:.*]] = "tf.Const"() <{value = dense<[8, 5, 4, 4, 3]> : tensor<5xi64>}> : () -> tensor<5xi64>
+  // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_CAST_I64_D:.*]] = "tf.Cast"(%[[VALID_SLICE_BEGIN_D]]) <{Truncate = false}> : (tensor<5xi32>) -> tensor<5xi64>
   // CHECK-NEXT:      %[[VALID_SLICE_D_TENSOR:.*]] = "tf.Slice"(%[[CONCAT_D_TENSOR]], %[[VALID_SLICE_BEGIN_CAST_I64_D]], %[[VALID_SLICE_SIZE_D]])
 
   // Build left halo on height dim.
-  // CHECK:           %[[SLICE_H_LEFT_BEGIN:.*]] = "tf.Const"() {value = dense<[0, 0, 3, 0, 0]> : tensor<5xi32>} : () -> tensor<5xi32>
-  // CHECK-NEXT:      %[[SLICE_H_LEFT_SIZE:.*]] = "tf.Const"() {value = dense<[8, 5, 1, 4, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
+  // CHECK:           %[[SLICE_H_LEFT_BEGIN:.*]] = "tf.Const"() <{value = dense<[0, 0, 3, 0, 0]> : tensor<5xi32>}> : () -> tensor<5xi32>
+  // CHECK-NEXT:      %[[SLICE_H_LEFT_SIZE:.*]] = "tf.Const"() <{value = dense<[8, 5, 1, 4, 3]> : tensor<5xi32>}> : () -> tensor<5xi32>
   // CHECK-NEXT:      %[[SLICE_H_LEFT:.*]] = "tf.Slice"(%[[VALID_SLICE_D_TENSOR]], %[[SLICE_H_LEFT_BEGIN]], %[[SLICE_H_LEFT_SIZE]])
   // CHECK-SAME:          (tensor<8x5x4x4x3xf32>, tensor<5xi32>, tensor<5xi32>) -> tensor<8x5x1x4x3xf32>
   // CHECK-NEXT:      %[[HALO_H_LEFT:.*]] = "tf.SelectV2"
@@ -521,8 +521,8 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[EXCHANGED_HALO_H_LEFT:.*]] = "tf.CollectivePermute"(%[[HALO_H_LEFT]], %[[PAIRS_H_LEFT]])
   // CHECK-SAME:          (tensor<8x5x1x4x3xf32>, tensor<8x2xi32>) -> tensor<8x5x1x4x3xf32>
   // Build right halo on height dim.
-  // CHECK:           %[[SLICE_H_RIGHT_BEGIN:.*]] = "tf.Const"() {value = dense<0> : tensor<5xi32>} : () -> tensor<5xi32>
-  // CHECK-NEXT:      %[[SLICE_H_RIGHT_SIZE:.*]] = "tf.Const"() {value = dense<[8, 5, 1, 4, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
+  // CHECK:           %[[SLICE_H_RIGHT_BEGIN:.*]] = "tf.Const"() <{value = dense<0> : tensor<5xi32>}> : () -> tensor<5xi32>
+  // CHECK-NEXT:      %[[SLICE_H_RIGHT_SIZE:.*]] = "tf.Const"() <{value = dense<[8, 5, 1, 4, 3]> : tensor<5xi32>}> : () -> tensor<5xi32>
   // CHECK-NEXT:      %[[SLICE_H_RIGHT:.*]] = "tf.Slice"(%[[VALID_SLICE_D_TENSOR]], %[[SLICE_H_RIGHT_BEGIN]], %[[SLICE_H_RIGHT_SIZE]])
   // CHECK-SAME:          (tensor<8x5x4x4x3xf32>, tensor<5xi32>, tensor<5xi32>) -> tensor<8x5x1x4x3xf32>
   // CHECK-NEXT:      %[[HALO_H_RIGHT:.*]] = "tf.SelectV2"
@@ -531,21 +531,21 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[EXCHANGED_HALO_H_RIGHT:.*]] = "tf.CollectivePermute"(%[[HALO_H_RIGHT]], %[[PAIRS_H_RIGHT]])
   // CHECK-SAME:          (tensor<8x5x1x4x3xf32>, tensor<8x2xi32>) -> tensor<8x5x1x4x3xf32>
   // Concat the halos with the shard on the height dim.
-  // CHECK-NEXT:      %[[CONCAT_H_AXIS:.*]] = "tf.Const"() {value = dense<2> : tensor<i64>} : () -> tensor<i64>
+  // CHECK-NEXT:      %[[CONCAT_H_AXIS:.*]] = "tf.Const"() <{value = dense<2> : tensor<i64>}> : () -> tensor<i64>
   // CHECK-NEXT:      %[[CONCAT_DH_TENSOR:.*]] = "tf.ConcatV2"(%[[EXCHANGED_HALO_H_LEFT]], %[[VALID_SLICE_D_TENSOR]], %[[EXCHANGED_HALO_H_RIGHT]], %[[CONCAT_H_AXIS]])
   // CHECK-SAME:          (tensor<8x5x1x4x3xf32>, tensor<8x5x4x4x3xf32>, tensor<8x5x1x4x3xf32>, tensor<i64>) -> tensor<8x5x6x4x3xf32>
   // Dynamically slice the concatenated tensor to get correct size for VALID padding.
-  // CHECK-NEXT:      %[[HALO_SIZES_H:.*]] = "tf.Const"() {value = dense<[0, 0, 1, 0, 0]> : tensor<5xi32>} : () -> tensor<5xi32>
-  // CHECK-NEXT:      %[[HALO_INCREMENTS_H:.*]] = "tf.Const"() {value = dense<[0, 0, 1, 0, 0]> : tensor<5xi32>} : () -> tensor<5xi32>
+  // CHECK-NEXT:      %[[HALO_SIZES_H:.*]] = "tf.Const"() <{value = dense<[0, 0, 1, 0, 0]> : tensor<5xi32>}> : () -> tensor<5xi32>
+  // CHECK-NEXT:      %[[HALO_INCREMENTS_H:.*]] = "tf.Const"() <{value = dense<[0, 0, 1, 0, 0]> : tensor<5xi32>}> : () -> tensor<5xi32>
   // CHECK-NEXT:      %[[VALID_OFFSET_H:.*]] = "tf.Mul"
   // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_H:.*]] = "tf.Sub"(%[[HALO_SIZES_H]], %[[VALID_OFFSET_H]])
-  // CHECK-NEXT:      %[[VALID_SLICE_SIZE_H:.*]] = "tf.Const"() {value = dense<[8, 5, 5, 4, 3]> : tensor<5xi64>} : () -> tensor<5xi64>
-  // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_CAST_I64_H:.*]] = "tf.Cast"(%[[VALID_SLICE_BEGIN_H]]) {Truncate = false} : (tensor<5xi32>) -> tensor<5xi64>
+  // CHECK-NEXT:      %[[VALID_SLICE_SIZE_H:.*]] = "tf.Const"() <{value = dense<[8, 5, 5, 4, 3]> : tensor<5xi64>}> : () -> tensor<5xi64>
+  // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_CAST_I64_H:.*]] = "tf.Cast"(%[[VALID_SLICE_BEGIN_H]]) <{Truncate = false}> : (tensor<5xi32>) -> tensor<5xi64>
   // CHECK-NEXT:      %[[VALID_SLICE_DH_TENSOR:.*]] = "tf.Slice"(%[[CONCAT_DH_TENSOR]], %[[VALID_SLICE_BEGIN_CAST_I64_H]], %[[VALID_SLICE_SIZE_H]])
 
   // Build left halo on width dim.
-  // CHECK:           %[[SLICE_W_LEFT_BEGIN:.*]] = "tf.Const"() {value = dense<[0, 0, 0, 3, 0]> : tensor<5xi32>} : () -> tensor<5xi32>
-  // CHECK-NEXT:      %[[SLICE_W_LEFT_SIZE:.*]] = "tf.Const"() {value = dense<[8, 5, 5, 1, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
+  // CHECK:           %[[SLICE_W_LEFT_BEGIN:.*]] = "tf.Const"() <{value = dense<[0, 0, 0, 3, 0]> : tensor<5xi32>}> : () -> tensor<5xi32>
+  // CHECK-NEXT:      %[[SLICE_W_LEFT_SIZE:.*]] = "tf.Const"() <{value = dense<[8, 5, 5, 1, 3]> : tensor<5xi32>}> : () -> tensor<5xi32>
   // CHECK-NEXT:      %[[SLICE_W_LEFT:.*]] = "tf.Slice"(%[[VALID_SLICE_DH_TENSOR]], %[[SLICE_W_LEFT_BEGIN]], %[[SLICE_W_LEFT_SIZE]])
   // CHECK-SAME:          (tensor<8x5x5x4x3xf32>, tensor<5xi32>, tensor<5xi32>) -> tensor<8x5x5x1x3xf32>
   // CHECK-NEXT:      %[[HALO_W_LEFT:.*]] = "tf.SelectV2"
@@ -554,8 +554,8 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[EXCHANGED_HALO_W_LEFT:.*]] = "tf.CollectivePermute"(%[[HALO_W_LEFT]], %[[PAIRS_W_LEFT]])
   // CHECK-SAME:          (tensor<8x5x5x1x3xf32>, tensor<8x2xi32>) -> tensor<8x5x5x1x3xf32>
   // Build right halo on width dim.
-  // CHECK:           %[[SLICE_W_RIGHT_BEGIN:.*]] = "tf.Const"() {value = dense<0> : tensor<5xi32>} : () -> tensor<5xi32>
-  // CHECK-NEXT:      %[[SLICE_W_RIGHT_SIZE:.*]] = "tf.Const"() {value = dense<[8, 5, 5, 1, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
+  // CHECK:           %[[SLICE_W_RIGHT_BEGIN:.*]] = "tf.Const"() <{value = dense<0> : tensor<5xi32>}> : () -> tensor<5xi32>
+  // CHECK-NEXT:      %[[SLICE_W_RIGHT_SIZE:.*]] = "tf.Const"() <{value = dense<[8, 5, 5, 1, 3]> : tensor<5xi32>}> : () -> tensor<5xi32>
   // CHECK-NEXT:      %[[SLICE_W_RIGHT:.*]] = "tf.Slice"(%[[VALID_SLICE_DH_TENSOR]], %[[SLICE_W_RIGHT_BEGIN]], %[[SLICE_W_RIGHT_SIZE]])
   // CHECK-SAME:          (tensor<8x5x5x4x3xf32>, tensor<5xi32>, tensor<5xi32>) -> tensor<8x5x5x1x3xf32>
   // CHECK-NEXT:      %[[HALO_W_RIGHT:.*]] = "tf.SelectV2"
@@ -564,16 +564,16 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[EXCHANGED_HALO_W_RIGHT:.*]] = "tf.CollectivePermute"(%[[HALO_W_RIGHT]], %[[PAIRS_W_RIGHT]])
   // CHECK-SAME:          (tensor<8x5x5x1x3xf32>, tensor<8x2xi32>) -> tensor<8x5x5x1x3xf32>
   // Concat the halos with the shard on the width dim.
-  // CHECK-NEXT:      %[[CONCAT_W_AXIS:.*]] = "tf.Const"() {value = dense<3> : tensor<i64>} : () -> tensor<i64>
+  // CHECK-NEXT:      %[[CONCAT_W_AXIS:.*]] = "tf.Const"() <{value = dense<3> : tensor<i64>}> : () -> tensor<i64>
   // CHECK-NEXT:      %[[CONCAT_DHW_TENSOR:.*]] = "tf.ConcatV2"(%[[EXCHANGED_HALO_W_LEFT]], %[[VALID_SLICE_DH_TENSOR]], %[[EXCHANGED_HALO_W_RIGHT]], %[[CONCAT_W_AXIS]])
   // CHECK-SAME:          (tensor<8x5x5x1x3xf32>, tensor<8x5x5x4x3xf32>, tensor<8x5x5x1x3xf32>, tensor<i64>) -> tensor<8x5x5x6x3xf32>
   // Dynamically slice the concatenated tensor to get correct size for VALID padding.
-  // CHECK-NEXT:      %[[HALO_SIZES_W:.*]] = "tf.Const"() {value = dense<[0, 0, 0, 1, 0]> : tensor<5xi32>} : () -> tensor<5xi32>
-  // CHECK-NEXT:      %[[HALO_INCREMENTS_W:.*]] = "tf.Const"() {value = dense<[0, 0, 0, 1, 0]> : tensor<5xi32>} : () -> tensor<5xi32>
+  // CHECK-NEXT:      %[[HALO_SIZES_W:.*]] = "tf.Const"() <{value = dense<[0, 0, 0, 1, 0]> : tensor<5xi32>}> : () -> tensor<5xi32>
+  // CHECK-NEXT:      %[[HALO_INCREMENTS_W:.*]] = "tf.Const"() <{value = dense<[0, 0, 0, 1, 0]> : tensor<5xi32>}> : () -> tensor<5xi32>
   // CHECK-NEXT:      %[[VALID_OFFSET_W:.*]] = "tf.Mul"
   // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_W:.*]] = "tf.Sub"(%[[HALO_SIZES_W]], %[[VALID_OFFSET_W]])
-  // CHECK-NEXT:      %[[VALID_SLICE_SIZE_W:.*]] = "tf.Const"() {value = dense<[8, 5, 5, 5, 3]> : tensor<5xi64>} : () -> tensor<5xi64>
-  // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_CAST_I64_W:.*]] = "tf.Cast"(%[[VALID_SLICE_BEGIN_W]]) {Truncate = false} : (tensor<5xi32>) -> tensor<5xi64>
+  // CHECK-NEXT:      %[[VALID_SLICE_SIZE_W:.*]] = "tf.Const"() <{value = dense<[8, 5, 5, 5, 3]> : tensor<5xi64>}> : () -> tensor<5xi64>
+  // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_CAST_I64_W:.*]] = "tf.Cast"(%[[VALID_SLICE_BEGIN_W]]) <{Truncate = false}> : (tensor<5xi32>) -> tensor<5xi64>
   // CHECK-NEXT:      %[[VALID_SLICE_DHW_TENSOR:.*]] = "tf.Slice"(%[[CONCAT_DHW_TENSOR]], %[[VALID_SLICE_BEGIN_CAST_I64_W]], %[[VALID_SLICE_SIZE_W]])
 
   // CHECK-NEXT:      "tf.Conv3D"(%[[VALID_SLICE_DHW_TENSOR]], %arg2)

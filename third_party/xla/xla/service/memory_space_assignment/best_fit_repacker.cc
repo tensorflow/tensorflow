@@ -153,13 +153,13 @@ template <typename T>
 std::vector<const AllocationBlock*> SortAllocationBlocks(const T& container) {
   std::vector<const AllocationBlock*> result;
   result.insert(result.end(), container.begin(), container.end());
-  absl::c_sort(result,
-               [](const AllocationBlock* lhs, const AllocationBlock* rhs) {
-                 return std::make_tuple(lhs->start_time, lhs->end_time,
-                                        lhs->initial_offset, lhs->size) <
-                        std::make_tuple(rhs->start_time, rhs->end_time,
-                                        rhs->initial_offset, rhs->size);
-               });
+  absl::c_sort(
+      result, [](const AllocationBlock* lhs, const AllocationBlock* rhs) {
+        return std::make_tuple(lhs->inclusive_start_time, lhs->end_time,
+                               lhs->initial_offset, lhs->size) <
+               std::make_tuple(rhs->inclusive_start_time, rhs->end_time,
+                               rhs->initial_offset, rhs->size);
+      });
 
   return result;
 }
@@ -198,13 +198,14 @@ class BestFitRepacker
             allocation_block);
         need_allocation = false;
       }
-      full_buffer_interval_map_.insert(std::make_pair(
-          allocation_block, BufferInterval{allocation_block,
-                                           allocation_block->size,
-                                           allocation_block->start_time,
-                                           allocation_block->end_time,
-                                           {},
-                                           need_allocation}));
+      full_buffer_interval_map_.insert(
+          std::make_pair(allocation_block,
+                         BufferInterval{allocation_block,
+                                        allocation_block->size,
+                                        allocation_block->inclusive_start_time,
+                                        allocation_block->end_time,
+                                        {},
+                                        need_allocation}));
     }
 
     // Now that full_buffer_interval_map_ has full colocation specifications,
@@ -229,8 +230,8 @@ class BestFitRepacker
         CHECK(!original_slice_data.slices_sorted_by_offset.empty());
 
         sliced_buffer_interval.Slice(original_slice_data.SizesSortedByOffset());
-        sliced_buffer_interval.UpdateSliceStartTimes(
-            original_slice_data.SortedStartTimes());
+        sliced_buffer_interval.UpdateInclusiveSliceStartTimes(
+            original_slice_data.SortedInclusiveStartTimes());
       }
 
       // We use buffer_intervals_ to store the minimum buffer interval for
@@ -338,11 +339,11 @@ class BestFitRepacker
       repacked_slice_data->slices_sorted_by_offset.reserve(chunks.size());
 
       // Chunks and start times are sorted in start time order.
-      std::vector<int64_t> sorted_start_times =
-          original_slice_data.SortedStartTimes();
+      std::vector<int64_t> sorted_inclusive_start_times =
+          original_slice_data.SortedInclusiveStartTimes();
       for (int i = 0; i < chunks.size(); ++i) {
         const Chunk& chunk = chunks[i];
-        int64_t start_time = sorted_start_times[i];
+        int64_t start_time = sorted_inclusive_start_times[i];
         result_.heap_size = result_.UpdatedHeapSize(chunk);
         VLOG(2) << "Adding sliced chunk " << chunk.ToString() << " at ["
                 << start_time << ", " << allocation_block->end_time << "]";
@@ -361,9 +362,9 @@ class BestFitRepacker
       new_offset = chunks.front().offset;
       result_.heap_size = result_.UpdatedHeapSize(chunks.front());
       VLOG(2) << "Adding unsliced chunk " << chunks.front().ToString()
-              << " at [" << allocation_block->start_time << ", "
+              << " at [" << allocation_block->inclusive_start_time << ", "
               << allocation_block->end_time << ")";
-      interval_tree_.Add(allocation_block->start_time,
+      interval_tree_.Add(allocation_block->inclusive_start_time,
                          allocation_block->end_time, chunks.front());
     }
 
@@ -522,13 +523,13 @@ class BestFitRepacker
               block->repacked_slice_data->slices_sorted_by_offset[i];
           timed_chunks.push_back(
               TimedChunk{absl::StrCat(((int64_t)block), "_slice_", i), block,
-                         slice.start_time, block->end_time,
+                         slice.inclusive_start_time, block->end_time,
                          Chunk::FromOffsetSize(slice.offset, slice.size)});
         }
       } else {
         timed_chunks.push_back(
-            TimedChunk{absl::StrCat(((int64_t)block)), block, block->start_time,
-                       block->end_time,
+            TimedChunk{absl::StrCat(((int64_t)block)), block,
+                       block->inclusive_start_time, block->end_time,
                        Chunk::FromOffsetSize(block->offset, block->size)});
       }
     }

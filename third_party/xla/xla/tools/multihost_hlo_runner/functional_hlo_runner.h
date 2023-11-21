@@ -40,9 +40,9 @@ namespace xla {
 
 // Supported input formats for the input HLO module.
 enum class InputFormat {
-  kText,                 // Text format.
-  kProtoText,            // Protobuf text format.
-  kProtoBinary,          // Protobuf binary format.
+  kText,                 // Text format returned by HloModule::ToString().
+  kProtoText,            // Protobuf text format of an xla::HloProto message.
+  kProtoBinary,          // Protobuf binary format of an xla::HloProto message.
   kSnapshotProtoBinary,  // HloSnapshot protobuf binary format. Can be dumped by
                          // TensorFlow by setting the environment variable
                          // xla_dump_hlo_snapshots.

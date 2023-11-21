@@ -26,10 +26,14 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "xla/client/xla_computation.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
+
+bool IsTokenType(mlir::Type type);
 
 class XlaCallModuleLoader {
  public:
@@ -39,8 +43,11 @@ class XlaCallModuleLoader {
       std::vector<std::string> platforms, std::string loading_platform,
       int num_invocation_args, bool main_has_token_input_output);
 
-  int nr_outputs() { return main_.getNumResults(); }
-  mlir::TypeRange output_types() { return main_.getResultTypes(); }
+  int NrInputs() { return main_.getNumArguments(); }
+  mlir::TypeRange InputTypes() { return main_.getArgumentTypes(); }
+
+  int NrOutputs() { return main_.getNumResults(); }
+  mlir::TypeRange OutputTypes() { return main_.getResultTypes(); }
 
   // Refines the dynamic module arguments based on the static argument shapes.
   // This assumes that the module has a "main" function without dimension args,

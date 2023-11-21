@@ -37,9 +37,13 @@ extern "C" {
 /// schedule than for the other TensorFlow Lite APIs. See
 /// https://www.tensorflow.org/guide/versions#separate_version_number_for_tensorflow_lite_extension_apis.
 
-/** \addtogroup c_api_opaque tensorflow/lite/c/c_api_opaque.h
+// clang-format off
+// NOLINTBEGIN(whitespace/line_length)
+/** \defgroup c_api_opaque tensorflow/lite/c/c_api_opaque.h
  *  @{
  */
+// NOLINTEND(whitespace/line_length)
+// clang-format on
 
 // --------------------------------------------------------------------------
 // Accessors for TfLiteOpaqueTensor.

@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -57,8 +58,10 @@ class OutlineGpuGraphsPass
     : public impl::OutlineGpuGraphsPassBase<OutlineGpuGraphsPass> {
  public:
   OutlineGpuGraphsPass() = default;
-  explicit OutlineGpuGraphsPass(int gpu_graph_level, int min_graph_size)
-      : gpu_graph_level_(gpu_graph_level) {
+  explicit OutlineGpuGraphsPass(
+      absl::flat_hash_set<DebugOptions::CommandBufferCmdType> command_types,
+      int min_graph_size)
+      : command_types_(std::move(command_types)) {
     this->min_graph_size_ = min_graph_size;
   }
 
@@ -69,6 +72,8 @@ class OutlineGpuGraphsPass
   }
 
  private:
+  absl::flat_hash_set<DebugOptions::CommandBufferCmdType> command_types_ = {
+      DebugOptions::FUSION, DebugOptions::CUBLAS, DebugOptions::CUDNN};
   int gpu_graph_level_ = 3;
 };
 
@@ -360,6 +365,10 @@ static LogicalResult Outline(unsigned ordinal,
   // If an argument to parent_func has the "lmhlo.constant_name" attribute and
   // is passed to the graph capture function, we propagate the attribute the
   // graph capture function.
+  //
+  // We also annotate all arguments with "rt.allocation_index" attribute that
+  // allows us to forward correct arguments to graph capture function during
+  // Gpu executable initialization (see `InstantiateAllGraphs` implementation).
   for (unsigned i = 0; i < args.size(); ++i) {
     Value arg = args[i];
 
@@ -370,6 +379,12 @@ static LogicalResult Outline(unsigned ordinal,
     auto block_arg = cast<BlockArgument>(arg);
     Block* parent_block = block_arg.getParentBlock();
     if (!parent_block->isEntryBlock()) continue;
+
+    // If this is an argument to the entry block of the parent function, it
+    // means that it's the XLA allocation, and we forward index to the capture
+    // function.
+    func.setArgAttr(i, "rt.allocation_index",
+                    b.getIndexAttr(block_arg.getArgNumber()));
 
     // Check that the parent_block is in the SSACFG region of parent_func.
     Region& parent_func_region = parent_func.getRegion();
@@ -458,7 +473,7 @@ void OutlineGpuGraphsPass::runOnOperation() {
 
   OpCapturePatternSet patterns;
 
-  if (gpu_graph_level_ >= 1) {
+  if (command_types_.contains(DebugOptions::FUSION)) {
     // Enable capturing fusions and memcpies.
     patterns.emplace_back(new LaunchFuncOpCapture());
     patterns.emplace_back(new ConstantOpCapture());
@@ -467,12 +482,12 @@ void OutlineGpuGraphsPass::runOnOperation() {
     patterns.emplace_back(new ReinterpretCastOpCapture());
   }
 
-  if (gpu_graph_level_ >= 2) {
+  if (command_types_.contains(DebugOptions::CUBLAS)) {
     // Enable capturing gemms.
     patterns.emplace_back(new GemmOpCapture());
   }
 
-  if (gpu_graph_level_ >= 3) {
+  if (command_types_.contains(DebugOptions::CUDNN)) {
     // Enable capturing convolutions.
     patterns.emplace_back(new ConvForwardOpCapture());
     patterns.emplace_back(new ConvBackwardInputOpCapture());
@@ -494,9 +509,9 @@ std::unique_ptr<OperationPass<ModuleOp>> createOutlineGpuGraphsPass() {
 }
 
 std::unique_ptr<OperationPass<ModuleOp>> createOutlineGpuGraphsPass(
-    int gpu_graph_level, int min_graph_size) {
-  return std::make_unique<OutlineGpuGraphsPass>(gpu_graph_level,
-                                                min_graph_size);
+    absl::flat_hash_set<DebugOptions::CommandBufferCmdType> command_types,
+    int min_graph_size) {
+  return std::make_unique<OutlineGpuGraphsPass>(command_types, min_graph_size);
 }
 
 }  // namespace gpu

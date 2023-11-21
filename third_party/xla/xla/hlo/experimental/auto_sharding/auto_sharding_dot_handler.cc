@@ -193,16 +193,16 @@ class DotHandler : public HandlerBase {
              const CallGraph& call_graph)
       : HandlerBase(strategies, strategy_map, ins, cluster_env, batch_map,
                     solver_option, call_graph),
-        dot_dnums_(ins->dot_dimension_numbers()),
-        space_base_dim_(dot_dnums_.lhs_batch_dimensions_size()),
+        space_base_dim_(
+            ins->dot_dimension_numbers().lhs_batch_dimensions_size()),
         lhs_con_dims_(
             ins->dot_dimension_numbers().lhs_contracting_dimensions()),
         rhs_con_dims_(
             ins->dot_dimension_numbers().rhs_contracting_dimensions()),
         lhs_batch_dims_(ins->dot_dimension_numbers().lhs_batch_dimensions()),
         rhs_batch_dims_(ins->dot_dimension_numbers().rhs_batch_dimensions()) {
-    std::tie(lhs_space_dims_, rhs_space_dims_) =
-        GetSpaceDims(lhs_->shape(), rhs_->shape(), dot_dnums_);
+    std::tie(lhs_space_dims_, rhs_space_dims_) = GetSpaceDims(
+        lhs_->shape(), rhs_->shape(), ins->dot_dimension_numbers());
     CHECK_EQ(lhs_con_dims_.size(), rhs_con_dims_.size());
     CHECK_EQ(lhs_batch_dims_.size(), rhs_batch_dims_.size());
   }
@@ -432,8 +432,7 @@ class DotHandler : public HandlerBase {
       const DimMap rhs_dim_map = {{rhs_con_dims_[e.i], e.mesh_dims[0]}};
       HloSharding output_spec = HloSharding::Replicate();
       double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
-      double compute_cost =
-          cluster_env_.DotCost(lhs_->shape(), rhs_->shape(), dot_dnums_);
+      double compute_cost = cluster_env_.DotCost(lhs_->shape(), rhs_->shape());
       double communication_cost =
           cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[0]);
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_,
@@ -603,7 +602,6 @@ class DotHandler : public HandlerBase {
   }
 
   // Dimension information
-  const DotDimensionNumbers& dot_dnums_;
   int64_t space_base_dim_;
   tsl::protobuf::RepeatedField<int64_t> lhs_space_dims_, rhs_space_dims_;
   const tsl::protobuf::RepeatedField<int64_t>& lhs_con_dims_;

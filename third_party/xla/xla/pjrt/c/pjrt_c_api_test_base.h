@@ -39,7 +39,7 @@ class PjrtCApiTestBase : public ::testing::Test {
   PJRT_Client* client_;
   void destroy_client(PJRT_Client* client);
 
-  absl::Span<PJRT_Device*> GetClientAddressableDevices() const;
+  absl::Span<PJRT_Device* const> GetClientAddressableDevices() const;
 
   PJRT_Client_BufferFromHostBuffer_Args CreateBufferFromHostBufferArgs(
       const std::vector<float>& data, const xla::Shape& shape,

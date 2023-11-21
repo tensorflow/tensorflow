@@ -53,7 +53,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
-#include "tensorflow/core/tfrt/saved_model/utils/serialize_bef_utils.h"
+#include "tensorflow/core/tfrt/saved_model/utils/serialize_utils.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
@@ -236,14 +236,14 @@ std::string GetAotPackagePath(absl::string_view saved_model_dir) {
 
 std::string GetBEFFilePath(std::string aot_package_directory) {
   return tsl::io::JoinPath(aot_package_directory,
-                           std::string(kBefBufferFilenameMLIRBEF));
+                           std::string(kBefBufferFileName));
 }
 
 std::string GetMlirFilePath(const std::string& aot_package_directory) {
   return tsl::io::JoinPath(aot_package_directory, kMLIRModuleFilename);
 }
 
-absl::StatusOr<tfrt::BefBuffer> LoadAotPackages(
+absl::StatusOr<tfrt::BefBuffer> LoadBefAndMlir(
     const TfrtCompileOptions& options, mlir::ModuleOp mlir_module,
     const std::string& saved_model_dir,
     tfrt_stub::FallbackState* fallback_state) {

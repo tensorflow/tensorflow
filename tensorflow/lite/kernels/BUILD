@@ -495,6 +495,24 @@ cc_library(
 )
 
 cc_library(
+    name = "stablehlo_elementwise",
+    srcs = ["stablehlo_elementwise.cc"],
+    hdrs = [
+        "stablehlo_elementwise.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = [
+        ":kernel_util",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels/internal:runtime_shape",
+        "//tensorflow/lite/kernels/internal:tensor_ctypes",
+        "//tensorflow/lite/kernels/internal:types",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+cc_library(
     name = "rng_util",
     srcs = [
         "rng_util.cc",
@@ -739,6 +757,9 @@ BUILTIN_KERNEL_SRCS = [
     "segment_sum.cc",
     "select.cc",
     "shape.cc",
+    "stablehlo_gather.cc",
+    "stablehlo_add.cc",
+    "stablehlo_multiply.cc",
     "stablehlo_scatter.cc",
     "sign.cc",
     "skip_gram.cc",
@@ -786,6 +807,7 @@ BUILTIN_KERNEL_DEPS = [
     ":lstm_shared",
     ":op_macros",
     ":padding",
+    ":stablehlo_elementwise",
     ":control_flow_common",
     "@eigen_archive//:eigen3",
     "@flatbuffers",
@@ -3078,6 +3100,52 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "stablehlo_gather_test",
+    size = "small",
+    srcs = ["stablehlo_gather_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "stablehlo_add_test",
+    size = "small",
+    srcs = ["stablehlo_add_test.cc"],
+    deps = [
+        ":subgraph_test_util",
+        ":test_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "stablehlo_multiply_test",
+    size = "small",
+    srcs = ["stablehlo_multiply_test.cc"],
+    deps = [
+        ":subgraph_test_util",
+        ":test_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -134,6 +134,9 @@ class CommandBufferInterface {
                              const KernelBase& kernel,
                              const KernelArgsArrayBase& args) = 0;
 
+  // Adds a nested command buffer to the command buffer.
+  virtual tsl::Status AddNestedCommandBuffer(const CommandBuffer& nested) = 0;
+
   // Adds a device-to-device memory copy to the command buffer.
   virtual tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                            const DeviceMemoryBase& src,

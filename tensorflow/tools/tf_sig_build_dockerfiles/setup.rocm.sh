@@ -43,6 +43,7 @@ DEBIAN_FRONTEND=noninteractive apt-get --allow-unauthenticated update
 DEBIAN_FRONTEND=noninteractive apt install -y wget software-properties-common
 DEBIAN_FRONTEND=noninteractive apt-get clean all
 wget -qO - https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -;
+wget -qO - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -;
 if [[ $ROCM_DEB_REPO == https://repo.radeon.com/rocm/*  ]] ; then \
       echo "deb [arch=amd64] $ROCM_DEB_REPO $ROCM_BUILD_NAME $ROCM_BUILD_NUM" > /etc/apt/sources.list.d/rocm.list; \
     else \
@@ -51,6 +52,7 @@ if [[ $ROCM_DEB_REPO == https://repo.radeon.com/rocm/*  ]] ; then \
 else
     bash "/${CUSTOM_INSTALL}"
 fi
+echo "deb [arch=amd64 trusted=yes] http://apt.llvm.org/focal/ llvm-toolchain-focal-16 main" > /etc/apt/sources.list.d/llvm.list
 
 GPU_DEVICE_TARGETS=${GPU_DEVICE_TARGETS:-"gfx900 gfx906 gfx908 gfx90a gfx940 gfx941 gfx942 gfx1030 gfx1100"}
 

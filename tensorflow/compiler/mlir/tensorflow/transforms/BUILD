@@ -76,7 +76,7 @@ cc_library(
         ":bridge",
         ":tensorflow_passes",
         ":tf_saved_model_passes",
-        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
+        "//tensorflow/compiler/mlir/tf2xla/internal:clustering_bridge_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:legalize_tf",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

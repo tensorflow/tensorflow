@@ -193,6 +193,7 @@ cc_library(
         ":drop_savedmodel_semantics",
         ":fold_broadcast_pass",
         ":fuse_convolution_pass",
+        ":legalize_tf_xla_call_module_to_stablehlo_pass",
         ":optimize",
         ":rename_entrypoint_to_main",
         ":smuggle_disallowed_ops",

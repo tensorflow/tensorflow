@@ -4,10 +4,12 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
+        "//learning/serving/contrib/tfrt/mlir/saved_model_analysis:__pkg__",
         "//tensorflow/compiler/mlir:__pkg__",
         "//tensorflow/compiler/mlir/tensorflow/transforms:__pkg__",
         "//tensorflow/compiler/mlir/tf2xla/api:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
+        "//tensorflow/compiler/tf2xla:__pkg__",
     ],
     licenses = ["notice"],
 )
@@ -27,14 +29,20 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core/platform:error_payloads",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/tpu:tpu_defs",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
+        "@local_tsl//tsl/platform:error_logging",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -54,6 +62,7 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/core/tpu:tpu_defs",
         "@com_google_absl//absl/status",

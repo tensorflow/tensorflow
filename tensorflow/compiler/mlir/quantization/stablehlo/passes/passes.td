@@ -58,6 +58,15 @@ def LiftQuantizableSpotsAsFunctionsPass : Pass<"stablehlo-lift-quantizable-spots
   ];
 }
 
+def ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass : Pass<"stablehlo-replace-stablehlo-ops-in-main-function-with-xla-call-module-ops", "mlir::ModuleOp"> {
+  let summary = "Replaces the StableHLO ops with a separate XlaCallModuleOps.";
+  let description = [{
+     Replaces the StableHLO ops in the main function block with
+     tf.XlaCallModuleOps as separate subgraphs. Wires them back to the main
+     function block to be compatible with SavedModel structure.
+  }];
+}
+
 def QuantizePass : Pass<"stablehlo-quantize", "mlir::func::FuncOp"> {
   let summary = "Applies static-range quantization on ops.";
   let dependentDialects = [
@@ -67,7 +76,30 @@ def QuantizePass : Pass<"stablehlo-quantize", "mlir::func::FuncOp"> {
   ];
 }
 
-
 def RestoreFunctionNamePass : Pass<"stablehlo-restore-function-name", "ModuleOp"> {
   let summary = "Restores function name from XlaCallModule op.";
+}
+
+def PostQuantizePass : Pass<"stablehlo-post-quantize", "mlir::func::FuncOp"> {
+  let summary = "Apply clean-up after quantization.";
+  let dependentDialects = [
+    "mlir::stablehlo::StablehloDialect",
+    "mlir::quantfork::QuantizationForkDialect",
+  ];
+}
+
+def QuantizeCompositeFunctionsPass : Pass<"stablehlo-quantize-composite-functions", "ModuleOp"> {
+  let summary = "Quantize composite functions with QDQ input / outputs.";
+  let options = [
+    Option<"mlir_dump_file_name_", "mlir-dump-file-name",
+        "std::optional<std::string>", /*default=*/"std::nullopt",
+        "MLIR dump file name.">
+  ];
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "mlir::stablehlo::StablehloDialect",
+    "mlir::quant::QuantizationDialect",
+    "mlir::quantfork::QuantizationForkDialect",
+    "TF::TensorFlowDialect",
+  ];
 }

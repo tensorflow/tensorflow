@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "rocm/include/miopen/miopen.h"
+#include "rocm/rocm_config.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
@@ -629,9 +630,8 @@ std::set<uint64_t> CachedFusionPlans::unsupported_plans;
 dnn::ProfileResult GetProfileResultFromConvSolution(
     miopenConvSolution_t solution) {
   dnn::ProfileResult profile_result;
-  profile_result.set_algorithm(
-      {(dnn::AlgorithmDesc::Index)solution.solution_id, false, 
-        solution.workspace_size});
+  profile_result.set_algorithm({(dnn::AlgorithmDesc::Index)solution.solution_id,
+                                false, solution.workspace_size});
   profile_result.set_elapsed_time_in_ms(solution.time);
   profile_result.set_scratch_size(solution.workspace_size);
   return profile_result;
@@ -2414,8 +2414,7 @@ bool MIOpenSupport::DoRnnForwardImpl(
   }
 
   if (is_profiling) {
-    tsl::StatusOr<absl::Duration> elapsed =
-                              timer->GetElapsedDuration();
+    tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
     if (!elapsed.ok()) {
       LOG(ERROR) << "Failed to get elapsed duration";
       return false;
@@ -2559,8 +2558,7 @@ bool MIOpenSupport::DoRnnBackwardImpl(
   }
 
   if (is_profiling) {
-    tsl::StatusOr<absl::Duration> elapsed =
-                              timer->GetElapsedDuration();
+    tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
     if (!elapsed.ok()) {
       LOG(ERROR) << "Failed to get elapsed duration";
       return false;
@@ -3166,7 +3164,16 @@ class RocmConvRunner : public dnn::ConvRunner {
         input_desc_{input_descriptor, ToMIOpenDataType(input_type)},
         output_desc_{output_descriptor, ToMIOpenDataType(input_type)},
         filter_desc_{filter_descriptor, ToMIOpenDataType(input_type)},
-        conv_desc_{conv_descriptor, ToMIOpenDataType(input_type)} {}
+        conv_desc_{conv_descriptor, ToMIOpenDataType(input_type)} {
+    bool is_backprop = ((kind == dnn::ConvolutionKind::BACKWARD_DATA) ||
+                        (kind == dnn::ConvolutionKind::BACKWARD_FILTER));
+    // #if TF_ROCM_VERSION >= 50000
+    if (is_backprop && (ToMIOpenDataType(input_type) == miopenHalf)) {
+      wrap::miopenSetConvolutionAttribute(
+          conv_desc_.handle(), MIOPEN_CONVOLUTION_ATTRIB_FP16_ALT_IMPL, 1);
+    }
+    // #endif
+  }
 
   std::string ToString() const override {
     return dnn::AlgorithmDesc{algo_id_, false, workspace_size_}.ToString();
@@ -3421,6 +3428,17 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithmsImmediateMode(
   ScopedConvolutionDescriptor conv{convolution_descriptor,
                                    ToMIOpenDataType(element_type)};
 
+  bool is_backprop = ((kind == dnn::ConvolutionKind::BACKWARD_DATA) ||
+                      (kind == dnn::ConvolutionKind::BACKWARD_FILTER));
+  // bool is_backprop = (call_context == dnn::CallContext::kBackpropData) ||
+  //                   (call_context == dnn::CallContext::kBackpropFilter);
+
+#if TF_ROCM_VERSION >= 50000
+  if (is_backprop && (ToMIOpenDataType(element_type) == miopenHalf)) {
+    wrap::miopenSetConvolutionAttribute(
+        conv.handle(), MIOPEN_CONVOLUTION_ATTRIB_FP16_ALT_IMPL, 1);
+  }
+#endif
   // First determine the number of algorityhms available
   size_t maxSolutionCount = 0;
 
@@ -3630,6 +3648,18 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithmsFindMode(
   ScopedConvolutionDescriptor conv{convolution_descriptor,
                                    ToMIOpenDataType(element_type)};
 
+  bool is_backprop = ((kind == dnn::ConvolutionKind::BACKWARD_DATA) ||
+                      (kind == dnn::ConvolutionKind::BACKWARD_FILTER));
+  // bool is_backprop = (call_context == dnn::CallContext::kBackpropData) ||
+  //                    (call_context == dnn::CallContext::kBackpropFilter);
+
+#if TF_ROCM_VERSION >= 50000
+  if (is_backprop && (ToMIOpenDataType(element_type) == miopenHalf)) {
+    wrap::miopenSetConvolutionAttribute(
+        conv.handle(), MIOPEN_CONVOLUTION_ATTRIB_FP16_ALT_IMPL, 1);
+  }
+#endif
+
   // Determine the workspace memory size that will need by the call to Find
   size_t scratch_memory_size = 0;
   switch (kind) {
@@ -3785,6 +3815,27 @@ bool MIOpenSupport::GetRnnAlgorithms(
 }
 
 bool MIOpenSupport::DoBatchNormalizationForward(
+    Stream* stream, const DeviceMemory<Eigen::bfloat16>& x,
+    const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
+    const DeviceMemory<float>& estimated_mean,
+    const DeviceMemory<float>& estimated_variance,
+    const DeviceMemory<Eigen::bfloat16>& side_input,
+    const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    const double exponential_average_factor,
+    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::bfloat16>* y,
+    DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
+    DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
+    bool is_training, ScratchAllocator* reserve_space_allocator,
+    ScratchAllocator* workspace_allocator) {
+  return DoBatchNormalizationForwardImpl<Eigen::bfloat16, float>(
+      stream, dnn::DataType::kBF16, dnn::DataType::kFloat, x, scale, offset,
+      estimated_mean, estimated_variance, side_input, x_desc, scale_offset_desc,
+      epsilon, exponential_average_factor, activation_mode, y, batch_mean,
+      batch_var, saved_mean, saved_inv_var, is_training);
+}
+
+bool MIOpenSupport::DoBatchNormalizationForward(
     Stream* stream, const DeviceMemory<Eigen::half>& x,
     const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
     const DeviceMemory<float>& estimated_mean,
@@ -3872,6 +3923,25 @@ bool MIOpenSupport::DoBatchNormalizationForwardImpl(
     return false;
   }
   return true;
+}
+
+bool MIOpenSupport::DoBatchNormalizationBackward(
+    Stream* stream, const DeviceMemory<Eigen::bfloat16>& y_backprop,
+    const DeviceMemory<Eigen::bfloat16>& x, const DeviceMemory<float>& scale,
+    const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
+    const DeviceMemory<float>& inv_var, const DeviceMemory<Eigen::bfloat16>& y,
+    const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    dnn::ActivationMode activation_mode,
+    DeviceMemory<Eigen::bfloat16>* x_backprop,
+    DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+    DeviceMemory<Eigen::bfloat16>* side_input_backprop,
+    DeviceMemory<uint8_t>* reserve_space_data,
+    ScratchAllocator* workspace_allocator) {
+  return DoBatchNormalizationBackwardImpl<Eigen::bfloat16, float>(
+      stream, miopenBFloat16, miopenFloat, y_backprop, x, scale, mean, inv_var,
+      x_desc, scale_offset_desc, epsilon, x_backprop, scale_backprop,
+      offset_backprop);
 }
 
 bool MIOpenSupport::DoBatchNormalizationBackward(
@@ -4033,7 +4103,8 @@ tsl::Status ROCmFusedMatmulRunner::gemm(Stream* stream, DeviceMemoryBase a_data,
   return stream->ThenBlasGemm<T, T>(
       tb, ta, _n, _m, _k, static_cast<DeviceMemory<T>>(b_data), _ldb,
       static_cast<DeviceMemory<T>>(a_data), _lda,
-      static_cast<DeviceMemory<T>*>(&c_data), _ldc, NumericOptions{});
+      static_cast<DeviceMemory<T>*>(&c_data), _ldc, NumericOptions{},
+      blas::CallContext::kNone);
 }
 
 template <typename T>
@@ -4200,7 +4271,9 @@ bool MIOpenSupport::DoMatMul(Stream* stream,
     if (!stream
              ->ThenBlasGemm(blas::Transpose::kNoTranspose,
                             blas::Transpose::kNoTranspose, m, n, k, weights, m,
-                            input_data, k, output_data, m, NumericOptions{})
+                            input_data, k, output_data, m, NumericOptions{},
+                            blas::CallContext::kNone)
+
              .ok()) {
       return false;
     }
@@ -4280,10 +4353,10 @@ bool MIOpenSupport::DoMatMul(Stream* stream,
       return ptrs;
     };
 
-    stream->ThenBlasGemmBatched(blas::Transpose::kNoTranspose,
-                                blas::Transpose::kNoTranspose, m, n, k, alpha,
-                                toPtrs(a), lda, toPtrs(b), ldb, beta, toPtrs(c),
-                                ldc, batch_count, NumericOptions{});
+    stream->ThenBlasGemmBatched(
+        blas::Transpose::kNoTranspose, blas::Transpose::kNoTranspose, m, n, k,
+        alpha, toPtrs(a), lda, toPtrs(b), ldb, beta, toPtrs(c), ldc,
+        batch_count, NumericOptions{}, blas::CallContext::kNone);
   }
 
   return stream->ok();
@@ -4883,11 +4956,6 @@ bool MIOpenSupport::DeriveOutputBatchDescriptor(
   return true;
 }
 
-// A helper function to decide whether to use
-// NHWC in Convolution/Batchnorm. This mode can be faster in
-// in FP16 workloads on gfx908 and beyond. Requires ROCm 5.0+.
-// TODO(stevenireeves): Use autotune to choose between this mode and
-// NCHW when MIOpen has more optimized kernels. 
 bool UseNhwcLayoutForRocm() {
 #if TF_ROCM_VERSION >= 50100
   static bool is_enabled = [] {
@@ -4899,7 +4967,6 @@ bool UseNhwcLayoutForRocm() {
   }();
   return is_enabled;
 #else //TF_ROCM_VERSION < 50000
-  return false;
 #endif
 }
 

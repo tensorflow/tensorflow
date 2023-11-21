@@ -127,8 +127,7 @@ tsl::StatusOr<std::string> GraphNodeTypeToString(
   return tsl::errors::Internal("Unexpected value for GraphNodeType");
 }
 
-tsl::StatusOr<OwnedGpuGraphExec::UpdateResult> OwnedGpuGraphExec::Update(
-    OwnedGpuGraph graph) {
+tsl::Status OwnedGpuGraphExec::Update(OwnedGpuGraph graph) {
   VLOG(3) << "Update gpu graph exec with a new graph after " << num_launches_
           << " launches since last update"
           << " #" << num_updates_++;
@@ -141,33 +140,7 @@ tsl::StatusOr<OwnedGpuGraphExec::UpdateResult> OwnedGpuGraphExec::Update(
   auto st = GpuDriver::GraphExecUpdate(get(), graph.get(), &result);
   uint64_t end_nanos = tsl::Env::Default()->NowNanos();
 
-  VLOG(5) << "Updated gpu graph exec #" << id_ << " (took "
-          << (end_nanos - start_nanos) / 1000 << " us)";
-
-  // TODO(b/297051365): We currently fallback to op-by-op mode because CUBLAS
-  // generate a memset node which causes graph update to fail. We should remove
-  // the fallback mechanism once cuBLAS completely works in gpu graphs.
-  auto compute_should_fallback = [&]() -> tsl::StatusOr<bool> {
-    if (result.result != GpuDriver::GraphExecUpdateResult::kError &&
-        result.result != GpuDriver::GraphExecUpdateResult::kParametersChanged)
-      return false;
-
-    if (result.error_node == nullptr) return false;
-    TF_ASSIGN_OR_RETURN(GpuDriver::GraphNodeType node_type,
-                        GpuDriver::GraphNodeGetType(result.error_node));
-    if (node_type != GpuDriver::GraphNodeType::kMemset) return false;
-
-    if (result.error_from_node != nullptr) return false;
-
-    return true;
-  };
-
-  if (!st.ok() || result.result != GpuDriver::GraphExecUpdateResult::kSuccess) {
-    TF_ASSIGN_OR_RETURN(bool should_fallback, compute_should_fallback());
-    if (should_fallback) {
-      return UpdateResult::kFallback;
-    }
-
+  if (!st.ok()) {
     TF_ASSIGN_OR_RETURN(std::string result_str,
                         GraphExecUpdateResultToString(result.result));
     std::string error_message = absl::StrCat(
@@ -193,7 +166,10 @@ tsl::StatusOr<OwnedGpuGraphExec::UpdateResult> OwnedGpuGraphExec::Update(
     return tsl::errors::Internal(error_message);
   }
 
-  return UpdateResult::kSuccess;
+  VLOG(5) << "Updated gpu graph exec #" << id_ << " (took "
+          << (end_nanos - start_nanos) / 1000 << " us)";
+
+  return tsl::OkStatus();
 }
 
 tsl::Status OwnedGpuGraphExec::Launch(stream_executor::Stream* stream) {

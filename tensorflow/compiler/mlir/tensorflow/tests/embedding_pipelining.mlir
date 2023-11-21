@@ -17,7 +17,7 @@ module {
     // CHECK: {{.*StatefulPartitionedCall.* f = @non_tpu.*}}
     // CHECK: {{.*StatefulPartitionedCall.* f = @start_step_1.*}}
     // CHECK: {{.*StatefulPartitionedCall.* f = @while_cond.*}}
-    // CHECK: {{.*tf.While.* body = @new_while_body.* cond = @new_while_cond.*}}
+    // CHECK: {{.*tf.While.* <{body = @new_while_body.* cond = @new_while_cond.*}}
     // CHECK: {{.*StatefulPartitionedCall.* f = @finish_step_nm2.*}}
     // CHECK: {{.*StatefulPartitionedCall.* f = @finish_step_nm1.*}}
     // CHECK: return
@@ -73,7 +73,7 @@ module {
     // CHECK: {{.*StatefulPartitionedCall.* f = @non_tpu.*}}
     // CHECK: {{.*StatefulPartitionedCall.* f = @start_step_1.*}}
     // CHECK: {{.*StatefulPartitionedCall.* f = @while_cond.*}}
-    // CHECK: {{.*tf.While.* body = @new_while_body.* cond = @new_while_cond.*}}
+    // CHECK: {{.*tf.While.* <{body = @new_while_body.* cond = @new_while_cond.*}}
     // CHECK: {{.*StatefulPartitionedCall.* f = @finish_step_nm2.*}}
     // CHECK: {{.*StatefulPartitionedCall.* f = @finish_step_nm1.*}}
     // CHECK: return
@@ -112,7 +112,7 @@ module {
   func.func private @while_body(%arg0: tensor<i32>) -> (tensor<i32>) {
     // The pipelining control flow and supporting functions stay the same as the training version above.
     // The order of these functions is also significant.
-    // CHECK: {{.*tf.While.* body = @new_while_body.* cond = @new_while_cond.* parallel_iterations = 3}}
+    // CHECK: {{.*tf.While.* <{body = @new_while_body.* cond = @new_while_cond.* parallel_iterations = 3}}
     // CHECK: return
     // metadata ops
     "tf.TPUReplicateMetadata"() {_has_manual_control_dependencies = true, _replication_info = "repl_info", num_replicas = 1 : i64} : () -> ()

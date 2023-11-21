@@ -34,9 +34,13 @@ limitations under the License.
 extern "C" {
 #endif
 
-/** \addtogroup c_api_types tensorflow/lite/c/c_api_types.h
+// clang-format off
+// NOLINTBEGIN(whitespace/line_length)
+/** \defgroup c_api_types tensorflow/lite/c/c_api_types.h
  *  @{
  */
+// NOLINTEND(whitespace/line_length)
+// clang-format on
 
 // Define TFL_CAPI_EXPORT macro to export a function properly with a shared
 // library.

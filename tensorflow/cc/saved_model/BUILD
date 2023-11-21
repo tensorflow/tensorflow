@@ -522,6 +522,7 @@ cc_library(
     visibility = [
         "//learning/brain/contrib/hub/server/distro:__subpackages__",
         "//learning/brain/contrib/tpu_modeling:__subpackages__",
+        "//learning/metadata/artifactoid/cc:__subpackages__",
         "//learning/tfx/pipeline/util:__subpackages__",
         "//tensorflow/python/saved_model:__subpackages__",
     ],

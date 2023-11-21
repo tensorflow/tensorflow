@@ -25,6 +25,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/cuda/cuda_blas_lt.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 

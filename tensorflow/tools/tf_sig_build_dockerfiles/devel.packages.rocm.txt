@@ -20,6 +20,7 @@ hipsolver-dev
 apt-transport-https
 ca-certificates
 colordiff
+clang-16
 curl
 ffmpeg
 git

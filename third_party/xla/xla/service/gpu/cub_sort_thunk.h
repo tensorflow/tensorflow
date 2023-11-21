@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_CUB_SORT_THUNK_H_
 #define XLA_SERVICE_GPU_CUB_SORT_THUNK_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -23,6 +24,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/xla_data.pb.h"
 
@@ -39,6 +41,10 @@ class CubSortRunnerInterface {
                      se::DeviceMemoryBase scratch, bool descending) = 0;
   virtual Status Run(const Thunk::ExecuteParams& params,
                      const class CubSortThunk* thunk) = 0;
+  virtual StatusOr<int64_t> GetScratchSize(int64_t num_items) = 0;
+
+  static StatusOr<std::unique_ptr<CubSortRunnerInterface>> Create(
+      PrimitiveType type, std::optional<PrimitiveType> value_type);
 };
 
 class CubSortThunk : public Thunk {

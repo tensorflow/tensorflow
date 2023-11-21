@@ -12,14 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# Suite of verification tests for the SINGLE TensorFlow wheel in the "build"
-# directory, or whatever path is set as $TF_WHEEL.
+# Suite of verification tests for the SINGLE TensorFlow wheel in the
+# $BUILD_DIR directory, or whatever path is set as $TF_WHEEL.
 
 setup_file() {
-    python3 -m venv "$BATS_FILE_TMPDIR/venv"
-    cd build
+    cd "$BUILD_DIR"
     if [[ -z "$TF_WHEEL" ]]; then
-        export TF_WHEEL=$(find build -iname "*.whl")
+        export TF_WHEEL=$(find "$BUILD_DIR" -iname "*.whl")
+    fi
+
+    # Setup the env for the python import testing
+    if [[ $TF_WHEEL == *"aarch64.whl" ]]; then
+        python${TFCI_PYTHON_VERSION} -m venv "$BATS_FILE_TMPDIR/venv"
+    else
+        python3 -m venv "$BATS_FILE_TMPDIR/venv"
     fi
 }
 

@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/hlo_parser.h"
@@ -387,7 +388,7 @@ static int64_t GetAllocationIndex(mlir::BlockArgument func_arg,
 }
 
 StatusOr<BufferAllocation::Slice> GetAllocationSlice(
-    mlir::Value v, absl::Span<const BufferAllocation> allocations,
+    mlir::Value v, absl::Span<const BufferAllocation* const> allocations,
     std::string* constant_name) {
   if (constant_name) {
     constant_name->clear();
@@ -413,9 +414,10 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
           mlir::dyn_cast_or_null<mlir::memref::ViewOp>(v.getDefiningOp())) {
     TF_RET_CHECK(view.getSource().isa<mlir::BlockArgument>());
 
+    const BufferAllocation* allocation = allocations[GetAllocationIndex(
+        view.getSource().cast<mlir::BlockArgument>(), constant_name)];
     return BufferAllocation::Slice(
-        &allocations[GetAllocationIndex(
-            view.getSource().cast<mlir::BlockArgument>(), constant_name)],
+        allocation,
         mlir::cast<mlir::arith::ConstantOp>(view.getByteShift().getDefiningOp())
             .getValue()
             .cast<mlir::IntegerAttr>()
@@ -433,12 +435,13 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
         module.lookupSymbol(get_global.getName()));
     int64_t index =
         global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
-    return BufferAllocation::Slice(&allocations[index], 0,
-                                   allocations[index].size());
+
+    return BufferAllocation::Slice(allocations[index], 0,
+                                   allocations[index]->size());
   }
   if (auto arg = v.dyn_cast<mlir::BlockArgument>()) {
     return BufferAllocation::Slice(
-        &allocations[GetAllocationIndex(arg, constant_name)], 0, size);
+        allocations[GetAllocationIndex(arg, constant_name)], 0, size);
   }
 
   return Unimplemented(
@@ -492,7 +495,7 @@ GetOutputDefiningDynamicUpdateSliceOps(mlir::lmhlo::FusionOp fusion) {
 
 bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     mlir::lmhlo::FusionOp fusion,
-    absl::Span<const BufferAllocation> allocations) {
+    absl::Span<const BufferAllocation* const> allocations) {
   std::vector<mlir::mhlo::DynamicUpdateSliceOp> dus_ops =
       GetOutputDefiningDynamicUpdateSliceOps(fusion);
 
@@ -620,15 +623,21 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
 }
 
 Shape GetShape(mlir::Value value) {
+  Shape shape;
   if (value.getType().isa<mlir::MemRefType>()) {
-    return TypeToShape(value.getType());
+    shape = TypeToShape(value.getType());
   } else if (value.getType().isa<mlir::TensorType>()) {
-    return GetShapeFromTensorType(value);
+    shape = GetShapeFromTensorType(value);
   } else if (value.getType().isa<mlir::TupleType>()) {
-    return TypeToShape(value.getType());
+    shape = TypeToShape(value.getType());
+  } else {
+    LOG(FATAL) << "Unexpected value type to get shape for";
   }
-  LOG(FATAL) << "Unexpected value type to get shape for";
-  return {};
+  if (primitive_util::Is4BitType(shape.element_type())) {
+    // 4-bit types are always packed on the GPU
+    shape.mutable_layout()->set_element_size_in_bits(4);
+  }
+  return shape;
 }
 
 std::optional<TransposeDescription> FindTiledTranspose(

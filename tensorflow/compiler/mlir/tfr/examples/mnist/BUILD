@@ -81,6 +81,7 @@ distribute_py_strict_test(
         "notap",  # The test is too long to run as part of llvm presubmits (b/173661843).
         "notpu",  # Takes too long (b/192305423)
         "notsan",  # Not needed, and there were issues with timeouts.
+        "requires-net:external",
     ],
 
     # TODO(b/175056184): Re-enable xla_enable_strict_auto_jit once the issues

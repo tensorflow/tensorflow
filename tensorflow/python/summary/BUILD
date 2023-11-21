@@ -27,7 +27,7 @@ py_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:tf_record",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -92,10 +92,10 @@ tf_py_strict_test(
     deps = [
         ":summary_py",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:meta_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",

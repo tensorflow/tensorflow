@@ -349,7 +349,7 @@ py_strict_library(
         "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/lib/core:_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:control_flow_util",
         "//tensorflow/python/platform:_pywrap_stacktrace_handler",
         "//tensorflow/python/platform:tf_logging",
@@ -532,9 +532,16 @@ py_strict_library(
     ],
 )
 
+tf_cc_binary(
+    name = "_native_proto_caster",
+    linkshared = True,
+    deps = ["@pybind11_protobuf//pybind11_protobuf:native_proto_caster"],
+)
+
 py_strict_library(
     name = "function",
     srcs = ["function.py"],
+    data = [":_native_proto_caster"],  # copybara:comment
     srcs_version = "PY3",
     visibility = visibility + [
         "//smartass/brain:__subpackages__",
@@ -558,6 +565,7 @@ py_strict_library(
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:function_utils",
         "//tensorflow/python/util:tf_decorator",
+        # copybara:uncomment "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
 )
 
@@ -1929,7 +1937,7 @@ pytype_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
         "@pypi_packaging//:pkg",
@@ -1963,7 +1971,7 @@ pytype_strict_library(
     deps = [
         ":byte_swap_tensor",
         ":ops",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -3208,7 +3216,7 @@ tf_py_strict_test(
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/grappler:tf_optimizer",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/ops:cond_v2",
@@ -3347,7 +3355,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:tf_record",
         "//tensorflow/python/platform:gfile",
     ],
 )

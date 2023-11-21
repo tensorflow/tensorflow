@@ -146,6 +146,7 @@ xla_cc_test(
     deps = [
         ":gpu_codegen_test",
         "//xla:statusor",
+        "//xla:test",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:gpu_plugin",
@@ -423,11 +424,9 @@ xla_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_module_config",
-        "//xla/service:hlo_parser",
-        "//xla/tests:hlo_test_base",
-        "@local_tsl//tsl/platform:test",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -699,9 +698,10 @@ xla_cc_test(
 xla_cc_test(
     name = "sorting_test",
     srcs = ["sorting_test.cc"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     tags = tf_cuda_tests_tags(),
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + 
-                    if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -986,4 +986,15 @@ xla_test(
     # Sharding must be disabled to correctly dump the autotune cache for all test.
     shard_count = 1,
     deps = [":simple_optimization_test"],
+)
+
+xla_cc_test(
+    name = "gpu_int4_test",
+    srcs = ["gpu_int4_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
 )

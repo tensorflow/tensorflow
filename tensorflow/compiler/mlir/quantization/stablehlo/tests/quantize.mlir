@@ -20,7 +20,7 @@ func.func private @quantize_simple_xla_call_module(%arg0: tensor<1x4xf32>) -> te
 // CHECK: %[[CONST_0:.*]] = "stablehlo.constant"() {value = dense<1.000000e+00> : tensor<4x3xf32>} : () -> tensor<4x3xf32>
 // CHECK-DAG: %[[QCAST_0:.*]] = "quantfork.qcast"(%[[CONST_0]]) {volatile} : (tensor<4x3xf32>) -> tensor<4x3x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
 // CHECK-DAG: %[[QCAST_1:.*]] = "quantfork.qcast"(%[[ARG_0]]) {volatile} : (tensor<1x4xf32>) -> tensor<1x4x!quant.uniform<i8:f32, 6.000000e-03:-128>>
-// CHECK: %[[XLACALLMODULE_0:.*]] = "tf.XlaCallModule"(%[[QCAST_1]], %[[QCAST_0]]) {{{.*}}} : (tensor<1x4x!quant.uniform<i8:f32, 6.000000e-03:-128>>, tensor<4x3x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>) -> tensor<1x3x!quant.uniform<i8:f32, 1.000000e-03:-3>>
+// CHECK: %[[XLACALLMODULE_0:.*]] = "tf.XlaCallModule"(%[[QCAST_1]], %[[QCAST_0]]) <{{{.*}}}> {{{.*}}} : (tensor<1x4x!quant.uniform<i8:f32, 6.000000e-03:-128>>, tensor<4x3x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>) -> tensor<1x3x!quant.uniform<i8:f32, 1.000000e-03:-3>>
 // CHECK: %[[DCAST_0:.*]] = "quantfork.dcast"(%[[XLACALLMODULE_0]]) : (tensor<1x3x!quant.uniform<i8:f32, 1.000000e-03:-3>>) -> tensor<1x3xf32>
 // CHECK: "func.return"(%[[DCAST_0]]) : (tensor<1x3xf32>) -> ()
 
@@ -37,6 +37,6 @@ func.func private @quantize_simple_xla_call_module_no_operand() -> tensor<1x3xf3
 // Tests that the output of the tf.XlaCallModule op has been replaced by
 // a quantized type, and the corresponding quantfork.qcast ops that turned
 // the float output to a quantized type is removed.
-// CHECK: %[[XLACALLMODULE_0:.*]] = "tf.XlaCallModule"() {{{.*}}} : () -> tensor<1x3x!quant.uniform<i8:f32, 1.000000e-03:-3>>
+// CHECK: %[[XLACALLMODULE_0:.*]] = "tf.XlaCallModule"() <{{{.*}}}> {{{.*}}} : () -> tensor<1x3x!quant.uniform<i8:f32, 1.000000e-03:-3>>
 // CHECK: %[[DCAST_0:.*]] = "quantfork.dcast"(%[[XLACALLMODULE_0]]) : (tensor<1x3x!quant.uniform<i8:f32, 1.000000e-03:-3>>) -> tensor<1x3xf32>
 // CHECK: "func.return"(%[[DCAST_0]]) : (tensor<1x3xf32>) -> ()

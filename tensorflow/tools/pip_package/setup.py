@@ -176,7 +176,7 @@ EXTRA_PACKAGES['and-cuda'] = [
     'nvidia-curand-cu12 == 10.3.3.141',
     'nvidia-cusolver-cu12 == 11.5.2.141',
     'nvidia-cusparse-cu12 == 12.1.2.141',
-    'nvidia-nccl-cu12 == 2.16.5',
+    'nvidia-nccl-cu12 == 2.18.3',
     'nvidia-nvjitlink-cu12 == 12.2.140',
     'tensorrt == 8.6.1.post1',
     'tensorrt-bindings == 8.6.1',
@@ -349,7 +349,6 @@ headers = (
     list(find_files('*.h', 'tensorflow/tsl')) +
     list(find_files('*.h', 'google/com_google_protobuf/src')) +
     list(find_files('*.inc', 'google/com_google_protobuf/src')) +
-    list(find_files('*', 'third_party/eigen3')) +
     list(find_files('*', 'third_party/gpus')) +
     list(find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
     list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +

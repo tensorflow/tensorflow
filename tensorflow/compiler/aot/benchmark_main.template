@@ -19,7 +19,7 @@
 // clang-format on
 
 #include "tensorflow/compiler/aot/benchmark.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"
 
 // Macros that expand to tokens based on the entry point name.
 // clang-format off

@@ -82,7 +82,9 @@ Status RunFusedMHA(GpufMHAParams params, se::Stream *stream,
                                      params.config->mask,
                                      params.config->activation,
                                      dropout_rate,
-                                     seed};
+                                     seed,
+                                     false,
+                                     false};
   TF_ASSIGN_OR_RETURN(auto *runner,
                       lazy_runner->GetOrCreateRunner(config, stream));
   return (*runner)(stream, options.profile_result, scratch_memory,
@@ -237,29 +239,37 @@ Status RunFusedMHABackward(GpufMHABackwardParams params, se::Stream *stream,
   if (params.config->seed) {
     seed = *params.config->seed;
   }
-
-  se::dnn::FusedMHABackwardOp::Config config{kind,
-                                             scale,
-                                             params.config->bmm1_grad_gemm1_rhs,
-                                             params.config->bmm1_grad_gemm2_rhs,
-                                             params.config->bmm2_grad_gemm1_lhs,
-                                             params.config->bmm2_grad_gemm2_rhs,
-                                             params.config->d_output,
-                                             params.config->d_bmm1_lhs,
-                                             params.config->d_bmm1_rhs,
-                                             params.config->d_bmm2_rhs,
-                                             params.config->d_s,
-                                             params.config->mask,
-                                             params.config->d_bias,
-                                             dropout_rate,
-                                             seed};
+  // TODO: set is_flash_attention to real value, set it to false for now
+  se::dnn::FusedMHABackwardOp::Config config{
+      kind,
+      scale,
+      params.config->bmm1_grad_gemm1_rhs,
+      params.config->bmm1_grad_gemm2_rhs,
+      params.config->bmm2_grad_gemm1_lhs,
+      params.config->bmm2_grad_gemm2_rhs,
+      params.config->d_output,
+      params.config->d_bmm1_lhs,
+      params.config->d_bmm1_rhs,
+      params.config->d_bmm2_rhs,
+      std::optional<TensorDescriptor>(params.config->d_s),
+      params.config->mask,
+      params.config->d_bias,
+      std::nullopt,
+      std::nullopt,
+      dropout_rate,
+      seed,
+      false,
+      false};
   TF_ASSIGN_OR_RETURN(auto *runner,
                       lazy_runner->GetOrCreateRunner(config, stream));
+  // TODO: pass in real softmax_sum, dQ_accum, fwd_output
   return (*runner)(stream, options.profile_result, scratch_memory,
                    bmm1_grad_gemm1_rhs_buffer, bmm1_grad_gemm2_rhs_buffer,
                    bmm2_grad_gemm1_lhs_buffer, bmm2_grad_gemm2_rhs_buffer,
                    d_output_buffer, d_bmm1_lhs_buffer, d_bmm1_rhs_buffer,
-                   d_bmm2_rhs_buffer, d_s_buffer, mask_buffer, d_bias_buffer);
+                   d_bmm2_rhs_buffer, d_s_buffer, se::DeviceMemoryBase(),
+                   se::DeviceMemoryBase(), mask_buffer, d_bias_buffer,
+                   se::DeviceMemoryBase(), se::DeviceMemoryBase());
 }
 
 template <typename ElementType, typename BiasType, typename OutputType>

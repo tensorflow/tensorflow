@@ -675,6 +675,11 @@ class Translator {
   std::optional<VectorBufferOffset<BufferOffset<tflite::Metadata>>>
   CreateMetadataVector();
 
+  // Encodes the `tfl.metadata_buffer` array attribute of the module to the
+  // metadata_buffer section in the final model. Returns empty if there isn't
+  // such attribute in the mlir module.
+  VectorBufferOffset<int32_t> CreateMetadataBufferVector();
+
   // Builds and returns list of tfl.SignatureDef sections in the model.
   std::optional<VectorBufferOffset<BufferOffset<tflite::SignatureDef>>>
   CreateSignatureDefs(const std::vector<SignatureDefData>& signature_defs);
@@ -727,8 +732,13 @@ class Translator {
   BufferOffset<flatbuffers::Vector<unsigned int>> BuildStablehloPrecisionConfig(
       ::mlir::ArrayAttr precisionConfig);
 
+  std::optional<BufferOffset<tflite::Operator>> BuildStablehloGatherOp(
+      mlir::stablehlo::GatherOp gather_op, const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results);
+
   std::optional<BufferOffset<tflite::Operator>> BuildStablehloScatterOp(
-      mlir::stablehlo::ScatterOp shlo_op, const std::vector<int32_t>& operands,
+      mlir::stablehlo::ScatterOp scatter_op,
+      const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
   std::optional<BufferOffset<tflite::Operator>> BuildStablehloRngBitGeneratorOp(
@@ -1432,6 +1442,43 @@ Translator::BuildStablehloPrecisionConfig(::mlir::ArrayAttr precisionConfig) {
 }
 
 std::optional<BufferOffset<tflite::Operator>>
+Translator::BuildStablehloGatherOp(mlir::stablehlo::GatherOp gather_op,
+                                   const std::vector<int32_t>& operands,
+                                   const std::vector<int32_t>& results) {
+  std::string op_name =
+      gather_op.getOperation()->getName().getStringRef().str();
+  uint32_t opcode_index =
+      GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_GATHER);
+
+  std::vector<int64_t> offset_dims_vec(
+      gather_op.getDimensionNumbers().getOffsetDims().begin(),
+      gather_op.getDimensionNumbers().getOffsetDims().end());
+  std::vector<int64_t> collapsed_slice_dims_vec(
+      gather_op.getDimensionNumbers().getCollapsedSliceDims().begin(),
+      gather_op.getDimensionNumbers().getCollapsedSliceDims().end());
+  std::vector<int64_t> start_index_map_vec(
+      gather_op.getDimensionNumbers().getStartIndexMap().begin(),
+      gather_op.getDimensionNumbers().getStartIndexMap().end());
+
+  auto offset_dims = builder_.CreateVector(offset_dims_vec);
+  auto collapsed_slice_dims = builder_.CreateVector(collapsed_slice_dims_vec);
+  auto start_index_map = builder_.CreateVector(start_index_map_vec);
+  auto slice_sizes = builder_.CreateVector(
+      mlir::GetOptionalVector<int64_t>(gather_op.getSliceSizes()));
+
+  auto gather_option = tflite::CreateStablehloGatherOptions(
+      builder_, offset_dims, collapsed_slice_dims, start_index_map,
+      gather_op.getDimensionNumbers().getIndexVectorDim(), slice_sizes,
+      gather_op.getIndicesAreSorted());
+
+  return tflite::CreateOperator(
+      builder_, opcode_index, builder_.CreateVector(operands),
+      builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+      tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+      tflite::BuiltinOptions2_StablehloGatherOptions, gather_option.Union());
+}
+
+std::optional<BufferOffset<tflite::Operator>>
 Translator::BuildStablehloScatterOp(mlir::stablehlo::ScatterOp scatter_op,
                                     const std::vector<int32_t>& operands,
                                     const std::vector<int32_t>& results) {
@@ -1590,23 +1637,23 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
             llvm::dyn_cast<mlir::stablehlo::RngBitGeneratorOp>(inst)) {
       return BuildStablehloRngBitGeneratorOp(shlo_op, operands, results);
     }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::GatherOp>(inst)) {
+      return BuildStablehloGatherOp(shlo_op, operands, results);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::AddOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_ADD);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::MulOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_MULTIPLY);
+    }
     // for ops don't have kernels, only serialize when conversion is set to true
     if (convert_stablehlo_) {
       if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::LogisticOp>(inst)) {
         return BuildStablehloOperatorwithoutOptions(
             inst, operands, results,
             tflite::BuiltinOperator_STABLEHLO_LOGISTIC);
-      }
-
-      if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::AddOp>(inst)) {
-        return BuildStablehloOperatorwithoutOptions(
-            inst, operands, results, tflite::BuiltinOperator_STABLEHLO_ADD);
-      }
-
-      if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::MulOp>(inst)) {
-        return BuildStablehloOperatorwithoutOptions(
-            inst, operands, results,
-            tflite::BuiltinOperator_STABLEHLO_MULTIPLY);
       }
 
       if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::DivOp>(inst)) {
@@ -2104,40 +2151,6 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
             tflite::BuiltinOptions2_StablehloWhileOptions,
             while_option.Union());
       }
-      if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::GatherOp>(inst)) {
-        std::string op_name = inst->getName().getStringRef().str();
-        uint32_t opcode_index =
-            GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_GATHER);
-
-        std::vector<int64_t> offset_dims_vec(
-            shlo_op.getDimensionNumbers().getOffsetDims().begin(),
-            shlo_op.getDimensionNumbers().getOffsetDims().end());
-        std::vector<int64_t> collapsed_slice_dims_vec(
-            shlo_op.getDimensionNumbers().getCollapsedSliceDims().begin(),
-            shlo_op.getDimensionNumbers().getCollapsedSliceDims().end());
-        std::vector<int64_t> start_index_map_vec(
-            shlo_op.getDimensionNumbers().getStartIndexMap().begin(),
-            shlo_op.getDimensionNumbers().getStartIndexMap().end());
-
-        auto offset_dims = builder_.CreateVector(offset_dims_vec);
-        auto collapsed_slice_dims =
-            builder_.CreateVector(collapsed_slice_dims_vec);
-        auto start_index_map = builder_.CreateVector(start_index_map_vec);
-        auto slice_sizes = builder_.CreateVector(
-            mlir::GetOptionalVector<int64_t>(shlo_op.getSliceSizes()));
-
-        auto gather_option = tflite::CreateStablehloGatherOptions(
-            builder_, offset_dims, collapsed_slice_dims, start_index_map,
-            shlo_op.getDimensionNumbers().getIndexVectorDim(), slice_sizes,
-            shlo_op.getIndicesAreSorted());
-
-        return tflite::CreateOperator(
-            builder_, opcode_index, builder_.CreateVector(operands),
-            builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
-            tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
-            tflite::BuiltinOptions2_StablehloGatherOptions,
-            gather_option.Union());
-      }
       if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::TransposeOp>(inst)) {
         std::string op_name = inst->getName().getStringRef().str();
         uint32_t opcode_index = GetOpcodeIndex(
@@ -2597,6 +2610,18 @@ Translator::CreateMetadataVector() {
   return builder_.CreateVector(metadata);
 }
 
+VectorBufferOffset<int32_t> Translator::CreateMetadataBufferVector() {
+  auto array_attr =
+      module_->getAttrOfType<mlir::ArrayAttr>("tfl.metadata_buffer");
+  std::vector<int32_t> metadata_buffer;
+  if (!array_attr) return 0;
+  for (auto value : array_attr.getAsValueRange<mlir::IntegerAttr>()) {
+    metadata_buffer.push_back(value.getSExtValue());
+  }
+
+  return builder_.CreateVector(metadata_buffer);
+}
+
 // Helper method that returns list of all strings in a StringAttr identified
 // by 'attr_key' and values are separated by a comma.
 llvm::SmallVector<llvm::StringRef, 2> GetStringsFromAttrWithSeparator(
@@ -2999,7 +3024,8 @@ std::optional<std::string> Translator::TranslateInternal() {
 
   // Build the model and finish the model building process.
   auto description = builder_.CreateString(model_description.data());
-  VectorBufferOffset<int32_t> metadata_buffer = 0;  // Deprecated
+  VectorBufferOffset<int32_t> metadata_buffer =
+      CreateMetadataBufferVector();  // Deprecated
   auto metadata = CreateMetadataVector();
   if (!metadata) return std::nullopt;
 

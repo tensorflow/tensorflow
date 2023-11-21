@@ -113,12 +113,10 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
 
 Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-    const AutotuneResults* autotune_results,
+    const CompileOptions& options, const TargetConfig& gpu_target_config,
     tsl::thread::ThreadPool* thread_pool) {
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
-      hlo_module, stream_exec, options, gpu_target_config, autotune_results,
-      thread_pool));
+      hlo_module, stream_exec, options, gpu_target_config, thread_pool));
 
   HloPassPipeline post_pipeline("AMDGPU post-layout_assignment");
 

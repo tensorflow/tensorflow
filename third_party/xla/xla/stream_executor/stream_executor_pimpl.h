@@ -46,10 +46,6 @@ limitations under the License.
 #include "tsl/platform/threadpool.h"
 #include "tsl/protobuf/dnn.pb.h"
 
-// TODO(ezhulenev): Remove include of internal header. Currently we have too
-// many targets depending on transitive dependencies.
-#include "xla/stream_executor/stream_executor_internal.h"
-
 namespace stream_executor {
 
 class Stream;

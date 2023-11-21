@@ -34,6 +34,9 @@ namespace stream_executor::cuda {
 using AddI32Kernel = TypedKernel<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
                                  DeviceMemory<int32_t>>;
 
+static constexpr auto nested = CommandBuffer::Mode::kNested;    // NOLINT
+static constexpr auto primary = CommandBuffer::Mode::kPrimary;  // NOLINT
+
 TEST(CudaCommandBufferTest, LaunchSingleKernel) {
   Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
@@ -133,18 +136,60 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
   ASSERT_EQ(dst, expected);
 }
 
+TEST(CudaCommandBufferTest, LaunchNestedCommandBuffer) {
+  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  Stream stream(executor);
+  stream.Init();
+  ASSERT_TRUE(stream.ok());
+
+  MultiKernelLoaderSpec spec(/*arity=*/3);
+  spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
+
+  AddI32Kernel add(executor);
+  ASSERT_TRUE(executor->GetKernel(spec, &add).ok());
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: a=1, b=2, c=0
+  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+
+  stream.ThenMemset32(&a, 1, byte_length);
+  stream.ThenMemset32(&b, 2, byte_length);
+  stream.ThenMemZero(&c, byte_length);
+
+  // Create a command buffer with a single kernel launch.
+  auto primary_cmd_buffer = CommandBuffer::Create(executor).value();
+  auto nested_cmd_buffer = CommandBuffer::Create(executor, nested).value();
+  ASSERT_TRUE(
+      nested_cmd_buffer.Launch(add, ThreadDim(), BlockDim(4), a, b, c).ok());
+  ASSERT_TRUE(
+      primary_cmd_buffer.AddNestedCommandBuffer(nested_cmd_buffer).ok());
+  ASSERT_TRUE(primary_cmd_buffer.Finalize().ok());
+
+  ASSERT_TRUE(executor->Submit(&stream, primary_cmd_buffer).ok());
+
+  // Copy `c` data back to host.
+  std::vector<int32_t> dst(4, 42);
+  stream.ThenMemcpy(dst.data(), c, byte_length);
+
+  std::vector<int32_t> expected = {3, 3, 3, 3};
+  ASSERT_EQ(dst, expected);
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//
 
-// In benchmarks we construct command buffers in nested mode when we
-// do not want to measure graph executable instantiation overhead.
-static constexpr auto nested = CommandBuffer::Mode::kNested;    // NOLINT
-static constexpr auto primary = CommandBuffer::Mode::kPrimary;  // NOLINT
-
 #define BENCHMARK_SIZES(NAME) \
   BENCHMARK(NAME)->Arg(8)->Arg(32)->Arg(128)->Arg(512)->Arg(1024);
 
+// In benchmarks we construct command buffers in nested mode when we
+// do not want to measure graph executable instantiation overhead.
 static void BM_CreateCommandBuffer(benchmark::State& state) {
   Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();

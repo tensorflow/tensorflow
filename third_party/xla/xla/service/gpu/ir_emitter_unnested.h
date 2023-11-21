@@ -141,7 +141,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitConvolutionReorderThunk(mlir::Operation* op);
   Status EmitTritonFusion(
       const HloFusionAnalysis& hlo_fusion_analysis, mlir::Operation* op,
-      const AutotuneResult::TritonGemmKey& config,
+      const TritonGemmConfig& config,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
   Status EmitFusedMHAThunk(mlir::Operation* op);

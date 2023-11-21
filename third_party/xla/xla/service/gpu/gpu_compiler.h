@@ -30,16 +30,17 @@ limitations under the License.
 #include "xla/service/gpu/buffer_sharing.h"
 #include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/gpu_executable.h"
-#include "xla/service/gpu/gpu_target_config.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/llvm_compiler.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -112,20 +113,13 @@ class GpuCompiler : public LLVMCompiler {
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
 
-  // Run HloPasses without an attached deivce. So GemmAlgorithmPicker and
-  // GpuConvAlgorithmPicker can not run.
-  StatusOr<std::unique_ptr<HloModule>> RunHloPassesWithoutDevice(
-      std::unique_ptr<HloModule> module, const CompileOptions& options,
-      const GpuTargetConfig& gpu_target_config,
-      const AutotuneResults& autotune_results);
-
   StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
       HloModule* hlo_module, se::StreamExecutor* stream_exec) override;
 
   se::GpuComputeCapability GetGpuVersion(se::StreamExecutor* stream_exec);
 
-  GpuTargetConfig GetGpuTargetConfig(se::StreamExecutor* stream_exec) {
-    return GpuTargetConfig(stream_exec);
+  TargetConfig GetGpuTargetConfig(se::StreamExecutor* stream_exec) {
+    return TargetConfig(stream_exec);
   }
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
@@ -166,8 +160,7 @@ class GpuCompiler : public LLVMCompiler {
   // thread_pool is used to speed up compilation during autotuning.
   virtual Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-      const AutotuneResults* autotune_results,
+      const CompileOptions& options, const TargetConfig& gpu_target_config,
       tsl::thread::ThreadPool* thread_pool);
 
   // CollectivesScheduleLinearizer enforces a total ordering between collectives
@@ -195,6 +188,12 @@ class GpuCompiler : public LLVMCompiler {
     return OkStatus();
   }
 
+  // Add passes that convert HLO operations to custom kernels.
+  virtual Status AddCustomKernelReplacementPasses(
+      HloPassPipeline* pipeline, const DebugOptions& debug_options) {
+    return OkStatus();
+  }
+
  private:
   Status LoadAutotuneResultsFromFile(const DebugOptions& debug_options);
   Status SerializeAutotuneResultsToFile(const DebugOptions& debug_options);
@@ -205,8 +204,7 @@ class GpuCompiler : public LLVMCompiler {
   Status OptimizeHloModule(HloModule* hlo_module,
                            se::StreamExecutor* stream_exec,
                            const CompileOptions& options,
-                           const GpuTargetConfig& gpu_target_config,
-                           const AutotuneResults* autotune_results);
+                           const TargetConfig& gpu_target_config);
 
   virtual Status OptimizeHloConvolutionCanonicalization(
       HloModule* hlo_module, se::GpuComputeCapability gpu_version,

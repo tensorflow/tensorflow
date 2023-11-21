@@ -75,10 +75,10 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SkipOnNoCostMeasurement) {
                                                      /*processed_size=*/16,
                                                      batch);
   EXPECT_TRUE(batch.task(0).request_cost->GetCosts().empty());
-  EXPECT_THAT(
-      batch.task(0).request_cost->GetBatchMetrics(),
-      ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/16, /*input_size=*/1, /*padding_size=*/15)));
+  EXPECT_THAT(batch.task(0).request_cost->GetBatchMetrics(),
+              ::testing::ElementsAre(::testing::FieldsAre(
+                  /*processed_size=*/16, /*input_size=*/1, /*padding_size=*/15,
+                  ::testing::IsEmpty())));
 }
 
 TEST(SplitBatchCostsAndRecordMetricsTest, SkipOnZeroCost) {
@@ -95,10 +95,10 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SkipOnZeroCost) {
                                                      /*processed_size=*/16,
                                                      batch);
   EXPECT_TRUE(batch.task(0).request_cost->GetCosts().empty());
-  EXPECT_THAT(
-      batch.task(0).request_cost->GetBatchMetrics(),
-      ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/16, /*input_size=*/1, /*padding_size=*/15)));
+  EXPECT_THAT(batch.task(0).request_cost->GetBatchMetrics(),
+              ::testing::ElementsAre(::testing::FieldsAre(
+                  /*processed_size=*/16, /*input_size=*/1, /*padding_size=*/15,
+                  ::testing::IsEmpty())));
 }
 
 TEST(SplitBatchCostsAndRecordMetricsTest, SkipOnZeroBatchSize) {
@@ -154,7 +154,8 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SplitSingleCostType) {
   EXPECT_THAT(
       batch.task(0).request_cost->GetBatchMetrics(),
       ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/20, /*input_size=*/1, /*padding_size=*/10)));
+          /*processed_size=*/20, /*input_size=*/1, /*padding_size=*/10,
+          UnorderedElementsAre(Pair("test_tpu", absl::Milliseconds(100))))));
   EXPECT_THAT(
       batch.task(1).request_cost->GetCosts(),
       UnorderedElementsAre(Pair("test_tpu_with_smear", absl::Milliseconds(90)),
@@ -162,7 +163,8 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SplitSingleCostType) {
   EXPECT_THAT(
       batch.task(1).request_cost->GetBatchMetrics(),
       ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/20, /*input_size=*/9, /*padding_size=*/10)));
+          /*processed_size=*/20, /*input_size=*/9, /*padding_size=*/10,
+          UnorderedElementsAre(Pair("test_tpu", absl::Milliseconds(100))))));
 }
 
 TEST(SplitBatchCostsAndRecordMetricsTest, SplitMultiCostTypes) {
@@ -191,7 +193,9 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SplitMultiCostTypes) {
   EXPECT_THAT(
       batch.task(0).request_cost->GetBatchMetrics(),
       ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/20, /*input_size=*/1, /*padding_size=*/10)));
+          /*processed_size=*/20, /*input_size=*/1, /*padding_size=*/10,
+          UnorderedElementsAre(Pair("test_tpu", absl::Milliseconds(100)),
+                               Pair("test_gcu", absl::Milliseconds(200))))));
 
   EXPECT_THAT(
       batch.task(1).request_cost->GetCosts(),
@@ -202,7 +206,9 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SplitMultiCostTypes) {
   EXPECT_THAT(
       batch.task(1).request_cost->GetBatchMetrics(),
       ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/20, /*input_size=*/9, /*padding_size=*/10)));
+          /*processed_size=*/20, /*input_size=*/9, /*padding_size=*/10,
+          UnorderedElementsAre(Pair("test_tpu", absl::Milliseconds(100)),
+                               Pair("test_gcu", absl::Milliseconds(200))))));
 }
 
 TEST(SplitBatchCostsAndRecordMetricsTest, SplitOnlyNonZeroCostTypes) {
@@ -229,7 +235,8 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SplitOnlyNonZeroCostTypes) {
   EXPECT_THAT(
       batch.task(0).request_cost->GetBatchMetrics(),
       ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/20, /*input_size=*/1, /*padding_size=*/10)));
+          /*processed_size=*/20, /*input_size=*/1, /*padding_size=*/10,
+          UnorderedElementsAre(Pair("test_tpu", absl::Milliseconds(100))))));
 
   EXPECT_THAT(
       batch.task(1).request_cost->GetCosts(),
@@ -238,7 +245,8 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SplitOnlyNonZeroCostTypes) {
   EXPECT_THAT(
       batch.task(1).request_cost->GetBatchMetrics(),
       ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/20, /*input_size=*/9, /*padding_size=*/10)));
+          /*processed_size=*/20, /*input_size=*/9, /*padding_size=*/10,
+          UnorderedElementsAre(Pair("test_tpu", absl::Milliseconds(100))))));
 }
 
 }  // namespace

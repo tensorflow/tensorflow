@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME_EXECUTABLE_H_
 #define XLA_SERVICE_GPU_RUNTIME_EXECUTABLE_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -30,10 +31,10 @@ limitations under the License.
 #include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "xla/service/gpu/runtime/collectives.h"
 #include "xla/service/gpu/runtime/conv.h"
-#include "xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "xla/service/gpu/runtime/fft.h"
 #include "xla/service/gpu/runtime/fused_attention.h"
 #include "xla/service/gpu/runtime/gemm.h"
+#include "xla/service/gpu/runtime/gpublas_lt_matmul.h"
 #include "xla/service/gpu/runtime/graph_launch.h"
 #include "xla/service/gpu/runtime/kernel_launch.h"
 #include "xla/service/service_executable_run_options.h"
@@ -64,15 +65,18 @@ void RegisterXlaGpuAttrEncoding(runtime::CustomCallAttrEncodingSet& encoding);
 struct GpuRuntimeProgram {
   GpuRuntimeProgram(std::string entry_point, std::string module,
                     std::vector<int64_t> buffer_sizes,
+                    std::vector<std::vector<int64_t>> allocation_indices,
                     DebugOptions debug_options)
       : entry_point(std::move(entry_point)),
         module(std::move(module)),
         buffer_sizes(std::move(buffer_sizes)),
+        allocation_indices(std::move(allocation_indices)),
         debug_options(std::move(debug_options)) {}
 
   std::string entry_point;
   std::string module;
   std::vector<int64_t> buffer_sizes;
+  std::vector<std::vector<int64_t>> allocation_indices;
   DebugOptions debug_options;
 };
 
@@ -96,7 +100,8 @@ class GpuRuntimeExecutable {
 
   // Creates GpuRuntimeExecutable from the AOT compiled binary.
   static StatusOr<std::unique_ptr<GpuRuntimeExecutable>> Create(
-      std::string module_name, absl::Span<const int64_t> buffer_sizes,
+      std::string module_name, std::vector<int64_t> buffer_sizes,
+      std::vector<std::vector<int64_t>> allocation_indices,
       runtime::Executable executable, DebugOptions debug_options);
 
   // Executes entry function with the given buffer arguments.
@@ -119,11 +124,13 @@ class GpuRuntimeExecutable {
  private:
   GpuRuntimeExecutable(std::string module_name,
                        std::vector<int64_t> buffer_sizes,
+                       std::vector<std::vector<int64_t>> allocation_indices,
                        std::unique_ptr<runtime::JitExecutable> jit_executable,
                        DebugOptions debug_options, ModulesState modules_state);
 
   GpuRuntimeExecutable(std::string module_name,
                        std::vector<int64_t> buffer_sizes,
+                       std::vector<std::vector<int64_t>> allocation_indices,
                        std::unique_ptr<runtime::Executable> aot_executable,
                        DebugOptions debug_options, ModulesState modules_state);
 
@@ -134,6 +141,10 @@ class GpuRuntimeExecutable {
   runtime::Executable& executable();
 
   std::vector<int64_t> buffer_sizes_;
+
+  // `rt.allocation_index` attributes for all exported functions. Indexed by
+  // function ordinal.
+  std::vector<std::vector<int64_t>> allocation_indices_;
 
   // In JIT compilation mode `JitExecutable` is used. In AOT compilation mode
   // `Executable` is used.
@@ -168,14 +179,13 @@ class GpuRuntimeExecutable {
   FftPlans fft_plans_;
 
 #if GOOGLE_CUDA || TF_HIPBLASLT  // Keep matmul execution plans.
-  MatmulPlans cublas_lt_matmul_plans_;
+  MatmulPlans gpublas_lt_matmul_plans_;
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // Keep captured and instantiated GPU graphs instances.
   GraphInstances graph_instances_;
   CapturedFunctionExecutionCounts captured_function_counts_;
-  OrdinalToFallback ordinal_to_fallback_;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   // Keep an executable state for all registered runtime modules.

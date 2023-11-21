@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
@@ -140,10 +141,22 @@ tsl::Status GpuCommandBuffer::Trace(
   return tsl::OkStatus();
 }
 
+absl::Span<GpuGraphNodeHandle> GpuCommandBuffer::GetDependencies() {
+  return nodes_.empty() ? absl::Span<GpuGraphNodeHandle>()
+                        : absl::Span<GpuGraphNodeHandle>(&nodes_.back(), 1);
+}
+
 tsl::Status GpuCommandBuffer::CheckNotFinalized() {
   if (state_ == State::kFinalized)
     return absl::InternalError(
         "Command can't be added to a command buffer after it was finalized");
+  return tsl::OkStatus();
+}
+
+tsl::Status GpuCommandBuffer::CheckPrimary() {
+  if (mode_ != Mode::kPrimary)
+    return absl::InternalError(
+        "Command can't be added to a non-primary command buffer");
   return tsl::OkStatus();
 }
 
@@ -160,11 +173,12 @@ tsl::Status GpuCommandBuffer::Launch(const ThreadDim& threads,
 
   // Adds a new kernel node to the graph under construction.
   if (state_ == State::kCreate) {
+    absl::Span<GpuGraphNodeHandle> deps = GetDependencies();
     GpuGraphNodeHandle* node = &nodes_.emplace_back();
     return GpuDriver::GraphAddKernelNode(
-        node, graph_, {}, kernel.name(), gpu_func, blocks.x, blocks.y, blocks.z,
-        threads.x, threads.y, threads.z, args.number_of_shared_bytes(),
-        kernel_params, /*extra=*/nullptr);
+        node, graph_, deps, kernel.name(), gpu_func, blocks.x, blocks.y,
+        blocks.z, threads.x, threads.y, threads.z,
+        args.number_of_shared_bytes(), kernel_params, /*extra=*/nullptr);
   }
 
   // Updates kernel node in the executable graph.
@@ -179,6 +193,22 @@ tsl::Status GpuCommandBuffer::Launch(const ThreadDim& threads,
   return UnsupportedStateError(state_);
 }
 
+tsl::Status GpuCommandBuffer::AddNestedCommandBuffer(
+    const CommandBuffer& nested) {
+  TF_RETURN_IF_ERROR(CheckNotFinalized());
+  TF_RETURN_IF_ERROR(CheckPrimary());
+
+  // Adds a child graph node to the graph under construction.
+  if (state_ == State::kCreate) {
+    absl::Span<GpuGraphNodeHandle> deps = GetDependencies();
+    GpuGraphNodeHandle* node = &nodes_.emplace_back();
+    return GpuDriver::GraphAddChildNode(
+        node, graph_, deps, GpuCommandBuffer::Cast(&nested)->graph());
+  }
+
+  return UnsupportedStateError(state_);
+}
+
 tsl::Status GpuCommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                                    const DeviceMemoryBase& src,
                                                    uint64_t size) {
@@ -186,9 +216,10 @@ tsl::Status GpuCommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
 
   // Adds a new memcpy node to the graph under construction.
   if (state_ == State::kCreate) {
+    absl::Span<GpuGraphNodeHandle> deps = GetDependencies();
     GpuGraphNodeHandle* node = &nodes_.emplace_back();
     return GpuDriver::GraphAddMemcpyD2DNode(parent_->gpu_context(), node,
-                                            graph_, {}, AsDevicePtr(*dst),
+                                            graph_, deps, AsDevicePtr(*dst),
                                             AsDevicePtr(src), size);
   }
 

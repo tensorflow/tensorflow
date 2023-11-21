@@ -519,7 +519,7 @@ py_strict_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/module",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",

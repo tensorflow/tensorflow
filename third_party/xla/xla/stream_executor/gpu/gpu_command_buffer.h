@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/types/span.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -46,6 +47,8 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
                      const KernelBase& kernel,
                      const KernelArgsArrayBase& args) override;
 
+  tsl::Status AddNestedCommandBuffer(const CommandBuffer& nested) override;
+
   tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                    const DeviceMemoryBase& src,
                                    uint64_t size) override;
@@ -54,6 +57,7 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   tsl::Status Update() override;
 
   GpuGraphExecHandle executable() const { return exec_; }
+  GpuGraphHandle graph() const { return graph_; }
 
   CommandBuffer::Mode mode() const override { return mode_; }
   CommandBuffer::State state() const override { return state_; }
@@ -77,9 +81,18 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   }
 
  private:
+  // TODO(ezhulenev): Currently we serialize all Gpu nodes by adding a
+  // dependency between all nodes added to a command buffer. We need a concept
+  // of a barrier at a command buffer level.
+  absl::Span<GpuGraphNodeHandle> GetDependencies();
+
   // Returns OK status if command buffer is not finalized and it is still
   // possible to add new commands to it, otherwise returns internal error.
   tsl::Status CheckNotFinalized();
+
+  // Returns OK status if command buffer is primary, otherwise returns internal
+  // error.
+  tsl::Status CheckPrimary();
 
   static_assert(std::is_pointer_v<GpuGraphHandle>,
                 "GpuGraphHandle must be a pointer");

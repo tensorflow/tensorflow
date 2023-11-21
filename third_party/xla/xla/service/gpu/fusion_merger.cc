@@ -275,7 +275,9 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
   }
 
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-      producer, &*cost_analysis_, producer->users());
+      producer, &*cost_analysis_,
+      GpuPerformanceModelOptions::ForModule(producer->GetModule()),
+      producer->users());
   if (t.time_fused > t.time_unfused) {
     ++num_fail_slower_if_fused_;
     return "will execute slower if fused";

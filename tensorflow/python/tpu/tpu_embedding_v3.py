@@ -530,13 +530,28 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           trainable=False,
       )
 
-    parameters = variable_creator(stacked_table_name, table_initialize_fn)
+    with variable_scope.variable_creator_scope(
+        make_sharded_variable_creator(self._strategy, shape_is_local=False)
+    ):
+      parameters = variable_creator(stacked_table_name, table_initialize_fn)
 
     def slot_creator(name, initializer):
       return variable_creator(stacked_table_name + "/" + name, initializer)
 
     if optimizer is not None:
-      slot_vars = optimizer._create_slots(parameters, slot_creator)  # pylint: disable=protected-access
+      # FIXME(b/305882915): tensorflow_recommender calls into keras legacy
+      # optimizer, which creates the slot variable with
+      # TPUShardedEmbeddingVariable.shape as shape, but that shape attribute
+      # returns a local shape. We shall change the shape attribute to
+      # return a global shape, but such a change will break users who already
+      # depend on the attribute being local.
+      shape_is_local = optimizer.slot_variable_creation_fn is not None
+      with variable_scope.variable_creator_scope(
+          make_sharded_variable_creator(
+              self._strategy, shape_is_local=shape_is_local
+          )
+      ):
+        slot_vars = optimizer._create_slots(parameters, slot_creator)  # pylint: disable=protected-access
     else:
       slot_vars = {}
     slot_vars["parameters"] = parameters
@@ -629,11 +644,11 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     self._table_to_sample_count = {
         table_name: 0 for table_name in self._stacked_table_to_tables
     }
-    for _, feature in self._flat_features:
+    for feature_path, feature in self._flat_features:
       stacked_table_name = self._table_to_stacked_table_offset[
           feature.table.name
       ][0]
-      self._feature_to_sample_offset[feature.name] = (
+      self._feature_to_sample_offset[feature_path] = (
           self._table_to_sample_count[stacked_table_name]
       )
       self._table_to_sample_count[stacked_table_name] += functools.reduce(
@@ -651,12 +666,9 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     """
     variables = {}
     for stacked_table_name, tables in self._stacked_table_to_tables.items():
-      with variable_scope.variable_creator_scope(
-          make_sharded_variable_creator(self._strategy)
-      ):
-        variables[stacked_table_name] = self._create_variables(
-            tables, stacked_table_name=stacked_table_name
-        )
+      variables[stacked_table_name] = self._create_variables(
+          tables, stacked_table_name=stacked_table_name
+      )
     return variables
 
   def _maybe_build(self):
@@ -1033,13 +1045,13 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     table_to_list_of_coos = {
         table_name: ([], [], []) for table_name in stacked_table_to_tables
     }
-    for inp, weight, (_, feature) in zip(
+    for inp, weight, (feature_path, feature) in zip(
         flat_inputs, flat_weights, flat_features
     ):
       table_name, col_offset, col_shift = table_to_stacked_table_offset[
           feature.table.name
       ]
-      row_offset = feature_to_sample_offset[feature.name]
+      row_offset = feature_to_sample_offset[feature_path]
       # Consider making this into one op per table rather than per feature?
       row_ids, col_ids, gains = TPUEmbeddingV2._convert_input_feature_to_coo(
           inp,
@@ -1312,13 +1324,10 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           flat_weights=flat_weights,
       )
     elif device is None:
-      # This is used by keras function tracing.
+      # This is used by keras function tracing. Use any of the TPU devices
+      # and trace once for a single device.
       tpu_devices = self._strategy.extended._tpu_devices  # pylint:disable=protected-access
-      num_replicas, num_cores_per_replica = tpu_devices.shape
-      if num_replicas > 1 or num_cores_per_replica > 1:
-        raise NotImplementedError(
-            "SPMD is not implemented, use strategy.run instead."
-        )
+
       with ops.device(device_util.get_host_for_device(tpu_devices[0][0])):
         return TPUEmbeddingV2.preprocess_features(
             num_replicas_in_sync=self._strategy.num_replicas_in_sync,
@@ -1719,14 +1728,14 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
         )
         for table_name in stacked_table_to_tables
     }
-    for inp, weight, (_, feature) in zip(
+    for inp, weight, (feature_path, feature) in zip(
         flat_inputs, flat_weights, flat_features
     ):
       table_name, col_offset, col_shift = table_to_stacked_table_offset[
           feature.table.name
       ]
       stacked_table_sample_count = stacked_table_to_sample_count[table_name]
-      row_offset = feature_to_sample_offset[feature.name]
+      row_offset = feature_to_sample_offset[feature_path]
       # Consider making this into one op per table rather than per feature?
       row_ids_list, col_ids_list, gains_list, sample_count = (
           TPUEmbeddingV2._experimental_convert_input_feature_to_list_of_coo_tensors(
@@ -2208,12 +2217,13 @@ def is_checkpoint_initial_value(initial_value: Any) -> bool:
 
 
 def make_sharded_variable_creator(
-    strategy: distribute_lib.Strategy,
+    strategy: distribute_lib.Strategy, shape_is_local: bool
 ) -> Callable[..., Any]:
   """Create a variable creator which shards across all the tpu device.
 
   Args:
     strategy: a TPUStrategy object.
+    shape_is_local: If the shape to the creator is per replica.
 
   Returns:
     The sharded variable creator.
@@ -2255,7 +2265,8 @@ def make_sharded_variable_creator(
       )
 
     partition_shape = shape.as_list()
-    partition_shape[shard_dim] = partition_shape[shard_dim] // num_devices
+    if not shape_is_local:
+      partition_shape[shard_dim] = partition_shape[shard_dim] // num_devices
 
     unwrapped_arg_spec = tf_inspect.getargspec(unwrapped_initial_value)
     sharding_aware = "shard_info" in unwrapped_arg_spec.args

@@ -140,6 +140,7 @@ tf_cc_test(
     data = [
         "testdata/empty_func.mlir",
         "testdata/invalid_executor.mlir",
+        "testdata/outside_compilation.mlir",
     ],
     deps = [
         ":cluster_tf",
@@ -170,7 +171,9 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
         "//tensorflow/compiler/mlir/tf2xla/internal:logging_hooks",
         "//tensorflow/core:framework",
+        "//tensorflow/core/platform:error_payloads",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -179,6 +182,8 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@local_tsl//tsl/lib/monitoring:counter",
+        "@local_tsl//tsl/platform:error_logging",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
     ],
 )

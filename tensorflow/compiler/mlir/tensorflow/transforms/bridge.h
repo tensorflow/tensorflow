@@ -40,11 +40,6 @@ ABSL_DEPRECATED(
 tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
                                                  bool enable_logging,
                                                  bool enable_inliner);
-
-// Runs all passes for non TPU (GPU and CPU) graph.
-ABSL_DEPRECATED("Use tf2xla::v2::RunFunctionTf2xlaClusteringBridge instead.")
-tensorflow::Status RunTFXLABridge(
-    ModuleOp module, llvm::StringRef module_name = llvm::StringRef());
 }  // namespace TF
 
 }  // namespace mlir

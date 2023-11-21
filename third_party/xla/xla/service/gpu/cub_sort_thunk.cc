@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/cub_sort_thunk.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -29,8 +30,11 @@ limitations under the License.
 #include "xla/service/gpu/cub_sort_kernel.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
@@ -51,6 +55,7 @@ class CubSortKeysImpl : public CubSortRunnerInterface {
              bool descending) override;
   Status Run(const Thunk::ExecuteParams& params,
              const CubSortThunk* thunk) override;
+  StatusOr<int64_t> GetScratchSize(int64_t num_items) override;
 
  private:
   SortKeysFn sort_keys_fn_;
@@ -78,6 +83,13 @@ Status CubSortKeysImpl::Run(const Thunk::ExecuteParams& params,
              allocs.GetDeviceAddress(thunk->scratch()), thunk->descending());
 }
 
+StatusOr<int64_t> CubSortKeysImpl::GetScratchSize(int64_t num_items) {
+  size_t temp_bytes = 0;
+  TF_RETURN_IF_ERROR(
+      sort_keys_fn_(nullptr, temp_bytes, nullptr, nullptr, num_items, false));
+  return temp_bytes;
+}
+
 // Template class for sorting a pair of tensors.
 class CubSortPairsImpl : public CubSortRunnerInterface {
  public:
@@ -93,6 +105,7 @@ class CubSortPairsImpl : public CubSortRunnerInterface {
              bool descending) override;
   Status Run(const Thunk::ExecuteParams& params,
              const CubSortThunk* thunk) override;
+  StatusOr<int64_t> GetScratchSize(int64_t num_items) override;
 
  private:
   SortPairsFn sort_pairs_fn_;
@@ -121,7 +134,14 @@ Status CubSortPairsImpl::Run(const Thunk::ExecuteParams& params,
              allocs.GetDeviceAddress(thunk->scratch()), thunk->descending());
 }
 
-std::unique_ptr<CubSortRunnerInterface> CreateCubSortRunner(
+StatusOr<int64_t> CubSortPairsImpl::GetScratchSize(int64_t num_items) {
+  size_t temp_bytes = 0;
+  TF_RETURN_IF_ERROR(sort_pairs_fn_(nullptr, temp_bytes, nullptr, nullptr,
+                                    nullptr, nullptr, num_items, false));
+  return temp_bytes;
+}
+
+StatusOr<std::unique_ptr<CubSortRunnerInterface>> CreateCubSortRunner(
     PrimitiveType type) {
   switch (type) {
     case F16:
@@ -147,18 +167,20 @@ std::unique_ptr<CubSortRunnerInterface> CreateCubSortRunner(
     case U64:
       return std::make_unique<CubSortKeysImpl>(CubSortKeys_u64, U64);
     default:
-      CHECK(false) << "Unsupported type of the sort kernel: "
-                   << primitive_util::LowercasePrimitiveTypeName(type);
+      return InvalidArgument("Unsupported type of the sort kernel: %s",
+                             primitive_util::LowercasePrimitiveTypeName(type));
   }
 }
 
-std::unique_ptr<CubSortRunnerInterface> CreateCubSortRunner(
+StatusOr<std::unique_ptr<CubSortRunnerInterface>> CreateCubSortRunner(
     PrimitiveType key_type, PrimitiveType value_type) {
   // Values can be of any type of 16/32/64 bit width.
   int valueWidth = primitive_util::BitWidth(value_type);
-  CHECK(valueWidth == 16 || valueWidth == 32 || valueWidth == 64)
-      << "Unsupported value type of the sort kernel: "
-      << primitive_util::LowercasePrimitiveTypeName(value_type);
+  if (valueWidth != 16 && valueWidth != 32 && valueWidth != 64) {
+    return InvalidArgument(
+        "Unsupported value type of the sort kernel: %s",
+        primitive_util::LowercasePrimitiveTypeName(value_type));
+  }
 
   // Only unsigned integer types could be used for keys.
   switch (key_type) {
@@ -187,18 +209,20 @@ std::unique_ptr<CubSortRunnerInterface> CreateCubSortRunner(
       }
       return std::make_unique<CubSortPairsImpl>(CubSortPairs_u64_b64, U64);
     default:
-      CHECK(false) << "Unsupported key type of the sort kernel: "
-                   << primitive_util::LowercasePrimitiveTypeName(key_type);
+      return InvalidArgument(
+          "Unsupported key type of the sort kernel: %s",
+          primitive_util::LowercasePrimitiveTypeName(key_type));
   }
 }
 
-std::unique_ptr<CubSortRunnerInterface> CreateCubSortRunner(
-    PrimitiveType type, std::optional<PrimitiveType> value_type) {
+}  // namespace
+
+StatusOr<std::unique_ptr<CubSortRunnerInterface>>
+CubSortRunnerInterface::Create(PrimitiveType type,
+                               std::optional<PrimitiveType> value_type) {
   return value_type.has_value() ? CreateCubSortRunner(type, *value_type)
                                 : CreateCubSortRunner(type);
 }
-
-}  // namespace
 
 CubSortThunk::CubSortThunk(ThunkInfo thunk_info, PrimitiveType type,
                            std::optional<PrimitiveType> value_type,
@@ -206,7 +230,7 @@ CubSortThunk::CubSortThunk(ThunkInfo thunk_info, PrimitiveType type,
                            std::vector<BufferAllocation::Slice> results,
                            BufferAllocation::Slice scratch, bool descending)
     : Thunk(Thunk::kCubSort, thunk_info),
-      runner_(CreateCubSortRunner(type, value_type)),
+      runner_(CubSortRunnerInterface::Create(type, value_type).value()),
       operands_(std::move(operands)),
       results_(std::move(results)),
       scratch_(scratch),
@@ -218,7 +242,7 @@ Status RunCubSort(PrimitiveType type, std::optional<PrimitiveType> value_type,
                   se::DeviceMemoryBase output_keys,
                   se::DeviceMemoryBase output_values,
                   se::DeviceMemoryBase scratch, bool descending) {
-  auto runner = CreateCubSortRunner(type, value_type);
+  auto runner = CubSortRunnerInterface::Create(type, value_type).value();
   return runner->Run(input_keys, input_values, output_keys, output_values,
                      scratch, descending);
 }

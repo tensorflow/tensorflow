@@ -142,7 +142,8 @@ xla::StatusOr<std::vector<PJRT_NamedValue>> ConvertToPjRtNamedValueList(
     int api_minor_version);
 
 absl::flat_hash_map<std::string, xla::PjRtValueType>
-ConvertFromPjRtNamedValueList(PJRT_NamedValue* c_value_list, size_t list_size);
+ConvertFromPjRtNamedValueList(const PJRT_NamedValue* c_value_list,
+                              size_t list_size);
 
 // Validates that all entries in value_map have a matching name and type in
 // expected_name_and_type. expected_name_and_type may contain extra entries
@@ -163,6 +164,9 @@ xla::Status ActualStructSizeIsGreaterOrEqual(absl::string_view struct_name,
 absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api);
 absl::string_view GetPlatformName(PJRT_Client* client, const PJRT_Api* api);
 
+xla::StatusOr<const PJRT_TopologyDescription*> GetTopologyDescription(
+    PJRT_Client* client, const PJRT_Api* api);
+
 // Releases `chunk`.
 PJRT_Chunk ConvertFromCppChunk(xla::PjRtChunk chunk);
 
@@ -173,8 +177,10 @@ xla::PjRtChunk ConvertToCppChunk(const PJRT_Chunk& chunk);
 PJRT_DeviceDescription* GetDeviceDescription(const PJRT_Api* api,
                                              PJRT_Device* device);
 
-absl::Span<PJRT_Memory*> GetAddressableMemories(const PJRT_Api* api,
-                                                PJRT_Device* device);
+absl::Span<PJRT_Memory* const> GetAddressableMemories(const PJRT_Api* api,
+                                                      PJRT_Device* device);
+
+int GetId(const PJRT_Api* api, PJRT_DeviceDescription* device_desc);
 
 using PJRT_KeyValueGetCFunc =
     std::function<PJRT_Error*(PJRT_KeyValueGetCallback_Args* args)>;
@@ -235,6 +241,11 @@ xla::StatusOr<xla::Shape> BuildXlaShapeFromC(PJRT_Buffer_Type element_type,
                                              const int64_t* dims,
                                              size_t num_dims,
                                              PJRT_Buffer_MemoryLayout* layout);
+
+absl::string_view PlatformName(const PJRT_Api* api,
+                               const PJRT_TopologyDescription* topo_desc);
+absl::Span<PJRT_DeviceDescription* const> DeviceDescriptions(
+    const PJRT_Api* api, const PJRT_TopologyDescription* topo_desc);
 
 }  // namespace pjrt
 

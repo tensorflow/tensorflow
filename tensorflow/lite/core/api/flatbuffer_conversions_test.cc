@@ -15,11 +15,18 @@ limitations under the License.
 
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 
+#include <cstdarg>
+#include <cstdio>
 #include <cstring>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
 
 namespace tflite {

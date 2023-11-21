@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/uniform_quantized_types.h"
 
 #include <cstdint>
+#include <limits>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -79,6 +80,60 @@ TEST_F(CreateI8F32UniformQuantizedTypeTest, HasScaleAndZeroPointProperlySet) {
 
   EXPECT_EQ(quantized_type.getScale(), 8.0);
   EXPECT_EQ(quantized_type.getZeroPoint(), 99);
+}
+
+class CreateI32F32UniformQuantizedTypeTest : public ::testing::Test {
+ protected:
+  CreateI32F32UniformQuantizedTypeTest() : ctx_() {
+    ctx_.loadDialect<quant::QuantizationDialect>();
+  }
+
+  MLIRContext ctx_;
+};
+
+TEST_F(CreateI32F32UniformQuantizedTypeTest, HasI32StorageType) {
+  const UniformQuantizedType quantized_type =
+      CreateI32F32UniformQuantizedType(UnknownLoc::get(&ctx_), ctx_,
+                                       /*scale=*/1.0, /*zero_point=*/0);
+
+  EXPECT_TRUE(quantized_type.getStorageType().isSignlessInteger(32));
+}
+
+TEST_F(CreateI32F32UniformQuantizedTypeTest, HasF32ExpressedType) {
+  const UniformQuantizedType quantized_type =
+      CreateI32F32UniformQuantizedType(UnknownLoc::get(&ctx_), ctx_,
+                                       /*scale=*/1.0, /*zero_point=*/0);
+
+  EXPECT_TRUE(quantized_type.getExpressedType().isF32());
+}
+
+TEST_F(CreateI32F32UniformQuantizedTypeTest, IsSigned) {
+  const UniformQuantizedType quantized_type =
+      CreateI32F32UniformQuantizedType(UnknownLoc::get(&ctx_), ctx_,
+                                       /*scale=*/1.0, /*zero_point=*/0);
+
+  EXPECT_TRUE(quantized_type.isSigned());
+}
+
+TEST_F(CreateI32F32UniformQuantizedTypeTest,
+       SotrageTypeMinMaxEqualToI32MinMax) {
+  const UniformQuantizedType quantized_type =
+      CreateI32F32UniformQuantizedType(UnknownLoc::get(&ctx_), ctx_,
+                                       /*scale=*/1.0, /*zero_point=*/0);
+
+  EXPECT_EQ(quantized_type.getStorageTypeMin(),
+            std::numeric_limits<int32_t>::min());
+  EXPECT_EQ(quantized_type.getStorageTypeMax(),
+            std::numeric_limits<int32_t>::max());
+}
+
+TEST_F(CreateI32F32UniformQuantizedTypeTest, HasScaleAndZeroPointProperlySet) {
+  const UniformQuantizedType quantized_type =
+      CreateI32F32UniformQuantizedType(UnknownLoc::get(&ctx_), ctx_,
+                                       /*scale=*/8.0, /*zero_point=*/1111);
+
+  EXPECT_EQ(quantized_type.getScale(), 8.0);
+  EXPECT_EQ(quantized_type.getZeroPoint(), 1111);
 }
 
 class CreateI8F32UniformQuantizedPerAxisTypeTest : public ::testing::Test {

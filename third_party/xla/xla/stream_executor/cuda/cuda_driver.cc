@@ -37,7 +37,6 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
-#include "third_party/gpus/cuda/include/driver_types.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -415,11 +414,10 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   if (context == nullptr) {
     return;
   }
-  CUcontext former_context = CurrentContext();
-  CUresult res = cuCtxSetCurrent(context->context());
+  CUresult res = cuCtxPushCurrent(context->context());
   CUdevice device;
   cuCtxGetDevice(&device);
-  cuCtxSetCurrent(former_context);
+  cuCtxPopCurrent(nullptr);
 
   res = cuDevicePrimaryCtxRelease(device);
 
@@ -810,6 +808,19 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
       cuGraphAddMemcpyNode(node, graph, deps.data(), deps.size(), &params,
                            context->context()),
       "Failed to add memcpy d2d node to a CUDA graph");
+
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::GraphAddChildNode(
+    CUgraphNode* node, CUgraph graph, absl::Span<CUgraphNode> deps,
+    CUgraph child) {
+  VLOG(2) << "Create a new node by cloning the child graph " << child
+          << " and add it to " << graph << "; deps: " << deps.size();
+
+  RETURN_IF_CUDA_RES_ERROR(
+      cuGraphAddChildGraphNode(node, graph, deps.data(), deps.size(), child),
+      "Failed to create a child graph node and add it to a CUDA graph");
 
   return ::tsl::OkStatus();
 }
@@ -1579,21 +1590,15 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   ScopedActivateContext activation(context);
   CUresult result;
 
-  // Check if the stream is doing graph capture.
-  cudaStreamCaptureStatus stream_capture_status;
-  cudaError_t err =
-      cudaStreamGetCaptureInfo(stream, &stream_capture_status, /*pId=*/nullptr);
-  if (err != cudaSuccess) {
-    LOG(ERROR) << "Failed to get stream capture info: "
-               << cudaGetErrorString(err);
+  // In graph capture mode we never have operations that access peer memory, so
+  // we can always make a call to cuMemcpyDtoDAsync.
+  tsl::StatusOr<bool> is_capturing = StreamIsCapturing(stream);
+  if (!is_capturing.ok()) {
+    LOG(ERROR) << is_capturing.status().message();
     return false;
   }
 
-  // In graph capture mode we never have operations that access peer memory, so
-  // we can always make a call to cuMemcpyDtoDAsync.
-  bool is_capturing = stream_capture_status == cudaStreamCaptureStatusActive;
-
-  if ((gpu_dst == 0 || gpu_src == 0) || is_capturing) {
+  if ((gpu_dst == 0 || gpu_src == 0) || (*is_capturing)) {
     // CreatedContexts::GetAnyContext() doesn't works when ptr == 0.
     // This happens when the size is 0.
     result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
