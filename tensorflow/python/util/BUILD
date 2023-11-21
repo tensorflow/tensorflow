@@ -363,7 +363,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "tf_contextlib",
     srcs = ["tf_contextlib.py"],
     compatible_with = get_compatible_with_portable(),
