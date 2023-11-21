@@ -54,6 +54,9 @@ class CallFrameBuilder {
   CallFrameBuilder();
   ~CallFrameBuilder();
 
+  CallFrameBuilder(CallFrameBuilder&&);
+  CallFrameBuilder& operator=(CallFrameBuilder&&);
+
   // Declare implementation detail structs for call frame builder storage.
   struct Dictionary;
 

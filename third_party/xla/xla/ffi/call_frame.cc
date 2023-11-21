@@ -92,6 +92,9 @@ void CallFrameBuilder::AddAttributes(AttributesMap attrs) {
 
 CallFrame CallFrameBuilder::Build() { return CallFrame(args_, attrs_); }
 
+CallFrameBuilder::CallFrameBuilder(CallFrameBuilder&&) = default;
+CallFrameBuilder& CallFrameBuilder::operator=(CallFrameBuilder&&) = default;
+
 // ------------------------    !!! !!! !!!     ------------------------------ //
 
 // WARNING: In many structs defined below we use a pattern where we declare
