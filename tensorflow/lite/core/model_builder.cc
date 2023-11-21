@@ -387,13 +387,13 @@ std::map<std::string, std::string> FlatBufferModel::ReadAllMetadata(
 }
 
 bool FlatBufferModel::CheckModelIdentifier() const {
+  if (allocation_->bytes() < 7) {
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
+        "Model provided must have at least 7 bytes to hold identifier.\n");
+    return false;
+  }
   if (!tflite::ModelBufferHasIdentifier(allocation_->base())) {
-    if (allocation_->bytes() < 7) {
-      TF_LITE_REPORT_ERROR(
-          error_reporter_,
-          "Model provided must have at least 7 bytes to hold identifier.\n");
-      return false;
-    }
     const char* ident = flatbuffers::GetBufferIdentifier(allocation_->base());
     TF_LITE_REPORT_ERROR(
         error_reporter_,
