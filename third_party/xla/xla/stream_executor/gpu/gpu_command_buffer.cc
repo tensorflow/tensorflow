@@ -148,11 +148,7 @@ tsl::Status GpuCommandBuffer::Trace(
 }
 
 GpuCommandBuffer::Dependencies GpuCommandBuffer::GetDependencies() {
-  if (nodes_.empty()) {
-    return {};
-  }
-
-  return {nodes_.back()};
+  return nodes_.empty() ? Dependencies() : Dependencies{nodes_.back()};
 }
 
 tsl::Status GpuCommandBuffer::CheckNotFinalized() {
@@ -213,6 +209,7 @@ tsl::Status GpuCommandBuffer::AddNestedCommandBuffer(
   TF_RETURN_IF_ERROR(CheckPrimary());
 
   GpuGraphHandle child_graph = GpuCommandBuffer::Cast(&nested)->graph();
+
   // Adds a child graph node to the graph under construction.
   if (state_ == State::kCreate) {
     Dependencies deps = GetDependencies();
@@ -294,9 +291,10 @@ tsl::Status GpuCommandBuffer::If(StreamExecutor* executor,
 
     // Wrap conditional graph into command buffer and pass it to the builder.
     auto then_command_buffer = CommandBuffer::Wrap(
-        executor,
-        parent_->GetCommandBufferImplementation(nested, then_graph, false));
+        executor, parent_->GetCommandBufferImplementation(
+                      nested, then_graph, /*is_owned_graph=*/false));
     TF_RETURN_IF_ERROR(then_builder(&then_command_buffer));
+    TF_RETURN_IF_ERROR(then_command_buffer.Finalize());
 
     return tsl::OkStatus();
   }

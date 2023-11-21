@@ -222,6 +222,10 @@ TEST(CudaCommandBufferTest, ConditionalIf) {
   GTEST_SKIP() << "CUDA graph conditionals are not supported";
 #endif
 
+#if !defined(XLA_GPU_USE_CUDA_GRAPH_CONDITIONAL)
+  GTEST_SKIP() << "CUDA graph conditionals not enabled";
+#endif
+
   Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 

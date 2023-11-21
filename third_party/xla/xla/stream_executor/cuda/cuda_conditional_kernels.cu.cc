@@ -23,11 +23,13 @@ namespace {
 
 __global__ void SetCondition(cudaGraphConditionalHandle handle,
                              bool* predicate) {
+#if defined(XLA_GPU_USE_CUDA_GRAPH_CONDITIONAL)
   if (*predicate) {
     cudaGraphSetConditional(handle, 1);
   } else {
     cudaGraphSetConditional(handle, 0);
   }
+#endif  // defined(XLA_GPU_USE_CUDA_GRAPH_CONDITIONAL)
 }
 
 #else
