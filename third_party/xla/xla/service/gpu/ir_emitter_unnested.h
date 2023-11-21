@@ -124,6 +124,8 @@ class IrEmitterUnnested : public IrEmitter {
 
   Status EmitUnreachable(mlir::Operation* op, std::string error_message);
 
+  Status EmitCommandBufferThunk(const HloInstruction* instr);
+
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter. It also mixes in some special handling for custom kernels
   // via the ThunkEmitter.
@@ -155,6 +157,8 @@ class IrEmitterUnnested : public IrEmitter {
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitCustomCallThunk(mlir::Operation* op);
   Status EmitFftThunk(mlir::Operation* op);
+  StatusOr<FusionEmissionResult> GetFusionEmissionResult(
+      const HloFusionInstruction* instr, HloFusionAnalysis& fusion_analysis);
   Status EmitFusion(
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&

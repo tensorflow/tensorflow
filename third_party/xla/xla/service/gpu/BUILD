@@ -329,6 +329,8 @@ cc_library(
         "//xla/service/gpu/fusions:transpose",
         "//xla/service/gpu/kernels:custom_fusion",
         "//xla/service/gpu/kernels:custom_kernel",
+        "//xla/service/gpu/runtime3:command_buffer_cmd",
+        "//xla/service/gpu/runtime3:command_buffer_thunk",
         "//xla/service/gpu/runtime3:custom_call_thunk",
         "//xla/service/gpu/runtime3:fft_thunk",
         "//xla/service/llvm_ir:buffer_assignment_util",
@@ -3000,6 +3002,7 @@ cc_library(
         "//xla/service/gpu/runtime:executable",
         "@local_tsl//tsl/platform:numbers",
     ]) + xla_export_hlo_deps() + [
+        ":command_buffer_scheduling",
         ":fusion_pipeline",
         ":prepare_hlo_for_ir_emitting_pipeline",
         "@local_tsl//tsl/lib/monitoring:counter",

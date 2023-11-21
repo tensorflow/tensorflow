@@ -131,6 +131,8 @@ limitations under the License.
 #include "xla/service/gpu/outfeed_thunk.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/gpu/replica_id_thunk.h"
+#include "xla/service/gpu/runtime3/command_buffer_cmd.h"
+#include "xla/service/gpu/runtime3/command_buffer_thunk.h"
 #include "xla/service/gpu/runtime3/custom_call_thunk.h"
 #include "xla/service/gpu/runtime3/fft_thunk.h"
 #include "xla/service/gpu/sequential_thunk.h"
@@ -777,6 +779,44 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
                                          launch_dimensions, &b_,
                                          {unroll_factor})
                          .EmitLoop(ir_name, index_ty));
+  return OkStatus();
+}
+
+Status IrEmitterUnnested::EmitCommandBufferThunk(const HloInstruction* instr) {
+  const HloComputation* command_buffer = instr->called_computations().front();
+  CommandBufferCmdSequence cmd_sequence;
+  for (const HloInstruction* cmd : command_buffer->instructions()) {
+    const HloFusionInstruction* fusion = DynCast<HloFusionInstruction>(cmd);
+    if (fusion == nullptr) continue;
+
+    TF_ASSIGN_OR_RETURN(auto backend_config,
+                        fusion->backend_config<FusionBackendConfig>());
+    const se::DeviceDescription& device_info =
+        ir_emitter_context_->gpu_device_info();
+    TF_ASSIGN_OR_RETURN(auto fusion_analysis,
+                        HloFusionAnalysis::Create(fusion, &device_info));
+    TF_ASSIGN_OR_RETURN(FusionEmissionResult emission_result,
+                        GetFusionEmissionResult(fusion, fusion_analysis));
+
+    // TODO(anlunx): Support fusions that emit multiple thunks.
+    if (emission_result.thunks.size() != 1) {
+      return InternalError(
+          "Command buffers only support fusions with a single emitted thunk");
+    }
+
+    std::unique_ptr<Thunk>& thunk = emission_result.thunks.front();
+    auto* kernel_thunk = dynamic_cast<KernelThunk*>(thunk.get());
+    if (!kernel_thunk) {
+      return InternalError("Expected kernel thunk");
+    }
+
+    cmd_sequence.Emplace<LaunchCmd>(
+        kernel_thunk->kernel_name(), kernel_thunk->arguments(),
+        kernel_thunk->launch_dimensions(), kernel_thunk->shmem_bytes());
+  }
+
+  AddThunkToThunkSequence(std::make_unique<CommandBufferThunk>(
+      std::move(cmd_sequence), Thunk::ThunkInfo::WithProfileAnnotation(instr)));
   return OkStatus();
 }
 
@@ -2157,8 +2197,8 @@ bool IsSpecializedLoopFusion(
   return false;
 }
 
-Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
-                                     HloFusionAnalysis& fusion_analysis) {
+StatusOr<FusionEmissionResult> IrEmitterUnnested::GetFusionEmissionResult(
+    const HloFusionInstruction* instr, HloFusionAnalysis& fusion_analysis) {
   FusionEmissionResult emission_result;
   switch (fusion_analysis.GetEmitterFusionKind()) {
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices: {
@@ -2223,6 +2263,13 @@ Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
       break;
   }
 
+  return emission_result;
+}
+
+Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
+                                     HloFusionAnalysis& fusion_analysis) {
+  TF_ASSIGN_OR_RETURN(FusionEmissionResult emission_result,
+                      GetFusionEmissionResult(instr, fusion_analysis));
   for (auto& thunk : emission_result.thunks) {
     AddThunkToThunkSequence(std::move(thunk));
   }
@@ -3568,8 +3615,7 @@ Status IrEmitterUnnested::EmitOp(
   }
 
   if (mlir::isa<mlir::lmhlo::CommandBufferOp>(op)) {
-    // TODO(b/304824183): Emit a command buffer thunk when it's implemented.
-    return InternalError("Command buffer is unimplemented");
+    return EmitCommandBufferThunk(hlo_for_lmhlo.at(op));
   }
 
   // Point to point communication operations are only implemented as XLA

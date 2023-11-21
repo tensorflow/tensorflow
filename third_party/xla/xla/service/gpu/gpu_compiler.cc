@@ -114,6 +114,7 @@ limitations under the License.
 #include "xla/service/gpu/alias_passthrough_params.h"
 #include "xla/service/gpu/all_reduce_blueconnect.h"
 #include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/command_buffer_scheduling.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
 #include "xla/service/gpu/copy_fusion.h"
@@ -1566,6 +1567,13 @@ GpuCompiler::CompileToBackendResult(
       GetSchedulerMemoryLimit(module, gpu_device_info, pointer_size_);
   TF_RETURN_IF_ERROR(ScheduleGpuModule(module, pointer_size_,
                                        scheduler_mem_limit, gpu_device_info));
+
+  if (!IsXlaRuntimeExecutableEnabled(module->config())) {
+    HloPassPipeline pipeline("command-buffer-scheduling");
+    pipeline.AddPass<CommandBufferScheduling>();
+    TF_RETURN_IF_ERROR(pipeline.Run(module).status());
+  }
+
   TF_RETURN_IF_ERROR(RunPostSchedulingPipelines(module, scheduler_mem_limit));
 
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
