@@ -1573,11 +1573,19 @@ void HloConstantInstruction::RelayoutConstant(const Layout& new_layout,
   CHECK(mutable_array_subshape->IsArray());
 
   // Normally array_subshape will always have a layout, but this invariant is
-  // temporarily broken in LayoutAssignment::AssignLayouts.
+  // temporarily broken in LayoutAssignment::AssignLayouts where all shape
+  // layouts are cleared. The inner condition below ensures that we don't
+  // unnecessarily relayout literals in that case.
 
   if (!mutable_array_subshape->has_layout() ||
       !LayoutUtil::Equal(mutable_array_subshape->layout(), new_layout)) {
-    *mutable_literal() = literal_->Relayout(new_layout, shape_index);
+    if (!LayoutUtil::Equal(
+            new_layout,
+            ShapeUtil::GetSubshape(literal().shape(), shape_index).layout())) {
+      // Only relayout literals if that's really necessary.
+      Literal new_literal = literal_->Relayout(new_layout, shape_index);
+      *mutable_literal() = std::move(new_literal);
+    }
     *mutable_array_subshape->mutable_layout() = new_layout;
   }
 }
