@@ -46,7 +46,6 @@ package_group(
     packages = [
         "//tensorflow/compiler/mlir/quantization/...",
         "//tensorflow/compiler/mlir/tf2xla/...",
-        "//tensorflow/compiler/xrt/kernels/...",
         "//tensorflow/core/tpu/...",
         "//tensorflow/dtensor/...",
         "//third_party/py/jax_tpu_embedding/...",
@@ -514,7 +513,6 @@ cc_library(
         ":tpu_program_group_interface",
         "//tensorflow/compiler/tf2xla:host_compute_metadata_proto_cc",
         "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xrt:xrt_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "@local_xla//xla:xla_proto_cc",
