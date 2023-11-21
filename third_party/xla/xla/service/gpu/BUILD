@@ -3421,6 +3421,7 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
+        ":gpu_schedule_postprocessing",
         "//xla:shape_util",
         "//xla:status",
         "//xla:statusor",
