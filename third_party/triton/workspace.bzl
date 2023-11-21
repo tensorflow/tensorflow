@@ -15,9 +15,9 @@ def repo():
         urls = tf_mirror_urls("https://github.com/openxla/triton/archive/{commit}.tar.gz".format(commit = TRITON_COMMIT)),
         # For temporary changes which haven't landed upstream yet.
         patch_file = [
+            "//third_party/triton:b304456327.patch",
             "//third_party/triton:b311157761.patch",
             "//third_party/triton:cl568176943.patch",
-            "//third_party/triton:b304456327.patch",
-            "//third_party/triton:cl582925648.patch",
+            "//third_party/triton:cl584230333.patch",
         ],
     )
