@@ -317,6 +317,8 @@ bool DimensionOrder::IsPhysicallyEquivalent(const DimensionOrder& other) const {
 enum class TransformDirection { kInputToOutput, kOutputToInput };
 
 using DimOrderUpdatesOrError = std::variant<FusionDecision, DimOrderUpdates>;
+using OldToNewHloMap =
+    absl::flat_hash_map<const HloInstruction*, HloInstruction*>;
 
 class FusionContext {
   struct DotProperties {
@@ -381,8 +383,7 @@ class FusionContext {
   // description(s) of its other side if it is supported.
   DimOrderUpdatesOrError AnalyzeForFusion(
       const HloInstruction& hlo, TransformDirection transform_direction,
-      absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
-          old_to_new_mapping,
+      OldToNewHloMap& old_to_new_map,
       se::GpuComputeCapability gpu_version) const;
   // Add dimension orders from `updates` to `dim_orders_` and update the
   // splittable dimension ratio if all of them are compatible.
@@ -392,8 +393,7 @@ class FusionContext {
   // fusion, otherwise put it onto stack and check its own inputs first.
   void TryToFuseWithInputsRecursively(
       HloInstruction& root, se::GpuComputeCapability gpu_version,
-      absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
-          old_to_new_mapping,
+      OldToNewHloMap& old_to_new_map,
       std::vector<HloInstruction*>& fusion_inputs,
       HloComputation::Builder& builder);
   // Propagate dimension orders in consumer->producer direction starting at
@@ -429,9 +429,7 @@ class FusionContext {
  private:
   DimOrderUpdatesOrError AnalyzeForFusionImpl(
       const HloInstruction& hlo, TransformDirection transform_direction,
-      absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
-          old_to_new_mapping,
-      const DimOrderMap& dim_orders,
+      OldToNewHloMap& old_to_new_map, const DimOrderMap& dim_orders,
       se::GpuComputeCapability gpu_version) const;
   bool SetSplittableDimensionMajorPartSize(const int64_t size) {
     if (IsSupportedSplittableDimensionMajorPartSize(size)) {
@@ -1049,18 +1047,15 @@ DimOrderUpdatesOrError FusionContext::RequireSupportedInstruction(
 
 DimOrderUpdatesOrError FusionContext::AnalyzeForFusion(
     const HloInstruction& hlo, const TransformDirection transform_direction,
-    absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
-        old_to_new_mapping,
+    OldToNewHloMap& old_to_new_map,
     const se::GpuComputeCapability gpu_version) const {
-  return AnalyzeForFusionImpl(hlo, transform_direction, old_to_new_mapping,
+  return AnalyzeForFusionImpl(hlo, transform_direction, old_to_new_map,
                               dim_orders_, gpu_version);
 }
 
 DimOrderUpdatesOrError FusionContext::AnalyzeForFusionImpl(
     const HloInstruction& hlo, const TransformDirection transform_direction,
-    absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
-        old_to_new_mapping,
-    const DimOrderMap& dim_orders,
+    OldToNewHloMap& old_to_new_map, const DimOrderMap& dim_orders,
     const se::GpuComputeCapability gpu_version) const {
   if (hlo.opcode() == HloOpcode::kTuple ||
       hlo.opcode() == HloOpcode::kGetTupleElement) {
@@ -1115,7 +1110,7 @@ DimOrderUpdatesOrError FusionContext::AnalyzeForFusionImpl(
               (operand->operand(0)->opcode() == HloOpcode::kParameter ||
                operand->operand(0)->opcode() == HloOpcode::kConstant) &&
               std::holds_alternative<DimOrderUpdates>(AnalyzeForFusionImpl(
-                  *operand, transform_direction, old_to_new_mapping,
+                  *operand, transform_direction, old_to_new_map,
                   std::get<DimOrderUpdates>(result).map, gpu_version))) {
             accepted = true;
             break;
@@ -1132,7 +1127,7 @@ DimOrderUpdatesOrError FusionContext::AnalyzeForFusionImpl(
     }
     for (const HloInstruction* operand : hlo.operands()) {
       // Skip already fused operands.
-      if (old_to_new_mapping.contains(operand)) {
+      if (old_to_new_map.contains(operand)) {
         continue;
       }
       // Currently only broadcasts of scalar constants or parameters
@@ -1152,22 +1147,19 @@ DimOrderUpdatesOrError FusionContext::AnalyzeForFusionImpl(
 }
 
 // Clone an instruction into the fusion.
-void Fuse(HloInstruction& hlo,
-          absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
-              old_to_new_mapping,
+void Fuse(HloInstruction& hlo, OldToNewHloMap& old_to_new_map,
           std::vector<HloInstruction*>& fusion_inputs,
           HloComputation::Builder& builder) {
-  if (old_to_new_mapping.contains(&hlo)) {
+  if (old_to_new_map.contains(&hlo)) {
     return;
   }
   VLOG(3) << "Fusing " << hlo.ToString();
   auto get_or_add_parameter = [&](HloInstruction& instr) {
-    if (auto it = old_to_new_mapping.find(&instr);
-        it != old_to_new_mapping.end()) {
+    if (auto it = old_to_new_map.find(&instr); it != old_to_new_map.end()) {
       return it->second;
     }
     fusion_inputs.push_back(&instr);
-    return old_to_new_mapping
+    return old_to_new_map
         .insert({&instr,
                  builder.AddInstruction(HloInstruction::CreateParameter(
                      fusion_inputs.size() - 1, instr.shape(),
@@ -1182,7 +1174,7 @@ void Fuse(HloInstruction& hlo,
     for (HloInstruction* operand : hlo.operands()) {
       hlo_new_operands.push_back(get_or_add_parameter(*operand));
     }
-    old_to_new_mapping[&hlo] = builder.AddInstruction(
+    old_to_new_map[&hlo] = builder.AddInstruction(
         hlo.CloneWithNewOperands(hlo.shape(), hlo_new_operands));
   }
 }
@@ -1219,9 +1211,7 @@ bool FusionContext::MergeUpdates(const DimOrderUpdates& updates) {
 
 void FusionContext::TryToFuseWithInputsRecursively(
     HloInstruction& root, const se::GpuComputeCapability gpu_version,
-    absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
-        old_to_new_mapping,
-    std::vector<HloInstruction*>& fusion_inputs,
+    OldToNewHloMap& old_to_new_map, std::vector<HloInstruction*>& fusion_inputs,
     HloComputation::Builder& builder) {
   // Instructions at the fusion edge that can either get fused too or
   // become parameters of the fusion. Used to track the number of parameters.
@@ -1248,9 +1238,8 @@ void FusionContext::TryToFuseWithInputsRecursively(
       continue;
     }
     num_requeued = 0;
-    const DimOrderUpdatesOrError result =
-        AnalyzeForFusion(*hlo, TransformDirection::kOutputToInput,
-                         old_to_new_mapping, gpu_version);
+    const DimOrderUpdatesOrError result = AnalyzeForFusion(
+        *hlo, TransformDirection::kOutputToInput, old_to_new_map, gpu_version);
     if (!std::holds_alternative<DimOrderUpdates>(result) ||
         !MergeUpdates(std::get<DimOrderUpdates>(result))) {
       continue;
@@ -1280,7 +1269,7 @@ void FusionContext::TryToFuseWithInputsRecursively(
         }
       }
       if (ready_to_fuse) {
-        Fuse(**it, old_to_new_mapping, fusion_inputs, builder);
+        Fuse(**it, old_to_new_map, fusion_inputs, builder);
         to_fuse_set.erase(*it);
         it = to_fuse_list.erase(it);
       } else {
@@ -1308,8 +1297,7 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
   }
 
   // Original instruction -> fused one.
-  absl::flat_hash_map<const HloInstruction*, HloInstruction*>
-      old_to_new_mapping;
+  OldToNewHloMap old_to_new_map;
 
   // Separate traversal from LHS and RHS inputs of the dot: they use
   // differently shaped tiles but may go through same HLO graph nodes.
@@ -1320,7 +1308,7 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
     // Direct dot inputs have well defined dimension orders.
     auto context = FusionContext::FromDotOperand(dot, operand_number);
     context.TryToFuseWithInputsRecursively(*dot.mutable_operand(operand_number),
-                                           gpu_version, old_to_new_mapping,
+                                           gpu_version, old_to_new_map,
                                            fusion_inputs, builder);
     const int new_parameters = fusion_inputs.size() - operand_count_before;
     TF_RET_CHECK(new_parameters <=
@@ -1335,7 +1323,7 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
     return result.status();
   }
 
-  Fuse(dot, old_to_new_mapping, fusion_inputs, builder);
+  Fuse(dot, old_to_new_map, fusion_inputs, builder);
 
   // Fusion at dot's output.
 
@@ -1353,20 +1341,19 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
     if (!IsDistributiveOverAddition(*user)) {
       break;
     }
-    auto result =
-        context.AnalyzeForFusion(*user, TransformDirection::kInputToOutput,
-                                 old_to_new_mapping, gpu_version);
+    auto result = context.AnalyzeForFusion(
+        *user, TransformDirection::kInputToOutput, old_to_new_map, gpu_version);
     if (!std::holds_alternative<DimOrderUpdates>(result)) {
       continue;
     }
     TF_RET_CHECK(context.MergeUpdates(std::get<DimOrderUpdates>(result)));
     for (HloInstruction* operand : user->operands()) {
-      if (!old_to_new_mapping.contains(operand)) {
+      if (!old_to_new_map.contains(operand)) {
         context.TryToFuseWithInputsRecursively(
-            *operand, gpu_version, old_to_new_mapping, fusion_inputs, builder);
+            *operand, gpu_version, old_to_new_map, fusion_inputs, builder);
       }
     }
-    Fuse(*user, old_to_new_mapping, fusion_inputs, builder);
+    Fuse(*user, old_to_new_map, fusion_inputs, builder);
     fusion_output = user;
     output_changed = true;
   }
@@ -1377,7 +1364,7 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
     return FusionDecision{};
   }
   // Only fuse if this is not a "pure" matmul.
-  for (const auto& iter : old_to_new_mapping) {
+  for (const auto& iter : old_to_new_map) {
     static constexpr std::array<HloOpcode, 4> kPureOpcodes = {
         HloOpcode::kBitcast, HloOpcode::kDot, HloOpcode::kParameter,
         HloOpcode::kReshape};
