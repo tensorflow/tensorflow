@@ -18,7 +18,13 @@ set -e
 set -x
 
 N_BUILD_JOBS=$(grep -c ^processor /proc/cpuinfo)
-TF_GPU_COUNT=$(lspci|grep 'controller'|grep 'AMD/ATI'|wc -l)
+# If rocm-smi exists locally (it should) use it to find
+# out how many GPUs we have to test with.
+rocm-smi -i
+STATUS=$?
+if [ $STATUS -ne 0 ]; then TF_GPU_COUNT=1; else
+   TF_GPU_COUNT=$(rocm-smi -i|grep 'GPU' |wc -l)
+fi
 TF_TESTS_PER_GPU=1
 N_TEST_JOBS=$(expr ${TF_GPU_COUNT} \* ${TF_TESTS_PER_GPU})
 
