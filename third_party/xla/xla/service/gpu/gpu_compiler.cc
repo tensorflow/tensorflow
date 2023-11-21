@@ -389,22 +389,12 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
                                       const TargetConfig& gpu_target_config) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
-  // By default use an externally provided thread pool.
-  tsl::thread::ThreadPool* thread_pool = options.thread_pool;
-  std::optional<tsl::thread::ThreadPool> overriding_thread_pool;
-  int num_threads = hlo_module->config()
-                        .debug_options()
-                        .xla_gpu_force_compilation_parallelism();
-  // If an external thread pool is provided or single-threaded operation is
-  // requested do not create a thread pool.
-  if (thread_pool == nullptr && num_threads != 1) {
-    // Zero means "default", treat it as "max parallelism" here.
-    if (num_threads == 0) {
-      num_threads = tsl::port::MaxParallelism();
-    }
-    overriding_thread_pool.emplace(tsl::Env::Default(), "", num_threads);
-    thread_pool = &*overriding_thread_pool;
-  }
+  MaybeOwningThreadPool thread_pool = MaybeOwningThreadPool::GetOrCreate(
+      /*parallelism=*/hlo_module->config()
+          .debug_options()
+          .xla_gpu_force_compilation_parallelism(),
+      /*default_thread_pool=*/options.thread_pool,
+      /*default_parallelism=*/tsl::port::MaxParallelism());
 
   AlgebraicSimplifierOptions layout_insensitive_algsimp_opts({},
                                                              ConvIsLowerable);
@@ -835,13 +825,13 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
 
   // Run target-specific HLO optimization passes after layout assignment.
   TF_RETURN_IF_ERROR(OptimizeHloPostLayoutAssignment(
-      hlo_module, stream_exec, options, gpu_target_config, thread_pool));
+      hlo_module, stream_exec, options, gpu_target_config, thread_pool.get()));
 
   const se::DeviceDescription& gpu_device_info =
       gpu_target_config.device_description;
 
   TF_RETURN_IF_ERROR(FusionPipeline(debug_options, ShapeSizeBytesFunction(),
-                                    thread_pool, gpu_device_info)
+                                    thread_pool.get(), gpu_device_info)
                          .Run(hlo_module)
                          .status());
 
@@ -1431,24 +1421,11 @@ StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileToTargetBinary(
     const HloModuleConfig& module_config, llvm::Module* llvm_module,
     se::GpuComputeCapability gpu_version, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const HloModule* debug_module) {
-  tsl::thread::ThreadPool* thread_pool;
-  std::optional<tsl::thread::ThreadPool> overriding_thread_pool;
-  switch (
-      module_config.debug_options().xla_gpu_force_compilation_parallelism()) {
-    case 0:
-      thread_pool = options.thread_pool;
-      break;
-    case 1:
-      thread_pool = nullptr;
-      break;
-    default:
-      overriding_thread_pool.emplace(
-          tsl::Env::Default(), "",
-          module_config.debug_options()
-              .xla_gpu_force_compilation_parallelism());
-      thread_pool = &*overriding_thread_pool;
-      break;
-  }
+  MaybeOwningThreadPool thread_pool = MaybeOwningThreadPool::GetOrCreate(
+      /*parallelism=*/module_config.debug_options()
+          .xla_gpu_force_compilation_parallelism(),
+      /*default_thread_pool=*/options.thread_pool,
+      /*default_parallelism=*/1);
 
   // Test whether LinkModules is supported.
   TF_ASSIGN_OR_RETURN(bool can_use_link_modules,
