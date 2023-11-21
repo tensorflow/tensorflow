@@ -187,6 +187,7 @@ tf_python_pybind_extension(
         ":type_casters",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:string_view",
@@ -228,6 +229,7 @@ tf_py_strict_test(
         "pywrap_quantize_model_test.py",
     ],
     deps = [
+        ":py_function_lib_py",
         ":pywrap_quantize_model",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/platform:client_testlib",

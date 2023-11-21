@@ -694,3 +694,58 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
     )
 
     return exported_model.SerializeToString()
+
+  # TODO: b/312371048 - Rewrite this in c++.
+  # LINT.IfChange(enable_dump_tensor)
+  def enable_dump_tensor(self, graph_def_serialized: bytes) -> bytes:
+    """Enable DumpTensor in the graph def.
+
+    DumpTensor is disabled by default to avoid logging data during calibration.
+    This function is called after calibration to enable DumpTensor.
+
+    Args:
+      graph_def_serialized: Serialized `GraphDef` to enable DumpTensor
+
+    Returns:
+      Updated serialized GraphDef where DumpTensors are enabled.
+    """
+    # LINT.ThenChange(py_function_lib.h:enable_dump_tensor)
+    graph_def = graph_pb2.GraphDef.FromString(graph_def_serialized)
+    for function_def in graph_def.library.function:
+      for node_def in function_def.node_def:
+        if node_def.op != 'DumpTensor':
+          continue
+
+        node_def.attr['enabled'].b = True
+
+    return graph_def.SerializeToString()
+
+  # TODO: b/312371048 - Rewrite this in c++.
+  # LINT.IfChange(change_dump_tensor_file_name)
+  def change_dump_tensor_file_name(self, graph_def_serialized: bytes) -> bytes:
+    # LINT.ThenChange(py_function_lib.h:change_dump_tensor_file_name)
+    """Change file_name used by DumpTensor to quantized_tensor_data.pb.
+
+    In whole model verify, DumpTensor in unquantized model uses file_name
+    unquantized_tensor_data.pb.
+    After unquantized dump model is created, this function allows quantized dump
+    model to use quantized_tensor_data.pb as file_name.
+
+    Args:
+      graph_def_serialized: Serialized `GraphDef` to change file_name of
+        DumpTensor
+
+    Returns:
+      Serialized GraphDef with updated file names for DumpTensors.
+    """
+    graph_def = graph_pb2.GraphDef.FromString(graph_def_serialized)
+    for function_def in graph_def.library.function:
+      for node_def in function_def.node_def:
+        if node_def.op != 'DumpTensor':
+          continue
+
+        node_def.attr['file_name'].s = 'quantized_tensor_data.pb'.encode(
+            'utf-8'
+        )
+
+    return graph_def.SerializeToString()

@@ -20,16 +20,19 @@ limitations under the License.
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/detail/common.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/type_casters.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace py = ::pybind11;
 
 namespace {
 
+using ::tensorflow::GraphDef;
 using ::tensorflow::SignatureDef;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PyFunctionLibrary;
@@ -70,6 +73,16 @@ class PyFunctionLibraryTrampoline : public PyFunctionLibrary {
                            saved_model_path, exported_model,
                            quantization_options, representative_dataset);
   }
+
+  GraphDef EnableDumpTensor(const GraphDef& graph_def) const override {
+    PYBIND11_OVERRIDE_PURE(GraphDef, PyFunctionLibrary, enable_dump_tensor,
+                           graph_def);
+  }
+
+  GraphDef ChangeDumpTensorFileName(const GraphDef& graph_def) const override {
+    PYBIND11_OVERRIDE_PURE(GraphDef, PyFunctionLibrary,
+                           change_dump_tensor_file_name, graph_def);
+  }
 };
 
 }  // namespace
@@ -89,5 +102,10 @@ PYBIND11_MODULE(pywrap_function_lib, m) {
       .def("run_calibration", &PyFunctionLibrary::RunCalibration,
            py::arg("saved_model_path"), py::arg("exported_model_serialized"),
            py::arg("quantization_options_serialized"),
-           py::arg("representative_dataset"));
+           py::arg("representative_dataset"))
+      .def("enable_dump_tensor", &PyFunctionLibrary::EnableDumpTensor,
+           py::arg("graph_def_serialized"))
+      .def("change_dump_tensor_file_name",
+           &PyFunctionLibrary::ChangeDumpTensorFileName,
+           py::arg("graph_def_serialized"));
 }

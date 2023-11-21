@@ -25,6 +25,7 @@ limitations under the License.
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tsl/platform/protobuf.h"
@@ -143,6 +144,31 @@ struct type_caster<tensorflow::SignatureDef> {
 
   // C++->Python conversion. Returns a serialized `SignatureDef` string.
   static handle cast(const tensorflow::SignatureDef& src,
+                     return_value_policy policy, handle parent) {
+    return py::bytes(internal::Serialize(src)).release();
+  }
+};
+
+template <>
+struct type_caster<tensorflow::GraphDef> {
+ public:
+  PYBIND11_TYPE_CASTER(tensorflow::GraphDef, const_name("GraphDef"));
+
+  // Python->C++ conversion. Accepts a serialized `GraphDef` string from the
+  // python side.
+  bool load(handle src, const bool convert) {
+    auto caster = make_caster<absl::string_view>();
+    if (!caster.load(src, convert)) return false;
+
+    const absl::string_view signature_def_serialized =
+        cast_op<absl::string_view>(std::move(caster));
+
+    // NOLINTNEXTLINE: Explicit std::string conversion required for OSS.
+    return value.ParseFromString(std::string(signature_def_serialized));
+  }
+
+  // C++->Python conversion. Returns a serialized `GraphDef` string.
+  static handle cast(const tensorflow::GraphDef& src,
                      return_value_policy policy, handle parent) {
     return py::bytes(internal::Serialize(src)).release();
   }
