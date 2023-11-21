@@ -62,14 +62,13 @@ TEST(FfiTest, BufferArgument) {
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
-  auto fn = [&](BufferBase buffer) {
+  auto fn = [&](BufferBase<DataType::F32> buffer) {
     EXPECT_EQ(buffer.data, storage.data());
-    EXPECT_EQ(buffer.dtype, DataType::F32);
     EXPECT_EQ(buffer.dimensions.size(), 2);
     return Error::Success();
   };
 
-  auto handler = Ffi::Bind().Arg<BufferBase>().To(fn);
+  auto handler = Ffi::Bind().Arg<BufferBase<DataType::F32>>().To(fn);
   auto status = Call(*handler, call_frame);
 
   TF_ASSERT_OK(status);
@@ -97,12 +96,12 @@ static CallFrameBuilder WithBufferArgs(size_t num_args, size_t rank = 4) {
 void BM_BufferArgX1(benchmark::State& state) {
   auto call_frame = WithBufferArgs(1).Build();
 
-  auto fn = [](BufferBase buffer) {
+  auto fn = [](BufferBase<DataType::F32> buffer) {
     benchmark::DoNotOptimize(buffer);
     return Error::Success();
   };
 
-  auto handler = Ffi::Bind().Arg<BufferBase>().To(fn);
+  auto handler = Ffi::Bind().Arg<BufferBase<DataType::F32>>().To(fn);
   for (auto _ : state) {
     CHECK_OK(Call(*handler, call_frame));
   }
@@ -117,7 +116,8 @@ BENCHMARK(BM_BufferArgX1);
 void BM_BufferArgX4(benchmark::State& state) {
   auto call_frame = WithBufferArgs(4).Build();
 
-  auto fn = [](BufferBase b0, BufferBase b1, BufferBase b2, BufferBase b3) {
+  auto fn = [](BufferBase<DataType::F32> b0, BufferBase<DataType::F32> b1,
+               BufferBase<DataType::F32> b2, BufferBase<DataType::F32> b3) {
     benchmark::DoNotOptimize(b0);
     benchmark::DoNotOptimize(b1);
     benchmark::DoNotOptimize(b2);
@@ -126,10 +126,10 @@ void BM_BufferArgX4(benchmark::State& state) {
   };
 
   auto handler = Ffi::Bind()
-                     .Arg<BufferBase>()
-                     .Arg<BufferBase>()
-                     .Arg<BufferBase>()
-                     .Arg<BufferBase>()
+                     .Arg<BufferBase<DataType::F32>>()
+                     .Arg<BufferBase<DataType::F32>>()
+                     .Arg<BufferBase<DataType::F32>>()
+                     .Arg<BufferBase<DataType::F32>>()
                      .To(fn);
 
   for (auto _ : state) {
