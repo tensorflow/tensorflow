@@ -188,8 +188,14 @@ cc_library(
     hdrs = ["tile_analysis.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//xla:status_macros",
+        "//xla:shape_util",
         "//xla:statusor",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -198,10 +204,16 @@ xla_cc_test(
     srcs = ["tile_analysis_test.cc"],
     deps = [
         ":tile_analysis",
+        "//xla:statusor",
+        "//xla:test_helpers",
+        "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
     ],
 )
