@@ -57,12 +57,14 @@ struct ArenaAllocWithUsageInterval {
 
 class ResizableAlignedBuffer {
  public:
-  explicit ResizableAlignedBuffer(size_t alignment, int subgraph_index)
+  ResizableAlignedBuffer(size_t alignment, int subgraph_index)
       : data_size_(0), alignment_(alignment), subgraph_index_(subgraph_index) {
     // To silence unused private member warning, only used with
     // TF_LITE_TENSORFLOW_PROFILER
     (void)subgraph_index_;
   }
+
+  ~ResizableAlignedBuffer() { Release(); }
 
   // Resizes the buffer to make sure new_size bytes fit in the buffer. Keeps
   // alignment and any existing the data. Returns true when any external

@@ -79,6 +79,9 @@ bool ResizableAlignedBuffer::Resize(size_t new_size) {
 }
 
 void ResizableAlignedBuffer::Release() {
+  if (buffer_ == nullptr) {
+    return;
+  }
 #ifdef TF_LITE_TENSORFLOW_PROFILER
   OnTfLiteArenaDealloc(subgraph_index_, reinterpret_cast<std::uintptr_t>(this),
                        RequiredAllocationSize(data_size_));
