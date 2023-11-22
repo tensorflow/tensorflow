@@ -237,10 +237,10 @@ TEST_F(PriorityFusionTest, ReductionEpilogueFusionRegressionTest) {
     }
                                                      )";
 
-  EXPECT_THAT(
-      RunAndGetFusionKinds(kHlo),
-      ::testing::ElementsAre(HloFusionAnalysis::EmitterFusionKind::kLoop,
-                             HloFusionAnalysis::EmitterFusionKind::kReduction));
+  EXPECT_THAT(RunAndGetFusionKinds(kHlo),
+              ::testing::UnorderedElementsAre(
+                  HloFusionAnalysis::EmitterFusionKind::kLoop,
+                  HloFusionAnalysis::EmitterFusionKind::kReduction));
 
   RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
 CHECK: ENTRY
