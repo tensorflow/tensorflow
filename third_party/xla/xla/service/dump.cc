@@ -445,7 +445,6 @@ static std::vector<std::string> DumpHloModuleImpl(
         pb, opts, opts.dump_compress_protos));
   }
 
-
   if (opts.dump_as_dot) {
     file_paths.push_back(DumpToFileInDirImpl(
         StrFormat("%s.dot", filename),
@@ -711,6 +710,11 @@ void DumpHloModuleIfEnabled(const HloModule& module,
 bool DumpingEnabledForHloModule(string_view hlo_module_name,
                                 const DebugOptions& opts) {
   return CanonicalDebugOptions(opts).should_dump_module(hlo_module_name);
+}
+
+bool DumpingEnabledForHloPass(string_view hlo_pass_name,
+                              const DebugOptions& opts) {
+  return CanonicalDebugOptions(opts).should_dump_pass(hlo_pass_name);
 }
 
 bool DumpingToStdout(const DebugOptions& opts) {

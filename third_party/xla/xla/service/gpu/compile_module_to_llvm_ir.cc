@@ -106,16 +106,40 @@ static bool HasFp8(const HloModule& hlo_module) {
   return false;
 }
 
+class DumpAfterPassIfEnabled : public mlir::PassInstrumentation {
+ public:
+  DumpAfterPassIfEnabled(const HloModule* hlo_module,
+                         const mlir::ModuleOp* mlir_module)
+      : hlo_module_{hlo_module}, mlir_module_{mlir_module} {}
+  void runAfterPass(mlir::Pass* pass, mlir::Operation* op) override {
+    std::string pass_name = pass->getName().str();
+    bool should_dump_pass = DumpingEnabledForHloPass(
+        pass_name, hlo_module_->config().debug_options());
+    if (!should_dump_pass) return;
+    std::string module_str = llvm_ir::DumpToString(*mlir_module_);
+    auto prefix = "lower_to_xla_gpu_runtime";
+    auto suffix =
+        absl::StrCat("pass_", absl::StrFormat("%02d", pass_counter_++), ".",
+                     "after", ".", pass_name, ".mlir");
+    DumpToFileInDirOrStdout(*hlo_module_, prefix, suffix, module_str);
+  }
+
+ private:
+  const HloModule* hlo_module_;
+  const mlir::ModuleOp* mlir_module_;
+  int pass_counter_ = 0;
+};
+
 // Lowers MLIR module to the XLA Gpu runtime custom calls.
 static Status LowerToXlaGpuRuntime(
     mlir::ModuleOp module, llvm::StringRef entry_function_name,
     llvm::ArrayRef<int64_t> buffer_sizes, ThunkSequence* thunk_sequence,
-    const DebugOptions& debug_options,
-    se::GpuComputeCapability compute_capability) {
+    const HloModule* hlo_module, se::GpuComputeCapability compute_capability) {
   if (!module) {
     return InternalError("No MLIR module to lower.");
   }
 
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
   bool should_verify = debug_options.xla_gpu_llvm_verification_level() >= 1;
 #ifndef NDEBUG
   should_verify = true;
@@ -123,6 +147,10 @@ static Status LowerToXlaGpuRuntime(
 
   mlir::PassManager pm(module->getName(), mlir::PassManager::Nesting::Implicit);
   pm.enableVerifier(should_verify);
+  if (hlo_module != nullptr && DumpingEnabledForHloModule(*hlo_module)) {
+    pm.addInstrumentation(
+        std::make_unique<DumpAfterPassIfEnabled>(hlo_module, &module));
+  }
 
   absl::flat_hash_set<DebugOptions::CommandBufferCmdType> command_types;
   for (int command_type_num : debug_options.xla_gpu_enable_command_buffer()) {
@@ -188,26 +216,24 @@ static void ForwardCollectiveAttrs(mlir::ModuleOp module,
 
 StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
     mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
-    llvm::ArrayRef<int64_t> buffer_sizes, const HloModuleConfig& module_config,
-    std::unique_ptr<ThunkSequence> thunk_sequence,
-    const HloModule* hlo_module_for_dump,
+    llvm::ArrayRef<int64_t> buffer_sizes,
+    std::unique_ptr<ThunkSequence> thunk_sequence, const HloModule* hlo_module,
     se::GpuComputeCapability compute_capability) {
+  const auto& module_config = hlo_module->config();
   // Forward collective (NCCL) attributes for use by the lowering pipeline.
   ForwardCollectiveAttrs(mlir_module, entry_function_name, module_config);
 
   // Lower LMHLO operations to the XLA:GPU runtime custom calls.
   TF_RETURN_IF_ERROR(LowerToXlaGpuRuntime(
       mlir_module, {entry_function_name.data(), entry_function_name.size()},
-      buffer_sizes, thunk_sequence.get(), module_config.debug_options(),
-      compute_capability));
+      buffer_sizes, thunk_sequence.get(), hlo_module, compute_capability));
 
   // TODO(b/232033540): Pass MLIR module directly to Gpu runtime executable
   // without forcing serialization.
   std::string module_str = llvm_ir::DumpToString(mlir_module);
 
-  if (hlo_module_for_dump != nullptr) {
-    DumpToFileInDirOrStdout(*hlo_module_for_dump, "gpu_rt_host", "mlir",
-                            module_str);
+  if (hlo_module != nullptr) {
+    DumpToFileInDirOrStdout(*hlo_module, "gpu_rt_host", "mlir", module_str);
   }
 
   // Collect allocation indices for handling graph capture functions.
@@ -410,8 +436,7 @@ StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     TF_ASSIGN_OR_RETURN(
         results.executable,
         LowerToJitRt(*mlir_module, entry_function.getName(), buffer_sizes,
-                     hlo_module->config(), ir_emitter->ConsumeThunkSequence(),
-                     /*hlo_module_for_dump=*/hlo_module,
+                     ir_emitter->ConsumeThunkSequence(), hlo_module,
                      gpu_device_info.gpu_compute_capability()));
   } else {
     auto thunk_sequence = ir_emitter->ConsumeThunkSequence();

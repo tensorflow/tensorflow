@@ -147,6 +147,11 @@ void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules);
 // generating an expensive string.
 bool DumpingEnabledForHloModule(absl::string_view hlo_module_name,
                                 const DebugOptions& opts);
+
+// Returns true if we should dump data for an HLO pass
+bool DumpingEnabledForHloPass(absl::string_view hlo_pass_name,
+                              const DebugOptions& opts);
+
 inline bool DumpingEnabledForHloModule(const HloModule& module) {
   return DumpingEnabledForHloModule(module.name(),
                                     module.config().debug_options());
