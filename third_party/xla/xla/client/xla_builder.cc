@@ -2495,6 +2495,25 @@ StatusOr<XlaOp> XlaBuilder::SortInternal(const Shape& shape,
   return AddInstruction(std::move(instr), HloOpcode::kSort, operands);
 }
 
+XlaOp XlaBuilder::TopK(XlaOp operand, int64_t k, bool largest) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    std::vector<const Shape*> operand_shape_ptrs;
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        ShapeInference::InferTopKShape(*operand_shape, k));
+    return TopKInternal(shape, operand, k, largest);
+  });
+}
+
+StatusOr<XlaOp> XlaBuilder::TopKInternal(const Shape& shape, XlaOp operand,
+                                         int64_t k, bool largest) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  instr.set_k(k);
+  instr.set_largest(largest);
+  return AddInstruction(std::move(instr), HloOpcode::kTopK, {operand});
+}
+
 XlaOp XlaBuilder::ConvertElementType(XlaOp operand,
                                      PrimitiveType new_element_type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -5207,6 +5226,10 @@ XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
            int64_t dimension, bool is_stable) {
   return operands[0].builder()->Sort(operands, comparator, dimension,
                                      is_stable);
+}
+
+XlaOp TopK(XlaOp operand, int64_t k, bool largest) {
+  return operand.builder()->TopK(operand, k, largest);
 }
 
 XlaOp Clamp(const XlaOp min, const XlaOp operand, const XlaOp max) {
