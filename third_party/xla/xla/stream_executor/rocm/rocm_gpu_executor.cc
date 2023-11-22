@@ -743,6 +743,16 @@ GpuExecutor::GetCommandBufferImplementation(CommandBuffer::Mode mode) {
   return std::make_unique<GpuCommandBuffer>(mode, /*parent=*/this, graph);
 }
 
+std::unique_ptr<internal::CommandBufferInterface>
+GpuExecutor::GetCommandBufferImplementation(CommandBuffer::Mode mode,
+                                            GpuGraphHandle graph,
+                                            bool is_owned_graph) {
+  VLOG(2) << "Create HIP command buffer (HIP graph) from existing graph "
+          << graph << "; is_owned_graph=" << is_owned_graph;
+  return std::make_unique<GpuCommandBuffer>(mode, /*parent=*/this, graph,
+                                            is_owned_graph);
+}
+
 void* GpuExecutor::platform_specific_context() { return context_; }
 
 GpuContext* GpuExecutor::gpu_context() { return context_; }

@@ -61,7 +61,7 @@ using GpuRngHandle = hiprandGenerator_t;
 using GpuGraphHandle = hipGraph_t;
 using GpuGraphExecHandle = hipGraphExec_t;
 using GpuGraphNodeHandle = hipGraphNode_t;
-
+using GpuGraphConditionalHandle = UnsupportedGpuFeature;
 #else  // CUDA
 
 using GpuContextHandle = CUcontext;

@@ -9,7 +9,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_hipblaslt",
     "if_rocm_is_configured",
-    "rocm_copts",
+    "rocm_library",
 )
 load("@local_tsl//tsl:tsl.bzl", "set_external_visibility", "tsl_copts")
 load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
@@ -131,6 +131,12 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_kernel_header",
     ]),
     alwayslink = True,
+)
+
+rocm_library(
+    name = "hip_conditional_kernels",
+    srcs = if_rocm_is_configured(["hip_conditional_kernels.cu.cc"]),
+    deps = if_rocm_is_configured(["@local_config_rocm//rocm:rocm_headers"]),
 )
 
 cc_library(
@@ -537,11 +543,9 @@ cc_library(
     alwayslink = True,
 )
 
-cc_library(
+rocm_library(
     name = "rocm_helpers",
     srcs = if_rocm_is_configured(["rocm_helpers.cu.cc"]),
-    copts = rocm_copts(),
-    visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
     ]),
