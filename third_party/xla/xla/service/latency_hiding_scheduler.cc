@@ -872,6 +872,30 @@ class ReadySetLt {
       return *value;
     }
     if (sched_state_.config.aggressive_scheduling_policies) {
+      auto a_depth = a.node->GetDepth();
+      auto b_depth = b.node->GetDepth();
+      auto a_async_depth = a.node->GetAsyncDepth();
+      auto b_async_depth = b.node->GetAsyncDepth();
+      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+              a_async_depth > 0 &&
+                  ((a_depth - a_async_depth) / a_async_depth) < 0.01,
+              a,
+              b_async_depth > 0 &&
+                  ((b_depth - b_async_depth) / b_async_depth) < 0.01,
+              b, "kAsyncWithNoCompute")) {
+        return *value;
+      }
+      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+              a_async_depth > 0 &&
+                  ((a_depth - a_async_depth) / a_async_depth) < 0.01 &&
+                  a.node->GetGraphDepth() < b.node->GetGraphDepth(),
+              a,
+              b_async_depth > 0 &&
+                  ((b_depth - b_async_depth) / b_async_depth) < 0.01 &&
+                  b.node->GetGraphDepth() < a.node->GetGraphDepth(),
+              b, "kAsyncWithNoComputeLessDeep")) {
+        return *value;
+      }
       // Try to favor paths that are dependent of chains of async operations
       // with long latency as we want to get to them as soon as possible to
       // overlap them with computation.
