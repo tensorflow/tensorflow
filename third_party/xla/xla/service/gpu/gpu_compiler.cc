@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallString.h"
@@ -268,8 +269,8 @@ class GpuAotCompilationResult : public AotCompilationResult {
  public:
   GpuAotCompilationResult(
       HloModuleProto hlo, std::string_view obj_file,
-      std::string_view mlir_module, EntryFunctionAttributes entry_func_attrs,
-      std::string_view gpu_asm_text, absl::Span<const uint8_t> gpu_binary,
+      std::string_view mlir_module, std::string_view gpu_asm_text,
+      absl::Span<const uint8_t> gpu_binary,
       absl::Span<const GpuExecutable::ConstantInfo> constants = {}) {
     XlaRuntimeExecutableProto xla_runtime_executable;
     *xla_runtime_executable.mutable_hlo_module_proto() = hlo;
@@ -278,7 +279,6 @@ class GpuAotCompilationResult : public AotCompilationResult {
     *xla_runtime_gpu_executable_.mutable_xla_runtime_executable() =
         xla_runtime_executable;
 
-    *xla_runtime_gpu_executable_.mutable_entry_func_attrs() = entry_func_attrs;
     xla_runtime_gpu_executable_.set_gpu_asm_text(std::string(gpu_asm_text));
     xla_runtime_gpu_executable_.set_gpu_binary(gpu_binary.data(),
                                                gpu_binary.size());
@@ -343,7 +343,6 @@ StatusOr<std::unique_ptr<Executable>> GpuAotCompilationResult::LoadExecutable(
   return GpuExecutable::LoadFromObjFile(
       std::move(hlo_module), xla_runtime_executable.obj_file(),
       xla_runtime_executable.mlir_module(),
-      xla_runtime_gpu_executable_.entry_func_attrs(),
       GetDebugOptionsFromFlags(), xla_runtime_gpu_executable_.gpu_asm_text(),
       xla_runtime_gpu_executable_.gpu_binary(), std::move(constants),
       GetGpuVersion(executor), executor);
@@ -1694,8 +1693,6 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           /*binary=*/std::move(res.backend_result.binary),
           /*gpu_version=*/gpu_device_info.gpu_compute_capability(),
           /*executable=*/std::move(res.compile_module_results.executable),
-          /*entry_func_attrs=*/
-          std::move(res.compile_module_results.entry_func_attrs),
           /*constants=*/std::move(res.compile_module_results.constants),
           /*output_info=*/std::move(res.compile_module_results.output_info),
           /*module_name=*/std::move(res.compile_module_results.module_name),
@@ -1810,7 +1807,6 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
     results.emplace_back(std::make_unique<GpuAotCompilationResult>(
         module->ToProto(), data, (*program)->module,
-        res.compile_module_results.entry_func_attrs,
         res.backend_result.asm_text, res.backend_result.binary,
         res.compile_module_results.constants));
   }
@@ -1831,14 +1827,12 @@ StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
   HloModuleProto module_proto = gpu_executable->module().ToProto();
   TF_ASSIGN_OR_RETURN(auto obj_file, gpu_executable->GetObjFile());
   TF_ASSIGN_OR_RETURN(auto mlir_module, gpu_executable->GetMlirModule());
-  xla::EntryFunctionAttributes entry_func_attrs =
-      gpu_executable->entry_func_attrs();
   auto text = gpu_executable->text();
   auto binary = gpu_executable->binary();
 
   std::unique_ptr<AotCompilationResult> result =
       std::make_unique<xla::gpu::GpuAotCompilationResult>(
-          module_proto, obj_file, mlir_module, entry_func_attrs, text, binary,
+          module_proto, obj_file, mlir_module, text, binary,
           gpu_executable->constants());
   return result;
 }

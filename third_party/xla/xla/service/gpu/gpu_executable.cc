@@ -126,7 +126,6 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       text_(std::move(params.asm_text)),
       binary_(std::move(params.binary)),
       gpu_version_(params.gpu_version),
-      entry_func_attrs_(params.entry_func_attrs),
       module_name_(params.module_name),
       output_shape_(params.output_shape),
       allocations_(std::move(params.allocations)),
@@ -938,7 +937,6 @@ GpuExecutable::GpuExecutable(
     std::shared_ptr<HloModule> hlo_module, std::string asm_text,
     std::vector<uint8_t> binary, std::vector<ConstantInfo> constants,
     se::GpuComputeCapability gpu_version,
-    xla::EntryFunctionAttributes entry_func_attrs,
     absl::string_view module_name, Shape xla_output_shape,
     std::vector<BufferAllocation> allocations,
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
@@ -948,7 +946,6 @@ GpuExecutable::GpuExecutable(
       binary_(std::move(binary)),
       gpu_version_(gpu_version),
       gpu_runtime_executable_(std::move(gpu_runtime_executable)),
-      entry_func_attrs_(entry_func_attrs),
       module_name_(module_name),
       output_shape_(xla_output_shape),
       allocations_(std::move(allocations)),
@@ -1056,8 +1053,7 @@ static std::vector<std::vector<int64_t>> GetAllocationIndices(
 
 StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
     std::shared_ptr<HloModule> hlo_module, absl::string_view obj_file,
-    absl::string_view mlir_module,
-    xla::EntryFunctionAttributes entry_func_attrs, DebugOptions debug_options,
+    absl::string_view mlir_module, DebugOptions debug_options,
     absl::string_view asm_text, absl::string_view binary,
     std::vector<ConstantInfo> constants, se::GpuComputeCapability gpu_version,
     se::StreamExecutor* executor) {
@@ -1126,9 +1122,9 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   std::vector<uint8_t> binary_vector(binary.begin(), binary.end());
   return std::unique_ptr<Executable>(new GpuExecutable(
       std::move(hlo_module), std::move(asm_text_string),
-      std::move(binary_vector), std::move(constants), gpu_version,
-      entry_func_attrs, name, result_xla_shape, std::move(allocations),
-      std::move(output_info), std::move(gpu_runtime_executable)));
+      std::move(binary_vector), std::move(constants), gpu_version, name,
+      result_xla_shape, std::move(allocations), std::move(output_info),
+      std::move(gpu_runtime_executable)));
 }
 
 StatusOr<std::string_view> GpuExecutable::GetObjFile() const {

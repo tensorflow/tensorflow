@@ -226,7 +226,7 @@ StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
 static Status GetMlirAllocationInfo(
     mlir::func::FuncOp func, std::vector<BufferAllocation>* allocations,
     absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>* output_info,
-    Shape* output_shape, EntryFunctionAttributes* entry_func_attrs) {
+    Shape* output_shape) {
   CHECK(allocations->empty());
   allocations->reserve(func.getNumArguments());
 
@@ -253,41 +253,6 @@ static Status GetMlirAllocationInfo(
                    attr.getName() == "lmhlo.output_index");
     }
   }
-
-  // Encode buffer parameter metadata in a proto for persisting, because BEF
-  // doesn't persist function attributes.
-  for (int i = 0; i < func.getNumArguments(); i++) {
-    auto buffer = entry_func_attrs->add_buffers();
-    if (auto param_attr = func.getArgAttr(i, "lmhlo.params")) {
-      buffer->set_lmhlo_params_present(true);
-      buffer->set_lmhlo_params(param_attr.cast<mlir::IntegerAttr>().getInt());
-    }
-    if (auto shape_index_attr = func.getArgAttr(i, "lmhlo.param_shape_index")) {
-      auto param_shape_index = buffer->mutable_lmhlo_param_shape_index();
-      for (const llvm::APInt& element :
-           shape_index_attr.cast<mlir::DenseIntElementsAttr>()) {
-        param_shape_index->add_indices(element.getSExtValue());
-      }
-    }
-    if (auto constant_name_attr = func.getArgAttr(i, "lmhlo.constant_name")) {
-      buffer->set_lmhlo_constant_name(
-          constant_name_attr.cast<mlir::StringAttr>().str());
-    }
-    if (func.getArgAttr(i, "lmhlo.must_alias")) {
-      buffer->set_lmhlo_must_alias(true);
-    }
-    if (auto output_index_attr = func.getArgAttr(i, "lmhlo.output_index")) {
-      auto output_index = buffer->mutable_lmhlo_output_index();
-      for (const llvm::APInt& element :
-           output_index_attr.cast<mlir::DenseIntElementsAttr>()) {
-        output_index->add_indices(element.getSExtValue());
-      }
-    }
-  }
-  entry_func_attrs->set_result_xla_shape(
-      func->getAttrOfType<mlir::StringAttr>("result_xla_shape")
-          .getValue()
-          .str());
 
   return GpuExecutable::SetUpMlirAllocation(func, buffer_sizes, allocations,
                                             output_info, output_shape);
@@ -375,9 +340,9 @@ StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   std::vector<BufferAllocation> mlir_allocations;
   absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo> mlir_output_info;
   Shape mlir_output_shape;
-  TF_RETURN_IF_ERROR(GetMlirAllocationInfo(
-      entry_function, &mlir_allocations, &mlir_output_info, &mlir_output_shape,
-      &results.entry_func_attrs));
+  TF_RETURN_IF_ERROR(GetMlirAllocationInfo(entry_function, &mlir_allocations,
+                                           &mlir_output_info,
+                                           &mlir_output_shape));
 
   IrEmitterContext ir_emitter_context(
       hlo_module, results.buffer_assignment.get(), platform_name,

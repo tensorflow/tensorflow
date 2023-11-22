@@ -43,7 +43,6 @@ struct CompileModuleResults {
   std::variant<GpuExecutable::OwnedThunkSequence,
                GpuExecutable::OwnedGpuRuntimeProgram>
       executable;
-  EntryFunctionAttributes entry_func_attrs;
   std::vector<GpuExecutable::ConstantInfo> constants;
   absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo> output_info;
   Shape output_shape;

@@ -89,7 +89,6 @@ class GpuExecutable : public Executable {
     // (native function) or experimental XLA runtime executable (IREE VM
     // function) depending on which is supplied.
     std::variant<OwnedThunkSequence, OwnedGpuRuntimeProgram> executable;
-    xla::EntryFunctionAttributes entry_func_attrs;
     std::vector<ConstantInfo> constants;
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
     std::string module_name;
@@ -124,8 +123,7 @@ class GpuExecutable : public Executable {
   // compiled to a native function using the XLA Runtime stack).
   static StatusOr<std::unique_ptr<Executable>> LoadFromObjFile(
       std::shared_ptr<HloModule> hlo_module, absl::string_view obj_file,
-      absl::string_view mlir_module,
-      xla::EntryFunctionAttributes entry_func_attrs, DebugOptions debug_options,
+      absl::string_view mlir_module, DebugOptions debug_options,
       absl::string_view asm_text, absl::string_view binary,
       std::vector<ConstantInfo> constants, se::GpuComputeCapability gpu_version,
       stream_executor::StreamExecutor* executor);
@@ -137,7 +135,6 @@ class GpuExecutable : public Executable {
                 std::vector<uint8_t> binary,
                 std::vector<ConstantInfo> constants,
                 se::GpuComputeCapability gpu_version,
-                xla::EntryFunctionAttributes entry_func_attrs,
                 absl::string_view module_name, Shape xla_output_shape,
                 std::vector<BufferAllocation> allocations,
                 absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
@@ -195,10 +192,6 @@ class GpuExecutable : public Executable {
   }
 
   const std::vector<ConstantInfo>& constants() const { return constants_; }
-
-  xla::EntryFunctionAttributes entry_func_attrs() const {
-    return entry_func_attrs_;
-  }
 
   StatusOr<std::string_view> GetObjFile() const;
   StatusOr<std::string_view> GetMlirModule() const;
@@ -296,8 +289,6 @@ class GpuExecutable : public Executable {
   // runtime custom calls implementing gpu abstraction layer (available only if
   // Xla runtime is enabled).
   std::unique_ptr<GpuRuntimeExecutable> gpu_runtime_executable_;
-
-  xla::EntryFunctionAttributes entry_func_attrs_;
 
   std::string module_name_;
 

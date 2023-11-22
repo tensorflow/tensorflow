@@ -28,9 +28,6 @@ message XlaRuntimeGpuExecutableProto {
 
   XlaRuntimeExecutableProto xla_runtime_executable = 1;
 
-  // XLA-specific attributes of the executable's entry function.
-  EntryFunctionAttributes entry_func_attrs = 2;
-
   // PTX for the compiled GPU kernels.
   string gpu_asm_text = 3;
 
