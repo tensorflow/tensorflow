@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 package org.tensorflow.lite;
 
+import java.util.logging.Logger;
+
 /** Utilities for initializing TF Lite for tests. */
 public final class TestInit {
+  private static final Logger logger = Logger.getLogger(TestInit.class.getName());
 
   private TestInit() {}
 
@@ -29,8 +32,15 @@ public final class TestInit {
     if (!initialized) {
       try {
         System.loadLibrary("tensorflowlite_test_jni");
+        logger.info("Loaded native library for tests: tensorflowlite_test_jni");
       } catch (UnsatisfiedLinkError e) {
-        System.loadLibrary("tensorflowlite_stable_test_jni");
+        logger.info("Didn't load native library for tests: tensorflowlite_test_jni");
+        try {
+          System.loadLibrary("tensorflowlite_stable_test_jni");
+          logger.info("Loaded native library for tests: tensorflowlite_stable_test_jni");
+        } catch (UnsatisfiedLinkError e2) {
+          logger.info("Didn't load native library for tests: tensorflowlite_stable_test_jni");
+        }
       }
       initTfLiteForTest();
       initialized = true;

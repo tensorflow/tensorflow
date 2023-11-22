@@ -401,6 +401,11 @@ class PjRtHostMemoryForDeviceManager {
 
 class PjRtLoadedExecutable;
 
+struct PjRtPluginAttributes {
+  int64_t pjrt_c_api_major_version;
+  int64_t pjrt_c_api_minor_version;
+};
+
 // Encapsulates the state of Python session with XLA.
 //
 // It is the responsibility of the client of this API to keep the PjRtClient
@@ -515,6 +520,12 @@ class PjRtClient {
   // (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
   virtual absl::string_view platform_version() const = 0;
 
+  // Returns information about the underlying PJRT C API plugin if such a plugin
+  // is being used, otherwise returns nullopt.
+  virtual std::optional<PjRtPluginAttributes> plugin_attributes() const {
+    return std::nullopt;
+  }
+
   // TODO(b/244756954): Rethink this function altogether
   // Returns an enum that identifies the type of runtime being used under this
   // client.
@@ -548,10 +559,6 @@ class PjRtClient {
   // Variant of `Compile` that accepts an MLIR module.
   virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) = 0;
-
-  // Generates a unique fingerprint for `executable`, may be std::nullopt.
-  virtual StatusOr<std::optional<std::string>> ExecutableFingerprint(
-      const PjRtLoadedExecutable& executable) const = 0;
 
   // Deserializes a serialized executable as produced by
   // PjRtExecutable::SerializeExecutable(). `serialized` must have been

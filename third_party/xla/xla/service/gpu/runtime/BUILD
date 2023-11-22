@@ -1,14 +1,16 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library", "cuda_default_copts")
+load("@local_config_rocm//rocm:build_defs.bzl", "rocm_default_copts")
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/service/gpu:build_defs.bzl", "gpu_kernel_library")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
-    "rocm_default_copts",
+    "rocm_library",
 )
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
-    "tf_cuda_tests_tags",
+    "tf_gpu_tests_tags",
 )
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
@@ -26,11 +28,29 @@ package_group(
     ],
 )
 
+gpu_kernel_library(
+    name = "gpu_kernel_helper",
+    hdrs = if_gpu_is_configured(["gpu_kernel_helper.h"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    deps = [
+        "//xla:util",
+        "//xla/stream_executor/platform",
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
+)
+
 cc_library(
     name = "cholesky",
     srcs = ["cholesky.cc"],
     hdrs = ["cholesky.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     visibility = ["//visibility:public"],
     deps = [
         ":support",
@@ -46,34 +66,26 @@ cc_library(
 
 cuda_library(
     name = "sleep_kernel_cuda",
-    srcs = if_cuda_is_configured(
-        [
-            "sleep_kernel.cu.cc",
-        ],
-    ),
+    srcs = if_cuda_is_configured(["sleep_kernel.cu.cc"]),
     hdrs = if_cuda_is_configured(["sleep_kernel.h"]),
     compatible_with = [],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
+        ":gpu_kernel_helper",
     ]),
 )
 
-cc_library(
+rocm_library(
     name = "sleep_kernel_rocm",
-    srcs = if_rocm_is_configured(
-        [
-            "sleep_kernel.cu.cc",
-        ],
-    ),
+    srcs = if_rocm_is_configured(["sleep_kernel.cu.cc"]),
     hdrs = if_rocm_is_configured(["sleep_kernel.h"]),
     compatible_with = [],
     copts = rocm_default_copts(),
     local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocm_headers",
+        ":gpu_kernel_helper",
     ]),
 )
 
@@ -81,13 +93,16 @@ cc_library(
     name = "collectives",
     srcs = ["collectives.cc"],
     hdrs = ["collectives.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     visibility = ["//visibility:public"],
     deps = [
         ":support",
         "//xla/runtime:custom_call",
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
+        "//xla/service:collective_ops_utils",
         "//xla/service:computation_placer_hdr",
         "//xla/service:executable",
         "//xla/service:global_device_id",
@@ -101,15 +116,15 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ] + if_gpu_is_configured([
+        ":gpu_kernel_helper",
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
     ]) + if_cuda_is_configured([
         ":sleep_kernel_cuda",
-        "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm_is_configured([
         ":sleep_kernel_rocm",
-        "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
 
@@ -147,6 +162,47 @@ cc_library(
 )
 
 cc_library(
+    name = "conv_reorder",
+    srcs = ["conv_reorder.cc"],
+    hdrs = ["conv_reorder.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":support",
+        "//xla:xla_proto_cc",
+        "//xla/runtime:custom_call",
+        "//xla/runtime:custom_call_registry",
+        "//xla/runtime:executable",
+        "//xla/service:executable",
+    ],
+)
+
+cc_library(
+    name = "norm",
+    srcs = ["norm.cc"],
+    hdrs = ["norm.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":support",
+        "//xla:status",
+        "//xla:xla_proto_cc",
+        "//xla/mlir/runtime/transforms:custom_call_encoding",
+        "//xla/runtime:custom_call",
+        "//xla/runtime:custom_call_registry",
+        "//xla/runtime:executable",
+        "//xla/service:executable",
+        "//xla/service/gpu:gpu_asm_opts_util",
+        "//xla/service/gpu:gpu_norm_runner",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_memory_allocator",
+        "//xla/translate/mhlo_to_hlo:attribute_exporter",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/synchronization",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "fused_attention",
     srcs = ["fused_attention.cc"],
     hdrs = ["fused_attention.h"],
@@ -169,21 +225,6 @@ cc_library(
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Support",
-    ],
-)
-
-cc_library(
-    name = "conv_reorder",
-    srcs = ["conv_reorder.cc"],
-    hdrs = ["conv_reorder.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":support",
-        "//xla:xla_proto_cc",
-        "//xla/runtime:custom_call",
-        "//xla/runtime:custom_call_registry",
-        "//xla/runtime:executable",
-        "//xla/service:executable",
     ],
 )
 
@@ -218,7 +259,9 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     visibility = ["//visibility:public"],
     deps = [
         ":support",
@@ -267,6 +310,7 @@ cc_library(
         ":kernel_launch",
         ":memcpy",
         ":memset",
+        ":norm",
         ":send_recv",
         ":stream_synchronization",
         ":support",
@@ -310,16 +354,15 @@ cc_library(
 
 cc_library(
     name = "topk_kernel",
-    srcs = if_cuda_is_configured(
-        [
-            "topk_kernel.cc",
-        ],
-    ),
-    hdrs = if_cuda_is_configured(["topk_kernel.h"]),
+    srcs = if_gpu_is_configured(["topk_kernel.cc"]),
+    hdrs = if_gpu_is_configured(["topk_kernel.h"]),
     compatible_with = [],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     visibility = ["//visibility:public"],
     deps = [
-        ":topk_kernel_cuda",
+        ":gpu_kernel_helper",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor",  # build_cleaner: keep
@@ -329,8 +372,11 @@ cc_library(
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_config_cuda//cuda:cuda_headers",
-    ],
+    ] + if_cuda_is_configured([
+        ":topk_kernel_cuda",
+    ]) + if_rocm_is_configured([
+        ":topk_kernel_rocm",
+    ]),
 )
 
 cuda_library(
@@ -344,27 +390,49 @@ cuda_library(
     ),
     hdrs = if_cuda_is_configured(["topk_kernel_common.h"]),
     compatible_with = [],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     visibility = ["//visibility:public"],
     deps = [
+        ":gpu_kernel_helper",
         "@eigen_archive//:eigen3",
-        "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+rocm_library(
+    name = "topk_kernel_rocm",
+    srcs = if_rocm_is_configured(
+        [
+            "topk_kernel_bfloat16.cu.cc",
+            "topk_kernel_float.cu.cc",
+            "topk_kernel.cu.h",
+        ],
+    ),
+    hdrs = if_rocm_is_configured(["topk_kernel_common.h"]),
+    compatible_with = [],
+    local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
+    deps = [
+        ":gpu_kernel_helper",
+        "@eigen_archive//:eigen3",
     ],
 )
 
 xla_cc_test(
     name = "topk_kernel_test",
-    srcs = if_cuda_is_configured(["topk_kernel_test.cc"]),
-    linkstatic = 1,
-    tags = tf_cuda_tests_tags(),
+    srcs = if_gpu_is_configured(["topk_kernel_test.cc"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    tags = tf_gpu_tests_tags(),
     deps = [
+        ":gpu_kernel_helper",
         ":topk_kernel",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/stream_executor/host:host_platform",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
-        "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
         "@local_tsl//tsl/platform:test_main",
@@ -373,8 +441,11 @@ xla_cc_test(
 
 xla_cc_test(
     name = "topk_test",
-    srcs = if_cuda_is_configured(["topk_test.cc"]),
-    tags = tf_cuda_tests_tags(),
+    srcs = if_gpu_is_configured(["topk_test.cc"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    tags = tf_gpu_tests_tags(),
     deps = [
         ":topk",
         "//xla:error_spec",
@@ -400,13 +471,13 @@ xla_cc_test(
 
 cc_library(
     name = "topk",
-    srcs = if_cuda_is_configured(
-        ["topk.cc"],
-        ["topk_no_cuda.cc"],
-    ),
+    srcs = if_gpu_is_configured(["topk.cc"]),
     hdrs = ["topk.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     visibility = ["//visibility:public"],
-    deps = if_cuda_is_configured([":topk_kernel"]) + [
+    deps = if_gpu_is_configured([":topk_kernel"]) + [
         ":support",
         "//xla:executable_run_options",
         "//xla:shape_util",
@@ -469,7 +540,9 @@ cc_library(
     name = "graph_launch",
     srcs = ["graph_launch.cc"],
     hdrs = ["graph_launch.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     visibility = ["//visibility:public"],
     deps = [
         ":concurrent_region",
@@ -552,7 +625,9 @@ cc_library(
     name = "kernel_launch",
     srcs = ["kernel_launch.cc"],
     hdrs = ["kernel_launch.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     visibility = ["//visibility:public"],
     deps = [
         ":concurrent_region",

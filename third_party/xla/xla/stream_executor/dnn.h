@@ -978,6 +978,9 @@ using FusedMatmulSignature = void(DeviceMemoryBase /* a_data */,
                                   DeviceMemoryBase /* c_data */);
 using FusedMatmulRunner = OpRunner<FusedMatmulSignature>;
 
+using NormSignature = void(std::vector<DeviceMemoryBase>);
+using NormRunner = OpRunner<NormSignature>;
+
 using FusedMHASignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
                                DeviceMemoryBase /* BMM1_inputB_data */,
                                DeviceMemoryBase /* BMM2_inputA_data */,
@@ -1647,6 +1650,16 @@ class DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       dnn::ActivationMode activation_mode);
+
+  virtual tsl::StatusOr<std::unique_ptr<const dnn::NormRunner>>
+  NormRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc, double epsilon,
+      const dnn::TensorDescriptor& input_descriptor,
+      const dnn::TensorDescriptor& scale_descriptor,
+      const dnn::TensorDescriptor& bias_descriptor,
+      const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> expectation_descriptor,
+      std::optional<dnn::TensorDescriptor> norm_factor_descriptor);
 
   virtual tsl::StatusOr<std::unique_ptr<const dnn::FusedMHARunner>>
   FusedMHARunnerFromDesc(

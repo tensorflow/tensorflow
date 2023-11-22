@@ -167,12 +167,12 @@ function prepare_src() {
     cp -L \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/org_tensorflow/LICENSE \
       "${TMPDIR}"
-      
+
     # Change the format of file path (TMPDIR-->TMPDIR_rsync) which is input to the rsync from
-    # Windows-compatible to Linux-compatible to resolve the error below 
-    # error: ssh: Could not resolve hostname c: No such host is known. 
-    
-    TMPDIR_rsync=`cygpath $TMPDIR`  
+    # Windows-compatible to Linux-compatible to resolve the error below
+    # error: ssh: Could not resolve hostname c: No such host is known.
+
+    TMPDIR_rsync=`cygpath $TMPDIR`
     rsync -a \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/org_tensorflow/tensorflow \
       "${TMPDIR_rsync}"
@@ -215,23 +215,6 @@ function prepare_src() {
     cp -L \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
       "${TMPDIR}"
-    # Check if it is a tpu build
-    if [[ ${TPU_BUILD} == "1" ]]; then
-      # Check if libtpu.so exists
-      if [[ -f "./tensorflow/lib/libtpu.so" ]]; then
-        if [[ ! -L "${RUNFILES}/tensorflow/lib/libtpu.so" ]]; then
-          mkdir "$(real_path ${RUNFILES}/tensorflow/lib)"
-          ln -s $(real_path ./tensorflow/lib/libtpu.so) $(real_path ${RUNFILES}/tensorflow/lib/libtpu.so)
-          echo "Created symlink: $(real_path ./tensorflow/lib/libtpu.so) -> \
-            $(real_path ${RUNFILES}/tensorflow/lib/libtpu.so)"
-        else
-          echo "Symlink already exists: ${RUNFILES}/tensorflow/lib/libtpu.so"
-        fi
-      else
-        echo "Libtpu.so is not found in $(real_path ./tensorflow/lib/)"
-        exit 1
-      fi
-    fi
     cp -LR \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
       "${TMPDIR}"
@@ -263,11 +246,17 @@ function prepare_src() {
       chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
     else
       chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      chmod +rw ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_function_lib.so
       chmod +rw ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so
+      chmod +rw ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/calibrator/pywrap_calibration.so
       patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so):\$ORIGIN/../../tensorflow/tsl/python/lib/core ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_function_lib.so):\$ORIGIN/../../../../../python ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_function_lib.so
       patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so):\$ORIGIN/../../../../../python ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so
+      patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/calibrator/pywrap_calibration.so):\$ORIGIN/../../../../../python ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/calibrator/pywrap_calibration.so
       patchelf --shrink-rpath ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      patchelf --shrink-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_function_lib.so
       patchelf --shrink-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so
+      patchelf --shrink-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/calibrator/pywrap_calibration.so
     fi
     mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
     if [ -n "${mkl_so_dir}" ]; then
@@ -358,7 +347,7 @@ function build_wheel() {
     FULL_DIR="$(real_path "$PY_DIR")/bin/python3"
     export PYTHONPATH="$PYTHONPATH:$PWD/bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/pypi_wheel/site-packages/"
   fi
-  
+
   pushd ${TMPDIR} > /dev/null
 
   rm -f MANIFEST

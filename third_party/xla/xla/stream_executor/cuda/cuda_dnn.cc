@@ -7351,11 +7351,19 @@ GetCudnnFlashAttentionBackwardOperationGraph(
 }  // namespace
 
 static tsl::StatusOr<cudnn_frontend::ExecutionPlan> GetExecPlanFromHeuristics(
-    cudnn_frontend::OperationGraph&& opGraph, const CudnnHandle& cudnn) {
+    cudnn_frontend::OperationGraph&& opGraph, const CudnnHandle& cudnn,
+    bool include_fallback_heuristics = false) {
 #if (CUDNN_VERSION >= 8800)
   cudnn_frontend::EngineConfigList engine_configs;
-  cudnn_frontend::get_heuristics_list<1>({"heuristics_instant"}, opGraph,
-                                         allowAllConfig, engine_configs, true);
+  if (!include_fallback_heuristics) {
+    cudnn_frontend::get_heuristics_list<1>(
+        {"heuristics_instant"}, opGraph, allowAllConfig, engine_configs, true);
+  } else {
+    cudnn_frontend::get_heuristics_list<2>(
+        {"heuristics_instant", "heuristics_fallback"}, opGraph, allowAllConfig,
+        engine_configs, true);
+  }
+
   if (VLOG_IS_ON(4)) {
     VLOG(4) << "Heuristic has " << engine_configs.size() << " configurations ";
   }
@@ -7363,12 +7371,27 @@ static tsl::StatusOr<cudnn_frontend::ExecutionPlan> GetExecPlanFromHeuristics(
     return absl::InternalError(
         "No engine configurations found for this opGraph and heuristics.");
   }
-  auto plan = cudnn_frontend::ExecutionPlanBuilder()
-                  .setHandle(cudnn.handle())
-                  .setEngineConfig(engine_configs[0], opGraph.getTag())
-                  .build();
 
-  return plan;
+  cudnnStatus_t status;
+  for (auto engine_config : engine_configs) {
+    cudnn_frontend::ExecutionPlan plan =
+        cudnn_frontend::ExecutionPlanBuilder()
+            .setHandle(cudnn.handle())
+            .setEngineConfig(engine_config, opGraph.getTag())
+            .build();
+    status = plan.get_status();
+    if (status == CUDNN_STATUS_SUCCESS) {
+      return plan;
+    } else {
+      VLOG(4) << "Failed to build cuDNN execution plan for opGraph "
+              << opGraph.getTag()
+              << ". Status: " << CudnnStatusToString(status);
+    }
+  }
+
+  LOG(FATAL) << "Failed to generate cuDNN execution plan for opGraph "
+             << opGraph.getTag()
+             << ". Status of final plan: " << CudnnStatusToString(status);
 #else
   return absl::UnimplementedError("Supported only for cuDNN >= 8.8.0");
 #endif
@@ -7987,8 +8010,9 @@ class CudnnExecutionPlanRunner<void(Args...)>
                                           data_uids_.cend()};
     std::vector<void*> data_ptrs_vec;
 
-    // The operands of ForwardGraph convolutions are gathered dynamically. In
-    // this case, Args... is std::vector<DeviceMemoryBase>.
+    // The operands of ForwardGraph convolutions and norm Custom Calls are
+    // gathered dynamically. In these cases, Args... is
+    // std::vector<DeviceMemoryBase>.
     if constexpr (sizeof...(Args) == 1 &&
                   std::is_same_v<std::tuple_element_t<0, std::tuple<Args...>>,
                                  std::vector<DeviceMemoryBase>>) {
@@ -8990,6 +9014,129 @@ bool CudnnSupport::GetConvolveAlgorithms(
   }
 
   return true;
+}
+
+tsl::StatusOr<std::unique_ptr<const dnn::NormRunner>>
+CudnnSupport::NormRunnerFromDesc(
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc, double epsilon,
+    const dnn::TensorDescriptor& input_descriptor,
+    const dnn::TensorDescriptor& scale_descriptor,
+    const dnn::TensorDescriptor& bias_descriptor,
+    const dnn::TensorDescriptor& output_descriptor,
+    std::optional<dnn::TensorDescriptor> expectation_descriptor,
+    std::optional<dnn::TensorDescriptor> norm_factor_descriptor) {
+#if (CUDNN_VERSION >= 8905 && TF_ENABLE_CUDNN_FRONTEND)
+  auto cudnn = cudnn_->GetHandle(parent_, stream);
+
+  std::vector<int64_t> uids;
+  auto next_uid = [&uids]() -> int64_t {
+    if (uids.empty()) {
+      return uids.emplace_back(0);
+    }
+    return uids.emplace_back(uids.back() + 1);
+  };
+
+  TF_ASSIGN_OR_RETURN(
+      auto xTensor,
+      CreateCudnnTensor(input_descriptor.dimensions(),
+                        input_descriptor.GetPhysicalStridesMajorToMinor(),
+                        next_uid(), input_descriptor.type(), 1, -1));
+  TF_ASSIGN_OR_RETURN(
+      auto scaleTensor,
+      CreateCudnnTensor(scale_descriptor.dimensions(),
+                        scale_descriptor.GetPhysicalStridesMajorToMinor(),
+                        next_uid(), scale_descriptor.type(), 1, -1));
+  TF_ASSIGN_OR_RETURN(
+      auto biasTensor,
+      CreateCudnnTensor(bias_descriptor.dimensions(),
+                        bias_descriptor.GetPhysicalStridesMajorToMinor(),
+                        next_uid(), bias_descriptor.type(), 1, -1));
+  TF_ASSIGN_OR_RETURN(
+      auto yTensor,
+      CreateCudnnTensor(output_descriptor.dimensions(),
+                        output_descriptor.GetPhysicalStridesMajorToMinor(),
+                        next_uid(), output_descriptor.type(), 1, -1));
+  std::optional<cudnn_frontend::Tensor> expectation_tensor, norm_factor_tensor;
+  if (expectation_descriptor) {
+    TF_ASSIGN_OR_RETURN(
+        expectation_tensor,
+        CreateCudnnTensor(
+            expectation_descriptor->dimensions(),
+            expectation_descriptor->GetPhysicalStridesMajorToMinor(),
+            next_uid(), expectation_descriptor->type(), 1, -1));
+    TF_ASSIGN_OR_RETURN(
+        norm_factor_tensor,
+        CreateCudnnTensor(
+            norm_factor_descriptor->dimensions(),
+            norm_factor_descriptor->GetPhysicalStridesMajorToMinor(),
+            next_uid(), norm_factor_descriptor->type(), 1, -1));
+  }
+
+  std::vector<int64_t> scale_dim(4, 1), scalar_uids;
+  TF_ASSIGN_OR_RETURN(
+      auto epsilonTensor,
+      CreateCudnnTensor(scale_dim, scale_dim,
+                        scalar_uids.emplace_back(uids.back() + 1),
+                        dnn::DataType::kDouble, 1, -1, /*is_virtual=*/false,
+                        CUDNN_TENSOR_REORDERING_NONE,
+                        /*is_value=*/true));
+
+  cudnnBackendNormMode_t normalizationMode = CUDNN_LAYER_NORM;
+
+  std::optional<cudnn_frontend::Operation> norm_op;
+  if (!expectation_descriptor) {
+    cudnnBackendNormFwdPhase_t phase = CUDNN_NORM_FWD_INFERENCE;
+    norm_op = cudnn_frontend::OperationBuilder(
+                  CUDNN_BACKEND_OPERATION_NORM_FORWARD_DESCRIPTOR)
+                  .setNormalizationMode(normalizationMode)
+                  .setNormFwdPhase(phase)
+                  .setxDesc(xTensor)
+                  .setScaleAndBias(scaleTensor, biasTensor)
+                  .setEpsilonTensor(epsilonTensor)
+                  .setyDesc(yTensor)
+                  .build();
+  } else {
+    cudnnBackendNormFwdPhase_t phase = CUDNN_NORM_FWD_TRAINING;
+    norm_op = cudnn_frontend::OperationBuilder(
+                  CUDNN_BACKEND_OPERATION_NORM_FORWARD_DESCRIPTOR)
+                  .setNormalizationMode(normalizationMode)
+                  .setNormFwdPhase(phase)
+                  .setxDesc(xTensor)
+                  .setScaleAndBias(scaleTensor, biasTensor)
+                  .setEpsilonTensor(epsilonTensor)
+                  .setSavedMeanAndInvVar(expectation_tensor.value(),
+                                         norm_factor_tensor.value())
+                  .setyDesc(yTensor)
+                  .build();
+  }
+
+  std::array<cudnn_frontend::Operation const*, 1> ops = {&norm_op.value()};
+  auto op_graph = cudnn_frontend::OperationGraphBuilder()
+                      .setHandle(cudnn.handle())
+                      .setOperationGraph(ops.size(), ops.data())
+                      .build();
+
+  TF_ASSIGN_OR_RETURN(
+      auto execution_plan,
+      GetExecPlanFromHeuristics(std::move(op_graph), cudnn,
+                                /*include_fallback_heuristics=*/true));
+  std::vector<ScalingParam> scalar_input_values = {
+      ScalingParam(epsilon, dnn::DataType::kDouble)};
+
+  TF_ASSIGN_OR_RETURN(
+      auto runner,
+      CudnnExecutionPlanRunner<dnn::NormSignature>::Create(
+          parent_, cudnn_.get(), std::move(execution_plan), uids,
+          /*need_side_input=*/false, /*has_activation_output=*/false,
+          scalar_uids, scalar_input_values, /*dropout_rng_seed=*/0,
+          /*dropout_rng_offset=*/0, /*is_flash_attention=*/false));
+  return {std::make_unique<CudnnExecutionPlanRunner<dnn::NormSignature>>(
+      std::move(runner))};
+
+#else
+  return absl::UnimplementedError(
+      "Layer norm kernels require cuDNN 8.9.5 or higher.");
+#endif  // CUDNN_VERSION >= 8905 && TF_ENABLE_CUDNN_FRONTEND
 }
 
 // Returns the offset to increment for the dropout rng.

@@ -87,6 +87,10 @@ struct HloVerifierOpts {
     return std::move(*this);
   }
 
+  HloVerifierOpts&& WithVerifyS4U4Usage(bool verify) {
+    return std::move(*this);
+  }
+
   bool IsLayoutSensitive() const { return layout_sensitive; }
 
   bool AllowMixedPrecision() const { return allow_mixed_precision; }

@@ -552,7 +552,7 @@ StatusOr<std::unique_ptr<StreamExecutorExecutable>> FromProto(
   for (const auto& executable : proto.executables()) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<xla::AotCompilationResult> deserialized,
-        gpu::GpuXlaRuntimeAotCompilationResult::FromString(executable));
+        gpu::GpuCompiler::LoadAotCompilationResultStatic(executable));
     deserialized_aot_executables.push_back(std::move(deserialized));
   }
   return std::make_unique<StreamExecutorExecutable>(

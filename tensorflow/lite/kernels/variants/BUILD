@@ -180,6 +180,24 @@ cc_test(
 )
 
 cc_test(
+    name = "list_push_back_test",
+    srcs = ["list_kernels/list_push_back_test.cc"],
+    deps = [
+        ":list_ops_lib",
+        ":tensor_array",
+        ":test_util",
+        "//tensorflow/lite:type_to_tflitetype",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "variant_add_n_test",
     srcs = ["list_kernels/variant_add_n_test.cc"],
     deps = [
@@ -198,13 +216,12 @@ cc_test(
 )
 
 cc_test(
-    name = "list_push_back_test",
-    srcs = ["list_kernels/list_push_back_test.cc"],
+    name = "variant_zeros_like_test",
+    srcs = ["list_kernels/variant_zeros_like_test.cc"],
     deps = [
         ":list_ops_lib",
         ":tensor_array",
         ":test_util",
-        "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",

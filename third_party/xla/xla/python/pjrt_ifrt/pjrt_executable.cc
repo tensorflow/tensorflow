@@ -669,8 +669,16 @@ StatusOr<PjRtLoadedExecutable::ExecuteResult> PjRtLoadedExecutable::Execute(
 
 StatusOr<std::optional<std::string>> PjRtLoadedExecutable::Fingerprint() const {
   DCHECK(this);
-  return client_->pjrt_client()->ExecutableFingerprint(
-      *pjrt_loaded_executable_);
+  StatusOr<std::string> fingerprint =
+      pjrt_loaded_executable_->FingerprintExecutable();
+  if (fingerprint.ok()) {
+    return {fingerprint.value()};
+  } else if (fingerprint.status().code() == absl::StatusCode::kUnimplemented) {
+    // Return nullopt in case of unimplemented error.
+    return std::nullopt;
+  } else {
+    return fingerprint.status();
+  }
 }
 
 StatusOr<std::string> PjRtLoadedExecutable::Serialize() const {

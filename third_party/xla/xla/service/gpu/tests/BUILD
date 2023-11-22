@@ -736,6 +736,7 @@ xla_cc_binary(
     deps = [
         "//xla:status",
         "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:buffer_sharing",
         "//xla/service/gpu:compile_module_to_llvm_ir",
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:gpu_device_info_for_tests",
@@ -881,6 +882,7 @@ xla_test(
         ":gpu_codegen_test",
         "//xla:error_spec",
         "//xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:tensor_float_32_utils",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -946,6 +948,7 @@ xla_test(
     name = "load_autotune_results_using_execpath_test",
     srcs = [],
     backends = ["gpu"],
+    tags = ["no_rocm"],
     # Data dependency must be declared for the cache.
     data = ["test_autotune_cache.textproto"],
     env = {"XLA_FLAGS": "--xla_gpu_load_autotune_results_from=" +
@@ -964,6 +967,7 @@ xla_test(
     name = "load_autotune_results_from_test_workspace_test",
     srcs = [],
     backends = ["gpu"],
+    tags = ["no_rocm"],
     # Data dependency must be declared for the cache.
     data = ["test_autotune_cache.textproto"],
     env = {"XLA_FLAGS": "--xla_gpu_load_autotune_results_from=TEST_WORKSPACE/" +
@@ -991,7 +995,7 @@ xla_test(
 xla_cc_test(
     name = "gpu_int4_test",
     srcs = ["gpu_int4_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + ["no_rocm"],
     deps = [
         ":gpu_codegen_test",
         "@local_tsl//tsl/platform:test",

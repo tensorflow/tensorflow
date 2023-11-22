@@ -480,7 +480,15 @@ static void Init(py::module_& m) {
                &PyClient::MakePythonCallbackUsingHostSendAndRecv),
            py::arg("callable"), py::arg("operand_shapes"),
            py::arg("result_shapes"), py::arg("send_channel_ids"),
-           py::arg("recv_channel_ids"), py::arg("serializer") = py::none());
+           py::arg("recv_channel_ids"), py::arg("serializer") = py::none())
+      .def("__getattr__", [](PyClient& client, std::string name) -> py::object {
+        const auto& attrs = client.attributes();
+        auto it = attrs.find(name);
+        if (it != attrs.end()) {
+          return std::visit([](auto&& v) { return py::cast(v); }, it->second);
+        }
+        throw py::attribute_error(absl::StrCat("Unknown attribute ", name));
+      });
 
   m.def(
       "get_tfrt_cpu_client",
@@ -701,6 +709,8 @@ static void Init(py::module_& m) {
       .def("get_output_shardings", &PyLoadedExecutable::GetOutputShardings)
       .def("get_parameter_layouts",
            xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetParameterLayouts))
+      .def("get_output_layouts",
+           xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetOutputLayouts))
       .def("get_parameter_shardings",
            &PyLoadedExecutable::GetParameterShardings)
       .def("keep_alive", &PyLoadedExecutable::KeepAlive)
@@ -1012,6 +1022,8 @@ static void Init(py::module_& m) {
       .def("get_output_shardings", &PjRtExecutable::GetOutputShardings)
       .def("get_parameter_layouts",
            xla::ValueOrThrowWrapper(&PjRtExecutable::GetParameterLayouts))
+      .def("get_output_layouts",
+           xla::ValueOrThrowWrapper(&PjRtExecutable::GetOutputLayouts))
       .def("get_parameter_shardings", &PjRtExecutable::GetParameterShardings)
       .def("get_compiled_memory_stats",
            xla::ValueOrThrowWrapper(&PjRtExecutable::GetCompiledMemoryStats))

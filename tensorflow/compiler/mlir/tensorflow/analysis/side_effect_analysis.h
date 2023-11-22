@@ -21,13 +21,14 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_alias_analysis.h"
 
 namespace mlir {
@@ -37,9 +38,16 @@ inline constexpr ResourceId kUnknownResourceId =
     ResourceAliasAnalysis::Info::kUnknownResourceId;
 static_assert(kUnknownResourceId < 0, "kUnknownResourceId must be < 0");
 
+// Maps group IDs to branch IDs.
+using ParallelIdsMap = std::map<std::string, std::string>;
+using OpToParallelIdsMap = absl::flat_hash_map<Operation*, ParallelIdsMap>;
+
 namespace detail {
 
 class OpSideEffectCollector;
+
+using StackResourceToOps = std::vector<
+    absl::flat_hash_map<ResourceId, absl::flat_hash_set<Operation*>>>;
 
 // Side effect analysis info for a single function.
 //
@@ -63,18 +71,22 @@ class SideEffectAnalysisInfo {
   // Constructs analysis info by analyzing the given function.
   SideEffectAnalysisInfo(func::FuncOp func_op,
                          const OpSideEffectCollector& op_side_effect_collector,
-                         const TF::ResourceAliasAnalysis::Info& alias_analysis)
+                         const TF::ResourceAliasAnalysis::Info& alias_analysis,
+                         const OpToParallelIdsMap& op_to_parallel_ids)
       : op_side_effect_collector_(op_side_effect_collector),
-        alias_analysis_(alias_analysis) {
+        alias_analysis_(alias_analysis),
+        op_to_parallel_ids_(op_to_parallel_ids) {
     AnalyzeFunction(func_op);
   }
 
   // Constructs analysis info by analyzing the given region.
   SideEffectAnalysisInfo(Region* region,
                          const OpSideEffectCollector& op_side_effect_collector,
-                         const TF::ResourceAliasAnalysis::Info& alias_analysis)
+                         const TF::ResourceAliasAnalysis::Info& alias_analysis,
+                         const OpToParallelIdsMap& op_to_parallel_ids)
       : op_side_effect_collector_(op_side_effect_collector),
-        alias_analysis_(alias_analysis) {
+        alias_analysis_(alias_analysis),
+        op_to_parallel_ids_(op_to_parallel_ids) {
     AnalyzeRegion(region);
   }
 
@@ -144,6 +156,51 @@ class SideEffectAnalysisInfo {
   llvm::SmallSet<ResourceId, 8> GetDependentIds(ResourceId resource_id,
                                                 bool is_fetch_op) const;
 
+  // Returns the parallel ids of the op.
+  ParallelIdsMap GetParallelIdsMap(Operation* op);
+
+  // Converts from read/write state that relates ops with the same parallel id
+  // to a set of last accesses for use with other parallel ids. Reads/writes
+  // between parallel ids are conservatively approximated as writes.
+  absl::flat_hash_set<Operation*> GetLastWrites(ResourceId resource_id);
+
+  // Sets the read/write state for ops within the same parallel id.
+  void SetLastWrites(ResourceId resource_id,
+                     absl::flat_hash_set<Operation*> last_writes);
+
+  // Enters a sequence of ops that have the same parallel id. This converts
+  // stack state to per_resource_access_info_.
+  void Enter();
+
+  // Exits a sequence of ops that have the same parallel id. This converts
+  // per_resource_access_info_ to stack state.
+  void Exit();
+
+  // Steps down one parallel nesting level (i.e. increase parallel id size
+  // by 1).
+  void Down();
+
+  // Steps laterally between parallel nesting levels.
+  void Lateral();
+
+  // Steps up one parallel nesting level.
+  void Up();
+
+  // Transitions nesting levels from `from` to `to`.
+  void Transition(ParallelIdsMap from, ParallelIdsMap to);
+
+  // Transitions nesting levels from the previous parallel id to `to`.
+  void TransitionToParallelIdsMap(ParallelIdsMap to);
+
+  // Transitions nesting levels from the previous parallel id to `to`.
+  void TransitionToOp(Operation* to);
+
+  // Initializes stack state for a function.
+  void InitFunction();
+
+  // Uninitializes stack state for a function.
+  void UninitFunction();
+
   // Maps from an op to its control predecessors.
   llvm::SmallDenseMap<Operation*, llvm::SmallPtrSet<Operation*, 4>, 8>
       control_predecessors_;
@@ -168,8 +225,10 @@ class SideEffectAnalysisInfo {
 
   // Internal per-resource data structure for building the dependencies.
   struct PerResourceAccessInfo {
-    // Last op that writes to resource before the current op is being analyzed.
-    Operation* last_write = nullptr;
+    // Last writes to resource before the current op is being analyzed. In
+    // general there can be multiple most recent accesses when ops have
+    // different parallel ids.
+    absl::flat_hash_set<Operation*> last_writes;
     // Read ops since `last_write` before the current op is being analyzed.
     llvm::SmallVector<Operation*, 8> reads_since_last_write;
     // Whether a previous access of this resource already tracks the last
@@ -187,8 +246,33 @@ class SideEffectAnalysisInfo {
   llvm::SmallDenseMap<ResourceId, PerResourceAccessInfo, 8>
       per_resource_access_info_;
 
+  // Hold the last set of reads and writes that
+  // will be depended on by ops with greater nesting depths.
+  // For example, the last read/write with parallel_ids `{group0:branch0}`
+  // lives at stack depth 1 and is depended on by ops with parallel_ids
+  // of the form `{group0:branch0, ...}`.
+  //
+  // We track a set of reads/writes rather than a single read/write because
+  // multiple parallel ops may be live at any particular point.
+  StackResourceToOps stack_down_;
+
+  // Hold the last set of reads and writes that will be depended on by
+  // ops with lesser nesting depths. For example, the last read/writes
+  // with parallel_ids `{group0:branch0}` and `{group0:branch1}` live at
+  // stack depth 1 and are depended on by ops with parallel_ids `{}`.
+  StackResourceToOps stack_up_;
+
+  // Parallel ids of the previously traversed op in the same function.
+  // The transition from the previous parallel_ids to the current parallel_ids
+  // determines which stack actions occur.
+  ParallelIdsMap previous_parallel_ids_;
+
   const OpSideEffectCollector& op_side_effect_collector_;
   const TF::ResourceAliasAnalysis::Info& alias_analysis_;
+
+  // Map op to parallel_ids. If an op is not a key then it has empty parallel
+  // ids, which corresponds to nesting depth 0.
+  const OpToParallelIdsMap& op_to_parallel_ids_;
 };
 
 }  // namespace detail
@@ -205,8 +289,39 @@ class SideEffectAnalysisInfo {
 class SideEffectAnalysis : public detail::PerFunctionAggregateAnalysis<
                                detail::SideEffectAnalysisInfo> {
  public:
-  // Constructs analysis by analyzing the given module operation.
-  explicit SideEffectAnalysis(ModuleOp module);
+  // Constructs analysis by analyzing the given module operation. Because no
+  // parallel_ids are given, the program has sequential memory semantics.
+  explicit SideEffectAnalysis(ModuleOp module_op);
+
+  // Constructs analysis by analyzing the given module operation where
+  // `op_to_parallel_ids` supplies the group to branch map. This is the map
+  // that is encoded by op attribute `_parallel_execution_ids`. This map is
+  // used to code which ops should be executed in parallel and which
+  // ops should be executed in sequence after ops have been flattened.
+  // For example, children of
+  // `tf_device.parallel_execute` will be executed in parallel and
+  // each replica child of a `tf_device.replicate` will be executed in parallel.
+  // Otherwise, by default, an op's children will be executed in sequence.
+  //
+  // Two ops with the same groups and different branches are considered
+  // parallel so are not made dependent. For example if `OpA` has parallel_ids
+  //   `{group0:branch0, group1:branch0}`
+  // and `OpB` has parallel_ids
+  //   `{group0:branch1, graph1:branch0}`
+  // then `OpA` and `OpB` are executed in parallel because `group0` is common
+  // with a different branch.
+  //
+  // Two ops with the same branches between common groups are executed in
+  // sequence so are made dependent. For example, if `OpA` has parallel_ids
+  //   `{group0:branch0, group1:branch0}`
+  // and `OpB` has parallel_ids
+  //   `{group0:branch0, group2:branch0}`
+  // then `OpA` and `OpB` are executed in sequence because the common groups
+  // have the same branch.
+  //
+  // If an op is not in `op_to_parallel_ids` then it is considered to have the
+  // empty map from groups to branches.
+  SideEffectAnalysis(ModuleOp module_op, OpToParallelIdsMap op_to_parallel_ids);
 
  private:
   ResourceAliasAnalysis alias_analysis_;

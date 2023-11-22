@@ -2308,6 +2308,20 @@ Status DynamicDimensionInferenceVisitor::HandleWhile(HloInstruction* hlo) {
   }
   HloInstruction* new_body_root = hlo->while_body()->AddInstruction(
       HloInstruction::CreateTuple(new_root_operands));
+  for (int i = 0; i < original_tuple_count; ++i) {
+    TF_RETURN_IF_ERROR(ForEachDynamicDimension(
+        body_root,
+        [&](ShapeIndex index, int64_t dimension,
+            HloInstruction* dynamic_size) -> Status {
+          SetDynamicSize(new_body_root, index, dimension, dynamic_size);
+          if (index.empty() || index.front() != i) {
+            return OkStatus();
+          }
+          index.pop_front();
+          SetDynamicSize(new_root_operands[i], index, dimension, dynamic_size);
+          return OkStatus();
+        }));
+  }
   hlo->while_body()->set_root_instruction(new_body_root);
   MarkAsChanged();
 

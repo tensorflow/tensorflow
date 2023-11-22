@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -53,6 +54,8 @@ class GpuGraphSupport {
 
   static size_t allocated_gpu_graph_execs();
   static size_t alive_gpu_graph_execs();
+
+  static void TrimDeviceMemory(StreamExecutor* executor);
 
  private:
   // Global counters for the total number of allocated and alive gpu graph
@@ -112,7 +115,7 @@ tsl::StatusOr<OwnedGpuGraph> CreateGpuGraph();
 // Adds a kernel node to the graph.
 tsl::StatusOr<GpuGraphNodeHandle> AddKernelNode(
     GpuGraphHandle graph, absl::Span<GpuGraphNodeHandle> deps,
-    ThreadDim threads, BlockDim blocks, const KernelBase& kernel,
+    ThreadDim threads, BlockDim blocks, const Kernel& kernel,
     const KernelArgsArrayBase& args);
 
 // Adds a memory copy node to the graph.

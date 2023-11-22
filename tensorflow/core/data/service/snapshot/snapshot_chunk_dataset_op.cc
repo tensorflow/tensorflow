@@ -125,6 +125,8 @@ class SnapshotChunkDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
 
+    ~Iterator() override { RecordBytesRead(); }
+
     absl::Status Initialize(IteratorContext* ctx) override {
       reader_ = std::make_unique<snapshot_util::TFRecordReader>(
           TranslateFileName(dataset()->chunk_file_), dataset()->compression_,
@@ -138,7 +140,7 @@ class SnapshotChunkDatasetOp::Dataset : public DatasetBase {
                                  bool* end_of_sequence) override {
       *end_of_sequence = false;
       absl::Status status = reader_->ReadTensors(out_tensors);
-      if (errors::IsOutOfRange(status)) {
+      if (absl::IsOutOfRange(status)) {
         *end_of_sequence = true;
         return absl::OkStatus();
       }
@@ -174,6 +176,12 @@ class SnapshotChunkDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(reader_->ReadTensors(&unused));
       }
       return absl::OkStatus();
+    }
+
+    void RecordBytesRead() {
+      uint64_t bytes_read = reader_->BytesRead();
+      metrics::GetTFDataBytesReadCounter(kSnapshotChunkDataset)
+          ->IncrementBy(bytes_read);
     }
 
     std::unique_ptr<snapshot_util::TFRecordReader> reader_;

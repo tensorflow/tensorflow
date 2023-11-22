@@ -59,6 +59,10 @@ class TopkRewriter : public HloModulePass {
   // converted into a custom call.
   std::function<bool(const HloSortInstruction*, int64_t)>
       is_profitable_to_convert_;
+
+  // Matches the input to the sort+iota+slice pattern and converts to custom
+  // call if profitable. Returns the custom call if one was created.
+  StatusOr<HloInstruction*> TransformPatternToCustomCall(HloInstruction* inst);
 };
 
 class TopkDecomposer : public HloModulePass {

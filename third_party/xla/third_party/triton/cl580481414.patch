@@ -1,0 +1,1512 @@
+diff --git a/include/triton/Dialect/NVGPU/IR/NVGPUOps.td b/include/triton/Dialect/NVGPU/IR/NVGPUOps.td
+--- a/include/triton/Dialect/NVGPU/IR/NVGPUOps.td
++++ b/include/triton/Dialect/NVGPU/IR/NVGPUOps.td
+@@ -29,9 +29,8 @@ include "mlir/IR/EnumAttr.td"
+ include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
+ include "mlir/Interfaces/InferTypeOpInterface.td" // SameOperandsAndResultType
+ 
+-def I8Ptr_global : LLVM_IntPtrBase<8, 1>;
+-def I8Ptr_shared : LLVM_IntPtrBase<8, 3>;
+-def I64Ptr_shared : LLVM_IntPtrBase<64, 3>;
++def LLVM_PointerGlobal : LLVM_OpaquePointerInAddressSpace<1>;
++def LLVM_PointerShared : LLVM_OpaquePointerInAddressSpace<3>;
+ 
+ class NVGPU_Op<string mnemonic, list<Trait> traits = []> :
+     LLVM_OpBase<NVGPU_Dialect, mnemonic, traits>;
+@@ -55,7 +54,7 @@ def NVGPU_WGMMAWaitGroupOp : NVGPU_Op<"w
+ }
+ 
+ def NVGPU_MBarrierInitOp : NVGPU_Op<"mbarrier_init", [MemoryEffects<[MemWrite]>]> {
+-  let arguments = (ins I64Ptr_shared:$mbarrier, I1:$pred, I32Attr:$count);
++  let arguments = (ins LLVM_PointerShared:$mbarrier, I1:$pred, I32Attr:$count);
+   let assemblyFormat = "$mbarrier `,` $pred attr-dict `:` type($mbarrier)";
+ }
+ 
+@@ -71,12 +70,12 @@ def MBarrier_ArriveTypeAttr : I32EnumAtt
+ }
+ 
+ def NVGPU_MBarrierArriveOp : NVGPU_Op<"mbarrier_arrive", []> {
+-  let arguments = (ins I64Ptr_shared:$mbarrier, I1:$pred, Optional<I32>:$ctaId, MBarrier_ArriveTypeAttr:$arriveType, DefaultValuedAttr<I32Attr, "0">:$txCount);
++  let arguments = (ins LLVM_PointerShared:$mbarrier, I1:$pred, Optional<I32>:$ctaId, MBarrier_ArriveTypeAttr:$arriveType, DefaultValuedAttr<I32Attr, "0">:$txCount);
+   let assemblyFormat = "$mbarrier `,` $pred (`,` $ctaId^)? attr-dict `:` type($mbarrier)";
+ }
+ 
+ def NVGPU_MBarrierWaitOp : NVGPU_Op<"mbarrier_wait", []> {
+-  let arguments = (ins I64Ptr_shared:$mbarrier, I1:$phase);
++  let arguments = (ins LLVM_PointerShared:$mbarrier, I1:$phase);
+   let assemblyFormat = "$mbarrier `,` $phase attr-dict `:` type(operands)";
+ }
+ 
+@@ -116,13 +115,13 @@ def NVGPU_WGMMADescCreateOp : NVGPU_Op<"
+ }
+ 
+ def NVGPU_TMALoadTiledOp : NVGPU_Op<"tma_load_tiled", [AttrSizedOperandSegments]> {
+-  let arguments = (ins I8Ptr_shared:$dst, I64Ptr_shared:$mbarrier, I8Ptr_global:$tmaDesc, I64:$l2Desc,
++  let arguments = (ins LLVM_PointerShared:$dst, LLVM_PointerShared:$mbarrier, LLVM_PointerGlobal:$tmaDesc, I64:$l2Desc,
+                        I1:$pred, Variadic<I32>:$coords, Optional<I16>:$mcastMask);
+   let assemblyFormat = "operands attr-dict `:` type(operands)";
+ }
+ 
+ def NVGPU_TMALoadIm2colOp : NVGPU_Op<"tma_load_im2col", []> {
+-  let arguments = (ins I8Ptr_shared:$dst, I64Ptr_shared:$mbarrier, I8Ptr_global:$tmaDesc, I64:$l2Desc, LLVM_AnyStruct:$im2colOffsets, I1:$pred, Variadic<I32>:$coords, I16Attr:$mcastMask);
++  let arguments = (ins LLVM_PointerShared:$dst, LLVM_PointerShared:$mbarrier, LLVM_PointerGlobal:$tmaDesc, I64:$l2Desc, LLVM_AnyStruct:$im2colOffsets, I1:$pred, Variadic<I32>:$coords, I16Attr:$mcastMask);
+   let assemblyFormat = "operands attr-dict `:` type(operands)";
+ }
+ 
+@@ -217,12 +216,12 @@ def NVGPU_ClusterWaitOp : NVGPU_Op<"clus
+ }
+ 
+ def NVGPU_TMAStoreTiledOp : NVGPU_Op<"tma_store_tiled", [MemoryEffects<[MemWrite]>]> {
+-  let arguments = (ins I8Ptr_global:$tmaDesc, I8Ptr_shared:$src, I1:$pred, Variadic<I32>:$coords);
++  let arguments = (ins LLVM_PointerGlobal:$tmaDesc, LLVM_PointerShared:$src, I1:$pred, Variadic<I32>:$coords);
+   let assemblyFormat = "operands attr-dict `:` type(operands)";
+ }
+ 
+ def NVGPU_StoreMatrixOp : NVGPU_Op<"stmatrix", [MemoryEffects<[MemWrite]>]> {
+-  let arguments = (ins I8Ptr_shared:$addr, Variadic<I32>:$datas);
++  let arguments = (ins LLVM_PointerShared:$addr, Variadic<I32>:$datas);
+   let assemblyFormat = "operands attr-dict `:` type(operands)";
+ }
+ 
+diff --git a/lib/Conversion/TritonGPUToLLVM/BarrierOpToLLVM.cpp b/lib/Conversion/TritonGPUToLLVM/BarrierOpToLLVM.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/BarrierOpToLLVM.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/BarrierOpToLLVM.cpp
+@@ -41,13 +41,16 @@ struct AllocMBarrierOpConversion : publi
+     Value smemBase = getSharedMemoryBase(loc, rewriter, op.getResult());
+     auto resultTy = op.getType();
+     auto resultTensorTy = resultTy.dyn_cast<RankedTensorType>();
+-    Type elemPtrTy;
++    Type elemPtrTy = ptr_ty(rewriter.getContext(), 3);
++    Type llvmElemTy;
+     if (resultTensorTy) {
+-      auto llvmElemTy =
++      llvmElemTy =
+           getTypeConverter()->convertType(resultTensorTy.getElementType());
+-      elemPtrTy = ptr_ty(llvmElemTy, 3);
+     } else {
+-      elemPtrTy = getTypeConverter()->convertType(resultTy);
++      auto resultPtrTy = resultTy.dyn_cast<triton::PointerType>();
++      assert(resultPtrTy && "Unknown type for AllocMBarrierOp");
++      llvmElemTy =
++          getTypeConverter()->convertType(resultPtrTy.getPointeeType());
+     }
+     smemBase = bitcast(smemBase, elemPtrTy);
+     auto threadId = getThreadId(rewriter, loc);
+@@ -61,7 +64,7 @@ struct AllocMBarrierOpConversion : publi
+     for (int i = 0; i < numMBarriers; ++i) {
+       Value smem = smemBase;
+       if (i > 0) {
+-        smem = gep(elemPtrTy, smem, i32_val(i));
++        smem = gep(elemPtrTy, llvmElemTy, smem, i32_val(i));
+       }
+       rewriter.create<triton::nvgpu::MBarrierInitOp>(loc, smem, pred,
+                                                      op.getCount());
+@@ -142,11 +145,11 @@ struct ExtractMBarrierOpConversion
+         op.getTensor().getType().cast<RankedTensorType>().getElementType();
+     auto tensorStruct = adaptor.getTensor();
+     auto index = adaptor.getIndex();
+-    auto ptrTy =
+-        LLVM::LLVMPointerType::get(getTypeConverter()->convertType(elemTy), 3);
++    auto ptrTy = LLVM::LLVMPointerType::get(rewriter.getContext(), 3);
+     auto basePtr =
+         extract_val(ptrTy, tensorStruct, rewriter.getDenseI64ArrayAttr(0));
+-    Value result = gep(ptrTy, basePtr, index);
++    Value result =
++        gep(ptrTy, getTypeConverter()->convertType(elemTy), basePtr, index);
+     rewriter.replaceOp(op, result);
+     return success();
+   }
+diff --git a/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM.cpp b/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM.cpp
+@@ -310,10 +310,10 @@ private:
+             shapePerCTA);
+         Value offset = linearize(rewriter, loc, multiDimOffsetWrapped,
+                                  paddedRepShape, outOrd);
+-        auto elemPtrTy = ptr_ty(llvmElemTy, 3);
+-        Value ptr = gep(elemPtrTy, smemBase, offset);
++        auto elemPtrTy = ptr_ty(rewriter.getContext(), 3);
++        Value ptr = gep(elemPtrTy, llvmElemTy, smemBase, offset);
+         auto vecTy = vec_ty(llvmElemTy, vec);
+-        ptr = bitcast(ptr, ptr_ty(vecTy, 3));
++        ptr = bitcast(ptr, ptr_ty(rewriter.getContext(), 3));
+         if (stNotRd) {
+           Value valVec = undef(vecTy);
+           for (unsigned v = 0; v < vec; ++v) {
+@@ -326,7 +326,7 @@ private:
+           }
+           store(valVec, ptr);
+         } else {
+-          Value valVec = load(ptr);
++          Value valVec = load(vecTy, ptr);
+           for (unsigned v = 0; v < vec; ++v) {
+             Value currVal = extract_element(llvmElemTy, valVec, i32_val(v));
+             if (isInt1)
+@@ -423,10 +423,10 @@ private:
+     for (unsigned elemId = 0; elemId < accumSizePerThread; elemId += vec) {
+       auto coord = coord2valT[elemId].first;
+       Value offset = linearize(rewriter, loc, coord, paddedRepShape, outOrd);
+-      auto elemPtrTy = ptr_ty(elemTy, 3);
+-      Value ptr = gep(elemPtrTy, smemBase, offset);
++      auto elemPtrTy = ptr_ty(rewriter.getContext(), 3);
++      Value ptr = gep(elemPtrTy, elemTy, smemBase, offset);
+       auto vecTy = vec_ty(elemTy, vec);
+-      ptr = bitcast(ptr, ptr_ty(vecTy, 3));
++      ptr = bitcast(ptr, ptr_ty(rewriter.getContext(), 3));
+       if (stNotRd) {
+         Value valVec = undef(vecTy);
+         for (unsigned v = 0; v < vec; ++v) {
+@@ -435,7 +435,7 @@ private:
+         }
+         store(valVec, ptr);
+       } else {
+-        Value valVec = load(ptr);
++        Value valVec = load(vecTy, ptr);
+         for (unsigned v = 0; v < vec; ++v) {
+           Value currVal = extract_element(elemTy, valVec, i32_val(v));
+           vals[elemId + v] = currVal;
+@@ -462,7 +462,7 @@ private:
+     unsigned rank = srcShapePerCTA.size();
+ 
+     auto llvmElemTy = getTypeConverter()->convertType(dstTy.getElementType());
+-    auto elemPtrTy = ptr_ty(llvmElemTy, 3);
++    auto elemPtrTy = ptr_ty(rewriter.getContext(), 3);
+ 
+     Value smemBase = getSharedMemoryBase(loc, rewriter, op.getOperation());
+     smemBase = bitcast(smemBase, elemPtrTy);
+@@ -480,7 +480,7 @@ private:
+ 
+       for (unsigned i = 0; i < inIndices.size(); ++i) {
+         Value offset = linearize(rewriter, loc, inIndices[i], smemShape);
+-        Value ptr = gep(elemPtrTy, smemBase, offset);
++        Value ptr = gep(elemPtrTy, llvmElemTy, smemBase, offset);
+         store(inVals[i], ptr);
+       }
+     }
+@@ -513,8 +513,8 @@ private:
+             linearize(rewriter, loc, multiDimCTAId, srcCTAsPerCGA, srcCTAOrder);
+         Value localOffset = linearize(rewriter, loc, localCoord, smemShape);
+ 
+-        Value ptr = gep(elemPtrTy, smemBase, localOffset);
+-        outVals.push_back(load_dsmem(ptr, remoteCTAId));
++        Value ptr = gep(elemPtrTy, llvmElemTy, smemBase, localOffset);
++        outVals.push_back(load_dsmem(ptr, remoteCTAId, llvmElemTy));
+       }
+ 
+       Value result =
+@@ -545,10 +545,8 @@ private:
+ 
+     if (shouldUseDistSmem(srcLayout, dstLayout))
+       return lowerDistToDistWithDistSmem(op, adaptor, rewriter);
+-
+-    auto llvmElemTy = getTypeConverter()->convertType(dstTy.getElementType());
+     Value smemBase = getSharedMemoryBase(loc, rewriter, op.getOperation());
+-    auto elemPtrTy = ptr_ty(llvmElemTy, 3);
++    auto elemPtrTy = ptr_ty(rewriter.getContext(), 3);
+     smemBase = bitcast(smemBase, elemPtrTy);
+     auto shape = dstTy.getShape();
+     unsigned rank = dstTy.getRank();
+@@ -747,7 +745,7 @@ private:
+     auto outOrd = dstSharedLayout.getOrder();
+     Value smemBase = getSharedMemoryBase(loc, rewriter, dst);
+     auto elemTy = getTypeConverter()->convertType(srcTy.getElementType());
+-    auto elemPtrTy = ptr_ty(getTypeConverter()->convertType(elemTy), 3);
++    auto elemPtrTy = ptr_ty(rewriter.getContext(), 3);
+     smemBase = bitcast(smemBase, elemPtrTy);
+ 
+     int32_t elemSize = elemTy.getIntOrFloatBitWidth();
+@@ -774,8 +772,7 @@ private:
+       unsigned leadingDimOffset =
+           numElemsPerSwizzlingRow * srcShapePerCTA[outOrd[1]];
+ 
+-      auto ptrI8SharedTy = LLVM::LLVMPointerType::get(
+-          typeConverter->convertType(rewriter.getI8Type()), 3);
++      auto ptrSharedTy = LLVM::LLVMPointerType::get(rewriter.getContext(), 3);
+ 
+       uint32_t rowsPerRep = getShapePerCTATile(mmaLayout)[0];
+ 
+@@ -804,7 +801,8 @@ private:
+               loc, i32_ty, threadId, rowOfWarp, i32_val(idx), leadingDimOffset,
+               numElemsPerSwizzlingRow, true);
+ 
+-          Value addr = gep(elemPtrTy, smemBase, offset);
++          Value addr = gep(elemPtrTy, getTypeConverter()->convertType(elemTy),
++                           smemBase, offset);
+ 
+           Value words[4];
+           for (unsigned i = 0; i < 8; ++i) {
+@@ -815,7 +813,7 @@ private:
+           }
+ 
+           rewriter.create<triton::nvgpu::StoreMatrixOp>(
+-              loc, bitcast(addr, ptrI8SharedTy),
++              loc, bitcast(addr, ptrSharedTy),
+               ValueRange{bitcast(words[0], i32_ty), bitcast(words[1], i32_ty),
+                          bitcast(words[2], i32_ty), bitcast(words[3], i32_ty)});
+         }
+diff --git a/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM/SharedToDotOperandFMA.cpp b/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM/SharedToDotOperandFMA.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM/SharedToDotOperandFMA.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM/SharedToDotOperandFMA.cpp
+@@ -133,10 +133,10 @@ Value loadAFMA(Value A, Value llA, Block
+   auto elemTy = typeConverter->convertType(
+       A.getType().cast<RankedTensorType>().getElementType());
+ 
+-  Type ptrTy = ptr_ty(elemTy, 3);
++  Type ptrTy = ptr_ty(rewriter.getContext(), 3);
+   SmallVector<Value> aPtrs(aNumPtr);
+   for (int i = 0; i < aNumPtr; ++i)
+-    aPtrs[i] = gep(ptrTy, aSmem.base, aOff[i]);
++    aPtrs[i] = gep(ptrTy, elemTy, aSmem.base, aOff[i]);
+ 
+   SmallVector<Value> vas;
+ 
+@@ -148,8 +148,8 @@ Value loadAFMA(Value A, Value llA, Block
+       for (unsigned mm = 0; mm < mSizePerThread; ++mm) {
+         Value offset =
+             add(mul(i32_val(m + mm), strideAM), mul(i32_val(k), strideAK));
+-        Value pa = gep(ptrTy, aPtrs[0], offset);
+-        Value va = load(pa);
++        Value pa = gep(ptrTy, elemTy, aPtrs[0], offset);
++        Value va = load(elemTy, pa);
+         vas.emplace_back(va);
+       }
+ 
+@@ -200,10 +200,10 @@ Value loadBFMA(Value B, Value llB, Block
+   auto elemTy = typeConverter->convertType(
+       B.getType().cast<RankedTensorType>().getElementType());
+ 
+-  Type ptrTy = ptr_ty(elemTy, 3);
++  Type ptrTy = ptr_ty(rewriter.getContext(), 3);
+   SmallVector<Value> bPtrs(bNumPtr);
+   for (int i = 0; i < bNumPtr; ++i)
+-    bPtrs[i] = gep(ptrTy, bSmem.base, bOff[i]);
++    bPtrs[i] = gep(ptrTy, elemTy, bSmem.base, bOff[i]);
+ 
+   SmallVector<Value> vbs;
+ 
+@@ -215,8 +215,8 @@ Value loadBFMA(Value B, Value llB, Block
+       for (unsigned nn = 0; nn < nSizePerThread; ++nn) {
+         Value offset =
+             add(mul(i32_val(n + nn), strideBN), mul(i32_val(k), strideBK));
+-        Value pb = gep(ptrTy, bPtrs[0], offset);
+-        Value vb = load(pb);
++        Value pb = gep(ptrTy, elemTy, bPtrs[0], offset);
++        Value vb = load(elemTy, pb);
+         vbs.emplace_back(vb);
+       }
+ 
+diff --git a/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM/SharedToDotOperandMMAv1.cpp b/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM/SharedToDotOperandMMAv1.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM/SharedToDotOperandMMAv1.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM/SharedToDotOperandMMAv1.cpp
+@@ -150,10 +150,10 @@ static Value loadA(Value tensor, const S
+   }
+ 
+   Type elemX2Ty = vec_ty(f16_ty, 2);
+-  Type elemPtrTy = ptr_ty(f16_ty, 3);
++  Type elemTy = f16_ty;
+   if (tensorTy.getElementType().isBF16()) {
+     elemX2Ty = vec_ty(i16_ty, 2);
+-    elemPtrTy = ptr_ty(i16_ty, 3);
++    elemTy = i16_ty;
+   }
+ 
+   // prepare arguments
+@@ -161,22 +161,23 @@ static Value loadA(Value tensor, const S
+ 
+   std::map<std::pair<int, int>, std::pair<Value, Value>> has;
+   for (int i = 0; i < numPtrA; i++)
+-    ptrA[i] = gep(ptr_ty(f16_ty, 3), smemBase, offA[i]);
++    ptrA[i] = gep(ptr_ty(ctx, 3), f16_ty, smemBase, offA[i]);
+ 
+   auto ld = [&](decltype(has) &vals, int m, int k, Value val0, Value val1) {
+     vals[{m, k}] = {val0, val1};
+   };
+   auto loadA = [&](int m, int k) {
+     int offidx = (isARow ? k / 4 : m) % numPtrA;
+-    Value thePtrA = gep(elemPtrTy, smemBase, offA[offidx]);
++    Value thePtrA = gep(ptr_ty(ctx, 3), elemTy, smemBase, offA[offidx]);
+ 
+     int stepAM = isARow ? m : m / numPtrA * numPtrA;
+     int stepAK = isARow ? k / (numPtrA * vecA) * (numPtrA * vecA) : k;
+     Value offset = add(mul(i32_val(stepAM * strideRepM), strideAM),
+                        mul(i32_val(stepAK), strideAK));
+-    Value pa = gep(elemPtrTy, thePtrA, offset);
+-    Type aPtrTy = ptr_ty(vec_ty(i32_ty, std::max<int>(vecA / 2, 1)), 3);
+-    Value ha = load(bitcast(pa, aPtrTy));
++    Value pa = gep(ptr_ty(ctx, 3), elemTy, thePtrA, offset);
++    Type vecTy = vec_ty(i32_ty, std::max<int>(vecA / 2, 1));
++    Type aPtrTy = ptr_ty(ctx, 3);
++    Value ha = load(vecTy, bitcast(pa, aPtrTy));
+     // record lds that needs to be moved
+     Value ha00 = bitcast(extract_element(ha, i32_val(0)), elemX2Ty);
+     Value ha01 = bitcast(extract_element(ha, i32_val(1)), elemX2Ty);
+@@ -273,17 +274,17 @@ static Value loadB(Value tensor, const S
+     offB[i] = add(mul(offB0I, strideB0), mul(offB1, strideB1));
+   }
+ 
+-  Type elemPtrTy = ptr_ty(f16_ty, 3);
++  Type elemTy = f16_ty;
+   Type elemX2Ty = vec_ty(f16_ty, 2);
+   if (tensorTy.getElementType().isBF16()) {
+-    elemPtrTy = ptr_ty(i16_ty, 3);
++    elemTy = i16_ty;
+     elemX2Ty = vec_ty(i16_ty, 2);
+   }
+ 
+   SmallVector<Value> ptrB(numPtrB);
+   ValueTable hbs;
+   for (int i = 0; i < numPtrB; ++i)
+-    ptrB[i] = gep(ptr_ty(f16_ty, 3), smem, offB[i]);
++    ptrB[i] = gep(ptr_ty(ctx, 3), f16_ty, smem, offB[i]);
+ 
+   auto ld = [&](decltype(hbs) &vals, int m, int k, Value val0, Value val1) {
+     vals[{m, k}] = {val0, val1};
+@@ -297,10 +298,10 @@ static Value loadB(Value tensor, const S
+     int stepBK = isBRow ? K : K / (numPtrB * vecB) * (numPtrB * vecB);
+     Value offset = add(mul(i32_val(stepBN * strideRepN), strideBN),
+                        mul(i32_val(stepBK), strideBK));
+-    Value pb = gep(elemPtrTy, thePtrB, offset);
++    Value pb = gep(ptr_ty(ctx, 3), elemTy, thePtrB, offset);
+ 
+-    Value hb =
+-        load(bitcast(pb, ptr_ty(vec_ty(i32_ty, std::max(vecB / 2, 1)), 3)));
++    Type vecTy = vec_ty(i32_ty, std::max(vecB / 2, 1));
++    Value hb = load(vecTy, bitcast(pb, ptr_ty(ctx, 3)));
+     // record lds that needs to be moved
+     Value hb00 = bitcast(extract_element(hb, i32_val(0)), elemX2Ty);
+     Value hb01 = bitcast(extract_element(hb, i32_val(1)), elemX2Ty);
+diff --git a/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM/SharedToDotOperandMMAv2.cpp b/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM/SharedToDotOperandMMAv2.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM/SharedToDotOperandMMAv2.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM/SharedToDotOperandMMAv2.cpp
+@@ -280,9 +280,8 @@ SmallVector<Value> MMA16816SmemLoader::c
+   return offs;
+ }
+ 
+-std::tuple<Value, Value, Value, Value>
+-MMA16816SmemLoader::loadX4(int mat0, int mat1, ArrayRef<Value> ptrs, Type matTy,
+-                           Type shemPtrTy) const {
++std::tuple<Value, Value, Value, Value> MMA16816SmemLoader::loadX4(
++    int mat0, int mat1, ArrayRef<Value> ptrs, Type matTy, Type shemTy) const {
+   assert(mat0 % 2 == 0 && mat1 % 2 == 0 && "smem matrix load must be aligned");
+   int matIdx[2] = {mat0, mat1};
+ 
+@@ -321,7 +320,7 @@ MMA16816SmemLoader::loadX4(int mat0, int
+     Value stridedOffset =
+         mul(i32_val(matIdx[order[1]] * stridedLoadMatOffset * stridedMatShape),
+             stridedSmemOffset);
+-    Value readPtr = gep(shemPtrTy, ptr, stridedOffset);
++    Value readPtr = gep(ptr_ty(ctx, 3), shemTy, ptr, stridedOffset);
+ 
+     PTXBuilder builder;
+     // ldmatrix.m8n8.x4 returns 4x2xfp16(that is 4xb32) elements for a
+@@ -363,7 +362,7 @@ MMA16816SmemLoader::loadX4(int mat0, int
+ 
+     for (int i = 0; i < 4; ++i)
+       for (int j = 0; j < vecWidth; ++j) {
+-        vptrs[i][j] = gep(shemPtrTy, ptrs[i / 2][j], ii[i % 2]);
++        vptrs[i][j] = gep(ptr_ty(ctx, 3), shemTy, ptrs[i / 2][j], ii[i % 2]);
+       }
+     // row + trans and col + no-trans are equivalent
+     bool isActualTrans =
+@@ -381,8 +380,8 @@ MMA16816SmemLoader::loadX4(int mat0, int
+         int e = em % vecWidth;
+         int m = em / vecWidth;
+         int idx = m * 2 + r;
+-        Value ptr = bitcast(vptrs[idx][e], ptr_ty(packedTy, 3));
+-        Value val = load(ptr);
++        Value ptr = bitcast(vptrs[idx][e], ptr_ty(ctx, 3));
++        Value val = load(packedTy, ptr);
+         Value canonval = bitcast(val, vec_ty(canonInt, canonWidth));
+         for (int w = 0; w < canonWidth; ++w) {
+           int ridx = idx + w * kWidth / vecWidth;
+@@ -455,16 +454,16 @@ MMA16816SmemLoader::MMA16816SmemLoader(
+   warpMatOffset = instrShape[kOrder ^ 1] / matShape[kOrder ^ 1];
+ }
+ 
+-Type getSharedMemPtrTy(Type argType) {
++Type getSharedMemTy(Type argType) {
+   MLIRContext *ctx = argType.getContext();
+   if (argType.isF16())
+-    return ptr_ty(type::f16Ty(ctx), 3);
++    return type::f16Ty(ctx);
+   else if (argType.isBF16())
+-    return ptr_ty(type::i16Ty(ctx), 3);
++    return type::i16Ty(ctx);
+   else if (argType.isF32())
+-    return ptr_ty(type::f32Ty(ctx), 3);
++    return type::f32Ty(ctx);
+   else if (argType.getIntOrFloatBitWidth() == 8)
+-    return ptr_ty(type::i8Ty(ctx), 3);
++    return type::i8Ty(ctx);
+   else
+     llvm::report_fatal_error("mma16816 data type not supported");
+ }
+@@ -531,15 +530,16 @@ std::function<void(int, int)> getLoadMat
+     const int numPtrs = loader.getNumPtrs();
+     SmallVector<Value> ptrs(numPtrs);
+     Value smemBase = smemObj.getBaseBeforeSlice(order[0], loc, rewriter);
+-    Type smemPtrTy = getSharedMemPtrTy(eltTy);
++    Type smemTy = getSharedMemTy(eltTy);
+     for (int i = 0; i < numPtrs; ++i)
+-      ptrs[i] = bitcast(gep(smemPtrTy, smemBase, offs[i]), smemPtrTy);
++      ptrs[i] =
++          gep(ptr_ty(rewriter.getContext(), 3), smemTy, smemBase, offs[i]);
+     // actually load from shared memory
+     auto matTy = LLVM::LLVMStructType::getLiteral(eltTy.getContext(),
+                                                   SmallVector<Type>(4, i32_ty));
+     auto [ha0, ha1, ha2, ha3] = loader.loadX4(
+         (kOrder == 1) ? a : b /*mat0*/, (kOrder == 1) ? b : a /*mat1*/, ptrs,
+-        matTy, getSharedMemPtrTy(eltTy));
++        matTy, getSharedMemTy(eltTy));
+     if (!isA)
+       std::swap(ha1, ha2);
+     // the following is incorrect
+diff --git a/lib/Conversion/TritonGPUToLLVM/LoadStoreOpToLLVM.cpp b/lib/Conversion/TritonGPUToLLVM/LoadStoreOpToLLVM.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/LoadStoreOpToLLVM.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/LoadStoreOpToLLVM.cpp
+@@ -561,8 +561,7 @@ struct StoreAsyncOpConversion
+ 
+     Value tmaDesc =
+         llFuncOp.getBody().front().getArgument(tmaInfo.TMADescArgIdx);
+-    auto ptrI8SharedTy = LLVM::LLVMPointerType::get(
+-        typeConverter->convertType(rewriter.getI8Type()), 3);
++    auto ptrSharedTy = LLVM::LLVMPointerType::get(ctx, 3);
+ 
+     auto threadId = getThreadId(rewriter, loc);
+     Value pred = icmp_eq(threadId, i32_val(0));
+@@ -599,9 +598,10 @@ struct StoreAsyncOpConversion
+         }
+       }
+       Value srcOffset = i32_val(b * boxStride);
+-      auto srcPtrTy = ptr_ty(getTypeConverter()->convertType(elemTy), 3);
+-      Value srcPtrBase = gep(srcPtrTy, smemObj.base, srcOffset);
+-      auto addr = bitcast(srcPtrBase, ptrI8SharedTy);
++      auto srcPtrTy = ptr_ty(ctx, 3);
++      Value srcPtrBase = gep(srcPtrTy, getTypeConverter()->convertType(elemTy),
++                             smemObj.base, srcOffset);
++      auto addr = bitcast(srcPtrBase, ptrSharedTy);
+       rewriter.create<triton::nvgpu::TMAStoreTiledOp>(loc, tmaDesc, addr, pred,
+                                                       coord);
+     }
+@@ -749,7 +749,7 @@ struct StoreAsyncOpConversion
+     Value llDst = adaptor.getDst();
+     Value llSrc = adaptor.getSrc();
+     auto srcShape = srcTy.getShape();
+-    auto dstElemPtrTy = ptr_ty(getTypeConverter()->convertType(dstElemTy), 3);
++    auto dstElemPtrTy = ptr_ty(ctx, 3);
+     Value smemBase = getSharedMemoryBase(loc, rewriter, op.getOperation());
+     smemBase = bitcast(smemBase, dstElemPtrTy);
+ 
+@@ -760,8 +760,7 @@ struct StoreAsyncOpConversion
+ 
+     Value tmaDesc =
+         llFuncOp.getBody().front().getArgument(tmaInfo.TMADescArgIdx);
+-    auto ptrI8SharedTy = LLVM::LLVMPointerType::get(
+-        typeConverter->convertType(rewriter.getI8Type()), 3);
++    auto ptrSharedTy = LLVM::LLVMPointerType::get(ctx, 3);
+ 
+     auto threadId = getThreadId(rewriter, loc);
+     Value pred = int_val(1, 1);
+@@ -817,7 +816,9 @@ struct StoreAsyncOpConversion
+               i32_val(b * numElemsPerRep / numBox + idx), leadingDimOffset,
+               numElemsPerSwizzlingRow, true);
+ 
+-          Value addr = gep(dstElemPtrTy, smemBase, offset);
++          Value addr =
++              gep(dstElemPtrTy, getTypeConverter()->convertType(dstElemTy),
++                  smemBase, offset);
+           Value words[4];
+           for (unsigned i = 0; i < 8; ++i) {
+             if (i % minVec == 0)
+@@ -827,7 +828,7 @@ struct StoreAsyncOpConversion
+           }
+ 
+           rewriter.create<triton::nvgpu::StoreMatrixOp>(
+-              loc, bitcast(addr, ptrI8SharedTy),
++              loc, bitcast(addr, ptrSharedTy),
+               ValueRange{bitcast(words[0], i32_ty), bitcast(words[1], i32_ty),
+                          bitcast(words[2], i32_ty), bitcast(words[3], i32_ty)});
+         }
+@@ -860,9 +861,11 @@ struct StoreAsyncOpConversion
+                                             instrShape[1] * warpsPerCTA[1] /
+                                             numBox),
+                 mul(warpId0, i32_val(instrShape[0] * numElemsPerSwizzlingRow)));
+-        auto srcPtrTy = ptr_ty(getTypeConverter()->convertType(dstElemTy), 3);
+-        Value srcPtrBase = gep(srcPtrTy, smemBase, srcOffset);
+-        auto addr = bitcast(srcPtrBase, ptrI8SharedTy);
++        auto srcPtrTy = ptr_ty(ctx, 3);
++        Value srcPtrBase =
++            gep(srcPtrTy, getTypeConverter()->convertType(dstElemTy), smemBase,
++                srcOffset);
++        auto addr = bitcast(srcPtrBase, ptrSharedTy);
+         rewriter.create<triton::nvgpu::TMAStoreTiledOp>(loc, tmaDesc, addr,
+                                                         pred, coord);
+       }
+@@ -1022,7 +1025,7 @@ struct AtomicCASOpConversion
+         auto old = ptxBuilderAtomicCAS.launch(rewriter, loc, valueElemTy);
+         createBarrier(rewriter, loc, numCTAs);
+         Value atomPtr = getSharedMemoryBase(loc, rewriter, op.getOperation());
+-        atomPtr = bitcast(atomPtr, ptr_ty(valueElemTy, 3));
++        atomPtr = bitcast(atomPtr, ptr_ty(ctx, 3));
+         // Only threads with mask = True store the result
+         PTXBuilder ptxBuilderStore;
+         auto *dstOprStore = ptxBuilderStore.newAddrOperand(atomPtr, "r");
+@@ -1033,7 +1036,7 @@ struct AtomicCASOpConversion
+         auto ASMReturnTy = void_ty(ctx);
+         ptxBuilderStore.launch(rewriter, loc, ASMReturnTy);
+         createBarrier(rewriter, loc, numCTAs);
+-        Value ret = load(atomPtr);
++        Value ret = load(valueElemTy, atomPtr);
+         createBarrier(rewriter, loc, numCTAs);
+         rewriter.replaceOp(op, {ret});
+       }
+@@ -1194,7 +1197,7 @@ struct AtomicRMWOpConversion
+           return success();
+         }
+         Value atomPtr = getSharedMemoryBase(loc, rewriter, op.getOperation());
+-        atomPtr = bitcast(atomPtr, ptr_ty(valueElemTy, 3));
++        atomPtr = bitcast(atomPtr, ptr_ty(ctx, 3));
+         // Only threads with rmwMask = True store the result
+         PTXBuilder ptxBuilderStore;
+         auto &storeShared =
+@@ -1204,7 +1207,7 @@ struct AtomicRMWOpConversion
+         storeShared(ptrOpr, valOpr).predicate(rmwMask);
+         ptxBuilderStore.launch(rewriter, loc, void_ty(ctx));
+         createBarrier(rewriter, loc, numCTAs);
+-        Value ret = load(atomPtr);
++        Value ret = load(valueElemTy, atomPtr);
+         createBarrier(rewriter, loc, numCTAs);
+         rewriter.replaceOp(op, {ret});
+       }
+@@ -1273,8 +1276,8 @@ struct InsertSliceOpConversion
+     // object
+     auto offset = dot(rewriter, loc, offsets, smemObj.strides);
+     auto elemTy = getTypeConverter()->convertType(dstTy.getElementType());
+-    auto elemPtrTy = ptr_ty(elemTy, 3);
+-    auto smemBase = gep(elemPtrTy, smemObj.base, offset);
++    auto elemPtrTy = ptr_ty(rewriter.getContext(), 3);
++    auto smemBase = gep(elemPtrTy, elemTy, smemObj.base, offset);
+ 
+     auto llSrc = adaptor.getSource();
+     auto srcIndices = emitIndices(loc, rewriter, srcLayout, srcTy);
+@@ -1357,8 +1360,8 @@ struct InsertSliceAsyncOpConversion
+     // Compute the offset based on the original dimensions of the shared
+     // memory object
+     auto dstOffset = dot(rewriter, loc, offsetVals, smemObj.strides);
+-    auto dstPtrTy = ptr_ty(resElemTy, 3);
+-    Value dstPtrBase = gep(dstPtrTy, smemObj.base, dstOffset);
++    auto dstPtrTy = ptr_ty(rewriter.getContext(), 3);
++    Value dstPtrBase = gep(dstPtrTy, resElemTy, smemObj.base, dstOffset);
+ 
+     // %mask
+     SmallVector<Value> maskElems;
+@@ -1638,7 +1641,7 @@ struct InsertSliceAsyncV2OpConversion
+     // currently only support rank == 2.
+     dstOffsetCommon =
+         add(dstOffsetCommon, mul(sliceCoord, i32_val(boxDims[0])));
+-    auto dstPtrTy = ptr_ty(getTypeConverter()->convertType(elemTy), 3);
++    auto dstPtrTy = ptr_ty(rewriter.getContext(), 3);
+ 
+     Value tmaDesc =
+         llFuncOp.getBody().front().getArgument(tmaInfo.TMADescArgIdx);
+@@ -1646,8 +1649,7 @@ struct InsertSliceAsyncV2OpConversion
+     // cache-policy modes
+     Value l2Desc = int_val(64, 0x1000000000000000ll);
+ 
+-    auto ptrI8SharedTy = LLVM::LLVMPointerType::get(
+-        typeConverter->convertType(rewriter.getI8Type()), 3);
++    auto ptrSharedTy = LLVM::LLVMPointerType::get(rewriter.getContext(), 3);
+ 
+     SmallVector<Value> coordCommon;
+     auto llCoord = getTypeConverter()->unpackLLElements(
+@@ -1688,11 +1690,12 @@ struct InsertSliceAsyncV2OpConversion
+     for (size_t i = 0; i < numBoxes; ++i) {
+       Value dstOffset =
+           add(dstOffsetCommon, i32_val(i * elemsPerBox * accNumMcast));
+-      Value dstPtrBase = gep(dstPtrTy, smemObj.base, dstOffset);
++      Value dstPtrBase = gep(dstPtrTy, getTypeConverter()->convertType(elemTy),
++                             smemObj.base, dstOffset);
+       SmallVector<Value> coord = coordCommon;
+       coord[0] = add(coordCommon[0], i32_val(i * boxDims[0]));
+       rewriter.create<triton::nvgpu::TMALoadTiledOp>(
+-          loc, bitcast(dstPtrBase, ptrI8SharedTy), adaptor.getMbar(), tmaDesc,
++          loc, bitcast(dstPtrBase, ptrSharedTy), adaptor.getMbar(), tmaDesc,
+           l2Desc, pred, coord, mcastMask);
+     }
+ 
+diff --git a/lib/Conversion/TritonGPUToLLVM/ReduceOpToLLVM.cpp b/lib/Conversion/TritonGPUToLLVM/ReduceOpToLLVM.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/ReduceOpToLLVM.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/ReduceOpToLLVM.cpp
+@@ -149,13 +149,11 @@ private:
+     // Assign base index to each operand in their order in indices
+     std::map<unsigned, Value> indexToBase;
+     indexToBase[indices[0]] =
+-        bitcast(getSharedMemoryBase(loc, rewriter, op.getOperation()),
+-                getElementPtrType(op, indices[0]));
++        getSharedMemoryBase(loc, rewriter, op.getOperation());
+     for (unsigned i = 1; i < op.getNumOperands(); ++i) {
+-      indexToBase[indices[i]] =
+-          bitcast(gep(getElementPtrType(op, indices[i - 1]),
+-                      indexToBase[indices[i - 1]], i32_val(elems)),
+-                  getElementPtrType(op, indices[i]));
++      indexToBase[indices[i]] = gep(
++          ptr_ty(rewriter.getContext(), 3), getElementType(op, indices[i - 1]),
++          indexToBase[indices[i - 1]], i32_val(elems));
+     }
+     // smemBases[k] is the base pointer for the k-th operand
+     SmallVector<Value> smemBases(op.getNumOperands());
+@@ -335,11 +333,10 @@ private:
+     rewriter.replaceOp(op, results);
+   }
+ 
+-  // Return the type of the shared memory pointer for operand i.
+-  Type getElementPtrType(triton::ReduceOp op, int i) const {
++  // Return the pointee type of the shared memory pointer for operand i.
++  Type getElementType(triton::ReduceOp op, int i) const {
+     auto ty = op.getInputTypes()[i].getElementType();
+-    auto llvmElemTy = getTypeConverter()->convertType(ty);
+-    return LLVM::LLVMPointerType::get(llvmElemTy, 3);
++    return getTypeConverter()->convertType(ty);
+   }
+ 
+   SmallVector<Value>
+@@ -408,8 +405,9 @@ private:
+       Value writeOffset =
+           linearize(rewriter, loc, writeIdx, smemShape, smemOrder);
+       for (unsigned i = 0; i < op.getNumOperands(); ++i) {
+-        auto elemPtrTy = getElementPtrType(op, i);
+-        Value writePtr = gep(elemPtrTy, smemBases[i], writeOffset);
++        auto elemTy = getElementType(op, i);
++        Value writePtr = gep(ptr_ty(rewriter.getContext(), 3), elemTy,
++                             smemBases[i], writeOffset);
+         storeShared(rewriter, loc, writePtr, acc[i], laneZero);
+       }
+     }
+@@ -442,17 +440,19 @@ private:
+     for (unsigned round = 0; round < elemsPerThread; ++round) {
+       SmallVector<Value> acc(op.getNumOperands());
+       for (unsigned i = 0; i < op.getNumOperands(); ++i) {
+-        auto elemPtrTy = getElementPtrType(op, i);
+-        Value readPtr = gep(elemPtrTy, smemBases[i], readOffset);
+-        acc[i] = loadShared(rewriter, loc, readPtr, threadIsNeeded);
++        auto elemTy = getElementType(op, i);
++        Value readPtr = gep(ptr_ty(rewriter.getContext(), 3), elemTy,
++                            smemBases[i], readOffset);
++        acc[i] = loadShared(rewriter, loc, readPtr, elemTy, threadIsNeeded);
+       }
+       warpReduce(rewriter, loc, acc, op, sizeInterWarps, 1 /* interleave */);
+       // only the first thread in each sizeInterWarps is writing
+       Value writeOffset = readOffset;
+       SmallVector<Value> writePtrs(op.getNumOperands());
+       for (unsigned i = 0; i < op.getNumOperands(); ++i) {
+-        auto elemPtrTy = getElementPtrType(op, i);
+-        writePtrs[i] = gep(elemPtrTy, smemBases[i], writeOffset);
++        auto elemTy = getElementType(op, i);
++        writePtrs[i] = gep(ptr_ty(rewriter.getContext(), 3), elemTy,
++                           smemBases[i], writeOffset);
+       }
+ 
+       Value laneIdModSizeInterWarps = urem(laneId, i32_val(sizeInterWarps));
+@@ -483,6 +483,7 @@ private:
+     auto smemOrder = helper.getOrderWithAxisAtBeginning();
+     SmallVector<Value> results(op.getNumOperands());
+     for (unsigned i = 0; i < op.getNumOperands(); ++i) {
++      auto elemTy = getElementType(op, i);
+       if (auto resultTy =
+               op.getResult()[i].getType().dyn_cast<RankedTensorType>()) {
+         // nd-tensor where n >= 1
+@@ -497,16 +498,16 @@ private:
+           readIdx.insert(readIdx.begin() + op.getAxis(), i32_val(0));
+           Value readOffset =
+               linearize(rewriter, loc, readIdx, smemShape, smemOrder);
+-          Value readPtr =
+-              gep(getElementPtrType(op, i), smemBases[i], readOffset);
+-          resultVals[j] = load(readPtr);
++          Value readPtr = gep(ptr_ty(rewriter.getContext(), 3), elemTy,
++                              smemBases[i], readOffset);
++          resultVals[j] = load(elemTy, readPtr);
+         }
+ 
+         results[i] = getTypeConverter()->packLLElements(loc, resultVals,
+                                                         rewriter, resultTy);
+       } else {
+         // 0d-tensor -> scalar
+-        results[i] = load(smemBases[i]);
++        results[i] = load(elemTy, smemBases[i]);
+       }
+     }
+     rewriter.replaceOp(op, results);
+diff --git a/lib/Conversion/TritonGPUToLLVM/ScanOpToLLVM.cpp b/lib/Conversion/TritonGPUToLLVM/ScanOpToLLVM.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/ScanOpToLLVM.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/ScanOpToLLVM.cpp
+@@ -112,7 +112,8 @@ static void storeWarpAccumulator(SmallVe
+     Value mask = icmp_eq(laneId, i32_val(scanDim - 1));
+     Value index = add(parallelLaneId, mul(warpId, i32_val(numParallelLane)));
+     index = add(index, i32_val(chunkId * numParallelLane * axisNumWarps));
+-    Value writePtr = gep(baseSharedMemPtr.getType(), baseSharedMemPtr, index);
++    Value writePtr = gep(baseSharedMemPtr.getType(), lastElement.getType(),
++                         baseSharedMemPtr, index);
+     storeShared(rewriter, loc, writePtr, lastElement, mask);
+     chunkId++;
+   }
+@@ -170,8 +171,9 @@ static void AddPartialReduce(SmallVector
+     for (unsigned i = 0; i < axisNumWarps; ++i) {
+       Value index = add(parallelLaneId, i32_val(numParallelLane *
+                                                 (i + chunkId * axisNumWarps)));
+-      Value ptr = gep(sharedMemoryPtr.getType(), sharedMemoryPtr, index);
+-      Value partialReduce = load(ptr);
++      Value ptr = gep(sharedMemoryPtr.getType(), srcValues[srcIndex].getType(),
++                      sharedMemoryPtr, index);
++      Value partialReduce = load(srcValues[srcIndex].getType(), ptr);
+       if (!accumulator.acc) {
+         accumulator.acc = partialReduce;
+         accumulator.maskedAcc = partialReduce;
+@@ -411,7 +413,7 @@ ScanOpConversion::emitFastScan(triton::S
+   if (axisNumWarps > 1) {
+     // Slow path for the case where there are multiple warps with unique data on
+     // the axis.
+-    Type elemPtrTys = LLVM::LLVMPointerType::get(srcValues[0].getType(), 3);
++    Type elemPtrTys = LLVM::LLVMPointerType::get(rewriter.getContext(), 3);
+     Value baseSharedMemPtr = bitcast(
+         getSharedMemoryBase(loc, rewriter, op.getOperation()), elemPtrTys);
+     // Store the partial reducing for each warp into shared memory.
+diff --git a/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVM.cpp b/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVM.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVM.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVM.cpp
+@@ -305,8 +305,7 @@ struct PrintOpConversion
+ 
+     auto *context = rewriter.getContext();
+ 
+-    SmallVector<Type> argsType{ptr_ty(IntegerType::get(context, 8)),
+-                               ptr_ty(IntegerType::get(context, 8))};
++    SmallVector<Type> argsType{ptr_ty(context), ptr_ty(context)};
+     auto funcType = LLVM::LLVMFunctionType::get(i32_ty, argsType);
+ 
+     ConversionPatternRewriter::InsertionGuard guard(rewriter);
+@@ -359,9 +358,8 @@ struct PrintOpConversion
+ 
+   static void llPrintf(Value msg, ValueRange args,
+                        ConversionPatternRewriter &rewriter) {
+-    Type int8Ptr = ptr_ty(i8_ty);
+-
+     auto *ctx = rewriter.getContext();
++    Type ptr = ptr_ty(ctx);
+     auto moduleOp =
+         rewriter.getBlock()->getParent()->getParentOfType<ModuleOp>();
+     auto funcOp = getVprintfDeclaration(rewriter);
+@@ -370,7 +368,7 @@ struct PrintOpConversion
+     Value one = i32_val(1);
+     Value zero = i32_val(0);
+ 
+-    Value bufferPtr = null(int8Ptr);
++    Value bufferPtr = null(ptr);
+ 
+     SmallVector<Value, 16> newArgs;
+     if (args.size() >= 1) {
+@@ -385,16 +383,16 @@ struct PrintOpConversion
+ 
+       Type structTy = LLVM::LLVMStructType::getLiteral(ctx, argTypes);
+       auto allocated =
+-          rewriter.create<LLVM::AllocaOp>(loc, ptr_ty(structTy), one,
++          rewriter.create<LLVM::AllocaOp>(loc, ptr_ty(ctx), structTy, one,
+                                           /*alignment=*/0);
+ 
+       for (const auto &entry : llvm::enumerate(newArgs)) {
+         auto index = i32_val(entry.index());
+-        auto fieldPtr = gep(ptr_ty(argTypes[entry.index()]), allocated,
++        auto fieldPtr = gep(ptr_ty(ctx), argTypes[entry.index()], allocated,
+                             ArrayRef<Value>{zero, index});
+         store(entry.value(), fieldPtr);
+       }
+-      bufferPtr = bitcast(allocated, int8Ptr);
++      bufferPtr = bitcast(allocated, ptr);
+     }
+ 
+     SmallVector<Value> operands{msg, bufferPtr};
+@@ -488,8 +486,7 @@ struct AssertOpConversion
+     // void __assert_fail(const char * assertion, const char * file, unsigned
+     // int line, const char * function);
+     auto *ctx = rewriter.getContext();
+-    SmallVector<Type> argsType{ptr_ty(i8_ty), ptr_ty(i8_ty), i32_ty,
+-                               ptr_ty(i8_ty),
++    SmallVector<Type> argsType{ptr_ty(ctx), ptr_ty(ctx), i32_ty, ptr_ty(ctx),
+                                rewriter.getIntegerType(sizeof(size_t) * 8)};
+     auto funcType = LLVM::LLVMFunctionType::get(void_ty(ctx), argsType);
+ 
+@@ -623,11 +620,14 @@ struct AddPtrOpConversion
+     Location loc = op->getLoc();
+     auto resultTy = op.getType();
+     auto offsetTy = op.getOffset().getType();
+-    auto ptrTy = op.getPtr().getType();
+     auto resultTensorTy = resultTy.dyn_cast<RankedTensorType>();
+     if (resultTensorTy) {
+       unsigned elems = getTotalElemsPerThread(resultTy);
+       Type elemTy =
++          getTypeConverter()->convertType(resultTensorTy.getElementType()
++                                              .cast<triton::PointerType>()
++                                              .getPointeeType());
++      Type ptrTy =
+           getTypeConverter()->convertType(resultTensorTy.getElementType());
+       auto ptrs = getTypeConverter()->unpackLLElements(loc, adaptor.getPtr(),
+                                                        rewriter, ptrTy);
+@@ -635,15 +635,18 @@ struct AddPtrOpConversion
+           loc, adaptor.getOffset(), rewriter, offsetTy);
+       SmallVector<Value> resultVals(elems);
+       for (unsigned i = 0; i < elems; ++i) {
+-        resultVals[i] = gep(elemTy, ptrs[i], offsets[i]);
++        resultVals[i] = gep(ptrTy, elemTy, ptrs[i], offsets[i]);
+       }
+       Value view = getTypeConverter()->packLLElements(loc, resultVals, rewriter,
+                                                       resultTy);
+       rewriter.replaceOp(op, view);
+     } else {
+       assert(resultTy.isa<triton::PointerType>());
+-      Type llResultTy = getTypeConverter()->convertType(resultTy);
+-      Value result = gep(llResultTy, adaptor.getPtr(), adaptor.getOffset());
++      auto resultPtrTy = getTypeConverter()->convertType(resultTy);
++      auto resultElemTy = getTypeConverter()->convertType(
++          resultTy.cast<triton::PointerType>().getPointeeType());
++      Value result =
++          gep(resultPtrTy, resultElemTy, adaptor.getPtr(), adaptor.getOffset());
+       rewriter.replaceOp(op, result);
+     }
+     return success();
+@@ -661,9 +664,7 @@ struct AllocTensorOpConversion
+     Location loc = op->getLoc();
+     Value smemBase = getSharedMemoryBase(loc, rewriter, op.getResult());
+     auto resultTy = op.getType().dyn_cast<RankedTensorType>();
+-    auto llvmElemTy =
+-        getTypeConverter()->convertType(resultTy.getElementType());
+-    auto elemPtrTy = ptr_ty(llvmElemTy, 3);
++    auto elemPtrTy = ptr_ty(rewriter.getContext(), 3);
+     smemBase = bitcast(smemBase, elemPtrTy);
+     auto sharedLayout = resultTy.getEncoding().cast<SharedEncodingAttr>();
+     auto order = sharedLayout.getOrder();
+@@ -679,6 +680,8 @@ struct AllocTensorOpConversion
+       newOrder = SmallVector<unsigned>(order.begin(), order.end());
+     }
+ 
++    auto llvmElemTy =
++        getTypeConverter()->convertType(resultTy.getElementType());
+     auto shapePerCTA = getShapePerCTA(sharedLayout, resultTy.getShape());
+     auto smemObj = SharedMemoryObject(smemBase, llvmElemTy, shapePerCTA,
+                                       newOrder, loc, rewriter);
+@@ -737,9 +740,10 @@ struct ExtractSliceOpConversion
+       }
+     }
+ 
+-    auto elemPtrTy = ptr_ty(llvmElemTy, 3);
+-    smemObj = SharedMemoryObject(gep(elemPtrTy, smemObj.base, offset),
+-                                 llvmElemTy, strideVals, offsetVals);
++    auto elemPtrTy = ptr_ty(rewriter.getContext(), 3);
++    smemObj =
++        SharedMemoryObject(gep(elemPtrTy, llvmElemTy, smemObj.base, offset),
++                           llvmElemTy, strideVals, offsetVals);
+     auto retVal = getStructFromSharedMemoryObject(loc, smemObj, rewriter);
+     rewriter.replaceOp(op, retVal);
+     return success();
+diff --git a/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVMBase.h b/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVMBase.h
+--- a/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVMBase.h
++++ b/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVMBase.h
+@@ -261,8 +261,7 @@ public:
+   template <typename T>
+   Value getSharedMemoryBase(Location loc, ConversionPatternRewriter &rewriter,
+                             T value) const {
+-    auto ptrTy = LLVM::LLVMPointerType::get(
+-        this->getTypeConverter()->convertType(rewriter.getI8Type()), 3);
++    auto ptrTy = LLVM::LLVMPointerType::get(rewriter.getContext(), 3);
+     FunctionOpInterface funcOp;
+     if constexpr (std::is_pointer_v<T>)
+       funcOp = value->template getParentOfType<FunctionOpInterface>();
+@@ -275,7 +274,9 @@ public:
+     assert(bufferId != Allocation::InvalidBufferId && "BufferId not found");
+     size_t offset = funcAllocation->getOffset(bufferId);
+     Value offVal = i32_val(offset);
+-    Value base = gep(ptrTy, smem, offVal);
++    Value base =
++        gep(ptrTy, this->getTypeConverter()->convertType(rewriter.getI8Type()),
++            smem, offVal);
+     return base;
+   }
+ 
+@@ -312,9 +313,10 @@ public:
+     // then (x + y) XOR z = 0byyyyxxxx XOR 0b00000zzzz = (x XOR z) + y
+     // This means that we can use some immediate offsets for shared memory
+     // operations.
+-    auto dstPtrTy = ptr_ty(getTypeConverter()->convertType(resElemTy), 3);
++    auto dstPtrTy = ptr_ty(rewriter.getContext(), 3);
+     auto dstOffset = dot(rewriter, loc, offsetVals, smemObj.strides);
+-    Value dstPtrBase = gep(dstPtrTy, smemObj.base, dstOffset);
++    Value dstPtrBase = gep(dstPtrTy, getTypeConverter()->convertType(resElemTy),
++                           smemObj.base, dstOffset);
+ 
+     auto srcEncoding = srcTy.getEncoding();
+     auto srcShape = srcTy.getShape();
+@@ -423,7 +425,8 @@ public:
+       Value colOff = add(colOffSwizzled, colOffOrdered);
+       // compute non-immediate offset
+       offset = add(offset, add(rowOff, mul(colOff, strideCol)));
+-      Value currPtr = gep(dstPtrTy, dstPtrBase, offset);
++      Value currPtr = gep(dstPtrTy, getTypeConverter()->convertType(resElemTy),
++                          dstPtrBase, offset);
+       // compute immediate offset
+       Value immediateOff;
+       if (outOrder.size() == 2) {
+@@ -434,7 +437,8 @@ public:
+         immediateOff = i32_val(immedateOffCol);
+       }
+ 
+-      ret[elemIdx] = gep(dstPtrTy, currPtr, immediateOff);
++      ret[elemIdx] = gep(dstPtrTy, getTypeConverter()->convertType(resElemTy),
++                         currPtr, immediateOff);
+     }
+     return ret;
+   }
+@@ -479,8 +483,8 @@ public:
+     SmallVector<Value> outVals(outElems);
+     for (unsigned i = 0; i < numVecs; ++i) {
+       Value smemAddr = sharedPtrs[i * minVec];
+-      smemAddr = bitcast(smemAddr, ptr_ty(wordTy, 3));
+-      Value valVec = load(smemAddr);
++      smemAddr = bitcast(smemAddr, ptr_ty(rewriter.getContext(), 3));
++      Value valVec = load(wordTy, smemAddr);
+       for (unsigned v = 0; v < minVec; ++v) {
+         Value currVal = extract_element(dstElemTy, valVec, i32_val(v));
+         outVals[i * minVec + v] = currVal;
+@@ -537,7 +541,7 @@ public:
+       word = insert_element(wordTy, word, inVals[i], i32_val(i % minVec));
+       if (i % minVec == minVec - 1) {
+         Value smemAddr = sharedPtrs[i / minVec * minVec];
+-        smemAddr = bitcast(smemAddr, ptr_ty(wordTy, 3));
++        smemAddr = bitcast(smemAddr, ptr_ty(rewriter.getContext(), 3));
+         store(word, smemAddr);
+       }
+     }
+diff --git a/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.cpp b/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.cpp
+@@ -161,8 +161,7 @@ struct FuncOpConversion : public FuncOpC
+     // memory to the function arguments.
+     auto loc = funcOp.getLoc();
+     auto ctx = funcOp->getContext();
+-    auto ptrTy = LLVM::LLVMPointerType::get(
+-        this->getTypeConverter()->convertType(rewriter.getI8Type()), 3);
++    auto ptrTy = LLVM::LLVMPointerType::get(rewriter.getContext(), 3);
+     // 1. Modify the function type to add the new argument.
+     auto funcTy = funcOp.getFunctionType();
+     auto amendedInputTy = llvm::to_vector<4>(funcTy.getInputs());
+@@ -232,15 +231,14 @@ struct FuncOpConversion : public FuncOpC
+     allocation.mapFuncOp(funcOp, newFuncOp);
+ 
+     // Append arguments to receive TMADesc in global memory in the runtime
+-    auto i8PtrTy = LLVM::LLVMPointerType::get(
+-        this->getTypeConverter()->convertType(rewriter.getI8Type()), 1);
++    auto ptrTy = LLVM::LLVMPointerType::get(rewriter.getContext(), 1);
+     auto numArgs = newFuncOp.getBody().front().getNumArguments();
+     auto funcTy = newFuncOp.getFunctionType().cast<LLVM::LLVMFunctionType>();
+     SmallVector<Type> newInputsTy(funcTy.getParams().begin(),
+                                   funcTy.getParams().end());
+     for (unsigned i = 0; i < numTMA; ++i) {
+-      newFuncOp.getBody().front().addArgument(i8PtrTy, funcOp.getLoc());
+-      newInputsTy.push_back(i8PtrTy);
++      newFuncOp.getBody().front().addArgument(ptrTy, funcOp.getLoc());
++      newInputsTy.push_back(ptrTy);
+     }
+     newFuncOp.setType(
+         LLVM::LLVMFunctionType::get(funcTy.getReturnType(), newInputsTy));
+@@ -296,9 +294,8 @@ private:
+     // of shared memory and append it to the operands of the callOp.
+     auto loc = callOp.getLoc();
+     auto caller = callOp->getParentOfType<FunctionOpInterface>();
+-    auto ptrTy = LLVM::LLVMPointerType::get(
+-        this->getTypeConverter()->convertType(rewriter.getI8Type()),
+-        NVVM::kSharedMemorySpace);
++    auto ptrTy = LLVM::LLVMPointerType::get(rewriter.getContext(),
++                                            NVVM::kSharedMemorySpace);
+     auto promotedOperands = this->getTypeConverter()->promoteOperands(
+         callOp.getLoc(), /*opOperands=*/callOp->getOperands(),
+         adaptor.getOperands(), rewriter);
+@@ -312,7 +309,9 @@ private:
+     }
+     // function has a shared mem buffer
+     auto offset = funcAllocation->getOffset(bufferId);
+-    auto offsetValue = gep(ptrTy, base, i32_val(offset));
++    auto offsetValue =
++        gep(ptrTy, this->getTypeConverter()->convertType(rewriter.getI8Type()),
++            base, i32_val(offset));
+     promotedOperands.push_back(offsetValue);
+     return promotedOperands;
+   }
+@@ -612,9 +611,8 @@ private:
+       } else {
+         funcSmem = funcOp.getArgument(funcOp.getNumArguments() - 1);
+       }
+-      auto ptrTy =
+-          LLVM::LLVMPointerType::get(typeConverter.convertType(b.getI8Type()),
+-                                     NVVM::NVVMMemorySpace::kSharedMemorySpace);
++      auto ptrTy = LLVM::LLVMPointerType::get(
++          ctx, NVVM::NVVMMemorySpace::kSharedMemorySpace);
+       funcSmem = b.create<LLVM::BitcastOp>(loc, ptrTy, funcSmem);
+       allocation.setFunctionSharedMemoryValue(funcOp, funcSmem);
+     });
+diff --git a/lib/Conversion/TritonGPUToLLVM/TypeConverter.cpp b/lib/Conversion/TritonGPUToLLVM/TypeConverter.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/TypeConverter.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/TypeConverter.cpp
+@@ -60,13 +60,11 @@ Type TritonGPUToLLVMTypeConverter::conve
+     for (size_t i = 0; i < 2 * shape.size(); ++i)
+       types.push_back(IntegerType::get(ctx, 64));
+ 
+-    types.push_back(
+-        LLVM::LLVMPointerType::get(eleType, type.getAddressSpace()));
++    types.push_back(LLVM::LLVMPointerType::get(ctx, type.getAddressSpace()));
+ 
+     return LLVM::LLVMStructType::getLiteral(ctx, types);
+   }
+-  return LLVM::LLVMPointerType::get(convertType(type.getPointeeType()),
+-                                    type.getAddressSpace());
++  return LLVM::LLVMPointerType::get(ctx, type.getAddressSpace());
+ }
+ 
+ Value TritonGPUToLLVMTypeConverter::packLLElements(
+@@ -145,7 +143,7 @@ Type TritonGPUToLLVMTypeConverter::conve
+   if (auto shared_layout = layout.dyn_cast<SharedEncodingAttr>()) {
+     SmallVector<Type, 4> types;
+     // base ptr
+-    auto ptrType = LLVM::LLVMPointerType::get(eltType, 3);
++    auto ptrType = LLVM::LLVMPointerType::get(ctx, 3);
+     types.push_back(ptrType);
+     // shape dims
+     auto rank = type.getRank();
+diff --git a/lib/Conversion/TritonGPUToLLVM/Utility.cpp b/lib/Conversion/TritonGPUToLLVM/Utility.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/Utility.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/Utility.cpp
+@@ -46,12 +46,11 @@ Value createLLVMIntegerConstant(OpBuilde
+ // (2) Create LoadDSmemOp
+ // (3) Bitcast result from dataTy (u16/u32/u64) back to elemTy
+ Value createLoadDSmem(Location loc, PatternRewriter &rewriter, Value addr,
+-                      Value ctaId) {
++                      Value ctaId, Type elemTy) {
+   assert(addr.getType().isa<LLVMPointerType>() &&
+          "addr must be a pointer type");
+   auto ptrTy = addr.getType().cast<LLVMPointerType>();
+   assert(ptrTy.getAddressSpace() == 3 && "Invalid addr space for load_dsmem");
+-  auto elemTy = ptrTy.getElementType();
+   unsigned bitwidth = elemTy.getIntOrFloatBitWidth();
+   Value ret =
+       rewriter.create<triton::nvgpu::LoadDSmemOp>(loc, addr, ctaId, bitwidth);
+@@ -63,12 +62,12 @@ Value createLoadDSmem(Location loc, Patt
+ // (2) Create LoadDSmemOp and extract results from retStruct
+ // (3) Bitcast results from dataTy (u16/u32/u64) back to elemTy
+ SmallVector<Value> createLoadDSmem(Location loc, PatternRewriter &rewriter,
+-                                   Value addr, Value ctaId, unsigned vec) {
++                                   Value addr, Value ctaId, unsigned vec,
++                                   Type elemTy) {
+   assert(addr.getType().isa<LLVMPointerType>() &&
+          "addr must be a pointer type");
+   auto ptrTy = addr.getType().cast<LLVMPointerType>();
+   assert(ptrTy.getAddressSpace() == 3 && "Invalid addr space for load_dsmem");
+-  auto elemTy = ptrTy.getElementType();
+   unsigned bitwidth = elemTy.getIntOrFloatBitWidth();
+   Value retStruct = rewriter.create<triton::nvgpu::LoadDSmemOp>(
+       loc, addr, ctaId, bitwidth, vec);
+@@ -91,8 +90,7 @@ void createStoreDSmem(Location loc, Patt
+          "addr must be a pointer type");
+   auto ptrTy = addr.getType().cast<LLVMPointerType>();
+   assert(ptrTy.getAddressSpace() == 3 && "Invalid addr space for load_dsmem");
+-  auto elemTy = ptrTy.getElementType();
+-  unsigned bitwidth = elemTy.getIntOrFloatBitWidth();
++  unsigned bitwidth = value.getType().getIntOrFloatBitWidth();
+   auto dataTy = rewriter.getIntegerType(bitwidth);
+   Value data = bitcast(value, dataTy);
+   rewriter.create<triton::nvgpu::StoreDSmemOp>(loc, addr, ctaId, data, pred);
+@@ -115,8 +113,10 @@ void createStoreDSmem(Location loc, Patt
+          "addr must be a pointer type");
+   auto ptrTy = addr.getType().cast<LLVMPointerType>();
+   assert(ptrTy.getAddressSpace() == 3 && "Invalid addr space for load_dsmem");
+-  auto elemTy = ptrTy.getElementType();
+-  unsigned bitwidth = elemTy.getIntOrFloatBitWidth();
++  unsigned bitwidth = 0;
++  if (!values.empty()) {
++    bitwidth = values.back().getType().getIntOrFloatBitWidth();
++  }
+   auto dataTy = rewriter.getIntegerType(bitwidth);
+   SmallVector<Value> data;
+   for (unsigned i = 0; i < values.size(); ++i)
+@@ -253,11 +253,10 @@ Value storeShared(ConversionPatternRewri
+ }
+ 
+ Value loadShared(ConversionPatternRewriter &rewriter, Location loc, Value ptr,
+-                 Value pred) {
++                 Type elemTy, Value pred) {
+   MLIRContext *ctx = rewriter.getContext();
+   auto ptrTy = ptr.getType().cast<LLVMPointerType>();
+   assert(ptrTy.getAddressSpace() == 3 && "Invalid addr space for loadShared");
+-  auto elemTy = ptrTy.getElementType();
+   unsigned bitwidth = std::max(8u, elemTy.getIntOrFloatBitWidth());
+ 
+   const char *c = bitwidth == 64 ? "=l" : (bitwidth == 16 ? "=h" : "=r");
+@@ -363,12 +362,11 @@ Value addStringToModule(Location loc, Co
+   }
+ 
+   Value zero = i32_val(0);
+-  Type globalPtrType =
+-      LLVM::LLVMPointerType::get(globalType, global.getAddrSpace());
++  Type globalPtrType = LLVM::LLVMPointerType::get(ctx, global.getAddrSpace());
+   Value globalPtr = rewriter.create<LLVM::AddressOfOp>(
+     UnknownLoc::get(ctx), globalPtrType, global.getSymName());
+   Value stringStart =
+-      rewriter.create<LLVM::GEPOp>(UnknownLoc::get(ctx), ptr_ty(i8_ty),
++      rewriter.create<LLVM::GEPOp>(UnknownLoc::get(ctx), ptr_ty(ctx), i8_ty,
+                                    globalPtr, SmallVector<Value>({zero, zero}));
+   return stringStart;
+ }
+diff --git a/lib/Conversion/TritonGPUToLLVM/Utility.h b/lib/Conversion/TritonGPUToLLVM/Utility.h
+--- a/lib/Conversion/TritonGPUToLLVM/Utility.h
++++ b/lib/Conversion/TritonGPUToLLVM/Utility.h
+@@ -209,9 +209,10 @@ Value createLLVMIntegerConstant(OpBuilde
+ /// (1) load_dsmem(addr, ctaId)
+ /// (2) load_dsmem(addr, ctaId, vec)
+ Value createLoadDSmem(Location loc, PatternRewriter &rewriter, Value addr,
+-                      Value ctaId);
++                      Value ctaId, Type elemTy);
+ SmallVector<Value> createLoadDSmem(Location loc, PatternRewriter &rewriter,
+-                                   Value addr, Value ctaId, unsigned vec);
++                                   Value addr, Value ctaId, unsigned vec,
++                                   Type elemTy);
+ 
+ /// Usage of macro store_dsmem
+ /// (1) store_dsmem(addr, ctaId, value, pred)
+@@ -257,17 +258,12 @@ struct SharedMemoryObject {
+       : base(base),
+         baseElemType(baseElemType),
+         strides(strides.begin(), strides.end()),
+-        offsets(offsets.begin(), offsets.end()) {
+-    assert(baseElemType ==
+-           base.getType().cast<LLVMPointerType>().getElementType());
+-  }
++        offsets(offsets.begin(), offsets.end()) {}
+ 
+   SharedMemoryObject(Value base, Type baseElemType, ArrayRef<int64_t> shape,
+                      ArrayRef<unsigned> order, Location loc,
+                      ConversionPatternRewriter &rewriter)
+       : base(base), baseElemType(baseElemType) {
+-    assert(baseElemType ==
+-           base.getType().cast<LLVMPointerType>().getElementType());
+     strides = getStridesFromShapeAndOrder(shape, order, loc, rewriter);
+     offsets.append(order.size(), i32_val(0));
+   }
+@@ -332,7 +328,7 @@ Value storeShared(ConversionPatternRewri
+                   Value val, Value pred);
+ 
+ Value loadShared(ConversionPatternRewriter &rewriter, Location loc, Value ptr,
+-                 Value pred);
++                 Type elemTy, Value pred);
+ 
+ Value shflSync(Location loc, ConversionPatternRewriter &rewriter, Value val,
+                int i);
+diff --git a/lib/Dialect/NVGPU/IR/Dialect.cpp b/lib/Dialect/NVGPU/IR/Dialect.cpp
+--- a/lib/Dialect/NVGPU/IR/Dialect.cpp
++++ b/lib/Dialect/NVGPU/IR/Dialect.cpp
+@@ -73,7 +73,8 @@ void StoreDSmemOp::build(OpBuilder &buil
+ unsigned StoreDSmemOp::getBitwidth() {
+   auto addrTy = getAddr().getType();
+   assert(addrTy.isa<LLVM::LLVMPointerType>() && "addr must be a pointer type");
+-  auto elemTy = addrTy.cast<LLVM::LLVMPointerType>().getElementType();
++  if (getValues().empty()) return 0;
++  auto elemTy = getValues().back().getType();
+   return elemTy.getIntOrFloatBitWidth();
+ }
+ 
+diff --git a/test/Conversion/tritongpu_to_llvm.mlir b/test/Conversion/tritongpu_to_llvm.mlir
+--- a/test/Conversion/tritongpu_to_llvm.mlir
++++ b/test/Conversion/tritongpu_to_llvm.mlir
+@@ -1,7 +1,7 @@
+ // RUN: triton-opt %s -split-input-file --convert-triton-gpu-to-llvm="target=nvvm" | FileCheck %s
+ 
+ module attributes {"triton_gpu.num-ctas" = 1 : i32, "triton_gpu.num-warps" = 4 : i32} {
+-  // CHECK: llvm.func @test_empty_kernel(%arg0: i64, %arg1: !llvm.ptr<f16, 1>)
++  // CHECK: llvm.func @test_empty_kernel(%arg0: i64, %arg1: !llvm.ptr<1>)
+   // Here the 128 comes from the 4 in module attribute multiples 32
+   // CHECK: nvvm.kernel = 1 : ui1, nvvm.maxntid = [128 : i32]
+   tt.func @test_empty_kernel(%lb : index, %A : !tt.ptr<f16>) {
+@@ -560,9 +560,9 @@ module attributes {"triton_gpu.num-ctas"
+     %index = arith.constant 1 : i32
+ 
+     // CHECK: llvm.load
+-    // CHECK-SAME: !llvm.ptr<vector<8xi32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.load
+-    // CHECK-SAME: !llvm.ptr<vector<8xi32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     %a = triton_gpu.insert_slice_async %a_ptr, %tensor, %index {axis = 0 : i32, cache = 1 : i32, evict = 1 : i32, isVolatile = false} : tensor<16x64x!tt.ptr<f16>, #AL> -> tensor<2x16x64xf16, #A>
+     tt.return
+   }
+@@ -752,38 +752,38 @@ module attributes {"triton_gpu.num-ctas"
+   tt.func @convert_layout_blocked_blocked(%arg0: tensor<16x16xf32, #blocked0>) {
+     // CHECK: llvm.mlir.addressof @global_smem
+     // CHECK: llvm.store
+-    // CHECK-SAME: !llvm.ptr<vector<1xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.store
+-    // CHECK-SAME: !llvm.ptr<vector<1xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.store
+-    // CHECK-SAME: !llvm.ptr<vector<1xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.store
+-    // CHECK-SAME: !llvm.ptr<vector<1xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.store
+-    // CHECK-SAME: !llvm.ptr<vector<1xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.store
+-    // CHECK-SAME: !llvm.ptr<vector<1xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.store
+-    // CHECK-SAME: !llvm.ptr<vector<1xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.store
+-    // CHECK-SAME: !llvm.ptr<vector<1xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: nvvm.barrier0
+     // CHECK: llvm.load
+-    // CHECK-SAME: !llvm.ptr<vector<1xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.load
+-    // CHECK-SAME: !llvm.ptr<vector<1xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.load
+-    // CHECK-SAME: !llvm.ptr<vector<1xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.load
+-    // CHECK-SAME: !llvm.ptr<vector<1xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.load
+-    // CHECK-SAME: !llvm.ptr<vector<1xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.load
+-    // CHECK-SAME: !llvm.ptr<vector<1xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.load
+-    // CHECK-SAME: !llvm.ptr<vector<1xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.load
+-    // CHECK-SAME: !llvm.ptr<vector<1xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     %0 = triton_gpu.convert_layout %arg0 : (tensor<16x16xf32, #blocked0>) -> tensor<16x16xf32, #blocked1>
+     tt.return
+   }
+@@ -799,14 +799,14 @@ module attributes {"triton_gpu.num-ctas"
+   tt.func @convert_layout_blocked_blocked_vec(%arg0: tensor<16x16xf32, #blocked0>) {
+     // CHECK: llvm.mlir.addressof @global_smem
+     // CHECK: llvm.store
+-    // CHECK-SAME: !llvm.ptr<vector<4xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.store
+-    // CHECK-SAME: !llvm.ptr<vector<4xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: nvvm.barrier0
+     // CHECK: llvm.load
+-    // CHECK-SAME: !llvm.ptr<vector<4xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.load
+-    // CHECK-SAME: !llvm.ptr<vector<4xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     %0 = triton_gpu.convert_layout %arg0 : (tensor<16x16xf32, #blocked0>) -> tensor<16x16xf32, #blocked1>
+     tt.return
+   }
+@@ -822,20 +822,20 @@ module attributes {"triton_gpu.num-ctas"
+   tt.func @convert_layout_blocked_blocked_multi_rep(%arg0: tensor<16x16xf32, #blocked0>) {
+     // CHECK: llvm.mlir.addressof @global_smem
+     // CHECK: llvm.store
+-    // CHECK-SAME: !llvm.ptr<vector<4xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: nvvm.barrier0
+     // CHECK: llvm.load
+-    // CHECK-SAME: !llvm.ptr<vector<4xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.load
+-    // CHECK-SAME: !llvm.ptr<vector<4xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: nvvm.barrier0
+     // CHECK: llvm.store
+-    // CHECK-SAME: !llvm.ptr<vector<4xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: nvvm.barrier0
+     // CHECK: llvm.load
+-    // CHECK-SAME: !llvm.ptr<vector<4xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.load
+-    // CHECK-SAME: !llvm.ptr<vector<4xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     %0 = triton_gpu.convert_layout %arg0 : (tensor<16x16xf32, #blocked0>) -> tensor<16x16xf32, #blocked1>
+     tt.return
+   }
+@@ -889,12 +889,12 @@ module attributes {"triton_gpu.num-ctas"
+   // CHECK-LABEL: convert_layout_mmav2_block
+   tt.func @convert_layout_mmav2_blocked(%arg0: tensor<32x16xf32, #mma>) {
+     // CHECK: llvm.store
+-    // CHECK-SAME: !llvm.ptr<vector<2xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.store
+-    // CHECK-SAME: !llvm.ptr<vector<2xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: nvvm.barrier0
+     // CHECK: llvm.load
+-    // CHECK-SAME: !llvm.ptr<vector<4xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     %0 = triton_gpu.convert_layout %arg0 : (tensor<32x16xf32, #mma>) -> tensor<32x16xf32, #blocked0>
+     tt.return
+   }
+@@ -909,16 +909,16 @@ module attributes {"triton_gpu.num-ctas"
+   // CHECK-LABEL: convert_layout_mmav1_block
+   tt.func @convert_layout_mmav1_blocked(%arg0: tensor<32x64xf32, #mma>) {
+     // CHECK: llvm.store
+-    // CHECK-SAME: !llvm.ptr<vector<2xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.store
+-    // CHECK-SAME: !llvm.ptr<vector<2xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.store
+-    // CHECK-SAME: !llvm.ptr<vector<2xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.store
+-    // CHECK-SAME: !llvm.ptr<vector<2xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: nvvm.barrier0
+     // CHECK: llvm.load
+-    // CHECK-SAME: !llvm.ptr<vector<4xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     %0 = triton_gpu.convert_layout %arg0 : (tensor<32x64xf32, #mma>) -> tensor<32x64xf32, #blocked>
+     tt.return
+   }
+@@ -932,9 +932,9 @@ module attributes {"triton_gpu.num-ctas"
+   // CHECK-LABEL: convert_layout_blocked_shared
+   tt.func @convert_layout_blocked_shared(%arg0: tensor<128x32xf32, #blocked0>) {
+     // CHECK: llvm.store
+-    // CHECK-SAME: !llvm.ptr<vector<8xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     // CHECK: llvm.store
+-    // CHECK-SAME: !llvm.ptr<vector<8xf32>, 3>
++    // CHECK-SAME: !llvm.ptr<3>
+     %0 = triton_gpu.convert_layout %arg0 : (tensor<128x32xf32, #blocked0>) -> tensor<128x32xf32, #shared0>
+     tt.return
+   }
+@@ -947,7 +947,7 @@ module attributes {"triton_gpu.num-ctas"
+ module attributes {"triton_gpu.num-ctas" = 1 : i32, "triton_gpu.num-warps" = 1 : i32} {
+   // CHECK-LABEL: convert_blocked1d_to_slice0
+   tt.func @convert_blocked1d_to_slice0(%src:tensor<32xi32, #blocked0>) {
+-    // CHECK-COUNT-4: llvm.load {{.*}} : !llvm.ptr<vector<1xi32>, 3>
++    // CHECK-COUNT-4: llvm.load {{.*}} : !llvm.ptr<3>
+     %cvt = triton_gpu.convert_layout %src : (tensor<32xi32, #blocked0>) -> tensor<32xi32, #triton_gpu.slice<{dim = 0, parent = #blocked1}>>
+     tt.return
+   }
+@@ -960,7 +960,7 @@ module attributes {"triton_gpu.num-ctas"
+ module attributes {"triton_gpu.num-ctas" = 1 : i32, "triton_gpu.num-warps" = 1 : i32} {
+   // CHECK-LABEL: convert_blocked1d_to_slice1
+   tt.func @convert_blocked1d_to_slice1(%src:tensor<32xi32, #blocked0>) {
+-    // CHECK-COUNT-8: llvm.load {{.*}} : !llvm.ptr<vector<1xi32>, 3>
++    // CHECK-COUNT-8: llvm.load {{.*}} : !llvm.ptr<3>
+     %cvt = triton_gpu.convert_layout %src : (tensor<32xi32, #blocked0>) -> tensor<32xi32, #triton_gpu.slice<{dim = 1, parent = #blocked1}>>
+     tt.return
+   }
+diff --git a/test/Conversion/tritongpu_to_llvm_hopper.mlir b/test/Conversion/tritongpu_to_llvm_hopper.mlir
+--- a/test/Conversion/tritongpu_to_llvm_hopper.mlir
++++ b/test/Conversion/tritongpu_to_llvm_hopper.mlir
+@@ -12,7 +12,7 @@ module attributes {"triton_gpu.num-ctas"
+     %dst = triton_gpu.alloc_tensor : tensor<1x64x64xf16, #shared>
+     %c0 = arith.constant 0 : i32
+     %src = tt.make_tensor_ptr %basePtr, [%dim0, %dim1], [%stride0, %stride1], [%coord0, %coord1] {order = array<i32: 1, 0>} : !tt.ptr<tensor<64x64xf16, #blocked>, 1>
+-    // CHECK: nvgpu.tma_load_tiled %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}} {operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 2, 0>} : !llvm.ptr<i8, 3>, !llvm.ptr<i64, 3>, !llvm.ptr<i8, 1>, i64, i1, i32, i32
++    // CHECK: nvgpu.tma_load_tiled %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}} {operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 2, 0>} : !llvm.ptr<3>, !llvm.ptr<3>, !llvm.ptr<1>, i64, i1, i32, i32
+     %res = triton_nvidia_gpu.insert_slice_async_v2 %src, %dst, %c0, %mbar {axis = 0 : i32, cache = 1 : i32, evict = 1 : i32, isVolatile = false, operandSegmentSizes = array<i32: 1, 1, 1, 1, 0, 0>} : !tt.ptr<tensor<64x64xf16, #blocked>, 1>, tensor<1x64x64xf16, #shared>, i32, !tt.ptr<i64, 3> -> tensor<1x64x64xf16, #shared>
+     tt.return
+   }
+@@ -73,7 +73,7 @@ module attributes {"triton_gpu.num-ctas"
+     %src = triton_gpu.alloc_tensor : tensor<64x64xf32, #shared>
+     %c0 = arith.constant 0 : i32
+     %dst = tt.make_tensor_ptr %basePtr, [%dim0, %dim1], [%stride0, %stride1], [%coord0, %coord1] {order = array<i32: 1, 0>} : !tt.ptr<tensor<64x64xf32, #blocked>, 1>
+-    // CHECK: nvgpu.tma_store_tiled %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}} : !llvm.ptr<i8, 1>, !llvm.ptr<i8, 3>, i1, i32, i32
++    // CHECK: nvgpu.tma_store_tiled %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}} : !llvm.ptr<1>, !llvm.ptr<3>, i1, i32, i32
+     triton_nvidia_gpu.store_async %dst, %src {cache = 1 : i32} : !tt.ptr<tensor<64x64xf32, #blocked>, 1>, tensor<64x64xf32, #shared>
+     tt.return
+   }
+diff --git a/test/NVGPU/test_cga.mlir b/test/NVGPU/test_cga.mlir
+--- a/test/NVGPU/test_cga.mlir
++++ b/test/NVGPU/test_cga.mlir
+@@ -14,11 +14,11 @@ module attributes {"triton_gpu.num-warps
+     nvgpu.cga_barrier_arrive
+     nvgpu.cga_barrier_wait
+ 
+-    %ptr = llvm.mlir.zero : !llvm.ptr<i32, 3>
++    %ptr = llvm.mlir.zero : !llvm.ptr<3>
+ 
+     // CHECK: llvm.inline_asm
+     %v = nvgpu.cluster_id
+-    llvm.store %v, %ptr : !llvm.ptr<i32, 3>
++    llvm.store %v, %ptr : i32, !llvm.ptr<3>
+ 
+     tt.return
+   }
+diff --git a/test/NVGPU/test_mbarrier.mlir b/test/NVGPU/test_mbarrier.mlir
+--- a/test/NVGPU/test_mbarrier.mlir
++++ b/test/NVGPU/test_mbarrier.mlir
+@@ -2,18 +2,18 @@
+ #SHARED = #triton_gpu.shared<{vec = 2, perPhase = 2, maxPhase = 4, order = [1, 0]}>
+ module attributes {"triton_gpu.num-warps" = 4 : i32,  "triton_gpu.num-ctas" = 2 : i32} {
+   tt.func @test_mbarrier() {
+-    %mbarrier = llvm.mlir.zero : !llvm.ptr<i64, 3>
++    %mbarrier = llvm.mlir.zero : !llvm.ptr<3>
+     %pred = arith.constant 1 : i1
+     // CHECK: llvm.inline_asm
+-    nvgpu.mbarrier_init %mbarrier, %pred { count = 32 : i32 } : !llvm.ptr<i64, 3>
++    nvgpu.mbarrier_init %mbarrier, %pred { count = 32 : i32 } : !llvm.ptr<3>
+     // CHECK: llvm.inline_asm
+-    nvgpu.mbarrier_arrive %mbarrier, %pred {arriveType = 1 : i32}: !llvm.ptr<i64, 3>
++    nvgpu.mbarrier_arrive %mbarrier, %pred {arriveType = 1 : i32}: !llvm.ptr<3>
+     // CHECK: llvm.inline_asm
+-    nvgpu.mbarrier_arrive %mbarrier, %pred {arriveType = 0 : i32}: !llvm.ptr<i64, 3>
++    nvgpu.mbarrier_arrive %mbarrier, %pred {arriveType = 0 : i32}: !llvm.ptr<3>
+     // CHECK: llvm.inline_asm
+-    nvgpu.mbarrier_arrive %mbarrier, %pred {arriveType = 2 : i32, txCount = 128 : i32}: !llvm.ptr<i64, 3>
++    nvgpu.mbarrier_arrive %mbarrier, %pred {arriveType = 2 : i32, txCount = 128 : i32}: !llvm.ptr<3>
+     // CHECK: llvm.inline_asm
+-    nvgpu.mbarrier_wait %mbarrier, %pred : !llvm.ptr<i64, 3>, i1
++    nvgpu.mbarrier_wait %mbarrier, %pred : !llvm.ptr<3>, i1
+     tt.return
+   }
+ } // end module
+diff --git a/test/NVGPU/test_tma.mlir b/test/NVGPU/test_tma.mlir
+--- a/test/NVGPU/test_tma.mlir
++++ b/test/NVGPU/test_tma.mlir
+@@ -2,9 +2,9 @@
+ #SHARED = #triton_gpu.shared<{vec = 2, perPhase = 2, maxPhase = 4, order = [1, 0]}>
+ module attributes {"triton_gpu.num-warps" = 4 : i32,  "triton_gpu.num-ctas" = 2 : i32} {
+   tt.func @test_tma(%im2colOffsets0 : !llvm.struct<(i16, i16)>, %im2colOffsets1 : !llvm.struct<(i16, i16, i16)>) {
+-    %mbarrier = llvm.mlir.zero : !llvm.ptr<i64, 3>
+-    %tmaDesc  = llvm.mlir.zero : !llvm.ptr<i8, 1>
+-    %dst      = llvm.mlir.zero : !llvm.ptr<i8, 3>
++    %mbarrier = llvm.mlir.zero : !llvm.ptr<3>
++    %tmaDesc  = llvm.mlir.zero : !llvm.ptr<1>
++    %dst      = llvm.mlir.zero : !llvm.ptr<3>
+     %l2desc   = arith.constant 0 : i64
+     %c0 = arith.constant 0 : i32
+     %c1 = arith.constant 1 : i32
+@@ -16,13 +16,13 @@ module attributes {"triton_gpu.num-warps
+ 
+     // CHECK: llvm.inline_asm {{.*}} cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes.L2::cache_hint
+     // CHECK: llvm.inline_asm {{.*}} cp.async.bulk.tensor.4d.shared::cluster.global.mbarrier::complete_tx::bytes.L2::cache_hint
+-    nvgpu.tma_load_tiled %dst, %mbarrier, %tmaDesc, %l2desc, %pred, %c0, %c1 {operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 2, 0>}: !llvm.ptr<i8, 3>, !llvm.ptr<i64, 3>, !llvm.ptr<i8, 1>, i64, i1, i32, i32
+-    nvgpu.tma_load_tiled %dst, %mbarrier, %tmaDesc, %l2desc, %pred, %c0, %c1, %c2, %c3 {operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 4, 0>}: !llvm.ptr<i8, 3>, !llvm.ptr<i64, 3>, !llvm.ptr<i8, 1>, i64, i1, i32, i32, i32, i32
++    nvgpu.tma_load_tiled %dst, %mbarrier, %tmaDesc, %l2desc, %pred, %c0, %c1 {operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 2, 0>}: !llvm.ptr<3>, !llvm.ptr<3>, !llvm.ptr<1>, i64, i1, i32, i32
++    nvgpu.tma_load_tiled %dst, %mbarrier, %tmaDesc, %l2desc, %pred, %c0, %c1, %c2, %c3 {operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 4, 0>}: !llvm.ptr<3>, !llvm.ptr<3>, !llvm.ptr<1>, i64, i1, i32, i32, i32, i32
+ 
+     // CHECK: llvm.inline_asm {{.*}} cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes.multicast::cluster.L2::cache_hint
+     // CHECK: llvm.inline_asm {{.*}} cp.async.bulk.tensor.4d.shared::cluster.global.mbarrier::complete_tx::bytes.L2::cache_hint
+-    nvgpu.tma_load_tiled %dst, %mbarrier, %tmaDesc, %l2desc, %pred, %c0, %c1, %mask {operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 2, 1>}: !llvm.ptr<i8, 3>, !llvm.ptr<i64, 3>, !llvm.ptr<i8, 1>, i64, i1, i32, i32, i16
+-    nvgpu.tma_load_tiled %dst, %mbarrier, %tmaDesc, %l2desc, %pred, %c0, %c1, %c2, %c3 {operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 4, 0>}: !llvm.ptr<i8, 3>, !llvm.ptr<i64, 3>, !llvm.ptr<i8, 1>, i64, i1, i32, i32, i32, i32
++    nvgpu.tma_load_tiled %dst, %mbarrier, %tmaDesc, %l2desc, %pred, %c0, %c1, %mask {operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 2, 1>}: !llvm.ptr<3>, !llvm.ptr<3>, !llvm.ptr<1>, i64, i1, i32, i32, i16
++    nvgpu.tma_load_tiled %dst, %mbarrier, %tmaDesc, %l2desc, %pred, %c0, %c1, %c2, %c3 {operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 4, 0>}: !llvm.ptr<3>, !llvm.ptr<3>, !llvm.ptr<1>, i64, i1, i32, i32, i32, i32
+ 
+     tt.return
+   }

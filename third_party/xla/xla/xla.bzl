@@ -105,3 +105,6 @@ def xla_nvml_deps():
 
 def xla_cub_deps():
     return ["@local_config_cuda//cuda:cub_headers"]
+
+def xla_symbol_repository_deps():
+    return []

@@ -1984,10 +1984,18 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
                             ? GemmConfig::kHopperWorkspace
                             : GemmConfig::kDefaultWorkspace;
 
-    // Do not allocate workspace larger than the output size.
+    // We do not know the workspace size required by cuBLAS, but we can guess
+    // that in a worst case cuBLAS will transpose all operands into tiled
+    // layout optimal for the tensor cores. It doesn't make sense to allocate a
+    // larger workspace.
+    //
     // TODO(ezhulenev): This is not based on any measurement, just a common
     // sense, we should tweak it to find the minimal workspace size.
-    workspace = std::min(workspace, ShapeUtil::ByteSizeOf(instr->shape()));
+    int64_t operands_byte_size = 0;
+    for (auto &operand : instr->operands()) {
+      operands_byte_size += ShapeUtil::ByteSizeOf(operand->shape());
+    }
+    workspace = std::min(workspace, operands_byte_size);
 
     // If CUDA graphs are disabled (command buffer implementation detail),
     // then we reset the workspace size to 0 and rely on cuBlas to allocate

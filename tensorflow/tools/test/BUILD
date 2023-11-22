@@ -21,15 +21,26 @@ exports_files([
 
 py_strict_library(
     name = "system_info_lib",
-    srcs = [
-        "gpu_info_lib.py",
-        "system_info_lib.py",
+    srcs = ["system_info_lib.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":gpu_info_lib",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/client:device_lib",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/platform:gfile",
+        "@six_archive//:six",
     ],
+)
+
+py_strict_library(
+    name = "gpu_info_lib",
+    srcs = ["gpu_info_lib.py"],
     srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/client:device_lib",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:gfile",
         "@six_archive//:six",
@@ -54,6 +65,7 @@ py_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
+        ":gpu_info_lib",
         ":system_info_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/platform:gfile",

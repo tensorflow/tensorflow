@@ -53,7 +53,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func private @_func_1
   // CHECK-SAME:  %[[ARG0:.*]]: tensor<i32>
   func.func private @_func_1(%arg0: tensor<i32>) -> tensor<f32> {
-    // CHECK:      %[[COMPILE_OUT:.*]]:2 = "tf_device.launch"()
+    // CHECK:      %[[COMPILE_OUT:.*]]:2 = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
     // CHECK-NEXT:   %[[COMPILATION_STATUS:.*]], %[[PROGRAM_KEY:.*]] = "tf._TPUCompileMlir"()
     // CHECK-NEXT:   "tf._HostSend"(%[[PROGRAM_KEY]])
     // CHECK-SAME:   recv_device = "/job:localhost/replica:0/task:0/device:CPU:0"
@@ -72,12 +72,10 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-SAME:   tensor_name = "compilation_send_recv_key_1
     // CHECK-SAME:   device = "/job:localhost/replica:0/task:0/device:CPU:0"
     // CHECK-NEXT:   tf_device.return %[[COMPILATION_STATUS]], %[[PROGRAM_KEY]]
-    // CHECK-NEXT: device = "/job:localhost/replica:0/task:0/device:CPU:0"
-    // CHECK-NEXT: "tf_device.launch"()
+    // CHECK:      "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
     // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUT]]#0)
     // CHECK-NEXT:   tf_device.return
-    // CHECK-NEXT: device = "/job:localhost/replica:0/task:0/device:CPU:0"
-    // CHECK-NEXT:   %[[ID_TO_ORDINAL:.*]] = "tf.Const"
+    // CHECK:        %[[ID_TO_ORDINAL:.*]] = "tf.Const"
     // CHECK-SAME:   value = dense<0>
     // CHECK-NEXT:   %[[SIZE_TYPE:.*]] = "tf.Const"
     // CHECK-SAME:   value = dense<1>
@@ -165,7 +163,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func private @_func_1
   // CHECK-SAME:  %[[ARG0:.*]]: tensor<i32>
   func.func private @_func_1(%arg0: tensor<i32>) -> tensor<f32> {
-    // CHECK:      %[[COMPILE_OUT:.*]]:2 = "tf_device.launch"()
+    // CHECK:      %[[COMPILE_OUT:.*]]:2 = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
     // CHECK-NEXT:   %[[COMPILATION_STATUS:.*]], %[[PROGRAM_KEY:.*]] = "tf._TPUCompileMlir"()
     // CHECK-NEXT:   "tf._HostSend"(%[[PROGRAM_KEY]])
     // CHECK-SAME:   recv_device = "/job:localhost/replica:0/task:0/device:CPU:0"
@@ -185,12 +183,10 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-SAME:   tensor_name = "compilation_send_recv_key_1
     // CHECK-SAME:   device = "/job:localhost/replica:0/task:0/device:CPU:0"
     // CHECK-NEXT:   tf_device.return %[[COMPILATION_STATUS]], %[[PROGRAM_KEY]]
-    // CHECK-NEXT: device = "/job:localhost/replica:0/task:0/device:CPU:0"
-    // CHECK-NEXT: "tf_device.launch"()
+    // CHECK:      "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
     // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUT]]#0)
     // CHECK-NEXT:   tf_device.return
-    // CHECK-NEXT: device = "/job:localhost/replica:0/task:0/device:CPU:0"
-    // CHECK-NEXT: %[[ID_TO_ORDINAL:.*]] = "tf.Const"
+    // CHECK:      %[[ID_TO_ORDINAL:.*]] = "tf.Const"
     // CHECK-SAME: value = dense<0>
     // CHECK-NEXT: %[[SIZE_TYPE:.*]] = "tf.Const"
     // CHECK-SAME: value = dense<1>

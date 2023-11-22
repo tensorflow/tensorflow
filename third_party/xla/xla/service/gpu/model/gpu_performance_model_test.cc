@@ -364,7 +364,7 @@ ENTRY fusion {
       consumers);
 
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 105, 10);
-  EXPECT_NEAR(absl::ToInt64Microseconds(t.time_fused), 1030, 10);
+  EXPECT_NEAR(absl::ToInt64Microseconds(t.time_fused), 514, 10);
 }
 
 TEST_F(GpuPerformanceModelTest, FusingNonMinorTransposeIntoReduceIsFast) {

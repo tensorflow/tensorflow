@@ -61,8 +61,10 @@ class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
       const = 0;
   // Returns a list of output `OpSharding`.
   virtual std::optional<std::vector<OpSharding>> GetOutputShardings() const = 0;
-  // Returns a list of parameter `Layout`.
+  // Returns a list of parameter `xla::Layout`s.
   virtual StatusOr<std::vector<Layout>> GetParameterLayouts() const = 0;
+  // Returns a list of output/result `xla::Layout`s.
+  virtual StatusOr<std::vector<Layout>> GetOutputLayouts() const = 0;
   // Returns an `HloModule` (optimized) per partition.
   virtual StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const = 0;
@@ -116,8 +118,10 @@ class LoadedExecutable
       const = 0;
   // Returns a list of output OpSharding.
   virtual std::optional<std::vector<OpSharding>> GetOutputShardings() const = 0;
-  // Returns a list of parameter `Layout`.
+  // Returns a list of parameter `xla::Layout`s.
   virtual StatusOr<std::vector<Layout>> GetParameterLayouts() const = 0;
+  // Returns a list of output/result `xla::Layout`s.
+  virtual StatusOr<std::vector<Layout>> GetOutputLayouts() const = 0;
   // Return an HloModule (optimized) per partition.
   virtual StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const = 0;

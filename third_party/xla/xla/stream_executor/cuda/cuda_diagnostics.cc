@@ -15,17 +15,21 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 
+#if !defined(PLATFORM_WINDOWS)
 #include <dirent.h>
+#endif
+
 #include <limits.h>
-#include <link.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
+#if !defined(PLATFORM_WINDOWS)
+#include <link.h>
 #include <sys/sysmacros.h>
 #include <unistd.h>
-
+#endif
+#include <sys/stat.h>
 #include <algorithm>
 #include <memory>
 #include <vector>
@@ -104,7 +108,9 @@ tsl::StatusOr<DriverVersion> StringToDriverVersion(const std::string &value) {
 namespace stream_executor {
 namespace gpu {
 
+#if !defined(PLATFORM_WINDOWS)
 static const char *kDriverVersionPath = "/proc/driver/nvidia/version";
+#endif
 
 // -- class Diagnostician
 
@@ -113,6 +119,7 @@ std::string Diagnostician::GetDevNodePath(int dev_node_ordinal) {
 }
 
 void Diagnostician::LogDiagnosticInformation() {
+#if !defined(PLATFORM_WINDOWS)
   if (access(kDriverVersionPath, F_OK) != 0) {
     VLOG(1) << "kernel driver does not appear to be running on this host "
             << "(" << tsl::port::Hostname() << "): "
@@ -125,6 +132,7 @@ void Diagnostician::LogDiagnosticInformation() {
             << " does not exist";
     return;
   }
+#endif
 
   LOG(INFO) << "retrieving CUDA diagnostic information for host: "
             << tsl::port::Hostname();
@@ -134,6 +142,7 @@ void Diagnostician::LogDiagnosticInformation() {
 
 /* static */ void Diagnostician::LogDriverVersionInformation() {
   LOG(INFO) << "hostname: " << tsl::port::Hostname();
+#ifndef PLATFORM_WINDOWS
   if (VLOG_IS_ON(1)) {
     const char *value = getenv("LD_LIBRARY_PATH");
     std::string library_path = value == nullptr ? "" : value;
@@ -162,10 +171,13 @@ void Diagnostician::LogDiagnosticInformation() {
   tsl::StatusOr<DriverVersion> kernel_version = FindKernelDriverVersion();
   LOG(INFO) << "kernel reported version is: "
             << cuda::DriverVersionStatusToString(kernel_version);
+#endif
 
+#if !defined(PLATFORM_WINDOWS)
   if (kernel_version.ok() && dso_version.ok()) {
     WarnOnDsoKernelMismatch(dso_version, kernel_version);
   }
+#endif
 }
 
 // Iterates through loaded DSOs with DlIteratePhdrCallback to find the
@@ -175,7 +187,7 @@ tsl::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
       absl::StatusCode::kNotFound,
       "was unable to find libcuda.so DSO loaded into this program"));
 
-#if !defined(ANDROID_TEGRA)
+#if !defined(PLATFORM_WINDOWS) && !defined(ANDROID_TEGRA)
   // Callback used when iterating through DSOs. Looks for the driver-interfacing
   // DSO and yields its version number into the callback data, when found.
   auto iterate_phdr = [](struct dl_phdr_info *info, size_t size,

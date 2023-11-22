@@ -102,6 +102,6 @@ Status DoBlasLtMatmul(se::Stream* stream, const PlanAndAlgorithms& paa,
 
 }  // namespace tensorflow
 
-#endif // GOOGLE_CUDA || TF_HIPBLASLT
+#endif
 
 #endif  // TENSORFLOW_CORE_KERNELS_MATMUL_UTIL_H_

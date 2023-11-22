@@ -33,7 +33,7 @@ tf_py_strict_test(
     name = "batch_test",
     size = "medium",
     srcs = ["batch_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -607,7 +607,6 @@ cuda_py_strict_test(
     size = "small",
     srcs = ["iterator_test.py"],
     grpc_enabled = True,
-    tags = [],
     deps = [
         ":test_base",
         "//tensorflow/core:protos_all_py",

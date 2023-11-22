@@ -207,6 +207,7 @@ void ConvertXPlaneToTraceEventsContainer(uint64_t device_id,
   }
 
   plane.ForEachLine([&](const XLineVisitor& line) {
+    if (line.DisplayName() == tsl::profiler::kXlaAsyncOpLineName) return;
     if (line.NumEvents() == 0) return;
     // Capture a copy of XLineVisitor because it will go out of scope.
     uint32_t device_id = resource_grouper->GetDeviceId(line.DisplayId());

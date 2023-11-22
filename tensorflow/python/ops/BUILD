@@ -2,6 +2,10 @@ load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_xla_deps_py")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_strict_wrapper_private_py")
+load(
+    "//tensorflow/tools/test:performance.bzl",
+    "cuda_py_benchmark_test",
+)
 
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
@@ -620,8 +624,10 @@ tf_gen_op_strict_wrapper_private_py(
 tf_gen_op_strict_wrapper_private_py(
     name = "training_ops_gen",
     visibility = [
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/opt:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/eager/polymorphic_function:__pkg__",
         "//tensorflow/python/training:__pkg__",
     ],
 )
@@ -802,7 +808,7 @@ py_strict_library(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
@@ -1283,7 +1289,8 @@ py_strict_library(
         "//tensorflow/python/framework:function_def_to_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:keras_deps",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_contextlib",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -1303,7 +1310,6 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":control_flow_util",
-        ":control_flow_util_v2",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_export",
@@ -1317,7 +1323,6 @@ tf_py_strict_test(
     python_version = "PY3",
     deps = [
         ":control_flow_util_v2",
-        ":control_flow_v2_toggles",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
     ],
@@ -1480,7 +1485,6 @@ py_strict_library(
         ":ctc_ops_gen",
         ":custom_gradient",
         ":functional_ops",
-        # TODO(b/280454072) Remove inplace_ops and compat when forward compatibility window expires.
         ":inplace_ops",
         ":linalg_ops",
         ":map_fn",
@@ -1488,7 +1492,6 @@ py_strict_library(
         ":nn_grad",
         ":nn_ops",
         ":sparse_ops",
-        "//tensorflow/python/compat",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
@@ -2078,7 +2081,7 @@ py_strict_library(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:traceback_utils",
         "//third_party/py/numpy",
@@ -2544,8 +2547,8 @@ py_strict_library(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
         "//tensorflow/python/util:variable_utils",
         "//third_party/py/numpy",
     ],
@@ -2653,8 +2656,8 @@ py_strict_library(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
         "//third_party/py/numpy",
     ],
 )
@@ -3008,7 +3011,7 @@ py_strict_library(
         "//tensorflow/python/trackable:resource",
         "//tensorflow/python/training:training_util",
         "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_contextlib",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -3027,7 +3030,7 @@ py_strict_library(
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:object_identity",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_contextlib",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -3099,11 +3102,10 @@ py_strict_library(
         ":array_ops",
         ":init_ops",
         ":resource_variable_ops",
+        ":resource_variables_toggle",
         ":variables",
-        "//tensorflow/python:tf2",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
@@ -3112,9 +3114,22 @@ py_strict_library(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:function_utils",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_contextlib",
+        "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
+    ],
+)
+
+py_strict_library(
+    name = "resource_variables_toggle",
+    srcs = ["resource_variables_toggle.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:tf2",
+        "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -3156,6 +3171,7 @@ py_strict_library(
         ":array_ops",
         ":array_ops_gen",
         ":resource_variable_ops",
+        ":resource_variables_toggle",
         ":state_ops",
         ":state_ops_gen",
         ":variable_scope",
@@ -4019,7 +4035,7 @@ py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "accumulate_n_benchmark",
     size = "medium",
     srcs = ["accumulate_n_benchmark.py"],
@@ -4041,7 +4057,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "batch_norm_benchmark",
     srcs = ["batch_norm_benchmark.py"],
     main = "batch_norm_benchmark.py",
@@ -4063,7 +4079,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "collective_ops_benchmark",
     srcs = ["collective_ops_benchmark.py"],
     main = "collective_ops_benchmark.py",
@@ -4078,7 +4094,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "concat_benchmark",
     srcs = ["concat_benchmark.py"],
     main = "concat_benchmark.py",
@@ -4095,7 +4111,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "control_flow_ops_benchmark",
     srcs = ["control_flow_ops_benchmark.py"],
     main = "control_flow_ops_benchmark.py",
@@ -4115,7 +4131,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "conv2d_benchmark",
     size = "large",
     srcs = ["conv2d_benchmark.py"],
@@ -4136,7 +4152,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "split_benchmark",
     srcs = ["split_benchmark.py"],
     main = "split_benchmark.py",
@@ -4155,7 +4171,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "transpose_benchmark",
     size = "medium",
     srcs = ["transpose_benchmark.py"],
@@ -4173,7 +4189,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "matmul_benchmark",
     size = "medium",
     srcs = ["matmul_benchmark.py"],
@@ -4471,8 +4487,9 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
         "//tensorflow/python/util:variable_utils",
     ],
 )
@@ -4562,7 +4579,7 @@ py_strict_library(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
     ],
 )
 

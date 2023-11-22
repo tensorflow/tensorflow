@@ -59,7 +59,7 @@ StatusOr<std::string> NcclIdStore::GetNcclUniqueId(
     return FailedPrecondition("NCCL support was not built into XLA binary.");
 #endif
   } else {
-    TF_ASSIGN_OR_RETURN(id_string, kv_get_(key.ToString(), absl::Minutes(5)));
+    TF_ASSIGN_OR_RETURN(id_string, kv_get_(key.ToString(), absl::Minutes(10)));
   }
   absl::MutexLock lock(&mu_);
   auto result = cache_.emplace(key, std::move(id_string));

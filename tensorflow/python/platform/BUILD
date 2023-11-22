@@ -91,7 +91,6 @@ py_strict_library(
         "@absl_py//absl:app",
         "@absl_py//absl/testing:absltest",
         "//tensorflow/python/framework:errors",
-        "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_inspect",
     ]),
 )
@@ -127,7 +126,6 @@ tf_py_strict_test(
         "no_oss",  # TODO(b/259295275) re-enable after fixing sysconfig.get_path breakage
         "no_pip",
         "no_windows",
-	"no_oss",  # TODO(b/259319686) : Disable the tes
     ],
     deps = [
         ":client_testlib",
@@ -327,7 +325,7 @@ py_strict_library(
     name = "flags",
     srcs = ["flags.py"],
     deps = [
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "@absl_py//absl/flags",
     ],
 )
@@ -364,26 +362,16 @@ tf_py_strict_test(
 tf_py_strict_test(
     name = "benchmark_test",
     size = "small",
-    srcs = [
-        "benchmark.py",
-        "benchmark_test.py",
-    ],
+    srcs = ["benchmark_test.py"],
     main = "benchmark_test.py",
     python_version = "PY3",
     tags = [
         "no_pip",
     ],
     deps = [
+        ":benchmark",
         ":client_testlib",
-        ":gfile",
-        ":tf_logging",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/client",
-        "//tensorflow/python/client:timeline",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:tf_export",
-        "//tensorflow/python/util:tf_inspect",
-        "@absl_py//absl:app",
     ],
 )
 

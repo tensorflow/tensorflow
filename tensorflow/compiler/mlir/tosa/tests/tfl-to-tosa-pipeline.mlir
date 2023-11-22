@@ -1524,6 +1524,19 @@ func.func @test_batch_matmul(%arg0: tensor<1x16x128xf32>, %arg1: tensor<1x128x32
 
 // -----
 
+// CHECK-LABEL: @test_batch_matmul2d
+func.func @test_batch_matmul2d(%arg0: tensor<16x128xf32>, %arg1: tensor<128x32xf32>) -> (tensor<16x32xf32> ) {
+  // CHECK: %[[VAL_0:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 1, 16, 128>}
+  // CHECK: %[[VAL_1:.*]] = tosa.reshape %arg1 {new_shape = array<i64: 1, 128, 32>}
+  // CHECK: %[[VAL_2:.*]] = tosa.matmul %[[VAL_0]], %[[VAL_1]]
+  // CHECK: %[[VAL_3:.*]] = tosa.reshape %[[VAL_2]] {new_shape = array<i64: 16, 32>}
+  // CHECK: return %[[VAL_3]]
+  %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<16x128xf32>, tensor<128x32xf32>) -> tensor<16x32xf32>
+  func.return %0 : tensor<16x32xf32>
+}
+
+// -----
+
 // CHECK-LABEL: @test_batch_matmul_4d
 func.func @test_batch_matmul_4d(%arg0: tensor<4x5x16x128xf32>, %arg1: tensor<4x5x128x32xf32>) -> (tensor<4x5x16x32xf32> ) {
   // CHECK: %[[R0:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 20, 16, 128>}
@@ -2649,7 +2662,7 @@ func.func @test_reverse_fail(%arg0: tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32> 
 
 // CHECK-LABEL: test_tfl_custom
 // CHECK-SAME: %[[ARG_0:.*]]: tensor<1x64x64x32xf32>
-// CHECK: %[[VAL_0:.*]] = tosa.custom %[[ARG_0]] {config = "TFL", identifier = "MaxPoolingWithArgmax2D", implementation_attrs = "{{.*}}"} : (tensor<1x64x64x32xf32>) -> (tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>)
+// CHECK: %[[VAL_0:.*]] = tosa.custom %[[ARG_0]] {domain_name = "TFL", implementation_attrs = "{{.*}}", operator_name = "MaxPoolingWithArgmax2D"} : (tensor<1x64x64x32xf32>) -> (tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>)
 func.func @test_tfl_custom(%arg0: tensor<1x64x64x32xf32>) -> (tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>) {
   // custom op for "tfl.max_pooling_with_argmax_2d"(%arg0) {filter_h = 2 : i32, filter_w = 2 : i32, padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<1x64x64x32xf32>) -> (tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>)
   %0, %1 = "tfl.custom"(%arg0) {custom_option = #tfl<const_bytes : "0x01000000020000000200000002000000020000000000000000000000000000000000000000000000">, custom_code = "MaxPoolingWithArgmax2D"} : (tensor<1x64x64x32xf32>) -> (tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>)

@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -69,7 +70,8 @@ void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
   // preserved and the sequencing rewrite will trigger.
   pm.addPass(mlir::TFDevice::CreateEmbeddingPipeliningPass());
   pm.addPass(mlir::TFDevice::CreateEmbeddingSequencingPass());
-  pm.addPass(mlir::TFTPU::CreateTPUClusterFormationPass(strict_clusters));
+  pm.addPass(tensorflow::tf2xla::internal::CreateTPUClusterFormationPass(
+      strict_clusters));
   // CreateEmbeddingPipeliningPass may have created more functions, but
   // TPUClusterCleanup and OutsideCompiledToHostLaunch need every function to be
   // only called from one cluster. Here, we choose to fix the all-funcs-one-use
@@ -141,9 +143,12 @@ void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
   // all passes support it.
   pm.addPass(mlir::TFDevice::CreateHostLaunchToOutsideCompiledPass());
 
-  pm.addPass(mlir::TFDevice::CreateMarkOpsForOutsideCompilationPass());
-  pm.addPass(mlir::TFDevice::CreateExtractHeadTailOutsideCompilationPass());
-  pm.addPass(mlir::TFDevice::CreateExtractOutsideCompilationPass());
+  pm.addPass(
+      tensorflow::tf2xla::internal::CreateMarkOpsForOutsideCompilationPass());
+  pm.addPass(tensorflow::tf2xla::internal::
+                 CreateExtractHeadTailOutsideCompilationPass());
+  pm.addPass(
+      tensorflow::tf2xla::internal::CreateExtractOutsideCompilationPass());
   pm.addNestedPass<FuncOp>(
       mlir::TFDevice::CreateVerifyNoOutsideCompilationMarkersPass());
 
@@ -160,6 +165,9 @@ void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
   pm.addPass(mlir::TFTPU::CreateTPUAnnotateDynamicShapeInputsPass());
   pm.addNestedPass<FuncOp>(
       mlir::TF::CreateHoistReplicateInvariantResourceWritesPass());
+  // Verifies clustering has conformed with the expected invariants
+  pm.addNestedPass<FuncOp>(
+      tensorflow::tf2xla::internal::CreateVerifyClusteringPass());
 }
 
 void NoCanonicalization(OpPassManager& pm) {}
@@ -186,7 +194,7 @@ void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   // Encapsulate PartitionedCall ops within a cluster so that the composite
   // resource ops can be decomposed.
-  pm.addPass(mlir::TFDevice::CreateXlaClusterFormationPass());
+  pm.addPass(tensorflow::tf2xla::internal::CreateXlaClusterFormationPass());
   // Running canonicalizer before decomposing resource ops in cluster helps the
   // latter pass to converge faster as it does not have to spend time folding
   // away dead ops.
@@ -217,12 +225,18 @@ void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
   // for generic pipeline is landed.
   if (tensorflow::GetMlirCommonFlags()
           ->tf_mlir_enable_generic_outside_compilation) {
-    pm.addPass(mlir::TFDevice::CreateMarkOpsForOutsideCompilationPass());
-    pm.addPass(mlir::TFDevice::CreateExtractHeadTailOutsideCompilationPass());
-    pm.addPass(mlir::TFDevice::CreateExtractOutsideCompilationPass());
+    pm.addPass(
+        tensorflow::tf2xla::internal::CreateMarkOpsForOutsideCompilationPass());
+    pm.addPass(tensorflow::tf2xla::internal::
+                   CreateExtractHeadTailOutsideCompilationPass());
+    pm.addPass(
+        tensorflow::tf2xla::internal::CreateExtractOutsideCompilationPass());
   }
   // Outline clusters into cluster functions.
   pm.addPass(mlir::TFDevice::CreateClusterOutliningPass());
+  // Verifies clustering has conformed with the expected invariants
+  pm.addNestedPass<FuncOp>(
+      tensorflow::tf2xla::internal::CreateVerifyClusteringPass());
 }
 
 };  // namespace internal

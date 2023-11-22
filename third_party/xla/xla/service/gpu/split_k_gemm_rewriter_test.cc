@@ -30,6 +30,8 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/hlo_verifier.h"
+#include "xla/service/layout_assignment.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape_util.h"
@@ -329,6 +331,38 @@ ENTRY e {
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
+}
+
+TEST_F(SplitKTest, SupportsIndivisibleWithCustomLayout) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+triton_gemm_dot {
+  parameter_0 = s8[480,129]{0,1} parameter(0)
+  convert_0 = bf16[480,129]{0,1} convert(parameter_0)
+  parameter_1 = bf16[16,129]{0,1} parameter(1)
+  ROOT dot.0 = bf16[480,16]{1,0} dot(convert_0, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = s8[480,129]{0,1} parameter(0)
+  p1 = bf16[16,129]{0,1} parameter(1)
+  ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+
+  constexpr TritonGemmConfig kConfig(16, 16, 16, 4, 1, 4);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), kConfig));
+
+  TF_EXPECT_OK(HloVerifier(/*layout_sensitive=*/true,
+                           /*allow_mixed_precision=*/true,
+                           LayoutAssignment::InstructionCanChangeLayout)
+                   .Run(module.get())
+                   .status());
 }
 
 TEST_F(SplitKTest, SupportsIndivisibleSimpleSplitK16) {

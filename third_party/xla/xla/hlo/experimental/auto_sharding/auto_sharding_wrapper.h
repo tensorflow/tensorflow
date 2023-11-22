@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_WRAPPER_H_
 #define XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_WRAPPER_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -25,7 +26,9 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
+#include "xla/service/hlo_cost_analysis.h"
 
 namespace xla {
 namespace spmd {
@@ -42,6 +45,13 @@ AutoShardingSolverResult CallSolver(
     bool allow_alias_to_follower_conversion,
     const absl::flat_hash_map<std::string, const HloInstruction*>&
         sharding_propagation_solution = {});
+
+// Computes the penalty to be used for fully replicated sharding strategies for
+// dots and convs.
+double GetDotConvReplicationPenalty(const HloInstruction* inst,
+                                    size_t instruction_id, size_t window,
+                                    const HloInstructionSequence& sequence,
+                                    const HloCostAnalysis& hlo_cost_analysis);
 
 }  // namespace spmd
 }  // namespace xla

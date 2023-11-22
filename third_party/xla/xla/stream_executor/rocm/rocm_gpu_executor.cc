@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
-#include "xla/stream_executor/kernel_cache_config.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/initialize.h"
@@ -136,7 +135,7 @@ bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
   return true;
 }
 
-void GpuExecutor::UnloadKernel(const KernelBase* kernel) {
+void GpuExecutor::UnloadKernel(const Kernel* kernel) {
   VLOG(3) << "Unloading kernel " << kernel << " : " << kernel->name();
 
   absl::MutexLock lock{&in_memory_modules_mu_};
@@ -197,7 +196,7 @@ static string GetBinaryDir(bool strip_exe) {
 }
 
 tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
-                                   KernelBase* kernel) {
+                                   Kernel* kernel) {
   GpuKernel* rocm_kernel = AsGpuKernel(kernel);
   hipModule_t module = nullptr;
   const string* kernel_name;
@@ -257,7 +256,7 @@ tsl::Status GpuExecutor::GetKernelMetadata(GpuKernel* rocm_kernel,
 
 tsl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                                 const BlockDim& block_dims,
-                                const KernelBase& kernel,
+                                const Kernel& kernel,
                                 const KernelArgsArrayBase& args) {
   CHECK_EQ(kernel.Arity() + (args.number_of_shared_bytes() > 0),
            args.number_of_arguments());
@@ -284,28 +283,17 @@ tsl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
         hipfunc, rocm_kernel->GetGpuCacheConfig()));
   }
 
-  // prepare kernargs
-  // KernelArgsArrayBase keeps the pointer of arguments
-  // deference them here
-  std::vector<void*> kernargs;
-  KernelArgIterator iter = args.arg_iterator();
-  while (iter.has_next()) {
-    KernelArg arg = iter.next();
-    VLOG(2) << "*(arg.address): "
-            << reinterpret_cast<void*>(
-                   *static_cast<const uint64_t*>(arg.address));
-    kernargs.push_back(
-        reinterpret_cast<void*>(*static_cast<const uint64_t*>(arg.address)));
-  }
+  auto* packed_args = DynCast<KernelArgsPackedArrayBase>(&args);
+  if (!packed_args)
+    return absl::InternalError("Unsupported kernel arguments type");
 
-  size_t size = sizeof(void*) * kernargs.size();
-  void* config[] = {HIP_LAUNCH_PARAM_BUFFER_POINTER, kernargs.data(),
-                    HIP_LAUNCH_PARAM_BUFFER_SIZE, &size, HIP_LAUNCH_PARAM_END};
+  void** kernel_params =
+      const_cast<void**>(packed_args->argument_addresses().data());
 
   return GpuDriver::LaunchKernel(
       GetGpuContext(stream), kernel.name(), hipfunc, block_dims.x, block_dims.y,
       block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
-      args.number_of_shared_bytes(), hipstream, nullptr, (void**)&config);
+      args.number_of_shared_bytes(), hipstream, kernel_params, nullptr);
 }
 
 tsl::Status GpuExecutor::Submit(Stream* stream,
@@ -392,7 +380,7 @@ tsl::Status GpuExecutor::LoadModuleFromHsaco(const char* hsaco,
 // This is a non-essential operation; if there's a failure, proceed without
 // logging an error. It's nearly certain that in case of failures, we'd never
 // get here in the first place; these are very low-impact routines.
-void GpuExecutor::VlogOccupancyInfo(const KernelBase& kernel,
+void GpuExecutor::VlogOccupancyInfo(const Kernel& kernel,
                                     const ThreadDim& thread_dims,
                                     const BlockDim& block_dims) {
   // TODO(ROCm) implement this feature in HIP
@@ -864,6 +852,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
     int64_t memory_bandwidth = 2 * (int64_t(prop.memoryBusWidth) / 8) *
                                (int64_t(prop.memoryClockRate) * 1000);
     builder.set_memory_bandwidth(memory_bandwidth);
+
     builder.set_l2_cache_size(prop.l2CacheSize);
   }
 

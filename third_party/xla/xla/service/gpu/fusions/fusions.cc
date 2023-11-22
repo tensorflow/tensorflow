@@ -35,14 +35,13 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-namespace {
 
 bool IsSingleInstructionFusion(mlir::lmhlo::FusionOp fusion) {
   bool seen_instruction = false;
   for (mlir::Operation& instr : fusion.getRegion().front()) {
     if (mlir::isa<mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
-                  mlir::bufferization::ToTensorOp, mlir::memref::TensorStoreOp>(
-            &instr)) {
+                  mlir::bufferization::ToTensorOp,
+                  mlir::bufferization::MaterializeInDestinationOp>(&instr)) {
       continue;
     }
     if (seen_instruction) return false;
@@ -50,8 +49,6 @@ bool IsSingleInstructionFusion(mlir::lmhlo::FusionOp fusion) {
   }
   return seen_instruction;
 }
-
-}  // namespace
 
 std::optional<std::unique_ptr<FusionInterface>> GetFusionEmitter(
     HloFusionAnalysis& analysis,

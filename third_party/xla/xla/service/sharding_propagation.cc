@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/array.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -536,121 +537,6 @@ std::optional<HloSharding> LookaheadUserSharding(HloInstruction* instr,
   return sharding;
 }
 
-bool InferDotShardingFromOperands(
-    HloInstruction* instruction, const CallGraph& call_graph,
-    const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
-    bool may_combine_partial_sharding, bool is_spmd) {
-  auto from_operand = [&](int64_t operand_index) {
-    auto operand = instruction->operand(operand_index);
-    const HloSharding& operand_sharding = operand->sharding();
-    if (operand_sharding.IsTileMaximal()) {
-      return operand_sharding;
-    }
-    std::vector<int64_t> contracting_dims;
-    contracting_dims.reserve(dnums.contracting_dims.size());
-    for (const auto& dim : dnums.contracting_dims) {
-      contracting_dims.push_back(operand_index == 0 ? dim.lhs : dim.rhs);
-    }
-    // It's possible that some size-1 spatial dims of convolutions are parsed as
-    // non-contracting dims. We might have tiled dimensions on them.
-    for (const auto& dim : operand_index == 0
-                               ? dnums.rhs_non_contracting_dims
-                               : dnums.lhs_non_contracting_dims) {
-      int64_t d = operand_index == 0 ? dim.lhs : dim.rhs;
-      if (d >= 0) {
-        contracting_dims.push_back(d);
-      }
-    }
-    auto replicate_contracting_dims =
-        hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-            operand_sharding, contracting_dims);
-    std::vector<int64_t> out_dims_to_op_perm(instruction->shape().rank(), -1);
-    std::vector<int64_t> op_dims_to_output_perm(operand->shape().rank(), -1);
-    for (const auto& dim : dnums.batch_dims) {
-      out_dims_to_op_perm[dim.output] = operand_index == 0 ? dim.lhs : dim.rhs;
-      op_dims_to_output_perm[operand_index == 0 ? dim.lhs : dim.rhs] =
-          dim.output;
-    }
-    for (const auto& dim : operand_index == 0
-                               ? dnums.lhs_non_contracting_dims
-                               : dnums.rhs_non_contracting_dims) {
-      out_dims_to_op_perm[dim.output] = operand_index == 0 ? dim.lhs : dim.rhs;
-      op_dims_to_output_perm[operand_index == 0 ? dim.lhs : dim.rhs] =
-          dim.output;
-    }
-    return *hlo_sharding_util::TransposeShardingWithCollapsedDims(
-        replicate_contracting_dims, op_dims_to_output_perm,
-        out_dims_to_op_perm);
-  };
-  std::optional<HloSharding> improved_operand_0;
-  std::optional<HloSharding> improved_operand_1;
-  if (IsSpatiallyPartitioned(instruction->operand(0))) {
-    improved_operand_0 = ReturnImprovedSharding(
-        from_operand(0), instruction, may_combine_partial_sharding,
-        /*allow_aggressive_resharding=*/false);
-  }
-  if (IsSpatiallyPartitioned(instruction->operand(1))) {
-    improved_operand_1 = ReturnImprovedSharding(
-        from_operand(1), instruction, may_combine_partial_sharding,
-        /*allow_aggressive_resharding=*/false);
-  }
-  // If not improved sharding found then do not set any sharding.
-  if (!improved_operand_0.has_value() && !improved_operand_1.has_value()) {
-    return false;
-  }
-  // Sharding found from operand 0 but not operand 1. Set sharding from operand
-  // 0
-  if (improved_operand_0.has_value() && !improved_operand_1.has_value()) {
-    instruction->set_sharding(*improved_operand_0);
-    return true;
-  }
-  // Sharding found from operand 1 but not operand 0. Set sharding from operand
-  // 1
-  if (!improved_operand_0.has_value() && improved_operand_1.has_value()) {
-    instruction->set_sharding(*improved_operand_1);
-    return true;
-  }
-  CHECK(improved_operand_0.has_value() && improved_operand_1.has_value());
-  std::optional<HloSharding> lookahead_sharding =
-      LookaheadUserSharding(instruction, is_spmd, call_graph);
-  std::array<HloSharding, 2> sharding_priority = {*improved_operand_0,
-                                                  *improved_operand_1};
-  bool priority_defined_with_lookahead = false;
-  // Found sharding from lookahead.
-  if (lookahead_sharding.has_value()) {
-    const bool operand_0_is_lookahead_subtiling =
-        hlo_sharding_util::IsSubTilingOrEqualSharding(
-            instruction->shape(), *lookahead_sharding, *improved_operand_0);
-    const bool operand_1_is_lookahead_subtiling =
-        hlo_sharding_util::IsSubTilingOrEqualSharding(
-            instruction->shape(), *lookahead_sharding, *improved_operand_1);
-    // If the sharding from operand 0 is a subtiling of the user, but not the
-    // one from operand 1 prioritize that sharding.
-    if (operand_0_is_lookahead_subtiling && !operand_1_is_lookahead_subtiling) {
-      priority_defined_with_lookahead = true;
-    }
-    // If the sharding from operand 1 is a subtiling of the user, but not the
-    // one from operand 0 prioritize that sharding.
-    if (!operand_0_is_lookahead_subtiling && operand_1_is_lookahead_subtiling) {
-      instruction->set_sharding(*improved_operand_1);
-      std::swap(sharding_priority[0], sharding_priority[1]);
-      priority_defined_with_lookahead = true;
-    }
-  }
-  // If lookahead didn't define a priority then use size.
-  if (!priority_defined_with_lookahead &&
-      ShapeUtil::ByteSizeOf(instruction->operand(0)->shape()) <
-          ShapeUtil::ByteSizeOf(instruction->operand(1)->shape())) {
-    std::swap(sharding_priority[0], sharding_priority[1]);
-  }
-  // Set primary sharding to the instruction and then try to improve it with
-  // the secondary sharding.
-  instruction->set_sharding(sharding_priority[0]);
-  MaybeImproveInstructionSharding(sharding_priority[1], instruction,
-                                  may_combine_partial_sharding);
-  return true;
-}
-
 // Infer output sharding on index parallel dimensions for gather/scatter from
 // gather operand/indices or scatter operands/indices/updates.
 HloSharding InferParallelShardingFromOperand(
@@ -791,92 +677,6 @@ bool InferScatterParallelShardingFromOperands(
     }
   }
   return changed;
-}
-
-// Convolution handling for InferShardingFromOperands().
-bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
-                                          const CallGraph& call_graph,
-                                          int64_t aggressiveness,
-                                          bool may_combine_partial_sharding,
-                                          bool is_spmd) {
-  auto get_partitions_for_dims =
-      [&](const HloInstruction* inst,
-          absl::Span<
-              const dot_as_convolution_util::DotConvolutionDimsInfo::DimNums>
-              dims,
-          int lhs_or_rhs) {
-        int64_t partitions = 1;
-        if (!inst->has_sharding()) {
-          return partitions;
-        }
-        const auto& sharding = inst->sharding();
-        if (sharding.IsTileMaximal()) {
-          return partitions;
-        }
-        for (const auto& dim : dims) {
-          if (lhs_or_rhs == 0) {
-            partitions *= sharding.tile_assignment().dim(dim.lhs);
-          } else {
-            CHECK_EQ(lhs_or_rhs, 1);
-            partitions *= sharding.tile_assignment().dim(dim.rhs);
-          }
-        }
-        return partitions;
-      };
-  auto dot_dims =
-      dot_as_convolution_util::ParseConvolutionDimsInfo(instruction);
-  const int64_t lhs_conv_spatial_partitions = get_partitions_for_dims(
-      instruction->operand(0), dot_dims.conv_spatial_dims, 0);
-  const int64_t rhs_conv_spatial_partitions = get_partitions_for_dims(
-      instruction->operand(1), dot_dims.conv_spatial_dims, 1);
-  if (dot_dims.conv_spatial_dims.empty() ||
-      (lhs_conv_spatial_partitions == 1 && rhs_conv_spatial_partitions == 1 &&
-       instruction->batch_group_count() == 1 &&
-       instruction->feature_group_count() == 1)) {
-    return InferDotShardingFromOperands(instruction, call_graph, dot_dims,
-                                        may_combine_partial_sharding, is_spmd);
-  }
-  const auto& dnums = instruction->convolution_dimension_numbers();
-  const HloInstruction* lhs = instruction->operand(0);
-  auto get_tiled_sharding_based_on_lhs = [&] {
-    CHECK(!lhs->sharding().IsTileMaximal());
-    std::vector<int64_t> output_to_lhs_indices(instruction->shape().rank());
-    output_to_lhs_indices[dnums.output_batch_dimension()] =
-        dnums.input_batch_dimension();
-    output_to_lhs_indices[dnums.output_feature_dimension()] =
-        dnums.input_feature_dimension();
-    for (int64_t i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
-      output_to_lhs_indices[dnums.output_spatial_dimensions(i)] =
-          dnums.input_spatial_dimensions(i);
-    }
-    return hlo_sharding_util::TransposeSharding(lhs->sharding(),
-                                                output_to_lhs_indices);
-  };
-  if (!IsSpatiallyPartitioned(lhs)) {
-    return false;
-  }
-  if (lhs->sharding().IsTileMaximal()) {
-    return MaybeImproveInstructionSharding(lhs->sharding(), instruction,
-                                           may_combine_partial_sharding);
-  }
-
-  if (IsConvolutionKernelSmall(instruction)) {
-    // If the kernel is small compared to the input then we can generate an
-    // output what is sharded the same way as the input.
-    const auto& tile_assignment = lhs->sharding().tile_assignment();
-    if (tile_assignment.dim(dnums.input_feature_dimension()) > 1) {
-      return false;
-    }
-    return MaybeImproveInstructionSharding(get_tiled_sharding_based_on_lhs(),
-                                           instruction,
-                                           may_combine_partial_sharding);
-  }
-  // If the kernel is large (e.g backward convolution) then we only support
-  // replicated output.
-  return MaybeImproveInstructionSharding(
-      hlo_sharding_util::ReplicateAllDataDims(lhs->sharding(),
-                                              instruction->shape().rank()),
-      instruction, may_combine_partial_sharding);
 }
 
 bool CanPropagateThroughAtAggressiveLevel(const HloInstruction& inst,
@@ -1418,6 +1218,207 @@ bool IsCSEPreventionSharding(const HloSharding& sharding) {
 }
 
 }  // namespace
+
+bool InferDotShardingFromOperands(
+    HloInstruction* instruction, const CallGraph& call_graph,
+    const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
+    bool may_combine_partial_sharding, bool is_spmd) {
+  auto from_operand = [&](int64_t operand_index) {
+    auto operand = instruction->operand(operand_index);
+    const HloSharding& operand_sharding = operand->sharding();
+    if (operand_sharding.IsTileMaximal()) {
+      return operand_sharding;
+    }
+    std::vector<int64_t> contracting_dims;
+    contracting_dims.reserve(dnums.contracting_dims.size());
+    for (const auto& dim : dnums.contracting_dims) {
+      contracting_dims.push_back(operand_index == 0 ? dim.lhs : dim.rhs);
+    }
+    // It's possible that some size-1 spatial dims of convolutions are parsed as
+    // non-contracting dims. We might have tiled dimensions on them.
+    for (const auto& dim : operand_index == 0
+                               ? dnums.rhs_non_contracting_dims
+                               : dnums.lhs_non_contracting_dims) {
+      int64_t d = operand_index == 0 ? dim.lhs : dim.rhs;
+      if (d >= 0) {
+        contracting_dims.push_back(d);
+      }
+    }
+    auto replicate_contracting_dims =
+        hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+            operand_sharding, contracting_dims);
+    std::vector<int64_t> out_dims_to_op_perm(instruction->shape().rank(), -1);
+    std::vector<int64_t> op_dims_to_output_perm(operand->shape().rank(), -1);
+    for (const auto& dim : dnums.batch_dims) {
+      out_dims_to_op_perm[dim.output] = operand_index == 0 ? dim.lhs : dim.rhs;
+      op_dims_to_output_perm[operand_index == 0 ? dim.lhs : dim.rhs] =
+          dim.output;
+    }
+    for (const auto& dim : operand_index == 0
+                               ? dnums.lhs_non_contracting_dims
+                               : dnums.rhs_non_contracting_dims) {
+      out_dims_to_op_perm[dim.output] = operand_index == 0 ? dim.lhs : dim.rhs;
+      op_dims_to_output_perm[operand_index == 0 ? dim.lhs : dim.rhs] =
+          dim.output;
+    }
+    return *hlo_sharding_util::TransposeShardingWithCollapsedDims(
+        replicate_contracting_dims, op_dims_to_output_perm,
+        out_dims_to_op_perm);
+  };
+  std::optional<HloSharding> improved_operand_0;
+  std::optional<HloSharding> improved_operand_1;
+  if (IsSpatiallyPartitioned(instruction->operand(0))) {
+    improved_operand_0 = ReturnImprovedSharding(
+        from_operand(0), instruction, may_combine_partial_sharding,
+        /*allow_aggressive_resharding=*/false);
+  }
+  if (IsSpatiallyPartitioned(instruction->operand(1))) {
+    improved_operand_1 = ReturnImprovedSharding(
+        from_operand(1), instruction, may_combine_partial_sharding,
+        /*allow_aggressive_resharding=*/false);
+  }
+  // If not improved sharding found then do not set any sharding.
+  if (!improved_operand_0.has_value() && !improved_operand_1.has_value()) {
+    return false;
+  }
+  // Sharding found from operand 0 but not operand 1. Set sharding from operand
+  // 0
+  if (improved_operand_0.has_value() && !improved_operand_1.has_value()) {
+    instruction->set_sharding(*improved_operand_0);
+    return true;
+  }
+  // Sharding found from operand 1 but not operand 0. Set sharding from operand
+  // 1
+  if (!improved_operand_0.has_value() && improved_operand_1.has_value()) {
+    instruction->set_sharding(*improved_operand_1);
+    return true;
+  }
+  CHECK(improved_operand_0.has_value() && improved_operand_1.has_value());
+  std::optional<HloSharding> lookahead_sharding =
+      LookaheadUserSharding(instruction, is_spmd, call_graph);
+  std::array<HloSharding, 2> sharding_priority = {*improved_operand_0,
+                                                  *improved_operand_1};
+  bool priority_defined_with_lookahead = false;
+  // Found sharding from lookahead.
+  if (lookahead_sharding.has_value()) {
+    const bool operand_0_is_lookahead_subtiling =
+        hlo_sharding_util::IsSubTilingOrEqualSharding(
+            instruction->shape(), *lookahead_sharding, *improved_operand_0);
+    const bool operand_1_is_lookahead_subtiling =
+        hlo_sharding_util::IsSubTilingOrEqualSharding(
+            instruction->shape(), *lookahead_sharding, *improved_operand_1);
+    // If the sharding from operand 0 is a subtiling of the user, but not the
+    // one from operand 1 prioritize that sharding.
+    if (operand_0_is_lookahead_subtiling && !operand_1_is_lookahead_subtiling) {
+      priority_defined_with_lookahead = true;
+    }
+    // If the sharding from operand 1 is a subtiling of the user, but not the
+    // one from operand 0 prioritize that sharding.
+    if (!operand_0_is_lookahead_subtiling && operand_1_is_lookahead_subtiling) {
+      instruction->set_sharding(*improved_operand_1);
+      std::swap(sharding_priority[0], sharding_priority[1]);
+      priority_defined_with_lookahead = true;
+    }
+  }
+  // If lookahead didn't define a priority then use size.
+  if (!priority_defined_with_lookahead &&
+      ShapeUtil::ByteSizeOf(instruction->operand(0)->shape()) <
+          ShapeUtil::ByteSizeOf(instruction->operand(1)->shape())) {
+    std::swap(sharding_priority[0], sharding_priority[1]);
+  }
+  // Set primary sharding to the instruction and then try to improve it with
+  // the secondary sharding.
+  instruction->set_sharding(sharding_priority[0]);
+  MaybeImproveInstructionSharding(sharding_priority[1], instruction,
+                                  may_combine_partial_sharding);
+  return true;
+}
+
+// Convolution handling for InferShardingFromOperands().
+bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
+                                          const CallGraph& call_graph,
+                                          int64_t aggressiveness,
+                                          bool may_combine_partial_sharding,
+                                          bool is_spmd) {
+  auto get_partitions_for_dims =
+      [&](const HloInstruction* inst,
+          absl::Span<
+              const dot_as_convolution_util::DotConvolutionDimsInfo::DimNums>
+              dims,
+          int lhs_or_rhs) {
+        int64_t partitions = 1;
+        if (!inst->has_sharding()) {
+          return partitions;
+        }
+        const auto& sharding = inst->sharding();
+        if (sharding.IsTileMaximal()) {
+          return partitions;
+        }
+        for (const auto& dim : dims) {
+          if (lhs_or_rhs == 0) {
+            partitions *= sharding.tile_assignment().dim(dim.lhs);
+          } else {
+            CHECK_EQ(lhs_or_rhs, 1);
+            partitions *= sharding.tile_assignment().dim(dim.rhs);
+          }
+        }
+        return partitions;
+      };
+  auto dot_dims =
+      dot_as_convolution_util::ParseConvolutionDimsInfo(instruction);
+  const int64_t lhs_conv_spatial_partitions = get_partitions_for_dims(
+      instruction->operand(0), dot_dims.conv_spatial_dims, 0);
+  const int64_t rhs_conv_spatial_partitions = get_partitions_for_dims(
+      instruction->operand(1), dot_dims.conv_spatial_dims, 1);
+  if (dot_dims.conv_spatial_dims.empty() ||
+      (lhs_conv_spatial_partitions == 1 && rhs_conv_spatial_partitions == 1 &&
+       instruction->batch_group_count() == 1 &&
+       instruction->feature_group_count() == 1)) {
+    return InferDotShardingFromOperands(instruction, call_graph, dot_dims,
+                                        may_combine_partial_sharding, is_spmd);
+  }
+  const auto& dnums = instruction->convolution_dimension_numbers();
+  const HloInstruction* lhs = instruction->operand(0);
+  auto get_tiled_sharding_based_on_lhs = [&] {
+    CHECK(!lhs->sharding().IsTileMaximal());
+    std::vector<int64_t> output_to_lhs_indices(instruction->shape().rank());
+    output_to_lhs_indices[dnums.output_batch_dimension()] =
+        dnums.input_batch_dimension();
+    output_to_lhs_indices[dnums.output_feature_dimension()] =
+        dnums.input_feature_dimension();
+    for (int64_t i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
+      output_to_lhs_indices[dnums.output_spatial_dimensions(i)] =
+          dnums.input_spatial_dimensions(i);
+    }
+    return hlo_sharding_util::TransposeSharding(lhs->sharding(),
+                                                output_to_lhs_indices);
+  };
+  if (!IsSpatiallyPartitioned(lhs)) {
+    return false;
+  }
+  if (lhs->sharding().IsTileMaximal()) {
+    return MaybeImproveInstructionSharding(lhs->sharding(), instruction,
+                                           may_combine_partial_sharding);
+  }
+
+  if (IsConvolutionKernelSmall(instruction)) {
+    // If the kernel is small compared to the input then we can generate an
+    // output what is sharded the same way as the input.
+    const auto& tile_assignment = lhs->sharding().tile_assignment();
+    if (tile_assignment.dim(dnums.input_feature_dimension()) > 1) {
+      return false;
+    }
+    return MaybeImproveInstructionSharding(get_tiled_sharding_based_on_lhs(),
+                                           instruction,
+                                           may_combine_partial_sharding);
+  }
+  // If the kernel is large (e.g backward convolution) then we only support
+  // replicated output.
+  return MaybeImproveInstructionSharding(
+      hlo_sharding_util::ReplicateAllDataDims(lhs->sharding(),
+                                              instruction->shape().rank()),
+      instruction, may_combine_partial_sharding);
+}
 
 std::optional<HloSharding> InferBroadcastOperandSharding(
     const HloInstruction& instruction, bool is_spmd) {
@@ -2745,8 +2746,7 @@ bool ShardingPropagation::InferShardingFromUsers(
     return false;
   }
   // Propagate manual sharding.
-  if (!instruction->has_sharding() ||
-      instruction->sharding().IsTileMaximal()) {
+  if (!instruction->has_sharding() || instruction->sharding().IsTileMaximal()) {
     for (const HloInstruction* user : instruction->users()) {
       if (!user->has_sharding() || user->IsCustomCall("SPMDFullToShardShape"))
         continue;

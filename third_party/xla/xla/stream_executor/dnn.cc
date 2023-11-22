@@ -217,6 +217,18 @@ DnnSupport::FusedConvolveRunnerFromDesc(
       "FusedConvolveRunnerFromDesc not implemented.");
 }
 
+tsl::StatusOr<std::unique_ptr<const dnn::NormRunner>>
+DnnSupport::NormRunnerFromDesc(
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc, double epsilon,
+    const dnn::TensorDescriptor& input_descriptor,
+    const dnn::TensorDescriptor& scale_descriptor,
+    const dnn::TensorDescriptor& bias_descriptor,
+    const dnn::TensorDescriptor& output_descriptor,
+    std::optional<dnn::TensorDescriptor> expectation_descriptor,
+    std::optional<dnn::TensorDescriptor> norm_factor_descriptor) {
+  return absl::UnimplementedError("NormRunnerFromDesc not implemented.");
+}
+
 tsl::StatusOr<std::unique_ptr<const dnn::FusedMHARunner>>
 DnnSupport::FusedMHARunnerFromDesc(
     Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,

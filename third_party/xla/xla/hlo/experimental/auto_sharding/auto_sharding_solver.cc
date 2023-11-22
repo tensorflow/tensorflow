@@ -547,10 +547,8 @@ AutoShardingSolverResult SolveAndExtractSolution(
     LOG(FATAL) << "Solver says that the input MIP is invalid. This is most "
                   "likely a bug and should be reported.";
   } else if (status != operations_research::MPSolver::OPTIMAL) {
-    auto err_msg = "Solver timed out. Will proceed without auto sharding.";
+    auto err_msg = "Solver timed out.";
     LOG(WARNING) << err_msg << " Solver status " << status;
-    // The solver timed out. We now rely on heuristic-based sharding propagation
-    // to degrade gracefully.
     return AutoShardingSolverResult(absl::InternalError(err_msg), true);
   }
 

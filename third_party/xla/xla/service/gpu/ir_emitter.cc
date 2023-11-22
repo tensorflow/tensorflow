@@ -23,7 +23,6 @@ limitations under the License.
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
-#include "llvm/Support/ModRef.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/primitive_util.h"
 #include "xla/service/elemental_ir_emitter.h"

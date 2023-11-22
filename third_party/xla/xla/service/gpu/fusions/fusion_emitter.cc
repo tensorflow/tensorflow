@@ -114,7 +114,7 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
   llvm::LLVMContext& context = llvm_module->getContext();
   llvm::FunctionType* kernel_type = llvm::FunctionType::get(
       /*Result=*/llvm::Type::getVoidTy(context),
-      std::vector<llvm::Type*>(kNumLlvmArgs, builder->getInt8PtrTy()),
+      std::vector<llvm::Type*>(kNumLlvmArgs, builder->getPtrTy()),
       /*isVarArg=*/false);
   llvm::Function* kernel =
       llvm::Function::Create(kernel_type, llvm::GlobalValue::ExternalLinkage,
@@ -163,9 +163,7 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
 
     llvm::Type* ir_type =
         llvm_ir::ShapeToIrType(kernel_argument.shape(), llvm_module);
-    llvm_ir::IrArray ir_array(
-        CastToTypedValue(kernel_argument.shape(), &llvm_arg, builder), ir_type,
-        kernel_argument.shape());
+    llvm_ir::IrArray ir_array(&llvm_arg, ir_type, kernel_argument.shape());
 
     if (!kernel_argument.written()) {
       ir_array.MarkInvariantOverWholeProgram(&llvm_arg.getContext());
@@ -181,7 +179,7 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
     IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
     mlir::lmhlo::FusionOp fusion_op, const HloFusionInstruction& fusion,
     KernelReuseCache& kernel_cache, llvm::IRBuilder<>* builder) const {
-  std::string suggested_kernel_name = GetIrNameFromLoc(fusion_op->getLoc());
+  std::string suggested_kernel_name = std::string(fusion.name());
 
   TF_ASSIGN_OR_RETURN(KernelArguments kernel_arguments,
                       ir_emitter_context.emit_ir_from_hlo()
@@ -203,8 +201,8 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
           llvm::Function* kernel;
           std::tie(kernel, inputs, outputs) = BuildKernelPrototype(
               ir_emitter_context, suggested_kernel_name,
-              kernel_arguments.args(), fusion_op.getInputBuffers().size(),
-              launch_dims, builder);
+              kernel_arguments.args(), fusion.operand_count(), launch_dims,
+              builder);
           TF_RETURN_IF_ERROR(EmitKernel(ir_emitter_context, elemental_emitter,
                                         fusion, launch_dims, std::move(inputs),
                                         std::move(outputs), builder, i));
@@ -220,9 +218,15 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
               << entry->kernel_name;
     }
 
-    result.thunks.emplace_back(std::make_unique<KernelThunk>(
-        fusion_op, entry->kernel_name, kernel_arguments.args(), launch_dims,
-        entry->shmem_bytes, ir_emitter_context.emit_ir_from_hlo()));
+    if (ir_emitter_context.emit_ir_from_hlo()) {
+      result.thunks.emplace_back(std::make_unique<KernelThunk>(
+          &fusion, entry->kernel_name, kernel_arguments.args(), launch_dims,
+          entry->shmem_bytes));
+    } else {
+      result.thunks.emplace_back(std::make_unique<KernelThunk>(
+          fusion_op, entry->kernel_name, kernel_arguments.args(), launch_dims,
+          entry->shmem_bytes));
+    }
   }
 
   return result;

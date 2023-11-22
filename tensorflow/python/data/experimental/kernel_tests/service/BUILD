@@ -133,7 +133,6 @@ tf_py_strict_test(
     size = "small",
     srcs = ["fault_tolerance_test.py"],
     shard_count = 8,
-    tags = [],
     deps = [
         ":test_base",
         "//tensorflow/python/data/experimental/ops:data_service_ops",
@@ -193,7 +192,6 @@ tf_py_strict_test(
     name = "cross_trainer_cache_test",
     size = "medium",
     srcs = ["cross_trainer_cache_test.py"],
-    tags = [],
     shard_count = 8,
     deps = [
         ":test_base",

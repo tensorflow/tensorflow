@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -115,7 +116,7 @@ class LaunchCmd : public CommandBufferCmd {
                 se::CommandBuffer* command_buffer) override;
 
  private:
-  using OwnedKernel = std::unique_ptr<se::KernelBase>;
+  using OwnedKernel = std::unique_ptr<se::Kernel>;
 
   std::string kernel_name_;
   std::vector<BufferAllocation::Slice> args_;
@@ -141,6 +142,31 @@ class MemcpyDeviceToDeviceCmd : public CommandBufferCmd {
   BufferAllocation::Slice dst_;
   BufferAllocation::Slice src_;
   int64_t num_bytes_;
+};
+
+//===----------------------------------------------------------------------===//
+// GemmCmd
+//===----------------------------------------------------------------------===//
+
+class GemmCmd : public CommandBufferCmd {
+ public:
+  GemmCmd(GemmConfig config, const BufferAllocation::Slice& lhs_buffer,
+          const BufferAllocation::Slice& rhs_buffer,
+          const BufferAllocation::Slice& output_buffer, bool deterministic);
+
+  Status Initialize(se::StreamExecutor* executor,
+                    ExecutableSource source) override;
+
+  Status Record(const RecordParams& params,
+                se::CommandBuffer* command_buffer) override;
+
+ private:
+  const GemmConfig config_;
+  const BufferAllocation::Slice lhs_buffer_;
+  const BufferAllocation::Slice rhs_buffer_;
+  const BufferAllocation::Slice output_buffer_;
+  // Whether to run deterministically.
+  const bool deterministic_;
 };
 
 }  // namespace xla::gpu

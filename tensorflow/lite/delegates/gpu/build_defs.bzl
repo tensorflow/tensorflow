@@ -9,7 +9,14 @@ def nativewindow_linkopts():
     # return min_supported_ndk_api("26", ["-lnativewindow"])
     # copybara:uncomment_end
     # copybara:comment_begin(oss-only)
-    return ["-lnativewindow"]
+    return select({
+        "//tensorflow:android": [
+            # TODO: should only link against -lnativewindow
+            # if Android min supported NDK API Level is at least 26?
+            "-lnativewindow",
+        ],
+        "//conditions:default": [],
+    })
     # copybara:comment_end
 
 def gpu_delegate_linkopts():
@@ -25,3 +32,18 @@ def gpu_delegate_linkopts():
         ],
         "//conditions:default": [],
     }) + nativewindow_linkopts()
+
+def tflite_angle_heapcheck_deps():
+    # copybara:uncomment_begin(google-only)
+    # return select({
+    # "//tensorflow/lite/delegates/gpu:tflite_gpu_angle": [
+    # "@com_google_googletest//:gtest_main_no_heapcheck",
+    # ],
+    # "//conditions:default": [
+    # "@com_google_googletest//:gtest_main",
+    # ],
+    # })
+    # copybara:uncomment_end
+    # copybara:comment_begin(oss-only)
+    return ["@com_google_googletest//:gtest_main"]
+    # copybara:comment_end

@@ -248,11 +248,15 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
 
   xla::LocalClientOptions client_options;
   client_options.set_platform(platform.value());
-  client_options.set_intra_op_parallelism_threads(
-      device->tensorflow_cpu_worker_threads()->num_threads);
+  if (device != nullptr) {
+    client_options.set_intra_op_parallelism_threads(
+        device->tensorflow_cpu_worker_threads()->num_threads);
+  }
 
-  TF_ASSIGN_OR_RETURN(auto allowed_gpus, GetAllowedGpus(flr));
-  client_options.set_allowed_devices(allowed_gpus);
+  if (flr != nullptr) {
+    TF_ASSIGN_OR_RETURN(auto allowed_gpus, GetAllowedGpus(flr));
+    client_options.set_allowed_devices(allowed_gpus);
+  }
 
   auto client = xla::ClientLibrary::GetOrCreateLocalClient(client_options);
   if (!client.ok()) {
@@ -278,11 +282,32 @@ Status GetOrCreatePjRtDeviceCompilerAndProfiler(
   const auto& device_type = platform_info.device_type();
   const std::string& compiler_name =
       GetPjRtDeviceCompilerResourceName(device_type);
+  const std::string& profiler_name =
+      GetPjRtDeviceCompilationProfilerResourceName(device_type);
+  bool deleted_old_device_compiler = false;
 
   // Lookup the DeviceCompiler, create one if not found.
   Status s = rm->Lookup<PjRtDeviceCompiler>(
       rm->default_container(), compiler_name, pjrt_device_compiler);
-  if (!s.ok()) {
+  if (s.ok() && device_type == DEVICE_TPU) {
+    auto* existing_pjrt_client = (*pjrt_device_compiler)->client();
+    TF_ASSIGN_OR_RETURN(auto* latest_pjrt_client, GetPjRtClient(device_type));
+
+    if (existing_pjrt_client != latest_pjrt_client) {
+      // PjRtClient has changed. Delete the PjRtDeviceCompiler (and the cache
+      // within) and create a new one.
+      TF_RETURN_IF_ERROR(rm->Delete<PjRtDeviceCompiler>(rm->default_container(),
+                                                        compiler_name));
+      TF_RETURN_IF_ERROR(rm->Delete<DeviceCompilationProfiler>(
+          rm->default_container(), profiler_name));
+
+      deleted_old_device_compiler = true;
+    }
+  }
+
+  // TODO(b/308698131): Try consolidating all PJRT-related state into one class
+  // instead of directly storing it in the ResourceMgr.
+  if (!s.ok() || deleted_old_device_compiler) {
     DeviceType compilation_device_type("");
     xla::PjRtClient* pjrt_client = nullptr;
     TF_RETURN_IF_ERROR(GetCompilationDeviceTypeAndPjRtClient(
@@ -297,8 +322,6 @@ Status GetOrCreatePjRtDeviceCompilerAndProfiler(
         }));
   }
 
-  const std::string& profiler_name =
-      GetPjRtDeviceCompilationProfilerResourceName(device_type);
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<DeviceCompilationProfiler>(
       rm->default_container(), profiler_name, profiler,
       [](DeviceCompilationProfiler** profiler) {

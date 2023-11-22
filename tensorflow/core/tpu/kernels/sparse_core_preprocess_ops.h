@@ -73,6 +73,8 @@ class GetMinibatchesInCsrWithPhysicalReplicaOp : public OpKernel {
   std::string table_name_;
   std::unique_ptr<SparseCoreOpsStatsHandler> sparse_core_ops_stats_handler_;
 
+  bool allow_id_dropping_for_minibatching_ = false;
+
  private:
   int num_replica_ = 1;
   int max_minibatches_per_sc_ = 1;

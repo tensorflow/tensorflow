@@ -50,7 +50,6 @@ void MemoryTypesHelper(const NameRangeMap& name_map,
   for (size_t i = 0; i < host_memory_args->size(); ++i) {
     auto iter = name_map.find((*host_memory_args)[i]);
     if (iter != name_map.end()) {
-      VLOG(2)<<(*host_memory_args)[i]<<" "<<iter->second.first<<" "<<iter->second.second;
       for (int j = iter->second.first; j < iter->second.second; ++j) {
         (*memory_types)[j] = HOST_MEMORY;
       }
@@ -170,7 +169,6 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
     if (host_memory_required(inp_dtypes[i])) {
       (*inp_mtypes)[i] = HOST_MEMORY;
     }
-    VLOG(2)<<i<<" "<<(*inp_mtypes)[i];
   }
   for (int i = 0; i < out_mtypes->size(); ++i) {
     if (host_memory_required(out_dtypes[i])) {

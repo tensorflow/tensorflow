@@ -32,10 +32,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @nodep_single_outside_compilation() -> () {
      // CHECK: "tf_device.parallel_execute"
      // CHECK-NEXT: "tf_device.launch"
+     // CHECK-SAME: device = "/job:worker/replica:0/task:0/device:CPU:0"
      // CHECK-NEXT: "tf.B"
      // CHECK-NOT: _xla_outside_compilation
      // CHECK-NEXT:   tf_device.return
-     // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
      // CHECK: "tf_device.cluster"
      // CHECK-NEXT: "tf.A"
      // CHECK: device_assignment =  [], num_cores_per_replica = 1 : i64, topology =  ""
@@ -102,9 +102,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
+    // CHECK-SAME:     device = "TPU_REPLICATED_HOST_0"
     // CHECK:            "tf.B"
     // CHECK-NEXT:       tf_device.return
-    // CHECK-NEXT:     device = "TPU_REPLICATED_HOST_0"
     // CHECK:          %[[TPU_CLUSTER_OUTPUT:[0-9]*]] = "tf_device.cluster"
     // CHECK:            tf_device.return
     // CHECK:          tf_device.return %[[TPU_CLUSTER_OUTPUT]]
@@ -1839,10 +1839,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @outside_compilation_model_parallelism() -> () {
      // CHECK: "tf_device.parallel_execute"
      // CHECK-NEXT: "tf_device.launch"
+     // CHECK-SAME: device = "/job:worker/replica:0/task:0/device:CPU:0"
      // CHECK-NEXT: "tf.B"
      // CHECK-NOT: _xla_outside_compilation
      // CHECK-NEXT:   tf_device.return
-     // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
      // CHECK: "tf_device.cluster"
      // CHECK-NEXT: "tf.A"
      // CHECK: num_cores_per_replica = 2 : i64

@@ -30,7 +30,6 @@ cc_library(
         ":auto_sharding_cost_graph",
         ":auto_sharding_option",
         ":auto_sharding_solver",
-        ":auto_sharding_solver_option",
         ":auto_sharding_strategy",
         ":auto_sharding_util",
         ":auto_sharding_wrapper",
@@ -54,6 +53,7 @@ cc_library(
         "//xla/service:dump",
         "//xla/service:hlo_alias_analysis",
         "//xla/service:hlo_buffer",
+        "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_memory_scheduler",
         "//xla/service:hlo_pass",
         "//xla/service:hlo_value",
@@ -138,6 +138,7 @@ cc_library(
 
 cc_library(
     name = "auto_sharding_option",
+    srcs = ["auto_sharding_option.cc"],
     hdrs = ["auto_sharding_option.h"],
     visibility = ["//visibility:public"],
     deps = [
@@ -159,6 +160,7 @@ cc_library(
         ":auto_sharding_strategy",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",
+        "//xla/service:hlo_cost_analysis",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -174,6 +176,7 @@ cc_library(
         ":auto_sharding_wrapper",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",
+        "//xla/service:hlo_cost_analysis",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -194,7 +197,7 @@ cc_library(
     hdrs = ["cluster_environment.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":auto_sharding_solver_option",
+        ":auto_sharding_option",
         ":auto_sharding_strategy",
         ":auto_sharding_util",
         ":profiling_result",
@@ -208,12 +211,6 @@ cc_library(
     hdrs = ["profiling_result.h"],
     visibility = ["//visibility:public"],
     deps = [":auto_sharding_strategy"],
-)
-
-cc_library(
-    name = "auto_sharding_solver_option",
-    hdrs = ["auto_sharding_solver_option.h"],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -231,6 +228,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_sharding_util",
         "//xla/service:call_graph",
+        "//xla/service:hlo_cost_analysis",
         "//xla/service:sharding_propagation",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",

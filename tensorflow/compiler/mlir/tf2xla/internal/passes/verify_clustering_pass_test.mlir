@@ -14,3 +14,13 @@ func.func @testTFDialect(%arg0: tensor<4x?x!tf_type.stringref>) -> tensor<4x2x!t
   %0 = "tf.Identity"(%arg0) : (tensor<4x?x!tf_type.stringref>) -> tensor<4x2x!tf_type.string>
   func.return %0 : tensor<4x2x!tf_type.string>
 }
+
+
+// -----
+
+func.func @testTFDialect(%arg0: tensor<4x?x!tf_type.stringref>) -> tensor<4x2x!tf_type.string> {
+   // expected-error@below {{op has outside compilation attribute _xla_outside_compilation which is not allowed after clustering}}
+  %0 = "tf.Identity"(%arg0) {_xla_outside_compilation = "cluster1"}: (tensor<4x?x!tf_type.stringref>) -> tensor<4x2x!tf_type.string>
+  func.return %0 : tensor<4x2x!tf_type.string>
+}
+

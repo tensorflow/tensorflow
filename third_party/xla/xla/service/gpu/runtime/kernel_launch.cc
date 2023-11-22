@@ -56,7 +56,7 @@ static absl::Status LaunchImpl(
     const ServiceExecutableRunOptions* run_options, const std::string* ptx,
     const std::vector<uint8_t>* cubin, se::DeviceMemoryBase* temp_buffer,
     ConcurrentRegionStatus* region_status,
-    State<std::unique_ptr<se::KernelBase>> device_kernel,
+    State<std::unique_ptr<se::Kernel>> device_kernel,
     int32_t shared_memory_bytes, int32_t grid_size_x, int32_t grid_size_y,
     int32_t grid_size_z, int32_t block_size_x, int32_t block_size_y,
     int32_t block_size_z, CustomCall::RemainingArgs args, std::string_view name,
@@ -72,7 +72,7 @@ static absl::Status LaunchImpl(
 
   // If kernel does not exist create it from the ptx and cubin.
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<se::KernelBase> * kernel, device_kernel.GetOrCreate([&] {
+      std::unique_ptr<se::Kernel> * kernel, device_kernel.GetOrCreate([&] {
         return ToAbsl(CreateKernel(absl::string_view(name.data(), name.size()),
                                    args_size_including_temp_buffer, *ptx,
                                    *cubin, executor, shared_memory_bytes));
@@ -143,7 +143,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .UserData<const std::vector<uint8_t>*>()
         .UserData<se::DeviceMemoryBase*>()
         .UserData<ConcurrentRegionStatus*>()
-        .State<std::unique_ptr<se::KernelBase>>("uid")
+        .State<std::unique_ptr<se::Kernel>>("uid")
         .Arg<int32_t>()   // shared_memory_bytes
         .Arg<int32_t>()   // grid_size_x
         .Arg<int32_t>()   // grid_size_y

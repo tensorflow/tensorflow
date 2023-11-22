@@ -75,7 +75,6 @@ typename RocBlasTypeConversionHelper<T>::mapped_type *complex_cast(
 
 static void blas_log(const char *c) {}
 
-
 static string ToString(rocblas_status status) {
   switch (status) {
     case rocblas_status_success:
@@ -648,8 +647,8 @@ tsl::Status ReorganizeMemory(Stream *stream,
 
   assert(batch_count > 0);
   char *device_memory_ptr = static_cast<char *>(device_memory->opaque());
-  char* src_ptr = reinterpret_cast<char*>(raw_ptrs[0]);
-  char* dst_ptr = device_memory_ptr;
+  char *src_ptr = reinterpret_cast<char *>(raw_ptrs[0]);
+  char *dst_ptr = device_memory_ptr;
   size_t matrix_byte_size = batch_stride * sizeof(MAPPED_T);
 
   std::vector<MemoryCopyOp> mem_copy_ops{
@@ -760,7 +759,6 @@ tsl::Status ROCMBlas::AllocateStridedBuffer(
                             batch_stride, true);
   return tsl::OkStatus();
 }
-
 
 template <typename T, typename FuncT>
 tsl::Status ROCMBlas::DoBlasGemmBatchedInternal(
@@ -970,7 +968,6 @@ bool ROCMBlas::DoBlasGemmBatched(
   }
   return status.ok();
 }
-
 
 bool ROCMBlas::DoBlasGemmBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,

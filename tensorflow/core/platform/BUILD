@@ -515,6 +515,7 @@ py_strict_test(
     srcs = ["ram_file_system_test.py"],
     python_version = "PY3",
     deps = [
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",

@@ -816,12 +816,6 @@ LogicalResult matchAndRewriteDotLikeOp(DotLikeOp op, DotLikeOpAdaptor adaptor,
                                        ConversionPatternRewriter &rewriter) {
   // Lower Dot/DotGeneral UQ ops to DotGeneral int.
   // Assumes that operands and results are uq types.
-  auto lhs_element_quant_type = getElementTypeOrSelf(op.getLhs().getType())
-                                    .template dyn_cast<UniformQuantizedType>();
-  auto rhs_element_quant_type = getElementTypeOrSelf(op.getRhs().getType())
-                                    .template dyn_cast<UniformQuantizedType>();
-  auto res_element_quant_type = getElementTypeOrSelf(op.getResult())
-                                    .template dyn_cast<UniformQuantizedType>();
   Value lhs = adaptor.getLhs();
   Value rhs = adaptor.getRhs();
   auto res_int32_tensor_type =
@@ -839,14 +833,38 @@ LogicalResult matchAndRewriteDotLikeOp(DotLikeOp op, DotLikeOpAdaptor adaptor,
   Value res_i32 = CreateDotLikeKernel(rewriter, op->getLoc(), op,
                                       res_int32_tensor_type, lhs, rhs, attrs);
 
+  auto lhs_element_quant_type = getElementTypeOrSelf(op.getLhs().getType())
+                                    .template cast<UniformQuantizedType>();
+  auto rhs_element_quant_type = getElementTypeOrSelf(op.getRhs().getType())
+                                    .template dyn_cast<UniformQuantizedType>();
+  auto rhs_element_quant_per_channel_type =
+      getElementTypeOrSelf(op.getRhs().getType())
+          .template dyn_cast<UniformQuantizedPerAxisType>();
+  auto res_element_quant_type = getElementTypeOrSelf(op.getResult())
+                                    .template dyn_cast<UniformQuantizedType>();
+  auto res_element_quant_per_channel_type =
+      getElementTypeOrSelf(op.getResult())
+          .template dyn_cast<UniformQuantizedPerAxisType>();
+
+  // Here we assume LHS must be per-tensor quantized.
+  // If RHS is per-channel quantized, it must has 0 zp.
   Value zp_offset = CalculateZeroPointOffset(
       rewriter, op->getLoc(), lhs, rhs, lhs_element_quant_type.getZeroPoint(),
-      rhs_element_quant_type.getZeroPoint(), res_int32_tensor_type, dims);
+      (rhs_element_quant_type ? rhs_element_quant_type.getZeroPoint() : 0),
+      res_int32_tensor_type, dims);
+
+  // For per-channel quantization, we assume that result scales are proportional
+  // to rhs scales for each channels.
+  double combined_scale_fp =
+      rhs_element_quant_type
+          ? lhs_element_quant_type.getScale() *
+                rhs_element_quant_type.getScale() /
+                res_element_quant_type.getScale()
+          : lhs_element_quant_type.getScale() *
+                rhs_element_quant_per_channel_type.getScales()[0] /
+                res_element_quant_per_channel_type.getScales()[0];
 
   // Multiply dot result and zp_offset by combined_scale only if it is not 1.0.
-  double combined_scale_fp = lhs_element_quant_type.getScale() *
-                             rhs_element_quant_type.getScale() /
-                             res_element_quant_type.getScale();
   if (std::abs(combined_scale_fp - 1.0) > 0.001) {
     Value combined_scale = rewriter.create<mhlo::ConstantOp>(
         op->getLoc(), rewriter.getF32FloatAttr(combined_scale_fp));
@@ -877,9 +895,11 @@ LogicalResult matchAndRewriteDotLikeOp(DotLikeOp op, DotLikeOpAdaptor adaptor,
     }
   }
 
+  // If result is per-channel quantized, it must has 0 zp.
   Value combined_zp = rewriter.create<mhlo::ConstantOp>(
       op->getLoc(),
-      rewriter.getI32IntegerAttr(res_element_quant_type.getZeroPoint()));
+      rewriter.getI32IntegerAttr(
+          res_element_quant_type ? res_element_quant_type.getZeroPoint() : 0));
   if (zp_offset) {
     combined_zp = rewriter.create<chlo::BroadcastSubOp>(
         op->getLoc(), res_int32_tensor_type, combined_zp, zp_offset, nullptr);
@@ -893,17 +913,28 @@ template <typename DotLikeOp>
 FailureOr<bool> IsDotLikeOpHybrid(DotLikeOp op) {
   // Checks whether a dot-like op is hybrid by looking at input/output types.
   // Returns failure() when the type is not supported.
-  auto lhs_element_quant_type = getElementTypeOrSelf(op.getLhs().getType())
-                                    .template dyn_cast<UniformQuantizedType>();
-  auto rhs_element_quant_type = getElementTypeOrSelf(op.getRhs().getType())
-                                    .template dyn_cast<UniformQuantizedType>();
-  auto res_element_quant_type = getElementTypeOrSelf(op.getResult())
-                                    .template dyn_cast<UniformQuantizedType>();
-  if (lhs_element_quant_type && rhs_element_quant_type &&
-      res_element_quant_type) {
+  bool is_lhs_quant =
+      isa<UniformQuantizedType>(getElementTypeOrSelf(op.getLhs().getType()));
+  bool is_lhs_quant_per_channel = isa<UniformQuantizedPerAxisType>(
+      getElementTypeOrSelf(op.getLhs().getType()));
+  bool is_rhs_quant =
+      isa<UniformQuantizedType>(getElementTypeOrSelf(op.getRhs().getType()));
+  bool is_rhs_quant_per_channel = isa<UniformQuantizedPerAxisType>(
+      getElementTypeOrSelf(op.getRhs().getType()));
+  bool is_res_quant =
+      isa<UniformQuantizedType>(getElementTypeOrSelf(op.getResult()));
+  bool is_res_quant_per_channel =
+      isa<UniformQuantizedPerAxisType>(getElementTypeOrSelf(op.getResult()));
+
+  if (is_lhs_quant &&
+      ((is_rhs_quant && is_res_quant) ||
+       (isa<mhlo::ConvolutionOp>(op) && is_rhs_quant_per_channel &&
+        is_res_quant_per_channel))) {
+    // For quantized ops, RHS and result must be both per-channel quantized.
+    // For Convolution, we also support per-channel quantized RHS/result.
     return false;
-  } else if (!lhs_element_quant_type && rhs_element_quant_type &&
-             !res_element_quant_type) {
+  } else if (!is_lhs_quant && !is_lhs_quant_per_channel && is_rhs_quant &&
+             !is_res_quant && !is_res_quant_per_channel) {
     return true;
   } else {
     op->emitError("Invalid input/output type for Dot/Convolution op");
@@ -1016,13 +1047,63 @@ bool IsConvNDHWC(const mhlo::ConvDimensionNumbersAttr &dims) {
          dims.getOutputSpatialDimensions()[2] == 3;
 }
 
-FailureOr<DotLikeDimensionNumbers> VerifyConvolutionOp(mhlo::ConvolutionOp op) {
+FailureOr<DotLikeDimensionNumbers> VerifyAndConstructDims(
+    mhlo::ConvolutionOp op) {
   // RHS (weight) must have zero zp.
-  auto rhs_element_quant_type =
-      getElementTypeOrSelf(op.getRhs().getType()).cast<UniformQuantizedType>();
-  if (rhs_element_quant_type.getZeroPoint() != 0) {
-    op->emitError("RHS UQ type must have zero zp.");
+  // Here assumes RHS/result must be both per-tensor or both per-channel
+  // quantized.
+  auto failed_or = GetQuantType(op.getRhs().getType());
+  if (failed(failed_or)) {
     return failure();
+  }
+  QuantType rhs_element_quant_type = *failed_or;
+  bool is_rhs_quant_per_tensor =
+      std::get_if<UniformQuantizedType>(&rhs_element_quant_type);
+
+  if (is_rhs_quant_per_tensor
+          ? (std::get<UniformQuantizedType>(rhs_element_quant_type)
+                 .getZeroPoint() != 0)
+          : llvm::any_of(llvm::concat<const int64_t>(
+                             std::get<UniformQuantizedPerAxisType>(
+                                 rhs_element_quant_type)
+                                 .getZeroPoints(),
+                             getElementTypeOrSelf(op.getResult())
+                                 .cast<UniformQuantizedPerAxisType>()
+                                 .getZeroPoints()),
+                         [](int64_t zp) { return zp != 0; })) {
+    op->emitError("RHS/result UQ type must have zero zp.");
+    return failure();
+  }
+  // For per-channel quantization, RHS quantized axis must be out channel axis.
+  if (!is_rhs_quant_per_tensor &&
+      (std::get<UniformQuantizedPerAxisType>(rhs_element_quant_type)
+           .getQuantizedDimension() !=
+       op.getRhs().getType().cast<TensorType>().getRank() - 1)) {
+    op->emitError("Conv quantized axis must be out channel axis");
+    return failure();
+  }
+  // For per-channel quantization, ratio between RHS and Result scales must be
+  // the same for each channel.
+  if (!is_rhs_quant_per_tensor) {
+    auto res_element_quant_per_channel_type =
+        getElementTypeOrSelf(op.getResult())
+            .cast<UniformQuantizedPerAxisType>();
+    llvm::SmallVector<double> scale_ratios(
+        res_element_quant_per_channel_type.getScales().size());
+    for (int i = 0; i < scale_ratios.size(); ++i) {
+      scale_ratios[i] =
+          res_element_quant_per_channel_type.getScales()[i] /
+          std::get<UniformQuantizedPerAxisType>(rhs_element_quant_type)
+              .getScales()[i];
+      auto diff = (scale_ratios[i] - scale_ratios[0]) / scale_ratios[0];
+      // Check all ratios within a threshold.
+      if (std::abs(diff) > 0.001) {
+        op->emitError(
+            "Per-channel quantizated Conv must have same RHS/Result scale "
+            "ratio for each channel");
+        return failure();
+      }
+    }
   }
   // lhs_dilation must not exist.
   if (llvm::any_of(op.getLhsDilationAttr().getValues<int64_t>(),
@@ -1069,7 +1150,7 @@ class ConvertUniformQuantizedConvolutionOp
     if (*is_hybrid) {
       return matchAndRewriteDotLikeHybridOp(op, adaptor, rewriter);
     } else {
-      auto dims = VerifyConvolutionOp(op);
+      auto dims = VerifyAndConstructDims(op);
       if (failed(dims)) return failure();
       return matchAndRewriteDotLikeOp(op, adaptor, op->getAttrs(), *dims,
                                       rewriter);
@@ -1088,8 +1169,8 @@ class ConvertGenericOp : public ConversionPattern {
       Operation *op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     // This pattern only handle selected ops.
-    if (!llvm::isa<mhlo::ConstantOp, mhlo::ConvertOp, mhlo::BroadcastInDimOp,
-                   mhlo::MaxOp, mhlo::MinOp>(op)) {
+    if (!isa<mhlo::ConstantOp, mhlo::ConvertOp, mhlo::BroadcastInDimOp,
+             mhlo::MaxOp, mhlo::MinOp>(op)) {
       return failure();
     }
 

@@ -61,6 +61,7 @@ using mlir::lmhlo_gpu::CublasLtMatmulF8Op;
 using mlir::lmhlo_gpu::CublasLtMatmulOp;
 using mlir::lmhlo_gpu::CudnnConvReorderFilterAndBiasOp;
 using mlir::lmhlo_gpu::CudnnConvReorderFilterOp;
+using mlir::lmhlo_gpu::CudnnNormOp;
 using mlir::lmhlo_gpu::GEMMOp;
 using mlir::lmhlo_gpu::RadixSortOp;
 
@@ -540,6 +541,55 @@ class CholeskyOpLowering : public OpRewritePattern<CholeskyOp> {
   CustomCallDeclarations& custom_calls_;
 };
 
+class NormOpLowering : public OpRewritePattern<CudnnNormOp> {
+ private:
+  static constexpr const char kCustomCallTarget[] = "xla.gpu.norm";
+
+ public:
+  NormOpLowering(MLIRContext* ctx, UidGenerator& uid,
+                 CustomCallDeclarations& custom_calls)
+      : OpRewritePattern<CudnnNormOp>(ctx),
+        uid_(uid),
+        custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(CudnnNormOp op,
+                                PatternRewriter& rewriter) const override {
+    // Get or create a Custom Call function declaration.
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    func::FuncOp callee = custom_calls_.GetOrCreate(b, kCustomCallTarget, op);
+
+    // Convert norm to a function call.
+    auto call = rewriter.create<func::CallOp>(op.getLoc(), callee.getName(),
+                                              TypeRange(), op.getOperands());
+
+    // Assign a unique id to this instance of a norm operation.
+    call->setAttr(b.getStringAttr("uid"), b.getI64IntegerAttr(uid_.uid()));
+
+    // Copy backend specific attributes.
+    call->setAttr(b.getStringAttr("norm_algorithm_config"),
+                  op.getAlgorithmConfigAttr());
+    call->setAttr(b.getStringAttr("epsilon"), op.getEpsilonAttr());
+
+    mlir::ArrayAttr array = op.getOperandLayouts();
+    SmallVector<int64_t> values;
+    for (auto array_elem : array) {
+      mlir::IntegerAttr attr = array_elem.dyn_cast<mlir::IntegerAttr>();
+      values.push_back(attr.getInt());
+    }
+    call->setAttr(b.getStringAttr("operand_layouts"),
+                  b.getI64TensorAttr(values));
+
+    // Erase the original norm operation.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+
+ private:
+  UidGenerator& uid_;
+  CustomCallDeclarations& custom_calls_;
+};
+
 using mlir::lmhlo_gpu::fusedMHAOp;
 
 template <typename FusedDotAttentionForward>
@@ -920,6 +970,10 @@ void ConvertLmhloGpuToGpuRuntimePass::runOnOperation() {
   patterns.insert<CudnnConvReorderFilterAndBiasOpLowering>(ctx, custom_calls);
   patterns.insert<CholeskyOpLowering>(ctx, custom_calls);
   patterns.insert<RadixSortOpLowering>(ctx, custom_calls);
+
+  // Each unique Norm operation in the module will get assigned a uid.
+  UidGenerator norm_uid;
+  patterns.insert<NormOpLowering>(ctx, norm_uid, custom_calls);
 
   // Each unique fused_attention operation in the module will get assigned a
   // uid.

@@ -7,6 +7,10 @@ load(
     "//xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
 load("@local_tsl//tsl:tsl.bzl", "tsl_copts")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load(
@@ -14,6 +18,10 @@ load(
     "tf_cuda_tests_tags",
 )
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load(
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 package(
     default_visibility = ["//visibility:public"],
@@ -769,6 +777,7 @@ xla_test(
 xla_test(
     name = "array_elementwise_ops_test",
     srcs = ["array_elementwise_ops_test.cc"],
+    tags = ["no_rocm"],
     shard_count = 25,
     deps = [
         ":client_library_test_base",
@@ -836,6 +845,27 @@ xla_test(
 xla_test(
     name = "fft_test",
     srcs = ["fft_test.cc"],
+    deps = [
+        ":hlo_test_base",
+        ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+# Repeat fft_test with single-threaded runtime.
+xla_test(
+    name = "fft_single_threaded_test",
+    srcs = ["fft_test.cc"],
+    backend_args = {
+        "cpu": [
+            "--xla_cpu_multi_thread_eigen=false",
+        ],
+    },
+    tags = [
+        "optonly",
+    ],
     deps = [
         ":hlo_test_base",
         ":test_macros_header",
@@ -2338,6 +2368,9 @@ xla_test(
 xla_cc_test(
     name = "llvm_compiler_test",
     srcs = if_gpu_is_configured(["llvm_compiler_test.cc"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM",
+    ]),
     tags = tf_cuda_tests_tags(),
     deps = if_gpu_is_configured([
         ":verified_hlo_module",
@@ -2354,6 +2387,10 @@ xla_cc_test(
         "//xla/stream_executor",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test_main",
+    ]) + if_cuda_is_configured([
+        "//xla/stream_executor/cuda:cuda_platform_id",
+    ]) + if_rocm_is_configured([
+        "//xla/stream_executor/rocm:rocm_platform_id",
     ]),
 )
 

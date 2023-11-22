@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
+#include "xla/literal_util.h"
 #include "xla/map_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
@@ -137,21 +139,18 @@ void IrEmitter::EmitThreadLocalFunctionEpilogue(HloComputation* computation) {
     llvm::Value* ret_value =
         Load(root_value.GetBasePointeeType(), root_value.GetBasePointer(),
              "load_ret_value");
-    Store(ret_value,
-          BitCast(out_parameter, root_value.GetBasePointer()->getType()));
+    Store(ret_value, out_parameter);
   } else {
     CHECK(return_shape.IsTuple());
 
     llvm::Type* tuple_type = llvm_ir::ShapeToIrType(return_shape, module_);
-    llvm::Type* tuple_type_lvalue = tuple_type->getPointerTo();
-    llvm::Value* tuple_lvalue = BitCast(out_parameter, tuple_type_lvalue);
 
     for (int i = 0; i < return_shape.tuple_shapes_size(); i++) {
       const Shape& element_shape = return_shape.tuple_shapes(i);
       llvm::Value* destination = llvm_ir::EmitGetTupleElement(
           element_shape,
           /*index=*/i,
-          /*alignment=*/MinimumAlignmentForShape(element_shape), tuple_lvalue,
+          /*alignment=*/MinimumAlignmentForShape(element_shape), out_parameter,
           tuple_type, &b_);
 
       llvm::Value* source = llvm_ir::EmitGetTupleElement(
@@ -255,9 +254,7 @@ void IrEmitter::InitializeIrFunction(const std::string& function_name) {
 
 Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
   VLOG(2) << "HandleBitcast: " << bitcast->ToString();
-  emitted_value_[bitcast] =
-      BitCast(GetEmittedValueFor(bitcast->operand(0)),
-              IrShapeType(bitcast->shape())->getPointerTo(), IrName(bitcast));
+  emitted_value_[bitcast] = GetEmittedValueFor(bitcast->operand(0));
   return OkStatus();
 }
 
@@ -274,8 +271,7 @@ llvm::Constant* IrEmitter::EmitGlobalForLiteral(const Literal& literal) {
   result_global->setAlignment(
       llvm::Align(MinimumAlignmentForShape(literal.shape())));
   result_global->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
-  return llvm::ConstantExpr::getBitCast(
-      result_global, IrShapeType(literal.shape())->getPointerTo());
+  return result_global;
 }
 
 Status IrEmitter::EmitConstantGlobals() {
@@ -478,8 +474,6 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
       llvm::Value * shape_ptr,
       llvm_ir::EncodeSelfDescribingShapeConstant(shape, &shape_length, &b_));
 
-  llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
-
   const char* acquire_func_name =
       kind == XfeedKind::kInfeed
           ? runtime::kAcquireInfeedBufferForDequeueSymbolName
@@ -493,7 +487,7 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
       EmitCallToFunc(acquire_func_name,
                      {GetExecutableRunOptionsArgument(), b_.getInt32(length_32),
                       shape_ptr, b_.getInt32(shape_length)},
-                     i8_ptr_type);
+                     b_.getPtrTy());
   if (kind == XfeedKind::kInfeed) {
     // Copy to the program buffer address from the acquired buffer.
     MemCpy(program_buffer_address, /*DstAlign=*/llvm::Align(1),
@@ -620,17 +614,15 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
 
   CHECK(absl::c_binary_search(thread_local_computations_, sort->to_apply()));
   llvm::Value* values = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
-      b_.getInt8PtrTy(), b_.getInt32(sort->operand_count()), "cc_values_alloca",
+      b_.getPtrTy(), b_.getInt32(sort->operand_count()), "cc_values_alloca",
       &b_);
   llvm::Value* sizes = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
       b_.getInt32Ty(), b_.getInt32(sort->operand_count()), "cc_sizes_alloca",
       &b_);
   for (int64_t i = 0; i < sort->operand_count(); ++i) {
-    llvm::Value* value_as_i8ptr =
-        PointerCast(destination_addresses[i], b_.getInt8PtrTy());
     llvm::Value* slot_in_values_alloca =
-        ConstInBoundsGEP1_32(b_.getInt8PtrTy(), values, i);
-    Store(value_as_i8ptr, slot_in_values_alloca);
+        ConstInBoundsGEP1_32(b_.getPtrTy(), values, i);
+    Store(destination_addresses[i], slot_in_values_alloca);
     llvm::Value* slot_in_sizes_alloca =
         ConstInBoundsGEP1_32(b_.getInt32Ty(), sizes, i);
     llvm::Value* size = b_.getInt32(ShapeUtil::ByteSizeOfPrimitiveType(
@@ -991,9 +983,6 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       }
 
       PrimitiveType primitive_type = lhs->shape().element_type();
-      llvm::Type* ir_ptr_type = primitive_type == F16
-                                    ? b_.getHalfTy()->getPointerTo()
-                                    : b_.getFloatTy()->getPointerTo();
       bool multi_threaded =
           hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
       bool use_mkl_dnn =
@@ -1045,9 +1034,9 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       }
       std::vector<llvm::Value*> args = {
           GetExecutableRunOptionsArgument(),
-          BitCast(GetEmittedValueFor(convolution), ir_ptr_type),
-          BitCast(lhs_address, ir_ptr_type),
-          BitCast(rhs_address, ir_ptr_type),
+          GetEmittedValueFor(convolution),
+          lhs_address,
+          rhs_address,
           b_.getInt64(input_batch),
       };
       for (int64_t d : input_dims) {
@@ -1107,33 +1096,40 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(fft));
 
   const std::vector<int64_t>& fft_length = fft->fft_length();
+  const int fft_rank = fft_length.size();
+
+  // Flatten operand batches.
+  absl::InlinedVector<int64_t, 4> operand_shape_flat(fft_rank + 1);
   int64_t input_batch = 1;
-  for (int i = 0; i < fft->shape().dimensions_size() - fft_length.size(); i++) {
-    input_batch *= fft->shape().dimensions(i);
+  int64_t input_batch_length = fft->shape().dimensions_size() - fft_rank;
+  for (int i = 0; i < input_batch_length; i++) {
+    input_batch *= operand->shape().dimensions(i);
+  }
+  operand_shape_flat[0] = input_batch;
+  for (int i = 0; i < fft_rank; ++i) {
+    operand_shape_flat[i + 1] =
+        operand->shape().dimensions(i + input_batch_length);
   }
 
   // Args have been computed, make the call.
-  llvm::Type* int8_ptr_type = b_.getInt8Ty()->getPointerTo();
   bool multi_threaded_eigen =
       hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
   const char* fn_name = multi_threaded_eigen
-                            ? runtime::kEigenFftSymbolName
-                            : runtime::kEigenSingleThreadedFftSymbolName;
-  const int fft_rank = fft_length.size();
-  EmitCallToFunc(
-      fn_name,
-      {GetExecutableRunOptionsArgument(),
-       BitCast(GetEmittedValueFor(fft), int8_ptr_type),
-       BitCast(operand_address, int8_ptr_type), b_.getInt32(fft->fft_type()),
-       b_.getInt32(operand->shape().element_type() == F64 ||
-                   operand->shape().element_type() == C128),
-       b_.getInt32(fft_rank), b_.getInt64(input_batch),
-       b_.getInt64(fft_rank > 0 ? fft_length[0] : 0),
-       b_.getInt64(fft_rank > 1 ? fft_length[1] : 0),
-       b_.getInt64(fft_rank > 2 ? fft_length[2] : 0)},
-      b_.getVoidTy(), /*does_not_throw=*/true,
-      /*only_accesses_arg_memory=*/false,
-      /*only_accesses_inaccessible_mem_or_arg_mem=*/true);
+                            ? runtime::kDuccFftSymbolName
+                            : runtime::kDuccSingleThreadedFftSymbolName;
+  auto* fft_lengths =
+      EmitGlobalForLiteral(LiteralUtil::CreateR1<int64_t>(fft_length));
+  auto* input_shape =
+      EmitGlobalForLiteral(LiteralUtil::CreateR1<int64_t>(operand_shape_flat));
+  EmitCallToFunc(fn_name,
+                 {GetExecutableRunOptionsArgument(), GetEmittedValueFor(fft),
+                  operand_address, b_.getInt32(fft->fft_type()),
+                  b_.getInt32(operand->shape().element_type() == F64 ||
+                              operand->shape().element_type() == C128),
+                  b_.getInt32(fft_rank), input_shape, fft_lengths},
+                 b_.getVoidTy(), /*does_not_throw=*/true,
+                 /*only_accesses_arg_memory=*/false,
+                 /*only_accesses_inaccessible_mem_or_arg_mem=*/true);
 
   return OkStatus();
 }
@@ -1251,7 +1247,6 @@ Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
                       llvm_ir::EncodeSelfDescribingShapeConstant(
                           crs->shape(), &shape_length, &b_));
 
-  llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
   bool use_global_device_ids =
       Cast<HloAllReduceInstruction>(crs)->use_global_device_ids();
   EmitCallToFunc(
@@ -1274,8 +1269,8 @@ Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
        /*shape_ptr=*/shape_ptr,
        /*shape_length=*/b_.getInt32(shape_length),
        /*num_buffers=*/b_.getInt32(crs->operand_count()),
-       /*input_buffers=*/b_.CreateBitCast(input_buffers, i8_ptr_type),
-       /*output_buffers=*/b_.CreateBitCast(output_buffers, i8_ptr_type)},
+       /*input_buffers=*/input_buffers,
+       /*output_buffers=*/output_buffers},
       b_.getVoidTy());
 
   return OkStatus();
@@ -1299,7 +1294,6 @@ Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
   CHECK(!instr->split_dimension() && instr->shape().IsTuple())
       << "Only tuple AllToAll is supported";
 
-  llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
   std::string replica_groups =
       ReplicaGroupsToString(instruction->replica_groups());
   int32_t replica_groups_size = replica_groups.size();
@@ -1327,22 +1321,24 @@ Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
   llvm::Value* output_buffers =
       EncodeArrayFunctionArguments(output_buffer_ptrs, "output_buffers", &b_);
 
-  EmitCallToFunc(
-      runtime::kAllToAllSymbolName,
-      {/*run_options=*/GetExecutableRunOptionsArgument(),
-       /*channel_id_present=*/
-       b_.getInt32(static_cast<int32_t>(instruction->channel_id().has_value())),
-       /*op_id=*/
-       b_.getInt64(instruction->channel_id().has_value()
-                       ? *instruction->channel_id()
-                       : instruction->GetModule()->unique_id()),
-       /*replica_groups=*/replica_groups_v,
-       /*replica_groups_size=*/b_.getInt32(replica_groups_size),
-       /*num_buffers=*/b_.getInt32(instruction->operand_count()),
-       /*buffer_size=*/b_.getInt64(buffer_size),
-       /*source_buffers=*/b_.CreateBitCast(input_buffers, i8_ptr_type),
-       /*destination_buffers=*/b_.CreateBitCast(output_buffers, i8_ptr_type)},
-      b_.getVoidTy());
+  EmitCallToFunc(runtime::kAllToAllSymbolName,
+                 {
+                     /*run_options=*/GetExecutableRunOptionsArgument(),
+                     /*channel_id_present=*/
+                     b_.getInt32(static_cast<int32_t>(
+                         instruction->channel_id().has_value())),
+                     /*op_id=*/
+                     b_.getInt64(instruction->channel_id().has_value()
+                                     ? *instruction->channel_id()
+                                     : instruction->GetModule()->unique_id()),
+                     /*replica_groups=*/replica_groups_v,
+                     /*replica_groups_size=*/b_.getInt32(replica_groups_size),
+                     /*num_buffers=*/b_.getInt32(instruction->operand_count()),
+                     /*buffer_size=*/b_.getInt64(buffer_size),
+                     /*source_buffers=*/input_buffers,
+                     /*destination_buffers=*/output_buffers,
+                 },
+                 b_.getVoidTy());
 
   llvm_ir::EmitTuple(GetIrArrayFor(instruction), output_buffer_ptrs, &b_);
   return OkStatus();
@@ -1366,7 +1362,6 @@ Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
                       assignment_.GetUniqueSlice(crs, {}));
   llvm::Value* output_buffer = EmitBufferPointer(output_slice, shape);
 
-  llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
   EmitCallToFunc(
       runtime::kCollectivePermuteSymbolName,
       {/*run_options=*/GetExecutableRunOptionsArgument(),
@@ -1377,8 +1372,8 @@ Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
                        ? *crs->channel_id()
                        : crs->GetModule()->unique_id()),
        /*byte_size=*/b_.getInt32(ShapeUtil::ByteSizeOf(shape)),
-       /*input_buffer=*/b_.CreateBitCast(input_buffer, i8_ptr_type),
-       /*output_buffer=*/b_.CreateBitCast(output_buffer, i8_ptr_type),
+       /*input_buffer=*/input_buffer,
+       /*output_buffer=*/output_buffer,
        /*source_target_pairs=*/source_target_pairs_v,
        /*source_target_pairs_size=*/b_.getInt32(source_target_pairs.size())},
       b_.getVoidTy());
@@ -1391,12 +1386,10 @@ Status IrEmitter::HandlePartitionId(HloInstruction* hlo) {
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
                       assignment_.GetUniqueSlice(hlo, {}));
   llvm::Value* output_buffer = EmitBufferPointer(output_slice, hlo->shape());
-  llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
-  EmitCallToFunc(
-      runtime::kPartitionIdSymbolName,
-      {/*run_options=*/GetExecutableRunOptionsArgument(),
-       /*output_buffer=*/b_.CreateBitCast(output_buffer, i8_ptr_type)},
-      b_.getVoidTy());
+  EmitCallToFunc(runtime::kPartitionIdSymbolName,
+                 {/*run_options=*/GetExecutableRunOptionsArgument(),
+                  /*output_buffer=*/output_buffer},
+                 b_.getVoidTy());
   return OkStatus();
 }
 
@@ -1405,12 +1398,10 @@ Status IrEmitter::HandleReplicaId(HloInstruction* hlo) {
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
                       assignment_.GetUniqueSlice(hlo, {}));
   llvm::Value* output_buffer = EmitBufferPointer(output_slice, hlo->shape());
-  llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
-  EmitCallToFunc(
-      runtime::kReplicaIdSymbolName,
-      {/*run_options=*/GetExecutableRunOptionsArgument(),
-       /*output_buffer=*/b_.CreateBitCast(output_buffer, i8_ptr_type)},
-      b_.getVoidTy());
+  EmitCallToFunc(runtime::kReplicaIdSymbolName,
+                 {/*run_options=*/GetExecutableRunOptionsArgument(),
+                  /*output_buffer=*/output_buffer},
+                 b_.getVoidTy());
   return OkStatus();
 }
 
@@ -1682,16 +1673,14 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
   llvm_ir::IrArray::Index input_index(input_multi_index, arg->shape(),
                                       b_.getInt64Ty());
 
-  llvm::Value* input_address = BitCast(
-      arg_array.EmitArrayElementAddress(input_index, &b_), b_.getInt8PtrTy());
+  llvm::Value* input_address =
+      arg_array.EmitArrayElementAddress(input_index, &b_);
 
   for (int i = 0; i < accumulator.size(); i++) {
-    auto input_address_typed =
-        BitCast(input_address, accumulator[i]->getType());
     auto alloca = llvm::cast<llvm::AllocaInst>(accumulator[i]);
     auto current_accumulator_value = AlignedLoad(
         alloca->getAllocatedType(), accumulator[i], element_alignment);
-    auto addend = AlignedLoad(alloca->getAllocatedType(), input_address_typed,
+    auto addend = AlignedLoad(alloca->getAllocatedType(), input_address,
                               element_alignment);
     arg_array.AnnotateLoadStoreInstructionWithMetadata(addend);
 
@@ -1700,8 +1689,8 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
     AlignedStore(reduced_result, accumulator[i], element_alignment);
 
     if (i != (accumulator.size() - 1)) {
-      input_address = ConstInBoundsGEP1_32(reduced_result->getType(),
-                                           input_address_typed, 1);
+      input_address =
+          ConstInBoundsGEP1_32(reduced_result->getType(), input_address, 1);
     }
   }
 
@@ -1721,18 +1710,14 @@ void IrEmitter::EmitShardedVectorStore(
     llvm::Value* store_address, const std::vector<llvm::Value*>& value_to_store,
     llvm::Align alignment, const llvm_ir::IrArray& containing_array) {
   for (int i = 0; i < value_to_store.size(); i++) {
-    auto store_address_typed =
-        BitCast(store_address,
-                llvm::PointerType::getUnqual(value_to_store[i]->getType()));
-
     auto store_instruction =
-        AlignedStore(value_to_store[i], store_address_typed, alignment);
+        AlignedStore(value_to_store[i], store_address, alignment);
     containing_array.AnnotateLoadStoreInstructionWithMetadata(
         store_instruction);
 
     if (i != (value_to_store.size() - 1)) {
-      store_address = ConstInBoundsGEP1_32(value_to_store[i]->getType(),
-                                           store_address_typed, 1);
+      store_address =
+          ConstInBoundsGEP1_32(value_to_store[i]->getType(), store_address, 1);
     }
   }
 }
@@ -2286,8 +2271,6 @@ Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
   int32_t raw_data_size =
       ShapeUtil::ByteSizeOf(ShapeUtil::MakeStaticShape(hlo->shape()));
   llvm::Value* dest_buffer = GetEmittedValueFor(hlo);
-  llvm::Value* raw_buffer =
-      b_.CreateBitCast(dest_buffer, b_.getInt8Ty()->getPointerTo());
   for (int64_t i = 1; i < hlo->operand_count(); ++i) {
     const int64_t dim_index = i - 1;
     llvm::Value* source_buffer = GetEmittedValueFor(hlo->operand(i));
@@ -2295,10 +2278,9 @@ Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
                                         source_buffer, "dyn_dim_size");
 
     llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
-        b_.getInt8Ty(), raw_buffer,
+        b_.getInt8Ty(), dest_buffer,
         raw_data_size + dim_index * sizeof(int32_t));
-    b_.CreateStore(dyn_dim_size,
-                   b_.CreateBitCast(metadata, b_.getInt32Ty()->getPointerTo()));
+    b_.CreateStore(dyn_dim_size, metadata);
     dynamic_dims.push_back(b_.CreateIntCast(dyn_dim_size, b_.getInt64Ty(),
                                             /*isSigned=*/true,
                                             "i64_dyn_dim_size"));
@@ -2339,8 +2321,6 @@ Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
   llvm::Type* data_type = IrShapeType(data_shape);
   llvm_ir::IrArray data_array(data_address, data_type, data_shape);
   llvm::Value* source_buffer = GetEmittedValueFor(hlo->operand(0));
-  llvm::Value* raw_buffer =
-      b_.CreateBitCast(source_buffer, b_.getInt8Ty()->getPointerTo());
   int64_t raw_data_size =
       ShapeUtil::ByteSizeOf(ShapeUtil::MakeStaticShape(input_shape));
 
@@ -2359,15 +2339,11 @@ Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
         EmitBufferPointer(dim_size_slice, data_shape);
     const int64_t dim_index = i - 1;
     llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
-        b_.getInt8Ty(), raw_buffer,
+        b_.getInt8Ty(), source_buffer,
         raw_data_size + dim_index * sizeof(int32_t));
-    llvm::Value* dyn_dim_size = b_.CreateLoad(
-        b_.getInt32Ty(),
-        b_.CreateBitCast(metadata, b_.getInt32Ty()->getPointerTo()),
-        "dyn_dim_size");
-    b_.CreateStore(dyn_dim_size,
-                   b_.CreateBitCast(dest_dim_size_address,
-                                    b_.getInt32Ty()->getPointerTo()));
+    llvm::Value* dyn_dim_size =
+        b_.CreateLoad(b_.getInt32Ty(), metadata, "dyn_dim_size");
+    b_.CreateStore(dyn_dim_size, dest_dim_size_address);
     dynamic_dims.push_back(b_.CreateIntCast(dyn_dim_size, b_.getInt64Ty(),
                                             /*isSigned=*/true,
                                             "i64_dyn_dim_size"));
@@ -2422,14 +2398,11 @@ Status IrEmitter::HandleTopK(HloInstruction* hlo) {
       EmitBufferPointer(out_values_slice, hlo->shape().tuple_shapes(0));
   llvm::Value* out_indices_ptr =
       EmitBufferPointer(out_indices_slice, hlo->shape().tuple_shapes(1));
-  EmitCallToFunc(
-      runtime::kTopKF32SymbolName,
-      {b_.getInt64(has_batch ? input->shape().dimensions(0) : 1),
-       b_.getInt64(input->shape().dimensions().back()), b_.getInt64(k),
-       BitCast(values_ptr, b_.getFloatTy()->getPointerTo()),
-       BitCast(out_values_ptr, b_.getFloatTy()->getPointerTo()),
-       BitCast(out_indices_ptr, b_.getInt32Ty()->getPointerTo())},
-      b_.getVoidTy());
+  EmitCallToFunc(runtime::kTopKF32SymbolName,
+                 {b_.getInt64(has_batch ? input->shape().dimensions(0) : 1),
+                  b_.getInt64(input->shape().dimensions().back()),
+                  b_.getInt64(k), values_ptr, out_values_ptr, out_indices_ptr},
+                 b_.getVoidTy());
 
   llvm_ir::EmitTuple(GetIrArrayFor(hlo), {out_values_ptr, out_indices_ptr},
                      &b_);
@@ -2491,17 +2464,14 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
   absl::Span<HloInstruction* const> operands(custom_call->operands());
-  llvm::Type* i8_ptr_type = b_.getInt8PtrTy();
   llvm::AllocaInst* operands_alloca =
-      llvm_ir::EmitAllocaAtFunctionEntryWithCount(
-          i8_ptr_type, b_.getInt32(operands.size()), "cc_operands_alloca", &b_);
+      llvm_ir::EmitAllocaAtFunctionEntryWithCount(b_.getPtrTy(),
+                                                  b_.getInt32(operands.size()),
+                                                  "cc_operands_alloca", &b_);
   for (size_t i = 0; i < operands.size(); ++i) {
-    const HloInstruction* operand = operands[i];
-    llvm::Value* operand_as_i8ptr =
-        PointerCast(GetEmittedValueFor(operand), i8_ptr_type);
     llvm::Value* slot_in_operands_alloca = InBoundsGEP(
         operands_alloca->getAllocatedType(), operands_alloca, {b_.getInt64(i)});
-    Store(operand_as_i8ptr, slot_in_operands_alloca);
+    Store(GetEmittedValueFor(operands[i]), slot_in_operands_alloca);
   }
   if (emit_code_for_msan_) {
     // Mark the alloca as initialized for msan. The buffer gets read by the
@@ -2511,7 +2481,7 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
     llvm::Type* intptr_type = b_.getIntPtrTy(dl);
     EmitCallToFunc(
         "__msan_unpoison",
-        {PointerCast(operands_alloca, i8_ptr_type),
+        {operands_alloca,
          llvm::ConstantInt::get(
              intptr_type, *operands_alloca->getAllocationSizeInBits(dl) / 8)},
         b_.getVoidTy());
@@ -2533,8 +2503,7 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
     }
     llvm_ir::EmitTuple(GetIrArrayFor(custom_call), base_ptrs, &b_);
   }
-  auto* output_address_arg =
-      PointerCast(GetEmittedValueFor(custom_call), i8_ptr_type);
+  auto* output_address_arg = GetEmittedValueFor(custom_call);
 
   auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
   switch (typed_custom_call->api_version()) {
@@ -2690,8 +2659,6 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
   std::vector<int64_t> outer_dims(std::next(concat_dim_layout_itr),
                                   output_min2maj.end());
 
-  llvm::Type* i8_ptr_type = b_.getInt8PtrTy();
-
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(concatenate));
   llvm_ir::IrArray target_array = GetIrArrayFor(concatenate);
 
@@ -2714,9 +2681,8 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
 
   // Contiguous subregions from each operand to the concatenate contribute to a
   // contiguous subregion in the target buffer starting at target_region_begin.
-  llvm::Value* target_region_begin = BitCast(
-      target_array.EmitArrayElementAddress(target_index, &b_, "target_region"),
-      i8_ptr_type);
+  llvm::Value* target_region_begin =
+      target_array.EmitArrayElementAddress(target_index, &b_, "target_region");
   int64_t byte_offset_into_target_region = 0;
 
   int64_t inner_dims_product =
@@ -2732,9 +2698,8 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
     llvm_ir::IrArray source_array = GetIrArrayFor(operand);
     llvm_ir::IrArray::Index source_index(target_multi_index, operand->shape(),
                                          b_.getInt64Ty());
-    llvm::Value* copy_source_address = BitCast(
-        source_array.EmitArrayElementAddress(source_index, &b_, "src_addr"),
-        i8_ptr_type);
+    llvm::Value* copy_source_address =
+        source_array.EmitArrayElementAddress(source_index, &b_, "src_addr");
 
     llvm::Value* copy_target_address =
         GEP(b_.getInt8Ty(), target_region_begin,
@@ -2759,27 +2724,25 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
 
 llvm::Value* IrEmitter::EmitPrintf(absl::string_view fmt,
                                    absl::Span<llvm::Value* const> arguments) {
-  llvm::Type* ptr_ty = b_.getInt8Ty()->getPointerTo();
   std::vector<llvm::Value*> call_args;
   call_args.push_back(b_.CreateGlobalStringPtr(llvm_ir::AsStringRef(fmt)));
   absl::c_copy(arguments, std::back_inserter(call_args));
   return b_.CreateCall(
       b_.GetInsertBlock()->getParent()->getParent()->getOrInsertFunction(
-          "printf", llvm::FunctionType::get(b_.getInt32Ty(), {ptr_ty},
+          "printf", llvm::FunctionType::get(b_.getInt32Ty(), {b_.getPtrTy()},
                                             /*isVarArg=*/true)),
       call_args);
 }
 
 llvm::Value* IrEmitter::EmitPrintfToStderr(
     absl::string_view fmt, absl::Span<llvm::Value* const> arguments) {
-  llvm::Type* ptr_ty = b_.getInt8Ty()->getPointerTo();
   std::vector<llvm::Value*> call_args;
   call_args.push_back(b_.CreateGlobalStringPtr(llvm_ir::AsStringRef(fmt)));
   absl::c_copy(arguments, std::back_inserter(call_args));
   return b_.CreateCall(
       b_.GetInsertBlock()->getParent()->getParent()->getOrInsertFunction(
           runtime::kPrintfToStderrSymbolName,
-          llvm::FunctionType::get(b_.getInt32Ty(), {ptr_ty},
+          llvm::FunctionType::get(b_.getInt32Ty(), {b_.getPtrTy()},
                                   /*isVarArg=*/true)),
       call_args);
 }
@@ -2820,17 +2783,13 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
       primitive_type_size, MinimumAlignmentForPrimitiveType(primitive_type)));
   llvm::Type* primitive_llvm_type =
       llvm_ir::PrimitiveTypeToIrType(primitive_type, module_);
-  llvm::Type* primitive_ptr_type =
-      llvm::PointerType::getUnqual(primitive_llvm_type);
 
   if (element_count == 1) {
     auto* load_instruction =
-        AlignedLoad(primitive_llvm_type, BitCast(source, primitive_ptr_type),
-                    element_alignment);
+        AlignedLoad(primitive_llvm_type, source, element_alignment);
     source_array.AnnotateLoadStoreInstructionWithMetadata(load_instruction);
     auto* store_instruction =
-        AlignedStore(load_instruction, BitCast(target, primitive_ptr_type),
-                     element_alignment);
+        AlignedStore(load_instruction, target, element_alignment);
     target_array.AnnotateLoadStoreInstructionWithMetadata(store_instruction);
   } else {
     auto* memcpy_instruction = b_.CreateMemCpy(
@@ -3004,9 +2963,6 @@ Status IrEmitter::HandleRngGetAndUpdateState(HloInstruction* rng_state) {
 
   // The buffer has an array type while the value has a i128. Cast the
   // buffer to i128 type to store the value.
-  address = BitCast(address, llvm::PointerType::get(
-                                 old_state->getType()->getScalarType(),
-                                 address->getType()->getPointerAddressSpace()));
   llvm::StoreInst* store = Store(old_state, address);
   store->setAlignment(llvm::Align(IrEmitter::MinimumAlignmentForPrimitiveType(
       rng_state->shape().element_type())));
@@ -3131,11 +3087,9 @@ void IrEmitter::TracingState::EmitTracingStart(llvm::IRBuilder<>* b,
     return;
   }
 
-  llvm::Type* int8_ptr_type = b->getInt8Ty()->getPointerTo();
-  llvm::Type* void_ptr_type =
-      int8_ptr_type;  // LLVM does not have a void*, we use an int8_t* instead.
+  llvm::Type* void_ptr_type = b->getPtrTy();
   llvm::FunctionType* fn_type =
-      llvm::FunctionType::get(b->getInt64Ty(), {void_ptr_type, int8_ptr_type},
+      llvm::FunctionType::get(b->getInt64Ty(), {void_ptr_type, void_ptr_type},
                               /*isVarArg=*/false);
 
   llvm::Function* function = b->GetInsertBlock()->getParent();
@@ -3149,9 +3103,7 @@ void IrEmitter::TracingState::EmitTracingStart(llvm::IRBuilder<>* b,
     fn->setOnlyAccessesArgMemory();
   }
   auto* hlo_name = b->CreateGlobalStringPtr(hlo->name());
-  auto* activity_id =
-      b->CreateCall(trace_func, {b->CreateBitCast(run_options, void_ptr_type),
-                                 b->CreateBitCast(hlo_name, int8_ptr_type)});
+  auto* activity_id = b->CreateCall(trace_func, {run_options, hlo_name});
   activity_id->setName(IrName(hlo, "activity_id"));
   activity_ids_[hlo] = activity_id;
 }
@@ -3163,11 +3115,8 @@ void IrEmitter::TracingState::EmitTracingEnd(llvm::IRBuilder<>* b,
     return;
   }
 
-  llvm::Type* void_ptr_type =
-      b->getInt8Ty()->getPointerTo();  // LLVM does not have a void*, we use an
-                                       // int8_t* instead.
   llvm::FunctionType* fn_type =
-      llvm::FunctionType::get(b->getVoidTy(), {void_ptr_type, b->getInt64Ty()},
+      llvm::FunctionType::get(b->getVoidTy(), {b->getPtrTy(), b->getInt64Ty()},
                               /*isVarArg=*/false);
 
   llvm::Function* function = b->GetInsertBlock()->getParent();
@@ -3181,8 +3130,7 @@ void IrEmitter::TracingState::EmitTracingEnd(llvm::IRBuilder<>* b,
     fn->setOnlyAccessesArgMemory();
   }
   auto* activity_id = activity_ids_.at(hlo);
-  b->CreateCall(trace_func,
-                {b->CreateBitCast(run_options, void_ptr_type), activity_id});
+  b->CreateCall(trace_func, {run_options, activity_id});
 }
 
 namespace {
@@ -3300,9 +3248,9 @@ llvm::Value* IrEmitter::EmitThreadLocalBufferPointer(
       // example, float for an XLA F32 element type).
       llvm::Value* params = compute_function_->parameters_arg();
       llvm::Value* param_address_offset = llvm_ir::EmitBufferIndexingGEP(
-          params, b_.getInt8PtrTy(), param_number, &b_);
+          params, b_.getPtrTy(), param_number, &b_);
       llvm::LoadInst* param_address_untyped =
-          Load(b_.getInt8PtrTy(), param_address_offset);
+          Load(b_.getPtrTy(), param_address_offset);
 
       if (!target_shape.IsOpaque()) {
         AttachAlignmentMetadataForLoad(param_address_untyped, target_shape);
@@ -3330,16 +3278,16 @@ llvm::Value* IrEmitter::EmitThreadLocalBufferPointer(
     }
     return buf_it->second;
   }();
-  return BitCast(tempbuf_address, IrShapeType(target_shape)->getPointerTo());
+  return tempbuf_address;
 }
 
 llvm::Value* IrEmitter::EmitGlobalBufferPointer(
     const BufferAllocation::Slice& slice, const Shape& target_shape) {
   const BufferAllocation& allocation = *slice.allocation();
   llvm::Value* tempbuf_address_ptr = llvm_ir::EmitBufferIndexingGEP(
-      GetBufferTableArgument(), b_.getInt8PtrTy(), slice.index(), &b_);
+      GetBufferTableArgument(), b_.getPtrTy(), slice.index(), &b_);
   llvm::LoadInst* tempbuf_address_base =
-      Load(b_.getInt8PtrTy(), tempbuf_address_ptr);
+      Load(b_.getPtrTy(), tempbuf_address_ptr);
   if (hlo_module_config_.debug_options()
           .xla_llvm_enable_invariant_load_metadata()) {
     tempbuf_address_base->setMetadata(
@@ -3355,8 +3303,7 @@ llvm::Value* IrEmitter::EmitGlobalBufferPointer(
     tempbuf_address_untyped = InBoundsGEP(b_.getInt8Ty(), tempbuf_address_base,
                                           b_.getInt64(slice.offset()));
   }
-  return BitCast(tempbuf_address_untyped,
-                 IrShapeType(target_shape)->getPointerTo());
+  return tempbuf_address_untyped;
 }
 
 llvm::Value* IrEmitter::EmitBufferPointer(const BufferAllocation::Slice& slice,
@@ -3364,9 +3311,7 @@ llvm::Value* IrEmitter::EmitBufferPointer(const BufferAllocation::Slice& slice,
   if (slice.allocation()->is_thread_local()) {
     return EmitThreadLocalBufferPointer(slice, target_shape);
   } else if (slice.allocation()->is_constant()) {
-    return BitCast(
-        FindOrDie(constant_buffer_to_global_, slice.allocation()->index()),
-        IrShapeType(target_shape)->getPointerTo());
+    return FindOrDie(constant_buffer_to_global_, slice.allocation()->index());
   } else {
     return EmitGlobalBufferPointer(slice, target_shape);
   }
@@ -3548,7 +3493,7 @@ std::vector<llvm::Value*> IrEmitter::EmitThreadLocalCall(
           /*return_value_buffer=*/return_value_buffer,
           /*exec_run_options_arg=*/GetExecutableRunOptionsArgument(),
           /*buffer_table_arg=*/
-          llvm::Constant::getNullValue(b_.getInt8PtrTy()->getPointerTo()),
+          llvm::Constant::getNullValue(b_.getPtrTy()),
           /*status_arg=*/GetStatusArgument(),
           /*profile_counters_arg=*/GetProfileCountersArgument()));
 
@@ -3574,7 +3519,7 @@ void IrEmitter::EmitGlobalCall(const HloComputation& callee,
        GetArrayFunctionCallArguments(
            /*parameter_addresses=*/{}, &b_, name,
            /*return_value_buffer=*/
-           llvm::Constant::getNullValue(b_.getInt8PtrTy()),
+           llvm::Constant::getNullValue(b_.getPtrTy()),
            /*exec_run_options_arg=*/GetExecutableRunOptionsArgument(),
            /*buffer_table_arg=*/GetBufferTableArgument(),
            /*status_arg=*/GetStatusArgument(),
@@ -3589,7 +3534,7 @@ llvm::Value* IrEmitter::GetBufferForGlobalCallReturnValue(
     const HloComputation& callee) {
   const HloInstruction* root_inst = callee.root_instruction();
   if (root_inst->opcode() == HloOpcode::kOutfeed) {
-    return llvm::Constant::getNullValue(b_.getInt8PtrTy());
+    return llvm::Constant::getNullValue(b_.getPtrTy());
   }
 
   const BufferAllocation::Slice root_buffer =

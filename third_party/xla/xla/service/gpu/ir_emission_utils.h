@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/hlo_traversal.h"
 
 namespace xla {
 namespace gpu {
@@ -114,6 +115,8 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     mlir::Value v, absl::Span<const BufferAllocation* const> allocations,
     std::string* constant_name = nullptr);
 
+bool IsSingleInstructionFusion(mlir::lmhlo::FusionOp fusion);
+
 bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     mlir::lmhlo::FusionOp fusion,
     absl::Span<const BufferAllocation* const> allocations);
@@ -191,7 +194,8 @@ std::optional<TransposeDescription> FindTiledLogicalTranspose(
 std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     const HloInstruction& root, const HloInstruction& hero);
 
-bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
+bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1,
+                    FusionBoundaryFn boundary = nullptr);
 
 // Log the given module if the VLOG level is >= level.
 void VLogModule(int level, const llvm::Module& module);

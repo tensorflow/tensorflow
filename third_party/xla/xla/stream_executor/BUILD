@@ -65,7 +65,6 @@ filegroup(
         "event.h",
         "executor_cache.h",
         "kernel.h",
-        "kernel_cache_config.h",
         "kernel_spec.h",
         "launch_dim.h",
         "module_spec.h",
@@ -105,6 +104,7 @@ STREAM_EXECUTOR_DEPENDENCIES = [
     "@com_google_absl//absl/algorithm:container",
     "@com_google_absl//absl/base:core_headers",
     "@com_google_absl//absl/container:inlined_vector",
+    "@com_google_absl//absl/meta:type_traits",
     "@com_google_absl//absl/container:node_hash_map",
     "@com_google_absl//absl/functional:any_invocable",
     "@com_google_absl//absl/log:check",
@@ -499,6 +499,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -513,7 +514,10 @@ cc_library(
         ":stream_executor_headers",
         ":stream_executor_internal",
         "//xla/stream_executor/platform",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/meta:type_traits",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
@@ -664,6 +668,21 @@ cc_library(
 #===--------------------------------------------------------------------------------------------===#
 # StreamExecutor tests
 #===--------------------------------------------------------------------------------------------===#
+
+xla_cc_test(
+    name = "kernel_test",
+    srcs = ["kernel_test.cc"],
+    deps = [
+        ":device_memory",
+        ":stream_executor",
+        "//xla/stream_executor/host:host_platform",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
 
 xla_cc_test(
     name = "stream_test",

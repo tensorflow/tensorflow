@@ -210,7 +210,8 @@ def TestFactory(xla_backend,
         self.assertEqual(computation.as_serialized_hlo_module_proto(), ref)
 
     # TODO(b/261771737): some version of this should work with pjrt_c_api=True
-    @unittest.skipIf(cloud_tpu or pathways or pjrt_c_api, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways or pathways_ifrt or pjrt_c_api,
+                     "not implemented")
     def testFlopEstimate(self):
       computation = self.ExampleComputation()
       properties = xla_client._xla.hlo_module_cost_analysis(
@@ -222,7 +223,8 @@ def TestFactory(xla_backend,
       executable = self.backend.compile(
           xla_computation_to_mlir_module(computation))
       fingerprint = executable.fingerprint
-      if self.backend.platform == "tpu" and not (cloud_tpu or pathways):
+      if self.backend.platform == "tpu" and not (cloud_tpu or pathways or
+                                                 pathways_ifrt):
         logging.info("fingerprint: %s", fingerprint)
         self.assertNotEmpty(fingerprint)
       else:
@@ -540,6 +542,34 @@ def TestFactory(xla_backend,
       self.assertEmpty(layouts[2].minor_to_major())
 
     @unittest.skipIf(pathways, "not implemented")
+    @unittest.skipIf(pathways_ifrt, "not implemented")
+    def testGetOutputLayouts(self):
+      # Generated with jax.jit(lambda: (np.ones((1024, 128)), np.int32(42),
+      #                                 np.ones(10)))()
+      module_str = """
+module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
+                                 mhlo.num_replicas = 1 : i32} {
+  func.func public @main() -> (tensor<1024x128xf32> {jax.result_info = "[0]"},
+                               tensor<i32> {jax.result_info = "[1]"},
+                               tensor<10xf32> {jax.result_info = "[2]"}) {
+    %0 = stablehlo.constant dense<1.000000e+00> : tensor<1024x128xf32> loc(#loc)
+    %1 = stablehlo.constant dense<1.000000e+00> : tensor<10xf32> loc(#loc)
+    %2 = stablehlo.constant dense<42> : tensor<i32> loc(#loc)
+    return %0, %2, %1 : tensor<1024x128xf32>, tensor<i32>, tensor<10xf32> loc(#loc)
+  } loc(#loc)
+} loc(#loc)
+#loc = loc(unknown)
+"""
+      executable = self.backend.compile(module_str)
+
+      # Test that compiled executable returns plausible layouts.
+      layouts: Sequence[xla_client.Layout] = executable.get_output_layouts()
+      self.assertLen(layouts, 3)
+      self.assertLen(layouts[0].minor_to_major(), 2)
+      self.assertEmpty(layouts[1].minor_to_major())
+      self.assertLen(layouts[2].minor_to_major(), 1)
+
+    @unittest.skipIf(pathways or pathways_ifrt, "not implemented")
     def testSetArgumentLayouts(self):
       # Create computation with custom input layouts.
       c = self._NewComputation()
@@ -754,7 +784,7 @@ def TestFactory(xla_backend,
       self.assertGreaterEqual(arg1_buffer.unsafe_buffer_pointer(), 0)
       self.assertGreaterEqual(arg2_buffer.unsafe_buffer_pointer(), 0)
 
-    @unittest.skipIf(cloud_tpu or pathways, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways or pathways_ifrt, "not implemented")
     def testClone(self):
       x = np.array([[3., 4., 5.]], np.float32)
       y = self.backend.buffer_from_pyval(x)
@@ -1733,7 +1763,8 @@ def TestFactory(xla_backend,
       c = self._NewComputation()
       ops.Fft(ops.Constant(c, a), xla_client.FftType.IRFFT, [3, 4, 8])
       self._ExecuteAndCompareClose(
-          c, expected=[np.fft.irfftn(a, axes=(1, 2, 3))], rtol=1e-4)
+          c, expected=[np.fft.irfftn(a, axes=(1, 2, 3))], rtol=2e-4
+      )
 
     def testNextAfter(self):
       c = self._NewComputation()
@@ -2121,7 +2152,8 @@ def TestFactory(xla_backend,
                       false_computation)
       self._ExecuteAndCompareClose(c, expected=[1.])
 
-    @unittest.skipIf(cloud_tpu or pathways or pjrt_c_api, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways or pathways_ifrt or pjrt_c_api,
+                     "not implemented")
     def testInfeedS32Values(self):
       to_infeed = NumpyArrayS32([1, 2, 3, 4])
       c = self._NewComputation()
@@ -2141,7 +2173,8 @@ def TestFactory(xla_backend,
             compiled_c, (), backend=self.backend)
         self.assertEqual(result, item)
 
-    @unittest.skipIf(cloud_tpu or pathways or pjrt_c_api, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways or pathways_ifrt or pjrt_c_api,
+                     "not implemented")
     def testInfeedTuple(self):
       to_infeed = (NumpyArrayS32([1, 2, 3, 4]), NumpyArrayS32([[7], [8]]))
       c = self._NewComputation()
@@ -2161,7 +2194,8 @@ def TestFactory(xla_backend,
       np.testing.assert_equal(result[0], to_infeed[0])
       np.testing.assert_equal(result[1], to_infeed[1])
 
-    @unittest.skipIf(cloud_tpu or pathways or pjrt_c_api, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways or pathways_ifrt or pjrt_c_api,
+                     "not implemented")
     def testInfeedThenOutfeedS32(self):
       to_round_trip = NumpyArrayS32([1, 2, 3, 4])
       c = self._NewComputation()
@@ -2588,12 +2622,29 @@ def TestFactory(xla_backend,
           self.assertTrue(
               re.match(r"^cuda \d{4,}$", version),
               msg=f"Expected CUDA version string; got {repr(version)}")
-      elif self.backend.platform == "tpu" and not pathways:
+      elif self.backend.platform == "tpu" and not (pathways or pathways_ifrt):
         self.assertIn("tpu", version.lower())
         self.assertIn("cl/", version)
         self.assertIn("Built on ", version)
 
-    @unittest.skipIf(cloud_tpu or pathways or tfrt_tpu, "not implemented")
+    @unittest.skipIf(
+        not cloud_tpu and not pjrt_c_api, "PJRT version only exist for plugins"
+    )
+    def testPjRtCApiVersion(self):
+      self.assertGreaterEqual(self.backend.pjrt_c_api_major_version, 0)
+      self.assertGreaterEqual(self.backend.pjrt_c_api_minor_version, 0)
+
+    @unittest.skipIf(
+        cloud_tpu or pjrt_c_api, "PJRT version only exist for plugins"
+    )
+    def testNotExistPjRtCApiVersion(self):
+      with self.assertRaises(AttributeError):
+        self.backend.pjrt_c_api_major_version  # pylint: disable=pointless-statement
+      with self.assertRaises(AttributeError):
+        self.backend.pjrt_c_api_minor_version  # pylint: disable=pointless-statement
+
+    @unittest.skipIf(cloud_tpu or pathways or pathways_ifrt or tfrt_tpu,
+                     "not implemented")
     def testExecutableSerialization(self):
       if self.backend.platform != "tpu":
         self.skipTest("Test requires tpu platform")

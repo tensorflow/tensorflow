@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 // NOLINTBEGIN(whitespace/line_length)
-/// WARNING: Users of TensorFlow Lite should not include this file directly,
-/// but should instead include
-/// "third_party/tensorflow/lite/acceleration/configuration/c/xnnpack_plugin.h".
-/// Only the TensorFlow Lite implementation itself should include this
-/// file directly.
+// WARNING: Users of TensorFlow Lite should not include this file directly,
+// but should instead include
+// "third_party/tensorflow/lite/acceleration/configuration/c/xnnpack_plugin.h".
+// Only the TensorFlow Lite implementation itself should include this
+// file directly.
 // NOLINTEND(whitespace/line_length)
 #ifndef TENSORFLOW_LITE_CORE_ACCELERATION_CONFIGURATION_C_XNNPACK_PLUGIN_H_
 #define TENSORFLOW_LITE_CORE_ACCELERATION_CONFIGURATION_C_XNNPACK_PLUGIN_H_
@@ -27,7 +27,7 @@ limitations under the License.
 /// For the C++ delegate plugin interface, the XNNPACK delegate plugin is added
 /// to the DelegatePluginRegistry by the side effect of a constructor for a
 /// static object, so there's no public API needed for this plugin, other than
-/// the API of tflite::delegates::DelegatePluginRegistry, which is declared in
+/// the API of `tflite::delegates::DelegatePluginRegistry`, which is declared in
 /// delegate_registry.h.
 ///
 /// But to provide a C API to access the XNNPACK delegate plugin, we do expose

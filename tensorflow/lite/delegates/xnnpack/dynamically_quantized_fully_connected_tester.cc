@@ -79,10 +79,21 @@ void DynamicallyQuantizedFullyConnectedTester::Test(
   float* delegate_output_data =
       delegate_interpreter->typed_output_tensor<float>(0);
 
-  for (size_t i = 0; i < ComputeSize(OutputShape()); i++) {
-    EXPECT_NEAR(default_output_data[i], delegate_output_data[i],
-                std::numeric_limits<float>::epsilon() *
-                    std::max(std::abs(default_output_data[i]) * 20.0f, 1.0f));
+  const int num_output_values = ComputeSize(OutputShape());
+  int different_output_values = 0;
+  // TFLite rounds to nearest with ties to Away. XNNPACK rounds to nearest with
+  // ties to even. IEEE 754 states: "Round to nearest, ties to even" is the
+  // default for binary floating point and the recommended default for decimal.
+  // For this reason, many output values may differ slightly.
+  for (size_t i = 0; i < num_output_values; i++) {
+    if (std::abs(default_output_data[i] - delegate_output_data[i]) >
+        0.005 * std::abs(default_output_data[i])) {
+      ++different_output_values;
+    }
+  }
+  if (different_output_values > 0.05 * num_output_values) {
+    GTEST_FAIL() << (float)different_output_values / num_output_values * 100.f
+                 << "% of output values differ";
   }
 }
 

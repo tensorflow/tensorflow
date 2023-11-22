@@ -17,6 +17,23 @@ package_group(
 )
 
 cc_library(
+    name = "ifrt_program_ops",
+    srcs = ["ifrt_program_ops.cc"],
+    hdrs = ["ifrt_program_ops.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/tfrt/ifrt:ifrt_executable_registry",
+        "//tensorflow/core/tfrt/ifrt:ifrt_serving_executable",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "stream_ops",
     srcs = ["stream_ops.cc"],
     hdrs = ["stream_ops.h"],

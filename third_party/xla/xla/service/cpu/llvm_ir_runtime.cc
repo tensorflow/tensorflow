@@ -47,8 +47,8 @@ void RemoveFunctionFromUsedList(llvm::Module* module, llvm::Function* fn) {
     return;
   }
 
-  llvm::Type* int8_ptr_type = llvm::Type::getInt8PtrTy(module->getContext());
-  llvm::Constant* casted_fn = llvm::ConstantExpr::getBitCast(fn, int8_ptr_type);
+  llvm::Type* ptr_type = llvm::PointerType::getUnqual(module->getContext());
+  llvm::Constant* casted_fn = llvm::ConstantExpr::getBitCast(fn, ptr_type);
   auto* initializer = llvm::cast<llvm::ConstantArray>(used->getInitializer());
   llvm::SmallVector<llvm::Constant*, 4> new_initializer;
   for (auto& op : initializer->operands()) {
@@ -64,7 +64,7 @@ void RemoveFunctionFromUsedList(llvm::Module* module, llvm::Function* fn) {
   used->eraseFromParent();
   if (!new_initializer.empty()) {
     llvm::ArrayType* array_type =
-        llvm::ArrayType::get(int8_ptr_type, new_initializer.size());
+        llvm::ArrayType::get(ptr_type, new_initializer.size());
     used = new llvm::GlobalVariable(
         *module, array_type, /*isConstant=*/false,
         llvm::GlobalValue::AppendingLinkage,

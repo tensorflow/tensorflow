@@ -25,7 +25,7 @@ limitations under the License.
 
 #define PJRT_DEFINE_STRUCT_TRAITS(sname, last_field) \
   typedef struct sname sname;                        \
-  const size_t sname##_STRUCT_SIZE = PJRT_STRUCT_SIZE(sname, last_field);
+  enum { sname##_STRUCT_SIZE = PJRT_STRUCT_SIZE(sname, last_field) }
 
 #ifdef __cplusplus
 extern "C" {
@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 37
+#define PJRT_API_MINOR 38
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -814,7 +814,7 @@ struct PJRT_DeviceDescription_Attributes_Args {
   size_t struct_size;
   void* priv;
   PJRT_DeviceDescription* device_description;
-  size_t num_attributes;        // out
+  size_t num_attributes;              // out
   const PJRT_NamedValue* attributes;  // out
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceDescription_Attributes_Args, attributes);
@@ -1911,7 +1911,7 @@ struct PJRT_TopologyDescription_GetDeviceDescriptions_Args {
   PJRT_TopologyDescription* topology;
   // Has the same lifetime as topology.
   PJRT_DeviceDescription* const* descriptions;  // out
-  size_t num_descriptions;                // out
+  size_t num_descriptions;                      // out
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_GetDeviceDescriptions_Args,
                           num_descriptions);
@@ -2128,8 +2128,10 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Client_TopologyDescription);
 } PJRT_Api;
 
-const size_t PJRT_Api_STRUCT_SIZE =
-    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Client_TopologyDescription);
+enum {
+  PJRT_Api_STRUCT_SIZE =
+      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Client_TopologyDescription)
+};
 
 #undef _PJRT_API_STRUCT_FIELD
 

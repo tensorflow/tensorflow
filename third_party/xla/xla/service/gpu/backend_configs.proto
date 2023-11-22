@@ -140,6 +140,15 @@ message FusionBackendConfig {
   ReificationCost reification_cost = 3;
 }
 
+// Backed config for norm executed by cuDNN.
+message CudnnNormBackendConfig {
+  // Epsilon parameter.
+  double epsilon = 1;
+
+  // Opaque algorithm number.
+  stream_executor.dnn.AlgorithmProto algorithm = 2;
+}
+
 // Backend config for a fused Multi-Headed Attention (fMHA) that runs through
 // cudnn.
 message CudnnfMHABackendConfig {

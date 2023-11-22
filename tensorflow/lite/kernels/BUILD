@@ -12,6 +12,14 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = ["op_macros.h"],
+    visibility = [
+        "//tensorflow/lite:__pkg__",
+    ],
+)
+
 # Enables usage of ruy exclusively as the GEMM backend in TFLite kernels.
 # This will cause TFLite to build with ruy only, providing a smaller binary.
 # WARNING: This build flag is experimental and subject to change.
@@ -745,7 +753,6 @@ BUILTIN_KERNEL_SRCS = [
     "range.cc",
     "rank.cc",
     "reduce.cc",
-    "reduce_window.cc",
     "reshape.cc",
     "resize_bilinear.cc",
     "resize_nearest_neighbor.cc",
@@ -760,6 +767,9 @@ BUILTIN_KERNEL_SRCS = [
     "stablehlo_gather.cc",
     "stablehlo_add.cc",
     "stablehlo_multiply.cc",
+    "stablehlo_pad.cc",
+    "stablehlo_reduce_window.cc",
+    "stablehlo_min_max.cc",
     "stablehlo_scatter.cc",
     "sign.cc",
     "skip_gram.cc",
@@ -839,6 +849,12 @@ BUILTIN_KERNEL_DEPS = [
     ],
 }) + select({
     "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
+    "//conditions:default": [
+        "@pthreadpool",
+    ],
+}) + select({
+    "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
+    "//tensorflow/lite:tflite_kernel_use_xnnpack_false": [],
     "//conditions:default": [
         "@XNNPACK",
     ],
@@ -1318,6 +1334,68 @@ cc_test(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "stablehlo_pad_test",
+    srcs = ["stablehlo_pad_test.cc"],
+    tags = ["tflite_nnapi"],
+    deps = [
+        ":stablehlo_reduce_window_test_util",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/random:bit_gen_ref",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "stablehlo_reduce_window_test_util",
+    hdrs = ["stablehlo_reduce_window_test_util.h"],
+    deps = [
+        "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+cc_test(
+    name = "stablehlo_reduce_window_test_util_test",
+    size = "small",
+    srcs = ["stablehlo_reduce_window_test_util_test.cc"],
+    deps = [
+        ":stablehlo_reduce_window_test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "stablehlo_reduce_window_test",
+    srcs = ["stablehlo_reduce_window_test.cc"],
+    tags = ["tflite_nnapi"],
+    deps = [
+        ":stablehlo_reduce_window_test_util",
+        ":subgraph_test_util",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/random:bit_gen_ref",
+        "@com_google_absl//absl/random:distributions",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
     ],
@@ -3145,6 +3223,22 @@ cc_test(
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "stablehlo_min_max_test",
+    size = "small",
+    srcs = ["stablehlo_min_max_test.cc"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/log:absl_log",
         "@com_google_googletest//:gtest_main",
     ],
 )

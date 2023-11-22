@@ -30,7 +30,7 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 # CHECK-SAME: producer
 
 # CHECK: "tf_saved_model.global_tensor"()
-# CHECK: "tf_saved_model.session_initializer"() {initializers = [@[[INIT_FUNC:[a-zA-Z_0-9]+]]]} : () -> ()
+# CHECK: "tf_saved_model.session_initializer"() <{initializers = [@[[INIT_FUNC:[a-zA-Z_0-9]+]]]}> : () -> ()
 
 # Initializer function. This should contain the initialization sequence for the
 # variable.

@@ -52,10 +52,10 @@ class KernelThunk : public Thunk {
   // output of the computation. Also, the values must correspond to each arg
   // directly, not to their base allocation (e.g. they can be the result of an
   // `mlir::memref::ViewOp`).
-  KernelThunk(mlir::Operation* op, std::string kernel_name,
+  KernelThunk(std::variant<mlir::Operation*, const HloInstruction*> op,
+              std::string kernel_name,
               absl::Span<const KernelArgument> kernel_arguments,
-              LaunchDimensions launch_dimensions, int64_t shmem_bytes,
-              bool emit_ir_from_hlo = false);
+              LaunchDimensions launch_dimensions, int64_t shmem_bytes);
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
@@ -108,7 +108,7 @@ class KernelThunk : public Thunk {
 
   // Loaded kernels for each `StreamExecutor`.  Requires pointer stability of
   // values.
-  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::KernelBase>>
+  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Kernel>>
       kernel_cache_ ABSL_GUARDED_BY(mutex_);
 };
 

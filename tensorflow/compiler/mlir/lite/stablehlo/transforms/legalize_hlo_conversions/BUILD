@@ -50,24 +50,6 @@ cc_library(
 )
 
 cc_library(
-    name = "pad",
-    srcs = [
-        "pad.cc",
-    ],
-    hdrs = [
-        "pad.h",
-    ],
-    deps = [
-        ":util",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
-    ],
-)
-
-cc_library(
     name = "dot_general",
     srcs = [
         "dot_general.cc",

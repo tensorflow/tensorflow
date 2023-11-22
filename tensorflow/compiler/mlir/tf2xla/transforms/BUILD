@@ -466,6 +466,7 @@ cc_library(
     hdrs = ["legalization_op_config.h"],
     visibility = [
         "//tensorflow/compiler/mlir/tensorflow/transforms:__pkg__",
+        "//tensorflow/compiler/mlir/tf2xla/internal:__subpackages__",
     ],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",

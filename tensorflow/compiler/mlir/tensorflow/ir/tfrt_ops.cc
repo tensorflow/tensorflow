@@ -106,10 +106,6 @@ mlir::LogicalResult IfrtCallOp::verify() {
              << "does not support passing '!tf.resource' values as arguments";
     }
   }
-  if (getArgs().size() != getArgNames().size()) {
-    return emitOpError()
-           << "expects every argument to have an 'arg_name' attribute";
-  }
 
   for (mlir::Value result : getResults()) {
     if (mlir::getElementTypeOrSelf(result.getType())
@@ -117,10 +113,6 @@ mlir::LogicalResult IfrtCallOp::verify() {
       return emitOpError()
              << "does not support returning '!tf.resource' values as results";
     }
-  }
-  if (getArgs().size() != getArgNames().size()) {
-    return emitOpError()
-           << "expects every result to have a 'result_name' attribute";
   }
 
   return mlir::success();

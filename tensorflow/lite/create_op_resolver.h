@@ -15,9 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CREATE_OP_RESOLVER_H_
 #define TENSORFLOW_LITE_CREATE_OP_RESOLVER_H_
 
+/// For documentation, see third_party/tensorflow/lite/core/create_op_resolver.h
+
 #include <memory>
 
-#include "tensorflow/lite/core/create_op_resolver.h"
+#include "tensorflow/lite/core/create_op_resolver.h"  // IWYU pragma: export
 
 namespace tflite {
 using ::tflite::CreateOpResolver;

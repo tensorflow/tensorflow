@@ -1620,7 +1620,7 @@ TEST_F(HloVerifierTest, AllReduceDoneWithoutStart) {
   ENTRY entry {
     p0 = f32[2,3] parameter(0)
     p1 = u32[] parameter(1)
-    tuple = (f32[2,3], f32[2,3]) tuple(p0, p0, p1, p1)
+    tuple = (f32[2,3], f32[2,3], u32[], u32[]) tuple(p0, p0, p1, p1)
     ROOT done = f32[2,3] all-reduce-done(tuple)
   }
   )";
@@ -2710,7 +2710,7 @@ TEST_F(HloVerifierTest, InconsistentConditionSharding) {
       HasSubstr("Inconsistent conditional sharding among instructions"));
 }
 
-TEST_F(HloVerifierTest, InvalidS4Usage) {
+TEST_F(HloVerifierTest, DisableS4Veridication) {
   const char* const hlo = R"(
   HloModule Module
 
@@ -2721,29 +2721,9 @@ TEST_F(HloVerifierTest, InvalidS4Usage) {
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_FALSE(status.ok());
-  EXPECT_THAT(
-      status.message(),
-      HasSubstr("S4/U4 is currently only supported in matmul and convolution"));
-}
-
-TEST_F(HloVerifierTest, InvalidU4Usage) {
-  const char* const hlo = R"(
-  HloModule Module
-
-  ENTRY entry {
-    param0 = u32[] parameter(0)
-    x = u4[] convert(param0)
-    ROOT add = u4[] add(x, x)
-  }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_FALSE(status.ok());
-  EXPECT_THAT(
-      status.message(),
-      HasSubstr("S4/U4 is currently only supported in matmul and convolution"));
+  HloVerifier verifier{HloVerifierOpts{}.WithVerifyS4U4Usage(false)};
+  auto status = verifier.Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
 }
 
 TEST(MetadataTrackerTest, MetadataTrackerLogsInfo) {

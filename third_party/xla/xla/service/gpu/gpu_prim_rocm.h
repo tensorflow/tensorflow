@@ -42,7 +42,7 @@ struct float_bit_mask<tsl::bfloat16> {
   static constexpr uint16_t mantissa = 0x007F;
   using bit_type = uint16_t;
 };
-#endif
+#endif  // TF_ROCM_VERSION >= 50200
 template <>
 struct radix_key_codec_base<Eigen::half>
     : radix_key_codec_floating<Eigen::half, uint16_t> {};

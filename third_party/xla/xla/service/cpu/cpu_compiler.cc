@@ -858,6 +858,10 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pipeline.AddPass<CpuLayoutAssignment>(
         module->mutable_entry_computation_layout(), target_machine_features,
         &layout_constraints);
+    // Run SubByteNormalization because CpuLayoutAssignment may modify a
+    // Layout's element_size_in_bits field.
+    pipeline.AddPass<SubByteNormalization>(
+        SubByteNormalization::SET_ELEMENT_SIZE);
   }
 
   return pipeline.Run(module).status();

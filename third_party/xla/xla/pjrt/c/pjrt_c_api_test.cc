@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_test_base.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
@@ -53,9 +52,7 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace pjrt {
 namespace {
@@ -137,146 +134,6 @@ class PjrtCApiTest : public PjrtCApiTestBase {
  protected:
   PjrtCApiTest() : PjrtCApiTestBase(GetCApi()) {}
   std::string platform_name_ = GetPlatformName();
-
-  int GetDeviceId(PJRT_DeviceDescription* device_desc) const {
-    PJRT_DeviceDescription_Id_Args args = PJRT_DeviceDescription_Id_Args{
-        .struct_size = PJRT_DeviceDescription_Id_Args_STRUCT_SIZE,
-        .priv = nullptr,
-        .device_description = device_desc,
-        .id = -1,
-    };
-    PJRT_Error* error = api_->PJRT_DeviceDescription_Id(&args);
-    CHECK_EQ(error, nullptr);
-    return args.id;
-  }
-
-  int GetDeviceId(PJRT_Device* device) const {
-    return GetDeviceId(::pjrt::GetDeviceDescription(api_, device));
-  }
-
-  bool IsValidDeviceId(PJRT_Device* device) const {
-    return GetDeviceId(device) >= 0;
-  }
-
-  int GetLocalHardwareId(PJRT_Device* device) const {
-    PJRT_Device_LocalHardwareId_Args args = PJRT_Device_LocalHardwareId_Args{
-        .struct_size = PJRT_Device_LocalHardwareId_Args_STRUCT_SIZE,
-        .priv = nullptr,
-        .device = device,
-        .local_hardware_id = -1,
-    };
-    PJRT_Error* error = api_->PJRT_Device_LocalHardwareId(&args);
-    CHECK_EQ(error, nullptr);
-    return args.local_hardware_id;
-  }
-
-  absl::Span<PJRT_Device* const> GetClientDevices() const {
-    PJRT_Client_Devices_Args dev_args;
-    dev_args.struct_size = PJRT_Client_Devices_Args_STRUCT_SIZE;
-    dev_args.priv = nullptr;
-    dev_args.client = client_;
-    PJRT_Error* error = api_->PJRT_Client_Devices(&dev_args);
-    CHECK(error == nullptr);
-    return absl::MakeSpan(dev_args.devices, dev_args.num_devices);
-  }
-
-  int GetNumDevices() const { return GetClientDevices().size(); }
-
-  std::string BuildSingleDeviceCompileOptionStr() {
-    xla::ExecutableBuildOptions build_options;
-    build_options.set_device_ordinal(0);
-    xla::DeviceAssignment device_assignment(1, 1);
-    device_assignment(0, 0) = 0;
-    build_options.set_device_assignment(device_assignment);
-    xla::CompileOptions options;
-    options.executable_build_options = build_options;
-    absl::StatusOr<xla::CompileOptionsProto> options_proto = options.ToProto();
-    TF_CHECK_OK(options_proto.status());
-    return options_proto->SerializeAsString();
-  }
-
-  // Returns a scalar result of execution.
-  // supply as e.g. `src_buffer = args.output_lists[0][0];`
-  // after calling `api_->PJRT_LoadedExecutable_Execute(&args);`
-  absl::StatusOr<float> GetProgramResult(PJRT_Buffer* src_buffer) {
-    CHECK(src_buffer != nullptr);
-    PJRT_Buffer_ToHostBuffer_Args args{
-        .struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE,
-        .priv = nullptr,
-        .src = src_buffer,
-        .host_layout = nullptr,
-        .dst = nullptr,
-        .dst_size = 0,
-        .event = nullptr,
-    };
-    PJRT_Error* error = api_->PJRT_Buffer_ToHostBuffer(&args);
-    if (error != nullptr) {
-      return ::pjrt::PjrtErrorToStatus(error, api_);
-    }
-    CHECK_EQ(args.dst_size, sizeof(float));
-
-    CHECK_EQ(::pjrt::GetDimensions(api_, src_buffer).size(), 0);
-    CHECK_EQ(::pjrt::GetElementType(api_, src_buffer), PJRT_Buffer_Type_F32);
-
-    float value;
-    args.dst = &value;
-    error = api_->PJRT_Buffer_ToHostBuffer(&args);
-    if (error != nullptr) {
-      return ::pjrt::PjrtErrorToStatus(error, api_);
-    }
-
-    xla::PjRtFuture<absl::Status> transfer_to_host =
-        ::pjrt::ConvertCEventToCppFuture(args.event, api_);
-    TF_RETURN_IF_ERROR(transfer_to_host.Await());
-    return value;
-  }
-
-  // Runs the default executable created in PjrtCApiTpuExecutableTest:SetUp and
-  // returns its output
-  absl::StatusOr<float> RunScalarExecutableAndGetResult(
-      PJRT_LoadedExecutable* executable) {
-    PJRT_LoadedExecutable_Execute_Args args;
-    args.struct_size = PJRT_LoadedExecutable_Execute_Args_STRUCT_SIZE;
-    args.priv = nullptr;
-    args.executable = executable;
-    PJRT_ExecuteOptions c_options;
-    c_options.num_send_ops = 0;
-    c_options.num_recv_ops = 0;
-    args.options = &c_options;
-    args.options->struct_size = PJRT_ExecuteOptions_STRUCT_SIZE;
-    args.options->launch_id = 0;
-    args.num_devices = 1;
-    args.num_args = 1;
-    auto buffer = create_buffer().first;
-    std::vector<PJRT_Buffer*> argument_list = {buffer.get()};
-    std::vector<PJRT_Buffer**> argument_lists{argument_list.data()};
-    args.argument_lists = argument_lists.data();
-    args.device_complete_events = nullptr;
-    args.execute_device = nullptr;
-
-    // Allocates memory for output.
-    int num_outputs_per_device = 1;
-    std::vector<PJRT_Buffer*> output_list(num_outputs_per_device);
-    std::vector<PJRT_Buffer**> output_lists{output_list.data()};
-    args.output_lists = output_lists.data();
-
-    PJRT_Error* error = api_->PJRT_LoadedExecutable_Execute(&args);
-    if (error != nullptr) {
-      return ::pjrt::PjrtErrorToStatus(error, api_);
-    }
-
-    PJRT_Buffer* result_buffer = args.output_lists[0][0];
-    TF_ASSIGN_OR_RETURN(float result, GetProgramResult(result_buffer));
-
-    // Clean up.
-    auto buffer_deleter = ::pjrt::MakeBufferDeleter(api_);
-    for (int i = 0; i < args.num_devices; ++i) {
-      for (int j = 0; j < num_outputs_per_device; ++j) {
-        buffer_deleter(args.output_lists[i][j]);
-      }
-    }
-    return result;
-  }
 };
 
 // -------------------------------- API Version --------------------------------

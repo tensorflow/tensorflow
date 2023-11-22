@@ -100,7 +100,7 @@ class CommandBuffer {
 
   // Adds a kernel launch command to the command buffer.
   tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
-                     const KernelBase& kernel, const KernelArgsArrayBase& args);
+                     const Kernel& kernel, const KernelArgsArrayBase& args);
 
   // Adds a nested command buffer to the command buffer.
   tsl::Status AddNestedCommandBuffer(const CommandBuffer& nested);
@@ -160,12 +160,8 @@ template <typename... Params, typename... Args>
 inline tsl::Status CommandBuffer::Launch(const TypedKernel<Params...>& kernel,
                                          const ThreadDim& threads,
                                          const BlockDim& blocks, Args... args) {
-  KernelInvocationChecker<std::tuple<Params...>,
-                          std::tuple<Args...>>::CheckAllStaticAssert();
-
-  KernelArgsArray<sizeof...(args)> kernel_args;
-  kernel.PackParams(&kernel_args, args...);
-  TF_RETURN_IF_ERROR(Launch(threads, blocks, kernel, kernel_args));
+  auto kernel_args = PackKernelArgs(kernel, args...);
+  TF_RETURN_IF_ERROR(Launch(threads, blocks, kernel, *kernel_args));
   return tsl::OkStatus();
 }
 

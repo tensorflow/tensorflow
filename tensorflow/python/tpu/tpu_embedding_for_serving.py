@@ -18,6 +18,7 @@ from typing import Any, Dict, Iterable, Optional, Union
 
 from absl import logging
 
+from tensorflow.core.tpu.kernels import sparse_core_layout_pb2
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.framework import dtypes
@@ -34,7 +35,7 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.tpu import tpu_embedding_base
 from tensorflow.python.tpu import tpu_embedding_v2_utils
-from tensorflow.python.trackable import base as trackable_base
+from tensorflow.python.tpu import tpu_embedding_v3_utils
 from tensorflow.python.types import core
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -149,130 +150,94 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
       with ops.init_scope():
         self.build()
 
+  # TODO(silkyarora) Update the tests for all TPU embedding to expect this
+  # possibly empty information in checkpoints.
+  def _maybe_delete_sc_layouts_from_checkpoint(self):
+    # Remove the sparse_core_table_layouts from the checkpoint, it is only
+    # required for sparsecore.
+    if (
+        hasattr(
+            self,
+            tpu_embedding_v3_utils.SPARSECORE_LAYOUTS_CHECKPOINT_KEY,
+        )
+        and not self._get_sparse_core_table_layouts_str()
+    ):
+      delattr(
+          self,
+          tpu_embedding_v3_utils.SPARSECORE_LAYOUTS_CHECKPOINT_KEY,
+      )
+
   def build(self):
     """Create variables and slots variables for TPU embeddings."""
     super().build()
-    # Remove the training_restore_info from the checkpoint, it was only
-    # required to restore from sparsecore training.
-    if hasattr(self, "training_restore_info"):
-      delattr(self, "training_restore_info")
+    self._maybe_delete_sc_layouts_from_checkpoint()
 
-  def _unshuffle_from_sc_to_cpu(self, t: tensor.Tensor) -> tensor.Tensor:
-    num_tpu_devices, num_sc_per_chip = self.training_restore_info.read_value()
-    # TODO(silkyarora): Is there a better way to confirm that there is nothing
-    # to be done?
-    if num_tpu_devices == 0 and num_sc_per_chip == 0:
-      return t
-    num_sc_devices = num_tpu_devices * num_sc_per_chip
-    old_shape = t.shape
-    # The width of the table must be a multiple of number of SC devices. The
-    # tpu strategy does this round off at training time so we expect the
-    # checkpoints value to meet this requirement.
-    assert t.shape[0] % num_sc_devices == 0
-    intermediate_tensor = array_ops.reshape(
-        t, (num_sc_devices, t.shape[0] // num_sc_devices, t.shape[1])
-    )
-    intermediate_tensor = array_ops.transpose(intermediate_tensor, (1, 0, 2))
-    return array_ops.reshape(intermediate_tensor, old_shape)
-
-  def _remove_padding_from_sc(
-      self, value_in_checkpoint: tensor.Tensor, variable_shape: tuple[int, int]
-  ) -> tensor.Tensor:
-    checkpoint_value_shape = value_in_checkpoint.shape.as_list()
-    # If the checkpoint shape is at least the size of the variable, we conclude
-    # that the extra rows and cols must be padding.
-    is_init_value_padded = all(
-        [i >= j for i, j in zip(checkpoint_value_shape, variable_shape)]
-    )
-    if not is_init_value_padded:
-      return value_in_checkpoint
-    # checkpoint has padding so we can remove it.
-    begin = [0] * len(checkpoint_value_shape)
-    return array_ops.slice(
-        value_in_checkpoint, begin=begin, size=variable_shape
-    )
-
-  def _create_variables(
-      self, table: tpu_embedding_v2_utils.TableConfig, trainable: bool
-  ) -> Dict[str, tf_variables.Variable]:
-    """Create all variables including table variables and slot variables."""
-    variable_shape = (table.vocabulary_size, table.dim)
-
+  def _track_restore_info_for_cpu(self) -> None:
     def getter(name, shape, dtype, initializer, trainable):
+      del shape
       # _add_variable_with_custom_getter clears the shape sometimes, so we
       # take the global shape from outside the getter.
-      del shape
-      if isinstance(initializer, trackable_base.CheckpointInitialValueCallable):
-        checkpoint_init_value = initializer(variable_shape).wrapped_value
-        restore_uid = initializer.restore_uid
-        unshuffled = self._unshuffle_from_sc_to_cpu(checkpoint_init_value)
-        truncated = self._remove_padding_from_sc(unshuffled, variable_shape)
-        var = tf_variables.Variable(
-            name=name,
-            initial_value=truncated,
-            shape=variable_shape,
-            dtype=dtype,
-            trainable=trainable,
-        )
-        # Maybe initialize the variable
-        var._maybe_initialize_trackable()  # pylint:disable=protected-access
-        # Update the uid for this variable from the checkpoint init value.
-        # This lets the checkpoint deferred restoration code know that this
-        # variable was restored while creation, so no need to restore it from
-        # the checkpoint later.
-        if restore_uid is not None:
-          var._update_uid = initializer.restore_uid  # pylint:disable=protected-access
-        return var
-
-      initial_value = functools.partial(
-          initializer, variable_shape, dtype=dtype
-      )
+      initial_value = functools.partial(initializer, dtype=dtype)
       return tf_variables.Variable(
           name=name,
           initial_value=initial_value,
-          shape=variable_shape,
+          shape=None,
           dtype=dtype,
           trainable=trainable,
       )
 
-    def variable_creator(name, initializer, shape, trainable=True):
-      # Use add_variable_with_custom_getter here so that we take advantage of
-      # the checkpoint loading to allow restore before the variables get
-      # created which avoids double initialization.
-      return self._add_variable_with_custom_getter(
-          name=name,
-          initializer=initializer,
-          shape=shape,
-          dtype=dtypes.float32,
-          getter=getter,
-          trainable=trainable,
-      )
+    def empty_string(dtype: dtypes.DType):
+      return tf_constant("", dtype=dtype)
 
-    parameters = variable_creator(
-        table.name, table.initializer, variable_shape, trainable=trainable
-    )
-
-    def slot_creator(name, initializer):
-      return variable_creator(table.name + "/" + name, initializer, False)
-
-    if table.optimizer is not None:
-      slot_vars = table.optimizer._create_slots(parameters, slot_creator)  # pylint: disable=protected-access
-    else:
-      slot_vars = {}
-    slot_vars["parameters"] = parameters
-    return slot_vars
-
-  def _track_restore_info_for_cpu(self) -> None:
-    self.training_restore_info = tf_variables.Variable(
-        name="training_restore_info",
-        initial_value=tf_constant(
-            [0, 0],
-            shape=(2,),
-            dtype=dtypes.int32,
+    # _add_variable_with_custom_getter is used here to restore from checkpoint
+    # at creation time. The layouts from sparse core must be restored from
+    # checkpoint and before any other tables are restored
+    setattr(
+        self,
+        tpu_embedding_v3_utils.SPARSECORE_LAYOUTS_CHECKPOINT_KEY,
+        self._add_variable_with_custom_getter(
+            name=tpu_embedding_v3_utils.SPARSECORE_LAYOUTS_CHECKPOINT_KEY,
+            initializer=empty_string,
+            dtype=dtypes.string,
+            getter=getter,
+            trainable=False,
         ),
-        shape=(2,),
-        dtype=dtypes.int32,
     )
+
+  def _get_sparse_core_table_layouts_str(self) -> bytes:
+    layouts_str = getattr(
+        self,
+        tpu_embedding_v3_utils.SPARSECORE_LAYOUTS_CHECKPOINT_KEY,
+    )
+    return layouts_str.read_value().numpy()
+
+  def _create_variables_from_stacked_tables(self):
+    sc_layouts = sparse_core_layout_pb2.SparseCoreTableLayouts()
+    sc_layouts.ParseFromString(self._get_sparse_core_table_layouts_str())
+    stacked_table_name_to_layouts = {}
+    for layout in sc_layouts.tables:
+      stacked_tables_list = stacked_table_name_to_layouts.setdefault(
+          layout.stacked_table_name, []
+      )
+      stacked_tables_list.append(layout)
+    table_to_config = {table.name: table for table in self._table_config}
+    variables = {}
+    for stacked_table_name, layouts in stacked_table_name_to_layouts.items():
+      logging.info(
+          "Loading stacked table state variables(%s) for %s tables",
+          stacked_table_name,
+          len(layouts),
+      )
+      stacked_var_trackable = (
+          tpu_embedding_v3_utils.SparseCoreStackedTableTrackable(
+              layouts, table_to_config
+          )
+      )
+      # The stacked table is added as trackable to the embedding so that the
+      # checkpoint key corresponsing to stacked table is read.
+      self._track_trackable(stacked_var_trackable, stacked_table_name)
+      variables.update(stacked_var_trackable.get_vars())
+    return variables
 
   def _create_variables_and_slots(
       self,
@@ -285,8 +250,14 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
     """
     self._track_restore_info_for_cpu()
     variables = {}
+    # If there are stacked variables from SC checkpoint process those
+    # first
+    stacked_variables = self._create_variables_from_stacked_tables()
     for table in self._table_config:
-      variables[table.name] = self._create_variables(table, trainable=True)
+      if table.name in stacked_variables:
+        variables[table.name] = {"parameters": stacked_variables[table.name]}
+      else:
+        variables[table.name] = self._create_variables(table, trainable=True)
     return variables
 
   def embedding_lookup(

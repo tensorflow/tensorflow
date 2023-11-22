@@ -4091,17 +4091,17 @@ func.func @convert_scatter_update_reshape_indices_and_updates(
   func.return %0 : tensor<16x1504xf32>
 }
 
-// CHECK-LABEL:   func.func @convert_scatter_add(
-// CHECK-SAME:                                   %[[VAL_0:.*]]: tensor<20x6xf32>,
-// CHECK-SAME:                                   %[[VAL_1:.*]]: tensor<4x1xi32>,
-// CHECK-SAME:                                   %[[VAL_2:.*]]: tensor<4x6xf32>) -> tensor<20x6xf32> {
-// CHECK:           %[[VAL_3:.*]] = "mhlo.scatter"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) ({
-// CHECK:           ^bb0(%[[VAL_4:.*]]: tensor<f32>, %[[VAL_5:.*]]: tensor<f32>):
-// CHECK:             %[[VAL_6:.*]] = "tf.AddV2"(%[[VAL_4]], %[[VAL_5]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-// CHECK:             mhlo.return %[[VAL_6]] : tensor<f32>
-// CHECK:           }) {indices_are_sorted = false, scatter_dimension_numbers = #mhlo.scatter<update_window_dims = [1], inserted_window_dims = [0], scatter_dims_to_operand_dims = [0], index_vector_dim = 1>, unique_indices = false} : (tensor<20x6xf32>, tensor<4x1xi32>, tensor<4x6xf32>) -> tensor<20x6xf32>
-// CHECK:           return %[[VAL_3]] : tensor<20x6xf32>
-// CHECK:         }
+// CHECK-LABEL:  func.func @convert_scatter_add(
+// CHECK-SAME:      %[[VAL_0:.*]]: tensor<20x6xf32>,
+// CHECK-SAME:      %[[VAL_1:.*]]: tensor<4x1xi32>,
+// CHECK-SAME:      %[[VAL_2:.*]]: tensor<4x6xf32>) -> tensor<20x6xf32> {
+// CHECK:    %[[VAL_6:.*]] = "mhlo.scatter"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) ({
+// CHECK:    ^bb0(%[[VAL_3:.*]]: tensor<f32>, %[[VAL_4:.*]]: tensor<f32>):
+// CHECK:      %[[VAL_5:.*]] = mhlo.add %[[VAL_3]], %[[VAL_4]] : tensor<f32>
+// CHECK:      mhlo.return %[[VAL_5]] : tensor<f32>
+// CHECK:    }) {indices_are_sorted = false, scatter_dimension_numbers = #mhlo.scatter<update_window_dims = [1], inserted_window_dims = [0], scatter_dims_to_operand_dims = [0], index_vector_dim = 1>, unique_indices = false} : (tensor<20x6xf32>, tensor<4x1xi32>, tensor<4x6xf32>) -> tensor<20x6xf32>
+// CHECK:    return %[[VAL_6]] : tensor<20x6xf32>
+// CHECK:  }
 func.func @convert_scatter_add(%arg0: tensor<20x6xf32>, %arg1: tensor<4x1xi32>, %arg2: tensor<4x6xf32>) -> tensor<20x6xf32> {
   %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ({
   ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
@@ -4119,17 +4119,17 @@ func.func @convert_scatter_add(%arg0: tensor<20x6xf32>, %arg1: tensor<4x1xi32>, 
   func.return %0 : tensor<20x6xf32>
 }
 
-// CHECK-LABEL:   func.func @convert_scatter_max(
-// CHECK-SAME:                                   %[[VAL_0:.*]]: tensor<20x6xf32>,
-// CHECK-SAME:                                   %[[VAL_1:.*]]: tensor<4x1xi32>,
-// CHECK-SAME:                                   %[[VAL_2:.*]]: tensor<4x6xf32>) -> tensor<20x6xf32> {
-// CHECK:           %[[VAL_3:.*]] = "mhlo.scatter"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) ({
-// CHECK:           ^bb0(%[[VAL_4:.*]]: tensor<f32>, %[[VAL_5:.*]]: tensor<f32>):
-// CHECK:             %[[VAL_6:.*]] = "tf.Maximum"(%[[VAL_4]], %[[VAL_5]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-// CHECK:             mhlo.return %[[VAL_6]] : tensor<f32>
-// CHECK:           }) {indices_are_sorted = false, scatter_dimension_numbers = #mhlo.scatter<update_window_dims = [1], inserted_window_dims = [0], scatter_dims_to_operand_dims = [0], index_vector_dim = 1>, unique_indices = false} : (tensor<20x6xf32>, tensor<4x1xi32>, tensor<4x6xf32>) -> tensor<20x6xf32>
-// CHECK:           return %[[VAL_3]] : tensor<20x6xf32>
-// CHECK:         }
+// CHECK-LABEL:  func.func @convert_scatter_max(
+// CHECK-SAME:      %[[VAL_0:.*]]: tensor<20x6xf32>,
+// CHECK-SAME:      %[[VAL_1:.*]]: tensor<4x1xi32>,
+// CHECK-SAME:      %[[VAL_2:.*]]: tensor<4x6xf32>) -> tensor<20x6xf32> {
+// CHECK:    %[[VAL_6:.*]] = "mhlo.scatter"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) ({
+// CHECK:    ^bb0(%[[VAL_3:.*]]: tensor<f32>, %[[VAL_4:.*]]: tensor<f32>):
+// CHECK:      %[[VAL_5:.*]] = mhlo.maximum %[[VAL_3]], %[[VAL_4]] : tensor<f32>
+// CHECK:      mhlo.return %[[VAL_5]] : tensor<f32>
+// CHECK:    }) {indices_are_sorted = false, scatter_dimension_numbers = #mhlo.scatter<update_window_dims = [1], inserted_window_dims = [0], scatter_dims_to_operand_dims = [0], index_vector_dim = 1>, unique_indices = false} : (tensor<20x6xf32>, tensor<4x1xi32>, tensor<4x6xf32>) -> tensor<20x6xf32>
+// CHECK:    return %[[VAL_6]] : tensor<20x6xf32>
+// CHECK:  }
 func.func @convert_scatter_max(%arg0: tensor<20x6xf32>, %arg1: tensor<4x1xi32>, %arg2: tensor<4x6xf32>) -> tensor<20x6xf32> {
   %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ({
   ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
@@ -4147,17 +4147,17 @@ func.func @convert_scatter_max(%arg0: tensor<20x6xf32>, %arg1: tensor<4x1xi32>, 
   func.return %0 : tensor<20x6xf32>
 }
 
-// CHECK-LABEL:   func.func @convert_scatter_min(
-// CHECK-SAME:                                   %[[VAL_0:.*]]: tensor<20x6xf32>,
-// CHECK-SAME:                                   %[[VAL_1:.*]]: tensor<4x1xi32>,
-// CHECK-SAME:                                   %[[VAL_2:.*]]: tensor<4x6xf32>) -> tensor<20x6xf32> {
-// CHECK:           %[[VAL_3:.*]] = "mhlo.scatter"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) ({
-// CHECK:           ^bb0(%[[VAL_4:.*]]: tensor<f32>, %[[VAL_5:.*]]: tensor<f32>):
-// CHECK:             %[[VAL_6:.*]] = "tf.Minimum"(%[[VAL_4]], %[[VAL_5]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-// CHECK:             mhlo.return %[[VAL_6]] : tensor<f32>
-// CHECK:           }) {indices_are_sorted = false, scatter_dimension_numbers = #mhlo.scatter<update_window_dims = [1], inserted_window_dims = [0], scatter_dims_to_operand_dims = [0], index_vector_dim = 1>, unique_indices = false} : (tensor<20x6xf32>, tensor<4x1xi32>, tensor<4x6xf32>) -> tensor<20x6xf32>
-// CHECK:           return %[[VAL_3]] : tensor<20x6xf32>
-// CHECK:         }
+// CHECK-LABEL:  func.func @convert_scatter_min(
+// CHECK-SAME:      %[[VAL_0:.*]]: tensor<20x6xf32>,
+// CHECK-SAME:      %[[VAL_1:.*]]: tensor<4x1xi32>,
+// CHECK-SAME:      %[[VAL_2:.*]]: tensor<4x6xf32>) -> tensor<20x6xf32> {
+// CHECK:    %[[VAL_6:.*]] = "mhlo.scatter"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) ({
+// CHECK:    ^bb0(%[[VAL_3:.*]]: tensor<f32>, %[[VAL_4:.*]]: tensor<f32>):
+// CHECK:      %[[VAL_5:.*]] = mhlo.minimum %[[VAL_3]], %[[VAL_4]] : tensor<f32>
+// CHECK:      mhlo.return %[[VAL_5]] : tensor<f32>
+// CHECK:    }) {indices_are_sorted = false, scatter_dimension_numbers = #mhlo.scatter<update_window_dims = [1], inserted_window_dims = [0], scatter_dims_to_operand_dims = [0], index_vector_dim = 1>, unique_indices = false} : (tensor<20x6xf32>, tensor<4x1xi32>, tensor<4x6xf32>) -> tensor<20x6xf32>
+// CHECK:    return %[[VAL_6]] : tensor<20x6xf32>
+// CHECK:  }
 func.func @convert_scatter_min(%arg0: tensor<20x6xf32>, %arg1: tensor<4x1xi32>, %arg2: tensor<4x6xf32>) -> tensor<20x6xf32> {
   %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ({
   ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
@@ -4175,17 +4175,17 @@ func.func @convert_scatter_min(%arg0: tensor<20x6xf32>, %arg1: tensor<4x1xi32>, 
   func.return %0 : tensor<20x6xf32>
 }
 
-// CHECK-LABEL:   func.func @convert_scatter_sub(
-// CHECK-SAME:                                   %[[VAL_0:.*]]: tensor<20x6xf32>,
-// CHECK-SAME:                                   %[[VAL_1:.*]]: tensor<4x1xi32>,
-// CHECK-SAME:                                   %[[VAL_2:.*]]: tensor<4x6xf32>) -> tensor<20x6xf32> {
-// CHECK:           %[[VAL_3:.*]] = "mhlo.scatter"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) ({
-// CHECK:           ^bb0(%[[VAL_4:.*]]: tensor<f32>, %[[VAL_5:.*]]: tensor<f32>):
-// CHECK:             %[[VAL_6:.*]] = "tf.Sub"(%[[VAL_4]], %[[VAL_5]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-// CHECK:             mhlo.return %[[VAL_6]] : tensor<f32>
-// CHECK:           }) {indices_are_sorted = false, scatter_dimension_numbers = #mhlo.scatter<update_window_dims = [1], inserted_window_dims = [0], scatter_dims_to_operand_dims = [0], index_vector_dim = 1>, unique_indices = false} : (tensor<20x6xf32>, tensor<4x1xi32>, tensor<4x6xf32>) -> tensor<20x6xf32>
-// CHECK:           return %[[VAL_3]] : tensor<20x6xf32>
-// CHECK:         }
+// CHECK-LABEL:  func.func @convert_scatter_sub(
+// CHECK-SAME:      %[[VAL_0:.*]]: tensor<20x6xf32>,
+// CHECK-SAME:      %[[VAL_1:.*]]: tensor<4x1xi32>,
+// CHECK-SAME:      %[[VAL_2:.*]]: tensor<4x6xf32>) -> tensor<20x6xf32> {
+// CHECK:    %[[VAL_6:.*]] = "mhlo.scatter"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) ({
+// CHECK:    ^bb0(%[[VAL_3:.*]]: tensor<f32>, %[[VAL_4:.*]]: tensor<f32>):
+// CHECK:      %[[VAL_5:.*]] = mhlo.subtract %[[VAL_3]], %[[VAL_4]] : tensor<f32>
+// CHECK:      mhlo.return %[[VAL_5]] : tensor<f32>
+// CHECK:    }) {indices_are_sorted = false, scatter_dimension_numbers = #mhlo.scatter<update_window_dims = [1], inserted_window_dims = [0], scatter_dims_to_operand_dims = [0], index_vector_dim = 1>, unique_indices = false} : (tensor<20x6xf32>, tensor<4x1xi32>, tensor<4x6xf32>) -> tensor<20x6xf32>
+// CHECK:    return %[[VAL_6]] : tensor<20x6xf32>
+// CHECK:  }
 func.func @convert_scatter_sub(%arg0: tensor<20x6xf32>, %arg1: tensor<4x1xi32>, %arg2: tensor<4x6xf32>) -> tensor<20x6xf32> {
   %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ({
   ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):

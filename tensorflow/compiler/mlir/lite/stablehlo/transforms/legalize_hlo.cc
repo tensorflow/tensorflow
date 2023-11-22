@@ -3386,9 +3386,6 @@ class ConvertIfOp : public OpConversionPattern<mhlo::IfOp> {
 };
 
 // Converts mhlo.pad to tf.PadV2
-// TODO: b/301438955 - This is redundant with the MHLO -> TFLite
-// legalization and covers less usecases. We need to check with DarwiNN that
-// this can be removed without breaking their workflow.
 Value ConvertPadOp(PatternRewriter& rewriter, Operation* old_op) {
   auto pad_op = cast<mhlo::PadOp>(old_op);
   mlir::Location loc = pad_op.getLoc();
@@ -3793,6 +3790,18 @@ bool IsTFStyleBroadcast(DenseIntElementsAttr broadcast_dimensions,
   return input_rank == 0 ||
          (broadcast_dimensions.getValues<APInt>()[0].getSExtValue() ==
           output_rank - input_rank);
+}
+
+// Returns true if the operation producing the provided result (`op_result`)
+// is within an op region of an operation of type `ParentType`.
+template <typename ParentType>
+bool IsWithinOpRegion(mlir::OpResult op_result) {
+  mlir::Operation* parent_op = op_result.getDefiningOp()->getParentOp();
+
+  if (llvm::dyn_cast<ParentType>(parent_op)) {
+    return true;
+  }
+  return false;
 }
 
 // Returns the intermediate shape that input tensor should be reshaped to during

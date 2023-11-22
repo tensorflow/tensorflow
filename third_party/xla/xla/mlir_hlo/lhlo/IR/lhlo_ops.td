@@ -1406,8 +1406,9 @@ def FusionOp : LHLO_Op<"fusion", [
 
     SmallVector<Value> getOutputBuffers() {
       SmallVector<Value> buffers;
-      for (auto store : getRegion().front().getOps<memref::TensorStoreOp>()) {
-        buffers.push_back(store.getMemref());
+      for (auto store : getRegion().front()
+          .getOps<bufferization::MaterializeInDestinationOp>()) {
+        buffers.push_back(store.getDest());
       }
       return buffers;
     }
@@ -1422,8 +1423,9 @@ def FusionOp : LHLO_Op<"fusion", [
 
     SmallVector<Value> getFusionResults() {
       SmallVector<Value> buffers;
-      for (auto store : getRegion().front().getOps<memref::TensorStoreOp>()) {
-        buffers.push_back(store.getTensor());
+      for (auto store : getRegion().front()
+          .getOps<bufferization::MaterializeInDestinationOp>()) {
+        buffers.push_back(store.getSource());
       }
       return buffers;
     }

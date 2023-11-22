@@ -38,18 +38,6 @@ Status VerifyS4U4Usage(HloInstruction* instruction) {
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kParameter:
     case HloOpcode::kTuple:
-      TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-          instruction->shape(), [&](const Shape& shape, const ShapeIndex&) {
-            if (primitive_util::Is4BitType(shape.element_type()) &&
-                ShapeUtil::ElementsIn(shape) % 2 == 1) {
-              return absl::InvalidArgumentError(absl::StrFormat(
-                  "S4/U4 arrays must have an even number of elements, but got "
-                  "instruction with S4/U4 input with odd number of elements: "
-                  "%s",
-                  instruction->ToString()));
-            }
-            return OkStatus();
-          }));
       break;
     default:
       TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(

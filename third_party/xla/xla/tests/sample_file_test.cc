@@ -38,7 +38,8 @@ class SampleFileTest : public HloTestBase {
 
 TEST_F(SampleFileTest, Convolution) {
   const std::string& filename = tsl::io::JoinPath(
-      tsl::testing::XlaSrcRoot(), "tests", "isolated_convolution.hlo");
+      tsl::testing::XlaSrcRoot(), "../external/local_xla/xla/tests", 
+      "isolated_convolution.hlo");
   EXPECT_TRUE(RunAndCompareFromFile(filename, ErrorSpec{0.01}));
 }
 

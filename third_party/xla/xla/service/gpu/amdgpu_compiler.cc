@@ -162,13 +162,10 @@ AMDGPUCompiler::AMDGPUCompiler()
     : GpuCompiler(stream_executor::rocm::kROCmPlatformId,
                   amdgpu::TargetTriple(), amdgpu::DataLayout()) {}
 
-StatusOr<std::pair<std::string, std::vector<uint8_t>>>
-AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
-                                    llvm::Module* llvm_module,
-                                    se::GpuComputeCapability gpu_version,
-                                    bool relocatable,
-                                    const HloModule* debug_module,
-                                    const CompileOptions& options) {
+StatusOr<GpuCompiler::BackendCompileResult> AMDGPUCompiler::CompileTargetBinary(
+    const HloModuleConfig& module_config, llvm::Module* llvm_module,
+    se::GpuComputeCapability gpu_version, bool relocatable,
+    const HloModule* debug_module, const CompileOptions& options) {
   if (rocdl_dir_.empty()) {
     // Compute rocdl_dir_ just once and cache it in this member.
     rocdl_dir_ = GetROCDLDir(module_config);
@@ -191,7 +188,7 @@ AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                       module_config.compilation_cache_key()));
   }
 
-  return std::pair<std::string, std::vector<uint8_t>>("", std::move(hsaco));
+  return BackendCompileResult{"", std::move(hsaco)};
 }
 
 }  // namespace gpu

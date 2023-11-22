@@ -4404,6 +4404,19 @@ ENTRY InferTernaryShape {
       ShapeUtil::MakeScalarShape(S32)));
 }
 
+TEST_F(HloParserTest, TupleTypo) {
+  constexpr char text[] = R"(HloModule TupleTypoTest
+ENTRY TupleTypo {
+  pow = s32[] constant(42)
+  ROOT v = (s32[]) tuple(power)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(text);
+  EXPECT_THAT(result.status(),
+              tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+                                     HasSubstr("instruction does not exist")));
+}
+
 TEST_F(HloParserTest, InferDotShape) {
   constexpr char text[] = R"(HloModule InferDotShapeTest
 ENTRY InferDotShape {

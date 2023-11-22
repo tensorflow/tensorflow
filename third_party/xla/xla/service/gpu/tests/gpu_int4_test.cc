@@ -86,6 +86,34 @@ TEST_F(GpuInt4Test, TestConstantSize) {
   EXPECT_TRUE(RunAndCompare(hlo_text, /*error=*/std::nullopt));
 }
 
+TEST_F(GpuInt4Test, TestOddElements) {
+  const std::string hlo_text = R"(
+  HloModule TestOddElements
+  ENTRY main {
+    x = s8[5] constant({1, 2, 3, 4, 5})
+    ROOT y = s4[5] convert(x)
+  })";
+  auto hlo_module =
+      ParseAndReturnVerifiedModule(hlo_text, GetModuleConfigForTest()).value();
+
+  // A conditional branch should check if the index is in bounds within the
+  // unrolled loop
+  auto expected_ir = R"(
+; CHECK: {{.*}}.in_bounds-true:
+; CHECK-NEXT: %[[in_bounds:.*]] = icmp ult i32 %linear_index_base, 5
+; CHECK-NEXT: br i1 %{{.*}}, label %[[in_bounds_true:.*unrolled_in_bounds-true]], label %[[in_bounds_after:.*unrolled_in_bounds-after]]
+;
+; CHECK: [[in_bounds_true]]:
+; CHECK: %{{.*}} = load i8, ptr %{{.*}}, align 1
+; CHECK: store i8 %{{.*}}, ptr %{{.*}}, align 1
+; CHECK: br label %[[in_bounds_after]]
+)";
+  CompileAndVerifyIr(std::move(hlo_module),
+                     MakePlatformSpecificLlvm(expected_ir),
+                     /*match_optimized_ir=*/false);
+  EXPECT_TRUE(RunAndCompare(hlo_text, /*error=*/std::nullopt));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

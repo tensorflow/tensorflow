@@ -84,7 +84,7 @@ StatusOr<bool> HloComputationDeduplicator::Run(
     // with large number of instructions or large-size constants due to increase
     // in time taken to stringify.
     if (comp->IsEntryComputation() || comp->instruction_count() > 128 ||
-        ContainsLargeConstants(comp)) {
+        ContainsLargeConstants(comp) || comp->IsCollectiveCalledComputation()) {
       continue;
     }
     std::string comp_str = comp->ToString(options);

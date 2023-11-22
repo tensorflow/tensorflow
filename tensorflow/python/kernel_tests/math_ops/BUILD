@@ -1,6 +1,10 @@
 # Tests of TensorFlow math kernels written using the Python API.
 
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
+load(
+    "//tensorflow/tools/test:performance.bzl",
+    "cuda_py_benchmark_test",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -107,8 +111,8 @@ cuda_py_strict_test(
     name = "batch_matmul_op_test",
     size = "medium",
     srcs = ["batch_matmul_op_test.py"],
-    tags = ["no_mac_arm64"],
     shard_count = 20,
+    tags = ["no_mac_arm64"],
     deps = [
         "//tensorflow/python:tf2",
         "//tensorflow/python/client:session",
@@ -260,7 +264,6 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["cwise_ops_binary_test.py"],
     shard_count = 50,
-    tags = [],
     # b/140155647: Error just outside of tolerance
     xla_enable_strict_auto_jit = False,
     deps = [
@@ -284,7 +287,7 @@ cuda_py_strict_test(
     name = "cwise_ops_unary_test",
     size = "medium",
     srcs = ["cwise_ops_unary_test.py"],
-    shard_count = 50,
+    shard_count = 10,
     tags = [
         "no_windows",  # TODO(b/207048097): re-enable
     ],
@@ -370,7 +373,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "reduce_benchmark_test",
     srcs = ["reduce_benchmark_test.py"],
     deps = [

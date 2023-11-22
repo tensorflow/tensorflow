@@ -94,6 +94,8 @@ py_strict_test(
     tags = [],
     deps = [
         ":framework",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
+        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
         "//tensorflow/python/debug/lib:debug_data",
@@ -108,8 +110,7 @@ py_strict_test(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:test",
         "//tensorflow/python/training:monitored_session",
-        "//tensorflow/python/util:tf_decorator",
-        "//third_party/py/numpy",
+        "//tensorflow/python/util:tf_inspect",
     ],
 )
 
@@ -123,6 +124,7 @@ py_strict_test(
         ":dumping_wrapper",
         ":framework",
         ":hooks",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/client:session",
         "//tensorflow/python/debug/lib:debug_data",
         "//tensorflow/python/framework:constant_op",
@@ -146,6 +148,8 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":local_cli_wrapper",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
+        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
         "//tensorflow/python/debug/cli:cli_config",
@@ -168,7 +172,6 @@ py_strict_test(
         "//tensorflow/python/platform:test",
         "//tensorflow/python/training:monitored_session",
         "//tensorflow/python/training:session_run_hook",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -181,6 +184,7 @@ py_strict_test(
     deps = [
         ":dumping_wrapper",
         ":hooks",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",

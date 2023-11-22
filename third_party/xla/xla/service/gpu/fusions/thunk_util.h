@@ -18,6 +18,9 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/statusor.h"
@@ -29,7 +32,8 @@ namespace gpu {
 // empty optional if the value is not a constant.
 StatusOr<std::optional<std::unique_ptr<Thunk>>> BuildConstantInitializerThunk(
     IrEmitterContext& ir_emitter_context, mlir::Operation* op,
-    mlir::Value init_value, mlir::Value dest);
+    const HloInstruction* instr, const HloInstruction* init_value,
+    mlir::Value dest, BufferAllocation::Slice dest_slice);
 
 }  // namespace gpu
 }  // namespace xla

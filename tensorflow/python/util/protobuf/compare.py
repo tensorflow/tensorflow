@@ -58,10 +58,10 @@ Alternatively:
       self.assertProtoEqual(a, b)
 """
 
+import collections.abc as collections_abc
 import difflib
 import math
 
-from ..compat import collections_abc
 import six
 
 from google.protobuf import descriptor
