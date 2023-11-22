@@ -128,6 +128,88 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # TODO: b/309674337 - Fix the large numerical errors.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.3)
 
+  @parameterized.parameters(
+      parameter_combinations([{
+          'same_scale_op': [
+              'concatenate',
+              'pad',
+              'reshape',
+              'select',
+              'transpose',
+          ],
+      }])
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def test_matmul_and_same_scale_ptq_model(
+      self,
+      same_scale_op: str,
+  ):
+    target_opset = quant_opts_pb2.STABLEHLO
+
+    input_shape = (2, 3, 1, 1024)
+    filter_shape = (2, 3, 1024, 3)
+    static_input_shape = [dim if dim is not None else 2 for dim in input_shape]
+
+    model = self._create_matmul_and_same_scale_model(
+        input_shape,
+        filter_shape,
+        self._input_saved_model_path,
+        same_scale_op,
+    )
+
+    rng = np.random.default_rng(seed=1235)
+    input_data = ops.convert_to_tensor(
+        rng.uniform(low=0.0, high=1.0, size=static_input_shape).astype(
+            np.float32
+        )
+    )
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(100):
+        yield {
+            'input_tensor': rng.uniform(
+                low=0.0, high=1.0, size=static_input_shape
+            ).astype(np.float32)
+        }
+
+    dataset_path = self.create_tempfile('tfrecord').full_path
+    path_map = {'serving_default': dataset_path}
+    repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
+        {'serving_default': data_gen()}
+    )
+
+    config = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
+        ),
+        tags={tag_constants.SERVING},
+        signature_keys=['serving_default'],
+        op_set=target_opset,
+        representative_datasets={
+            'serving_default': quant_opts_pb2.RepresentativeDatasetFile(
+                tfrecord_file_path=dataset_path
+            )
+        },
+    )
+    quantization.quantize_saved_model(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        config,
+    )
+
+    expected_outputs = model.matmul_and_same_scale(input_data)
+
+    root = load.load(self._output_saved_model_path)
+    self.assertCountEqual(root.signatures.keys(), {'serving_default'})
+
+    new_outputs = root.signatures['serving_default'](
+        input_tensor=ops.convert_to_tensor(input_data)
+    )
+    # Tests that the quantized graph outputs similar values. The rtol value is
+    # arbitrary.
+    # TODO: b/309674337 - Fix the large numerical errors.
+    self.assertAllClose(new_outputs, expected_outputs, rtol=0.3)
+
   def test_when_preset_not_srq_raise_error(self):
     self._create_matmul_model(
         input_shape=(1, 1024),
