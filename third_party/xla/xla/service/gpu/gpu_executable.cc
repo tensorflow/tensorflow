@@ -128,11 +128,11 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       gpu_version_(params.gpu_version),
       module_name_(params.module_name),
       output_shape_(params.output_shape),
-      allocations_(std::move(params.allocations)),
+      allocations_(std::move(params.mlir_allocations)),
+      buffer_assignment_(std::move(params.buffer_assignment)),
       enable_persistent_temp_buffers_(params.enable_persistent_temp_buffers),
-      debug_buffer_assignment_(std::move(params.debug_buffer_assignment)),
-      verbose_buffer_assignment_string_dumper_(
-          params.verbose_buffer_assignment_string_dumper),
+      debug_buffer_assignment_show_max_(
+          params.debug_buffer_assignment_show_max),
       constants_(std::move(params.constants)),
       output_info_(std::move(params.output_info)),
       enable_debug_info_manager_(params.enable_debug_info_manager) {
@@ -144,11 +144,8 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
   *(uint64_t*)(&binary_[binary_.size() - 8]) = tsl::random::New64();
 #endif
   if (has_module() && enable_debug_info_manager_) {
-    debug_buffer_assignment_proto_ =
-        std::make_shared<xla::BufferAssignmentProto>(
-            debug_buffer_assignment_->ToProto());
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
-                                               debug_buffer_assignment_proto_);
+                                               buffer_assignment_->ToProto());
   }
 }
 
@@ -424,7 +421,8 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
           memory_allocator->Allocate(device_ordinal, buffer_size);
       if (!buffer.ok()) {
         return ResourceExhausted("%s\n%s\n", buffer.status().message(),
-                                 verbose_buffer_assignment_string_dumper_());
+                                 buffer_assignment_->ToVerboseString(
+                                     debug_buffer_assignment_show_max_));
       }
       buffer_address = buffer->Release();
     }
@@ -462,11 +460,12 @@ StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
       [&] { return std::string("Build buffer allocations"); },
       tsl::profiler::TraceMeLevel::kInfo);
 
-  const int64_t num_buffers = allocations_.size();
+  absl::Span<const BufferAllocation> allocations = GetAllocations();
+  const int64_t num_buffers = allocations.size();
   std::vector<se::DeviceMemoryBase> buffers;
   buffers.reserve(num_buffers);
   for (int64_t i = 0; i < num_buffers; ++i) {
-    const BufferAllocation& allocation = allocations_[i];
+    const BufferAllocation& allocation = allocations[i];
     // Check if the buffer is already stored as a persistent buffer.
     se::DeviceMemoryBase buffer;
     if (buffer_alloc_to_persistent_memory_map.contains(allocation.index())) {
@@ -542,7 +541,7 @@ Status GpuExecutable::PopulatePersistentTempBuffers(
 
   // Allocate persistent temp buffers.
   BufferAllocToDeviceMemoryMap buffer_alloc_to_device_memory_map;
-  for (const BufferAllocation& allocation : allocations_) {
+  for (const BufferAllocation& allocation : GetAllocations()) {
     if (!allocation.IsPreallocatedTempBuffer()) {
       continue;
     }
@@ -638,6 +637,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     return true;
   }();
 
+  absl::Span<const BufferAllocation> allocations = GetAllocations();
   for (auto& p : result.MutableResult()->buffers()) {
     const ShapeIndex& index = p.first;
     if (!output_info_.contains(index)) {
@@ -645,7 +645,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     }
     const OutputInfo& output_info = output_info_.at(index);
     const BufferAllocation* allocation =
-        &allocations_[output_info.allocation_index];
+        &allocations[output_info.allocation_index];
     se::DeviceMemoryBase& result_buffer = p.second;
 
     VLOG(4) << "Looking at: allocation " << output_info.allocation_index
@@ -706,7 +706,8 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
         if (!allocated_buffer.ok()) {
           return ResourceExhausted("%s\n%s\n",
                                    allocated_buffer.status().message(),
-                                   verbose_buffer_assignment_string_dumper_());
+                                   buffer_assignment_->ToVerboseString(
+                                       debug_buffer_assignment_show_max_));
         }
         result_buffer = allocated_buffer->Release();
         se::DeviceMemoryBase& aliased_buffer =
@@ -739,7 +740,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
 
   // Free all temporary allocations.
   std::vector<BufferAllocation> non_persistent_allocations;
-  for (const BufferAllocation& allocation : allocations_) {
+  for (const BufferAllocation& allocation : GetAllocations()) {
     if (!persistent_buffers_map.contains(allocation.index())) {
       non_persistent_allocations.push_back(allocation);
     }
@@ -787,7 +788,7 @@ Status GpuExecutable::ExecuteThunksOrXlaRuntime(
   // Match IrEmitter's temp buffer allocation for kernel launches. See
   // IrEmitterUnnested::BuildKernelThunkImpl().
   const BufferAllocation* temp_buffer = nullptr;
-  for (const BufferAllocation& alloc : allocations_) {
+  for (const BufferAllocation& alloc : GetAllocations()) {
     if (alloc.IsPreallocatedTempBuffer()) {
       // Retrieve the first seen temp buffer.
       if (temp_buffer == nullptr) temp_buffer = &alloc;
@@ -810,8 +811,7 @@ int64_t GpuExecutable::SizeOfGeneratedCodeInBytes() const {
     return -1;
   }
   int64_t size = binary().size();
-  for (BufferAllocation::Index i = 0; i < allocations_.size(); ++i) {
-    const BufferAllocation& allocation = allocations_[i];
+  for (const auto& allocation : GetAllocations()) {
     if (allocation.is_constant()) {
       size += allocation.size();
     }
@@ -954,7 +954,7 @@ GpuExecutable::GpuExecutable(
       enable_debug_info_manager_(true) {
   if (has_module()) {
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
-                                               debug_buffer_assignment_proto_);
+                                               BufferAssignmentProto());
   }
 }
 

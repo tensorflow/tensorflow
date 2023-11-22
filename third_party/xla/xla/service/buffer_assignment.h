@@ -370,14 +370,6 @@ class BufferAssignment {
     return allocations_;
   }
 
-  // This is similar to copying Allocations(), but since it's moved out, it
-  // preserves the addresses. Since BufferAllocation::Slice keeps a
-  // BufferAllocation*, and some backends keep BufferAllocation::Slice in
-  // xla::Executables, migrating off the use of addresses can be hard.
-  std::vector<BufferAllocation> ReleaseAllocations() {
-    return std::move(allocations_);
-  }
-
   // Returns the total size allocation holding all temporary buffers.
   int64_t temp_allocation_total_size() const {
     return temp_allocation_total_size_;

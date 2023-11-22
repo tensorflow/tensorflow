@@ -1659,34 +1659,15 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
                             (*thunk_sequence)->ToString());
   }
 
-  std::shared_ptr<BufferAssignment> buffer_assignment;
-  std::function<std::string()> buffer_assignment_dumper = [] {
-    return std::string();
-  };
-  if (!options.is_autotuning_compilation) {
-    // Make it shared to be captured in the later lambda.
-    buffer_assignment = std::move(res.compile_module_results.buffer_assignment);
-    size_t max_buffers_to_show =
-        module->config().debug_options().xla_debug_buffer_assignment_show_max();
-    buffer_assignment_dumper = [buffer_assignment, max_buffers_to_show] {
-      return buffer_assignment->ToVerboseString(max_buffers_to_show);
-    };
-  }
-
-  std::vector<BufferAllocation> allocations;
-  if (res.compile_module_results.use_original_allocations) {
-    if (!options.is_autotuning_compilation) {
-      allocations = buffer_assignment->ReleaseAllocations();
-    } else {
-      allocations =
-          res.compile_module_results.buffer_assignment->ReleaseAllocations();
-    }
-  } else {
-    allocations = std::move(res.compile_module_results.allocations);
-  }
-
-  const bool embed_ir_in_executable =
+  // The module is being moved into the GpuExecutable below and we need to
+  // read a few config values from the module, before it becomes invalid.
+  bool embed_ir_in_executable =
       module->config().debug_options().xla_embed_ir_in_executable();
+  int64_t debug_buffer_assignment_show_max =
+      module->config().debug_options().xla_debug_buffer_assignment_show_max();
+  bool enable_persistent_temp_buffers =
+      module->config().debug_options().xla_gpu_enable_persistent_temp_buffers();
+
   TF_ASSIGN_OR_RETURN(
       auto gpu_executable,
       GpuExecutable::Create(GpuExecutable::Params{
@@ -1701,18 +1682,19 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           /*output_info=*/std::move(res.compile_module_results.output_info),
           /*module_name=*/std::move(res.compile_module_results.module_name),
           /*output_shape=*/std::move(res.compile_module_results.output_shape),
-          /*allocations=*/std::move(allocations),
-          /*enable_persistent_temp_buffers=*/
-          module->config()
-              .debug_options()
-              .xla_gpu_enable_persistent_temp_buffers(),
-          /*debug_buffer_assignment=*/std::move(buffer_assignment),
-          /*verbose_buffer_assignment_string_dumper=*/
-          std::move(buffer_assignment_dumper),
+          /*mlir_allocations=*/
+          (res.compile_module_results.use_original_allocations
+               ? std::optional<std::vector<BufferAllocation>>()
+               : std::move(res.compile_module_results.allocations)),
+          /*buffer_assignment=*/
+          std::move(res.compile_module_results.buffer_assignment),
+          /*enable_persistent_temp_buffers=*/enable_persistent_temp_buffers,
+          /*debug_buffer_assignment_show_max=*/debug_buffer_assignment_show_max,
           /*debug_module=*/options.is_autotuning_compilation
               ? std::unique_ptr<HloModule>()
               : std::move(module),
           /*enable_debug_info_manager=*/!options.is_autotuning_compilation}));
+
   if (embed_ir_in_executable) {
     std::string ir_module_string_before_opt =
         llvm_ir::DumpToString(res.compile_module_results.llvm_module.get());

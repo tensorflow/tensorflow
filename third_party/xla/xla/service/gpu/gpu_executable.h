@@ -93,17 +93,10 @@ class GpuExecutable : public Executable {
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
     std::string module_name;
     xla::Shape output_shape;
-    std::vector<BufferAllocation> allocations;
+    std::optional<std::vector<BufferAllocation>> mlir_allocations;
+    std::unique_ptr<const BufferAssignment> buffer_assignment;
     bool enable_persistent_temp_buffers;
-    std::shared_ptr<BufferAssignment> debug_buffer_assignment;
-
-    // A callable that dumps out a debug string upon device OOM. It's not the
-    // string itself, as the string can be huge and increase peak host memory
-    // usage for the common (non-OOM) case.
-    std::function<std::string()> verbose_buffer_assignment_string_dumper = [] {
-      return std::string();
-    };
-
+    int64_t debug_buffer_assignment_show_max;
     std::unique_ptr<HloModule> debug_module = nullptr;
     bool enable_debug_info_manager = true;
   };
@@ -188,7 +181,19 @@ class GpuExecutable : public Executable {
       VariantArguments arguments);
 
   absl::Span<const BufferAllocation> GetAllocations() const {
-    return allocations_;
+    // A GpuExecutable can get its allocations in three ways:
+    // 1 - From a regular compilation that uses allocations from MLIR.
+    // 2 - From a regular compilation that uses the original allocations from
+    //     the buffer assignment.
+    // 3 - From loading the executable from an object file.
+    //
+    // In cases 1 and 3, the allocations are stored in allocations_ and in
+    // case 2, they are part of the buffer_assignment.
+    //
+    // This function chooses the correct allocations to be used within the
+    // GpuExecutable code.
+    return allocations_.has_value() ? *allocations_
+                                    : buffer_assignment_->Allocations();
   }
 
   const std::vector<ConstantInfo>& constants() const { return constants_; }
@@ -196,12 +201,8 @@ class GpuExecutable : public Executable {
   StatusOr<std::string_view> GetObjFile() const;
   StatusOr<std::string_view> GetMlirModule() const;
 
-  BufferAssignment* buffer_assignment() const {
-    return debug_buffer_assignment_.get();
-  }
-
-  BufferAssignmentProto* buffer_assignment_proto() const {
-    return debug_buffer_assignment_proto_.get();
+  const BufferAssignment* buffer_assignment() const {
+    return buffer_assignment_.get();
   }
 
  private:
@@ -294,9 +295,17 @@ class GpuExecutable : public Executable {
 
   xla::Shape output_shape_;
 
-  // Owns the buffer data at runtime. It provides information to allocate
-  // memory for every output/temp buffers.
-  const std::vector<BufferAllocation> allocations_;
+  // The allocations_ object contains allocations that **may** be used to
+  // provide information for allocating memory for every output/temp buffer.
+  // See the comment on GetAllocations().
+  std::optional<const std::vector<BufferAllocation>> allocations_;
+
+  // The buffer_assignment_ object contains allocations that **may** be used to
+  // provide information for allocating memory for every output/temp buffer.
+  // See the comment on GetAllocations().
+  //
+  // This object is also used for dumping debug info.
+  std::unique_ptr<const xla::BufferAssignment> buffer_assignment_;
 
   bool enable_persistent_temp_buffers_ = false;
 
@@ -308,9 +317,7 @@ class GpuExecutable : public Executable {
                       BufferAllocToDeviceMemoryMap>
       persistent_temp_buffers_ ABSL_GUARDED_BY(persistent_temp_buffers_mu_);
 
-  std::shared_ptr<xla::BufferAssignment> debug_buffer_assignment_;
-  std::shared_ptr<xla::BufferAssignmentProto> debug_buffer_assignment_proto_;
-  std::function<std::string()> verbose_buffer_assignment_string_dumper_;
+  int64_t debug_buffer_assignment_show_max_;
 
   absl::Mutex module_handle_mutex_;
   // Cache of module handles. Required to keep loaded modules alive until this
