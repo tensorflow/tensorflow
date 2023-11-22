@@ -86,6 +86,11 @@ class ResizableAlignedBuffer {
   size_t GetAlignment() const { return alignment_; }
 
  private:
+  ResizableAlignedBuffer(const ResizableAlignedBuffer&) = delete;
+  ResizableAlignedBuffer& operator=(const ResizableAlignedBuffer&) = delete;
+  ResizableAlignedBuffer(ResizableAlignedBuffer&&) = delete;
+  ResizableAlignedBuffer& operator=(ResizableAlignedBuffer&&) = delete;
+
   size_t RequiredAllocationSize(size_t data_array_size) const {
     return data_array_size + alignment_ - 1;
   }
