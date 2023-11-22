@@ -117,6 +117,12 @@ class IrEmitterUnnested : public IrEmitter {
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
 
+  // Emits code for the given HLO computation. Right now it is only used to emit
+  // thunks for constructing command buffer. The plan is to replace
+  // EmitLmhloRegion by this function altogether, after we support emitting
+  // all instructions from HLO.
+  Status EmitHloComputation(const HloComputation* computation);
+
   static void GetDependentDialects(mlir::DialectRegistry& registry);
 
  private:
@@ -199,6 +205,8 @@ class IrEmitterUnnested : public IrEmitter {
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
+
+  Status EmitHloInstruction(const HloInstruction* instr);
 
   static Thunk::ThunkInfo GetThunkInfo(mlir::Operation* op);
 

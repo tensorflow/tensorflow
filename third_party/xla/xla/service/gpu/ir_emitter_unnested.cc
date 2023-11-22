@@ -372,6 +372,33 @@ int DeriveNumWarpsFromTritonSoftmaxComputation(
   return num_warps;
 }
 
+StatusOr<std::unique_ptr<CommandBufferCmd>> ConvertToCommand(
+    const Thunk& thunk) {
+  switch (thunk.kind()) {
+    // TODO(anlunx): Support other thunk kinds.
+    case Thunk::Kind::kKernel: {
+      auto& kernel_thunk = static_cast<const KernelThunk&>(thunk);
+      auto kernel_cmd = std::make_unique<LaunchCmd>(
+          kernel_thunk.kernel_name(), kernel_thunk.arguments(),
+          kernel_thunk.launch_dimensions(), kernel_thunk.shmem_bytes());
+      return kernel_cmd;
+    }
+    default:
+      return InternalError("Unsupported thunk kind");
+  }
+}
+
+StatusOr<CommandBufferCmdSequence> ConvertToCommands(
+    const ThunkSequence& sequence) {
+  CommandBufferCmdSequence cmd_sequence;
+  for (const std::unique_ptr<Thunk>& thunk : sequence) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<CommandBufferCmd> cmd,
+                        ConvertToCommand(*thunk));
+    cmd_sequence.Append(std::move(cmd));
+  }
+  return cmd_sequence;
+}
+
 }  // namespace
 
 IrEmitterUnnested::IrEmitterUnnested(IrEmitterContext* ir_emitter_context)
@@ -783,38 +810,18 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
 }
 
 Status IrEmitterUnnested::EmitCommandBufferThunk(const HloInstruction* instr) {
+  // Spawn a new IrEmitterUnnested to emit thunks for the command buffer
+  // computation. Then convert emitted thunks to a sequence of CommandBufferCmd.
+  // The resulting thunk added to the thunk sequence is a CommandBufferThunk.
+  // Thunks emitted from the command buffer computation are discarded.
+  DCHECK_EQ(instr->called_computations().size(), 1);
   const HloComputation* command_buffer = instr->called_computations().front();
-  CommandBufferCmdSequence cmd_sequence;
-  for (const HloInstruction* cmd : command_buffer->instructions()) {
-    const HloFusionInstruction* fusion = DynCast<HloFusionInstruction>(cmd);
-    if (fusion == nullptr) continue;
-
-    TF_ASSIGN_OR_RETURN(auto backend_config,
-                        fusion->backend_config<FusionBackendConfig>());
-    const se::DeviceDescription& device_info =
-        ir_emitter_context_->gpu_device_info();
-    TF_ASSIGN_OR_RETURN(auto fusion_analysis,
-                        HloFusionAnalysis::Create(fusion, &device_info));
-    TF_ASSIGN_OR_RETURN(FusionEmissionResult emission_result,
-                        GetFusionEmissionResult(fusion, fusion_analysis));
-
-    // TODO(anlunx): Support fusions that emit multiple thunks.
-    if (emission_result.thunks.size() != 1) {
-      return InternalError(
-          "Command buffers only support fusions with a single emitted thunk");
-    }
-
-    std::unique_ptr<Thunk>& thunk = emission_result.thunks.front();
-    auto* kernel_thunk = dynamic_cast<KernelThunk*>(thunk.get());
-    if (!kernel_thunk) {
-      return InternalError("Expected kernel thunk");
-    }
-
-    cmd_sequence.Emplace<LaunchCmd>(
-        kernel_thunk->kernel_name(), kernel_thunk->arguments(),
-        kernel_thunk->launch_dimensions(), kernel_thunk->shmem_bytes());
-  }
-
+  auto ir_emitter = IrEmitterUnnested::Create(ir_emitter_context_);
+  TF_RETURN_IF_ERROR(ir_emitter->EmitHloComputation(command_buffer));
+  std::unique_ptr<ThunkSequence> thunk_sequence =
+      ir_emitter->ConsumeThunkSequence();
+  TF_ASSIGN_OR_RETURN(CommandBufferCmdSequence cmd_sequence,
+                      ConvertToCommands(*thunk_sequence));
   AddThunkToThunkSequence(std::make_unique<CommandBufferThunk>(
       std::move(cmd_sequence), Thunk::ThunkInfo::WithProfileAnnotation(instr)));
   return OkStatus();
@@ -3639,6 +3646,43 @@ Status IrEmitterUnnested::EmitLmhloRegion(
         hlo_for_lmhlo) {
   for (mlir::Operation& op : llvm::make_early_inc_range(region->front())) {
     TF_RETURN_IF_ERROR(EmitOp(&op, hlo_for_lmhlo));
+  }
+  return OkStatus();
+}
+
+Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
+  // TODO(anlunx): Support other instruction opcodes.
+  switch (instr->opcode()) {
+    case HloOpcode::kFusion: {
+      auto* fusion = Cast<HloFusionInstruction>(instr);
+      TF_ASSIGN_OR_RETURN(auto backend_config,
+                          instr->backend_config<FusionBackendConfig>());
+      const se::DeviceDescription& device_info =
+          ir_emitter_context_->gpu_device_info();
+      TF_ASSIGN_OR_RETURN(auto fusion_analysis,
+                          HloFusionAnalysis::Create(fusion, &device_info));
+      TF_RETURN_IF_ERROR(EmitFusion(fusion, fusion_analysis));
+      return OkStatus();
+    }
+    // We don't need to emit thunks for these operations because their semantics
+    // are encoded by buffers.
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kParameter:
+    case HloOpcode::kTuple: {
+      return OkStatus();
+    }
+    default:
+      return InternalError("Unsupported instruction opcode");
+  }
+
+  return InternalError("Unhandled HLO instruction");
+}
+
+Status IrEmitterUnnested::EmitHloComputation(
+    const HloComputation* computation) {
+  ThunkSequence thunk_sequence;
+  for (const HloInstruction* instr : computation->instructions()) {
+    TF_RETURN_IF_ERROR(EmitHloInstruction(instr));
   }
   return OkStatus();
 }
