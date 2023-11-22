@@ -877,7 +877,8 @@ Status ShapeVerifier::HandleInfeed(HloInstruction* instruction) {
   // The output of infeed is a tuple containing the data value and a token.
   return CheckShape(infeed,
                     ShapeUtil::MakeTupleShape(
-                        {infeed->infeed_shape(), ShapeUtil::MakeTokenShape()}));
+                        {infeed->infeed_shape(), ShapeUtil::MakeTokenShape()}),
+                    /*only_compare_minor_to_major_in_layout=*/true);
 }
 
 Status ShapeVerifier::HandleOutfeed(HloInstruction* instruction) {
