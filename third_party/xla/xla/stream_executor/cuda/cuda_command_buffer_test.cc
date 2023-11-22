@@ -288,7 +288,29 @@ TEST(CudaCommandBufferTest, ConditionalIf) {
   std::vector<int32_t> zeroes = {0, 0, 0, 0};
   ASSERT_EQ(dst, zeroes);
 
-  // TODO(ezhulenev): Test conditional command buffer updates.
+  // Prepare argument for graph update: d = 0
+  DeviceMemory<int32_t> d = executor->AllocateArray<int32_t>(length, 0);
+  stream.ThenMemZero(&d, byte_length);
+
+  // Set predicate buffer to true to run conditional command buffer.
+  stream.ThenMemcpy(&pred, &kTrue, 1);
+
+  // if (pred == true) d = a + b (write to a new location).
+  then_builder = [&](CommandBuffer* then_cmd) {
+    return then_cmd->Launch(add, ThreadDim(), BlockDim(4), a, b, d);
+  };
+
+  // Update command buffer with a conditional to use new builder.
+  TF_ASSERT_OK(cmd_buffer.Update());
+  TF_ASSERT_OK(cmd_buffer.If(pred, then_builder));
+  TF_ASSERT_OK(cmd_buffer.Finalize());
+
+  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+
+  // Copy `d` data back to host.
+  std::fill(dst.begin(), dst.end(), 42);
+  stream.ThenMemcpy(dst.data(), d, byte_length);
+  ASSERT_EQ(dst, expected);
 }
 
 //===----------------------------------------------------------------------===//

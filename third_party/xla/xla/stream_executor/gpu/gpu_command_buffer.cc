@@ -18,6 +18,7 @@ limitations under the License.
 #include <atomic>
 #include <cstdint>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
@@ -98,7 +99,7 @@ GpuCommandBuffer::GpuCommandBuffer(Mode mode, GpuExecutor* parent,
       is_owned_graph_(is_owned_graph) {}
 
 GpuCommandBuffer::~GpuCommandBuffer() {
-  if (exec_ != nullptr) {
+  if (exec_ != nullptr && is_owned_graph_exec_) {
     VLOG(5) << "Destroy GPU command buffer executable graph " << exec_ << " "
             << "(remaining alive executable graphs: " << NotifyExecDestroyed()
             << ")";
@@ -109,6 +110,26 @@ GpuCommandBuffer::~GpuCommandBuffer() {
     auto st = GpuDriver::DestroyGraph(graph_);
     CHECK(st.ok()) << "Failed to destroy GPU graph: " << st.message();
   }
+}
+
+GpuCommandBuffer::ScopedGpuGraphExec::ScopedGpuGraphExec(
+    GpuCommandBuffer* cmd_buffer, GpuGraphExecHandle exec)
+    : cmd_buffer(cmd_buffer),
+      restore(cmd_buffer->exec_),
+      restore_is_owned(cmd_buffer->is_owned_graph_exec_) {
+  cmd_buffer->exec_ = exec;
+  cmd_buffer->is_owned_graph_exec_ = false;
+}
+
+GpuCommandBuffer::ScopedGpuGraphExec::~ScopedGpuGraphExec() {
+  cmd_buffer->exec_ = restore;
+  cmd_buffer->is_owned_graph_exec_ = restore_is_owned;
+}
+
+void GpuCommandBuffer::ConditionalCommandBuffers::Add(
+    GpuGraphConditionalHandle handle, CommandBuffer command_buffer) {
+  handles.push_back(handle);
+  command_buffers.push_back(std::move(command_buffer));
 }
 
 static GpuDevicePtr AsDevicePtr(const DeviceMemoryBase& mem) {
@@ -193,7 +214,7 @@ tsl::Status GpuCommandBuffer::Launch(const ThreadDim& threads,
 
   // Updates kernel node in the executable graph.
   if (state_ == State::kUpdate) {
-    GpuGraphNodeHandle node = nodes_[node_update_idx_++];
+    GpuGraphNodeHandle node = nodes_[update_state_.node_idx++];
     return GpuDriver::GraphExecKernelNodeSetParams(
         exec_, node, kernel.name(), gpu_func, blocks.x, blocks.y, blocks.z,
         threads.x, threads.y, threads.z, args.number_of_shared_bytes(),
@@ -220,7 +241,7 @@ tsl::Status GpuCommandBuffer::AddNestedCommandBuffer(
 
   // Updates child graph node in the executable graph.
   if (state_ == State::kUpdate) {
-    GpuGraphNodeHandle node = nodes_[node_update_idx_++];
+    GpuGraphNodeHandle node = nodes_[update_state_.node_idx++];
     return GpuDriver::GraphExecChildNodeSetParams(exec_, node, child_graph);
   }
 
@@ -249,6 +270,8 @@ tsl::Status GpuCommandBuffer::If(StreamExecutor* executor,
                                  CommandBuffer::Builder then_builder) {
   DCHECK(executor->implementation() == parent_);  // NOLINT
 
+  // TODO(ezhulenev): Keep kernel in `GpuCommandBuffer` to avoid loading it on
+  // every call to `If`.
   SetConditionKernel set_condition(executor);
 
   {  // Load kernels that update condition handle value.
@@ -290,18 +313,52 @@ tsl::Status GpuCommandBuffer::If(StreamExecutor* executor,
     GpuGraphHandle then_graph = std::get<ConditionalResult>(result).graph;
 
     // Wrap conditional graph into command buffer and pass it to the builder.
-    auto then_command_buffer = CommandBuffer::Wrap(
+    auto then_cmd_buffer = CommandBuffer::Wrap(
         executor, parent_->GetCommandBufferImplementation(
                       nested, then_graph, /*is_owned_graph=*/false));
-    TF_RETURN_IF_ERROR(then_builder(&then_command_buffer));
-    TF_RETURN_IF_ERROR(then_command_buffer.Finalize());
+    TF_RETURN_IF_ERROR(then_builder(&then_cmd_buffer));
+    TF_RETURN_IF_ERROR(then_cmd_buffer.Finalize());
+
+    // Keep track of conditional handle and command buffers for update.
+    auto& command_buffers = conditional_command_buffers_.emplace_back();
+    command_buffers.Add(handle, std::move(then_cmd_buffer));
 
     return tsl::OkStatus();
   }
 
-  // TODO(ezhulenev): For command buffer update we need to keep conditional
-  // handle for the command and command buffer itself as it has a mapping to
-  // node handles required for updates.
+  if (state_ == State::kUpdate) {
+    ConditionalCommandBuffers& cond_cmd_buffers =
+        conditional_command_buffers_[update_state_.conditional_idx++];
+
+    // Sanity check that we got the correct conditional command buffers.
+    if (cond_cmd_buffers.handles.size() != 1 ||
+        cond_cmd_buffers.command_buffers.size() != 1) {
+      return absl::InternalError(
+          "`If` command expected one conditional command buffer");
+    }
+
+    GpuGraphConditionalHandle& handle = cond_cmd_buffers.handles[0];
+    CommandBuffer& then_cmd_buffer = cond_cmd_buffers.command_buffers[0];
+
+    // Update a kernel that updates conditional handle based on a predicate.
+    TF_RETURN_IF_ERROR(
+        Launch(set_condition, ThreadDim(), BlockDim(), handle, predicate));
+
+    // Conditional handle created only when we add conditional node first time
+    // and then owned by a `graph_`. We also don't need to update conditional
+    // node itself, as it reuses the same handle.
+    update_state_.node_idx++;  // skip conditional node
+
+    // Use parent graph executable for conditional command buffer update.
+    ScopedGpuGraphExec scoped_exec(Cast(&then_cmd_buffer), exec_);
+
+    // Update `then` command buffer using user-provided builder callback.
+    TF_RETURN_IF_ERROR(then_cmd_buffer.Update());
+    TF_RETURN_IF_ERROR(then_builder(&then_cmd_buffer));
+    TF_RETURN_IF_ERROR(then_cmd_buffer.Finalize());
+
+    return tsl::OkStatus();
+  }
 
   return UnsupportedStateError(state_);
 }
@@ -347,20 +404,15 @@ tsl::Status GpuCommandBuffer::Update() {
   }
 
   if (exec_ == nullptr) {
-    if (mode_ == Mode::kPrimary)
-      return absl::InternalError(
-          "Primary command buffers are expected to have executable graphs");
-    return absl::UnimplementedError(
-        "Nested command buffer update is deliberately not implemented. One "
-        "should create a new nested command buffer and update the primary one "
-        "instead");
+    return absl::InternalError(
+        "Command buffer has to have a graph executable to be updated");
   }
 
   VLOG(5) << "Begin primary command buffer update for executable graph "
           << exec_;
 
   state_ = State::kUpdate;
-  node_update_idx_ = 0;
+  update_state_ = UpdateState();
   return tsl::OkStatus();
 }
 

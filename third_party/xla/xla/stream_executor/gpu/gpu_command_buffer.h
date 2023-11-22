@@ -85,19 +85,48 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   static int64_t AllocatedExecs();
   static int64_t AliveExecs();
 
+  static GpuCommandBuffer* Cast(CommandBuffer* command_buffer) {
+    return static_cast<GpuCommandBuffer*>(command_buffer->implementation());
+  }
+
   static const GpuCommandBuffer* Cast(const CommandBuffer* command_buffer) {
     return static_cast<const GpuCommandBuffer*>(
         command_buffer->implementation());
   }
 
  private:
+  using Dependencies = absl::InlinedVector<GpuGraphNodeHandle, 1>;
+
+  // A signature of a device kernels updating conditional handle.
   using SetConditionKernel =
       TypedKernel<GpuGraphConditionalHandle, DeviceMemory<bool>>;
+
+  // Overwrites the `exec_` handle in a Gpu command buffer by `exec`, and
+  // restores to the original handle when destroyed. This allows us updating
+  // primary graph executable using nested command buffers (command buffers that
+  // do not have their own executable), which is required for updating
+  // conditional commands.
+  struct ScopedGpuGraphExec {
+    ScopedGpuGraphExec(GpuCommandBuffer* cmd_buffer, GpuGraphExecHandle exec);
+    ~ScopedGpuGraphExec();
+
+    GpuCommandBuffer* cmd_buffer;
+    GpuGraphExecHandle restore;
+    bool restore_is_owned;
+  };
+
+  // For each conditional node in the Gpu graph we keep a record of conditional
+  // command buffers attached to a node, so we can apply updates to them.
+  struct ConditionalCommandBuffers {
+    void Add(GpuGraphConditionalHandle handle, CommandBuffer command_buffer);
+
+    std::vector<GpuGraphConditionalHandle> handles;
+    std::vector<CommandBuffer> command_buffers;
+  };
 
   // TODO(ezhulenev): Currently we serialize all Gpu nodes by adding a
   // dependency between all nodes added to a command buffer. We need a concept
   // of a barrier at a command buffer level.
-  using Dependencies = absl::InlinedVector<GpuGraphNodeHandle, 1>;
   Dependencies GetDependencies();
 
   // Returns OK status if command buffer is not finalized and it is still
@@ -118,21 +147,36 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   CommandBuffer::Mode mode_;
   CommandBuffer::State state_ = CommandBuffer::State::kCreate;
 
-  GpuExecutor* parent_;                // not owned, must outlive *this
-  GpuGraphHandle graph_ = nullptr;     // owned if `is_owned_graph_ == true`
-  bool is_owned_graph_ = true;         // ownership of `graph_`
-  GpuGraphExecHandle exec_ = nullptr;  // owned
+  GpuExecutor* parent_;  // not owned, must outlive *this
+
+  GpuGraphHandle graph_ = nullptr;  // owned if `is_owned_graph_`
+  bool is_owned_graph_ = true;      // ownership of `graph_`
+
+  GpuGraphExecHandle exec_ = nullptr;  // owned if `is_owned_graph_exec_`
+  bool is_owned_graph_exec_ = true;    // ownership of `is_owned_graph_exec_`
 
   // Handles to graph nodes corresponding to command buffer commands. Owned by
   // the `graph_` instance.
   std::vector<GpuGraphNodeHandle> nodes_;
 
-  // When command buffer is in update state this index will point to the graph
-  // node inside `nodes_` that will be updated next.
-  int64_t node_update_idx_ = 0;
+  // Command buffers for conditional nodes in the Gpu graph. Underlying Gpu
+  // graphs owned by the `graph_` instance.
+  std::vector<ConditionalCommandBuffers> conditional_command_buffers_;
 
   // Track the number of command buffer updates for debugging.
   int64_t num_updates_ = 0;
+
+  // Tracks indices into internal data structures during command buffer updates.
+  struct UpdateState {
+    // Index points to the graph node inside `nodes_` that will be updated next.
+    int64_t node_idx = 0;
+
+    // Index points to the conditional command buffers that will be updated next
+    // when we'll be updating next conditional command (If, Case, While).
+    int64_t conditional_idx = 0;
+  };
+
+  UpdateState update_state_;
 };
 
 template <typename... Params, typename... Args>
