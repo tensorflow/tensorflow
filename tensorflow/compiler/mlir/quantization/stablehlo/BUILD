@@ -518,6 +518,22 @@ tf_proto_library(
 # )
 # copybara:uncomment_end
 
+tf_proto_library(
+    name = "quantization_config_proto",
+    srcs = ["quantization_config.proto"],
+    cc_api_version = 2,
+    visibility = ["//visibility:public"],
+)
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "quantization_config_py_pb2",
+#     api_version = 2,
+#     visibility = [":internal_visibility_allowlist_package"],
+#     deps = [":quantization_config_proto"],
+# )
+# copybara:uncomment_end
+
 exports_files([
     "run_lit.sh",
 ])
