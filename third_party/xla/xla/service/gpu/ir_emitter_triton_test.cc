@@ -1436,8 +1436,9 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={1}
 })";
 
+  // The fusion has separate parameters for each scope.
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: fusion(%p0), kind=kCustom
+; CHECK: fusion(%p0, %p0), kind=kCustom
 ; CHECK-SAME: "block_m":
 )");
 
