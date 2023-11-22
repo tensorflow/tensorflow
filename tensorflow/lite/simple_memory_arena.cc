@@ -54,7 +54,7 @@ bool ResizableAlignedBuffer::Resize(size_t new_size) {
   OnTfLiteArenaAlloc(subgraph_index_, reinterpret_cast<std::uintptr_t>(this),
                      new_allocation_size);
 #endif
-  char* new_buffer = new char[new_allocation_size];
+  char* new_buffer = reinterpret_cast<char*>(std::malloc(new_allocation_size));
 #if defined(__clang__)
 #if __has_feature(memory_sanitizer)
   memset(new_buffer, 0, new_allocation_size);
@@ -67,7 +67,7 @@ bool ResizableAlignedBuffer::Resize(size_t new_size) {
     const size_t copy_amount = std::min(new_size, data_size_);
     std::memcpy(new_aligned_ptr, aligned_ptr_, copy_amount);
   }
-  delete[] buffer_;
+  std::free(buffer_);
   buffer_ = new_buffer;
   aligned_ptr_ = new_aligned_ptr;
 #ifdef TF_LITE_TENSORFLOW_PROFILER
@@ -92,7 +92,7 @@ void ResizableAlignedBuffer::Release() {
   OnTfLiteArenaDealloc(subgraph_index_, reinterpret_cast<std::uintptr_t>(this),
                        RequiredAllocationSize(data_size_));
 #endif
-  delete[] buffer_;
+  std::free(buffer_);
   buffer_ = nullptr;
   data_size_ = 0;
   aligned_ptr_ = nullptr;
