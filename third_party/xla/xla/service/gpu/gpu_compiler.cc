@@ -217,7 +217,11 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
+#if GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#elif TENSORFLOW_USE_ROCM
+#include "xla/stream_executor/rocm/rocm_platform_id.h"
+#endif
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
@@ -1735,7 +1739,11 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                 const AotCompilationOptions& options) {
+#if GOOGLE_CUDA
   CHECK(options.PlatformId() == se::cuda::kCudaPlatformId);
+#elif TENSORFLOW_USE_ROCM
+  CHECK(options.PlatformId() == se::rocm::kROCmPlatformId);
+#endif
 
   std::vector<std::unique_ptr<HloModule>> modules =
       module_group->ConsumeModules();
