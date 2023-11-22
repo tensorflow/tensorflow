@@ -111,7 +111,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 85
+// Next ID: 86
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -363,6 +363,9 @@ message HloInstructionProto {
 
   // Represents the K value for top-k.
   int64 k = 81;
+
+  // Represents the largest flag for top-k.
+  bool largest = 85;
 
   // Represents the information for tracking propagation of values within HLO
   // graph.
