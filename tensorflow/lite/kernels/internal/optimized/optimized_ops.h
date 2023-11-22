@@ -49,8 +49,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
-#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/im2col_utils.h"
+#include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
@@ -1946,6 +1946,63 @@ inline void MulElementwise(int size, const ArithmeticParams& params,
   }
 }
 
+inline void MulElementwise(int32_t n, const ArithmeticParams& params,
+                           const int32_t* __restrict lhs,
+                           const int32_t* __restrict rhs,
+                           int32_t* __restrict out) {
+  const int32_t activation_min_val = params.quantized_activation_min;
+  const int32_t activation_max_val = params.quantized_activation_max;
+
+  int32_t i = 0;
+
+#ifdef USE_NEON
+  const int32x4_t activation_min = vdupq_n_s32(activation_min_val);
+  const int32x4_t activation_max = vdupq_n_s32(activation_max_val);
+
+  // Ewise Mul 16 elements at a time using 4 4-wide vector registers per loop.
+  for (; i <= n - 16; i += 16) {
+    // Load.
+    const int32x4_t lhs_reg = vld1q_s32(lhs + i);
+    const int32x4_t lhs_reg2 = vld1q_s32(lhs + i + 4);
+    const int32x4_t lhs_reg3 = vld1q_s32(lhs + i + 8);
+    const int32x4_t lhs_reg4 = vld1q_s32(lhs + i + 12);
+
+    const int32x4_t rhs_reg = vld1q_s32(rhs + i);
+    const int32x4_t rhs_reg2 = vld1q_s32(rhs + i + 4);
+    const int32x4_t rhs_reg3 = vld1q_s32(rhs + i + 8);
+    const int32x4_t rhs_reg4 = vld1q_s32(rhs + i + 12);
+
+    // Multiply.
+    const int32x4_t mul_reg = vmulq_s32(lhs_reg, rhs_reg);
+    const int32x4_t mul_reg2 = vmulq_s32(lhs_reg2, rhs_reg2);
+    const int32x4_t mul_reg3 = vmulq_s32(lhs_reg3, rhs_reg3);
+    const int32x4_t mul_reg4 = vmulq_s32(lhs_reg4, rhs_reg4);
+
+    // Apply activation.
+    const int32x4_t max_reg = vminq_s32(activation_max, mul_reg);
+    const int32x4_t max_reg2 = vminq_s32(activation_max, mul_reg2);
+    const int32x4_t max_reg3 = vminq_s32(activation_max, mul_reg3);
+    const int32x4_t max_reg4 = vminq_s32(activation_max, mul_reg4);
+    const int32x4_t min_reg = vmaxq_s32(activation_min, max_reg);
+    const int32x4_t min_reg2 = vmaxq_s32(activation_min, max_reg2);
+    const int32x4_t min_reg3 = vmaxq_s32(activation_min, max_reg3);
+    const int32x4_t min_reg4 = vmaxq_s32(activation_min, max_reg4);
+
+    // Store.
+    vst1q_s32(out + i, min_reg);
+    vst1q_s32(out + i + 4, min_reg2);
+    vst1q_s32(out + i + 8, min_reg3);
+    vst1q_s32(out + i + 12, min_reg4);
+  }
+#endif
+
+  // This will handle leftovers when n is not aligned to 4 elements.
+  for (; i < n; ++i) {
+    out[i] = ActivationFunctionWithMinMax(lhs[i] * rhs[i], activation_min_val,
+                                          activation_max_val);
+  }
+}
+
 inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const float* input1_data,
                 const RuntimeShape& input2_shape, const float* input2_data,
@@ -1965,13 +2022,8 @@ inline void Mul(const ArithmeticParams& params,
 
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
-  const int32 output_activation_min = params.quantized_activation_min;
-  const int32 output_activation_max = params.quantized_activation_max;
-  for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = ActivationFunctionWithMinMax(
-        input1_data[i] * input2_data[i], output_activation_min,
-        output_activation_max);
-  }
+
+  MulElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
 
 inline void MulNoActivation(const ArithmeticParams& params,
