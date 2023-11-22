@@ -384,6 +384,34 @@ float GetCommonUtilization(const GpuHloCostAnalysis* cost_analysis,
   return 0.f;
 }
 
+// Returns utilization of operand after producer and consumer are fused
+// together. `GetCommonUtilization` works only for a limited set of elementwise
+// cases.
+// TODO(shyshkov): Combine logic from GpuHloCostAnalysis with boundary function
+// to properly calculate utilization.
+float GetSharedUtilization(const GpuHloCostAnalysis* cost_analysis,
+                           const HloInstruction* producer,
+                           const HloInstruction* consumer,
+                           const HloInstruction* operand) {
+  float producer_utilization_by_consumer =
+      GetOperandUtilization(cost_analysis, consumer, producer);
+
+  float operand_utilization_by_producer =
+      GetOperandUtilization(cost_analysis, producer, operand);
+
+  float operand_utilization_by_consumer =
+      GetOperandUtilization(cost_analysis, consumer, operand);
+
+  float common_utilization =
+      producer->IsUserOf(operand)
+          ? GetCommonUtilization(cost_analysis, producer,
+                                 producer->operand_index(operand), consumer)
+          : 0.f;
+
+  return producer_utilization_by_consumer * operand_utilization_by_producer +
+         operand_utilization_by_consumer - common_utilization;
+}
+
 // Tells input access time of the producer alone if fused_consumer
 // is not specified. Otherwise estimates the access time to producer's
 // inputs as if it is fused into the consumer.
@@ -448,13 +476,23 @@ absl::Duration GpuPerformanceModel::ComputeTime(
 }
 
 absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
-    const HloInstruction* producer, const EstimateRunTimeData& producer_data,
+    const HloInstruction* producer, const EstimateRunTimeData& producer_runtime,
     const GpuHloCostAnalysis* cost_analysis,
     const GpuPerformanceModelOptions& config,
-    std::vector<HloInstruction*> fused_consumers) {
+    const std::vector<HloInstruction*>& fused_consumers,
+    const std::vector<EstimateRunTimeData>& consumer_runtimes) {
   const se::DeviceDescription* device_info = cost_analysis->device_info_;
 
-  absl::Duration producer_output_read_time_unfused = absl::ZeroDuration();
+  absl::Duration time_unfused =
+      kKernelLaunchOverhead * (fused_consumers.size() + 1) +
+      producer_runtime.exec_time;
+
+  if (config.calculate_full_priority) {
+    for (const auto& consumer_runtime : consumer_runtimes) {
+      time_unfused += consumer_runtime.exec_time;
+    }
+    return time_unfused;
+  }
 
   for (const HloInstruction* fused_consumer : fused_consumers) {
     VLOG(8) << "Unfused consumer: " << fused_consumer->name();
@@ -476,9 +514,10 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
         ShapeUtil::ElementsInRecursive(fused_consumer->shape()),
         analysis_unfused, *device_info);
 
-    int64_t n_bytes_total = std::llround(producer_data.bytes_written *
+    int64_t n_bytes_total = std::llround(producer_runtime.bytes_written *
                                          utilization_by_this_consumer);
-    int64_t n_bytes_net = std::min(producer_data.bytes_written, n_bytes_total);
+    int64_t n_bytes_net =
+        std::min(producer_runtime.bytes_written, n_bytes_total);
 
     bool coalesced =
         IsReadCoalesced(analysis_unfused, config, /*producer=*/fused_consumer);
@@ -488,38 +527,76 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
         config.first_read_from_dram);
 
     VLOG(10) << "  Read time unfused: " << read_time_unfused;
-    producer_output_read_time_unfused += read_time_unfused;
+    time_unfused += read_time_unfused;
   }
-
-  absl::Duration time_unfused =
-      kKernelLaunchOverhead * (fused_consumers.size() + 1) +
-      producer_data.exec_time + producer_output_read_time_unfused;
 
   return time_unfused;
 }
 
+/*static*/ absl::Duration GpuPerformanceModel::EstimateRunTimeForFusion(
+    const HloInstruction* producer, const HloInstruction* consumer,
+    const EstimateRunTimeData& producer_runtime,
+    const EstimateRunTimeData& consumer_runtime,
+    const LaunchDimensions& launch_dimensions,
+    float utilization_by_this_consumer, const GpuHloCostAnalysis* cost_analysis,
+    const std::optional<HloFusionAnalysis>& fusion_analysis,
+    const GpuPerformanceModelOptions& config) {
+  const se::DeviceDescription* device_info = cost_analysis->device_info_;
+
+  int64_t fused_flops = producer_runtime.flops * utilization_by_this_consumer +
+                        consumer_runtime.flops;
+
+  absl::Duration compute_time =
+      ComputeTime(*device_info, fused_flops, launch_dimensions.launch_bound());
+
+  absl::flat_hash_set<const HloInstruction*> fusion_operands;
+  for (auto* operand : producer->operands()) {
+    fusion_operands.insert(operand);
+  }
+  for (auto* operand : consumer->operands()) {
+    if (operand != producer) {
+      fusion_operands.insert(operand);
+    }
+  }
+
+  absl::Duration read_time;
+  for (const auto* operand : fusion_operands) {
+    float operand_utilization =
+        GetSharedUtilization(cost_analysis, producer, consumer, operand);
+
+    int64_t operand_size = cost_analysis->GetShapeSize(operand->shape());
+
+    int64_t n_bytes_total = std::llround(operand_size * operand_utilization);
+    int64_t n_bytes_net = std::min(operand_size, n_bytes_total);
+
+    bool coalesced =
+        IsReadCoalesced(fusion_analysis, config, producer, consumer);
+
+    read_time +=
+        ReadTime(*device_info, launch_dimensions.num_blocks(), n_bytes_net,
+                 n_bytes_total, operand->shape().element_type(), coalesced,
+                 config.first_read_from_dram);
+  }
+
+  return std::max(compute_time, read_time + consumer_runtime.write_time);
+}
+
 absl::Duration GpuPerformanceModel::EstimateFusedExecTime(
-    const HloInstruction* producer, const EstimateRunTimeData& producer_data,
+    const HloInstruction* producer, const EstimateRunTimeData& producer_runtime,
     const GpuHloCostAnalysis* cost_analysis,
     const GpuPerformanceModelOptions& config,
-    std::vector<HloInstruction*> fused_consumers, bool multi_output) {
+    const std::vector<HloInstruction*>& fused_consumers,
+    const std::vector<EstimateRunTimeData>& consumer_runtimes,
+    bool multi_output) {
   const se::DeviceDescription* device_info = cost_analysis->device_info_;
 
   absl::Duration exec_time_fused =
       kKernelLaunchOverhead * fused_consumers.size();
-  for (const HloInstruction* fused_consumer : fused_consumers) {
+  for (auto [idx, fused_consumer] : llvm::enumerate(fused_consumers)) {
     VLOG(8) << "Fused consumer: " << fused_consumer->name();
     float utilization_by_this_consumer = cost_analysis->operand_utilization(
         *fused_consumer, fused_consumer->operand_index(producer));
 
-    // The model ignores consumer computation and output writes. The main goal
-    // of the model is to compare estimates of fused and unfused cases. Since
-    // epilog of the consumers remains unchanged in both bases, we only consider
-    // duplication of the producer computation and repeated access to producer
-    // inputs.
-    //
-    // TODO(shyshkov): Add calculations for consumer epilogue in the formula to
-    // make it complete.
     std::optional<HloFusionAnalysis> local_analysis_fused =
         config.fusion_analysis_cache
             ? std::nullopt
@@ -531,11 +608,27 @@ absl::Duration GpuPerformanceModel::EstimateFusedExecTime(
             : local_analysis_fused;
 
     LaunchDimensions launch_dimensions_fused = EstimateFusionLaunchDimensions(
-        producer_data.num_threads * utilization_by_this_consumer,
+        producer_runtime.num_threads * utilization_by_this_consumer,
         analysis_fused, *device_info);
 
+    // The original model ignores consumer computation and output writes. The
+    // main goal of the model is to compare estimates of fused and unfused
+    // cases. Since epilog of the consumers remains unchanged in both bases, we
+    // only consider duplication of the producer computation and repeated access
+    // to producer inputs.
+    //
+    // With `calculate_full_priority`, consumer computation and full read time
+    // is accounted in the priority.
+    if (config.calculate_full_priority) {
+      exec_time_fused += EstimateRunTimeForFusion(
+          producer, fused_consumer, producer_runtime, consumer_runtimes[idx],
+          launch_dimensions_fused, utilization_by_this_consumer, cost_analysis,
+          analysis_fused, config);
+      continue;
+    }
+
     absl::Duration compute_time_by_this_consumer = ComputeTime(
-        *device_info, producer_data.flops * utilization_by_this_consumer,
+        *device_info, producer_runtime.flops * utilization_by_this_consumer,
         launch_dimensions_fused.launch_bound());
 
     // Here, we assume that the read is distributed over all the threads in the
@@ -556,7 +649,7 @@ absl::Duration GpuPerformanceModel::EstimateFusedExecTime(
   // Multi-output fusion still writes the initial output of the producer.
   // For now assume that the producer's output does not need to be recomputed.
   if (multi_output) {
-    exec_time_fused += producer_data.write_time;
+    exec_time_fused += producer_runtime.write_time;
   }
 
   return exec_time_fused;
@@ -571,15 +664,25 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
     VLOG(10) << producer->fused_instructions_computation()->ToString();
   }
 
-  EstimateRunTimeData producer_data =
+  EstimateRunTimeData producer_runtime =
       EstimateRunTimeForInstruction(producer, cost_analysis, config);
 
-  absl::Duration time_unfused = EstimateUnfusedExecTime(
-      producer, producer_data, cost_analysis, config, fused_consumers);
+  std::vector<EstimateRunTimeData> consumer_runtimes;
+  if (config.calculate_full_priority) {
+    consumer_runtimes.reserve(fused_consumers.size());
+    for (auto* consumer : fused_consumers) {
+      consumer_runtimes.push_back(
+          EstimateRunTimeForInstruction(consumer, cost_analysis, config));
+    }
+  }
+
+  absl::Duration time_unfused =
+      EstimateUnfusedExecTime(producer, producer_runtime, cost_analysis, config,
+                              fused_consumers, consumer_runtimes);
 
   absl::Duration time_fused =
-      EstimateFusedExecTime(producer, producer_data, cost_analysis, config,
-                            fused_consumers, multi_output);
+      EstimateFusedExecTime(producer, producer_runtime, cost_analysis, config,
+                            fused_consumers, consumer_runtimes, multi_output);
 
   int64_t fused_consumer_count = fused_consumers.size();
   float total_producer_utilization = 0;
