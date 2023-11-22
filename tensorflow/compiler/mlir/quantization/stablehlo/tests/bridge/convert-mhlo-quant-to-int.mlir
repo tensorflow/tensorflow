@@ -1830,3 +1830,85 @@ func.func @function(
   // CHECK: return %arg0 : tensor<1x2xi8>
   return %arg0 : tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
 }
+
+// -----
+
+// CHECK-LABEL: func @concatenate
+func.func @concatenate(
+    %arg0: tensor<3x2x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>,
+    %arg1: tensor<1x2x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
+  ) -> tensor<4x2x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>> {
+  // CHECK: mhlo.concatenate
+  // CHECK-SAME: (tensor<3x2xi8>, tensor<1x2xi8>) -> tensor<4x2xi8>
+  %0 = "mhlo.concatenate"(%arg0, %arg1) {dimension = 0 : i64} : (
+    tensor<3x2x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>,
+    tensor<1x2x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
+  ) -> tensor<4x2x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
+  return %0 : tensor<4x2x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
+}
+
+// -----
+
+// CHECK-LABEL: func @pad
+func.func @pad(
+    %arg0: tensor<2x3x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>,
+    %arg1: tensor<!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
+  ) -> tensor<5x9x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>> {
+  // CHECK: mhlo.pad
+  // CHECK-SAME: (tensor<2x3xi8>, tensor<i8>) -> tensor<5x9xi8>
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_low = dense<[0, 1]> : tensor<2xi64>,
+    edge_padding_high = dense<[2, 1]> : tensor<2xi64>,
+    interior_padding = dense<[1, 2]> : tensor<2xi64>
+  }: (
+    tensor<2x3x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>,
+    tensor<!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
+  ) -> tensor<5x9x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
+  return %0 : tensor<5x9x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
+}
+
+// -----
+
+// CHECK-LABEL: func @reshape
+func.func @reshape(
+    %arg0: tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  ) -> tensor<3x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>> {
+  // CHECK: mhlo.reshape
+  // CHECK-SAME: (tensor<1x3xi8>) -> tensor<3x1xi8>
+  %0 = "mhlo.reshape"(%arg0) : (
+    tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  ) -> tensor<3x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  return %0 : tensor<3x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+}
+
+// -----
+
+// CHECK-LABEL: func @select
+func.func @select(
+    %arg0: tensor<1x3xi1>,
+    %arg1: tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>,
+    %arg2: tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  ) -> tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>> {
+  // CHECK: mhlo.select
+  // CHECK-SAME: tensor<1x3xi8>
+  %0 = "mhlo.select"(%arg0, %arg1, %arg2) : (
+    tensor<1x3xi1>,
+    tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>,
+    tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  ) -> tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  return %0 : tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+}
+
+// -----
+
+// CHECK-LABEL: func @transpose
+func.func @transpose(
+    %arg0: tensor<3x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  ) -> tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>> {
+  // CHECK: mhlo.transpose
+  // CHECK-SAME: (tensor<3x1xi8>) -> tensor<1x3xi8>
+  %0 = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0]> : tensor<2xi64>} : (
+    tensor<3x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  ) -> tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  return %0 : tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+}
