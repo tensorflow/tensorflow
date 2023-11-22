@@ -55,6 +55,11 @@ bool ResizableAlignedBuffer::Resize(size_t new_size) {
                      new_allocation_size);
 #endif
   char* new_buffer = new char[new_allocation_size];
+#if defined(__clang__)
+#if __has_feature(memory_sanitizer)
+  memset(new_buffer, 0, new_allocation_size);
+#endif
+#endif
   char* new_aligned_ptr = reinterpret_cast<char*>(
       AlignTo(alignment_, reinterpret_cast<std::uintptr_t>(new_buffer)));
   if (new_size > 0 && data_size_ > 0) {
