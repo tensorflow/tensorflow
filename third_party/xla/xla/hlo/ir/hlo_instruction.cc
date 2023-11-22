@@ -1542,6 +1542,8 @@ HloInstruction::CreateAddDependency(HloInstruction* data_operand,
   // Body comes before condition computation in the vector.
   instruction->called_computations_.push_back(body);
   instruction->called_computations_.push_back(condition);
+  // Set back pointer from body computation to the while call instruction
+  body->SetWhileCallInstruction(instruction.get());
   return instruction;
 }
 

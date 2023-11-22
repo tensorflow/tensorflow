@@ -2616,5 +2616,53 @@ TEST_F(HloInstructionTest, ParseWaitOnOperationQueues) {
   }
 }
 
+TEST_F(HloInstructionTest, VerifyBodyComputationPointsToWhile) {
+  auto module = CreateNewVerifiedModule();
+  const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
+
+  HloComputation::Builder cond_builder("cond");
+  {
+    const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
+    HloInstruction* param = cond_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    HloInstruction* constant = cond_builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1024.0)));
+    cond_builder.AddInstruction(
+        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), param,
+                                      constant, ComparisonDirection::kLt));
+  }
+  auto cond_computation = module->AddEmbeddedComputation(cond_builder.Build());
+
+  HloComputation::Builder body_builder("body");
+  {
+    const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
+    HloInstruction* param = body_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    body_builder.AddInstruction(HloInstruction::CreateBinary(
+        scalar_shape, HloOpcode::kMultiply, param, param));
+  }
+  auto body_computation = module->AddEmbeddedComputation(body_builder.Build());
+
+  std::unique_ptr<HloComputation> main_computation;
+  HloComputation::Builder main_builder("Entry");
+  HloInstruction* param = main_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "input"));
+  main_builder.AddInstruction(HloInstruction::CreateWhile(
+      scalar_shape, cond_computation, body_computation, param));
+
+  module->AddEntryComputation(main_builder.Build());
+  // Should find one while body computation in the graph and it should point to
+  // the while instruction.
+  int num_while_body_comp = 0;
+  for (HloComputation* comp : module->MakeComputationPostOrder()) {
+    if (comp->IsWhileBodyComputation()) {
+      num_while_body_comp += 1;
+      EXPECT_EQ(comp->WhileCallInstruction(),
+                module->entry_computation()->root_instruction());
+    }
+  }
+  EXPECT_EQ(num_while_body_comp, 1);
+}
+
 }  // namespace
 }  // namespace xla
