@@ -663,28 +663,31 @@ bool HloChannelInstruction::IdenticalSlowPath(
 
 HloTopKInstruction::HloTopKInstruction(const Shape& shape,
                                        HloInstruction* input, int64_t k,
-                                       HloComputation* compare)
-    : HloInstruction(HloOpcode::kTopK, shape), k_(k) {
+                                       bool largest)
+    : HloInstruction(HloOpcode::kTopK, shape), k_(k), largest_(largest) {
   AppendOperand(input);
-  AppendComputation(compare);
 }
 
 HloInstructionProto HloTopKInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   proto.set_k(k_);
+  proto.set_largest(largest_);
   return proto;
 }
 
 void HloTopKInstruction::PrintExtraAttributesImpl(
     AttributePrinter& printer, const HloPrintOptions& options) const {
-  printer.Next([this](Printer* printer) { AppendCat(printer, "k=", k_); });
+  printer.Next([this](Printer* p) { AppendCat(p, "k=", k_); });
+  printer.Next([this](Printer* p) {
+    AppendCat(p, "largest=", (largest_ ? "true" : "false"));
+  });
 }
 
 std::unique_ptr<HloInstruction> HloTopKInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   return std::make_unique<HloTopKInstruction>(shape, new_operands[0], k(),
-                                              to_apply());
+                                              largest());
 }
 
 bool HloTopKInstruction::IdenticalSlowPath(
@@ -692,8 +695,7 @@ bool HloTopKInstruction::IdenticalSlowPath(
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloTopKInstruction&>(other);
-  return k() == casted_other.k() &&
-         eq_computations(to_apply(), casted_other.to_apply());
+  return k() == casted_other.k() && largest() == casted_other.largest();
 }
 
 HloSendRecvInstruction::HloSendRecvInstruction(HloOpcode opcode,
@@ -1573,11 +1575,19 @@ void HloConstantInstruction::RelayoutConstant(const Layout& new_layout,
   CHECK(mutable_array_subshape->IsArray());
 
   // Normally array_subshape will always have a layout, but this invariant is
-  // temporarily broken in LayoutAssignment::AssignLayouts.
+  // temporarily broken in LayoutAssignment::AssignLayouts where all shape
+  // layouts are cleared. The inner condition below ensures that we don't
+  // unnecessarily relayout literals in that case.
 
   if (!mutable_array_subshape->has_layout() ||
       !LayoutUtil::Equal(mutable_array_subshape->layout(), new_layout)) {
-    *mutable_literal() = literal_->Relayout(new_layout, shape_index);
+    if (!LayoutUtil::Equal(
+            new_layout,
+            ShapeUtil::GetSubshape(literal().shape(), shape_index).layout())) {
+      // Only relayout literals if that's really necessary.
+      Literal new_literal = literal_->Relayout(new_layout, shape_index);
+      *mutable_literal() = std::move(new_literal);
+    }
     *mutable_array_subshape->mutable_layout() = new_layout;
   }
 }

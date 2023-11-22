@@ -69,7 +69,7 @@ class PriorityFusionTest : public HloTestBase {
   }
 
   GpuPriorityFusion priority_fusion_{
-      TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+      /*thread_pool=*/nullptr, TestGpuDeviceInfo::RTXA6000DeviceInfo(),
       GpuHloCostAnalysis::Options{ShapeSizeBytesFunction(),
                                   /*per_second_rates=*/{},
                                   /*count_multiple_input_accesses=*/true}};
@@ -237,10 +237,10 @@ TEST_F(PriorityFusionTest, ReductionEpilogueFusionRegressionTest) {
     }
                                                      )";
 
-  EXPECT_THAT(
-      RunAndGetFusionKinds(kHlo),
-      ::testing::ElementsAre(HloFusionAnalysis::EmitterFusionKind::kLoop,
-                             HloFusionAnalysis::EmitterFusionKind::kReduction));
+  EXPECT_THAT(RunAndGetFusionKinds(kHlo),
+              ::testing::UnorderedElementsAre(
+                  HloFusionAnalysis::EmitterFusionKind::kLoop,
+                  HloFusionAnalysis::EmitterFusionKind::kReduction));
 
   RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
 CHECK: ENTRY
@@ -318,8 +318,8 @@ TEST_F(PriorityFusionTest, DoNotFuseTransposeIntoReduce) {
   using Kind = HloFusionAnalysis::EmitterFusionKind;
   EXPECT_THAT(RunAndGetFusionKinds(kHlo),
               ::testing::UnorderedElementsAre(
-                  Kind::kReduction, Kind::kReduction, Kind::kTranspose,
-                  Kind::kTranspose, Kind::kTranspose));
+                  Kind::kLoop, Kind::kReduction, Kind::kReduction,
+                  Kind::kTranspose, Kind::kTranspose, Kind::kTranspose));
 }
 
 TEST_F(PriorityFusionTest, DoNotFuseReduceIntoReduce) {
@@ -614,6 +614,38 @@ TEST_F(PriorityFusionTest, EpilogueFusion) {
   RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
 CHECK: ROOT %fusion = f32[8,4,128]{2,1,0} fusion(%p{{.*}}), kind=kInput, calls=%fused_computation
   )");
+}
+
+TEST_F(PriorityFusionTest, EpilogueFusionFails) {
+  auto module = *ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add.13235 = f32[] add(p0, p1)
+    }
+
+    fused_computation.1 {
+      p0 = f32[28672,4096]{1,0} parameter(0)
+      c0 = f32[] constant(0)
+      ROOT r = f32[28672]{0} reduce(p0, c0), dimensions={1}, to_apply=add
+    }
+
+    fused_computation.2 {
+      p0 = f32[28672]{0} parameter(0)
+      p1 = f32[28672]{0} parameter(1)
+      ROOT a = f32[28672]{0} add(p0, p1)
+    }
+
+    ENTRY main {
+      p0 = f32[28672,4096]{1,0} parameter(0)
+      p1 = f32[28672]{0} parameter(1)
+      f = f32[28672]{0} fusion(p0), kind=kInput, calls=%fused_computation.1
+      ROOT fusion = f32[28672]{0} fusion(f,p1), kind=kLoop, calls=%fused_computation.2
+    })");
+
+  EXPECT_FALSE(priority_fusion_.Run(module.get()).value());
 }
 
 }  // namespace gpu

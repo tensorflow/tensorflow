@@ -20,7 +20,7 @@ limitations under the License.
 
 #include <type_traits>
 
-#include "xla/util.h"
+#include "tsl/lib/math/math_util.h"
 
 namespace xla {
 namespace gpu {
@@ -108,7 +108,8 @@ enum class ShflType { Sync, Up, Down, Xor };
 template <ShflType Type, class NT>
 __device__ FORCEINLINE NT GpuShuffle(NT val, uint32_t idx,
                                      uint32_t allmsk = 0xffffffffu) {
-  constexpr uint32_t SZ = CeilOfRatio(sizeof(NT), sizeof(uint32_t));
+  constexpr uint32_t SZ =
+      tsl::MathUtil::CeilOfRatio(sizeof(NT), sizeof(uint32_t));
   union S {
     NT v;
     uint32_t d[SZ];

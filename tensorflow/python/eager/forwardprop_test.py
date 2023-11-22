@@ -336,7 +336,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     finally:
       pywrap_tfe.TFE_Py_RegisterJVPFunction(previous_fn)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testFunctionCacheLimited(self):
     # Every time this loop is executed, it will create a slightly larger Tensor
     # and push it through Add's gradient.
@@ -357,7 +357,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     self.assertIsNone(acc.jvp(v))
     self.assertAllClose([[0.]], acc.jvp(v, unconnected_gradients="zero"))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testFunctionReturnsResource(self):
     v = variables.Variable([[1.]])
     x = constant_op.constant(1.)
@@ -371,7 +371,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       y, _ = f(x)
     self.assertAllClose(2., acc.jvp(y))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testMultipleWatchesAdd(self):
     x = constant_op.constant(-2.)
     with self.assertRaisesRegex(ValueError, "multiple times"):
@@ -387,7 +387,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(24., acc.jvp(x))
     self.assertAllClose(24. * 3., acc.jvp(y))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testReenter(self):
     x = constant_op.constant(-2.)
     with forwardprop.ForwardAccumulator(x, 1.5) as acc:
@@ -403,7 +403,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       yy = y * y
     self.assertAllClose(6. * -8. * 2., acc.jvp(yy))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDeadTensorsJVPCleared(self):
     x = array_ops.ones([100])
     x_weak = weakref.ref(x)
@@ -424,14 +424,14 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       self.assertIsNone(derived_tensor_weak())
       self.assertIsNone(derived_tensor_grad_weak())
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testJVPManual(self):
     primal, tangent = _jvp(math_ops.sin, (constant_op.constant(0.1),),
                            (constant_op.constant(0.2),))
     self.assertAllClose(math_ops.sin(0.1), primal)
     self.assertAllClose(math_ops.cos(0.1) * 0.2, tangent)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testNumericHigherOrder(self):
 
     def f(x):
@@ -448,7 +448,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         satol=1e-3,
     )
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testNumericHigherOrderFloat64(self):
 
     def f(x):
@@ -462,7 +462,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         [constant_op.constant([[2.0, 3.0], [1.0, 4.0]], dtype=dtypes.float64)],
         order=3)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testCustomGradient(self):
 
     @custom_gradient.custom_gradient
@@ -475,7 +475,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
     _test_gradients(self, f, [constant_op.constant([1., 2.])], order=3)
 
-  # TODO(allenl): investigate why assert_no_new_pyobjects_executing_eagerly
+  # TODO(allenl): investigate why assert_no_new_pyobjects_executing_eagerly()
   # fails around this test?
   def testExceptionCustomGradientRecomputeGradForward(self):
 
@@ -563,7 +563,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       ("Order{}".format(order), order, expected)
       for order, expected in enumerate(_X11_35_DERIVATIVES)
   ])
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testHigherOrderPureForward(self, order, expected):
 
     def _forwardgrad(f):
@@ -606,7 +606,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(3.5 * 2.5 * 1.1**1.5, outer_jvp)
     self.assertIsNone(acc.jvp(outer_acc.jvp(primal_out)))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testJVPPacking(self):
     two = constant_op.constant(2.)
     primal_in = constant_op.constant(1.)
@@ -688,7 +688,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(_expected(m1, tangent1), acc.jvp(result1))
     self.assertAllClose(_expected(m2, tangent2), acc.jvp(result2))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testHVPMemory(self):
 
     def fun(x):
@@ -698,7 +698,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     tangents = constant_op.constant([3., 4., 5.])
     _hvp(fun, (primals,), (tangents,))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testHVPCorrectness(self):
 
     def fun(x):
@@ -725,7 +725,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(backback_hvp, forwardback_hvp_eager)
     self.assertAllClose(backback_hvp, forwardback_hvp_function)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testShouldRecordAndStopRecord(self):
     c = constant_op.constant(1.)
     c_tangent = constant_op.constant(2.)
@@ -747,7 +747,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         self.assertIsNone(acc.jvp(d))
       self.assertIsNone(tape.gradient(d, c))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testRecordingSelectively(self):
     c = constant_op.constant(1.)
     c_tangent = constant_op.constant(2.)
@@ -774,7 +774,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         self.assertIsNone(tape.gradient(d, c))
         self.assertAllClose(3., tape.gradient(e, c))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testOpWithNoTrainableOutputs(self):
     if sys.version_info.major == 3 and sys.version_info.minor in (11, 12):
       # TODO(b/264947738)
@@ -847,7 +847,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         self.assertTrue(record.should_record_backprop((acc.jvp(d),)))
       self.assertAllClose(-.1 * math_ops.cos(1.), tape.gradient(acc.jvp(d), c))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testRecordingWithJVPIndices(self):
     c = constant_op.constant(1.)
     with forwardprop.ForwardAccumulator(c, 10.) as acc:
@@ -861,7 +861,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
                                                None, (((0, 1),),))
       self.assertAllClose(3., acc.jvp(d))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testSpecialForwardFunctionUsed(self):
     c = constant_op.constant(1.)
     d = constant_op.constant(2.)
@@ -875,7 +875,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
                               lambda x: [x])
       self.assertAllClose(-20., acc.jvp(e))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testVariableWatched(self):
     if sys.version_info.major == 3 and sys.version_info.minor in (11, 12):
       # TODO(b/264947738)
@@ -1015,25 +1015,25 @@ def _fprop_cond(k, y):
 
 class ControlFlowTests(test.TestCase):
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testOfFunctionWhile(self):
     y = constant_op.constant(1.)
     with forwardprop.ForwardAccumulator(y, 1.) as acc:
       self.assertAllClose(10., acc.jvp(_has_loop(constant_op.constant(5), y)))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testOfFunctionCond(self):
     y = constant_op.constant(1.)
     with forwardprop.ForwardAccumulator(y, 1.) as acc:
       self.assertAllClose(3., acc.jvp(_has_cond(constant_op.constant(5), y)))
       self.assertAllClose(0., acc.jvp(_has_cond(constant_op.constant(0), y)))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testInFunctionWhile(self):
     self.assertAllClose(
         10., _fprop_while(constant_op.constant(5), constant_op.constant(1.)))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testInFunctionCond(self):
     self.assertAllClose(
         3., _fprop_cond(constant_op.constant(5), constant_op.constant(1.)))

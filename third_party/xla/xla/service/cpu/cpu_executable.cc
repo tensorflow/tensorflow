@@ -112,13 +112,9 @@ CpuExecutable::CpuExecutable(
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
       assignment_(std::move(assignment)) {
-  if (assignment_) {
-    buffer_assignment_ =
-        std::make_shared<BufferAssignmentProto>(assignment_->ToProto());
-  }
-  if (has_module()) {
+  if (assignment_ && has_module()) {
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
-                                               buffer_assignment_);
+                                               assignment_->ToProto());
   }
 }
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_triton.h"
 
 #include <climits>
+#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -265,6 +266,9 @@ Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
       dst_element_ty.isa<mlir::IntegerType>()) {
     if (src_element_ty.getIntOrFloatBitWidth() <
         dst_element_ty.getIntOrFloatBitWidth()) {
+      if (src_element_ty.isInteger(1)) {
+        return b.create<ma::ExtUIOp>(dst_ty, value);
+      }
       return b.create<ma::ExtSIOp>(dst_ty, value);
     }
     return b.create<ma::TruncIOp>(dst_ty, value);
@@ -302,10 +306,12 @@ Value Subtract(ImplicitLocOpBuilder& b, ValueRange values) {
 
 Value Compare(ImplicitLocOpBuilder& b, ValueRange values,
               mlir::mhlo::ComparisonDirection direction) {
-  if (mlir::getElementTypeOrSelf(values[0]).isa<mlir::IntegerType>()) {
+  const Type type = mlir::getElementTypeOrSelf(values[0]);
+  if (type.isa<mlir::IntegerType>()) {
     return b.create<ma::CmpIOp>(
-        mlir::mhlo::impl::getCmpPredicate<ma::CmpIPredicate>(direction,
-                                                             /*isSigned=*/true)
+        mlir::mhlo::impl::getCmpPredicate<ma::CmpIPredicate>(
+            direction,
+            /*isSigned=*/!type.isInteger(1))
             .value(),
         values[0], values[1]);
   }
@@ -704,9 +710,11 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
                           const se::CudaComputeCapability& cc, int num_warps,
                           int num_stages) {
   const int ccAsInt = cc.major * 10 + cc.minor;
+  const int threadsPerWarp = 32;
+  const int numCTAs = 1;
   // Based on optimize_ttir() in
   // @triton//:python/triton/compiler/compiler.py
-  pm.addPass(mt::createRewriteTensorPointerPass());
+  pm.addPass(mt::createRewriteTensorPointerPass(ccAsInt));
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mt::createCombineOpsPass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -716,18 +724,25 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::createSymbolDCEPass());
   // Based on ttir_to_ttgir() in
   // @triton//:python/triton/compiler/compiler.py
-  pm.addPass(mt::createConvertTritonToTritonGPUPass(num_warps));
+  pm.addPass(mt::createConvertTritonToTritonGPUPass(num_warps, threadsPerWarp,
+                                                    numCTAs, ccAsInt));
   // Based on optimize_ttgir() in
   // @triton//:python/triton/compiler/compiler.py
   pm.addPass(mlir::createTritonGPUCoalescePass());
-  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass());
+  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(/*clusterInfo=*/));
+  pm.addPass(mlir::createTritonGPURewriteTensorPointerPass(ccAsInt));
+  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(/*clusterInfo=*/));
   pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
   pm.addPass(mlir::createTritonGPUAccelerateMatmulPass(ccAsInt));
   pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
   pm.addPass(mlir::createTritonGPUOptimizeDotOperandsPass());
-  pm.addPass(mlir::createTritonGPUPipelinePass(num_stages, num_warps));
-  pm.addPass(mlir::createTritonNvidiaGPUMaterializeLoadStorePass());
-  pm.addPass(mlir::createTritonGPUPrefetchPass());
+  pm.addPass(mlir::createTritonGPUPipelinePass(num_stages, num_warps, numCTAs,
+                                               ccAsInt));
+  pm.addPass(
+      mlir::createTritonNvidiaGPUMaterializeLoadStorePass(num_warps, ccAsInt));
+  if (ccAsInt <= 80) {
+    pm.addPass(mlir::createTritonGPUPrefetchPass());
+  }
   pm.addPass(mlir::createTritonGPUOptimizeDotOperandsPass());
   pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
   pm.addPass(mlir::createTritonGPUDecomposeConversionsPass());
@@ -735,13 +750,17 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::createTritonGPUReorderInstructionsPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
+  if (ccAsInt >= 90) {
+    pm.addPass(mlir::createTritonNvidiaGPUFenceInsertionPass(ccAsInt));
+  }
   pm.addPass(mlir::createTritonNvidiaGPUWSFixupMissingAttrs());
   // Based on translateTritonGPUToLLVMIR() in
   // @triton//:lib/Target/LLVMIR/LLVMIRTranslation.cpp
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
-  pm.addPass(
-      mt::createConvertTritonGPUToLLVMPass(ccAsInt, mt::Default, nullptr));
+  pm.addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt,
+                                                  /*target=*/mt::Default,
+                                                  /*tmaMetadata=*/nullptr));
   pm.addPass(mt::createConvertNVGPUToLLVMPass());
   pm.addPass(mlir::createArithToLLVMConversionPass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -1380,11 +1399,18 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
           i < analysis.ScopeParameters(TritonFusionAnalysis::Scope::LHS).size();
       Side& side = is_lhs ? lhs : rhs;
       auto& values = is_lhs ? values_lhs : values_rhs;
-      CHECK(values
-                .insert({iter_args_to_parameters[i],
-                         EmitParameterLoad(b, iter_args[i],
-                                           iter_args_to_boundary_checks[i])})
-                .second);
+
+      const HloInstruction* param_hlo = iter_args_to_parameters[i];
+      Type param_ty = TritonType(b, param_hlo->shape().element_type());
+      Type param_storage_ty = StorageType(b, param_ty);
+      Value param_value =
+          EmitParameterLoad(b, iter_args[i], iter_args_to_boundary_checks[i]);
+      if (param_ty != param_storage_ty) {
+        // For example cast i8 to i1.
+        param_value = Cast(b, param_value, param_ty);
+      }
+
+      CHECK(values.insert({param_hlo, param_value}).second);
       SmallVector<Value> increments;
       for (const DimProperties& dim : side.tiled_dims) {
         const TensorIterationSpec::DimIterationSpec* spec = analysis.IterSpec(
@@ -1566,7 +1592,8 @@ Status EmitSoftMax(mlir::OpBuilder builder, absl::string_view libdevice_path,
   //   * the last axis of every reduction parameter has the same length
   //   * reductions only reduce a single operand
   //   * all the shapes have canonical layout (logical layout = physical layout)
-  //   * the computation has a single input and a single output
+  //   * the computation has a single output
+  //   * we tile along a single dimension
 
   // TODO(bchetioui): allow doing several rows per block (e.g. for when rows
   // are smaller than the minimum transaction size)
@@ -1583,49 +1610,110 @@ Status EmitSoftMax(mlir::OpBuilder builder, absl::string_view libdevice_path,
   CHECK_EQ(reduce->dimensions()[0], reduce_input_shape.rank() - 1);
 
   int row_len = reduce_input_shape.dimensions_minor(0);
-  int block_size = 1;
-
-  // block_size must be a power of two.
-  while (block_size < row_len) {
-    block_size *= 2;
-  }
 
   Value pid = b.create<ma::ExtSIOp>(
       b.getI64Type(), b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::X));
   Value row_stride = CreateConst(b, b.getI32Type(), row_len);
 
-  absl::flat_hash_map<const HloInstruction*, Value> values_out;
-  auto make_tensor_pointer = [&](Value base) {
-    Value offset = b.create<ma::MulIOp>(
-        pid, b.create<ma::ExtSIOp>(b.getI64Type(), row_stride));
-    return b.create<mt::MakeTensorPtrOp>(
-        /*base=*/AddPtr(b, base, offset),
-        /*shape=*/ValueRange{CreateConst(b, b.getI64Type(), row_len)},
-        /*strides=*/ValueRange{CreateConst(b, b.getI64Type(), 1)},
-        /*offsets=*/ValueRange{CreateConst(b, b.getI32Type(), 0)},
-        /*tensorShape=*/std::vector<int32_t>{block_size},
-        /*order=*/std::vector<int32_t>{0});
-  };
+  Value row_offset = b.create<ma::MulIOp>(
+      pid, b.create<ma::ExtSIOp>(b.getI64Type(), row_stride));
+  Value zero_offset = CreateConst(b, b.getI64Type(), 0);
 
+  absl::flat_hash_map<const HloInstruction*, Value> values_out;
   std::vector<int32_t> boundary_checks;
-  if (block_size != row_len) {
+
+  // block_size must be a power of two.
+  int result_block_size = pow(2, ceil(log(row_len) / log(2)));
+
+  if (result_block_size != row_len) {
     boundary_checks.push_back(0);
   }
-  values_out[computation->parameter_instruction(0)] = EmitParameterLoad(
-      b, make_tensor_pointer(fn.getArgument(0)), boundary_checks);
+
+  // Emits load instructions
+  for (int param_idx = 0; param_idx < computation->num_parameters();
+       ++param_idx) {
+    HloInstruction* param = computation->parameter_instruction(param_idx);
+    // Current tiling derivation assigns index 0 to the reduction dimension and
+    // index 1 to the batch dimension.
+    auto reduce_iterspec = analysis.IterSpec(
+        TritonFusionAnalysis::Scope::OUTPUT, param, /*dimension=*/0);
+    auto batch_iterspec = analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
+                                            param, /*dimension=*/1);
+
+    // Make sure only batch and reduce dims are present in tiling
+    CHECK_EQ(analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT, param,
+                               /*dimension=*/2),
+             nullptr);
+
+    if (!reduce_iterspec) {
+      // This parameter's broadcast is along the reduce dimension, and so
+      // each pid uses and broadcasts its own index.
+
+      // If batchDimIterSpec is also not present, then this parameter is a
+      // scalar, in which case we reuse this for each pid with offset.
+      Value batch_offset = batch_iterspec ? pid : zero_offset;
+
+      values_out[param] = EmitParameterLoad(
+          b, AddPtr(b, fn.getArgument(param_idx), batch_offset),
+          boundary_checks);
+      continue;
+    }
+
+    CHECK_NE(reduce_iterspec, nullptr);
+    CHECK_EQ(reduce_iterspec->size(), 1);
+
+    // TODO(b/310721908): The below assumes that we tile along a single dim.
+    int reduce_dim_len = reduce_iterspec->front().count;
+    int reduce_dim_stride = reduce_iterspec->front().stride;
+    int slice_offset = reduce_iterspec->front().slice_start;
+
+    // If the batch dimension is present in this parameter's tile, we must make
+    // sure each batch idx is offset by the correct number of rows. If it is not
+    // present, then the reduce dim data is reused without any offset.
+    Value base_offset = batch_iterspec ? row_offset : zero_offset;
+
+    // We assume that the reduced axis of this parameter has length row_len.
+    CHECK_EQ(reduce_dim_len, row_len);
+
+    // block_size must be a power of two.
+    int block_size = pow(2, ceil(log(reduce_dim_len) / log(2)));
+
+    // Verify that this param contains a single contiguous fragment.
+    CHECK_EQ(reduce_iterspec->front().subfragments.size(), 1);
+
+    Value emitted_tensor = b.create<mt::MakeTensorPtrOp>(
+        /*base=*/AddPtr(b, fn.getArgument(param_idx), base_offset),
+        /*shape=*/ValueRange{CreateConst(b, b.getI64Type(), reduce_dim_len)},
+        /*strides=*/
+        ValueRange{CreateConst(b, b.getI64Type(), reduce_dim_stride)},
+        /*offsets=*/ValueRange{CreateConst(b, b.getI32Type(), slice_offset)},
+        /*tensorShape=*/std::vector<int32_t>{block_size},
+        /*order=*/std::vector<int32_t>{0});
+
+    values_out[param] = EmitParameterLoad(b, emitted_tensor, boundary_checks);
+  }
+
   // Dimension 0 is the reduced one by construction and it's the only one
   // present in the tile shapes.
   std::vector<DimProperties> tiled_dims = {DimProperties(
-      /*index=*/0, pid, block_size, /*split_value=*/1)};
+      /*index=*/0, pid, result_block_size, /*split_value=*/1)};
   TF_ASSIGN_OR_RETURN(
       Value result,
       EmitScope(b, libdevice_path, &analysis,
                 TritonFusionAnalysis::Scope::OUTPUT, tiled_dims,
                 computation->MakeInstructionPostOrder(), values_out));
 
-  b.create<mt::StoreOp>(make_tensor_pointer(fn.getArgument(1)), result,
-                        std::vector<int32_t>{0}, mt::CacheModifier::NONE,
-                        mt::EvictionPolicy::NORMAL);
+  Value store_tensor = b.create<mt::MakeTensorPtrOp>(
+      /*base=*/AddPtr(b, fn.getArgument(computation->num_parameters()),
+                      row_offset),
+      /*shape=*/ValueRange{CreateConst(b, b.getI64Type(), row_len)},
+      /*strides=*/ValueRange{CreateConst(b, b.getI64Type(), 1)},
+      /*offsets=*/ValueRange{CreateConst(b, b.getI32Type(), 0)},
+      /*tensorShape=*/std::vector<int32_t>{result_block_size},
+      /*order=*/std::vector<int32_t>{0});
+
+  b.create<mt::StoreOp>(store_tensor, result, std::vector<int32_t>{0},
+                        mt::CacheModifier::NONE, mt::EvictionPolicy::NORMAL);
   return OkStatus();
 }
 
@@ -1847,7 +1935,9 @@ StatusOr<TritonWrapperResult> TritonWrapper(
           .getInt();
   VLOG(2) << "Shared memory usage: " << shared_mem_bytes << " B";
   if (shared_mem_bytes > device_info.shared_memory_per_block_optin()) {
-    return ResourceExhausted("Shared memory size limit exceeded.");
+    return absl::ResourceExhaustedError(absl::StrFormat(
+        "Shared memory size limit exceeded: requested %d, available: %d",
+        shared_mem_bytes, device_info.shared_memory_per_block_optin()));
   }
 
   TF_ASSIGN_OR_RETURN(

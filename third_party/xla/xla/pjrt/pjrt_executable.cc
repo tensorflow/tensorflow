@@ -335,12 +335,7 @@ StatusOr<std::vector<Layout>> PjRtExecutable::GetParameterLayouts() const {
         "from executable.");
   }
   ComputationLayout comp_layout = hlo_modules[0]->entry_computation_layout();
-  std::vector<Layout> result;
-  result.reserve(comp_layout.parameter_count());
-  for (const ShapeLayout& layout : comp_layout.parameter_layouts()) {
-    result.push_back(layout.layout());
-  }
-  return result;
+  return comp_layout.FlattenedParameterLayouts();
 }
 
 StatusOr<std::vector<Layout>> PjRtExecutable::GetOutputLayouts() const {
@@ -357,17 +352,7 @@ StatusOr<std::vector<Layout>> PjRtExecutable::GetOutputLayouts() const {
         "from executable.");
   }
   ComputationLayout comp_layout = hlo_modules[0]->entry_computation_layout();
-  const Shape& result_shape = comp_layout.result_shape();
-
-  std::vector<Layout> result;
-  if (!result_shape.IsTuple()) {
-    result.push_back(result_shape.layout());
-  } else {
-    for (const Shape& subshape : result_shape.tuple_shapes()) {
-      result.push_back(subshape.layout());
-    }
-  }
-  return result;
+  return comp_layout.FlattenedResultLayouts();
 }
 
 StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>

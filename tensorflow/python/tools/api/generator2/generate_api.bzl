@@ -1,5 +1,6 @@
 """Rules to generate the TensorFlow public API from annotated files."""
 
+# Placeholder: load PyInfo
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "TENSORFLOW_API_INIT_FILES")
 load(":apis.bzl", _APIS = "APIS")

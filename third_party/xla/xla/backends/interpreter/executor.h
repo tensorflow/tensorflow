@@ -57,7 +57,7 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   }
   tsl::Status Launch(Stream *stream, const ThreadDim &thread_dims,
                      const BlockDim &block_dims, const Kernel &kernel,
-                     const KernelArgsArrayBase &args) override {
+                     const KernelArgs &args) override {
     return tsl::errors::Unimplemented("Not Implemented");
   }
 

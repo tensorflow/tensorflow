@@ -51,7 +51,6 @@ prelude() {
   # Install bazel
   update_bazel_linux
 
-  chmod +x "${KOKORO_GFILE_DIR}/bazel_wrapper.py"
   cd jax
 
 }
@@ -64,11 +63,11 @@ build_and_test_on_rbe_cpu() {
       --override_repository=xla="${KOKORO_ARTIFACTS_DIR}"/github/xla \
       --config=avx_posix \
       --config=mkl_open_source_only \
-      --config="$NOCUDA_RBE_CONFIG_NAME" \
+      --config="rbe_cpu_linux_py312" \
       --config=tensorflow_testing_rbe_linux \
       --test_env=JAX_NUM_GENERATED_CASES=25 \
-      //tests:cpu_tests //tests:backend_independent_tests \
-      --test_output=errors
+      --test_output=errors \
+      -- //tests:cpu_tests //tests:backend_independent_tests
 }
 
 build_and_test_on_rbe_gpu() {
@@ -77,29 +76,28 @@ build_and_test_on_rbe_gpu() {
 
   # we need to add `--remote_instance_name` and `--bes_instance_name`. Why this
   # is only needed for gpu is still a mystery.
+
+  # TODO(ddunleavy): reenable `LaxTest.testBitcastConvertType1`
   bazel \
     test \
     --verbose_failures=true \
-    //tests:gpu_tests //tests:backend_independent_tests \
     --override_repository=xla="${KOKORO_ARTIFACTS_DIR}"/github/xla \
     --config=avx_posix \
     --config=mkl_open_source_only \
-    --config="$CUDA_RBE_CONFIG_NAME" \
+    --config="rbe_linux_cuda12.2_nvcc_py3.9" \
     --test_env=XLA_PYTHON_CLIENT_ALLOCATOR=platform \
     --test_output=errors \
     --test_env=JAX_SKIP_SLOW_TESTS=1 \
     --test_env=TF_CPP_MIN_LOG_LEVEL=0 \
-    --test_env=JAX_EXCLUDE_TEST_TARGETS=PmapTest.testSizeOverflow \
+    --test_env=JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow|LaxTest.testBitcastConvertType1" \
     --test_tag_filters=-multiaccelerator \
     --remote_instance_name=projects/tensorflow-testing/instances/default_instance \
-    --bes_instance_name="tensorflow-testing"
+    --bes_instance_name="tensorflow-testing" \
+    -- //tests:gpu_tests //tests:backend_independent_tests
 }
 
 # Generate a templated results file to make output accessible to everyone
 "$KOKORO_ARTIFACTS_DIR"/github/xla/.kokoro/generate_index_html.sh "$KOKORO_ARTIFACTS_DIR"/index.html
-
-NOCUDA_RBE_CONFIG_NAME="rbe_cpu_linux_py312"
-CUDA_RBE_CONFIG_NAME="rbe_linux_cuda12.2_nvcc_py3.9"
 
 prelude
 

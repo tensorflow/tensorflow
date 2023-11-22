@@ -81,7 +81,11 @@ def shape_from_pyval(pyval: Any, layout: Sequence[int] | None = None) -> Any: ..
 def heap_profile(client: Client) -> bytes:
   ...
 
-def make_cpu_client() -> Client:
+def make_cpu_client(
+    distributed_client: Optional[DistributedRuntimeClient] = ...,
+    node_id: int = ...,
+    num_nodes: int = ...,
+) -> Client:
   ...
 
 def make_gpu_client(

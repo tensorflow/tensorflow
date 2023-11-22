@@ -320,9 +320,8 @@ StatusOr<std::string> AotCompileToGpuPjRtLoadedExecutableWithDevice(
     int graph_def_version, const std::vector<XlaCompiler::Argument>& args,
     bool has_ref_vars, bool may_alias_resource_update,
     XlaCompiler::CompilationResult** compilation_result) {
-  TF_ASSIGN_OR_RETURN(auto client, xla::GetStreamExecutorGpuClient(
-                                       true, /*allocator_config=*/{},
-                                       /*node_id=*/0));
+  TF_ASSIGN_OR_RETURN(auto client,
+                      xla::GetStreamExecutorGpuClient(xla::GpuClientOptions()));
   auto se_client = absl::WrapUnique(
       tensorflow::down_cast<xla::StreamExecutorGpuClient*>(client.release()));
 

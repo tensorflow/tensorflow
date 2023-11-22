@@ -3,13 +3,17 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//visibility:public"],
+    default_visibility = [
+        "//tensorflow/compiler/mlir/tf2xla/api:__subpackages__",
+        "//tensorflow/compiler/mlir/tf2xla/internal:__subpackages__",
+    ],
 )
 
 cc_library(
     name = "compile_mlir_util_no_tf_dialect_passes",
     srcs = ["compile_mlir_util.cc"],
     hdrs = ["compile_mlir_util.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -46,6 +50,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tpu:tpu_defs",
+        "@com_google_absl//absl/base:core_headers",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -175,6 +180,9 @@ cc_library(
     name = "cluster_tf",
     srcs = ["cluster_tf.cc"],
     hdrs = ["cluster_tf.h"],
+    visibility = [
+        "//tensorflow/compiler/tf2xla:__pkg__",
+    ],
     deps = [
         ":tf_dialect_to_executor",
         "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
@@ -233,6 +241,7 @@ cc_library(
     name = "tf_dialect_to_executor",
     srcs = ["tf_dialect_to_executor.cc"],
     hdrs = ["tf_dialect_to_executor.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/mlir/tensorflow:bridge_logger",

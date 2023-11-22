@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/delegates/gpu/android_hardware_buffer.h"
 #include "tensorflow/lite/delegates/gpu/api.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/gl/egl_environment.h"
@@ -29,6 +30,7 @@ namespace {
 
 TEST(AsyncBufferTest, DuplicateTest) {
   if (__builtin_available(android 26, *)) {
+    auto Instance = OptionalAndroidHardwareBuffer::Instance;
     // Create tie
     TensorObjectDef* tie = new TensorObjectDef();
     tie->object_def.data_type = DataType::FLOAT32;
@@ -45,7 +47,8 @@ TEST(AsyncBufferTest, DuplicateTest) {
                      AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN |
                      AHARDWAREBUFFER_USAGE_GPU_DATA_BUFFER;
     AHardwareBuffer* ahwb;
-    EXPECT_EQ(AHardwareBuffer_allocate(&buffDesc, &ahwb), 0);
+    EXPECT_TRUE(Instance().IsSupported(&buffDesc));
+    EXPECT_EQ(Instance().Allocate(&buffDesc, &ahwb), 0);
 
     // Init GL Env to properly use gl fcns
     std::unique_ptr<gl::EglEnvironment> env;

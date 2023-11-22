@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/tools/proto_splitter/cc/repeated_field_splitter.h"
 
+#include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -23,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/tools/proto_splitter/cc/max_size.h"
+#include "tensorflow/tools/proto_splitter/cc/split.h"
 #include "tensorflow/tools/proto_splitter/cc/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/protobuf.h"
@@ -30,6 +33,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tools::proto_splitter {
+
+// Additional bytes added to each node to account for the extra info needed to
+// encode the field key (realistically 3 but making it 5 for some wiggle room).
+constexpr int kExtraBytes = 5;
 
 template <typename ParentMessage, typename RepeatedMessage>
 absl::StatusOr<RepeatedFieldSplitters<ParentMessage, RepeatedMessage>>
@@ -65,13 +72,8 @@ absl::StatusOr<int> RepeatedFieldSplitters<
 
   // List of indices at which to split the repeated field. For example, [3, 5]
   // means that the field list is split into: [:3], [3:5], [5:]
-  std::vector<int> repeated_msg_split = {};
-  // Should be the same length as the list above. Contains new protos to hold
-  // the elements that are split from the original proto.
-  // From the [3, 5] example above, the messages in this list contain nodes
-  // [3:5] and [5:]
-  std::vector<std::shared_ptr<ParentMessage>> repeated_new_msg;
-  // Track the total size of the current node split.
+  std::vector<int> repeated_msg_split = {0};
+  // Track the total byte size of the current node split.
   uint64_t total_size = 0;
 
   // Linearly iterate through all nodes. It may be possible to optimize this
@@ -99,17 +101,12 @@ absl::StatusOr<int> RepeatedFieldSplitters<
     }
     if (total_size + node_size > max_size) {
       repeated_msg_split.push_back(i);
-      auto new_chunk = std::make_shared<ParentMessage>();
-      repeated_new_msg.push_back(new_chunk);
-      std::vector<FieldType> empty_fields = {};
-      auto x = std::make_unique<MessageBytes>(new_chunk);
-      TF_RETURN_IF_ERROR(AddChunk(std::move(x), &empty_fields));
       total_size = 0;
     }
-    total_size += node_size;
+    total_size += node_size + kExtraBytes;
   }
 
-  if (!repeated_msg_split.empty()) {
+  if (repeated_msg_split.size() > 1) {
     auto repeated_nodes_ptrs =
         ret.parent->GetReflection()
             ->template MutableRepeatedPtrField<RepeatedMessage>(ret.parent,
@@ -127,7 +124,11 @@ absl::StatusOr<int> RepeatedFieldSplitters<
     for (int i = 1; i < repeated_msg_split.size(); ++i) {
       start = repeated_msg_split[i - 1];
       int end = repeated_msg_split[i];
-      std::shared_ptr<ParentMessage> new_msg = repeated_new_msg[i - 1];
+
+      auto new_msg = std::make_shared<ParentMessage>();
+      std::vector<FieldType> empty_fields;
+      auto x = std::make_unique<MessageBytes>(new_msg);
+      TF_RETURN_IF_ERROR(AddChunk(std::move(x), &empty_fields));
 
       // Move nodes into new_msg.
       TF_ASSIGN_OR_RETURN(auto new_ret,

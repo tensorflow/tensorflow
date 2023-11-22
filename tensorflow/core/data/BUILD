@@ -636,3 +636,15 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
     ],
 )
+
+cc_library(
+    name = "file_logger_client_interface",
+    hdrs = ["file_logger_client_interface.h"],
+    # copybara:uncomment visibility = ["//learning/processing/tf_data_logger/client:__subpackages__"],
+)
+
+cc_library(
+    name = "file_logger_client_no_op",
+    hdrs = ["file_logger_client_no_op.h"],
+    deps = [":file_logger_client_interface"],
+)

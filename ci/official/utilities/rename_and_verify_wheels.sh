@@ -23,7 +23,7 @@ set -euxo pipefail
 
 cd "$TFCI_OUTPUT_DIR"
 
-if [[ "$(ls *.whl | wc -l)" != "1" ]]; then
+if [[ "$(ls *.whl | wc -l | tr -d ' ')" != "1" ]]; then
   echo "Error: $TFCI_OUTPUT_DIR should contain exactly one .whl file."
   exit 1
 fi

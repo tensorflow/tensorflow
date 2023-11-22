@@ -61,7 +61,7 @@ limitations under the License.
 
 namespace stream_executor {
 
-class KernelArgsArrayBase;        // defined in kernel.h
+class KernelArgs;                 // defined in kernel.h
 class KernelArgsPackedArrayBase;  // defined in kernel.h
 
 // Describes how to load a kernel on a target platform.
@@ -262,7 +262,7 @@ class MultiKernelLoaderSpec {
   // StreamExecutor as a generic `Kernel`.
   using KernelArgsPacking =
       std::function<tsl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>(
-          const KernelArgsArrayBase &args)>;
+          const KernelArgs &args)>;
 
   explicit MultiKernelLoaderSpec(
       size_t arity, KernelArgsPacking kernel_args_packing = nullptr);
@@ -333,15 +333,15 @@ class MultiKernelLoaderSpec {
   }
 
  private:
-  std::unique_ptr<InProcessSymbol>
+  std::shared_ptr<InProcessSymbol>
       in_process_symbol_;  // In process symbol pointer.
-  std::unique_ptr<CudaPtxOnDisk>
+  std::shared_ptr<CudaPtxOnDisk>
       cuda_ptx_on_disk_;  // PTX text that resides in a file.
-  std::unique_ptr<CudaCubinOnDisk>
+  std::shared_ptr<CudaCubinOnDisk>
       cuda_cubin_on_disk_;  // Binary CUDA program in a file.
-  std::unique_ptr<CudaCubinInMemory>
+  std::shared_ptr<CudaCubinInMemory>
       cuda_cubin_in_memory_;  // Binary CUDA program in memory.
-  std::unique_ptr<CudaPtxInMemory>
+  std::shared_ptr<CudaPtxInMemory>
       cuda_ptx_in_memory_;  // PTX text that resides in memory.
 
   // Number of parameters that the kernel takes. (This is nicer to have in a

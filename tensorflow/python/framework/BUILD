@@ -24,7 +24,7 @@ load(
     "cuda_py_benchmark_test",
 )
 
-visibility = tf_python_framework_friends()
+visibility = tf_python_framework_friends()  # buildifier: disable=package-on-top
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -258,13 +258,14 @@ py_strict_library(
     ],
 )
 
-# What is needed for tf_gen_op_wrapper_py. This is the same as
-# "for_generated_wrappers" minus the "function" dep. This is to avoid
-# circular dependencies, as "function" uses generated op wrappers.
+# This rule should only be depended on by tf_gen_op_wrapper_py.
+# Do not depend on this rule! Depend on the fine-grained sub-targets instead.
+# This is the same as "for_generated_wrappers" minus the "function" dep.
+# This is to avoid circular dependencies, as "function" uses generated op wrappers.
 py_strict_library(
     name = "for_generated_wrappers_v2",
-    deprecation = "Depending on this target can cause build dependency cycles. Depend on the fine-grained sub-targets instead.",
     srcs_version = "PY3",
+    tags = ["avoid_dep"],
     visibility = ["//visibility:public"],
     deps = [
         ":byte_swap_tensor",
@@ -298,81 +299,6 @@ py_strict_library(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:tf_logging",
     ],
-)
-
-py_strict_library(
-    name = "framework",
-    deprecation = "This target has been split. Depend on the sub-targets instead.",
-    srcs_version = "PY3",
-    visibility = visibility + ["//tensorflow:internal"],
-    deps = [
-        ":_errors_test_helper",
-        ":_pywrap_python_api_dispatcher",
-        ":_pywrap_python_api_info",
-        ":_pywrap_python_api_parameter_converter",
-        ":_pywrap_python_op_gen",
-        ":byte_swap_tensor",
-        ":c_api_util",
-        ":composite_tensor",
-        ":config",
-        ":cpp_shape_inference_proto_py",
-        ":device",
-        ":dtypes",
-        ":error_interpolation",
-        ":errors",
-        ":fast_tensor_util",
-        ":for_generated_wrappers",
-        ":framework_lib",
-        ":function",
-        ":graph_io",
-        ":graph_util",
-        ":importer",
-        ":indexed_slices",
-        ":load_library",
-        ":meta_graph",
-        ":op_def_registry",
-        ":ops",
-        ":random_seed",
-        ":sparse_tensor",
-        ":tensor",
-        ":tensor_conversion_registry",
-        ":tensor_shape",
-        ":tensor_spec",
-        ":tensor_util",
-        ":type_spec",
-        ":versions",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:_pywrap_py_exception_registry",
-        "//tensorflow/python:_pywrap_quantize_training",
-        "//tensorflow/python:pywrap_mlir",
-        "//tensorflow/python:pywrap_tensorflow",
-        "//tensorflow/python:pywrap_tfe",
-        "//tensorflow/python:tf2",
-        "//tensorflow/python/client:_pywrap_debug_events_writer",
-        "//tensorflow/python/client:_pywrap_events_writer",
-        "//tensorflow/python/client:pywrap_tf_session",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/lib/core:_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
-        "//tensorflow/python/lib/io:file_io",
-        "//tensorflow/python/ops:control_flow_util",
-        "//tensorflow/python/platform:_pywrap_stacktrace_handler",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/util:_pywrap_checkpoint_reader",
-        "//tensorflow/python/util:_pywrap_kernel_registry",
-        "//tensorflow/python/util:_pywrap_nest",
-        "//tensorflow/python/util:_pywrap_stat_summarizer",
-        "//tensorflow/python/util:_pywrap_tfprof",
-        "//tensorflow/python/util:_pywrap_transform_graph",
-        "//tensorflow/python/util:_pywrap_util_port",
-        "//tensorflow/python/util:_pywrap_utils",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_export",
-        "//third_party/py/numpy",
-        "@pypi_packaging//:pkg",
-    ] + if_xla_available([
-        "//tensorflow/python:_pywrap_tfcompile",
-    ]),
 )
 
 py_strict_library(
@@ -2004,7 +1930,9 @@ pytype_strict_library(
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
-    ],
+    ] + if_xla_available([
+        "//tensorflow/python:_pywrap_tfcompile",
+    ]),
 )
 
 pytype_strict_library(
@@ -2017,10 +1945,12 @@ pytype_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
-    ],
+    ] + if_xla_available([
+        "//tensorflow/python:_pywrap_tfcompile",
+    ]),
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "stack",
     srcs = ["stack.py"],
     visibility = visibility + ["//tensorflow:internal"],
@@ -2107,7 +2037,7 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "traceable_stack",
     srcs = ["traceable_stack.py"],
     srcs_version = "PY3",

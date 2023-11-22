@@ -16,7 +16,16 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/strings/ascii.h"
+#include "xla/service/compiler.h"
+#include "xla/service/platform_util.h"
+#include "xla/stream_executor/multi_platform_manager.h"
+
+#if GOOGLE_CUDA
 #include "xla/service/gpu/nvptx_compiler.h"
+#elif TF_USE_ROCM
+#include "xla/service/gpu/amdgpu_compiler.h"
+#endif
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -36,30 +45,37 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  NVPTXCompiler compiler;
+  auto compiler = backend().compiler();
+  auto name =
+      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
   TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::MultiPlatformManager::PlatformWithName("cuda"));
+                          se::MultiPlatformManager::PlatformWithName(name));
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
                           platform->ExecutorForDevice(0));
 
   // Compile AOT.
   auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
-  AotCompilationOptions aot_options(compiler.PlatformId());
+  AotCompilationOptions aot_options(compiler->PlatformId());
+  // ToDo: Remove after unification of AOT compiler
+  if (!aot_options.debug_options().xla_gpu_enable_xla_runtime_executable()) {
+    return;
+  }
+
   aot_options.set_executor(stream_exec);
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
-      compiler.CompileAheadOfTime(std::move(module_group), aot_options));
+      compiler->CompileAheadOfTime(std::move(module_group), aot_options));
 
   // Serialize-deserialize AOT compilation result.
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
                           aot_results[0]->SerializeAsString());
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<AotCompilationResult> aot_result,
-      compiler.LoadAotCompilationResult(serialized_aot_result));
+      compiler->LoadAotCompilationResult(serialized_aot_result));
 
   // Load Executable from AOT compilation result.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                          aot_result->LoadExecutable(&compiler, stream_exec));
+                          aot_result->LoadExecutable(compiler, stream_exec));
 }
 
 TEST_F(GpuAotCompilationTest, AotCompilationWithoutGpuDevice) {
@@ -74,9 +90,11 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  NVPTXCompiler compiler;
+  auto compiler = backend().compiler();
+  auto name =
+      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
   TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::MultiPlatformManager::PlatformWithName("cuda"));
+                          se::MultiPlatformManager::PlatformWithName(name));
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
                           platform->ExecutorForDevice(0));
 
@@ -84,23 +102,28 @@ ENTRY main {
 
   // Stream executor is not passed as an option.
   Compiler::TargetConfig gpu_target_config(stream_exec);
-  AotCompilationOptions aot_options(compiler.PlatformId());
+  AotCompilationOptions aot_options(compiler->PlatformId());
+  // ToDo: Remove after unification of AOT compiler
+  if (!aot_options.debug_options().xla_gpu_enable_xla_runtime_executable()) {
+    return;
+  }
+
   aot_options.set_target_config(gpu_target_config);
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
-      compiler.CompileAheadOfTime(std::move(module_group), aot_options));
+      compiler->CompileAheadOfTime(std::move(module_group), aot_options));
 
   // Serialize-deserialize AOT compilation result.
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
                           aot_results[0]->SerializeAsString());
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<AotCompilationResult> aot_result,
-      compiler.LoadAotCompilationResult(serialized_aot_result));
+      compiler->LoadAotCompilationResult(serialized_aot_result));
 
   // Load Executable from AOT compilation result.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                          aot_result->LoadExecutable(&compiler, stream_exec));
+                          aot_result->LoadExecutable(compiler, stream_exec));
 }
 
 }  // namespace gpu

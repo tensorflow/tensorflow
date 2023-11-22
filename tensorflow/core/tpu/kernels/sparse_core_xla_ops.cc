@@ -264,10 +264,10 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
         ->Set(max_ids_per_partition);
     max_unique_ids_per_partition_gauge_->GetCell(device_name_, table_name_)
         ->Set(max_unique_ids_per_partition);
-    VLOG(3) << "XlaSparseDenseMatmulWithCsrInputOp: "
-            << "table_name = '" << table_name_
-            << "', max_ids = " << max_ids_per_partition
-            << ", max_uniques = " << max_unique_ids_per_partition;
+    LOG(INFO) << "Lowering XlaSparseDenseMatmulWithCsrInputOp to HLO: "
+              << "table_name = '" << table_name_
+              << "', max_ids = " << max_ids_per_partition
+              << ", max_uniques = " << max_unique_ids_per_partition;
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(ctx->InputShape(
                     "num_minibatches_per_physical_sparse_core")),
@@ -427,10 +427,10 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
         ctx, GetMaxIdsAndUniquesExternal(
                  "", table_name_, per_sparse_core_batch_size, feature_width,
                  &max_ids_per_partition, &max_unique_ids_per_partition));
-    VLOG(3) << "XlaSparseDenseMatmulWithCsrInputOp: "
-            << "table_name = '" << table_name_
-            << "', max_ids = " << max_ids_per_partition
-            << ", max_uniques = " << max_unique_ids_per_partition;
+    LOG(INFO) << "Lowering XlaSparseDenseMatmulGradWithCsrInputOp to HLO: "
+              << "table_name = '" << table_name_
+              << "', max_ids = " << max_ids_per_partition
+              << ", max_uniques = " << max_unique_ids_per_partition;
 
     xla::XlaComputation optimizer = build_optimizer_computation(feature_width);
 

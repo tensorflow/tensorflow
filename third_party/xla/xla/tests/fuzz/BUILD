@@ -14,6 +14,7 @@ cc_library(
     ],
 )
 
+<<<<<<< HEAD
 hlo_test(
     name = "rand",
     srcs = [],
@@ -32,5 +33,19 @@ hlo_test(
     deps = [
         ":hlo_test_lib",
         "@local_tsl//tsl/platform:test_main",
+=======
+[hlo_test(
+    name = hlo + "_test",
+    hlo = hlo,
+) for hlo in glob(
+    include = ["rand_*.hlo"],
+    exclude = [
+        "rand_000001.hlo",  # fails on GPU
+        "rand_000004.hlo",  # times out during coverage
+        # These fail on all platforms
+        "rand_000060.hlo",
+        "rand_000067.hlo",
+        "rand_000072.hlo",
+>>>>>>> upstream/master
     ],
-)
+)]

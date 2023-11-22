@@ -3514,21 +3514,26 @@ std::optional<Value> convertQuantizeOp(PatternRewriter& rewriter, Operation* op,
   }
 
   ShapedType output_fp_type = output_type.clone(rewriter.getF32Type());
-
-  Value zp_val =
-      getTosaConstTensorSingleF32(rewriter, op, static_cast<float>(zeropoint));
-
-  auto op1_mul_in = CreateOpAndInfer<tosa::MulOp>(
+  Value result = CreateOpAndInfer<tosa::MulOp>(
       rewriter, op->getLoc(), output_fp_type, input_value,
       getTosaConstTensorSingleF32(rewriter, op, static_cast<float>(scale)), 0);
 
-  auto op2_add_op1 = CreateOpAndInfer<tosa::AddOp>(
-      rewriter, op->getLoc(), output_fp_type, op1_mul_in.getResult(), zp_val);
+  if (zeropoint != 0) {
+    // cast to i32 to add zeropoint
+    ShapedType output_i32_type = output_type.clone(rewriter.getI32Type());
+    Value cast_i32 = CreateOpAndInfer<tosa::CastOp>(rewriter, op->getLoc(),
+                                                    output_i32_type, result);
 
-  auto op3_cast_op2 = CreateOpAndInfer<tosa::CastOp>(
-      rewriter, op->getLoc(), output_type, op2_add_op1.getResult());
+    Value zp_val = getTosaConstTensorSingleI32(rewriter, op, zeropoint);
 
-  return op3_cast_op2.getResult();
+    result = CreateOpAndInfer<tosa::AddOp>(rewriter, op->getLoc(),
+                                           output_i32_type, cast_i32, zp_val);
+  }
+
+  Value final_result = CreateOpAndInfer<tosa::CastOp>(rewriter, op->getLoc(),
+                                                      output_type, result);
+
+  return final_result;
 }
 
 // Lowers Dequantize to a sequence of TOSA dequantization ops.

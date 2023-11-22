@@ -23,6 +23,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -466,9 +467,9 @@ class PjRtClient {
   // Subclasses of PjRtClient can optionally take these callbacks in their
   // constructors.
   using KeyValueGetCallback = std::function<xla::StatusOr<std::string>(
-      const std::string& key, absl::Duration timeout)>;
-  using KeyValuePutCallback = std::function<xla::Status(
-      const std::string& key, const std::string& value)>;
+      std::string_view key, absl::Duration timeout)>;
+  using KeyValuePutCallback =
+      std::function<xla::Status(std::string_view key, std::string_view value)>;
 
   PjRtClient() = default;
   explicit PjRtClient(std::unique_ptr<PjRtHostMemoryForDeviceManager>

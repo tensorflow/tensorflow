@@ -76,7 +76,7 @@ LogicalResult peelLoop(RewriterBase &b, scf::ForallOp loopOp, int64_t idx,
 
   Operation *remainderLoopOp = remainderLoop.getOperation();
 
-  for (const auto &[oldRes, newRes] :
+  for (auto [oldRes, newRes] :
        llvm::zip(loopOp.getResults(), remainderLoop.getResults())) {
     SmallPtrSet<Operation *, 4> exceptions({remainderLoopOp});
     for (OpOperand &use : oldRes.getUses()) {

@@ -82,8 +82,10 @@ TEST(PjRtCApiClientTest, IsDynamicDimension) {
   auto computation = builder.Build(reshaped).value();
   std::unique_ptr<PjRtLoadedExecutable> executable =
       client->Compile(computation, CompileOptions()).value();
+  ExecuteOptions execute_options;
+  execute_options.non_donatable_input_indices = {0};
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results =
-      executable->Execute({{param0.get(), param1.get()}}, ExecuteOptions())
+      executable->Execute({{param0.get(), param1.get()}}, execute_options)
           .value();
   ASSERT_EQ(results[0].size(), 1);
   auto* result_buffer = results[0][0].get();

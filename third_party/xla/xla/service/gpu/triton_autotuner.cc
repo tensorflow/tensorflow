@@ -121,9 +121,10 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
           AutotunerUtil::Autotune(
               hlo, config_, [&]() -> StatusOr<AutotuneResult> {
                 if (config_.IsDeviceless()) {
-                  return InternalError(
+                  return absl::InternalError(absl::StrCat(
                       "Expect autotune result cache hit for deviceless "
-                      "compilation.");
+                      "compilation (HLO: ",
+                      hlo->ToString()));
                 }
                 return InternalError("Expect autotune result cache hit.");
               }));
@@ -402,6 +403,9 @@ StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
       AutotunerUtil::ExtractInstructionIntoNewModule(*fusion);
   // Reduce memory usage during compilation by disabling GPU runtime.
   debug_opts.set_xla_gpu_enable_xla_runtime_executable(false);
+  // TODO(anlunx): Disable command buffers for now because it breaks triton
+  // autotuner test. Enable this when the function of command buffers is stable.
+  debug_opts.clear_xla_gpu_enable_command_buffer();
   if (!allow_filtering_kernels_spilling_registers) {
     debug_opts.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
         false);

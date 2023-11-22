@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/client/lib/constants.h"
 #include "xla/client/xla_builder.h"
 #include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/runtime/custom_call.h"
 #include "xla/runtime/custom_call_registry.h"
 #include "xla/runtime/executable.h"

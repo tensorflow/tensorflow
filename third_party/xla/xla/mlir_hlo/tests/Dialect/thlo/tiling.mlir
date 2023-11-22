@@ -35,8 +35,10 @@ transform.sequence failures(propagate) {
 // CHECK:          %[[MIN_0:.*]] = affine.min #map{{[0-9]*}}(%[[J]])[%[[INIT_DIM_1]]]
 // CHECK:          %[[ARG_DIM_0:.*]] = tensor.dim %[[ARG]], %[[C0]]
 // CHECK:          %[[ARG_DIM_1:.*]] = tensor.dim %[[ARG]], %[[C1]]
-// CHECK:          %[[CMPI:.*]] = arith.cmpi ne, %[[ARG_DIM_0]], %[[INIT_DIM_0]]
-// CHECK:          %[[CMPI_0:.*]] = arith.cmpi ne, %[[ARG_DIM_1]], %[[INIT_DIM_2]]
+// CHECK:          %[[ARG_DIM_2:.*]] = tensor.dim %[[OUT]], %[[C0]]
+// CHECK:          %[[CMPI:.*]] = arith.cmpi ne, %[[ARG_DIM_0]], %[[ARG_DIM_2]]
+// CHECK:          %[[ARG_DIM_3:.*]] = tensor.dim %[[OUT]], %[[C2]]
+// CHECK:          %[[CMPI_0:.*]] = arith.cmpi ne, %[[ARG_DIM_1]], %[[ARG_DIM_3]]
 // CHECK:          %[[SELECT:.*]] = arith.select %[[CMPI]], %[[C0]], %[[I]]
 // CHECK:          %[[SELECT_0:.*]] = arith.select %[[CMPI_0]], %[[C0]], %[[C0]]
 // CHECK:          %[[SELECT_1:.*]] = arith.select %[[CMPI]], %[[C1]], %[[MIN]]
@@ -96,8 +98,8 @@ transform.sequence failures(propagate) {
 // CHECK-SAME:    : tensor<?x?x?xi64>
 // CHECK:       %[[INDICES_SUB:.*]] = tensor.extract_slice %[[INDICES]][%[[I]]
 // CHECK-SAME:    : tensor<?x2xindex>
-// CHECK-DAG:   %[[INIT_DIM_0:.*]] = tensor.dim %[[INIT]], %[[C0]]
-// CHECK-DAG:   %[[INIT_DIM_1:.*]] = tensor.dim %[[INIT]], %[[C1]]
+// CHECK-DAG:   %[[INIT_DIM_0:.*]] = tensor.dim %[[INIT_]], %[[C0]]
+// CHECK-DAG:   %[[INIT_DIM_1:.*]] = tensor.dim %[[INIT_]], %[[C1]]
 // CHECK:       %[[INIT_SUB:.*]] = tensor.extract_slice %[[INIT_]][0, 0]
 // CHECK-SAME:     [%[[INIT_DIM_0]], %[[INIT_DIM_1]]] [1, 1]
 

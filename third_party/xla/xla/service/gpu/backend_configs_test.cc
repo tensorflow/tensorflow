@@ -50,6 +50,7 @@ TEST_F(BackendConfigsTest, DefaultCollectiveBackendConfig) {
       ags->backend_config<CollectiveBackendConfig>();
   EXPECT_THAT(collective_backend_config.status(), IsOk());
   EXPECT_THAT(collective_backend_config->is_sync(), IsFalse());
+  EXPECT_THAT(collective_backend_config->no_parallel_custom_call(), IsFalse());
 }
 
 }  // namespace

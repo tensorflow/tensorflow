@@ -1,7 +1,6 @@
 cufftCreate
 cufftDebug
 cufftDestroy
-cufftEnterCS
 cufftEstimate1d
 cufftEstimate2d
 cufftEstimate3d
@@ -20,11 +19,9 @@ cufftGetSize3d
 cufftGetSizeMany
 cufftGetSizeMany64
 cufftGetVersion
-cufftLeaveCS
 cufftMakePlan1d
 cufftMakePlan2d
 cufftMakePlan3d
-cufftMakePlanGuru64
 cufftMakePlanMany
 cufftMakePlanMany64
 cufftPlan1d

@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -91,7 +92,7 @@ class IrEmitterContext {
   // element, given symbol name and content.
   void emit_constant(int64_t num_elements, int64_t bytes_per_element,
                      absl::string_view symbol_name, int allocation_idx,
-                     llvm::ArrayRef<uint8_t> content, llvm::IRBuilder<>* b);
+                     DenseDataIntermediate content, llvm::IRBuilder<>* b);
 
   const DebugOptions& debug_options() const {
     return hlo_module_->config().debug_options();

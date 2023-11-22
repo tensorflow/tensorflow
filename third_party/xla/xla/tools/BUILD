@@ -1,5 +1,6 @@
 # Tools and utilities that aid in XLA development and usage.
 
+load("//xla/tests:build_defs.bzl", "xla_test")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
@@ -8,9 +9,12 @@ load(
     "xla_cc_test",
     "xla_py_proto_library",
 )
+load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load(
     "@local_tsl//tsl:tsl.bzl",
     "if_cuda_or_rocm",
+    "tsl_gpu_library",
 )
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load(
@@ -18,6 +22,10 @@ load(
     "tf_proto_library",
 )
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load(
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 package(
     default_visibility = ["//visibility:public"],
@@ -271,6 +279,14 @@ xla_cc_binary(
     testonly = True,
     deps = [
         ":hlo_expand_main",
+    ],
+)
+
+xla_cc_binary(
+    name = "hlo-opt",
+    testonly = True,
+    deps = [
+        "//xla/tools/hlo_opt:opt_main",
     ],
 )
 
@@ -614,5 +630,88 @@ xla_cc_binary(
         ":hlo_module_loader",
         "//xla/service:hlo_cost_analysis",
         "@local_tsl//tsl/platform:platform_port",
+    ],
+)
+
+tsl_gpu_library(
+    name = "xla_compile_lib",
+    srcs = ["xla_compile_lib.cc"],
+    hdrs = ["xla_compile_lib.h"],
+    cuda_deps = [
+    ],
+    defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_module_group",
+        "//xla/service:compiler",
+        "//xla/service:executable",
+        "//xla/service:xla_compile_result_proto_cc_impl",
+        "//xla/service/cpu:cpu_compiler",
+        "//xla/service/cpu:cpu_executable",
+        "//xla/stream_executor:device_memory_allocator",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:env_time",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+    ] + if_cuda_is_configured([
+        "//xla/service/gpu:nvptx_compiler",
+        "//xla/service/gpu:nvptx_compiler_impl",
+    ]) + if_rocm_is_configured([
+        "//xla/service/gpu:amdgpu_compiler",
+        "//xla/service/gpu:amdgpu_compiler_impl",
+    ]) + if_gpu_is_configured([
+        "//xla/service/gpu:executable_proto_cc",
+        "//xla/service/gpu:gpu_compiler",
+        "//xla/stream_executor/gpu:gpu_init",
+    ]),
+)
+
+xla_test(
+    name = "xla_compile_lib_test",
+    srcs = ["xla_compile_lib_test.cc"],
+    backend_tags = {
+        "gpu": [
+            "requires-gpu-nvidia",
+            "config-cuda-only",
+        ],
+    },
+    backends = [
+        "cpu",
+        "gpu",
+    ],
+    data = [
+        ":data/add.hlo",
+        "//xla/service:xla_aot_compile_test_gpu_target_config.prototxt",
+    ],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    deps = [
+        ":xla_compile_lib",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:platform_util",
+        "//xla/service:xla_compile_result_proto_cc_impl",
+        "//xla/stream_executor:device_description_proto_cc",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:test_macros_header",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:env_time",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )

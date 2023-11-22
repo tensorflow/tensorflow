@@ -414,7 +414,7 @@ cuda_py_strict_test(
     name = "linear_operator_low_rank_update_test",
     size = "medium",
     srcs = ["linear_operator_low_rank_update_test.py"],
-    shard_count = 10,
+    shard_count = 15,
     tags = ["optonly"],
     deps = [
         "//tensorflow/python/framework:config",
@@ -518,7 +518,7 @@ cuda_py_strict_test(
     name = "linear_operator_tridiag_test",
     size = "medium",
     srcs = ["linear_operator_tridiag_test.py"],
-    shard_count = 5,
+    shard_count = 10,
     tags = [
         "no_windows_gpu",
         "optonly",

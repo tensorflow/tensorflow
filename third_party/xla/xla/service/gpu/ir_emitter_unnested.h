@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/elemental_ir_emitter.h"
+#include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 
 namespace xla {
@@ -115,6 +117,12 @@ class IrEmitterUnnested : public IrEmitter {
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
 
+  // Emits code for the given HLO computation. Right now it is only used to emit
+  // thunks for constructing command buffer. The plan is to replace
+  // EmitLmhloRegion by this function altogether, after we support emitting
+  // all instructions from HLO.
+  Status EmitHloComputation(const HloComputation* computation);
+
   static void GetDependentDialects(mlir::DialectRegistry& registry);
 
  private:
@@ -122,10 +130,12 @@ class IrEmitterUnnested : public IrEmitter {
 
   Status EmitUnreachable(mlir::Operation* op, std::string error_message);
 
+  Status EmitCommandBufferThunk(const HloInstruction* instr);
+
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter. It also mixes in some special handling for custom kernels
   // via the ThunkEmitter.
-  Status EmitConstant(mlir::Operation* op);
+  Status EmitConstant(mlir::Operation* op, const Literal& literal);
 
   Status EmitConditional(
       mlir::Operation* op,
@@ -140,9 +150,9 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitCublasLtMatmulThunkF8(mlir::Operation* op);
   Status EmitConvolutionReorderThunk(mlir::Operation* op);
   Status EmitNormThunk(mlir::Operation* op);
-  Status EmitTritonFusion(const HloFusionAnalysis& hlo_fusion_analysis,
-                          const HloFusionInstruction* fusion,
-                          mlir::Operation* op);
+  StatusOr<FusionEmissionResult> EmitTritonFusion(
+      const HloFusionAnalysis& hlo_fusion_analysis,
+      const HloFusionInstruction* fusion, mlir::Operation* op);
   Status EmitFusedMHAThunk(mlir::Operation* op);
   Status EmitFusedMHABackwardThunk(mlir::Operation* op);
 #endif  // GOOGLE_CUDA
@@ -153,6 +163,8 @@ class IrEmitterUnnested : public IrEmitter {
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitCustomCallThunk(mlir::Operation* op);
   Status EmitFftThunk(mlir::Operation* op);
+  StatusOr<FusionEmissionResult> GetFusionEmissionResult(
+      const HloFusionInstruction* instr, HloFusionAnalysis& fusion_analysis);
   Status EmitFusion(
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
@@ -193,6 +205,8 @@ class IrEmitterUnnested : public IrEmitter {
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
+
+  Status EmitHloInstruction(const HloInstruction* instr);
 
   static Thunk::ThunkInfo GetThunkInfo(mlir::Operation* op);
 
@@ -352,9 +366,14 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitScatter(const ScatterDescriptor& desc,
                      const LaunchDimensions& launch_dimensions);
 
-  Status EmitScatter(const HloFusionInstruction* fusion,
-                     mlir::lmhlo::FusionOp fusion_op,
-                     HloFusionAnalysis& fusion_analysis);
+  StatusOr<FusionEmissionResult> EmitScatter(
+      const HloFusionInstruction* fusion, mlir::lmhlo::FusionOp fusion_op,
+      HloFusionAnalysis& fusion_analysis);
+
+  // Emits kernel thunk for a custom fusion implemented with hand written custom
+  // device kernels.
+  StatusOr<FusionEmissionResult> EmitCustomFusion(
+      const HloFusionInstruction* fusion, const CustomFusionConfig& config);
 
   // Builds a kernel thunk for a non-fusion operation, without reuse.
   //

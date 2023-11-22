@@ -360,7 +360,7 @@ ENTRY fusion {
   std::vector<HloInstruction*> consumers{
       module->entry_computation()->GetInstructionWithName("reduce.1")};
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-      producer, &analysis_, GpuPerformanceModelOptions::PriorityFusion(),
+      producer, &analysis_, GpuPerformanceModelOptions::PriorityFusion(nullptr),
       consumers);
 
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 105, 10);
@@ -454,6 +454,65 @@ ENTRY main {
   // the same cost.
   EXPECT_NEAR(absl::ToInt64Microseconds(t1.time_unfused),
               absl::ToInt64Microseconds(t2.time_unfused), 10);
+}
+
+TEST_F(GpuPerformanceModelTest, EqualCostBeforeAndAfterFusion) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+f1 {
+  p0 = f32[4194304] parameter(0)
+  p1 = f32[4194304] parameter(1)
+  ROOT tmp_3 = f32[4194304] multiply(f32[4194304] p0, f32[4194304] p1)
+}
+
+e1 {
+  p0 = f32[4194304] parameter(0)
+  p1 = f32[4194304] parameter(1)
+
+  f.1 = f32[4194304] fusion(f32[4194304] p0, f32[4194304] p1), kind=kLoop, calls=f1
+  ROOT r.1 = f32[4194304] tanh(f32[4194304] f.1)
+}
+
+f2 {
+  p0 = f32[4194304] parameter(0)
+  p1 = f32[4194304] parameter(1)
+  mul = f32[4194304] multiply(f32[4194304] p0, f32[4194304] p1)
+  ROOT res = f32[4194304] tanh(f32[4194304] mul)
+}
+
+ENTRY e2 {
+  p0 = f32[4194304] parameter(0)
+  p1 = f32[4194304] parameter(1)
+
+  ROOT f.2 = f32[4194304] fusion(f32[4194304] p0, f32[4194304] p1), kind=kLoop, calls=f2
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloComputation* computation_without_fusion =
+      module->GetComputationWithName("e1");
+  ASSERT_IS_OK(computation_without_fusion->Accept(&analysis_));
+  HloInstruction* consumer = computation_without_fusion->root_instruction();
+  const HloInstruction* producer = consumer->operand(0);
+
+  GpuPerformanceModel::RunTimes t1 = GpuPerformanceModel::EstimateRunTimes(
+      producer, &analysis_, GpuPerformanceModelOptions::PriorityFusion(nullptr),
+      {consumer});
+
+  HloComputation* computation_with_fusion =
+      module->GetComputationWithName("e2");
+  ASSERT_IS_OK(computation_with_fusion->Accept(&analysis_));
+  HloInstruction* root_with_fusion =
+      computation_with_fusion->root_instruction();
+
+  GpuPerformanceModel::RunTimes t2 = GpuPerformanceModel::EstimateRunTimes(
+      root_with_fusion, &analysis_,
+      GpuPerformanceModelOptions::PriorityFusion(nullptr), {});
+
+  EXPECT_EQ(t1.time_fused, t2.time_unfused);
 }
 
 }  // namespace

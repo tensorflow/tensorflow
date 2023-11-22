@@ -901,6 +901,10 @@ class XlaBuilder {
                                        const XlaComputation& comparator,
                                        int64_t dimension, bool is_stable);
 
+  XlaOp TopK(XlaOp operand, int64_t k, bool largest);
+  virtual StatusOr<XlaOp> TopKInternal(const Shape& shape, XlaOp operand,
+                                       int64_t k, bool largest);
+
   XlaOp Clamp(XlaOp min, XlaOp operand, XlaOp max);
 
   XlaOp Map(absl::Span<const XlaOp> operands, const XlaComputation& computation,
@@ -1532,6 +1536,7 @@ class XlaBuilder {
   friend XlaOp Sort(absl::Span<const XlaOp> operands,
                     const XlaComputation& comparator, int64_t dimension,
                     bool is_stable);
+  friend XlaOp TopK(XlaOp operand, int64_t k, bool largest);
   friend XlaOp Clamp(XlaOp min, XlaOp operand, XlaOp max);
   friend XlaOp Map(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                    const XlaComputation& computation,
@@ -2673,6 +2678,26 @@ XlaOp Rev(XlaOp operand, absl::Span<const int64_t> dimensions);
 // Default comparator computations can be found in lib/comparators.h
 XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
            int64_t dimension = -1, bool is_stable = false);
+
+// Enqueues a topk instruction onto the computation. TopK returns the largest
+// 'k' values and their indices along the last dimension of the 'operand' if
+// `lagest=true` or the smallest `k` values if `largest=false`.
+//
+// * If the operand is a rank-1 tensor (an array), the result is a tuple that
+//   consists of:
+//   * a sorted array with the top 'k' elements.
+//   * an array containing the indices of the k elements.
+//   For example, if the input is [0.1, 0.3, 0.2] and k == 2, the output tuple
+//   is ([0.3, 0.2], [1, 2]).
+// * If the operand has higher rank, the result is a tuple that consists of:
+//   * a tensor equivalent to one produced by sorting the operand along the last
+//     dimension and slicing that dimension to only the top 'k' values. The last
+//     dimension is sorted as in the rank-1 case.
+//   * a tensor containing the indices of the top 'k' values along the last
+//     dimension.
+//   For example, if the input is [0.1, 0.3, 0.2][0.5, 0.4, 0.6] and k == 1, the
+//   output tuple is ([0.3][0.6], [1][2]).
+XlaOp TopK(XlaOp operand, int64_t k, bool largest);
 
 // Enqueues a clamp instruction onto the computation.
 XlaOp Clamp(XlaOp min, XlaOp operand, XlaOp max);

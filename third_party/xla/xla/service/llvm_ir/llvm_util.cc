@@ -216,10 +216,10 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
                                   llvm::Module* module) {
   switch (element_type) {
-    case PRED:
-    // i8 is used for S4/U4 as arrays of i4 values are not packed
     case S4:
     case U4:
+      return llvm::Type::getIntNTy(module->getContext(), 4);
+    case PRED:
     case S8:
     case U8:
       return llvm::Type::getInt8Ty(module->getContext());

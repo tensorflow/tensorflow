@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "riegeli/bytes/fd_writer.h"  // from @riegeli
@@ -127,6 +128,7 @@ absl::Status ComposableSplitterBase::Write(std::string file_prefix) {
               chunk)) {
         auto msg_chunk =
             std::get<std::shared_ptr<tsl::protobuf::Message>>(chunk);
+        LOG(INFO) << "Writing chunk of size " << msg_chunk->ByteSizeLong();
         writer.WriteRecord(*msg_chunk);
         chunk_metadata->set_size(msg_chunk->ByteSizeLong());
         chunk_metadata->set_type(::proto_splitter::ChunkInfo::MESSAGE);

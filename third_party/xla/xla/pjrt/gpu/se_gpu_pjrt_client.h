@@ -221,9 +221,33 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
     std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
     int node_id);
 
-// kv_get and kv_put are callbacks provided by the caller to access a key-value
-// store shared between nodes. kv_get and kv_put must be non-null if num_nodes
-// > 1.
+struct GpuClientOptions {
+  GpuAllocatorConfig allocator_config;
+
+  int node_id = 0;
+
+  int num_nodes = 1;
+
+  std::optional<std::set<int>> allowed_devices = std::nullopt;
+
+  std::optional<std::string> platform_name = std::nullopt;
+
+  bool should_stage_host_to_device_transfers = true;
+
+  // `kv_get` and `kv_put` are callbacks provided by the caller to access a
+  // key-value store shared between nodes. `kv_get` and `kv_put` must be
+  // non-null if `num_nodes` > 1.
+  PjRtClient::KeyValueGetCallback kv_get = nullptr;
+  PjRtClient::KeyValuePutCallback kv_put = nullptr;
+
+  bool enable_mock_nccl = false;
+};
+
+StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
+    const GpuClientOptions& options);
+
+// TODO(b/311119497): Remove this function after all callsites are updated.
+ABSL_DEPRECATED("Use the the above function that takes GpuClientOptions.")
 StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config, int node_id,
     int num_nodes = 1,

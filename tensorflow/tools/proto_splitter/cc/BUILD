@@ -1,11 +1,12 @@
-# Description:
-#   Utilities for splitting and joining large protos > 2GB.
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_oss",
     "tf_cc_test",
 )
+
+# Description:
+#   Utilities for splitting and joining large protos > 2GB.
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -43,6 +44,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/tools/proto_splitter:chunk_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -197,6 +199,7 @@ cc_library(
         ":composable_splitter",
         ":max_size",
         ":size_splitter",
+        ":split",
         ":util",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",

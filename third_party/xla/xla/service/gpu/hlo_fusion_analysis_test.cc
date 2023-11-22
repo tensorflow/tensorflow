@@ -17,6 +17,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
@@ -233,6 +234,39 @@ TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusionPartiallyFusedInBoth) {
           FusionBackendConfig::default_instance(), {root},
           MakeProducerConsumerFusion(*root->operand(0), *root), &device_info));
   EXPECT_EQ(analysis.GetEmitterFusionKind(),
+            HloFusionAnalysis::EmitterFusionKind::kReduction);
+}
+
+TEST_F(HloFusionAnalysisTest, InvalidDevice) {
+  // Verifies that an analysis can be created even with an invalid/empty device
+  // info, and that the emitter type is determined correctly.
+  // Don't rely on this behavior.
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+
+    ENTRY main {
+      %p0 = f32[1024,128] parameter(0)
+      %p1 = f32[] parameter(1)
+      %reduce = f32[128] reduce(%p0, %p1), dimensions={0}, to_apply=add
+      ROOT %bitcast = s32[128] bitcast(%reduce)
+    })")
+                    .value();
+
+  stream_executor::GpuDeviceInfoProto device_info_proto;
+  stream_executor::DeviceDescription device_info(device_info_proto);
+
+  auto* root = module->entry_computation()->root_instruction();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto analysis_fused,
+      HloFusionAnalysis::Create(FusionBackendConfig::default_instance(), {root},
+                                DefaultFusionBoundaryFn, &device_info));
+  EXPECT_EQ(analysis_fused.GetEmitterFusionKind(),
             HloFusionAnalysis::EmitterFusionKind::kReduction);
 }
 

@@ -344,6 +344,7 @@ cc_test(
         "tflite_not_portable_ios",
     ],
     deps = [
+        ":android_hardware_buffer",
         ":async_buffers",
         ":delegate",
         "@com_google_googletest//:gtest_main",

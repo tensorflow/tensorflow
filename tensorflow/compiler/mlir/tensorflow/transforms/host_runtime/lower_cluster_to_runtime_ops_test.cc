@@ -50,7 +50,6 @@ namespace {
 using mlir::DialectRegistry;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
-using mlir::OpPassManager;
 using mlir::OwningOpRef;
 using mlir::func::FuncOp;
 using ::tensorflow::monitoring::testing::CellReader;

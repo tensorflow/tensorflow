@@ -858,6 +858,23 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
 // TODO(b/309152522): Remove the switch once it works on Windows.
 #if !IS_OSS
   pybind11_protobuf::ImportNativeProtoCasters();
+  m.def(
+      "TFE_ContextAddFunctionDefNoSerialization",
+      [](py::handle& ctx, tensorflow::FunctionDef function_def) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        // Annotate eager runtime construction context to the given
+        // `function_def` as an attribute.
+        tensorflow::AttrValue value;
+        SetAttrValue("kEagerRuntime", &value);
+        (*function_def.mutable_attr())["_construction_context"] = value;
+        status->status = tensorflow::unwrap(tensorflow::InputTFE_Context(ctx))
+                             ->AddFunctionDef(function_def);
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        return;
+      },
+      pybind11::arg("ctx"), pybind11::arg("function_def"));
+
   m.def("TFE_ContextGetFunctionDefNoSerialization",
         [](py::handle& ctx,
            const char* function_name) -> tensorflow::FunctionDef {
@@ -885,6 +902,14 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
           LOG(FATAL) << "This function cannot be called.";
           return -1;
         });
+  m.def("TFE_ContextAddFunctionDefNoSerialization",
+        // Opensource fails whenever a protobuf is used as argument. The
+        // disrepency in the type is to make opensource tests pass.
+        [](py::handle& ctx, int function_def) {
+          LOG(FATAL) << "This function cannot be called.";
+          return -1;
+        });
+
 #endif
   m.def("TFE_ContextGetGraphDebugInfo",
         [](py::handle& ctx, const char* function_name, TF_Buffer& buf) {

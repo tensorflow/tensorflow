@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/notification.h"
+#include "absl/types/span.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/fft.h"
@@ -192,8 +193,8 @@ bool StreamExecutor::UnloadModule(ModuleHandle module_handle) {
 
 tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 StreamExecutor::CreateOrShareConstant(Stream* stream,
-                                      const std::vector<uint8_t>& content) {
-  return implementation_->CreateOrShareConstant(stream, std::move(content));
+                                      absl::Span<const uint8_t> content) {
+  return implementation_->CreateOrShareConstant(stream, content);
 }
 
 void StreamExecutor::Deallocate(DeviceMemoryBase* mem) {
@@ -440,7 +441,7 @@ fft::FftSupport* StreamExecutor::AsFft() {
 tsl::Status StreamExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                                    const BlockDim& block_dims,
                                    const Kernel& kernel,
-                                   const KernelArgsArrayBase& args) {
+                                   const KernelArgs& args) {
   SubmitTrace(&TraceListener::LaunchSubmit, stream, thread_dims, block_dims,
               kernel, args);
 

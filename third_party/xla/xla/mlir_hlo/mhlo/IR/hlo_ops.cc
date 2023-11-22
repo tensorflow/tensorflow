@@ -5442,46 +5442,6 @@ LogicalResult TopKOp::inferReturnTypeComponents(
                           inferredReturnShapes);
 }
 
-bool isMhloCompareOfBodyArgumentsGtOrLt(Block& body) {
-  auto terminator = dyn_cast<ReturnOp>(body.getTerminator());
-  if (!terminator || terminator->getNumOperands() != 1) return false;
-
-  auto compare = terminator.getOperand(0).getDefiningOp<CompareOp>();
-  if (!compare) return false;
-  auto direction = compare.getComparisonDirection();
-  if (direction != ComparisonDirection::GT &&
-      direction != ComparisonDirection::LT)
-    return false;
-
-  if (body.getNumArguments() != 2) return false;
-  auto arg0 = matchers::m_Val(body.getArgument(0));
-  auto arg1 = matchers::m_Val(body.getArgument(1));
-  return matchPattern(compare.getResult(), m_Op<CompareOp>(arg0, arg1)) ||
-         matchPattern(compare.getResult(), m_Op<CompareOp>(arg1, arg0));
-}
-
-LogicalResult TopKOp::verify() {
-  Builder builder(getContext());
-  auto operandType = getOperand().getType();
-  Block& body = getBody().front();
-
-  auto expectedBodyArgType =
-      RankedTensorType::get({}, operandType.getElementType());
-  auto expectedBodyType =
-      builder.getFunctionType({expectedBodyArgType, expectedBodyArgType},
-                              {RankedTensorType::get({}, builder.getI1Type())});
-  auto actualBodyType = builder.getFunctionType(
-      body.getArgumentTypes(), body.getTerminator()->getOperandTypes());
-  if (expectedBodyType != actualBodyType)
-    return emitOpError() << "unsupported body: expected: " << expectedBodyType
-                         << ", got " << actualBodyType;
-  if (!isMhloCompareOfBodyArgumentsGtOrLt(body))
-    return emitOpError() << "unsupported body: expected mhlo.compare of "
-                         << "body arguments with GT or LT comparison_direction";
-
-  return success();
-}
-
 //===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
@@ -7076,7 +7036,7 @@ static LogicalResult verifyArgResultAliasAttr(StringAttr attrName,
 LogicalResult verifyCrossProgramPrefetchAttr(CrossProgramPrefetchAttr cpp,
                                              ModuleOp module) {
   func::FuncOp main = module.lookupSymbol<func::FuncOp>("main");
-  if (cpp.getParameter() >= main.getNumArguments())
+  if (cpp.getParameter() >= main.getNumArguments() || cpp.getParameter() < 0)
     return module->emitOpError()
            << "cross_program_prefetch: parameter " << cpp.getParameter()
            << " out of range. main has only " << main.getNumArguments()

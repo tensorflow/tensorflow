@@ -301,7 +301,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":op_macros",
-        "//tensorflow/lite:arena_planner",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:optimized_eigen",
     ],

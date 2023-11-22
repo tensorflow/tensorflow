@@ -135,7 +135,7 @@ class DrawBoundingBoxOpTest(test.TestCase):
         image, dtype=dtypes.half, colors=colors)
 
   # generate_bound_box_proposals is only available on GPU.
-  @test_util.run_gpu_only()
+  @test_util.run_gpu_only
   def testGenerateBoundingBoxProposals(self):
     # Op only exists on GPU.
     with self.cached_session(use_gpu=True):
