@@ -40,6 +40,7 @@ cc_library(
         "passes/replace_stablehlo_ops_in_main_function_with_xla_call_module_ops.cc",
         "passes/restore_function_name.cc",
         "passes/unfuse_mhlo_batch_norm.cc",
+        "passes/unwrap_xla_call_module_op.cc",
     ],
     hdrs = [
         "passes/passes.h",
