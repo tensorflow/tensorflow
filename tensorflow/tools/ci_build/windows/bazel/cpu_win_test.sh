@@ -14,7 +14,8 @@
 # limitations under the License.
 # ==============================================================================
 
-# This script is a CI script for invoking 'bazel test ... ...'
+# This script is a CI script maintained by Intel and is used to launch the nightly CI test 
+# build on the Windows platform.
 # It assumes the standard setup on tensorflow Jenkins Windows machines.
 # Update the flags/variables below to make it work on your local system.
 
