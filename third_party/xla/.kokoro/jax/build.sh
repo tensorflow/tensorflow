@@ -74,7 +74,7 @@ build_and_test_on_rbe_gpu() {
   # Runs non-multiaccelerator tests with one GPU apiece.
   # It appears --run_under needs an absolute path.
 
-  # TODO(ddunleavy): reenable `LaxTest.testBitcastConvertType1`
+  # TODO(ddunleavy): reenable `LaxTest.testBitcastConvertType`
   bazel \
     test \
     --verbose_failures=true \
@@ -87,9 +87,9 @@ build_and_test_on_rbe_gpu() {
     --test_output=errors \
     --test_env=JAX_SKIP_SLOW_TESTS=1 \
     --test_env=TF_CPP_MIN_LOG_LEVEL=0 \
-    --test_env=JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow" \
+    --test_env=JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow|LaxTest.testBitcastConvertType" \
     --test_tag_filters=-multiaccelerator \
-    -- //tests:gpu_tests //tests:backend_independent_tests -//tests:lax_test_gpu
+    -- //tests:gpu_tests //tests:backend_independent_tests
 }
 
 # Generate a templated results file to make output accessible to everyone
