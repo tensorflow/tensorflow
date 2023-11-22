@@ -16,12 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/simple_memory_arena.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
-#include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/core/c/common.h"
@@ -54,15 +54,16 @@ bool ResizableAlignedBuffer::Resize(size_t new_size) {
   OnTfLiteArenaAlloc(subgraph_index_, reinterpret_cast<std::uintptr_t>(this),
                      new_allocation_size);
 #endif
-  auto new_buffer = std::unique_ptr<char[]>(new char[new_allocation_size]);
+  char* new_buffer = new char[new_allocation_size];
   char* new_aligned_ptr = reinterpret_cast<char*>(
-      AlignTo(alignment_, reinterpret_cast<std::uintptr_t>(new_buffer.get())));
+      AlignTo(alignment_, reinterpret_cast<std::uintptr_t>(new_buffer)));
   if (new_size > 0 && data_size_ > 0) {
     // Copy data when both old and new buffers are bigger than 0 bytes.
     const size_t copy_amount = std::min(new_size, data_size_);
     std::memcpy(new_aligned_ptr, aligned_ptr_, copy_amount);
   }
-  buffer_ = std::move(new_buffer);
+  delete[] buffer_;
+  buffer_ = new_buffer;
   aligned_ptr_ = new_aligned_ptr;
 #ifdef TF_LITE_TENSORFLOW_PROFILER
   if (data_size_ > 0) {
@@ -86,7 +87,8 @@ void ResizableAlignedBuffer::Release() {
   OnTfLiteArenaDealloc(subgraph_index_, reinterpret_cast<std::uintptr_t>(this),
                        RequiredAllocationSize(data_size_));
 #endif
-  buffer_.reset();
+  delete[] buffer_;
+  buffer_ = nullptr;
   data_size_ = 0;
   aligned_ptr_ = nullptr;
 }

@@ -15,10 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_SIMPLE_MEMORY_ARENA_H_
 #define TENSORFLOW_LITE_SIMPLE_MEMORY_ARENA_H_
 
-#include <stddef.h>
-
+#include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -58,7 +56,10 @@ struct ArenaAllocWithUsageInterval {
 class ResizableAlignedBuffer {
  public:
   ResizableAlignedBuffer(size_t alignment, int subgraph_index)
-      : data_size_(0), alignment_(alignment), subgraph_index_(subgraph_index) {
+      : buffer_(nullptr),
+        data_size_(0),
+        alignment_(alignment),
+        subgraph_index_(subgraph_index) {
     // To silence unused private member warning, only used with
     // TF_LITE_TENSORFLOW_PROFILER
     (void)subgraph_index_;
@@ -89,7 +90,7 @@ class ResizableAlignedBuffer {
     return data_array_size + alignment_ - 1;
   }
 
-  std::unique_ptr<char[]> buffer_;
+  char* buffer_;
   size_t data_size_;
   size_t alignment_;
   char* aligned_ptr_;
