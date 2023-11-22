@@ -42,7 +42,7 @@ CommandBuffer& CommandBuffer::operator=(CommandBuffer&&) = default;
       std::unique_ptr<internal::CommandBufferInterface> command_buffer,
       executor->implementation()->GetCommandBufferImplementation(mode));
 
-  CommandBuffer cmd(executor, std::move(command_buffer));
+  CommandBuffer cmd(std::move(command_buffer));
   return cmd;
 }
 
@@ -80,15 +80,13 @@ internal::CommandBufferInterface* CommandBuffer::implementation() {
 }
 
 /*static*/ CommandBuffer CommandBuffer::Wrap(
-    StreamExecutor* executor,
     std::unique_ptr<internal::CommandBufferInterface> implementation) {
-  return CommandBuffer(executor, std::move(implementation));
+  return CommandBuffer(std::move(implementation));
 }
 
 CommandBuffer::CommandBuffer(
-    StreamExecutor* executor,
     std::unique_ptr<internal::CommandBufferInterface> implementation)
-    : executor_(executor), implementation_(std::move(implementation)) {}
+    : implementation_(std::move(implementation)) {}
 
 tsl::Status CommandBuffer::Launch(const ThreadDim& threads,
                                   const BlockDim& blocks, const Kernel& kernel,
@@ -106,8 +104,9 @@ tsl::Status CommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
   return implementation_->MemcpyDeviceToDevice(dst, src, size);
 }
 
-tsl::Status CommandBuffer::If(DeviceMemory<bool> pred, Builder then_builder) {
-  return implementation_->If(executor_, pred, std::move(then_builder));
+tsl::Status CommandBuffer::If(StreamExecutor* executor, DeviceMemory<bool> pred,
+                              Builder then_builder) {
+  return implementation_->If(executor, pred, std::move(then_builder));
 }
 
 CommandBuffer::Mode CommandBuffer::mode() const {

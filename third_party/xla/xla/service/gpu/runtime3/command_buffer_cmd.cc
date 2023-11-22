@@ -100,7 +100,7 @@ Status LaunchCmd::Record(const RecordParams& params,
   VLOG(5) << "LaunchCmd: kernel=" << kernel_name_
           << ", shmem_bytes=" << shmem_bytes_;
 
-  se::Kernel* kernel = kernels_[command_buffer->executor()].get();
+  se::Kernel* kernel = kernels_[params.executor].get();
   if (kernel == nullptr) {
     return absl::InternalError(
         "Kernel not loaded on a command buffer executor");
@@ -187,13 +187,14 @@ Status GemmCmd::Record(const RecordParams& params,
       params.buffer_allocations->GetDeviceAddress(rhs_buffer_);
   se::DeviceMemoryBase out =
       params.buffer_allocations->GetDeviceAddress(output_buffer_);
+
   TF_ASSIGN_OR_RETURN(
       auto nested_buffer,
-      stream_executor::CommandBuffer::Trace(
-          command_buffer->executor(), [&](stream_executor::Stream* stream) {
-            return RunGemm(config_, lhs, rhs, out, workspace, deterministic_,
-                           stream);
-          }));
+      se::CommandBuffer::Trace(params.executor, [&](se::Stream* stream) {
+        return RunGemm(config_, lhs, rhs, out, workspace, deterministic_,
+                       stream);
+      }));
+
   return command_buffer->AddNestedCommandBuffer(nested_buffer);
 }
 

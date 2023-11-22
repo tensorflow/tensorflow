@@ -263,7 +263,7 @@ TEST(CudaCommandBufferTest, ConditionalIf) {
 
   // Create a command buffer with a single conditional operation.
   auto cmd_buffer = CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(cmd_buffer.If(pred, then_builder));
+  TF_ASSERT_OK(cmd_buffer.If(executor, pred, then_builder));
   TF_ASSERT_OK(cmd_buffer.Finalize());
 
   TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
@@ -302,7 +302,7 @@ TEST(CudaCommandBufferTest, ConditionalIf) {
 
   // Update command buffer with a conditional to use new builder.
   TF_ASSERT_OK(cmd_buffer.Update());
-  TF_ASSERT_OK(cmd_buffer.If(pred, then_builder));
+  TF_ASSERT_OK(cmd_buffer.If(executor, pred, then_builder));
   TF_ASSERT_OK(cmd_buffer.Finalize());
 
   TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));

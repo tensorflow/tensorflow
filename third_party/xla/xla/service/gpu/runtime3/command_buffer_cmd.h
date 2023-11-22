@@ -55,6 +55,7 @@ class CommandBufferCmd {
   // module, we only know the buffer slices required for HLO operations, but the
   // concrete device pointers become available only at run time.
   struct RecordParams {
+    se::StreamExecutor* executor;
     const BufferAllocations* buffer_allocations;
   };
 

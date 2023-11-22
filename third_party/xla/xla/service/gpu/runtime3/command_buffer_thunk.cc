@@ -75,7 +75,8 @@ Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(ExecutorCommandBuffer * cmd_buffer,
                       GetOrCreateCommandBuffer(executor));
 
-  CommandBufferCmd::RecordParams record_params = {params.buffer_allocations};
+  CommandBufferCmd::RecordParams record_params = {executor,
+                                                  params.buffer_allocations};
 
   absl::MutexLock lock(&cmd_buffer->mutex);
 

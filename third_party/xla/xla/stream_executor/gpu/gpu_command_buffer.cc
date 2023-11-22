@@ -313,9 +313,9 @@ tsl::Status GpuCommandBuffer::If(StreamExecutor* executor,
     GpuGraphHandle then_graph = std::get<ConditionalResult>(result).graph;
 
     // Wrap conditional graph into command buffer and pass it to the builder.
-    auto then_cmd_buffer = CommandBuffer::Wrap(
-        executor, parent_->GetCommandBufferImplementation(
-                      nested, then_graph, /*is_owned_graph=*/false));
+    auto then_cmd_buffer =
+        CommandBuffer::Wrap(parent_->GetCommandBufferImplementation(
+            nested, then_graph, /*is_owned_graph=*/false));
     TF_RETURN_IF_ERROR(then_builder(&then_cmd_buffer));
     TF_RETURN_IF_ERROR(then_cmd_buffer.Finalize());
 
