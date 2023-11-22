@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -46,6 +45,9 @@ namespace xla::gpu {
 //===----------------------------------------------------------------------===//
 
 void CommandBufferCmdSequence::Append(std::unique_ptr<CommandBufferCmd> cmd) {
+  for (BufferAllocation::Slice& slice : cmd->slices()) {
+    allocs_indices_.insert(slice.index());
+  }
   commands_.push_back(std::move(cmd));
 }
 
@@ -63,36 +65,10 @@ Status CommandBufferCmdSequence::Record(
   if (command_buffer->state() == se::CommandBuffer::State::kFinalized) {
     TF_RETURN_IF_ERROR(command_buffer->Update());
   }
-  // Returns if no cmd requires update.
-  if (!ShouldUpdateCmd(params)) {
-    return OkStatus();
-  }
   for (auto& cmd : commands_) {
     TF_RETURN_IF_ERROR(cmd->Record(params, command_buffer));
   }
   return command_buffer->Finalize();
-}
-
-bool CommandBufferCmdSequence::ShouldUpdateCmd(
-    const CommandBufferCmd::RecordParams& params) {
-  bool should_update = false;
-  const BufferAllocations* allocs = params.buffer_allocations;
-  size_t size = allocs->size();
-  if (prev_allocs_.size() < size) {
-    prev_allocs_.resize(size);
-    should_update = true;
-  }
-  // Traversing all allocations from `params` using the index alone (no need for
-  // offset) is enough because every time `BufferAllocation` remapped to a new
-  // physical memory location all commands reading from any slice from that
-  // allocation must be invalidated.
-  for (unsigned i = 0; i < size; ++i) {
-    se::DeviceMemoryBase new_alloc = allocs->GetDeviceAddress(i);
-    se::DeviceMemoryBase& prev_alloc = prev_allocs_[i];
-    should_update |= !new_alloc.IsSameAs(prev_alloc);
-    prev_alloc = new_alloc;
-  }
-  return should_update;
 }
 
 //===----------------------------------------------------------------------===//
