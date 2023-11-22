@@ -83,7 +83,6 @@ py_strict_library(
         "//tensorflow/python/ops:gradient_checker_v2",
         "//tensorflow/python/ops:stateful_random_ops",
         "//tensorflow/python/ops/structured:structured_ops",
-        "//tensorflow/python/tpu:tpu_estimator",
         "//tensorflow/python/tpu:tpu_noestimator",
     ],
 )
