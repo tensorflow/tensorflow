@@ -514,7 +514,8 @@ class HloComputation {
   // shape.
   StatusOr<bool> ReplaceInstructionWithDifferentShape(
       HloInstruction* old_instruction, HloInstruction* new_instruction,
-      bool preserve_sharding, bool relay_control_dependency = false);
+      bool preserve_sharding, bool relay_control_dependency = false,
+      bool remove_unused_operands = true);
   Status ReplaceInstructionWithDifferentShape(HloInstruction* old_instruction,
                                               HloInstruction* new_instruction);
 

@@ -1133,7 +1133,8 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
 
 StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     HloInstruction* old_instruction, HloInstruction* new_instruction,
-    bool preserve_sharding, bool relay_control_dependency) {
+    bool preserve_sharding, bool relay_control_dependency,
+    bool remove_unused_operands) {
   if (preserve_sharding && new_instruction->has_sharding() &&
       old_instruction->has_sharding() &&
       !new_instruction->has_compatible_sharding(old_instruction)) {
@@ -1186,10 +1187,13 @@ StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
            new_instruction->custom_call_target())) {
     new_instruction->SetAndSanitizeName(old_instruction->name());
   }
-
-  TF_RETURN_IF_ERROR(RemoveInstructionAndUnusedOperands(
-      old_instruction, /*cleanup=*/std::nullopt,
-      /*ignore_control_dependencies=*/relay_control_dependency));
+  if (remove_unused_operands) {
+    TF_RETURN_IF_ERROR(RemoveInstructionAndUnusedOperands(
+        old_instruction, /*cleanup=*/std::nullopt,
+        /*ignore_control_dependencies=*/relay_control_dependency));
+  } else {
+    TF_RETURN_IF_ERROR(RemoveInstruction(old_instruction));
+  }
   return true;
 }
 
