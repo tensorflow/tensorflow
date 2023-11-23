@@ -311,6 +311,7 @@ tf_gen_op_strict_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
+        "//tensorflow/dtensor/python/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/kernel_tests/image_ops:__pkg__",
         "//tensorflow/python/ops/parallel_for:__pkg__",
@@ -486,6 +487,7 @@ tf_gen_op_strict_wrapper_private_py(
     name = "parsing_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/dtensor/python/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/autograph/operators:__pkg__",
         "//tensorflow/python/data/ops:__pkg__",
