@@ -1925,16 +1925,14 @@ StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
   auto* gpu_executable = tensorflow::down_cast<GpuExecutable*>(executable);
   if (!gpu_executable) return Internal("GpuExecutable is null");
   HloModuleProto module_proto = gpu_executable->module().ToProto();
-  TF_ASSIGN_OR_RETURN(auto obj_file, gpu_executable->GetObjFile());
-  TF_ASSIGN_OR_RETURN(auto mlir_module, gpu_executable->GetMlirModule());
+  auto obj_file = gpu_executable->GetObjFile().value_or("");
+  auto mlir_module = gpu_executable->GetMlirModule().value_or("");
   auto text = gpu_executable->text();
   auto binary = gpu_executable->binary();
 
-  std::unique_ptr<AotCompilationResult> result =
-      std::make_unique<xla::gpu::GpuAotCompilationResult>(
-          module_proto, obj_file, mlir_module, text, binary,
-          gpu_executable->constants());
-  return result;
+  return std::make_unique<xla::gpu::GpuAotCompilationResult>(
+      module_proto, obj_file, mlir_module, text, binary,
+      gpu_executable->constants());
 }
 
 Status GpuCompiler::RunPostSchedulingPipelines(
