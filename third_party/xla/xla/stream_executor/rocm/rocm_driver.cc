@@ -432,8 +432,12 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
 
 /* static */ tsl::Status GpuDriver::FuncSetCacheConfig(
     hipFunction_t function, hipFuncCache_t cache_config) {
-  RETURN_IF_ROCM_ERROR(wrap::hipFuncSetCacheConfig(function, cache_config),
-                       "Failed to set ROCM kernel cache config.");
+  // NOTE: this function is only available for in-process GPU kernels:
+  // https://rocm.docs.amd.com/projects/HIP/en/latest/.doxygen/docBin/html/group___execution.html#gafdb33ef569eb89808fc5178d04b508ba
+  // but it is no-op for the current HIP release !
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipFuncSetCacheConfig((const void*)function, cache_config),
+      "Failed to set ROCM kernel cache config.");
   return tsl::OkStatus();
 }
 
@@ -823,13 +827,26 @@ GpuDriver::GraphAddNode(hipGraphNode_t* node, hipGraph_t graph,
           << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
           << " bdx: " << block_dim_x << " bdy: " << block_dim_y
           << " bdz: " << block_dim_z << " smem: " << shared_mem_bytes;
-  RETURN_IF_ROCM_ERROR(wrap::hipModuleLaunchKernel(
-                           function, grid_dim_x, grid_dim_y, grid_dim_z,
-                           block_dim_x, block_dim_y, block_dim_z,
-                           shared_mem_bytes, stream, kernel_params, extra),
-                       "Failed to launch ROCm kernel: ", kernel_name,
+
+  // for in-process kernel this function returns mangled kernel function name,
+  // and null otherwise
+  auto name = wrap::hipKernelNameRefByPtr((const void*)function, stream);
+
+  auto res = hipSuccess;
+  if (name != nullptr) {
+    res = wrap::hipLaunchKernel((const void*)function,
+                                dim3(grid_dim_x, grid_dim_y, grid_dim_z),
+                                dim3(block_dim_x, block_dim_y, block_dim_z),
+                                kernel_params, shared_mem_bytes, stream);
+  } else {
+    res = wrap::hipModuleLaunchKernel(
+        function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x, block_dim_y,
+        block_dim_z, shared_mem_bytes, stream, kernel_params, extra);
+  }
+  RETURN_IF_ROCM_ERROR(res, "Failed to launch ROCm kernel: ", kernel_name,
                        " with block dimensions: ", block_dim_x, "x",
                        block_dim_y, "x", block_dim_z);
+
   VLOG(2) << "successfully launched kernel";
   return tsl::OkStatus();
 }

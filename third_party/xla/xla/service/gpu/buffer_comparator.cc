@@ -168,7 +168,6 @@ static StatusOr<bool> CompareEqualParameterized(se::Stream* stream,
                                             stream, current, expected)));
   CHECK_EQ(host_return, result)
       << "Host comparison succeeded even though GPU comparison failed.";
-
   return false;
 }
 
@@ -176,6 +175,7 @@ StatusOr<bool> BufferComparator::CompareEqual(
     se::Stream* stream, se::DeviceMemoryBase current,
     se::DeviceMemoryBase expected) const {
   switch (shape_.element_type()) {
+#if GOOGLE_CUDA  // not available for ROCm yet..
     case xla::F8E4M3FN:
       return CompareEqualParameterized<tsl::float8_e4m3fn, float>(
           stream, current, expected, shape_, config_, "fp8_e4m3fn_comparison",
@@ -184,6 +184,7 @@ StatusOr<bool> BufferComparator::CompareEqual(
       return CompareEqualParameterized<tsl::float8_e5m2, float>(
           stream, current, expected, shape_, config_, "fp8_e5m2_comparison",
           buffer_comparator::fp8_e5m2_comparison());
+#endif  // GOOGLE_CUDA
     case xla::F16:
       return CompareEqualParameterized<Eigen::half, float>(
           stream, current, expected, shape_, config_, "fp16_comparison",

@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
+#include "xla/stream_executor/gpu/gpu_runtime.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/platform.h"
@@ -213,13 +214,7 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   hipModule_t module = nullptr;
   const string* kernel_name;
 
-  const OnDiskKernelLoaderSpec* on_disk_spec = nullptr;
-
-  VLOG(3) << "GetKernel on kernel " << kernel << " : " << kernel->name();
-
-  if (spec.has_cuda_cubin_on_disk()) on_disk_spec = &spec.cuda_cubin_on_disk();
-
-  if (on_disk_spec != nullptr) {
+  if (spec.has_cuda_cubin_on_disk()) {
     return tsl::errors::Internal(
         "Loading ROCM kernel from disk is not supported");
   } else if (spec.has_cuda_cubin_in_memory()) {
@@ -233,22 +228,40 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
       TF_RETURN_IF_ERROR(GpuDriver::LoadHsaco(context_, hsaco, &module));
     }
     kernel_to_gpu_binary_[kernel] = hsaco;
+  } else if (spec.has_in_process_symbol()) {
+    kernel_name = &spec.in_process_symbol().kernel_name();
+    void* symbol = spec.in_process_symbol().symbol();
+
+    VLOG(1) << "Resolve ROCM kernel " << *kernel_name
+            << " from symbol pointer: " << symbol;
+
+    *rocm_kernel->gpu_function_ptr() =
+        static_cast<hipFunction_t>(spec.in_process_symbol().symbol());
   } else {
     return tsl::errors::Internal("No method of loading ROCM kernel provided");
   }
 
-  VLOG(2) << "getting function " << *kernel_name << " from module " << module;
-  TF_RETURN_IF_ERROR(GpuDriver::GetModuleFunction(
-      context_, module, kernel_name->c_str(), rocm_kernel->gpu_function_ptr()));
+  // If we resolved kernel from a symbol pointer, there is no need to load it
+  // from a module, as ROCm runtime did that automatically for us.
+  if (!spec.has_in_process_symbol()) {
+    VLOG(2) << "getting function " << *kernel_name << " from module " << module;
+    TF_RETURN_IF_ERROR(
+        GpuDriver::GetModuleFunction(context_, module, kernel_name->c_str(),
+                                     rocm_kernel->gpu_function_ptr()));
+  }
 
   // We have to trust the kernel loader spec arity because there doesn't appear
   // to be a way to reflect on the number of expected arguments w/the ROCM API.
   rocm_kernel->set_arity(spec.arity());
 
-  KernelMetadata kernel_metadata;
-  TF_RETURN_IF_ERROR(GetKernelMetadata(rocm_kernel, &kernel_metadata));
-  kernel->set_metadata(kernel_metadata);
+  // unable to get kernel metadata for in-process kernel
+  if (!spec.has_in_process_symbol()) {
+    KernelMetadata kernel_metadata;
+    TF_RETURN_IF_ERROR(GetKernelMetadata(rocm_kernel, &kernel_metadata));
+    kernel->set_metadata(kernel_metadata);
+  }
   kernel->set_name(*kernel_name);
+  kernel->set_kernel_args_packing(spec.kernel_args_packing());
   return tsl::OkStatus();
 }
 

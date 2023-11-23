@@ -18,6 +18,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_hipblaslt",
     "if_rocm_is_configured",
+    "rocm_copts",
 )
 load("@local_tsl//tsl:tsl.bzl", "if_google", "if_nccl", "tsl_copts", "tsl_gpu_library")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
@@ -29,6 +30,7 @@ load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_static",
     "tf_cuda_tests_tags",
+    "tf_gpu_tests_tags",
 )
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
@@ -1458,11 +1460,13 @@ cc_library(
 
 cc_library(
     name = "gemm_algorithm_picker",
-    srcs = if_cuda_is_configured(["gemm_algorithm_picker.cc"]),
-    hdrs = if_cuda_is_configured(["gemm_algorithm_picker.h"]),
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    srcs = if_gpu_is_configured(["gemm_algorithm_picker.cc"]),
+    hdrs = if_gpu_is_configured(["gemm_algorithm_picker.h"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     visibility = ["//visibility:public"],
-    deps = if_cuda_is_configured([
+    deps = if_gpu_is_configured([
         ":backend_configs_cc",
         ":buffer_comparator",
         ":gemm_thunk",
@@ -1479,8 +1483,7 @@ cc_library(
         "//xla:status_macros",
         "//xla/stream_executor",
         "//xla/stream_executor:blas",
-        "//xla/stream_executor/cuda:cublas_lt_header",
-        "//xla/stream_executor/cuda:cublas_plugin",
+        "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor/gpu:redzone_allocator",
@@ -3244,6 +3247,7 @@ cc_library(
         ":autotuner_util",
         ":cusolver_rewriter",
         ":gemm_rewriter",
+        ":gemm_algorithm_picker",
         ":gpu_compiler",
         ":conv_algorithm_picker",
         ":gpu_conv_padding_legalization",
@@ -3611,10 +3615,13 @@ xla_cc_test(
 
 cc_library(
     name = "buffer_comparator",
-    srcs = if_cuda_is_configured(["buffer_comparator.cc"]),
-    hdrs = if_cuda_is_configured(["buffer_comparator.h"]),
+    srcs = if_gpu_is_configured(["buffer_comparator.cc"]),
+    hdrs = if_gpu_is_configured(["buffer_comparator.h"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     visibility = ["//visibility:public"],
-    deps = if_cuda_is_configured([
+    deps = if_gpu_is_configured([
         ":launch_dimensions",
         ":buffer_comparator_kernel",
         ":gpu_asm_opts_util",
@@ -3634,22 +3641,33 @@ cc_library(
 
 cuda_library(
     name = "buffer_comparator_kernel",
-    srcs = if_cuda_is_configured(["buffer_comparator.cu.cc"]),
+    srcs = if_gpu_is_configured(["buffer_comparator.cu.cc"]),
+    copts = rocm_copts(),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     visibility = ["//visibility:public"],
-    deps = ["@local_config_cuda//cuda:cuda_headers"],
+    deps = if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 xla_cc_test(
     name = "buffer_comparator_test",
-    srcs = if_cuda_is_configured(["buffer_comparator_test.cc"]),
-    tags = tf_cuda_tests_tags(),
+    srcs = if_gpu_is_configured(["buffer_comparator_test.cc"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    tags = tf_gpu_tests_tags(),
     deps = [
         ":stream_executor_util",
         "//xla:shape_util",
         "//xla:types",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
-    ] + if_cuda_is_configured([
+    ] + if_gpu_is_configured([
         ":buffer_comparator",
         "//xla/stream_executor:device_memory",
     ]),

@@ -571,6 +571,7 @@ Status DoGemm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
   se::blas::BlasSupport::ScopedWorkspace scoped_workspace(
       stream->parent()->AsBlas(), &workspace);
 
+// TODO: enable DoGemmWithAlgorithm for ROCm !
 #if GOOGLE_CUDA
   if (algorithm) {
     return DoGemmWithAlgorithm<Scale, Input, Output>(

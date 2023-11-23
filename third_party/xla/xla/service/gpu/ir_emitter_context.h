@@ -64,14 +64,17 @@ class IrEmitterContext {
   const se::DeviceDescription& gpu_device_info() const {
     return gpu_device_info_;
   }
+  const se::GpuComputeCapability& gpu_compute_capability() const {
+    return gpu_device_info_.gpu_compute_capability();
+  }
   se::CudaComputeCapability cuda_compute_capability() const {
-    auto* cc = std::get_if<se::CudaComputeCapability>(
-        &gpu_device_info_.gpu_compute_capability());
+    auto* cc =
+        std::get_if<se::CudaComputeCapability>(&gpu_compute_capability());
     return cc != nullptr ? *cc : se::CudaComputeCapability();
   }
   se::RocmComputeCapability rocm_compute_capability() const {
-    auto* cc = std::get_if<se::RocmComputeCapability>(
-        &gpu_device_info_.gpu_compute_capability());
+    auto* cc =
+        std::get_if<se::RocmComputeCapability>(&gpu_compute_capability());
     return cc != nullptr ? *cc : se::RocmComputeCapability();
   }
   mlir::MLIRContext* mlir_context() { return mlir_context_; }
