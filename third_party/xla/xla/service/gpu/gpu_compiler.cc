@@ -54,7 +54,13 @@ limitations under the License.
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -141,6 +147,8 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_stats.h"
 #include "xla/service/gpu/horizontal_loop_fusion.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/ir_emitter_unnested.h"
 #include "xla/service/gpu/loop_double_buffer_transformer.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/metrics.h"
@@ -157,6 +165,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime_intrinsics.h"
 #include "xla/service/gpu/scatter_slice_simplifier.h"
 #include "xla/service/gpu/softmax_rewriter_triton.h"
+#include "xla/service/gpu/thunk.h"
 #include "xla/service/gpu/topk_specializer.h"
 #include "xla/service/gpu/topk_splitter.h"
 #include "xla/service/gpu/tree_reduction_rewriter.h"
@@ -226,6 +235,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -314,16 +324,33 @@ class GpuAotCompilationResult : public AotCompilationResult {
   }
 
   StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler, se::StreamExecutor* executor) const override;
+      Compiler* compiler, se::StreamExecutor* executor) override;
 
  private:
   XlaRuntimeGpuExecutableProto xla_runtime_gpu_executable_;
 };
 
+class GpuThunkAotCompilationResult : public AotCompilationResult {
+ public:
+  // TODO(anlunx): Add SerializeAsString().
+  StatusOr<std::unique_ptr<Executable>> LoadExecutable(
+      Compiler* compiler, se::StreamExecutor* stream_exec) override;
+
+ private:
+  std::unique_ptr<HloModule> hlo_module_;
+  std::unique_ptr<BufferAssignment> buffer_assignment_;
+  std::string asm_text_;
+  std::vector<uint8_t> binary_;
+
+  // We can call LoadExecutable only once because buffer_assignment_ is
+  // moved to GpuExecutable when LoadExecutable is called.
+  bool loadable_ = true;
+};
+
 }  // end anonymous namespace
 
 StatusOr<std::unique_ptr<Executable>> GpuAotCompilationResult::LoadExecutable(
-    Compiler* compiler, se::StreamExecutor* executor) const {
+    Compiler* compiler, se::StreamExecutor* executor) {
   XlaRuntimeExecutableProto xla_runtime_executable =
       xla_runtime_gpu_executable_.xla_runtime_executable();
   TF_ASSIGN_OR_RETURN(HloModuleConfig hlo_module_config,
@@ -350,6 +377,89 @@ StatusOr<std::unique_ptr<Executable>> GpuAotCompilationResult::LoadExecutable(
       GetDebugOptionsFromFlags(), xla_runtime_gpu_executable_.gpu_asm_text(),
       xla_runtime_gpu_executable_.gpu_binary(), std::move(constants),
       GetGpuVersion(executor), executor);
+}
+
+StatusOr<std::unique_ptr<Executable>>
+GpuThunkAotCompilationResult::LoadExecutable(Compiler* compiler,
+                                             se::StreamExecutor* stream_exec) {
+  if (!loadable_) {
+    return InternalError("The AOT compilation result is not loadable.");
+  }
+  loadable_ = false;
+
+  // Build the executable, which should be a thunk sequence.
+  TF_ASSIGN_OR_RETURN(
+      se::Platform * platform,
+      se::MultiPlatformManager::PlatformWithId(compiler->PlatformId()));
+  std::string platform_name = platform->Name();
+  se::DeviceDescription gpu_device_info = stream_exec->GetDeviceDescription();
+  mlir::DialectRegistry registry;
+  IrEmitterUnnested::GetDependentDialects(registry);
+  auto mlir_context = std::make_unique<mlir::MLIRContext>(registry);
+  llvm::LLVMContext llvm_context;
+  auto llvm_module = std::make_unique<llvm::Module>("", llvm_context);
+  IrEmitterContext ir_emitter_context(
+      hlo_module_.get(), buffer_assignment_.get(), platform_name,
+      gpu_device_info, mlir_context.get(), llvm_module.get(),
+      /*emit_ir_from_hlo=*/true);
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module = llvm_ir::CreateMlirModuleOp(
+      mlir::Builder(mlir_context.get()).getUnknownLoc(), hlo_module_->name());
+  std::vector<const BufferAllocation*> ordered_allocations;
+  absl::flat_hash_map<const mlir::Operation*, const xla::HloInstruction*>
+      operation_map;
+  TF_RETURN_IF_ERROR(HloToLhloModule(*buffer_assignment_, *hlo_module_,
+                                     *mlir_module, &ordered_allocations,
+                                     &operation_map));
+  ir_emitter_context.set_allocations(ordered_allocations);
+  auto ir_emitter = IrEmitterUnnested::Create(&ir_emitter_context);
+  auto entry_function = mlir::cast<mlir::func::FuncOp>(
+      mlir_module->lookupSymbol(hlo_module_->entry_computation()->name()));
+  // TODO(anlunx): EmitLmhloRegion emits fusion kernels. We need to make sure
+  // ptx and cubin already contain emission results and disable kernel emission
+  // here.
+  TF_RETURN_IF_ERROR(
+      ir_emitter->EmitLmhloRegion(&entry_function.getBody(), operation_map));
+  std::unique_ptr<ThunkSequence> thunk_sequence =
+      ir_emitter->ConsumeThunkSequence();
+  ForAllThunks([](Thunk* thunk) { thunk->ClearCompileTimeInfo(); },
+               thunk_sequence.get());
+
+  // Get all other fields required by GpuExecutable.
+  std::vector<GpuExecutable::ConstantInfo> constants =
+      std::move(ir_emitter_context.constants());
+  TF_ASSIGN_OR_RETURN(auto output_info,
+                      GetOutputInfo(*hlo_module_, *buffer_assignment_));
+  const Shape& output_shape = hlo_module_->result_shape();
+  std::function<std::string()> buffer_assignment_dumper = [] {
+    return std::string();
+  };
+  bool enable_persistent_temp_buffers =
+      hlo_module_->config()
+          .debug_options()
+          .xla_gpu_enable_persistent_temp_buffers();
+  int64_t debug_buffer_assignment_show_max =
+      hlo_module_->config()
+          .debug_options()
+          .xla_debug_buffer_assignment_show_max();
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<GpuExecutable> executable,
+      GpuExecutable::Create(GpuExecutable::Params{
+          /*asm_text=*/asm_text_,
+          /*binary=*/binary_,
+          /*gpu_version=*/gpu_device_info.gpu_compute_capability(),
+          /*executable=*/std::move(thunk_sequence),
+          /*constants=*/std::move(constants),
+          /*output_info=*/std::move(output_info),
+          /*module_name=*/std::move(hlo_module_->name()),
+          /*output_shape=*/std::move(output_shape),
+          /*mlir_allocations=*/std::nullopt,
+          /*buffer_assignment=*/std::move(buffer_assignment_),
+          /*enable_persistent_temp_buffers=*/enable_persistent_temp_buffers,
+          /*debug_buffer_assignment_show_max=*/debug_buffer_assignment_show_max,
+          /*debug_module=*/std::unique_ptr<HloModule>(),
+          /*enable_debug_info_manager=*/true}));
+  return executable;
 }
 
 GpuCompiler::GpuCompiler(se::Platform::Id platform_id,

@@ -177,6 +177,8 @@ static Status LowerToXlaGpuRuntime(
   return OkStatus();
 }
 
+}  // namespace
+
 void ForAllThunks(const std::function<void(Thunk*)>& fn,
                   ThunkSequence* thunk_sequence) {
   for (std::unique_ptr<Thunk>& thunk : *thunk_sequence) {
@@ -202,8 +204,6 @@ void ForAllThunks(const std::function<void(Thunk*)>& fn,
     }
   }
 }
-
-}  // namespace
 
 static void ForwardCollectiveAttrs(mlir::ModuleOp module,
                                    llvm::StringRef entry_function_name,

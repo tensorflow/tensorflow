@@ -435,7 +435,7 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
 
 StatusOr<std::unique_ptr<Executable>>
 CpuXlaRuntimeAotCompilationResult::LoadExecutable(
-    Compiler* compiler, se::StreamExecutor* executor) const {
+    Compiler* compiler, se::StreamExecutor* executor) {
   XlaRuntimeExecutableProto xla_runtime_executable =
       xla_runtime_cpu_executable_.xla_runtime_executable();
   TF_ASSIGN_OR_RETURN(HloModuleConfig hlo_module_config,
