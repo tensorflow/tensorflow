@@ -30,12 +30,12 @@ limitations under the License.
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_test_kernels.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
@@ -390,11 +390,10 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
 }
 
 TEST(CommandBufferThunkTest, IfCmd) {
-#if !defined(XLA_GPU_USE_CUDA_GRAPH_CONDITIONAL)
-  GTEST_SKIP() << "CUDA graph conditionals not enabled";
-#endif
-
   se::StreamExecutor* executor = CudaExecutor();
+  if (!se::CommandBuffer::SupportsConditionalCommands(executor->platform())) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   se::Stream stream(executor);
   stream.Init();

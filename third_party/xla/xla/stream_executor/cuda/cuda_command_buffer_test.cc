@@ -218,15 +218,11 @@ TEST(CudaCommandBufferTest, LaunchNestedCommandBuffer) {
 }
 
 TEST(CudaCommandBufferTest, ConditionalIf) {
-#if CUDA_VERSION < 12030
-  GTEST_SKIP() << "CUDA graph conditionals are not supported";
-#endif
-
-#if !defined(XLA_GPU_USE_CUDA_GRAPH_CONDITIONAL)
-  GTEST_SKIP() << "CUDA graph conditionals not enabled";
-#endif
-
   Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+  if (!CommandBuffer::SupportsConditionalCommands(platform)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
+
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);

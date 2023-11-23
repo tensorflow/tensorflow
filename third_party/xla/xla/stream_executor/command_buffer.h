@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/platform.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -97,6 +98,14 @@ class CommandBuffer {
       StreamExecutor* executor,
       absl::AnyInvocable<tsl::Status(Stream*)> function,
       Mode mode = Mode::kPrimary);
+
+  //===--------------------------------------------------------------------===//
+  // Command buffer properties
+  //===--------------------------------------------------------------------===//
+
+  // Returns true if command buffer on a given platform supports conditional
+  // commands (If, IfThen, While).
+  static bool SupportsConditionalCommands(const Platform* platform);
 
   //===--------------------------------------------------------------------===//
   // Command buffer API
