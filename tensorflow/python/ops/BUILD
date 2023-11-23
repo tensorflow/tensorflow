@@ -1632,6 +1632,7 @@ py_strict_library(
         ":cudnn_rnn_grad",
         ":gradients_util",
         ":image_grad",
+        ":io_ops",
         ":linalg_grad",
         ":linalg_ops",
         ":logging_ops",
