@@ -144,7 +144,7 @@ struct BufferBase {
 template <DataType dtype>
 struct ArgDecoding<BufferBase<dtype>> {
   static std::optional<BufferBase<dtype>> Decode(XLA_FFI_ArgType type,
-                                                 void* arg) {
+                                                 void* arg, DiagnosticEngine&) {
     if (type != XLA_FFI_ArgType_BUFFER) return std::nullopt;
     auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
     // TODO(slebedev): Emit a user-friendly error instead.
@@ -187,7 +187,8 @@ struct CtxDecoding<PlatformStream<T>> {
   static_assert(std::is_pointer_v<T>, "stream type must be a pointer");
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx) {
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine&) {
     XLA_FFI_Stream_Get_Args args;
     args.struct_size = XLA_FFI_Stream_Get_Args_STRUCT_SIZE;
     args.priv = nullptr;
