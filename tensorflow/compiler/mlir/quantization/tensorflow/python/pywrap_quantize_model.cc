@@ -293,8 +293,11 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
 
         ExportedModel calibrated_exported_model =
             py_function_library.RunCalibration(
-                precalibrated_saved_model_dir, exported_model_ids_assigned,
-                quantization_options, representative_dataset);
+                precalibrated_saved_model_dir, signature_keys, tags,
+                exported_model_ids_assigned,
+                quantization_options.calibration_options(),
+                quantization_options.force_graph_mode_calibration(),
+                representative_dataset);
 
         if (quantization_options.has_debugger_options()) {
           calibrated_exported_model = EnableDebugging(

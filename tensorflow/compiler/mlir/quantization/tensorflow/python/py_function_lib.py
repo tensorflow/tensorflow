@@ -649,8 +649,11 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
   def run_calibration(
       self,
       saved_model_path: str,
+      signature_keys: list[str],
+      tags: set[str],
       exported_model_serialized: bytes,
-      quantization_options_serialized: bytes,
+      calibration_options_serialized: bytes,
+      force_graph_mode_calibration: bool,
       representative_dataset: rd.RepresentativeDatasetOrMapping,
   ) -> bytes:
     # LINT.ThenChange(py_function_lib.h:run_calibration)
@@ -658,9 +661,13 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
 
     Args:
       saved_model_path: Path to the SavedModel to run calibration.
+      signature_keys: List of signature keys corresponding to SignatureDefs to
+        run calibration on.
+      tags: A set of tags that identify the MetaGraphDef.
       exported_model_serialized: Serialized `ExportedModel` that corresponds to
         the SavedModel at `saved_model_path`.
-      quantization_options_serialized: Serialized `QuantizationOptions`.
+      calibration_options_serialized: Serialized `CalibrationOptions`.
+      force_graph_mode_calibration: If True, runs the calibration in graph mode.
       representative_dataset: Representative dataset to run calibration.
 
     Returns:
@@ -668,30 +675,26 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
       statistics are added to `CustomerAggregator` nodes at the `min` and `max`
       attributes.
     """
-    quantization_options = (
-        quantization_options_pb2.QuantizationOptions.FromString(
-            quantization_options_serialized
-        )
-    )
-
     # Uses the representative dataset to collect statistics for calibration.
     # After this operation, min & max values are stored separately in a global
     # CalibratorSingleton instance.
     _run_graph_for_calibration(
         saved_model_path,
-        quantization_options.signature_keys,
-        quantization_options.tags,
+        signature_keys,
+        tags,
         representative_dataset,
-        quantization_options.force_graph_mode_calibration,
+        force_graph_mode_calibration,
     )
 
     exported_model = exported_model_pb2.ExportedModel.FromString(
         exported_model_serialized
     )
-    _add_calibration_statistics(
-        exported_model.graph_def,
-        quantization_options.calibration_options,
+    calibration_options = (
+        quantization_options_pb2.CalibrationOptions.FromString(
+            calibration_options_serialized
+        )
     )
+    _add_calibration_statistics(exported_model.graph_def, calibration_options)
 
     return exported_model.SerializeToString()
 
