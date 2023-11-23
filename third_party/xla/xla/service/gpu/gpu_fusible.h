@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/instruction_fusion.h"
+#include "xla/stream_executor/device_description.h"
 
 // TODO(b/112957171): Extract logic to determine fusibility of HLO ops from
 // GpuInstructionFusion, FusionMerger, and GpuMultiOutputFusion.
@@ -70,9 +70,24 @@ int64_t ReductionProjectedShmemUsageBytes(
 
 inline constexpr int64_t MaxOperandsAndOutputsPerFusion() { return 64; }
 
-// Whether the op tranposes the physical data layout. Fusing such ops may lead
+// Whether the op transposes the physical data layout. Fusing such ops may lead
 // to uncoalesced data access and may thus not be beneficial.
 bool IsPhysicallyTransposing(const HloInstruction& instr);
+
+// Whether the op transposes the minor-most dimension. In the case of fusions,
+// whether the fusion contains some op that does this.
+// If the minor-most dimension is transposed, this results in uncoalesced memory
+// accesses in untiled code generators. If some other dimension is transposed,
+// this just results in additional index computations.
+// Note that this function makes several simplifying assumptions:
+// - For non-fusion instructions, we assume the output is materialized as is.
+//   For internal instructions, this may not be the case.
+// - For fusions, it simply checks the output of this function for each
+//   instruction in the fusion's computation.
+// - There's no way to tell which parameters of the fusion are transposed.
+// TODO(jreiffers): Take into account the size of the transposed dimension as
+// well.
+bool TransposesMinorDimension(const HloInstruction* instr);
 
 // Note that reduction ops are lowered in different ways. Reduce input fusions
 // are lowered by IrEmitterUnnested::EmitReductionToVector and must be rooted at
@@ -102,7 +117,7 @@ bool IsInputFusibleScatter(const HloInstruction& instr);
 // the producer, set consumer_producer_fusion to true to enable more fusion.
 FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
                                   const HloInstruction& instr2,
-                                  const GpuDeviceInfo& device_info,
+                                  const se::DeviceDescription& device_info,
                                   bool is_consumer_producer_fusion = false,
                                   FusionInfoCache* cache = nullptr);
 
@@ -132,6 +147,11 @@ FusionDecision FusionHeroesAreCompatible(const HloInstruction* hero1,
 // themselves are fusible!
 FusionDecision ShapesCompatibleForMultiOutputFusion(
     const HloInstruction& instr1, const HloInstruction& instr2);
+
+// Whether fusing producer into consumer creates a scatter fusion that cannot be
+// handled by the scatter emitter.
+FusionDecision CanEmitInputFusedScatter(const HloInstruction& producer,
+                                        const HloInstruction& consumer);
 
 // Whether the instructions are compatible for producer-consumer fusion
 // i.e. whether the producer and consumer are loop/input fusible and

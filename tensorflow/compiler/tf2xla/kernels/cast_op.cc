@@ -97,7 +97,8 @@ class CastOp : public XlaOpKernel {
   xla::PrimitiveType src_type_, dst_type_;
   bool use_truncation_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CastOp);
+  CastOp(const CastOp&) = delete;
+  void operator=(const CastOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("Cast"), CastOp);
@@ -142,7 +143,8 @@ class BitcastOp : public XlaOpKernel {
   DataType src_dtype_, dst_dtype_;
   xla::PrimitiveType src_type_, dst_type_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BitcastOp);
+  BitcastOp(const BitcastOp&) = delete;
+  void operator=(const BitcastOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("Bitcast"), BitcastOp);

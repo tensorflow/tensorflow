@@ -22,10 +22,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/gpu_types.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -39,7 +39,7 @@ struct DiamondChainDescriptor {
 // with the Triton-based Softmax emitter.
 class SoftmaxRewriterTriton : public HloModulePass {
  public:
-  explicit SoftmaxRewriterTriton(GpuVersion gpu_version)
+  explicit SoftmaxRewriterTriton(se::GpuComputeCapability gpu_version)
       : gpu_version_(gpu_version) {}
   absl::string_view name() const override { return "triton-softmax-rewriter"; }
 
@@ -61,7 +61,7 @@ class SoftmaxRewriterTriton : public HloModulePass {
   Status FuseDiamondChain(const DiamondChainDescriptor& diamond_chain);
 
  private:
-  GpuVersion gpu_version_;
+  se::GpuComputeCapability gpu_version_;
 };
 
 }  // namespace gpu

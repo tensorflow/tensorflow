@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -113,8 +114,8 @@ struct SimplifyBroadcasts : public mlir::OpRewritePattern<shape::BroadcastOp> {
         llvm::map_range(symResult, [&](const auto &symResultDim) {
           // If we know the dimension statically, use a constant.
           if (!symResultDim) return findOrCreateConstant(1);
-          if (auto cexpr = symResultDim->expr.expr
-                               .template dyn_cast<AffineConstantExpr>()) {
+          if (auto cexpr =
+                  dyn_cast<AffineConstantExpr>(symResultDim->expr.expr)) {
             return findOrCreateConstant(cexpr.getValue());
           }
 
@@ -243,16 +244,16 @@ struct RemoveComputeReshapeShape final
 bool isProduct(AffineExpr expr,
                llvm::function_ref<void(AffineConstantExpr)> cbkConstantFactor,
                llvm::function_ref<void(AffineSymbolExpr)> cbkSymbolicFactor) {
-  auto binExpr = expr.dyn_cast<AffineBinaryOpExpr>();
+  auto binExpr = dyn_cast<AffineBinaryOpExpr>(expr);
   if (binExpr && binExpr.getKind() == AffineExprKind::Mul) {
     return isProduct(binExpr.getLHS(), cbkConstantFactor, cbkSymbolicFactor) &&
            isProduct(binExpr.getRHS(), cbkConstantFactor, cbkSymbolicFactor);
   }
-  if (auto symExpr = expr.dyn_cast<AffineSymbolExpr>()) {
+  if (auto symExpr = dyn_cast<AffineSymbolExpr>(expr)) {
     cbkSymbolicFactor(symExpr);
     return true;
   }
-  if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
+  if (auto constExpr = dyn_cast<AffineConstantExpr>(expr)) {
     cbkConstantFactor(constExpr);
     return true;
   }
@@ -630,7 +631,7 @@ SmallVector<int64_t> concretizeOperandShape(
   for (auto it : llvm::zip(operandShape, operandShapeInfo)) {
     auto dimSize = std::get<0>(it);
     auto sExpr = std::get<1>(it);
-    if (auto cexpr = sExpr.expr.dyn_cast<AffineConstantExpr>()) {
+    if (auto cexpr = dyn_cast<AffineConstantExpr>(sExpr.expr)) {
       int64_t alsoDimSize = cexpr.getValue();
       assert((ShapedType::isDynamic(dimSize) || dimSize == alsoDimSize) &&
              "expect shape analysis result to be compatible with type");

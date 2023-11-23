@@ -124,7 +124,8 @@ class AllocatorFactoryRegistry {
   const FactoryEntry* FindEntry(const string& name, int priority) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(AllocatorFactoryRegistry);
+  AllocatorFactoryRegistry(const AllocatorFactoryRegistry&) = delete;
+  void operator=(const AllocatorFactoryRegistry&) = delete;
 };
 
 class AllocatorFactoryRegistration {

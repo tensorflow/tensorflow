@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 
 #include <algorithm>
+#include <array>
 #include <map>
 #include <memory>
 #include <numeric>
@@ -27,9 +28,11 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -52,6 +55,7 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
 #include "xla/protobuf_util.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -72,6 +76,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/dump_graph.h"
+#include "tsl/platform/tensor_float_32_utils.h"
 
 namespace tensorflow {
 namespace {
@@ -444,7 +449,6 @@ Status BuildComputation(
 
 }  // namespace
 
-
 string XlaCompiler::Argument::HumanString() const {
   string common;
   if (!name.empty()) {
@@ -525,7 +529,7 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
   }
 
   local_flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(),
-                                                      FunctionDefLibrary{}));
+                                                      FunctionDefLibrary()));
   local_pflr_.reset(new ProcessFunctionLibraryRuntime(
       &device_mgr_, Env::Default(), /*config=*/nullptr,
       options.graph_def_version, local_flib_def_.get(), OptimizerOptions()));
@@ -602,7 +606,7 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   CopyGraph(*fbody->graph, graph.get());
 
   bool is_inside_mustcompile = false;
-  TryGetNodeAttr(AttrSlice(&fbody->fdef.attr()), kXlaMustCompileAttr,
+  TryGetNodeAttr(AttrSlice(&fbody->record->fdef().attr()), kXlaMustCompileAttr,
                  &is_inside_mustcompile);
 
   // Performs a first function inlining pass before shape inference, since
@@ -954,6 +958,15 @@ Status XlaCompiler::XLAShapeForArgument(
         TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
             arg_sharding, /*use_fast_memory=*/false,
             options_.shape_determination_fns, xla_shape));
+        // If the arg is dynamic then we update the shape to reflect that. The
+        // arg's value_dynamism is a Tensor of bools set to the dynamism of each
+        // dimension.
+        if (arg.value_dynamism.has_value()) {
+          auto dynamism = arg.value_dynamism.value().vec<bool>();
+          for (int i = 0; i < dynamism.size(); ++i) {
+            xla_shape->set_dynamic_dimension(i, dynamism(i));
+          }
+        }
       } else {
         if (absl::holds_alternative<xla::Shape>(arg.shape)) {
           *xla_shape = std::get<xla::Shape>(arg.shape);
@@ -1427,10 +1440,43 @@ class DummyStackTrace : public AbstractStackTrace {
       StackFrame({"dummy_file_name", 10, "dummy_function_name"})};
 };
 
-Status XlaCompiler::CompileGraph(
-    const XlaCompiler::CompileOptions& options, string const& name,
-    std::unique_ptr<Graph> graph, absl::Span<const XlaCompiler::Argument> args,
-    CompilationResult* result) {
+namespace {
+
+// Add precisions configs to the HLO module to avoid TensorFloat32 computations
+// in XLA.
+//
+// Some operations, such as Einsum are converted through MlirXlaOpKernel, which
+// doesn't set the precisions, so we set them all here.
+//
+// TODO(tdanyluk): We may want to restrict this logic to only set the operand
+// precision for F32 operands. (Historically, it was set without regard to
+// operand type in other parts of TF2XLA.)
+void IncreasePrecisionsToAvoidTF32(xla::HloModuleProto& module) {
+  static constexpr std::array<absl::string_view, 2> kOpsPossiblyUsingTF32 = {
+      "dot", "convolution"};
+
+  xla::PrecisionConfig precision_config;
+  precision_config.add_operand_precision(xla::PrecisionConfig::HIGHEST);
+  precision_config.add_operand_precision(xla::PrecisionConfig::HIGHEST);
+
+  for (xla::HloComputationProto& computation : *module.mutable_computations()) {
+    for (xla::HloInstructionProto& instruction :
+         *computation.mutable_instructions()) {
+      if (absl::c_find(kOpsPossiblyUsingTF32, instruction.opcode()) !=
+          kOpsPossiblyUsingTF32.end()) {
+        *instruction.mutable_precision_config() = precision_config;
+      }
+    }
+  }
+}
+
+}  // namespace
+
+Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
+                                 string const& name,
+                                 std::unique_ptr<Graph> graph,
+                                 absl::Span<const XlaCompiler::Argument> args,
+                                 CompilationResult* result) {
   VLOG(1) << "Executing graph symbolically to populate XlaBuilder.: " << name;
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileGraph: "
@@ -1560,6 +1606,10 @@ Status XlaCompiler::CompileGraph(
   }
   for (const auto& [key, recv] : host_compute_recvs_) {
     *result->host_compute_metadata.add_host_to_device() = recv;
+  }
+
+  if (!tsl::tensor_float_32_execution_enabled()) {
+    IncreasePrecisionsToAvoidTF32(*result->computation->mutable_proto());
   }
 
   VLOG(2) << "Outputs: total: " << context->retvals().size()

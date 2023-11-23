@@ -351,10 +351,10 @@ DataServiceClient::CreateAlternativeWorkerClientWithGrpcFallback(
               << task_info.worker_address() << "'.";
     return worker;
   }
-  LOG(WARNING) << "Failed to start client for data transfer protocol '"
-               << transfer_server.protocol() << "' for worker '"
-               << task_info.worker_address() << "'; falling back to grpc. "
-               << "Original error: " << worker.status();
+  LOG(INFO) << "Failed to start client for data transfer protocol '"
+            << transfer_server.protocol() << "' for worker '"
+            << task_info.worker_address() << "'; falling back to grpc. "
+            << "Original error: " << worker.status();
   metrics::RecordTFDataServiceDataTransferProtocolFallback(
       transfer_server.protocol(),
       static_cast<error::Code>(worker.status().raw_code()),

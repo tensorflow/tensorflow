@@ -6,7 +6,7 @@ func.func @null() -> !deallocation.ownership {
   %null = deallocation.null
   func.return %null : !deallocation.ownership
 }
-// CHECK: %[[NULL:.*]] = llvm.mlir.null : !llvm.ptr
+// CHECK: %[[NULL:.*]] = llvm.mlir.zero : !llvm.ptr
 // CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[NULL]]
 // CHECK: return %[[RET]]
 

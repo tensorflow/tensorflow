@@ -1,17 +1,5 @@
 """Additional build options needed for the GPU Delegate."""
 
-# copybara:uncomment_begin(google-only)
-# load("//third_party/android/ndk/platforms:grte_top.bzl", "min_supported_ndk_api")
-# copybara:uncomment_end
-
-def nativewindow_linkopts():
-    # copybara:uncomment_begin(google-only)
-    # return min_supported_ndk_api("26", ["-lnativewindow"])
-    # copybara:uncomment_end
-    # copybara:comment_begin(oss-only)
-    return ["-lnativewindow"]
-    # copybara:comment_end
-
 def gpu_delegate_linkopts():
     """Additional link options needed when linking in the GPU Delegate."""
     return select({
@@ -24,4 +12,27 @@ def gpu_delegate_linkopts():
             "-lGLESv2",
         ],
         "//conditions:default": [],
-    }) + nativewindow_linkopts()
+    })
+
+def tflite_angle_heapcheck_deps():
+    # copybara:uncomment_begin(google-only)
+    # return select({
+    # "//tensorflow/lite/delegates/gpu:tflite_gpu_angle": [
+    # "@com_google_googletest//:gtest_main_no_heapcheck",
+    # ],
+    # "//conditions:default": [
+    # "@com_google_googletest//:gtest_main",
+    # ],
+    # })
+    # copybara:uncomment_end
+    # copybara:comment_begin(oss-only)
+    return ["@com_google_googletest//:gtest_main"]
+    # copybara:comment_end
+
+def gtest_main_no_heapcheck_deps():
+    # copybara:uncomment_begin(google-only)
+    # return ["@com_google_googletest//:gtest_main_no_heapcheck"]
+    # copybara:uncomment_end
+    # copybara:comment_begin(oss-only)
+    return ["@com_google_googletest//:gtest_main"]
+    # copybara:comment_end

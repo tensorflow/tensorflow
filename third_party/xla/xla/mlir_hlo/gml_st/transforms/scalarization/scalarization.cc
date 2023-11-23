@@ -243,7 +243,7 @@ LogicalResult hoistTensorExtractFromForOp(scf::ForOp forOp,
       dyn_cast<RankedTensorType>(iterOperand.get().getType());
   if (!iterArgTensorTy || !hasSingleElement(iterArgTensorTy)) return failure();
 
-  Value bbArg = forOp.getRegionIterArgForOpOperand(iterOperand);
+  Value bbArg = forOp.getTiedLoopRegionIterArg(&iterOperand);
 
   if (!bbArg.hasOneUse()) return failure();
 
@@ -505,10 +505,13 @@ LogicalResult scalarizeLinalgOp(LinalgOp linalgOp, PatternRewriter &rewriter) {
   if (isa<linalg::FillOp>(linalgOp)) {
     if (llvm::all_of(linalgOp->getUses(), [&](OpOperand &use) {
           Operation *user = use.getOwner();
-          return isa<DestinationStyleOpInterface>(user) &&
-                 llvm::is_contained(cast<DestinationStyleOpInterface>(user)
-                                        .getDpsInitOperands(),
-                                    &use);
+          if (auto dpsOp = dyn_cast<DestinationStyleOpInterface>(user)) {
+            SmallVector<OpOperand *> opOperands = llvm::to_vector(
+                llvm::map_range(dpsOp.getDpsInitsMutable(),
+                                [](OpOperand &o) { return &o; }));
+            return llvm::is_contained(opOperands, &use);
+          }
+          return false;
         }))
       return failure();
   }

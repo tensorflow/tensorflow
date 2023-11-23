@@ -30,6 +30,7 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateless_random_ops
@@ -387,6 +388,30 @@ class LayoutTest(test_util.DTensorBaseTest, parameterized.TestCase):
     self.assertEqual(
         tensor_layout.num_shards(0), _2D_MESH.dim_size(_MESH_DIM_BATCH))
     self.assertEqual(tensor_layout.num_shards(1), 1)
+
+  def test_global_shape_from_local_shape(self):
+    tensor_layout = layout.Layout(
+        [_MESH_DIM_BATCH, _MESH_DIM_X, layout.UNSHARDED],
+        mesh=_2D_MESH,
+    )
+    self.assertEqual(
+        tensor_layout.global_shape_from_local_shape(
+            tensor_shape.TensorShape((1, 3, 5))
+        ),
+        (2, 6, 5),
+    )
+
+  def test_local_shape_from_global_shape(self):
+    tensor_layout = layout.Layout(
+        [_MESH_DIM_BATCH, _MESH_DIM_X, layout.UNSHARDED],
+        mesh=_2D_MESH,
+    )
+    self.assertEqual(
+        tensor_layout.local_shape_from_global_shape(
+            tensor_shape.TensorShape((2, 6, 5))
+        ),
+        (1, 3, 5),
+    )
 
   def test_single_device_layout(self):
     tensor_layout = layout.Layout.from_single_device_mesh(_SINGLE_DEVICE_MESH)

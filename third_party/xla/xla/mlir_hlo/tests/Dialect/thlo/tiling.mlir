@@ -12,7 +12,7 @@ transform.sequence failures(propagate) {
   ^bb0(%arg1: !pdl.operation):
     %0 = transform.structured.match ops{["thlo.dynamic_broadcast_in_dim"]} in %arg1
       : (!pdl.operation) -> !pdl.operation
-    %1, %loops:2 = transform.structured.tile %0 [256, 512]
+    %1, %loops:2 = transform.structured.tile_using_for %0 [256, 512]
       : (!pdl.operation) -> (!pdl.operation, !pdl.operation, !pdl.operation)
 }
 
@@ -35,8 +35,10 @@ transform.sequence failures(propagate) {
 // CHECK:          %[[MIN_0:.*]] = affine.min #map{{[0-9]*}}(%[[J]])[%[[INIT_DIM_1]]]
 // CHECK:          %[[ARG_DIM_0:.*]] = tensor.dim %[[ARG]], %[[C0]]
 // CHECK:          %[[ARG_DIM_1:.*]] = tensor.dim %[[ARG]], %[[C1]]
-// CHECK:          %[[CMPI:.*]] = arith.cmpi ne, %[[ARG_DIM_0]], %[[INIT_DIM_0]]
-// CHECK:          %[[CMPI_0:.*]] = arith.cmpi ne, %[[ARG_DIM_1]], %[[INIT_DIM_2]]
+// CHECK:          %[[ARG_DIM_2:.*]] = tensor.dim %[[OUT]], %[[C0]]
+// CHECK:          %[[CMPI:.*]] = arith.cmpi ne, %[[ARG_DIM_0]], %[[ARG_DIM_2]]
+// CHECK:          %[[ARG_DIM_3:.*]] = tensor.dim %[[OUT]], %[[C2]]
+// CHECK:          %[[CMPI_0:.*]] = arith.cmpi ne, %[[ARG_DIM_1]], %[[ARG_DIM_3]]
 // CHECK:          %[[SELECT:.*]] = arith.select %[[CMPI]], %[[C0]], %[[I]]
 // CHECK:          %[[SELECT_0:.*]] = arith.select %[[CMPI_0]], %[[C0]], %[[C0]]
 // CHECK:          %[[SELECT_1:.*]] = arith.select %[[CMPI]], %[[C1]], %[[MIN]]
@@ -75,7 +77,7 @@ transform.sequence failures(propagate) {
   ^bb0(%arg1: !pdl.operation):
     %0 = transform.structured.match ops{["thlo.scatter"]} in %arg1
       : (!pdl.operation) -> !pdl.operation
-    %1, %loop = transform.structured.tile %0 [1]
+    %1, %loop = transform.structured.tile_using_for %0 [1]
       : (!pdl.operation) -> (!pdl.operation, !pdl.operation)
 }
 
@@ -96,8 +98,8 @@ transform.sequence failures(propagate) {
 // CHECK-SAME:    : tensor<?x?x?xi64>
 // CHECK:       %[[INDICES_SUB:.*]] = tensor.extract_slice %[[INDICES]][%[[I]]
 // CHECK-SAME:    : tensor<?x2xindex>
-// CHECK-DAG:   %[[INIT_DIM_0:.*]] = tensor.dim %[[INIT]], %[[C0]]
-// CHECK-DAG:   %[[INIT_DIM_1:.*]] = tensor.dim %[[INIT]], %[[C1]]
+// CHECK-DAG:   %[[INIT_DIM_0:.*]] = tensor.dim %[[INIT_]], %[[C0]]
+// CHECK-DAG:   %[[INIT_DIM_1:.*]] = tensor.dim %[[INIT_]], %[[C1]]
 // CHECK:       %[[INIT_SUB:.*]] = tensor.extract_slice %[[INIT_]][0, 0]
 // CHECK-SAME:     [%[[INIT_DIM_0]], %[[INIT_DIM_1]]] [1, 1]
 
@@ -125,7 +127,7 @@ transform.sequence failures(propagate) {
   ^bb0(%arg1: !pdl.operation):
     %0 = transform.structured.match ops{["thlo.gather"]} in %arg1
       : (!pdl.operation) -> !pdl.operation
-    %1, %loop = transform.structured.tile %0 [1]
+    %1, %loop = transform.structured.tile_using_for %0 [1]
       : (!pdl.operation) -> (!pdl.operation, !pdl.operation)
 }
 
@@ -167,7 +169,7 @@ transform.sequence failures(propagate) {
   ^bb0(%arg1: !pdl.operation):
     %0 = transform.structured.match ops{["thlo.concatenate"]} in %arg1
       : (!pdl.operation) -> !pdl.operation
-    %1, %loops:2 = transform.structured.tile %0 [256, 512]
+    %1, %loops:2 = transform.structured.tile_using_for %0 [256, 512]
       : (!pdl.operation) -> (!pdl.operation, !pdl.operation, !pdl.operation)
 }
 
@@ -243,7 +245,7 @@ transform.sequence failures(propagate) {
   ^bb0(%arg1: !pdl.operation):
     %0 = transform.structured.match ops{["thlo.sort"]} in %arg1
       : (!pdl.operation) -> !pdl.operation
-    %1, %loops:2 = transform.structured.tile %0 [256, 512]
+    %1, %loops:2 = transform.structured.tile_using_for %0 [256, 512]
       : (!pdl.operation) -> (!pdl.operation, !pdl.operation, !pdl.operation)
 }
 
@@ -323,7 +325,7 @@ transform.sequence failures(propagate) {
   ^bb0(%arg1: !pdl.operation):
     %0 = transform.structured.match ops{["thlo.sort"]} in %arg1
       : (!pdl.operation) -> !pdl.operation
-    %1, %loops:2 = transform.structured.tile %0 [256, 512]
+    %1, %loops:2 = transform.structured.tile_using_for %0 [256, 512]
       : (!pdl.operation) -> (!pdl.operation, !pdl.operation, !pdl.operation)
 }
 
@@ -344,7 +346,7 @@ transform.sequence failures(propagate) {
   ^bb0(%arg1: !pdl.operation):
     %0 = transform.structured.match ops{["thlo.reverse"]} in %arg1
       : (!pdl.operation) -> !pdl.operation
-    %1, %loop = transform.structured.tile %0 [10]
+    %1, %loop = transform.structured.tile_using_for %0 [10]
       : (!pdl.operation) -> (!pdl.operation, !pdl.operation)
 }
 
@@ -380,7 +382,7 @@ transform.sequence failures(propagate) {
   ^bb0(%arg1: !pdl.operation):
     %0 = transform.structured.match ops{["thlo.reverse"]} in %arg1
       : (!pdl.operation) -> !pdl.operation
-    %1, %loops:2 = transform.structured.tile %0 [256, 512]
+    %1, %loops:2 = transform.structured.tile_using_for %0 [256, 512]
       : (!pdl.operation) -> (!pdl.operation, !pdl.operation, !pdl.operation)
 }
 

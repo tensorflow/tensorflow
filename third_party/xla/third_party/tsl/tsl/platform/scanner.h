@@ -237,7 +237,8 @@ class Scanner {
 
   friend class ScannerTest;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Scanner);
+  Scanner(const Scanner&) = delete;
+  void operator=(const Scanner&) = delete;
 };
 
 }  // namespace strings

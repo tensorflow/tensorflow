@@ -27,23 +27,33 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/allocator_stats.h"
+#include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/module_spec.h"
+#include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/port.h"
-#include "xla/stream_executor/stream_executor_internal.h"
 #include "xla/stream_executor/trace_listener.h"
 #include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor {
 
 class Stream;
+
+namespace internal {
+class StreamExecutorInterface;
+}  // namespace internal
 
 // Forward declaration of private friend class.
 template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
@@ -64,12 +74,23 @@ class ScopedTracer;
 // StreamExecutor interface should not be invoked from a signal handler.
 class StreamExecutor {
  public:
+  // Platform specific handle to the underlying resources behind an executor
+  // implementation (e.g. it gives access to CUcontext for CUDA platform).
+  struct PlatformSpecificHandle {
+    void* context = nullptr;  // will be nullptr if not supported
+  };
+
   StreamExecutor(
       const Platform* platform,
       std::unique_ptr<internal::StreamExecutorInterface> implementation,
       int device_ordinal);
 
   ~StreamExecutor();
+
+  // TODO(ezhulenev): Consider removing this platform-specific accessor and
+  // forward all users to platform-specific headers, however it requires careful
+  // build rules set up to avoid leaking even more implementation details.
+  PlatformSpecificHandle platform_specific_handle() const;
 
   tsl::Status Init();
   tsl::Status Init(DeviceOptions device_options);
@@ -90,10 +111,10 @@ class StreamExecutor {
   //
   // If an error occurs, or there is no kernel available for the StreamExecutor
   // platform, error status is returned.
-  tsl::Status GetKernel(const MultiKernelLoaderSpec& spec, KernelBase* kernel);
+  tsl::Status GetKernel(const MultiKernelLoaderSpec& spec, Kernel* kernel);
 
   // Releases any state associated with the previously loaded kernel.
-  void UnloadKernel(const KernelBase* kernel);
+  void UnloadKernel(const Kernel* kernel);
 
   // Loads a module for the platform this StreamExecutor is acting upon.
   //
@@ -107,7 +128,7 @@ class StreamExecutor {
   bool UnloadModule(ModuleHandle module_handle);
 
   tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
-      Stream* stream, const std::vector<uint8_t>& content);
+      Stream* stream, absl::Span<const uint8_t> content);
 
   // Synchronously allocates an array on the device of type T with element_count
   // elements.
@@ -362,18 +383,21 @@ class StreamExecutor {
   // Returns a borrowed pointer to the underlying StreamExecutor implementation.
   internal::StreamExecutorInterface* implementation();
 
-  // Creates a kernel which can be launched with stream.ThenLaunch, such that
-  // the types of the arguments provided for launch would have to match
-  // types of the arguments provided at creation time.
-  //
-  // The kernel has a name kernel_name, and is based from provided PTX in ptx,
-  // and (optional) compiled PTX in cubin_data.
-  // The canonical storage for both ptx and cubin_data should outlive the
+  // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from a
+  // PTX (and optional CUBIN), such that the types of the arguments provided for
+  // launch would have to match types of the arguments provided at creation
+  // time. The canonical storage for both ptx and cubin_data should outlive the
   // lifetime of the kernel.
   template <typename... Args>
   tsl::StatusOr<std::unique_ptr<TypedKernel<Args...>>> CreateTypedKernel(
       absl::string_view kernel_name, absl::string_view ptx,
       absl::Span<const uint8_t> cubin_data);
+
+  // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from
+  // an in-process symbol pointer.
+  template <typename... Args>
+  tsl::StatusOr<std::unique_ptr<TypedKernel<Args...>>> CreateTypedKernel(
+      absl::string_view kernel_name, void* symbol);
 
   // Warning: use Stream::ThenLaunch instead, this method is not for general
   // consumption. However, this is the only way to launch a kernel for which
@@ -389,8 +413,11 @@ class StreamExecutor {
   // This is called by Stream::Launch() to delegate to the platform's launch
   // implementation in StreamExecutorInterface::Launch().
   tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
-                     const BlockDim& block_dims, const KernelBase& kernel,
-                     const KernelArgsArrayBase& args);
+                     const BlockDim& block_dims, const Kernel& kernel,
+                     const KernelArgs& args);
+
+  // Submits command buffer for execution to the underlying platform driver.
+  tsl::Status Submit(Stream* stream, const CommandBuffer& command_buffer);
 
   // Gets-or-creates (creates with memoization) a FftSupport datatype that can
   // be used to execute FFT routines on the current platform.
@@ -448,9 +475,7 @@ class StreamExecutor {
 
   // Returns a stream allocated by this executor, or nullptr if not found.
   // Performs linear search over alive GPU streams.
-  Stream* FindAllocatedStream(void* gpu_stream) {
-    return implementation()->FindAllocatedStream(gpu_stream);
-  }
+  Stream* FindAllocatedStream(void* gpu_stream);
 
  private:
   template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
@@ -468,8 +493,11 @@ class StreamExecutor {
   // nullptr is returned.
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space);
 
-  // Causes the host code to synchronously wait for operations entrained onto
-  // stream to complete. Effectively a join on the asynchronous device
+  void* GetUntypedSubBuffer(DeviceMemoryBase* parent, uint64_t offset,
+                            uint64_t size);
+
+  // Causes the host code to synchronously wait for operations entrained
+  // onto stream to complete. Effectively a join on the asynchronous device
   // operations enqueued on the stream before this program point.
   tsl::Status BlockHostUntilDone(Stream* stream);
 
@@ -623,7 +651,8 @@ class StreamExecutor {
 
   StreamExecutorMemoryAllocator allocator_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutor);
+  StreamExecutor(const StreamExecutor&) = delete;
+  void operator=(const StreamExecutor&) = delete;
 };
 
 // A wrapper around ModuleHandle that uses RAII to manage its lifetime.
@@ -658,7 +687,8 @@ class ScopedModuleHandle {
   StreamExecutor* executor_;
   ModuleHandle module_handle_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedModuleHandle);
+  ScopedModuleHandle(const ScopedModuleHandle&) = delete;
+  void operator=(const ScopedModuleHandle&) = delete;
 };
 
 ////////////
@@ -677,6 +707,17 @@ StreamExecutor::CreateTypedKernel(absl::string_view kernel_name,
     loader_spec.AddCudaCubinInMemory(
         reinterpret_cast<const char*>(cubin_data.data()), kernel_name);
   }
+
+  TF_RETURN_IF_ERROR(GetKernel(loader_spec, kernel_base.get()));
+  return std::move(kernel_base);
+}
+
+template <typename... Args>
+inline tsl::StatusOr<std::unique_ptr<TypedKernel<Args...>>>
+StreamExecutor::CreateTypedKernel(absl::string_view kernel_name, void* symbol) {
+  auto kernel_base = std::make_unique<TypedKernel<Args...>>(this);
+  MultiKernelLoaderSpec loader_spec(kernel_base->kNumberOfParameters);
+  loader_spec.AddInProcessSymbol(symbol, kernel_name);
 
   TF_RETURN_IF_ERROR(GetKernel(loader_spec, kernel_base.get()));
   return std::move(kernel_base);
@@ -720,8 +761,8 @@ DeviceMemory<T> StreamExecutor::GetSubBuffer(DeviceMemory<T>* parent,
     return DeviceMemory<T>{};
   }
 
-  void* opaque = implementation_->GetSubBuffer(
-      parent, sizeof(T) * element_offset, sizeof(T) * element_count);
+  void* opaque = GetUntypedSubBuffer(parent, sizeof(T) * element_offset,
+                                     sizeof(T) * element_count);
   if (opaque == nullptr) {
     return DeviceMemory<T>{};
   }

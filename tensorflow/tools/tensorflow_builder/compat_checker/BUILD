@@ -18,7 +18,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
     ],
 )
 
@@ -32,6 +32,7 @@ py_strict_test(
     tags = ["no_pip"],
     deps = [
         ":compat_checker",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/platform:test",
     ],
 )

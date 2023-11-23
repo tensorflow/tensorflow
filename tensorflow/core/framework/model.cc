@@ -19,10 +19,12 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <queue>
 
 #include "absl/time/clock.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -2204,8 +2206,9 @@ Status Node::FromProto(ModelProto::Node node_proto,
 Model::Model()
     : optimization_period_ms_(kOptimizationPeriodMinMs),
       safe_to_collect_metrics_(std::make_shared<GuardedBool>(true)) {
-  model_gauge_cell_ = metrics::GetTFDataModelGauge(
-      strings::StrCat(reinterpret_cast<uint64>(this)));
+  model_id_ = strings::StrCat(reinterpret_cast<uint64>(this));
+  model_gauge_cell_ = metrics::GetTFDataModelGauge(model_id_);
+
   // Capture `safe_to_collect_metrics_` by value to avoid use-after-free issues
   // when the callback is invoked after the model has been destroyed.
   model_gauge_cell_->Set(
@@ -2236,6 +2239,8 @@ Model::Model()
 Model::~Model() {
   mutex_lock l(safe_to_collect_metrics_->mu);
   safe_to_collect_metrics_->val = false;
+  // Reset the pipeline processing time to 0
+  metrics::RecordPipelineProcessingTime(model_id_, 0);
 }
 
 void Model::AddNode(Node::Factory factory, const string& name,
@@ -2280,7 +2285,8 @@ void Model::FlushMetrics() {
 
 void Model::Optimize(AutotuneAlgorithm algorithm,
                      std::function<int64_t()> cpu_budget_func,
-                     std::function<int64_t(int64_t)> ram_budget_func,
+                     double ram_budget_share,
+                     std::optional<int64_t> fixed_ram_budget,
                      double model_input_time,
                      RamBudgetManager& ram_budget_manager,
                      CancellationManager* cancellation_manager) {
@@ -2289,7 +2295,23 @@ void Model::Optimize(AutotuneAlgorithm algorithm,
     tf_shared_lock l(mu_);
     snapshot = output_->Snapshot();
   }
-  int64_t total_ram_budget = ram_budget_func(TotalBufferedBytes(snapshot));
+  int64_t total_ram_budget;
+  if (fixed_ram_budget.has_value()) {
+    total_ram_budget = fixed_ram_budget.value();
+  } else {
+    // Because the snapshot will take up some memory as time goes,
+    // we need to add the total buffered bytes back
+    // In other words, if we assume the system overall memory does not change:
+    // Assume the port::AvailableRam() returns 1000 before the model starts
+    // to tune the parameters of the dataset ops.
+    // After some time, the dataset ops has buffered some bytes, say `x` bytes
+    // In this case, when we call AvailableRam(), it will return 1000 - `x`.
+    // But we want the `total_ram_budget` to be fixed.
+    // So we need to add `x` bytes back, i.e. AvailableRam() + x == 1000 - x + x
+    total_ram_budget = ram_budget_share *
+                       (port::AvailableRam() + TotalBufferedBytes(snapshot));
+  }
+
   ram_budget_manager.UpdateBudget(total_ram_budget);
   int64_t model_ram_budget = ram_budget_manager.AvailableModelRam();
   int64_t original_model_bytes = TotalMaximumBufferedBytes(snapshot);
@@ -2338,13 +2360,46 @@ void Model::Optimize(AutotuneAlgorithm algorithm,
     mutex_lock l(mu_);
     snapshot_ = snapshot;
     optimization_params_ = optimization_params;
+
+    if (snapshot_) {
+      int64_t pipeline_processing_usec = 0;
+      ModelTiming model_timing(snapshot_);
+      auto bfs_stage_roots = model_timing.GetStageRoots();
+      for (const auto& root : bfs_stage_roots) {
+        auto* root_timing = model_timing.GetTiming(root.get());
+        if (root_timing == nullptr) {
+          constexpr int TEN_MINUTES = 60 * 10;
+          LOG_EVERY_N_SEC(ERROR, TEN_MINUTES)
+              << "Encounter an error when computing the pipeline processing "
+                 "time for "
+                 "/tensorflow/data/pipeline_processing_time";
+          pipeline_processing_usec = 0;
+          break;
+        }
+        int64_t root_total_time_usec = root_timing->total_time_nsec *
+                                       root_timing->pipeline_ratio /
+                                       EnvTime::kMicrosToNanos;
+        pipeline_processing_usec =
+            std::max(pipeline_processing_usec, root_total_time_usec);
+      }
+      // Only updates the pipeline processing time when it is greater than 0.
+      // If it is zero, we assume the pipeline processing time is the same
+      // as the previous one and do not update it.
+      if (pipeline_processing_usec > 0) {
+        metrics::RecordPipelineProcessingTime(model_id_,
+                                              pipeline_processing_usec);
+      }
+    }
   }
 }
 
 void Model::RemoveNode(std::shared_ptr<Node> node) {
   if (node) {
-    if (node->output() && !node->output_deleted()) {
-      node->output()->remove_input(node);
+    if (node->output()) {
+      std::shared_ptr<Node> output_shared = node->output_shared();
+      if (output_shared) {
+        output_shared->remove_input(node);
+      }
     }
     VLOG(3) << "Removing " << node->long_name();
   }
@@ -2430,7 +2485,8 @@ bool Model::ShouldStop(int64_t cpu_budget, int64_t ram_budget,
 // TODO(jsimsa): Add support for tracking and using the model input time.
 Status Model::OptimizeLoop(AutotuneAlgorithm algorithm,
                            std::function<int64_t()> cpu_budget_func,
-                           std::function<int64_t(int64_t)> ram_budget_func,
+                           double ram_budget_share,
+                           std::optional<int64_t> fixed_ram_budget,
                            RamBudgetManager& ram_budget_manager,
                            CancellationManager* cancellation_manager) {
   std::function<void()> unused;
@@ -2469,8 +2525,8 @@ Status Model::OptimizeLoop(AutotuneAlgorithm algorithm,
     if (algorithm == AutotuneAlgorithm::STAGE_BASED) {
       model_input_time = ComputeTargetTimeNsec();
     }
-    Optimize(algorithm, cpu_budget_func, ram_budget_func, model_input_time,
-             ram_budget_manager, cancellation_manager);
+    Optimize(algorithm, cpu_budget_func, ram_budget_share, fixed_ram_budget,
+             model_input_time, ram_budget_manager, cancellation_manager);
     int64_t end_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
     VLOG(2) << "Optimized for " << end_ms - start_ms << " ms.";
 

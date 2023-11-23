@@ -75,7 +75,8 @@ class OneTimeScratchAllocator : public ScratchAllocator {
   std::unique_ptr<TemporaryDeviceMemory<uint8_t>> temporary_;
   Stream* stream_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(OneTimeScratchAllocator);
+  OneTimeScratchAllocator(const OneTimeScratchAllocator&) = delete;
+  void operator=(const OneTimeScratchAllocator&) = delete;
 };
 
 // Can allocate several times -- this memory is deallocated when the scratch
@@ -105,7 +106,8 @@ class OwningScratchAllocator : public ScratchAllocator {
   DeviceMemoryAllocator* allocator_;
   absl::InlinedVector<OwningDeviceMemory, N> buffers_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(OwningScratchAllocator);
+  OwningScratchAllocator(const OwningScratchAllocator&) = delete;
+  void operator=(const OwningScratchAllocator&) = delete;
 };
 
 }  // namespace stream_executor

@@ -540,7 +540,8 @@ class MatrixSetDiagOp : public XlaOpKernel {
   bool left_align_superdiagonal_ = true;
   bool left_align_subdiagonal_ = true;
   static constexpr int kNumV1Inputs = 2;
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixSetDiagOp);
+  MatrixSetDiagOp(const MatrixSetDiagOp&) = delete;
+  void operator=(const MatrixSetDiagOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("MatrixSetDiag"), MatrixSetDiagOp);

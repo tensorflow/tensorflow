@@ -33,40 +33,40 @@ void* GetDsoHandle() {
 #endif
 }
 
-template <typename T>
-T LoadSymbol(const char* symbol_name) {
+void* LoadSymbol(const char* symbol_name) {
   void* symbol = nullptr;
   if (auto handle = GetDsoHandle()) {
     tsl::Env::Default()
         ->GetSymbolFromLibrary(handle, symbol_name, &symbol)
         .IgnoreError();
   }
-  return reinterpret_cast<T>(symbol);
+  return symbol;
 }
 
-CUresult GetSymbolNotFoundError() {
-  return CUDA_ERROR_SHARED_OBJECT_INIT_FAILED;
-}
+const char* kSymbols[] = {
+#include "tsl/cuda/cuda.inc"
+};
+
+constexpr size_t kNumSymbols = sizeof(kSymbols) / sizeof(const char*);
+
 }  // namespace
 
-#if CUDA_VERSION < 10000
-#error CUDA version earlier than 10 is not supported.
-#endif
+extern "C" {
 
-#ifndef __CUDA_DEPRECATED
-#define __CUDA_DEPRECATED
-#endif
+static CUresult GetSymbolNotFoundError() {
+  return CUDA_ERROR_SHARED_OBJECT_INIT_FAILED;
+}
 
-#if CUDA_VERSION < 10010
-#include "tsl/cuda/cuda_10_0.inc"
-#elif CUDA_VERSION < 10020
-#include "tsl/cuda/cuda_10_1.inc"
-#elif CUDA_VERSION < 11000
-#include "tsl/cuda/cuda_10_2.inc"
-#elif CUDA_VERSION < 11020
-#include "tsl/cuda/cuda_11_0.inc"
-#elif CUDA_VERSION < 12000
-#include "tsl/cuda/cuda_11_2.inc"
-#else
-#include "tsl/cuda/cuda_12_0.inc"
-#endif
+extern void* _cuda_tramp_table[];
+
+void _cuda_tramp_resolve(int i) {
+  CHECK_LE(0, i);
+  CHECK_LT(i, kNumSymbols);
+  void* p = LoadSymbol(kSymbols[i]);
+  if (!p) {
+    p = reinterpret_cast<void*>(&GetSymbolNotFoundError);
+  }
+  _cuda_tramp_table[i] = p;
+}
+
+}  // extern "C"

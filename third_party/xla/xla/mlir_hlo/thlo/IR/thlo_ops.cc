@@ -185,18 +185,17 @@ SmallVector<Range> getIterationDomainForTensor(OpBuilder &b, Location loc,
 static void getDstStyleOpEffectsImpl(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects,
-    ValueRange results, const OpOperandVector &inputOperands,
-    const OpOperandVector &outputOperands) {
-  for (auto *operand : inputOperands) {
-    if (!operand->get().getType().isa<MemRefType>()) continue;
-    effects.emplace_back(MemoryEffects::Read::get(), operand->get(),
+    ValueRange results, ValueRange inputOperands, ValueRange outputOperands) {
+  for (auto operand : inputOperands) {
+    if (!operand.getType().isa<MemRefType>()) continue;
+    effects.emplace_back(MemoryEffects::Read::get(), operand,
                          SideEffects::DefaultResource::get());
   }
-  for (auto *operand : outputOperands) {
-    if (!operand->get().getType().isa<MemRefType>()) continue;
-    effects.emplace_back(MemoryEffects::Read::get(), operand->get(),
+  for (auto operand : outputOperands) {
+    if (!operand.getType().isa<MemRefType>()) continue;
+    effects.emplace_back(MemoryEffects::Read::get(), operand,
                          SideEffects::DefaultResource::get());
-    effects.emplace_back(MemoryEffects::Write::get(), operand->get(),
+    effects.emplace_back(MemoryEffects::Write::get(), operand,
                          SideEffects::DefaultResource::get());
   }
 }
@@ -220,8 +219,7 @@ struct THLOInlinerInterface : public mlir::DialectInlinerInterface {
   }
   // Handle the given inlined terminator by replacing it with a new operation
   // as necessary. Required when the region has only one block.
-  void handleTerminator(Operation *op,
-                        ArrayRef<Value> valuesToRepl) const final {}
+  void handleTerminator(Operation *op, ValueRange valuesToRepl) const final {}
 };
 
 }  // namespace
@@ -557,7 +555,7 @@ void ConcatenateOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects) {
   getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
-                           getDpsInputOperands(), getDpsInitOperands());
+                           getDpsInputs(), getDpsInits());
 }
 
 //===----------------------------------------------------------------------===//
@@ -713,7 +711,7 @@ void DynamicBroadcastInDimOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects) {
   getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
-                           getDpsInputOperands(), getDpsInitOperands());
+                           getDpsInputs(), getDpsInits());
 }
 
 //===----------------------------------------------------------------------===//
@@ -879,7 +877,7 @@ void ScatterOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects) {
   getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
-                           getDpsInputOperands(), getDpsInitOperands());
+                           getDpsInputs(), getDpsInits());
 }
 
 //===----------------------------------------------------------------------===//
@@ -981,7 +979,7 @@ void GatherOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects) {
   getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
-                           getDpsInputOperands(), getDpsInitOperands());
+                           getDpsInputs(), getDpsInits());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1231,7 +1229,7 @@ void SortOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects) {
   getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
-                           getDpsInputOperands(), getDpsInitOperands());
+                           getDpsInputs(), getDpsInits());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1354,7 +1352,7 @@ void ReverseOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects) {
   getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
-                           getDpsInputOperands(), getDpsInitOperands());
+                           getDpsInputs(), getDpsInits());
 }
 
 }  // namespace thlo

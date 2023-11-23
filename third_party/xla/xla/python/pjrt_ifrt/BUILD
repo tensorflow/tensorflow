@@ -246,9 +246,9 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-        "@tf_runtime//:ref_count",
     ],
 )
 
@@ -259,7 +259,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_ifrt",
-        "//xla/pjrt:tfrt_cpu_pjrt_client",
+        "//xla/pjrt/cpu:cpu_client",
         "//xla/python/ifrt:test_util",
     ],
     alwayslink = True,

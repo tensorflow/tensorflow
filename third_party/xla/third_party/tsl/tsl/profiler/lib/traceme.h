@@ -307,7 +307,8 @@ class TraceMe {
   // Start time used when tracing is disabled.
   constexpr static int64_t kUntracedActivity = 0;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TraceMe);
+  TraceMe(const TraceMe&) = delete;
+  void operator=(const TraceMe&) = delete;
 
   // Wrap the name into a union so that we can avoid the cost of string
   // initialization when tracing is disabled.

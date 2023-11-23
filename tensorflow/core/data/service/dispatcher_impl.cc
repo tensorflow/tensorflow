@@ -91,11 +91,11 @@ constexpr char kDatasetsDir[] = "datasets";
 // than two snapshots at a time across all ongoing snapshots. Allowing two
 // concurrent streams, rather than one, helps minimize a worker's inactivity
 // between completing a stream and getting assigned a new one.
-constexpr int kDefaultWorkerMaxConcurrentSnapshots = 2;
+constexpr int kDefaultWorkerMaxConcurrentSnapshots = 3;
 
 constexpr absl::Duration kDefaultIterationGcCheckInterval = absl::Minutes(10);
 constexpr absl::Duration kDefaultIterationGcTimeout = absl::Minutes(5);
-constexpr absl::Duration kDefaultClientTimeout = absl::Minutes(2);
+constexpr absl::Duration kDefaultClientTimeout = absl::Minutes(5);
 constexpr absl::Duration kDefaultWorkerTimeout = absl::Minutes(10);
 
 constexpr std::array<const char*, 8> kNodeNameSharingOps = {
@@ -389,7 +389,6 @@ void DataServiceDispatcherImpl::ReportProcessingTimesFromActiveTasks(
 
 Status DataServiceDispatcherImpl::WorkerHeartbeat(
     const WorkerHeartbeatRequest* request, WorkerHeartbeatResponse* response) {
-  absl::Time start_time = absl::FromUnixMicros(env_->NowMicros());
   TF_RETURN_IF_ERROR(CheckStarted());
   VLOG(3) << "Received worker heartbeat request from worker "
           << request->worker_address();
@@ -443,9 +442,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
   }
 
   VLOG(3) << "Finished worker heartbeat for worker at address "
-          << request->worker_address() << " in "
-          << (absl::ToDoubleSeconds(absl::FromUnixMicros(env_->NowMicros()) -
-                                    start_time));
+          << request->worker_address();
   return OkStatus();
 }
 
@@ -1179,7 +1176,6 @@ Status DataServiceDispatcherImpl::GetSnapshotStreams(
 Status DataServiceDispatcherImpl::GetSnapshotSplit(
     const GetSnapshotSplitRequest* request,
     GetSnapshotSplitResponse* response) {
-  absl::Time start_time = absl::FromUnixMicros(env_->NowMicros());
   TF_RETURN_IF_ERROR(CheckStarted());
 
   absl::flat_hash_map<std::string, std::unique_ptr<SnapshotManager>>::iterator
@@ -1193,10 +1189,7 @@ Status DataServiceDispatcherImpl::GetSnapshotSplit(
           request->base_path());
     }
   }
-  auto status = it->second->GetSnapshotSplit(*request, *response);
-  LOG(INFO) << "[tf.data snapshot] GetSnapshotSplit took "
-            << absl::FromUnixMicros(env_->NowMicros()) - start_time;
-  return status;
+  return it->second->GetSnapshotSplit(*request, *response);
 }
 
 Status DataServiceDispatcherImpl::DisableCompressionAtRuntime(

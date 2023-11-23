@@ -69,11 +69,11 @@ void UnbufferizePass::runOnOperation() {
   });
   SmallVector<Value> results;
   SmallVector<DictionaryAttr> resultAttrs;
-  funcOp->walk([&](memref::TensorStoreOp op) {
-    auto arg = op.getMemref().dyn_cast<BlockArgument>();
+  funcOp->walk([&](bufferization::MaterializeInDestinationOp op) {
+    auto arg = op.getDest().dyn_cast<BlockArgument>();
     if (!arg) return;
     argsToErase.set(arg.getArgNumber());
-    results.push_back(op.getTensor());
+    results.push_back(op.getSource());
     resultAttrs.push_back(funcOp.getArgAttrDict(arg.getArgNumber()));
     rewriter.eraseOp(op);
   });

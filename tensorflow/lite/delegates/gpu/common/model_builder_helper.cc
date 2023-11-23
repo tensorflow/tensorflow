@@ -16,10 +16,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
 
 #include <stddef.h>
-#include <stdint.h>
-#include <string.h>
 
-#include <any>
+#include <cstdint>
+#include <cstring>
 #include <limits>
 #include <string>
 #include <vector>
@@ -257,34 +256,32 @@ void ConvertFloat16ToFloat32(size_t num_elements, const uint16_t* src,
 }
 
 template <>
-absl::Status CreateVectorCopyData<float>(const TfLiteTensor& tensor,
-                                         float* tensor_data) {
-  switch (tensor.type) {
+absl::Status CreateVectorCopyData<float>(const TfLiteTensor& src, float* dst) {
+  switch (src.type) {
     case kTfLiteFloat32:
-      std::memcpy(tensor_data, tensor.data.f, tensor.bytes);
-      break;
+      std::memcpy(dst, src.data.f, src.bytes);
+      return absl::OkStatus();
     case kTfLiteFloat16:
-      ConvertFloat16ToFloat32(
-          NumElements(&tensor),
-          reinterpret_cast<uint16_t const*>(tensor.data.f16), tensor_data);
-      break;
+      ConvertFloat16ToFloat32(NumElements(&src),
+                              reinterpret_cast<uint16_t const*>(src.data.f16),
+                              dst);
+      return absl::OkStatus();
     case kTfLiteInt8:
-      DequantizeConstantTensor(tensor, tensor.data.int8, tensor_data);
-      break;
+      DequantizeConstantTensor(src, src.data.int8, dst);
+      return absl::OkStatus();
     case kTfLiteUInt8:
-      DequantizeConstantTensor(tensor, tensor.data.uint8, tensor_data);
-      break;
+      DequantizeConstantTensor(src, src.data.uint8, dst);
+      return absl::OkStatus();
     case kTfLiteInt32:
-      DequantizeConstantTensor(tensor, tensor.data.i32, tensor_data);
-      break;
+      DequantizeConstantTensor(src, src.data.i32, dst);
+      return absl::OkStatus();
     default:
       return absl::InvalidArgumentError(
           "Unsupported data type for float32 tensor");
   }
-  return absl::OkStatus();
 }
 
-const std::string GetDimensionString(const TfLiteIntArray* dimensions) {
+std::string GetDimensionString(const TfLiteIntArray* dimensions) {
   return absl::StrJoin(TfLiteIntArrayView(dimensions), "x");
 }
 
@@ -397,9 +394,12 @@ absl::Status MaybeFuseActivation(TfLiteFusedActivation fused_activation,
     case kTfLiteActReluN1To1:
     case kTfLiteActRelu6: {
       ReLUAttributes attr;
-      attr.clip = fused_activation == kTfLiteActRelu
-                      ? 0.0f
-                      : (fused_activation == kTfLiteActReluN1To1 ? 1.0f : 6.0f);
+      attr.activation_max =
+          fused_activation == kTfLiteActRelu
+              ? 0.0f
+              : (fused_activation == kTfLiteActReluN1To1 ? 1.0f : 6.0f);
+      attr.activation_min =
+          fused_activation == kTfLiteActReluN1To1 ? -1.0f : 0.0f;
       Node* activation_node;
       RETURN_IF_ERROR(
           NewPassthroughNode(graph, node, outputs[0], &activation_node));

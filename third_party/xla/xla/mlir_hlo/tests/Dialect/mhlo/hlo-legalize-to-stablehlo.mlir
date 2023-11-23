@@ -152,6 +152,23 @@ func.func @attr_custom_call_api_version_status_returning_unified(%arg0: tensor<f
   func.return %0 : tensor<f32>
 }
 
+// -----
+
+// CHECK-LABEL: "attr_custom_call_api_version_typed_ffi"
+func.func @attr_custom_call_api_version_typed_ffi(%arg0: tensor<f32>) -> tensor<f32> {
+  //      CHECK: "stablehlo.custom_call"(%arg0) {
+  // CHECK-SAME:   call_target_name = "mhlo.custom_call"
+  // CHECK-SAME:   mhlo.attributes = {api_version = 4 : i32, backend_config = {foo = "bar"}, call_target_name = "foo"},
+  // CHECK-SAME:   mhlo.version = 1 : i64
+  // CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
+  %0 = "mhlo.custom_call"(%arg0) {
+    call_target_name = "foo",
+    backend_config = {foo = "bar"},
+    api_version = 4 : i32
+  } : (tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
 // CustomCallSchedule aka #mhlo<custom_call_schedule> is unsupported at the moment (see negative test below).
 // DequantizeMode aka #mhlo<dequantize_mode> is unused at the moment.
 // DomainKind aka #mhlo<kind> is unsupported at the moment (see negative test below).
@@ -1157,11 +1174,11 @@ func.func @op_real(%arg0: tensor<complex<f32>>) -> tensor<f32> {
 // CHECK-LABEL: "op_recv"
 func.func @op_recv(%arg0: !mhlo.token) -> (tensor<f32>, !mhlo.token) {
   //      CHECK: "stablehlo.recv"(%arg0) {
-  // CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 0, type = 0>,
+  // CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 0, type = 3>,
   // CHECK-SAME:   is_host_transfer = true
   // CHECK-SAME: } : (!stablehlo.token) -> (tensor<f32>, !stablehlo.token)
   %0:2 = "mhlo.recv"(%arg0) {
-    channel_handle = #mhlo.channel_handle<handle = 0, type = 0>,
+    channel_handle = #mhlo.channel_handle<handle = 0, type = 3>,
     is_host_transfer = true
   } : (!mhlo.token) -> (tensor<f32>, !mhlo.token)
   func.return %0#0, %0#1 : tensor<f32>, !mhlo.token
@@ -1402,11 +1419,11 @@ func.func @op_select(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) 
 // CHECK-LABEL: "op_send"
 func.func @op_send(%arg0: tensor<f32>, %arg1: !mhlo.token) -> !mhlo.token {
   //      CHECK: "stablehlo.send"(%arg0, %arg1) {
-  // CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 0, type = 0>,
+  // CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 0, type = 2>,
   // CHECK-SAME:   is_host_transfer = true
   // CHECK-SAME: } : (tensor<f32>, !stablehlo.token) -> !stablehlo.token
   %0 = "mhlo.send"(%arg0, %arg1) {
-    channel_handle = #mhlo.channel_handle<handle = 0, type = 0>,
+    channel_handle = #mhlo.channel_handle<handle = 0, type = 2>,
     is_host_transfer = true
   } : (tensor<f32>, !mhlo.token) -> !mhlo.token
   func.return %0 : !mhlo.token
@@ -1817,12 +1834,19 @@ func.func @type_quantization(%arg0: tensor<!quant.uniform<i8:f32, 34.0:16>>, %ar
   func.return %0 : tensor<f32>
 }
 
+// -----
+
+#SV = #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>
+
+// CHECK: #[[$SV:.*]] = #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>
 // CHECK-LABEL: "type_sparsity"
-func.func @type_sparsity(%arg0: tensor<16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<16xf32> {
-  // CHECK: "stablehlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<16xf32>
-  %0 = "mhlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<16xf32>
+func.func @type_sparsity(%arg0: tensor<16xf32, #SV>) -> tensor<16xf32> {
+  // CHECK: "stablehlo.abs"(%arg0) : (tensor<16xf32, #[[$SV]]>) -> tensor<16xf32>
+  %0 = "mhlo.abs"(%arg0) : (tensor<16xf32, #SV>) -> tensor<16xf32>
   func.return %0 : tensor<16xf32>
 }
+
+// -----
 
 // AsyncBundle aka !mhlo.async_bundle is unsupported at the moment (see negative test below).
 
@@ -2035,11 +2059,7 @@ func.func @op_stochastic_convert(%arg0: tensor<f32>, %arg1: tensor<ui32>) -> ten
 
 func.func @op_topk(%arg0 : tensor<16xf32>) {
   // expected-error@+1 {{failed to legalize operation 'mhlo.topk' that was explicitly marked illegal}}
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true) : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
   return
 }
 

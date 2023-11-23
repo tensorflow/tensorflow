@@ -6,11 +6,11 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func @main
   func.func @main(%arg0: tensor<i32>,%arg1: tensor<4xi32> {tf._layout = "sharding_specs:unsharded, mesh:|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1", tf._mesh = "|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1"}) -> (tensor<f32> {tf._global_shape = #tf_type.shape<>}) attributes {tf.entry_function = {control_outputs = "eager_operation", inputs = "device_id,op_input_0", outputs = "op_output_0"}} {
     // CHECK:       "tf.StatefulPartitionedCall"
-    // CHECK-SAME:  _mesh = "|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1"
     // CHECK-SAME:  f = @_func_0
+    // CHECK-SAME:  _mesh = "|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1"
     // CHECK-NEXT:  "tf.StatefulPartitionedCall"
-    // CHECK-SAME:  _mesh = "|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0"
     // CHECK-SAME:  f = @_func_1
+    // CHECK-SAME:  _mesh = "|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0"
     "tf.StatefulPartitionedCall"(%arg0, %arg1) {_layout = [], _mesh = "|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1", config = "|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1", config_proto = "", executor_type = "", f = @_func_0} : (tensor<i32>, tensor<4xi32>) -> ()
     %0 = "tf.StatefulPartitionedCall"(%arg0) {_layout = ["sharding_specs: mesh:|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0"], _mesh = "|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0", config = "|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0", config_proto = "", executor_type = "", f = @_func_1} : (tensor<i32>) -> tensor<f32>
     func.return %0 : tensor<f32>
@@ -53,31 +53,29 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func private @_func_1
   // CHECK-SAME:  %[[ARG0:.*]]: tensor<i32>
   func.func private @_func_1(%arg0: tensor<i32>) -> tensor<f32> {
-    // CHECK:      %[[COMPILE_OUT:.*]]:2 = "tf_device.launch"()
+    // CHECK:      %[[COMPILE_OUT:.*]]:2 = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
     // CHECK-NEXT:   %[[COMPILATION_STATUS:.*]], %[[PROGRAM_KEY:.*]] = "tf._TPUCompileMlir"()
     // CHECK-NEXT:   "tf._HostSend"(%[[PROGRAM_KEY]])
-    // CHECK-SAME:   device = "/job:localhost/replica:0/task:0/device:CPU:0"
     // CHECK-SAME:   recv_device = "/job:localhost/replica:0/task:0/device:CPU:0"
     // CHECK-SAME:   send_device = "/job:localhost/replica:0/task:0/device:CPU:0"
-    // CHECK-NEXT:   "tf._HostSend"(%[[PROGRAM_KEY]])
     // CHECK-SAME:   device = "/job:localhost/replica:0/task:0/device:CPU:0"
+    // CHECK-NEXT:   "tf._HostSend"(%[[PROGRAM_KEY]])
     // CHECK-SAME:   recv_device = "/job:localhost/replica:0/task:0/device:TPU:0"
     // CHECK-SAME:   send_device = "/job:localhost/replica:0/task:0/device:CPU:0"
     // CHECK-SAME:   send_device_incarnation = 0
     // CHECK-SAME:   tensor_name = "compilation_send_recv_key_0
-    // CHECK-NEXT:   "tf._HostSend"(%[[PROGRAM_KEY]])
     // CHECK-SAME:   device = "/job:localhost/replica:0/task:0/device:CPU:0"
+    // CHECK-NEXT:   "tf._HostSend"(%[[PROGRAM_KEY]])
     // CHECK-SAME:   recv_device = "/job:localhost/replica:0/task:0/device:TPU:1"
     // CHECK-SAME:   send_device = "/job:localhost/replica:0/task:0/device:CPU:0"
     // CHECK-SAME:   send_device_incarnation = 0
     // CHECK-SAME:   tensor_name = "compilation_send_recv_key_1
+    // CHECK-SAME:   device = "/job:localhost/replica:0/task:0/device:CPU:0"
     // CHECK-NEXT:   tf_device.return %[[COMPILATION_STATUS]], %[[PROGRAM_KEY]]
-    // CHECK-NEXT: device = "/job:localhost/replica:0/task:0/device:CPU:0"
-    // CHECK-NEXT: "tf_device.launch"()
+    // CHECK:      "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
     // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUT]]#0)
     // CHECK-NEXT:   tf_device.return
-    // CHECK-NEXT: device = "/job:localhost/replica:0/task:0/device:CPU:0"
-    // CHECK-NEXT:   %[[ID_TO_ORDINAL:.*]] = "tf.Const"
+    // CHECK:        %[[ID_TO_ORDINAL:.*]] = "tf.Const"
     // CHECK-SAME:   value = dense<0>
     // CHECK-NEXT:   %[[SIZE_TYPE:.*]] = "tf.Const"
     // CHECK-SAME:   value = dense<1>
@@ -118,11 +116,11 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func @main
   func.func @main(%arg0: tensor<i32>,%arg1: tensor<*x!tf_type.resource<tensor<4xf32>>> {tf._layout = "sharding_specs:unsharded, mesh:|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1", tf._mesh = "|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1"}) -> (tensor<f32> {tf._global_shape = #tf_type.shape<>}) attributes {tf.entry_function = {control_outputs = "eager_operation", inputs = "device_id,op_input_0", outputs = "op_output_0"}} {
     // CHECK:       "tf.StatefulPartitionedCall"
-    // CHECK-SAME:  _mesh = "|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1"
     // CHECK-SAME:  f = @_func_0
+    // CHECK-SAME:  _mesh = "|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1"
     // CHECK-NEXT:  "tf.StatefulPartitionedCall"
-    // CHECK-SAME:  _mesh = "|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0"
     // CHECK-SAME:  f = @_func_1
+    // CHECK-SAME:  _mesh = "|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0"
     "tf.StatefulPartitionedCall"(%arg0, %arg1) {_layout = [], _mesh = "|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1", config = "|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1", config_proto = "", executor_type = "", f = @_func_0} : (tensor<i32>, tensor<*x!tf_type.resource<tensor<4xf32>>>) -> ()
     %0 = "tf.StatefulPartitionedCall"(%arg0) {_layout = ["sharding_specs: mesh:|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0"], _mesh = "|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0", config = "|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0", config_proto = "", executor_type = "", f = @_func_1} : (tensor<i32>) -> tensor<f32>
     func.return %0 : tensor<f32>
@@ -165,32 +163,30 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func private @_func_1
   // CHECK-SAME:  %[[ARG0:.*]]: tensor<i32>
   func.func private @_func_1(%arg0: tensor<i32>) -> tensor<f32> {
-    // CHECK:      %[[COMPILE_OUT:.*]]:2 = "tf_device.launch"()
+    // CHECK:      %[[COMPILE_OUT:.*]]:2 = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
     // CHECK-NEXT:   %[[COMPILATION_STATUS:.*]], %[[PROGRAM_KEY:.*]] = "tf._TPUCompileMlir"()
     // CHECK-NEXT:   "tf._HostSend"(%[[PROGRAM_KEY]])
-    // CHECK-SAME:   device = "/job:localhost/replica:0/task:0/device:CPU:0"
     // CHECK-SAME:   recv_device = "/job:localhost/replica:0/task:0/device:CPU:0"
     // CHECK-SAME:   send_device = "/job:localhost/replica:0/task:0/device:CPU:0"
     // CHECK-SAME:   send_device_incarnation = 0
-    // CHECK-NEXT:   "tf._HostSend"(%[[PROGRAM_KEY]])
     // CHECK-SAME:   device = "/job:localhost/replica:0/task:0/device:CPU:0"
+    // CHECK-NEXT:   "tf._HostSend"(%[[PROGRAM_KEY]])
     // CHECK-SAME:   recv_device = "/job:localhost/replica:0/task:0/device:TPU:0"
     // CHECK-SAME:   send_device = "/job:localhost/replica:0/task:0/device:CPU:0"
     // CHECK-SAME:   send_device_incarnation = 0
     // CHECK-SAME:   tensor_name = "compilation_send_recv_key_0
-    // CHECK-NEXT:   "tf._HostSend"(%[[PROGRAM_KEY]])
     // CHECK-SAME:   device = "/job:localhost/replica:0/task:0/device:CPU:0"
+    // CHECK-NEXT:   "tf._HostSend"(%[[PROGRAM_KEY]])
     // CHECK-SAME:   recv_device = "/job:localhost/replica:0/task:0/device:TPU:1"
     // CHECK-SAME:   send_device = "/job:localhost/replica:0/task:0/device:CPU:0"
     // CHECK-SAME:   send_device_incarnation = 0
     // CHECK-SAME:   tensor_name = "compilation_send_recv_key_1
+    // CHECK-SAME:   device = "/job:localhost/replica:0/task:0/device:CPU:0"
     // CHECK-NEXT:   tf_device.return %[[COMPILATION_STATUS]], %[[PROGRAM_KEY]]
-    // CHECK-NEXT: device = "/job:localhost/replica:0/task:0/device:CPU:0"
-    // CHECK-NEXT: "tf_device.launch"()
+    // CHECK:      "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
     // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUT]]#0)
     // CHECK-NEXT:   tf_device.return
-    // CHECK-NEXT: device = "/job:localhost/replica:0/task:0/device:CPU:0"
-    // CHECK-NEXT: %[[ID_TO_ORDINAL:.*]] = "tf.Const"
+    // CHECK:      %[[ID_TO_ORDINAL:.*]] = "tf.Const"
     // CHECK-SAME: value = dense<0>
     // CHECK-NEXT: %[[SIZE_TYPE:.*]] = "tf.Const"
     // CHECK-SAME: value = dense<1>

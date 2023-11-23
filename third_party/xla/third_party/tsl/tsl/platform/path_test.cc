@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tsl/platform/path.h"
 
+#include <string>
+
+#include "tsl/platform/env.h"
+#include "tsl/platform/stringpiece.h"
 #include "tsl/platform/test.h"
 
 namespace tsl {
@@ -153,6 +157,163 @@ TEST(PathTest, CommonPathPrefix) {
   EXPECT_EQ(CommonPathPrefix({}), "");
   EXPECT_EQ(CommonPathPrefix({"/a/b/c", "", "/a/b/"}), "");
   EXPECT_EQ(CommonPathPrefix({"alpha", "alphabeta"}), "");
+}
+
+TEST(PathTest, GetTestWorkspaceDir) {
+  constexpr tsl::StringPiece kOriginalValue = "original value";
+  std::string dir;
+
+  dir = kOriginalValue;
+  tsl::setenv("TEST_SRCDIR", "/repo/src", /*overwrite=*/true);
+  tsl::setenv("TEST_WORKSPACE", "my/workspace", /*overwrite=*/true);
+  EXPECT_TRUE(GetTestWorkspaceDir(&dir));
+  EXPECT_EQ(dir, "/repo/src/my/workspace");
+  EXPECT_TRUE(GetTestWorkspaceDir(nullptr));
+
+  dir = kOriginalValue;
+  tsl::unsetenv("TEST_SRCDIR");
+  tsl::setenv("TEST_WORKSPACE", "my/workspace", /*overwrite=*/true);
+  EXPECT_FALSE(GetTestWorkspaceDir(&dir));
+  EXPECT_EQ(dir, kOriginalValue);
+  EXPECT_FALSE(GetTestWorkspaceDir(nullptr));
+
+  dir = kOriginalValue;
+  tsl::setenv("TEST_SRCDIR", "/repo/src", /*overwrite=*/true);
+  tsl::unsetenv("TEST_WORKSPACE");
+  EXPECT_FALSE(GetTestWorkspaceDir(&dir));
+  EXPECT_EQ(dir, kOriginalValue);
+  EXPECT_FALSE(GetTestWorkspaceDir(nullptr));
+
+  dir = kOriginalValue;
+  tsl::unsetenv("TEST_SRCDIR");
+  tsl::unsetenv("TEST_WORKSPACE");
+  EXPECT_FALSE(GetTestWorkspaceDir(&dir));
+  EXPECT_EQ(dir, kOriginalValue);
+  EXPECT_FALSE(GetTestWorkspaceDir(nullptr));
+}
+
+TEST(PathTest, GetTestUndeclaredOutputsDir) {
+  constexpr tsl::StringPiece kOriginalValue = "original value";
+  std::string dir;
+
+  dir = kOriginalValue;
+  tsl::setenv("TEST_UNDECLARED_OUTPUTS_DIR", "/test/outputs",
+              /*overwrite=*/true);
+  EXPECT_TRUE(GetTestUndeclaredOutputsDir(&dir));
+  EXPECT_EQ(dir, "/test/outputs");
+  EXPECT_TRUE(GetTestUndeclaredOutputsDir(nullptr));
+
+  dir = kOriginalValue;
+  tsl::unsetenv("TEST_UNDECLARED_OUTPUTS_DIR");
+  EXPECT_FALSE(GetTestUndeclaredOutputsDir(&dir));
+  EXPECT_EQ(dir, kOriginalValue);
+  EXPECT_FALSE(GetTestUndeclaredOutputsDir(nullptr));
+}
+
+TEST(PathTest, ResolveTestPrefixesKeepsThePathUnchanged) {
+  constexpr tsl::StringPiece kOriginalValue = "original value";
+  std::string resolved_path;
+
+  resolved_path = kOriginalValue;
+  EXPECT_TRUE(ResolveTestPrefixes("", resolved_path));
+  EXPECT_EQ(resolved_path, "");
+
+  resolved_path = kOriginalValue;
+  EXPECT_TRUE(ResolveTestPrefixes("/", resolved_path));
+  EXPECT_EQ(resolved_path, "/");
+
+  resolved_path = kOriginalValue;
+  EXPECT_TRUE(ResolveTestPrefixes("alpha/beta", resolved_path));
+  EXPECT_EQ(resolved_path, "alpha/beta");
+
+  resolved_path = kOriginalValue;
+  EXPECT_TRUE(ResolveTestPrefixes("/alpha/beta", resolved_path));
+  EXPECT_EQ(resolved_path, "/alpha/beta");
+}
+
+TEST(PathTest, ResolveTestPrefixesCanResolveTestWorkspace) {
+  constexpr tsl::StringPiece kOriginalValue = "original value";
+  std::string resolved_path;
+
+  tsl::setenv("TEST_SRCDIR", "/repo/src", /*overwrite=*/true);
+  tsl::setenv("TEST_WORKSPACE", "my/workspace", /*overwrite=*/true);
+
+  resolved_path = kOriginalValue;
+  EXPECT_TRUE(ResolveTestPrefixes("TEST_WORKSPACE", resolved_path));
+  EXPECT_EQ(resolved_path, "/repo/src/my/workspace");
+
+  resolved_path = kOriginalValue;
+  EXPECT_TRUE(ResolveTestPrefixes("TEST_WORKSPACE/", resolved_path));
+  EXPECT_EQ(resolved_path, "/repo/src/my/workspace/");
+
+  resolved_path = kOriginalValue;
+  EXPECT_TRUE(ResolveTestPrefixes("TEST_WORKSPACE/a/b", resolved_path));
+  EXPECT_EQ(resolved_path, "/repo/src/my/workspace/a/b");
+
+  resolved_path = kOriginalValue;
+  EXPECT_TRUE(ResolveTestPrefixes("TEST_WORKSPACEE", resolved_path));
+  EXPECT_EQ(resolved_path, "TEST_WORKSPACEE");
+
+  resolved_path = kOriginalValue;
+  EXPECT_TRUE(ResolveTestPrefixes("/TEST_WORKSPACE", resolved_path));
+  EXPECT_EQ(resolved_path, "/TEST_WORKSPACE");
+}
+
+TEST(PathTest, ResolveTestPrefixesCannotResolveTestWorkspace) {
+  constexpr tsl::StringPiece kOriginalValue = "original value";
+  std::string resolved_path;
+
+  tsl::unsetenv("TEST_SRCDIR");
+  tsl::unsetenv("TEST_WORKSPACE");
+
+  resolved_path = kOriginalValue;
+  EXPECT_FALSE(ResolveTestPrefixes("TEST_WORKSPACE", resolved_path));
+  EXPECT_EQ(resolved_path, kOriginalValue);
+}
+
+TEST(PathTest, ResolveTestPrefixesCanResolveTestUndeclaredOutputsDir) {
+  constexpr tsl::StringPiece kOriginalValue = "original value";
+  std::string resolved_path;
+
+  tsl::setenv("TEST_UNDECLARED_OUTPUTS_DIR", "/test/outputs",
+              /*overwrite=*/true);
+
+  resolved_path = kOriginalValue;
+  EXPECT_TRUE(
+      ResolveTestPrefixes("TEST_UNDECLARED_OUTPUTS_DIR", resolved_path));
+  EXPECT_EQ(resolved_path, "/test/outputs");
+
+  resolved_path = kOriginalValue;
+  EXPECT_TRUE(
+      ResolveTestPrefixes("TEST_UNDECLARED_OUTPUTS_DIR/", resolved_path));
+  EXPECT_EQ(resolved_path, "/test/outputs/");
+
+  resolved_path = kOriginalValue;
+  EXPECT_TRUE(
+      ResolveTestPrefixes("TEST_UNDECLARED_OUTPUTS_DIR/a/b", resolved_path));
+  EXPECT_EQ(resolved_path, "/test/outputs/a/b");
+
+  resolved_path = kOriginalValue;
+  EXPECT_TRUE(
+      ResolveTestPrefixes("TEST_UNDECLARED_OUTPUTS_DIRR", resolved_path));
+  EXPECT_EQ(resolved_path, "TEST_UNDECLARED_OUTPUTS_DIRR");
+
+  resolved_path = kOriginalValue;
+  EXPECT_TRUE(
+      ResolveTestPrefixes("/TEST_UNDECLARED_OUTPUTS_DIR", resolved_path));
+  EXPECT_EQ(resolved_path, "/TEST_UNDECLARED_OUTPUTS_DIR");
+}
+
+TEST(PathTest, ResolveTestPrefixesCannotResolveTestUndeclaredOutputsDir) {
+  constexpr tsl::StringPiece kOriginalValue = "original value";
+  std::string resolved_path;
+
+  tsl::unsetenv("TEST_UNDECLARED_OUTPUTS_DIR");
+
+  resolved_path = kOriginalValue;
+  EXPECT_FALSE(
+      ResolveTestPrefixes("TEST_UNDECLARED_OUTPUTS_DIR", resolved_path));
+  EXPECT_EQ(resolved_path, kOriginalValue);
 }
 
 }  // namespace io

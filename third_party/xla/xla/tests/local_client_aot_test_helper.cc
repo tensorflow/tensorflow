@@ -93,7 +93,7 @@ int main(int argc, char** argv) {
       xla::cpu::CpuAotCompilationOptions::RelocationModel::Static);
 
   auto results = client->CompileAheadOfTime({instance}, options).value();
-  auto result = xla::unique_ptr_static_cast<xla::cpu::CpuAotCompilationResult>(
+  auto result = xla::unique_ptr_down_cast<xla::cpu::CpuAotCompilationResult>(
       std::move(results.front()));
   // It's lame to hard-code the buffer assignments, but we need
   // local_client_aot_test.cc to be able to easily invoke the function.

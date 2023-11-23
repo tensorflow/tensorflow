@@ -602,6 +602,7 @@ class Loader(object):
     """Rewrite func names in the debug info by using the concrete func names."""
     output_debug_info = graph_debug_info_pb2.GraphDebugInfo()
     output_debug_info.files[:] = debug_info.files
+    # TODO: b/292007261 - Read name_to_trace_id as well as traces
     for key in debug_info.traces:
       node, func = key.split("@")
       new_func = ""
@@ -1080,18 +1081,23 @@ def load_partial(export_dir, filters, tags=None, options=None):
   try:
     fingerprint = fingerprinting.read_fingerprint(export_dir)
   except FileNotFoundError:
+    metrics.SetFoundFingerprintOnLoad(found_status=metrics.kFingerprintNotFound)
     logging.info(
         "Fingerprint not found. Saved model loading will continue.")
     singleprint = ""
   except RuntimeError:
+    metrics.SetFoundFingerprintOnLoad(found_status=metrics.kFingerprintError)
     logging.exception(
-        "Fingerprint was found, but there was an error when reading the proto.")
+        "Fingerprint was found, but there was an error when reading the proto. "
+        "Saved model loading will continue.")
     singleprint = ""
   else:
+    metrics.SetFoundFingerprintOnLoad(found_status=metrics.kFingerprintFound)
     metrics.SetReadFingerprint(
         fingerprint=fingerprinting_utils.to_proto(
             fingerprint).SerializeToString())
     singleprint = fingerprint.singleprint()
+
   try:
     metrics.SetReadPathAndSingleprint(path=export_dir, singleprint=singleprint)
   except metrics.MetricException:

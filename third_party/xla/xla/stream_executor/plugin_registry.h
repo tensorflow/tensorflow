@@ -18,12 +18,10 @@ limitations under the License.
 
 #include <map>
 
-#include "absl/base/macros.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/plugin.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -32,6 +30,14 @@ namespace stream_executor {
 namespace internal {
 class StreamExecutorInterface;
 }
+
+// Enumeration to list the supported types of plugins / support libraries.
+enum class PluginKind {
+  kInvalid,
+  kBlas,
+  kDnn,
+  kFft,
+};
 
 // The PluginRegistry is a singleton that maintains the set of registered
 // "support library" plugins. Currently, there are four kinds of plugins:
@@ -98,7 +104,8 @@ class PluginRegistry {
   // The set of registered factories, keyed by platform ID.
   std::map<Platform::Id, Factories> factories_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(PluginRegistry);
+  PluginRegistry(const PluginRegistry&) = delete;
+  void operator=(const PluginRegistry&) = delete;
 };
 
 // Explicit specializations are defined in plugin_registry.cc.

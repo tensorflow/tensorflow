@@ -66,6 +66,10 @@ message OverviewPageAnalysis {
   double device_op_time_outside_compilation_percent = 16;
   // Percentage of the device time that is in use.
   double device_duty_cycle_percent = 17;
+  // BEGIN-INTERNAL
+  // Program Goodput metric in percentage.
+  double program_goodput_percent = 18;
+  // END-INTERNAL
 }
 
 // Overview result for a performance tip to users.

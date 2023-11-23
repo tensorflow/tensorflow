@@ -33,15 +33,12 @@ namespace {
 
 using se::DeviceMemory;
 using se::DeviceMemoryBase;
-using se::Stream;
-using se::dnn::AlgorithmConfig;
 using se::dnn::BatchDescriptor;
 using se::dnn::ConvolutionDescriptor;
 using se::dnn::DataLayout;
 using se::dnn::DimIndex;
 using se::dnn::FilterDescriptor;
 using se::dnn::FilterLayout;
-using se::dnn::ProfileResult;
 
 template <typename ElementType, typename OutputType>
 Status RunGpuConvUnfused(const GpuConvParams& params, se::Stream* stream,

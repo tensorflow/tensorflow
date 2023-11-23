@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Transforms/LoopInvariantCodeMotionUtils.h"
 #include "thlo/IR/thlo_ops.h"
 
 namespace mlir {
@@ -401,7 +402,9 @@ struct VectorizeForCPUPass
     }
 
     // Hoisting transfer_read/transfer_write.
-    linalg::hoistRedundantVectorTransfersOnTensor(func);
+    IRRewriter rewriter(func->getContext());
+    func.walk(
+        [&](scf::ForOp forOp) { hoistLoopInvariantSubsets(rewriter, forOp); });
   }
 };
 

@@ -259,6 +259,16 @@ DenseElementsAttr reshape(DenseElementsAttr attr, ShapedType newType) {
     auto splatValue = attr.getValues<bool>()[0];
     return DenseElementsAttr::get(newType, {splatValue});
   }
+  // Bypass the element type check for quantized tensor. For quantized tensors,
+  // we only require storage type and shape match the attribute type and shape.
+  if (auto quantElemTy =
+          newType.getElementType().dyn_cast<quant::QuantizedType>()) {
+    // Only shape and storage type information is needed to reshape the
+    // attribute.
+    auto quantShapedType =
+        RankedTensorType::get(newType.getShape(), quantElemTy.getStorageType());
+    return attr.reshape(quantShapedType);
+  }
   return attr.reshape(newType);
 }
 
@@ -3173,10 +3183,14 @@ LogicalResult OutfeedOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult SendOp::inferReturnTypes(
-    MLIRContext* context, std::optional<Location> location, ValueRange,
-    DictionaryAttr, OpaqueProperties, RegionRange,
+    MLIRContext* context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  return hlo::inferSendOp(getMhloDialect(context), location,
+  SendOp::Adaptor adaptor(operands, attributes, properties, regions);
+  bool isDeviceToDevice = adaptor.getChannelHandle().getType() == 1;
+  bool isDeviceToHost = adaptor.getChannelHandle().getType() == 2;
+  return hlo::inferSendOp(getMhloDialect(context), location, isDeviceToDevice,
+                          isDeviceToHost, adaptor.getIsHostTransfer(),
                           inferredReturnTypes);
 }
 
@@ -3185,8 +3199,11 @@ LogicalResult SendOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult RecvOp::verify() {
+  bool isDeviceToDevice = getChannelHandle().getType() == 1;
+  bool isHostToDevice = getChannelHandle().getType() == 3;
   return hlo::verifyRecvOp(getMhloDialect(getContext()), getLoc(),
-                           getResults());
+                           isDeviceToDevice, isHostToDevice,
+                           getIsHostTransfer(), getResults());
 }
 
 //===----------------------------------------------------------------------===//
@@ -5425,46 +5442,6 @@ LogicalResult TopKOp::inferReturnTypeComponents(
                           inferredReturnShapes);
 }
 
-bool isMhloCompareOfBodyArgumentsGtOrLt(Block& body) {
-  auto terminator = dyn_cast<ReturnOp>(body.getTerminator());
-  if (!terminator || terminator->getNumOperands() != 1) return false;
-
-  auto compare = terminator.getOperand(0).getDefiningOp<CompareOp>();
-  if (!compare) return false;
-  auto direction = compare.getComparisonDirection();
-  if (direction != ComparisonDirection::GT &&
-      direction != ComparisonDirection::LT)
-    return false;
-
-  if (body.getNumArguments() != 2) return false;
-  auto arg0 = matchers::m_Val(body.getArgument(0));
-  auto arg1 = matchers::m_Val(body.getArgument(1));
-  return matchPattern(compare.getResult(), m_Op<CompareOp>(arg0, arg1)) ||
-         matchPattern(compare.getResult(), m_Op<CompareOp>(arg1, arg0));
-}
-
-LogicalResult TopKOp::verify() {
-  Builder builder(getContext());
-  auto operandType = getOperand().getType();
-  Block& body = getBody().front();
-
-  auto expectedBodyArgType =
-      RankedTensorType::get({}, operandType.getElementType());
-  auto expectedBodyType =
-      builder.getFunctionType({expectedBodyArgType, expectedBodyArgType},
-                              {RankedTensorType::get({}, builder.getI1Type())});
-  auto actualBodyType = builder.getFunctionType(
-      body.getArgumentTypes(), body.getTerminator()->getOperandTypes());
-  if (expectedBodyType != actualBodyType)
-    return emitOpError() << "unsupported body: expected: " << expectedBodyType
-                         << ", got " << actualBodyType;
-  if (!isMhloCompareOfBodyArgumentsGtOrLt(body))
-    return emitOpError() << "unsupported body: expected mhlo.compare of "
-                         << "body arguments with GT or LT comparison_direction";
-
-  return success();
-}
-
 //===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
@@ -7059,7 +7036,7 @@ static LogicalResult verifyArgResultAliasAttr(StringAttr attrName,
 LogicalResult verifyCrossProgramPrefetchAttr(CrossProgramPrefetchAttr cpp,
                                              ModuleOp module) {
   func::FuncOp main = module.lookupSymbol<func::FuncOp>("main");
-  if (cpp.getParameter() >= main.getNumArguments())
+  if (cpp.getParameter() >= main.getNumArguments() || cpp.getParameter() < 0)
     return module->emitOpError()
            << "cross_program_prefetch: parameter " << cpp.getParameter()
            << " out of range. main has only " << main.getNumArguments()
@@ -7143,7 +7120,21 @@ Operation* MhloDialect::materializeConstant(OpBuilder& builder, Attribute value,
   // HLO dialect constants only support ElementsAttr unlike standard dialect
   // constant which supports all attributes.
   if (!elementsAttr) return nullptr;
-  // HLO dialect constants require the type of value and result to match.
+  auto resultShapedType = type.dyn_cast<ShapedType>();
+  auto attrShapedType = elementsAttr.getType().dyn_cast<ShapedType>();
+  if (resultShapedType && attrShapedType) {
+    if (auto quantElemTy = resultShapedType.getElementType()
+                               .dyn_cast<quant::QuantizedType>()) {
+      // Attribute type and shape should match storage type and shape for
+      // quantized tensors.
+      if ((attrShapedType.getElementType() != quantElemTy.getStorageType()) ||
+          (attrShapedType.getShape() != resultShapedType.getShape()))
+        return nullptr;
+    }
+    return builder.create<mhlo::ConstantOp>(loc, type, elementsAttr);
+  }
+  // HLO dialect constants require the type of value and result to match for
+  // non-quantized tensors.
   if (type != elementsAttr.getType()) return nullptr;
 
   return builder.create<mhlo::ConstantOp>(loc, type, elementsAttr);

@@ -46,6 +46,7 @@ limitations under the License.
 #endif
 
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/delegates/gpu/android_hardware_buffer.h"
 #include "tensorflow/lite/delegates/gpu/api.h"
 #include "tensorflow/lite/delegates/gpu/cl/api.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
@@ -105,17 +106,9 @@ using tflite::delegates::utils::WriteSyncAttrs;
   } while (false)
 
 // This idiom allows selecting alternate code paths depending on whether or not
-// AHWB is available.  However, it's still necessary to directly guard calls to
-// AHardwareBuffer_* functions with "if (__builtin_available(android 26, *))" to
-// avoid compiler errors.
-#define TFLITE_AHWB_AVAILABLE()               \
-  [] {                                        \
-    if (__builtin_available(android 26, *)) { \
-      return true;                            \
-    } else {                                  \
-      return false;                           \
-    }                                         \
-  }()
+// AHWB is available.
+#define TFLITE_AHWB_AVAILABLE() \
+  ::tflite::gpu::OptionalAndroidHardwareBuffer::Instance().Supported()
 
 namespace tflite {
 namespace gpu {
@@ -772,24 +765,24 @@ class DelegateAsyncKernel : public BackendAsyncKernelInterface {
   using UniquePtrAHardwareBuffer =
       std::unique_ptr<AHardwareBuffer, void (*)(AHardwareBuffer*)>;
   static UniquePtrAHardwareBuffer Acquire(AHardwareBuffer* ahwb) {
-    if (__builtin_available(android 26, *)) {
-      AHardwareBuffer_acquire(ahwb);
+    if (OptionalAndroidHardwareBuffer::Instance().Supported()) {
+      OptionalAndroidHardwareBuffer::Instance().Acquire(ahwb);
+      return UniquePtrAHardwareBuffer(ahwb, [](AHardwareBuffer* b) {
+        OptionalAndroidHardwareBuffer::Instance().Release(b);
+      });
     } else {
       TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
                       "attempting AHardwareBuffer_acquire on a device without "
                       "AHardwareBuffer support");
+      return {nullptr, [](AHardwareBuffer*) {}};
     }
-    return UniquePtrAHardwareBuffer(ahwb, [](AHardwareBuffer* b) {
-      if (__builtin_available(android 26, *)) {
-        AHardwareBuffer_release(b);
-      }
-    });
   }
   static AHardwareBuffer_Desc Describe(
       const UniquePtrAHardwareBuffer& uptr_ahwb) {
     AHardwareBuffer_Desc desc_ahwb = {};
-    if (__builtin_available(android 26, *)) {
-      AHardwareBuffer_describe(uptr_ahwb.get(), &desc_ahwb);
+    if (OptionalAndroidHardwareBuffer::Instance().Supported()) {
+      OptionalAndroidHardwareBuffer::Instance().Describe(uptr_ahwb.get(),
+                                                         &desc_ahwb);
     } else {
       TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
                       "attempting AHardwareBuffer_describe on a device without "

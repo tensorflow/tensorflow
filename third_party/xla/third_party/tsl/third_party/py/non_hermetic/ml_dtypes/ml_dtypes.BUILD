@@ -17,7 +17,7 @@ cc_library(
         ".",
         "ml_dtypes",
     ],
-    deps = ["@org_tensorflow//third_party/eigen3"],
+    deps = ["@eigen_archive//:eigen3"],
 )
 
 cc_library(
@@ -48,7 +48,7 @@ pybind_extension(
     deps = [
         ":float8",
         ":int4",
-        "@org_tensorflow//third_party/eigen3",
+        "@eigen_archive//:eigen3",
         "@org_tensorflow//third_party/py/numpy:headers",
     ],
 )

@@ -94,7 +94,7 @@ MatmulParameters::MatmulParameters(
   proto_.set_c_dtype(c_dtype);
 
   proto_.set_trans_a(trans_a);
-  proto_.set_trans_b(trans_a);
+  proto_.set_trans_b(trans_b);
   proto_.set_m(m);
   proto_.set_n(n);
   proto_.set_k(k);

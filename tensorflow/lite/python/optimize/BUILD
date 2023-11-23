@@ -41,7 +41,14 @@ pybind_extension(
         "calibration_wrapper_pybind11.cc",
     ],
     hdrs = ["calibration_wrapper.h"],
+    additional_stubgen_deps = [
+        "//third_party/py/numpy:numpy",
+    ],
+    enable_stub_generation = True,
     link_in_framework = True,
+    pytype_srcs = [
+        "_pywrap_tensorflow_lite_calibration_wrapper.pyi",
+    ],
     deps = [
         ":calibration_wrapper_lib",
         "//tensorflow/lite:framework",
@@ -81,6 +88,9 @@ py_strict_test(
     tags = ["no_oss"],
     deps = [
         ":calibrator",
+        "@absl_py//absl/testing:parameterized",
+        #internal proto upb dep
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/lite/python:lite",
         "//tensorflow/lite/python:schema_py",
@@ -89,7 +99,5 @@ py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )

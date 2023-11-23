@@ -20,11 +20,10 @@ limitations under the License.
 
 extern "C" {
 
-extern void __xla_cpu_runtime_EigenFft(
+extern void __xla_cpu_runtime_DuccFft(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, void* out,
     void* operand, int32_t fft_type, int32_t double_precision, int32_t fft_rank,
-    int64_t input_batch, int64_t fft_length0, int64_t fft_length1,
-    int64_t fft_length2);
+    const int64_t* input_shape, const int64_t* fft_length);
 
 }  // extern "C"
 

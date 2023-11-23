@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_live_range.h"
+#include "xla/service/buffer_assignment.pb.h"
 #include "xla/service/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_alias_analysis.h"
@@ -354,17 +355,19 @@ std::ostream& operator<<(std::ostream& out, const BufferAllocation::Slice& s);
 // module to a set of BufferAllocations.
 class BufferAssignment {
  public:
+  // This is a think wrapper around BufferIsolationConfig. Please see the
+  // documentation for BufferIsolationConfig for details on how buffer isolation
+  // works. hlo_value_compare is the concrete implementation of the HloValue
+  // comparison that uses the isolation_order_salt value in the
+  // BufferIsolationConfig.
+  struct BufferIsolationOptions {
+    std::function<bool(const HloValue*, const HloValue*)> hlo_value_compare;
+    buffer_assignment::BufferIsolationConfig config;
+  };
+
   // Returns the vector containing all buffer allocations in this assignment.
   const std::vector<BufferAllocation>& Allocations() const {
     return allocations_;
-  }
-
-  // This is similar to copying Allocations(), but since it's moved out, it
-  // preserves the addresses. Since BufferAllocation::Slice keeps a
-  // BufferAllocation*, and some backends keep BufferAllocation::Slice in
-  // xla::Executables, migrating off the use of addresses can be hard.
-  std::vector<BufferAllocation> ReleaseAllocations() {
-    return std::move(allocations_);
   }
 
   // Returns the total size allocation holding all temporary buffers.
@@ -472,7 +475,7 @@ class BufferAssignment {
   std::string ToString() const;
   // Verbose string tailored to debugging OOMs, includes the Hlo op metadata for
   // every buffer associated with each allocation.
-  std::string ToVerboseString() const;
+  std::string ToVerboseString(size_t max_buffers_to_show) const;
   std::string BufferInfoString() const;
 
   // Convert BufferAssignment to or from a proto.
@@ -551,10 +554,13 @@ class BufferAssignment {
   BufferAllocation* GetMutableAllocation(BufferAllocation::Index index);
 
   int64_t HloBufferSize(const HloBuffer& buffer) {
+    auto iter = cached_buffer_sizes_.find(buffer.id());
+    if (iter != cached_buffer_sizes_.end()) return iter->second;
     int64_t result = 0;
     for (const HloValue* value : buffer.values()) {
       result = std::max(result, buffer_size_(*value));
     }
+    cached_buffer_sizes_.insert({buffer.id(), result});
     return result;
   }
 
@@ -592,6 +598,8 @@ class BufferAssignment {
   std::unique_ptr<HloLiveRange> hlo_live_range_;
 
   Stats stats_;
+
+  absl::flat_hash_map<HloBuffer::Id, int64_t> cached_buffer_sizes_;
 
   BufferAssignment(const BufferAssignment&) = delete;
   BufferAssignment& operator=(const BufferAssignment&) = delete;
@@ -641,7 +649,9 @@ class BufferAssigner {
           preset_assignments = {},
       const PrivateStacks& private_stacks = {},
       GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
-          heap_buffer_interval_compare = nullptr);
+          heap_buffer_interval_compare = nullptr,
+      std::optional<BufferAssignment::BufferIsolationOptions>
+          isolation_options = std::nullopt);
 
  private:
   BufferAssigner(bool allocate_buffers_for_constants, Colorer colorer,
@@ -662,7 +672,9 @@ class BufferAssigner {
       HloDataflowAnalysis::CanShareBuffer can_share_buffer,
       const PrivateStacks& private_stacks,
       GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
-          heap_buffer_interval_compare);
+          heap_buffer_interval_compare,
+      std::optional<BufferAssignment::BufferIsolationOptions>
+          isolation_options);
 
   // Assigns buffers to the instructions in the given computations. "assignment"
   // is modified to reflect the new buffer assignments. If is_thread_local is
@@ -707,13 +719,25 @@ class BufferAssigner {
       bool run_whole_module_heap_simulation, BufferAssignment* assignment,
       const PrivateStacks& private_stacks,
       GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
-          heap_buffer_interval_compare);
+          heap_buffer_interval_compare,
+      std::optional<BufferAssignment::BufferIsolationOptions>
+          isolation_options);
+
+  // Isolates the buffers packed by heap simulator using the provided isolation
+  // options. Please see the documentation for BufferIsolationConfig for more
+  // details.
+  void IsolateHeapBuffers(
+      std::optional<BufferAssignment::BufferIsolationOptions> isolation_options,
+      const BufferAssignment* assignment, LogicalBuffer::Color color,
+      HeapSimulator::Result<HloValue>& result) const;
 
   // Uses the results of the heap simulator to create a single allocation, with
   // LogicalBuffers packed to specific offsets.
   void AssignBuffersFromHeapSimulator(
-      const HeapSimulator::Result<HloValue>& result,
-      BufferAssignment* assignment, LogicalBuffer::Color color);
+      HeapSimulator::Result<HloValue>& result, BufferAssignment* assignment,
+      LogicalBuffer::Color color,
+      std::optional<BufferAssignment::BufferIsolationOptions>
+          isolation_options);
 
   // Tries to assign the given instruction to the given buffer. Returns if the
   // assignment was successful.

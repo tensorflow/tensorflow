@@ -19,11 +19,13 @@ limitations under the License.
 
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -39,6 +41,7 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/stacktrace.h"
+#include "tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -497,5 +500,89 @@ std::pair<float, float> SplitF64ToF32(double x) {
   const float lo = static_cast<float>(x - static_cast<double>(hi));
   return std::make_pair(hi, lo);
 }
+
+void PackInt4(absl::Span<const char> input, absl::Span<char> output) {
+  CHECK_EQ(output.size(), CeilOfRatio(input.size(), size_t{2}));
+  for (size_t i = 0; i < input.size(); ++i) {
+    // Mask out the high-order 4 bits in case they have extraneous data.
+    char val = input[i] & 0xf;
+    if (i % 2 == 0) {
+      output[i / 2] = val << 4;
+    } else {
+      output[i / 2] |= val;
+    }
+  }
+}
+
+void UnpackInt4(absl::Span<const char> input, absl::Span<char> output) {
+  CHECK_EQ(input.size(), CeilOfRatio(output.size(), size_t{2}));
+  for (size_t i = 0; i < output.size(); ++i) {
+    if (i % 2 == 0) {
+      output[i] = (input[i / 2] >> 4) & 0xf;
+    } else {
+      output[i] = input[i / 2] & 0xf;
+    }
+  }
+}
+
+/*static*/ MaybeOwningThreadPool MaybeOwningThreadPool::GetOrCreate(
+    int parallelism, tsl::thread::ThreadPool* default_thread_pool,
+    int default_parallelism) {
+  CHECK_GE(parallelism, 0);
+  CHECK_GE(default_parallelism, 1);
+
+  auto create_thread_pool = [&](int num_threads) {
+    CHECK_GE(num_threads, 1);
+    return std::make_unique<tsl::thread::ThreadPool>(tsl::Env::Default(), "",
+                                                     num_threads);
+  };
+
+  switch (parallelism) {
+    case 0:
+      if (default_thread_pool == nullptr && default_parallelism > 1) {
+        return MaybeOwningThreadPool(create_thread_pool(default_parallelism));
+      }
+      return MaybeOwningThreadPool(default_thread_pool);
+    case 1:
+      return MaybeOwningThreadPool(nullptr);
+    default:
+      return MaybeOwningThreadPool(create_thread_pool(parallelism));
+  }
+}
+
+MaybeOwningThreadPool::MaybeOwningThreadPool() : thread_pool_(nullptr) {}
+
+MaybeOwningThreadPool::MaybeOwningThreadPool(
+    tsl::thread::ThreadPool* thread_pool)
+    : thread_pool_(thread_pool) {}
+
+MaybeOwningThreadPool::MaybeOwningThreadPool(
+    std::unique_ptr<tsl::thread::ThreadPool> thread_pool)
+    : thread_pool_(std::move(thread_pool)) {}
+
+tsl::thread::ThreadPool* MaybeOwningThreadPool::get() {
+  if (std::holds_alternative<tsl::thread::ThreadPool*>(thread_pool_)) {
+    return std::get<tsl::thread::ThreadPool*>(thread_pool_);
+  }
+  return std::get<std::unique_ptr<tsl::thread::ThreadPool>>(thread_pool_).get();
+}
+
+const tsl::thread::ThreadPool* MaybeOwningThreadPool::get() const {
+  return const_cast<MaybeOwningThreadPool*>(this)->get();
+}
+
+tsl::thread::ThreadPool* MaybeOwningThreadPool::operator->() {
+  tsl::thread::ThreadPool* thread_pool = get();
+  CHECK_NE(thread_pool, nullptr);
+  return thread_pool;
+}
+
+const tsl::thread::ThreadPool* MaybeOwningThreadPool::operator->() const {
+  return const_cast<MaybeOwningThreadPool*>(this)->operator->();
+}
+
+MaybeOwningThreadPool::operator bool() const { return get() != nullptr; }
+
+bool MaybeOwningThreadPool::operator!() const { return get() == nullptr; }
 
 }  // namespace xla

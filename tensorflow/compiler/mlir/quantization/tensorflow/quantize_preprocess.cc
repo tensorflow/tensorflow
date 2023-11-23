@@ -18,30 +18,46 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "mhlo/transforms/passes.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/rename_entrypoint_to_main.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/tf_stablehlo_pass.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_freeze_variables.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "xla/mlir_hlo/lhlo/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
 namespace quantization {
+
+// Adds passes that unfuse MHLO ops that do not have their equivalents in
+// StableHLO.
+void AddUnfuseMhloOpsPasses(mlir::PassManager& pm) {
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createLegalizeEinsumToDotGeneralPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createLegalizeDotToDotGeneralPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::stablehlo::createUnfuseMhloBatchNormPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createLegalizeTorchIndexSelectToGatherPass());
+}
 
 // Converts TF SavedModel to StableHLO module. The input TF SavedModel can have
 // StableHLO module serialized into a XlaCallModuleOp. (ex: JAX/PyTorch models)
@@ -101,7 +117,7 @@ void AddTFToStablehloPasses(mlir::PassManager& pm) {
   // StableHLO -> MHLO legalization for MHLO optimization.
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   // Rewrites legacy StableHLO ops.
-  // TODO: b/299545254 - Include UnfuseMHLOOpsPass as in bug.
+  AddUnfuseMhloOpsPasses(pm);
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   // MHLO -> StableHLO legalization.
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
@@ -122,6 +138,9 @@ absl::Status PreprocessAndFreezeGraph(
   mlir::TF::CreateTFStandardPipeline(pm_before_freezing_variables,
                                      standard_pipeline_options);
 
+  // The AddQuantizationUnitLocPass should be added before any other passes.
+  pm_before_freezing_variables.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreateAddQuantizationUnitLocPass());
   pm_before_freezing_variables.addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
 

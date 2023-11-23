@@ -22,7 +22,6 @@
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/runtime_conv2d.h"
 #include "xla/service/cpu/runtime_conv3d.h"
-#include "xla/service/cpu/runtime_fft.h"
 
 namespace xla {
 namespace cpu {

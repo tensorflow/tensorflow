@@ -61,7 +61,9 @@ using mlir::lmhlo_gpu::CublasLtMatmulF8Op;
 using mlir::lmhlo_gpu::CublasLtMatmulOp;
 using mlir::lmhlo_gpu::CudnnConvReorderFilterAndBiasOp;
 using mlir::lmhlo_gpu::CudnnConvReorderFilterOp;
+using mlir::lmhlo_gpu::CudnnNormOp;
 using mlir::lmhlo_gpu::GEMMOp;
+using mlir::lmhlo_gpu::RadixSortOp;
 
 using xla::runtime::CustomCallDeclarations;
 
@@ -539,6 +541,55 @@ class CholeskyOpLowering : public OpRewritePattern<CholeskyOp> {
   CustomCallDeclarations& custom_calls_;
 };
 
+class NormOpLowering : public OpRewritePattern<CudnnNormOp> {
+ private:
+  static constexpr const char kCustomCallTarget[] = "xla.gpu.norm";
+
+ public:
+  NormOpLowering(MLIRContext* ctx, UidGenerator& uid,
+                 CustomCallDeclarations& custom_calls)
+      : OpRewritePattern<CudnnNormOp>(ctx),
+        uid_(uid),
+        custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(CudnnNormOp op,
+                                PatternRewriter& rewriter) const override {
+    // Get or create a Custom Call function declaration.
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    func::FuncOp callee = custom_calls_.GetOrCreate(b, kCustomCallTarget, op);
+
+    // Convert norm to a function call.
+    auto call = rewriter.create<func::CallOp>(op.getLoc(), callee.getName(),
+                                              TypeRange(), op.getOperands());
+
+    // Assign a unique id to this instance of a norm operation.
+    call->setAttr(b.getStringAttr("uid"), b.getI64IntegerAttr(uid_.uid()));
+
+    // Copy backend specific attributes.
+    call->setAttr(b.getStringAttr("norm_algorithm_config"),
+                  op.getAlgorithmConfigAttr());
+    call->setAttr(b.getStringAttr("epsilon"), op.getEpsilonAttr());
+
+    mlir::ArrayAttr array = op.getOperandLayouts();
+    SmallVector<int64_t> values;
+    for (auto array_elem : array) {
+      mlir::IntegerAttr attr = array_elem.dyn_cast<mlir::IntegerAttr>();
+      values.push_back(attr.getInt());
+    }
+    call->setAttr(b.getStringAttr("operand_layouts"),
+                  b.getI64TensorAttr(values));
+
+    // Erase the original norm operation.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+
+ private:
+  UidGenerator& uid_;
+  CustomCallDeclarations& custom_calls_;
+};
+
 using mlir::lmhlo_gpu::fusedMHAOp;
 
 template <typename FusedDotAttentionForward>
@@ -690,7 +741,8 @@ class FusedAttentionForwardLowering
     set_attr("fmha_scale", op.getFmhaScaleAttr());
     set_attr("dropout_rate", op.getDropoutRateAttr());
     set_attr("seed", op.getSeedAttr());
-
+    set_attr("is_flash_attention", op.getIsFlashAttentionAttr());
+    set_attr("is_causal_mask", op.getIsCausalMaskAttr());
     set_attr("fused_mha_dag", op.getFusedMhaDagAttr());
     set_attr("algorithm_config", op.getAlgorithmConfigAttr());
     set_attr("bmm1_dot_dimension_numbers", op.getBmm1DotDimensionNumbers());
@@ -733,8 +785,10 @@ template <typename FusedDotAttentionBackward>
 class FusedAttentionBackwardLowering
     : public OpRewritePattern<FusedDotAttentionBackward> {
  private:
-  static constexpr const char kCustomCallTarget[] =
+  static constexpr const char kFusedAttentionCustomCallTarget[] =
       "xla.gpu.fused.attention.backward.";
+  static constexpr const char kFlashAttentionCustomCallTarget[] =
+      "xla.gpu.flash.attention.backward.";
 
  public:
   explicit FusedAttentionBackwardLowering(MLIRContext* ctx, UidGenerator& uid,
@@ -746,11 +800,36 @@ class FusedAttentionBackwardLowering
   LogicalResult matchAndRewrite(FusedDotAttentionBackward op,
                                 PatternRewriter& rewriter) const override {
     // Get the custom call target.
-    std::string fused_attention = kCustomCallTarget;
+    bool is_flash_attention = op.getIsFlashAttention();
+    std::string fused_attention = is_flash_attention
+                                      ? kFlashAttentionCustomCallTarget
+                                      : kFusedAttentionCustomCallTarget;
     auto num_operands = op.getNumOperands();
     switch (op.getFusedMhaDag()) {
+      case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::BackwardSoftmax:
+        if (is_flash_attention) {
+          if (num_operands == 12) {
+            fused_attention += "scale.softmax";
+          } else {
+            return op.emitOpError(
+                "unexpected number of operands for flash attention backward - "
+                "BMM_Softmax_BMM");
+          }
+        }
+        break;
+
       case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
           BackwardScaleBiasSoftmax:
+        if (is_flash_attention) {
+          if (num_operands == 13) {
+            fused_attention += "scale.bias.softmax";
+          } else {
+            return op.emitOpError(
+                "unexpected number of operands for flash attention backward - "
+                "BMM_Bias_Softmax_BMM");
+          }
+          break;
+        }
         if (num_operands == 10) {
           fused_attention += "scale.softmax";
         } else if (num_operands == 11) {
@@ -826,7 +905,8 @@ class FusedAttentionBackwardLowering
     set_attr("fmha_scale", op.getFmhaScaleAttr());
     set_attr("dropout_rate", op.getDropoutRateAttr());
     set_attr("seed", op.getSeedAttr());
-
+    set_attr("is_flash_attention", op.getIsFlashAttentionAttr());
+    set_attr("is_causal_mask", op.getIsCausalMaskAttr());
     set_attr("fused_mha_dag", op.getFusedMhaDagAttr());
     set_attr("algorithm_config", op.getAlgorithmConfigAttr());
     set_attr("bmm1_grad_gemm1_dot_dimension_numbers",
@@ -837,6 +917,20 @@ class FusedAttentionBackwardLowering
              op.getBmm2GradGemm1DotDimensionNumbers());
     set_attr("bmm2_grad_gemm2_dot_dimension_numbers",
              op.getBmm2GradGemm2DotDimensionNumbers());
+
+    auto set_xi64 = [&](StringRef name, mlir::ArrayAttr array) {
+      int rank = array.size();
+      SmallVector<int64_t> values;
+      for (int i = 0; i < rank; i++) {
+        mlir::IntegerAttr attr = array[i].dyn_cast<mlir::IntegerAttr>();
+        values.push_back(attr.getInt());
+      }
+      set_attr(name, b.getI64TensorAttr(values));
+    };
+
+    set_xi64("intermediate_tensor_dimensions",
+             op.getIntermediateTensorDimensions());
+    set_xi64("intermediate_tensor_layout", op.getIntermediateTensorLayout());
 
     // Erase the original fused dot attention operation.
     rewriter.eraseOp(op);
@@ -853,6 +947,39 @@ class FusedAttentionBackwardOpLowering
     : public FusedAttentionBackwardLowering<fusedMHABackwardOp> {
  public:
   using FusedAttentionBackwardLowering::FusedAttentionBackwardLowering;
+};
+
+class RadixSortOpLowering : public OpRewritePattern<RadixSortOp> {
+ private:
+  static constexpr const char kSortKeysTarget[] = "xla.gpu.radix_sort_keys";
+  static constexpr const char kSortPairsTarget[] = "xla.gpu.radix_sort_pairs";
+
+ public:
+  explicit RadixSortOpLowering(MLIRContext* ctx,
+                               CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(RadixSortOp op,
+                                PatternRewriter& rewriter) const override {
+    // Get or create a custom call function declaration.
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    func::FuncOp callee = custom_calls_.GetOrCreate(
+        b, op.getOperands().size() == 3 ? kSortKeysTarget : kSortPairsTarget,
+        op);
+
+    // Convert radix sort to a function call.
+    auto call = rewriter.create<func::CallOp>(op.getLoc(), callee.getName(),
+                                              TypeRange(), op.getOperands());
+    call->setAttr(b.getStringAttr("descending"), op.getDescendingAttr());
+
+    // Erase the original operation.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+
+ private:
+  CustomCallDeclarations& custom_calls_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -885,6 +1012,11 @@ void ConvertLmhloGpuToGpuRuntimePass::runOnOperation() {
   patterns.insert<CudnnConvReorderFilterOpLowering>(ctx, custom_calls);
   patterns.insert<CudnnConvReorderFilterAndBiasOpLowering>(ctx, custom_calls);
   patterns.insert<CholeskyOpLowering>(ctx, custom_calls);
+  patterns.insert<RadixSortOpLowering>(ctx, custom_calls);
+
+  // Each unique Norm operation in the module will get assigned a uid.
+  UidGenerator norm_uid;
+  patterns.insert<NormOpLowering>(ctx, norm_uid, custom_calls);
 
   // Each unique fused_attention operation in the module will get assigned a
   // uid.

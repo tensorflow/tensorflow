@@ -78,7 +78,7 @@ pytype_strict_library(
         ":util",
         ":version",
         ":versions_proto_py",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "@absl_py//absl/logging",
         "@riegeli_py//python/riegeli",
     ],
@@ -100,6 +100,7 @@ py_strict_test(
         ":chunk_proto_py",
         ":split",
         ":versions_proto_py",
+        #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/tools/proto_splitter/testdata:test_message_proto_py",
         "@riegeli_py//python/riegeli",
@@ -136,6 +137,7 @@ py_strict_test(
         ":constants",
         ":split_graph_def",
         ":util",
+        #internal proto upb dep
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/tools/proto_splitter/python:test_util",
@@ -153,6 +155,7 @@ py_strict_test(
     srcs = ["util_test.py"],
     deps = [
         ":util",
+        #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/tools/proto_splitter/testdata:test_message_proto_py",
     ],

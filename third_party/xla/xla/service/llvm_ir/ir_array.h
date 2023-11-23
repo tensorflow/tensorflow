@@ -222,6 +222,15 @@ class IrArray {
   // Construct an IrArray with the given base pointer, pointee type, and shape.
   // base_ptr is a pointer type pointing to the first element(lowest address)
   // of the array.
+  //
+  // For int4 arrays, base_ptr should have half the number of bytes as array
+  // elements (rounded up), as two int4 values are packed into a byte.
+  // pointee_type should be an i4 array in this case, and reads and writes will
+  // return or take in i4 values. IrArray internally reads or writes i8 values,
+  // by treating base_ptr as an i8 array and masking out the high- or low-order
+  // 4 bits of the byte. IrArray does not directly read/write i4 values, since
+  // arrays of i4 values in LLVM are not packed (every element of an LLVM IR
+  // array must have unique address).
   IrArray(llvm::Value* base_ptr, llvm::Type* pointee_type, Shape shape);
 
   // Default implementations of copying and moving.
@@ -242,9 +251,15 @@ class IrArray {
   //
   // The optional name is useful for debugging when looking at
   // the emitted LLVM IR.
-  llvm::Value* EmitArrayElementAddress(const Index& index, llvm::IRBuilder<>* b,
-                                       absl::string_view name = "",
-                                       bool use_linear_index = true) const;
+  //
+  // For int4 values, 'is_high_order_bits' must be non-null and this function
+  // sets '*is_high_order_bits' to a boolean value indicating whether the 4-bit
+  // value resides in the high-order or low- order bits of the byte that the
+  // address points to.
+  llvm::Value* EmitArrayElementAddress(
+      const Index& index, llvm::IRBuilder<>* b, absl::string_view name = "",
+      bool use_linear_index = true,
+      llvm::Value** is_high_order_bits = nullptr) const;
 
   // Attach metadata this IrArray instance knows about to "instruction".
   void AnnotateLoadStoreInstructionWithMetadata(
@@ -266,6 +281,11 @@ class IrArray {
   // Emit IR to write the given value to the array element at the given index.
   // 'use_linear_index' can be used to specify whether the linear index (if
   // available) or the multi-dimensional index should be used.
+  //
+  // For int4 arrays, only 4 bits of a byte in the array are written. First the
+  // appropriate byte is read from the array, then 4 bits are modified and
+  // written back. To avoid race conditions, the caller must ensure that the two
+  // different 4-bit values within a byte are not written to in parallel.
   void EmitWriteArrayElement(const Index& index, llvm::Value* value,
                              llvm::IRBuilder<>* b,
                              bool use_linear_index = true) const;
@@ -323,6 +343,11 @@ class IrArray {
   void AddMetadata(int kind, llvm::MDNode* md) {
     InsertOrDie(&metadata_, kind, md);
   }
+
+  // Like EmitArrayElementAddress, but always uses a linear index.
+  llvm::Value* EmitLinearArrayElementAddress(
+      const Index& index, llvm::IRBuilder<>* b, absl::string_view name = "",
+      llvm::Value** is_high_order_bits = nullptr) const;
 
   // Address of the base of the array as an LLVM Value.
   llvm::Value* base_ptr_;

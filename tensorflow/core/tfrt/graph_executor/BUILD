@@ -1,7 +1,7 @@
 # Placeholder: load py_proto_library
-load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_shared_object", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -16,6 +16,7 @@ package_group(
         # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/serving/servables/tfrt/...",
         # copybara:uncomment "//smartass/brain/inference/...",
+        # copybara:uncomment "//tensorflow/compiler/mlir/tfrt/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/tfrt/graph_executor/python/...",
         # copybara:uncomment "//tensorflow_serving/servables/tensorflow/...",
@@ -122,6 +123,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:refcount",
         "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/profiler/lib:traceme",
         "@tf_runtime//:basic_kernels_alwayslink",
         "@tf_runtime//:bef",
         "@tf_runtime//:befexecutor",
@@ -203,6 +205,10 @@ tf_proto_library(
     name = "test_config_proto",
     testonly = True,
     srcs = ["test_config.proto"],
+    visibility = if_google(
+        [":friends"],
+        ["//visibility:public"],
+    ),
 )
 
 tf_cc_test(

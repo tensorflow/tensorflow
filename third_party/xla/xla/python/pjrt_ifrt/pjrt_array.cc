@@ -21,9 +21,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
-#include "absl/strings/match.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -45,31 +44,36 @@ char PjRtArray::ID = 0;
 
 StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
   switch (dtype.kind()) {
-    case DType::kInvalid:
-    case DType::kPred:
-    case DType::kS4:
-    case DType::kS8:
-    case DType::kS16:
-    case DType::kS32:
-    case DType::kS64:
-    case DType::kU4:
-    case DType::kU8:
-    case DType::kU16:
-    case DType::kU32:
-    case DType::kU64:
-    case DType::kF8E4M3FN:
-    case DType::kF8E4M3B11FNUZ:
-    case DType::kF8E4M3FNUZ:
-    case DType::kF8E5M2:
-    case DType::kF8E5M2FNUZ:
-    case DType::kF16:
-    case DType::kF32:
-    case DType::kBF16:
-    case DType::kF64:
-    case DType::kC64:
-    case DType::kC128:
-    case DType::kToken:
-      return static_cast<xla::PrimitiveType>(static_cast<int>(dtype.kind()));
+#define CASE(DT, PT)                                                      \
+  case DT:                                                                \
+    static_assert(PT ==                                                   \
+                  static_cast<xla::PrimitiveType>(static_cast<int>(DT))); \
+    return PT
+    CASE(DType::kInvalid, xla::PrimitiveType::PRIMITIVE_TYPE_INVALID);
+    CASE(DType::kPred, xla::PrimitiveType::PRED);
+    CASE(DType::kS4, xla::PrimitiveType::S4);
+    CASE(DType::kS8, xla::PrimitiveType::S8);
+    CASE(DType::kS16, xla::PrimitiveType::S16);
+    CASE(DType::kS32, xla::PrimitiveType::S32);
+    CASE(DType::kS64, xla::PrimitiveType::S64);
+    CASE(DType::kU4, xla::PrimitiveType::U4);
+    CASE(DType::kU8, xla::PrimitiveType::U8);
+    CASE(DType::kU16, xla::PrimitiveType::U16);
+    CASE(DType::kU32, xla::PrimitiveType::U32);
+    CASE(DType::kU64, xla::PrimitiveType::U64);
+    CASE(DType::kF8E4M3FN, xla::PrimitiveType::F8E4M3FN);
+    CASE(DType::kF8E4M3B11FNUZ, xla::PrimitiveType::F8E4M3B11FNUZ);
+    CASE(DType::kF8E4M3FNUZ, xla::PrimitiveType::F8E4M3FNUZ);
+    CASE(DType::kF8E5M2, xla::PrimitiveType::F8E5M2);
+    CASE(DType::kF8E5M2FNUZ, xla::PrimitiveType::F8E5M2FNUZ);
+    CASE(DType::kF16, xla::PrimitiveType::F16);
+    CASE(DType::kF32, xla::PrimitiveType::F32);
+    CASE(DType::kBF16, xla::PrimitiveType::BF16);
+    CASE(DType::kF64, xla::PrimitiveType::F64);
+    CASE(DType::kC64, xla::PrimitiveType::C64);
+    CASE(DType::kC128, xla::PrimitiveType::C128);
+    CASE(DType::kToken, xla::PrimitiveType::TOKEN);
+#undef CASE
     case DType::kString:
       return InvalidArgument("Not supported as XLA PrimitiveType: %d",
                              static_cast<int>(dtype.kind()));
@@ -342,25 +346,20 @@ StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
   // permits device changes and nothing else.
   PjRtBuffers buffers;
   buffers.reserve(pjrt_buffers_.size());
-  // TODO(yueshengys): Add a on-demand canonicalization when all users
-  // (e.g., ifrt proxy) support memories.
-  bool new_sharding_has_memory_kind =
-      new_sharding->memory_kind().memory_kind().has_value();
-  // TODO(yueshengys): Remove the check on PjRt C API after `CopyToMemorySpace`
-  // is supported.
   CHECK_GT(new_sharding->devices().size(), 0);
-  bool using_c_api = absl::StrContains(
-      new_sharding->devices().front()->client()->platform_version(),
-      "PJRT C API");
+  // Canonicalize memory kind in case it hasn't been done before.
+  MemoryKind canonicalized_sharding_memory_kind = CanonicalizeMemoryKind(
+      new_sharding->memory_kind(), new_sharding->devices().front());
+  bool new_sharding_has_memory_kind =
+      canonicalized_sharding_memory_kind.memory_kind().has_value();
   for (int i = 0; i < pjrt_buffers_.size(); ++i) {
     bool devices_equal =
         pjrt_buffers_[i]->device() == new_sharding->devices()[i];
-    bool memories_supported =
-        !using_c_api && pjrt_buffers_[i]->memory_space() != nullptr;
+    bool memories_supported = pjrt_buffers_[i]->memory_space() != nullptr;
     bool memory_kind_equal =
         new_sharding_has_memory_kind && memories_supported &&
         pjrt_buffers_[i]->memory_space()->memory_space_kind() ==
-            new_sharding->memory_kind().memory_kind();
+            canonicalized_sharding_memory_kind.memory_kind();
 
     // No need for data transfer.
     if (devices_equal && (!new_sharding_has_memory_kind ||
@@ -388,35 +387,55 @@ StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
             "first fetched to the host and then sent to the destination "
             "device.");
       }
-      // Use `PjRtBuffer::CopyToMemorySpace` instead of
+      if (new_sharding_has_memory_kind && memories_supported &&
+          semantics == ArrayCopySemantics::kDonateInput && !memory_kind_equal) {
+        return Unimplemented(
+            "Donation across different memory kinds is not implemented.");
+      }
+      // Try using `PjRtBuffer::CopyToMemorySpace` instead of
       // `PjRtBuffer::CopyToDevice` when memories are supported. Because the
       // semantics of the latter one is to copy to the default memory space of
       // the device.
+      std::unique_ptr<PjRtBuffer> copied_buffer;
       if (new_sharding_has_memory_kind && memories_supported) {
         TF_ASSIGN_OR_RETURN(
             auto memory_space,
             GetMemorySpaceFromMemoryKind(new_sharding->devices()[i],
-                                         new_sharding->memory_kind()));
-        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> copied_buffer,
-                            pjrt_buffers_[i]->CopyToMemorySpace(memory_space));
-        if (semantics == ArrayCopySemantics::kDonateInput) {
-          if (!memory_kind_equal) {
-            return Unimplemented(
-                "Donation across different memory kinds is not implemented.");
+                                         canonicalized_sharding_memory_kind));
+        StatusOr<std::unique_ptr<PjRtBuffer>> copied_buffer_using_memory_space =
+            pjrt_buffers_[i]->CopyToMemorySpace(memory_space);
+        if (copied_buffer_using_memory_space.ok()) {
+          copied_buffer = std::move(*copied_buffer_using_memory_space);
+        } else if (!absl::IsUnimplemented(
+                       copied_buffer_using_memory_space.status())) {
+          return copied_buffer_using_memory_space.status();
+        } else {
+          // Returns unimplemented if the sharding's memory space isn't the
+          // device's default memory space. Otherwise continue on to the
+          // CopyToDevice fallback.
+          // TODO(b/307743645): clean up this branch when memory space is better
+          // supported.
+          TF_ASSIGN_OR_RETURN(
+              PjRtMemorySpace * default_memory_space,
+              new_sharding->devices()[i]->default_memory_space());
+          if (canonicalized_sharding_memory_kind.memory_kind() !=
+              default_memory_space->memory_space_kind()) {
+            return copied_buffer_using_memory_space.status();
           }
-          pjrt_buffers_[i] = nullptr;
         }
-        buffers.push_back(std::shared_ptr<PjRtBuffer>(copied_buffer.release()));
-      } else {
-        // Use `PjRtBuffer::CopyToDevice` when memories are not supported.
-        TF_ASSIGN_OR_RETURN(
-            std::unique_ptr<xla::PjRtBuffer> copied_buffer,
-            pjrt_buffers_[i]->CopyToDevice(new_sharding->devices()[i]));
-        if (semantics == ArrayCopySemantics::kDonateInput) {
-          pjrt_buffers_[i] = nullptr;
-        }
-        buffers.push_back(std::shared_ptr<PjRtBuffer>(copied_buffer.release()));
       }
+      // Fallback to `PjRtBuffer::CopyToDevice` if (1) memories are not
+      // supported or (2) `PjRtBuffer::CopyToMemorySpace` returns unimplemented
+      // and canonicalized_sharding_memory_kind is the same as the
+      // default_memory_space of `new_sharding->devices()[i]`.
+      if (copied_buffer == nullptr) {
+        TF_ASSIGN_OR_RETURN(copied_buffer, pjrt_buffers_[i]->CopyToDevice(
+                                               new_sharding->devices()[i]));
+      }
+      if (semantics == ArrayCopySemantics::kDonateInput) {
+        pjrt_buffers_[i] = nullptr;
+      }
+      buffers.push_back(std::shared_ptr<PjRtBuffer>(copied_buffer.release()));
     }
   }
   return PjRtArray::Create(client_, dtype_, shape_, std::move(new_sharding),

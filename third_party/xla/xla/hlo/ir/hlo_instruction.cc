@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
+#include "xla/hlo/ir/hlo_frontend_attributes.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
@@ -395,11 +396,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       TF_RET_CHECK(proto.operand_ids_size() == 1)
           << "TopK instruction should have exactly 1 operand but has "
           << proto.operand_ids_size();
-      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
-          << "TopK instruction should one called computation but sees "
-          << proto.called_computation_ids_size();
       instruction =
-          CreateTopK(shape, all_operands()[0], proto.k(), computations(0));
+          CreateTopK(shape, all_operands()[0], proto.k(), proto.largest());
       break;
     }
     case HloOpcode::kTranspose:
@@ -1091,9 +1089,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTopK(
-    const Shape& shape, HloInstruction* input, int64_t k,
-    HloComputation* compare) {
-  return std::make_unique<HloTopKInstruction>(shape, input, k, compare);
+    const Shape& shape, HloInstruction* input, int64_t k, bool largest) {
+  return std::make_unique<HloTopKInstruction>(shape, input, k, largest);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1541,6 +1538,8 @@ HloInstruction::CreateAddDependency(HloInstruction* data_operand,
   // Body comes before condition computation in the vector.
   instruction->called_computations_.push_back(body);
   instruction->called_computations_.push_back(condition);
+  // Set back pointer from body computation to the while call instruction
+  body->SetWhileCallInstruction(instruction.get());
   return instruction;
 }
 
@@ -2073,9 +2072,48 @@ bool HloInstruction::HasSideEffect() const {
          execution_threads_set.contains(execution_thread);
 }
 
+void HloInstruction::AddSuffixToInstructionName(
+    const absl::string_view suffix) {
+  // If an instruction is cloned multiple times avoid names like
+  // foo.suffix.suffix.suffix. Instead of repeating the suffix add a numeric
+  // suffix. Specifically, the clone of foo.suffix is named foo.suffix2, the
+  // clone of foo.suffix2 is named foo.suffix3 and so on.
+  const std::string dot_suffix = absl::StrCat(".", suffix);
+  size_t index = name().rfind(dot_suffix);
+  if (index == std::string::npos) {
+    // Existing name does not include ".suffix".
+    this->name_ = absl::StrCat(name(), dot_suffix);
+  } else {
+    // Existing name includes ".suffix". Determine if substring after
+    // ".suffix" is numeric and should be replaced with an incremented number.
+    auto after_suffix = name().substr(index + dot_suffix.size());
+    if (after_suffix.empty()) {
+      // Existing name ends in ".suffix". New name should end in ".suffix2".
+      this->name_ = absl::StrCat(name(), "2");
+    } else {
+      // If names ends with .suffix[0-9]+ then replace with a suffix with the
+      // numeric value incremented.
+      int64_t numeric_suffix;
+      if (absl::SimpleAtoi(after_suffix, &numeric_suffix)) {
+        this->name_ =
+            StrCat(name().substr(0, index), dot_suffix, numeric_suffix + 1);
+      } else {
+        // Substring after ".suffix" is non-numeric.
+        this->name_ = absl::StrCat(name(), dot_suffix);
+      }
+    }
+  }
+}
+
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
+  return CloneWithNewOperands(shape, new_operands, "", context);
+}
+
+std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    const std::string& suffix, HloCloneContext* context) const {
   VLOG(3) << "CloneWithNewOperands:\n  " << ToString();
   VLOG(3) << "  new operands:";
   for (const HloInstruction* new_operand : new_operands) {
@@ -2281,6 +2319,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
                  : callee;
     });
   }
+
+  if (!suffix.empty()) {
+    clone->AddSuffixToInstructionName(suffix);
+  }
   return clone;
 }
 
@@ -2320,35 +2362,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
   if (suffix.empty()) {
     clone->name_.assign(name().begin(), name().end());
   } else {
-    // If an instruction is cloned multiple times avoid names like
-    // foo.suffix.suffix.suffix. Instead of repeating the suffix add a numeric
-    // suffix. Specifically, the clone of foo.suffix is named foo.suffix2, the
-    // clone of foo.suffix2 is named foo.suffix3 and so on.
-    const std::string dot_suffix = "." + suffix;
-    size_t index = name().rfind(dot_suffix);
-    if (index == std::string::npos) {
-      // Existing name does not include ".suffix".
-      clone->name_ = absl::StrCat(name(), dot_suffix);
-    } else {
-      // Existing name includes ".suffix". Determine if substring after
-      // ".suffix" is numeric and should be replaced with an incremented number.
-      auto after_suffix = name().substr(index + dot_suffix.size());
-      if (after_suffix.empty()) {
-        // Existing name ends in ".suffix". New name should end in ".suffix2".
-        clone->name_ = absl::StrCat(name(), "2");
-      } else {
-        // If names ends with .suffix[0-9]+ then replace with a suffix with the
-        // numeric value incremented.
-        int64_t numeric_suffix;
-        if (absl::SimpleAtoi(after_suffix, &numeric_suffix)) {
-          clone->name_ =
-              StrCat(name().substr(0, index), dot_suffix, numeric_suffix + 1);
-        } else {
-          // Substring after ".suffix" is non-numeric.
-          clone->name_ = absl::StrCat(name(), dot_suffix);
-        }
-      }
-    }
+    clone->AddSuffixToInstructionName(suffix);
   }
   return clone;
 }
@@ -3054,7 +3068,8 @@ void PrintNameInternal(Printer* printer, absl::string_view name,
   printer->Append(PrintName(name, options.print_ids()));
 }
 
-void PrintCycle(const HloInstruction* child, DFSStack* dfs_stack) {
+std::string PrintCycle(const HloInstruction* child, DFSStack* dfs_stack,
+                       bool ignore_control_predecessors) {
   // This set contains HloInstructions from the top of `DFSStack` that might
   // belong to the cycle, i.e. if  DFSStack :=[back,...,child,...,top], then
   // `subgraph` := {child,...,top}.
@@ -3067,30 +3082,41 @@ void PrintCycle(const HloInstruction* child, DFSStack* dfs_stack) {
   absl::flat_hash_set<const HloInstruction*> visited;
   absl::InlinedVector<const HloInstruction*, 16> dfs;
   dfs.push_back(child);
-  while (!dfs.empty()) {
+  std::string result;
+  while (!dfs.empty() && result.empty()) {
     bool found_next_instr = false;
-    for (const auto& user : dfs.back()->users()) {
-      if (user == child) {
-        dfs.push_back(child);
-        LOG(INFO) << "\n\nDirected cycle:\n  "
-                  << absl::StrJoin(
-                         dfs, "\n  ",
-                         [](std::string* out, const HloInstruction* instr) {
-                           absl::StrAppend(out, instr->name());
-                         });
-        return;
-      }
-      if (!subgraph.contains(user) || visited.contains(user)) {
-        continue;
-      }
-      visited.insert(user);
-      dfs.push_back(user);
-      found_next_instr = true;
+    auto process_users_or_successors =
+        [&](const std::vector<HloInstruction*>& users_or_successors) {
+          for (const auto& user : users_or_successors) {
+            if (user == child) {
+              dfs.push_back(child);
+              result = "\n\nDirected cycle:\n  " +
+                       absl::StrJoin(
+                           dfs, "\n ",
+                           [](std::string* out, const HloInstruction* instr) {
+                             absl::StrAppend(out, instr->name());
+                           });
+              return;
+            }
+            if (!subgraph.contains(user) || visited.contains(user)) {
+              continue;
+            }
+            visited.insert(user);
+            dfs.push_back(user);
+            found_next_instr = true;
+          }
+        };
+    const HloInstruction* back = dfs.back();
+    process_users_or_successors(back->users());
+    if (!ignore_control_predecessors) {
+      process_users_or_successors(back->control_successors());
     }
     if (!found_next_instr) {
       dfs.pop_back();
     }
   }
+
+  return result;
 }
 
 }  // namespace
@@ -3190,11 +3216,29 @@ bool HloInstruction::IsElementwiseImpl(
 }
 
 bool HloInstruction::IsCrossModuleAllReduce() const {
-  return opcode() == HloOpcode::kAllReduce && channel_id();
+  if (opcode() == HloOpcode::kAllReduce ||
+      opcode() == HloOpcode::kAllReduceStart) {
+    return channel_id() != std::nullopt;
+  } else if (opcode() == HloOpcode::kAllReduceDone) {
+    CHECK_EQ(operand_count(), 1);
+    const HloInstruction* operand = this->operand(0);
+    CHECK_EQ(operand->opcode(), HloOpcode::kAllReduceStart);
+    return operand->channel_id() != std::nullopt;
+  }
+  return false;
 }
 
 bool HloInstruction::IsCrossReplicaAllReduce() const {
-  return opcode() == HloOpcode::kAllReduce && !channel_id();
+  if (opcode() == HloOpcode::kAllReduce ||
+      opcode() == HloOpcode::kAllReduceStart) {
+    return channel_id() == std::nullopt;
+  } else if (opcode() == HloOpcode::kAllReduceDone) {
+    CHECK_EQ(operand_count(), 1);
+    const HloInstruction* operand = this->operand(0);
+    CHECK_EQ(operand->opcode(), HloOpcode::kAllReduceStart);
+    return operand->channel_id() == std::nullopt;
+  }
+  return false;
 }
 
 void HloInstruction::PrintWithCanonicalNameMap(
@@ -3551,6 +3595,23 @@ void HloInstruction::PrintExtraAttributes(
   if (!statistics_viz_.statistics().empty()) {
     printer.Next([this](Printer* printer) {
       AppendCat(printer, "statistics=", StatisticsVizToString(statistics_viz_));
+    });
+  }
+
+  if (operation_queue_id_) {
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "operation_queue_id=", *operation_queue_id_);
+    });
+  }
+
+  if (wait_on_operation_queues_.size() > 0) {
+    printer.Next([this, &options](Printer* printer) {
+      printer->Append("wait_on_operation_queues={");
+      AppendJoin(printer, wait_on_operation_queues_, ", ",
+                 [&](Printer* printer, int64_t queue_id) {
+                   printer->Append(queue_id);
+                 });
+      printer->Append("}");
     });
   }
 }
@@ -4027,20 +4088,20 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
     const size_t old_dfs_stack_size = dfs_stack.size();
     for (HloInstruction* child : current_node->operands()) {
       if (!ABSL_PREDICT_TRUE(PushDFSChild(visitor, &dfs_stack, child))) {
-        PrintCycle(child, &dfs_stack);
         return FailedPrecondition(
-            "A cycle is detected while visiting instruction %s",
-            current_node->ToString());
+            "A cycle is detected while visiting instruction %s %s",
+            current_node->ToString(),
+            PrintCycle(child, &dfs_stack, ignore_control_predecessors));
       }
     }
 
     if (!ignore_control_predecessors) {
       for (HloInstruction* child : current_node->control_predecessors()) {
         if (!ABSL_PREDICT_TRUE(PushDFSChild(visitor, &dfs_stack, child))) {
-          PrintCycle(child, &dfs_stack);
           return FailedPrecondition(
-              "A cycle is detected while visiting instruction %s",
-              current_node->ToString());
+              "A cycle is detected while visiting instruction %s %s",
+              current_node->ToString(),
+              PrintCycle(child, &dfs_stack, ignore_control_predecessors));
         }
       }
     }
@@ -4055,10 +4116,11 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
             called_computation->root_instruction();
         if (!ABSL_PREDICT_TRUE(
                 PushDFSChild(visitor, &dfs_stack, root_instruction))) {
-          PrintCycle(root_instruction, &dfs_stack);
           return FailedPrecondition(
-              "A cycle is detected while visiting instruction %s",
-              current_node->ToString());
+              "A cycle is detected while visiting instruction %s %s",
+              current_node->ToString(),
+              PrintCycle(root_instruction, &dfs_stack,
+                         ignore_control_predecessors));
         }
       }
     }
@@ -4310,21 +4372,6 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
     return HloInstruction::FusionKind::kCustom;
   }
   return InvalidArgument("Unknown fusion kind: %s", kind_name);
-}
-
-std::string FrontendAttributesToString(
-    const FrontendAttributes& frontend_attributes) {
-  std::vector<std::pair<std::string, std::string>> sorted_attributes(
-      frontend_attributes.map().begin(), frontend_attributes.map().end());
-  absl::c_sort(sorted_attributes);
-  // Frontend attribute is a comma-separated list of attribute="value" pairs,
-  // e.g., frontend_attributes={name="value_a",type="int32_t"}.
-  const auto formatter = [](std::string* out,
-                            const std::pair<std::string, std::string>& item) {
-    absl::StrAppend(out, item.first, "=\"", item.second, "\"");
-  };
-  return absl::StrFormat("{%s}",
-                         absl::StrJoin(sorted_attributes, ",", formatter));
 }
 
 std::string StatisticsVizToString(const StatisticsViz& statistics_viz) {

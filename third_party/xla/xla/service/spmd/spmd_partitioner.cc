@@ -48,7 +48,6 @@ limitations under the License.
 #include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_pass_pipeline.h"
-#include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/service/spmd/custom_call_handler.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
@@ -1895,12 +1894,11 @@ PatternMatchUnmergeSharding(const Shape& shape, const Shape& base_shape,
             0) {
       auto get_reshaped_sharding =
           [&](int64_t target_dim) -> std::optional<HloSharding> {
-        if (source.tile_assignment().dim(target_dim) != 1) {
-          return std::nullopt;
-        }
-        if (source.tile_assignment().dim(i) !=
-            target.tile_assignment().dim(i) *
-                target.tile_assignment().dim(target_dim)) {
+        if (source.tile_assignment().dim(target_dim) ==
+                target.tile_assignment().dim(target_dim) ||
+            source.tile_assignment().dim(i) !=
+                target.tile_assignment().dim(i) *
+                    target.tile_assignment().dim(target_dim)) {
           VLOG(10) << "Skipped for target dim different from dimension_size "
                    << target_dim
                    << " src size: " << source.tile_assignment().dim(i)
@@ -1913,7 +1911,7 @@ PatternMatchUnmergeSharding(const Shape& shape, const Shape& base_shape,
       };
       for (int j = i - 1; j >= 0; --j) {
         if (auto reshaped_sharding = get_reshaped_sharding(j)) {
-          VLOG(10) << "Triggered Unmerge to Right";
+          VLOG(10) << "Triggered Unmerge to Right i = " << i << ",j = " << j;
           std::vector<int64_t> dimensions(
               reshaped_sharding->tile_assignment().dimensions().begin(),
               reshaped_sharding->tile_assignment().dimensions().end());
@@ -1935,7 +1933,7 @@ PatternMatchUnmergeSharding(const Shape& shape, const Shape& base_shape,
       }
       for (int j = i + 1; j < target.TiledDataRank(); ++j) {
         if (auto reshaped_sharding = get_reshaped_sharding(j)) {
-          VLOG(10) << "Triggered Unmerge to Left";
+          VLOG(10) << "Triggered Unmerge to Left i = " << i << ",j = " << j;
           std::vector<int64_t> dimensions(
               reshaped_sharding->tile_assignment().dimensions().begin(),
               reshaped_sharding->tile_assignment().dimensions().end());
@@ -2093,6 +2091,7 @@ std::optional<PartitionedHlo> PartitionedHlo::TryComplexReshardHandling(
     VLOG(10) << "Reshaped shape: " << reshaped.hlo()->shape().ToString();
     VLOG(10) << "Reshaped base_shape: " << reshaped.base_shape().ToString();
     VLOG(10) << "Before sharding: " << before_sharding.ToString();
+    VLOG(10) << "Reshaped: " << reshaped.hlo()->ToString();
     auto reshard = reshaped.ReshardNoCache(new_reshaped_sharding,
                                            /*pad_value=*/std::nullopt,
                                            /*allow_full_replication=*/false);
@@ -4730,10 +4729,16 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
           for (int64_t i = 0; i < num_replicas; ++i) {
             groups[i].add_replica_ids(i);
           }
-          return b->AddInstruction(HloInstruction::CreateAllReduce(
-              operand->shape(), {operand}, reduction, groups,
-              /*constrain_layout=*/false, channel_id,
-              /*use_global_device_ids=*/false));
+          HloComputation* reduction_clone =
+              reduction->parent()->AddComputationAndUnifyNamesAndIds(
+                  reduction->Clone(), false);
+          HloInstruction* all_reduce =
+              b->AddInstruction(HloInstruction::CreateAllReduce(
+                  operand->shape(), {operand}, reduction_clone, groups,
+                  /*constrain_layout=*/false, channel_id,
+                  /*use_global_device_ids=*/false));
+          reduction_clone->SetCollectiveCallInstruction(all_reduce);
+          return all_reduce;
         }
 
         std::vector<ReplicaGroup> device_groups;
@@ -4746,10 +4751,16 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
             }
           }
         }
-        return b->AddInstruction(HloInstruction::CreateAllReduce(
-            operand->shape(), {operand}, reduction, device_groups,
-            /*constrain_layout=*/false, channel_id,
-            /*use_global_device_ids=*/true));
+        HloComputation* reduction_clone =
+            reduction->parent()->AddComputationAndUnifyNamesAndIds(
+                reduction->Clone(), false);
+        HloInstruction* all_reduce =
+            b->AddInstruction(HloInstruction::CreateAllReduce(
+                operand->shape(), {operand}, reduction_clone, device_groups,
+                /*constrain_layout=*/false, channel_id,
+                /*use_global_device_ids=*/true));
+        reduction_clone->SetCollectiveCallInstruction(all_reduce);
+        return all_reduce;
       },
       [num_partitions](SpmdBuilder* b, HloInstruction* operand,
                        std::vector<std::pair<int64_t, int64_t>>& src_dst_pairs,
@@ -5038,7 +5049,7 @@ StatusOr<bool> SpmdPartitioner::Run(
   } else {
     // Fix up some bad tiling in entry computation layout.
     auto update_shape = [this](Shape* subshape, const xla::ShapeIndex& index) {
-      if (subshape->IsArray()) {
+      if (subshape->IsArray() && subshape->has_layout()) {
         UpdateLayout(subshape);
       }
     };

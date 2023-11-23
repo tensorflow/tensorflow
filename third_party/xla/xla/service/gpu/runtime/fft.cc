@@ -21,8 +21,8 @@ limitations under the License.
 #include "xla/runtime/custom_call.h"
 #include "xla/runtime/executable.h"
 #include "xla/runtime/state.h"
-#include "xla/service/gpu/fft_thunk.h"
 #include "xla/service/gpu/runtime/support.h"
+#include "xla/service/gpu/runtime3/fft_thunk.h"
 #include "xla/stream_executor/fft.h"
 
 namespace xla {

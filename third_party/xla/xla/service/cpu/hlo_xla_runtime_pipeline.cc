@@ -91,16 +91,12 @@ void AddSparsificationPasses(mlir::OpPassManager& pm, bool new_deallocator,
   // Setting 1 thread means cuSPARSE libgen.
   // Otherwise direct CUDA codegen.
   const bool gpu_codegen = xla_cpu_sparse_cuda_threads > 0;
+  const bool gpu_libgen = xla_cpu_sparse_cuda_threads == 1;
   mlir::SparsificationOptions sparsification_options;
   sparsification_options.enableRuntimeLibrary = false;
-  sparsification_options.enableIndexReduction = true;
-  if (gpu_codegen) {
-    if (xla_cpu_sparse_cuda_threads == 1) {
-      sparsification_options.enableGPULibgen = true;
-    } else {
-      sparsification_options.parallelizationStrategy =
-          mlir::SparseParallelizationStrategy::kDenseOuterLoop;
-    }
+  if (gpu_codegen && !gpu_libgen) {
+    sparsification_options.parallelizationStrategy =
+        mlir::SparseParallelizationStrategy::kDenseOuterLoop;
   }
   // Sparsification set up.
   pm.addNestedPass<FuncOp>(mlir::createLinalgGeneralizationPass());
@@ -108,19 +104,21 @@ void AddSparsificationPasses(mlir::OpPassManager& pm, bool new_deallocator,
   pm.addPass(mlir::bufferization::createEmptyTensorEliminationPass());
   pm.addPass(mlir::createSparsificationAndBufferizationPass(
       GetBufferizationOptions(new_deallocator), sparsification_options,
-      mlir::SparseTensorConversionOptions(),
       /*createSparseDeallocs=*/false,
       /*enableRuntimeLibrary=*/false,
       /*enableBufferInitialization=*/false,
       /*vectorLength=*/0,
       /*enableVLAVectorization=*/false,
-      /*enableSIMDIndex32*/ false));
+      /*enableSIMDIndex32=*/false,
+      /*enableGPULibgen=*/gpu_libgen));
+  pm.addPass(mlir::createStorageSpecifierToLLVMPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createFinalizingBufferizePass());
   // Sparse GPU acceleration lowers to GPU dialect.
   if (gpu_codegen) {
-    pm.addPass(mlir::createSparseGPUCodegenPass(xla_cpu_sparse_cuda_threads));
+    pm.addPass(
+        mlir::createSparseGPUCodegenPass(xla_cpu_sparse_cuda_threads, false));
     pm.addNestedPass<mlir::gpu::GPUModuleOp>(mlir::createStripDebugInfoPass());
     pm.addNestedPass<mlir::gpu::GPUModuleOp>(mlir::createConvertSCFToCFPass());
     pm.addNestedPass<mlir::gpu::GPUModuleOp>(

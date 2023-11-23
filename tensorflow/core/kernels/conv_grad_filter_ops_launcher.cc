@@ -57,7 +57,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
-#include "xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -264,7 +264,8 @@ void LaunchConv2DBackpropFilterOpImpl(
     OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
                                              se::blas::Transpose::kTranspose, n,
                                              m, k, a_ptr, n, b_ptr, m, &c_ptr,
-                                             n, GetNumericOptions()));
+                                             n, GetNumericOptions(),
+                                             se::blas::CallContext::kNone));
     return;
   } else if (dims.spatial_dims[0].filter_size ==
                  dims.spatial_dims[0].input_size &&
@@ -289,7 +290,8 @@ void LaunchConv2DBackpropFilterOpImpl(
     OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
                                              se::blas::Transpose::kTranspose, n,
                                              m, k, b_ptr, n, a_ptr, m, &c_ptr,
-                                             n, GetNumericOptions()));
+                                             n, GetNumericOptions(),
+                                             se::blas::CallContext::kNone));
     return;
   }
 

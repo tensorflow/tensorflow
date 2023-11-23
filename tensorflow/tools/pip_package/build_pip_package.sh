@@ -83,10 +83,15 @@ function copy_xla_aot_runtime_sources() {
     if [ ! -z "$candidate_file" ]; then
       file=$candidate_file
     fi
-    dn=$(dirname $file)
+
+    # For XLA/TSL, we need to remove the prefix "../local_{xla|tsl}/".
+    dst_file=$file
+    dst_file=${dst_file#"../local_xla/"}
+    dst_file=${dst_file#"../local_tsl/"}
+
     if test -f "$file"; then
-      mkdir -p "${dst_dir}/${dn}"
-      cp $file "${dst_dir}/${file}"
+      mkdir -p "${dst_dir}/$(dirname $dst_file)"
+      cp $file "${dst_dir}/${dst_file}"
     else
       echo "Missing xla source file: ${file}" 1>&2
     fi
@@ -162,12 +167,12 @@ function prepare_src() {
     cp -L \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/org_tensorflow/LICENSE \
       "${TMPDIR}"
-      
+
     # Change the format of file path (TMPDIR-->TMPDIR_rsync) which is input to the rsync from
-    # Windows-compatible to Linux-compatible to resolve the error below 
-    # error: ssh: Could not resolve hostname c: No such host is known. 
-    
-    TMPDIR_rsync=`cygpath $TMPDIR`  
+    # Windows-compatible to Linux-compatible to resolve the error below
+    # error: ssh: Could not resolve hostname c: No such host is known.
+
+    TMPDIR_rsync=`cygpath $TMPDIR`
     rsync -a \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/org_tensorflow/tensorflow \
       "${TMPDIR_rsync}"
@@ -241,11 +246,17 @@ function prepare_src() {
       chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
     else
       chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      chmod +rw ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_function_lib.so
       chmod +rw ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so
+      chmod +rw ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/calibrator/pywrap_calibration.so
       patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so):\$ORIGIN/../../tensorflow/tsl/python/lib/core ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_function_lib.so):\$ORIGIN/../../../../../python ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_function_lib.so
       patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so):\$ORIGIN/../../../../../python ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so
+      patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/calibrator/pywrap_calibration.so):\$ORIGIN/../../../../../python ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/calibrator/pywrap_calibration.so
       patchelf --shrink-rpath ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      patchelf --shrink-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_function_lib.so
       patchelf --shrink-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so
+      patchelf --shrink-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/calibrator/pywrap_calibration.so
     fi
     mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
     if [ -n "${mkl_so_dir}" ]; then
@@ -254,15 +265,18 @@ function prepare_src() {
     fi
   fi
 
-  # Move headers from TSL/XLA into tensorflow so that InstallHeaders can move
-  # them back into tensorflow/include
-  cp -rL bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/local_tsl/tsl/ ${TMPDIR}/tensorflow
-  cp -rL bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/local_xla/xla/ ${TMPDIR}/tensorflow/compiler
   # Move vendored files into proper locations
   # This is required because TSL/XLA don't publish their own wheels
-  # TODO(jakeharmon): These two copy statements may no longer be necessary
-  cp -rL bazel-bin/external/local_tsl/tsl/ ${TMPDIR}/tensorflow
-  cp -rL bazel-bin/external/local_xla/xla/ ${TMPDIR}/tensorflow/compiler
+  # We copy from bazel-bin/tensorflow instead of bazel-bin/internal to copy
+  # headers from TSL/XLA into tensorflow so that InstallHeaders can move
+  # them back into tensorflow/include
+  if is_windows; then
+    cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/local_tsl/tsl/ ${TMPDIR}/tensorflow
+    cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/local_xla/xla/ ${TMPDIR}/tensorflow/compiler
+  else
+    cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/local_tsl/tsl ${TMPDIR}/tensorflow
+    cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/local_xla/xla ${TMPDIR}/tensorflow/compiler
+  fi
   # Fix the proto stubs
   if is_macos; then
     find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i '' 's/from tsl\./from tensorflow.tsl./' {} \;
@@ -275,7 +289,6 @@ function prepare_src() {
   fi
 
   mkdir -p ${TMPDIR}/third_party
-  cp -R $RUNFILES/third_party/eigen3 ${TMPDIR}/third_party
   cp -LR $RUNFILES/../local_config_cuda/cuda/_virtual_includes/cuda_headers_virtual/third_party/gpus ${TMPDIR}/third_party
   cp $RUNFILES/tensorflow/tools/pip_package/THIRD_PARTY_NOTICES.txt "${TMPDIR}/tensorflow"
 
@@ -334,7 +347,7 @@ function build_wheel() {
     FULL_DIR="$(real_path "$PY_DIR")/bin/python3"
     export PYTHONPATH="$PYTHONPATH:$PWD/bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/pypi_wheel/site-packages/"
   fi
-  
+
   pushd ${TMPDIR} > /dev/null
 
   rm -f MANIFEST

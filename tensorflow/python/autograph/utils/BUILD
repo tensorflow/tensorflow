@@ -101,6 +101,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":context_managers",
+        #internal proto upb dep
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:tensor_array_ops",
@@ -115,6 +116,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":misc",
+        #internal proto upb dep
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:test_lib",
@@ -130,6 +132,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":tensor_list",
+        #internal proto upb dep
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -148,6 +151,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":tensors",
+        #internal proto upb dep
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:list_ops",

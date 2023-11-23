@@ -16,11 +16,11 @@
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_training_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import optimizer
-from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -214,7 +214,7 @@ class AdamOptimizer(optimizer.Optimizer):
     m = self.get_slot(var, "m")
     v = self.get_slot(var, "v")
     beta1_power, beta2_power = self._get_beta_accumulators()
-    return training_ops.apply_adam(
+    return gen_training_ops.apply_adam(
         var,
         m,
         v,
@@ -231,7 +231,7 @@ class AdamOptimizer(optimizer.Optimizer):
     m = self.get_slot(var, "m")
     v = self.get_slot(var, "v")
     beta1_power, beta2_power = self._get_beta_accumulators()
-    return training_ops.resource_apply_adam(
+    return gen_training_ops.resource_apply_adam(
         var.handle,
         m.handle,
         v.handle,

@@ -46,7 +46,7 @@ limitations under the License.
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_ordering.h"
-#include "xla/service/memory_space_assignment/memory_space_assignment_repacking.h"
+#include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/service/tuple_points_to_analysis.h"
 #include "xla/statusor.h"
 
@@ -482,10 +482,13 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     //
     // REQUIRES:
     // - The SlicedBufferInterval was constructed using CreateMutableInterval.
-    // - start_times.size() == NumSlices()
-    // - start_times should be set such that it is permissible for any slice
-    //   size to map to any start time.
-    void UpdateSliceStartTimes(const std::vector<int64_t>& start_times);
+    // - *_start_times.size() == NumSlices()
+    // - *_start_times should be set such that it is permissible for any
+    //   slice size to map to any start time.
+    void UpdateExclusiveSliceStartTimes(
+        const std::vector<int64_t>& exclusive_start_times);
+    void UpdateInclusiveSliceStartTimes(
+        const std::vector<int64_t>& inclusive_start_times);
 
     // Updates the free time for all the slices.
     //
@@ -802,7 +805,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // end of the last co-located buffer.  There could be "holes" in the live
   // ranges of each co-located buffers, but in this heuristics we think they are
   // contiguous.
-  virtual BufferIntervalCompare GetTemporalBufferIntervalCompare() const;
+  BufferIntervalCompare GetTemporalBufferIntervalCompare() const;
 
   absl::flat_hash_map<const BufferType*, BufferInterval> buffer_intervals_;
   HeapResult result_;
@@ -901,7 +904,7 @@ class ChooseBestHeapAlgorithm : public HeapAlgorithm<BufferType> {
 
 extern template class GlobalDecreasingSizeBestFitHeap<HloValue>;
 extern template class GlobalDecreasingSizeBestFitHeap<
-    MemorySpaceAssignmentRepacker::AllocationBlock>;
+    memory_space_assignment::MemorySpaceAssignmentRepacker::AllocationBlock>;
 extern template class ChooseBestHeapAlgorithm<HloValue>;
 
 }  // namespace xla

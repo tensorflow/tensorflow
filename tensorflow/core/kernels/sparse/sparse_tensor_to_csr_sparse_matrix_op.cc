@@ -243,95 +243,102 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
 
       // Ensure that within the callback, the proper GPU settings are
       // configured.
-      ScopedActivateExecutorContext scoped_activation{stream->parent()};
-      Tensor batch_ptr_t(cpu_allocator(), DT_INT32,
-                         TensorShape({batch_size + 1}));
+      {
+        ScopedActivateExecutorContext scoped_activation{stream->parent()};
+        Tensor batch_ptr_t(cpu_allocator(), DT_INT32,
+                           TensorShape({batch_size + 1}));
 
-      auto batch_ptr = batch_ptr_t.vec<int32>();
-      auto indices = indices_t.matrix<int64_t>();
+        auto batch_ptr = batch_ptr_t.vec<int32>();
+        auto indices = indices_t.matrix<int64_t>();
 
-      batch_ptr(0) = 0;
-      for (int i = 0; i < batch_size; ++i) {
-        batch_ptr(i + 1) = batch_ptr(i) + nnz_per_batch(i);
-      }
-      int total_nnz = batch_ptr(batch_size);
-      OP_REQUIRES_ASYNC(
-          c, total_nnz == values_t.NumElements(),
-          errors::Internal("nnz returned by "
-                           "CalculateNNZPerBatchMatrixFromInd"
-                           "ices != len(values): ",
-                           total_nnz, " vs. ", values_t.NumElements()),
-          done);
-
-      Tensor coo_col_ind_t;
-      Tensor csr_row_ptr_t;
-      Tensor csr_values_t = values_t;
-
-      Tensor coo_row_ind_t;
-      OP_REQUIRES_OK_ASYNC(
-          c,
-          c->allocate_temp(DT_INT32, TensorShape({total_nnz}), &coo_row_ind_t),
-          done);
-      OP_REQUIRES_OK_ASYNC(
-          c,
-          c->allocate_temp(DT_INT32, TensorShape({total_nnz}), &coo_col_ind_t),
-          done);
-      OP_REQUIRES_OK_ASYNC(
-          c,
-          c->allocate_temp(DT_INT32, TensorShape({batch_size * (rows + 1)}),
-                           &csr_row_ptr_t),
-          done);
-
-      auto coo_row_ind = coo_row_ind_t.vec<int32>();
-      auto coo_col_ind = coo_col_ind_t.vec<int32>();
-      auto csr_row_ptr = csr_row_ptr_t.vec<int32>();
-
-      // Convert SparseTensor rep to coo row ind, coo col ind.
-      if (total_nnz > 0) {
-        functor::SparseTensorToCOOSparseMatrix<Device> st_to_coo;
-        st_to_coo(d, dense_shape, indices, coo_row_ind, coo_col_ind);
-      }
-
-      // Set all csr row pointers to zero, so that when iterating over
-      // batches converting coo to csr, we do not have to perform an
-      // unaligned SetZero for any nnz == 0 minibatches.  coo2csr has
-      // a bug if you have empty coo rows.
-      // TODO(ebrevdo): File bug w/ nvidia so coo2csr can handle
-      // zero-element input coo rows.
-      functor::SetZeroFunctor<Device, int32> set_zero;
-      set_zero(d, csr_row_ptr_t.flat<int32>());
-
-      functor::COOSparseMatrixToCSRSparseMatrix<Device> coo_to_csr;
-      for (int i = 0; i < batch_size; ++i) {
-        int nnz_i = batch_ptr(i + 1) - batch_ptr(i);
-        if (nnz_i == 0) {
-          // This is an empty minibatch; no call to coo2csr: it's
-          // handled by the SetZero above.
-        } else {
-          // Convert coo to csr.
-          auto coo_row_ind_i =
-              TTypes<int32>::UnalignedVec(&coo_row_ind(batch_ptr(i)), nnz_i);
-          auto csr_row_ptr_i = TTypes<int32>::UnalignedVec(
-              &csr_row_ptr((rows + 1) * i), rows + 1);
-          OP_REQUIRES_OK_ASYNC(
-              c, coo_to_csr(c, rows, cols, coo_row_ind_i, csr_row_ptr_i), done);
+        batch_ptr(0) = 0;
+        for (int i = 0; i < batch_size; ++i) {
+          batch_ptr(i + 1) = batch_ptr(i) + nnz_per_batch(i);
         }
-      }
+        int total_nnz = batch_ptr(batch_size);
+        OP_REQUIRES_ASYNC(
+            c, total_nnz == values_t.NumElements(),
+            errors::Internal("nnz returned by "
+                             "CalculateNNZPerBatchMatrixFromInd"
+                             "ices != len(values): ",
+                             total_nnz, " vs. ", values_t.NumElements()),
+            done);
 
-      CSRSparseMatrix matrix;
-      OP_REQUIRES_OK_ASYNC(
-          c,
-          CSRSparseMatrix::CreateCSRSparseMatrix(
-              values_t.dtype(), dense_shape_t, batch_ptr_t, csr_row_ptr_t,
-              coo_col_ind_t, csr_values_t, &matrix),
-          done);
-      Tensor* matrix_t;
-      AllocatorAttributes cpu_alloc;
-      cpu_alloc.set_on_host(true);
-      OP_REQUIRES_OK_ASYNC(
-          c, c->allocate_output(0, TensorShape({}), &matrix_t, cpu_alloc),
-          done);
-      matrix_t->scalar<Variant>()() = std::move(matrix);
+        Tensor coo_col_ind_t;
+        Tensor csr_row_ptr_t;
+        Tensor csr_values_t = values_t;
+
+        Tensor coo_row_ind_t;
+        OP_REQUIRES_OK_ASYNC(
+            c,
+            c->allocate_temp(DT_INT32, TensorShape({total_nnz}),
+                             &coo_row_ind_t),
+            done);
+        OP_REQUIRES_OK_ASYNC(
+            c,
+            c->allocate_temp(DT_INT32, TensorShape({total_nnz}),
+                             &coo_col_ind_t),
+            done);
+        OP_REQUIRES_OK_ASYNC(
+            c,
+            c->allocate_temp(DT_INT32, TensorShape({batch_size * (rows + 1)}),
+                             &csr_row_ptr_t),
+            done);
+
+        auto coo_row_ind = coo_row_ind_t.vec<int32>();
+        auto coo_col_ind = coo_col_ind_t.vec<int32>();
+        auto csr_row_ptr = csr_row_ptr_t.vec<int32>();
+
+        // Convert SparseTensor rep to coo row ind, coo col ind.
+        if (total_nnz > 0) {
+          functor::SparseTensorToCOOSparseMatrix<Device> st_to_coo;
+          st_to_coo(d, dense_shape, indices, coo_row_ind, coo_col_ind);
+        }
+
+        // Set all csr row pointers to zero, so that when iterating over
+        // batches converting coo to csr, we do not have to perform an
+        // unaligned SetZero for any nnz == 0 minibatches.  coo2csr has
+        // a bug if you have empty coo rows.
+        // TODO(ebrevdo): File bug w/ nvidia so coo2csr can handle
+        // zero-element input coo rows.
+        functor::SetZeroFunctor<Device, int32> set_zero;
+        set_zero(d, csr_row_ptr_t.flat<int32>());
+
+        functor::COOSparseMatrixToCSRSparseMatrix<Device> coo_to_csr;
+        for (int i = 0; i < batch_size; ++i) {
+          int nnz_i = batch_ptr(i + 1) - batch_ptr(i);
+          if (nnz_i == 0) {
+            // This is an empty minibatch; no call to coo2csr: it's
+            // handled by the SetZero above.
+          } else {
+            // Convert coo to csr.
+            auto coo_row_ind_i =
+                TTypes<int32>::UnalignedVec(&coo_row_ind(batch_ptr(i)), nnz_i);
+            auto csr_row_ptr_i = TTypes<int32>::UnalignedVec(
+                &csr_row_ptr((rows + 1) * i), rows + 1);
+            OP_REQUIRES_OK_ASYNC(
+                c, coo_to_csr(c, rows, cols, coo_row_ind_i, csr_row_ptr_i),
+                done);
+          }
+        }
+
+        CSRSparseMatrix matrix;
+        OP_REQUIRES_OK_ASYNC(
+            c,
+            CSRSparseMatrix::CreateCSRSparseMatrix(
+                values_t.dtype(), dense_shape_t, batch_ptr_t, csr_row_ptr_t,
+                coo_col_ind_t, csr_values_t, &matrix),
+            done);
+        Tensor* matrix_t;
+        AllocatorAttributes cpu_alloc;
+        cpu_alloc.set_on_host(true);
+        OP_REQUIRES_OK_ASYNC(
+            c, c->allocate_output(0, TensorShape({}), &matrix_t, cpu_alloc),
+            done);
+        matrix_t->scalar<Variant>()() = std::move(matrix);
+      }  // Release ScopedActivateExecutorContext to prevent deadlock when done
+         // inlines another Op kernel, which may assume the original cuda
+         // Context.
 
       done();
     };

@@ -28,9 +28,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @single_op_launch_not_host() -> () {
     // CHECK:      "tf.A"
     // CHECK:      "tf_device.launch"
+    // CHECK-SAME:      device = "/job:worker/replica:0/task:0/device:TPU:0"
     // CHECK:        "tf.B"
     // CHECK-NOT:    _xla_outside_compilation
-    // CHECK:      device = "/job:worker/replica:0/task:0/device:TPU:0"
     // CHECK:      "tf.C"
     // CHECK-NEXT: tf_device.return
     "tf_device.cluster"() ({

@@ -20,7 +20,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
@@ -31,9 +30,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::testing::AllOf;
 using ::tsl::testing::IsOkAndHolds;
-namespace op = xla::testing::opcode_matchers;
 namespace m = ::xla::match;
 
 using AllReduceBlueConnectTest = HloTestBase;
@@ -41,8 +38,9 @@ using AllReduceBlueConnectTest = HloTestBase;
 void SetModuleConfig(HloModule& module, size_t replica_count) {
   DeviceAssignment device_assignment(replica_count, /*computation_count=*/1);
   device_assignment.FillIota(0);
-  module.config().set_replica_count(replica_count);
-  module.config().set_static_device_assignment(device_assignment);
+  auto& module_config = module.mutable_config();
+  module_config.set_replica_count(replica_count);
+  module_config.set_static_device_assignment(device_assignment);
 }
 
 TEST_F(AllReduceBlueConnectTest, OneStage) {

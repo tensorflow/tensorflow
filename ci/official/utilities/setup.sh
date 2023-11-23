@@ -43,18 +43,58 @@ cd "$TFCI_GIT_DIR"
 # relevant variables in their environment. Because of 'set -o allexport' above
 # (which is equivalent to "set -a"), every variable in the file is exported
 # for other files to use.
-if [[ -n "${TFCI:-}" ]]; then
-  # Sourcing this twice, the first time with "-u" unset, means that variable
+#
+# Separately, if TFCI is set *and* there are also additional TFCI_ variables
+# set in the shell environment, those variables will be restored after the
+# TFCI env has been loaded. This is useful for e.g. on-demand "generic" jobs
+# where the user may wish to change just one option. Conveniently, this method
+# even works for arrays; e.g. TFCI_SOME_ARRAY="(--array --contents)" ends up
+# as TFCI_SOME_ARRAY=(--array --contents) in the storage file and is thus
+# loaded as an array when sourced.
+if [[ -z "${TFCI:-}" ]]; then
+  echo '==TFCI==: The $TFCI variable is not set. This is fine as long as you'
+  echo 'already sourced a TFCI env file with "set -a; source <path>; set +a".'
+  echo 'If you have not, you will see a lot of undefined variable errors.'
+else
+  FROM_ENV=$(mktemp)
+  # Piping into cat means grep won't abort the process if no errors are found.
+  env | grep TFCI_ | cat > "$FROM_ENV"
+
+  # Source the default ci values
+  source ./ci/official/envs/ci_default
+
+  # Sourcing TFCI twice, the first time with "-u" unset, means that variable
   # order does not matter. i.e. "TFCI_BAR=$TFCI_FOO; TFCI_FOO=true" will work.
   # TFCI_FOO is only valid the second time through.
   set +u
   source "$TFCI"
   set -u
   source "$TFCI"
-else
-  echo '==TFCI==: The $TFCI variable is not set. This is fine as long as you'
-  echo 'already sourced a TFCI env file with "set -a; source <path>; set +a".'
-  echo 'If you have not, you will see a lot of undefined variable errors.'
+
+  # Load those stored pre-existing TFCI_ vars, if any
+  if [[ -s "$FROM_ENV" ]]; then
+    echo '==TFCI==: NOTE: Loading the following env parameters, which were'
+    echo 'already set in the shell environment. If you want to disable this'
+    echo 'behavior, create a new shell.'
+    cat "$FROM_ENV"
+    source "$FROM_ENV"
+    rm "$FROM_ENV"
+  fi
+fi
+
+# Mac builds have some specific setup needs. See setup_macos.sh for details
+if [[ "${OSTYPE}" =~ darwin* ]]; then
+  source ./ci/official/utilities/setup_macos.sh
+fi
+
+# Force-disable uploads if the job initiator is not Kokoro
+# This is temporary: it's currently standard practice for employees to
+# run nightly jobs for testing purposes. We're aiming to move away from
+# this with more convenient methods, but as long as it's possible to do,
+# we want to make sure those extra jobs don't upload anything.
+# TODO(angerson) Remove this once it's no longer relevant
+if [[ "${KOKORO_BUILD_INITIATOR:-}" != "kokoro" ]]; then
+  source ./ci/official/envs/disable_all_uploads
 fi
 
 # Create and expand to the full path of TFCI_OUTPUT_DIR

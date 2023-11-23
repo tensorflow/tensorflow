@@ -263,6 +263,10 @@ void RunInference(Settings* settings,
     LOG(INFO) << "number of outputs: " << outputs.size();
   }
 
+  auto profiler = std::make_unique<profiling::Profiler>(
+      settings->max_profiling_buffer_entries);
+  interpreter->SetProfiler(profiler.get());
+
   auto delegates = delegate_providers.CreateAllDelegates();
   for (auto& delegate : delegates) {
     const auto delegate_name = delegate.provider->GetName();
@@ -311,9 +315,6 @@ void RunInference(Settings* settings,
                  << interpreter->tensor(input)->type << " yet";
       exit(-1);
   }
-  auto profiler = std::make_unique<profiling::Profiler>(
-      settings->max_profiling_buffer_entries);
-  interpreter->SetProfiler(profiler.get());
 
   if (settings->profiling) profiler->StartProfiling();
   for (int i = 0; i < settings->number_of_warmup_runs; i++) {

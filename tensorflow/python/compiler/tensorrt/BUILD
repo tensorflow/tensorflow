@@ -32,22 +32,20 @@ py_strict_library(
 
 py_strict_library(
     name = "trt_convert_py",
-    srcs = [
-        "trt_convert.py",
-        "utils.py",
-    ],
+    srcs = ["trt_convert.py"],
     srcs_version = "PY3",
     deps = [
+        ":utils",
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
         "//tensorflow/compiler/tf2tensorrt:trt_ops_loader",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:wrap_function",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:convert_to_constants",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/grappler:tf_optimizer",
@@ -69,22 +67,33 @@ py_strict_library(
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
-        "@pypi_packaging//:pkg",
         "@six_archive//:six",
     ],
 )
 
 py_strict_library(
+    name = "utils",
+    srcs = ["utils.py"],
+    deps = [
+        "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/framework:dtypes",
+        "@pypi_packaging//:pkg",
+    ],
+)
+
+py_strict_library(
     name = "tf_trt_integration_test_base",
-    srcs = ["//tensorflow/python/compiler/tensorrt/test:tf_trt_integration_test_base_srcs"],
     srcs_version = "PY3",
     deps = [
         ":trt_convert_py",
+        ":utils",
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/compiler/tensorrt/test:tf_trt_integration_test_base_srcs",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:graph_io",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
@@ -121,6 +130,8 @@ cuda_py_strict_test(
         "no_oss",
         "no_pip",
         "nomac",
+        # TODO(b/303453873): Re-enable tests once TensorRT has been updated
+        "notap",
     ],
     xla_enable_strict_auto_jit = False,
     deps = [
@@ -130,11 +141,11 @@ cuda_py_strict_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/compiler/tensorrt/test:test_utils",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:convert_to_constants",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_spec",
@@ -156,6 +167,7 @@ cuda_py_strict_test(
         "//tensorflow/python/tools:saved_model_utils",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/util:lazy_loader",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -188,9 +200,9 @@ cuda_py_strict_test(
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:run_config",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:convert_to_constants",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/keras:metrics",

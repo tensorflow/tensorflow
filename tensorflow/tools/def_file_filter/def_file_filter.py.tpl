@@ -300,18 +300,17 @@ def main():
     def_fp.write("\t ??_7ConfigProto@tensorflow@@6B@\n") # for _pywrap_tfe
     def_fp.write("\t ??_7CoordinatedTask@tensorflow@@6B@\n") # for _pywrap_tfe
     def_fp.write("\t ?InternalSwap@CoordinatedTask@tensorflow@@AEAAXPEAV12@@Z\n") # for _pywrap_tfe
-    def_fp.write("\t ?kSeed@MixingHashState@hash_internal@lts_20230125@absl@@0QEBXEB\n") # for _pywrap_tfcompile
-    def_fp.write("\t ?kEmptyGroup@container_internal@lts_20230125@absl@@3QBW4ctrl_t@123@B\n") # for _pywrap_tfcompile
+    def_fp.write("\t ?kSeed@MixingHashState@hash_internal@lts_20230802@absl@@0QEBXEB\n") # for _pywrap_tfcompile
+    def_fp.write("\t ?kEmptyGroup@container_internal@lts_20230802@absl@@3QBW4ctrl_t@123@B\n") # for _pywrap_tfcompile
     def_fp.write("\t ??_7GraphDef@tensorflow@@6B@\n")
     def_fp.write("\t ??_7DeviceProperties@tensorflow@@6B@\n")
     def_fp.write("\t ??_7MetaGraphDef@tensorflow@@6B@\n")
     def_fp.write("\t ??_7SavedModel@tensorflow@@6B@\n")
-    def_fp.write("\t ??0CoordinatedTask@tensorflow@@QEAA@XZ\n") # for _pywrap_tfe
     def_fp.write("\t ?Set@ArenaStringPtr@internal@protobuf@google@@QEAAXAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAVArena@34@@Z\n") # _pywrap_tfe
     def_fp.write("\t ??1CoordinatedTask@tensorflow@@UEAA@XZ\n") # for _pywrap_tfe
     def_fp.write("\t ?CopyFrom@CoordinatedTask@tensorflow@@QEAAXAEBV12@@Z\n") # for _pywrap_tfe
     def_fp.write("\t ??0CoordinatedTask@tensorflow@@IEAA@PEAVArena@protobuf@google@@_N@Z\n") # for _pywrap_tfe
-    def_fp.write("\t ?MaybeTrackCordImpl@CordzInfo@cord_internal@lts_20230125@absl@@CAXAEAVInlineData@234@AEBV5234@W4MethodIdentifier@CordzUpdateTracker@234@@Z\n") # for tensorflow::Status usage of absl::Cord
+    def_fp.write("\t ?MaybeTrackCordImpl@CordzInfo@cord_internal@lts_20230802@absl@@CAXAEAVInlineData@234@AEBV5234@W4MethodIdentifier@CordzUpdateTracker@234@@Z\n") # for tensorflow::Status usage of absl::Cord
 
 
     # Each symbols returned by undname matches the same position in candidates.
@@ -362,3 +361,4 @@ def main():
 
 if __name__ == "__main__":
   sys.exit(main())
+  

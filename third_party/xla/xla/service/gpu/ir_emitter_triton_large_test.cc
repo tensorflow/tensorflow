@@ -18,13 +18,21 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-using TritonGemmTest = GpuCodegenTest;
+class TritonGemmTest : public GpuCodegenTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_cublas_fallback(false);
+    return debug_options;
+  }
+};
 
 TEST_F(TritonGemmTest, IndexUsing64Bits) {
   const char* kHloTextRef = R"(
@@ -33,9 +41,10 @@ HloModule r
 ENTRY e {
   arg0 = f16[65536,32800] parameter(0)
   arg1 = f16[32800,32] parameter(1)
-  ROOT custom-call = f16[65536,32] custom-call(arg0, arg1),
+  gemm = (f16[65536,32], s8[0]) custom-call(arg0, arg1),
     custom_call_target="__cublas$gemm",
     backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+  ROOT get-tuple-element = f16[65536,32] get-tuple-element((f16[65536,32], s8[0]) gemm), index=0
 }
 )";
 

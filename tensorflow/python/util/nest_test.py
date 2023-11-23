@@ -154,24 +154,24 @@ class NestTest(parameterized.TestCase, test.TestCase):
       field1 = attr.ib()
       field2 = attr.ib()
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDataclassCustomProtocol(self):
     mt = MaskedTensor(mask=True, value=constant_op.constant([1]))
     self.assertIsInstance(mt, CustomNestProtocol)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDataclassIsNested(self):
     mt = MaskedTensor(mask=True, value=constant_op.constant([1]))
     self.assertTrue(nest.is_nested(mt))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDataclassFlatten(self):
     mt = MaskedTensor(mask=True, value=constant_op.constant([1]))
     leaves = nest.flatten(mt)
     self.assertLen(leaves, 1)
     self.assertAllEqual(leaves[0], [1])
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDataclassFlattenUpToCompatible(self):
     simple_list = [2]
     mt = MaskedTensor(mask=True, value=constant_op.constant([1]))
@@ -200,7 +200,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     )
     self.assertAllEqual(flat_path_nested_list, [2])
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDataclassFlattenUpToIncompatible(self):
     simple_list = [2]
     mt = MaskedTensor(mask=True, value=constant_op.constant([1]))
@@ -239,7 +239,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
           shallow_tree=nested_list, input_tree=mt, check_types=False
       )
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDataclassFlattenWithTuplePathsUpToCompatible(self):
     simple_list = [2]
     mt = MaskedTensor(mask=True, value=constant_op.constant([1]))
@@ -271,7 +271,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     )
     self.assertAllEqual(flat_path_nested_list, [[(0, 0), 2]])
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDataclassFlattenWithTuplePathsUpToIncompatible(self):
     simple_list = [2]
     mt = MaskedTensor(mask=True, value=constant_op.constant([1]))
@@ -311,7 +311,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
           shallow_tree=nested_list2, input_tree=nmt, check_types=False
       )
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDataclassFlattenAndPack(self):
     mt = MaskedTensor(mask=True, value=constant_op.constant([1]))
     leaves = nest.flatten(mt)
@@ -319,7 +319,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertIsInstance(reconstructed_mt, MaskedTensor)
     self.assertEqual(reconstructed_mt, mt)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDataclassMapStructure(self):
     mt = MaskedTensor(mask=True, value=constant_op.constant([1]))
     mt_doubled = nest.map_structure(lambda x: x * 2, mt)
@@ -327,7 +327,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(mt_doubled.mask, True)
     self.assertAllEqual(mt_doubled.value, [2])
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDataclassMapStructureWithPaths(self):
     mt = MaskedTensor(mask=False, value=constant_op.constant([1]))
     mt2 = MaskedTensor(mask=True, value=constant_op.constant([2]))
@@ -360,7 +360,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertAllEqual(nmt_combined_with_path.value.value[0], "0/0")
     self.assertAllEqual(nmt_combined_with_path.value.value[1], [9])
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDataclassMapStructureWithTuplePaths(self):
     mt = MaskedTensor(mask=False, value=constant_op.constant([1]))
     mt2 = MaskedTensor(mask=True, value=constant_op.constant([2]))
@@ -395,7 +395,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertAllEqual(nmt_combined_with_path.value.value[0], (0, 0))
     self.assertAllEqual(nmt_combined_with_path.value.value[1], [9])
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDataclassMapStructureUpTo(self):
     mt = MaskedTensor(mask=True, value=constant_op.constant([1]))
     mt2 = MaskedTensor(mask=True, value=constant_op.constant([2]))
@@ -431,7 +431,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(nmt_combined_with_path.value.mask, True)
     self.assertAllEqual(nmt_combined_with_path.value.value, [9])
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDataclassMapStructureWithTuplePathsUoTo(self):
     mt = MaskedTensor(mask=True, value=constant_op.constant([1]))
     mt2 = MaskedTensor(mask=True, value=constant_op.constant([2]))
@@ -470,7 +470,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertAllEqual(nmt_combined_with_path.value.value[0], (0, 0))
     self.assertAllEqual(nmt_combined_with_path.value.value[1], [9])
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testNestedDataclassIsNested(self):
     mt = MaskedTensor(mask=True, value=constant_op.constant([1]))
     self.assertTrue(nest.is_nested(mt))
@@ -480,7 +480,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     )
     self.assertTrue(nest.is_nested(nmt))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDataclassAssertShallowStructure(self):
     # These assertions are expected to pass: two dataclasses with the same
     # component size are considered to have the same shallow structure.
@@ -535,7 +535,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
           shallow_tree=nmt, input_tree=mt, check_types=False
       )
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDataclassGetTraverseShallowStructure(self):
     nmt = NestedMaskedTensor.nested_masked_tensor_with_opposite_masks(
         mask=True, inner_value=constant_op.constant([1])
@@ -568,7 +568,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(traverse_result3, False)
     nest.assert_shallow_structure(traverse_result3, nmt)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testNestedDataclassFlatten(self):
     nmt = NestedMaskedTensor.nested_masked_tensor_with_opposite_masks(
         mask=True, inner_value=constant_op.constant([1])
@@ -577,7 +577,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertLen(leaves, 1)
     self.assertAllEqual(leaves[0], [1])
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testNestedDataclassFlattenAndPack(self):
     nmt = NestedMaskedTensor.nested_masked_tensor_with_opposite_masks(
         mask=True, inner_value=constant_op.constant([1])
@@ -587,7 +587,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertIsInstance(reconstructed_mt, NestedMaskedTensor)
     self.assertEqual(reconstructed_mt, nmt)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testNestedDataclassMapStructure(self):
     nmt = NestedMaskedTensor.nested_masked_tensor_with_opposite_masks(
         mask=True, inner_value=constant_op.constant([1])
@@ -602,7 +602,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(mt_doubled.value.mask, expected.value.mask)
     self.assertAllEqual(mt_doubled.value.value, expected.value.value)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDataclassYieldFlatPaths(self):
     mt = MaskedTensor(mask=True, value=constant_op.constant([1]))
     mt_flat_paths = list(nest.yield_flat_paths(mt))
@@ -626,7 +626,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
         ],
     )
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDataclassFlattenWithStringPaths(self):
     sep = "/"
     mt = MaskedTensor(mask=True, value=constant_op.constant([1]))
@@ -650,7 +650,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(dict_mt_nmt_flat_paths[1][0], "nmt/0/0")
     self.assertAllEqual(dict_mt_nmt_flat_paths[1][1], [2])
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDataclassFlattenWithTuplePaths(self):
     mt = MaskedTensor(mask=True, value=constant_op.constant([1]))
     mt_flat_paths = nest.flatten_with_tuple_paths(mt)
@@ -671,7 +671,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(dict_mt_nmt_flat_paths[1][0], ("nmt", 0, 0))
     self.assertAllEqual(dict_mt_nmt_flat_paths[1][1], [2])
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDataclassListToTuple(self):
     mt = MaskedTensor(mask=True, value=constant_op.constant([1]))
     nmt = NestedMaskedTensor.nested_masked_tensor_with_opposite_masks(
@@ -690,7 +690,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     )
     nest.assert_same_structure(results, expected)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testAttrsFlattenAndPack(self):
     if attr is None:
       self.skipTest("attr module is unavailable.")
@@ -715,7 +715,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
       {"values": [(1, 2), [3, 4], 5]},
       {"values": [PointXY(1, 2), 3, 4]},
   )
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testAttrsMapStructure(self, values):
     if attr is None:
       self.skipTest("attr module is unavailable.")
@@ -724,7 +724,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     new_structure = nest.map_structure(lambda x: x, structure)
     self.assertEqual(structure, new_structure)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testFlattenAndPack(self):
     structure = ((3, 4), 5, (6, 7, (9, 10), 8))
     flat = ["a", "b", "c", "d", "e", "f", "g", "h"]
@@ -761,7 +761,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
 
   @parameterized.parameters({"mapping_type": collections.OrderedDict},
                             {"mapping_type": _CustomMapping})
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testFlattenDictOrder(self, mapping_type):
     """`flatten` orders dicts by key, including OrderedDicts."""
     ordered = mapping_type([("d", 3), ("b", 1), ("a", 0), ("c", 2)])
@@ -787,7 +787,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
         custom_reconstruction)
     self.assertEqual({"d": 3, "b": 1, "a": 0, "c": 2}, plain_reconstruction)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testFlattenAndPackMappingViews(self):
     """`flatten` orders dicts by key, including OrderedDicts."""
     ordered = collections.OrderedDict([("d", 3), ("b", 1), ("a", 0), ("c", 2)])
@@ -806,7 +806,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
 
   Abc = collections.namedtuple("A", ("b", "c"))  # pylint: disable=invalid-name
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testFlattenAndPack_withDicts(self):
     # A nice messy mix of tuples, lists, dicts, and `OrderedDict`s.
     mess = [
@@ -889,7 +889,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
         ValueError, "Structure had 2 atoms, but flat_sequence had 1 items."):
       nest.pack_sequence_as(val, [val], expand_composites=True)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testIsNested(self):
     self.assertFalse(nest.is_nested("1234"))
     self.assertTrue(nest.is_nested([1, 3, [4, 5]]))
@@ -942,7 +942,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
   class SameNamedType1(SameNameab):
     pass
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testAssertSameStructure(self):
     structure1 = (((1, 2), 3), 4, (5, 6))
     structure2 = ((("foo1", "foo2"), "foo3"), "foo4", ("foo5", "foo6"))
@@ -1053,7 +1053,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     nest.assert_same_structure({"a": 4}, _CustomMapping(a=3))
     nest.assert_same_structure(_CustomMapping(b=3), {"b": 4})
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testMapStructure(self):
     structure1 = (((1, 2), 3), 4, (5, 6))
     structure2 = (((7, 8), 9), 10, (11, 12))
@@ -1129,7 +1129,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
 
   ABTuple = collections.namedtuple("ab_tuple", "a, b")  # pylint: disable=invalid-name
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testMapStructureWithStrings(self):
     inp_a = NestTest.ABTuple(a="foo", b=("bar", "baz"))
     inp_b = NestTest.ABTuple(a=2, b=(1, 3))

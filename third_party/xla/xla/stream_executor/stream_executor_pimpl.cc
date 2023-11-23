@@ -30,7 +30,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/notification.h"
+#include "absl/types/span.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream.h"
@@ -156,6 +158,13 @@ StreamExecutor::~StreamExecutor() {
   }
 }
 
+StreamExecutor::PlatformSpecificHandle
+StreamExecutor::platform_specific_handle() const {
+  PlatformSpecificHandle handle;
+  handle.context = implementation_->platform_specific_context();
+  return handle;
+}
+
 tsl::Status StreamExecutor::Init(DeviceOptions device_options) {
   TF_RETURN_IF_ERROR(
       implementation_->Init(device_ordinal_, std::move(device_options)));
@@ -165,11 +174,11 @@ tsl::Status StreamExecutor::Init(DeviceOptions device_options) {
 tsl::Status StreamExecutor::Init() { return Init(DeviceOptions::Default()); }
 
 tsl::Status StreamExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
-                                      KernelBase* kernel) {
+                                      Kernel* kernel) {
   return implementation_->GetKernel(spec, kernel);
 }
 
-void StreamExecutor::UnloadKernel(const KernelBase* kernel) {
+void StreamExecutor::UnloadKernel(const Kernel* kernel) {
   implementation_->UnloadKernel(kernel);
 }
 
@@ -184,8 +193,8 @@ bool StreamExecutor::UnloadModule(ModuleHandle module_handle) {
 
 tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 StreamExecutor::CreateOrShareConstant(Stream* stream,
-                                      const std::vector<uint8_t>& content) {
-  return implementation_->CreateOrShareConstant(stream, std::move(content));
+                                      absl::Span<const uint8_t> content) {
+  return implementation_->CreateOrShareConstant(stream, content);
 }
 
 void StreamExecutor::Deallocate(DeviceMemoryBase* mem) {
@@ -431,12 +440,17 @@ fft::FftSupport* StreamExecutor::AsFft() {
 
 tsl::Status StreamExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                                    const BlockDim& block_dims,
-                                   const KernelBase& kernel,
-                                   const KernelArgsArrayBase& args) {
+                                   const Kernel& kernel,
+                                   const KernelArgs& args) {
   SubmitTrace(&TraceListener::LaunchSubmit, stream, thread_dims, block_dims,
               kernel, args);
 
   return implementation_->Launch(stream, thread_dims, block_dims, kernel, args);
+}
+
+tsl::Status StreamExecutor::Submit(Stream* stream,
+                                   const CommandBuffer& command_buffer) {
+  return implementation_->Submit(stream, command_buffer);
 }
 
 tsl::Status StreamExecutor::BlockHostUntilDone(Stream* stream) {
@@ -466,6 +480,11 @@ DeviceMemoryBase StreamExecutor::Allocate(uint64_t size, int64_t memory_space) {
           << StackTraceIfVLOG10();
 
   return buf;
+}
+
+void* StreamExecutor::GetUntypedSubBuffer(DeviceMemoryBase* parent,
+                                          uint64_t offset, uint64_t size) {
+  return implementation_->GetSubBuffer(parent, offset, size);
 }
 
 tsl::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
@@ -738,6 +757,10 @@ std::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
 
 bool StreamExecutor::ClearAllocatorStats() {
   return implementation_->ClearAllocatorStats();
+}
+
+Stream* StreamExecutor::FindAllocatedStream(void* gpu_stream) {
+  return implementation_->FindAllocatedStream(gpu_stream);
 }
 
 template <typename TraceCallT, typename... ArgsT>

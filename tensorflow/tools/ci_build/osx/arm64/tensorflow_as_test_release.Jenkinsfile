@@ -17,7 +17,7 @@ limitations under the License.
 pipeline {
     agent none
     environment {
-        RELEASE_BRANCH = 'r2.14'
+        RELEASE_BRANCH = 'r2.15'
     }
     stages {
         stage("Build Tensorflow") {

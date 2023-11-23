@@ -106,14 +106,12 @@ limitations under the License.
 #include "xla/mlir/runtime/transforms/compilation_pipeline_cpu.h"
 #include "xla/mlir/runtime/transforms/compiler.h"
 #include "xla/mlir/runtime/transforms/jit_compiler.h"
-#include "xla/mlir/tools/mlir_replay/public/compiler_trace_instrumentation.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/transforms/passes.h"
 #include "xla/runtime/custom_call_registry.h"
 #include "xla/runtime/executable.h"
-#include "xla/runtime/ffi.h"
 #include "xla/runtime/jit_executable.h"
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/all_gather_decomposer.h"
@@ -142,7 +140,6 @@ limitations under the License.
 #include "xla/service/cpu/cpu_instruction_fusion.h"
 #include "xla/service/cpu/cpu_layout_assignment.h"
 #include "xla/service/cpu/cpu_options.h"
-#include "xla/service/cpu/cpu_shape_verifier.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/hlo_xla_runtime_pipeline.h"
 #include "xla/service/cpu/ir_emitter.h"
@@ -156,6 +153,7 @@ limitations under the License.
 #include "xla/service/cpu/simple_orc_jit.h"
 #include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/cpu/xla_framework.h"
+#include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/dot_decomposer.h"
 #include "xla/service/dump.h"
 #include "xla/service/dynamic_dimension_inference.h"
@@ -207,6 +205,7 @@ limitations under the License.
 #include "xla/service/sort_simplifier.h"
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "xla/service/stochastic_convert_decomposer.h"
+#include "xla/service/sub_byte_normalization.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/service/transpose_folding.h"
 #include "xla/service/tree_reduction_rewriter.h"
@@ -223,7 +222,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -412,30 +411,21 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
         PopulateXlaCpuRngCall(registry);
         PopulateXlaXfeedCall(registry);
       });
-  opts.compiler
-      .create_compilation_pipeline = [&module, copts](
-                                         xla::runtime::PassManager& passes) {
-    HloXlaRuntimePipelineOptions options = GetHloXlaRuntimePipelineOptions(
-        llvm::Triple(llvm::sys::getProcessTriple()),
-        llvm::sys::getHostCPUName());
-    options.xla_cpu_sparse_cuda_threads =
-        GetDebugOptionsFromFlags().xla_cpu_sparse_cuda_threads();
+  opts.compiler.create_compilation_pipeline =
+      [copts](xla::runtime::PassManager& passes) {
+        HloXlaRuntimePipelineOptions options = GetHloXlaRuntimePipelineOptions(
+            llvm::Triple(llvm::sys::getProcessTriple()),
+            llvm::sys::getHostCPUName());
+        options.xla_cpu_sparse_cuda_threads =
+            GetDebugOptionsFromFlags().xla_cpu_sparse_cuda_threads();
 
-    Status status = CreateHloXlaRuntimePipeline(passes, options);
-    if (!status.ok()) {
-      LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
-                 << status.message();
-    }
-    runtime::CreateDefaultXlaCpuRuntimeCompilationPipeline(passes, copts);
-
-    if (DumpingEnabledForHloModule(module) &&
-        module.config().debug_options().xla_dump_hlo_snapshots()) {
-      passes->addInstrumentation(
-          std::make_unique<mlir::interpreter::MlirCompilerTraceInstrumentation>(
-              module.config().debug_options().xla_dump_to(), module.unique_id(),
-              module.name()));
-    }
-  };
+        Status status = CreateHloXlaRuntimePipeline(passes, options);
+        if (!status.ok()) {
+          LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
+                     << status.message();
+        }
+        runtime::CreateDefaultXlaCpuRuntimeCompilationPipeline(passes, copts);
+      };
   opts.compiler.calling_convention = runtime::ResultsToOutsCallingConvention(
       FlattenTuplesAndBufferizeTypeConverter());
   return opts;
@@ -445,7 +435,7 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
 
 StatusOr<std::unique_ptr<Executable>>
 CpuXlaRuntimeAotCompilationResult::LoadExecutable(
-    Compiler* compiler, se::StreamExecutor* executor) const {
+    Compiler* compiler, se::StreamExecutor* executor) {
   XlaRuntimeExecutableProto xla_runtime_executable =
       xla_runtime_cpu_executable_.xla_runtime_executable();
   TF_ASSIGN_OR_RETURN(HloModuleConfig hlo_module_config,
@@ -612,7 +602,8 @@ void AddHloVerifier(HloPassPipeline* pipeline, bool allow_sparse_shapes,
     verifier_metadata =
         std::make_unique<DefaultVerifierMetadata>(std::move(opts));
   } else {
-    verifier_metadata = std::make_unique<CpuVerifierMetadata>(std::move(opts));
+    verifier_metadata =
+        std::make_unique<CpuGpuVerifierMetadata>(std::move(opts));
   }
   if (debug_only) {
     pipeline->AddInvariantCheckerDebug<HloVerifier>(
@@ -658,6 +649,16 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     TF_RETURN_IF_ERROR(sharding_removal_pipeline.Run(module).status());
   }
 
+  {
+    // Int4Packer must be run before the rest of the pipeline since it modifies
+    // the layout of the entry computation inputs/outputs, which is passed to
+    // LayoutAssignment.
+    HloPassPipeline int4_packer_pipeline("Int4Packer pipeline");
+    int4_packer_pipeline.AddPass<SubByteNormalization>(
+        SubByteNormalization::SET_ELEMENT_SIZE);
+    TF_RETURN_IF_ERROR(int4_packer_pipeline.Run(module).status());
+  }
+
   HloPassPipeline pipeline("HLO passes through layout assignment");
   AddHloVerifier(&pipeline, allow_sparse_shapes_);
 
@@ -698,7 +699,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   // AOT compiled code runs in single thread.
   if (!is_aot_compile) {
-    pipeline.AddPass<OneDnnRewriter>();
+    // Temporarily disabling oneDNN rewriter because it causes JAX regression.
+    // pipeline.AddPass<OneDnnRewriter>();
   }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
@@ -711,15 +713,15 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // BF16/F8 lowering for most ops.
   FloatSupport bf16_support(BF16);
   pipeline.AddPass<FloatNormalization>(&bf16_support);
-  FloatSupport f8e5m2_support(F8E5M2);
+  FloatSupport f8e5m2_support(F8E5M2, F16);
   pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
-  FloatSupport f8e4m3fn_support(F8E4M3FN);
+  FloatSupport f8e4m3fn_support(F8E4M3FN, F16);
   pipeline.AddPass<FloatNormalization>(&f8e4m3fn_support);
-  FloatSupport f8e4m3b11fnuz_support(F8E4M3B11FNUZ);
+  FloatSupport f8e4m3b11fnuz_support(F8E4M3B11FNUZ, F16);
   pipeline.AddPass<FloatNormalization>(&f8e4m3b11fnuz_support);
-  FloatSupport f8e5m2fnuz_support(F8E5M2FNUZ);
+  FloatSupport f8e5m2fnuz_support(F8E5M2FNUZ, F16);
   pipeline.AddPass<FloatNormalization>(&f8e5m2fnuz_support);
-  FloatSupport f8e4m3fnuz_support(F8E4M3FNUZ);
+  FloatSupport f8e4m3fnuz_support(F8E4M3FNUZ, F16);
   pipeline.AddPass<FloatNormalization>(&f8e4m3fnuz_support);
   // After canonicalization, there may be more batch dots that can be
   // simplified.
@@ -751,8 +753,15 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicDimensionSimplifier>();
   auto dynamic_padder_options = DynamicPadderOptions();
+  // TODO(pgavin): ShapeChecks were never implemented correctly by the dynamic
+  // padder.  The mode defaults to kIgnore, and it was not overridden for nested
+  // computations (such as while bodies or conditional branches), and so cases
+  // that could not be proven would still be accepted even with compile-time
+  // checks enabled.  Recent changes to the DynamicPadder correctly
+  // override the mode.  However, some models have started to rely on the check
+  // being ignored, and they would be broken if it is enforced.
   dynamic_padder_options.shape_check_mode =
-      DynamicDimensionInference::ShapeCheckMode::kCompileTime;
+      DynamicDimensionInference::ShapeCheckMode::kIgnore;
   pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
   if (!is_mlir_compile) {
     pipeline.AddPass<SelectAndScatterExpander>();
@@ -849,6 +858,10 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pipeline.AddPass<CpuLayoutAssignment>(
         module->mutable_entry_computation_layout(), target_machine_features,
         &layout_constraints);
+    // Run SubByteNormalization because CpuLayoutAssignment may modify a
+    // Layout's element_size_in_bits field.
+    pipeline.AddPass<SubByteNormalization>(
+        SubByteNormalization::SET_ELEMENT_SIZE);
   }
 
   return pipeline.Run(module).status();
@@ -1147,13 +1160,6 @@ Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
         [](mlir::Pass* pass, mlir::Operation* op) { return true; },
         /*printModuleScope=*/true, /*printAfterOnlyOnChange=*/true,
         /*printAfterOnlyOnFailure=*/false, llvm::errs(), printing_flags);
-  }
-
-  if (DumpingEnabledForHloModule(*module)) {
-    pm.addInstrumentation(
-        std::make_unique<mlir::interpreter::MlirCompilerTraceInstrumentation>(
-            module->config().debug_options().xla_dump_to(), module->unique_id(),
-            module->name()));
   }
 
   xla::runtime::PassManager xla_pm(&pm);
@@ -1497,15 +1503,9 @@ StatusOr<std::unique_ptr<XlaRuntimeCpuExecutable>> GetXlaRuntimeCpuExecutable(
                          jit_executable.status().message());
   }
 
-  // Instantiate state for all registered FFI modules.
-  auto ffi_modules_state = runtime::ffi::FfiModulesState::Instantiate();
-  if (!ffi_modules_state.ok())
-    return InternalError("Failed to instantiate FFI modules state: %s",
-                         ffi_modules_state.status().message());
-
   return std::make_unique<XlaRuntimeCpuExecutable>(
       std::make_unique<runtime::JitExecutable>(std::move(*jit_executable)),
-      xla_framework_mapping, std::move(*ffi_modules_state));
+      xla_framework_mapping);
 }
 }  // namespace
 

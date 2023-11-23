@@ -131,7 +131,8 @@ class CUDAFft : public fft::FftSupport {
                      const DeviceMemory<InputT> &input,
                      DeviceMemory<OutputT> *output);
 
-  SE_DISALLOW_COPY_AND_ASSIGN(CUDAFft);
+  CUDAFft(const CUDAFft&) = delete;
+  void operator=(const CUDAFft&) = delete;
 };
 
 }  // namespace gpu

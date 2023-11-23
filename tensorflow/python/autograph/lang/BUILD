@@ -31,12 +31,13 @@ py_strict_test(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
+        #internal proto upb dep
+        "//third_party/py/numpy",
         "//tensorflow/python/autograph/lang:special_functions",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops:list_ops",
         "//tensorflow/python/platform:client_testlib",
-        "//third_party/py/numpy",
     ],
 )

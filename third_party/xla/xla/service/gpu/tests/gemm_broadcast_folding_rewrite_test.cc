@@ -32,6 +32,14 @@ class GemmBroadcastFoldingRewriteTest : public GpuCodegenTest {
         ->GetDeviceDescription()
         .cuda_compute_capability();
   }
+
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    // These tests test the cuBLAS rewriter so we have to make sure that we use
+    // cuBLAS for them.
+    debug_options.set_xla_gpu_enable_triton_gemm(false);
+    return debug_options;
+  }
 };
 
 TEST_F(GemmBroadcastFoldingRewriteTest, BroadcastedStridedRewriteRhs) {
@@ -53,7 +61,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[3,2,2], y: f32[2,2]) -> f32[3,2,2] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[3,2,2]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[3,2,2]{2,1,0} custom-call([[P0]], [[P1]]),
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas${{(lt\$matmul|gemm)}}",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -92,7 +100,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[3,2,2]) -> f32[3,2,2] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,2,2]{2,1,0} parameter(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[3,2,2]{2,1,0} custom-call([[P0]], [[P1]]),
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
 ; CHECK    :       custom_call_target="__cublas${{(lt\$matmul|gemm)}}",
 ; CHECK    :       backend_config={
 ; CHECK-DAG:         "alpha_real":1

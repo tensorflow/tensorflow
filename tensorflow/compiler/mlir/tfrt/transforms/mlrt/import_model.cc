@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/import_model.h"
 
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -49,10 +51,10 @@ namespace tensorflow {
 namespace mlrt_compiler {
 
 StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
-    const TfrtCompileOptions& options,
-    const tfrt_stub::FallbackState& fallback_state, mlir::ModuleOp module,
-    tfrt_stub::ModelRuntimeContext& model_context,
-    mlir::OwningOpRef<mlir::ModuleOp>* module_with_op_keys) {
+    const TfrtCompileOptions& options, tfrt_stub::FallbackState& fallback_state,
+    mlir::ModuleOp module, tfrt_stub::ModelRuntimeContext& model_context,
+    mlir::OwningOpRef<mlir::ModuleOp>* module_with_op_keys,
+    std::vector<std::string>* added_xla_function_names) {
   mlrt::bc::Buffer bytecode_buffer;
   TF_RETURN_IF_ERROR(ConvertTfMlirToRuntimeExecutable(
       options, module,
@@ -127,7 +129,7 @@ StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
         bytecode_buffer = std::move(*statusor);
         return OkStatus();
       },
-      model_context));
+      model_context, &fallback_state, added_xla_function_names));
   return bytecode_buffer;
 }
 

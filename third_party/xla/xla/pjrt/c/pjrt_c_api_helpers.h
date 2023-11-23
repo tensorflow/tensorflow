@@ -142,7 +142,8 @@ xla::StatusOr<std::vector<PJRT_NamedValue>> ConvertToPjRtNamedValueList(
     int api_minor_version);
 
 absl::flat_hash_map<std::string, xla::PjRtValueType>
-ConvertFromPjRtNamedValueList(PJRT_NamedValue* c_value_list, size_t list_size);
+ConvertFromPjRtNamedValueList(const PJRT_NamedValue* c_value_list,
+                              size_t list_size);
 
 // Validates that all entries in value_map have a matching name and type in
 // expected_name_and_type. expected_name_and_type may contain extra entries
@@ -152,14 +153,19 @@ xla::Status ValidateCreateOptions(
     const absl::flat_hash_map<std::string, PJRT_NamedValue_Type>&
         expected_name_and_types);
 
-// Helper function for checking C API argument struct sizes. Returns a non-OK
-// status if the expected and actual sizes aren't equal (i.e. no ABI
-// compatibility guarantees).
-xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
-                                     size_t expected_size, size_t actual_size);
+// Helper function for checking the actual C API argument struct size is greater
+// than or equal to the expected size. The actual struct size can be larger if
+// it comes from a forwards-compatible caller built at a later version than this
+// check. Returns a non-OK status if the expected is smaller.
+xla::Status ActualStructSizeIsGreaterOrEqual(absl::string_view struct_name,
+                                             size_t expected_size,
+                                             size_t actual_size);
 
 absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api);
 absl::string_view GetPlatformName(PJRT_Client* client, const PJRT_Api* api);
+
+xla::StatusOr<PJRT_TopologyDescription*> GetTopologyDescription(
+    PJRT_Client* client, const PJRT_Api* api);
 
 // Releases `chunk`.
 PJRT_Chunk ConvertFromCppChunk(xla::PjRtChunk chunk);
@@ -171,8 +177,10 @@ xla::PjRtChunk ConvertToCppChunk(const PJRT_Chunk& chunk);
 PJRT_DeviceDescription* GetDeviceDescription(const PJRT_Api* api,
                                              PJRT_Device* device);
 
-absl::Span<PJRT_Memory*> GetAddressableMemories(const PJRT_Api* api,
-                                                PJRT_Device* device);
+absl::Span<PJRT_Memory* const> GetAddressableMemories(const PJRT_Api* api,
+                                                      PJRT_Device* device);
+
+int GetId(const PJRT_Api* api, PJRT_DeviceDescription* device_desc);
 
 using PJRT_KeyValueGetCFunc =
     std::function<PJRT_Error*(PJRT_KeyValueGetCallback_Args* args)>;
@@ -205,6 +213,28 @@ std::unique_ptr<PJRT_KeyValueCallbackData> ConvertToCKeyValueCallbacks(
     xla::PjRtClient::KeyValueGetCallback kv_get,
     xla::PjRtClient::KeyValuePutCallback kv_put);
 
+// std::function version of PJRT_SendCallback
+using PJRT_SendCallbackFunction =
+    std::function<PJRT_Error*(PJRT_Chunk*, PJRT_CallbackError*, size_t, bool)>;
+// std::function version of PJRT_RecvCallback
+using PJRT_RecvCallbackFunction = std::function<void(PJRT_CopyToDeviceStream*)>;
+
+// Wraps original `xla::SendCallback` inside `PJRT_Callback` using
+// 1) void* `user_arg` to capture `cpp_send_callback.callback` (std::function)
+// 2) `PJRT_SendCallback` function pointer, which reinterprets and calls
+// `user_arg` to call `cpp_send_callback.callback` function.
+PJRT_SendCallbackInfo CppSendCallbackToCSendCallback(
+    xla::SendCallback cpp_send_callback,
+    PJRT_SendCallbackFunction* send_callback_function);
+
+// Wraps original `xla::RecvCallback` inside `PJRT_Callback` using
+// 1) void* `user_arg` to capture `cpp_send_callback.callback` (std::function)
+// 2) `PJRT_RecvCallback` function pointer, which reinterprets and calls
+// `user_arg` to call `cpp_recv_callback.callback` function.
+PJRT_RecvCallbackInfo CppRecvCallbackToCRecvCallback(
+    xla::RecvCallback cpp_recv_callback,
+    PJRT_RecvCallbackFunction* recv_callback_function);
+
 // Data needed to support PJRT_Buffer_MemoryLayout. `minor_to_major` holds the
 // data in PJRT_Buffer_MemoryLayout_Tiled.minor_to_major. `tile_dims` and
 // `tile_dim_sizes` holds the data in PJRT_Buffer_MemoryLayout_Tiled.tile_dims
@@ -228,6 +258,16 @@ absl::Span<const int64_t> GetDimensions(const PJRT_Api* api,
                                         PJRT_Buffer* buffer);
 PJRT_Buffer_MemoryLayout GetMemoryLayout(const PJRT_Api* api,
                                          PJRT_Buffer* buffer);
+
+xla::StatusOr<xla::Shape> BuildXlaShapeFromC(PJRT_Buffer_Type element_type,
+                                             const int64_t* dims,
+                                             size_t num_dims,
+                                             PJRT_Buffer_MemoryLayout* layout);
+
+absl::string_view PlatformName(const PJRT_Api* api,
+                               const PJRT_TopologyDescription* topo_desc);
+absl::Span<PJRT_DeviceDescription* const> DeviceDescriptions(
+    const PJRT_Api* api, const PJRT_TopologyDescription* topo_desc);
 
 }  // namespace pjrt
 

@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_CPU_TEST_TARGET_TRIPLE_HELPER_H_
 
 #if defined(__aarch64__)
-static const char kTargetCpuForHost[] = "aarch64";
+static const char kTargetCpuForHost[] = "";
 static const char kTargetTripleForHost[] = "aarch64-unknown-linux-gnu";
 #elif (defined(__powerpc__) || \
        defined(__ppc__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))

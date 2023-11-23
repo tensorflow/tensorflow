@@ -14,13 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/uniform_quant_ops/tensor_utils.h"
 
+#include <cstdint>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/test.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 

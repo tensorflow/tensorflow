@@ -118,8 +118,10 @@ TEST_P(ParameterizedMetadataTest, BadMetadata) {
   ASSERT_TRUE(DeviceNamesToParsedNames(
       {"/job:worker/replica:0/task:0/device:TPU_SYSTEM:0",
        "/job:worker/replica:0/task:0/device:TPU:0",
+       "/job:worker/replica:0/task:0/device:CPU:0",
        "/job:worker/replica:0/task:1/device:TPU_SYSTEM:0",
-       "/job:worker/replica:0/task:1/device:TPU:0"},
+       "/job:worker/replica:0/task:1/device:TPU:0",
+       "/job:worker/replica:0/task:1/device:CPU:0"},
       &devices));
   std::string compilation_device;
   llvm::SmallVector<llvm::SmallVector<std::string, 8>, 8> execution_devices;
@@ -863,6 +865,7 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceNotReplicated) {
                 builder.getStrArrayAttr(llvm::ArrayRef<llvm::StringRef>(
                     {"/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0",
                      "/job:localhost/replica:0/task:0/device:TPU:0",
+                     "/job:localhost/replica:0/task:0/device:CPU:0",
                      "/job:worker/replica:0/task:0/device:CPU:0"})));
 
   llvm::SmallVector<mlir::Type, 8> result_types;

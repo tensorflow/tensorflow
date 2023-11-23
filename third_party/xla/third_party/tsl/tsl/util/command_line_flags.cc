@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/stringpiece.h"
@@ -92,11 +93,14 @@ bool ParseBoolFlag(StringPiece arg, StringPiece flag,
       *value_parsing_ok = hook(true);
       return true;
     }
-
-    if (absl::EqualsIgnoreCase(arg, "=true")) {
+    // It's probably another argument name which begins with the name of this.
+    if (!absl::ConsumePrefix(&arg, "=")) {
+      return false;
+    }
+    if (absl::EqualsIgnoreCase(arg, "true") || arg == "1") {
       *value_parsing_ok = hook(true);
       return true;
-    } else if (absl::EqualsIgnoreCase(arg, "=false")) {
+    } else if (absl::EqualsIgnoreCase(arg, "false") || arg == "0") {
       *value_parsing_ok = hook(false);
       return true;
     } else {

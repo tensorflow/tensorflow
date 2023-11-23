@@ -155,7 +155,8 @@ class Buffer : public BufferBase {
 
   ~Buffer() override;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Buffer);
+  Buffer(const Buffer&) = delete;
+  void operator=(const Buffer&) = delete;
 };
 
 void LogUnexpectedSize(int64_t actual, int64_t expected) {
@@ -1065,7 +1066,8 @@ class SubBuffer : public TensorBuffer {
 
   ~SubBuffer() override { root_->Unref(); }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SubBuffer);
+  SubBuffer(const SubBuffer&) = delete;
+  void operator=(const SubBuffer&) = delete;
 };
 
 Tensor Tensor::Slice(int64_t start, int64_t limit) const {

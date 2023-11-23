@@ -1160,7 +1160,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
       if quant_mode.is_post_training_int16x8_quantization():
         all_types = default_types + [_dtypes.int16]
       else:
-        all_types = default_types + [_dtypes.int8, _dtypes.uint8]
+        all_types = default_types + [_dtypes.int8, _dtypes.uint8, _dtypes.int16]
       if (
           self.inference_input_type not in all_types
           or self.inference_output_type not in all_types
@@ -1699,7 +1699,7 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
 
     # Without the provided trackable obj, it is not able to serialize the given
     # concrete functions as a saved model format. Also when trackable obj is
-    # a function, use the original concrete function conversion pipline.
+    # a function, use the original concrete function conversion pipeline.
     if not self._trackable_obj or isinstance(
         self._trackable_obj,
         (_function.ConcreteFunction, _def_function.Function),

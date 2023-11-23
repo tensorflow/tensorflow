@@ -88,18 +88,15 @@ void ConvertOpStatsToOpProfile(
                          /*exclude_idle_ops=*/true, op_profile_limit,
                          profile.mutable_by_category_exclude_idle());
 
-  // Don't generate per program profile if there's only a single program.
-  if (op_stats.program_id_to_name_map_size() > 1) {
-    BuildOpProfileNodeTree(op_stats,
-                           /*group_by_program=*/true,
-                           /*exclude_idle_ops=*/false, op_profile_limit,
-                           profile.mutable_by_program());
+  BuildOpProfileNodeTree(op_stats,
+                         /*group_by_program=*/true,
+                         /*exclude_idle_ops=*/false, op_profile_limit,
+                         profile.mutable_by_program());
 
-    BuildOpProfileNodeTree(op_stats,
-                           /*group_by_program=*/true,
-                           /*exclude_idle_ops=*/true, op_profile_limit,
-                           profile.mutable_by_program_exclude_idle());
-  }
+  BuildOpProfileNodeTree(op_stats,
+                         /*group_by_program=*/true,
+                         /*exclude_idle_ops=*/true, op_profile_limit,
+                         profile.mutable_by_program_exclude_idle());
 }
 
 }  // namespace profiler

@@ -155,6 +155,29 @@ TfLiteAllocationType TfLiteOpaqueTensorGetAllocationType(
   return Convert(opaque_tensor)->allocation_type;
 }
 
+TfLiteAllocationStrategy TfLiteOpaqueTensorGetAllocationStrategy(
+    const TfLiteOpaqueTensor* t) {
+  return TfLiteTensorGetAllocationStrategy(Convert(t));
+}
+
+TfLiteRunStability TfLiteOpaqueTensorGetBufferAddressStability(
+    const TfLiteOpaqueTensor* t) {
+  return TfLiteTensorGetBufferAddressStability(Convert(t));
+}
+
+TfLiteRunStability TfLiteOpaqueTensorGetDataStability(
+    const TfLiteOpaqueTensor* t) {
+  return TfLiteTensorGetDataStability(Convert(t));
+}
+
+TfLiteRunStep TfLiteOpaqueTensorGetDataKnownStep(const TfLiteOpaqueTensor* t) {
+  return TfLiteTensorGetDataKnownStep(Convert(t));
+}
+
+TfLiteRunStep TfLiteOpaqueTensorGetShapeKnownStep(const TfLiteOpaqueTensor* t) {
+  return TfLiteTensorGetShapeKnownStep(Convert(t));
+}
+
 const char* TfLiteOpaqueTensorName(const TfLiteOpaqueTensor* opaque_tensor) {
   return TfLiteTensorName(reinterpret_cast<const TfLiteTensor*>(opaque_tensor));
 }

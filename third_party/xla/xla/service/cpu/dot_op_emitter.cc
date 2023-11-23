@@ -850,14 +850,13 @@ Status DotOpEmitter::EmitCallToRuntime() {
                            PrimitiveType_Name(type));
   }
 
-  llvm::Type* float_ptr_type = float_type->getPointerTo();
+  llvm::Type* ptr_type = b_->getPtrTy();
   llvm::Type* int64_type = b_->getInt64Ty();
   llvm::Type* int32_type = b_->getInt32Ty();
-  llvm::Type* int8_ptr_type = b_->getInt8Ty()->getPointerTo();
   llvm::FunctionType* matmul_type = llvm::FunctionType::get(
       b_->getVoidTy(),
-      {int8_ptr_type, float_ptr_type, float_ptr_type, float_ptr_type,
-       int64_type, int64_type, int64_type, int32_type, int32_type},
+      {ptr_type, ptr_type, ptr_type, ptr_type, int64_type, int64_type,
+       int64_type, int32_type, int32_type},
       /*isVarArg=*/false);
 
   llvm::FunctionCallee matmul_func =
@@ -894,15 +893,12 @@ Status DotOpEmitter::EmitCallToRuntime() {
     std::swap(transpose_lhs, transpose_rhs);
   }
 
-  b_->CreateCall(
-      matmul_func,
-      {b_->CreateBitCast(executable_run_options_value_, int8_ptr_type),
-       b_->CreateBitCast(target_array_.GetBasePointer(), float_ptr_type),
-       b_->CreateBitCast(lhs->GetBasePointer(), float_ptr_type),
-       b_->CreateBitCast(rhs->GetBasePointer(), float_ptr_type),
-       b_->getInt64(mat_mult_dims.m), b_->getInt64(mat_mult_dims.n),
-       b_->getInt64(mat_mult_dims.k), b_->getInt32(transpose_lhs),
-       b_->getInt32(transpose_rhs)});
+  b_->CreateCall(matmul_func,
+                 {executable_run_options_value_, target_array_.GetBasePointer(),
+                  lhs->GetBasePointer(), rhs->GetBasePointer(),
+                  b_->getInt64(mat_mult_dims.m), b_->getInt64(mat_mult_dims.n),
+                  b_->getInt64(mat_mult_dims.k), b_->getInt32(transpose_lhs),
+                  b_->getInt32(transpose_rhs)});
   return OkStatus();
 }
 
@@ -933,14 +929,13 @@ Status DotOpEmitter::EmitCallToBatchRuntime() {
                            PrimitiveType_Name(type));
   }
 
-  llvm::Type* float_ptr_type = float_type->getPointerTo();
+  llvm::Type* ptr_type = b_->getPtrTy();
   llvm::Type* int64_type = b_->getInt64Ty();
   llvm::Type* int32_type = b_->getInt32Ty();
-  llvm::Type* int8_ptr_type = b_->getInt8Ty()->getPointerTo();
   llvm::FunctionType* matmul_type = llvm::FunctionType::get(
       b_->getVoidTy(),
-      {int8_ptr_type, float_ptr_type, float_ptr_type, float_ptr_type,
-       int64_type, int64_type, int64_type, int64_type, int32_type, int32_type},
+      {ptr_type, ptr_type, ptr_type, ptr_type, int64_type, int64_type,
+       int64_type, int64_type, int32_type, int32_type},
       /*isVarArg=*/false);
 
   llvm::FunctionCallee matmul_func =
@@ -981,10 +976,8 @@ Status DotOpEmitter::EmitCallToBatchRuntime() {
 
   b_->CreateCall(
       matmul_func,
-      {b_->CreateBitCast(executable_run_options_value_, int8_ptr_type),
-       b_->CreateBitCast(target_array_.GetBasePointer(), float_ptr_type),
-       b_->CreateBitCast(lhs->GetBasePointer(), float_ptr_type),
-       b_->CreateBitCast(rhs->GetBasePointer(), float_ptr_type),
+      {executable_run_options_value_, target_array_.GetBasePointer(),
+       lhs->GetBasePointer(), rhs->GetBasePointer(),
        b_->getInt64(mat_mult_dims.m), b_->getInt64(mat_mult_dims.n),
        b_->getInt64(mat_mult_dims.k), b_->getInt64(lhs_shape.dimensions(0)),
        b_->getInt32(static_cast<uint32_t>(transpose_lhs)),
@@ -1273,9 +1266,8 @@ llvm_ir::IrArray CollapseFirstNDims(llvm::IRBuilder<>* b,
   CHECK_GE(shape.dimensions_size(), n);
   Shape new_shape = CollapseFirstNDims(shape, n);
   llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, module);
-  llvm::Value* new_value =
-      b->CreateBitCast(array.GetBasePointer(), new_ir_type->getPointerTo());
-  return llvm_ir::IrArray(new_value, new_ir_type, std::move(new_shape));
+  return llvm_ir::IrArray(array.GetBasePointer(), new_ir_type,
+                          std::move(new_shape));
 }
 
 Status ValidateDotDimensionNumbers(const DotDimensionNumbers& dim_numbers) {
@@ -1306,9 +1298,7 @@ llvm_ir::IrArray SliceOutInnerArray(llvm_ir::IrArray outer_array,
                                       batch_index->getType());
   llvm::Value* slice_ptr = outer_array.EmitArrayElementAddress(slice_index, b);
   llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(inner_shape, module);
-  llvm::Type* slice_ptr_type = new_ir_type->getPointerTo();
-  return llvm_ir::IrArray(b->CreateBitCast(slice_ptr, slice_ptr_type),
-                          new_ir_type, std::move(inner_shape));
+  return llvm_ir::IrArray(slice_ptr, new_ir_type, std::move(inner_shape));
 }
 
 bool PotentiallyImplementedAsEigenMatmul(

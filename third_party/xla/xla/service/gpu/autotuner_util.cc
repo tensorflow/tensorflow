@@ -22,8 +22,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
@@ -31,7 +32,12 @@ limitations under the License.
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/status.h"
+#include "xla/status_macros.h"
+#include "xla/util.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -165,7 +171,8 @@ constexpr int kVersion = 2;
 
 bool IsTextProtoPath(absl::string_view file_path) {
   return absl::EndsWith(file_path, ".txt") ||
-         absl::EndsWith(file_path, ".textproto");
+         absl::EndsWith(file_path, ".textproto") ||
+         absl::EndsWith(file_path, ".prototxt");
 }
 
 }  // anonymous namespace
@@ -179,15 +186,13 @@ bool IsTextProtoPath(absl::string_view file_path) {
                          std::string(data), &results)             // NOLINT
                    : results.ParseFromString(std::string(data));  // NOLINT
   if (!parse_success) {
-    return Status(absl::StatusCode::kInvalidArgument,
-                  "Failed to parse autotune results string.");
+    return absl::InvalidArgumentError(
+        "Failed to parse autotune results string.");
   }
   if (results.version() != kVersion) {
-    return Status(
-        absl::StatusCode::kInvalidArgument,
-        absl::StrFormat(
-            "Version mismatch in autotune results. Expected %d but was %d",
-            kVersion, results.version()));
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Version mismatch in autotune results. Expected %d but was %d",
+        kVersion, results.version()));
   }
 
   TF_RETURN_IF_ERROR(LoadAutotuneResults(results));
@@ -214,14 +219,17 @@ bool IsTextProtoPath(absl::string_view file_path) {
 /*static*/ Status AutotunerUtil::SerializeAutotuneResultsToFile(
     absl::string_view file_path) {
   TF_RET_CHECK(!file_path.empty());
-  // Some APIs need a const std::string&.
-  std::string file_path_str(file_path);
+
+  std::string resolved_path;
+  if (!tsl::io::ResolveTestPrefixes(file_path, resolved_path)) {
+    return FailedPrecondition("File path can not be resolved: %s", file_path);
+  }
 
   TF_ASSIGN_OR_RETURN(std::string autotune_results_str,
-                      SerializeAutotuneResults(IsTextProtoPath(file_path_str)));
-  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), file_path_str,
+                      SerializeAutotuneResults(IsTextProtoPath(resolved_path)));
+  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), resolved_path,
                                             autotune_results_str));
-  LOG(INFO) << "Autotune results serialized to file: " << file_path_str;
+  LOG(INFO) << "Autotune results serialized to file: " << resolved_path;
 
   return OkStatus();
 }
@@ -229,21 +237,24 @@ bool IsTextProtoPath(absl::string_view file_path) {
 /*static*/ Status AutotunerUtil::LoadAutotuneResultsFromFile(
     absl::string_view file_path) {
   TF_RET_CHECK(!file_path.empty());
-  // Some APIs need a const std::string&.
-  std::string file_path_str(file_path);
 
-  if (!tsl::Env::Default()->FileExists(file_path_str).ok()) {
+  std::string resolved_path;
+  if (!tsl::io::ResolveTestPrefixes(file_path, resolved_path)) {
+    return FailedPrecondition("File path can not be resolved: %s", file_path);
+  }
+
+  if (!tsl::Env::Default()->FileExists(resolved_path).ok()) {
     return FailedPrecondition("Autotune results file does not exist: %s",
-                              file_path_str);
+                              resolved_path);
   }
   std::string autotune_results_str;
-  TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), file_path_str,
+  TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), resolved_path,
                                            &autotune_results_str));
 
   TF_RETURN_IF_ERROR(LoadAutotuneResults(autotune_results_str,
-                                         IsTextProtoPath(file_path_str)));
+                                         IsTextProtoPath(resolved_path)));
 
-  LOG(INFO) << "Autotune results loaded from file: " << file_path_str;
+  LOG(INFO) << "Autotune results loaded from file: " << resolved_path;
 
   return OkStatus();
 }

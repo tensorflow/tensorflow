@@ -79,7 +79,8 @@ static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
   Device* dev = flr->device();
   Status s;
   auto props = std::make_shared<NodeProperties>(
-      &fbody->fdef.signature(), node_def, fbody->arg_types, fbody->ret_types);
+      &fbody->record->fdef().signature(), node_def, fbody->arg_types,
+      fbody->ret_types);
   OpKernelConstruction construction(DeviceType(dev->device_type()), dev,
                                     dev->GetAllocator(AllocatorAttributes()),
                                     flr, dev->resource_manager(), props,

@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/framework/allocator.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
@@ -336,7 +336,7 @@ tsl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
       (LoadKernelOrGetPtr<DeviceMemory<uint8_t>, uint8_t, uint64_t,
                           DeviceMemory<uint64_t>>(
           executor, "redzone_checker", redzone_checker_ptx, compiled_ptx)));
-#else
+#elif TENSORFLOW_USE_ROCM
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ComparisonKernelT> loaded_kernel,
       (executor->CreateTypedKernel<DeviceMemory<uint8>, uint8, uint64_t,

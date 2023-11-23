@@ -16,29 +16,41 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_CLIENT_H_
 #define XLA_PJRT_PJRT_CLIENT_H_
 
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "xla/client/xla_computation.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
@@ -171,10 +183,16 @@ class PjRtDevice {
   }
 
   // Returns all memory spaces attached to this device.
+  // The memory spaces are in no particular order.
   virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const = 0;
 
   // Returns the default memory space attached to this device.
   virtual StatusOr<PjRtMemorySpace*> default_memory_space() const = 0;
+
+  virtual absl::StatusOr<PjRtMemorySpace*> memory_space_by_kind(
+      absl::string_view memory_space_kind) const {
+    return Unimplemented("memory_space_by_kind not implemented");
+  }
 
   // Returns a platform-specific stream handle that should be used to track when
   // an externally-managed buffer is ready to use on this device. This is
@@ -384,6 +402,11 @@ class PjRtHostMemoryForDeviceManager {
 
 class PjRtLoadedExecutable;
 
+struct PjRtPluginAttributes {
+  int64_t pjrt_c_api_major_version;
+  int64_t pjrt_c_api_minor_version;
+};
+
 // Encapsulates the state of Python session with XLA.
 //
 // It is the responsibility of the client of this API to keep the PjRtClient
@@ -444,9 +467,9 @@ class PjRtClient {
   // Subclasses of PjRtClient can optionally take these callbacks in their
   // constructors.
   using KeyValueGetCallback = std::function<xla::StatusOr<std::string>(
-      const std::string& key, absl::Duration timeout)>;
-  using KeyValuePutCallback = std::function<xla::Status(
-      const std::string& key, const std::string& value)>;
+      std::string_view key, absl::Duration timeout)>;
+  using KeyValuePutCallback =
+      std::function<xla::Status(std::string_view key, std::string_view value)>;
 
   PjRtClient() = default;
   explicit PjRtClient(std::unique_ptr<PjRtHostMemoryForDeviceManager>
@@ -485,6 +508,7 @@ class PjRtClient {
       int local_hardware_id) const = 0;
 
   // Return all memory spaces owned by the client.
+  // The memory spaces are in no particular order.
   virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const = 0;
 
   // Return an ID that identifies the platform (CPU/GPU/TPU).
@@ -496,6 +520,12 @@ class PjRtClient {
   // Returns a string containing human-readable, platform-specific version info
   // (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
   virtual absl::string_view platform_version() const = 0;
+
+  // Returns information about the underlying PJRT C API plugin if such a plugin
+  // is being used, otherwise returns nullopt.
+  virtual std::optional<PjRtPluginAttributes> plugin_attributes() const {
+    return std::nullopt;
+  }
 
   // TODO(b/244756954): Rethink this function altogether
   // Returns an enum that identifies the type of runtime being used under this
@@ -530,10 +560,6 @@ class PjRtClient {
   // Variant of `Compile` that accepts an MLIR module.
   virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) = 0;
-
-  // Generates a unique fingerprint for `executable`, may be std::nullopt.
-  virtual StatusOr<std::optional<std::string>> ExecutableFingerprint(
-      const PjRtLoadedExecutable& executable) const = 0;
 
   // Deserializes a serialized executable as produced by
   // PjRtExecutable::SerializeExecutable(). `serialized` must have been
@@ -580,7 +606,8 @@ class PjRtClient {
   // Gets the pointer to the topology description held by the client.
   virtual StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const {
-    return Unimplemented("GetTopologyDescription not supported!");
+    return Unimplemented("GetTopologyDescription not supported on platform %s",
+                         platform_name());
   }
 
   // Returns topology object for compilation based on this client's topology.

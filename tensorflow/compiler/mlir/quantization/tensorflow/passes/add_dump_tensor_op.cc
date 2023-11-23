@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -38,6 +39,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/quantization_unit_loc.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -97,10 +99,13 @@ class AddDumpTensorOpPass
   Option<DebuggerType> debugger_type_{
       *this, "debugger_type",
       llvm::cl::init(DebuggerOptions::DEBUGGER_TYPE_UNSPECIFIED),
-      llvm::cl::values(clEnumValN(DebuggerOptions::DEBUGGER_TYPE_WHOLE_MODEL,
-                                  "whole_model", "Whole model verify"),
-                       clEnumValN(DebuggerOptions::DEBUGGER_TYPE_PER_LAYER,
-                                  "per_layer", "Per-layer verify"))};
+      llvm::cl::values(
+          clEnumValN(DebuggerOptions::DEBUGGER_TYPE_WHOLE_MODEL, "whole_model",
+                     "Whole model verify"),
+          clEnumValN(DebuggerOptions::DEBUGGER_TYPE_INT_PER_LAYER,
+                     "int_per_layer", "Int Per-layer verify"),
+          clEnumValN(DebuggerOptions::DEBUGGER_TYPE_FLOAT_PER_LAYER,
+                     "float_per_layer", "Float Per-layer verify"))};
 
   std::string log_dir_path_ = "/tmp/dumps";
 };
@@ -141,6 +146,11 @@ class AddDumpTensorOp : public OpRewritePattern<TF::PartitionedCallOp> {
 
     rewriter.setInsertionPointAfterValue(result);
 
+    std::optional<QuantizationUnitLoc::QuantizationUnit> quant_unit =
+        FindQuantizationUnitFromLoc(call_op->getLoc());
+
+    if (!quant_unit.has_value()) return failure();
+
     auto folder_name =
         tensorflow::io::JoinPath(log_dir_path_, f_attr.getValue());
     // In Whole model, we first need to set file_name as
@@ -151,9 +161,10 @@ class AddDumpTensorOp : public OpRewritePattern<TF::PartitionedCallOp> {
     // as quantized_tensor_data.pb here.
     // TODO: b/296933893 - Refactor the debugger code when no quantize option
     // is added
-    auto file_name = debugger_type_ == DebuggerOptions::DEBUGGER_TYPE_PER_LAYER
-                         ? "quantized_tensor_data.pb"
-                         : "unquantized_tensor_data.pb";
+    auto file_name =
+        debugger_type_ == DebuggerOptions::DEBUGGER_TYPE_WHOLE_MODEL
+            ? "unquantized_tensor_data.pb"
+            : "quantized_tensor_data.pb";
 
     SmallVector<NamedAttribute> dump_attributes{
         rewriter.getNamedAttr("log_dir_path",
@@ -162,13 +173,18 @@ class AddDumpTensorOp : public OpRewritePattern<TF::PartitionedCallOp> {
         // The op is disabled by default. Otherwise, values will be saved
         // during calibration.
         rewriter.getNamedAttr("enabled", rewriter.getBoolAttr(false)),
+        rewriter.getNamedAttr("func_name",
+                              rewriter.getStringAttr(quant_unit->func_name())),
+        rewriter.getNamedAttr("node_name",
+                              rewriter.getStringAttr(quant_unit->node_name())),
     };
 
     rewriter.create<TF::DumpTensorOp>(call_op->getLoc(), TypeRange{}, result,
                                       dump_attributes);
 
     // Per-layer mode.
-    if (debugger_type_ == DebuggerOptions::DEBUGGER_TYPE_PER_LAYER) {
+    if (debugger_type_ == DebuggerOptions::DEBUGGER_TYPE_INT_PER_LAYER ||
+        debugger_type_ == DebuggerOptions::DEBUGGER_TYPE_FLOAT_PER_LAYER) {
       auto module = call_op->getParentOfType<ModuleOp>();
       SymbolTable symbol_table(module);
 
@@ -193,11 +209,25 @@ class AddDumpTensorOp : public OpRewritePattern<TF::PartitionedCallOp> {
           rewriter.getNamedAttr("file_name", rewriter.getStringAttr(
                                                  "unquantized_tensor_data.pb")),
           rewriter.getNamedAttr("enabled", rewriter.getBoolAttr(false)),
+          rewriter.getNamedAttr(
+              "func_name", rewriter.getStringAttr(quant_unit->func_name())),
+          rewriter.getNamedAttr(
+              "node_name", rewriter.getStringAttr(quant_unit->node_name())),
       };
 
       rewriter.create<TF::DumpTensorOp>(call_op->getLoc(), TypeRange{},
                                         ref_call_op.getResult(0),
                                         dump_attributes);
+
+      if (debugger_type_ == DebuggerOptions::DEBUGGER_TYPE_FLOAT_PER_LAYER) {
+        // Swap all uses between call_op and ref_call_op, except for the
+        // particular use that owns DumpTensor.
+        rewriter.replaceUsesWithIf(
+            call_op.getResult(0), ref_call_op.getResult(0),
+            [](OpOperand &use) -> bool {
+              return !isa<TF::DumpTensorOp>(use.getOwner());
+            });
+      }
     }
 
     return success();

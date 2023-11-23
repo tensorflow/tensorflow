@@ -17,14 +17,22 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_
 
 #include <memory>
+#include <string>
 
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassOptions.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 
 namespace mlir {
 
@@ -257,16 +265,6 @@ std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateCrossHostTransferPass();
 // will replicate the tf.Const op once for each device.
 std::unique_ptr<OperationPass<ModuleOp>> CreateConstantOpDeviceAssignmentPass();
 
-// Populates the supplied passmanager with the passes required to export
-// to TensorFlow Graph.
-void AddGraphExportLoweringPassesV2(OpPassManager& pm);
-
-// Populates the supplied passmanager with the passes required to export
-// to TensorFlow Graph.
-// ***This is the legacy graph export pipeline, prefer
-// AddGraphExportLoweringPassesV2***.
-void AddGraphExportLoweringPasses(OpPassManager& pm);
-
 // Returns pass that verifies whether all functions in module are of single
 // tf_executor.graph and each tf_executor.island in tf_executor.graph only has a
 // single op.
@@ -313,9 +311,12 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateNameAnonymousIteratorsPass();
 // TODO(b/244596254) Implement followup pass for creating control deps.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateSplitIntoIslandPerOpPass();
 
-// Populates the supplied passmanager with the passes required to run the
-// CPU/GPU bridge.
-void CreateTFXLABridgePipeline(OpPassManager& pm);
+// Prints, but otherwise pipes through without changes, the current module.
+std::unique_ptr<OperationPass<ModuleOp>> CreatePrintPass(
+    raw_ostream* os = nullptr);
+
+// Moves TPUCompileMlir ops as far to the front as possible.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateMoveTpuCompileToFrontPass();
 
 //===----------------------------------------------------------------------===//
 // XlaCallModule
@@ -457,20 +458,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateParallelExecuteToIslandsPass(
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateAnnotateParameterReplicationPass();
 
-// Creates a pass that marks unsupported ops in device cluster for outside
-// compilation.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateMarkOpsForOutsideCompilationPass();
-
-// Creates a pass that extracts outside compilation (Host ops inside device
-// cluster) at head/tail of Device cluster to run before/after XLA computation.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateExtractHeadTailOutsideCompilationPass();
-
-// Creates a pass that extract outside compilation (Host ops inside cevice
-// cluster) ops to a separate parallel_execute region to run on CPU.
-std::unique_ptr<OperationPass<ModuleOp>> CreateExtractOutsideCompilationPass();
-
 // Creates a pass that merges control flow with similar predicates.
 std::unique_ptr<OperationPass<ModuleOp>> CreateMergeControlFlowPass();
 
@@ -500,9 +487,6 @@ CreateOutsideCompiledToHostLaunchPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateVerifyNoOutsideCompilationMarkersPass();
 
-// Create a pass that encapsulates StatefulPartitionedCallOp within a cluster.
-std::unique_ptr<OperationPass<ModuleOp>> CreateXlaClusterFormationPass();
-
 // Create a pass that inlines the StatefulPartitionedCallOp op based in the
 // parent region.
 std::unique_ptr<OperationPass<ModuleOp>> CreateXlaInlineDeviceOpsPass();
@@ -528,11 +512,6 @@ CreateConvertToLegacyCompileAndReplicateAttributesPass();
 // Creates a pass that converts all TPUPartitionedInput to TPUPartitionedInputV2
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUPartitionedOpConversionPass();
-
-// Creates a pass that forms clusters from operations of the same
-// `_replication_info` attribute.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass(
-    bool strict_clusters = false);
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUValidateInputsPass();
 
@@ -622,15 +601,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateTPUDevicePropagationPass();
 // Create a pass that colocates each `Split` with its predecessor.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTPUColocateSplitsPass();
 
-// Populates the supplied passmanager with the passes required to run the
-// bridge.
-void CreateTPUBridgePipeline(OpPassManager& pm,
-                             llvm::StringRef module_name = llvm::StringRef());
-
-// Populates the supplied passmanager with the passes required to run the
-// bridge in V1 mode.
-void CreateTPUBridgePipelineV1(OpPassManager& pm);
-
 // Creates a pass that replicates the tf._TPUCompileMlir op on each host that
 // needs the compiled program. It helps avoid transferring the compiled binary
 // between hosts.
@@ -695,7 +665,6 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_LOCALIZEVARHANDLESPASS
 #define GEN_PASS_DECL_LOWERQUANTIZEDPASS
 #define GEN_PASS_DECL_MARKINPUTOUTPUTALIASESPASS
-#define GEN_PASS_DECL_MARKOPSFOROUTSIDECOMPILATIONPASS
 #define GEN_PASS_DECL_MATERIALIZEPASSTHROUGHOP
 #define GEN_PASS_DECL_MERGECONTROLFLOWPASS
 #define GEN_PASS_DECL_MOVETRANSPOSESPASS
@@ -724,8 +693,6 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_TPUCOLOCATECOMPOSITERESOURCEOPSPASS
 #define GEN_PASS_DECL_TPUDEVICEPROPAGATIONPASS
 #define GEN_PASS_DECL_TPUDYNAMICLAYOUTPASS
-#define GEN_PASS_DECL_TPUEXTRACTHEADTAILOUTSIDECOMPILATIONPASS
-#define GEN_PASS_DECL_TPUEXTRACTOUTSIDECOMPILATIONPASS
 #define GEN_PASS_DECL_TPUHOSTCOMPUTATIONEXPANSIONPASS
 #define GEN_PASS_DECL_TPUIDENTITYPRUNINGPASS
 #define GEN_PASS_DECL_TPUMERGEVARIABLESWITHEXECUTEPASS

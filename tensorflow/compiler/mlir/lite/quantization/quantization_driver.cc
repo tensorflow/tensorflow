@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -24,10 +25,12 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -776,6 +779,14 @@ void QuantizationDriver::PreprocessConstantOps() {
     // Non-float tensors are neither weights nor require quantization.
     auto type = cst.getType().dyn_cast<ShapedType>();
     if (!type || !type.getElementType().isa<FloatType>()) return;
+
+    // Skip if the value is NaN or INF.
+    // Otherwise the illegal scale/zp will be calculated.
+    auto float_attr = cst.getValueAttr().dyn_cast<DenseFPElementsAttr>();
+    if (float_attr) {
+      auto cst_float_falue = float_attr.getValues<APFloat>()[0];
+      if (!cst_float_falue.isFinite()) return;
+    }
 
     Value value = cst.getResult();
     builder_.setInsertionPoint(cst);

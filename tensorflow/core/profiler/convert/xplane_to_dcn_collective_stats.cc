@@ -67,7 +67,7 @@ StatusOr<bool> GetDcnCollectiveStatsFromMultiXSpaceAndSaveToFile(
     }
 
     DcnSlackAnalysis dcnSlackAnalysis =
-        ConvertXSpaceToDcnSlackAnalysis(*xspace);
+        ConvertXSpaceToDcnSlackAnalysis(*xspace, nullptr, nullptr);
 
     TF_RETURN_IF_ERROR(WriteBinaryProto(session_snapshot,
                                         StoredDataType::DCN_COLLECTIVE_STATS,

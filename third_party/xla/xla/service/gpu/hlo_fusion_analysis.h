@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_mapping_scheme.h"
@@ -41,6 +40,7 @@ class HloFusionAnalysis {
   // The type of emitted fusion.
   enum class EmitterFusionKind {
     kLoop,
+    kCustomFusion,
     kTriton,
     kReduction,
     kTranspose,
@@ -51,9 +51,10 @@ class HloFusionAnalysis {
   static StatusOr<HloFusionAnalysis> Create(
       FusionBackendConfig backend_config,
       std::vector<const HloInstruction*> hlo_roots,
-      FusionBoundaryFn boundary_fn, const GpuDeviceInfo* device_info);
-  static StatusOr<HloFusionAnalysis> Create(const HloFusionInstruction* fusion,
-                                            const GpuDeviceInfo* device_info);
+      FusionBoundaryFn boundary_fn, const se::DeviceDescription* device_info);
+  static StatusOr<HloFusionAnalysis> Create(
+      const HloFusionInstruction* fusion,
+      const se::DeviceDescription* device_info);
 
   const std::vector<const HloInstruction*>& fusion_roots() const {
     return fusion_roots_;
@@ -67,41 +68,49 @@ class HloFusionAnalysis {
 
   // Determines the launch dimensions for the fusion. The fusion kind must not
   // be `kTriton`.
-  StatusOr<LaunchDimensions> GetLaunchDimensions();
+  StatusOr<LaunchDimensions> GetLaunchDimensions() const;
 
   // Calculates the reduction information. Returns `nullptr` if the fusion is
   // not a reduction.
-  const ReductionCodegenInfo* GetReductionCodegenInfo();
+  const ReductionCodegenInfo* GetReductionCodegenInfo() const {
+    return reduction_codegen_info_.has_value() ? &*reduction_codegen_info_
+                                               : nullptr;
+  }
 
   // Calculates the transpose tiling information. Returns `nullptr` if the
   // fusion is not a transpose.
-  const TilingScheme* GetTransposeTilingScheme();
+  const TilingScheme* GetTransposeTilingScheme() const {
+    return transpose_tiling_scheme_.has_value() ? &*transpose_tiling_scheme_
+                                                : nullptr;
+  }
 
   // Calculates the loop fusion config. Returns `nullptr` if the fusion is not a
   // loop.
-  const LaunchDimensionsConfig* GetLoopFusionConfig();
+  const LaunchDimensionsConfig* GetLoopFusionConfig() const {
+    return loop_fusion_config_.has_value() ? &*loop_fusion_config_ : nullptr;
+  }
 
   // Returns the hero reduction of the computation.
   const HloInstruction* FindHeroReduction() const;
 
  private:
+  // Precomputed information about inputs (arguments) and outputs (roots) of the
+  // fusion.
+  struct InputOutputInfo {
+    bool has_4_bit_input;
+    bool has_4_bit_output;
+    int smallest_input_dtype_bits;
+  };
+
   HloFusionAnalysis(FusionBackendConfig fusion_backend_config,
                     std::vector<const HloInstruction*> fusion_roots,
                     FusionBoundaryFn fusion_boundary_fn,
-                    std::vector<const HloInstruction*> fusion_parameters,
                     std::vector<const HloInstruction*> fusion_heroes,
-                    const GpuDeviceInfo* device_info,
-                    std::optional<TransposeDescription> tiled_transpose)
-      : fusion_backend_config_(std::move(fusion_backend_config)),
-        fusion_roots_(std::move(fusion_roots)),
-        fusion_boundary_fn_(std::move(fusion_boundary_fn)),
-        fusion_parameter_inputs_(std::move(fusion_parameters)),
-        fusion_heroes_(std::move(fusion_heroes)),
-        device_info_(device_info),
-        tiled_transpose_(tiled_transpose) {}
+                    const se::DeviceDescription* device_info,
+                    std::optional<TransposeDescription> tiled_transpose,
+                    InputOutputInfo input_output_info);
 
   const Shape& GetElementShape() const;
-  int SmallestInputDtypeBits() const;
   int64_t MaxBeneficialColumnReductionUnrollBasedOnBlockSize() const;
   std::vector<std::vector<const HloInstruction*>> GroupDisjointReductions()
       const;
@@ -114,24 +123,33 @@ class HloFusionAnalysis {
                              bool reduction_is_race_free) const;
   int CalculateVirtualThreadScalingFactorForReduction(
       const ReductionDimensions& reduction_dimensions) const;
-  ReductionCodegenInfo ComputeReductionCodegenInfo(
+  std::optional<ReductionCodegenInfo> ComputeReductionCodegenInfo(
       const HloInstruction* hero_reduction) const;
+  std::optional<LaunchDimensionsConfig> ComputeLoopFusionConfig() const;
   bool HasConsistentTransposeHeros() const;
 
   FusionBackendConfig fusion_backend_config_;
   std::vector<const HloInstruction*> fusion_roots_;
   FusionBoundaryFn fusion_boundary_fn_;
-  // The HLO instructions that are inputs into the fusion. These instructions
-  // are /outside/ the fusion.
-  std::vector<const HloInstruction*> fusion_parameter_inputs_;
   std::vector<const HloInstruction*> fusion_heroes_;
-  const GpuDeviceInfo* device_info_;
+  const se::DeviceDescription* device_info_;
   std::optional<TransposeDescription> tiled_transpose_;
+  InputOutputInfo input_output_info_;
 
   std::optional<ReductionCodegenInfo> reduction_codegen_info_;
   std::optional<TilingScheme> transpose_tiling_scheme_;
   std::optional<LaunchDimensionsConfig> loop_fusion_config_;
 };
+
+// Creates a HloFusionAnalysis that analyzes a hypothetical fusion of producer
+// into consumer.
+std::optional<HloFusionAnalysis> AnalyzeProducerConsumerFusion(
+    const HloInstruction& producer, const HloInstruction& consumer,
+    const se::DeviceDescription& device_info);
+// Creates a HloFusionAnalysis that analyzes just consumer as a standalone
+// fusion.
+std::optional<HloFusionAnalysis> AnalyzeFusion(
+    const HloInstruction& consumer, const se::DeviceDescription& device_info);
 
 }  // namespace gpu
 }  // namespace xla

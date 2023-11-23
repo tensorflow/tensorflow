@@ -36,13 +36,17 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/primitive_util.h"
+#include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace pjrt {
@@ -477,7 +481,8 @@ xla::StatusOr<std::vector<PJRT_NamedValue>> ConvertToPjRtNamedValueList(
 }
 
 absl::flat_hash_map<std::string, xla::PjRtValueType>
-ConvertFromPjRtNamedValueList(PJRT_NamedValue* c_value_list, size_t list_size) {
+ConvertFromPjRtNamedValueList(const PJRT_NamedValue* c_value_list,
+                              size_t list_size) {
   absl::flat_hash_map<std::string, xla::PjRtValueType> cpp_value_map;
   for (int i = 0; i < list_size; ++i) {
     const PJRT_NamedValue& c_value = c_value_list[i];
@@ -573,11 +578,15 @@ static std::string StructSizeErrorMsg(absl::string_view struct_name,
   return error_msg;
 }
 
-xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
-                                     size_t expected_size, size_t actual_size) {
-  if (expected_size != actual_size) {
+xla::Status ActualStructSizeIsGreaterOrEqual(absl::string_view struct_name,
+                                             size_t expected_size,
+                                             size_t actual_size) {
+  if (actual_size < expected_size) {
     return tsl::errors::InvalidArgument(
         StructSizeErrorMsg(struct_name, expected_size, actual_size));
+  }
+  if (actual_size > expected_size) {
+    VLOG(2) << StructSizeErrorMsg(struct_name, expected_size, actual_size);
   }
   return tsl::OkStatus();
 }
@@ -603,6 +612,16 @@ absl::string_view GetPlatformName(PJRT_Client* client, const PJRT_Api* api) {
 
   absl::string_view platform_name(args.platform_name, args.platform_name_size);
   return platform_name;
+}
+
+xla::StatusOr<PJRT_TopologyDescription*> GetTopologyDescription(
+    PJRT_Client* client, const PJRT_Api* api) {
+  PJRT_Client_TopologyDescription_Args args;
+  args.struct_size = PJRT_Client_TopologyDescription_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.client = client;
+  RETURN_STATUS_IF_PJRT_ERROR(api->PJRT_Client_TopologyDescription(&args), api);
+  return args.topology;
 }
 
 PJRT_Chunk ConvertFromCppChunk(xla::PjRtChunk chunk) {
@@ -644,14 +663,21 @@ PJRT_DeviceDescription* GetDeviceDescription(const PJRT_Api* api,
   return args.device_description;
 }
 
-absl::Span<PJRT_Memory*> GetAddressableMemories(const PJRT_Api* api,
-                                                PJRT_Device* device) {
+absl::Span<PJRT_Memory* const> GetAddressableMemories(const PJRT_Api* api,
+                                                      PJRT_Device* device) {
   PJRT_Device_AddressableMemories_Args args;
   args.struct_size = PJRT_Device_AddressableMemories_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.device = device;
   pjrt::LogFatalIfPjrtError(api->PJRT_Device_AddressableMemories(&args), api);
   return absl::MakeSpan(args.memories, args.num_memories);
+}
+
+int GetId(const PJRT_Api* api, PJRT_DeviceDescription* device_desc) {
+  PJRT_DeviceDescription_Id_Args args = PJRT_DeviceDescription_Id_Args{
+      PJRT_DeviceDescription_Id_Args_STRUCT_SIZE, nullptr, device_desc};
+  pjrt::LogFatalIfPjrtError(api->PJRT_DeviceDescription_Id(&args), api);
+  return args.id;
 }
 
 static void PjRtValueDeleterCallback(char* value) { delete[] value; }
@@ -737,6 +763,49 @@ std::unique_ptr<PJRT_KeyValueCallbackData> ConvertToCKeyValueCallbacks(
   return kv_callback_data;
 }
 
+PJRT_SendCallbackInfo CppSendCallbackToCSendCallback(
+    xla::SendCallback cpp_send_callback,
+    PJRT_SendCallbackFunction* send_callback_function) {
+  return PJRT_SendCallbackInfo{
+      cpp_send_callback.channel_id,
+      // this is the void* user_arg to capture `cpp_send_callback.callback`
+      send_callback_function,
+      // this is the function pointer, PJRT_SendCallback
+      [](PJRT_Chunk* chunk, PJRT_CallbackError* callback_error,
+         size_t total_size_in_bytes, bool done, void* user_arg) -> PJRT_Error* {
+        // PJRT_SendCallback, `send_callback` is internal C interface callback
+        // representation that cpatures the client C++ callback in void*
+        // `user_arg` and reinterprets in the lower-level runtime for execution.
+        // `user_arg` captures `send_callback_function` which is
+        // SendCallbackFunction*.
+        PJRT_SendCallbackFunction* send_callback =
+            reinterpret_cast<PJRT_SendCallbackFunction*>(user_arg);
+        return (*send_callback)(chunk, callback_error, total_size_in_bytes,
+                                done);
+      }};
+}
+
+PJRT_RecvCallbackInfo CppRecvCallbackToCRecvCallback(
+    xla::RecvCallback cpp_recv_callback,
+    PJRT_RecvCallbackFunction* recv_callback_function) {
+  return PJRT_RecvCallbackInfo{
+      cpp_recv_callback.channel_id,
+      // this is the void* user_arg to capture `cpp_recv_callback.callback`
+      recv_callback_function,
+      // this is the function pointer, PJRT_RecvCallback
+      [](PJRT_CopyToDeviceStream* stream, void* user_arg) {
+        // PJRT_RecvCallback, `recv_callback` is internal C interface callback
+        // representation that cpatures the client C++ callback in void*
+        // `user_arg` and reinterprets in the lower-level runtime for execution.
+        // `user_arg` captures `recv_callback_function` which is
+        // RecvCallbackFunction*.
+        auto* recv_callback =
+            reinterpret_cast<std::function<void(PJRT_CopyToDeviceStream*)>*>(
+                user_arg);
+        (*recv_callback)(stream);
+      }};
+}
+
 xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
     const xla::Layout& cpp_layout) {
   BufferMemoryLayoutData layout_data;
@@ -818,6 +887,59 @@ PJRT_Buffer_MemoryLayout GetMemoryLayout(const PJRT_Api* api,
   args.buffer = buffer;
   LogFatalIfPjrtError(api->PJRT_Buffer_GetMemoryLayout(&args), api);
   return args.layout;
+}
+
+xla::StatusOr<xla::Shape> BuildXlaShapeFromC(PJRT_Buffer_Type element_type,
+                                             const int64_t* dims,
+                                             size_t num_dims,
+                                             PJRT_Buffer_MemoryLayout* layout) {
+  xla::Shape shape =
+      xla::ShapeUtil::MakeShape(ConvertFromPjRtBufferType(element_type),
+                                absl::Span<const int64_t>(dims, num_dims));
+  xla::Layout cpp_layout;
+  if (layout != nullptr) {
+    switch (layout->type) {
+      case PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Tiled: {
+        TF_ASSIGN_OR_RETURN(cpp_layout, ConvertToLayout(layout->tiled));
+        break;
+      }
+      case PJRT_Buffer_MemoryLayout_Type::
+          PJRT_Buffer_MemoryLayout_Type_Strides: {
+        TF_RETURN_IF_ERROR(absl::InvalidArgumentError(
+            "PJRT_Buffer_MemoryLayout_Type_Strides is not supported to be "
+            "converted to a xla::Shape"));
+        break;
+      }
+      default: {
+        TF_RETURN_IF_ERROR(absl::InvalidArgumentError(absl::StrCat(
+            "Unexpected PJRT_Buffer_MemoryLayout_Type type: ", layout->type)));
+      }
+    }
+    *shape.mutable_layout() = cpp_layout;
+  }
+  return shape;
+}
+
+absl::string_view PlatformName(const PJRT_Api* api,
+                               const PJRT_TopologyDescription* topo_desc) {
+  PJRT_TopologyDescription_PlatformName_Args args;
+  args.struct_size = PJRT_TopologyDescription_PlatformName_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.topology = const_cast<PJRT_TopologyDescription*>(topo_desc);
+  LogFatalIfPjrtError(api->PJRT_TopologyDescription_PlatformName(&args), api);
+  return {args.platform_name, args.platform_name_size};
+}
+
+absl::Span<PJRT_DeviceDescription* const> DeviceDescriptions(
+    const PJRT_Api* api, const PJRT_TopologyDescription* topo_desc) {
+  PJRT_TopologyDescription_GetDeviceDescriptions_Args args;
+  args.struct_size =
+      PJRT_TopologyDescription_GetDeviceDescriptions_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.topology = const_cast<PJRT_TopologyDescription*>(topo_desc);
+  LogFatalIfPjrtError(
+      api->PJRT_TopologyDescription_GetDeviceDescriptions(&args), api);
+  return {args.descriptions, args.num_descriptions};
 }
 
 }  // namespace pjrt

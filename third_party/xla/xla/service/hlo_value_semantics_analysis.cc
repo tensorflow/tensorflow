@@ -111,14 +111,12 @@ Status EinsumDepthAnalysis::RunInternal(
   for (HloInstruction* root : roots) {
     if (root == computation.root_instruction()) {
       if (root_depth.has_value()) {
-        einsum_depth_map_.insert(std::make_pair(root, *root_depth));
+        TF_RETURN_IF_ERROR(SetInstructionDepth(root, *root_depth));
       } else {
-        ShapeTree<int> depth(root->shape(), 0);
-        einsum_depth_map_.insert(std::make_pair(root, std::move(depth)));
+        TF_RETURN_IF_ERROR(SetInstructionDepth(root, 0));
       }
     } else {
-      ShapeTree<int> depth(root->shape(), -1);
-      einsum_depth_map_.insert(std::make_pair(root, std::move(depth)));
+      GetOrCreateDepthTree(root);
     }
   }
   HloPreOrderDFS dfs;
@@ -222,6 +220,14 @@ Status EinsumDepthAnalysis::SetInstructionDepth(HloInstruction* instruction,
   return OkStatus();
 }
 
+Status EinsumDepthAnalysis::SetInstructionDepth(HloInstruction* instruction,
+                                                const ShapeTree<int>& depth) {
+  auto depth_iter = GetOrCreateDepthTree(instruction);
+  ShapeTree<int>& depth_tree = depth_iter->second;
+  SetDepth(depth_tree, depth);
+  return OkStatus();
+}
+
 Status EinsumDepthAnalysis::DefaultAction(HloInstruction* instruction) {
   if (!instruction->shape().IsToken() && !instruction->shape().IsArray() &&
       !instruction->shape().IsTuple()) {
@@ -239,9 +245,7 @@ Status EinsumDepthAnalysis::DefaultAction(HloInstruction* instruction) {
   if (instruction->operand_count() == 1) {
     HloInstruction* operand = instruction->mutable_operand(0);
     if (Shape::Equal().IgnoreLayout()(instruction->shape(), operand->shape())) {
-      auto operand_depth_iter = GetOrCreateDepthTree(operand);
-      ShapeTree<int>& operand_depth = operand_depth_iter->second;
-      SetDepth(operand_depth, depth_tree);
+      TF_RETURN_IF_ERROR(SetInstructionDepth(operand, depth_tree));
       return OkStatus();
     }
   }
@@ -375,17 +379,47 @@ Status EinsumDepthAnalysis::HandleWhile(HloInstruction* xla_while) {
   TF_RETURN_IF_ERROR(HandleCalledComputation(
       *condition_computation, condition_depth, xla_while->operands()));
   HloComputation* body_computation = xla_while->while_body();
-  Status status = HandleCalledComputation(*body_computation, depth_tree,
-                                          xla_while->operands());
-  return status;
+  TF_RETURN_IF_ERROR(HandleCalledComputation(*body_computation, depth_tree,
+                                             xla_while->operands()));
+  // Elements of while loop outputs may only be used within the while loop.
+  // Set the depth of the while body outputs to have the max of their original
+  // depth and their corresponding operand depth if their original depth was
+  // negative. Then recompute while loop instruction depths.
+  auto body_depth_iter =
+      GetOrCreateDepthTree(body_computation->root_instruction());
+  ShapeTree<int>& body_depth = body_depth_iter->second;
+  // Note: while body computations have a single parameter. See
+  // ShapeVerifier::HandleWhile.
+  HloInstruction* operand = body_computation->parameter_instruction(0);
+  auto operand_depth = GetOrCreateDepthTree(operand)->second;
+  body_depth.ForEachMutableElement(
+      [&body_depth, &operand_depth](const ShapeIndex& shape_index,
+                                    int* depth_ptr) {
+        if (body_depth.IsLeaf(shape_index)) {
+          if (body_depth.element(shape_index) < 0 &&
+              operand_depth.element(shape_index) >= 0) {
+            *depth_ptr = 0;
+          }
+        }
+      });
+  return HandleCalledComputation(*body_computation, body_depth,
+                                 xla_while->operands());
 }
 
 Status EinsumDepthAnalysis::HandleConditional(HloInstruction* conditional) {
   auto depth_iter = einsum_depth_map_.find(conditional);
   CHECK(depth_iter != einsum_depth_map_.end());
   const ShapeTree<int> depth_tree = depth_iter->second;
-  return HandleCalledComputation(*conditional->called_computations()[0],
-                                 depth_tree, conditional->operands());
+  // Conditionals have one more operand than the number of branches. The first
+  // operand is the pred.
+  TF_RETURN_IF_ERROR(
+      SetInstructionDepth(conditional->operands()[0], depth_tree));
+  for (int i = 0; i < conditional->branch_count(); ++i) {
+    TF_RETURN_IF_ERROR(
+        HandleCalledComputation(*conditional->called_computations()[i],
+                                depth_tree, {conditional->operands()[i + 1]}));
+  }
+  return OkStatus();
 }
 
 Status EinsumDepthAnalysis::HandleCalledComputation(
@@ -398,8 +432,7 @@ Status EinsumDepthAnalysis::HandleCalledComputation(
     HloInstruction* parameter = called_computation.parameter_instruction(i);
     const ShapeTree<int> parameter_depth =
         GetOrCreateDepthTree(parameter)->second;
-    ShapeTree<int>& operand_depth = GetOrCreateDepthTree(operand)->second;
-    SetDepth(operand_depth, parameter_depth);
+    TF_RETURN_IF_ERROR(SetInstructionDepth(operand, parameter_depth));
   }
   return OkStatus();
 }
@@ -414,9 +447,7 @@ Status EinsumDepthAnalysis::HandleOutfeed(HloInstruction* outfeed) {
   const ShapeTree<int> depth_tree = depth_iter->second;
   int max_depth = GetMaxDepth(depth_tree);
   for (HloInstruction* operand : outfeed->mutable_operands()) {
-    auto operand_depth_iter = GetOrCreateDepthTree(operand);
-    ShapeTree<int>& operand_depth = operand_depth_iter->second;
-    SetDepth(operand_depth, max_depth);
+    TF_RETURN_IF_ERROR(SetInstructionDepth(operand, max_depth));
   }
   return OkStatus();
 }
@@ -592,6 +623,7 @@ void HloValueSemanticsAnalysis::AnnotateWeights() {
     value_semantics_[parameter] = std::move(semantics_shape_tree);
   }
 }
+
 Status HloValueSemanticsAnalysis::RunOnComputation(
     const HloComputation& computation,
     absl::Span<const HloInstruction* const> operands) {
@@ -1039,6 +1071,16 @@ Status HloValueSemanticsPropagation::HandleReplicaId(
   return OkStatus();
 }
 
+Status HloValueSemanticsPropagation::HandleRngBitGenerator(
+    HloInstruction* rng_bit_generator) {
+  const HloValueSemantics* semantics = analysis_->NewHloValueSemantics(
+      HloValueSemanticLabel::kRandom, {rng_bit_generator, {}});
+  ShapeTree<const HloValueSemantics*> rbg_semantics_tree(
+      rng_bit_generator->shape(), semantics);
+  analysis_->SetHloValueSemantics(rng_bit_generator, rbg_semantics_tree);
+  return OkStatus();
+}
+
 Status HloValueSemanticsPropagation::HandleClamp(HloInstruction* clamp) {
   const ShapeTree<const HloValueSemantics*>& operand_semantics =
       analysis_->GetInstructionSemantics(clamp->operand(1));
@@ -1131,8 +1173,9 @@ Status HloValueSemanticsPropagation::HandleCustomCall(
 Status HloValueSemanticsPropagation::HandleConditional(
     HloInstruction* conditional) {
   for (int i = 0; i < conditional->called_computations().size(); ++i) {
-    TF_RETURN_IF_ERROR(analysis_->RunOnComputation(
-        *conditional->called_computations()[i], conditional->operands()));
+    TF_RETURN_IF_ERROR(
+        analysis_->RunOnComputation(*conditional->called_computations()[i],
+                                    {conditional->operands()[i + 1]}));
   }
   HloComputation* computation = conditional->called_computations()[0];
   const ShapeTree<const HloValueSemantics*>& root_semantics =

@@ -1,6 +1,5 @@
 # Description: OpKernels for Uniform quant ops.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -10,11 +9,11 @@ load(
 # # Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
 # copybara:uncomment_end
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_kernel_library")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
-    features = ["-layering_check"],
     licenses = ["notice"],
 )
 
@@ -74,6 +73,8 @@ cc_library(
     hdrs = ["math_utils.h"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
     ],
 )
 
@@ -187,7 +188,10 @@ tf_cc_test(
     deps = [
         ":math_utils",
         "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:test",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
     ],
 )
 
@@ -197,7 +201,10 @@ tf_cc_test(
     deps = [
         ":tensor_utils",
         "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
     ],
 )

@@ -1726,15 +1726,35 @@ TfLiteStatus Subgraph::InvokeImpl() {
 TfLiteStatus Subgraph::ResizeTensor(TfLiteContext* context,
                                     TfLiteTensor* tensor,
                                     TfLiteIntArray* new_size) {
-  // If the dimensions don't change, avoiding
-  // unnecessary (re)allocations.
+  // If the dimensions don't change, avoid unnecessary (re)allocations.
   //
   // Note that it's required to check `tensor->data.raw != nullptr`. Otherwise
   // the subgraph won't allocate memory for a dynamic tensor when its size
   // is equal to the original tensor size.
-  if (tensor->data.raw != nullptr &&
-      EqualArrayAndTfLiteIntArray(tensor->dims, new_size->size,
-                                  new_size->data)) {
+  //
+  // We also need to check the bytes count because some direct calls to
+  // TfLiteTensorResizeMaybeCopy may lead to inconsistent dims and bytes in a
+  // tensor.
+  const bool can_reuse_allocation = [tensor, new_size, context] {
+    if (tensor->data.raw == nullptr) {
+      return false;
+    }
+    if (!EqualArrayAndTfLiteIntArray(tensor->dims, new_size->size,
+                                     new_size->data)) {
+      return false;
+    }
+    // Those data types byte sizes are not handled by `ResizeTensorImpl`.
+    if (tensor->type == kTfLiteString || tensor->type == kTfLiteResource ||
+        tensor->type == kTfLiteVariant) {
+      return true;
+    }
+    size_t new_bytes = 0;
+    tflite::BytesRequired(tensor->type, tensor->dims->data, tensor->dims->size,
+                          &new_bytes, context);
+    return new_bytes == tensor->bytes;
+  }();
+
+  if (can_reuse_allocation) {
     // A number of clients assume |new_size| remains valid upon success, so
     // swap it in as the new (but logically identical) tensor dims.
     if (new_size != tensor->dims) {
@@ -2246,7 +2266,7 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegateImpl(TfLiteDelegate* delegate) {
         0, execution_plan_, &last_execution_plan_index_prepared));
     if (has_dynamic_tensors_) {
       TF_LITE_ENSURE_STATUS(EnsureMemoryAllocations());
-      TFLITE_LOG_PROD(
+      TFLITE_LOG_PROD_ONCE(
           tflite::TFLITE_LOG_WARNING,
           "Attempting to use a delegate that only supports static-sized "
           "tensors with a graph that has dynamic-sized tensors (tensor#%d is a "

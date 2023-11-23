@@ -35,9 +35,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/time/time.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/util.h"
+#include "tsl/platform/fingerprint.h"
 #include "tsl/platform/hash.h"
 #include "tsl/platform/types.h"
 #include "ortools/linear_solver/linear_solver.h"
@@ -135,6 +137,22 @@ AutoShardingSolverResult SolveAndExtractSolution(
     const MPVariable* overbudget_var, const MPVariable* makespan_var,
     MPSolver& solver);
 
+double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request) {
+  double minimum_memory_budget_required_estimate = 0.0;
+  for (LivenessIdx time_idx = 0; time_idx < request.live.size(); ++time_idx) {
+    double minimum_memory_budget_required_estimate_local = 0.0;
+    for (NodeIdx node_idx : request.live[time_idx]) {
+      const std::vector<double>& m = request.m[node_idx];
+      const double fixed_memory_cost = *std::min_element(m.begin(), m.end());
+      minimum_memory_budget_required_estimate_local += fixed_memory_cost;
+    }
+    minimum_memory_budget_required_estimate =
+        std::max(minimum_memory_budget_required_estimate,
+                 minimum_memory_budget_required_estimate_local);
+  }
+  return minimum_memory_budget_required_estimate;
+}
+
 // We formulate the auto sharding process as the following ILP problem:
 // Variables:
 //   s[i]: Sharding strategy one-hot vector.
@@ -193,9 +211,12 @@ AutoShardingSolverResult CallORToolsSolver(
 #ifdef PLATFORM_GOOGLE
   if (solver->ProblemType() ==
       operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
-    // Set num_workers for parallelism.
-    solver_parameter_str = absl::StrCat("num_workers:", num_workers);
-    solver->SetSolverSpecificParametersAsString(solver_parameter_str);
+    // Set random_seed, interleave_search and share_binary_clauses for
+    // determinism, and num_workers for parallelism.
+    solver_parameter_str = absl::StrCat(
+        "share_binary_clauses:false,random_seed:1,interleave_"
+        "search:true,num_workers:",
+        num_workers);
   }
 #endif
   // Create variables
@@ -335,43 +356,33 @@ AutoShardingSolverResult CallORToolsSolver(
   }
   // c.
   if (request.memory_budget > 0) {
-    int64_t minimum_memory_budget_required_estimate = 0;
+    const double minimum_memory_budget_required_estimate =
+        MinimumMemoryBudgetRequired(request);
+    const double minimum_memory_overbudget = std::max(
+        0.0, minimum_memory_budget_required_estimate - request.memory_budget);
     for (LivenessIdx time_idx = 0; time_idx < request.live.size(); ++time_idx) {
-      int64_t minimum_memory_budget_required_estimate_local = 0;
-      std::string str = "[";
-      double total_fixed_memory_cost = 0.0;  // Amount consumed "no matter what"
-      for (NodeIdx node_idx : request.live[time_idx]) {
-        absl::StrAppend(&str, node_idx, ", ");
-        total_fixed_memory_cost += *std::min_element(
-            request.m[node_idx].begin(), request.m[node_idx].end());
-      }
-      str += "]";
+      const std::string str =
+          absl::StrCat("[", absl::StrJoin(request.live[time_idx], ", "), "]");
+      double upper_bound = request.memory_budget;
+      if (overbudget_var) upper_bound += minimum_memory_overbudget;
       MPConstraint* constraint = solver->MakeRowConstraint(
-          -MPSolver::infinity(),
-          request.memory_budget - total_fixed_memory_cost,
+          -MPSolver::infinity(), upper_bound,
           absl::StrCat("mem[", time_idx, "] = ", str));
-      if (overbudget_var) {
-        constraint->SetCoefficient(overbudget_var, -1.0);
-      }
+      if (overbudget_var) constraint->SetCoefficient(overbudget_var, -1.0);
       for (NodeIdx node_idx : request.live[time_idx]) {
-        auto fixed_memory_cost = *std::min_element(request.m[node_idx].begin(),
-                                                   request.m[node_idx].end());
-        minimum_memory_budget_required_estimate_local += fixed_memory_cost;
         for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
-          double accumulated_coefficient =
+          const double accumulated_coefficient =
               constraint->GetCoefficient(s[node_idx][j]);
           constraint->SetCoefficient(
-              s[node_idx][j], accumulated_coefficient + request.m[node_idx][j] -
-                                  fixed_memory_cost);
+              s[node_idx][j], accumulated_coefficient + request.m[node_idx][j]);
         }
       }
-      minimum_memory_budget_required_estimate =
-          std::max(minimum_memory_budget_required_estimate,
-                   minimum_memory_budget_required_estimate_local);
     }
     if (overbudget_var) {
       solver->MutableObjective()->SetCoefficient(overbudget_var,
                                                  *request.overbudget_coeff);
+      solver->MutableObjective()->SetOffset(*request.overbudget_coeff *
+                                            minimum_memory_overbudget);
     }
     LOG(INFO) << "Minimum memory budget estimate: "
               << minimum_memory_budget_required_estimate;
@@ -536,17 +547,28 @@ AutoShardingSolverResult SolveAndExtractSolution(
     return AutoShardingSolverResult(
         absl::InternalError("MPSolver could not find any feasible solution."),
         false);
+  } else if (status == operations_research::MPSolver::MODEL_INVALID) {
+    LOG(FATAL) << "Solver says that the input MIP is invalid. This is most "
+                  "likely a bug and should be reported.";
   } else if (status != operations_research::MPSolver::OPTIMAL) {
-    auto err_msg = "Solver timed out. Will proceed without auto sharding.";
-    LOG(WARNING) << err_msg;
-
-    // The solver timed out. We now rely on heuristic-based sharding propagation
-    // to degrade gracefully.
+    auto err_msg = "Solver timed out.";
+    LOG(WARNING) << err_msg << " Solver status " << status;
     return AutoShardingSolverResult(absl::InternalError(err_msg), true);
   }
 
+  // Fingerprint the model & solution (useful when checking for determinism).
+  // We use TensorFlow's fingerprint library here, which differs from CP-SAT's.
+  operations_research::MPModelProto model_proto;
+  solver.ExportModelToProto(&model_proto);
+  uint64_t model_fprint = tsl::Fingerprint64(model_proto.SerializeAsString());
+  operations_research::MPSolutionResponse response;
+  solver.FillSolutionResponseProto(&response);
+  uint64_t solution_fprint = tsl::Fingerprint64(response.SerializeAsString());
+
   LOG(INFO) << "Solver Status: " << status
-            << " Objective value: " << solver.Objective().Value();
+            << " Objective value: " << solver.Objective().Value()
+            << " Model fingerprint: " << model_fprint
+            << " Solution fingerprint: " << solution_fprint;
   if (solver.Objective().Value() >= kInfinityCost) {
     LOG(WARNING) << "Objective (" << solver.Objective().Value()
                  << ") is larger than kInfinityCost. It means the solver "
@@ -556,13 +578,9 @@ AutoShardingSolverResult SolveAndExtractSolution(
   if (VLOG_IS_ON(10)) {
     // Print solver information for debugging. This hasn't been useful so far,
     // so leave it at VLOG level 10.
-    operations_research::MPModelProto model_proto;
-    solver.ExportModelToProto(&model_proto);
     VLOG(10) << "MODEL:";
     XLA_VLOG_LINES(10, model_proto.DebugString());
     VLOG(10) << "RESPONSE:";
-    operations_research::MPSolutionResponse response;
-    solver.FillSolutionResponseProto(&response);
     XLA_VLOG_LINES(10, response.DebugString());
   }
 
@@ -594,6 +612,7 @@ AutoShardingSolverResult SolveAndExtractSolution(
   if (overbudget_var) {
     unsalted_objective +=
         *request.overbudget_coeff * overbudget_var->solution_value();
+    unsalted_objective += solver.Objective().offset();
   }
   if (makespan_var) {
     unsalted_objective +=

@@ -60,6 +60,8 @@ const absl::string_view kCudnnConvReorderFilterCallTarget =
 const absl::string_view kCudnnConvReorderFilterAndBiasCallTarget =
     "__cudnn$convReorderFilterAndBias";
 
+const absl::string_view kCudnnNormCallTarget = "__cudnn$norm";
+
 // fMHA forward call targets.
 const absl::string_view kCudnnfMHABmmBmmCallTarget = "__cudnn$fhmaBmmBmm";
 const absl::string_view kCudnnfMHASoftmaxCallTarget = "__cudnn$fhmaSoftmax";
@@ -99,6 +101,8 @@ const absl::string_view kCudnnfMHAScaleMaskSoftmaxDropoutBackwardCallTarget =
 const absl::string_view kCudnnfMHASoftmaxDropoutBackwardCallTarget =
     "__cudnn$fhmaSoftmaxDropoutBackward";
 
+const absl::string_view kCubDeviceRadixSortTarget = "__cub$DeviceRadixSort";
+
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
   if (hlo.opcode() != HloOpcode::kCustomCall) {
     return false;
@@ -118,6 +122,14 @@ bool IsCudnnConvolutionReorder(const HloInstruction& hlo) {
   const auto& target = hlo.custom_call_target();
   return target == kCudnnConvReorderFilterCallTarget ||
          target == kCudnnConvReorderFilterAndBiasCallTarget;
+}
+
+bool IsCustomCallToDnnNorm(const HloInstruction& hlo) {
+  if (hlo.opcode() != HloOpcode::kCustomCall) {
+    return false;
+  }
+  const auto& target = hlo.custom_call_target();
+  return target == kCudnnNormCallTarget;
 }
 
 bool IsFwdCustomCallTofMHA(const HloInstruction& hlo) {
@@ -165,6 +177,11 @@ bool MHACallHasDropout(const absl::string_view fmha_call_name) {
 
 bool IsCustomCallTofMHA(const HloInstruction& hlo) {
   return (IsFwdCustomCallTofMHA(hlo) || IsBwdCustomCallTofMHA(hlo));
+}
+
+bool IsCubDeviceRadixSort(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         hlo.custom_call_target() == kCubDeviceRadixSortTarget;
 }
 
 StatusOr<CudnnConvKind> GetCudnnConvKind(

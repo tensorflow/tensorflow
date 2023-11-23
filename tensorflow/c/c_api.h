@@ -834,6 +834,14 @@ TF_GraphImportGraphDefWithResults(TF_Graph* graph, const TF_Buffer* graph_def,
                                   const TF_ImportGraphDefOptions* options,
                                   TF_Status* status);
 
+// Has the same behavior as TF_GraphImportGraphDefWithResults, but instead of
+// taking in a serialized tensorflow::GraphDef, it takes in a *pointer* to the
+// C++ *in memory representation* of the GraphDef, stored in `graph_def->data`
+TF_CAPI_EXPORT extern TF_ImportGraphDefResults*
+TF_GraphImportGraphDefWithResultsNoSerialization(
+    TF_Graph* graph, const TF_Buffer* graph_def,
+    const TF_ImportGraphDefOptions* options, TF_Status* status);
+
 // Import the graph serialized in `graph_def` into `graph`.
 // Convenience function for when only return outputs are needed.
 //

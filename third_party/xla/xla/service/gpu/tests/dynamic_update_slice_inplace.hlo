@@ -49,7 +49,7 @@
 // CHECK:         store half %[[VAL_39]], ptr %[[VAL_40]], align 2
 // CHECK:         br label %[[VAL_29]]
 
-HloModule TestModule
+HloModule TestModule, is_scheduled=true
 
 fusion.1 {
   p.0 = f16[50,96,1024]{2,1,0} parameter(0)
@@ -95,7 +95,7 @@ ENTRY entry {
 // CHECK:         store i32 %[[VAL_115]], ptr [[ADDRSPACE_ANNOTATION]]%[[RET_VALUE_ADDR]], align 4
 // CHECK:         br label %[[SLICE]]-after
 
-HloModule fusion
+HloModule fusion, is_scheduled=true
 
 fused_computation {
   param_0.1 = s32[6]{0} parameter(0)
@@ -140,7 +140,7 @@ ENTRY main {
 // CHECK-DAG:    getelementptr inbounds i16, ptr %[[ARG3]]
 // CHECK-DAG:    getelementptr inbounds [8 x [11 x [12 x i16]]], ptr %[[ARG2]]
 
-HloModule MultipleInplaceDus, input_output_alias={ {0}: (0, {}), {1}: (2, {}) }
+HloModule MultipleInplaceDus, is_scheduled=true, input_output_alias={ {0}: (0, {}), {1}: (2, {}) }
 
 fused_computation {
   p0 = bf16[10,11,12] parameter(0)
@@ -190,7 +190,7 @@ ENTRY main {
 // CHECK-DAG:    getelementptr inbounds i16, ptr %[[ARG3]]
 // CHECK-DAG:    getelementptr inbounds [8 x [11 x [12 x i16]]], ptr %[[ARG2]]
 
-HloModule MultipleInplaceDusWithTransposeBitcastToTheRoot, input_output_alias={ {0}: (0, {}), {1}: (2, {}) }
+HloModule MultipleInplaceDusWithTransposeBitcastToTheRoot, is_scheduled=true, input_output_alias={ {0}: (0, {}), {1}: (2, {}) }
 
 fused_computation {
   p0 = bf16[10,11,12] parameter(0)
@@ -233,7 +233,7 @@ ENTRY main {
 // CHECK-DAG:    getelementptr inbounds i16, ptr %[[ARG2]]
 // CHECK-DAG:    getelementptr inbounds [10 x [11 x [12 x i16]]], ptr %[[ARG0]]
 
-HloModule SingleInplaceDusWithTransposeBitcastToTheRoot, input_output_alias={ {}: (0, {}) }
+HloModule SingleInplaceDusWithTransposeBitcastToTheRoot, is_scheduled=true, input_output_alias={ {}: (0, {}) }
 
 single_inplace_dus_with_transpose_bitcast {
   p0 = bf16[10,11,12] parameter(0)
@@ -272,7 +272,7 @@ ENTRY main {
 // CHECK-DAG:    getelementptr inbounds i16, ptr %[[ARG2]]
 // CHECK-DAG:    getelementptr inbounds [10 x [11 x [12 x i16]]], ptr %[[ARG0]]
 
-HloModule SingleInplaceDusWithReshapeBitcastToTheRoot, input_output_alias={ {}: (0, {}) }
+HloModule SingleInplaceDusWithReshapeBitcastToTheRoot, is_scheduled=true, input_output_alias={ {}: (0, {}) }
 
 single_inplace_dus_with_reshape_bitcast {
   p0 = bf16[10,11,12] parameter(0)
@@ -311,7 +311,7 @@ ENTRY main {
 // CHECK-DAG:    getelementptr inbounds i16, ptr %[[ARG2]]
 // CHECK-DAG:    getelementptr inbounds [10 x [6 x [2 x [11 x i16]]]], ptr %[[ARG0]]
 
-HloModule SingleInplaceDusWithBitcastToTheRootAndFromTheParameter, input_output_alias={ {}: (0, {}) }
+HloModule SingleInplaceDusWithBitcastToTheRootAndFromTheParameter, is_scheduled=true, input_output_alias={ {}: (0, {}) }
 
 single_inplace_dus_with_bitcast_to_the_root_and_from_the_parameter {
   p0 = bf16[10,11,12] parameter(0)

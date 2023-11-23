@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/stream_executor/event.h"
 
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 
 namespace stream_executor {
 
@@ -34,6 +34,9 @@ Event::~Event() {
     }
   }
 }
+
+Event::Event(Event&&) = default;
+Event& Event::operator=(Event&&) = default;
 
 bool Event::Init() {
   auto status = stream_exec_->AllocateEvent(this);
