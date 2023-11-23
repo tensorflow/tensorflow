@@ -421,31 +421,31 @@ tsl::Status BlasLt::MatmulPlan::DoMatmul(
 
 namespace {
 
-template <hipblasltDatatype_t>
+template <hipDataType>
 struct HipToNativeT;
 
 template <>
-struct HipToNativeT<HIPBLASLT_R_16B> {
+struct HipToNativeT<HIP_R_16BF> {
   using type = Eigen::bfloat16;
 };
 template <>
-struct HipToNativeT<HIPBLASLT_R_16F> {
+struct HipToNativeT<HIP_R_16F> {
   using type = Eigen::half;
 };
 template <>
-struct HipToNativeT<HIPBLASLT_R_32F> {
+struct HipToNativeT<HIP_R_32F> {
   using type = float;
 };
 template <>
-struct HipToNativeT<HIPBLASLT_R_64F> {
+struct HipToNativeT<HIP_R_64F> {
   using type = double;
 };
 template <>
-struct HipToNativeT<HIPBLASLT_C_32F> {
+struct HipToNativeT<HIP_C_32F> {
   using type = complex64;
 };
 template <>
-struct HipToNativeT<HIPBLASLT_C_64F> {
+struct HipToNativeT<HIP_C_64F> {
   using type = complex128;
 };
 
@@ -476,22 +476,14 @@ tsl::Status BlasLt::MatmulPlan::ExecuteOnStream(
   }
 
   // Other data types:
-  TYPED_MATMUL(float, HIPBLASLT_R_16B, HIPBLASLT_R_16B, HIPBLASLT_R_16B,
-               HIPBLASLT_R_16B)
-  TYPED_MATMUL(float, HIPBLASLT_R_16F, HIPBLASLT_R_16F, HIPBLASLT_R_16F,
-               HIPBLASLT_R_16F)
-  TYPED_MATMUL(float, HIPBLASLT_R_16B, HIPBLASLT_R_16B, HIPBLASLT_R_32F,
-               HIPBLASLT_R_32F)
-  TYPED_MATMUL(float, HIPBLASLT_R_16F, HIPBLASLT_R_16F, HIPBLASLT_R_32F,
-               HIPBLASLT_R_32F)
-  TYPED_MATMUL(float, HIPBLASLT_R_32F, HIPBLASLT_R_32F, HIPBLASLT_R_32F,
-               HIPBLASLT_R_32F)
-  TYPED_MATMUL(double, HIPBLASLT_R_64F, HIPBLASLT_R_64F, HIPBLASLT_R_64F,
-               HIPBLASLT_R_64F)
-  TYPED_MATMUL(complex64, HIPBLASLT_C_32F, HIPBLASLT_C_32F, HIPBLASLT_C_32F,
-               HIPBLASLT_C_32F)
-  TYPED_MATMUL(complex128, HIPBLASLT_C_64F, HIPBLASLT_C_64F, HIPBLASLT_C_64F,
-               HIPBLASLT_C_64F)
+  TYPED_MATMUL(float, HIP_R_16BF, HIP_R_16BF, HIP_R_16BF, HIP_R_16BF)
+  TYPED_MATMUL(float, HIP_R_16F, HIP_R_16F, HIP_R_16F, HIP_R_16F)
+  TYPED_MATMUL(float, HIP_R_16BF, HIP_R_16BF, HIP_R_32F, HIP_R_32F)
+  TYPED_MATMUL(float, HIP_R_16F, HIP_R_16F, HIP_R_32F, HIP_R_32F)
+  TYPED_MATMUL(float, HIP_R_32F, HIP_R_32F, HIP_R_32F, HIP_R_32F)
+  TYPED_MATMUL(double, HIP_R_64F, HIP_R_64F, HIP_R_64F, HIP_R_64F)
+  TYPED_MATMUL(complex64, HIP_C_32F, HIP_C_32F, HIP_C_32F, HIP_C_32F)
+  TYPED_MATMUL(complex128, HIP_C_64F, HIP_C_64F, HIP_C_64F, HIP_C_64F)
 
 #undef TYPED_MATMUL
 
