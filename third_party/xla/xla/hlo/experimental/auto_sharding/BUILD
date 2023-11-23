@@ -283,6 +283,11 @@ build_test(
 xla_cc_test(
     name = "auto_sharding_test",
     srcs = ["auto_sharding_test.cc"],
+    tags = [
+        # Disabled until autosharding is fully supported in OSS,
+        # https://github.com/openxla/xla/issues/7248.
+        "no_oss",
+    ],
     deps = [
         ":auto_sharding",
         ":auto_sharding_option",
@@ -302,6 +307,11 @@ xla_cc_test(
 xla_cc_test(
     name = "auto_sharding_solver_test",
     srcs = ["auto_sharding_solver_test.cc"],
+    tags = [
+        # Disabled until autosharding is fully supported in OSS,
+        # https://github.com/openxla/xla/issues/7248.
+        "no_oss",
+    ],
     deps = [
         ":auto_sharding_solver",
         ":auto_sharding_strategy",
