@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/cc/saved_model/metrics.h"
 #include "tensorflow/cc/saved_model/util.h"
@@ -31,7 +32,7 @@ limitations under the License.
 #include "tensorflow/tools/proto_splitter/cc/saved_model_splitter.h"
 #include "tensorflow/tools/proto_splitter/merge.h"
 #endif
-
+#define IS_OSS false
 namespace tensorflow {
 namespace image_format {
 
@@ -103,6 +104,27 @@ absl::Status WriteSavedModel(SavedModel* saved_model_proto,
       "WriteSavedModel not implemented for Windows or MacOS.");
 #endif
 }
+
+absl::StatusOr<std::string> WriteSavedModelToString(
+    SavedModel* saved_model_proto) {
+#if !defined(PLATFORM_WINDOWS) && !defined(__APPLE__)
+  tools::proto_splitter::SavedModelSplitter splitter(saved_model_proto);
+  return splitter.WriteToString();
+#else
+  return absl::UnimplementedError(
+      "WriteSavedModelToString not implemented for Windows or MacOS.");
+#endif
+}
+
+#if !IS_OSS
+// TODO(b/311769337): Define the function unconditionally after tf oss
+// dependency is updated to protobuf v22.x.
+absl::StatusOr<absl::Cord> WriteSavedModelToCord(
+    SavedModel* saved_model_proto) {
+  tools::proto_splitter::SavedModelSplitter splitter(saved_model_proto);
+  return splitter.WriteToCord();
+}
+#endif
 
 absl::Status WriteSavedModel(SavedModel* saved_model_proto,
                              const std::string& file_prefix,
