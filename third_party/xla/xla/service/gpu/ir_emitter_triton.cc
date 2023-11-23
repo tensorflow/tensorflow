@@ -736,6 +736,7 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::createTritonGPUAccelerateMatmulPass(ccAsInt));
   pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
   pm.addPass(mlir::createTritonGPUOptimizeDotOperandsPass());
+  pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createTritonGPUPipelinePass(num_stages, num_warps, numCTAs,
                                                ccAsInt));
   pm.addPass(
@@ -754,6 +755,8 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
     pm.addPass(mlir::createTritonNvidiaGPUFenceInsertionPass(ccAsInt));
   }
   pm.addPass(mlir::createTritonNvidiaGPUWSFixupMissingAttrs());
+  pm.addPass(mlir::createTritonGPUOptimizeThreadLocalityPass());
+  pm.addPass(mlir::createCanonicalizerPass());
   // Based on translateTritonGPUToLLVMIR() in
   // @triton//:lib/Target/LLVMIR/LLVMIRTranslation.cpp
   pm.addPass(mlir::createConvertSCFToCFPass());
