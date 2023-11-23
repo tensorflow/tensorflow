@@ -102,6 +102,9 @@ constexpr int kMinTileSize = 16;
 // Not a hard limit, just an assumption that should stay valid.
 constexpr int kMaxTileSize = 512;
 
+// Default tiling when autotuning is disabled.
+constexpr TritonGemmConfig kDefaultGemmTiling = {32, 32, 32, 1, 1, 4};
+
 class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
  public:
   explicit TritonAutotunerVisitor(const AutotuneConfig& config)
@@ -126,7 +129,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
                       "compilation (HLO: ",
                       hlo->ToString()));
                 }
-                return InternalError("Expect autotune result cache hit.");
+                return absl::InternalError("Expect autotune result cache hit.");
               }));
       VLOG(4) << "Result: " << autotune_result.ShortDebugString();
 
@@ -226,12 +229,11 @@ class GemmConfigSetCollector : public ConstDfsHloVisitorWithDefault {
   GemmConfigSet GetGemmConfigSet(const HloFusionInstruction* fusion) {
     const DebugOptions& debug_options =
         fusion->GetModule()->config().debug_options();
-    se::StreamExecutor* stream_exec = config_.GetExecutor();
     return {GetPossibleMatmulAutotuneConfigs(
         *Cast<HloDotInstruction>(hlo_query::GetFirstInstructionWithOpcode(
             *fusion->called_computations().at(0), HloOpcode::kDot)),
-        stream_exec->GetDeviceDescription().cuda_compute_capability(),
-        debug_options, config_.ExhaustiveTilingSearch())};
+        config_.GetCudaComputeCapability(), debug_options,
+        config_.ExhaustiveTilingSearch())};
   }
 
   AutotuneConfig config_;
@@ -884,7 +886,7 @@ std::vector<TritonGemmConfig> GetPossibleMatmulAutotuneConfigs(
   constexpr int kMinGemmElements = 32 * 32;
   if (ShapeUtil::ElementsIn(dot.operand(0)->shape()) <= kMinGemmElements &&
       ShapeUtil::ElementsIn(dot.operand(1)->shape()) <= kMinGemmElements) {
-    return ReduceTileSizes(dot, {TritonGemmConfig(32, 32, 32, 1, 1, 4)});
+    return ReduceTileSizes(dot, {kDefaultGemmTiling});
   }
   // Split-K optimization enables more even utilization of a GPU in cases
   // where tiling just the non-contracting dimensions of a GEMM does not create
@@ -914,22 +916,29 @@ StatusOr<bool> TritonAutotuner::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_SCOPED_LOGGING_TIMER("Triton autotuner");
   const DebugOptions& debug_options = module->config().debug_options();
-  if (debug_options.xla_gpu_autotune_level() == 0) {
-    return false;
-  }
+  TF_ASSIGN_OR_RETURN(std::optional<AutotunerCompileUtil> opt_compile_util,
+                      AutotunerCompileUtil::Create(config_, debug_options));
 
-  if (!config_.IsDeviceless()) {
-    TF_ASSIGN_OR_RETURN(std::optional<AutotunerCompileUtil> opt_compile_util,
-                        AutotunerCompileUtil::Create(config_, debug_options));
+  GemmConfigSetCollector gemm_config_set_collector(config_);
+  absl::flat_hash_map<const HloFusionInstruction*, GemmConfigSet>
+      gemm_config_sets;
+  TF_ASSIGN_OR_RETURN(gemm_config_sets,
+                      gemm_config_set_collector.CollectGemmConfigSets(
+                          module, execution_threads));
+
+  if (debug_options.xla_gpu_autotune_level() == 0 ||
+      debug_options.xla_gpu_deterministic_ops()) {
+    // Pick the first option for each gemm instead of autotuning..
+    for (const auto& [fusion, tilings] : gemm_config_sets) {
+      const AutotuneCacheKey key = AutotunerUtil::GetKey(fusion, config_);
+      AutotuneResult res;
+      *res.mutable_triton() = kDefaultGemmTiling.ToProto();
+      *res.mutable_run_time() =
+          tsl::proto_utils::ToDurationProto(absl::ZeroDuration());
+      AutotunerUtil::AddResult(key, res);
+    }
+  } else if (!config_.IsDeviceless()) {
     TF_RET_CHECK(opt_compile_util.has_value());
-    AutotunerCompileUtil& compile_util = opt_compile_util.value();
-
-    GemmConfigSetCollector gemm_config_set_collector(config_);
-    absl::flat_hash_map<const HloFusionInstruction*, GemmConfigSet>
-        gemm_config_sets;
-    TF_ASSIGN_OR_RETURN(gemm_config_sets,
-                        gemm_config_set_collector.CollectGemmConfigSets(
-                            module, execution_threads));
     if (!gemm_config_sets.empty()) {
       std::string correctness_check_str = config_.should_check_correctness()
                                               ? "(with correctness check)"
@@ -940,7 +949,7 @@ StatusOr<bool> TritonAutotuner::Run(
       int fusion_id_for_dump = 0;
       if (debug_options.xla_gpu_single_wave_autotuning()) {
         // Tune all fusions at once to save time.
-        TF_RETURN_IF_ERROR(Autotune(config_, compile_util, thread_pool_,
+        TF_RETURN_IF_ERROR(Autotune(config_, *opt_compile_util, thread_pool_,
                                     debug_options, gemm_config_sets,
                                     fusion_id_for_dump));
       } else {
@@ -948,7 +957,7 @@ StatusOr<bool> TritonAutotuner::Run(
         for (const auto& key_value : gemm_config_sets) {
           absl::flat_hash_map<const HloFusionInstruction*, GemmConfigSet>
               single_element_map({key_value});
-          TF_RETURN_IF_ERROR(Autotune(config_, compile_util, thread_pool_,
+          TF_RETURN_IF_ERROR(Autotune(config_, *opt_compile_util, thread_pool_,
                                       debug_options, single_element_map,
                                       fusion_id_for_dump));
         }
