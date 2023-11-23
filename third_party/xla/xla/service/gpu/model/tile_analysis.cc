@@ -101,7 +101,7 @@ StatusOr<HloInstructionIndexing> ComputeReduceOpIndexing(
   std::vector<AffineExpr> exprs;
   for (auto [input_dim_id, input_dim] :
        llvm::enumerate(input_shape.dimensions())) {
-    if (reduce_dims_ids.count(input_dim_id)) {
+    if (reduce_dims_ids.contains(input_dim_id)) {
       exprs.push_back(getAffineSymbolExpr(reduced_dim_id++, mlir_context));
       sizes.push_back(input_dim);
       continue;
@@ -240,7 +240,7 @@ std::string HloInstructionIndexing::ToString() const {
 
 StatusOr<HloInstructionIndexing> ComputeInstructionIndexing(
     const HloInstruction* instr, int output_id, MLIRContext* mlir_context) {
-  if (instr->IsElementwise()) {
+  if (HloInstruction::IsOpElementwise(instr->opcode())) {
     return ComputeCwiseOpIndexing(instr, mlir_context);
   }
   if (auto bcast = DynCast<HloBroadcastInstruction>(instr)) {
