@@ -469,9 +469,11 @@ cuda_py_strict_test(
 
 cuda_py_strict_test(
     name = "manip_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["manip_ops_test.py"],
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_windows_gpu",
+    ],
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
