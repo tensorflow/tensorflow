@@ -30,7 +30,6 @@ this file with a file generated from [`api_template.__init__.py`](https://www.gi
 import distutils as _distutils
 import importlib
 import inspect as _inspect
-import logging as _logging
 import os as _os
 import site as _site
 import sys as _sys
@@ -62,18 +61,6 @@ elif _tf_api_dir not in __path__:
   __path__.append(_tf_api_dir)
 
 # Hook external TensorFlow modules.
-# Import compat before trying to import summary from tensorboard, so that
-# reexport_tf_summary can get compat from sys.modules. Only needed if using
-# lazy loading.
-_current_module.compat.v2  # pylint: disable=pointless-statement
-try:
-  from tensorboard.summary._tf import summary
-  _current_module.__path__ = (
-      [_module_util.get_parent_dir(summary)] + _current_module.__path__)
-  setattr(_current_module, "summary", summary)
-except ImportError:
-  _logging.warning(
-      "Limited tf.summary API due to missing TensorBoard installation.")
 
 # Load tensorflow-io-gcs-filesystem if enabled
 if (_os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "true" or

@@ -447,6 +447,7 @@ py_strict_library(
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/summary:summary_py",
+        "//tensorflow/python/summary:tb_summary",
         "//tensorflow/python/tpu:tpu_noestimator",
         "//tensorflow/python/training",
         "//tensorflow/python/training:quantize_training",

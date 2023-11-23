@@ -16,7 +16,6 @@
 
 # pylint: disable=g-bad-import-order,g-import-not-at-top,protected-access
 
-import logging as _logging
 import os as _os
 import sys as _sys
 import typing as _typing
@@ -31,15 +30,6 @@ from tensorflow.python.util.lazy_loader import KerasLazyLoader as _KerasLazyLoad
 
 # Hook external TensorFlow modules.
 _current_module = _sys.modules[__name__]
-try:
-  from tensorboard.summary._tf import summary
-  _current_module.__path__ = (
-      [_module_util.get_parent_dir(summary)] + _current_module.__path__)
-  setattr(_current_module, "summary", summary)
-except ImportError:
-  _logging.warning(
-      "Limited tf.compat.v2.summary API due to missing TensorBoard "
-      "installation.")
 
 # Lazy-load estimator.
 _estimator_module = "tensorflow_estimator.python.estimator.api._v2.estimator"
