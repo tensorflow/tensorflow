@@ -775,6 +775,17 @@ GpuDriver::GraphAddNode(CUgraphNode* node, CUgraph graph,
   return absl::UnimplementedError("unsupported node type");
 }
 
+/* static */ tsl::Status GpuDriver::GraphAddEmptyNode(
+    CUgraphNode* node, CUgraph graph, absl::Span<CUgraphNode> deps) {
+  VLOG(2) << "Add empty node to a graph " << graph << "; deps: " << deps.size();
+
+  RETURN_IF_CUDA_RES_ERROR(
+      cuGraphAddEmptyNode(node, graph, deps.data(), deps.size()),
+      "Failed to add empty node to a CUDA graph");
+
+  return tsl::OkStatus();
+}
+
 /* static */ tsl::Status GpuDriver::GraphAddKernelNode(
     CUgraphNode* node, CUgraph graph, absl::Span<CUgraphNode> deps,
     absl::string_view kernel_name, CUfunction function, unsigned int grid_dim_x,

@@ -122,12 +122,22 @@ class CommandBuffer {
   tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                    const DeviceMemoryBase& src, uint64_t size);
 
-  // Adds a conditional operation that will execute a command buffer constructed
-  // by `then_builder` if predicate is true. Builder should not call `Update` or
-  // `Finalize` on command buffer argument, parent command buffer is responsible
-  // for updating and finalizing conditional command buffers.
+  //--------------------------------------------------------------------------//
+  // Command buffer condtitional commands API
+  //--------------------------------------------------------------------------//
+
+  // Adds a conditional operation that will run a command buffer constructed by
+  // `then_builder` if `predicate` value is `true`.
   tsl::Status If(StreamExecutor* executor, DeviceMemory<bool> pred,
                  Builder then_builder);
+
+  // Adds a conditional operation that will run a command buffer constructed by
+  // `then_builder` if `predicate` value is `true`, or a command buffer
+  // constructed by `else_builder` if `predicate` is `false`.
+  tsl::Status IfElse(StreamExecutor* executor, DeviceMemory<bool> pred,
+                     Builder then_builder, Builder else_builder);
+
+  //--------------------------------------------------------------------------//
 
   // Finalizes command buffer and makes it executable. Once command buffer is
   // finalized no commands can be added to it.

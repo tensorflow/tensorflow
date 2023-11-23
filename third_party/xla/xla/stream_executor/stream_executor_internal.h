@@ -150,6 +150,14 @@ class CommandBufferInterface {
   virtual tsl::Status If(StreamExecutor* executor, DeviceMemory<bool> predicate,
                          CommandBuffer::Builder then_builder) = 0;
 
+  // Adds a conditional operation that will run a command buffer constructed by
+  // `then_builder` if `predicate` value is `true`, or a command buffer
+  // constructed by `else_builder` if `predicate` is `false`.
+  virtual tsl::Status IfElse(StreamExecutor* executor,
+                             DeviceMemory<bool> predicate,
+                             CommandBuffer::Builder then_builder,
+                             CommandBuffer::Builder else_builder) = 0;
+
   // Finalizes command buffer and makes it executable. Once command buffer is
   // finalized no commands can be added to it.
   virtual tsl::Status Finalize() = 0;

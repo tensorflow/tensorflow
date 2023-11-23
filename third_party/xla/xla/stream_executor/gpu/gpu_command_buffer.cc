@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 
+#include <array>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <string_view>
 #include <utility>
@@ -40,6 +42,7 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 
@@ -186,6 +189,16 @@ tsl::Status GpuCommandBuffer::CheckPrimary() {
   return tsl::OkStatus();
 }
 
+tsl::Status GpuCommandBuffer::CheckNumCommandBuffers(
+    const ConditionalCommandBuffers& cmd_buffers, size_t num_cmd_buffers) {
+  if (cmd_buffers.handles.size() != num_cmd_buffers) {
+    return absl::InternalError(absl::StrCat(
+        "Expected to have ", num_cmd_buffers,
+        " conditional command buffers, got ", cmd_buffers.handles.size()));
+  }
+  return tsl::OkStatus();
+}
+
 tsl::Status GpuCommandBuffer::Launch(const ThreadDim& threads,
                                      const BlockDim& blocks,
                                      const Kernel& kernel,
@@ -265,38 +278,29 @@ tsl::Status GpuCommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
   return UnsupportedStateError(state_);
 }
 
-tsl::Status GpuCommandBuffer::If(StreamExecutor* executor,
-                                 DeviceMemory<bool> predicate,
-                                 CommandBuffer::Builder then_builder) {
-  DCHECK(executor->implementation() == parent_);  // NOLINT
+//--------------------------------------------------------------------------//
+// Command buffer condtitional commands API
+//--------------------------------------------------------------------------//
 
-  // TODO(ezhulenev): Keep kernel in `GpuCommandBuffer` to avoid loading it on
-  // every call to `If`.
-  SetConditionKernel set_condition(executor);
-
-  {  // Load kernels that update condition handle value.
-    MultiKernelLoaderSpec spec(/*arity=*/1);
-    spec.AddInProcessSymbol(gpu::GetSetConditionKernel(), "set_condition");
-    TF_RETURN_IF_ERROR(executor->GetKernel(spec, &set_condition));
+tsl::StatusOr<std::vector<GpuGraphConditionalHandle>>
+GpuCommandBuffer::CreateConditionalHandles(size_t num_handles) {
+  std::vector<GpuGraphConditionalHandle> handles;
+  for (size_t i = 0; i < num_handles; ++i) {
+    TF_RETURN_IF_ERROR(GpuDriver::GraphConditionalHandleCreate(
+        &handles.emplace_back(), graph_, parent_->gpu_context(), 0, 0));
   }
+  return handles;
+}
+
+tsl::StatusOr<std::vector<GpuGraphHandle>>
+GpuCommandBuffer::CreateConditionalNodes(
+    absl::Span<const GpuGraphConditionalHandle> handles) {
+  std::vector<GpuGraphHandle> conditional_graphs;
 
   using ConditionalParams = GpuDriver::GpuGraphConditionalNodeParams;
   using ConditionalResult = GpuDriver::GpuGraphConditionalNodeParams::Result;
 
-  // Conditional command buffers always created in nested mode.
-  CommandBuffer::Mode nested = CommandBuffer::Mode::kNested;
-
-  if (state_ == State::kCreate) {
-    // Create a handle for a conditional node.
-    GpuGraphConditionalHandle handle;
-    TF_RETURN_IF_ERROR(GpuDriver::GraphConditionalHandleCreate(
-        &handle, graph_, parent_->gpu_context(), 0, 0));
-
-    // Add a kernel to update conditional handle value based on a predicate.
-    TF_RETURN_IF_ERROR(
-        Launch(set_condition, ThreadDim(), BlockDim(), handle, predicate));
-
-    // Add conditional node to the graph.
+  for (GpuGraphConditionalHandle handle : handles) {
     Dependencies deps = GetDependencies();
     GpuGraphNodeHandle* node = &nodes_.emplace_back();
 
@@ -309,19 +313,82 @@ tsl::Status GpuCommandBuffer::If(StreamExecutor* executor,
         GpuDriver::GpuGraphNodeResult result,
         GpuDriver::GraphAddNode(node, graph_, absl::MakeSpan(deps), params));
 
-    // Set up conditional command buffer.
-    GpuGraphHandle then_graph = std::get<ConditionalResult>(result).graph;
+    conditional_graphs.push_back(std::get<ConditionalResult>(result).graph);
+  }
 
-    // Wrap conditional graph into command buffer and pass it to the builder.
-    auto then_cmd_buffer =
-        CommandBuffer::Wrap(parent_->GetCommandBufferImplementation(
-            nested, then_graph, /*is_owned_graph=*/false));
-    TF_RETURN_IF_ERROR(then_builder(&then_cmd_buffer));
-    TF_RETURN_IF_ERROR(then_cmd_buffer.Finalize());
+  return conditional_graphs;
+}
 
-    // Keep track of conditional handle and command buffers for update.
-    auto& command_buffers = conditional_command_buffers_.emplace_back();
-    command_buffers.Add(handle, std::move(then_cmd_buffer));
+tsl::StatusOr<GpuCommandBuffer::ConditionalCommandBuffers>
+GpuCommandBuffer::CreateConditionalCommandBuffers(
+    absl::Span<const GpuGraphConditionalHandle> handles,
+    absl::Span<const GpuGraphHandle> graphs,
+    absl::Span<const CommandBuffer::Builder> builders) {
+  ConditionalCommandBuffers cond_cmd_buffers;
+
+  // Conditional command buffers always created in nested mode and with
+  // underlying graphs owned by a conditional node.
+  CommandBuffer::Mode nested = CommandBuffer::Mode::kNested;
+  bool is_owned_graph = false;
+
+  for (size_t i = 0; i < handles.size(); ++i) {
+    auto command_buffer_impl = parent_->GetCommandBufferImplementation(
+        nested, graphs[i], is_owned_graph);
+
+    auto command_buffer = CommandBuffer::Wrap(std::move(command_buffer_impl));
+    TF_RETURN_IF_ERROR(builders[i](&command_buffer));
+    TF_RETURN_IF_ERROR(command_buffer.Finalize());
+
+    cond_cmd_buffers.Add(handles[i], std::move(command_buffer));
+  }
+
+  return cond_cmd_buffers;
+}
+
+tsl::Status GpuCommandBuffer::UpdateConditionalCommandBuffers(
+    absl::Span<CommandBuffer> command_buffers,
+    absl::Span<const CommandBuffer::Builder> builders) {
+  for (size_t i = 0; i < command_buffers.size(); ++i) {
+    // Use parent graph executable for conditional command buffer update.
+    ScopedGpuGraphExec scoped_exec(Cast(&command_buffers[i]), exec_);
+
+    // Update command buffer using user-provided builder callback.
+    TF_RETURN_IF_ERROR(command_buffers[i].Update());
+    TF_RETURN_IF_ERROR(builders[i](&command_buffers[i]));
+    TF_RETURN_IF_ERROR(command_buffers[i].Finalize());
+  }
+  return tsl::OkStatus();
+}
+
+tsl::Status GpuCommandBuffer::If(StreamExecutor* executor,
+                                 DeviceMemory<bool> predicate,
+                                 CommandBuffer::Builder then_builder) {
+  DCHECK(executor->implementation() == parent_);  // NOLINT
+
+  // TODO(ezhulenev): Keep kernel in `GpuCommandBuffer` to avoid loading it on
+  // every call to `If`.
+  SetIfConditionKernel set_if_condition(executor);
+
+  {  // Load kernels that updates condition handle value.
+    MultiKernelLoaderSpec spec(/*arity=*/2);
+    spec.AddInProcessSymbol(gpu::GetSetIfConditionKernel(), "set_if_condition");
+    TF_RETURN_IF_ERROR(executor->GetKernel(spec, &set_if_condition));
+  }
+
+  std::array<CommandBuffer::Builder, 1> builders = {std::move(then_builder)};
+
+  if (state_ == State::kCreate) {
+    TF_ASSIGN_OR_RETURN(auto handles, CreateConditionalHandles(1));
+
+    // Add a kernel to update conditional handle value based on a predicate.
+    TF_RETURN_IF_ERROR(Launch(set_if_condition, ThreadDim(), BlockDim(),
+                              handles[0], predicate));
+
+    // Create conditional command buffer for then branch.
+    TF_ASSIGN_OR_RETURN(auto graphs, CreateConditionalNodes(handles));
+    TF_ASSIGN_OR_RETURN(
+        conditional_command_buffers_.emplace_back(),
+        CreateConditionalCommandBuffers(handles, graphs, builders));
 
     return tsl::OkStatus();
   }
@@ -331,33 +398,75 @@ tsl::Status GpuCommandBuffer::If(StreamExecutor* executor,
         conditional_command_buffers_[update_state_.conditional_idx++];
 
     // Sanity check that we got the correct conditional command buffers.
-    if (cond_cmd_buffers.handles.size() != 1 ||
-        cond_cmd_buffers.command_buffers.size() != 1) {
-      return absl::InternalError(
-          "`If` command expected one conditional command buffer");
-    }
-
-    GpuGraphConditionalHandle& handle = cond_cmd_buffers.handles[0];
-    CommandBuffer& then_cmd_buffer = cond_cmd_buffers.command_buffers[0];
+    TF_RETURN_IF_ERROR(CheckNumCommandBuffers(cond_cmd_buffers, 1));
 
     // Update a kernel that updates conditional handle based on a predicate.
-    TF_RETURN_IF_ERROR(
-        Launch(set_condition, ThreadDim(), BlockDim(), handle, predicate));
+    TF_RETURN_IF_ERROR(Launch(set_if_condition, ThreadDim(), BlockDim(),
+                              cond_cmd_buffers.handles[0], predicate));
 
-    // Conditional handle created only when we add conditional node first time
-    // and then owned by a `graph_`. We also don't need to update conditional
-    // node itself, as it reuses the same handle.
-    update_state_.node_idx++;  // skip conditional node
+    // Skip updating conditional nodes.
+    update_state_.node_idx += cond_cmd_buffers.handles.size();
 
-    // Use parent graph executable for conditional command buffer update.
-    ScopedGpuGraphExec scoped_exec(Cast(&then_cmd_buffer), exec_);
+    return UpdateConditionalCommandBuffers(
+        absl::MakeSpan(cond_cmd_buffers.command_buffers), builders);
+  }
 
-    // Update `then` command buffer using user-provided builder callback.
-    TF_RETURN_IF_ERROR(then_cmd_buffer.Update());
-    TF_RETURN_IF_ERROR(then_builder(&then_cmd_buffer));
-    TF_RETURN_IF_ERROR(then_cmd_buffer.Finalize());
+  return UnsupportedStateError(state_);
+}
+
+tsl::Status GpuCommandBuffer::IfElse(StreamExecutor* executor,
+                                     DeviceMemory<bool> predicate,
+                                     CommandBuffer::Builder then_builder,
+                                     CommandBuffer::Builder else_builder) {
+  DCHECK(executor->implementation() == parent_);  // NOLINT
+
+  // TODO(ezhulenev): Keep kernel in `GpuCommandBuffer` to avoid loading it on
+  // every call to `If`.
+  SetIfElseConditionKernel set_if_else_condition(executor);
+
+  {  // Load kernels that updates condition handle value.
+    MultiKernelLoaderSpec spec(/*arity=*/3);
+    spec.AddInProcessSymbol(gpu::GetSetIfElseConditionKernel(),
+                            "set_if_else_condition");
+    TF_RETURN_IF_ERROR(executor->GetKernel(spec, &set_if_else_condition));
+  }
+
+  std::array<CommandBuffer::Builder, 2> builders = {std::move(then_builder),
+                                                    std::move(else_builder)};
+
+  if (state_ == State::kCreate) {
+    TF_ASSIGN_OR_RETURN(auto handles, CreateConditionalHandles(2));
+
+    // Add a kernel to update conditional handle value based on a predicate.
+    TF_RETURN_IF_ERROR(Launch(set_if_else_condition, ThreadDim(), BlockDim(),
+                              handles[0], handles[1], predicate));
+
+    // Create conditional command buffers for then/else branches.
+    TF_ASSIGN_OR_RETURN(auto graphs, CreateConditionalNodes(handles));
+    TF_ASSIGN_OR_RETURN(
+        conditional_command_buffers_.emplace_back(),
+        CreateConditionalCommandBuffers(handles, graphs, builders));
 
     return tsl::OkStatus();
+  }
+
+  if (state_ == State::kUpdate) {
+    ConditionalCommandBuffers& cond_cmd_buffers =
+        conditional_command_buffers_[update_state_.conditional_idx++];
+
+    // Sanity check that we got the correct conditional command buffers.
+    TF_RETURN_IF_ERROR(CheckNumCommandBuffers(cond_cmd_buffers, 2));
+
+    // Update a kernel that updates conditional handles based on a predicate.
+    TF_RETURN_IF_ERROR(Launch(set_if_else_condition, ThreadDim(), BlockDim(),
+                              cond_cmd_buffers.handles[0],
+                              cond_cmd_buffers.handles[0], predicate));
+
+    // Skip updating conditional nodes.
+    update_state_.node_idx += cond_cmd_buffers.handles.size();
+
+    return UpdateConditionalCommandBuffers(
+        absl::MakeSpan(cond_cmd_buffers.command_buffers), builders);
   }
 
   return UnsupportedStateError(state_);

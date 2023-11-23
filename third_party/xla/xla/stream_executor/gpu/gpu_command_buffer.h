@@ -16,12 +16,14 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_COMMAND_BUFFER_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_COMMAND_BUFFER_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <type_traits>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/types/span.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 
@@ -56,6 +59,10 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
 
   tsl::Status If(StreamExecutor* executor, DeviceMemory<bool> predicate,
                  CommandBuffer::Builder then_builder) override;
+
+  tsl::Status IfElse(StreamExecutor* executor, DeviceMemory<bool> predicate,
+                     CommandBuffer::Builder then_builder,
+                     CommandBuffer::Builder else_builder) override;
 
   tsl::Status Finalize() override;
   tsl::Status Update() override;
@@ -97,9 +104,12 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
  private:
   using Dependencies = absl::InlinedVector<GpuGraphNodeHandle, 1>;
 
-  // A signature of a device kernels updating conditional handle.
-  using SetConditionKernel =
+  // A signature of a device kernels updating conditional handle(s).
+  using SetIfConditionKernel =
       TypedKernel<GpuGraphConditionalHandle, DeviceMemory<bool>>;
+  using SetIfElseConditionKernel =
+      TypedKernel<GpuGraphConditionalHandle, GpuGraphConditionalHandle,
+                  DeviceMemory<bool>>;
 
   // Overwrites the `exec_` handle in a Gpu command buffer by `exec`, and
   // restores to the original handle when destroyed. This allows us updating
@@ -124,9 +134,24 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
     std::vector<CommandBuffer> command_buffers;
   };
 
+  tsl::StatusOr<std::vector<GpuGraphConditionalHandle>>
+  CreateConditionalHandles(size_t num_handles);
+
+  tsl::StatusOr<std::vector<GpuGraphHandle>> CreateConditionalNodes(
+      absl::Span<const GpuGraphConditionalHandle> handles);
+
+  tsl::StatusOr<ConditionalCommandBuffers> CreateConditionalCommandBuffers(
+      absl::Span<const GpuGraphConditionalHandle> handles,
+      absl::Span<const GpuGraphHandle> graphs,
+      absl::Span<const CommandBuffer::Builder> builders);
+
+  tsl::Status UpdateConditionalCommandBuffers(
+      absl::Span<CommandBuffer> command_buffers,
+      absl::Span<const CommandBuffer::Builder> builders);
+
   // TODO(ezhulenev): Currently we serialize all Gpu nodes by adding a
-  // dependency between all nodes added to a command buffer. We need a concept
-  // of a barrier at a command buffer level.
+  // dependency between all nodes added to a command buffer. We need a
+  // concept of a barrier at a command buffer level.
   Dependencies GetDependencies();
 
   // Returns OK status if command buffer is not finalized and it is still
@@ -136,6 +161,11 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   // Returns OK status if command buffer is primary, otherwise returns internal
   // error.
   tsl::Status CheckPrimary();
+
+  // Returns OK status if the number of command buffers is equal to the expected
+  // one, otherwise returns internal error.
+  tsl::Status CheckNumCommandBuffers(
+      const ConditionalCommandBuffers& cmd_buffers, size_t num_cmd_buffers);
 
   static_assert(std::is_pointer_v<GpuGraphHandle>,
                 "GpuGraphHandle must be a pointer");
@@ -197,7 +227,8 @@ inline tsl::Status GpuCommandBuffer::Launch(
 // values, and allow implementing on-device control flow via conditional command
 // buffers.
 
-void* GetSetConditionKernel();
+void* GetSetIfConditionKernel();
+void* GetSetIfElseConditionKernel();
 
 }  // namespace stream_executor::gpu
 

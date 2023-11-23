@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,30 +19,50 @@ namespace stream_executor {
 namespace cuda {
 namespace {
 
-#if CUDA_VERSION >= 12030
+#if defined(STREAM_EXECUTOR_CUDA_ENABLE_GRAPH_CONDITIONAL) && \
+    CUDA_VERSION >= 12030
 
-__global__ void SetCondition(cudaGraphConditionalHandle handle,
-                             bool* predicate) {
-#if defined(STREAM_EXECUTOR_CUDA_ENABLE_GRAPH_CONDITIONAL)
+__global__ void SetIfCondition(cudaGraphConditionalHandle then_handle,
+                               bool* predicate) {
   if (*predicate) {
-    cudaGraphSetConditional(handle, 1);
+    cudaGraphSetConditional(then_handle, 1);
   } else {
-    cudaGraphSetConditional(handle, 0);
+    cudaGraphSetConditional(then_handle, 0);
   }
-#endif  // defined(STREAM_EXECUTOR_CUDA_ENABLE_GRAPH_CONDITIONAL)
 }
 
-#else
-__global__ void SetCondition() {}
-#endif  // CUDA_VERSION >= 12030
+__global__ void SetIfElseCondition(cudaGraphConditionalHandle then_handle,
+                                   cudaGraphConditionalHandle else_handle,
+                                   bool* predicate) {
+  if (*predicate) {
+    cudaGraphSetConditional(then_handle, 1);
+    cudaGraphSetConditional(else_handle, 0);
+  } else {
+    cudaGraphSetConditional(then_handle, 0);
+    cudaGraphSetConditional(else_handle, 1);
+  }
+}
+
+#else  // CUDA graph conditionals are not available
+
+__global__ void SetIfCondition() {}
+__global__ void SetIfElseCondition() {}
+
+#endif
 
 }  // namespace
 }  // namespace cuda
 
 namespace gpu {
-void* GetSetConditionKernel() {
-  return reinterpret_cast<void*>(&cuda::SetCondition);
+
+void* GetSetIfConditionKernel() {
+  return reinterpret_cast<void*>(&cuda::SetIfCondition);
 }
+
+void* GetSetIfElseConditionKernel() {
+  return reinterpret_cast<void*>(&cuda::SetIfElseCondition);
+}
+
 }  // namespace gpu
 
 }  // namespace stream_executor

@@ -25,7 +25,10 @@ __global__ void SetCondition() {}
 }  // namespace rocm
 
 namespace gpu {
-void* GetSetConditionKernel() {
+void* GetSetIfConditionKernel() {
+  return reinterpret_cast<void*>(&rocm::SetCondition);
+}
+void* GetSetIfElseConditionKernel() {
   return reinterpret_cast<void*>(&rocm::SetCondition);
 }
 }  // namespace gpu

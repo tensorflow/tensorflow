@@ -120,6 +120,13 @@ tsl::Status CommandBuffer::If(StreamExecutor* executor, DeviceMemory<bool> pred,
   return implementation_->If(executor, pred, std::move(then_builder));
 }
 
+tsl::Status CommandBuffer::IfElse(StreamExecutor* executor,
+                                  DeviceMemory<bool> pred, Builder then_builder,
+                                  Builder else_builder) {
+  return implementation_->IfElse(executor, pred, std::move(then_builder),
+                                 std::move(else_builder));
+}
+
 CommandBuffer::Mode CommandBuffer::mode() const {
   return implementation_->mode();
 }
