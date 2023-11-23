@@ -1850,3 +1850,12 @@ add {
   %Arg_0.1 = f32[?,784] parameter(0)
   ROOT %abs.2 = f32[?,784] abs(f32[?,784] %Arg_0.1)
 }
+
+// Test topk
+%test_topk {
+  x = f32[4,4] parameter(0)
+  ROOT out = (f32[4,2], s32[4,2]) topk(x), k=2, largest=true
+}
+// CHECK-LABEL:  func private @test_topk
+// CHECK-SAME:  ([[ARG:%.*]]: tensor<4x4xf32>) -> tuple<tensor<4x2xf32>, tensor<4x2xi32>>
+// CHECK:  mhlo.topk([[ARG]], k = 2, largest = true) : tensor<4x4xf32> -> (tensor<4x2xf32>, tensor<4x2xi32>)

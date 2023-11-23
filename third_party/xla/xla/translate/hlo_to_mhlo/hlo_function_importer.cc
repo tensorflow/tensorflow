@@ -1178,6 +1178,16 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           ->create<mlir::mhlo::TupleOp>(loc, result_type, sort_op.getResults())
           .getOperation();
     }
+    case HloOpcode::kTopK: {
+      auto topk_instruction = Cast<HloTopKInstruction>(instruction);
+      auto topk_op = func_builder->create<mlir::mhlo::TopKOp>(
+          loc, result_type.dyn_cast<mlir::TupleType>().getTypes(), operands[0],
+          builder_->getI64IntegerAttr(topk_instruction->k()),
+          builder_->getBoolAttr(topk_instruction->largest()));
+      return func_builder
+          ->create<mlir::mhlo::TupleOp>(loc, result_type, topk_op.getResults())
+          .getOperation();
+    }
     case HloOpcode::kCopyStart: {
       auto copy_start_instruction = Cast<HloCopyStartInstruction>(instruction);
       if (auto cross_program_prefetch_index =
