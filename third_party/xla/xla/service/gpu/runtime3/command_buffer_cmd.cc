@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/container/inlined_vector.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -46,6 +47,7 @@ namespace xla::gpu {
 
 void CommandBufferCmdSequence::Append(std::unique_ptr<CommandBufferCmd> cmd) {
   for (BufferAllocation::Slice& slice : cmd->slices()) {
+    slices_.insert(slice);
     allocs_indices_.insert(slice.index());
   }
   commands_.push_back(std::move(cmd));
@@ -61,14 +63,34 @@ Status CommandBufferCmdSequence::Initialize(
 
 Status CommandBufferCmdSequence::Record(
     const CommandBufferCmd::RecordParams& params,
-    se::CommandBuffer* command_buffer) {
-  if (command_buffer->state() == se::CommandBuffer::State::kFinalized) {
-    TF_RETURN_IF_ERROR(command_buffer->Update());
+    se::CommandBuffer* command_buffer, RecordMode mode) {
+  if (mode == RecordMode::kExclusive) {
+    if (command_buffer->state() == se::CommandBuffer::State::kFinalized) {
+      TF_RETURN_IF_ERROR(command_buffer->Update());
+    }
   }
+
   for (auto& cmd : commands_) {
     TF_RETURN_IF_ERROR(cmd->Record(params, command_buffer));
   }
-  return command_buffer->Finalize();
+
+  if (mode == RecordMode::kExclusive) {
+    TF_RETURN_IF_ERROR(command_buffer->Finalize());
+  }
+
+  return OkStatus();
+}
+
+// Returns buffer allocation slices referenced by commands in this sequence.
+const absl::flat_hash_set<BufferAllocation::Slice>&
+CommandBufferCmdSequence::slices() const {
+  return slices_;
+}
+
+// Returns buffer allocations indices referenced by commands in this sequence.
+const absl::flat_hash_set<BufferAllocation::Index>&
+CommandBufferCmdSequence::allocs_indices() const {
+  return allocs_indices_;
 }
 
 //===----------------------------------------------------------------------===//
@@ -149,6 +171,37 @@ Status MemcpyDeviceToDeviceCmd::Record(const RecordParams& params,
 
 CommandBufferCmd::Slices MemcpyDeviceToDeviceCmd::slices() {
   return {dst_, src_};
+}
+
+//===----------------------------------------------------------------------===//
+// IfCmd
+//===----------------------------------------------------------------------===//
+
+IfCmd::IfCmd(BufferAllocation::Slice pred, CommandBufferCmdSequence then_cmds)
+    : pred_(pred), then_cmds_(std::move(then_cmds)) {}
+
+Status IfCmd::Initialize(se::StreamExecutor* executor,
+                         ExecutableSource source) {
+  return then_cmds_.Initialize(executor, source);
+}
+
+Status IfCmd::Record(const RecordParams& params,
+                     se::CommandBuffer* command_buffer) {
+  se::DeviceMemoryBase pred =
+      params.buffer_allocations->GetDeviceAddress(pred_);
+
+  return command_buffer->If(
+      params.executor, se::DeviceMemory<bool>(pred),
+      [&](se::CommandBuffer* then_cmd_buffer) {
+        return then_cmds_.Record(
+            params, then_cmd_buffer,
+            CommandBufferCmdSequence::RecordMode::kConditional);
+      });
+}
+
+CommandBufferCmd::Slices IfCmd::slices() {
+  auto& slices = then_cmds_.slices();
+  return {slices.begin(), slices.end()};
 }
 
 //===----------------------------------------------------------------------===//

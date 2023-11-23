@@ -89,6 +89,21 @@ class CommandBufferCmdSequence {
  public:
   CommandBufferCmdSequence() = default;
 
+  enum class RecordMode {
+    // In exclusive mode no one else is recording commands into the command
+    // buffer argument, and cmd sequence is responsible for updating command
+    // buffer state: finalizing after all commands recorded, and
+    // switching to update state before recording updates.
+    kExclusive,
+
+    // In conditional mode multiple cmd sequences can be recorded into the
+    // command buffer argument, and with command buffer state managed externally
+    // cmd sequence should not finalize or update it. This mode is used when
+    // command buffer cmd sequence is recorded into conditional command buffers
+    // owned by the parent command buffer.
+    kConditional
+  };
+
   void Append(std::unique_ptr<CommandBufferCmd> cmd);
 
   template <typename T, typename... Args>
@@ -102,15 +117,20 @@ class CommandBufferCmdSequence {
 
   // Records all commands added to a sequence into the given command buffer.
   Status Record(const CommandBufferCmd::RecordParams& params,
-                se::CommandBuffer* command_buffer);
+                se::CommandBuffer* command_buffer,
+                RecordMode mode = RecordMode::kExclusive);
+
+  // Returns buffer allocation slices referenced by commands in this sequence.
+  const absl::flat_hash_set<BufferAllocation::Slice>& slices() const;
 
   // Returns buffer allocations indices referenced by commands in this sequence.
-  const absl::flat_hash_set<BufferAllocation::Index>& allocs_indices() const {
-    return allocs_indices_;
-  }
+  const absl::flat_hash_set<BufferAllocation::Index>& allocs_indices() const;
 
  private:
   std::vector<std::unique_ptr<CommandBufferCmd>> commands_;
+
+  // Buffer allocation slices referenced by commands in this sequence.
+  absl::flat_hash_set<BufferAllocation::Slice> slices_;
 
   // Buffer allocations indices referenced by commands in this sequence.
   absl::flat_hash_set<BufferAllocation::Index> allocs_indices_;
@@ -163,6 +183,27 @@ class MemcpyDeviceToDeviceCmd : public CommandBufferCmd {
   BufferAllocation::Slice dst_;
   BufferAllocation::Slice src_;
   int64_t num_bytes_;
+};
+
+//===----------------------------------------------------------------------===//
+// IfCmd
+//===----------------------------------------------------------------------===//
+
+class IfCmd : public CommandBufferCmd {
+ public:
+  IfCmd(BufferAllocation::Slice pred, CommandBufferCmdSequence then_cmds);
+
+  Status Initialize(se::StreamExecutor* executor,
+                    ExecutableSource source) override;
+
+  Status Record(const RecordParams& params,
+                se::CommandBuffer* command_buffer) override;
+
+  Slices slices() override;
+
+ private:
+  BufferAllocation::Slice pred_;
+  CommandBufferCmdSequence then_cmds_;
 };
 
 //===----------------------------------------------------------------------===//
