@@ -1373,6 +1373,41 @@ ENTRY e {
                                  m::Negate()))));
 }
 
+TEST_F(GemmRewriterTritonLevel2Test, NestedSlicingIsAnalyzedCorrectly) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+triton_gemm_d_computation {
+  p0 = f32[6,24]{1,0} parameter(0)
+  s1 = f32[5,20]{1,0} slice(p0), slice={[1:6], [3:23]}
+  n1 = f32[5,20]{1,0} negate(s1)
+  s2 = f32[3,7]{1,0} slice(n1), slice={[1:4], [13:20]}
+  p1 = f32[7,37]{1,0} parameter(1)
+  ROOT d = f32[3,37]{1,0} dot(s2, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[7,37]{1,0} parameter(0)
+  p1 = f32[6,24]{1,0} parameter(1)
+  ROOT triton_gemm_d = f32[3,37]{1,0} fusion(p1, p0), kind=kCustom,
+    calls=triton_gemm_d_computation
+})"));
+  const HloComputation* computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
+                          TritonFusionAnalysis::Execute(*computation));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS,
+                                 computation->parameter_instruction(0), 0),
+              ElementsAre(FieldsAre(/*stride=*/24, /*count=*/6,
+                                    /*slice_start=*/2, /*slice_limit=*/5,
+                                    /*subfragments=*/ElementsAre(3))));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS,
+                                 computation->parameter_instruction(0), 1),
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/24,
+                                    /*slice_start=*/16, /*slice_limit=*/23,
+                                    /*subfragments=*/ElementsAre(7))));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

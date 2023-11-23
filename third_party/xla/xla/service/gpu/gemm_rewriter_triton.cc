@@ -893,9 +893,13 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
           if (dst_logical[dim].size() > 1) {
             return FusionDecision("Slicing of fragmented dimension.");
           }
-          dst_logical[dim].front()->set_size(dst->shape().dimensions(dim));
-          dst_logical[dim].front()->set_slice(slice->slice_starts(dim),
-                                              slice->slice_limits(dim));
+          auto fragment = dst_logical[dim].front();
+          fragment->set_size(dst->shape().dimensions(dim));
+          // Slicing of an already sliced dimension means adding offsets.
+          fragment->set_slice(
+              fragment->slice_start() + slice->slice_starts(dim),
+              fragment->slice_start() + slice->slice_starts(dim) +
+                  fragment->sliced_size());
         }
       }
     } else {

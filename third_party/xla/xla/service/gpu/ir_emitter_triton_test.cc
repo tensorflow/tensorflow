@@ -2003,6 +2003,28 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_F(TritonGemmLevel2Test, NestedSlicingWorks) {
+  const std::string kHloText = R"(
+ENTRY e {
+  p1 = f32[6,24] parameter(1)
+  s1 = f32[5,20] slice(p1), slice={[1:6], [3:23]}
+  n1 = f32[5,20] negate(s1)
+  s2 = f32[3,7] slice(n1), slice={[1:4], [13:20]}
+  p0 = f32[7,37] parameter(0)
+  ROOT d = f32[3,37] dot(s2, p0),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
+                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-3}));
+}
+
 TEST_F(TritonGemmTest, SlicedBatchDimensionIsSupported) {
   const std::string kHloText = R"(
 ENTRY e {
