@@ -156,12 +156,11 @@ Shape GetShape(mlir::Value value);
 // or vice versa.
 // Note: when this is called with a fusion instruction, it will traverse into
 // the fusion (unless the boundary function stops it).
-const HloInstruction& FindNonTrivialHero(
-    const HloInstruction& instr,
-    const std::function<bool(const HloInstruction& producer,
-                             const HloInstruction& consumer)>& is_boundary);
-// Like above, with the default boundary function. Additionally, this will not
-// traverse into `instr`'s computation if it is a fusion.
+const HloInstruction& FindNonTrivialHero(const HloInstruction& instr,
+                                         const HloFusionAdaptor& fusion);
+
+// Like above, but assumes the instruction is inside an HloFusionInstruction.
+// Returns the instruction itself if it is an HloFusionInstruction.
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr);
 
 /// Description of how to emit a given transposition.
@@ -206,8 +205,10 @@ std::optional<TransposeDescription> FindTiledLogicalTranspose(
 std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     const HloInstruction& root, const HloInstruction& hero);
 
+// Checks if the instruction is elementwise and only has a single user. If
+// a fusion adaptor is provided, only checks for users within the fusion.
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1,
-                    FusionBoundaryFn boundary = nullptr);
+                    const HloFusionAdaptor* fusion = nullptr);
 
 // Log the given module if the VLOG level is >= level.
 void VLogModule(int level, const llvm::Module& module);

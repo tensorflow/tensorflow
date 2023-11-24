@@ -1281,17 +1281,17 @@ class MatMulEmitterHelper {
 
 }  // namespace
 
-LaunchDimensions GetMatMulLaunchDimensions(
-    const TritonFusionAnalysis& analysis,
-    absl::Span<const HloInstruction* const> roots,
-    const FusionBoundaryFn& fusion_boundary, const TritonGemmConfig& config) {
-  const auto* dot = static_cast<const HloDotInstruction*>(
-      HloFindIf(roots, fusion_boundary, [](const HloInstruction& node) {
-        return node.opcode() == HloOpcode::kDot;
-      }));
-  CHECK_NE(dot, nullptr);
-  const MatMulDims dims(config, *dot, analysis);
-  const MatMulLaunchConfig launch_config(config, *dot, dims);
+LaunchDimensions GetMatMulLaunchDimensions(const TritonFusionAnalysis& analysis,
+                                           const HloFusionAdaptor& fusion,
+                                           const TritonGemmConfig& config) {
+  auto dot = HloFindIf(fusion.GetRoots(), fusion, [](auto node) {
+    return node.opcode() == HloOpcode::kDot;
+  });
+  CHECK(dot != std::nullopt);
+  const auto& dot_instr =
+      *static_cast<const HloDotInstruction*>(&dot->instruction());
+  MatMulDims dims(config, dot_instr, analysis);
+  MatMulLaunchConfig launch_config(config, dot_instr, dims);
   return launch_config.launch_dims;
 }
 
@@ -1560,15 +1560,13 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
   return OkStatus();
 }
 
-LaunchDimensions GetSoftMaxLaunchDimensions(
-    absl::Span<const HloInstruction* const> roots,
-    const FusionBoundaryFn& fusion_boundary, const TritonGemmConfig& config) {
-  const HloInstruction* reduce =
-      HloFindIf(roots, fusion_boundary, [](const HloInstruction& node) {
-        return node.opcode() == HloOpcode::kReduce;
-      });
-  CHECK_NE(reduce, nullptr);
-  const Shape& reduce_input_shape = reduce->operand(0)->shape();
+LaunchDimensions GetSoftMaxLaunchDimensions(const HloFusionAdaptor& fusion,
+                                            const TritonGemmConfig& config) {
+  auto reduce = HloFindIf(fusion.GetRoots(), fusion, [](auto node) {
+    return node.opcode() == HloOpcode::kReduce;
+  });
+  CHECK(reduce != std::nullopt);
+  const Shape& reduce_input_shape = reduce->instruction().operand(0)->shape();
   int num_rows = 1;
   for (int minor_axis = 1; minor_axis < reduce_input_shape.rank();
        ++minor_axis) {

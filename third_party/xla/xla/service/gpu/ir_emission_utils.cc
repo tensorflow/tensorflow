@@ -765,7 +765,7 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
 }
 
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count,
-                    FusionBoundaryFn boundary) {
+                    const HloFusionAdaptor* fusion) {
   // Number of operands should be in range [1, allowed_operand_count].
   if (instr->operand_count() == 0 ||
       instr->operand_count() > allowed_operand_count) {
@@ -774,14 +774,13 @@ bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count,
 
   // Intermediate `instr` can't have multiple users.
   // If we have a boundary function, only consider users within the
-  // boundary. This isn't really correct, since the real users aren't
-  // necessarily the instruction's users at this point.
+  // boundary.
   // TODO(jreiffers): Figure out the point of this check.
   int64_t num_users =
-      boundary ? absl::c_count_if(
-                     instr->users(),
-                     [&](const auto* user) { return !boundary(*instr, *user); })
-               : instr->user_count();
+      fusion ? absl::c_count_if(
+                   HloInstructionAdaptor{*instr}.GetUsers(),
+                   [&](auto user) { return fusion->ContainsInstruction(user); })
+             : instr->user_count();
   if (num_users > 1) {
     return false;
   }
@@ -815,57 +814,59 @@ static bool IsParameter(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kParameter;
 }
 
-const HloInstruction& FindNonTrivialHero(
-    const HloInstruction& instr,
-    const std::function<bool(const HloInstruction& producer,
-                             const HloInstruction& consumer)>& is_boundary) {
-  const HloInstruction* idx = &instr;
+const HloInstruction& FindNonTrivialHero(const HloInstruction& instr,
+                                         const HloFusionAdaptor& fusion) {
+  HloInstructionAdaptor idx{instr};
 
   // Go up the chain of trivial element-wise(+bitcast, -copy) operations. Such
   // chains are bound to be quite small, as we restrict the number of users as
   // well. Note that no memoization is needed due to user number constraints: we
   // never have to revisit same nodes.
-  auto get_intermediate_arg = [&](const HloInstruction* node) {
-    if (node->opcode() == HloOpcode::kFusion ||
-        node->opcode() == HloOpcode::kParameter) {
-      auto preds = FindPredecessors(*node, is_boundary);
-      return preds.size() == 1 ? preds.front() : nullptr;
+  auto get_intermediate_arg =
+      [&](HloInstructionAdaptor node) -> std::optional<HloInstructionAdaptor> {
+    if (IsIntermediate(&node.instruction(), 1, &fusion) &&
+        fusion.ContainsInstruction(node.GetOperand(0))) {
+      return node.GetOperand(0);
     }
-    return IsIntermediate(node, 1, is_boundary) &&
-                   !is_boundary(*node->operand(0), *node)
-               ? node->operand(0)
-               : nullptr;
+    return std::nullopt;
   };
-  while (auto* arg = get_intermediate_arg(idx)) {
-    idx = arg;
+  while (auto arg = get_intermediate_arg(idx)) {
+    idx = *arg;
   }
 
-  const HloInstruction* transpose = nullptr;
+  // The reduction emitter can't handle multiple users.
+  if (idx.opcode() == HloOpcode::kReduce &&
+      absl::c_count_if(idx.GetUsers(), [&](auto user) {
+        return fusion.ContainsInstruction(user);
+      }) > 1) {
+    return instr;
+  }
+
+  std::optional<HloInstructionAdaptor> transpose = std::nullopt;
   // Try a bit harder to find a transpose hero. The shared memory transpose
   // emitter also works if there are ops with more than 1 operand on the path
   // between root and the transpose op, we still want the restriction though
   // that each op on the path is elementwise and has only 1 user.
-  auto visit = [&transpose](const HloInstruction& node) {
-    if (FindTiledLogicalTranspose(node)) {
+  auto visit = [&transpose](HloInstructionAdaptor node) {
+    if (FindTiledLogicalTranspose(node.instruction())) {
       // If we do not find a unique transpose op, use the original non-trivial
       // hero.
       if (transpose) {
-        transpose = nullptr;
+        transpose = std::nullopt;
         return TraversalResult::kAbortTraversal;
       }
-      transpose = &node;
+      transpose = node;
       return TraversalResult::kDoNotVisitOperands;
     }
 
-    if (node.opcode() != HloOpcode::kParameter &&
-        node.opcode() != HloOpcode::kFusion &&
-        !IsIntermediate(&node, /*allowed_operand_count=*/3)) {
+    if (!IsIntermediate(&node.instruction(), /*allowed_operand_count=*/3)) {
       return TraversalResult::kDoNotVisitOperands;
     }
     return TraversalResult::kVisitOperands;
   };
-  HloBfsConsumersFirstTraversal({idx}, is_boundary, visit);
-  return transpose ? *transpose : *idx;
+  HloBfsConsumersFirstTraversal({idx}, fusion, visit);
+
+  return transpose ? transpose->instruction() : idx.instruction();
 }
 
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
@@ -873,10 +874,9 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
   // happens. Return the fusion itself for historical reasons.
   // TODO(jreiffers): Clean this up.
   if (instr.opcode() == HloOpcode::kFusion) return instr;
-  return FindNonTrivialHero(instr, [](const HloInstruction& producer,
-                                      const HloInstruction& consumer) {
-    return consumer.opcode() == HloOpcode::kParameter;
-  });
+
+  return FindNonTrivialHero(instr,
+                            *HloFusionAdaptor::ForComputation(instr.parent()));
 }
 
 void VLogModule(int level, const llvm::Module& module) {

@@ -481,8 +481,8 @@ FusionDecision GpuPriorityFusion::ShouldFuse(HloInstruction* consumer,
   // understand this case due to a lack of tiling analysis.
   // TODO(b/312200883): Remove this.
   auto contains_reduce = [&](const HloInstruction* instr) {
-    return HloAnyOf({instr}, MakeSingleInstructionFusion(*instr),
-                    [](const HloInstruction& node) {
+    return HloAnyOf({HloInstructionAdaptor{*instr}},
+                    *HloFusionAdaptor::ForInstruction(instr), [](auto node) {
                       return node.opcode() == HloOpcode::kReduce;
                     });
   };

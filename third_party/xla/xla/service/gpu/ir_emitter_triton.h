@@ -42,10 +42,9 @@ struct TritonWrapperResult {
 };
 
 // Compute the launch dimensions for the given Triton MatMul.
-LaunchDimensions GetMatMulLaunchDimensions(
-    const TritonFusionAnalysis& analysis,
-    absl::Span<const HloInstruction* const> roots,
-    const FusionBoundaryFn& fusion_boundary, const TritonGemmConfig& config);
+LaunchDimensions GetMatMulLaunchDimensions(const TritonFusionAnalysis& analysis,
+                                           const HloFusionAdaptor& fusion,
+                                           const TritonGemmConfig& config);
 // Use tiling and execution parameters from 'config'.
 Status EmitMatMul(mlir::OpBuilder b, absl::string_view libdevice_path,
                   const TritonFusionAnalysis& analysis,
@@ -53,9 +52,8 @@ Status EmitMatMul(mlir::OpBuilder b, absl::string_view libdevice_path,
                   const TritonGemmConfig& config, int shmem_budget);
 
 // Compute the launch dimensions for the given Triton SoftMax.
-LaunchDimensions GetSoftMaxLaunchDimensions(
-    absl::Span<const HloInstruction* const> roots,
-    const FusionBoundaryFn& fusion_boundary, const TritonGemmConfig& config);
+LaunchDimensions GetSoftMaxLaunchDimensions(const HloFusionAdaptor& fusion,
+                                            const TritonGemmConfig& config);
 // Generate Softmax in Triton IR inside 'fn'.
 // Use execution parameters from 'config'.
 Status EmitSoftMax(mlir::OpBuilder b, absl::string_view libdevice_path,

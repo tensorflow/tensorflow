@@ -50,8 +50,8 @@ class HloFusionAnalysis {
 
   static StatusOr<HloFusionAnalysis> Create(
       FusionBackendConfig backend_config,
-      std::vector<const HloInstruction*> hlo_roots,
-      FusionBoundaryFn boundary_fn, const se::DeviceDescription* device_info);
+      std::unique_ptr<HloFusionAdaptor> fusion,
+      const se::DeviceDescription* device_info);
   static StatusOr<HloFusionAnalysis> Create(
       const HloFusionInstruction* fusion,
       const se::DeviceDescription* device_info);
@@ -59,9 +59,7 @@ class HloFusionAnalysis {
   const std::vector<const HloInstruction*>& fusion_roots() const {
     return fusion_roots_;
   }
-  const FusionBoundaryFn& fusion_boundary() const {
-    return fusion_boundary_fn_;
-  }
+  const HloFusionAdaptor& fusion() const { return *fusion_; }
 
   // Determines the fusion type for the emitter.
   EmitterFusionKind GetEmitterFusionKind() const;
@@ -104,7 +102,7 @@ class HloFusionAnalysis {
 
   HloFusionAnalysis(FusionBackendConfig fusion_backend_config,
                     std::vector<const HloInstruction*> fusion_roots,
-                    FusionBoundaryFn fusion_boundary_fn,
+                    std::unique_ptr<HloFusionAdaptor> fusion,
                     std::vector<const HloInstruction*> fusion_heroes,
                     const se::DeviceDescription* device_info,
                     std::optional<TransposeDescription> tiled_transpose,
@@ -130,7 +128,7 @@ class HloFusionAnalysis {
 
   FusionBackendConfig fusion_backend_config_;
   std::vector<const HloInstruction*> fusion_roots_;
-  FusionBoundaryFn fusion_boundary_fn_;
+  std::unique_ptr<HloFusionAdaptor> fusion_;
   std::vector<const HloInstruction*> fusion_heroes_;
   const se::DeviceDescription* device_info_;
   std::optional<TransposeDescription> tiled_transpose_;
