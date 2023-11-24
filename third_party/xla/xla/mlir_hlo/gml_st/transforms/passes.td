@@ -70,27 +70,6 @@ def VectorizeForCPUPass : Pass<"vectorize-for-cpu", "mlir::func::FuncOp"> {
   ];
 }
 
-def VectorizeCopyPass : Pass<"vectorize-copy", "mlir::func::FuncOp"> {
-  let summary = "Pass to vectorize `memref.copy`.";
-  let constructor = "::mlir::gml_st::createVectorizeCopyPass()";
-  let dependentDialects = [
-    "scf::SCFDialect",
-    "vector::VectorDialect",
-  ];
-  let options = [
-    Option<"numElementsThreshold", "num-elements-threshold", "int64_t",
-           /*default=*/"8",
-           "Max number of elements in src and dst memref for a copy to be "
-           "vectorized.">,
-  ];
-}
-
-def NaiveCopyRemovalPass : Pass<"naive-copy-removal", "mlir::func::FuncOp"> {
-  let summary = "Pass to remove redundant `memref.copy` ops.";
-  let constructor = "::mlir::gml_st::createNaiveCopyRemovalPass()";
-  let dependentDialects = ["::mlir::memref::MemRefDialect"];
-}
-
 def LowerVectorsPass : Pass<"lower-vectors", "mlir::func::FuncOp"> {
   let summary = "Pass to lower vector operations progressively.";
   let constructor = "::mlir::gml_st::createLowerVectorsPass()";

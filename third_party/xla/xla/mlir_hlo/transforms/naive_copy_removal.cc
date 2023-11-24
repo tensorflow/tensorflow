@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,16 +16,18 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "gml_st/transforms/passes.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "transforms/passes.h"
 
-namespace mlir::gml_st {
+namespace mlir {
 namespace {
 
 #define GEN_PASS_DEF_NAIVECOPYREMOVALPASS
-#include "gml_st/transforms/passes.h.inc"
+#include "transforms/passes.h.inc"
 
 /// Remove memref::CopyOp whose target (can be either a memref::SubViewOp or
 /// memref::AllocOp) has no other users.
@@ -88,4 +90,4 @@ std::unique_ptr<OperationPass<func::FuncOp>> createNaiveCopyRemovalPass() {
   return std::make_unique<NaiveCopyRemovalPass>();
 }
 
-}  // namespace mlir::gml_st
+}  // namespace mlir

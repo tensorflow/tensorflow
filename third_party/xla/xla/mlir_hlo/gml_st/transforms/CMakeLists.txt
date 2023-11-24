@@ -32,7 +32,6 @@ add_mlir_library(GmlStPasses
   collapse_shape/collapse_shape.cc
   collect_stats/collect_stats.cc
   compose_extract_insert_slice/compose_extract_insert_slice.cc
-  copy_removal/copy_removal.cc
   cpu_tiling/cpu_tiling_pipeline.cc
   cpu_tiling/fusion_outlining.cc
   cpu_tiling/fusion_planning_for_cpu.cc
@@ -54,7 +53,6 @@ add_mlir_library(GmlStPasses
   tiling_softmax/tiling_softmax.cc
   vectorization/lower_vectors.cc
   vectorization/vectorization.cc
-  vectorization/vectorize_copy.cc
   vectorization/vectorize_for_cpu.cc
 
   DEPENDS

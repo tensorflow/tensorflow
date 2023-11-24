@@ -14,24 +14,21 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
-#include <limits>
 #include <memory>
-#include <optional>
 #include <utility>
 
-#include "gml_st/transforms/passes.h"
-#include "gml_st/transforms/vectorization/vectorization.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
-namespace gml_st {
 namespace {
 
 #define GEN_PASS_DEF_VECTORIZECOPYPASS
-#include "gml_st/transforms/passes.h.inc"
+#include "transforms/passes.h.inc"
 
 /// Transforms a big non-contiguous `memref.copy` into a loop over smaller
 /// copies that are either contiguous or can be vectorized.
@@ -217,7 +214,7 @@ struct VectorizeCopyPass
 
     RewritePatternSet patterns(ctx);
     patterns.add<TileCopyPattern, CopyVectorizationPattern>(
-        ctx, numElementsThreshold);
+        ctx, /*numElementsThreshold = */ 8);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
       return signalPassFailure();
     }
@@ -226,12 +223,8 @@ struct VectorizeCopyPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass(
-    int64_t numElementsThreshold) {
-  VectorizeCopyPassOptions opts;
-  opts.numElementsThreshold = numElementsThreshold;
-  return std::make_unique<VectorizeCopyPass>(opts);
+std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass() {
+  return std::make_unique<VectorizeCopyPass>();
 }
 
-}  // namespace gml_st
 }  // namespace mlir

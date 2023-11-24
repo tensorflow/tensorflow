@@ -172,4 +172,16 @@ def AllocToArgPass : Pass<"alloc-to-arg", "mlir::func::FuncOp"> {
   let constructor = "hlo::createAllocToArgPass()";
 }
 
+def NaiveCopyRemovalPass : Pass<"naive-copy-removal", "mlir::func::FuncOp"> {
+  let summary = "Pass to remove redundant `memref.copy` ops.";
+  let constructor = "createNaiveCopyRemovalPass()";
+  let dependentDialects = ["memref::MemRefDialect"];
+}
+
+def VectorizeCopyPass : Pass<"vectorize-copy", "mlir::func::FuncOp"> {
+  let summary = "Pass to vectorize `memref.copy`.";
+  let constructor = "createVectorizeCopyPass()";
+  let dependentDialects = ["scf::SCFDialect", "vector::VectorDialect"];
+}
+
 #endif // TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES
