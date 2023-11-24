@@ -467,16 +467,25 @@ TEST_F(TileAnalysisTest, DotOp) {
                                       std::vector<int>{18, 17})))));
 }
 
-TEST_F(TileAnalysisTest, UnsupportedOp) {
-  auto input_indexing_or = GetIndexingMapsForEntryComputation(R"(
+TEST_F(TileAnalysisTest, UnsupportedOps) {
+  ASSERT_IS_NOT_OK(GetIndexingMapsForEntryComputation(R"(
     HloModule m
     ENTRY e {
       p0 = f32[1, 17, 9, 9] parameter(0)
       p1 = f32[5, 17, 9, 9] parameter(1)
       ROOT concat = f32[6, 17, 9, 9] concatenate(p0, p1)
     }
-  )");
-  ASSERT_IS_NOT_OK(input_indexing_or);
+  )"));
+  ASSERT_IS_NOT_OK(GetIndexingMapsForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      input = s32[1,1,25,1] parameter(0)
+      update = s32[1,1,2,1] parameter(1)
+      start_indices = s32[4] parameter(2)
+      ROOT dyn-update = s32[1,1,25,1] dynamic-update-slice(
+        s32[1,1,25,1] input, s32[1,1,2,1] update, s32[4] start_indices)
+    }
+  )"));
 }
 
 }  // namespace
