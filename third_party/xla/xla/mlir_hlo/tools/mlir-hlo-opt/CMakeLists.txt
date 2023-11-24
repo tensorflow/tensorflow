@@ -22,13 +22,9 @@ set(LIBS
         ${extension_libs}
         MLIROptLib
 
-        AllGmlStPasses
         AllMhloPasses
-        AllThloPasses
         DeallocationDialect
         DeallocationPasses
-        GmlStDialect
-        GmlStPasses
         LmhloDialect
         LmhloGPUDialect
         LmhloPasses
@@ -43,7 +39,6 @@ add_llvm_executable(mlir-hlo-opt mlir-hlo-opt.cc
   DEPENDS
         MLIRLmhloPassIncGen
         MLIRMhloPassIncGen
-        MLIRThloPassIncGen
         LMHLOTransformsPassIncGen
         LMHLOGPUTransformsPassIncGen
 )

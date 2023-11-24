@@ -33,8 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf_ifrt_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h"
-#include "xla/mlir_hlo/gml_st/IR/gml_st_ops.h"
-#include "xla/mlir_hlo/gml_st/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
 
@@ -46,7 +44,6 @@ int main(int argc, char **argv) {
 
   mlir::registerTensorFlowPasses();
 
-  mlir::gml_st::registerGmlStPasses();
 
   tensorflow::mlrt_compiler::RegisterMlrtPasses();
   tensorflow::ifrt_serving::RegisterTfIfrtPasses();
@@ -54,7 +51,6 @@ int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
   mlir::RegisterAllTensorFlowDialects(registry);
-  registry.insert<mlir::gml_st::GmlStDialect>();
   registry.insert<mlir::shape::ShapeDialect>();
   registry.insert<mlir::mhlo::MhloDialect>();
   registry.insert<mlir::TFL::TensorFlowLiteDialect>();

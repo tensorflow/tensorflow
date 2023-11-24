@@ -259,8 +259,7 @@ void LoadMLIRDialects(mlir::MLIRContext& context) {
 xla::cpu::HloXlaRuntimePipelineOptions GetHloXlaRuntimePipelineOptions(
     llvm::Triple target_triple, llvm::StringRef cpu_name) {
   xla::cpu::HloXlaRuntimePipelineOptions options;
-  options.enable_tiling_and_fusion =
-      xla::GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
+  options.enable_tiling_and_fusion = false;
   if (xla::GetDebugOptionsFromFlags().xla_cpu_enable_custom_matmul_tiling()) {
     options.matmul_tile_sizes = {
         xla::GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_m_dim(),

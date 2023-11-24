@@ -1,5 +1,5 @@
-load("//xla:xla.bzl", "xla_cc_binary")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("//xla:xla.bzl", "xla_cc_binary")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -20,12 +20,8 @@ xla_cc_binary(
         "//xla/mlir/backends/cpu/transforms:passes",
         "//xla/mlir/xla_cpu/ir:xla_cpu",
         "//xla/mlir_hlo:all_passes",
-        "//xla/mlir_hlo:gml_st",
-        "//xla/mlir_hlo:gml_st_passes",
-        "//xla/mlir_hlo:gml_st_test_passes",
         "//xla/mlir_hlo:hlo_dialect_registration",
         "//xla/mlir_hlo:lhlo",
-        "//xla/mlir_hlo:thlo",
         "//xla/service/cpu:cpu_compiler",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:FuncExtensions",

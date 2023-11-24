@@ -48,8 +48,6 @@ add_mlir_library(MLIRBufferTransforms
 
   LINK_LIBS PUBLIC
   ChloOps
-  GmlStBufferizableOpInterface
-  GmlStDialect
   MLIRGPUDialect
   MLIRHLOAnalysis
   MLIRIR
@@ -62,8 +60,6 @@ add_mlir_library(MLIRBufferTransforms
   MLIRX86VectorDialect
   MLIRX86VectorTransforms
   MhloDialect
-  THLODialect
-  ThloBufferizableOpInterface
 )
 
 add_mlir_library(MLIRHLOGPUTransforms
@@ -77,7 +73,6 @@ add_mlir_library(MLIRHLOGPUTransforms
   Core
 
   LINK_LIBS PUBLIC
-  GmlStPasses
   MLIRArithTransforms
   MLIRGPUDialect
   MLIRHLOAnalysis
