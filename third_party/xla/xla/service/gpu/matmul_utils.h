@@ -43,6 +43,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Ordered non-contracting dimensions for a dot instruction operand.
 StatusOr<std::vector<int64_t>> GetNonContractingDims(
     const Shape& shape, absl::Span<const int64_t> batch_dims,
     absl::Span<const int64_t> contracting_dims);

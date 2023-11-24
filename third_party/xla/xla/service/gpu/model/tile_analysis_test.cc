@@ -442,6 +442,31 @@ TEST_F(TileAnalysisTest, TransposeOp) {
                          std::vector<int>{})))));
 }
 
+TEST_F(TileAnalysisTest, DotOp) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing_or,
+                          GetIndexingMapsForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[4, 38, 17, 11, 18, 10] parameter(0)
+      p1 = f32[17, 10, 16, 18, 22, 38] parameter(1)
+      ROOT dot = f32[10, 38, 4, 11, 16, 22] dot(p0, p1),
+        lhs_batch_dims={5,1}, rhs_batch_dims={1,5},
+        lhs_contracting_dims={4,2}, rhs_contracting_dims={3,0}
+    }
+  )"));
+  EXPECT_THAT(
+      input_indexing_or.operand_indexing_maps,
+      ElementsAre(
+          MatchOperandIndexing(0, ElementsAre(MatchIndexingMap(
+                                      "(d0, d1, d2, d3, d4, d5)[s0, s1] -> "
+                                      "(d2, d1, s1, d3, s0, d0)",
+                                      std::vector<int>{18, 17}))),
+          MatchOperandIndexing(1, ElementsAre(MatchIndexingMap(
+                                      "(d0, d1, d2, d3, d4, d5)[s0, s1] -> "
+                                      "(s1, d0, d4, s0, d5, d1)",
+                                      std::vector<int>{18, 17})))));
+}
+
 TEST_F(TileAnalysisTest, UnsupportedOp) {
   auto input_indexing_or = GetIndexingMapsForEntryComputation(R"(
     HloModule m

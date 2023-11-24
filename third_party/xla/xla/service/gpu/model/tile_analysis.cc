@@ -25,25 +25,31 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/matmul_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
+using llvm::SmallVector;
 using mlir::AffineExpr;
 using mlir::AffineExprKind;
 using mlir::AffineMap;
@@ -220,6 +226,89 @@ StatusOr<HloInstructionIndexing> ComputeFusionOpIndexing(
   return fusion_indexing;
 }
 
+StatusOr<HloInstructionIndexing> ComputeDotOpIndexing(
+    const HloDotInstruction* dot, MLIRContext* mlir_context) {
+  CHECK_NE(dot, nullptr);
+  const DotDimensionNumbers& dim_numbers = dot->dot_dimension_numbers();
+  absl::Span<const int64_t> lhs_contracting_dims(
+      dim_numbers.lhs_contracting_dimensions());
+  absl::Span<const int64_t> rhs_contracting_dims =
+      dim_numbers.rhs_contracting_dimensions();
+
+  absl::Span<const int64_t> lhs_batch_dims = dim_numbers.lhs_batch_dimensions();
+  absl::Span<const int64_t> rhs_batch_dims = dim_numbers.rhs_batch_dimensions();
+
+  const Shape& lhs_shape = dot->operand(0)->shape();
+  const Shape& rhs_shape = dot->operand(1)->shape();
+  // According to the StableHLO specification, the dimensions of the output
+  // shape are ordered as follows:
+  //   lhs_batch_dims | lhs_non_contracting_dims | rhs_non_contracting_dims
+  SmallVector<AffineExpr> lhs_exprs(lhs_shape.rank());
+  SmallVector<AffineExpr> rhs_exprs(rhs_shape.rank());
+  int64_t output_dim_id = 0;
+
+  // lhs_batch_dims
+  for (auto [lhs_batch_dim, rhs_batch_dim] :
+       llvm::zip(lhs_batch_dims, rhs_batch_dims)) {
+    AffineExpr output_dim_expr = getAffineDimExpr(output_dim_id, mlir_context);
+    lhs_exprs[lhs_batch_dim] = output_dim_expr;
+    rhs_exprs[rhs_batch_dim] = output_dim_expr;
+    ++output_dim_id;
+  }
+
+  // lhs_non_contracting_dims
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> lhs_non_contracting_dims,
+      GetNonContractingDims(lhs_shape, lhs_batch_dims, lhs_contracting_dims));
+
+  for (int64_t lhs_non_contracting_dim : lhs_non_contracting_dims) {
+    lhs_exprs[lhs_non_contracting_dim] =
+        getAffineDimExpr(output_dim_id++, mlir_context);
+  }
+
+  // rhs_non_contracting_dims
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> rhs_non_contracting_dims,
+      GetNonContractingDims(rhs_shape, rhs_batch_dims, rhs_contracting_dims));
+
+  for (int64_t rhs_non_contracting_dim : rhs_non_contracting_dims) {
+    rhs_exprs[rhs_non_contracting_dim] =
+        getAffineDimExpr(output_dim_id++, mlir_context);
+  }
+
+  int64_t input_dim_id = 0;
+  std::vector<int64_t> input_dim_sizes;
+  input_dim_sizes.reserve(lhs_contracting_dims.size());
+
+  for (auto [lhs_contracting_dim, rhs_contracting_dim] :
+       llvm::zip(lhs_contracting_dims, rhs_contracting_dims)) {
+    AffineExpr input_dim_expr = getAffineSymbolExpr(input_dim_id, mlir_context);
+    lhs_exprs[lhs_contracting_dim] = input_dim_expr;
+    rhs_exprs[rhs_contracting_dim] = input_dim_expr;
+    ++input_dim_id;
+
+    // LHS and RHS contracting dimensions must match pairwise, and we therefore
+    // need only populate a single input_dim_sizes vector.
+    input_dim_sizes.push_back(lhs_shape.dimensions(lhs_contracting_dim));
+  }
+
+  IndexingMap lhs_indexing_map{
+      .affine_map = AffineMap::get(dot->shape().rank(), input_dim_sizes.size(),
+                                   lhs_exprs, mlir_context),
+      .input_dims_sizes = input_dim_sizes};
+
+  IndexingMap rhs_indexing_map{
+      .affine_map = AffineMap::get(dot->shape().rank(), input_dim_sizes.size(),
+                                   rhs_exprs, mlir_context),
+      .input_dims_sizes = input_dim_sizes};
+
+  return HloInstructionIndexing{
+      {HloOperandIndexing{.indexing_maps = {std::move(lhs_indexing_map)},
+                          .operand_id = 0},
+       HloOperandIndexing{.indexing_maps = {std::move(rhs_indexing_map)},
+                          .operand_id = 1}}};
+}
+
 StatusOr<HloInstructionIndexing> ComputeReduceOpIndexing(
     const HloReduceInstruction* reduce, int output_id,
     MLIRContext* mlir_context) {
@@ -384,6 +473,9 @@ StatusOr<HloInstructionIndexing> ComputeInstructionIndexing(
   }
   if (auto bcast = DynCast<HloBroadcastInstruction>(instr)) {
     return ComputeBroadcastOpIndexing(bcast, mlir_context);
+  }
+  if (auto dot = DynCast<HloDotInstruction>(instr)) {
+    return ComputeDotOpIndexing(dot, mlir_context);
   }
   if (auto fusion = DynCast<HloFusionInstruction>(instr)) {
     return ComputeFusionOpIndexing(fusion, output_id, mlir_context);
