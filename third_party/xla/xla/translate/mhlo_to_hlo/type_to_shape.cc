@@ -82,12 +82,12 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type) {
 }
 
 std::optional<std::tuple<DimLevelType, bool, bool>> ConvertDimLevelType(
-    mlir::sparse_tensor::DimLevelType dlt) {
-  auto f = mlir::sparse_tensor::getLevelFormat(dlt);
+    mlir::sparse_tensor::DimLevelType lt) {
+  auto f = mlir::sparse_tensor::getLevelFormat(lt);
   if (!f) return std::nullopt;
 
-  bool unique = mlir::sparse_tensor::isUniqueDLT(dlt);
-  bool ordered = mlir::sparse_tensor::isOrderedDLT(dlt);
+  bool unique = mlir::sparse_tensor::isUniqueLT(lt);
+  bool ordered = mlir::sparse_tensor::isOrderedLT(lt);
   switch (*f) {
     case mlir::sparse_tensor::LevelFormat::Singleton:
       return std::make_tuple(DimLevelType::DIM_SINGLETON, unique, ordered);
@@ -206,12 +206,12 @@ Shape TypeToShape(mlir::Type type) {
       llvm::SmallVector<DimLevelType, 3> lvl_types;
       llvm::SmallVector<bool, 3> level_unique;
       llvm::SmallVector<bool, 3> level_ordered;
-      for (auto dlt : sparse.getLvlTypes()) {
-        auto new_dlt = ConvertDimLevelType(dlt);
-        if (!new_dlt) return {};
-        lvl_types.push_back(std::get<0>(*new_dlt));
-        level_unique.push_back(std::get<1>(*new_dlt));
-        level_ordered.push_back(std::get<2>(*new_dlt));
+      for (auto lt : sparse.getLvlTypes()) {
+        auto new_lt = ConvertDimLevelType(lt);
+        if (!new_lt) return {};
+        lvl_types.push_back(std::get<0>(*new_lt));
+        level_unique.push_back(std::get<1>(*new_lt));
+        level_ordered.push_back(std::get<2>(*new_lt));
       }
 
       std::vector<int64_t> ordering(rank);
