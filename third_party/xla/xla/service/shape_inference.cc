@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -55,6 +56,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using absl::InvalidArgumentError;
 using absl::StrFormat;
 using absl::StrJoin;
 
@@ -813,24 +815,52 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   std::vector<int64_t> output_dimensions(lhs.rank());
   std::vector<bool> output_dimensions_is_dynamic(lhs.rank());
   for (int64_t i = 0; i < lhs.rank(); ++i) {
-    if (lhs.dimensions(i) == rhs.dimensions(i)) {
+    if (lhs.dimensions(i) == 1 || rhs.dimensions(i) == 1) {
+      // For the unbounded case, the operand with 1 should be broadcasted to the
+      // unbounded size which can be > 1.
+      // LHS | RHS | Result
+      // 1   | X   | X
+      // 1   | <=X | <=X
+      // 1   | ?   | ?
+      // X   | 1   | X
+      // <=X | 1   | <=X
+      // ?   | 1   | ?
+      output_dimensions[i] =
+          lhs.dimensions(i) == 1 ? rhs.dimensions(i) : lhs.dimensions(i);
+      output_dimensions_is_dynamic[i] = lhs.dimensions(i) == 1
+                                            ? rhs.is_dynamic_dimension(i)
+                                            : lhs.is_dynamic_dimension(i);
+    } else if (lhs.dimensions(i) == rhs.dimensions(i)) {
+      // LHS | RHS | Result
+      // X   | X   | X
+      // X   | <=X | <=X
+      // <=X | X   | <=X
+      // <=X | <=X | <=X
+      // ?   | ?   | ?
       output_dimensions[i] = lhs.dimensions(i);
-    } else if (lhs.dimensions(i) == 1) {
-      output_dimensions[i] = rhs.dimensions(i);
-    } else if (rhs.dimensions(i) == 1) {
-      output_dimensions[i] = lhs.dimensions(i);
+      output_dimensions_is_dynamic[i] =
+          lhs.is_dynamic_dimension(i) || rhs.is_dynamic_dimension(i);
+    } else if (lhs.is_unbounded_dynamic_dimension(i) ||
+               rhs.is_unbounded_dynamic_dimension(i)) {
+      // For the last two rows, consider when <=X turns out to be 1 and ? turns
+      // out to be 5. It would be wrong to infer <=1 as this is a degenerate
+      // dimension that should be broadcasted to 5.
+      // LHS | RHS | Result
+      // X   | ?   | X
+      // ?   | X   | X
+      // <=X | ?   | ?
+      // ?   | <=X | ?
+      output_dimensions[i] = lhs.is_unbounded_dynamic_dimension(i)
+                                 ? rhs.dimensions(i)
+                                 : lhs.dimensions(i);
+      output_dimensions_is_dynamic[i] = lhs.is_unbounded_dynamic_dimension(i)
+                                            ? rhs.is_dynamic_dimension(i)
+                                            : lhs.is_dynamic_dimension(i);
     } else {
       return InvalidArgument(
           "Binary op %s with incompatible shapes: %s and %s.",
           HloOpcodeString(operation), ShapeUtil::HumanString(lhs),
           ShapeUtil::HumanString(rhs));
-    }
-  }
-
-  // Merge dynamic dimensions from two shapes.
-  for (int64_t i = 0; i < rhs.rank(); ++i) {
-    if (rhs.is_dynamic_dimension(i) || lhs.is_dynamic_dimension(i)) {
-      output_dimensions_is_dynamic[i] = true;
     }
   }
 
@@ -841,20 +871,29 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 /* static */ StatusOr<Shape> ShapeInference::InferInDimBroadcastShape(
     const Shape& smaller_shape, const Shape& larger_shape,
     absl::Span<const int64_t> broadcast_dimensions) {
+  if (smaller_shape.is_unbounded_dynamic() ||
+      larger_shape.is_unbounded_dynamic()) {
+    return InvalidArgumentError(StrFormat(
+        "Unbounded dynamic shapes not supported, but we have %s and %s",
+        ShapeUtil::HumanString(smaller_shape),
+        ShapeUtil::HumanString(larger_shape)));
+  }
+
   if (broadcast_dimensions.empty() && !ShapeUtil::IsScalar(smaller_shape)) {
     // Reject "magic" inference for binops on different shapes, requiring
     // the user to provide an explicit broadcast dimension in this case.
     // See b/25177275 for more details.
-    return InvalidArgument("Shapes must be equal rank, but are %s and %s",
-                           ShapeUtil::HumanString(smaller_shape),
-                           ShapeUtil::HumanString(larger_shape));
+    return InvalidArgumentError(
+        StrFormat("Shapes must be equal rank, but are %s and %s",
+                  ShapeUtil::HumanString(smaller_shape),
+                  ShapeUtil::HumanString(larger_shape)));
   } else if (broadcast_dimensions.size() != smaller_shape.rank()) {
-    return InvalidArgument(
+    return InvalidArgumentError(StrFormat(
         "Size of broadcast_dimensions has to match lower-rank operand's "
         "rank; "
         " lower-rank operand's rank is %d, size of broadcast_dimensions is "
         "%u.",
-        smaller_shape.rank(), broadcast_dimensions.size());
+        smaller_shape.rank(), broadcast_dimensions.size()));
   }
 
   // broadcast_dimensions is a sequence of dimensions; its length is equal to
@@ -902,15 +941,15 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   for (int i = 0; i < smaller_shape.dimensions_size(); ++i) {
     int64_t dimension_to_match = broadcast_dimensions.at(i);
     if (dimension_to_match < 0) {
-      return InvalidArgument(
-          "Broadcast dimension number (%d) cannot be negative.",
-          dimension_to_match);
+      return InvalidArgumentError(
+          StrFormat("Broadcast dimension number (%d) cannot be negative.",
+                    dimension_to_match));
     }
     if (dimension_to_match >= larger_shape.dimensions_size()) {
-      return InvalidArgument(
-          "Broadcast dimension number (%d) too large; higher-rank "
-          "operand has rank %d.",
-          dimension_to_match, larger_shape.dimensions_size());
+      return InvalidArgumentError(
+          StrFormat("Broadcast dimension number (%d) too large; higher-rank "
+                    "operand has rank %d.",
+                    dimension_to_match, larger_shape.dimensions_size()));
     }
     int64_t small_dimension_size = smaller_shape.dimensions(i);
     int64_t large_dimension_size = larger_shape.dimensions(dimension_to_match);
@@ -922,11 +961,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     // InDim broadcasting).
     if (small_dimension_size != large_dimension_size &&
         small_dimension_size != 1 && large_dimension_size != 1) {
-      return InvalidArgument(
-          "Broadcast dimension %d mismatch: %d != %d; %s and %s.", i,
-          small_dimension_size, large_dimension_size,
-          ShapeUtil::HumanString(smaller_shape),
-          ShapeUtil::HumanString(larger_shape));
+      return InvalidArgumentError(
+          StrFormat("Broadcast dimension %d mismatch: %d != %d; %s and %s.", i,
+                    small_dimension_size, large_dimension_size,
+                    ShapeUtil::HumanString(smaller_shape),
+                    ShapeUtil::HumanString(larger_shape)));
     }
     if (small_is_dynamic != large_is_dynamic) {
       if (small_dimension_size == large_dimension_size ||
@@ -934,18 +973,18 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
           (large_dimension_size == 1 && !large_is_dynamic)) {
         // Do nothing. It's OK when the size-1 dimension is not static.
       } else {
-        return InvalidArgument(
-            "Broadcast dimension %d dynamism mismatch: %s and %s.", i,
-            ShapeUtil::HumanString(smaller_shape),
-            ShapeUtil::HumanString(larger_shape));
+        return InvalidArgumentError(
+            StrFormat("Broadcast dimension %d dynamism mismatch: %s and %s.", i,
+                      ShapeUtil::HumanString(smaller_shape),
+                      ShapeUtil::HumanString(larger_shape)));
       }
     }
     // Make sure the broadcast dimensions are listed in a strictly increasing
     // order.
     if (i > 0 && broadcast_dimensions.at(i - 1) >= dimension_to_match) {
-      return InvalidArgument(
-          "Broadcast dimensions order is wrong: %d comes after %d.",
-          dimension_to_match, broadcast_dimensions.at(i - 1));
+      return InvalidArgumentError(
+          StrFormat("Broadcast dimensions order is wrong: %d comes after %d.",
+                    dimension_to_match, broadcast_dimensions.at(i - 1)));
     }
 
     output_shape.set_dimensions(dimension_to_match, small_dimension_size);
@@ -979,7 +1018,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     }
   }
 
-  if (ShapeUtil::CompatibleIgnoringFpPrecision(lhs, rhs)) {
+  if (ShapeUtil::CompatibleIgnoringFpPrecision(lhs, rhs) &&
+      !lhs.is_unbounded_dynamic() && !rhs.is_unbounded_dynamic()) {
     // If the shapes are the same other than layout, the output shape is the
     // same (elementwise op).
     Shape result = ShapeUtil::ChangeElementType(

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
@@ -24,7 +25,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/client/padding.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/hlo_parser.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/statusor.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/types.h"
@@ -104,6 +109,10 @@ class SelectAndScatterShapeInferenceTest : public ShapeInferenceTest {
   ProgramShape select_program_shape_;
   ProgramShape scatter_program_shape_;
 };
+
+// Subclass for testing unbounded dynamic binary ops
+class UnboundedBinaryOpShapeInferenceTest
+    : public ::testing::TestWithParam<std::vector<std::string>> {};
 
 TEST_F(ShapeInferenceTest, UnaryNegateMatrix) {
   Shape matrix_shape = ShapeUtil::MakeShape(F32, {128, 64});
@@ -3732,6 +3741,47 @@ INSTANTIATE_TEST_SUITE_P(All, ScatterShapeInferenceTest,
                                            std::vector<PrimitiveType>{F32,
                                                                       BF16}),
                          ScatterTestName());
+
+TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedAdd) {
+  StatusOr<Shape> lhs = ParseShape(GetParam()[0]);
+  StatusOr<Shape> rhs = ParseShape(GetParam()[1]);
+  StatusOr<Shape> expected = ParseShape(GetParam()[2]);
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  StatusOr<Shape> inferred_status = ShapeInference::InferBinaryOpShape(
+      HloOpcode::kAdd, lhs.value(), rhs.value(),
+      /*broadcast_dimensions=*/{});
+  if (inferred_status.ok()) {
+    ASSERT_IS_OK(expected.status());
+    ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
+        << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+        << " expected: " << ShapeUtil::HumanString(expected.value());
+  } else {
+    EXPECT_THAT(inferred_status.status().message(),
+                HasSubstr("Binary op add with incompatible shapes"));
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    UnboundedDynamism, UnboundedBinaryOpShapeInferenceTest,
+    ::testing::Values(
+        // LHS | RHS | Result
+        // 1   | ?   | ?
+        std::vector<std::string>({"f32[1]", "f32[?]", "f32[?]"}),
+        // ?   | 1   | ?
+        std::vector<std::string>({"f32[?]", "f32[1]", "f32[?]"}),
+        // 2   | ?   | 2
+        std::vector<std::string>({"f32[2]", "f32[?]", "f32[2]"}),
+        // ?   | 2   | 2
+        std::vector<std::string>({"f32[?]", "f32[2]", "f32[2]"}),
+        // <=2 | ?   | <=2
+        std::vector<std::string>({"f32[<=2]", "f32[?]", "f32[<=2]"}),
+        // ?   | <=2 | <=2
+        std::vector<std::string>({"f32[?]", "f32[<=2]", "f32[<=2]"}),
+        // ?   | ?   | ?
+        std::vector<std::string>({"f32[?]", "f32[?]", "f32[?]"}),
+        // ?,2 | ?,3 | error
+        std::vector<std::string>({"f32[?,2]", "f32[?,3]", ""})));
 
 }  // namespace
 }  // namespace xla
