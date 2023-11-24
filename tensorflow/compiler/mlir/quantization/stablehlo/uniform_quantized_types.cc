@@ -32,8 +32,8 @@ namespace quant {
 
 UniformQuantizedType CreateI8F32UniformQuantizedType(const Location loc,
                                                      MLIRContext& context,
-                                                     const float scale,
-                                                     const int8_t zero_point) {
+                                                     const double scale,
+                                                     const int64_t zero_point) {
   return UniformQuantizedType::getChecked(
       loc, /*flags=*/QuantizationFlags::Signed,
       /*storageType=*/IntegerType::get(&context, /*width=*/8),
@@ -42,8 +42,8 @@ UniformQuantizedType CreateI8F32UniformQuantizedType(const Location loc,
 }
 
 UniformQuantizedType CreateI32F32UniformQuantizedType(
-    const Location loc, MLIRContext& context, const float scale,
-    const int32_t zero_point) {
+    const Location loc, MLIRContext& context, const double scale,
+    const int64_t zero_point) {
   return UniformQuantizedType::getChecked(
       loc, /*flags=*/QuantizationFlags::Signed,
       /*storageType=*/IntegerType::get(&context, /*width=*/32),
@@ -53,8 +53,8 @@ UniformQuantizedType CreateI32F32UniformQuantizedType(
 }
 
 UniformQuantizedPerAxisType CreateI8F32UniformQuantizedPerAxisType(
-    const Location loc, MLIRContext& context, const ArrayRef<float> scales,
-    const ArrayRef<int8_t> zero_points, const int quantization_dimension) {
+    const Location loc, MLIRContext& context, const ArrayRef<double> scales,
+    const ArrayRef<int64_t> zero_points, const int quantization_dimension) {
   return UniformQuantizedPerAxisType::getChecked(
       loc, /*flags=*/QuantizationFlags::Signed,
       /*storageType=*/IntegerType::get(&context, /*width=*/8),

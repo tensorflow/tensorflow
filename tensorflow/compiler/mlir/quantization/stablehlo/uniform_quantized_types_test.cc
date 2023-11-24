@@ -151,8 +151,8 @@ TEST_F(CreateI8F32UniformQuantizedPerAxisTypeTest, HasI8StorageType) {
   const UniformQuantizedPerAxisType quantized_type =
       CreateI8F32UniformQuantizedPerAxisType(
           UnknownLoc::get(&ctx_), ctx_,
-          /*scales=*/SmallVector<float, 2>{1.0, 1.0},
-          /*zero_points=*/SmallVector<int8_t, 2>{0, 0},
+          /*scales=*/SmallVector<double, 2>{1.0, 1.0},
+          /*zero_points=*/SmallVector<int64_t, 2>{0, 0},
           /*quantization_dimension=*/0);
 
   EXPECT_TRUE(quantized_type.getStorageType().isSignlessInteger(8));
@@ -162,8 +162,8 @@ TEST_F(CreateI8F32UniformQuantizedPerAxisTypeTest, HasF32ExpressedType) {
   const UniformQuantizedPerAxisType quantized_type =
       CreateI8F32UniformQuantizedPerAxisType(
           UnknownLoc::get(&ctx_), ctx_,
-          /*scales=*/SmallVector<float, 2>{1.0, 1.0},
-          /*zero_points=*/SmallVector<int8_t, 2>{0, 0},
+          /*scales=*/SmallVector<double, 2>{1.0, 1.0},
+          /*zero_points=*/SmallVector<int64_t, 2>{0, 0},
           /*quantization_dimension=*/0);
 
   EXPECT_TRUE(quantized_type.getExpressedType().isF32());
@@ -173,8 +173,8 @@ TEST_F(CreateI8F32UniformQuantizedPerAxisTypeTest, IsSigned) {
   const UniformQuantizedPerAxisType quantized_type =
       CreateI8F32UniformQuantizedPerAxisType(
           UnknownLoc::get(&ctx_), ctx_,
-          /*scales=*/SmallVector<float, 2>{1.0, 1.0},
-          /*zero_points=*/SmallVector<int8_t, 2>{0, 0},
+          /*scales=*/SmallVector<double, 2>{1.0, 1.0},
+          /*zero_points=*/SmallVector<int64_t, 2>{0, 0},
           /*quantization_dimension=*/0);
 
   EXPECT_TRUE(quantized_type.isSigned());
@@ -185,8 +185,8 @@ TEST_F(CreateI8F32UniformQuantizedPerAxisTypeTest,
   const UniformQuantizedPerAxisType quantized_type =
       CreateI8F32UniformQuantizedPerAxisType(
           UnknownLoc::get(&ctx_), ctx_,
-          /*scales=*/SmallVector<float, 2>{1.0, 1.0},
-          /*zero_points=*/SmallVector<int8_t, 2>{0, 0},
+          /*scales=*/SmallVector<double, 2>{1.0, 1.0},
+          /*zero_points=*/SmallVector<int64_t, 2>{0, 0},
           /*quantization_dimension=*/0);
 
   EXPECT_EQ(quantized_type.getStorageTypeMin(), -128);
@@ -198,8 +198,8 @@ TEST_F(CreateI8F32UniformQuantizedPerAxisTypeTest,
   const UniformQuantizedPerAxisType quantized_type =
       CreateI8F32UniformQuantizedPerAxisType(
           UnknownLoc::get(&ctx_), ctx_,
-          /*scales=*/SmallVector<float, 2>{1.0, 1.0},
-          /*zero_points=*/SmallVector<int8_t, 2>{0, 0},
+          /*scales=*/SmallVector<double, 2>{1.0, 1.0},
+          /*zero_points=*/SmallVector<int64_t, 2>{0, 0},
           /*quantization_dimension=*/3);
 
   EXPECT_EQ(quantized_type.getQuantizedDimension(), 3);
@@ -210,8 +210,8 @@ TEST_F(CreateI8F32UniformQuantizedPerAxisTypeTest,
   const UniformQuantizedPerAxisType quantized_type =
       CreateI8F32UniformQuantizedPerAxisType(
           UnknownLoc::get(&ctx_), ctx_,
-          /*scales=*/SmallVector<float, 2>{8.0, 9.0},
-          /*zero_points=*/SmallVector<int8_t, 2>{98, 99},
+          /*scales=*/SmallVector<double, 2>{8.0, 9.0},
+          /*zero_points=*/SmallVector<int64_t, 2>{98, 99},
           /*quantization_dimension=*/0);
 
   EXPECT_THAT(quantized_type.getScales(), ElementsAreArray({8.0, 9.0}));
