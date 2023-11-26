@@ -268,22 +268,26 @@ bool IsReadCoalesced(const std::optional<HloFusionAnalysis>& fusion_analysis,
                      const HloInstruction* consumer = nullptr) {
   if (!config.consider_coalescing) return true;
 
-  bool coalesced = (fusion_analysis &&
-                    fusion_analysis->GetEmitterFusionKind() ==
-                        HloFusionAnalysis::EmitterFusionKind::kTranspose) ||
-                   (!TransposesMinorDimension(producer) &&
-                    !(consumer && TransposesMinorDimension(consumer)));
+  auto analyzed_kind_or_reduction =
+      fusion_analysis ? fusion_analysis->GetEmitterFusionKind()
+                      : HloFusionAnalysis::EmitterFusionKind::kReduction;
 
-  if (consumer) {
-    // Fusing two row reductions breaks coalescing.
-    coalesced &= (fusion_analysis &&
-                  fusion_analysis->GetEmitterFusionKind() !=
-                      HloFusionAnalysis::EmitterFusionKind::kReduction) ||
-                 !IsInputFusibleReduction(*producer) ||
-                 !IsInputFusibleReduction(*consumer);
+  // Transposing minor dimension breaks coalescing.
+  if (analyzed_kind_or_reduction !=
+      HloFusionAnalysis::EmitterFusionKind::kTranspose) {
+    if (TransposesMinorDimension(producer)) return false;
+    if (consumer && TransposesMinorDimension(consumer)) return false;
   }
 
-  return coalesced;
+  // Fusing two row reductions breaks coalescing.
+  if (analyzed_kind_or_reduction ==
+          HloFusionAnalysis::EmitterFusionKind::kReduction &&
+      IsInputFusibleReduction(*producer) && consumer &&
+      IsInputFusibleReduction(*consumer)) {
+    return false;
+  }
+
+  return true;
 }
 
 }  // namespace
