@@ -170,6 +170,12 @@ class SparseCoreStackedTableTrackable(trackable_base.Trackable):
           shape=variable_shape,
           dtype=dtypes.float32,
       )
+  # TODO(b/312743130): This is a workaround. During checkpoint restoration
+  # optimizer expects the trackable to provide a `_unique_id` or equivalent.
+  # Remove this when the bug is fixed.
+  @property
+  def _unique_id(self):
+    return self.vars[self._stacked_layouts[0].table_name]._unique_id
 
   def _serialize_to_tensors(self) -> Any:
     return {
