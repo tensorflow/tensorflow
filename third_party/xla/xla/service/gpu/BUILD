@@ -577,7 +577,7 @@ xla_test(
     ],
     tags = [
         "large",
-        "no_oss",
+        "no_oss",  # requires-mem:16g tag doesn't work in open source
         "nomac",
         "requires-mem:16g",
     ],
@@ -1564,21 +1564,25 @@ cc_library(
     ]),
 )
 
-xla_cc_test(
+xla_test(
     name = "gemm_algorithm_picker_test",
-    srcs = ["gemm_algorithm_picker_test.cc"],
-    tags = [
+    srcs = if_gpu_is_configured(["gemm_algorithm_picker_test.cc"]),
+    backend_tags = {
+        "gpu": [
+            "requires-gpu-nvidia",
+            "noasan",
+            "nomsan",
+            "requires-gpu-sm70-only",
+        ],
+    },
+    backends = [
         "gpu",
-        "no_oss",
-        "noasan",
-        "nomsan",
-        "requires-gpu-sm70",
+        "gpu_v100",
     ],
     deps = [
         ":backend_configs_cc",
         ":gemm_algorithm_picker",
         ":gemm_rewriter",
-        "//xla/service:gpu_plugin",
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
         "//xla/stream_executor:device_description",
@@ -1774,20 +1778,24 @@ cc_library(
     ]),
 )
 
-xla_cc_test(
+xla_test(
     name = "conv_algorithm_picker_test",
     srcs = if_gpu_is_configured(["conv_algorithm_picker_test.cc"]),
-    tags = [
+    backend_tags = {
+        "gpu": [
+            "requires-gpu-nvidia",
+            "noasan",
+            "nomsan",
+            "requires-gpu-sm70-only",
+        ],
+    },
+    backends = [
         "gpu",
-        "no_oss",
-        "noasan",
-        "nomsan",
-        "requires-gpu-sm70",
+        "gpu_v100",
     ],
     deps = [
         ":conv_algorithm_picker",
         ":gpu_conv_rewriter",
-        "//xla/service:gpu_plugin",
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
         "//xla/service:tuple_simplifier",
