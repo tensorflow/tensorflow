@@ -428,7 +428,7 @@ REGISTER_XLA_OP(Name("StatelessRandomGetKeyCounterAlg"), GetKeyCounterAlgOp);
 REGISTER_XLA_OP(Name("XlaRngBitGenerator")
                     .CompileTimeConstantInput("algorithm")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype", {DT_UINT32, DT_UINT64}),
+                    .TypeConstraint("dtype", {DT_UINT8, DT_UINT32, DT_UINT64}),
                 MlirXlaOpKernel);
 
 }  // namespace

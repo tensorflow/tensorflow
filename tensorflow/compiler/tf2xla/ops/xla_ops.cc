@@ -816,7 +816,7 @@ REGISTER_OP("XlaRngBitGenerator")
     .Input("shape: Tshape")
     .Output("output_key: uint64")
     .Output("output: dtype")
-    .Attr("dtype: {int32, int64, uint32, uint64} = DT_UINT64")
+    .Attr("dtype: {uint8, int8, int32, int64, uint32, uint64} = DT_UINT64")
     .Attr("Tshape: {int32, int64} = DT_INT32")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle algorithm;
