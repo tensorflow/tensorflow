@@ -41,8 +41,11 @@ load(
 )
 
 # copybara:uncomment_begin
+# # buildifier: disable=out-of-order-load
+# load("//devtools/build_cleaner/skylark:action_config_test.bzl", "action_config_test")
 # load("//devtools/copybara/rules:copybara.bzl", "copybara_config_test")
 # load("//tools/build_defs/license:license.bzl", "license")
+# # buildifier: enable=out-of-order-load
 # copybara:uncomment_end
 
 # copybara:comment_begin(oss-only)
@@ -182,6 +185,11 @@ package(
 #         "noubsan",
 #     ],
 #     deps = [":copybara_config"],
+# )
+#
+# action_config_test(
+#     name = "build_cleaner_spec_test",
+#     src = "build_cleaner_spec.textproto",
 # )
 # copybara:uncomment_end
 
