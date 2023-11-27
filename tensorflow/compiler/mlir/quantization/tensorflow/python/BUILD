@@ -172,12 +172,8 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/container:flat_hash_map",
-<<<<<<< HEAD
-        #"@com_google_absl//absl/strings:string_view",
-=======
         "@com_google_absl//absl/strings:string_view",
         "@pybind11",
->>>>>>> upstream/master
     ],
 )
 
@@ -193,13 +189,8 @@ tf_python_pybind_extension(
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
-<<<<<<< HEAD
-        "//tensorflow/python/lib/core:pybind11_lib",
-        #"@com_google_absl//absl/strings:string_view",
-=======
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:string_view",
->>>>>>> upstream/master
         "@pybind11",
     ],
 )
