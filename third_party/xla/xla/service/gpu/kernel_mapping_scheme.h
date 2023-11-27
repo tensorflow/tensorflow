@@ -205,39 +205,6 @@ class ReductionCodegenInfo {
   const HloInstruction* first_reduce_;
 };
 
-class ReductionCodegenState {
- public:
-  struct ReductionCalculationState {
-    llvm::GlobalVariable* shared_cache;
-    llvm::Value* initial_value;
-    llvm::AllocaInst* partial_result_address;
-    llvm::AllocaInst* input_address;
-    llvm_ir::ElementGenerator input_gen;
-  };
-
-  const ReductionCalculationState& GetCalculationStateFor(
-      const HloInstruction* instruction, int operand_idx) const {
-    const ReductionOpState& op_state = state_.at(instruction);
-    CHECK_LT(operand_idx, op_state.size());
-    return op_state[operand_idx];
-  }
-
-  void SetCalculationStateFor(
-      const ReductionCalculationState& calculation_state,
-      const HloInstruction* instruction, int operand_idx) {
-    ReductionOpState& op_state = state_[instruction];
-    CHECK_EQ(operand_idx, op_state.size());
-    op_state.push_back(calculation_state);
-  }
-
- private:
-  // One state per reduction operand.
-  using ReductionOpState = absl::InlinedVector<ReductionCalculationState, 2>;
-
-  // HloInstruction -> operand_idx -> cache
-  absl::flat_hash_map<const HloInstruction*, ReductionOpState> state_;
-};
-
 }  // end namespace gpu
 }  // end namespace xla
 
