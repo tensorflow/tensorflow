@@ -217,6 +217,7 @@ AutoShardingSolverResult CallORToolsSolver(
         "share_binary_clauses:false,random_seed:1,interleave_"
         "search:true,num_workers:",
         num_workers);
+    solver->SetSolverSpecificParametersAsString(solver_parameter_str);
   }
 #endif
   // Create variables
