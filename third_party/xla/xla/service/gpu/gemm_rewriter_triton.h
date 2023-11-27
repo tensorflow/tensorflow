@@ -16,6 +16,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_GEMM_REWRITER_TRITON_H_
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 

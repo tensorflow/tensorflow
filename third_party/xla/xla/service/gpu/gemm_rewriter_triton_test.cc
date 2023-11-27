@@ -1408,6 +1408,153 @@ ENTRY e {
                                     /*subfragments=*/ElementsAre(7))));
 }
 
+TEST_F(GemmRewriterTritonLevel2Test, FusedConcatenationIsAnalyzedCorrectly) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+e {
+  p0 = s8[153,1536] parameter(0)
+  p1 = s8[153,128] parameter(1)
+  p2 = s8[153,256] parameter(2)
+  cat = s8[153,1920] concatenate(p0, p1, p2), dimensions={1}
+  cvt = bf16[153,1920] convert(cat)
+  p3 = bf16[16,153] parameter(3)
+  ROOT d = bf16[16,1920] dot(p3, cvt),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{
+                                     se::CudaComputeCapability::AMPERE, 0})
+                  .Run(module.get())
+                  .value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Parameter(), m::Parameter(),
+                                    m::Parameter(), m::Parameter()))));
+  const HloComputation* computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
+                          TritonFusionAnalysis::Execute(*computation));
+
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
+                                 computation->parameter_instruction(0), 0),
+              ElementsAre(FieldsAre(/*stride=*/1536, /*count=*/153,
+                                    /*slice_start=*/0, /*slice_limit=*/153,
+                                    /*subfragments=*/ElementsAre(153))));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
+                                 computation->parameter_instruction(0), 1),
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/1536,
+                                    /*slice_start=*/0, /*slice_limit=*/1536,
+                                    /*subfragments=*/ElementsAre(1536))));
+
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
+                                 computation->parameter_instruction(1), 0),
+              ElementsAre(FieldsAre(/*stride=*/128, /*count=*/153,
+                                    /*slice_start=*/0, /*slice_limit=*/153,
+                                    /*subfragments=*/ElementsAre(153))));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
+                                 computation->parameter_instruction(1), 1),
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/128,
+                                    /*slice_start=*/0, /*slice_limit=*/128,
+                                    /*subfragments=*/ElementsAre(128))));
+
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
+                                 computation->parameter_instruction(2), 0),
+              ElementsAre(FieldsAre(/*stride=*/256, /*count=*/153,
+                                    /*slice_start=*/0, /*slice_limit=*/153,
+                                    /*subfragments=*/ElementsAre(153))));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
+                                 computation->parameter_instruction(2), 1),
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/256,
+                                    /*slice_start=*/0, /*slice_limit=*/256,
+                                    /*subfragments=*/ElementsAre(256))));
+}
+
+TEST_F(GemmRewriterTritonLevel2Test, IndivisibleConcatenationIsNotFused) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+e {
+  p0 = s8[124,1024] parameter(0)
+  p1 = s8[124,1001] parameter(1)
+  cat = s8[124,2025] concatenate(p0, p1), dimensions={1}
+  cvt = f16[124,2025] convert(cat)
+  p2 = f16[123,124] parameter(2)
+  ROOT d = f16[2025,123] dot(cvt, p2),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+})"));
+  EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{
+                                     se::CudaComputeCapability::AMPERE, 0})
+                  .Run(module.get())
+                  .value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Concatenate(), m::Parameter()))));
+}
+
+TEST_F(GemmRewriterTritonLevel2Test, ConcatenationOfContractingIsNotFused) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+e {
+  p0 = s8[124,1024] parameter(0)
+  p1 = s8[124,1024] parameter(1)
+  cat = s8[124,2048] concatenate(p0, p1), dimensions={1}
+  cvt = f16[124,2048] convert(cat)
+  p2 = f16[123,2048] parameter(2)
+  ROOT d = f16[124,123] dot(cvt, p2),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})"));
+  EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{
+                                     se::CudaComputeCapability::AMPERE, 0})
+                  .Run(module.get())
+                  .value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Concatenate(), m::Parameter()))));
+}
+
+TEST_F(GemmRewriterTritonLevel2Test, ConcatenationOfBatchIsNotFused) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+e {
+  p0 = s8[124,1024,50] parameter(0)
+  p1 = s8[124,1024,50] parameter(1)
+  cat = s8[124,2048,50] concatenate(p0, p1), dimensions={1}
+  cvt = f16[124,2048,50] convert(cat)
+  p2 = f16[123,2048,50] parameter(2)
+  ROOT d = f16[2048,124,123] dot(cvt, p2),
+    lhs_batch_dims={1}, rhs_batch_dims={1},
+    lhs_contracting_dims={2}, rhs_contracting_dims={2}
+})"));
+  EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{
+                                     se::CudaComputeCapability::AMPERE, 0})
+                  .Run(module.get())
+                  .value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Concatenate(), m::Parameter()))));
+}
+
+TEST_F(GemmRewriterTritonLevel2Test,
+       TwoConcatenationsOfSameParametersAreNotFused) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+e {
+  p0 = s8[128,2] parameter(0)
+  p1 = s8[128,2] parameter(1)
+  cat0 = s8[256,2] concatenate(p0, p1), dimensions={0}
+  cvt0 = f16[256,2] convert(cat0)
+  cat1 = s8[256,2] concatenate(p1, p0), dimensions={0}
+  n1 = s8[256,2] negate(cat1)
+  cvt1 = f16[256,2] convert(n1)
+  a = f16[256,2] add(cvt1, cvt0)
+  p2 = f16[2,18] parameter(2)
+  ROOT d = f16[18,256] dot(p2, a),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+})"));
+
+  EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{
+                                     se::CudaComputeCapability::AMPERE, 0})
+                  .Run(module.get())
+                  .value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Concatenate(), m::Concatenate(),
+                                    m::Parameter()))));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

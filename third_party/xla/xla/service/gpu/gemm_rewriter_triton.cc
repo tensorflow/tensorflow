@@ -255,6 +255,7 @@ using DimOrderMapOrError = std::variant<DimOrderMap, FusionDecision>;
 // This represents an invalid dimension index.
 constexpr int kNoDimensionIndex = -1;
 struct DotProperties {
+  const int noncontracting_dimension;
   // Index of dot dimension that can be split.
   // Currently typically LHS non-contracting one.
   const int splittable_dimension_index;
@@ -394,6 +395,25 @@ bool DimensionOrder::IsPhysicallyEquivalent(const DimensionOrder& other) const {
          DimensionOrderToTensorIterationSpec(other);
 }
 
+// Logical index of a dimension in `shape` labeled with `label` in the
+// `dim_order` describing the shape.
+std::optional<int> LogicalIndexOfLabeledDimension(
+    const Shape& shape, const DimensionOrder& dim_order, const int label) {
+  auto fragment_it = dim_order.TensorFragmentsOrder().cbegin();
+  for (int dim : shape.layout().minor_to_major()) {
+    const int64_t dim_size = shape.dimensions()[dim];
+    int64_t fragments_size = 1;
+    while (fragments_size < dim_size) {
+      fragments_size *= fragment_it->full_size();
+      if (fragment_it->dst_dim_number() == label) {
+        return dim;
+      }
+      ++fragment_it;
+    }
+  }
+  return std::nullopt;
+}
+
 enum class TransformDirection { kInputToOutput, kOutputToInput };
 
 using OldToNewHloMap =
@@ -516,8 +536,11 @@ FusionContext FusionContext::FromDotOperand(const HloInstruction& dot,
     splittable_dimension_index =
         NonContractingDimensionIndex(dot, operand_number);
   }
-  FusionContext context(DotProperties{splittable_dimension_index},
-                        DotRequirements(kNoSplitRequirement));
+  FusionContext context(
+      DotProperties{
+          static_cast<int>(NonContractingDimensionIndex(dot, operand_number)),
+          splittable_dimension_index},
+      DotRequirements(kNoSplitRequirement));
   context.dim_orders_[dot.operand(operand_number)] =
       DimensionOrder::FromDotOperandOrOutput(*dot.operand(operand_number),
                                              split_k_dimension_index);
@@ -536,7 +559,8 @@ FusionContext FusionContext::FromDotOutput(
     // LHS non-contracting follows (batch is absent in this case).
     splittable_dimension_index = (split_k > 1) ? 1 : 0;
   }
-  FusionContext context(DotProperties{splittable_dimension_index},
+  FusionContext context(DotProperties{/*noncontracting_dimension=*/-1,
+                                      splittable_dimension_index},
                         DotRequirements(splittable_dimension_major_part_size));
   context.dim_orders_[&dot] = DimensionOrder::FromDotOperandOrOutput(dot);
   return context;
@@ -943,6 +967,18 @@ FusionContext::GetPropagatedDimOrdersForDimAlteringOp(
           dst_logical[i] = src_logical[i];
         }
       }
+    } else if (hlo.opcode() == HloOpcode::kConcatenate) {
+      dst_logical.resize(src_logical.size());
+      for (int i = 0; i < src_logical.size(); ++i) {
+        dst_logical[i] = src_logical[i];
+        if (i == hlo.concatenate_dimension()) {
+          if (src_logical[i].size() != 1 || src_logical[i][0]->is_sliced()) {
+            return FusionDecision("Unsupported concatenation.");
+          }
+          dst_logical[i][0]->set_size(dst->shape().dimensions(i));
+          dst_logical[i][0]->set_slice(0, dst->shape().dimensions(i));
+        }
+      }
     } else if (hlo.opcode() == HloOpcode::kCopy) {
       // Copy preserves the logical shape, just permutes the layout.
       CHECK(ShapeUtil::SameDimensions(src.shape(), dst->shape()));
@@ -1045,6 +1081,13 @@ FusionContext::GetPropagatedDimOrdersForDimAlteringOp(
     const HloInstruction& hlo, const TransformDirection direction,
     const DimensionOrder& src_dim_order, const HeroProperties& properties) {
   VLOG(7) << "Analyzing " << hlo.ToString();
+  if (hlo.opcode() != HloOpcode::kParameter &&
+      direction == TransformDirection::kOutputToInput &&
+      absl::c_any_of(hlo.users(), [](const HloInstruction* user) {
+        return user->opcode() == HloOpcode::kConcatenate;
+      })) {
+    return "No fusion into concatenations";
+  }
   if (hlo.opcode() == HloOpcode::kParameter ||
       hlo_query::IsScalarConstant(&hlo)) {
     CHECK(direction == TransformDirection::kOutputToInput);
@@ -1093,6 +1136,40 @@ FusionContext::GetPropagatedDimOrdersForDimAlteringOp(
     }
     return GetPropagatedDimOrdersForBitcast(hlo, direction, src_dim_order,
                                             properties);
+  } else if (hlo.opcode() == HloOpcode::kConcatenate &&
+             direction == TransformDirection::kOutputToInput) {
+    if (!std::holds_alternative<DotProperties>(properties)) {
+      return "Concatenations for now are only supported in GEMM fusions.";
+    }
+    auto dim = LogicalIndexOfLabeledDimension(
+        hlo.shape(), src_dim_order,
+        std::get<DotProperties>(properties).noncontracting_dimension);
+    if (!dim.has_value() || dim.value() != hlo.concatenate_dimension()) {
+      return "Unsupported concatenation.";
+    }
+    if (absl::c_any_of(hlo.operands(), [](const HloInstruction* operand) {
+          return operand->user_count() > 1;
+        })) {
+      return FusionDecision(
+          "Concatenation has to be the only user of its inputs.");
+    }
+    if (absl::c_any_of(hlo.operands(), [&hlo](const HloInstruction* operand) {
+          // In the current simple implementation of concatenation the size of
+          // each of its inputs along the concatenated dimension has to be
+          // divisible by the tile size used for this dimension. Concatenations
+          // with any operand not divisible by kMinConcatFragmentSize will not
+          // be fused; tiling configurations with tile size for this dimension
+          // larger than kMinConcatFragmentSize will not be emitted.
+          constexpr int kMinConcatFragmentSize = 128;
+          return operand->shape().dimensions(hlo.concatenate_dimension()) %
+                     kMinConcatFragmentSize !=
+                 0;
+        })) {
+      return FusionDecision(
+          "One or more operands of concatenation can not be perfectly tiled.");
+    }
+    return GetPropagatedDimOrdersForDimAlteringOp(hlo, direction, src_dim_order,
+                                                  properties);
   }
   return "Unimplemented instruction.";
 }
@@ -1636,7 +1713,9 @@ Status FusionContext::PropagateDimensionOrdersToParameters(
     DimOrdersAndReqsOrError result = GetPropagatedDimOrdersAndRequirements(
         *hlo, dim_orders_.at(hlo), TransformDirection::kOutputToInput,
         properties_);
-    TF_RET_CHECK(std::holds_alternative<DimOrdersAndReqs>(result));
+    if (std::holds_alternative<FusionDecision>(result)) {
+      LOG(FATAL) << std::get<FusionDecision>(result).Explain();
+    }
     TF_RET_CHECK(CombineDimOrdersAndReqs(std::get<DimOrdersAndReqs>(result)));
     iter_specs[hlo] = DimensionOrderToTensorIterationSpec(dim_orders_.at(hlo));
     for (const HloInstruction* operand : hlo->operands()) {
