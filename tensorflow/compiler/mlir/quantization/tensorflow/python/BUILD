@@ -13,6 +13,7 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo:__subpackages__",
         "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
         "//tensorflow/python:__subpackages__",
     ],
@@ -101,7 +102,6 @@ cc_library(
 pytype_strict_library(
     name = "py_function_lib_py",
     srcs = ["py_function_lib.py"],
-    visibility = ["//visibility:private"],
     deps = [
         ":pywrap_function_lib",
         ":representative_dataset",
@@ -149,7 +149,6 @@ cc_library(
         "-use_header_modules",
         "-parse_headers",
     ],
-    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
@@ -166,7 +165,6 @@ cc_library(
 cc_library(
     name = "py_function_lib",
     hdrs = ["py_function_lib.h"],
-    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",

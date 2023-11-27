@@ -1,5 +1,9 @@
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
+load(
+    "//tensorflow:tensorflow.default.bzl",
+    "tf_py_strict_test",
+    "tf_python_pybind_extension",
+)
 load("//tensorflow/compiler/mlir/quantization/stablehlo:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
 
 package_group(
@@ -26,8 +30,14 @@ pytype_strict_library(
     name = "quantization",
     srcs = ["quantization.py"],
     deps = [
+        ":pywrap_quantization",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:representative_dataset",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:save_model",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/saved_model:loader",
     ],
 )
 
@@ -67,5 +77,25 @@ tf_py_strict_test(
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:tag_constants",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "pywrap_quantization",
+    srcs = ["pywrap_quantization.cc"],
+    pytype_srcs = ["pywrap_quantization.pyi"],
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:type_casters",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:env",
+        "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
+        "@pybind11_abseil//pybind11_abseil:import_status_module",
+        "@pybind11_abseil//pybind11_abseil:status_casters",
     ],
 )
