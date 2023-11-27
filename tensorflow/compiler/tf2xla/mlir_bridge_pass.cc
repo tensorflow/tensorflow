@@ -237,13 +237,13 @@ MlirOptimizationPassState GetPassStateImpl(
       return MlirOptimizationPassState::FallbackEnabled;
     case MlirBridgeRolloutPolicy::kDisabledByUser:
       VLOG(1) << "Skipping MLIR CPU/GPU Bridge, disabled by user.";
-      metrics::UpdateTfMlirBridgeFirstPhaseCounter("cpu/gpu", "tfxla", false,
+      metrics::UpdateTfMlirBridgeFirstPhaseCounter("cpu/gpu", "v2", false,
                                                    "disabled_by_user");
       return MlirOptimizationPassState::Disabled;
     default:
       // This case should never be hit. Added here to be consistent with OSS
       // implementation.
-      metrics::UpdateTfMlirBridgeFirstPhaseCounter("cpu/gpu", "ftxla", false,
+      metrics::UpdateTfMlirBridgeFirstPhaseCounter("cpu/gpu", "v2", false,
                                                    "invalid_graph");
       return MlirOptimizationPassState::Disabled;
   }
