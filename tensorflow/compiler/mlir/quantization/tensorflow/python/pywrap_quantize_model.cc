@@ -109,8 +109,6 @@ ExportedModel EnableDebugging(
 PYBIND11_MODULE(pywrap_quantize_model, m) {
   // Supports absl::StatusOr<T> type conversions.
   pybind11::google::ImportStatusModule();
-  // TODO - b/308532051: Make protobuf objects work without serialization
-  // overhead.
   pybind11_protobuf::ImportNativeProtoCasters();
 
   m.def(
