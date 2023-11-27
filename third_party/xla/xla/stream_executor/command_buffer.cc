@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -125,6 +126,12 @@ tsl::Status CommandBuffer::IfElse(StreamExecutor* executor,
                                   Builder else_builder) {
   return implementation_->IfElse(executor, pred, std::move(then_builder),
                                  std::move(else_builder));
+}
+
+tsl::Status CommandBuffer::Case(StreamExecutor* executor,
+                                DeviceMemory<int32_t> index,
+                                std::vector<Builder> branches) {
+  return implementation_->Case(executor, index, std::move(branches));
 }
 
 CommandBuffer::Mode CommandBuffer::mode() const {

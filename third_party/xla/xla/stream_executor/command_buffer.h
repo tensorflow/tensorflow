@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "xla/stream_executor/device_memory.h"
@@ -136,6 +137,14 @@ class CommandBuffer {
   // constructed by `else_builder` if `predicate` is `false`.
   tsl::Status IfElse(StreamExecutor* executor, DeviceMemory<bool> pred,
                      Builder then_builder, Builder else_builder);
+
+  // Adds a conditional operation that will run a command buffer constructed by
+  // the `branches` builder at `index`. If `index` is out of range, then it will
+  // run a conditional command buffer constructed by the last builder.
+  //
+  // See: https://github.com/openxla/stablehlo/blob/main/docs/spec.md#case
+  tsl::Status Case(StreamExecutor* executor, DeviceMemory<int32_t> index,
+                   std::vector<Builder> branches);
 
   //--------------------------------------------------------------------------//
 

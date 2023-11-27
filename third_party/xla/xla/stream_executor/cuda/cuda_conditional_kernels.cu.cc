@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
+#include <cstdint>
+
 #include "third_party/gpus/cuda/include/cuda.h"
 
 namespace stream_executor {
@@ -43,10 +46,40 @@ __global__ void SetIfElseCondition(cudaGraphConditionalHandle then_handle,
   }
 }
 
+__global__ void SetCaseCondition(
+    cudaGraphConditionalHandle h0, cudaGraphConditionalHandle h1,
+    cudaGraphConditionalHandle h2, cudaGraphConditionalHandle h3,
+    cudaGraphConditionalHandle h4, cudaGraphConditionalHandle h5,
+    cudaGraphConditionalHandle h6, cudaGraphConditionalHandle h7,
+    int32_t* index, int32_t num_handles) {
+  // Only handles in [0, num_handles) range are valid.
+  //
+  // We can't define a device function with dynamic number of handle arguments,
+  // so we always pass 8 handles, but only some of them are valid. Size 8 picked
+  // as a reasonable (but random) upper bound for what we see in XLA uses.
+  std::array<cudaGraphConditionalHandle, 8> handles = {h0, h1, h2, h3,
+                                                       h4, h5, h6, h7};
+
+  // If branch index is out of range activate the last valid handle.
+  int32_t branch_index = *index;
+  if (branch_index < 0 || branch_index >= num_handles) {
+    branch_index = num_handles - 1;
+  }
+
+  for (int32_t i = 0; i < num_handles; ++i) {
+    if (branch_index == i) {
+      cudaGraphSetConditional(handles[i], 1);
+    } else {
+      cudaGraphSetConditional(handles[i], 0);
+    }
+  }
+}
+
 #else  // CUDA graph conditionals are not available
 
 __global__ void SetIfCondition() {}
 __global__ void SetIfElseCondition() {}
+__global__ void SetCaseCondition() {}
 
 #endif
 
@@ -61,6 +94,10 @@ void* GetSetIfConditionKernel() {
 
 void* GetSetIfElseConditionKernel() {
   return reinterpret_cast<void*>(&cuda::SetIfElseCondition);
+}
+
+void* GetSetCaseConditionKernel() {
+  return reinterpret_cast<void*>(&cuda::SetCaseCondition);
 }
 
 }  // namespace gpu

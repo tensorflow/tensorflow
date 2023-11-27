@@ -31,6 +31,9 @@ void* GetSetIfConditionKernel() {
 void* GetSetIfElseConditionKernel() {
   return reinterpret_cast<void*>(&rocm::SetCondition);
 }
+void* GetSetCaseConditionKernel() {
+  return reinterpret_cast<void*>(&rocm::SetCondition);
+}
 }  // namespace gpu
 
 }  // namespace stream_executor

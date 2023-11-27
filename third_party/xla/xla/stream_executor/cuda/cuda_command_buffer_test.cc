@@ -414,6 +414,102 @@ TEST(CudaCommandBufferTest, ConditionalIfElse) {
   ASSERT_EQ(dst, expected_mul);
 }
 
+TEST(CudaCommandBufferTest, ConditionalCase) {
+  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+  if (!CommandBuffer::SupportsConditionalCommands(platform)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
+
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  Stream stream(executor);
+  stream.Init();
+  ASSERT_TRUE(stream.ok());
+
+  AddI32Kernel add(executor);
+  MulI32Kernel mul(executor);
+
+  {  // Load addition kernel.
+    MultiKernelLoaderSpec spec(/*arity=*/3);
+    spec.AddInProcessSymbol(internal::GetAddI32CudaKernel(), "add");
+    TF_ASSERT_OK(executor->GetKernel(spec, &add));
+  }
+
+  {  // Load multiplication kernel.
+    MultiKernelLoaderSpec spec(/*arity=*/3);
+    spec.AddInProcessSymbol(internal::GetMulI32CudaKernel(), "mul");
+    TF_ASSERT_OK(executor->GetKernel(spec, &mul));
+  }
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: a=2, b=3, c=0, index=0
+  DeviceMemory<int32_t> index = executor->AllocateArray<int32_t>(1, 0);
+  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+
+  stream.ThenMemset32(&index, 0, sizeof(int32_t));
+  stream.ThenMemset32(&a, 2, byte_length);
+  stream.ThenMemset32(&b, 3, byte_length);
+  stream.ThenMemZero(&c, byte_length);
+
+  // if (index == 0) c = a + b
+  CommandBuffer::Builder branch0 = [&](CommandBuffer* branch0_cmd) {
+    return branch0_cmd->Launch(add, ThreadDim(), BlockDim(4), a, b, c);
+  };
+
+  // if (index == 1) c = a * b
+  CommandBuffer::Builder branch1 = [&](CommandBuffer* branch1_cmd) {
+    return branch1_cmd->Launch(mul, ThreadDim(), BlockDim(4), a, b, c);
+  };
+
+  // Create a command buffer with a single conditional operation.
+  auto cmd_buffer = CommandBuffer::Create(executor).value();
+  TF_ASSERT_OK(cmd_buffer.Case(executor, index, {branch0, branch1}));
+  TF_ASSERT_OK(cmd_buffer.Finalize());
+
+  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
+
+  // Copy `c` data back to host.
+  std::vector<int32_t> dst(4, 42);
+  stream.ThenMemcpy(dst.data(), c, byte_length);
+
+  std::vector<int32_t> expected_add = {5, 5, 5, 5};
+  ASSERT_EQ(dst, expected_add);
+
+  // Set index to `1`
+  stream.ThenMemset32(&index, 1, sizeof(int32_t));
+
+  // Submit the same command buffer, but this time it should multiply inputs.
+  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
+
+  stream.ThenMemcpy(dst.data(), c, byte_length);
+  std::vector<int32_t> expected_mul = {6, 6, 6, 6};
+  ASSERT_EQ(dst, expected_mul);
+
+  // Set index to `-1` (out of bound index value).
+  stream.ThenMemset32(&index, -1, sizeof(int32_t));
+
+  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
+
+  stream.ThenMemcpy(dst.data(), c, byte_length);
+  ASSERT_EQ(dst, expected_mul);
+
+  // Set index to `2` (out of bound index value).
+  stream.ThenMemset32(&index, 2, sizeof(int32_t));
+
+  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
+
+  stream.ThenMemcpy(dst.data(), c, byte_length);
+  ASSERT_EQ(dst, expected_mul);
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//

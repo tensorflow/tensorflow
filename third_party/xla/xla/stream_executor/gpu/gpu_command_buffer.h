@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -64,6 +66,9 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
                      CommandBuffer::Builder then_builder,
                      CommandBuffer::Builder else_builder) override;
 
+  tsl::Status Case(StreamExecutor* executor, DeviceMemory<int32_t> index,
+                   std::vector<CommandBuffer::Builder> branches) override;
+
   tsl::Status Finalize() override;
   tsl::Status Update() override;
 
@@ -107,9 +112,21 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   // A signature of a device kernels updating conditional handle(s).
   using SetIfConditionKernel =
       TypedKernel<GpuGraphConditionalHandle, DeviceMemory<bool>>;
+
   using SetIfElseConditionKernel =
       TypedKernel<GpuGraphConditionalHandle, GpuGraphConditionalHandle,
                   DeviceMemory<bool>>;
+
+  using SetCaseConditionKernel =
+      TypedKernel<GpuGraphConditionalHandle, GpuGraphConditionalHandle,
+                  GpuGraphConditionalHandle, GpuGraphConditionalHandle,
+                  GpuGraphConditionalHandle, GpuGraphConditionalHandle,
+                  GpuGraphConditionalHandle, GpuGraphConditionalHandle,
+                  DeviceMemory<int32_t>, int32_t>;
+
+  // A callback to launch a kernel that updates conditional handles state.
+  using SetConditionFn =
+      std::function<tsl::Status(absl::Span<const GpuGraphConditionalHandle>)>;
 
   // Overwrites the `exec_` handle in a Gpu command buffer by `exec`, and
   // restores to the original handle when destroyed. This allows us updating
@@ -128,7 +145,10 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   // For each conditional node in the Gpu graph we keep a record of conditional
   // command buffers attached to a node, so we can apply updates to them.
   struct ConditionalCommandBuffers {
-    void Add(GpuGraphConditionalHandle handle, CommandBuffer command_buffer);
+    ConditionalCommandBuffers(std::vector<GpuGraphConditionalHandle> handles,
+                              std::vector<CommandBuffer> command_buffers)
+        : handles(std::move(handles)),
+          command_buffers(std::move(command_buffers)) {}
 
     std::vector<GpuGraphConditionalHandle> handles;
     std::vector<CommandBuffer> command_buffers;
@@ -140,13 +160,17 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   tsl::StatusOr<std::vector<GpuGraphHandle>> CreateConditionalNodes(
       absl::Span<const GpuGraphConditionalHandle> handles);
 
-  tsl::StatusOr<ConditionalCommandBuffers> CreateConditionalCommandBuffers(
+  tsl::StatusOr<std::vector<CommandBuffer>> CreateConditionalCommandBuffers(
       absl::Span<const GpuGraphConditionalHandle> handles,
       absl::Span<const GpuGraphHandle> graphs,
       absl::Span<const CommandBuffer::Builder> builders);
 
   tsl::Status UpdateConditionalCommandBuffers(
       absl::Span<CommandBuffer> command_buffers,
+      absl::Span<const CommandBuffer::Builder> builders);
+
+  tsl::Status CreateConditionalCommand(
+      SetConditionFn set_condition,
       absl::Span<const CommandBuffer::Builder> builders);
 
   // TODO(ezhulenev): Currently we serialize all Gpu nodes by adding a
@@ -229,6 +253,7 @@ inline tsl::Status GpuCommandBuffer::Launch(
 
 void* GetSetIfConditionKernel();
 void* GetSetIfElseConditionKernel();
+void* GetSetCaseConditionKernel();
 
 }  // namespace stream_executor::gpu
 
