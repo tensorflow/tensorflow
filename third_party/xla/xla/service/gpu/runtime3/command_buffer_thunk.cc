@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
