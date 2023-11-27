@@ -384,13 +384,13 @@ cc_library(
     srcs = ["buf_rendezvous.cc"],
     hdrs = ["buf_rendezvous.h"],
     copts = tf_copts(),
-    features = ["-layering_check"],
     deps = [
         ":device",
         ":device_mgr",
         ":process_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )
