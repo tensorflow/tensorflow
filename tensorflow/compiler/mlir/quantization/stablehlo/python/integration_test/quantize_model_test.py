@@ -50,7 +50,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   @parameterized.parameters(
       parameter_combinations([{
           'activation_fn': [None],
-          'has_bias': [False],
+          'has_bias': [True, False],
           'batch_sizes': [([], []), ([10], [10]), ([2, 3], [2, 3])],
       }])
   )
