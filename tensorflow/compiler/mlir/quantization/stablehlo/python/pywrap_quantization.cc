@@ -25,6 +25,7 @@ limitations under the License.
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil   // IWYU pragma: keep
 #include "pybind11_abseil/import_status_module.h"  // from @pybind11_abseil
 #include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/quantize_model.h"
@@ -36,26 +37,12 @@ namespace py = pybind11;
 
 namespace {
 
+using ::stablehlo::quantization::io::CreateTmpDir;
 using ::tensorflow::SignatureDef;
 using ::tensorflow::quantization::DebuggerOptions;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PyFunctionLibrary;
 using ::tensorflow::quantization::QuantizationOptions;
-
-// TODO: b/307624867 - Factor out this function to a separate file.
-// Creates a temporary directory and returns its path.
-std::string CreateTmpDir() {
-  tsl::Env* const env = tsl::Env::Default();
-
-  std::string tmp_dir;
-  env->LocalTempFilename(&tmp_dir);
-  if (!env->RecursivelyCreateDir(tmp_dir).ok()) {
-    throw py::value_error(
-        absl::StrFormat("Failed to create tmp dir: '%s'", tmp_dir));
-  }
-
-  return tmp_dir;
-}
 
 // TODO: b/312371048 - Factor out this function to a separate file.
 // Enables debugging on `exported_model` by updating the `DumpTensor` ops.
@@ -131,15 +118,21 @@ PYBIND11_MODULE(pywrap_quantization, m) {
         const ExportedModel exported_model_ids_assigned =
             py_function_library.AssignIdsToCustomAggregatorOps(*exported_model);
 
-        const std::string precalibrated_saved_model_dir = CreateTmpDir();
+        const absl::StatusOr<std::string> precalibrated_saved_model_dir =
+            CreateTmpDir();
+        if (!precalibrated_saved_model_dir.ok()) {
+          throw py::value_error(absl::StrFormat(
+              "Failed to create tmp dir for precalibrated saved model: %s",
+              precalibrated_saved_model_dir.status().ToString()));
+        }
 
         py_function_library.SaveExportedModel(
-            precalibrated_saved_model_dir, exported_model_ids_assigned,
+            *precalibrated_saved_model_dir, exported_model_ids_assigned,
             src_saved_model_path, tags, signature_def_map);
 
         ExportedModel calibrated_exported_model =
             py_function_library.RunCalibration(
-                precalibrated_saved_model_dir, signature_keys, tags,
+                *precalibrated_saved_model_dir, signature_keys, tags,
                 exported_model_ids_assigned,
                 quantization_options.calibration_options(),
                 quantization_options.force_graph_mode_calibration(),
@@ -152,10 +145,16 @@ PYBIND11_MODULE(pywrap_quantization, m) {
               src_saved_model_path, tags, signature_def_map);
         }
 
-        const std::string calibrated_saved_model_path = CreateTmpDir();
+        const absl::StatusOr<std::string> calibrated_saved_model_path =
+            CreateTmpDir();
+        if (!calibrated_saved_model_path.ok()) {
+          throw py::value_error(absl::StrFormat(
+              "Failed to create tmp dir for calibrated saved model: %s",
+              calibrated_saved_model_path.status().ToString()));
+        }
 
         py_function_library.SaveExportedModel(
-            calibrated_saved_model_path, calibrated_exported_model,
+            *calibrated_saved_model_path, calibrated_exported_model,
             src_saved_model_path, tags, signature_def_map);
 
         const absl::flat_hash_map<std::string, std::string>
@@ -165,7 +164,7 @@ PYBIND11_MODULE(pywrap_quantization, m) {
 
         const absl::StatusOr<ExportedModel> post_calibrated_exported_model =
             QuantizePtqModelPostCalibration(
-                calibrated_saved_model_path, signature_keys, tags,
+                *calibrated_saved_model_path, signature_keys, tags,
                 quantization_options, function_aliases_after_calibration);
         if (!post_calibrated_exported_model.ok()) {
           return post_calibrated_exported_model.status();
@@ -173,7 +172,7 @@ PYBIND11_MODULE(pywrap_quantization, m) {
 
         py_function_library.SaveExportedModel(
             dst_saved_model_path, *post_calibrated_exported_model,
-            calibrated_saved_model_path, tags, signature_def_map);
+            *calibrated_saved_model_path, tags, signature_def_map);
 
         return absl::OkStatus();
       },
