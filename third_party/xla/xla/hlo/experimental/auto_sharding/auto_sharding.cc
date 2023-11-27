@@ -231,6 +231,59 @@ GenerateReshardingCostsAndShardingsForAllOperands(
   return {resharding_costs, input_shardings_optional};
 }
 
+// When computing resharding costs for inputs, this function assumes that the
+// shape of the input is the same as the shape of the output (ie. the `shape`
+// operand to the function)
+void FollowArrayOrTokenStrategyGroup(
+    const StrategyGroup& src_strategy_group, const Shape& shape,
+    size_t instruction_id, bool have_memory_cost,
+    const ClusterEnvironment& cluster_env,
+    StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
+        pretrimmed_strategy_map,
+    StrategyGroup& strategy_group) {
+  CHECK(shape.IsArray() || shape.IsToken());
+
+  // Only follows the given strategy when there is no other strategy to be
+  // restored.
+  if (!pretrimmed_strategy_map.contains(src_strategy_group.node_idx)) {
+    strategy_group.following = &src_strategy_group;
+  }
+  strategy_group.strategies.reserve(src_strategy_group.strategies.size());
+  // Creates the sharding strategies and restores trimmed strategies, if any.
+  std::vector<ShardingStrategy>& pretrimmed_strategies =
+      pretrimmed_strategy_map[src_strategy_group.node_idx];
+  for (int64_t sid = 0; sid < src_strategy_group.strategies.size() +
+                                  pretrimmed_strategies.size();
+       ++sid) {
+    const HloSharding* output_spec;
+    if (sid < src_strategy_group.strategies.size()) {
+      output_spec = &src_strategy_group.strategies[sid].output_sharding;
+    } else {
+      output_spec =
+          &pretrimmed_strategies[sid - src_strategy_group.strategies.size()]
+               .output_sharding;
+      VLOG(1) << "Adding outspec from the trimmed strategy map: "
+              << output_spec->ToString();
+    }
+    std::string name = ToStringSimple(*output_spec);
+    double compute_cost = 0, communication_cost = 0;
+    double memory_cost =
+        have_memory_cost ? GetBytes(shape) / output_spec->NumTiles() : 0;
+    size_t num_in_nodes = strategy_group.in_nodes.size();
+    std::vector<std::optional<HloSharding>> input_shardings(num_in_nodes,
+                                                            *output_spec);
+    std::vector<std::vector<double>> resharding_costs;
+    for (size_t i = 0; i < strategy_group.in_nodes.size(); ++i) {
+      resharding_costs.push_back(ReshardingCostVector(
+          strategy_group.in_nodes[i], shape, *output_spec, cluster_env));
+    }
+
+    strategy_group.strategies.push_back(
+        ShardingStrategy({name, *output_spec, compute_cost, communication_cost,
+                          memory_cost, resharding_costs, input_shardings}));
+  }
+}
+
 std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
     const StrategyGroup* src_strategy_group, const Shape& shape,
     size_t instruction_id, bool have_memory_cost,
@@ -252,49 +305,12 @@ std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
       strategy_group->childs.push_back(std::move(child_strategies));
     }
   } else {
-    CHECK(shape.IsArray() || shape.IsToken());
     strategy_group =
         CreateLeafStrategyGroupWithoutInNodes(instruction_id, strategy_groups);
     strategy_group->in_nodes.push_back(src_strategy_group);
-    // Only follows the given strategy when there is no other strategy to be
-    // restored.
-    if (!pretrimmed_strategy_map.contains(src_strategy_group->node_idx)) {
-      strategy_group->following = src_strategy_group;
-    }
-    strategy_group->strategies.reserve(src_strategy_group->strategies.size());
-    // Creates the sharding strategies and restores the trimmed strategies if
-    // there is any.
-    for (int64_t sid = 0;
-         sid < src_strategy_group->strategies.size() +
-                   pretrimmed_strategy_map[src_strategy_group->node_idx].size();
-         ++sid) {
-      const HloSharding* output_spec;
-      if (sid < src_strategy_group->strategies.size()) {
-        output_spec = &src_strategy_group->strategies[sid].output_sharding;
-      } else {
-        output_spec =
-            &pretrimmed_strategy_map[src_strategy_group->node_idx]
-                                    [sid -
-                                     src_strategy_group->strategies.size()]
-                                        .output_sharding;
-        VLOG(1) << "Adding outspec from the trimmed strategy map: "
-                << output_spec->ToString();
-      }
-      std::string name = ToStringSimple(*output_spec);
-      double compute_cost = 0, communication_cost = 0;
-      double memory_cost =
-          have_memory_cost ? GetBytes(shape) / output_spec->NumTiles() : 0;
-      auto resharding_costs = ReshardingCostVector(src_strategy_group, shape,
-                                                   *output_spec, cluster_env);
-      strategy_group->strategies.push_back(
-          ShardingStrategy({name,
-                            *output_spec,
-                            compute_cost,
-                            communication_cost,
-                            memory_cost,
-                            {std::move(resharding_costs)},
-                            {*output_spec}}));
-    }
+    FollowArrayOrTokenStrategyGroup(*src_strategy_group, shape, instruction_id,
+                                    have_memory_cost, cluster_env,
+                                    pretrimmed_strategy_map, *strategy_group);
   }
   return strategy_group;
 }
@@ -1528,7 +1544,7 @@ std::unique_ptr<StrategyGroup> CreateElementwiseOperatorStrategies(
     size_t instruction_id, const HloInstruction* ins,
     const StrategyMap& strategy_map, const ClusterEnvironment& cluster_env,
     const InstructionDepthMap& depth_map, const AliasMap& alias_map,
-    const StableHashMap<int64_t, std::vector<ShardingStrategy>>&
+    StableHashMap<int64_t, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map,
     int64_t max_depth, StrategyGroups& strategy_groups,
     AssociativeDotPairs& associative_dot_pairs) {
@@ -1555,37 +1571,15 @@ std::unique_ptr<StrategyGroup> CreateElementwiseOperatorStrategies(
       continue;
     }
 
-    auto process_src_strategy_group =
-        [&](const std::vector<ShardingStrategy>& src_strategies) {
-          for (int64_t sid = 0; sid < src_strategies.size(); ++sid) {
-            HloSharding output_spec = src_strategies[sid].output_sharding;
-            std::string name = ToStringSimple(output_spec);
-            double compute_cost = 0, communication_cost = 0;
-            double memory_cost =
-                GetBytes(ins->shape()) / output_spec.NumTiles();
-            std::vector<std::vector<double>> resharding_costs;
-            std::vector<std::optional<HloSharding>> input_shardings;
-            for (int64_t k = 0; k < ins->operand_count(); ++k) {
-              resharding_costs.push_back(ReshardingCostVector(
-                  strategy_map.at(ins->operand(k)).get(),
-                  ins->operand(k)->shape(), output_spec, cluster_env));
-              input_shardings.push_back(output_spec);
-            }
-
-            strategy_group->strategies.push_back(ShardingStrategy(
-                {name, output_spec, compute_cost, communication_cost,
-                 memory_cost, std::move(resharding_costs), input_shardings}));
-          }
-        };
     StrategyGroup* src_strategy_group = strategy_map.at(ins->operand(i)).get();
     CHECK(!src_strategy_group->is_tuple);
 
-    process_src_strategy_group(src_strategy_group->strategies);
-    if (pretrimmed_strategy_map.contains(src_strategy_group->node_idx)) {
-      process_src_strategy_group(
-          pretrimmed_strategy_map.at(src_strategy_group->node_idx));
-    }
+    FollowArrayOrTokenStrategyGroup(*src_strategy_group, ins->shape(),
+                                    instruction_id,
+                                    /* have_memory_cost */ true, cluster_env,
+                                    pretrimmed_strategy_map, *strategy_group);
   }
+
   if (ins->opcode() == HloOpcode::kAdd) {
     // Adjust the resharding costs for AllReduceReassociate pass.
     // The AllReduceReassociate pass can simplify
