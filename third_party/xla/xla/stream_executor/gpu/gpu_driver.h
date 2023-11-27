@@ -438,7 +438,7 @@ class GpuDriver {
   struct GpuGraphConditionalNodeParams {
     // Conditional node type.
     // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html#group__CUDA__TYPES_1g04ade961d0263336423eb216fbe514da
-    enum class Type { kIf };
+    enum class Type { kIf, kWhile };
 
     // A struct for returning output arguments back to the caller.
     struct Result {

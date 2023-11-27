@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -276,6 +277,14 @@ tsl::Status GpuCommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
 // Command buffer condtitional commands API
 //--------------------------------------------------------------------------//
 
+/*static*/ GpuCommandBuffer::ConditionBuilder
+GpuCommandBuffer::ToConditionBuilder(CommandBuffer::Builder builder) {
+  return [builder = std::move(builder)](CommandBuffer* cmd_buffer,
+                                        GpuGraphConditionalHandle) {
+    return builder(cmd_buffer);
+  };
+}
+
 tsl::StatusOr<std::vector<GpuGraphConditionalHandle>>
 GpuCommandBuffer::CreateConditionalHandles(size_t num_handles) {
   std::vector<GpuGraphConditionalHandle> handles;
@@ -288,7 +297,7 @@ GpuCommandBuffer::CreateConditionalHandles(size_t num_handles) {
 
 tsl::StatusOr<std::vector<GpuGraphHandle>>
 GpuCommandBuffer::CreateConditionalNodes(
-    absl::Span<const GpuGraphConditionalHandle> handles) {
+    ConditionType type, absl::Span<const GpuGraphConditionalHandle> handles) {
   std::vector<GpuGraphHandle> conditional_graphs;
 
   using ConditionalParams = GpuDriver::GpuGraphConditionalNodeParams;
@@ -299,7 +308,7 @@ GpuCommandBuffer::CreateConditionalNodes(
     GpuGraphNodeHandle* node = &nodes_.emplace_back();
 
     ConditionalParams params;
-    params.type = ConditionalParams::Type::kIf;
+    params.type = type;
     params.handle = handle;
     params.context = parent_->gpu_context();
 
@@ -317,7 +326,7 @@ tsl::StatusOr<std::vector<CommandBuffer>>
 GpuCommandBuffer::CreateConditionalCommandBuffers(
     absl::Span<const GpuGraphConditionalHandle> handles,
     absl::Span<const GpuGraphHandle> graphs,
-    absl::Span<const CommandBuffer::Builder> builders) {
+    absl::Span<const ConditionBuilder> builders) {
   std::vector<CommandBuffer> cmd_buffers;
 
   // Conditional command buffers always created in nested mode and with
@@ -330,7 +339,8 @@ GpuCommandBuffer::CreateConditionalCommandBuffers(
         nested, graphs[i], is_owned_graph);
 
     auto command_buffer = CommandBuffer::Wrap(std::move(command_buffer_impl));
-    TF_RETURN_IF_ERROR(builders[i](&command_buffer));
+
+    TF_RETURN_IF_ERROR(builders[i](&command_buffer, handles[i]));
     TF_RETURN_IF_ERROR(command_buffer.Finalize());
 
     cmd_buffers.push_back(std::move(command_buffer));
@@ -340,23 +350,24 @@ GpuCommandBuffer::CreateConditionalCommandBuffers(
 }
 
 tsl::Status GpuCommandBuffer::UpdateConditionalCommandBuffers(
+    absl::Span<const GpuGraphConditionalHandle> handles,
     absl::Span<CommandBuffer> command_buffers,
-    absl::Span<const CommandBuffer::Builder> builders) {
+    absl::Span<const ConditionBuilder> builders) {
   for (size_t i = 0; i < command_buffers.size(); ++i) {
     // Use parent graph executable for conditional command buffer update.
     ScopedGpuGraphExec scoped_exec(Cast(&command_buffers[i]), exec_);
 
     // Update command buffer using user-provided builder callback.
     TF_RETURN_IF_ERROR(command_buffers[i].Update());
-    TF_RETURN_IF_ERROR(builders[i](&command_buffers[i]));
+    TF_RETURN_IF_ERROR(builders[i](&command_buffers[i], handles[i]));
     TF_RETURN_IF_ERROR(command_buffers[i].Finalize());
   }
   return tsl::OkStatus();
 }
 
 tsl::Status GpuCommandBuffer::CreateConditionalCommand(
-    SetConditionFn set_condition,
-    absl::Span<const CommandBuffer::Builder> builders) {
+    ConditionType type, SetConditionFn set_condition,
+    absl::Span<const ConditionBuilder> builders) {
   // Every conditional command buffer is controlled by its own handle.
   size_t num_handles = builders.size();
 
@@ -367,7 +378,7 @@ tsl::Status GpuCommandBuffer::CreateConditionalCommand(
     TF_RETURN_IF_ERROR(set_condition(handles));
 
     // Create conditional command buffer for each builder.
-    TF_ASSIGN_OR_RETURN(auto graphs, CreateConditionalNodes(handles));
+    TF_ASSIGN_OR_RETURN(auto graphs, CreateConditionalNodes(type, handles));
     TF_ASSIGN_OR_RETURN(auto cmd_buffers, CreateConditionalCommandBuffers(
                                               handles, graphs, builders));
 
@@ -392,6 +403,7 @@ tsl::Status GpuCommandBuffer::CreateConditionalCommand(
     update_state_.node_idx += num_handles;
 
     return UpdateConditionalCommandBuffers(
+        cond_cmd_buffers.handles,
         absl::MakeSpan(cond_cmd_buffers.command_buffers), builders);
   }
 
@@ -401,7 +413,7 @@ tsl::Status GpuCommandBuffer::CreateConditionalCommand(
 tsl::Status GpuCommandBuffer::If(StreamExecutor* executor,
                                  DeviceMemory<bool> predicate,
                                  CommandBuffer::Builder then_builder) {
-  DCHECK(executor->implementation() == parent_);  // NOLINT
+  DCHECK(executor->implementation() == parent_);
 
   // TODO(ezhulenev): Keep kernel in `GpuCommandBuffer` to avoid loading it on
   // every call to `If`.
@@ -418,16 +430,17 @@ tsl::Status GpuCommandBuffer::If(StreamExecutor* executor,
                   predicate);
   };
 
-  std::array<CommandBuffer::Builder, 1> builders = {std::move(then_builder)};
+  std::array<ConditionBuilder, 1> builders = {
+      ToConditionBuilder(std::move(then_builder))};
 
-  return CreateConditionalCommand(set_cond_fn, builders);
+  return CreateConditionalCommand(ConditionType::kIf, set_cond_fn, builders);
 }
 
 tsl::Status GpuCommandBuffer::IfElse(StreamExecutor* executor,
                                      DeviceMemory<bool> predicate,
                                      CommandBuffer::Builder then_builder,
                                      CommandBuffer::Builder else_builder) {
-  DCHECK(executor->implementation() == parent_);  // NOLINT
+  DCHECK(executor->implementation() == parent_);
 
   // TODO(ezhulenev): Keep kernel in `GpuCommandBuffer` to avoid loading it on
   // every call to `IfElse`.
@@ -445,16 +458,17 @@ tsl::Status GpuCommandBuffer::IfElse(StreamExecutor* executor,
                   handles[1], predicate);
   };
 
-  std::array<CommandBuffer::Builder, 2> builders = {std::move(then_builder),
-                                                    std::move(else_builder)};
+  std::array<ConditionBuilder, 2> builders = {
+      ToConditionBuilder(std::move(then_builder)),
+      ToConditionBuilder(std::move(else_builder))};
 
-  return CreateConditionalCommand(set_cond_fn, builders);
+  return CreateConditionalCommand(ConditionType::kIf, set_cond_fn, builders);
 }
 
 tsl::Status GpuCommandBuffer::Case(
     StreamExecutor* executor, DeviceMemory<int32_t> index,
     std::vector<CommandBuffer::Builder> branches) {
-  DCHECK(executor->implementation() == parent_);  // NOLINT
+  DCHECK(executor->implementation() == parent_);
 
   // TODO(ezhulenev): Relax this constraint, we can launch multiple back to back
   // kernels to update conditional handles in batches of size 8.
@@ -488,7 +502,52 @@ tsl::Status GpuCommandBuffer::Case(
                   padded_handles[6], padded_handles[7], index, num_handles);
   };
 
-  return CreateConditionalCommand(set_cond_fn, branches);
+  // Wrap all branches into conditional command buffer builders.
+  absl::InlinedVector<ConditionBuilder, 8> builders;
+  builders.reserve(branches.size());
+  for (auto& branch : branches) {
+    builders.push_back(ToConditionBuilder(std::move(branch)));
+  }
+
+  return CreateConditionalCommand(ConditionType::kIf, set_cond_fn, builders);
+}
+
+tsl::Status GpuCommandBuffer::For(StreamExecutor* executor,
+                                  int32_t num_iteration,
+                                  DeviceMemory<int32_t> loop_index,
+                                  CommandBuffer::Builder body_builder) {
+  DCHECK(executor->implementation() == parent_);
+
+  // TODO(ezhulenev): Keep kernel in `GpuCommandBuffer` to avoid loading it on
+  // every call to `For`.
+  SetForConditionKernel set_for_condition(executor);
+
+  {  // Load kernels that updates condition handle value.
+    MultiKernelLoaderSpec spec(/*arity=*/3);
+    spec.AddInProcessSymbol(gpu::GetSetForConditionKernel(),
+                            "set_for_condition");
+    TF_RETURN_IF_ERROR(executor->GetKernel(spec, &set_for_condition));
+  }
+
+  // TODO(ezhulenev): We currently assume that `loop_index` initialized to
+  // zero, instead we should explicitly add a memset to clear it.
+
+  auto set_cond_fn = [&](absl::Span<const GpuGraphConditionalHandle> handles) {
+    return Launch(set_for_condition, ThreadDim(), BlockDim(), handles[0],
+                  loop_index, num_iteration);
+  };
+
+  auto body = [&](CommandBuffer* body, GpuGraphConditionalHandle handle) {
+    TF_RETURN_IF_ERROR(body_builder(body));
+
+    // Decide if we want to continue loop iteration.
+    return body->Launch(set_for_condition, ThreadDim(), BlockDim(), handle,
+                        loop_index, num_iteration);
+  };
+
+  std::array<ConditionBuilder, 1> builders = {std::move(body)};
+
+  return CreateConditionalCommand(ConditionType::kWhile, set_cond_fn, builders);
 }
 
 tsl::Status GpuCommandBuffer::Finalize() {

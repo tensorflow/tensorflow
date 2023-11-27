@@ -134,6 +134,13 @@ tsl::Status CommandBuffer::Case(StreamExecutor* executor,
   return implementation_->Case(executor, index, std::move(branches));
 }
 
+tsl::Status CommandBuffer::For(StreamExecutor* executor, int32_t num_iteration,
+                               DeviceMemory<int32_t> loop_index,
+                               Builder body_builder) {
+  return implementation_->For(executor, num_iteration, loop_index,
+                              std::move(body_builder));
+}
+
 CommandBuffer::Mode CommandBuffer::mode() const {
   return implementation_->mode();
 }

@@ -736,6 +736,16 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
   return ::tsl::OkStatus();
 }
 
+static std::string ConditionalTypeToString(
+    GpuDriver::GpuGraphConditionalNodeParams::Type type) {
+  switch (type) {
+    case GpuDriver::GpuGraphConditionalNodeParams::Type::kIf:
+      return "IF";
+    case GpuDriver::GpuGraphConditionalNodeParams::Type::kWhile:
+      return "WHILE";
+  }
+}
+
 /* static */ tsl::StatusOr<GpuDriver::GpuGraphNodeResult>
 GpuDriver::GraphAddNode(CUgraphNode* node, CUgraph graph,
                         absl::Span<CUgraphNode> deps,
@@ -744,6 +754,7 @@ GpuDriver::GraphAddNode(CUgraphNode* node, CUgraph graph,
   // Add conditional node to a graph.
   if (auto* conditional = std::get_if<GpuGraphConditionalNodeParams>(&params)) {
     VLOG(2) << "Add conditional node to a graph " << graph
+            << "; type: " << ConditionalTypeToString(conditional->type)
             << "; deps: " << deps.size();
 
     CUgraphNodeParams cu_params;
@@ -757,6 +768,9 @@ GpuDriver::GraphAddNode(CUgraphNode* node, CUgraph graph,
     switch (conditional->type) {
       case GpuDriver::GpuGraphConditionalNodeParams::Type::kIf:
         cu_params.conditional.type = CU_GRAPH_COND_TYPE_IF;
+        break;
+      case GpuDriver::GpuGraphConditionalNodeParams::Type::kWhile:
+        cu_params.conditional.type = CU_GRAPH_COND_TYPE_WHILE;
         break;
     }
 

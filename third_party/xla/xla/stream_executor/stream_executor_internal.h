@@ -167,6 +167,12 @@ class CommandBufferInterface {
                            DeviceMemory<int32_t> index,
                            std::vector<CommandBuffer::Builder> branches) = 0;
 
+  // Adds a conditional operation that will run a command buffer constructed by
+  // the `body_builder` exactly `num_iteration` times.
+  virtual tsl::Status For(StreamExecutor* executor, int32_t num_iteration,
+                          DeviceMemory<int32_t> loop_index,
+                          CommandBuffer::Builder body_builder) = 0;
+
   // Finalizes command buffer and makes it executable. Once command buffer is
   // finalized no commands can be added to it.
   virtual tsl::Status Finalize() = 0;

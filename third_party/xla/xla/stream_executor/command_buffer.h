@@ -146,6 +146,11 @@ class CommandBuffer {
   tsl::Status Case(StreamExecutor* executor, DeviceMemory<int32_t> index,
                    std::vector<Builder> branches);
 
+  // Adds a conditional operation that will run a command buffer constructed by
+  // the `body_builder` exactly `num_iteration` times.
+  tsl::Status For(StreamExecutor* executor, int32_t num_iteration,
+                  DeviceMemory<int32_t> loop_index, Builder body_builder);
+
   //--------------------------------------------------------------------------//
 
   // Finalizes command buffer and makes it executable. Once command buffer is

@@ -75,11 +75,22 @@ __global__ void SetCaseCondition(
   }
 }
 
+__global__ void SetForCondition(cudaGraphConditionalHandle handle,
+                                int32_t* loop_index, int32_t num_iterations) {
+  if (*loop_index < num_iterations) {
+    cudaGraphSetConditional(handle, 1);
+  } else {
+    cudaGraphSetConditional(handle, 0);
+  }
+  *loop_index += 1;
+}
+
 #else  // CUDA graph conditionals are not available
 
 __global__ void SetIfCondition() {}
 __global__ void SetIfElseCondition() {}
 __global__ void SetCaseCondition() {}
+__global__ void SetForCondition() {}
 
 #endif
 
@@ -98,6 +109,10 @@ void* GetSetIfElseConditionKernel() {
 
 void* GetSetCaseConditionKernel() {
   return reinterpret_cast<void*>(&cuda::SetCaseCondition);
+}
+
+void* GetSetForConditionKernel() {
+  return reinterpret_cast<void*>(&cuda::SetForCondition);
 }
 
 }  // namespace gpu
