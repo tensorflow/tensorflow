@@ -2027,7 +2027,6 @@ def random_brightness(image, max_delta, seed=None):
   with `tf.image.random_*` ops, `tf.image.stateless_random_*` ops guarantee the
   same results given the same seed independent of how many times the function is
   called, and independent of global seed settings (e.g. tf.random.set_seed).
-  
 
   Args:
     image: An image or images to adjust.
