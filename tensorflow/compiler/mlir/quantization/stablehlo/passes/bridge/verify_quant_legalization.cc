@@ -57,7 +57,7 @@ bool IsQuantType(Type type) {
          IsTFQintType(element_type);
 }
 
-bool IsMhloUniformQuantizedOp(Operation* op) {
+bool IsMhloUniformQuantizedOp(Operation& op) {
   return llvm::isa<mhlo::UniformQuantizeOp, mhlo::UniformDequantizeOp>(op);
 }
 
@@ -68,7 +68,7 @@ void VerifyQuantLegalization::runOnOperation() {
     // Verify all uq and qint types are lowered.
     if (llvm::any_of(op->getOperandTypes(), IsQuantType) ||
         llvm::any_of(op->getResultTypes(), IsQuantType) ||
-        IsTFUniformQuantizedOp(op) || IsMhloUniformQuantizedOp(op)) {
+        IsTFUniformQuantizedOp(op) || IsMhloUniformQuantizedOp(*op)) {
       op->emitOpError("is illegal as it is a UQ op or contains uq/qint types");
       LOG(ERROR) << "Found illegal op containing uq/qint type: "
                  << op->getName().getStringRef().str();
