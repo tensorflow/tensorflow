@@ -3755,19 +3755,22 @@ cc_library(
     ]),
 )
 
-xla_cc_test(
+xla_test(
     name = "cudnn_fused_conv_rewriter_test",
     srcs = ["cudnn_fused_conv_rewriter_test.cc"],
+    backend_tags = {
+        "gpu": [
+            "requires-gpu-nvidia",
+            "requires-gpu-sm80-only",
+            "noasan",
+            "nomsan",
+        ],
+    },
+    backends = [
+        "gpu",
+    ],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     shard_count = 10,
-    tags = [
-        "gpu",
-        "no_oss",
-        "noasan",
-        "nomsan",
-        # This test runs some fusions that are only supported on Ampere+.
-        "requires-gpu-sm80",
-    ],
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
