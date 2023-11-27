@@ -1508,11 +1508,10 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
             user->operand_index(fusion_output),
             context.dim_orders().at(fusion_output), gpu_version,
             context.hero_properties());
-    if (!std::holds_alternative<DimOrdersAndReqs>(result)) {
-      continue;
+    if (!std::holds_alternative<DimOrdersAndReqs>(result) ||
+        !context.CombineDimOrdersAndReqs(std::get<DimOrdersAndReqs>(result))) {
+      break;
     }
-    TF_RET_CHECK(
-        context.CombineDimOrdersAndReqs(std::get<DimOrdersAndReqs>(result)));
     for (HloInstruction* operand : user->operands()) {
       if (!output_old_to_new_map.contains(operand)) {
         context.TryToFuseWithInputsRecursively(*operand, gpu_version,
