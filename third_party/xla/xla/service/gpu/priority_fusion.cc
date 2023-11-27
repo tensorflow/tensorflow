@@ -110,7 +110,6 @@ class GpuPriorityFusionQueue : public FusionQueue {
           std::make_pair(priority, instruction->unique_id()), instruction);
       CHECK(emplace_result.second);
       reverse_map_.emplace(instruction, emplace_result.first);
-      producer_user_count_[instruction] = instruction->user_count();
     }
   }
 
@@ -221,7 +220,6 @@ class GpuPriorityFusionQueue : public FusionQueue {
       if (!operand->IsFusible()) {
         continue;
       }
-      producer_user_count_[operand] = operand->user_count();
 
       HloInstructionAdaptor operand_adaptor(*operand);
       can_fuse_cache_[operand_adaptor].erase(fusion_adaptor);
@@ -270,7 +268,6 @@ class GpuPriorityFusionQueue : public FusionQueue {
   // Removes data for the instruction.
   void RemoveInstruction(HloInstruction* instruction) override {
     to_update_priority_.erase(instruction);
-    producer_user_count_.erase(instruction);
     fusion_analysis_cache_.Invalidate(*instruction);
 
     auto reverse_it = reverse_map_.find(instruction);
@@ -392,10 +389,6 @@ class GpuPriorityFusionQueue : public FusionQueue {
   // producer and consumer, where the consumer is given as a HloInstruction*
   // and the producer is given as the consumer's operand index.
   CanFuseCallback can_fuse_;
-
-  // The user counts of producers, used to determine whether we update their
-  // priorities when fusion happens.
-  absl::flat_hash_map<HloInstruction*, int64_t> producer_user_count_;
 
   // The set of producers whose priorities need to be updated. Their
   // priorities are changed because their neighbors got fused, but we delay
