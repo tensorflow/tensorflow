@@ -1912,3 +1912,45 @@ func.func @transpose(
   ) -> tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
   return %0 : tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
 }
+
+// -----
+
+// CHECK-LABEL: func @gather
+func.func @gather(
+    %arg0: tensor<3x4x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>>,
+    %arg1:  tensor<2x3x2xi64>
+  ) -> tensor<2x3x2x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>> {
+  // CHECK: mhlo.gather
+  // CHECK-SAME: (tensor<3x4x2xi8>, tensor<2x3x2xi64>) -> tensor<2x3x2x2xi8>
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2, 3],
+      collapsed_slice_dims = [0],
+      start_index_map = [1, 0],
+      index_vector_dim = 2>,
+    slice_sizes = dense<[1, 2, 2]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (
+    tensor<3x4x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>>,
+    tensor<2x3x2xi64>
+  ) -> tensor<2x3x2x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  return %0 : tensor<2x3x2x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+}
+
+// -----
+
+// CHECK-LABEL: func @slice
+func.func @slice(
+    %arg0: tensor<3x4x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  ) -> tensor<2x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>> {
+  // CHECK: mhlo.slice
+  // CHECK-SAME: (tensor<3x4xi8>) -> tensor<2x2xi8>
+  %0 = "mhlo.slice"(%arg0) {
+    start_indices = dense<[1, 2]> : tensor<2xi64>,
+    limit_indices = dense<[3, 4]> : tensor<2xi64>,
+    strides = dense<1> : tensor<2xi64>
+  } : (
+    tensor<3x4x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  ) -> tensor<2x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  return %0 : tensor<2x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+}
