@@ -2,6 +2,7 @@ load("@local_tsl//tsl:tsl.bzl", "tf_openmp_copts")
 load("@org_tensorflow//third_party/mkl:build_defs.bzl", "if_mkl")
 load("@org_tensorflow//third_party/mkl_dnn:build_defs.bzl", "if_mkldnn_openmp")
 load("@org_tensorflow//third_party/mkl:build_defs.bzl", "if_mkl_ml")
+load("@org_tensorflow//third_party/mkl_dnn:build_defs.bzl", "gen_onednn_version")
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 
 exports_files(["LICENSE"])
@@ -83,22 +84,10 @@ expand_template(
 )
 
 # Create the file dnnl_version.h with DNNL version numbers.
-# Currently, the version numbers are hard coded here. If DNNL is upgraded then
-# the version numbers have to be updated manually. The version numbers can be
-# obtained from the PROJECT_VERSION settings in CMakeLists.txt. The variable is
-# set to "version_major.version_minor.version_patch". The git hash version can
-# be set to NA.
-# TODO(agramesh1): Automatically get the version numbers from CMakeLists.txt.
-expand_template(
+gen_onednn_version(
     name = "dnnl_version_h",
-    out = "include/oneapi/dnnl/dnnl_version.h",
-    substitutions = {
-        "@DNNL_VERSION_MAJOR@": "3",
-        "@DNNL_VERSION_MINOR@": "3",
-        "@DNNL_VERSION_PATCH@": "0",
-        "@DNNL_VERSION_HASH@": "N/A",
-    },
-    template = "include/oneapi/dnnl/dnnl_version.h.in",
+    header_in = "include/oneapi/dnnl/dnnl_version.h.in",
+    header_out = "include/oneapi/dnnl/dnnl_version.h",
 )
 
 _COPTS_LIST = select({

@@ -1,5 +1,6 @@
 exports_files(["LICENSE"])
 
+load("@org_tensorflow//third_party/mkl_dnn:build_defs.bzl", "gen_onednn_version")
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 
 _DNNL_COPTS_THREADPOOL = [
@@ -122,16 +123,11 @@ expand_template(
     template = "include/oneapi/dnnl/dnnl_config.h.in",
 )
 
-expand_template(
+# Create the file dnnl_version.h with DNNL version numbers.
+gen_onednn_version(
     name = "dnnl_version_h",
-    out = "include/oneapi/dnnl/dnnl_version.h",
-    substitutions = {
-        "@DNNL_VERSION_MAJOR@": "3",
-        "@DNNL_VERSION_MINOR@": "2",
-        "@DNNL_VERSION_PATCH@": "1",
-        "@DNNL_VERSION_HASH@": "N/A",
-    },
-    template = "include/oneapi/dnnl/dnnl_version.h.in",
+    header_in = "include/oneapi/dnnl/dnnl_version.h.in",
+    header_out = "include/oneapi/dnnl/dnnl_version.h",
 )
 
 cc_library(
