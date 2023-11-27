@@ -108,9 +108,14 @@ class Error {
 
 namespace internal {
 
+// A workaround for the fact that a static_assertion can be evaluated
+// whether or not the template is instantiated
+template <DataType dtype>
+struct always_false : std::false_type {};
+
 template <DataType dtype>
 struct PtrType {
-  static_assert(sizeof(dtype) == 0, "unsupported data type");
+  static_assert(always_false<dtype>::value, "unsupported data type");
 };
 
 // clang-format off
@@ -133,7 +138,7 @@ template <> struct PtrType<DataType::BF16> { using Type = std::uint16_t; };
 
 template <DataType dtype>
 struct BufferBase {
-  internal::PtrType<dtype>::Type* data;
+  typename internal::PtrType<dtype>::Type* data;
   Span<const int64_t> dimensions;
 };
 
@@ -149,7 +154,8 @@ struct ArgDecoding<BufferBase<dtype>> {
     auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
     // TODO(slebedev): Emit a user-friendly error instead.
     if (static_cast<DataType>(buf->dtype) != dtype) return std::nullopt;
-    auto* data = static_cast<internal::PtrType<dtype>::Type*>(buf->data);
+    auto* data =
+        static_cast<typename internal::PtrType<dtype>::Type*>(buf->data);
 
     return BufferBase<dtype>{data, Span<const int64_t>(buf->dims, buf->rank)};
   }
