@@ -76,8 +76,6 @@ bool IsOpQuantizableStableHlo(Operation* op);
 //
 // Implementation of this pattern is mostly copied from QuantizationPattern in
 // third_party/tensorflow/compiler/mlir/lite/quantization/quantization_utils.h.
-// TODO - b/310545259 : Split declarations and implementations of
-// StableHloQuantizationPattern.
 template <typename ConcreteT, typename QuantizeOpT, typename DequantizeOpT,
           typename VerifierT, typename RootOpT = DequantizeOpT>
 class StableHloQuantizationPattern : public RewritePattern {
