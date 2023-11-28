@@ -45,6 +45,21 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "command_buffer_cmd_emitter",
+    srcs = ["command_buffer_cmd_emitter.cc"],
+    hdrs = ["command_buffer_cmd_emitter.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":command_buffer_cmd",
+        "//xla:statusor",
+        "//xla:util",
+        "//xla/service/gpu:gpu_executable",
+        "//xla/service/gpu:thunk",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
 xla_test(
     name = "command_buffer_cmd_test",
     srcs = if_gpu_is_configured(["command_buffer_cmd_test.cc"]),

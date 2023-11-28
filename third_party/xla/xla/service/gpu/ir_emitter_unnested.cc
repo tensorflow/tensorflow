@@ -132,6 +132,7 @@ limitations under the License.
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/gpu/replica_id_thunk.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
+#include "xla/service/gpu/runtime3/command_buffer_cmd_emitter.h"
 #include "xla/service/gpu/runtime3/command_buffer_thunk.h"
 #include "xla/service/gpu/runtime3/custom_call_thunk.h"
 #include "xla/service/gpu/runtime3/fft_thunk.h"
@@ -370,33 +371,6 @@ int DeriveNumWarpsFromTritonSoftmaxComputation(
   }
 
   return num_warps;
-}
-
-StatusOr<std::unique_ptr<CommandBufferCmd>> ConvertToCommand(
-    const Thunk& thunk) {
-  switch (thunk.kind()) {
-    // TODO(anlunx): Support other thunk kinds.
-    case Thunk::Kind::kKernel: {
-      auto& kernel_thunk = static_cast<const KernelThunk&>(thunk);
-      auto kernel_cmd = std::make_unique<LaunchCmd>(
-          kernel_thunk.kernel_name(), kernel_thunk.arguments(),
-          kernel_thunk.launch_dimensions(), kernel_thunk.shmem_bytes());
-      return kernel_cmd;
-    }
-    default:
-      return InternalError("Unsupported thunk kind");
-  }
-}
-
-StatusOr<CommandBufferCmdSequence> ConvertToCommands(
-    const ThunkSequence& sequence) {
-  CommandBufferCmdSequence cmd_sequence;
-  for (const std::unique_ptr<Thunk>& thunk : sequence) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<CommandBufferCmd> cmd,
-                        ConvertToCommand(*thunk));
-    cmd_sequence.Append(std::move(cmd));
-  }
-  return cmd_sequence;
 }
 
 }  // namespace

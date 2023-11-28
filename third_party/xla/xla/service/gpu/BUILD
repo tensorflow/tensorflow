@@ -332,6 +332,7 @@ cc_library(
         "//xla/service/gpu/kernels:custom_fusion",
         "//xla/service/gpu/kernels:custom_kernel",
         "//xla/service/gpu/runtime3:command_buffer_cmd",
+        "//xla/service/gpu/runtime3:command_buffer_cmd_emitter",
         "//xla/service/gpu/runtime3:command_buffer_thunk",
         "//xla/service/gpu/runtime3:custom_call_thunk",
         "//xla/service/gpu/runtime3:fft_thunk",
