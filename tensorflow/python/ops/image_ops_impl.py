@@ -2030,7 +2030,7 @@ def random_brightness(image, max_delta, seed=None):
 
   Args:
     image: An image or images to adjust.
-    max_delta: float, must be non-negative. The max_delta parameter controls the maximum relative change in brightness. This means that the actual change in brightness will depend on the range of values in the input image.
+    max_delta: float, must be non-negative. This parameter controls the maximum relative change in brightness.
     seed: A Python integer. Used to create a random seed. See
       `tf.compat.v1.set_random_seed` for behavior.
 
