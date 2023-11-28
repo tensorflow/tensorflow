@@ -695,7 +695,11 @@ message DebugOptions {
 // Contains flags which affects the GPU compilation result.
 // These flags are part of Debug Options as of now, and will be migrated to
 // this proto.
-message GpuCompilationEnvironment {}
+message GpuCompilationEnvironment {
+  // Temporary dummy flag is added to test the flow.
+  // To be removed when we add flags here.
+  int64 dummy_flag = 1;
+}
 
 message ShardableValueUpdatePairProto {
   int64 input_parameter_number = 1;
