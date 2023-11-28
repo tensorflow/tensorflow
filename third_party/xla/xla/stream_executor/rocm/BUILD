@@ -438,7 +438,7 @@ cc_library(
 )
 
 cc_library(
-    name = "hipblaslt_plugin",
+    name = "amdhipblaslt_plugin",
     srcs = if_rocm_is_configured(["hip_blas_lt.cc"]),
     hdrs = if_rocm_is_configured([
         "hip_blas_lt.h",
@@ -558,7 +558,7 @@ cc_library(
         ":rocm_driver",
         ":rocm_platform",
         ":rocm_helpers",
-        ":hipblaslt_plugin",
+        ":amdhipblaslt_plugin",
     ]),
     alwayslink = 1,
 )
