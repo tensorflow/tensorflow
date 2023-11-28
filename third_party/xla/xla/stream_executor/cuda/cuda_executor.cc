@@ -444,10 +444,11 @@ tsl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
     CHECK_EQ(kernel.Arity() + (packed.number_of_shared_bytes() > 0),
              packed.number_of_arguments());
     void** params = const_cast<void**>(packed.argument_addresses().data());
-    return GpuDriver::LaunchKernel(
-        context_, kernel.name(), cufunc, block_dims.x, block_dims.y,
-        block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
-        args.number_of_shared_bytes(), custream, params, nullptr /* = extra */);
+    return GpuDriver::LaunchKernel(context_, kernel.name(), cufunc,
+                                   block_dims.x, block_dims.y, block_dims.z,
+                                   thread_dims.x, thread_dims.y, thread_dims.z,
+                                   packed.number_of_shared_bytes(), custream,
+                                   params, nullptr /* = extra */);
   };
 
   // If arguments are already packed we can just launch the kernel.
