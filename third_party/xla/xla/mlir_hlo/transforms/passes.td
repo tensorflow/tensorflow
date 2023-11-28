@@ -140,7 +140,6 @@ def GenericHostToLLVMPass : Pass<"generic-host-to-llvm", "ModuleOp"> {
     "::mlir::arith::ArithDialect",
     "::mlir::cf::ControlFlowDialect",
     "::mlir::complex::ComplexDialect",
-    "::mlir::deallocation::DeallocationDialect",
     "::mlir::func::FuncDialect",
     "::mlir::math::MathDialect",
     "::mlir::memref::MemRefDialect",

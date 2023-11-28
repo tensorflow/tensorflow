@@ -23,7 +23,6 @@ set(LIBS
         MLIROptLib
 
         AllMhloPasses
-        DeallocationDialect
         DeallocationPasses
         LmhloDialect
         LmhloGPUDialect

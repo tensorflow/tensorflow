@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/Transforms/AllocationOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
@@ -48,7 +49,6 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/mlir/backends/cpu/transforms/passes.h"
 #include "xla/mlir/runtime/transforms/compiler.h"
-#include "xla/mlir_hlo/deallocation/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/interfaces/bufferizable_op_interface_impl.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/transforms/passes.h"
@@ -222,16 +222,9 @@ static Status CreateHloXlaPipeline(
   // bufferizing anything.
   pm.addPass(mlir::createCanonicalizerPass());
 
-  if (options.experimental_deallocation) {
-    // Experimental deallocation needs input IR without any buffer reuse to
-    // work optimally. This pass ensures that's the case.
-    pm.addNestedPass<FuncOp>(mlir::deallocation::createSplitAllocTensorsPass());
-  }
-
   if (options.sparse_bufferization) {
     // Convert Sparse tensors.
-    AddSparsificationPasses(pm, options.experimental_deallocation,
-                            options.xla_cpu_sparse_cuda_threads);
+    AddSparsificationPasses(pm, false, options.xla_cpu_sparse_cuda_threads);
   } else {
     pm.addPass(mlir::hlo::createOneShotBufferizePass());
   }
@@ -258,28 +251,14 @@ static Status CreateHloXlaPipeline(
   pm.addPass(mlir::bufferization::createBufferResultsToOutParamsPass(
       out_params_options));
 
-  if (options.experimental_deallocation) {
-    pm.addNestedPass<FuncOp>(
-        mlir::deallocation::createXlaBufferArgRewritePass());
-    pm.addPass(mlir::deallocation::createDeallocatePass());
-    pm.addNestedPass<FuncOp>(
-        mlir::deallocation::createDeallocationSimplificationPass());
-    // Remove SCF iter args that became redundant after simplification.
-    pm.addPass(mlir::createCanonicalizerPass());
-    pm.addNestedPass<FuncOp>(mlir::deallocation::createBufferReusePass());
-    pm.addNestedPass<FuncOp>(
-        mlir::deallocation::createDeallocationSimplificationPass());
-    pm.addNestedPass<FuncOp>(mlir::deallocation::createDeallocationToScfPass());
-  } else {
-    pm.addNestedPass<FuncOp>(
-        mlir::bufferization::createPromoteBuffersToStackPass(nullptr));
+  pm.addNestedPass<FuncOp>(
+      mlir::bufferization::createPromoteBuffersToStackPass(nullptr));
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::bufferization::createBufferDeallocationPass());
+  pm.addPass(mlir::createBufferizationToMemRefPass());
+  if (options.remove_copies_to_outparams) {
     pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::bufferization::createBufferDeallocationPass());
-    pm.addPass(mlir::createBufferizationToMemRefPass());
-    if (options.remove_copies_to_outparams) {
-      pm.addNestedPass<mlir::func::FuncOp>(
-          xla::cpu::createRemoveCopiesToOutParamsPass());
-    }
+        xla::cpu::createRemoveCopiesToOutParamsPass());
   }
 
   // Specialize linalg.matmul to linalg.dot, linalg.matvec or linalg.vecmat,
@@ -315,6 +294,7 @@ void RegisterHloXlaRuntimePipelineDialects(mlir::DialectRegistry& dialects) {
   mlir::arith::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
       dialects);
+  mlir::memref::registerAllocationOpInterfaceExternalModels(dialects);
   mlir::linalg::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::linalg::registerTilingInterfaceExternalModels(dialects);
   mlir::mhlo::registerBufferizableOpInterfaceExternalModels(dialects);

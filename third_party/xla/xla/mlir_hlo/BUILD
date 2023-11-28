@@ -375,73 +375,17 @@ gentbl_cc_library(
     deps = [":hlo_ops_td_files"],
 )
 
-td_library(
-    name = "deallocation_ops_td_files",
-    srcs = glob(["deallocation/IR/*.td"]),
-    compatible_with = get_compatible_with_portable(),
-    includes = ["."],
-    deps = [
-        "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
-    ],
-)
-
-gentbl_cc_library(
-    name = "deallocation_ops_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "deallocation/IR/deallocation_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "deallocation/IR/deallocation_ops.cc.inc",
-        ),
-        (
-            ["-gen-dialect-decls"],
-            "deallocation/IR/deallocation_dialect.h.inc",
-        ),
-        (
-            ["-gen-dialect-defs"],
-            "deallocation/IR/deallocation_dialect.cc.inc",
-        ),
-        (
-            ["-gen-typedef-decls"],
-            "deallocation/IR/deallocation_typedefs.h.inc",
-        ),
-        (
-            ["-gen-typedef-defs"],
-            "deallocation/IR/deallocation_typedefs.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "deallocation/IR/deallocation_ops.td",
-    deps = [":deallocation_ops_td_files"],
-)
-
 cc_library(
     name = "deallocation_passes",
     srcs = [
-        "deallocation/transforms/analysis.cc",
         "deallocation/transforms/buffer_reuse.cc",
-        "deallocation/transforms/convert_deallocation_ops_to_llvm.cc",
-        "deallocation/transforms/deallocate.cc",
-        "deallocation/transforms/deallocation_simplification.cc",
-        "deallocation/transforms/deallocation_to_scf.cc",
-        "deallocation/transforms/debug_passes.cc",
-        "deallocation/transforms/split_alloc_tensors.cc",
-        "deallocation/transforms/xla_buffer_arg_rewrite.cc",
     ],
     hdrs = [
-        "deallocation/transforms/analysis.h",
         "deallocation/transforms/passes.h",
     ],
     strip_include_prefix = ".",
     visibility = ["//visibility:public"],
     deps = [
-        ":deallocation",
         ":deallocation_passes_inc_gen",
         ":deallocation_utils",
         "@llvm-project//llvm:Support",
@@ -480,30 +424,12 @@ gentbl_cc_library(
 )
 
 cc_library(
-    name = "deallocation",
-    srcs = ["deallocation/IR/deallocation_ops.cc"],
-    hdrs = ["deallocation/IR/deallocation_ops.h"],
-    strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":deallocation_ops_inc_gen",
-        ":deallocation_utils",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ControlFlowInterfaces",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:SCFDialect",
-    ],
-)
-
-cc_library(
     name = "deallocation_utils",
     srcs = ["deallocation/utils/util.cc"],
     hdrs = ["deallocation/utils/util.h"],
     strip_include_prefix = ".",
     visibility = ["//visibility:public"],
     deps = [
-        ":deallocation_ops_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:IR",
@@ -1294,7 +1220,6 @@ cc_library(
     strip_include_prefix = ".",
     visibility = ["//visibility:public"],
     deps = [
-        ":deallocation",
         ":deallocation_passes",
         ":lhlo",
         ":mhlo_passes",
@@ -1553,7 +1478,6 @@ cc_binary(
     srcs = ["tools/mlir-hlo-opt/mlir-hlo-opt.cc"],
     deps = [
         ":all_passes",
-        ":deallocation",
         ":hlo_dialect_registration",
         ":lhlo",
         ":lhlo_gpu",
