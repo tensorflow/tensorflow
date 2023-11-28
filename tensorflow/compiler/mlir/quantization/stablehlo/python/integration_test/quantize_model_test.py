@@ -135,9 +135,11 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       parameter_combinations([{
           'same_scale_op': [
               'concatenate',
+              'gather',
               'pad',
               'reshape',
               'select',
+              'slice',
               'transpose',
           ],
       }])
