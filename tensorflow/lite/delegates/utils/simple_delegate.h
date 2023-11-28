@@ -29,10 +29,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_UTILS_SIMPLE_DELEGATE_H_
 #define TENSORFLOW_LITE_DELEGATES_UTILS_SIMPLE_DELEGATE_H_
 
-#include <stdint.h>
-
 #include <memory>
-#include <utility>
 
 #include "tensorflow/lite/core/c/common.h"
 
@@ -45,7 +42,7 @@ using TfLiteDelegateUniquePtr =
 // Each instance represents a single part of the graph (subgraph).
 class SimpleDelegateKernelInterface {
  public:
-  virtual ~SimpleDelegateKernelInterface() = default;
+  virtual ~SimpleDelegateKernelInterface() {}
 
   // Initializes a delegated subgraph.
   // The nodes in the subgraph are inside TfLiteDelegateParams->nodes_to_replace
