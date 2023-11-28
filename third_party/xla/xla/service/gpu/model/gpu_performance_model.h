@@ -19,9 +19,11 @@ limitations under the License.
 #include <array>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
@@ -55,6 +57,26 @@ struct EstimateRunTimeData {
   absl::Duration exec_time;
 };
 
+class GpuPerformanceModelCache {
+ public:
+  // Returns cached runtime data for the instruction. Returns nullopt if there
+  // is no data in cache.
+  std::optional<EstimateRunTimeData> Get(const HloInstruction& instruction);
+
+  // Sets cache value for the instruction.
+  void Set(const HloInstruction& instruction,
+           const EstimateRunTimeData& runtime_data);
+
+  // Removes all cache entries for this instruction.
+  void Invalidate(const HloInstruction& instruction);
+
+ private:
+  absl::Mutex mutex_;
+
+  absl::flat_hash_map<HloInstructionAdaptor, EstimateRunTimeData>
+      instruction_runtime_data_;
+};
+
 struct GpuPerformanceModelOptions {
   // Whether to attempt to model the effect of uncoalesced reads.
   bool consider_coalescing = false;
@@ -70,23 +92,28 @@ struct GpuPerformanceModelOptions {
   // If present, use this to retrieve fusion analyses.
   HloFusionAnalysisCache* fusion_analysis_cache = nullptr;
 
+  GpuPerformanceModelCache* gpu_performance_model_cache = nullptr;
+
   static GpuPerformanceModelOptions Default() {
     return GpuPerformanceModelOptions();
   }
 
   static GpuPerformanceModelOptions PriorityFusion(
-      HloFusionAnalysisCache* fusion_analysis_cache) {
+      HloFusionAnalysisCache* fusion_analysis_cache,
+      GpuPerformanceModelCache* gpu_performance_model_cache) {
     GpuPerformanceModelOptions config;
     config.consider_coalescing = true;
     config.first_read_from_dram = true;
     config.calculate_full_priority = true;
     config.fusion_analysis_cache = fusion_analysis_cache;
+    config.gpu_performance_model_cache = gpu_performance_model_cache;
     return config;
   }
 
   static GpuPerformanceModelOptions ForModule(const HloModule* module) {
     return module->config().debug_options().xla_gpu_enable_priority_fusion()
-               ? PriorityFusion(nullptr)  // Only cache within priority fusion.
+               ? PriorityFusion(nullptr,
+                                nullptr)  // Only cache within priority fusion.
                : Default();
   }
 };
@@ -99,6 +126,10 @@ class GpuPerformanceModel {
   };
 
   static EstimateRunTimeData EstimateRunTimeForInstruction(
+      const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis,
+      const GpuPerformanceModelOptions& config);
+
+  static EstimateRunTimeData EstimateRunTimeForInstructionCached(
       const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config);
 

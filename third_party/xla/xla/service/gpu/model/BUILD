@@ -187,6 +187,7 @@ cc_library(
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:hlo_traversal",
         "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/time",
     ] + if_cuda_is_configured(xla_nvml_deps()),

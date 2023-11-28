@@ -187,6 +187,8 @@ class GpuPriorityFusionQueue : public FusionQueue {
     HloInstructionAdaptor fusion_adaptor(*fusion);
     can_fuse_cache_.erase(fusion_adaptor);
 
+    gpu_performance_model_cache_.Invalidate(*fusion);
+
     fusion_analysis_cache_.Invalidate(*fusion);
     fusion_analysis_cache_.Invalidate(*original_producer);
 
@@ -300,7 +302,8 @@ class GpuPriorityFusionQueue : public FusionQueue {
     GpuPerformanceModel::RunTimes run_times =
         GpuPerformanceModel::EstimateRunTimes(
             producer, &cost_analysis_,
-            GpuPerformanceModelOptions::PriorityFusion(&fusion_analysis_cache_),
+            GpuPerformanceModelOptions::PriorityFusion(
+                &fusion_analysis_cache_, &gpu_performance_model_cache_),
             producer->users());
     if (fusion_process_dump_) {
       absl::MutexLock lock(&fusion_process_dump_mutex_);
@@ -413,6 +416,8 @@ class GpuPriorityFusionQueue : public FusionQueue {
       absl::flat_hash_map<HloInstructionAdaptor, FusionDecision>>
       can_fuse_cache_;
   absl::Mutex can_fuse_cache_mutex_;
+
+  GpuPerformanceModelCache gpu_performance_model_cache_;
 };
 
 }  // namespace

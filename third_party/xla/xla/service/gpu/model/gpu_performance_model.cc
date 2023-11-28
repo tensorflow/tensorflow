@@ -292,6 +292,30 @@ bool IsReadCoalesced(const std::optional<HloFusionAnalysis>& fusion_analysis,
 
 }  // namespace
 
+std::optional<EstimateRunTimeData> GpuPerformanceModelCache::Get(
+    const HloInstruction& instruction) {
+  absl::MutexLock lock(&mutex_);
+
+  auto it = instruction_runtime_data_.find(HloInstructionAdaptor(instruction));
+  if (it != instruction_runtime_data_.end()) {
+    return it->second;
+  }
+  return std::nullopt;
+}
+
+void GpuPerformanceModelCache::Set(const HloInstruction& instruction,
+                                   const EstimateRunTimeData& runtime_data) {
+  absl::MutexLock lock(&mutex_);
+
+  instruction_runtime_data_[HloInstructionAdaptor(instruction)] = runtime_data;
+}
+
+void GpuPerformanceModelCache::Invalidate(const HloInstruction& instruction) {
+  absl::MutexLock lock(&mutex_);
+
+  instruction_runtime_data_.erase(HloInstructionAdaptor(instruction));
+}
+
 /*static*/ EstimateRunTimeData
 GpuPerformanceModel::EstimateRunTimeForInstruction(
     const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis,
@@ -335,6 +359,26 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
   }
 
   return {flops, bytes_written, num_threads, write_time, exec_time};
+}
+
+/*static*/ EstimateRunTimeData
+GpuPerformanceModel::EstimateRunTimeForInstructionCached(
+    const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis,
+    const GpuPerformanceModelOptions& config) {
+  if (config.gpu_performance_model_cache) {
+    if (auto cached_result = config.gpu_performance_model_cache->Get(*instr)) {
+      return *cached_result;
+    }
+  }
+
+  auto runtime_data =
+      EstimateRunTimeForInstruction(instr, cost_analysis, config);
+
+  if (config.gpu_performance_model_cache) {
+    config.gpu_performance_model_cache->Set(*instr, runtime_data);
+  }
+
+  return runtime_data;
 }
 
 // Returns utilization of operand by instruction. Returns 0, if the operand is
@@ -669,14 +713,14 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
   }
 
   EstimateRunTimeData producer_runtime =
-      EstimateRunTimeForInstruction(producer, cost_analysis, config);
+      EstimateRunTimeForInstructionCached(producer, cost_analysis, config);
 
   std::vector<EstimateRunTimeData> consumer_runtimes;
   if (config.calculate_full_priority) {
     consumer_runtimes.reserve(fused_consumers.size());
     for (auto* consumer : fused_consumers) {
       consumer_runtimes.push_back(
-          EstimateRunTimeForInstruction(consumer, cost_analysis, config));
+          EstimateRunTimeForInstructionCached(consumer, cost_analysis, config));
     }
   }
 
@@ -715,7 +759,7 @@ void GpuPerformanceModel::RecordEstimatedRunTime(
   DCHECK(cost_analysis != nullptr) << "expected cost analysis";
 
   EstimateRunTimeData data =
-      EstimateRunTimeForInstruction(instruction, cost_analysis, config);
+      EstimateRunTimeForInstructionCached(instruction, cost_analysis, config);
   double cycles = absl::ToDoubleNanoseconds(data.exec_time) *
                   cost_analysis->device_info_->clock_rate_ghz();
 

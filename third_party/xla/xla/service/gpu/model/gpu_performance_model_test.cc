@@ -360,8 +360,8 @@ ENTRY fusion {
   std::vector<HloInstruction*> consumers{
       module->entry_computation()->GetInstructionWithName("reduce.1")};
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-      producer, &analysis_, GpuPerformanceModelOptions::PriorityFusion(nullptr),
-      consumers);
+      producer, &analysis_,
+      GpuPerformanceModelOptions::PriorityFusion(nullptr, nullptr), consumers);
 
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 105, 10);
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_fused), 514, 10);
@@ -499,8 +499,8 @@ ENTRY e2 {
   const HloInstruction* producer = consumer->operand(0);
 
   GpuPerformanceModel::RunTimes t1 = GpuPerformanceModel::EstimateRunTimes(
-      producer, &analysis_, GpuPerformanceModelOptions::PriorityFusion(nullptr),
-      {consumer});
+      producer, &analysis_,
+      GpuPerformanceModelOptions::PriorityFusion(nullptr, nullptr), {consumer});
 
   HloComputation* computation_with_fusion =
       module->GetComputationWithName("e2");
@@ -510,7 +510,7 @@ ENTRY e2 {
 
   GpuPerformanceModel::RunTimes t2 = GpuPerformanceModel::EstimateRunTimes(
       root_with_fusion, &analysis_,
-      GpuPerformanceModelOptions::PriorityFusion(nullptr), {});
+      GpuPerformanceModelOptions::PriorityFusion(nullptr, nullptr), {});
 
   EXPECT_EQ(t1.time_fused, t2.time_unfused);
 }
