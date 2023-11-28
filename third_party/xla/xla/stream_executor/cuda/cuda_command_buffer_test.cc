@@ -18,7 +18,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
-#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
@@ -38,6 +37,8 @@ using AddI32Kernel = TypedKernel<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
                                  DeviceMemory<int32_t>>;
 using MulI32Kernel = TypedKernel<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
                                  DeviceMemory<int32_t>>;
+using IncAndCmpKernel =
+    TypedKernel<DeviceMemory<int32_t>, DeviceMemory<bool>, int32_t>;
 
 using AddI32Ptrs3 = TypedKernel<internal::Ptrs3<int32_t>>;
 
@@ -552,6 +553,76 @@ TEST(CudaCommandBufferTest, ConditionalFor) {
   // Create a command buffer with a single conditional operation.
   auto cmd_buffer = CommandBuffer::Create(executor).value();
   TF_ASSERT_OK(cmd_buffer.For(executor, num_iters, loop_index, body_builder));
+  TF_ASSERT_OK(cmd_buffer.Finalize());
+
+  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+
+  // Copy `b` data back to host.
+  std::vector<int32_t> dst(4, 42);
+  stream.ThenMemcpy(dst.data(), b, byte_length);
+
+  std::vector<int32_t> expected = {10, 10, 10, 10};
+  ASSERT_EQ(dst, expected);
+}
+
+TEST(CudaCommandBufferTest, ConditionalWhile) {
+  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+  if (!CommandBuffer::SupportsConditionalCommands(platform)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
+
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  Stream stream(executor);
+  stream.Init();
+  ASSERT_TRUE(stream.ok());
+
+  AddI32Kernel add(executor);
+  IncAndCmpKernel inc_and_cmp(executor);
+
+  {  // Load addition kernel.
+    MultiKernelLoaderSpec spec(/*arity=*/3);
+    spec.AddInProcessSymbol(internal::GetAddI32CudaKernel(), "add");
+    TF_ASSERT_OK(executor->GetKernel(spec, &add));
+  }
+
+  {  // Load inc_and_cmp kernel.
+    MultiKernelLoaderSpec spec(/*arity=*/3);
+    spec.AddInProcessSymbol(internal::GetIncAndCmpCudaKernel(), "inc_and_cmp");
+    TF_ASSERT_OK(executor->GetKernel(spec, &inc_and_cmp));
+  }
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: a=1, b=0, loop_index=1, pred=true
+  DeviceMemory<bool> pred = executor->AllocateArray<bool>(1, 0);
+  DeviceMemory<int32_t> loop_index = executor->AllocateArray<int32_t>(1, 0);
+  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+
+  static constexpr bool kTrue = true;
+  stream.ThenMemcpy(&pred, &kTrue, 1);
+  stream.ThenMemset32(&loop_index, 1, sizeof(int32_t));
+  stream.ThenMemset32(&a, 1, byte_length);
+  stream.ThenMemZero(&b, byte_length);
+
+  int32_t num_iters = 10;
+
+  // Loop cond: loop_index++ < num_iters;
+  CommandBuffer::Builder cond_builder = [&](CommandBuffer* cond_cmd) {
+    return cond_cmd->Launch(inc_and_cmp, ThreadDim(), BlockDim(), loop_index,
+                            pred, num_iters);
+  };
+
+  // Loop body: b = a + b
+  CommandBuffer::Builder body_builder = [&](CommandBuffer* body_cmd) {
+    return body_cmd->Launch(add, ThreadDim(), BlockDim(length), a, b, b);
+  };
+
+  // Create a command buffer with a single conditional operation.
+  auto cmd_buffer = CommandBuffer::Create(executor).value();
+  TF_ASSERT_OK(cmd_buffer.While(executor, pred, cond_builder, body_builder));
   TF_ASSERT_OK(cmd_buffer.Finalize());
 
   TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));

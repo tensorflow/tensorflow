@@ -22,6 +22,9 @@ namespace stream_executor {
 namespace cuda {
 namespace {
 
+// In all kernels defined above we set conditional handle value to `1` when we
+// want to execute a CUDA graph tied to it, and to `0` otherwise.
+
 #if defined(STREAM_EXECUTOR_CUDA_ENABLE_GRAPH_CONDITIONAL) && \
     CUDA_VERSION >= 12030
 
@@ -113,6 +116,11 @@ void* GetSetCaseConditionKernel() {
 
 void* GetSetForConditionKernel() {
   return reinterpret_cast<void*>(&cuda::SetForCondition);
+}
+
+void* GetSetWhileConditionKernel() {
+  // While condition kernel is the same as an `If` with a single branch.
+  return reinterpret_cast<void*>(&cuda::SetIfCondition);
 }
 
 }  // namespace gpu

@@ -141,6 +141,13 @@ tsl::Status CommandBuffer::For(StreamExecutor* executor, int32_t num_iteration,
                               std::move(body_builder));
 }
 
+tsl::Status CommandBuffer::While(StreamExecutor* executor,
+                                 DeviceMemory<bool> pred, Builder cond_builder,
+                                 Builder body_builder) {
+  return implementation_->While(executor, pred, std::move(cond_builder),
+                                std::move(body_builder));
+}
+
 CommandBuffer::Mode CommandBuffer::mode() const {
   return implementation_->mode();
 }

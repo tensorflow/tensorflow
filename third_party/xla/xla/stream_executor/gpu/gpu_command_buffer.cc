@@ -550,6 +550,44 @@ tsl::Status GpuCommandBuffer::For(StreamExecutor* executor,
   return CreateConditionalCommand(ConditionType::kWhile, set_cond_fn, builders);
 }
 
+tsl::Status GpuCommandBuffer::While(StreamExecutor* executor,
+                                    DeviceMemory<bool> pred,
+                                    CommandBuffer::Builder cond_builder,
+                                    CommandBuffer::Builder body_builder) {
+  DCHECK(executor->implementation() == parent_);
+
+  // TODO(ezhulenev): Keep kernel in `GpuCommandBuffer` to avoid loading it on
+  // every call to `While`.
+  SetWhileConditionKernel set_while_condition(executor);
+
+  {  // Load kernels that updates condition handle value.
+    MultiKernelLoaderSpec spec(/*arity=*/2);
+    spec.AddInProcessSymbol(gpu::GetSetWhileConditionKernel(),
+                            "set_while_condition");
+    TF_RETURN_IF_ERROR(executor->GetKernel(spec, &set_while_condition));
+  }
+
+  // TODO(ezhulenev): We assume that `pred` already has a value that decides if
+  // we should go into the first loop iteration. Instead we should run
+  // `cond_builder` to update primary command buffer.
+
+  auto set_cond_fn = [&](absl::Span<const GpuGraphConditionalHandle> handles) {
+    return Launch(set_while_condition, ThreadDim(), BlockDim(), handles[0],
+                  pred);
+  };
+
+  auto body = [&](CommandBuffer* body, GpuGraphConditionalHandle handle) {
+    TF_RETURN_IF_ERROR(body_builder(body));
+    TF_RETURN_IF_ERROR(cond_builder(body));
+    return body->Launch(set_while_condition, ThreadDim(), BlockDim(), handle,
+                        pred);
+  };
+
+  std::array<ConditionBuilder, 1> builders = {std::move(body)};
+
+  return CreateConditionalCommand(ConditionType::kWhile, set_cond_fn, builders);
+}
+
 tsl::Status GpuCommandBuffer::Finalize() {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 

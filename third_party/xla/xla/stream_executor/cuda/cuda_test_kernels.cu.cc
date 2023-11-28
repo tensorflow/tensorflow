@@ -29,6 +29,12 @@ __global__ void MulI32(int32_t* a, int32_t* b, int32_t* c) {
   c[index] = a[index] * b[index];
 }
 
+__global__ void IncAndCmp(int32_t* counter, bool* pred, int32_t value) {
+  int index = threadIdx.x + blockIdx.x * blockDim.x;
+  pred[index] = counter[index] < value;
+  counter[index] += 1;
+}
+
 __global__ void AddI32Ptrs3(Ptrs3<int32_t> ptrs) {
   int index = threadIdx.x + blockIdx.x * blockDim.x;
   ptrs.c[index] = ptrs.a[index] + ptrs.b[index];
@@ -37,6 +43,8 @@ __global__ void AddI32Ptrs3(Ptrs3<int32_t> ptrs) {
 void* GetAddI32CudaKernel() { return reinterpret_cast<void*>(&AddI32); }
 
 void* GetMulI32CudaKernel() { return reinterpret_cast<void*>(&MulI32); }
+
+void* GetIncAndCmpCudaKernel() { return reinterpret_cast<void*>(&IncAndCmp); }
 
 void* GetAddI32Ptrs3CudaKernel() {
   return reinterpret_cast<void*>(&AddI32Ptrs3);

@@ -173,6 +173,22 @@ class CommandBufferInterface {
                           DeviceMemory<int32_t> loop_index,
                           CommandBuffer::Builder body_builder) = 0;
 
+  // Adds a conditional operation that will execute a command buffer constructed
+  // by the `cond_builder` that must update `pred` value, and then depending on
+  // the value might execute command buffer constructed by `body_builder` and
+  // `cond_builder`. Will continue while `pred` value is `true`.
+  //
+  // In pseudocode:
+  //
+  //   cond_builder()
+  //   while(pred):
+  //     body_builder()
+  //     cond_builder()
+  //
+  virtual tsl::Status While(StreamExecutor* executor, DeviceMemory<bool> pred,
+                            CommandBuffer::Builder cond_builder,
+                            CommandBuffer::Builder body_builder) = 0;
+
   // Finalizes command buffer and makes it executable. Once command buffer is
   // finalized no commands can be added to it.
   virtual tsl::Status Finalize() = 0;
