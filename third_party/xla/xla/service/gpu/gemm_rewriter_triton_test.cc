@@ -796,6 +796,35 @@ ENTRY e {
             nullptr);
 }
 
+TEST_F(TritonSoftmaxAnalysisTest, ReduceOfNonRowDimensionIsNotSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule t
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+triton_softmax_computation {
+  param_0 = f32[8,4,127]{2,1,0} parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[4,127]{1,0} reduce(param_0, constant), dimensions={0}, to_apply=add
+}
+
+ENTRY main {
+  param_0 = f32[8,4,127]{2,1,0} parameter(0)
+  ROOT fusion = f32[4,127]{1,0} fusion(param_0), kind=kCustom,
+    calls=triton_softmax_computation,
+    backend_config={"kind":"__triton_softmax"}
+})"));
+
+  const HloComputation* computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  const auto analysis = TritonFusionAnalysis::Execute(*computation);
+  EXPECT_FALSE(analysis.ok());
+}
+
 TEST_F(GemmRewriterTritonTest, HandleDotIfCublasRequiresPadding) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(

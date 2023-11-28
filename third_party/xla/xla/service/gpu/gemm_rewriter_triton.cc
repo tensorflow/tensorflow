@@ -951,8 +951,12 @@ FusionContext::GetPropagatedDimOrdersForDimAlteringOp(
       }
       const auto* reduce = Cast<HloReduceInstruction>(&hlo);
       dst_logical.resize(src_logical.size() + reduce->dimensions().size());
+
       if (reduce->dimensions().size() != 1) {
         return FusionDecision("Unsupported reduction.");
+      } else if (reduce->dimensions().front() !=
+                 reduce->operand(0)->shape().rank() - 1) {
+        return FusionDecision("Only row reductions are supported.");
       }
       for (int i = 0; i < dst_logical.size(); ++i) {
         if (i == reduce->dimensions().front()) {
@@ -1713,9 +1717,7 @@ Status FusionContext::PropagateDimensionOrdersToParameters(
     DimOrdersAndReqsOrError result = GetPropagatedDimOrdersAndRequirements(
         *hlo, dim_orders_.at(hlo), TransformDirection::kOutputToInput,
         properties_);
-    if (std::holds_alternative<FusionDecision>(result)) {
-      LOG(FATAL) << std::get<FusionDecision>(result).Explain();
-    }
+    TF_RET_CHECK(std::holds_alternative<DimOrdersAndReqs>(result));
     TF_RET_CHECK(CombineDimOrdersAndReqs(std::get<DimOrdersAndReqs>(result)));
     iter_specs[hlo] = DimensionOrderToTensorIterationSpec(dim_orders_.at(hlo));
     for (const HloInstruction* operand : hlo->operands()) {
