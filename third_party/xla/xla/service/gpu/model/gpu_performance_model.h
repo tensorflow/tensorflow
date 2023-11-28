@@ -59,22 +59,35 @@ struct EstimateRunTimeData {
 
 class GpuPerformanceModelCache {
  public:
-  // Returns cached runtime data for the instruction. Returns nullopt if there
-  // is no data in cache.
+  // Returns cached runtime data for the instruction or producer-consumer pair.
+  // Returns nullopt if there is no data in cache.
   std::optional<EstimateRunTimeData> Get(const HloInstruction& instruction);
+  std::optional<absl::Duration> Get(const HloInstruction& producer,
+                                    const HloInstruction& consumer);
 
-  // Sets cache value for the instruction.
+  // Sets cache value for the instruction or producer-consumer pair.
   void Set(const HloInstruction& instruction,
            const EstimateRunTimeData& runtime_data);
+  void Set(const HloInstruction& producer, const HloInstruction& consumer,
+           absl::Duration runtime);
 
-  // Removes all cache entries for this instruction.
+  // Removes all cache entries for this instruction. The cache contains entries
+  // for individual instructions in instruction_runtime_data_ and for
+  // producer-consumer pairs in fusion_runtime_data_.
   void Invalidate(const HloInstruction& instruction);
 
  private:
   absl::Mutex mutex_;
 
+  // Stores unfused runtime data for individual instructions.
   absl::flat_hash_map<HloInstructionAdaptor, EstimateRunTimeData>
       instruction_runtime_data_;
+
+  // Stores fused runtime data for producer-consumer pairs.
+  absl::flat_hash_map<
+      HloInstructionAdaptor,
+      absl::flat_hash_map<HloInstructionAdaptor, absl::Duration>>
+      fusion_runtime_data_;
 };
 
 struct GpuPerformanceModelOptions {

@@ -303,6 +303,20 @@ std::optional<EstimateRunTimeData> GpuPerformanceModelCache::Get(
   return std::nullopt;
 }
 
+std::optional<absl::Duration> GpuPerformanceModelCache::Get(
+    const HloInstruction& producer, const HloInstruction& consumer) {
+  absl::MutexLock lock(&mutex_);
+
+  auto it = fusion_runtime_data_.find(HloInstructionAdaptor(producer));
+  if (it != fusion_runtime_data_.end()) {
+    auto jt = it->second.find(HloInstructionAdaptor(consumer));
+    if (jt != it->second.end()) {
+      return jt->second;
+    }
+  }
+  return std::nullopt;
+}
+
 void GpuPerformanceModelCache::Set(const HloInstruction& instruction,
                                    const EstimateRunTimeData& runtime_data) {
   absl::MutexLock lock(&mutex_);
@@ -310,10 +324,33 @@ void GpuPerformanceModelCache::Set(const HloInstruction& instruction,
   instruction_runtime_data_[HloInstructionAdaptor(instruction)] = runtime_data;
 }
 
+void GpuPerformanceModelCache::Set(const HloInstruction& producer,
+                                   const HloInstruction& consumer,
+                                   absl::Duration runtime) {
+  absl::MutexLock lock(&mutex_);
+  fusion_runtime_data_[HloInstructionAdaptor(producer)]
+                      [HloInstructionAdaptor(consumer)] = runtime;
+}
+
 void GpuPerformanceModelCache::Invalidate(const HloInstruction& instruction) {
   absl::MutexLock lock(&mutex_);
+  HloInstructionAdaptor adaptor(instruction);
 
-  instruction_runtime_data_.erase(HloInstructionAdaptor(instruction));
+  // Remove runtime data for the instruction.
+  instruction_runtime_data_.erase(adaptor);
+
+  // Remove cache for all producer-consumer pairs where the instruction is
+  // producer.
+  fusion_runtime_data_.erase(adaptor);
+
+  // Iterate through operands to find all producer-consumer pairs where
+  // instruction is consumer and remove them from cache.
+  for (auto* operand : instruction.operands()) {
+    auto it = fusion_runtime_data_.find(HloInstructionAdaptor(*operand));
+    if (it != fusion_runtime_data_.end()) {
+      it->second.erase(adaptor);
+    }
+  }
 }
 
 /*static*/ EstimateRunTimeData
@@ -642,6 +679,15 @@ absl::Duration GpuPerformanceModel::EstimateFusedExecTime(
       kKernelLaunchOverhead * fused_consumers.size();
   for (auto [idx, fused_consumer] : llvm::enumerate(fused_consumers)) {
     VLOG(8) << "Fused consumer: " << fused_consumer->name();
+
+    if (config.calculate_full_priority && config.gpu_performance_model_cache) {
+      if (auto fusion_runtime = config.gpu_performance_model_cache->Get(
+              *producer, *fused_consumer)) {
+        exec_time_fused += *fusion_runtime;
+        continue;
+      }
+    }
+
     float utilization_by_this_consumer = cost_analysis->operand_utilization(
         *fused_consumer, fused_consumer->operand_index(producer));
 
@@ -668,10 +714,15 @@ absl::Duration GpuPerformanceModel::EstimateFusedExecTime(
     // With `calculate_full_priority`, consumer computation and full read time
     // is accounted in the priority.
     if (config.calculate_full_priority) {
-      exec_time_fused += EstimateRunTimeForFusion(
+      auto fusion_runtime = EstimateRunTimeForFusion(
           producer, fused_consumer, producer_runtime, consumer_runtimes[idx],
           launch_dimensions_fused, utilization_by_this_consumer, cost_analysis,
           analysis_fused, config);
+      exec_time_fused += fusion_runtime;
+      if (config.gpu_performance_model_cache) {
+        config.gpu_performance_model_cache->Set(*producer, *fused_consumer,
+                                                fusion_runtime);
+      }
       continue;
     }
 
