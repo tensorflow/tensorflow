@@ -52,3 +52,24 @@ tf_cc_test(
         "@local_tsl//tsl/platform:types",
     ],
 )
+
+cc_library(
+    name = "graph_def",
+    srcs = [],
+    hdrs = ["graph_def.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "graph_def_test",
+    srcs = ["graph_def_test.cc"],
+    deps = [
+        ":graph_def",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:protobuf",
+    ],
+)

@@ -45,13 +45,3 @@ class PyFunctionLibrary:
       representative_dataset: Any,
   ) -> bytes: ...
   # LINT.ThenChange()
-
-  # LINT.IfChange(enable_dump_tensor)
-  def enable_dump_tensor(self, graph_def_serialized: bytes) -> bytes: ...
-  # LINT.ThenChange()
-
-  # LINT.IfChange(change_dump_tensor_file_name)
-  def change_dump_tensor_file_name(
-      self, graph_def_serialized: bytes
-  ) -> bytes: ...
-  # LINT.ThenChange()
