@@ -114,6 +114,10 @@ class SelectAndScatterShapeInferenceTest : public ShapeInferenceTest {
 class UnboundedBinaryOpShapeInferenceTest
     : public ::testing::TestWithParam<std::vector<std::string>> {};
 
+// Subclass for testing unbounded dynamic unary ops
+class UnboundedUnaryOpShapeInferenceTest
+    : public ::testing::TestWithParam<std::vector<std::string>> {};
+
 TEST_F(ShapeInferenceTest, UnaryNegateMatrix) {
   Shape matrix_shape = ShapeUtil::MakeShape(F32, {128, 64});
   auto inferred_status =
@@ -3742,6 +3746,19 @@ INSTANTIATE_TEST_SUITE_P(All, ScatterShapeInferenceTest,
                                                                       BF16}),
                          ScatterTestName());
 
+TEST_P(UnboundedUnaryOpShapeInferenceTest, UnboundedAbs) {
+  StatusOr<Shape> operand = ParseShape(GetParam()[0]);
+  StatusOr<Shape> expected = ParseShape(GetParam()[1]);
+  ASSERT_IS_OK(operand.status());
+  StatusOr<Shape> inferred_status =
+      ShapeInference::InferUnaryOpShape(HloOpcode::kExp, operand.value());
+  ASSERT_IS_OK(expected.status());
+  ASSERT_IS_OK(inferred_status.status());
+  ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
+      << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
 TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedAdd) {
   StatusOr<Shape> lhs = ParseShape(GetParam()[0]);
   StatusOr<Shape> rhs = ParseShape(GetParam()[1]);
@@ -3759,6 +3776,119 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedAdd) {
   } else {
     EXPECT_THAT(inferred_status.status().message(),
                 HasSubstr("Binary op add with incompatible shapes"));
+  }
+}
+
+TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedDiv) {
+  auto lhs = ParseShape(GetParam()[0]);
+  auto rhs = ParseShape(GetParam()[1]);
+  auto expected = ParseShape(GetParam()[2]);
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  auto inferred_status = ShapeInference::InferBinaryOpShape(
+      HloOpcode::kDivide, lhs.value(), rhs.value(),
+      /*broadcast_dimensions=*/{});
+  if (inferred_status.ok()) {
+    ASSERT_IS_OK(expected.status());
+    ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
+        << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+        << " expected: " << ShapeUtil::HumanString(expected.value());
+  } else {
+    EXPECT_THAT(inferred_status.status().message(),
+                HasSubstr("Binary op divide with incompatible shapes"));
+  }
+}
+
+TEST_P(UnboundedUnaryOpShapeInferenceTest, UnboundedExp) {
+  auto operand = ParseShape(GetParam()[0]);
+  auto expected = ParseShape(GetParam()[1]);
+  ASSERT_IS_OK(operand.status());
+  auto inferred_status =
+      ShapeInference::InferUnaryOpShape(HloOpcode::kExp, operand.value());
+  ASSERT_IS_OK(expected.status());
+  ASSERT_IS_OK(inferred_status.status());
+  ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
+      << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
+TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedMax) {
+  auto lhs = ParseShape(GetParam()[0]);
+  auto rhs = ParseShape(GetParam()[1]);
+  auto expected = ParseShape(GetParam()[2]);
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  auto inferred_status = ShapeInference::InferBinaryOpShape(
+      HloOpcode::kMaximum, lhs.value(), rhs.value(),
+      /*broadcast_dimensions=*/{});
+  if (inferred_status.ok()) {
+    ASSERT_IS_OK(expected.status());
+    ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
+        << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+        << " expected: " << ShapeUtil::HumanString(expected.value());
+  } else {
+    EXPECT_THAT(inferred_status.status().message(),
+                HasSubstr("Binary op maximum with incompatible shapes"));
+  }
+}
+
+TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedMul) {
+  auto lhs = ParseShape(GetParam()[0]);
+  auto rhs = ParseShape(GetParam()[1]);
+  auto expected = ParseShape(GetParam()[2]);
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  auto inferred_status = ShapeInference::InferBinaryOpShape(
+      HloOpcode::kMultiply, lhs.value(), rhs.value(),
+      /*broadcast_dimensions=*/{});
+  if (inferred_status.ok()) {
+    ASSERT_IS_OK(expected.status());
+    ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
+        << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+        << " expected: " << ShapeUtil::HumanString(expected.value());
+  } else {
+    EXPECT_THAT(inferred_status.status().message(),
+                HasSubstr("Binary op multiply with incompatible shapes"));
+  }
+}
+
+TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedPow) {
+  auto lhs = ParseShape(GetParam()[0]);
+  auto rhs = ParseShape(GetParam()[1]);
+  auto expected = ParseShape(GetParam()[2]);
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  auto inferred_status = ShapeInference::InferBinaryOpShape(
+      HloOpcode::kPower, lhs.value(), rhs.value(),
+      /*broadcast_dimensions=*/{});
+  if (inferred_status.ok()) {
+    ASSERT_IS_OK(expected.status());
+    ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
+        << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+        << " expected: " << ShapeUtil::HumanString(expected.value());
+  } else {
+    EXPECT_THAT(inferred_status.status().message(),
+                HasSubstr("Binary op power with incompatible shapes"));
+  }
+}
+
+TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedSub) {
+  auto lhs = ParseShape(GetParam()[0]);
+  auto rhs = ParseShape(GetParam()[1]);
+  auto expected = ParseShape(GetParam()[2]);
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  auto inferred_status = ShapeInference::InferBinaryOpShape(
+      HloOpcode::kSubtract, lhs.value(), rhs.value(),
+      /*broadcast_dimensions=*/{});
+  if (inferred_status.ok()) {
+    ASSERT_IS_OK(expected.status());
+    ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
+        << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+        << " expected: " << ShapeUtil::HumanString(expected.value());
+  } else {
+    EXPECT_THAT(inferred_status.status().message(),
+                HasSubstr("Binary op subtract with incompatible shapes"));
   }
 }
 
@@ -3782,6 +3912,21 @@ INSTANTIATE_TEST_SUITE_P(
         std::vector<std::string>({"f32[?]", "f32[?]", "f32[?]"}),
         // ?,2 | ?,3 | error
         std::vector<std::string>({"f32[?,2]", "f32[?,3]", ""})));
+
+INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, UnboundedUnaryOpShapeInferenceTest,
+                         ::testing::Values(
+                             // OPERAND | Result
+                             // 1       | 1
+                             std::vector<std::string>({"f32[1]", "f32[1]"}),
+                             // 2       | 2
+                             std::vector<std::string>({"f32[2]", "f32[2]"}),
+                             // <=2     | <=2
+                             std::vector<std::string>({"f32[<=2]", "f32[<=2]"}),
+                             // ?       | ?
+                             std::vector<std::string>({"f32[?]", "f32[?]"}),
+                             // ?,3     | ?,3
+                             std::vector<std::string>({"f32[?,3]",
+                                                       "f32[?,3]"})));
 
 }  // namespace
 }  // namespace xla

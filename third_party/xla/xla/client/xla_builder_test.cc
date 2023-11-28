@@ -1558,6 +1558,21 @@ TEST_F(XlaBuilderTest, TopKDimensions) {
   EXPECT_EQ(root->shape().tuple_shapes(1).dimensions(1), k);
 }
 
+TEST_F(XlaBuilderTest, UnboundedAbs) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> operand = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
+  StatusOr<Shape> expected = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
+  ASSERT_IS_OK(operand.status());
+  ASSERT_IS_OK(expected.status());
+  Abs(Parameter(&b, 0, operand.value(), "operand"));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
 TEST_F(XlaBuilderTest, UnboundedAdd) {
   XlaBuilder b(TestName());
   StatusOr<Shape> lhs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
@@ -1583,6 +1598,181 @@ TEST_F(XlaBuilderTest, UnboundedAddUnsupportedImplicitBroadcast) {
   ASSERT_IS_OK(lhs.status());
   ASSERT_IS_OK(rhs.status());
   Add(Parameter(&b, 0, lhs.value(), "lhs"),
+      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{1});
+  StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
+  EXPECT_FALSE(build_status.ok());
+  EXPECT_THAT(build_status.status().message(),
+              HasSubstr("Unbounded dynamic shapes not supported"));
+}
+
+TEST_F(XlaBuilderTest, UnboundedDiv) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> lhs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
+  StatusOr<Shape> rhs = ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]");
+  StatusOr<Shape> expected = ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  ASSERT_IS_OK(expected.status());
+  Div(Parameter(&b, 0, lhs.value(), "lhs"),
+      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
+TEST_F(XlaBuilderTest, UnboundedDivUnsupportedImplicitBroadcast) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> lhs = ParseShape("f32[?, 10]");
+  StatusOr<Shape> rhs = ParseShape("f32[1]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  Div(Parameter(&b, 0, lhs.value(), "lhs"),
+      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{1});
+  StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
+  EXPECT_FALSE(build_status.ok());
+  EXPECT_THAT(build_status.status().message(),
+              HasSubstr("Unbounded dynamic shapes not supported"));
+}
+
+TEST_F(XlaBuilderTest, UnboundedExp) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> operand = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
+  StatusOr<Shape> expected = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
+  ASSERT_IS_OK(operand.status());
+  ASSERT_IS_OK(expected.status());
+  Exp(Parameter(&b, 0, operand.value(), "operand"));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
+TEST_F(XlaBuilderTest, UnboundedMax) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> lhs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
+  StatusOr<Shape> rhs = ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]");
+  StatusOr<Shape> expected = ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  ASSERT_IS_OK(expected.status());
+  Max(Parameter(&b, 0, lhs.value(), "lhs"),
+      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
+TEST_F(XlaBuilderTest, UnboundedMaxUnsupportedImplicitBroadcast) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> lhs = ParseShape("f32[?, 10]");
+  StatusOr<Shape> rhs = ParseShape("f32[1]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  Max(Parameter(&b, 0, lhs.value(), "lhs"),
+      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{1});
+  StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
+  EXPECT_FALSE(build_status.ok());
+  EXPECT_THAT(build_status.status().message(),
+              HasSubstr("Unbounded dynamic shapes not supported"));
+}
+
+TEST_F(XlaBuilderTest, UnboundedMul) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> lhs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
+  StatusOr<Shape> rhs = ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]");
+  StatusOr<Shape> expected = ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  ASSERT_IS_OK(expected.status());
+  Mul(Parameter(&b, 0, lhs.value(), "lhs"),
+      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
+TEST_F(XlaBuilderTest, UnboundedMulUnsupportedImplicitBroadcast) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> lhs = ParseShape("f32[?, 10]");
+  StatusOr<Shape> rhs = ParseShape("f32[1]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  Mul(Parameter(&b, 0, lhs.value(), "lhs"),
+      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{1});
+  StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
+  EXPECT_FALSE(build_status.ok());
+  EXPECT_THAT(build_status.status().message(),
+              HasSubstr("Unbounded dynamic shapes not supported"));
+}
+
+TEST_F(XlaBuilderTest, UnboundedPow) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> lhs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
+  StatusOr<Shape> rhs = ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]");
+  StatusOr<Shape> expected = ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  ASSERT_IS_OK(expected.status());
+  Pow(Parameter(&b, 0, lhs.value(), "lhs"),
+      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
+TEST_F(XlaBuilderTest, UnboundedPowUnsupportedImplicitBroadcast) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> lhs = ParseShape("f32[?, 10]");
+  StatusOr<Shape> rhs = ParseShape("f32[1]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  Pow(Parameter(&b, 0, lhs.value(), "lhs"),
+      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{1});
+  StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
+  EXPECT_FALSE(build_status.ok());
+  EXPECT_THAT(build_status.status().message(),
+              HasSubstr("Unbounded dynamic shapes not supported"));
+}
+
+TEST_F(XlaBuilderTest, UnboundedSub) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> lhs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
+  StatusOr<Shape> rhs = ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]");
+  StatusOr<Shape> expected = ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  ASSERT_IS_OK(expected.status());
+  Sub(Parameter(&b, 0, lhs.value(), "lhs"),
+      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
+TEST_F(XlaBuilderTest, UnboundedSubUnsupportedImplicitBroadcast) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> lhs = ParseShape("f32[?, 10]");
+  StatusOr<Shape> rhs = ParseShape("f32[1]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  Sub(Parameter(&b, 0, lhs.value(), "lhs"),
       Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{1});
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
   EXPECT_FALSE(build_status.ok());
