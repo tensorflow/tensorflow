@@ -500,6 +500,7 @@ cc_library(
         "@llvm-project//mlir:TensorTransforms",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToLLVM",
+        "@llvm-project//mlir:VectorToSCF",
         "@llvm-project//mlir:VectorTransforms",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
