@@ -269,6 +269,9 @@ absl::string_view PlatformName(const PJRT_Api* api,
 absl::Span<PJRT_DeviceDescription* const> DeviceDescriptions(
     const PJRT_Api* api, const PJRT_TopologyDescription* topo_desc);
 
+absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
+    const PJRT_Api* api, PJRT_Executable* executable);
+
 }  // namespace pjrt
 
 #endif  // XLA_PJRT_C_PJRT_C_API_HELPERS_H_

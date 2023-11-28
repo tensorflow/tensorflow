@@ -1,5 +1,8 @@
 # PJRT C API changelog
 
+## 0.40 (Nov 27, 2023)
+* Added PJRT_Executable_GetCompiledMemoryStats.
+
 ## 0.39 (Nov 16, 2023)
 * Add non_donatable_input_indices and num_non_donatable_input_indices to
 PJRT_ExecuteOptions.
