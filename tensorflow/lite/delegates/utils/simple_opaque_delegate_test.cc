@@ -14,20 +14,29 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
 
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
 #include <array>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
 #include "tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_stable_delegate.h"
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/interpreter_builder.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/model_builder.h"
 
 namespace tflite {
 

@@ -14,16 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/utils/simple_delegate.h"
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <limits>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/utils.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite {
