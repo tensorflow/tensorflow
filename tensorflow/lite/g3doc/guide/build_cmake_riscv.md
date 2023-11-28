@@ -24,8 +24,8 @@ RISC-V prebuilt toolchain(GCC & LLVM) and qemu have been provided in release pag
 ```sh
 # Example: Download 2023.07.07 nightly GCC
 cd ${TENSORFLOW_SRC_PATH}/tensorflow/lite/tools/cmake
-wget https://github.com/riscv-collab/riscv-gnu-toolchain/releases/download/2023.07.07/riscv64-glibc-ubuntu-20.04-gcc-nightly-2023.07.07-nightly.tar.gz
-tar zxvf riscv64-glibc-ubuntu-20.04-gcc-nightly-2023.07.07-nightly.tar.gz
+wget https://github.com/riscv-collab/riscv-gnu-toolchain/releases/download/2023.11.20/riscv64-glibc-ubuntu-22.04-gcc-nightly-2023.11.20-nightly.tar.gz
+tar zxvf riscv64-glibc-ubuntu-22.04-gcc-nightly-2023.11.20-nightly.tar.gz
 ```
 - gcc is in `riscv/bin/riscv64-unknown-linux-gnu-gcc`.
 - g++ is in `riscv/bin/riscv64-unknown-linux-gnu-g++`.
