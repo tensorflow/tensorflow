@@ -42,7 +42,7 @@ fi
 # 'TFCI_MACOS_BAZEL_TEST_DIR_PATH' environment variable to point to a partition
 # with ample storage. When this variable is empty (i.e by default), Bazel will
 # use the output base directory to run tests.
-if [[ "${TFCI_MACOS_BAZEL_TEST_DIR_ENABLE}"==1 ]]; then
+if [[ "${TFCI_MACOS_BAZEL_TEST_DIR_ENABLE}" == 1 ]]; then
   mkdir -p "${TFCI_MACOS_BAZEL_TEST_DIR_PATH}"
   export TEST_TMPDIR="${TFCI_MACOS_BAZEL_TEST_DIR_PATH}"
 fi
