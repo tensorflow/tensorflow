@@ -758,6 +758,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":gpu_constants",
+        "//xla:status",
         "//xla:status_macros",
         "//xla:statusor",
         "//xla:types",

@@ -16,17 +16,18 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_BUFFER_ALLOCATIONS_H_
 #define XLA_SERVICE_GPU_BUFFER_ALLOCATIONS_H_
 
-#include <memory>
+#include <cstddef>
+#include <cstdint>
 #include <set>
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
-#include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -37,6 +38,28 @@ namespace gpu {
 // allocated device buffers.
 class BufferAllocations {
  public:
+  // This special address is used to indicate that the allocation is not
+  // allocated at construction time and instead will be lazily allocated and
+  // owned by the XLA executable itself (we use this special marker to handle
+  // buffer allocations allocated within command buffers, which for CUDA
+  // backends means that buffer allocation is done via memory allocation node).
+  //
+  // TODO(ezhulenev): Replace magic bit pattern with std::optional or
+  // std::variant to distinguish external allocations from a regular ones.
+  static constexpr uintptr_t kExternalAllocationMarker = 0xDEADBEEF;
+
+  // A virtual base class for external allocations that provides a mapping
+  // from a buffer index to an externally-managed device memory.
+  class ExternalAllocations {
+   public:
+    virtual ~ExternalAllocations() = default;
+
+    // Return a device address for a given buffer slice. Returns error if
+    // corresponding allocation is not yet allocated.
+    virtual StatusOr<se::DeviceMemoryBase> GetDeviceAddress(
+        BufferAllocation::Slice buffer_slice) const = 0;
+  };
+
   BufferAllocations(absl::Span<se::DeviceMemoryBase const> buffers,
                     int device_ordinal,
                     se::DeviceMemoryAllocator* memory_allocator)
@@ -69,14 +92,12 @@ class BufferAllocations {
   se::DeviceMemoryBase GetDeviceAddress(
       const BufferAllocation::Slice& buffer_slice) const;
 
-  // For buffers that are lazily allocated through command buffer, this is
-  // indicated by specifying a special buffer address
-  // (LAZY_ALLOCATE_ADDRESS_MARKER), the real buffer address is tracked in
-  // CommandBuffer, this API will fetches the real address from CommandBuffer
-  // runtime.
-  se::DeviceMemoryBase GetDeviceAddress(
+  // Finds an allocation for a given buffer slice, and if it happens to be an
+  // external allocation resolves it using user-provided external allocations.
+  // Returns error if external allocations do not have an address for a slice.
+  StatusOr<se::DeviceMemoryBase> GetDeviceAddress(
       const BufferAllocation::Slice& buffer_slice,
-      const se::CommandBuffer* command_buffer) const;
+      const ExternalAllocations& external_allocations) const;
 
   // Tears down all buffers allocated by this object that are not in
   // `live_addresses`.

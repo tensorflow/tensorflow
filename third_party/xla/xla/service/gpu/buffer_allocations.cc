@@ -15,17 +15,12 @@ limitations under the License.
 
 #include "xla/service/gpu/buffer_allocations.h"
 
-#include <memory>
-#include <utility>
+#include <cstdint>
+#include <set>
 
-#include "xla/map_util.h"
-#include "xla/service/gpu/gpu_constants.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
-#include "xla/util.h"
-#include "tsl/lib/gtl/map_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
+#include "xla/stream_executor/device_memory.h"
 
 namespace xla {
 namespace gpu {
@@ -79,30 +74,14 @@ se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
       buffer_slice.size());
 }
 
-se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
+StatusOr<se::DeviceMemoryBase> BufferAllocations::GetDeviceAddress(
     const BufferAllocation::Slice& buffer_slice,
-    const se::CommandBuffer* command_buffer) const {
+    const ExternalAllocations& external_allocations) const {
+  // Check if base memory address is an external allocation.
   se::DeviceMemoryBase base = GetDeviceAddress(buffer_slice.index());
-  CHECK_LE(buffer_slice.offset(), base.size());
-  CHECK_LE(buffer_slice.offset() + buffer_slice.size(), base.size());
-
-  if (base.is_external_allocation_marker()) {
-    auto cmd_buffer_base =
-        command_buffer->GetAllocationAddress(buffer_slice.index());
-    CHECK(cmd_buffer_base.ok())
-        << "Get allocation address from command_buffer failed";
-    CHECK(!cmd_buffer_base.value().is_null())
-        << "Allocation is not yet allocated by command buffer for slice: "
-        << buffer_slice.ToString();
-    return se::DeviceMemoryBase(
-        static_cast<char*>(cmd_buffer_base.value().opaque()) +
-            buffer_slice.offset(),
-        buffer_slice.size());
-  }
-
-  return se::DeviceMemoryBase(
-      static_cast<char*>(base.opaque()) + buffer_slice.offset(),
-      buffer_slice.size());
+  return reinterpret_cast<uintptr_t>(base.opaque()) == kExternalAllocationMarker
+             ? external_allocations.GetDeviceAddress(buffer_slice)
+             : GetDeviceAddress(buffer_slice);
 }
 
 }  // namespace gpu
