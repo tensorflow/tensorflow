@@ -334,6 +334,16 @@ void BuildJaxjitSubmodule(py::module& m) {
       "thread_local_state", [&]() { return &ThreadLocalJitState(); },
       py::return_value_policy::reference);
 
+  jitlib.def(
+      "swap_thread_local_state_disable_jit",
+      [&](std::optional<bool> value) -> std::optional<bool> {
+        auto tls = &ThreadLocalJitState();
+        auto result = tls->disable_jit;
+        tls->disable_jit = value;
+        return result;
+      },
+      py::return_value_policy::reference);
+
   jitlib.def("jit_is_disabled", &GetDisableJit);
   jitlib.def("get_enable_x64", &GetEnableX64);
   jitlib.def("set_thread_local_state_initialization_callback",

@@ -39,6 +39,9 @@ def get_enable_x64() -> bool: ...
 def set_thread_local_state_initialization_callback(
     function: Callable[[], None]): ...
 
+def swap_thread_local_state_disable_jit(
+    value: Optional[bool]) -> Optional[bool]: ...
+
 class ArgSignature:
   dtype: np.dtype
   shape: Tuple[int, ...]
