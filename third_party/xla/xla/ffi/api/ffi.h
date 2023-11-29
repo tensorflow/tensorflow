@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -129,23 +130,25 @@ struct PtrType {
 
 // clang-format off
 template <> struct PtrType<DataType::PRED> { using Type = bool; };
-template <> struct PtrType<DataType::U8>   { using Type = std::uint8_t; };
-template <> struct PtrType<DataType::U16>  { using Type = std::uint16_t; };
-template <> struct PtrType<DataType::U32>  { using Type = std::uint32_t; };
-template <> struct PtrType<DataType::U64>  { using Type = std::uint64_t; };
-template <> struct PtrType<DataType::S8>   { using Type = std::int8_t; };
-template <> struct PtrType<DataType::S16>  { using Type = std::int16_t; };
-template <> struct PtrType<DataType::S32>  { using Type = std::int32_t; };
-template <> struct PtrType<DataType::S64>  { using Type = std::int64_t; };
-template <> struct PtrType<DataType::F16>  { using Type = std::uint16_t; };
+template <> struct PtrType<DataType::U8>   { using Type = uint8_t; };
+template <> struct PtrType<DataType::U16>  { using Type = uint16_t; };
+template <> struct PtrType<DataType::U32>  { using Type = uint32_t; };
+template <> struct PtrType<DataType::U64>  { using Type = uint64_t; };
+template <> struct PtrType<DataType::S8>   { using Type = int8_t; };
+template <> struct PtrType<DataType::S16>  { using Type = int16_t; };
+template <> struct PtrType<DataType::S32>  { using Type = int32_t; };
+template <> struct PtrType<DataType::S64>  { using Type = int64_t; };
+template <> struct PtrType<DataType::F16>  { using Type = uint16_t; };
 template <> struct PtrType<DataType::F32>  { using Type = float; };
 template <> struct PtrType<DataType::F64>  { using Type = double; };
-template <> struct PtrType<DataType::BF16> { using Type = std::uint16_t; };
+template <> struct PtrType<DataType::BF16> { using Type = uint16_t; };
 // clang-format on
+
+inline constexpr size_t kDynamicRank = std::numeric_limits<size_t>::max();
 
 }  // namespace internal
 
-template <DataType dtype>
+template <DataType dtype, size_t rank = internal::kDynamicRank>
 struct BufferBase {
   typename internal::PtrType<dtype>::Type* data;
   Span<const int64_t> dimensions;
@@ -162,12 +165,11 @@ inline std::ostream& operator<<(std::ostream& os, const XLA_FFI_ArgType type) {
   }
 }
 
-template <DataType dtype>
-struct ArgDecoding<BufferBase<dtype>> {
+template <DataType dtype, size_t rank>
+struct ArgDecoding<BufferBase<dtype, rank>> {
   XLA_ATTRIBUTE_ALWAYS_INLINE
-  static std::optional<BufferBase<dtype>> Decode(XLA_FFI_ArgType type,
-                                                 void* arg,
-                                                 DiagnosticEngine& diagnostic) {
+  static std::optional<BufferBase<dtype, rank>> Decode(
+      XLA_FFI_ArgType type, void* arg, DiagnosticEngine& diagnostic) {
     if (type != XLA_FFI_ArgType_BUFFER) {
       return diagnostic.Emit("Wrong argument type: expected ")
              << XLA_FFI_ArgType_BUFFER << " but got " << type;
@@ -180,7 +182,14 @@ struct ArgDecoding<BufferBase<dtype>> {
     }
     auto* data =
         static_cast<typename internal::PtrType<dtype>::Type*>(buf->data);
-    return BufferBase<dtype>{data, Span<const int64_t>(buf->dims, buf->rank)};
+    if constexpr (rank != internal::kDynamicRank) {
+      if (buf->rank != rank) {
+        diagnostic.Emit("Wrong buffer rank: expected ")
+            << rank << " but got " << buf->rank;
+        return std::nullopt;
+      }
+    }
+    return BufferBase<dtype, rank>{data, Span<const int64_t>(buf->dims, rank)};
   }
 };
 
