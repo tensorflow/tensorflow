@@ -1366,7 +1366,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     // normalizing tuple sharding.
     HloSharding hlo_sharding = HloSharding::FromProto(sharding.value()).value();
     hlo_sharding = hlo_sharding.NormalizeTupleSharding(instruction->shape());
-    instruction->set_sharding(hlo_sharding);
+    instruction->set_sharding(std::move(hlo_sharding));
   }
   if (parameter_replication) {
     int leaf_count = ShapeUtil::GetLeafCount(instruction->shape());

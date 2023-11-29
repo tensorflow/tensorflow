@@ -1663,8 +1663,8 @@ class HloInstruction {
   }
   // Sets the sharding of this operator. Should only be called by HloModule or
   // HloComputation methods.
-  void set_sharding(const HloSharding& sharding) {
-    set_sharding(std::make_shared<const HloSharding>(sharding));
+  void set_sharding(HloSharding sharding) {
+    set_sharding(std::make_shared<HloSharding>(std::move(sharding)));
   }
   void set_sharding(std::shared_ptr<const HloSharding> sharding) {
     sharding_ = std::move(sharding);

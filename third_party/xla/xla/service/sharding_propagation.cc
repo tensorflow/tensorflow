@@ -1598,13 +1598,14 @@ StatusOr<bool> ProcessShardingInstruction(
           absl::c_sort(unspec_dims);
           unspecified_dims->emplace(instruction, std::move(unspec_dims));
         } else if (!instruction->operand(0)->has_sharding()) {
-          instruction->mutable_operand(0)->set_sharding(sharding);
+          instruction->mutable_operand(0)->set_sharding(std::move(sharding));
         }
       } else if (instruction->has_sharding()) {
         // Handle shard group in parameters/outputs.
         process_shard_group_instruction(instruction, instruction->sharding());
         HloSharding sharding = instruction->sharding();
-        instruction->set_sharding(sharding.ClearShardGroup());
+        sharding.ClearShardGroup();
+        instruction->set_sharding(std::move(sharding));
       }
     }
   }
@@ -1669,7 +1670,7 @@ int64_t ComputeNonRootUsers(const HloInstruction* instr) {
               operand_sharding =
                   HloSharding::SingleTuple(operand->shape(), *sharding);
             }
-            operand->set_sharding(operand_sharding);
+            operand->set_sharding(std::move(operand_sharding));
           }
         }
         return OkStatus();
@@ -2256,7 +2257,7 @@ bool ShardingPropagation::InferShardingFromOperands(
       HloSharding new_sharding = operand->sharding().GetSubSharding(
           operand->shape(), {instruction->tuple_index()});
       if (new_sharding.IsManual()) {
-        instruction->set_sharding(new_sharding);
+        instruction->set_sharding(std::move(new_sharding));
         return true;
       }
       return MaybeImproveInstructionSharding(
@@ -2772,7 +2773,7 @@ bool ShardingPropagation::InferShardingFromUsers(
             ShardingPropagation::GetShardingFromUser(
                 *instruction, *user, aggressiveness, is_spmd, call_graph);
         if (user_sharding && user_sharding->IsManual()) {
-          instruction->set_sharding(*user_sharding);
+          instruction->set_sharding(std::move(*user_sharding));
           return true;
         }
       }
@@ -3331,7 +3332,7 @@ StatusOr<bool> ShardingPropagation::Run(
         root_sharding.tuple_elements()[i] = saved_root_shardings[i];
       }
     }
-    root_instruction->set_sharding(root_sharding);
+    root_instruction->set_sharding(std::move(root_sharding));
   }
   auto params = module->entry_computation()->parameter_instructions();
   if (allow_spmd_sharding_propagation_to_parameters_ &&
