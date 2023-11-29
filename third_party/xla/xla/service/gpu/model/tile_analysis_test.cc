@@ -88,6 +88,54 @@ TEST_F(TileAnalysisTest, ElementwiseOp) {
                                                       std::vector<int>{})))));
 }
 
+TEST_F(TileAnalysisTest, BitcastIsReshape) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetIndexingMapsForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[4, 32] parameter(0)
+      ROOT bitcast = f32[4, 8, 4] bitcast(p0)
+    }
+  )"));
+  EXPECT_THAT(
+      input_indexing.operand_indexing_maps,
+      ElementsAre(MatchOperandIndexing(
+          0, ElementsAre(MatchIndexingMap("(d0, d1, d2) -> (d0, d1 * 4 + d2)",
+                                          std::vector<int>{})))));
+}
+
+TEST_F(TileAnalysisTest, BitcastIsTranspose) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetIndexingMapsForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[3, 12288, 6, 128] parameter(0)
+      ROOT bitcast = f32[3, 6, 128, 12288] {2, 1, 3, 0} bitcast(p0)
+    }
+  )"));
+  EXPECT_THAT(input_indexing.operand_indexing_maps,
+              ElementsAre(MatchOperandIndexing(
+                  0, ElementsAre(MatchIndexingMap(
+                         "(d0, d1, d2, d3) -> (d0, d3, d1, d2)",
+                         std::vector<int>{})))));
+}
+
+TEST_F(TileAnalysisTest, BitcastIsTransposeReshapeTranspose) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetIndexingMapsForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[16, 17, 3] parameter(0)
+      ROOT bitcast = f32[51, 16] {0, 1} bitcast(p0)
+    }
+  )"));
+  EXPECT_THAT(input_indexing.operand_indexing_maps,
+              ElementsAre(MatchOperandIndexing(
+                  0, ElementsAre(MatchIndexingMap(
+                         "(d0, d1) -> (d1, d0 floordiv 3, d0 mod 3)",
+                         std::vector<int>{})))));
+}
+
 TEST_F(TileAnalysisTest, BroadcastOp) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
                           GetIndexingMapsForEntryComputation(R"(
@@ -602,15 +650,31 @@ TEST_F(TileAnalysisTest, TransposeOp) {
                           GetIndexingMapsForEntryComputation(R"(
     HloModule m
     ENTRY e {
-      p0 = f16[1, 8, 1536, 512] parameter(0)
-      ROOT transpose = f16[1, 8, 512, 1536]{2, 3, 1, 0}
-             transpose(p0), dimensions={0, 1, 3, 2}
+      p0 = f32[3, 12288, 6, 128] parameter(0)
+      ROOT transpose = f32[3, 6, 128, 12288]
+        transpose(p0), dimensions={0, 2, 3, 1}
     }
   )"));
   EXPECT_THAT(input_indexing.operand_indexing_maps,
               ElementsAre(MatchOperandIndexing(
                   0, ElementsAre(MatchIndexingMap(
-                         "(d0, d1, d2, d3) -> (d0, d1, d3, d2)",
+                         "(d0, d1, d2, d3) -> (d0, d3, d1, d2)",
+                         std::vector<int>{})))));
+}
+
+TEST_F(TileAnalysisTest, TransposeOp4D) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetIndexingMapsForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[3, 12288, 6, 128] parameter(0)
+      ROOT bitcast = f32[3, 6, 128, 12288] {2, 1, 3, 0} bitcast(p0)
+    }
+  )"));
+  EXPECT_THAT(input_indexing.operand_indexing_maps,
+              ElementsAre(MatchOperandIndexing(
+                  0, ElementsAre(MatchIndexingMap(
+                         "(d0, d1, d2, d3) -> (d0, d3, d1, d2)",
                          std::vector<int>{})))));
 }
 

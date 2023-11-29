@@ -23,6 +23,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -352,10 +354,9 @@ StatusOr<HloInstructionIndexing> ComputeReduceOpIndexing(
   }
   return HloInstructionIndexing{std::move(operand_indexing_maps)};
 }
-
 // Computes strides for a shape.
 std::vector<int64_t> ComputeStrides(absl::Span<const int64_t> dims) {
-  size_t rank = dims.size();
+  int rank = static_cast<int>(dims.size());
   std::vector<int64_t> strides(rank, 1);
   for (int i = rank - 2; i >= 0; --i) {
     strides[i] = dims[i + 1] * strides[i + 1];
@@ -458,9 +459,9 @@ void ComputeMinimalReshapeIndexing(
 // This is an optimization that allows us to construct simpler affine maps,
 // otherwise we would need to linearize/delinearize even some of the simpler
 // cases.
-std::vector<AffineExpr> ComputeComposedReshapeIndexing(
-    absl::Span<const int64_t> input_dims, absl::Span<const int64_t> output_dims,
-    MLIRContext* mlir_context) {
+IndexingMap ComputeReshapeIndexingMap(absl::Span<const int64_t> input_dims,
+                                      absl::Span<const int64_t> output_dims,
+                                      MLIRContext* mlir_context) {
   std::vector<AffineExpr> exprs;
 
   size_t input_rank = input_dims.size();
@@ -500,23 +501,20 @@ std::vector<AffineExpr> ComputeComposedReshapeIndexing(
     output_subshape.clear();
     output_dims_exprs.clear();
   }
-  return exprs;
-}
-
-StatusOr<HloInstructionIndexing> ComputeReshapeOpIndexing(
-    const HloInstruction* reshape, MLIRContext* mlir_context) {
-  auto input_dims = reshape->operand(0)->shape().dimensions();
-  auto output_dims = reshape->shape().dimensions();
-
-  std::vector<AffineExpr> exprs =
-      ComputeComposedReshapeIndexing(input_dims, output_dims, mlir_context);
-
-  IndexingMap indexing_map{
+  return IndexingMap{
       .affine_map = AffineMap::get(output_dims.size(), /*symbolCount=*/0, exprs,
                                    mlir_context),
       .input_dims_sizes = {}};
+}
+
+StatusOr<HloInstructionIndexing> ComputeReshapeOpIndexing(
+    const HloReshapeInstruction* reshape, MLIRContext* mlir_context) {
+  auto input_dims = reshape->operand(0)->shape().dimensions();
+  auto output_dims = reshape->shape().dimensions();
+  IndexingMap reshape_indexing_map =
+      ComputeReshapeIndexingMap(input_dims, output_dims, mlir_context);
   return HloInstructionIndexing{{HloOperandIndexing{
-      .indexing_maps = {std::move(indexing_map)}, .operand_id = 0}}};
+      .indexing_maps = {std::move(reshape_indexing_map)}, .operand_id = 0}}};
 }
 
 StatusOr<HloInstructionIndexing> ComputeReverseOpIndexing(
@@ -572,17 +570,63 @@ StatusOr<HloInstructionIndexing> ComputeSliceOpIndexing(
       .indexing_maps = {std::move(indexing_map)}, .operand_id = 0}}};
 }
 
+IndexingMap ComputeTransposeIndexingMap(absl::Span<const int64_t> permutation,
+                                        MLIRContext* mlir_context) {
+  auto forward_permutation = AffineMap::getPermutationMap(
+      std::vector<unsigned>(permutation.begin(), permutation.end()),
+      mlir_context);
+  return IndexingMap{
+      .affine_map = mlir::inversePermutation(forward_permutation),
+      .input_dims_sizes = {}};
+}
+
 StatusOr<HloInstructionIndexing> ComputeTransposeOpIndexing(
     const HloTransposeInstruction* transpose, MLIRContext* mlir_context) {
-  std::vector<unsigned> permutation(transpose->dimensions().begin(),
-                                    transpose->dimensions().end());
-  IndexingMap permutation_map{
-      .affine_map = mlir::inversePermutation(
-          AffineMap::getPermutationMap(permutation, mlir_context)),
-      .input_dims_sizes = {}};
-
+  IndexingMap transpose_indexing_map =
+      ComputeTransposeIndexingMap(transpose->dimensions(), mlir_context);
   return HloInstructionIndexing{{HloOperandIndexing{
-      .indexing_maps = {std::move(permutation_map)}, .operand_id = 0}}};
+      .indexing_maps = {std::move(transpose_indexing_map)}, .operand_id = 0}}};
+}
+
+StatusOr<HloInstructionIndexing> ComputeBitcastOpIndexing(
+    const HloInstruction* bitcast, MLIRContext* mlir_context) {
+  const Shape& input_shape = bitcast->operand(0)->shape();
+  const Shape& output_shape = bitcast->shape();
+  ShapeUtil::BitcastDecomposition decomposed_bitcast =
+      ShapeUtil::DecomposeBitcast(input_shape, output_shape);
+
+  if (std::holds_alternative<ShapeUtil::BitcastDecompositionTranspose>(
+          decomposed_bitcast)) {
+    auto permutation = ShapeUtil::DeduceTransposeDimensionsForBitcast(
+        input_shape, output_shape);
+    CHECK(permutation.has_value())
+        << "Failed to deduce permutation for a bitcast.";
+    IndexingMap transpose_indexing_map =
+        ComputeTransposeIndexingMap(*permutation, mlir_context);
+    return HloInstructionIndexing{{HloOperandIndexing{
+        .indexing_maps = {std::move(transpose_indexing_map)},
+        .operand_id = 0}}};
+  }
+  if (std::holds_alternative<ShapeUtil::BitcastDecompositionReshape>(
+          decomposed_bitcast)) {
+    IndexingMap reshape_indexing_map = ComputeReshapeIndexingMap(
+        input_shape.dimensions(), output_shape.dimensions(), mlir_context);
+    return HloInstructionIndexing{{HloOperandIndexing{
+        .indexing_maps = {std::move(reshape_indexing_map)}, .operand_id = 0}}};
+  }
+  // `trt` stands for transpose-reshape-transpose decomposition of bitcast.
+  auto trt = std::get<ShapeUtil::BitcastDecompositionTrt>(decomposed_bitcast);
+  IndexingMap transpose_map_1 =
+      ComputeTransposeIndexingMap(trt.transpose1_dims, mlir_context);
+  IndexingMap reshape_map =
+      ComputeReshapeIndexingMap(trt.transpose1_shape.dimensions(),
+                                trt.reshape_shape.dimensions(), mlir_context);
+  IndexingMap transpose_map_2 =
+      ComputeTransposeIndexingMap(trt.transpose2_dims, mlir_context);
+  IndexingMap composed_map = ComposeIndexingMaps(
+      ComposeIndexingMaps(transpose_map_1, reshape_map), transpose_map_2);
+  return HloInstructionIndexing{{HloOperandIndexing{
+      .indexing_maps = {std::move(composed_map)}, .operand_id = 0}}};
 }
 
 template <typename T>
@@ -906,6 +950,9 @@ StatusOr<HloInstructionIndexing> ComputeInstructionIndexing(
   }
   if (auto bcast = DynCast<HloBroadcastInstruction>(instr)) {
     return ComputeBroadcastOpIndexing(bcast, mlir_context);
+  }
+  if (instr->opcode() == HloOpcode::kBitcast) {
+    return ComputeBitcastOpIndexing(instr, mlir_context);
   }
   if (auto dot = DynCast<HloDotInstruction>(instr)) {
     return ComputeDotOpIndexing(dot, mlir_context);
