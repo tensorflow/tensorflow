@@ -330,12 +330,11 @@ TEST_F(TileAnalysisTest, FusionOpWithReshape_ExpandOfCollapse) {
       ROOT fusion = f32[8, 16] fusion(p0), kind=kLoop, calls=f
     }
   )"));
-  // TODO(b/313840171): Simplify the composed affine expression.
+  EXPECT_TRUE(input_indexing.Simplify({8, 16}));
   EXPECT_THAT(input_indexing.operand_indexing_maps,
               ElementsAre(MatchOperandIndexing(
-                  0, ElementsAre(MatchIndexingMap(
-                         "(d0, d1) -> (d0 + d1 floordiv 16, d1 mod 16)",
-                         std::vector<int>{})))));
+                  0, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0, d1)",
+                                                  std::vector<int>{})))));
 }
 
 TEST_F(TileAnalysisTest, FusionOpWithReshape_ChainedGenericReshapes) {
@@ -352,14 +351,12 @@ TEST_F(TileAnalysisTest, FusionOpWithReshape_ChainedGenericReshapes) {
       ROOT fusion = f32[10, 10, 10] fusion(p0), kind=kLoop, calls=f
     }
   )"));
-  // TODO(b/313840171): Simplify the composed affine expression.
+  EXPECT_TRUE(input_indexing.Simplify({10, 10, 10}));
   EXPECT_THAT(
       input_indexing.operand_indexing_maps,
       ElementsAre(MatchOperandIndexing(
-          0, ElementsAre(MatchIndexingMap(
-                 "(d0, d1, d2) -> ((d0 * 100 + d1 * 10 + d2) floordiv 100, "
-                 "((d0 * 100 + d1 * 10 + d2) mod 100) floordiv 10, d2 mod 10)",
-                 std::vector<int>{})))));
+          0, ElementsAre(MatchIndexingMap("(d0, d1, d2) -> (d0, d1, d2)",
+                                          std::vector<int>{})))));
 }
 
 TEST_F(TileAnalysisTest, FusionOpWithSliceOfSlice) {
@@ -395,6 +392,7 @@ TEST_F(TileAnalysisTest, ReshapeOpCollapseShape) {
       ROOT reshape = f32[32] reshape(p0)
     }
   )"));
+  EXPECT_FALSE(input_indexing.Simplify({32}));
   EXPECT_THAT(
       input_indexing.operand_indexing_maps,
       ElementsAre(MatchOperandIndexing(
@@ -411,6 +409,7 @@ TEST_F(TileAnalysisTest, ReshapeOpExpandShape) {
       ROOT reshape = f32[4, 8] reshape(p0)
     }
   )"));
+  EXPECT_FALSE(input_indexing.Simplify({4, 8}));
   EXPECT_THAT(input_indexing.operand_indexing_maps,
               ElementsAre(MatchOperandIndexing(
                   0, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0 * 8 + d1)",
@@ -426,6 +425,7 @@ TEST_F(TileAnalysisTest, ReshapeOpExpandAndCollapseShape) {
       ROOT reshape = f32[32, 3, 4] reshape(p0)
     }
   )"));
+  EXPECT_FALSE(input_indexing.Simplify({32, 3, 4}));
   EXPECT_THAT(
       input_indexing.operand_indexing_maps,
       ElementsAre(MatchOperandIndexing(
@@ -443,6 +443,7 @@ TEST_F(TileAnalysisTest, ReshapeOpExpandSubshapeOnly) {
       ROOT reshape = f32[4, 4, 8] reshape(p0)
     }
   )"));
+  EXPECT_FALSE(input_indexing.Simplify({4, 4, 8}));
   EXPECT_THAT(
       input_indexing.operand_indexing_maps,
       ElementsAre(MatchOperandIndexing(
@@ -459,11 +460,13 @@ TEST_F(TileAnalysisTest, ReshapeOpGenericReshape2DTO3D) {
       ROOT reshape = f32[2, 4, 4] reshape(p0)
     }
   )"));
+  EXPECT_TRUE(input_indexing.Simplify({2, 4, 4}));
+  // TODO(b/313840171): Simplify `(d1 * 4 + d2) floordiv 8` to `d1 floordiv 2`.
   EXPECT_THAT(input_indexing.operand_indexing_maps,
               ElementsAre(MatchOperandIndexing(
                   0, ElementsAre(MatchIndexingMap(
-                         "(d0, d1, d2) -> ((d0 * 16 + d1 * 4 + d2) floordiv 8, "
-                         "(d0 * 16 + d1 * 4 + d2) mod 8)",
+                         "(d0, d1, d2) -> (d0 * 2 + (d1 * 4 + d2) floordiv 8, "
+                         "(d1 * 4 + d2) mod 8)",
                          std::vector<int>{})))));
 }
 
@@ -476,6 +479,10 @@ TEST_F(TileAnalysisTest, ReshapeOpGenericReshape3DTO2D) {
       ROOT reshape = f32[4, 8] reshape(p0)
     }
   )"));
+  EXPECT_FALSE(input_indexing.Simplify({4, 8}));
+  // TODO(b/313840171): Simplify `(d0 * 8 + d1) floordiv 16` to `d0 floordiv 2`.
+  // TODO(b/313840171): Simplify `((d0 * 8 + d1) mod 16) floordiv 4` to
+  // `((d0 * 8 + d1) floordiv 4) mod 4` to `(d0 * 2 + d1 floordiv 4) mod 4`.
   EXPECT_THAT(input_indexing.operand_indexing_maps,
               ElementsAre(MatchOperandIndexing(
                   0, ElementsAre(MatchIndexingMap(
@@ -565,6 +572,7 @@ TEST_F(TileAnalysisTest, ReverseOp) {
      ROOT reverse = f32[1, 17, 9, 9] reverse(p0), dimensions={1, 2}
     }
   )"));
+  // TODO(b/313840171): Support simplifying this.
   EXPECT_THAT(input_indexing.operand_indexing_maps,
               ElementsAre(MatchOperandIndexing(
                   0, ElementsAre(MatchIndexingMap(

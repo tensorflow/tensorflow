@@ -65,6 +65,8 @@ namespace gpu {
 // could not be expressed via dimensions of the output.
 struct IndexingMap {
   std::string ToString() const;
+  // Returns true if the map was simplified.
+  bool Simplify(absl::Span<const int64_t> dimension_sizes);
 
   mlir::AffineMap affine_map;
   std::vector<int64_t> input_dims_sizes;
@@ -84,6 +86,9 @@ H AbslHashValue(H h, const IndexingMap& indexing_map) {
 struct HloOperandIndexing {
   std::string ToString() const;
 
+  // Returns true if the indexing was simplified.
+  bool Simplify(absl::Span<const int64_t> dimension_sizes);
+
   absl::flat_hash_set<IndexingMap> indexing_maps;
   int64_t operand_id;
 };
@@ -94,6 +99,9 @@ std::ostream& operator<<(std::ostream& out,
 // correspond to a particular output.
 struct HloInstructionIndexing {
   std::string ToString() const;
+
+  // Returns true if the indexing was simplified.
+  bool Simplify(absl::Span<const int64_t> dimension_sizes);
 
   std::vector<HloOperandIndexing> operand_indexing_maps;
 };
