@@ -407,6 +407,14 @@ AsyncTracker::GetOccupiedShareableResourcesFromVector(
   return {};
 }
 
+// For now, only the target-defined resources have serial hazard type, so
+// this async tracker does not know which resources are serial.
+absl::InlinedVector<int64_t, 1>
+AsyncTracker::GetOccupiedSerialResourcesFromVector(
+    const ResourcesVector& resources) const {
+  return {};
+}
+
 BufferInfoTracker::BufferInfoTracker(
     const HloModule* module, const HloAliasAnalysis* alias_analysis,
     const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes) {
@@ -772,6 +780,20 @@ class ReadySetLt {
             b_ready_interval < a_ready_interval, b, "kLessStall")) {
       return *value;
     }
+    if (sched_state_.config.resource_serializing) {
+      // Prioritize scheduling the instruction which has less serial-resource
+      // conflicts with the resources in flight.
+      const int64_t a_num_conflicting_resources =
+          GetNumConflictingSerialResources(a);
+      const int64_t b_num_conflicting_resources =
+          GetNumConflictingSerialResources(b);
+      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+              a_num_conflicting_resources < b_num_conflicting_resources, a,
+              b_num_conflicting_resources < a_num_conflicting_resources, b,
+              "kLessSerialResourceConflict")) {
+        return *value;
+      }
+    }
     if (sched_state_.config.aggressive_scheduling_policies) {
       // If an instruction releasing a resource is not resource constrained and
       // has an async depth of 0, delay it as much as possible to avoid
@@ -994,6 +1016,19 @@ class ReadySetLt {
           std::max(start_result->second, cand.pressure_change->second);
     }
     return *cand.pressure_change;
+  }
+  int64_t GetNumConflictingSerialResources(
+      DefaultSchedulerCore::ScheduleCandidate& cand) const {
+    auto resources =
+        sched_state_.async_tracker->GetOccupiedSerialResourcesFromVector(
+            cand.node->GetResources());
+    int64_t num_conflicting_resources = 0;
+    for (int64_t resource : resources) {
+      if (!sched_state_.resources_in_flight.contains(resource)) continue;
+      num_conflicting_resources +=
+          sched_state_.resources_in_flight.at(resource);
+    }
+    return num_conflicting_resources;
   }
 };
 
