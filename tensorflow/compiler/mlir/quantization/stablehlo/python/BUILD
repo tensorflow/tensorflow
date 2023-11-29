@@ -55,6 +55,7 @@ pytype_strict_library(
         "//tensorflow/python/module",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/types:core",
