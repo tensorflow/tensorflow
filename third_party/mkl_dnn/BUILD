@@ -50,5 +50,6 @@ py_binary(
     visibility = [
         "@mkl_dnn_acl_compatible//:__subpackages__",
         "@mkl_dnn_v1//:__subpackages__",
+        "@onednn//:__subpackages__",
     ],
 )
