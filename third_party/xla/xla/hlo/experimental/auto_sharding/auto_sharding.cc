@@ -1217,18 +1217,6 @@ StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
   return strategy_group;
 }
 
-StatusOr<std::unique_ptr<StrategyGroup>> CreateParameterStrategyGroup(
-    const HloInstruction* ins, const Shape& shape, size_t instruction_id,
-    StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
-    const StrategyMap& strategy_map, const AutoShardingOption& option,
-    double replicated_penalty, const InstructionBatchDimMap& batch_dim_map,
-    const CallGraph& call_graph, bool only_allow_divisible) {
-  return CreateAllStrategiesGroup(
-      ins, shape, instruction_id, strategy_groups, cluster_env, strategy_map,
-      option, replicated_penalty, batch_dim_map, call_graph,
-      only_allow_divisible, option.allow_replicated_parameters);
-}
-
 // The sharding is replicated or the total number of tiles is over or equal to
 // the total number of devices. If returns true, this sharding is likely
 // provided by users.
@@ -1290,26 +1278,20 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
                            cluster_env.device_mesh_.num_elements())) {
       // Sharding provided by XLA users, we need to keep them.
       strategy_group->following = nullptr;
-      std::vector<int32_t> strategy_indices;
+      std::vector<ShardingStrategy> new_strategies;
       for (size_t i = 0; i < strategy_group->strategies.size(); i++) {
         if (strategy_group->strategies[i].output_sharding ==
             existing_sharding) {
-          strategy_indices.push_back(i);
+          VLOG(1) << "Keeping strategy index: " << i;
+          ShardingStrategy found_strategy = strategy_group->strategies[i];
+          new_strategies.push_back(found_strategy);
         }
       }
-      if (!strategy_indices.empty()) {
-        VLOG(1) << "Keeping strategy indices: "
-                << spmd::ToString(strategy_indices);
+      if (!new_strategies.empty()) {
         // Stores other strategies in the map, removes them in the vector and
         // only keeps the one we found.
         pretrimmed_strategy_map[strategy_group->node_idx] =
             strategy_group->strategies;
-        std::vector<ShardingStrategy> new_strategies;
-        for (int32_t found_strategy_index : strategy_indices) {
-          ShardingStrategy found_strategy =
-              strategy_group->strategies[found_strategy_index];
-          new_strategies.push_back(found_strategy);
-        }
         strategy_group->strategies.clear();
         strategy_group->strategies = new_strategies;
       } else {
@@ -1317,9 +1299,7 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
         std::string name = ToStringSimple(existing_sharding);
         std::vector<std::vector<double>> resharding_costs;
         std::vector<std::optional<HloSharding>> input_shardings;
-        if (strategy_group->in_nodes.empty()) {
-          resharding_costs = {};
-        } else {
+        if (!strategy_group->in_nodes.empty()) {
           HloInstruction* ins = instructions.at(strategy_group->instruction_id);
           for (size_t i = 0; i < strategy_group->in_nodes.size(); i++) {
             HloInstruction* operand =
@@ -1331,15 +1311,13 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
               input_shardings.push_back(input_sharding_or.value());
             }
 
-            StrategyGroup* operand_strategy_group;
-            Shape operand_shape;
+            StrategyGroup* operand_strategy_group =
+                strategy_map.at(operand).get();
+            Shape operand_shape = operand->shape();
             if (ins->opcode() == HloOpcode::kGetTupleElement) {
               operand_strategy_group =
-                  strategy_map.at(operand)->childs[ins->tuple_index()].get();
-              operand_shape = operand->shape().tuple_shapes(ins->tuple_index());
-            } else {
-              operand_strategy_group = strategy_map.at(operand).get();
-              operand_shape = operand->shape();
+                  operand_strategy_group->childs[ins->tuple_index()].get();
+              operand_shape = operand_shape.tuple_shapes(ins->tuple_index());
             }
             resharding_costs.push_back(
                 ReshardingCostVector(operand_strategy_group, operand_shape,
@@ -1770,10 +1748,11 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       case HloOpcode::kRngBitGenerator:
       case HloOpcode::kRng: {
         strategy_group =
-            CreateParameterStrategyGroup(
-                ins, ins->shape(), instruction_id, strategy_groups, cluster_env,
-                strategy_map, option, replicated_penalty, batch_dim_map,
-                call_graph, only_allow_divisible)
+            CreateAllStrategiesGroup(ins, ins->shape(), instruction_id,
+                                     strategy_groups, cluster_env, strategy_map,
+                                     option, replicated_penalty, batch_dim_map,
+                                     call_graph, only_allow_divisible,
+                                     option.allow_replicated_parameters)
                 .value();
         break;
       }
@@ -1905,11 +1884,6 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
                                                  strategy_map, strategy_groups);
 
-        const HloInstruction* operand = ins->operand(0);
-
-        const StrategyGroup* operand_strategies =
-            strategy_map.at(operand).get();
-        CHECK(!operand_strategies->is_tuple);
         if (ins->shape().rank() == 1 || cluster_env.IsDeviceMesh1D()) {
           EnumerateAll1DPartition(ins, ins->shape(), cluster_env.device_mesh_,
                                   cluster_env, strategy_map, strategy_group,
@@ -2364,7 +2338,6 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           child_strategies->tuple_element_idx = i;
           strategy_group->childs.push_back(std::move(child_strategies));
         }
-
         break;
       }
       case HloOpcode::kConditional:
