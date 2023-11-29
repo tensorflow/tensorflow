@@ -902,12 +902,19 @@ static CUmemLocationType ToCudaLocationType(
       return CU_MEM_LOCATION_TYPE_INVALID;
     case GpuDriver::MemLocationType::kDevice:
       return CU_MEM_LOCATION_TYPE_DEVICE;
+#if CUDA_VERSION >= 12000
     case GpuDriver::MemLocationType::kHost:
       return CU_MEM_LOCATION_TYPE_HOST;
     case GpuDriver::MemLocationType::kHostNuma:
       return CU_MEM_LOCATION_TYPE_HOST_NUMA;
     case GpuDriver::MemLocationType::kHostNumaCurrent:
       return CU_MEM_LOCATION_TYPE_HOST_NUMA_CURRENT;
+#else
+    case GpuDriver::MemLocationType::kHost:
+    case GpuDriver::MemLocationType::kHostNuma:
+    case GpuDriver::MemLocationType::kHostNumaCurrent:
+      return CU_MEM_LOCATION_TYPE_INVALID;
+#endif  // CUDA_VERSION >= 12000
   }
 }
 
@@ -942,7 +949,9 @@ static CUmemAllocationType ToCudaAllocationType(
   mem_pool_props.allocType = ToCudaAllocationType(allocation_type);
   mem_pool_props.handleTypes = CU_MEM_HANDLE_TYPE_NONE;
   mem_pool_props.location = mem_location;
+#if CUDA_VERSION >= 12000
   mem_pool_props.maxSize = max_pool_size;
+#endif  // CUDA_VERSION >= 12000
 
   params.accessDescCount = 1;
   params.bytesize = size;
