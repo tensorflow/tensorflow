@@ -933,7 +933,7 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
+        #"@com_google_absl//absl/strings:string_view",
         "//tensorflow/cc/experimental/libexport:save",
         "//tensorflow/cc/saved_model:constants",
         "//tensorflow/cc/saved_model:fingerprinting",
