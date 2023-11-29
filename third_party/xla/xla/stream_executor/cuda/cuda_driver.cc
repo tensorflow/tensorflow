@@ -1159,7 +1159,8 @@ struct BitPatternToValue {
   VLOG(2) << "launching kernel: " << kernel_name << "; gdx: " << grid_dim_x
           << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
           << " bdx: " << block_dim_x << " bdy: " << block_dim_y
-          << " bdz: " << block_dim_z;
+          << " bdz: " << block_dim_z
+          << "; shared_mem_bytes: " << shared_mem_bytes;
   if (shared_mem_bytes != 0) {
     RETURN_IF_CUDA_RES_ERROR(
         cuFuncSetAttribute(function,

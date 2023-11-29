@@ -121,9 +121,25 @@ cc_library(
 #     visibility = ["//visibility:private"],
 #     deps = [
 #         ":custom_kernel",
+#         ":cutlass_gemm_universal",
+#         "@com_google_absl//absl/status",
+#         "@com_google_absl//absl/strings",
 #         "//third_party/gpus/cutlass",
 #         "//xla:statusor",
 #         "//xla:xla_data_proto_cc",
+#         "//xla/stream_executor",
+#     ],
+# )
+#
+# cuda_library(
+#     name = "cutlass_gemm_universal",
+#     hdrs = ["cutlass_gemm_universal.cu.h"],
+#     visibility = ["//visibility:private"],
+#     deps = [
+#         "@com_google_absl//absl/status",
+#         "@com_google_absl//absl/strings",
+#         "//third_party/gpus/cutlass",
+#         "//xla:statusor",
 #         "//xla/stream_executor",
 #     ],
 # )
