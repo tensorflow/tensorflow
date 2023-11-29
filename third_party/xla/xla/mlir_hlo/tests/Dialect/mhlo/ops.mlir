@@ -6552,6 +6552,20 @@ func.func @top_k_unranked(%arg0 : tensor<*xf32>) {
 
 // -----
 
+func.func @top_k_1d_false(%arg0 : tensor<16xf32>) {
+  %0:2 = mhlo.topk(%arg0, k=8, largest=false) : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
+  return
+}
+
+// -----
+
+func.func @top_k_1d_default(%arg0 : tensor<16xf32>) {
+  %0:2 = mhlo.topk(%arg0, k=8) : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
+  return
+}
+
+// -----
+
 func.func @topk_rank_at_least_one(%arg0 : tensor<f32>) {
   // expected-error@+2 {{failed to infer returned types}}
   // expected-error@+1 {{operand's rank must be at least 1}}

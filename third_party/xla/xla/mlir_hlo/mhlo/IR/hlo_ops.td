@@ -2998,7 +2998,7 @@ def MHLO_TopKOp : MHLO_Op<"topk", [RecursiveMemoryEffects, InferTensorType]> {
                       MHLO_Tensor:$indices);
 
   let assemblyFormat = [{
-    `(`$operand `,` `k` `=` $k `,` `largest` `=` $largest `)` attr-dict `:`
+    `(`$operand `,` `k` `=` $k (`,` `largest` `=` $largest^)? `)` attr-dict `:`
     type($operand) `->` `(`type($values)`,` type($indices)`)`
   }];
   let hasCustomHLOConverter = 1;
