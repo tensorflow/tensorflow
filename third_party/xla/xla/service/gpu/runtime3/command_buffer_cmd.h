@@ -53,6 +53,11 @@ class CommandBufferCmd {
   // buffer. For example when we emit command buffer cmd sequence from an HLO
   // module, we only know the buffer slices required for HLO operations, but the
   // concrete device pointers become available only at run time.
+  //
+  // For allocations that performed through command buffer Allocate command, the
+  // target addresses are tracked by command buffer runtime. To record command
+  // that consumes buffers allocated inside command buffer, user should specify
+  // the target address as se::DeviceMemoryBase{nullptr, size}.
   struct RecordParams {
     se::StreamExecutor* executor;
     const BufferAllocations* buffer_allocations;
@@ -203,6 +208,24 @@ class IfCmd : public CommandBufferCmd {
  private:
   BufferAllocation::Slice pred_;
   CommandBufferCmdSequence then_cmds_;
+};
+
+//===----------------------------------------------------------------------===//
+// AllocateCmd
+//===----------------------------------------------------------------------===//
+
+class AllocateCmd : public CommandBufferCmd {
+ public:
+  explicit AllocateCmd(BufferAllocation* allocation);
+
+  // After calling this function, the allocated memory address is updated to
+  Status Record(const RecordParams& params,
+                se::CommandBuffer* command_buffer) override;
+
+  Slices slices() override;
+
+ private:
+  BufferAllocation* allocation_;
 };
 
 //===----------------------------------------------------------------------===//

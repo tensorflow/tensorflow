@@ -39,6 +39,10 @@ T AlignTo(size_t alignment, T offset) {
                                  : offset + (alignment - offset % alignment);
 }
 
+size_t RequiredAllocationSize(size_t data_array_size, size_t alignment) {
+  return data_array_size + alignment - 1;
+}
+
 }  // namespace
 
 namespace tflite {
@@ -48,16 +52,17 @@ bool ResizableAlignedBuffer::Resize(size_t new_size) {
     // Skip reallocation when resizing down.
     return false;
   }
-  const size_t new_allocation_size = RequiredAllocationSize(new_size);
 #ifdef TF_LITE_TENSORFLOW_PROFILER
   PauseHeapMonitoring(/*pause=*/true);
   OnTfLiteArenaAlloc(subgraph_index_, reinterpret_cast<std::uintptr_t>(this),
-                     new_allocation_size);
+                     new_size);
 #endif
+  const size_t new_allocation_size =
+      RequiredAllocationSize(new_size, alignment_);
   char* new_buffer = reinterpret_cast<char*>(std::malloc(new_allocation_size));
 #if defined(__clang__)
 #if __has_feature(memory_sanitizer)
-  memset(new_buffer, 0, new_allocation_size);
+  std::memset(new_buffer, 0, new_allocation_size);
 #endif
 #endif
   char* new_aligned_ptr = reinterpret_cast<char*>(
@@ -73,8 +78,7 @@ bool ResizableAlignedBuffer::Resize(size_t new_size) {
 #ifdef TF_LITE_TENSORFLOW_PROFILER
   if (data_size_ > 0) {
     OnTfLiteArenaDealloc(subgraph_index_,
-                         reinterpret_cast<std::uintptr_t>(this),
-                         RequiredAllocationSize(data_size_));
+                         reinterpret_cast<std::uintptr_t>(this), data_size_);
   }
 #endif
   data_size_ = new_size;
@@ -90,7 +94,7 @@ void ResizableAlignedBuffer::Release() {
   }
 #ifdef TF_LITE_TENSORFLOW_PROFILER
   OnTfLiteArenaDealloc(subgraph_index_, reinterpret_cast<std::uintptr_t>(this),
-                       RequiredAllocationSize(data_size_));
+                       data_size_);
 #endif
   std::free(buffer_);
   buffer_ = nullptr;
@@ -209,8 +213,8 @@ TfLiteStatus SimpleMemoryArena::ResolveAlloc(
     char** output_ptr) {
   TF_LITE_ENSURE(context, committed_);
   TF_LITE_ENSURE(context, output_ptr != nullptr);
-  TF_LITE_ENSURE(
-      context, underlying_buffer_.GetDataSize() >= (alloc.offset + alloc.size));
+  TF_LITE_ENSURE(context,
+                 underlying_buffer_.GetSize() >= (alloc.offset + alloc.size));
   if (alloc.size == 0) {
     *output_ptr = nullptr;
   } else {
@@ -240,7 +244,7 @@ TFLITE_ATTRIBUTE_WEAK void DumpArenaInfo(
 
 void SimpleMemoryArena::DumpDebugInfo(
     const std::string& name, const std::vector<int>& execution_plan) const {
-  tflite::DumpArenaInfo(name, execution_plan, underlying_buffer_.GetDataSize(),
+  tflite::DumpArenaInfo(name, execution_plan, underlying_buffer_.GetSize(),
                         active_allocs_);
 }
 

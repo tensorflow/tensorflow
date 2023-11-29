@@ -2063,7 +2063,7 @@ py_strict_library(
     deps = [],
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "test_lib",
     srcs = ["test_util.py"],
     srcs_version = "PY3",

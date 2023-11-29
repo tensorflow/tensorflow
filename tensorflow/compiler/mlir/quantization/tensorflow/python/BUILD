@@ -203,9 +203,11 @@ tf_python_pybind_extension(
     deps = [
         ":py_function_lib",
         ":type_casters",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:graph_def",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:io",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
         "@com_google_absl//absl/container:flat_hash_map",

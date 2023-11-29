@@ -79,16 +79,6 @@ class PyFunctionLibraryTrampoline : public PyFunctionLibrary {
         signature_keys, tags, exported_model, calibration_options,
         force_graph_mode_calibration, representative_dataset);
   }
-
-  GraphDef EnableDumpTensor(const GraphDef& graph_def) const override {
-    PYBIND11_OVERRIDE_PURE(GraphDef, PyFunctionLibrary, enable_dump_tensor,
-                           graph_def);
-  }
-
-  GraphDef ChangeDumpTensorFileName(const GraphDef& graph_def) const override {
-    PYBIND11_OVERRIDE_PURE(GraphDef, PyFunctionLibrary,
-                           change_dump_tensor_file_name, graph_def);
-  }
 };
 
 }  // namespace
@@ -110,10 +100,5 @@ PYBIND11_MODULE(pywrap_function_lib, m) {
            py::arg("tags"), py::arg("exported_model_serialized"),
            py::arg("calibration_options_serialized"),
            py::arg("force_graph_mode_calibration"),
-           py::arg("representative_dataset"))
-      .def("enable_dump_tensor", &PyFunctionLibrary::EnableDumpTensor,
-           py::arg("graph_def_serialized"))
-      .def("change_dump_tensor_file_name",
-           &PyFunctionLibrary::ChangeDumpTensorFileName,
-           py::arg("graph_def_serialized"));
+           py::arg("representative_dataset"));
 }

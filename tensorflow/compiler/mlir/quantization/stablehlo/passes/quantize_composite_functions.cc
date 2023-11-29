@@ -63,6 +63,7 @@ namespace {
 
 using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
 using ::mlir::stablehlo::AddOp;
+using ::mlir::stablehlo::ConvolutionOp;
 using ::mlir::stablehlo::DotGeneralOp;
 using ::mlir::stablehlo::DynamicBroadcastInDimOp;
 using ::mlir::stablehlo::UniformQuantizeOp;
@@ -106,11 +107,11 @@ bool HasFusibleQuantizationPattern(Operation& op) {
 // Returns dynamically broadcasted user op of an input op. Returns null if
 // the op is used multiple times or the user op is not dynamically broadcasted.
 // Dynamic shapes usually has the following pattern. In the example below,
-// the input operand would be stablehlo.dot_general op, and return value would
+// the input operand would be stablehlo.gemm_style op, and return value would
 // be stablehlo.add op.
 //
 // ```
-// %2 = stablehlo.dot_general(%0, %1)
+// %2 = stablehlo.gemm_style(%0, %1)
 // %3 = shape.shape_of %2
 // %4 = stablehlo.dynamic_broadcast_in_dims %cst, %3
 // %5 = stablehlo.add %2, %4
@@ -175,8 +176,6 @@ func::FuncOp GetEntryFuncOp(TF::XlaCallModuleOp xla_call_module_op,
   const auto entry_function_symbol_ref =
       xla_call_module_op->getAttrOfType<FlatSymbolRefAttr>(kEntryFuncAttrName);
 
-  // Don't match if there are no DotGeneralOp.
-  // if (target_func_op.getOps<DotGeneralOp>().empty()) return {};
   return dyn_cast_or_null<func::FuncOp>(
       symbol_table.lookup(entry_function_symbol_ref.getValue()));
 }
@@ -238,102 +237,126 @@ class EntryFuncBodyQuantizationPattern {
                        PatternRewriter& rewriter) const = 0;
 };
 
+// Gemm Style Op: glossary/gemm.
+template <typename GemmStyleOp>
+// Match for all gemm_style op and check for possible fusions.
+LogicalResult MatchGemmStyleOp(func::FuncOp entry_func_op) {
+  // function must have input, filter, and optionally bias.
+  auto& operations = entry_func_op.getBody().front().getOperations();
+  if (operations.size() != 2 && operations.size() != 3) {
+    return failure();
+  }
+  if (!isa<GemmStyleOp>(operations.front())) {
+    return failure();
+  } else if (GetDynamicallyBroadcastedUserOp(operations.front())) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "Currently gemm style ops quantization only supports static "
+                  " shapes.\n");
+    return failure();
+  } else if (!isa<RankedTensorType>(
+                 operations.front().getResult(0).getType())) {
+    return failure();
+  }
+  return success();
+}
+
+// Gemm Style Op: glossary/gemm.
+template <typename GemmStyleOp>
+void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter) {
+  // Update the output type of the gemm_style op.
+  GemmStyleOp gemm_style_op = *entry_func_op.getOps<GemmStyleOp>().begin();
+
+  const Type input_type = entry_func_op.getArgumentTypes()[0];
+  const Type filter_type = entry_func_op.getArgumentTypes()[1];
+  const Type func_result_type = entry_func_op.getResultTypes()[0];
+
+  const double input_scale =
+      getElementTypeOrSelf(input_type).cast<UniformQuantizedType>().getScale();
+  const double filter_scale =
+      getElementTypeOrSelf(filter_type).cast<UniformQuantizedType>().getScale();
+  const double result_scale = input_scale * filter_scale;
+
+  // Define the intermediate output type, which is an i32 quantized type.
+  // This is intermediate because the final output type of the entry_func_op
+  // should be an i8 quantized type.
+  const UniformQuantizedType gemm_style_quantized_element_type =
+      CreateI32F32UniformQuantizedType(gemm_style_op->getLoc(),
+                                       *rewriter.getContext(), result_scale,
+                                       /*zero_point=*/0);
+
+  Value gemm_style_op_result = gemm_style_op->getResult(0);
+  auto gemm_style_op_result_type =
+      gemm_style_op_result.getType().cast<RankedTensorType>();
+  const ArrayRef<int64_t> gemm_style_shape =
+      gemm_style_op_result_type.getShape();
+
+  const TensorType new_gemm_style_op_result_type =
+      gemm_style_op_result_type.cloneWith(gemm_style_shape,
+                                          gemm_style_quantized_element_type);
+  gemm_style_op_result.setType(new_gemm_style_op_result_type);
+
+  rewriter.setInsertionPointAfter(gemm_style_op);
+
+  Operation& next_op = *gemm_style_op->getNextNode();
+  // If an op is used multiple times, do not apply quantization of fused
+  // patterns to prevent removal of dependee ops.
+  const bool should_quantize_without_fusion =
+      HasFusibleQuantizationPattern(*gemm_style_op.getOperation()) &&
+      !gemm_style_op->hasOneUse();
+
+  // TODO: b/307620428 - Add support for dynamic shapes.
+  if (should_quantize_without_fusion || !isa<AddOp>(next_op)) {
+    // no bias
+    CreateAndReturnUniformQuantizeOp(rewriter, *gemm_style_op, entry_func_op,
+                                     func_result_type);
+    return;
+  }
+  // bias fusion
+  Value bias_op = next_op.getOperand(1);
+  Value add_op_result = next_op.getResult(0);
+  const auto add_op_result_type =
+      add_op_result.getType().cast<RankedTensorType>();
+  const ArrayRef<int64_t> add_op_shape = add_op_result_type.getShape();
+  // For quantized bias add case, lhs, rhs, and result have the same types.
+  const TensorType new_add_op_result_type = add_op_result_type.cloneWith(
+      add_op_shape, gemm_style_quantized_element_type);
+  add_op_result.setType(new_add_op_result_type);
+
+  AddOp bias_add_op =
+      rewriter.create<AddOp>(gemm_style_op->getLoc(), gemm_style_op, bias_op);
+
+  CreateAndReturnUniformQuantizeOp(rewriter, *bias_add_op, entry_func_op,
+                                   func_result_type);
+}
+
 // Quantizes the entry function's body containing a `DotGeneralOp`.
 class QuantizeDotGeneralOpPattern : public EntryFuncBodyQuantizationPattern {
  public:
-  explicit QuantizeDotGeneralOpPattern(MLIRContext& ctx) : ctx_(&ctx) {}
+  explicit QuantizeDotGeneralOpPattern() = default;
 
-  // Match for all dot_general op and check for possible fusions.
   LogicalResult match(func::FuncOp entry_func_op) const override {
-    // function must have input, filter, and optionally bias.
-    auto& operations = entry_func_op.getBody().front().getOperations();
-    if (operations.size() != 2 && operations.size() != 3) {
-      return failure();
-    }
-    if (!isa<DotGeneralOp>(operations.front())) {
-      return failure();
-    } else if (GetDynamicallyBroadcastedUserOp(operations.front())) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "Currently dot_general quantization only supports static "
-                    " shapes.\n");
-      return failure();
-    }
-    return success();
+    return MatchGemmStyleOp<DotGeneralOp>(entry_func_op);
   }
 
   void rewrite(func::FuncOp entry_func_op,
                PatternRewriter& rewriter) const override {
-    // Update the output type of the dot_general op.
-    DotGeneralOp dot_general_op = *entry_func_op.getOps<DotGeneralOp>().begin();
+    RewriteGemmStyleOp<DotGeneralOp>(entry_func_op, rewriter);
+  }
+};
 
-    const Type input_type = entry_func_op.getArgumentTypes()[0];
-    const Type filter_type = entry_func_op.getArgumentTypes()[1];
-    const Type func_result_type = entry_func_op.getResultTypes()[0];
+// Quantizes the entry function's body containing a `ConvolutionOp`.
+class QuantizeConvolutionOpPattern : public EntryFuncBodyQuantizationPattern {
+ public:
+  explicit QuantizeConvolutionOpPattern() = default;
 
-    const double input_scale = getElementTypeOrSelf(input_type)
-                                   .cast<UniformQuantizedType>()
-                                   .getScale();
-    const double filter_scale = getElementTypeOrSelf(filter_type)
-                                    .cast<UniformQuantizedType>()
-                                    .getScale();
-    const double result_scale = input_scale * filter_scale;
-
-    // Define the intermediate output type, which is an i32 quantized type.
-    // This is intermediate because the final output type of the entry_func_op
-    // should be an i8 quantized type.
-    const UniformQuantizedType dot_general_quantized_element_type =
-        CreateI32F32UniformQuantizedType(dot_general_op->getLoc(), *ctx_,
-                                         result_scale,
-                                         /*zero_point=*/0);
-
-    Value dot_general_op_result = dot_general_op->getResult(0);
-    auto dot_general_op_result_type =
-        dot_general_op_result.getType().cast<RankedTensorType>();
-    const ArrayRef<int64_t> dot_general_shape =
-        dot_general_op_result_type.getShape();
-
-    const TensorType new_dot_general_op_result_type =
-        dot_general_op_result_type.cloneWith(
-            dot_general_shape, dot_general_quantized_element_type);
-    dot_general_op_result.setType(new_dot_general_op_result_type);
-
-    rewriter.setInsertionPointAfter(dot_general_op);
-
-    Operation& next_op = *dot_general_op->getNextNode();
-
-    // If an op is used multiple times, do not apply quantization of fused
-    // patterns to prevent removal of dependee ops.
-    const bool should_quantize_without_fusion =
-        HasFusibleQuantizationPattern(*dot_general_op.getOperation()) &&
-        !dot_general_op->hasOneUse();
-
-    // TODO: b/307620428 - Add support for dynamic shapes.
-    if (should_quantize_without_fusion || !isa<AddOp>(next_op)) {
-      // no bias
-      CreateAndReturnUniformQuantizeOp(rewriter, *dot_general_op, entry_func_op,
-                                       func_result_type);
-      return;
-    }
-    // bias fusion
-    Value bias_op = next_op.getOperand(1);
-    Value add_op_result = next_op.getResult(0);
-    const auto add_op_result_type =
-        add_op_result.getType().cast<RankedTensorType>();
-    const ArrayRef<int64_t> add_op_shape = add_op_result_type.getShape();
-    // For quantized bias add case, lhs, rhs, and result have the same types.
-    const TensorType new_add_op_result_type = add_op_result_type.cloneWith(
-        add_op_shape, dot_general_quantized_element_type);
-    add_op_result.setType(new_add_op_result_type);
-
-    AddOp bias_add_op = rewriter.create<AddOp>(dot_general_op->getLoc(),
-                                               dot_general_op, bias_op);
-
-    CreateAndReturnUniformQuantizeOp(rewriter, *bias_add_op, entry_func_op,
-                                     func_result_type);
+  LogicalResult match(func::FuncOp entry_func_op) const override {
+    return MatchGemmStyleOp<ConvolutionOp>(entry_func_op);
   }
 
- private:
-  MLIRContext* ctx_ = nullptr;
+  void rewrite(func::FuncOp entry_func_op,
+               PatternRewriter& rewriter) const override {
+    RewriteGemmStyleOp<ConvolutionOp>(entry_func_op, rewriter);
+  }
 };
 
 // Converts `entry_func_op` to be quantized according to the respective
@@ -408,14 +431,14 @@ class XlaCallModuleOpToCallOp : public OpRewritePattern<TF::XlaCallModuleOp> {
       return failure();
     }
 
-    return FuncBodyRewritePatternT(*getContext()).match(entry_func_op);
+    return FuncBodyRewritePatternT().match(entry_func_op);
   }
 
   void rewrite(TF::XlaCallModuleOp xla_call_module_op,
                PatternRewriter& rewriter) const override {
     ReplaceQuantizedXlaCallModuleOpWithQuantizedCallOp(
         *rewriter.getContext(), rewriter, xla_call_module_op,
-        FuncBodyRewritePatternT(*getContext()));
+        FuncBodyRewritePatternT());
   }
 };
 
@@ -444,7 +467,8 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
 
   // TODO - b/307839649: Move this as a separate pass.
   RewritePatternSet patterns(&ctx);
-  patterns.add<XlaCallModuleOpToCallOp<QuantizeDotGeneralOpPattern>>(ctx);
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeDotGeneralOpPattern>,
+               XlaCallModuleOpToCallOp<QuantizeConvolutionOpPattern>>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
     signalPassFailure();

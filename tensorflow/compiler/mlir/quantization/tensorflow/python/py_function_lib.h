@@ -103,33 +103,6 @@ class PyFunctionLibrary {
   //     pywrap_function_lib.pyi:run_calibration,
   //     py_function_lib.py:run_calibration,
   // )
-
-  // Enables the `DumpTensor` ops in `graph_def`. This is done by updating the
-  // `enabled` attribute of `DumpTensor` ops to true. Returns the updated
-  // `GraphDef`.
-  //
-  // If the function signature changes, likely its corresponding .pyi type
-  // hinting and definition should also change.
-  // LINT.IfChange
-  virtual GraphDef EnableDumpTensor(const GraphDef& graph_def) const = 0;
-  // LINT.ThenChange(
-  //     pywrap_function_lib.pyi:enable_dump_tensor,
-  //     py_function_lib.py:enable_dump_tensor,
-  // )
-
-  // Updates the `DumpTensor` ops' file name in `graph_def`. Sets the
-  // `file_name` attribute to `quantized_tensor_data.pb`. Returns the updated
-  // `GraphDef`.
-  //
-  // If the function signature changes, likely its corresponding .pyi type
-  // hinting and definition should also change.
-  // LINT.IfChange
-  virtual GraphDef ChangeDumpTensorFileName(
-      const GraphDef& graph_def) const = 0;
-  // LINT.ThenChange(
-  //     pywrap_function_lib.pyi:change_dump_tensor_file_name,
-  //     py_function_lib.py:change_dump_tensor_file_name,
-  // )
 };
 
 }  // namespace tensorflow::quantization

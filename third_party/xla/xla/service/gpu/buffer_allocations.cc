@@ -79,5 +79,28 @@ se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
       buffer_slice.size());
 }
 
+se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
+    const BufferAllocation::Slice& buffer_slice,
+    const se::CommandBuffer* command_buffer) const {
+  se::DeviceMemoryBase base = GetDeviceAddress(buffer_slice.index());
+  CHECK_LE(buffer_slice.offset(), base.size());
+  CHECK_LE(buffer_slice.offset() + buffer_slice.size(), base.size());
+
+  if (base.is_external_allocation_marker()) {
+    auto cmd_buffer_base = command_buffer->GetAllocationAddress(
+        buffer_slice.allocation()->index());
+    CHECK(cmd_buffer_base.ok())
+        << "Get allocation address from command_buffer failed";
+    CHECK(!cmd_buffer_base.value().is_null())
+        << "Allocation is not yet allocated by command buffer for slice: "
+        << buffer_slice.ToString();
+    return cmd_buffer_base.value();
+  }
+
+  return se::DeviceMemoryBase(
+      static_cast<char*>(base.opaque()) + buffer_slice.offset(),
+      buffer_slice.size());
+}
+
 }  // namespace gpu
 }  // namespace xla

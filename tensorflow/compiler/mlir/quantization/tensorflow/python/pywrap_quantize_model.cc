@@ -29,18 +29,22 @@ limitations under the License.
 #include "pybind11_abseil/import_status_module.h"  // from @pybind11_abseil
 #include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil  // IWYU pragma: keep
 #include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/graph_def.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/quantize_model.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/type_casters.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
 namespace {
 
+using ::stablehlo::quantization::MutateNodeDefs;
 using ::stablehlo::quantization::io::CreateTmpDir;
+using ::tensorflow::NodeDef;
 using ::tensorflow::SignatureDef;
 using ::tensorflow::quantization::DebuggerOptions;
 using ::tensorflow::quantization::ExportedModel;
@@ -69,8 +73,16 @@ ExportedModel EnableDebugging(
     const std::unordered_set<std::string>& tags,
     const absl::flat_hash_map<std::string, SignatureDef>& signature_def_map) {
   ExportedModel debugger_enabled_exported_model = exported_model;
-  *debugger_enabled_exported_model.mutable_graph_def() =
-      py_function_library.EnableDumpTensor(exported_model.graph_def());
+
+  // Enable `DumpTensor` nodes in `graph_def`. DumpTensor is disabled by
+  // default to avoid logging data during calibration.
+  MutateNodeDefs(*debugger_enabled_exported_model.mutable_graph_def(),
+                 [](NodeDef& node_def) {
+                   if (node_def.op() == "DumpTensor") {
+                     (*node_def.mutable_attr())["enabled"].set_b(true);
+                   }
+                 });
+
   if (debugger_options.debugger_type() ==
       DebuggerOptions::DEBUGGER_TYPE_WHOLE_MODEL) {
     // TODO: b/295139417 - Remove CustomAggregator op in unquantized dump model.
@@ -81,9 +93,14 @@ ExportedModel EnableDebugging(
         debugger_enabled_exported_model, src_saved_model_path, tags,
         signature_def_map);
 
-    *debugger_enabled_exported_model.mutable_graph_def() =
-        py_function_library.ChangeDumpTensorFileName(
-            debugger_enabled_exported_model.graph_def());
+    // Update the `DumpTensor` ops' file name in `graph_def`.
+    MutateNodeDefs(*debugger_enabled_exported_model.mutable_graph_def(),
+                   [](NodeDef& node_def) {
+                     if (node_def.op() == "DumpTensor") {
+                       (*node_def.mutable_attr())["file_name"].set_s(
+                           "quantized_tensor_data.pb");
+                     }
+                   });
   }
 
   return debugger_enabled_exported_model;

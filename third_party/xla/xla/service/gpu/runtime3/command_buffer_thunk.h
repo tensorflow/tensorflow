@@ -73,6 +73,12 @@ class CommandBufferThunk : public Thunk {
   StatusOr<ExecutorCommandBuffer*> GetOrCreateCommandBuffer(
       se::StreamExecutor* executor);
 
+  // Return the allocation address that was lazilly allocated inside command
+  // buffer. This API is required when the buffers are allocated inside command
+  // buffer but will be consumed by non-command buffer operations.
+  StatusOr<se::DeviceMemoryBase> GetLazyAllocationAddress(
+      const ExecuteParams& params, int64_t index);
+
   // Command sequence that initializes command buffers on each executor.
   CommandBufferCmdSequence commands_;
 
