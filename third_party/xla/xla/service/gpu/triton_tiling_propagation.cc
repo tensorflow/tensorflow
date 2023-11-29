@@ -79,7 +79,7 @@ std::string TensorIterationSpec::IterationSpecFragment::ToString() const {
 bool TensorIterationSpec::IterationSpecFragment::operator!=(
     const IterationSpecFragment& other) const {
   return stride != other.stride || count != other.count ||
-         slice_start != other.slice_start || slice_limit != other.slice_limit;
+         slice_start != other.slice_start || sliced_count != other.sliced_count;
 }
 
 std::string TensorIterationSpec::ToString() const {
@@ -143,8 +143,8 @@ using FragmentOrders = DimensionOrder::FragmentOrders;
 }
 
 std::string DimensionOrder::Fragment::ToString() const {
-  return absl::StrCat(dst_dim_number_, ":", size_, ":", slice_start_, "-",
-                      slice_limit_);
+  return absl::StrCat(dst_dim_number_, ":", count_, ":", slice_start_, "-",
+                      sliced_count_);
 }
 
 std::string DimensionOrder::ToString() const {
@@ -184,29 +184,29 @@ TensorIterationSpec DimensionOrder::ToTensorIterationSpec() const {
         dim_spec.back().subfragments.pop_back();
       }
       // Contiguous dimension, split only logically. Merge it back.
-      if (fragment.full_size() > 1) {
+      if (fragment.full_count() > 1) {
         CHECK(!dim_spec.empty());
         CHECK(!dim_spec.back().is_sliced())
             << "Only the major-most fragment can have an offset.";
         dim_spec.back().slice_start =
             fragment.slice_start() * dim_spec.back().count;
-        dim_spec.back().slice_limit =
-            fragment.slice_limit() * dim_spec.back().count;
-        dim_spec.back().count *= fragment.full_size();
-        dim_spec.back().subfragments.push_back(fragment.sliced_size());
+        dim_spec.back().sliced_count =
+            fragment.sliced_count() * dim_spec.back().count;
+        dim_spec.back().count *= fragment.full_count();
+        dim_spec.back().subfragments.push_back(fragment.sliced_count());
       }
     } else {
       remove_last_fragment_if_degenerate(last_dim);
       // Add part of the dimension.
-      dim_spec.push_back(
-          TensorIterationSpec::IterationSpecFragment{accumulated_stride,
-                                                     fragment.full_size(),
-                                                     fragment.slice_start(),
-                                                     fragment.slice_limit(),
-                                                     {fragment.sliced_size()}});
+      dim_spec.push_back(TensorIterationSpec::IterationSpecFragment{
+          accumulated_stride,
+          fragment.full_count(),
+          fragment.slice_start(),
+          fragment.sliced_count(),
+          {fragment.sliced_count()}});
     }
 
-    accumulated_stride *= fragment.full_size();
+    accumulated_stride *= fragment.full_count();
     last_dim = fragment.dst_dim_number();
   }
   remove_last_fragment_if_degenerate(last_dim);
@@ -225,7 +225,7 @@ std::optional<int> LogicalIndexOfLabeledDimension(
     const int64_t dim_size = shape.dimensions()[dim];
     int64_t fragments_size = 1;
     while (fragments_size < dim_size) {
-      fragments_size *= fragment_it->full_size();
+      fragments_size *= fragment_it->full_count();
       if (fragment_it->dst_dim_number() == label) {
         return dim;
       }
@@ -304,12 +304,12 @@ RequirementsOrError GetRequirementsIfSupportedOrder(
       if (fragment_it == dim_fragments.cend()) {
         break;
       }
-      int64_t grouped_size = tensor_dim_fragments[*fragment_it].full_size();
+      int64_t grouped_size = tensor_dim_fragments[*fragment_it].full_count();
       // Gather contiguous fragments: they have consecutive indices.
       while ((fragment_it + 1) != dim_fragments.cend() &&
              *(fragment_it + 1) == *fragment_it + 1) {
         ++fragment_it;
-        grouped_size *= tensor_dim_fragments[*fragment_it].full_size();
+        grouped_size *= tensor_dim_fragments[*fragment_it].full_count();
       }
       // Ignore 1-sized groups of fragments.
       if (grouped_size == 1) {
@@ -481,11 +481,11 @@ DimOrderMapOrError GetPropagatedDimOrdersForBitcast(
       // Find a continuous group of fragments corresponding to this dimension in
       // the source and assign the corresponding size in fragments of the
       // destination ignoring the source ones.
-      dst_remaining_size = src_dim->full_size();
+      dst_remaining_size = src_dim->full_count();
       while (src_dim + 1 != src_fragments_order.cend() &&
              (src_dim + 1)->dst_dim_number() == src_dim->dst_dim_number()) {
         ++src_dim;
-        dst_remaining_size *= src_dim->full_size();
+        dst_remaining_size *= src_dim->full_count();
       }
       while (dst_remaining_size > 1) {
         CHECK(dst_dim_it != dst_dim_end);
@@ -496,8 +496,8 @@ DimOrderMapOrError GetPropagatedDimOrdersForBitcast(
       }
       continue;
     }
-    if (dst_remaining_size >= src_dim->full_size()) {
-      if (dst_remaining_size % src_dim->full_size()) {
+    if (dst_remaining_size >= src_dim->full_count()) {
+      if (dst_remaining_size % src_dim->full_count()) {
         return "Unsupported bitcast";
       }
       // Source dimension fragment completely fits into the destination one:
@@ -505,12 +505,12 @@ DimOrderMapOrError GetPropagatedDimOrdersForBitcast(
       add_new_fragment(*src_dim);
       // Update the size of the remaining part of the destination that is
       // carried over to next source dimensions.
-      dst_remaining_size /= src_dim->full_size();
+      dst_remaining_size /= src_dim->full_count();
     } else {
       // Source is larger than destination.
       // Assign further destination dimensions.
       // Size of the not yet assigned part of the source dimension.
-      int64_t src_remaining_size = src_dim->full_size();
+      int64_t src_remaining_size = src_dim->full_count();
       // Handle dimension splits.
       if (dst_remaining_size > 1) {
         // If there is a remaining fragment of a previous destination dimension
@@ -617,7 +617,7 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
     std::vector<Fragment*> subdim_group;
     do {
       CHECK(src_fragment_it != src_fragments_order.end());
-      subdim_size_accumulator *= src_fragment_it->full_size();
+      subdim_size_accumulator *= src_fragment_it->full_count();
       subdim_group.push_back(&*src_fragment_it);
       ++src_fragment_it;
     } while (subdim_size_accumulator < dim_size);
@@ -690,7 +690,7 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
           if (src_logical[i].size() != 1 || src_logical[i][0]->is_sliced()) {
             return FusionDecision("Unsupported concatenation.");
           }
-          dst_logical[i][0]->set_size(dst->shape().dimensions(i));
+          dst_logical[i][0]->set_count(dst->shape().dimensions(i));
           dst_logical[i][0]->set_slice(0, dst->shape().dimensions(i));
         }
       }
@@ -728,7 +728,8 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
 
           new_fragments.emplace_back(
               fragments[0]->dst_dim_number(),
-              fragments[0]->full_size() * fragments[1]->full_size() - padding);
+              fragments[0]->full_count() * fragments[1]->full_count() -
+                  padding);
           dst_logical[i] = {&new_fragments.back()};
         }
       }
@@ -743,12 +744,11 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
             return FusionDecision("Slicing of fragmented dimension.");
           }
           auto fragment = dst_logical[dim].front();
-          fragment->set_size(dst->shape().dimensions(dim));
+          fragment->set_count(dst->shape().dimensions(dim));
           // Slicing of an already sliced dimension means adding offsets.
           fragment->set_slice(
               fragment->slice_start() + slice->slice_starts(dim),
-              fragment->slice_start() + slice->slice_starts(dim) +
-                  fragment->sliced_size());
+              fragment->sliced_count());
         }
       }
     } else {
@@ -777,7 +777,7 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
         const auto it = src_to_dst.find(&src_fragments_order[fragment_number]);
         if (it == src_to_dst.cend()) {
           if (hlo.opcode() == HloOpcode::kBroadcast &&
-              src_fragments_order[fragment_number].full_size() > 1 &&
+              src_fragments_order[fragment_number].full_count() > 1 &&
               dim_numbers_present_in_dst.contains(dim_index)) {
             return FusionDecision("Unsupported broadcast");
           }
@@ -882,7 +882,7 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
                  0;
         })) {
       return FusionDecision(
-          "One or more operands of concatenation can not be perfectly tiled.");
+          "At least one operand of concatenation can not be perfectly tiled.");
     }
     return GetPropagatedDimOrdersForDimAlteringOp(hlo, direction, src_dim_order,
                                                   properties);

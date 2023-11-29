@@ -792,12 +792,12 @@ ENTRY e {
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS,
                                  computation->parameter_instruction(0), 0),
               ElementsAre(FieldsAre(/*stride=*/24, /*count=*/6,
-                                    /*slice_start=*/2, /*slice_limit=*/5,
+                                    /*slice_start=*/2, /*sliced_count=*/3,
                                     /*subfragments=*/ElementsAre(3))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS,
                                  computation->parameter_instruction(0), 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/24,
-                                    /*slice_start=*/16, /*slice_limit=*/23,
+                                    /*slice_start=*/16, /*sliced_count=*/7,
                                     /*subfragments=*/ElementsAre(7))));
 }
 
@@ -829,34 +829,35 @@ e {
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
                                  computation->parameter_instruction(0), 0),
               ElementsAre(FieldsAre(/*stride=*/1536, /*count=*/153,
-                                    /*slice_start=*/0, /*slice_limit=*/153,
+                                    /*slice_start=*/0, /*sliced_count=*/153,
                                     /*subfragments=*/ElementsAre(153))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
                                  computation->parameter_instruction(0), 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/1536,
-                                    /*slice_start=*/0, /*slice_limit=*/1536,
+                                    /*slice_start=*/0, /*sliced_count=*/1536,
                                     /*subfragments=*/ElementsAre(1536))));
 
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
                                  computation->parameter_instruction(1), 0),
               ElementsAre(FieldsAre(/*stride=*/128, /*count=*/153,
-                                    /*slice_start=*/0, /*slice_limit=*/153,
+                                    /*slice_start=*/0, /*sliced_count=*/153,
                                     /*subfragments=*/ElementsAre(153))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
                                  computation->parameter_instruction(1), 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/128,
-                                    /*slice_start=*/0, /*slice_limit=*/128,
+                                    /*slice_start=*/0, /*sliced_count=*/128,
                                     /*subfragments=*/ElementsAre(128))));
 
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
                                  computation->parameter_instruction(2), 0),
               ElementsAre(FieldsAre(/*stride=*/256, /*count=*/153,
-                                    /*slice_start=*/0, /*slice_limit=*/153,
+                                    /*slice_start=*/0, /*sliced_count=*/153,
                                     /*subfragments=*/ElementsAre(153))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
                                  computation->parameter_instruction(2), 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/256,
-                                    /*slice_start=*/0, /*slice_limit=*/256,
+                                    /*slice_start=*/0,
+                                    /*sliced_count=*/256,
                                     /*subfragments=*/ElementsAre(256))));
 }
 

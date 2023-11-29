@@ -36,17 +36,18 @@ namespace gpu {
 
 class TensorIterationSpec {
  public:
-  // Description of basic iteration: `count` elements separated by `stride`.
+  // Description of basic iteration: `count` elements separated by `stride`
+  // with initial offset of `slice_start` and only `sliced_count` elements used.
   struct IterationSpecFragment {
     int64_t stride;
     int64_t count;
     int64_t slice_start;
-    int64_t slice_limit;
+    int64_t sliced_count;
     // Logical subfragments when this iteration is composed
     // of several HLO dimensions.
     std::vector<int64_t> subfragments;
 
-    bool is_sliced() const { return count != slice_limit - slice_start; }
+    bool is_sliced() const { return count != sliced_count; }
     bool operator!=(const IterationSpecFragment& other) const;
     std::string ToString() const;
   };
@@ -103,35 +104,34 @@ class DimensionOrder {
   // Description of a continuous fragment of one dimension of a tensor.
   class Fragment {
    public:
-    explicit Fragment(int dst_dim_number, int64_t size)
+    explicit Fragment(int dst_dim_number, int64_t count)
         : dst_dim_number_(dst_dim_number),
-          size_(size),
+          count_(count),
           slice_start_(0),
-          slice_limit_(size) {}
+          sliced_count_(count) {}
 
     std::string ToString() const;
 
     // Label carrying the dimension number of an defining operation.
     int dst_dim_number() const { return dst_dim_number_; }
     // Total number of elements in the fragment ignoring slicing.
-    int64_t full_size() const { return size_; }
+    int64_t full_count() const { return count_; }
     // First used element.
     int64_t slice_start() const { return slice_start_; }
-    // Last used element.
-    int64_t slice_limit() const { return slice_limit_; }
-    int64_t sliced_size() const { return slice_limit_ - slice_start_; }
-    bool is_sliced() const { return full_size() != sliced_size(); }
-    void set_slice(int64_t start, int64_t limit) {
+    // Number of used elements.
+    int64_t sliced_count() const { return sliced_count_; }
+    bool is_sliced() const { return count_ != sliced_count_; }
+    void set_slice(int64_t start, int64_t count) {
       slice_start_ = start;
-      slice_limit_ = limit;
+      sliced_count_ = count;
     }
-    void set_size(int64_t size) { size_ = size; }
+    void set_count(int64_t count) { count_ = count; }
 
    private:
     const int dst_dim_number_;
-    int64_t size_;
+    int64_t count_;
     int64_t slice_start_;
-    int64_t slice_limit_;
+    int64_t sliced_count_;
   };
   using Fragments = std::vector<Fragment>;
   using FragmentOrders = absl::flat_hash_map<int, std::vector<int>>;
