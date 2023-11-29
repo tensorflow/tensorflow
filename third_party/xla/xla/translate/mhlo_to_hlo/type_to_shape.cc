@@ -82,7 +82,7 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type) {
 }
 
 std::optional<std::tuple<DimLevelType, bool, bool>> ConvertDimLevelType(
-    mlir::sparse_tensor::DimLevelType lt) {
+    mlir::sparse_tensor::LevelType lt) {
   auto f = mlir::sparse_tensor::getLevelFormat(lt);
   if (!f) return std::nullopt;
 
