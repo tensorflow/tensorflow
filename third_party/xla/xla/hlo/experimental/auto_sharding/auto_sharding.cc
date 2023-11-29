@@ -87,6 +87,12 @@ limitations under the License.
 
 namespace xla {
 namespace spmd {
+
+namespace {
+constexpr double kOverbudgetCoeff = 1e6;
+constexpr double kSaltiplier = 0.001;  // Modifies each obj. term by at most .1%
+}  // namespace
+
 // Compute the resharding cost vector from multiple possible strategies
 // to a desired sharding spec.
 std::vector<double> ReshardingCostVector(
@@ -2507,24 +2513,31 @@ AutoShardingSolverResult CallSolver(
         sharding_propagation_solution) {
   // Serialize edges and edge costs to 1d numpy arrays
   AutoShardingSolverRequest request;
-  request.num_nodes = strategy_groups.size();
-  request.memory_budget = option.memory_budget_per_device;
-  request.s_len = cost_graph.node_lens_;
-  request.s_follow = cost_graph.follow_idx_;
-  request.s_hint = s_hint;
-  request.solver_timeout_in_seconds = solver_timeout_in_seconds;
-  request.crash_at_infinity_costs_check = !option.try_multiple_mesh_shapes;
-  request.compute_iis = compute_iis;
-  for (const auto& iter : cost_graph.edge_costs_) {
-    request.e.push_back(iter.first);
-    std::vector<double> rij;
-    const Matrix& edge_cost = iter.second;
+  request.set_num_nodes(strategy_groups.size());
+  request.set_memory_budget(option.memory_budget_per_device);
+  request.mutable_s_len()->Add(cost_graph.node_lens_.begin(),
+                               cost_graph.node_lens_.end());
+  request.mutable_s_follow()->Add(cost_graph.follow_idx_.begin(),
+                                  cost_graph.follow_idx_.end());
+  request.mutable_s_hint()->Add(s_hint.begin(), s_hint.end());
+  request.mutable_solver_timeout()->set_solver_timeout_in_seconds(
+      solver_timeout_in_seconds);
+  request.mutable_overbudget_coeff()->set_coeff(kOverbudgetCoeff);
+  request.set_crash_at_infinity_costs_check(!option.try_multiple_mesh_shapes);
+  request.set_compute_iis(compute_iis);
+  request.set_saltiplier(kSaltiplier);
+  for (const auto& [edge, edge_cost] : cost_graph.edge_costs_) {
+    AutoShardingSolverRequest_Pair raw_edge;
+    raw_edge.set_first(edge.first);
+    raw_edge.set_second(edge.second);
+    *request.add_edges() = raw_edge;
+    AutoShardingSolverRequest_Costs rij;
     for (NodeStrategyIdx i = 0; i < edge_cost.n_; i++) {
       for (NodeStrategyIdx j = 0; j < edge_cost.m_; j++) {
-        rij.push_back(edge_cost(i, j));
+        rij.add_costs(edge_cost(i, j));
       }
     }
-    request.r.push_back(std::move(rij));
+    request.mutable_resharding_costs()->Add(std::move(rij));
   }
 
   const HloInstructionSequence& sequence =
@@ -2533,13 +2546,13 @@ AutoShardingSolverResult CallSolver(
 
   // Serialize node costs
   int num_nodes_without_default = 0;
-  for (NodeIdx node_idx = 0; node_idx < request.num_nodes; ++node_idx) {
+  for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
     const StrategyGroup* strategy_group = strategy_groups[node_idx];
     auto instruction_name =
         instructions.at(strategy_group->instruction_id)->name();
-    request.instruction_names.push_back(
+    request.add_instruction_names(
         absl::StrCat(instruction_name, " (id: ", node_idx, ")"));
-    std::vector<double> ci, di, mi, pi;
+    AutoShardingSolverRequest_Costs ci, di, mi, pi;
     std::optional<HloSharding> default_strategy;
     auto iter = sharding_propagation_solution.find(instruction_name);
     if (iter != sharding_propagation_solution.end()) {
@@ -2555,23 +2568,23 @@ AutoShardingSolverResult CallSolver(
     for (NodeStrategyIdx j = 0; j < strategy_group->strategies.size(); ++j) {
       const ShardingStrategy& strategy = strategy_group->strategies[j];
       const HloSharding& sharding = strategy.output_sharding;
-      ci.push_back(strategy.compute_cost);
-      di.push_back(strategy.communication_cost +
+      ci.add_costs(strategy.compute_cost);
+      di.add_costs(strategy.communication_cost +
                    cost_graph.extra_node_costs_[node_idx][j]);
-      mi.push_back(strategy.memory_cost);
-      pi.push_back(default_strategy && sharding == *default_strategy ? 0 : 1);
+      mi.add_costs(strategy.memory_cost);
+      pi.add_costs(default_strategy && sharding == *default_strategy ? 0 : 1);
     }
     if (option.use_sharding_propagation_for_default_shardings &&
-        *std::min_element(pi.begin(), pi.end()) > 0) {
+        *std::min_element(pi.costs().begin(), pi.costs().end()) > 0) {
       LOG(WARNING) << "No default strategy for {node_idx " << node_idx
                    << ", instruction ID " << strategy_group->instruction_id
                    << ", instruction name " << instruction_name << "}";
       ++num_nodes_without_default;
     }
-    request.c.push_back(ci);
-    request.d.push_back(di);
-    request.m.push_back(mi);
-    request.p.push_back(pi);
+    request.mutable_computation_costs()->Add(std::move(ci));
+    request.mutable_communication_costs()->Add(std::move(di));
+    request.mutable_memory_costs()->Add(std::move(mi));
+    request.mutable_departure_costs()->Add(std::move(pi));
   }
   LOG(INFO) << "Total nodes without default: " << num_nodes_without_default;
 
@@ -2600,62 +2613,70 @@ AutoShardingSolverResult CallSolver(
     std::vector<NodeStrategyIdx> row_indices;
     std::vector<NodeStrategyIdx> col_indices;
 
-    if (request.s_follow[idx_a] >= 0) {
+    if (request.s_follow(idx_a) >= 0) {
       row_indices = cost_graph.reindexing_vector_.at(idx_a);
-      idx_a = request.s_follow[idx_a];
+      idx_a = request.s_follow(idx_a);
     } else {
-      row_indices.assign(request.s_len[idx_a], 0);
+      row_indices.assign(request.s_len(idx_a), 0);
       std::iota(row_indices.begin(), row_indices.end(), 0);
     }
 
-    if (request.s_follow[idx_b] >= 0) {
+    if (request.s_follow(idx_b) >= 0) {
       col_indices = cost_graph.reindexing_vector_.at(idx_b);
-      idx_b = request.s_follow[idx_b];
+      idx_b = request.s_follow(idx_b);
     } else {
-      col_indices.assign(request.s_len[idx_b], 0);
+      col_indices.assign(request.s_len(idx_b), 0);
       std::iota(col_indices.begin(), col_indices.end(), 0);
     }
 
-    CHECK_EQ(request.s_len[idx_a], row_indices.size());
-    CHECK_EQ(request.s_len[idx_b], col_indices.size());
+    CHECK_EQ(request.s_len(idx_a), row_indices.size());
+    CHECK_EQ(request.s_len(idx_b), col_indices.size());
 
-    std::vector<double> vij;
+    AutoShardingSolverRequest_Costs vij;
     for (NodeStrategyIdx i : row_indices) {
       for (NodeStrategyIdx j : col_indices) {
-        vij.push_back(raw_cost(i, j));
+        vij.add_costs(raw_cost(i, j));
       }
     }
-    bool convertable = (row_indices.size() == col_indices.size());
-    for (NodeStrategyIdx i = 0; i < row_indices.size() && convertable; ++i) {
-      if (vij[i * col_indices.size() + i] != 0.0) convertable = false;
+    bool convertible = (row_indices.size() == col_indices.size());
+    for (NodeStrategyIdx i = 0; i < row_indices.size() && convertible; ++i) {
+      if (vij.costs(i * col_indices.size() + i) != 0.0) convertible = false;
     }
-    if (convertable && option.allow_alias_to_follower_conversion) {
+    if (convertible && option.allow_alias_to_follower_conversion) {
       new_followers.push_back({idx_a, idx_b});
     } else {
-      request.a.push_back({idx_a, idx_b});
-      request.v.push_back(vij);
+      AutoShardingSolverRequest_Pair alias;
+      alias.set_first(idx_a);
+      alias.set_second(idx_b);
+      *request.add_aliases() = alias;
+      request.mutable_value_costs()->Add(std::move(vij));
     }
   }
 
   // Process any new followers that had originally been modeled as aliases.
-  std::vector<NodeIdx>& s_follow = request.s_follow;
+  auto s_follow = request.mutable_s_follow();
   for (auto [follower, followee] : new_followers) {
     // New followers may have introduced chains, so find the root nodes.
-    while (s_follow[follower] >= 0) follower = s_follow[follower];
-    while (s_follow[followee] >= 0) followee = s_follow[followee];
-    if (follower != followee) s_follow[follower] = followee;
+    while (s_follow->at(follower) >= 0) follower = s_follow->at(follower);
+    while (s_follow->at(followee) >= 0) followee = s_follow->at(followee);
+    if (follower != followee) s_follow->Set(follower, followee);
   }
 
   // Flatten the follower indices to remove any transitive arcs.
-  for (NodeIdx node_idx = 0; node_idx < request.num_nodes; ++node_idx) {
-    if (s_follow[node_idx] < 0) continue;
-    while (s_follow[s_follow[node_idx]] >= 0) {
-      s_follow[node_idx] = s_follow[s_follow[node_idx]];
+  for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
+    if (s_follow->at(node_idx) < 0) continue;
+    while (s_follow->at(s_follow->at(node_idx)) >= 0) {
+      s_follow->Set(node_idx, s_follow->at(s_follow->at(node_idx)));
     }
   }
 
   // Serialize liveness_set
-  request.live = liveness_node_set;
+  for (const auto& liveness_node_subset : liveness_node_set) {
+    AutoShardingSolverRequest_Nodes nodes;
+    nodes.mutable_nodes()->Add(liveness_node_subset.begin(),
+                               liveness_node_subset.end());
+    request.mutable_live()->Add(std::move(nodes));
+  }
 
   PopulateTemporalValues(cost_graph, request);
 
