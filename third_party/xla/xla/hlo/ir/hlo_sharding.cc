@@ -361,7 +361,7 @@ HloSharding HloSharding::Tuple(const Shape& tuple_shape,
         << "Flat list has " << flattened_list.size() << ", required "
         << RequiredLeaves(tuple_shape);
   }
-  return HloSharding(flattened_list);
+  return HloSharding(std::move(flattened_list));
 }
 
 HloSharding HloSharding::SingleTuple(const Shape& tuple_shape,
@@ -811,7 +811,8 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
                           HloSharding::FromProto(tuple_sharding_proto));
       tuple_shardings.push_back(sharding);
     }
-    return HloSharding(tuple_shardings).SetShardGroupFromProto(proto);
+    return std::move(
+        HloSharding(std::move(tuple_shardings)).SetShardGroupFromProto(proto));
   } else if (proto.type() == OpSharding::REPLICATED) {
     return Replicate(metadata).SetShardGroupFromProto(proto);
   } else if (proto.type() == OpSharding::MANUAL) {
