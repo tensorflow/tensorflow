@@ -87,7 +87,7 @@ build_and_test_on_rbe_gpu() {
     --test_output=errors \
     --test_env=JAX_SKIP_SLOW_TESTS=1 \
     --test_env=TF_CPP_MIN_LOG_LEVEL=0 \
-    --test_env=JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow|LaxTest.testBitcastConvertType" \
+    --test_env=JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow" \
     --test_tag_filters=-multiaccelerator \
     -- //tests:gpu_tests //tests:backend_independent_tests
 }
