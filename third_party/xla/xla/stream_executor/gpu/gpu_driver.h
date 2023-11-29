@@ -540,6 +540,12 @@ class GpuDriver {
                                            GpuDevicePtr gpu_dst,
                                            GpuDevicePtr gpu_src, uint64_t size);
 
+  // Sets the parameters for a memcpy node in the given graphExec.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g26186d58858ab32ccc7425b53786cce5
+  static tsl::Status GraphExecMemcpyD2DNodeSetParams(
+      GpuContext* context, GpuGraphExecHandle exec, GpuGraphNodeHandle node,
+      GpuDevicePtr gpu_dst, GpuDevicePtr gpu_src, uint64_t size);
+
   // Creates a memset node and adds it to a graph.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g89dc8fc3743392777c0daa2c4aca40d3
   static tsl::Status GraphAddMemsetNode(

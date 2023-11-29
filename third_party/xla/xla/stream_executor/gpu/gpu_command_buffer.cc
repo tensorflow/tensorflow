@@ -261,13 +261,19 @@ tsl::Status GpuCommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                                    uint64_t size) {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
-  // Adds a new memcpy node to the graph under construction.
   if (state_ == State::kCreate) {
     Dependencies deps = GetDependencies();
     GpuGraphNodeHandle* node = &nodes_.emplace_back();
     return GpuDriver::GraphAddMemcpyD2DNode(
         parent_->gpu_context(), node, graph_, absl::MakeSpan(deps),
         AsDevicePtr(*dst), AsDevicePtr(src), size);
+  }
+
+  if (state_ == State::kUpdate) {
+    GpuGraphNodeHandle node = nodes_[update_state_.node_idx++];
+    return GpuDriver::GraphExecMemcpyD2DNodeSetParams(
+        parent_->gpu_context(), exec_, node, AsDevicePtr(*dst),
+        AsDevicePtr(src), size);
   }
 
   return UnsupportedStateError(state_);

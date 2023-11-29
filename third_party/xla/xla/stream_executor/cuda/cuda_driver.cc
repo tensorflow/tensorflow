@@ -996,6 +996,32 @@ GpuDriver::GraphGetMemAllocNodeParams(CUgraphNode node) {
   return ::tsl::OkStatus();
 }
 
+/* static */ tsl::Status GpuDriver::GraphExecMemcpyD2DNodeSetParams(
+    GpuContext* context, GpuGraphExecHandle exec, GpuGraphNodeHandle node,
+    GpuDevicePtr gpu_dst, GpuDevicePtr gpu_src, uint64_t size) {
+  VLOG(2) << "Set memcpy d2d node params " << node << " in graph executable "
+          << exec << "; dst: " << reinterpret_cast<void*>(gpu_dst)
+          << "; src: " << reinterpret_cast<void*>(gpu_src) << "; size: " << size
+          << "; context: " << context->context();
+
+  CUDA_MEMCPY3D params;
+  memset(&params, 0, sizeof(params));
+
+  params.srcMemoryType = CU_MEMORYTYPE_DEVICE;
+  params.srcDevice = gpu_src;
+  params.dstMemoryType = CU_MEMORYTYPE_DEVICE;
+  params.dstDevice = gpu_dst;
+  params.WidthInBytes = size;
+  params.Height = 1;
+  params.Depth = 1;
+
+  RETURN_IF_CUDA_RES_ERROR(
+      cuGraphExecMemcpyNodeSetParams(exec, node, &params, context->context()),
+      "Failed to set memcpy d2d node params");
+
+  return ::tsl::OkStatus();
+}
+
 namespace {
 
 struct BitPatternToString {

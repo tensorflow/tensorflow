@@ -220,6 +220,53 @@ TEST(CudaCommandBufferTest, LaunchNestedCommandBuffer) {
   ASSERT_EQ(dst, expected);
 }
 
+TEST(CudaCommandBufferTest, MemcpyDeviceToDevice) {
+  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  Stream stream(executor);
+  stream.Init();
+  ASSERT_TRUE(stream.ok());
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: a=42, b=uninitialized
+  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+
+  stream.ThenMemset32(&a, 42, byte_length);
+
+  // Create a command buffer with a single a to b memcpy command.
+  auto cmd_buffer = CommandBuffer::Create(executor).value();
+  TF_ASSERT_OK(cmd_buffer.MemcpyDeviceToDevice(&b, a, byte_length));
+  TF_ASSERT_OK(cmd_buffer.Finalize());
+
+  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+
+  // Copy `b` data back to host.
+  std::vector<int32_t> dst(4, 0);
+  stream.ThenMemcpy(dst.data(), a, byte_length);
+
+  std::vector<int32_t> expected = {42, 42, 42, 42};
+  ASSERT_EQ(dst, expected);
+
+  // Update command buffer to swap the memcpy direction.
+  TF_ASSERT_OK(cmd_buffer.Update());
+  TF_ASSERT_OK(cmd_buffer.MemcpyDeviceToDevice(&a, b, byte_length));
+  TF_ASSERT_OK(cmd_buffer.Finalize());
+
+  // Clear destination to test that command buffer actually copied memory.
+  stream.ThenMemset32(&a, 0, byte_length);
+
+  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+
+  // Copy `a` data back to host.
+  std::fill(dst.begin(), dst.end(), 0);
+  stream.ThenMemcpy(dst.data(), a, byte_length);
+  ASSERT_EQ(dst, expected);
+}
+
 TEST(CudaCommandBufferTest, Memset) {
   Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
