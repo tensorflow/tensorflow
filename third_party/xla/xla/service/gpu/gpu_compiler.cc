@@ -127,6 +127,7 @@ limitations under the License.
 #include "xla/service/gpu/copy_fusion.h"
 #include "xla/service/gpu/custom_fusion_rewriter.h"
 #include "xla/service/gpu/dot_dimension_sorter.h"
+#include "xla/service/gpu/fusion_merger_triton.h"
 #include "xla/service/gpu/fusion_pipeline.h"
 #include "xla/service/gpu/fusion_wrapper.h"
 #include "xla/service/gpu/gemm_broadcast_folding_rewriter.h"
@@ -947,6 +948,10 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
                                     thread_pool.get(), gpu_device_info)
                          .Run(hlo_module)
                          .status());
+
+  if (debug_options.xla_gpu_enable_triton_softmax_fusion()) {
+    TF_RETURN_IF_ERROR(FusionMergerTriton().Run(hlo_module).status());
+  }
 
   if (debug_options.xla_gpu_collect_cost_model_stats()) {
     GpuHloCostAnalysis::Options cost_analysis_options{
