@@ -129,6 +129,13 @@ Status CpuLayoutAssignment::AddBackendConstraints(
       const HloInstruction* op = instruction->operand(*op_idx);
       TF_RETURN_IF_ERROR(
           SetOperandLayout(ColMajorShape(op->shape()), instruction, *op_idx));
+    } else if (instruction->opcode() == HloOpcode::kReduceScatter) {
+      // XLA:CPU can only support reduce-scatter where the scatter dimension
+      // is the most major dimension in the layout.
+      auto ars = Cast<HloReduceScatterInstruction>(instruction);
+      TF_RETURN_IF_ERROR(SetInstructionLayout(
+          ShapeUtil::MoveDimToMajor(ars->shape(), ars->scatter_dimension()),
+          ars));
     } else if (instruction->opcode() == HloOpcode::kAllGather) {
       // XLA:CPU can only support all-gathers where the gather dimension is the
       // most major dimension in the layout.

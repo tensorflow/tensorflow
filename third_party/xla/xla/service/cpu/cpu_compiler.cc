@@ -191,7 +191,6 @@ limitations under the License.
 #include "xla/service/optimization_barrier_expander.h"
 #include "xla/service/qr_expander.h"
 #include "xla/service/reduce_decomposer.h"
-#include "xla/service/reduce_scatter_decomposer.h"
 #include "xla/service/reshape_decomposer.h"
 #include "xla/service/reshape_mover.h"
 #include "xla/service/result_caster.h"
@@ -685,7 +684,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<EighExpander>();
   pipeline.AddPass<TriangularSolveExpander>();
   pipeline.AddPass<AllToAllDecomposer>();
-  pipeline.AddPass<ReduceScatterDecomposer>();
   pipeline.AddPass<StochasticConvertDecomposer>();
 
   // Inline computations with a single call site.
