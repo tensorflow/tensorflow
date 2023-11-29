@@ -95,6 +95,7 @@ from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.ops.numpy_ops import np_dtypes
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
@@ -231,11 +232,6 @@ arg_max = deprecation.deprecated(None, "Use `tf.math.argmax` instead")(arg_max) 
 arg_min = deprecation.deprecated(None, "Use `tf.math.argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
 tf_export(v1=["arg_max"])(dispatch.add_dispatch_support(arg_max))
 tf_export(v1=["arg_min"])(dispatch.add_dispatch_support(arg_min))
-
-
-# This is set by resource_variable_ops.py. It is included in this way since
-# there is a circular dependency between math_ops and resource_variable_ops
-_resource_variable_type = None
 
 
 def _set_doc(doc):
@@ -997,8 +993,9 @@ def cast(x, dtype, name=None):
 
   """
   base_type = dtypes.as_dtype(dtype).base_dtype
-  if isinstance(
-      x, (tensor_lib.Tensor, _resource_variable_type)) and base_type == x.dtype:
+  if (
+      isinstance(x, tensor_lib.Tensor) or _pywrap_utils.IsResourceVariable(x)
+  ) and base_type == x.dtype:
     return x
   with ops.name_scope(name, "Cast", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
@@ -3755,9 +3752,12 @@ def matmul(a,
           f"`adjoint_b`={adjoint_b}.")
 
     if context.executing_eagerly():
-      if not isinstance(a, (ops.EagerTensor, _resource_variable_type)):
+      if not (
+          isinstance(a, ops.EagerTensor) or _pywrap_utils.IsResourceVariable(a)
+      ):
         a = ops.convert_to_tensor(a, name="a")
-      if not isinstance(b, (ops.EagerTensor, _resource_variable_type)):
+      if not isinstance(b, ops.EagerTensor) or _pywrap_utils.IsResourceVariable(
+          b):
         b = ops.convert_to_tensor(b, dtype_hint=a.dtype.base_dtype, name="b")
     else:
       a = ops.convert_to_tensor(a, name="a")
