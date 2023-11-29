@@ -87,14 +87,17 @@ se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
   CHECK_LE(buffer_slice.offset() + buffer_slice.size(), base.size());
 
   if (base.is_external_allocation_marker()) {
-    auto cmd_buffer_base = command_buffer->GetAllocationAddress(
-        buffer_slice.allocation()->index());
+    auto cmd_buffer_base =
+        command_buffer->GetAllocationAddress(buffer_slice.index());
     CHECK(cmd_buffer_base.ok())
         << "Get allocation address from command_buffer failed";
     CHECK(!cmd_buffer_base.value().is_null())
         << "Allocation is not yet allocated by command buffer for slice: "
         << buffer_slice.ToString();
-    return cmd_buffer_base.value();
+    return se::DeviceMemoryBase(
+        static_cast<char*>(cmd_buffer_base.value().opaque()) +
+            buffer_slice.offset(),
+        buffer_slice.size());
   }
 
   return se::DeviceMemoryBase(

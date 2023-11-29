@@ -952,6 +952,8 @@ static CUmemAllocationType ToCudaAllocationType(
 #if CUDA_VERSION >= 12000
   mem_pool_props.maxSize = max_pool_size;
 #endif  // CUDA_VERSION >= 12000
+  // cuda graph requires reserved space initialized to 0
+  memset(mem_pool_props.reserved, 0, sizeof(mem_pool_props.reserved));
 
   params.accessDescCount = 1;
   params.bytesize = size;
