@@ -38,8 +38,10 @@ void RecordPjrtCompilerCompileComputationStatus(bool is_compiling);
 
 void RecordPjrtCompilerCompileModuleStatus(bool is_compiling);
 
-void RecordFreeGpuSystemMemory();
+// TODO(xiangll): Refactor to a more appropriate location.
+void RecordFreeGpuSystemMemory(int device_ordinal, int64_t free_memory);
 
+// TODO(xiangll): Refactor to a more appropriate location.
 int64_t GetFreeGpuSystemMemory(int gpu_id);
 
 }  // namespace metrics
