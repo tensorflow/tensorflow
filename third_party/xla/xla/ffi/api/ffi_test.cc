@@ -25,10 +25,19 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 
 namespace xla::ffi {
+
+namespace {
+
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
+
+}  // namespace
 
 TEST(FfiTest, DataTypeEnumValue) {
   // Verify that xla::PrimitiveType and xla::ffi::DataType use the same
@@ -62,16 +71,45 @@ TEST(FfiTest, BufferArgument) {
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
-  auto fn = [&](BufferBase<DataType::F32> buffer) {
-    EXPECT_EQ(buffer.data, storage.data());
-    EXPECT_EQ(buffer.dimensions.size(), 2);
-    return Error::Success();
-  };
-
-  auto handler = Ffi::Bind().Arg<BufferBase<DataType::F32>>().To(fn);
+  auto handler =
+      Ffi::Bind().Arg<BufferBase<DataType::F32>>().To([&](auto buffer) {
+        EXPECT_EQ(buffer.data, storage.data());
+        EXPECT_EQ(buffer.dimensions.size(), 2);
+        return Error::Success();
+      });
   auto status = Call(*handler, call_frame);
 
   TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, MissingBufferArgument) {
+  CallFrameBuilder builder;
+  auto call_frame = builder.Build();
+
+  auto handler = Ffi::Bind().Arg<BufferBase<DataType::F32>>().To(
+      [](auto) { return Error::Success(); });
+  auto status = Call(*handler, call_frame);
+
+  EXPECT_THAT(status, StatusIs(tsl::error::INVALID_ARGUMENT,
+                               HasSubstr("Wrong number of arguments")));
+}
+
+TEST(FfiTest, WrongTypeBufferArgument) {
+  std::vector<std::int32_t> storage(4, 0.0);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(std::int32_t));
+
+  CallFrameBuilder builder;
+  builder.AddBufferArg(memory, PrimitiveType::S32, /*dims=*/{2, 2});
+  auto call_frame = builder.Build();
+
+  auto handler = Ffi::Bind().Arg<BufferBase<DataType::F32>>().To(
+      [](auto) { return Error::Success(); });
+  auto status = Call(*handler, call_frame);
+
+  EXPECT_THAT(
+      status,
+      StatusIs(tsl::error::INVALID_ARGUMENT,
+               HasSubstr("Wrong buffer dtype: expected F64 but got S64")));
 }
 
 //===----------------------------------------------------------------------===//

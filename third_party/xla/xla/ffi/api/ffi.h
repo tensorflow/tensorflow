@@ -23,6 +23,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -52,6 +53,14 @@ enum class DataType : uint8_t {
   F64 = XLA_FFI_DataType_F64,
   BF16 = XLA_FFI_DataType_BF16,
 };
+
+inline std::ostream& operator<<(std::ostream& os, const DataType dtype) {
+  static constexpr const char* kDataTypeNames[] = {
+      "PRED", "S8",  "S16", "S32", "S64", "U8",   "U16",
+      "U32",  "U64", "F16", "F32", "F64", "BF16",
+  };
+  return os << kDataTypeNames[static_cast<int>(dtype)];
+}
 
 //===----------------------------------------------------------------------===//
 // Span is non-owning view into contiguous values of type `T`.
@@ -146,17 +155,31 @@ struct BufferBase {
 // Arguments decoding
 //===----------------------------------------------------------------------===//
 
+inline std::ostream& operator<<(std::ostream& os, const XLA_FFI_ArgType type) {
+  switch (type) {
+    case XLA_FFI_ArgType_BUFFER:
+      return os << "buffer";
+  }
+}
+
 template <DataType dtype>
 struct ArgDecoding<BufferBase<dtype>> {
+  XLA_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<BufferBase<dtype>> Decode(XLA_FFI_ArgType type,
-                                                 void* arg, DiagnosticEngine&) {
-    if (type != XLA_FFI_ArgType_BUFFER) return std::nullopt;
+                                                 void* arg,
+                                                 DiagnosticEngine& diagnostic) {
+    if (type != XLA_FFI_ArgType_BUFFER) {
+      return diagnostic.Emit("Wrong argument type: expected ")
+             << XLA_FFI_ArgType_BUFFER << " but got " << type;
+    }
     auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
-    // TODO(slebedev): Emit a user-friendly error instead.
-    if (static_cast<DataType>(buf->dtype) != dtype) return std::nullopt;
+    if (auto actual_dtype = static_cast<DataType>(buf->dtype);
+        actual_dtype != dtype) {
+      return diagnostic.Emit("Wrong buffer dtype: expected ")
+             << dtype << " but got " << actual_dtype;
+    }
     auto* data =
         static_cast<typename internal::PtrType<dtype>::Type*>(buf->data);
-
     return BufferBase<dtype>{data, Span<const int64_t>(buf->dims, buf->rank)};
   }
 };
