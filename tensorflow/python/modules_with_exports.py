@@ -170,6 +170,7 @@ from tensorflow.python.client.client_lib import *
 
 # Summary
 from tensorflow.python.summary import summary
+from tensorflow.python.summary import tb_summary
 
 # TPU
 from tensorflow.python.tpu import api

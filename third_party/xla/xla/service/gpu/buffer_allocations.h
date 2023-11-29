@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -68,6 +69,15 @@ class BufferAllocations {
   se::DeviceMemoryBase GetDeviceAddress(
       const BufferAllocation::Slice& buffer_slice) const;
 
+  // For buffers that are lazily allocated through command buffer, this is
+  // indicated by specifying a special buffer address
+  // (LAZY_ALLOCATE_ADDRESS_MARKER), the real buffer address is tracked in
+  // CommandBuffer, this API will fetches the real address from CommandBuffer
+  // runtime.
+  se::DeviceMemoryBase GetDeviceAddress(
+      const BufferAllocation::Slice& buffer_slice,
+      const se::CommandBuffer* command_buffer) const;
+
   // Tears down all buffers allocated by this object that are not in
   // `live_addresses`.
   Status TearDown(const std::set<se::DeviceMemoryBase>& live_addresses,
@@ -89,6 +99,10 @@ class BufferAllocations {
   // An array of device pointers that stores the address of each buffer
   // indexed by Index. Each element can point to a temporary buffer, an
   // input buffer, or nullptr if no buffer is needed for that Index.
+
+  // a nullptr buffer with non-zero size buffer is assumed to be lazily
+  // allocated buffer, and will be allocated through command buffer Allocate
+  // command during runtime.
   std::vector<se::DeviceMemoryBase> buffers_;
   int device_ordinal_;
   se::DeviceMemoryAllocator* memory_allocator_;

@@ -102,6 +102,17 @@ class Shape {
   // Tuple shapes are traversed recursively.
   bool is_unbounded_dynamic() const;
 
+  // Returns true if the given dimension is unbounded dynamic.
+  bool is_unbounded_dynamic_dimension(int dimension) const {
+    return dimensions_.at(dimension) == kUnboundedSize;
+  }
+
+  // Sets a given dimension as unbounded dynamic.
+  void set_unbounded_dynamic_dimension(int dimension) {
+    dynamic_dimensions_[dimension] = true;
+    dimensions_.at(dimension) = kUnboundedSize;
+  }
+
   // Returns true if the given dimension is dynamically-sized.
   bool is_dynamic_dimension(int dimension) const {
     return dynamic_dimensions_.at(dimension);

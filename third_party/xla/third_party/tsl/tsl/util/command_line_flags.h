@@ -132,6 +132,11 @@ class Flags {
   // first remaining argument is not "--help".
   static bool Parse(int* argc, char** argv, const std::vector<Flag>& flag_list);
 
+  // Similar as above, but accepts a mutable vector of strings in place of
+  // argc and argv. Doesn't ignore the first flag, and return the unknown flags
+  // back in flags vector.
+  static bool Parse(std::vector<std::string>& flags,
+                    const std::vector<Flag>& flag_list);
   // Return a usage message with command line cmdline, and the
   // usage_text strings in flag_list[].
   static string Usage(const string& cmdline,

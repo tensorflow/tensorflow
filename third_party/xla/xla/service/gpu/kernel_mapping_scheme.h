@@ -146,34 +146,34 @@ class TilingScheme {
 
  private:
   // The number of elements in each dimension.
-  const Vector3 dims_in_elems_;
+  Vector3 dims_in_elems_;
 
   // The number of elements for each dimension of a tile.
-  const Vector3 tile_sizes_;
+  Vector3 tile_sizes_;
 
   // The dimensions which are used for the shared memory tile.
-  const Vector2 tiling_dimensions_;
+  Vector2 tiling_dimensions_;
 
   // Number of threads implicitly assigned to each dimension.
-  const Vector3 num_threads_;
+  Vector3 num_threads_;
 
-  const IndexingOrder indexing_order_;
+  IndexingOrder indexing_order_;
 
   // Vector size for dimension X.
-  const int vector_size_;
+  int vector_size_;
 
   // Scaling apply to transform physical threadIdx into logical.
-  const int64_t thread_id_virtual_scaling_ = 1;
+  int64_t thread_id_virtual_scaling_ = 1;
 };
 
 class ReductionCodegenInfo {
  public:
   using IndexGroups = std::vector<std::vector<const HloInstruction*>>;
 
-  explicit ReductionCodegenInfo(TilingScheme mapping_scheme,
-                                int num_partial_results, bool is_row_reduction,
-                                bool is_race_free, IndexGroups index_groups,
-                                const HloInstruction* first_reduce)
+  ReductionCodegenInfo(TilingScheme mapping_scheme, int num_partial_results,
+                       bool is_row_reduction, bool is_race_free,
+                       IndexGroups index_groups,
+                       const HloInstruction* first_reduce)
       : tiling_scheme_(mapping_scheme),
         num_partial_results_(num_partial_results),
         is_row_reduction_(is_row_reduction),
@@ -193,70 +193,16 @@ class ReductionCodegenInfo {
   }
 
   int GetNumPartialResults() const { return num_partial_results_; }
+  bool IsRowReduction() const { return is_row_reduction_; }
   bool IsRaceFree() const { return is_race_free_; }
 
  private:
-  friend class ReductionCodegenState;
-
-  const TilingScheme tiling_scheme_;
+  TilingScheme tiling_scheme_;
   int num_partial_results_;
   bool is_row_reduction_;
   bool is_race_free_;
   IndexGroups index_groups_;
   const HloInstruction* first_reduce_;
-};
-
-class ReductionCodegenState {
- public:
-  struct ReductionCalculationState {
-    llvm::GlobalVariable* shared_cache;
-    llvm::Value* initial_value;
-    llvm::AllocaInst* partial_result_address;
-    llvm::AllocaInst* input_address;
-    llvm_ir::ElementGenerator input_gen;
-  };
-
-  explicit ReductionCodegenState(
-      const ReductionCodegenInfo& reduction_codegen_info)
-      : reduction_codegen_info_(reduction_codegen_info) {}
-
-  const TilingScheme& GetTilingScheme() const {
-    return reduction_codegen_info_.tiling_scheme_;
-  }
-
-  int GetNumPartialResults() const {
-    return reduction_codegen_info_.num_partial_results_;
-  }
-
-  bool IsRowReduction() const {
-    return reduction_codegen_info_.is_row_reduction_;
-  }
-
-  bool IsRaceFree() const { return reduction_codegen_info_.IsRaceFree(); }
-
-  const ReductionCalculationState& GetCalculationStateFor(
-      const HloInstruction* instruction, int operand_idx) const {
-    const ReductionOpState& op_state = state_.at(instruction);
-    CHECK_LT(operand_idx, op_state.size());
-    return op_state[operand_idx];
-  }
-
-  void SetCalculationStateFor(
-      const ReductionCalculationState& calculation_state,
-      const HloInstruction* instruction, int operand_idx) {
-    ReductionOpState& op_state = state_[instruction];
-    CHECK_EQ(operand_idx, op_state.size());
-    op_state.push_back(calculation_state);
-  }
-
- private:
-  ReductionCodegenInfo reduction_codegen_info_;
-
-  // One state per reduction operand.
-  using ReductionOpState = absl::InlinedVector<ReductionCalculationState, 2>;
-
-  // HloInstruction -> operand_idx -> cache
-  absl::flat_hash_map<const HloInstruction*, ReductionOpState> state_;
 };
 
 }  // end namespace gpu

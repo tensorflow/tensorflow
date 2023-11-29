@@ -142,6 +142,10 @@ tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
 }
 
 void CreateClusteringPipeline(OpPassManager &pm, llvm::StringRef module_name) {
+  // Since the internal bridge clustering passes are shared among TF1/TF2
+  // TF2-only passes should go here. However, this should be very rare and
+  // new passes generally should go into the internal
+  // AddBridgeClusteringPipelinePasses.
   pm.addPass(mlir::TFTPU::CreateTPUValidateInputsPass());
   pm.addNestedPass<FuncOp>(
       mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());

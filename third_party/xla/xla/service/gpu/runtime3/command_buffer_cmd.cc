@@ -15,13 +15,12 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 
-#include "absl/container/inlined_vector.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -46,6 +46,10 @@ namespace xla::gpu {
 //===----------------------------------------------------------------------===//
 
 void CommandBufferCmdSequence::Append(std::unique_ptr<CommandBufferCmd> cmd) {
+  for (BufferAllocation::Slice& slice : cmd->slices()) {
+    slices_.insert(slice);
+    allocs_indices_.insert(slice.index());
+  }
   commands_.push_back(std::move(cmd));
 }
 
@@ -59,40 +63,34 @@ Status CommandBufferCmdSequence::Initialize(
 
 Status CommandBufferCmdSequence::Record(
     const CommandBufferCmd::RecordParams& params,
-    se::CommandBuffer* command_buffer) {
-  if (command_buffer->state() == se::CommandBuffer::State::kFinalized) {
-    TF_RETURN_IF_ERROR(command_buffer->Update());
+    se::CommandBuffer* command_buffer, RecordMode mode) {
+  if (mode == RecordMode::kExclusive) {
+    if (command_buffer->state() == se::CommandBuffer::State::kFinalized) {
+      TF_RETURN_IF_ERROR(command_buffer->Update());
+    }
   }
-  // Returns if no cmd requires update.
-  if (!ShouldUpdateCmd(params)) {
-    return OkStatus();
-  }
+
   for (auto& cmd : commands_) {
     TF_RETURN_IF_ERROR(cmd->Record(params, command_buffer));
   }
-  return command_buffer->Finalize();
+
+  if (mode == RecordMode::kExclusive) {
+    TF_RETURN_IF_ERROR(command_buffer->Finalize());
+  }
+
+  return OkStatus();
 }
 
-bool CommandBufferCmdSequence::ShouldUpdateCmd(
-    const CommandBufferCmd::RecordParams& params) {
-  bool should_update = false;
-  const BufferAllocations* allocs = params.buffer_allocations;
-  size_t size = allocs->size();
-  if (prev_allocs_.size() < size) {
-    prev_allocs_.resize(size);
-    should_update = true;
-  }
-  // Traversing all allocations from `params` using the index alone (no need for
-  // offset) is enough because every time `BufferAllocation` remapped to a new
-  // physical memory location all commands reading from any slice from that
-  // allocation must be invalidated.
-  for (unsigned i = 0; i < size; ++i) {
-    se::DeviceMemoryBase new_alloc = allocs->GetDeviceAddress(i);
-    se::DeviceMemoryBase& prev_alloc = prev_allocs_[i];
-    should_update |= !new_alloc.IsSameAs(prev_alloc);
-    prev_alloc = new_alloc;
-  }
-  return should_update;
+// Returns buffer allocation slices referenced by commands in this sequence.
+const absl::flat_hash_set<BufferAllocation::Slice>&
+CommandBufferCmdSequence::slices() const {
+  return slices_;
+}
+
+// Returns buffer allocations indices referenced by commands in this sequence.
+const absl::flat_hash_set<BufferAllocation::Index>&
+CommandBufferCmdSequence::allocs_indices() const {
+  return allocs_indices_;
 }
 
 //===----------------------------------------------------------------------===//
@@ -124,7 +122,7 @@ Status LaunchCmd::Record(const RecordParams& params,
   VLOG(5) << "LaunchCmd: kernel=" << kernel_name_
           << ", shmem_bytes=" << shmem_bytes_;
 
-  se::Kernel* kernel = kernels_[command_buffer->executor()].get();
+  se::Kernel* kernel = kernels_[params.executor].get();
   if (kernel == nullptr) {
     return absl::InternalError(
         "Kernel not loaded on a command buffer executor");
@@ -132,7 +130,8 @@ Status LaunchCmd::Record(const RecordParams& params,
 
   absl::InlinedVector<se::DeviceMemoryBase, 4> buffers;
   for (const BufferAllocation::Slice& arg : args_) {
-    se::DeviceMemoryBase buf = params.buffer_allocations->GetDeviceAddress(arg);
+    se::DeviceMemoryBase buf =
+        params.buffer_allocations->GetDeviceAddress(arg, command_buffer);
     VLOG(5) << "  Arg: " << arg << ": " << buf.opaque();
     buffers.push_back(buf);
   }
@@ -166,14 +165,65 @@ Status MemcpyDeviceToDeviceCmd::Record(const RecordParams& params,
                                        se::CommandBuffer* command_buffer) {
   VLOG(5) << "MemcpyDeviceToDeviceCmd: dst=" << dst_ << ", src=" << src_
           << ", num_bytes=" << num_bytes_;
-  se::DeviceMemoryBase dst = params.buffer_allocations->GetDeviceAddress(dst_);
-  se::DeviceMemoryBase src = params.buffer_allocations->GetDeviceAddress(src_);
+  se::DeviceMemoryBase dst =
+      params.buffer_allocations->GetDeviceAddress(dst_, command_buffer);
+  se::DeviceMemoryBase src =
+      params.buffer_allocations->GetDeviceAddress(src_, command_buffer);
   return command_buffer->MemcpyDeviceToDevice(&dst, src, num_bytes_);
 }
 
 CommandBufferCmd::Slices MemcpyDeviceToDeviceCmd::slices() {
   return {dst_, src_};
 }
+
+//===----------------------------------------------------------------------===//
+// IfCmd
+//===----------------------------------------------------------------------===//
+
+IfCmd::IfCmd(BufferAllocation::Slice pred, CommandBufferCmdSequence then_cmds)
+    : pred_(pred), then_cmds_(std::move(then_cmds)) {}
+
+Status IfCmd::Initialize(se::StreamExecutor* executor,
+                         ExecutableSource source) {
+  return then_cmds_.Initialize(executor, source);
+}
+
+Status IfCmd::Record(const RecordParams& params,
+                     se::CommandBuffer* command_buffer) {
+  se::DeviceMemoryBase pred =
+      params.buffer_allocations->GetDeviceAddress(pred_);
+
+  return command_buffer->If(
+      params.executor, se::DeviceMemory<bool>(pred),
+      [&](se::CommandBuffer* then_cmd_buffer) {
+        return then_cmds_.Record(
+            params, then_cmd_buffer,
+            CommandBufferCmdSequence::RecordMode::kConditional);
+      });
+}
+
+CommandBufferCmd::Slices IfCmd::slices() {
+  auto& slices = then_cmds_.slices();
+  return {slices.begin(), slices.end()};
+}
+
+//===----------------------------------------------------------------------===//
+// AllocateCmd
+//===----------------------------------------------------------------------===//
+
+AllocateCmd::AllocateCmd(BufferAllocation* allocation)
+    : allocation_(allocation) {}
+
+Status AllocateCmd::Record(const RecordParams& params,
+                           se::CommandBuffer* command_buffer) {
+  // Memory allocation address is returned on graph creation, and there is no
+  // update operation
+  VLOG(5) << "AllocationCmd: index=" << allocation_->index();
+  return command_buffer->Allocate(se::CommandBuffer::AllocIndexSize{
+      allocation_->index(), static_cast<uint64_t>(allocation_->size())});
+}
+
+CommandBufferCmd::Slices AllocateCmd::slices() { return {}; }
 
 //===----------------------------------------------------------------------===//
 // GemmCmd
@@ -206,18 +256,18 @@ Status GemmCmd::Record(const RecordParams& params,
   se::DeviceMemoryBase workspace(nullptr, 0);
 
   se::DeviceMemoryBase lhs =
-      params.buffer_allocations->GetDeviceAddress(lhs_buffer_);
+      params.buffer_allocations->GetDeviceAddress(lhs_buffer_, command_buffer);
   se::DeviceMemoryBase rhs =
-      params.buffer_allocations->GetDeviceAddress(rhs_buffer_);
-  se::DeviceMemoryBase out =
-      params.buffer_allocations->GetDeviceAddress(output_buffer_);
+      params.buffer_allocations->GetDeviceAddress(rhs_buffer_, command_buffer);
+  se::DeviceMemoryBase out = params.buffer_allocations->GetDeviceAddress(
+      output_buffer_, command_buffer);
   TF_ASSIGN_OR_RETURN(
       auto nested_buffer,
-      stream_executor::CommandBuffer::Trace(
-          command_buffer->executor(), [&](stream_executor::Stream* stream) {
-            return RunGemm(config_, lhs, rhs, out, workspace, deterministic_,
-                           stream);
-          }));
+      se::CommandBuffer::Trace(params.executor, [&](se::Stream* stream) {
+        return RunGemm(config_, lhs, rhs, out, workspace, deterministic_,
+                       stream);
+      }));
+
   return command_buffer->AddNestedCommandBuffer(nested_buffer);
 }
 

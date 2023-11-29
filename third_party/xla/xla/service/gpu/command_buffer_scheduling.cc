@@ -47,7 +47,6 @@ namespace {
 // used by commands.
 bool IsIntermediate(const HloInstruction* inst) {
   switch (inst->opcode()) {
-    case HloOpcode::kConstant:
     case HloOpcode::kGetTupleElement:
       return true;
     default:

@@ -63,7 +63,7 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
   for (int64_t dim = 0; dim < rank; ++dim) {
     int64_t dim_size = xla_ty.dimensions(dim);
     if (xla_ty.is_dynamic_dimension(dim)) {
-      if (dim_size != Shape::kUnboundedSize) {
+      if (!xla_ty.is_unbounded_dynamic_dimension(dim)) {
         bounds[dim] = dim_size;
         is_bounded_dynamic = true;
       }

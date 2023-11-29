@@ -142,7 +142,6 @@ tf_cc_binary(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
         "@local_xla//xla/mlir_hlo:all_passes",
-        "@local_xla//xla/mlir_hlo:gml_st",
         "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
         "@stablehlo//:register",
     ],

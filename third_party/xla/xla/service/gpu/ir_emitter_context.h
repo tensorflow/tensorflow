@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -63,14 +64,17 @@ class IrEmitterContext {
   const se::DeviceDescription& gpu_device_info() const {
     return gpu_device_info_;
   }
+  const se::GpuComputeCapability& gpu_compute_capability() const {
+    return gpu_device_info_.gpu_compute_capability();
+  }
   se::CudaComputeCapability cuda_compute_capability() const {
-    auto* cc = std::get_if<se::CudaComputeCapability>(
-        &gpu_device_info_.gpu_compute_capability());
+    auto* cc =
+        std::get_if<se::CudaComputeCapability>(&gpu_compute_capability());
     return cc != nullptr ? *cc : se::CudaComputeCapability();
   }
   se::RocmComputeCapability rocm_compute_capability() const {
-    auto* cc = std::get_if<se::RocmComputeCapability>(
-        &gpu_device_info_.gpu_compute_capability());
+    auto* cc =
+        std::get_if<se::RocmComputeCapability>(&gpu_compute_capability());
     return cc != nullptr ? *cc : se::RocmComputeCapability();
   }
   mlir::MLIRContext* mlir_context() { return mlir_context_; }
@@ -91,7 +95,7 @@ class IrEmitterContext {
   // element, given symbol name and content.
   void emit_constant(int64_t num_elements, int64_t bytes_per_element,
                      absl::string_view symbol_name, int allocation_idx,
-                     llvm::ArrayRef<uint8_t> content, llvm::IRBuilder<>* b);
+                     DenseDataIntermediate content, llvm::IRBuilder<>* b);
 
   const DebugOptions& debug_options() const {
     return hlo_module_->config().debug_options();

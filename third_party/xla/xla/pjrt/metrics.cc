@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/lib/monitoring/counter.h"
 #include "tsl/lib/monitoring/gauge.h"
 

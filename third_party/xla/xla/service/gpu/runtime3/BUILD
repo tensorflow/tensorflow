@@ -34,12 +34,28 @@ cc_library(
         "//xla/service/gpu:thunk",
         "//xla/stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "command_buffer_cmd_emitter",
+    srcs = ["command_buffer_cmd_emitter.cc"],
+    hdrs = ["command_buffer_cmd_emitter.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":command_buffer_cmd",
+        "//xla:statusor",
+        "//xla:util",
+        "//xla/service/gpu:gpu_executable",
+        "//xla/service/gpu:thunk",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -106,7 +122,7 @@ cc_library(
         "//xla/service/gpu:thunk",
         "//xla/stream_executor",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:errors",

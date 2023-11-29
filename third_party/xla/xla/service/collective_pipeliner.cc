@@ -303,8 +303,9 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
       return false;
     }
     if (i->opcode() == HloOpcode::kReduce &&
-        ShapeUtil::ElementsIn(i->shape()) ==
-            ShapeUtil::ElementsIn(instr->operand(0)->shape())) {
+        (ShapeUtil::ElementsIn(i->shape()) ==
+             ShapeUtil::ElementsIn(instr->operand(0)->shape()) ||
+         ShapeUtil::ElementsIn(instr->operand(0)->shape()) < 1024)) {
       return true;
     }
     return HloPredicateIsOp<HloOpcode::kSlice, HloOpcode::kDynamicSlice,

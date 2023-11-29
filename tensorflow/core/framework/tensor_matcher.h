@@ -34,7 +34,7 @@ namespace test {
 //
 // Use this like:
 //
-//   EXPECT_EQ(lhs, TensorEq(rhs));
+//   EXPECT_THAT(lhs, TensorEq(rhs));
 //
 // All POD types and DT_STRING type tensors are supported. Note that this
 // utility requires Tensors to point to CPU memory.

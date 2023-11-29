@@ -2059,11 +2059,7 @@ func.func @op_stochastic_convert(%arg0: tensor<f32>, %arg1: tensor<ui32>) -> ten
 
 func.func @op_topk(%arg0 : tensor<16xf32>) {
   // expected-error@+1 {{failed to legalize operation 'mhlo.topk' that was explicitly marked illegal}}
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true) : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
   return
 }
 

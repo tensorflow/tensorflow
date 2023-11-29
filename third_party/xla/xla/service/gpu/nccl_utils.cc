@@ -49,9 +49,10 @@ Status ToStatus(ncclResult_t s, const char* file, int64_t line,
   if (s == ncclSuccess) {
     return OkStatus();
   }
-  return tsl::errors::Internal(
-      absl::StrFormat("%s:%d: NCCL operation %s failed: %s", file, line, expr,
-                      ncclGetErrorString(s)));
+  return tsl::errors::Internal(absl::StrFormat(
+      "%s:%d: NCCL operation %s failed: %s."
+      " Last NCCL warning(error) log entry (may be unrelated) '%s'.",
+      file, line, expr, ncclGetErrorString(s), ncclGetLastError(NULL)));
 }
 
 ncclRedOp_t ToNcclReduction(ReductionKind kind) {
@@ -210,7 +211,9 @@ void CheckNcclAsyncError(NcclComm& lockable_comm) {
     if (async_err != ncclSuccess) {
       LOG(ERROR) << "Aborting communicator: " << comm
                  << " due to async NCCL error: "
-                 << ncclGetErrorString(async_err);
+                 << ncclGetErrorString(async_err)
+                 << ". Last NCCL warning(error) log entry (may be unrelated): "
+                 << ncclGetLastError(NULL);
       XLA_CUDA_RETURN_IF_ERROR(ncclCommAbort(comm));
     }
     return XLA_CUDA_STATUS(async_err);
@@ -259,11 +262,16 @@ StatusOr<NcclComm::Lock> AcquireNcclComm(
     bool enable_clique_optimization) {
   // Ensure that this group of threads have exclusive access to the clique to
   // prevent threads from different groups locking communicators in the clique.
+  // The enable_clique_optimization value is only used for asynchronous
+  // collective stream currenly. For synchronous collectives, we should always
+  // enable the optimization. For P2P stream, we currently have to always enable
+  // the optimization, because we initially implement this optimization to
+  // workaround an NCCL bug related to P2P operations.
   NcclCliqueKey clique_key(std::move(participants), stream_id);
   std::shared_ptr<StatusOr<NcclClique::Lock>> clique = AcquireNcclClique(
       run_id, op_id, clique_key, unique_id_callback, num_local_participants,
       enable_clique_optimization ||
-          stream_id == GetStreamId(true, kAsyncStreamP2P));
+          stream_id != GetStreamId(/*is_async=*/true, kAsyncStreamCollective));
 
   if (!clique->ok()) return clique->status();
 

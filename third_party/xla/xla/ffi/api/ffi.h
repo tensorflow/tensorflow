@@ -61,6 +61,8 @@ enum class DataType : uint8_t {
 template <typename T>
 class Span {
  public:
+  constexpr Span() : data_(nullptr), size_(0) {}
+
   Span(T* data, size_t size) : data_(data), size_(size) {}
   Span(const std::vector<std::remove_const_t<T>>& vec)  // NOLINT
       : Span(vec.data(), vec.size()) {}
@@ -104,9 +106,39 @@ class Error {
 // Arguments
 //===----------------------------------------------------------------------===//
 
+namespace internal {
+
+// A workaround for the fact that a static_assertion can be evaluated
+// whether or not the template is instantiated
+template <DataType dtype>
+struct always_false : std::false_type {};
+
+template <DataType dtype>
+struct PtrType {
+  static_assert(always_false<dtype>::value, "unsupported data type");
+};
+
+// clang-format off
+template <> struct PtrType<DataType::PRED> { using Type = bool; };
+template <> struct PtrType<DataType::U8>   { using Type = std::uint8_t; };
+template <> struct PtrType<DataType::U16>  { using Type = std::uint16_t; };
+template <> struct PtrType<DataType::U32>  { using Type = std::uint32_t; };
+template <> struct PtrType<DataType::U64>  { using Type = std::uint64_t; };
+template <> struct PtrType<DataType::S8>   { using Type = std::int8_t; };
+template <> struct PtrType<DataType::S16>  { using Type = std::int16_t; };
+template <> struct PtrType<DataType::S32>  { using Type = std::int32_t; };
+template <> struct PtrType<DataType::S64>  { using Type = std::int64_t; };
+template <> struct PtrType<DataType::F16>  { using Type = std::uint16_t; };
+template <> struct PtrType<DataType::F32>  { using Type = float; };
+template <> struct PtrType<DataType::F64>  { using Type = double; };
+template <> struct PtrType<DataType::BF16> { using Type = std::uint16_t; };
+// clang-format on
+
+}  // namespace internal
+
+template <DataType dtype>
 struct BufferBase {
-  DataType dtype;
-  void* data;
+  typename internal::PtrType<dtype>::Type* data;
   Span<const int64_t> dimensions;
 };
 
@@ -114,14 +146,18 @@ struct BufferBase {
 // Arguments decoding
 //===----------------------------------------------------------------------===//
 
-template <>
-struct ArgDecoding<BufferBase> {
-  static std::optional<BufferBase> Decode(XLA_FFI_ArgType type, void* arg) {
+template <DataType dtype>
+struct ArgDecoding<BufferBase<dtype>> {
+  static std::optional<BufferBase<dtype>> Decode(XLA_FFI_ArgType type,
+                                                 void* arg, DiagnosticEngine&) {
     if (type != XLA_FFI_ArgType_BUFFER) return std::nullopt;
     auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
+    // TODO(slebedev): Emit a user-friendly error instead.
+    if (static_cast<DataType>(buf->dtype) != dtype) return std::nullopt;
+    auto* data =
+        static_cast<typename internal::PtrType<dtype>::Type*>(buf->data);
 
-    return BufferBase{static_cast<DataType>(buf->dtype), buf->data,
-                      Span<const int64_t>(buf->dims, buf->rank)};
+    return BufferBase<dtype>{data, Span<const int64_t>(buf->dims, buf->rank)};
   }
 };
 
@@ -157,7 +193,8 @@ struct CtxDecoding<PlatformStream<T>> {
   static_assert(std::is_pointer_v<T>, "stream type must be a pointer");
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx) {
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine&) {
     XLA_FFI_Stream_Get_Args args;
     args.struct_size = XLA_FFI_Stream_Get_Args_STRUCT_SIZE;
     args.priv = nullptr;

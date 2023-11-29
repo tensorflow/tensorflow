@@ -117,6 +117,12 @@ class IrEmitterUnnested : public IrEmitter {
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
 
+  // Emits code for the given HLO computation. Right now it is only used to emit
+  // thunks for constructing command buffer. The plan is to replace
+  // EmitLmhloRegion by this function altogether, after we support emitting
+  // all instructions from HLO.
+  Status EmitHloComputation(const HloComputation* computation);
+
   static void GetDependentDialects(mlir::DialectRegistry& registry);
 
  private:
@@ -124,10 +130,12 @@ class IrEmitterUnnested : public IrEmitter {
 
   Status EmitUnreachable(mlir::Operation* op, std::string error_message);
 
+  Status EmitCommandBufferThunk(const HloInstruction* instr);
+
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter. It also mixes in some special handling for custom kernels
   // via the ThunkEmitter.
-  Status EmitConstant(mlir::Operation* op);
+  Status EmitConstant(mlir::Operation* op, const Literal& literal);
 
   Status EmitConditional(
       mlir::Operation* op,
@@ -155,6 +163,8 @@ class IrEmitterUnnested : public IrEmitter {
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitCustomCallThunk(mlir::Operation* op);
   Status EmitFftThunk(mlir::Operation* op);
+  StatusOr<FusionEmissionResult> GetFusionEmissionResult(
+      const HloFusionInstruction* instr, HloFusionAnalysis& fusion_analysis);
   Status EmitFusion(
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
@@ -195,6 +205,8 @@ class IrEmitterUnnested : public IrEmitter {
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
+
+  Status EmitHloInstruction(const HloInstruction* instr);
 
   static Thunk::ThunkInfo GetThunkInfo(mlir::Operation* op);
 

@@ -140,7 +140,6 @@ def GenericHostToLLVMPass : Pass<"generic-host-to-llvm", "ModuleOp"> {
     "::mlir::arith::ArithDialect",
     "::mlir::cf::ControlFlowDialect",
     "::mlir::complex::ComplexDialect",
-    "::mlir::deallocation::DeallocationDialect",
     "::mlir::func::FuncDialect",
     "::mlir::math::MathDialect",
     "::mlir::memref::MemRefDialect",
@@ -170,6 +169,18 @@ def AllocToArgPass : Pass<"alloc-to-arg", "mlir::func::FuncOp"> {
     Replaces memref.alloc uses with a new argument of the parent function.
   }];
   let constructor = "hlo::createAllocToArgPass()";
+}
+
+def NaiveCopyRemovalPass : Pass<"naive-copy-removal", "mlir::func::FuncOp"> {
+  let summary = "Pass to remove redundant `memref.copy` ops.";
+  let constructor = "createNaiveCopyRemovalPass()";
+  let dependentDialects = ["memref::MemRefDialect"];
+}
+
+def VectorizeCopyPass : Pass<"vectorize-copy", "mlir::func::FuncOp"> {
+  let summary = "Pass to vectorize `memref.copy`.";
+  let constructor = "createVectorizeCopyPass()";
+  let dependentDialects = ["scf::SCFDialect", "vector::VectorDialect"];
 }
 
 #endif // TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES

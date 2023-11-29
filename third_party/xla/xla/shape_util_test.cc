@@ -966,6 +966,16 @@ TEST(ShapeUtilTest, UpdateDynamicDimensions) {
   EXPECT_TRUE(ShapeUtil::GetSubshape(tuple_shape, {0}).is_dynamic_dimension(1));
 }
 
+TEST(ShapeUtilTest, InvalidDynamicDimension) {
+  StatusOr<Shape> error_status = ShapeUtil::MakeValidatedShape(
+      F32, {Shape::kUnboundedSize, Shape::kUnboundedSize}, {true, false});
+
+  EXPECT_FALSE(error_status.ok());
+  EXPECT_THAT(error_status.status().message(),
+              ::testing::HasSubstr(
+                  "Cannot mark a dynamic dimension at dim=1 as static"));
+}
+
 TEST(ShapeUtilTest, PermuteDynamicDimensions) {
   Shape shape =
       ShapeUtil::MakeShape(F32, {10, 100, 1000},

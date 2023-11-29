@@ -83,7 +83,6 @@ py_strict_library(
         "//tensorflow/python/ops:gradient_checker_v2",
         "//tensorflow/python/ops:stateful_random_ops",
         "//tensorflow/python/ops/structured:structured_ops",
-        "//tensorflow/python/tpu:tpu_estimator",
         "//tensorflow/python/tpu:tpu_noestimator",
     ],
 )
@@ -448,6 +447,7 @@ py_strict_library(
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/summary:summary_py",
+        "//tensorflow/python/summary:tb_summary",
         "//tensorflow/python/tpu:tpu_noestimator",
         "//tensorflow/python/training",
         "//tensorflow/python/training:quantize_training",

@@ -13,7 +13,6 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        # copybara:uncomment(<g3 only>) "//learning/brain/tfrt/aot:__pkg__",
         "//tensorflow/c:__subpackages__",
         "//tensorflow/c/experimental/saved_model/internal:__pkg__",
     ],

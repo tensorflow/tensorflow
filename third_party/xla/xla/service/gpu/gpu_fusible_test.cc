@@ -1213,6 +1213,40 @@ TEST_F(GpuFusibleTest, FuseLayoutChangingOpWithElementwise) {
       static_cast<bool>(IsProducerConsumerFusible(*producer, *consumer)));
 }
 
+TEST_F(GpuFusibleTest, FuseReduceWithUnaryElementwise) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    ENTRY main.12 {
+      Arg_0.1 = f32[2048]{0} parameter(0)
+      constant.4 = f32[] constant(0.0)
+      reduce.10 = f32[] reduce(Arg_0.1, constant.4), dimensions={0}, to_apply=scalar_add
+      ROOT exp = f32[] exponential(reduce.10)
+    })"))
+                    .value();
+
+  const HloInstruction* consumer =
+      module->entry_computation()->root_instruction();
+  const HloInstruction* producer = consumer->operand(0);
+  EXPECT_TRUE(
+      static_cast<bool>(IsProducerConsumerFusible(*producer, *consumer)));
+}
+
+TEST_F(GpuFusibleTest, DoNotFuseReduceWithRacesWithUnaryElementwise) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    ENTRY main.12 {
+      Arg_0.1 = f32[196608]{0} parameter(0)
+      constant.4 = f32[] constant(0.0)
+      reduce.10 = f32[] reduce(Arg_0.1, constant.4), dimensions={0}, to_apply=scalar_add
+      ROOT exp = f32[] exponential(reduce.10)
+    })"))
+                    .value();
+
+  const HloInstruction* consumer =
+      module->entry_computation()->root_instruction();
+  const HloInstruction* producer = consumer->operand(0);
+  EXPECT_FALSE(
+      static_cast<bool>(IsProducerConsumerFusible(*producer, *consumer)));
+}
+
 TEST_F(GpuFusibleTest, CreatesHeavyComputation_NonfusionInstr) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     ENTRY entry {

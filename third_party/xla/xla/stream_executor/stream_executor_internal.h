@@ -31,6 +31,7 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -140,6 +141,67 @@ class CommandBufferInterface {
                                            const DeviceMemoryBase& src,
                                            uint64_t size) = 0;
 
+  // Adds a memset node to the command buffer.
+  virtual tsl::Status Memset(DeviceMemoryBase* dst,
+                             CommandBuffer::BitPattern bit_pattern,
+                             size_t num_elements) = 0;
+
+  // Adds a device memory allocation node to the command buffer.
+  virtual tsl::Status Allocate(CommandBuffer::AllocIndexSize alloc) = 0;
+
+  // Get the device address for allocations performed through command buffer
+  // Allocate command.
+  virtual tsl::StatusOr<DeviceMemoryBase> GetAllocationAddress(
+      int64_t index) const = 0;
+
+  // For all conditional command APIs defined below, nested command buffers
+  // constructed for conditional branches owned by *this and should never be
+  // finalized or updated inside builders.
+
+  // Adds a conditional operation that will run a command buffer constructed by
+  // `then_builder` if `predicate` value is `true`.
+  virtual tsl::Status If(StreamExecutor* executor, DeviceMemory<bool> predicate,
+                         CommandBuffer::Builder then_builder) = 0;
+
+  // Adds a conditional operation that will run a command buffer constructed by
+  // `then_builder` if `predicate` value is `true`, or a command buffer
+  // constructed by `else_builder` if `predicate` is `false`.
+  virtual tsl::Status IfElse(StreamExecutor* executor,
+                             DeviceMemory<bool> predicate,
+                             CommandBuffer::Builder then_builder,
+                             CommandBuffer::Builder else_builder) = 0;
+
+  // Adds a conditional operation that will run a command buffer constructed by
+  // the `branches` builder at `index`. If `index` is out of range, then it will
+  // run a conditional command buffer constructed by the last builder.
+  //
+  // See: https://github.com/openxla/stablehlo/blob/main/docs/spec.md#case
+  virtual tsl::Status Case(StreamExecutor* executor,
+                           DeviceMemory<int32_t> index,
+                           std::vector<CommandBuffer::Builder> branches) = 0;
+
+  // Adds a conditional operation that will run a command buffer constructed by
+  // the `body_builder` exactly `num_iteration` times.
+  virtual tsl::Status For(StreamExecutor* executor, int32_t num_iteration,
+                          DeviceMemory<int32_t> loop_index,
+                          CommandBuffer::Builder body_builder) = 0;
+
+  // Adds a conditional operation that will execute a command buffer constructed
+  // by the `cond_builder` that must update `pred` value, and then depending on
+  // the value might execute command buffer constructed by `body_builder` and
+  // `cond_builder`. Will continue while `pred` value is `true`.
+  //
+  // In pseudocode:
+  //
+  //   cond_builder()
+  //   while(pred):
+  //     body_builder()
+  //     cond_builder()
+  //
+  virtual tsl::Status While(StreamExecutor* executor, DeviceMemory<bool> pred,
+                            CommandBuffer::Builder cond_builder,
+                            CommandBuffer::Builder body_builder) = 0;
+
   // Finalizes command buffer and makes it executable. Once command buffer is
   // finalized no commands can be added to it.
   virtual tsl::Status Finalize() = 0;
@@ -231,6 +293,8 @@ class StreamExecutorInterface {
     return std::nullopt;
   }
 
+  virtual int device_ordinal() const { return -1; }
+
   virtual tsl::Status GetKernel(const MultiKernelLoaderSpec& spec,
                                 Kernel* kernel) {
     return absl::UnimplementedError("Not Implemented");
@@ -241,7 +305,7 @@ class StreamExecutorInterface {
     return absl::UnimplementedError("Not Implemented");
   }
   virtual tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
-  CreateOrShareConstant(Stream* stream, const std::vector<uint8_t>& content) {
+  CreateOrShareConstant(Stream* stream, absl::Span<const uint8_t> content) {
     return absl::UnimplementedError("Not Implemented");
   }
   virtual tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,

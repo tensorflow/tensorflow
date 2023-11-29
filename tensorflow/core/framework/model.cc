@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -2376,11 +2377,19 @@ void Model::Optimize(AutotuneAlgorithm algorithm,
           pipeline_processing_usec = 0;
           break;
         }
-        int64_t root_total_time_usec = root_timing->total_time_nsec *
-                                       root_timing->pipeline_ratio /
-                                       EnvTime::kMicrosToNanos;
-        pipeline_processing_usec =
-            std::max(pipeline_processing_usec, root_total_time_usec);
+
+        double root_total_time_usec = root_timing->total_time_nsec *
+                                      root_timing->pipeline_ratio /
+                                      EnvTime::kMicrosToNanos;
+
+        // Cap the computed value to ensure that there is no integer overflow.
+        if (root_total_time_usec < std::numeric_limits<int64_t>::max()) {
+          pipeline_processing_usec =
+              std::max(pipeline_processing_usec,
+                       static_cast<int64_t>(root_total_time_usec));
+        } else {
+          pipeline_processing_usec = std::numeric_limits<int64_t>::max();
+        }
       }
       // Only updates the pipeline processing time when it is greater than 0.
       // If it is zero, we assume the pipeline processing time is the same

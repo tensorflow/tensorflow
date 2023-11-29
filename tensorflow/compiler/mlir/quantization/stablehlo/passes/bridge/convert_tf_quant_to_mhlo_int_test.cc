@@ -62,7 +62,9 @@ limitations under the License.
 namespace mlir::quant::stablehlo {
 namespace {
 
-class ConvertTfQuantToMhloIntTest : public ::testing::Test {
+using ::testing::Test;
+
+class ConvertTfQuantToMhloIntTest : public Test {
  protected:
   void SetUp() override {
     DialectRegistry dialects;
@@ -281,7 +283,7 @@ class ConvertTfQuantToMhloIntTest : public ::testing::Test {
   absl::BitGen bitgen_;
 };
 
-TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeAndDequantize) {
+TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeAndDequantizeToValidGraph) {
   constexpr absl::string_view kProgram = R"mlir(
 func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
   %scale = "tf.Const"() { value = dense<0.347> : tensor<f32> } : () -> tensor<f32>
@@ -306,7 +308,7 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
       kProgram, {&arg0}, /*tf_program=*/std::nullopt, /*error_tolerance=*/0.35);
 }
 
-TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizePerChannel) {
+TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizePerChannelToValidGraph) {
   constexpr absl::string_view kProgram = R"mlir(
 func.func @main(
     %arg0: tensor<10x10xf32>, %scale: tensor<10xf32>, %zp: tensor<10xi32>
@@ -330,7 +332,7 @@ func.func @main(
                                        /*error_tolerance=*/1.0);
 }
 
-TEST_F(ConvertTfQuantToMhloIntTest, UniformDequantizePerChannel) {
+TEST_F(ConvertTfQuantToMhloIntTest, UniformDequantizePerChannelToValidGraph) {
   constexpr absl::string_view kProgram = R"mlir(
 func.func @main(
     %arg0: tensor<10x10xi8>, %scale: tensor<10xf32>, %zp: tensor<10xi32>
@@ -350,7 +352,7 @@ func.func @main(
   ExecuteAndCompareResultsWithTfKernel(kProgram, {&arg0, &scale, &zp});
 }
 
-TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeConvolution) {
+TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeConvolutionToValidGraph) {
   constexpr absl::string_view kProgram = R"mlir(
 func.func @main(%input: tensor<1x9x9x9xi8>, %filter: tensor<3x3x9x10xi8>) -> tensor<1x9x9x10xi32> {
   %input_scale = "tf.Const"() { value = dense<2.0> : tensor<f32> } : () -> tensor<f32>
@@ -389,7 +391,8 @@ func.func @main(%input: tensor<1x9x9x9xi8>, %filter: tensor<3x3x9x10xi8>) -> ten
   ExecuteAndCompareResultsWithTfKernel(kProgram, {&input, &filter});
 }
 
-TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeConvolutionPerChannel) {
+TEST_F(ConvertTfQuantToMhloIntTest,
+       UniformQuantizeConvolutionPerChannelToValidGraph) {
   constexpr absl::string_view kProgram = R"mlir(
 func.func @main(
     %input: tensor<1x9x9x9xi8>, %filter: tensor<3x3x9x10xi8>, %scale: tensor<10xf32>
@@ -428,7 +431,8 @@ func.func @main(
   ExecuteAndCompareResultsWithTfKernel(kProgram, {&input, &filter, &scale});
 }
 
-TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeConvolutionHybrid) {
+TEST_F(ConvertTfQuantToMhloIntTest,
+       UniformQuantizeConvolutionHybridToValidGraph) {
   constexpr absl::string_view kTfProgram = R"mlir(
 func.func @main(%input: tensor<2x10x10x10xf32>, %filter: tensor<3x3x10x20xi8>) -> tensor<2x10x10x20xf32> {
   %filter_scale = "tf.Const"() { value = dense<0.047> : tensor<f32> } : () -> tensor<f32>
@@ -476,7 +480,7 @@ func.func @main(%input: tensor<2x10x10x10xf32>, %filter: tensor<3x3x10x20xi8>) -
   ExecuteAndCompareResultsWithTfKernel(kProgram, {&input, &filter}, kTfProgram);
 }
 
-TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeDot) {
+TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeDotToValidGraph) {
   constexpr absl::string_view kProgram = R"mlir(
 func.func @main(%input: tensor<8x9xi8>, %filter: tensor<9x10xi8>) -> tensor<8x10xi32> {
   %input_scale = "tf.Const"() { value = dense<0.588> : tensor<f32> } : () -> tensor<f32>
@@ -513,7 +517,7 @@ func.func @main(%input: tensor<8x9xi8>, %filter: tensor<9x10xi8>) -> tensor<8x10
   ExecuteAndCompareResultsWithTfKernel(kProgram, {&input, &filter});
 }
 
-TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeDotHybrid) {
+TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeDotHybridToValidGraph) {
   constexpr absl::string_view kTfProgram = R"mlir(
 func.func @main(%input: tensor<8x9xf32>, %filter: tensor<9x10xi8>) -> tensor<8x10xf32> {
   %filter_scale = "tf.Const"() { value = dense<0.0235> : tensor<f32> } : () -> tensor<f32>
@@ -550,7 +554,7 @@ func.func @main(%input: tensor<8x9xf32>, %filter: tensor<9x10xi8>) -> tensor<8x1
   ExecuteAndCompareResultsWithTfKernel(kProgram, {&input, &filter}, kTfProgram);
 }
 
-TEST_F(ConvertTfQuantToMhloIntTest, UniformRequantize) {
+TEST_F(ConvertTfQuantToMhloIntTest, UniformRequantizeToValidGraph) {
   constexpr absl::string_view kProgram = R"mlir(
 func.func @main(%input: tensor<10xi8>) -> tensor<10xi8> {
   %input_scale = "tf.Const"() { value = dense<0.2235> : tensor<f32> } : () -> tensor<f32>
@@ -579,7 +583,7 @@ func.func @main(%input: tensor<10xi8>) -> tensor<10xi8> {
   ExecuteAndCompareResultsWithTfKernel(kProgram, {&input});
 }
 
-TEST_F(ConvertTfQuantToMhloIntTest, UniformRequantizePerChannel) {
+TEST_F(ConvertTfQuantToMhloIntTest, UniformRequantizePerChannelToValidGraph) {
   constexpr absl::string_view kProgram = R"mlir(
 func.func @main(
     %input: tensor<10x10xi8>, %input_scale: tensor<10xf32>,
@@ -621,7 +625,8 @@ func.func @main(
       /*error_tolerance=*/1.0);
 }
 
-TEST_F(ConvertTfQuantToMhloIntTest, UniformRequantizePerTensorToPerChannel) {
+TEST_F(ConvertTfQuantToMhloIntTest,
+       UniformRequantizePerTensorToPerChannelToValidGraph) {
   constexpr absl::string_view kProgram = R"mlir(
 func.func @main(
     %input: tensor<10x10xi8>, %input_scale: tensor<f32>, %input_zp: tensor<i32>,
@@ -661,7 +666,8 @@ func.func @main(
       /*error_tolerance=*/1.0);
 }
 
-TEST_F(ConvertTfQuantToMhloIntTest, UniformRequantizePerChannelToPerTensor) {
+TEST_F(ConvertTfQuantToMhloIntTest,
+       UniformRequantizePerChannelToPerTensorToValidGraph) {
   constexpr absl::string_view kProgram = R"mlir(
 func.func @main(
     %input: tensor<10x10xi8>, %input_scale: tensor<10xf32>,
@@ -701,7 +707,7 @@ func.func @main(
       /*error_tolerance=*/1.0);
 }
 
-TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeAdd) {
+TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeAddToValidGraph) {
   constexpr absl::string_view kProgram = R"mlir(
 func.func @main(%lhs: tensor<10x10xi32>, %rhs: tensor<10x10xi32>) -> tensor<10x10xi32> {
   %lhs_scale = "tf.Const"() { value = dense<0.518> : tensor<f32> } : () -> tensor<f32>

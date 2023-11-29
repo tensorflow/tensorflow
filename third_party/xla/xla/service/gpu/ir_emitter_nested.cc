@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
@@ -252,7 +254,9 @@ Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
 
         global_name,
         /*allocation_idx=*/-1,
-        llvm::ArrayRef<uint8_t>(base, base + literal.size_bytes()), &b_);
+        DenseDataIntermediate::Alias(
+            absl::MakeSpan(base, base + literal.size_bytes())),
+        &b_);
   }
   return OkStatus();
 }

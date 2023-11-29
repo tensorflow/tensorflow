@@ -19,7 +19,11 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
+
+#define IS_OSS false
 
 namespace tensorflow {
 namespace image_format {
@@ -29,13 +33,21 @@ namespace image_format {
 absl::Status ReadSavedModel(const std::string& file_prefix,
                             SavedModel* saved_model_proto);
 
-// Writes the SavedModel proto to {file_prefix}{.pb|.cpb}.
-// If the proto is < the protobuf maximum size, then it will be serialized
-// as a `.pb` proto binary. When larger than the maximum size, the SavedModel
-// proto is destructively separated into chunks and written to
+// Writes the SavedModel proto to a file or to string. If the proto is < the
+// protobuf maximum size, then it will be serialized as a `.pb` proto binary.
+// When larger than the maximum size, the SavedModel proto is destructively
+// separated into chunks and written to
 // `.cpb` (chunked proto).
+//
+// Write SavedModel to {file_prefix}{.pb|.cpb}.
 absl::Status WriteSavedModel(SavedModel* saved_model_proto,
                              const std::string& file_prefix);
+// Writes the SavedModel proto to std::string
+absl::StatusOr<std::string> WriteSavedModelToString(
+    SavedModel* saved_model_proto);
+#if !IS_OSS
+absl::StatusOr<absl::Cord> WriteSavedModelToCord(SavedModel* saved_model_proto);
+#endif
 
 // See above. The `debug_max_size` argument can be used to the maximum size to
 // less than 2GB for testing purposes.

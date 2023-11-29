@@ -662,15 +662,9 @@ TEST_F(TopkRewriterTest, TopKDecomposition) {
   const std::string hlo_string = R"(
 HloModule topk
 
-compare {
-  p.0.lhs = bf16[] parameter(0)
-  p.0.rhs = bf16[] parameter(1)
-  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=GT
-}
-
 ENTRY TopK {
   x = bf16[10,10]{0,1} parameter(0)
-  ROOT topk = (bf16[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, to_apply=compare
+  ROOT topk = (bf16[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, largest=true
 }
 
 )";

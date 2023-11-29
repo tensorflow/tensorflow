@@ -109,6 +109,13 @@ absl::Status DoMatmul(
   }));
 
   TF_ASSIGN_OR_RETURN(auto algos, (*plan)->GetAlgorithms());
+  if (static_cast<size_t>(algorithm) >= algos.size()) {
+    return absl::InternalError(
+        absl::StrFormat("The requested gpublas-lt matmul "
+                        "algorithm is not found. Total algorithms available: "
+                        "%zu; requested: %zu",
+                        algos.size(), static_cast<size_t>(algorithm)));
+  }
 
   se::DeviceMemoryBase a_data = GetDeviceAddress(a);
   se::DeviceMemoryBase b_data = GetDeviceAddress(b);

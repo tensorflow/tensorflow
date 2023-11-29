@@ -49,6 +49,7 @@ using BufferizePatternsCallback = std::function<void(
 #define GEN_PASS_DECL_PROPAGATESTATICSHAPESTOKERNELPASS
 #define GEN_PASS_DECL_TILELOOPSPASS
 #define GEN_PASS_DECL_GENERICHOSTTOLLVMPASS
+#define GEN_PASS_DECL_VECTORIZECOPYPASS
 #include "transforms/passes.h.inc"
 
 /// Creates a pass that merges smaller buffer into bigger buffer to optimize
@@ -98,6 +99,12 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTileLoopsPass(
 // Detensorizes loop-carried variables and block arguments of scf.while, scf.for
 // and scf.if.
 std::unique_ptr<OperationPass<func::FuncOp>> createDetensorizeScfOpsPass();
+
+/// Pass to remove redundant `memref.copy` ops.
+std::unique_ptr<OperationPass<func::FuncOp>> createNaiveCopyRemovalPass();
+
+/// Pass to vectorize `memref.copy`.
+std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass();
 
 /// Registers the test pass for erasing transform dialect ops.
 void registerTestHloTransformDialectEraseSchedulePass();

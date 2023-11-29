@@ -38,11 +38,12 @@ using ::mlir::MLIRContext;
 using ::mlir::ModuleOp;
 using ::mlir::OwningOpRef;
 using ::tensorflow::monitoring::testing::CellReader;
+using ::testing::Test;
 
 static constexpr char kMetricsName[] =
     "/tensorflow/core/tf2xla/tf_quant_op_count";
 
-class LegalizeTfTypesTest : public ::testing::Test {
+class LegalizeTfTypesTest : public Test {
  protected:
   void CreateModule(const char* module_string) {
     DialectRegistry mlir_registry;

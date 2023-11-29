@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/passes.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/TypeID.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -250,6 +252,25 @@ struct ConvertShapeOfOpPattern : public OpRewritePattern<shape::ShapeOfOp> {
   }
 };
 
+struct ConvertTensorDimPattern : public OpRewritePattern<tensor::DimOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(tensor::DimOp op,
+                                PatternRewriter& rewriter) const override {
+    // We only support getting static index.
+    auto constIndex =
+        dyn_cast_or_null<arith::ConstantIndexOp>(op.getIndex().getDefiningOp());
+    if (!constIndex) {
+      return failure();
+    }
+
+    auto dim = rewriter.create<mhlo::GetDimensionSizeOp>(
+        op->getLoc(), op.getSource(), constIndex.value());
+    auto dimIndex = castToIndex(rewriter, op.getLoc(), dim);
+    rewriter.replaceOp(op, dimIndex);
+    return success();
+  }
+};
+
 template <typename OpType>
 struct CastOperandsPattern : public OpRewritePattern<OpType> {
   using OpRewritePattern<OpType>::OpRewritePattern;
@@ -337,6 +358,7 @@ struct ShapeLegalizeToHloPass
     patterns.add<ConvertNumElementsOpPattern>(&getContext());
     patterns.add<ConvertShapeOfOpPattern>(&getContext());
     patterns.add<CastOperandsPattern<DynamicBroadcastInDimOp>>(&getContext());
+    patterns.add<ConvertTensorDimPattern>(&getContext());
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       return signalPassFailure();

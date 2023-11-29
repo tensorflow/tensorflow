@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/compiler.h"
+#include "xla/service/dump.h"
 #include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/platform_util.h"
@@ -95,6 +96,13 @@ struct GpuOptProvider : public OptProvider {
       return static_cast<gpu::GpuExecutable*>(executable.get())
           ->buffer_assignment()
           ->ToVerboseString(9999);
+    } else if (s == "html") {
+      TF_ASSIGN_OR_RETURN(
+          std::unique_ptr<HloModule> optimized_module,
+          compiler->RunHloPasses(std::move(module), executor, opts));
+      return RenderGraph(optimized_module->name(), *optimized_module,
+                         RenderedGraphFormat::kHtml,
+                         /*show_fusion_subcomputations=*/false);
     }
 
     // Unimplemented stage.
@@ -102,7 +110,7 @@ struct GpuOptProvider : public OptProvider {
   }
 
   std::vector<std::string> SupportedStages() override {
-    return {"hlo", "llvm", "ptx", "buffer-assignment"};
+    return {"hlo", "llvm", "ptx", "buffer-assignment", "html"};
   }
 };
 

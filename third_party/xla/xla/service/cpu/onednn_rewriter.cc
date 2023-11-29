@@ -82,7 +82,7 @@ class OneDnnRewriterVisitor : public DfsHloRewriteVisitor {
     // verifier already does the job. We, however, need to check if contraction
     // is over only 1 dimension (a.k.a. K dimension in matrix-multiplication
     // parlance). We also restrict that batch dimensions of the operands
-    // matches.
+    // match.
     if (!IsSupportedType(dot_instr->shape().element_type())) return OkStatus();
     auto dot_dim_numbers = dot_instr->dot_dimension_numbers();
     TF_RETURN_IF_ERROR(ValidateDotDimensionNumbers(dot_dim_numbers));

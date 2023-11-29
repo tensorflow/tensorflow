@@ -125,7 +125,10 @@ Status CustomCallThunk::ExecuteFfiHandler(const ExecuteParams& params) {
     }
   }
 
-  builder.AddAttributes(attributes_);
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Append(attributes_);
+
+  builder.AddAttributes(attrs.Build());
   CallFrame call_frame = builder.Build();
 
   // TODO(ezhulenev): Remove `ServiceExecutableRunOptions` from FFI handler

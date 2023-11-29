@@ -869,28 +869,6 @@ absl::StatusOr<tsl::AllocatorStats> StreamExecutorGpuDevice::GetAllocatorStats()
 }
 
 StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
-    bool asynchronous, const GpuAllocatorConfig& allocator_config, int node_id,
-    int num_nodes, const std::optional<std::set<int>>& allowed_devices,
-    std::optional<std::string> platform_name,
-    bool should_stage_host_to_device_transfers,
-    PjRtClient::KeyValueGetCallback kv_get,
-    PjRtClient::KeyValuePutCallback kv_put, bool enable_mock_nccl) {
-  GpuClientOptions options;
-  options.allocator_config = allocator_config;
-  options.node_id = node_id;
-  options.num_nodes = num_nodes;
-  options.allowed_devices = allowed_devices;
-  options.platform_name = platform_name;
-  options.should_stage_host_to_device_transfers =
-      should_stage_host_to_device_transfers;
-  options.kv_get = kv_get;
-  options.kv_put = kv_put;
-  options.enable_mock_nccl = enable_mock_nccl;
-
-  return GetStreamExecutorGpuClient(options);
-}
-
-StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     const GpuClientOptions& options) {
 #if TENSORFLOW_USE_ROCM
   auto pjrt_platform_name = xla::RocmName();

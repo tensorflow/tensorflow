@@ -514,7 +514,8 @@ class HloComputation {
   // shape.
   StatusOr<bool> ReplaceInstructionWithDifferentShape(
       HloInstruction* old_instruction, HloInstruction* new_instruction,
-      bool preserve_sharding, bool relay_control_dependency = false);
+      bool preserve_sharding, bool relay_control_dependency = false,
+      bool remove_unused_operands = true);
   Status ReplaceInstructionWithDifferentShape(HloInstruction* old_instruction,
                                               HloInstruction* new_instruction);
 
@@ -644,7 +645,8 @@ class HloComputation {
   // computation.
   HloInstruction* FusionInstruction() const { return fusion_instruction_; }
   void SetFusionInstruction(HloInstruction* fusion_instruction) {
-    CHECK(!IsCustomCallComputation() && !IsAsyncComputation());
+    CHECK(!IsCustomCallComputation() && !IsAsyncComputation() &&
+          !IsCollectiveCalledComputation() && !IsWhileBodyComputation());
     fusion_instruction_ = fusion_instruction;
     is_fusion_computation_ |= (fusion_instruction != nullptr);
   }
@@ -658,7 +660,8 @@ class HloComputation {
     return custom_call_instruction_;
   }
   void SetCustomCallInstruction(HloInstruction* custom_call_instruction) {
-    CHECK(!IsFusionComputation() && !IsAsyncComputation());
+    CHECK(!IsFusionComputation() && !IsAsyncComputation() &&
+          !IsCollectiveCalledComputation() && !IsWhileBodyComputation());
     custom_call_instruction_ = custom_call_instruction;
     is_custom_call_computation_ |= (custom_call_instruction != nullptr);
   }
@@ -677,10 +680,30 @@ class HloComputation {
   void SetCollectiveCallInstruction(
       HloInstruction* collective_call_instruction) {
     CHECK(!IsFusionComputation() && !IsAsyncComputation() &&
-          !IsCustomCallComputation());
+          !IsCustomCallComputation() && !IsWhileBodyComputation());
     collective_call_instruction_ = collective_call_instruction;
     is_collective_called_computation_ |=
         (collective_call_instruction != nullptr);
+  }
+
+  // Returns if this computation is a body computation of a while.
+  bool IsWhileBodyComputation() const {
+    return is_while_call_body_computation_;
+  }
+
+  // Returns the owning while call instruction, or nullptr if this is not a
+  // while call body computation.
+  HloInstruction* WhileCallInstruction() const {
+    return while_call_instruction_;
+  }
+
+  void SetWhileCallInstruction(HloInstruction* while_call_instruction) {
+    CHECK(!IsFusionComputation() && !IsAsyncComputation() &&
+          !IsCustomCallComputation() && !IsCollectiveCalledComputation());
+    CHECK(while_call_instruction != nullptr);
+    CHECK(while_call_instruction->opcode() == HloOpcode::kWhile);
+    while_call_instruction_ = while_call_instruction;
+    is_while_call_body_computation_ |= (while_call_instruction != nullptr);
   }
 
   // Returns if this computation is an async computation.
@@ -839,6 +862,13 @@ class HloComputation {
 
   // Determines whether this computation is a collective sub-computation.
   bool is_collective_called_computation_;
+
+  // If this computation is a while body computation, this field points to
+  // the corresponding while instruction. Otherwise, this is null.
+  HloInstruction* while_call_instruction_;
+
+  // Determines whether this computation is a while body computation.
+  bool is_while_call_body_computation_;
 
   // If this computation is an async computation, this field points to the
   // corresponding async instructions (if live) that call this computation.

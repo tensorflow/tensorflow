@@ -157,8 +157,8 @@ class LiveOuts {
 };
 
 // Creates the tf.XlaCallModuleOp from attributes.
-void CreateXlaCallModuleOp(ArrayRef<Value> inputs, ArrayRef<Value> outputs,
-                           ArrayRef<Type> result_types,
+void CreateXlaCallModuleOp(ValueRange inputs, ValueRange outputs,
+                           TypeRange result_types,
                            ArrayRef<Operation*> reverse_subgraph,
                            func::FuncOp stablehlo_func_op, ModuleOp module_op) {
   MLIRContext* ctx = module_op.getContext();

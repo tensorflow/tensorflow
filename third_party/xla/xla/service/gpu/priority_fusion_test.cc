@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -33,8 +34,14 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace m = ::xla::match;
+
+using ::testing::ElementsAre;
+using ::testing::UnorderedElementsAre;
+using ::tsl::testing::IsOk;
+using ::tsl::testing::IsOkAndHolds;
 
 namespace xla {
 namespace gpu {
@@ -51,8 +58,8 @@ class PriorityFusionTest : public HloTestBase {
   std::vector<HloFusionAnalysis::EmitterFusionKind> RunAndGetFusionKinds(
       absl::string_view hlo) {
     auto module = ParseAndReturnVerifiedModule(hlo).value();
-    EXPECT_TRUE(priority_fusion_.Run(module.get()).value());
-    TF_CHECK_OK(module->RemoveUnusedComputations());
+    EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
+    EXPECT_THAT(module->RemoveUnusedComputations(), IsOk());
     std::vector<HloFusionAnalysis::EmitterFusionKind> kinds;
     for (auto computation : module->computations()) {
       if (!computation->FusionInstruction()) continue;
@@ -90,7 +97,7 @@ TEST_F(PriorityFusionTest, FuseWithSharedArgument) {
     })")
                     .value();
 
-  EXPECT_TRUE(priority_fusion_.Run(module.get()).value());
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Fusion()));
@@ -239,8 +246,8 @@ TEST_F(PriorityFusionTest, ReductionEpilogueFusionRegressionTest) {
 
   EXPECT_THAT(
       RunAndGetFusionKinds(kHlo),
-      ::testing::ElementsAre(HloFusionAnalysis::EmitterFusionKind::kLoop,
-                             HloFusionAnalysis::EmitterFusionKind::kReduction));
+      UnorderedElementsAre(HloFusionAnalysis::EmitterFusionKind::kLoop,
+                           HloFusionAnalysis::EmitterFusionKind::kReduction));
 
   RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
 CHECK: ENTRY
@@ -317,9 +324,9 @@ TEST_F(PriorityFusionTest, DoNotFuseTransposeIntoReduce) {
 
   using Kind = HloFusionAnalysis::EmitterFusionKind;
   EXPECT_THAT(RunAndGetFusionKinds(kHlo),
-              ::testing::UnorderedElementsAre(
-                  Kind::kLoop, Kind::kReduction, Kind::kReduction,
-                  Kind::kTranspose, Kind::kTranspose, Kind::kTranspose));
+              UnorderedElementsAre(Kind::kLoop, Kind::kReduction,
+                                   Kind::kReduction, Kind::kTranspose,
+                                   Kind::kTranspose, Kind::kTranspose));
 }
 
 TEST_F(PriorityFusionTest, DoNotFuseReduceIntoReduce) {
@@ -486,8 +493,7 @@ TEST_F(PriorityFusionTest, SingleTransposeFusion) {
   })";
 
   using Kind = HloFusionAnalysis::EmitterFusionKind;
-  EXPECT_THAT(RunAndGetFusionKinds(kHlo),
-              ::testing::ElementsAre(Kind::kTranspose));
+  EXPECT_THAT(RunAndGetFusionKinds(kHlo), ElementsAre(Kind::kTranspose));
 }
 
 TEST_F(PriorityFusionTest, DontFuseIntoFirstOperandOfScatter) {
@@ -516,7 +522,7 @@ TEST_F(PriorityFusionTest, DontFuseIntoFirstOperandOfScatter) {
       ROOT add = s32[3,3] add(scatter, scatter)
     })");
 
-  EXPECT_TRUE(priority_fusion_.Run(module.get()).value());
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* fusion = nullptr;
@@ -614,6 +620,38 @@ TEST_F(PriorityFusionTest, EpilogueFusion) {
   RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
 CHECK: ROOT %fusion = f32[8,4,128]{2,1,0} fusion(%p{{.*}}), kind=kInput, calls=%fused_computation
   )");
+}
+
+TEST_F(PriorityFusionTest, EpilogueFusionFails) {
+  auto module = *ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add.13235 = f32[] add(p0, p1)
+    }
+
+    fused_computation.1 {
+      p0 = f32[28672,4096]{1,0} parameter(0)
+      c0 = f32[] constant(0)
+      ROOT r = f32[28672]{0} reduce(p0, c0), dimensions={1}, to_apply=add
+    }
+
+    fused_computation.2 {
+      p0 = f32[28672]{0} parameter(0)
+      p1 = f32[28672]{0} parameter(1)
+      ROOT a = f32[28672]{0} add(p0, p1)
+    }
+
+    ENTRY main {
+      p0 = f32[28672,4096]{1,0} parameter(0)
+      p1 = f32[28672]{0} parameter(1)
+      f = f32[28672]{0} fusion(p0), kind=kInput, calls=%fused_computation.1
+      ROOT fusion = f32[28672]{0} fusion(f,p1), kind=kLoop, calls=%fused_computation.2
+    })");
+
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
 }
 
 }  // namespace gpu

@@ -75,7 +75,6 @@ filegroup(
         "stream.h",
         "stream_executor.h",
         "stream_executor_internal.h",  # TODO(ezhulenev): Remove private header
-        "stream_executor_pimpl.h",  # TODO(ezhulenev): Remove private header
         "temporary_device_memory.h",
         "temporary_memory_manager.h",
         "trace_listener.h",
@@ -133,7 +132,9 @@ cc_library(
         ":stream_executor_plugin_headers",
     ],
     visibility = ["//visibility:public"],
-    deps = STREAM_EXECUTOR_DEPENDENCIES + if_static([
+    deps = STREAM_EXECUTOR_DEPENDENCIES + [
+        ":stream_executor_pimpl",
+    ] + if_static([
         ":stream_executor_impl",
         "@com_google_protobuf//:protobuf",  # indirectly-used by dnn.h
     ]),
@@ -370,6 +371,7 @@ cc_library(
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
@@ -386,6 +388,7 @@ cc_library(
 cc_library(
     name = "stream_executor_headers",
     hdrs = [
+        "stream_executor_pimpl.h",  # TODO(ezhulenev): Remove internal header
         ":stream_executor_api_headers",
         ":stream_executor_plugin_headers",
     ],
@@ -438,6 +441,12 @@ cc_library(
     name = "command_buffer",
     srcs = ["command_buffer.cc"],
     hdrs = ["command_buffer.h"],
+    local_defines = select({
+        "//xla/stream_executor/cuda:graph_conditional_enabled": [
+            "STREAM_EXECUTOR_CUDA_ENABLE_GRAPH_CONDITIONAL=1",
+        ],
+        "//conditions:default": [],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":stream_executor_headers",

@@ -311,6 +311,7 @@ tf_gen_op_strict_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
+        "//tensorflow/dtensor/python/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/kernel_tests/image_ops:__pkg__",
         "//tensorflow/python/ops/parallel_for:__pkg__",
@@ -486,6 +487,7 @@ tf_gen_op_strict_wrapper_private_py(
     name = "parsing_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/dtensor/python/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/autograph/operators:__pkg__",
         "//tensorflow/python/data/ops:__pkg__",
@@ -518,6 +520,7 @@ tf_gen_op_strict_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
+        "//tensorflow/dtensor/python/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/kernel_tests/random:__pkg__",
     ],
@@ -1631,6 +1634,7 @@ py_strict_library(
         ":cudnn_rnn_grad",
         ":gradients_util",
         ":image_grad",
+        ":io_ops",
         ":linalg_grad",
         ":linalg_ops",
         ":logging_ops",
@@ -3000,7 +3004,6 @@ py_strict_library(
         "//tensorflow/dtensor/python:api",
         "//tensorflow/dtensor/python:layout",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:profiler",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -3008,6 +3011,7 @@ py_strict_library(
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/profiler:profiler_v2",
         "//tensorflow/python/trackable:resource",
         "//tensorflow/python/training:training_util",
         "//tensorflow/python/util:deprecation",

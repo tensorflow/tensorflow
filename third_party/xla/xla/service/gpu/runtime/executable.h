@@ -139,7 +139,11 @@ class GpuRuntimeExecutable {
 
   // Depending on the state of `executable_` returns a reference to active
   // Xla runtime executable.
-  runtime::Executable& executable();
+  runtime::Executable& executable() {
+    return const_cast<runtime::Executable&>(
+        const_cast<const GpuRuntimeExecutable*>(this)->executable());
+  }
+  const runtime::Executable& executable() const;
 
   std::vector<int64_t> buffer_sizes_;
 

@@ -61,7 +61,8 @@ struct Buffer {
 
 template <>
 struct ArgDecoding<Buffer> {
-  static std::optional<Buffer> Decode(XLA_FFI_ArgType type, void* arg) {
+  static std::optional<Buffer> Decode(XLA_FFI_ArgType type, void* arg,
+                                      DiagnosticEngine&) {
     if (type != XLA_FFI_ArgType_BUFFER) return std::nullopt;
     auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
 
@@ -82,7 +83,8 @@ struct CtxDecoding<ServiceExecutableRunOptions> {
   using Type = const ServiceExecutableRunOptions*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx) {
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine&) {
     void* ptr = api->internal_api->XLA_FFI_ServiceExecutableRunOptions_Get(ctx);
     return reinterpret_cast<Type>(ptr);
   }

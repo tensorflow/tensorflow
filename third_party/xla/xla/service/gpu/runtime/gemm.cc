@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "tsl/platform/errors.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/gemm_algorithm_picker.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #endif
@@ -48,7 +48,7 @@ using xla::runtime::CustomCall;
 using xla::runtime::State;
 using xla::runtime::StridedMemrefView;
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // TODO(ezhulenev): Delete run time auto tuning from XLA.
 Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
@@ -108,7 +108,7 @@ Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
     return InternalError("Runtime autotuning failed to select an algorithm");
   }
 }
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
                              const DebugOptions* debug_options,
@@ -144,7 +144,7 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
   // outside of state.GetOrCreate() because otherwise it would be a potential
   // deadlock.
   if (gemm_config->algorithm == stream_executor::blas::kRuntimeAutotuning) {
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     auto status = DoRuntimeAutotuning(stream, *gemm_config, lhs_data, rhs_data,
                                       output_data, output_shape, beta,
                                       debug_options, gpu_lock);

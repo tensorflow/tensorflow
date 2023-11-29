@@ -363,7 +363,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "tf_contextlib",
     srcs = ["tf_contextlib.py"],
     compatible_with = get_compatible_with_portable(),
@@ -424,7 +424,6 @@ py_strict_library(
     deps = [
         ":_tf_stack",
         "//tensorflow/core:protos_all_py",
-        "@six_archive//:six",
     ],
 )
 
@@ -749,7 +748,6 @@ py_strict_library(
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
-        "@six_archive//:six",
         "@pypi_wrapt//:pkg",
         "//tensorflow/python:pywrap_tensorflow",
         ":_pywrap_utils",
@@ -767,7 +765,6 @@ py_strict_library(
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
-        "@six_archive//:six",
     ],
 )
 
@@ -866,7 +863,6 @@ py_strict_library(
         "//tensorflow/python:global_test_configuration",
         ":tf_export",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -976,7 +972,6 @@ py_strict_library(
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
-        "@six_archive//:six",
     ],
 )
 

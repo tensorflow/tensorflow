@@ -581,12 +581,17 @@ static void Init(py::module_& m) {
                                                    v);
           };
         }
+        GpuClientOptions options;
+        options.allocator_config = allocator_config;
+        options.node_id = node_id;
+        options.num_nodes = num_nodes;
+        options.allowed_devices = allowed_devices;
+        options.platform_name = platform_name;
+        options.kv_get = kv_get;
+        options.kv_put = kv_put;
+        options.enable_mock_nccl = mock.value_or(false);
         std::unique_ptr<PjRtClient> client =
-            xla::ValueOrThrow(GetStreamExecutorGpuClient(
-                asynchronous, allocator_config, node_id, num_nodes,
-                allowed_devices, platform_name,
-                /*should_stage_host_to_device_transfers=*/true, kv_get, kv_put,
-                /*enable_mock_nccl=*/mock.value_or(false)));
+            xla::ValueOrThrow(GetStreamExecutorGpuClient(options));
         return std::make_shared<PyClient>(
             ifrt::PjRtClient::Create(std::move(client)));
       },

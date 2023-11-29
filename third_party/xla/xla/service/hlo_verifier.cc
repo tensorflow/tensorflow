@@ -877,7 +877,8 @@ Status ShapeVerifier::HandleInfeed(HloInstruction* instruction) {
   // The output of infeed is a tuple containing the data value and a token.
   return CheckShape(infeed,
                     ShapeUtil::MakeTupleShape(
-                        {infeed->infeed_shape(), ShapeUtil::MakeTokenShape()}));
+                        {infeed->infeed_shape(), ShapeUtil::MakeTokenShape()}),
+                    /*only_compare_minor_to_major_in_layout=*/true);
 }
 
 Status ShapeVerifier::HandleOutfeed(HloInstruction* instruction) {
@@ -994,35 +995,7 @@ Status ShapeVerifier::HandleReverse(HloInstruction* reverse) {
                                                  reverse->dimensions()));
 }
 
-static bool IsStrictComparison(const HloComputation* cmp) {
-  const HloInstruction* root = cmp->root_instruction();
-  return Match(root, m::Compare(m::Parameter(0), m::Parameter(1))
-                         .WithComparisonDirection(ComparisonDirection::kGt)) ||
-         Match(root, m::Compare(m::Parameter(1), m::Parameter(0))
-                         .WithComparisonDirection(ComparisonDirection::kGt)) ||
-         Match(root, m::Compare(m::Parameter(0), m::Parameter(1))
-                         .WithComparisonDirection(ComparisonDirection::kLt)) ||
-         Match(root, m::Compare(m::Parameter(1), m::Parameter(0))
-                         .WithComparisonDirection(ComparisonDirection::kLt));
-}
-
 Status ShapeVerifier::HandleTopK(HloInstruction* hlo) {
-  HloComputation* compare = hlo->to_apply();
-  Shape compare_shape = compare->root_instruction()->shape();
-  if (!ShapeUtil::Compatible(compare_shape, ShapeUtil::MakeShape(PRED, {}))) {
-    return InternalError(
-        "The TopK compare computation shape does not lead to a scalar "
-        "predicate shape: %s",
-        StringifyShape(compare_shape));
-  }
-
-  TF_RETURN_IF_ERROR(CheckParameterCount(hlo, compare, 2));
-  if (!IsStrictComparison(compare)) {
-    // TODO(cheshire): Less strict restriction.
-    return InternalError(
-        "TopK HLO expects a strict comparison of the operands");
-  }
-
   return CheckShape(
       hlo, ShapeInference::InferTopKShape(hlo->operand(0)->shape(),
                                           Cast<HloTopKInstruction>(hlo)->k()));

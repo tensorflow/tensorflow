@@ -1084,7 +1084,7 @@ TEST_F(ArenaPlannerTest, SimpleProfilerTest) {
   EXPECT_EQ(gNumAlloc, 1);
   EXPECT_EQ(gNumDealloc, 0);
   Destroy();
-  EXPECT_EQ(gNumDealloc, 2);
+  EXPECT_EQ(gNumDealloc, 1);
 }
 
 }  // namespace

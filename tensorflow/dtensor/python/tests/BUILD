@@ -8,6 +8,7 @@ load(
     "PATHWAYS",
     "PATHWAYS_V3_DONUT_BACKEND",
     "TPU_V3_DONUT_BACKEND",
+    "TPU_V4_DONUT_BACKEND",
     "dtensor_test",
 )
 
@@ -69,6 +70,32 @@ pytype_strict_library(
     ],
 )
 
+py_strict_test(
+    name = "api_test",
+    srcs = [
+        "api_test.py",
+    ],
+    python_version = "PY3",
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:d_random",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:numpy_util",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:stateless_random_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 # TODO(b/301286466): Investigate why python annotation type mismatch is not catptured by the type
 # strict BUILD rules.
 
@@ -83,6 +110,64 @@ dtensor_test(
         "//tensorflow/python/eager/polymorphic_function",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+dtensor_test(
+    name = "batchparallel_spmd_test",
+    srcs = ["batchparallel_spmd_test.py"],
+    additional_backends = [TPU_V4_DONUT_BACKEND],
+    main = "batchparallel_spmd_test.py",
+    shard_count = {
+        "cpu": 4,
+        "gpu": 4,
+        "tpu": 4,
+        TPU_V4_DONUT_BACKEND: 8,
+    },
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:numpy_util",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:array_ops_gen",
+        "//tensorflow/python/ops:image_ops_gen",
+        "//tensorflow/python/ops:linalg_ops_gen",
+        "//tensorflow/python/ops:nn_impl",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+dtensor_test(
+    name = "cache_test",
+    srcs = ["cache_test.py"],
+    main = "cache_test.py",
+    tags = [
+        "nomultivm",
+    ],
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:stateless_random_ops_gen",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
@@ -163,6 +248,35 @@ dtensor_test(
 )
 
 dtensor_test(
+    name = "conv_test",
+    srcs = [
+        "conv_test.py",
+    ],
+    additional_backends = [TPU_V3_DONUT_BACKEND],
+    # All tests require 8 TPUs.
+    disable = ["tpu"],
+    shard_count = {
+        "cpu": 4,
+        "gpu": 4,
+        TPU_V3_DONUT_BACKEND: 4,
+    },
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:numpy_util",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:special_math_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+dtensor_test(
     name = "device_test",
     srcs = ["device_test.py"],
     additional_backends = [TPU_V3_DONUT_BACKEND],
@@ -220,6 +334,52 @@ py_strict_test(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_strict_test(
+    name = "multi_client_input_util_test",
+    timeout = "long",
+    srcs = ["multi_client_input_util_test.py"],
+    env = {
+        "TF2_BEHAVIOR": "1",
+    },
+    shard_count = 8,
+    tags = [
+        # ThreadSanitizer does not support starting new threads after multi-threaded fork.
+        "notsan",
+        "no_oss",  # Fails on OSS.
+        "nosan",  # b/195537906
+    ],
+    deps = [
+        ":multi_client_test_util",
+        ":test_util",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/dtensor/python:accelerator_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:config",
+        "//tensorflow/dtensor/python:input_util",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:mesh_util",
+        "//tensorflow/python/data/experimental/service:server_lib",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:device_spec",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/lib/io:tf_record",
+        "//tensorflow/python/ops:array_ops_stack",
+        "//tensorflow/python/ops:check_ops",
+        "//tensorflow/python/ops:io_ops",
+        "//tensorflow/python/ops:parsing_config",
+        "//tensorflow/python/ops:parsing_ops",
+        "//tensorflow/python/ops:parsing_ops_gen",
+        "//tensorflow/python/ops:stateless_random_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/logging",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -679,6 +839,81 @@ dtensor_test(
 )
 
 dtensor_test(
+    name = "rng_test",
+    size = "medium",
+    srcs = ["rng_test.py"],
+    additional_backends = [TPU_V3_DONUT_BACKEND],
+    # Requires at least 8 TPUs to run the tests.
+    disable = ["tpu"],
+    disable_tfrt = [
+        "gpu",
+        TPU_V3_DONUT_BACKEND,
+    ],
+    main = "rng_test.py",
+    shard_count = {
+        "cpu": 20,
+        "tpu": 10,
+        "gpu": 30,
+        TPU_V3_DONUT_BACKEND: 20,
+    },
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:numpy_util",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver/tpu:tpu_cluster_resolver_py",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:bitwise_ops_gen",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:stateful_random_ops_gen",
+        "//tensorflow/python/ops:stateless_random_ops_v2_gen",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/tpu:device_assignment",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+dtensor_test(
+    name = "save_restore_v2_test",
+    srcs = ["save_restore_v2_test.py"],
+    additional_backends = [
+        TPU_V3_DONUT_BACKEND,
+        TPU_V4_DONUT_BACKEND,
+    ],
+    main = "save_restore_v2_test.py",
+    shard_count = {
+        "cpu": 8,
+        "gpu": 8,
+        TPU_V3_DONUT_BACKEND: 8,
+    },
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:numpy_util",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_management",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/module",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:stateless_random_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+dtensor_test(
     name = "variable_test",
     srcs = ["variable_test.py"],
     disable_tfrt = [
@@ -705,5 +940,99 @@ dtensor_test(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
+    ],
+)
+
+dtensor_test(
+    name = "mnist_test",
+    size = "large",
+    srcs = ["mnist_test.py"],
+    shard_count = {
+        "tpu": 2,
+    },
+    tags = ["nosan"],  # Non-opt builds has slow XLA compilation.
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:input_util",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:array_ops_stack",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:stateless_random_ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+dtensor_test(
+    name = "numerics_test",
+    srcs = ["numerics_test.py"],
+    additional_backends = [TPU_V3_DONUT_BACKEND],
+    disable = ALL_BACKENDS,
+    enable = [
+        "tpu",
+    ],
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:accelerator_util",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:numpy_util",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:stateless_random_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+dtensor_test(
+    name = "sparse_test",
+    srcs = ["sparse_test.py"],
+    main = "sparse_test.py",
+    shard_count = {
+        "cpu": 4,
+    },
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:numpy_util",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+dtensor_test(
+    name = "tpu_device_assignment_test",
+    srcs = ["tpu_device_assignment_test.py"],
+    disable = ALL_BACKENDS,
+    enable = [
+        "tpu",
+    ],
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:numpy_util",
+        "//tensorflow/dtensor/python:tpu_util",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

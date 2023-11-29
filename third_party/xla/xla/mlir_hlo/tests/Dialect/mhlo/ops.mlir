@@ -6518,55 +6518,49 @@ func.func @f8e5m2(%arg0: tensor<f16>) -> tensor<f8E5M2> {
 // -----
 
 func.func @top_k_1d(%arg0 : tensor<16xf32>) {
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true) : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
   return
 }
 
 // -----
 
 func.func @top_k_nd(%arg0 : tensor<16x16xf32>) {
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<16x16xf32> -> (tensor<16x8xf32>, tensor<16x8xi32>)
+  %0:2 = mhlo.topk(%arg0, k=8, largest=false) : tensor<16x16xf32> -> (tensor<16x8xf32>, tensor<16x8xi32>)
   return
 }
 
 // -----
 
 func.func @top_k_unbounded(%arg0 : tensor<?x16x?xf32>) {
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<?x16x?xf32> -> (tensor<?x16x8xf32>, tensor<?x16x8xi32>)
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true) : tensor<?x16x?xf32> -> (tensor<?x16x8xf32>, tensor<?x16x8xi32>)
   return
 }
 
 // -----
 
 func.func @top_k_bounded(%arg0 : tensor<?x?x?xf32, #mhlo.type_extensions<bounds = [?, 16, 16]>>) {
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<?x?x?xf32, #mhlo.type_extensions<bounds = [?, 16, 16]>> -> (tensor<16x?x8xf32, #mhlo.type_extensions<bounds = [?, 16, ?]>>, tensor<16x?x8xi32, #mhlo.type_extensions<bounds = [?, 16, ?]>>)
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true) : tensor<?x?x?xf32, #mhlo.type_extensions<bounds = [?, 16, 16]>> -> (tensor<16x?x8xf32, #mhlo.type_extensions<bounds = [?, 16, ?]>>, tensor<16x?x8xi32, #mhlo.type_extensions<bounds = [?, 16, ?]>>)
   return
 }
 
 // -----
 
 func.func @top_k_unranked(%arg0 : tensor<*xf32>) {
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<*xf32> -> (tensor<*xf32>, tensor<*xi32>)
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true) : tensor<*xf32> -> (tensor<*xf32>, tensor<*xi32>)
+  return
+}
+
+// -----
+
+func.func @top_k_1d_false(%arg0 : tensor<16xf32>) {
+  %0:2 = mhlo.topk(%arg0, k=8, largest=false) : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
+  return
+}
+
+// -----
+
+func.func @top_k_1d_default(%arg0 : tensor<16xf32>) {
+  %0:2 = mhlo.topk(%arg0, k=8) : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
   return
 }
 
@@ -6575,11 +6569,7 @@ func.func @top_k_unranked(%arg0 : tensor<*xf32>) {
 func.func @topk_rank_at_least_one(%arg0 : tensor<f32>) {
   // expected-error@+2 {{failed to infer returned types}}
   // expected-error@+1 {{operand's rank must be at least 1}}
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<f32> -> (tensor<8xf32>, tensor<8xi32>)
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true) : tensor<f32> -> (tensor<8xf32>, tensor<8xi32>)
   return
 }
 
@@ -6588,69 +6578,6 @@ func.func @topk_rank_at_least_one(%arg0 : tensor<f32>) {
 func.func @topk_last_dimension_at_least_k(%arg0 : tensor<4xf32>) {
   // expected-error@+2 {{failed to infer returned types}}
   // expected-error@+1 {{operand's last dimension must be at least 8}}
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<4xf32> -> (tensor<8xf32>, tensor<8xi32>)
-  return
-}
-
-// -----
-
-func.func @topk_body_must_have_two_arguments(%arg0 : tensor<16xf32>) {
-  // expected-error@+1 {{unsupported body: expected: '(tensor<f32>, tensor<f32>) -> tensor<i1>', got '(tensor<f32>) -> tensor<i1>'}}
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>):
-      %predicate = mhlo.compare GT, %arg1, %arg1 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
-  return
-}
-
-// -----
-
-func.func @topk_body_must_have_one_result(%arg0 : tensor<16xf32>) {
-  // expected-error@+1 {{unsupported body: expected: '(tensor<f32>, tensor<f32>) -> tensor<i1>', got '(tensor<f32>, tensor<f32>) -> (tensor<i1>, tensor<i1>)'}}
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate, %predicate : tensor<i1>, tensor<i1>
-  } : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
-  return
-}
-
-// -----
-
-func.func @topk_body_arguments_must_have_operand_element_type(%arg0 : tensor<16xf32>) {
-  // expected-error@+1 {{unsupported body: expected: '(tensor<f32>, tensor<f32>) -> tensor<i1>', got '(tensor<i32>, tensor<i32>) -> tensor<i1>'}}
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):
-      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<i32>, tensor<i32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
-  return
-}
-
-// -----
-
-func.func @topk_body_results_must_have_i1_element_type(%arg0 : tensor<16xf32>) {
-  // expected-error@+1 {{unsupported body: expected: '(tensor<f32>, tensor<f32>) -> tensor<i1>', got '(tensor<f32>, tensor<f32>) -> tensor<f32>'}}
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      mhlo.return %arg1 : tensor<f32>
-  } : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
-  return
-}
-
-// -----
-
-func.func @topk_body_must_consist_of_compare_gt_or_compare_lt(%arg0 : tensor<16xf32>) {
-  // expected-error@+1 {{unsupported body: expected mhlo.compare of body arguments with GT or LT comparison_direction}}
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %predicate = mhlo.compare EQ, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true) : tensor<4xf32> -> (tensor<8xf32>, tensor<8xi32>)
   return
 }

@@ -67,8 +67,8 @@ bool IsOpQuantizableStableHlo(Operation* op);
 // quantized results. The concrete pattern should define the following two
 // functions:
 //
-//   bool AllowDynamicRangeQuantizedOperand(Operation *) const
-//   bool AllowDynamicRangeQuantizedResult(Operation *) const
+//   bool AllowDynamicRangeQuantizedOperand(Operation&) const
+//   bool AllowDynamicRangeQuantizedResult(Operation&) const
 //
 // Full integer quantization disallows "DynamicRangeQuantized" operands or
 // results. Dynamic range quantization allows "DynamicRangeQuantized" operands
@@ -76,8 +76,6 @@ bool IsOpQuantizableStableHlo(Operation* op);
 //
 // Implementation of this pattern is mostly copied from QuantizationPattern in
 // third_party/tensorflow/compiler/mlir/lite/quantization/quantization_utils.h.
-// TODO - b/310545259 : Split declarations and implementations of
-// StableHloQuantizationPattern.
 template <typename ConcreteT, typename QuantizeOpT, typename DequantizeOpT,
           typename VerifierT, typename RootOpT = DequantizeOpT>
 class StableHloQuantizationPattern : public RewritePattern {
@@ -146,7 +144,7 @@ class StableHloQuantizationPattern : public RewritePattern {
 
       if (!IsOpQuantizableStableHlo(quantizing_op) &&
           !static_cast<const ConcreteT*>(this)->IsQuantizableCustomOp(
-              quantizing_op, custom_map)) {
+              *quantizing_op, custom_map)) {
         return failure();
       }
 
@@ -229,7 +227,7 @@ class StableHloQuantizationPattern : public RewritePattern {
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result.getType());
         } else if (static_cast<const ConcreteT*>(this)
-                       ->AllowDynamicRangeQuantizedResult(quantizing_op,
+                       ->AllowDynamicRangeQuantizedResult(*quantizing_op,
                                                           custom_map)) {
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result.getType());

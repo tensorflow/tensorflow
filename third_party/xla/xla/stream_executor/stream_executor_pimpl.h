@@ -128,7 +128,7 @@ class StreamExecutor {
   bool UnloadModule(ModuleHandle module_handle);
 
   tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
-      Stream* stream, const std::vector<uint8_t>& content);
+      Stream* stream, absl::Span<const uint8_t> content);
 
   // Synchronously allocates an array on the device of type T with element_count
   // elements.

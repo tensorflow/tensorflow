@@ -336,7 +336,7 @@ tsl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
       (LoadKernelOrGetPtr<DeviceMemory<uint8_t>, uint8_t, uint64_t,
                           DeviceMemory<uint64_t>>(
           executor, "redzone_checker", redzone_checker_ptx, compiled_ptx)));
-#else
+#elif TENSORFLOW_USE_ROCM
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ComparisonKernelT> loaded_kernel,
       (executor->CreateTypedKernel<DeviceMemory<uint8>, uint8, uint64_t,

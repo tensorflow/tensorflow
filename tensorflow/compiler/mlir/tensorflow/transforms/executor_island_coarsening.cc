@@ -361,15 +361,14 @@ IslandOp CreateNewIsland(const MergedIsland& merged_island,
 
 // Creates respective YieldOp for the new merged island.
 YieldOp CreateNewIslandYieldOp(IslandOp new_island,
-                               llvm::ArrayRef<IslandResult> results) {
+                               llvm::MutableArrayRef<IslandResult> results) {
   llvm::SmallVector<Value, 8> yield_operands;
   yield_operands.reserve(results.size());
 
-  for (auto ret_vals : llvm::zip(results, new_island.getOutputs())) {
-    const auto& old_result = std::get<0>(ret_vals);
-
+  for (auto [old_result, new_island] :
+       llvm::zip(results, new_island.getOutputs())) {
     // Replace original island result with new island result.
-    old_result.island_result.replaceAllUsesWith(std::get<1>(ret_vals));
+    old_result.island_result.replaceAllUsesWith(new_island);
 
     // Add associated inner op result to operands of the YieldOp.
     yield_operands.push_back(old_result.inner_op_result);

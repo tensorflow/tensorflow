@@ -252,6 +252,8 @@ void AddQuantizePtqPostCalibrationStablehloPasses(
   // StableHLO quantization.
   pm.addPass(mlir::TF::CreateXlaCallModuleDeserializationPass());
   pm.addPass(mlir::quant::stablehlo::createRestoreFunctionNamePass());
+  pm.addPass(mlir::quant::stablehlo::createUnwrapXlaCallModuleOpPass());
+  pm.addPass(mlir::createSymbolDCEPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertCustomAggregationOpToQuantStatsPass());
   AddStaticRangeQuantizationPass(pm, mlir_dump_file_prefix);

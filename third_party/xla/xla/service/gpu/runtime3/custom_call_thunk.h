@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "xla/ffi/api/c_api.h"
+#include "xla/ffi/call_frame.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/gpu/thunk.h"
@@ -68,8 +69,8 @@ class CustomCallThunk : public Thunk {
     Shape shape;
   };
 
-  using Attribute = std::variant<int32_t, int64_t, float, std::string>;
-  using AttributesMap = absl::flat_hash_map<std::string, Attribute>;
+  using Attribute = ffi::CallFrameBuilder::FlatAttribute;
+  using AttributesMap = ffi::CallFrameBuilder::FlatAttributesMap;
 
   CustomCallThunk(ThunkInfo thunk_info, CustomCallTarget call_target,
                   std::vector<std::optional<Slice>> operands,

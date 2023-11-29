@@ -42,6 +42,8 @@ limitations under the License.
 #include "xla/service/fusion_queue.h"
 #include "xla/service/gpu/fusion_process_dump.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
+#include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/instruction_fusion.h"
@@ -79,12 +81,14 @@ class GpuPriorityFusionQueue : public FusionQueue {
       const GpuHloCostAnalysis::Options& cost_analysis_options,
       const se::DeviceDescription* device_info, const CanFuseCallback& can_fuse,
       FusionProcessDumpProto* fusion_process_dump,
-      tsl::thread::ThreadPool* thread_pool)
+      tsl::thread::ThreadPool* thread_pool,
+      HloFusionAnalysisCache& fusion_analysis_cache)
       : computation_(computation),
         cost_analysis_(cost_analysis_options, device_info),
         can_fuse_(can_fuse),
         fusion_process_dump_(fusion_process_dump),
-        thread_pool_(thread_pool) {
+        thread_pool_(thread_pool),
+        fusion_analysis_cache_(fusion_analysis_cache) {
     VLOG(2) << "Running full HLO cost analysis for " << computation_->name();
     TF_CHECK_OK(computation_->Accept(&cost_analysis_));
 
@@ -106,7 +110,6 @@ class GpuPriorityFusionQueue : public FusionQueue {
           std::make_pair(priority, instruction->unique_id()), instruction);
       CHECK(emplace_result.second);
       reverse_map_.emplace(instruction, emplace_result.first);
-      producer_user_count_[instruction] = instruction->user_count();
     }
   }
 
@@ -181,6 +184,14 @@ class GpuPriorityFusionQueue : public FusionQueue {
       fusion_step->set_consumer_name(std::string(original_consumer->name()));
     }
 
+    HloInstructionAdaptor fusion_adaptor(*fusion);
+    can_fuse_cache_.erase(fusion_adaptor);
+
+    gpu_performance_model_cache_.Invalidate(*fusion);
+
+    fusion_analysis_cache_.Invalidate(*fusion);
+    fusion_analysis_cache_.Invalidate(*original_producer);
+
     // The original consumer was replaced with the fusion, but it's pointer can
     // still be referenced somewhere, for example, in to_update_priority_.
     // Priority recomputation is called before DCE. Remove all references to
@@ -211,7 +222,9 @@ class GpuPriorityFusionQueue : public FusionQueue {
       if (!operand->IsFusible()) {
         continue;
       }
-      producer_user_count_[operand] = operand->user_count();
+
+      HloInstructionAdaptor operand_adaptor(*operand);
+      can_fuse_cache_[operand_adaptor].erase(fusion_adaptor);
       to_update_priority_.insert(operand);
     }
     to_update_priority_.insert(fusion);
@@ -257,7 +270,7 @@ class GpuPriorityFusionQueue : public FusionQueue {
   // Removes data for the instruction.
   void RemoveInstruction(HloInstruction* instruction) override {
     to_update_priority_.erase(instruction);
-    producer_user_count_.erase(instruction);
+    fusion_analysis_cache_.Invalidate(*instruction);
 
     auto reverse_it = reverse_map_.find(instruction);
     if (reverse_it == reverse_map_.end()) {
@@ -289,7 +302,9 @@ class GpuPriorityFusionQueue : public FusionQueue {
     GpuPerformanceModel::RunTimes run_times =
         GpuPerformanceModel::EstimateRunTimes(
             producer, &cost_analysis_,
-            GpuPerformanceModelOptions::PriorityFusion(), producer->users());
+            GpuPerformanceModelOptions::PriorityFusion(
+                &fusion_analysis_cache_, &gpu_performance_model_cache_),
+            producer->users());
     if (fusion_process_dump_) {
       absl::MutexLock lock(&fusion_process_dump_mutex_);
       auto* step =
@@ -305,14 +320,44 @@ class GpuPriorityFusionQueue : public FusionQueue {
                                     run_times.time_fused);
   }
 
-  FusionDecision CanFuseWithAllUsers(HloInstruction* producer) const {
+  FusionDecision CanFuseCached(HloInstruction* producer,
+                               HloInstruction* consumer) {
+    HloInstructionAdaptor producer_adaptor(*producer);
+    HloInstructionAdaptor consumer_adaptor(*consumer);
+
+    {
+      absl::MutexLock lock(&can_fuse_cache_mutex_);
+      auto& producer_cache = can_fuse_cache_[producer_adaptor];
+
+      auto it = producer_cache.find(consumer_adaptor);
+      if (it != producer_cache.end()) {
+        return it->second;
+      }
+    }
+
+    auto fusion_decision =
+        can_fuse_(consumer, consumer->operand_index(producer));
+
+    // The lock is required, because writing to a flat_hash_map is not
+    // thread-safe even for different keys. We never call this computation
+    // concurrently for the same producer, so it's guaranteed that we don't
+    // override any value.
+    {
+      absl::MutexLock lock(&can_fuse_cache_mutex_);
+      can_fuse_cache_[producer_adaptor][consumer_adaptor] = fusion_decision;
+    }
+
+    return fusion_decision;
+  }
+
+  FusionDecision CanFuseWithAllUsers(HloInstruction* producer) {
     if (producer->users().size() == 0) {
       return "No users to fuse";
     }
 
     FusionDecision result;
     for (const auto& user : producer->users()) {
-      if (auto fusion_decision = can_fuse_(user, user->operand_index(producer));
+      if (auto fusion_decision = CanFuseCached(producer, user);
           !fusion_decision) {
         VLOG(10) << "Cannot fuse " << producer->name() << " with "
                  << user->name() << ", because: " << fusion_decision.Explain();
@@ -348,10 +393,6 @@ class GpuPriorityFusionQueue : public FusionQueue {
   // and the producer is given as the consumer's operand index.
   CanFuseCallback can_fuse_;
 
-  // The user counts of producers, used to determine whether we update their
-  // priorities when fusion happens.
-  absl::flat_hash_map<HloInstruction*, int64_t> producer_user_count_;
-
   // The set of producers whose priorities need to be updated. Their
   // priorities are changed because their neighbors got fused, but we delay
   // the priority updates until current_consumers_ becomes empty. This is to
@@ -365,6 +406,18 @@ class GpuPriorityFusionQueue : public FusionQueue {
   absl::Mutex fusion_process_dump_mutex_;
 
   tsl::thread::ThreadPool* thread_pool_;
+
+  HloFusionAnalysisCache& fusion_analysis_cache_;
+
+  // Caches result of can_fuse for a (producer, consumer) pair. A cache entry is
+  // invalidated if producer or consumer is modified.
+  absl::flat_hash_map<
+      HloInstructionAdaptor,
+      absl::flat_hash_map<HloInstructionAdaptor, FusionDecision>>
+      can_fuse_cache_;
+  absl::Mutex can_fuse_cache_mutex_;
+
+  GpuPerformanceModelCache gpu_performance_model_cache_;
 };
 
 }  // namespace
@@ -466,8 +519,33 @@ FusionDecision GpuPriorityFusion::ShouldFuse(HloInstruction* consumer,
     return can_fuse;
   }
 
-  // Avoid cases where we'd create a fusion that hit limitations in ptxas. Would
-  // be nice to model this with cost instead.
+  // Avoid fusing reduce into reduce. Our cost model doesn't currently
+  // understand this case due to a lack of tiling analysis.
+  // TODO(b/312200883): Remove this.
+  auto contains_reduce = [&](const HloInstruction* instr) {
+    return HloAnyOf({HloInstructionAdaptor{*instr}},
+                    *HloFusionAdaptor::ForInstruction(instr), [](auto node) {
+                      return node.opcode() == HloOpcode::kReduce;
+                    });
+  };
+  if (contains_reduce(producer) && contains_reduce(consumer)) {
+    return "both the producer and the consumer contain a reduce";
+  }
+
+  // Avoid doing fusions into the output of an "input" fusion when it would
+  // switch it to the loop emitter. This often occurs during epilog fusion for
+  // reductions, which suffer from limited emitter support.
+  // TODO(b/312686229): Cost model should handle this.
+  auto analysis_fused =
+      AnalyzeProducerConsumerFusion(*producer, *consumer, device_info_);
+  if (producer->IsInputFusion() && analysis_fused &&
+      analysis_fused->GetEmitterFusionKind() ==
+          HloFusionAnalysis::EmitterFusionKind::kLoop) {
+    return "fusion into output of an input fusion would create a loop fusion";
+  }
+
+  // Avoid cases where we'd create a fusion that hit limitations in ptxas.
+  // Would be nice to model this with cost instead.
   if (auto fits_budget =
           FusionFitsInBudget(*consumer, *producer, device_info_,
                              /*is_consumer_producer_fusion=*/true);
@@ -502,8 +580,7 @@ HloInstruction::FusionKind GpuPriorityFusion::ChooseKind(
   // matter but some passes downstream still query these instead of fusion
   // analysis.
   // TODO: Don't recompute this all the time.
-  auto analysis =
-      AnalyzeProducerConsumerFusion(*producer, *consumer, device_info_);
+  const auto& analysis = fusion_analysis_cache_.Get(*producer, *consumer);
   if (!analysis) return HloInstruction::FusionKind::kLoop;
   switch (analysis->GetEmitterFusionKind()) {
     case HloFusionAnalysis::EmitterFusionKind::kLoop:
@@ -544,7 +621,7 @@ std::unique_ptr<FusionQueue> GpuPriorityFusion::GetFusionQueue(
       [this](HloInstruction* consumer, int64_t operand_index) {
         return ShouldFuse(consumer, operand_index);
       },
-      fusion_process_dump_.get(), thread_pool_));
+      fusion_process_dump_.get(), thread_pool_, fusion_analysis_cache_));
 }
 
 }  // namespace gpu

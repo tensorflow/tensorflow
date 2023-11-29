@@ -14,6 +14,7 @@
 # ==============================================================================
 """The Counter Dataset."""
 from tensorflow.python import tf2
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.util import deprecation
@@ -70,3 +71,14 @@ if tf2.enabled():
   Counter = CounterV2
 else:
   Counter = CounterV1
+
+
+def _tf2_callback():  # pylint: disable=invalid-name
+  global Counter
+  if tf2.enabled():
+    Counter = CounterV2
+  else:
+    Counter = CounterV1
+
+
+v2_compat.register_data_v2_callback(_tf2_callback)
