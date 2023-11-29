@@ -74,7 +74,6 @@ build_and_test_on_rbe_gpu() {
   # Runs non-multiaccelerator tests with one GPU apiece.
   # It appears --run_under needs an absolute path.
 
-  # TODO(ddunleavy): reenable `LaxTest.testBitcastConvertType`
   bazel \
     test \
     --verbose_failures=true \
