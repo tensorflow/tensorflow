@@ -1457,7 +1457,8 @@ void RemoveInvalidShardingsWithShapes(const Shape& shape,
       for (int64_t i = 0; i < shape.rank(); ++i) {
         if (tile_assignment.dim(i) > 1 &&
             tile_assignment.dim(i) > shape.dimensions(i)) {
-          VLOG(1) << "Removing invalid strategy: " << strategy.ToString();
+          VLOG(1) << "May remove invalid strategy if valid ones exist: "
+                  << strategy.ToString();
           is_strategy_valid = false;
           break;
         }
@@ -1466,7 +1467,9 @@ void RemoveInvalidShardingsWithShapes(const Shape& shape,
         new_vector.push_back(strategy);
       }
     }
-    strategy_group->strategies = std::move(new_vector);
+    if (!new_vector.empty()) {
+      strategy_group->strategies = std::move(new_vector);
+    }
   }
 }
 
