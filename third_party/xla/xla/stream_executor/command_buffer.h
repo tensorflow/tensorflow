@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_COMMAND_BUFFER_H_
 #define XLA_STREAM_EXECUTOR_COMMAND_BUFFER_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <variant>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
@@ -127,6 +129,11 @@ class CommandBuffer {
   tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                    const DeviceMemoryBase& src, uint64_t size);
 
+  // Adds a memset node to the command buffer.
+  using BitPattern = std::variant<uint8_t, uint16_t, uint32_t>;
+  tsl::Status Memset(DeviceMemoryBase* dst, BitPattern bit_pattern,
+                     size_t num_elements);
+
   //--------------------------------------------------------------------------//
   // Command buffer condtitional commands API
   //--------------------------------------------------------------------------//
@@ -153,7 +160,7 @@ class CommandBuffer {
   // Adds a conditional operation that will execute a command buffer constructed
   // by the `body_builder` exactly `num_iteration` times.
   tsl::Status For(StreamExecutor* executor, int32_t num_iteration,
-                  DeviceMemory<int32_t> loop_index, Builder body_builder);
+                  DeviceMemory<int32_t> loop_counter, Builder body_builder);
 
   // Adds a conditional operation that will execute a command buffer constructed
   // by the `cond_builder` that must update `pred` value, and then depending on

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/command_buffer.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <utility>
@@ -131,6 +132,11 @@ tsl::Status CommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
   return implementation_->MemcpyDeviceToDevice(dst, src, size);
 }
 
+tsl::Status CommandBuffer::Memset(DeviceMemoryBase* dst, BitPattern bit_pattern,
+                                  size_t num_elements) {
+  return implementation_->Memset(dst, bit_pattern, num_elements);
+}
+
 tsl::Status CommandBuffer::Allocate(CommandBuffer::AllocIndexSize alloc) {
   return implementation_->Allocate(alloc);
 }
@@ -159,9 +165,9 @@ tsl::Status CommandBuffer::Case(StreamExecutor* executor,
 }
 
 tsl::Status CommandBuffer::For(StreamExecutor* executor, int32_t num_iteration,
-                               DeviceMemory<int32_t> loop_index,
+                               DeviceMemory<int32_t> loop_counter,
                                Builder body_builder) {
-  return implementation_->For(executor, num_iteration, loop_index,
+  return implementation_->For(executor, num_iteration, loop_counter,
                               std::move(body_builder));
 }
 

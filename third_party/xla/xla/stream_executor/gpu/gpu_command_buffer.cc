@@ -273,6 +273,29 @@ tsl::Status GpuCommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
   return UnsupportedStateError(state_);
 }
 
+tsl::Status GpuCommandBuffer::Memset(DeviceMemoryBase* dst,
+                                     CommandBuffer::BitPattern bit_pattern,
+                                     size_t num_elements) {
+  TF_RETURN_IF_ERROR(CheckNotFinalized());
+
+  if (state_ == State::kCreate) {
+    Dependencies deps = GetDependencies();
+    GpuGraphNodeHandle* node = &nodes_.emplace_back();
+    return GpuDriver::GraphAddMemsetNode(
+        parent_->gpu_context(), node, graph_, absl::MakeSpan(deps),
+        AsDevicePtr(*dst), bit_pattern, num_elements);
+  }
+
+  if (state_ == State::kUpdate) {
+    GpuGraphNodeHandle node = nodes_[update_state_.node_idx++];
+    return GpuDriver::GraphExecMemsetNodeSetParams(
+        parent_->gpu_context(), exec_, node, AsDevicePtr(*dst), bit_pattern,
+        num_elements);
+  }
+
+  return UnsupportedStateError(state_);
+}
+
 tsl::Status GpuCommandBuffer::Allocate(CommandBuffer::AllocIndexSize alloc) {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
@@ -418,6 +441,8 @@ tsl::Status GpuCommandBuffer::UpdateConditionalCommandBuffers(
 tsl::Status GpuCommandBuffer::CreateConditionalCommand(
     ConditionType type, SetConditionFn set_condition,
     absl::Span<const ConditionBuilder> builders) {
+  TF_RETURN_IF_ERROR(CheckNotFinalized());
+
   // Every conditional command buffer is controlled by its own handle.
   size_t num_handles = builders.size();
 
@@ -564,7 +589,7 @@ tsl::Status GpuCommandBuffer::Case(
 
 tsl::Status GpuCommandBuffer::For(StreamExecutor* executor,
                                   int32_t num_iteration,
-                                  DeviceMemory<int32_t> loop_index,
+                                  DeviceMemory<int32_t> loop_counter,
                                   CommandBuffer::Builder body_builder) {
   DCHECK(executor->implementation() == parent_);
 
@@ -579,12 +604,12 @@ tsl::Status GpuCommandBuffer::For(StreamExecutor* executor,
     TF_RETURN_IF_ERROR(executor->GetKernel(spec, &set_for_condition));
   }
 
-  // TODO(ezhulenev): We currently assume that `loop_index` initialized to
-  // zero, instead we should explicitly add a memset to clear it.
+  // Reset loop counter to zero.
+  TF_RETURN_IF_ERROR(Memset(&loop_counter, uint32_t{0}, 1));
 
   auto set_cond_fn = [&](absl::Span<const GpuGraphConditionalHandle> handles) {
     return Launch(set_for_condition, ThreadDim(), BlockDim(), handles[0],
-                  loop_index, num_iteration);
+                  loop_counter, num_iteration);
   };
 
   auto body = [&](CommandBuffer* body, GpuGraphConditionalHandle handle) {
@@ -592,7 +617,7 @@ tsl::Status GpuCommandBuffer::For(StreamExecutor* executor,
 
     // Decide if we want to continue loop iteration.
     return body->Launch(set_for_condition, ThreadDim(), BlockDim(), handle,
-                        loop_index, num_iteration);
+                        loop_counter, num_iteration);
   };
 
   std::array<ConditionBuilder, 1> builders = {std::move(body)};

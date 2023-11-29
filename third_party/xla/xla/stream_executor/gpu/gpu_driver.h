@@ -540,6 +540,21 @@ class GpuDriver {
                                            GpuDevicePtr gpu_dst,
                                            GpuDevicePtr gpu_src, uint64_t size);
 
+  // Creates a memset node and adds it to a graph.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g89dc8fc3743392777c0daa2c4aca40d3
+  static tsl::Status GraphAddMemsetNode(
+      GpuContext* context, GpuGraphNodeHandle* node, GpuGraphHandle graph,
+      absl::Span<GpuGraphNodeHandle> deps, GpuDevicePtr dst,
+      std::variant<uint8_t, uint16_t, uint32_t> bit_pattern,
+      uint64_t num_elements);
+
+  // Sets the parameters for a memset node in the given graph exec.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g5df5be09a0b7b3513e740ebbbcd59739
+  static tsl::Status GraphExecMemsetNodeSetParams(
+      GpuContext* context, GpuGraphExecHandle exec, GpuGraphNodeHandle node,
+      GpuDevicePtr dst, std::variant<uint8_t, uint16_t, uint32_t> bit_pattern,
+      uint64_t num_elements);
+
   // Creates a child graph node and adds it to a graph.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gde52afbcf91a8c79d4d7efbe0e3b6844
   static tsl::Status GraphAddChildNode(GpuGraphNodeHandle* node,

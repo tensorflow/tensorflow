@@ -996,6 +996,98 @@ GpuDriver::GraphGetMemAllocNodeParams(CUgraphNode node) {
   return ::tsl::OkStatus();
 }
 
+namespace {
+
+struct BitPatternToString {
+  std::string operator()(uint8_t pattern) {
+    return absl::StrCat("u8:", pattern);
+  }
+  std::string operator()(uint16_t pattern) {
+    return absl::StrCat("u16:", pattern);
+  }
+  std::string operator()(uint32_t pattern) {
+    return absl::StrCat("u32:", pattern);
+  }
+};
+
+// Broadcasts a pattern value of 1/2/4 bytes to a 4 byte value.
+struct BitPatternToValue {
+  std::pair<unsigned, unsigned> operator()(uint8_t pattern) {
+    unsigned value = pattern;
+    return {(value << 24) | (value << 16) | (value << 8) | value,
+            /*element_size=*/1};
+  }
+  std::pair<unsigned, unsigned> operator()(uint16_t pattern) {
+    unsigned value = pattern;
+    return {(value << 16) | value, /*element_size=*/2};
+  }
+  std::pair<unsigned, unsigned> operator()(uint32_t pattern) {
+    return {pattern, /*element_size=*/4};
+  }
+};
+
+}  // namespace
+
+/* static */ tsl::Status GpuDriver::GraphAddMemsetNode(
+    GpuContext* context, CUgraphNode* node, GpuGraphHandle graph,
+    absl::Span<CUgraphNode> deps, CUdeviceptr dst,
+    std::variant<uint8_t, uint16_t, uint32_t> bit_pattern,
+    uint64_t num_elements) {
+  VLOG(2) << "Add memset node to a graph " << graph
+          << "; dst: " << reinterpret_cast<void*>(dst)
+          << "; bit_pattern: " << std::visit(BitPatternToString(), bit_pattern)
+          << "; num_elements: " << num_elements
+          << "; context: " << context->context() << "; deps: " << deps.size();
+
+  CUDA_MEMSET_NODE_PARAMS params;
+  memset(&params, 0, sizeof(params));
+
+  auto [value, element_size] = std::visit(BitPatternToValue(), bit_pattern);
+
+  params.dst = dst;
+  params.elementSize = element_size;
+  params.height = 1;
+  params.pitch = 0;  // unused if height is 1
+  params.value = value;
+  params.width = num_elements;
+
+  RETURN_IF_CUDA_RES_ERROR(
+      cuGraphAddMemsetNode(node, graph, deps.data(), deps.size(), &params,
+                           context->context()),
+      "Failed to add memset node to a CUDA graph");
+
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::GraphExecMemsetNodeSetParams(
+    GpuContext* context, CUgraphExec exec, CUgraphNode node, CUdeviceptr dst,
+    std::variant<uint8_t, uint16_t, uint32_t> bit_pattern,
+    uint64_t num_elements) {
+  VLOG(2) << "Set memset node params " << node << " in graph executable "
+          << exec << "; dst: " << reinterpret_cast<void*>(dst)
+          << "; bit_pattern: " << std::visit(BitPatternToString(), bit_pattern)
+          << "; num_elements: " << num_elements
+          << "; context: " << context->context();
+
+  CUDA_MEMSET_NODE_PARAMS params;
+  memset(&params, 0, sizeof(params));
+
+  auto [value, element_size] = std::visit(BitPatternToValue(), bit_pattern);
+
+  params.dst = dst;
+  params.elementSize = element_size;
+  params.height = 1;
+  params.pitch = 0;  // unused if height is 1
+  params.value = value;
+  params.width = num_elements;
+
+  RETURN_IF_CUDA_RES_ERROR(
+      cuGraphExecMemsetNodeSetParams(exec, node, &params, context->context()),
+      "Failed to set memset node params");
+
+  return ::tsl::OkStatus();
+}
+
 /* static */ tsl::Status GpuDriver::GraphAddChildNode(
     CUgraphNode* node, CUgraph graph, absl::Span<CUgraphNode> deps,
     CUgraph child) {

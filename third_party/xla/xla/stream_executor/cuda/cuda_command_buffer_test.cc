@@ -220,6 +220,48 @@ TEST(CudaCommandBufferTest, LaunchNestedCommandBuffer) {
   ASSERT_EQ(dst, expected);
 }
 
+TEST(CudaCommandBufferTest, Memset) {
+  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  Stream stream(executor);
+  stream.Init();
+  ASSERT_TRUE(stream.ok());
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+
+  // Create a command buffer with a single memset command.
+  auto cmd_buffer = CommandBuffer::Create(executor).value();
+  TF_ASSERT_OK(cmd_buffer.Memset(&a, uint32_t{42}, length));
+  TF_ASSERT_OK(cmd_buffer.Finalize());
+
+  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+
+  // Copy `a` data back to host.
+  std::vector<int32_t> dst(4, 0);
+  stream.ThenMemcpy(dst.data(), a, byte_length);
+
+  std::vector<int32_t> expected = {42, 42, 42, 42};
+  ASSERT_EQ(dst, expected);
+
+  // Update command buffer to use a new bit pattern.
+  TF_ASSERT_OK(cmd_buffer.Update());
+  TF_ASSERT_OK(cmd_buffer.Memset(&a, uint32_t{43}, length));
+  TF_ASSERT_OK(cmd_buffer.Finalize());
+
+  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+
+  // Copy `d` data back to host.
+  std::fill(dst.begin(), dst.end(), 0);
+  stream.ThenMemcpy(dst.data(), a, byte_length);
+
+  expected = {43, 43, 43, 43};
+  ASSERT_EQ(dst, expected);
+}
+
 TEST(CudaCommandBufferTest, ConditionalIf) {
   Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
   if (!CommandBuffer::SupportsConditionalCommands(platform)) {
@@ -534,12 +576,13 @@ TEST(CudaCommandBufferTest, ConditionalFor) {
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
 
-  // Prepare arguments: a=1, b=0, loop_index=0
-  DeviceMemory<int32_t> loop_index = executor->AllocateArray<int32_t>(1, 0);
+  // Prepare arguments: a=1, b=0, loop_counter=100
+  DeviceMemory<int32_t> loop_counter = executor->AllocateArray<int32_t>(1, 0);
   DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
   DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
 
-  stream.ThenMemset32(&loop_index, 0, sizeof(int32_t));
+  // Set loop counter to 100 to check that command buffer resets it.
+  stream.ThenMemset32(&loop_counter, 100, sizeof(int32_t));
   stream.ThenMemset32(&a, 1, byte_length);
   stream.ThenMemZero(&b, byte_length);
 
@@ -552,7 +595,7 @@ TEST(CudaCommandBufferTest, ConditionalFor) {
 
   // Create a command buffer with a single conditional operation.
   auto cmd_buffer = CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(cmd_buffer.For(executor, num_iters, loop_index, body_builder));
+  TF_ASSERT_OK(cmd_buffer.For(executor, num_iters, loop_counter, body_builder));
   TF_ASSERT_OK(cmd_buffer.Finalize());
 
   TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
@@ -595,23 +638,23 @@ TEST(CudaCommandBufferTest, ConditionalWhile) {
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
 
-  // Prepare arguments: a=1, b=0, loop_index=0, pred=false
+  // Prepare arguments: a=1, b=0, loop_counter=0, pred=false
   DeviceMemory<bool> pred = executor->AllocateArray<bool>(1, 0);
-  DeviceMemory<int32_t> loop_index = executor->AllocateArray<int32_t>(1, 0);
+  DeviceMemory<int32_t> loop_counter = executor->AllocateArray<int32_t>(1, 0);
   DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
   DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
 
   static constexpr bool kFalse = false;
   stream.ThenMemcpy(&pred, &kFalse, 1);
-  stream.ThenMemset32(&loop_index, 0, sizeof(int32_t));
+  stream.ThenMemset32(&loop_counter, 0, sizeof(int32_t));
   stream.ThenMemset32(&a, 1, byte_length);
   stream.ThenMemZero(&b, byte_length);
 
   int32_t num_iters = 10;
 
-  // Loop cond: loop_index++ < num_iters;
+  // Loop cond: loop_counter++ < num_iters;
   CommandBuffer::Builder cond_builder = [&](CommandBuffer* cond_cmd) {
-    return cond_cmd->Launch(inc_and_cmp, ThreadDim(), BlockDim(), loop_index,
+    return cond_cmd->Launch(inc_and_cmp, ThreadDim(), BlockDim(), loop_counter,
                             pred, num_iters);
   };
 

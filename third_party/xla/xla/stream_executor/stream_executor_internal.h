@@ -141,6 +141,11 @@ class CommandBufferInterface {
                                            const DeviceMemoryBase& src,
                                            uint64_t size) = 0;
 
+  // Adds a memset node to the command buffer.
+  virtual tsl::Status Memset(DeviceMemoryBase* dst,
+                             CommandBuffer::BitPattern bit_pattern,
+                             size_t num_elements) = 0;
+
   // Adds a device memory allocation node to the command buffer.
   virtual tsl::Status Allocate(CommandBuffer::AllocIndexSize alloc) = 0;
 

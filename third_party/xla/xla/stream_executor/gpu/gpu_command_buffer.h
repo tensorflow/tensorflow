@@ -59,6 +59,10 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
                                    const DeviceMemoryBase& src,
                                    uint64_t size) override;
 
+  tsl::Status Memset(DeviceMemoryBase* dst,
+                     CommandBuffer::BitPattern bit_pattern,
+                     size_t num_elements) override;
+
   tsl::Status Allocate(CommandBuffer::AllocIndexSize alloc) override;
 
   tsl::StatusOr<DeviceMemoryBase> GetAllocationAddress(
@@ -75,7 +79,7 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
                    std::vector<CommandBuffer::Builder> branches) override;
 
   tsl::Status For(StreamExecutor* executor, int32_t num_iteration,
-                  DeviceMemory<int32_t> loop_index,
+                  DeviceMemory<int32_t> loop_counter,
                   CommandBuffer::Builder body_builder) override;
 
   tsl::Status While(StreamExecutor* executor, DeviceMemory<bool> pred,
