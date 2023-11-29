@@ -37,6 +37,11 @@ CommandBuffer::~CommandBuffer() = default;
 CommandBuffer::CommandBuffer(CommandBuffer&&) = default;
 CommandBuffer& CommandBuffer::operator=(CommandBuffer&&) = default;
 
+void CommandBuffer::Deleter::operator()(
+    internal::CommandBufferInterface* impl) {
+  if (owned) delete impl;
+}
+
 /*static*/ tsl::StatusOr<CommandBuffer> CommandBuffer::Create(
     StreamExecutor* executor, Mode mode) {
   TF_ASSIGN_OR_RETURN(
@@ -91,14 +96,24 @@ internal::CommandBufferInterface* CommandBuffer::implementation() {
   return implementation_.get();
 }
 
-/*static*/ CommandBuffer CommandBuffer::Wrap(
+/*static*/ CommandBuffer CommandBuffer::Create(
     std::unique_ptr<internal::CommandBufferInterface> implementation) {
   return CommandBuffer(std::move(implementation));
 }
 
+/*static*/ tsl::Status CommandBuffer::Build(
+    internal::CommandBufferInterface* implementation,
+    const CommandBuffer::Builder& builder) {
+  CommandBuffer command_buffer(implementation);
+  return builder(&command_buffer);
+}
+
 CommandBuffer::CommandBuffer(
     std::unique_ptr<internal::CommandBufferInterface> implementation)
-    : implementation_(std::move(implementation)) {}
+    : implementation_(implementation.release(), {/*owned=*/true}) {}
+
+CommandBuffer::CommandBuffer(internal::CommandBufferInterface* implementation)
+    : implementation_(implementation, {/*owned=*/false}) {}
 
 tsl::Status CommandBuffer::Launch(const ThreadDim& threads,
                                   const BlockDim& blocks, const Kernel& kernel,

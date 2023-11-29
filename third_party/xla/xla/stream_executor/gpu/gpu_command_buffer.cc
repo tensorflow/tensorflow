@@ -388,7 +388,7 @@ GpuCommandBuffer::CreateConditionalCommandBuffers(
     auto command_buffer_impl = parent_->GetCommandBufferImplementation(
         nested, graphs[i], is_owned_graph);
 
-    auto command_buffer = CommandBuffer::Wrap(std::move(command_buffer_impl));
+    auto command_buffer = CommandBuffer::Create(std::move(command_buffer_impl));
 
     TF_RETURN_IF_ERROR(builders[i](&command_buffer, handles[i]));
     TF_RETURN_IF_ERROR(command_buffer.Finalize());
@@ -617,9 +617,8 @@ tsl::Status GpuCommandBuffer::While(StreamExecutor* executor,
     TF_RETURN_IF_ERROR(executor->GetKernel(spec, &set_while_condition));
   }
 
-  // TODO(ezhulenev): We assume that `pred` already has a value that decides if
-  // we should go into the first loop iteration. Instead we should run
-  // `cond_builder` to update primary command buffer.
+  // Record condition commands into the parent command buffer.
+  TF_RETURN_IF_ERROR(CommandBuffer::Build(this, cond_builder));
 
   auto set_cond_fn = [&](absl::Span<const GpuGraphConditionalHandle> handles) {
     return Launch(set_while_condition, ThreadDim(), BlockDim(), handles[0],

@@ -210,16 +210,30 @@ class CommandBuffer {
   const internal::CommandBufferInterface* implementation() const;
   internal::CommandBufferInterface* implementation();
 
-  // Wraps platform-specific command buffer implementation into a top-level
-  // StreamExecutor command buffer.
-  static CommandBuffer Wrap(
+  // Creates a command buffer from a platform-specific command buffer
+  // implementation.
+  static CommandBuffer Create(
       std::unique_ptr<internal::CommandBufferInterface> implementation);
+
+  // An adaptor for a command buffer builder that records commands into the
+  // platform-specific implementation
+  static tsl::Status Build(internal::CommandBufferInterface* implementation,
+                           const CommandBuffer::Builder& builder);
 
  private:
   explicit CommandBuffer(
       std::unique_ptr<internal::CommandBufferInterface> implementation);
 
-  std::unique_ptr<internal::CommandBufferInterface> implementation_;
+  explicit CommandBuffer(internal::CommandBufferInterface* implementation);
+
+  // A custom deleter to be able to construct command buffer that doesn't own
+  // underlying implementation (behaves like std::weak_ptr for implementation).
+  struct Deleter {
+    void operator()(internal::CommandBufferInterface*);
+    bool owned = true;
+  };
+
+  std::unique_ptr<internal::CommandBufferInterface, Deleter> implementation_;
 
   CommandBuffer(const CommandBuffer&) = delete;
   void operator=(const CommandBuffer&) = delete;

@@ -595,15 +595,15 @@ TEST(CudaCommandBufferTest, ConditionalWhile) {
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
 
-  // Prepare arguments: a=1, b=0, loop_index=1, pred=true
+  // Prepare arguments: a=1, b=0, loop_index=0, pred=false
   DeviceMemory<bool> pred = executor->AllocateArray<bool>(1, 0);
   DeviceMemory<int32_t> loop_index = executor->AllocateArray<int32_t>(1, 0);
   DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
   DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
 
-  static constexpr bool kTrue = true;
-  stream.ThenMemcpy(&pred, &kTrue, 1);
-  stream.ThenMemset32(&loop_index, 1, sizeof(int32_t));
+  static constexpr bool kFalse = false;
+  stream.ThenMemcpy(&pred, &kFalse, 1);
+  stream.ThenMemset32(&loop_index, 0, sizeof(int32_t));
   stream.ThenMemset32(&a, 1, byte_length);
   stream.ThenMemZero(&b, byte_length);
 
