@@ -18,9 +18,12 @@ limitations under the License.
 #include <numeric>
 
 #include "absl/container/flat_hash_map.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/map_util.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/ir_emission_utils.h"
+#include "xla/shape_util.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -126,6 +129,13 @@ Status CpuLayoutAssignment::AddBackendConstraints(
       const HloInstruction* op = instruction->operand(*op_idx);
       TF_RETURN_IF_ERROR(
           SetOperandLayout(ColMajorShape(op->shape()), instruction, *op_idx));
+    } else if (instruction->opcode() == HloOpcode::kAllGather) {
+      // XLA:CPU can only support all-gathers where the gather dimension is the
+      // most major dimension in the layout.
+      auto ag = Cast<HloAllGatherInstruction>(instruction);
+      TF_RETURN_IF_ERROR(SetInstructionLayout(
+          ShapeUtil::MoveDimToMajor(ag->shape(), ag->all_gather_dimension()),
+          ag));
     } else {
       for (int64_t operand_no = 0; operand_no < instruction->operand_count();
            ++operand_no) {
