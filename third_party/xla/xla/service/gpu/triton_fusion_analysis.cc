@@ -42,6 +42,17 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+namespace {
+
+using triton_fusion::DimOrdersAndReqs;
+using triton_fusion::DimOrdersAndReqsOrError;
+using triton_fusion::FusionContext;
+using triton_fusion::GetPropagatedDimOrdersAndRequirements;
+using triton_fusion::kNoSplitRequirement;
+using triton_fusion::TransformDirection;
+
+}  // namespace
+
 namespace triton_fusion {
 
 /*static*/ FusionContext FusionContext::FromDotOperand(
@@ -103,6 +114,7 @@ namespace triton_fusion {
 }
 
 namespace {
+
 // Tells how many new parameters does a fusion gain by fusing the operation as
 // an input.
 int64_t NumAddedParameters(const HloInstruction& hlo) {
@@ -114,6 +126,7 @@ int64_t NumAddedParameters(const HloInstruction& hlo) {
   // All other instructions add all own inputs and remove own single output.
   return hlo.operand_count() - 1;
 }
+
 }  // namespace
 
 bool FusionContext::CombineDimOrdersAndReqs(const DimOrdersAndReqs& update) {
@@ -127,7 +140,7 @@ bool FusionContext::CombineDimOrdersAndReqs(const DimOrdersAndReqs& update) {
   }
 
   RequirementsOrError requirements_or_error =
-      triton_fusion::CombineRequirements(requirements_, update.requirements);
+      CombineRequirements(requirements_, update.requirements);
   if (std::holds_alternative<FusionDecision>(requirements_or_error)) {
     return false;
   }
@@ -197,7 +210,7 @@ StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
 
 Status TritonFusionAnalysis::ExecuteForSoftmaxFusion(
     const HloInstruction& root) {
-  auto context = triton_fusion::FusionContext::FromSoftmaxRoot(root);
+  auto context = FusionContext::FromSoftmaxRoot(root);
   // Softmax fusion uses one tiled scope.
   TF_RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(
       root, parameters_[Scope::OUTPUT], iter_specs_[Scope::OUTPUT]));
@@ -208,11 +221,10 @@ Status TritonFusionAnalysis::ExecuteForSoftmaxFusion(
 
 Status TritonFusionAnalysis::ExecuteForDotFusion(const HloInstruction& dot,
                                                  const int split_k) {
-  int64_t lhs_nc_split_major_part_size = triton_fusion::kNoSplitRequirement;
+  int64_t lhs_nc_split_major_part_size = kNoSplitRequirement;
   for (const Scope scope : {Scope::LHS, Scope::RHS}) {
     const int operand_number = static_cast<int>(scope);
-    auto context = triton_fusion::FusionContext::FromDotOperand(
-        dot, operand_number, split_k);
+    auto context = FusionContext::FromDotOperand(dot, operand_number, split_k);
     TF_RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(
         *dot.operand(operand_number), parameters_[scope], iter_specs_[scope]));
     if (scope == Scope::LHS) {
@@ -221,8 +233,8 @@ Status TritonFusionAnalysis::ExecuteForDotFusion(const HloInstruction& dot,
     }
   }
 
-  auto context = triton_fusion::FusionContext::FromDotOutput(
-      dot, split_k, lhs_nc_split_major_part_size);
+  auto context =
+      FusionContext::FromDotOutput(dot, split_k, lhs_nc_split_major_part_size);
   const HloInstruction* output = &dot;
   // Currently supported is one fusion output and one path from dot to it.
   // Propagate dimension order from dot to root.
@@ -230,15 +242,12 @@ Status TritonFusionAnalysis::ExecuteForDotFusion(const HloInstruction& dot,
     TF_RET_CHECK(output->user_count() == 1);
     const HloInstruction* input = output;
     output = output->users()[0];
-    triton_fusion::DimOrdersAndReqsOrError result =
-        triton_fusion::GetPropagatedDimOrdersAndRequirements(
-            *output, context.dim_orders().at(input),
-            triton_fusion::TransformDirection::kInputToOutput,
-            context.hero_properties());
+    DimOrdersAndReqsOrError result = GetPropagatedDimOrdersAndRequirements(
+        *output, context.dim_orders().at(input),
+        TransformDirection::kInputToOutput, context.hero_properties());
+    TF_RET_CHECK(std::holds_alternative<DimOrdersAndReqs>(result));
     TF_RET_CHECK(
-        std::holds_alternative<triton_fusion::DimOrdersAndReqs>(result));
-    TF_RET_CHECK(context.CombineDimOrdersAndReqs(
-        std::get<triton_fusion::DimOrdersAndReqs>(result)));
+        context.CombineDimOrdersAndReqs(std::get<DimOrdersAndReqs>(result)));
   }
   TF_RET_CHECK(
       iter_specs_[Scope::OUTPUT]
@@ -267,6 +276,7 @@ const TensorIterationSpec::DimIterationSpec* TritonFusionAnalysis::IterSpec(
 }
 
 namespace {
+
 std::string IterationSpecByInstructionMapToString(
     const TritonFusionAnalysis::IterationSpecByInstructionMap& m) {
   return absl::StrCat("IterSpec{",
@@ -288,6 +298,7 @@ std::string ScopeToString(TritonFusionAnalysis::Scope s) {
       return "OUTPUT";
   }
 }
+
 }  // namespace
 
 std::string TritonFusionAnalysis::ToString() const {

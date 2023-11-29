@@ -215,6 +215,7 @@ TensorIterationSpec DimensionOrder::ToTensorIterationSpec() const {
 }
 
 namespace {
+
 // Logical index of a dimension in `shape` labeled with `label` in the
 // `dim_order` describing the shape.
 std::optional<int> LogicalIndexOfLabeledDimension(
@@ -261,6 +262,7 @@ RequirementsOrError CombineSoftmaxRequirements(SoftmaxRequirements a,
   // SoftmaxRequirements is an empty class for now.
   return a;
 }
+
 }  // namespace
 
 RequirementsOrError CombineRequirements(Requirements a,

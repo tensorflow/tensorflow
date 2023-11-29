@@ -60,6 +60,12 @@ namespace gpu {
 
 namespace {
 
+using triton_fusion::DimOrdersAndReqs;
+using triton_fusion::DimOrdersAndReqsOrError;
+using triton_fusion::FusionContext;
+using triton_fusion::GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible;
+using triton_fusion::TransformDirection;
+
 using OldToNewHloMap =
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>;
 
@@ -170,14 +176,13 @@ void TryToFuseWithInputsRecursively(HloInstruction& root,
       continue;
     }
     num_requeued = 0;
-    const triton_fusion::DimOrdersAndReqsOrError result =
+    const DimOrdersAndReqsOrError result =
         GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
-            *hlo, triton_fusion::TransformDirection::kOutputToInput,
+            *hlo, TransformDirection::kOutputToInput,
             /*src_operand_index=*/std::nullopt, context.dim_orders().at(hlo),
             gpu_version, context.hero_properties());
-    if (!std::holds_alternative<triton_fusion::DimOrdersAndReqs>(result) ||
-        !context.CombineDimOrdersAndReqs(
-            std::get<triton_fusion::DimOrdersAndReqs>(result))) {
+    if (!std::holds_alternative<DimOrdersAndReqs>(result) ||
+        !context.CombineDimOrdersAndReqs(std::get<DimOrdersAndReqs>(result))) {
       continue;
     }
     if (hlo->opcode() != HloOpcode::kParameter) {
@@ -236,12 +241,12 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
   // differently shaped tiles but may go through same HLO graph nodes.
   // Direct dot inputs have well defined dimension orders.
 
-  auto fuse_inputs = [&](int operand_number, OldToNewHloMap& old_to_new_map)
-      -> StatusOr<triton_fusion::FusionContext> {
+  auto fuse_inputs =
+      [&](int operand_number,
+          OldToNewHloMap& old_to_new_map) -> StatusOr<FusionContext> {
     const int operand_count_before = fusion_inputs.size();
     // Direct dot inputs have well defined dimension orders.
-    auto context =
-        triton_fusion::FusionContext::FromDotOperand(dot, operand_number);
+    auto context = FusionContext::FromDotOperand(dot, operand_number);
     TryToFuseWithInputsRecursively(*dot.mutable_operand(operand_number),
                                    gpu_version, context, old_to_new_map,
                                    fusion_inputs, builder);
@@ -255,7 +260,7 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
 
   // Original instruction -> fused one. Separate for each scope.
   OldToNewHloMap lhs_old_to_new_map;
-  TF_ASSIGN_OR_RETURN(const triton_fusion::FusionContext lhs_context,
+  TF_ASSIGN_OR_RETURN(const FusionContext lhs_context,
                       fuse_inputs(0, lhs_old_to_new_map));
 
   OldToNewHloMap rhs_old_to_new_map;
@@ -272,7 +277,7 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
   // Fusion at dot's output.
 
   // These describe _outputs_ of corresponding HLOs.
-  auto context = triton_fusion::FusionContext::FromDotOutput(
+  auto context = FusionContext::FromDotOutput(
       dot, /*split_k=*/1, lhs_context.splittable_dimension_major_part_size());
   HloInstruction* fusion_output = &dot;
   bool output_changed = true;
@@ -285,15 +290,14 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
     if (!IsDistributiveOverAddition(*user)) {
       break;
     }
-    triton_fusion::DimOrdersAndReqsOrError result =
-        triton_fusion::GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
-            *user, triton_fusion::TransformDirection::kInputToOutput,
+    DimOrdersAndReqsOrError result =
+        GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
+            *user, TransformDirection::kInputToOutput,
             user->operand_index(fusion_output),
             context.dim_orders().at(fusion_output), gpu_version,
             context.hero_properties());
-    if (!std::holds_alternative<triton_fusion::DimOrdersAndReqs>(result) ||
-        !context.CombineDimOrdersAndReqs(
-            std::get<triton_fusion::DimOrdersAndReqs>(result))) {
+    if (!std::holds_alternative<DimOrdersAndReqs>(result) ||
+        !context.CombineDimOrdersAndReqs(std::get<DimOrdersAndReqs>(result))) {
       break;
     }
     for (HloInstruction* operand : user->operands()) {
