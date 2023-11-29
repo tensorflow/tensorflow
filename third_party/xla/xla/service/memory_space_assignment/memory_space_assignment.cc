@@ -6024,10 +6024,10 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
                         "CopyAllocations or SlicedCopyAllocations.";
         }
         if (prefetch_time != *request.preferred_prefetch_time) {
-          LOG(WARNING) << "Scheduled prefetch time (" << prefetch_time
-                       << ") doesn't match the preferred prefetch time ("
-                       << *request.preferred_prefetch_time
-                       << "): " << request.use->hlo_use.ToString();
+          VLOG(1) << "Scheduled prefetch time (" << prefetch_time
+                  << ") doesn't match the preferred prefetch time ("
+                  << *request.preferred_prefetch_time
+                  << "): " << request.use->hlo_use.ToString();
         }
       }
       return Result::kSuccess;
@@ -6035,10 +6035,10 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
     // Warn if there was a preferred prefetch time but we couldn't actually
     // prefetch.
     if (request.preferred_prefetch_time) {
-      LOG(WARNING) << "The request has a preferred prefetch time ("
-                   << *request.preferred_prefetch_time
-                   << ") which could not be satisfied: "
-                   << request.use->hlo_use.ToString();
+      VLOG(1) << "The request has a preferred prefetch time ("
+              << *request.preferred_prefetch_time
+              << ") which could not be satisfied: "
+              << request.use->hlo_use.ToString();
     }
     result_mark(prefetch_result, allocation_result);
   }
@@ -6334,8 +6334,8 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
     return Result::kSuccess;
   }
   if (request.prefer_no_copy_alternate_mem_allocation) {
-    LOG(WARNING) << "Preferred no-copy allocation, but this was not possible: "
-                 << request.use->hlo_use.ToString();
+    VLOG(1) << "Preferred no-copy allocation, but this was not possible: "
+            << request.use->hlo_use.ToString();
   }
   return Result::kFailOutOfMemory;
 }
