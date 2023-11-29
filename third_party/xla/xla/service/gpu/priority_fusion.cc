@@ -451,6 +451,22 @@ StatusOr<bool> GpuPriorityFusion::Run(
     fusion_process_dump_ = std::make_unique<FusionProcessDumpProto>();
   }
 
+  // Appends ".0" suffix to all instructions.
+  //
+  // Every time an instruction is duplicated, the last integer suffix is
+  // incremented.
+  // Before: broadcast.123 -> broadcast.124
+  // After: broadcast.123.0 -> broadcast.123.1
+  //
+  // With this modification it will be easier to match intructions before and
+  // after fusion passes, because they will have the same unique prefix. Names
+  // are not used in the pipeline, but it makes debugging much easier.
+  for (auto* computation : GetFusionComputations(module, execution_threads)) {
+    for (auto* instruction : computation->instructions()) {
+      instruction->SetAndSanitizeName(absl::StrCat(instruction->name(), ".0"));
+    }
+  }
+
   auto result = InstructionFusion::Run(module, execution_threads);
 
   if (dump_enabled) {

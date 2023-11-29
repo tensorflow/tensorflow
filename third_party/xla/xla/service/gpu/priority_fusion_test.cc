@@ -618,8 +618,7 @@ TEST_F(PriorityFusionTest, EpilogueFusion) {
     })";
 
   RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
-CHECK: ROOT %fusion = f32[8,4,128]{2,1,0} fusion(%p{{.*}}), kind=kInput, calls=%fused_computation
-  )");
+CHECK: ROOT {{.*}} = f32[8,4,128]{2,1,0} fusion(%p{{.*}}), kind=kInput, calls=%fused_computation)");
 }
 
 TEST_F(PriorityFusionTest, EpilogueFusionFails) {
