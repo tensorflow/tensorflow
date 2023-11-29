@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime3/command_buffer_thunk.h"
 
+#include <cstdint>
 #include <utility>
 
 #include "absl/synchronization/mutex.h"
@@ -102,6 +103,15 @@ CommandBufferThunk::GetOrCreateCommandBuffer(se::StreamExecutor* executor) {
   auto emplaced = command_buffers_.emplace(executor, std::move(command_buffer));
 
   return &emplaced.first->second;
+}
+
+StatusOr<se::DeviceMemoryBase> CommandBufferThunk::GetLazyAllocationAddress(
+    const ExecuteParams& params, int64_t index) {
+  se::StreamExecutor* executor = params.stream->parent();
+  TF_ASSIGN_OR_RETURN(ExecutorCommandBuffer * cmd_buffer,
+                      GetOrCreateCommandBuffer(executor));
+  absl::MutexLock lock(&cmd_buffer->mutex);
+  return cmd_buffer->command_buffer.GetAllocationAddress(index);
 }
 
 }  // namespace xla::gpu

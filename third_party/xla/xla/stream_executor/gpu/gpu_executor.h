@@ -101,6 +101,8 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   tsl::Status Init(int device_ordinal, DeviceOptions device_options) override;
 
+  int device_ordinal() const override { return device_ordinal_; };
+
   tsl::Status GetKernel(const MultiKernelLoaderSpec& spec,
                         Kernel* kernel) override;
 

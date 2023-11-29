@@ -273,6 +273,56 @@ tsl::Status GpuCommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
   return UnsupportedStateError(state_);
 }
 
+tsl::Status GpuCommandBuffer::Allocate(CommandBuffer::AllocIndexSize alloc) {
+  TF_RETURN_IF_ERROR(CheckNotFinalized());
+
+  if (state_ == State::kCreate) {
+    Dependencies deps = GetDependencies();
+    GpuGraphNodeHandle* node = &nodes_.emplace_back();
+
+    GpuDevicePtr ptr;
+    TF_RETURN_IF_ERROR(GpuDriver::GraphAddMemAllocNode(
+        node, graph_, absl::MakeSpan(deps),
+        GpuDriver::MemAccessFlags::kReadWrite,
+        GpuDriver::MemLocationType::kDevice, parent_->device_ordinal(),
+        GpuDriver::MemAllocationType::kPinned, alloc.size, &ptr));
+    // For CUDA impl, VA range is reserved when adding memory allocation node.
+    CHECK(ptr) << "CUDA graph memory allocation node returned nullptr";
+
+    VLOG(2) << "Setting device memory base with opaque pointer "
+            << reinterpret_cast<void*>(ptr)
+            << " device ordinal: " << parent_->device_ordinal();
+    allocations_map_[alloc.index] =
+        DeviceMemoryBase{reinterpret_cast<void*>(ptr), alloc.size};
+    return tsl::OkStatus();
+  }
+
+  if (state_ == State::kUpdate) {
+    // Memory allocation node implemented through CUDA graph does not allocate
+    // new memory region on update, just return the memory region allocated
+    // during the create step.
+    TF_ASSIGN_OR_RETURN(
+        AllocationResult params,
+        GpuDriver::GraphGetMemAllocNodeParams(nodes_[update_state_.node_idx]));
+    update_state_.node_idx++;
+    allocations_map_[alloc.index] =
+        DeviceMemoryBase{reinterpret_cast<void*>(params.first), params.second};
+    return tsl::OkStatus();
+  }
+
+  return UnsupportedStateError(state_);
+}
+
+tsl::StatusOr<DeviceMemoryBase> GpuCommandBuffer::GetAllocationAddress(
+    int64_t index) const {
+  if (allocations_map_.contains(index)) {
+    return allocations_map_.at(index);
+  } else {
+    return absl::InternalError(
+        absl::StrCat("Allocation is not yet allocated: ", index));
+  }
+}
+
 //--------------------------------------------------------------------------//
 // Command buffer condtitional commands API
 //--------------------------------------------------------------------------//

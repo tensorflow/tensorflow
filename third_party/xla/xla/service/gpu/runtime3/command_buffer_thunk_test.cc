@@ -104,6 +104,63 @@ TEST(CommandBufferThunkTest, MemcpyCmd) {
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42));
 }
 
+// This test does the following operations:
+// 1. Allocates memory region "a" and "c" outside command buffer.
+// 2. Allocates memory region "b" inside command buffer.
+// 3. MemCopyDeviceToDevice from "a" to "b" inside command buffer.
+// 4. MemCopyDEviceToDevice from "b" to "c" inside command buffer.
+// 5. Verify that region "c" has the same content as "a".
+TEST(CommandBufferThunkTest, MemallocCmd) {
+  se::StreamExecutor* executor = CudaExecutor();
+
+  se::Stream stream(executor);
+  stream.Init();
+  ASSERT_TRUE(stream.ok());
+
+  // Prepare arguments:
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
+  BufferAllocation alloc_b(/*index=*/1, byte_length, /*color=*/0);
+  BufferAllocation alloc_c(/*index=*/2, byte_length, /*color=*/0);
+  BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
+  BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
+  BufferAllocation::Slice slice_c(&alloc_c, 0, byte_length);
+
+  // Prepare commands sequence for constructing command buffer.
+  CommandBufferCmdSequence commands;
+  commands.Emplace<AllocateCmd>(&alloc_b);
+  commands.Emplace<MemcpyDeviceToDeviceCmd>(slice_b, slice_a, byte_length);
+  commands.Emplace<MemcpyDeviceToDeviceCmd>(slice_c, slice_b, byte_length);
+
+  // Construct a thunk with command sequence.
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
+
+  // Prepare arguments: a=42, b=0
+  se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  stream.ThenMemset32(&a, 42, byte_length);
+
+  se::DeviceMemory<int32_t> b =
+      se::DeviceMemory<int32_t>::MakeExternalAllocationFromByteSize(
+          byte_length);
+  se::DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+  BufferAllocations allocations({a, b, c}, 0, executor->GetAllocator());
+
+  ServiceExecutableRunOptions run_options;
+  Thunk::ExecuteParams params(run_options, allocations, &stream, {});
+
+  // Execute command buffer thunk and verify that it copied the memory.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+
+  // Copy `b` data back to host.
+  std::vector<int32_t> dst(4, 0);
+  stream.ThenMemcpy(dst.data(), allocations.GetMutableDeviceAddress(2),
+                    byte_length);
+
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 42));
+}
+
 TEST(CommandBufferThunkTest, LaunchCmd) {
   se::StreamExecutor* executor = CudaExecutor();
 

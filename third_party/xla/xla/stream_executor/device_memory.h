@@ -26,12 +26,19 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <cstdint>
+
 #include "xla/stream_executor/platform/port.h"
 
 namespace stream_executor {
 
 class DeviceMemoryAllocator;
 class StreamExecutor;
+
+// This special address is used to indicate that the allocation is not ready
+// when constructing DeviceMemory object, and will be lazily allocated by
+// an external allocator (e.g. command buffer for GPU backend).
+inline constexpr uintptr_t kExternalAllocationMarker = 0xDEADBEEF;
 
 // void*-analogous device memory allocation. For the typed variation, see
 // DeviceMemory<T>.
@@ -54,6 +61,11 @@ class DeviceMemoryBase {
   // Returns whether the backing memory is the null pointer.
   // A `== nullptr` convenience method is also provided.
   bool is_null() const { return opaque_ == nullptr; }
+
+  bool is_external_allocation_marker() const {
+    return reinterpret_cast<uintptr_t>(opaque_) == kExternalAllocationMarker;
+  }
+
   bool operator==(std::nullptr_t other) const { return is_null(); }
   bool operator!=(std::nullptr_t other) const { return !is_null(); }
 
@@ -96,7 +108,13 @@ class DeviceMemoryBase {
   }
 
  private:
-  void *opaque_;  // Platform-dependent value representing allocated memory.
+  // Platform-dependent value representing allocated memory.
+  //
+  // User may also constructs the object with `kExternalAllocationMarker`
+  // address and non-zero size, which indicates the case that buffer is
+  // allocated externally (for Gpu backends we use it to allocate memory via
+  // command buffer APIs).
+  void *opaque_;
   uint64_t size_;         // Size in bytes of this allocation.
   uint64_t payload_ = 0;  // Payload data associated with this allocation.
 };
@@ -134,6 +152,12 @@ class DeviceMemory final : public DeviceMemoryBase {
   // distinguish bytes from an element count.
   static DeviceMemory<ElemT> MakeFromByteSize(void *opaque, uint64_t bytes) {
     return DeviceMemory<ElemT>(opaque, bytes);
+  }
+
+  static DeviceMemory<ElemT> MakeExternalAllocationFromByteSize(
+      uint64_t bytes) {
+    return DeviceMemory<ElemT>(
+        reinterpret_cast<void *>(kExternalAllocationMarker), bytes);
   }
 
   // Resets the DeviceMemory data, in MakeFromByteSize fashion.

@@ -21,6 +21,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <cstdint>
+#include <utility>
 #include <variant>
 
 #include "absl/types/span.h"
@@ -490,6 +491,45 @@ class GpuDriver {
       unsigned int block_dim_x, unsigned int block_dim_y,
       unsigned int block_dim_z, unsigned int shared_mem_bytes,
       void** kernel_params, void** extra);
+
+  // Memory protection flags for mappings.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html#group__CUDA__TYPES_1gfba87b8c4a8cd091554d8e2c3fc9b40a
+  enum class MemAccessFlags {
+    kNone,
+    kRead,
+    kReadWrite,
+  };
+
+  // Specifies the type of memory location
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html#group__CUDA__TYPES_1g75cfd5b9fa5c1c6ee2be2547bfbe882e
+  enum class MemLocationType {
+    kInvalid,
+    kDevice,
+    kHost,
+    kHostNuma,
+    kHostNumaCurrent,
+  };
+
+  // The memory allocation type
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html#group__CUDA__TYPES_1g7ed3482e0df8712d79a99bcb3bc4a95b
+  enum class MemAllocationType {
+    kInvalid,
+    kPinned,
+  };
+
+  // Creates a memory allocation node and adds it to a graph.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g73a351cb71b2945a0bcb913a93f69ec9
+  static tsl::Status GraphAddMemAllocNode(
+      GpuGraphNodeHandle* node, GpuGraphHandle graph,
+      absl::Span<GpuGraphNodeHandle> deps, MemAccessFlags access_flags,
+      MemLocationType location_type, int device_id,
+      MemAllocationType allocation_type, uint64_t size, GpuDevicePtr* d_ptr,
+      uint64_t max_pool_size = 0);
+
+  // Fetch memory allocation node's allocated address;
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gee2c7d66d3d96b1470c1d1a769f250a2
+  static tsl::StatusOr<std::pair<GpuDevicePtr, uint64_t>>
+  GraphGetMemAllocNodeParams(GpuGraphNodeHandle node);
 
   // Creates a memcpy node and adds it to a graph.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g674da6ab54a677f13e0e0e8206ff5073

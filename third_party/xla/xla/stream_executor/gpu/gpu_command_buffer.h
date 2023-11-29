@@ -23,7 +23,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -59,6 +58,11 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                    const DeviceMemoryBase& src,
                                    uint64_t size) override;
+
+  tsl::Status Allocate(CommandBuffer::AllocIndexSize alloc) override;
+
+  tsl::StatusOr<DeviceMemoryBase> GetAllocationAddress(
+      int64_t index) const override;
 
   tsl::Status If(StreamExecutor* executor, DeviceMemory<bool> predicate,
                  CommandBuffer::Builder then_builder) override;
@@ -179,6 +183,8 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
     std::vector<CommandBuffer> command_buffers;
   };
 
+  using AllocationResult = std::pair<GpuDevicePtr, uint64_t>;
+
   tsl::StatusOr<std::vector<GpuGraphConditionalHandle>>
   CreateConditionalHandles(size_t num_handles);
 
@@ -211,6 +217,9 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   // Returns OK status if command buffer is primary, otherwise returns internal
   // error.
   tsl::Status CheckPrimary();
+
+  // Keep tracks of allocations that is performed by allocation command.
+  absl::flat_hash_map<int64_t, DeviceMemoryBase> allocations_map_;
 
   // Returns OK status if the number of command buffers is equal to the expected
   // one, otherwise returns internal error.

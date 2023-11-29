@@ -936,9 +936,8 @@ GetOutputInfo(const HloModule& hlo_module, const BufferAssignment& assignment) {
 GpuExecutable::GpuExecutable(
     std::shared_ptr<HloModule> hlo_module, std::string asm_text,
     std::vector<uint8_t> binary, std::vector<ConstantInfo> constants,
-    se::GpuComputeCapability gpu_version,
-    absl::string_view module_name, Shape xla_output_shape,
-    std::vector<BufferAllocation> allocations,
+    se::GpuComputeCapability gpu_version, absl::string_view module_name,
+    Shape xla_output_shape, std::vector<BufferAllocation> allocations,
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
     std::unique_ptr<GpuRuntimeExecutable> gpu_runtime_executable)
     : Executable(std::move(hlo_module)),

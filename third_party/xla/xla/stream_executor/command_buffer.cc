@@ -116,6 +116,15 @@ tsl::Status CommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
   return implementation_->MemcpyDeviceToDevice(dst, src, size);
 }
 
+tsl::Status CommandBuffer::Allocate(CommandBuffer::AllocIndexSize alloc) {
+  return implementation_->Allocate(alloc);
+}
+
+tsl::StatusOr<DeviceMemoryBase> CommandBuffer::GetAllocationAddress(
+    int64_t index) const {
+  return implementation_->GetAllocationAddress(index);
+}
+
 tsl::Status CommandBuffer::If(StreamExecutor* executor, DeviceMemory<bool> pred,
                               Builder then_builder) {
   return implementation_->If(executor, pred, std::move(then_builder));
