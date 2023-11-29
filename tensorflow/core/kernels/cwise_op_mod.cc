@@ -19,7 +19,8 @@ namespace tensorflow {
 REGISTER2(BinaryOp, CPU, "Mod", functor::safe_mod, int32, int64_t);
 REGISTER2(BinaryOp, CPU, "Mod", functor::fmod, float, double);
 REGISTER2(BinaryOp, CPU, "TruncateMod", functor::safe_mod, int32, int64_t);
-REGISTER2(BinaryOp, CPU, "TruncateMod", functor::fmod, float, double);
+REGISTER4(BinaryOp, CPU, "TruncateMod", functor::fmod, Eigen::half,
+          bfloat16, float, double);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // A special GPU kernel for int32.
