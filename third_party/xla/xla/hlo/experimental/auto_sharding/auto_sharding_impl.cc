@@ -31,13 +31,13 @@ namespace xla {
 namespace spmd {
 
 AutoShardingSolverResult Solve(
-    const HloLiveRange& hlo_live_range,
+    const HloModule& hlo_module, const HloLiveRange& hlo_live_range,
     const LivenessNodeSet& liveness_node_set, const StrategyMap& strategy_map,
     const StrategyGroups& strategy_groups, const CostGraph& cost_graph,
     const AliasSet& alias_set, const AutoShardingOption& option,
     const absl::flat_hash_map<std::string, const HloInstruction*>&
         sharding_propagation_solution) {
-  return CallSolver(hlo_live_range, liveness_node_set, strategy_map,
+  return CallSolver(hlo_module, hlo_live_range, liveness_node_set, strategy_map,
                     strategy_groups, cost_graph, alias_set, /*s_hint*/ {},
                     /*compute_iis*/ true, option.solver_timeout_in_seconds,
                     option, sharding_propagation_solution);

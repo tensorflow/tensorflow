@@ -2479,7 +2479,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
 // NOLINTEND
 
 AutoShardingSolverResult CallSolver(
-    const HloLiveRange& hlo_live_range,
+    const HloModule& hlo_module, const HloLiveRange& hlo_live_range,
     const LivenessNodeSet& liveness_node_set, const StrategyMap& strategy_map,
     const StrategyGroups& strategy_groups, const CostGraph& cost_graph,
     const AliasSet& alias_set, const std::vector<NodeStrategyIdx>& s_hint,
@@ -2489,6 +2489,7 @@ AutoShardingSolverResult CallSolver(
         sharding_propagation_solution) {
   // Serialize edges and edge costs to 1d numpy arrays
   AutoShardingSolverRequest request;
+  request.set_module_name(hlo_module.name());
   request.set_num_nodes(strategy_groups.size());
   request.set_memory_budget(option.memory_budget_per_device);
   request.mutable_s_len()->Add(cost_graph.node_lens_.begin(),
@@ -4415,9 +4416,10 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     std::vector<spmd::EdgeStrategyIdx> e_val;
     double objective = -1.0;
     if (!option_.load_solution_vector) {
-      auto solver_result = Solve(
-          *hlo_live_range, liveness_node_set, strategy_map, strategy_groups,
-          cost_graph, alias_set, option_, sharding_propagation_solution);
+      auto solver_result =
+          Solve(*module, *hlo_live_range, liveness_node_set, strategy_map,
+                strategy_groups, cost_graph, alias_set, option_,
+                sharding_propagation_solution);
       if (solver_result.skip_auto_sharding) {
         return AutoShardingResult::kModuleUnchangedNoShardingPerfomed;
       } else if (!solver_result.status.ok()) {

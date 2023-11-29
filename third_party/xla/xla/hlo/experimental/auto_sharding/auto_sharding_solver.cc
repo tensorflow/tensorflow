@@ -495,6 +495,19 @@ AutoShardingSolverResult CallORToolsSolver(
       LOG(ERROR) << write_status.message();
     }
   }
+  // Exports the solver request proto for debugging.
+  bool dump_solver_request = false;
+  if (dump_solver_request) {
+    uint64_t solver_request_fprint =
+        tsl::Fingerprint64(request.SerializeAsString());
+    auto write_status = file::SetBinaryProto(
+        // Modify this file path if needed.
+        absl::StrCat("/tmp/solver_request_", solver_request_fprint, ".proto"),
+        request, file::Defaults());
+    if (!write_status.ok()) {
+      LOG(ERROR) << write_status.message();
+    }
+  }
 #endif
   if (request.has_solver_timeout()) {
     solver->SetTimeLimit(
@@ -510,7 +523,8 @@ AutoShardingSolverResult CallORToolsSolver(
           << "Total instructions: " << request.num_nodes() << "\n"
           << "Memory budget: " << request.memory_budget() / (1024 * 1024 * 1024)
           << "GB\n"
-          << "Number of ILP constraints: " << solver->NumConstraints();
+          << "Number of ILP constraints: " << solver->NumConstraints() << "\n"
+          << "Module name: " << request.module_name();
   return SolveAndExtractSolution(request, s, e, overbudget_var, makespan_var,
                                  *solver);
 }
