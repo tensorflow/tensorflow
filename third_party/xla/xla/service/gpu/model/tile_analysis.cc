@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/service/gpu/model/tile_analysis.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <ostream>
 #include <queue>
 #include <sstream>
@@ -23,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -347,6 +350,172 @@ StatusOr<HloInstructionIndexing> ComputeReduceOpIndexing(
   return HloInstructionIndexing{std::move(operand_indexing_maps)};
 }
 
+// Computes strides for a shape.
+std::vector<int64_t> ComputeStrides(absl::Span<const int64_t> dims) {
+  size_t rank = dims.size();
+  std::vector<int64_t> strides(rank, 1);
+  for (int i = rank - 2; i >= 0; --i) {
+    strides[i] = dims[i + 1] * strides[i + 1];
+  }
+  return strides;
+}
+
+// Computes 1D index given a shape and N-d indexing expressions.
+AffineExpr LinearizeShape(absl::Span<const int64_t> dims,
+                          absl::Span<const AffineExpr> dimension_exprs,
+                          MLIRContext* mlir_context) {
+  AffineExpr linear_index = getAffineConstantExpr(0, mlir_context);
+
+  auto strides = ComputeStrides(dims);
+  for (auto [stride, dimension_expr] : llvm::zip(strides, dimension_exprs)) {
+    linear_index = getAffineBinaryOpExpr(
+        AffineExprKind::Add, linear_index,
+        getAffineBinaryOpExpr(AffineExprKind::Mul,
+                              getAffineConstantExpr(stride, mlir_context),
+                              dimension_expr));
+  }
+  return linear_index;
+}
+
+// Computes N-d indexing expressions given a linear index and a shape.
+std::vector<AffineExpr> DelinearizeIndex(absl::Span<const int64_t> dims,
+                                         AffineExpr linear_index,
+                                         MLIRContext* mlir_context) {
+  std::vector<AffineExpr> multi_index;
+  multi_index.reserve(dims.size());
+
+  AffineExpr remainder = linear_index;
+  for (int64_t stride : ComputeStrides(dims)) {
+    AffineExpr stride_expr = getAffineConstantExpr(stride, mlir_context);
+    multi_index.push_back(getAffineBinaryOpExpr(AffineExprKind::FloorDiv,
+                                                remainder, stride_expr));
+    remainder =
+        getAffineBinaryOpExpr(AffineExprKind::Mod, remainder, stride_expr);
+  }
+  return multi_index;
+}
+
+// Computes indexing for "minimal" reshapes, i.e. reshapes that cannot be
+// represented by a series of composed reshapes, i.e. when there are no
+// subshapes in input and output that have the same number of elements.
+// For example, [8, 4] -> [8, 2, 2] is not a minimal reshape, it has matching
+// subshapes [8] -> [8] and [4] -> [2, 2].
+//
+// There are only 4 types of "minimal" reshapes considers only 4 cases:
+//   1. Dimension is not changed, e.g. [8] -> [8]
+//   2. Dimension is expanded, e.g. [8] -> [4, 2]
+//   3. Dimension is collapsed, e.g. [4, 2] -> [8]
+//   4. Dimension is collapsed and expanded, e.g. [8, 16] -> [4, 32]
+//
+// The function computes indexing maps for these 4 cases, i.e. considers given
+// input/output shapes and checks if the shapes are the same, expanded or
+// collapsed. Otherwise, performs linearization/delinearization.
+void ComputeMinimalReshapeIndexing(
+    absl::Span<const int64_t> input_dims, absl::Span<const int64_t> output_dims,
+    absl::Span<const AffineExpr> output_dims_exprs,
+    std::vector<AffineExpr>* exprs, MLIRContext* mlir_context) {
+  // The shape does not change.
+  if (input_dims.size() == 1 && output_dims.size() == 1) {
+    absl::c_copy(output_dims_exprs, std::back_inserter(*exprs));
+    return;
+  }
+  // Expand shape.
+  if (input_dims.size() == 1) {
+    exprs->push_back(
+        LinearizeShape(output_dims, output_dims_exprs, mlir_context));
+    return;
+  }
+  // Collapse shape.
+  if (output_dims.size() == 1) {
+    auto multi_index =
+        DelinearizeIndex(input_dims, output_dims_exprs.front(), mlir_context);
+    absl::c_copy(multi_index, std::back_inserter(*exprs));
+    return;
+  }
+  // Generic case.
+  AffineExpr linear_index =
+      LinearizeShape(output_dims, output_dims_exprs, mlir_context);
+  auto multi_index = DelinearizeIndex(input_dims, linear_index, mlir_context);
+  absl::c_copy(multi_index, std::back_inserter(*exprs));
+}
+
+// Scans input and output shapes from left to right in an attempt to find
+// subshapes with the same number of elements and then computes indexing map for
+// every pair of subshapes.
+//
+// Example:
+//   p0 = f32[4, 8, 12] parameter(0)
+//   reshape = f32[32, 3, 4] reshape(p0)
+//
+// This reshape can be represented as a composition of two reshapes.
+// The first reshape collapses dimensions first two input dimensions [4, 8] onto
+// the output dimension [32].
+// The second reshape expands the input dimension [12] into two output
+// dimensions [3, 4].
+// This is an optimization that allows us to construct simpler affine maps,
+// otherwise we would need to linearize/delinearize even some of the simpler
+// cases.
+std::vector<AffineExpr> ComputeComposedReshapeIndexing(
+    absl::Span<const int64_t> input_dims, absl::Span<const int64_t> output_dims,
+    MLIRContext* mlir_context) {
+  std::vector<AffineExpr> exprs;
+
+  size_t input_rank = input_dims.size();
+  size_t output_rank = output_dims.size();
+  std::vector<AffineExpr> output_dims_exprs;
+
+  // Find subshapes with the same element count and compute indexing for them.
+  int64_t input_num_elements = 1;
+  int64_t output_num_elements = 1;
+  std::vector<int64_t> input_subshape, output_subshape;
+  size_t input_dim_id = 0, output_dim_id = 0;
+  while (input_dim_id < input_rank || output_dim_id < output_rank ||
+         !input_subshape.empty()) {
+    if (input_dim_id < input_rank &&
+        (input_subshape.empty() || input_num_elements < output_num_elements ||
+         input_dims[input_dim_id] == 1)) {
+      input_num_elements *= input_dims[input_dim_id];
+      input_subshape.push_back(input_dims[input_dim_id]);
+      ++input_dim_id;
+      continue;
+    }
+    if (output_dim_id < output_rank &&
+        (output_subshape.empty() || output_num_elements < input_num_elements ||
+         output_dims[output_dim_id] == 1)) {
+      output_num_elements *= output_dims[output_dim_id];
+      output_subshape.push_back(output_dims[output_dim_id]);
+      output_dims_exprs.push_back(
+          getAffineDimExpr(output_dim_id, mlir_context));
+      ++output_dim_id;
+      continue;
+    }
+    ComputeMinimalReshapeIndexing(input_subshape, output_subshape,
+                                  output_dims_exprs, &exprs, mlir_context);
+    input_num_elements = 1;
+    output_num_elements = 1;
+    input_subshape.clear();
+    output_subshape.clear();
+    output_dims_exprs.clear();
+  }
+  return exprs;
+}
+
+StatusOr<HloInstructionIndexing> ComputeReshapeOpIndexing(
+    const HloInstruction* reshape, MLIRContext* mlir_context) {
+  auto input_dims = reshape->operand(0)->shape().dimensions();
+  auto output_dims = reshape->shape().dimensions();
+
+  std::vector<AffineExpr> exprs =
+      ComputeComposedReshapeIndexing(input_dims, output_dims, mlir_context);
+
+  IndexingMap indexing_map{
+      .affine_map = AffineMap::get(output_dims.size(), /*symbolCount=*/0, exprs,
+                                   mlir_context),
+      .input_dims_sizes = {}};
+  return HloInstructionIndexing{{HloOperandIndexing{
+      .indexing_maps = {std::move(indexing_map)}, .operand_id = 0}}};
+}
+
 StatusOr<HloInstructionIndexing> ComputeReverseOpIndexing(
     const HloReverseInstruction* reverse, MLIRContext* mlir_context) {
   absl::flat_hash_set<int64_t> reverse_dims(reverse->dimensions().begin(),
@@ -482,6 +651,9 @@ StatusOr<HloInstructionIndexing> ComputeInstructionIndexing(
   }
   if (auto reduce = DynCast<HloReduceInstruction>(instr)) {
     return ComputeReduceOpIndexing(reduce, output_id, mlir_context);
+  }
+  if (auto reshape = DynCast<HloReshapeInstruction>(instr)) {
+    return ComputeReshapeOpIndexing(reshape, mlir_context);
   }
   if (auto reverse = DynCast<HloReverseInstruction>(instr)) {
     return ComputeReverseOpIndexing(reverse, mlir_context);

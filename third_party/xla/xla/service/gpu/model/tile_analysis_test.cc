@@ -296,6 +296,72 @@ TEST_F(TileAnalysisTest, FusionOpWithReducedSlice) {
                          std::vector<int>{16, 128})))));
 }
 
+TEST_F(TileAnalysisTest, FusionOpWithReshape_CollapseOfExpand) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetIndexingMapsForEntryComputation(R"(
+    HloModule m
+    f {
+      p0 = f32[128] parameter(0)
+      expand = f32[8, 16] reshape(p0)
+      ROOT collapse = f32[128] reshape(expand)
+    }
+    ENTRY e {
+      p0 = f32[128] parameter(0)
+      ROOT fusion = f32[128] fusion(p0), kind=kLoop, calls=f
+    }
+  )"));
+  EXPECT_THAT(input_indexing.operand_indexing_maps,
+              ElementsAre(MatchOperandIndexing(
+                  0, ElementsAre(MatchIndexingMap("(d0) -> (d0)",
+                                                  std::vector<int>{})))));
+}
+
+TEST_F(TileAnalysisTest, FusionOpWithReshape_ExpandOfCollapse) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetIndexingMapsForEntryComputation(R"(
+    HloModule m
+    f {
+      p0 = f32[8, 16] parameter(0)
+      collapse = f32[128] reshape(p0)
+      ROOT expand = f32[8, 16] reshape(collapse)
+    }
+    ENTRY e {
+      p0 = f32[8, 16] parameter(0)
+      ROOT fusion = f32[8, 16] fusion(p0), kind=kLoop, calls=f
+    }
+  )"));
+  // TODO(b/313840171): Simplify the composed affine expression.
+  EXPECT_THAT(input_indexing.operand_indexing_maps,
+              ElementsAre(MatchOperandIndexing(
+                  0, ElementsAre(MatchIndexingMap(
+                         "(d0, d1) -> (d0 + d1 floordiv 16, d1 mod 16)",
+                         std::vector<int>{})))));
+}
+
+TEST_F(TileAnalysisTest, FusionOpWithReshape_ChainedGenericReshapes) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetIndexingMapsForEntryComputation(R"(
+    HloModule m
+    f {
+      p0 = f32[10, 10, 10] parameter(0)
+      reshape1 = f32[50, 20] reshape(p0)
+      ROOT reshape2 = f32[10, 10, 10] reshape(reshape1)
+    }
+    ENTRY e {
+      p0 = f32[10, 10, 10] parameter(0)
+      ROOT fusion = f32[10, 10, 10] fusion(p0), kind=kLoop, calls=f
+    }
+  )"));
+  // TODO(b/313840171): Simplify the composed affine expression.
+  EXPECT_THAT(
+      input_indexing.operand_indexing_maps,
+      ElementsAre(MatchOperandIndexing(
+          0, ElementsAre(MatchIndexingMap(
+                 "(d0, d1, d2) -> ((d0 * 100 + d1 * 10 + d2) floordiv 100, "
+                 "((d0 * 100 + d1 * 10 + d2) mod 100) floordiv 10, d2 mod 10)",
+                 std::vector<int>{})))));
+}
+
 TEST_F(TileAnalysisTest, FusionOpWithSliceOfSlice) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
                           GetIndexingMapsForEntryComputation(R"(
@@ -318,6 +384,104 @@ TEST_F(TileAnalysisTest, FusionOpWithSliceOfSlice) {
           0, ElementsAre(MatchIndexingMap(
                  "(d0, d1, d2) -> (d0 * 2 + 8, d1 * 6 + 8, d2 * 12 + 65)",
                  std::vector<int>{})))));
+}
+
+TEST_F(TileAnalysisTest, ReshapeOpCollapseShape) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetIndexingMapsForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[4,8] parameter(0)
+      ROOT reshape = f32[32] reshape(p0)
+    }
+  )"));
+  EXPECT_THAT(
+      input_indexing.operand_indexing_maps,
+      ElementsAre(MatchOperandIndexing(
+          0, ElementsAre(MatchIndexingMap("(d0) -> (d0 floordiv 8, d0 mod 8)",
+                                          std::vector<int>{})))));
+}
+
+TEST_F(TileAnalysisTest, ReshapeOpExpandShape) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetIndexingMapsForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[32] parameter(0)
+      ROOT reshape = f32[4, 8] reshape(p0)
+    }
+  )"));
+  EXPECT_THAT(input_indexing.operand_indexing_maps,
+              ElementsAre(MatchOperandIndexing(
+                  0, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0 * 8 + d1)",
+                                                  std::vector<int>{})))));
+}
+
+TEST_F(TileAnalysisTest, ReshapeOpExpandAndCollapseShape) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetIndexingMapsForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[4, 8, 12] parameter(0)
+      ROOT reshape = f32[32, 3, 4] reshape(p0)
+    }
+  )"));
+  EXPECT_THAT(
+      input_indexing.operand_indexing_maps,
+      ElementsAre(MatchOperandIndexing(
+          0, ElementsAre(MatchIndexingMap(
+                 "(d0, d1, d2) -> (d0 floordiv 8, d0 mod 8, d1 * 4 + d2)",
+                 std::vector<int>{})))));
+}
+
+TEST_F(TileAnalysisTest, ReshapeOpExpandSubshapeOnly) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetIndexingMapsForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[16, 8] parameter(0)
+      ROOT reshape = f32[4, 4, 8] reshape(p0)
+    }
+  )"));
+  EXPECT_THAT(
+      input_indexing.operand_indexing_maps,
+      ElementsAre(MatchOperandIndexing(
+          0, ElementsAre(MatchIndexingMap("(d0, d1, d2) -> (d0 * 4 + d1, d2)",
+                                          std::vector<int>{})))));
+}
+
+TEST_F(TileAnalysisTest, ReshapeOpGenericReshape2DTO3D) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetIndexingMapsForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[4,8] parameter(0)
+      ROOT reshape = f32[2, 4, 4] reshape(p0)
+    }
+  )"));
+  EXPECT_THAT(input_indexing.operand_indexing_maps,
+              ElementsAre(MatchOperandIndexing(
+                  0, ElementsAre(MatchIndexingMap(
+                         "(d0, d1, d2) -> ((d0 * 16 + d1 * 4 + d2) floordiv 8, "
+                         "(d0 * 16 + d1 * 4 + d2) mod 8)",
+                         std::vector<int>{})))));
+}
+
+TEST_F(TileAnalysisTest, ReshapeOpGenericReshape3DTO2D) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetIndexingMapsForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[2, 4, 4] parameter(0)
+      ROOT reshape = f32[4, 8] reshape(p0)
+    }
+  )"));
+  EXPECT_THAT(input_indexing.operand_indexing_maps,
+              ElementsAre(MatchOperandIndexing(
+                  0, ElementsAre(MatchIndexingMap(
+                         "(d0, d1) -> ((d0 * 8 + d1) floordiv 16, "
+                         "((d0 * 8 + d1) mod 16) floordiv 4, d1 mod 4)",
+                         std::vector<int>{})))));
 }
 
 TEST_F(TileAnalysisTest, ReduceOp) {
