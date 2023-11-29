@@ -2509,7 +2509,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDy
 diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
 --- stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
 +++ stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
-@@ -0,0 +1,1293 @@
+@@ -0,0 +1,1308 @@
 +/* Copyright 2022 The StableHLO Authors.
 +Licensed under the Apache License, Version 2.0 (the "License");
 +you may not use this file except in compliance with the License.
@@ -2815,6 +2815,20 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +                                PatternRewriter& rewriter) const override {
 +    return evalElementwise(rewriter, op,
 +                           [&](APSInt lhs, APSInt rhs) { return lhs * rhs; });
++  }
++};
++
++struct EvalOrOpPattern : public OpRewritePattern<OrOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(OrOp op,
++                                PatternRewriter& rewriter) const override {
++    auto resultType = op.getType();
++    if (!resultType.getElementType().isInteger(1))
++      return rewriter.notifyMatchFailure(op, "expected boolean element type");
++
++    return evalElementwise(rewriter, op, [&](APSInt lhsInt, APSInt rhsInt) {
++      return getAPSInt(resultType.getElementType(), lhsInt != 0 || rhsInt != 0);
++    });
 +  }
 +};
 +
@@ -3764,6 +3778,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +    patterns.add<EvalMaxOpPattern>(&getContext());
 +    patterns.add<EvalMinOpPattern>(&getContext());
 +    patterns.add<EvalMulOpPattern>(&getContext());
++    patterns.add<EvalOrOpPattern>(&getContext());
 +    patterns.add<EvalRemOpPattern>(&getContext());
 +    patterns.add<EvalReshapeOpPattern>(&getContext());
 +    patterns.add<EvalSelectOpPattern>(&getContext());
@@ -3803,4 +3818,59 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
+--- stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
++++ stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
+@@ -340,6 +340,19 @@
+   %1 = stablehlo.constant dense<2> : tensor<i64>
+   %2 = stablehlo.multiply %0, %1 : tensor<i64>
+   func.return %2 : tensor<i64>
++}
++
++// -----
++
++// CHECK-LABEL: func @eval_or
++func.func @eval_or() -> tensor<i1> {
++  // CHECK-NOT: stablehlo.or
++  // CHECK: [[RESULT:%.*]] = stablehlo.constant dense<true> : tensor<i1>
++  // CHECK: return [[RESULT]]
++  %0 = stablehlo.constant dense<true> : tensor<i1>
++  %1 = stablehlo.constant dense<false> : tensor<i1>
++  %2 = stablehlo.or %0, %1 : tensor<i1>
++  func.return %2 : tensor<i1>
+ }
+ 
+ // -----
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+--- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
++++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+@@ -304,6 +304,20 @@
+   }
+ };
+ 
++struct EvalOrOpPattern : public OpRewritePattern<OrOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(OrOp op,
++                                PatternRewriter& rewriter) const override {
++    auto resultType = op.getType();
++    if (!resultType.getElementType().isInteger(1))
++      return rewriter.notifyMatchFailure(op, "expected boolean element type");
++
++    return evalElementwise(rewriter, op, [&](APSInt lhsInt, APSInt rhsInt) {
++      return getAPSInt(resultType.getElementType(), lhsInt != 0 || rhsInt != 0);
++    });
++  }
++};
++
+ struct EvalRemOpPattern : public OpRewritePattern<RemOp> {
+   using OpRewritePattern::OpRewritePattern;
+   LogicalResult matchAndRewrite(RemOp op,
+@@ -1165,6 +1179,7 @@
+     patterns.add<EvalMaxOpPattern>(&getContext());
+     patterns.add<EvalMinOpPattern>(&getContext());
+     patterns.add<EvalMulOpPattern>(&getContext());
++    patterns.add<EvalOrOpPattern>(&getContext());
+     patterns.add<EvalRemOpPattern>(&getContext());
+     patterns.add<EvalReshapeOpPattern>(&getContext());
+     patterns.add<EvalSelectOpPattern>(&getContext());
 
