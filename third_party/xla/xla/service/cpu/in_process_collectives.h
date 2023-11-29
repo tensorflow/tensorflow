@@ -59,12 +59,6 @@ class InProcessCollectivesCommunicator : public CollectivesCommunicator {
                          const void* input_buffer, void* output_buffer,
                          absl::Duration timeout) override;
 
-  absl::Status ReduceScatter(const RendezvousKey& key,
-                             ReductionKind reduction_kind,
-                             PrimitiveType element_type, size_t chunk_elems,
-                             const void* input_buffer, void* output_buffer,
-                             absl::Duration timeout) override;
-
  private:
   InProcessCollectivesState* state_;
   int rank_;

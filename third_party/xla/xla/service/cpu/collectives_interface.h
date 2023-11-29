@@ -67,12 +67,6 @@ class CollectivesCommunicator {
   virtual absl::Status AllGather(const RendezvousKey& key, size_t chunk_bytes,
                                  const void* input_buffer, void* output_buffer,
                                  absl::Duration timeout) = 0;
-
-  // Performs a reduce-scatter
-  virtual absl::Status ReduceScatter(
-      const RendezvousKey& key, ReductionKind reduction_kind,
-      PrimitiveType element_type, size_t chunk_elems, const void* input_buffer,
-      void* output_buffer, absl::Duration timeout) = 0;
 };
 
 class CollectivesInterface {
