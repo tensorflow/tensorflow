@@ -1044,9 +1044,10 @@ HloSharding HloSharding::GetSubSharding(const Shape& shape,
   }
   if (sub_shape->IsTuple()) {
     auto begin_it = tuple_elements_.begin() + sharding_index;
-    std::vector<HloSharding> sub_shardings(
-        begin_it, begin_it + ShapeUtil::GetLeafCount(*sub_shape));
-    return HloSharding::Tuple(*sub_shape, sub_shardings);
+    return HloSharding::Tuple(
+        *sub_shape,
+        absl::MakeConstSpan(
+            &*begin_it, &*(begin_it + ShapeUtil::GetLeafCount(*sub_shape))));
   } else {
     return tuple_elements_[sharding_index];
   }
