@@ -589,6 +589,8 @@ cc_library(
         ":stablehlo_legalize_to_hlo",
         ":type_conversion",
         ":unfuse_batch_norm",
+        "//xla/hlo/ir:hlo",
+        "//xla/translate/mhlo_to_hlo:attribute_exporter",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithDialect",

@@ -68,3 +68,47 @@ func.func @main(%arg0: tuple<tuple<tensor<1xi8>>>) -> tuple<tuple<tensor<1xf32>>
 //       CHECK: %[[GTE1:.*]] = mhlo.get_tuple_element %[[T]][1] : (tuple<tuple<tensor<1xf32>>, tensor<1xi32>>) -> tensor<1xi32>
 //       CHECK: %[[GTE2:.*]] = mhlo.get_tuple_element %[[GTE0]][0] : (tuple<tensor<1xf32>>) -> tensor<1xf32>
 //       CHECK: return %[[GTE2]], %[[GTE1]] : tensor<1xf32>, tensor<1xi32>
+
+// -----
+
+// Check that sharding attributes are also flattened
+
+func.func @main(%arg0: tuple<tensor<1x1xf32>, tensor<1x2x512xf32>> {mhlo.sharding = "{{replicated}, {devices=[1,2,4]<=[4,2]T(1,0)}}"},
+                %arg1: tensor<2x2xf32>,
+                %arg2: tensor<2048xf32> {mhlo.sharding = "{devices=[8]<=[8]}"})
+    -> (tensor<2048xf32> {mhlo.sharding = "{devices=[8]<=[8]}"}, tensor<2x2xf32>,
+        tuple<tensor<1024xf32>, tensor<1xf32>> {mhlo.sharding = "{{devices=[8]<=[4,2]T(1,0)}, {replicated}}"}) {
+  %0 = mhlo.get_tuple_element %arg0[0] : (tuple<tensor<1x1xf32>, tensor<1x2x512xf32>>) -> tensor<1x1xf32>
+  %1 = mhlo.get_tuple_element %arg0[1] : (tuple<tensor<1x1xf32>, tensor<1x2x512xf32>>) -> tensor<1x2x512xf32>
+  %2 = "mhlo.reshape"(%0) : (tensor<1x1xf32>) -> tensor<1xf32>
+  %3 = "mhlo.reshape"(%1) : (tensor<1x2x512xf32>) -> tensor<1024xf32>
+  %4 = "mhlo.tuple"(%3, %2) {name = "tuple.374"} : (tensor<1024xf32>, tensor<1xf32>) -> tuple<tensor<1024xf32>, tensor<1xf32>>
+  func.return %arg2, %arg1, %4 : tensor<2048xf32>, tensor<2x2xf32>, tuple<tensor<1024xf32>, tensor<1xf32>>
+}
+
+// CHECK-LABEL: func @main
+//  CHECK-SAME:   %arg0: tensor<1x1xf32> {mhlo.sharding = "{replicated}"},
+//  CHECK-SAME:   %arg1: tensor<1x2x512xf32> {mhlo.sharding = "{devices=[1,2,4]<=[4,2]T(1,0)}"},
+//  CHECK-SAME:   %arg2: tensor<2x2xf32>,
+//  CHECK-SAME:   %arg3: tensor<2048xf32> {mhlo.sharding = "{devices=[8]<=[8]}"})
+//  CHECK-SAME:     -> (tensor<2048xf32> {mhlo.sharding = "{devices=[8]<=[8]}"},
+//  CHECK-SAME:         tensor<2x2xf32>,
+//  CHECK-SAME:         tensor<1024xf32> {mhlo.sharding = "{devices=[8]<=[4,2]T(1,0)}"},
+//  CHECK-SAME:         tensor<1xf32> {mhlo.sharding = "{replicated}"})
+
+// -----
+
+// Check that invalid sharding attributes are handled gracefully
+
+func.func @main(%arg0: tuple<tensor<1024xf32>, tensor<1024xf32>> {mhlo.sharding = "{{devices=[8]<=[8]}, {replicated}, {devices=[8]<=[8]}}"},
+                %arg1: tuple<tensor<1024xf32>, tensor<1024xf32>> {mhlo.sharding = "{replicated}"})
+    -> (tuple<tensor<1024xf32>, tensor<1024xf32>> {mhlo.sharding = "{{devices=[8]<=[8]}}"},
+        tuple<tensor<1024xf32>, tensor<1024xf32>> {mhlo.sharding = "{not-a-valid-sharding}"}) {
+  func.return %arg0, %arg1 : tuple<tensor<1024xf32>, tensor<1024xf32>>, tuple<tensor<1024xf32>, tensor<1024xf32>>
+}
+
+// CHECK-LABEL: func @main
+//  CHECK-SAME:   %arg0: tensor<1024xf32>, %arg1: tensor<1024xf32>,
+//  CHECK-SAME:   %arg2: tensor<1024xf32>, %arg3: tensor<1024xf32>)
+//  CHECK-SAME:     -> (tensor<1024xf32>, tensor<1024xf32>,
+//  CHECK-SAME:         tensor<1024xf32>, tensor<1024xf32>)
