@@ -22,8 +22,9 @@ namespace stream_executor {
 namespace cuda {
 namespace {
 
-// In all kernels defined above we set conditional handle value to `1` when we
-// want to execute a CUDA graph tied to it, and to `0` otherwise.
+// In all kernels defined below we set conditional handle value to `1` when we
+// want to execute a CUDA graph tied to it, and to `0` otherwise. For loops, the
+// graph will keep being executed until the conditional handle becomes `0`.
 
 #if defined(STREAM_EXECUTOR_CUDA_ENABLE_GRAPH_CONDITIONAL) && \
     CUDA_VERSION >= 12030

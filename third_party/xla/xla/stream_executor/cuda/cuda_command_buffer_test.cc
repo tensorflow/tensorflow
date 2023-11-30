@@ -686,6 +686,8 @@ TEST(CudaCommandBufferTest, ConditionalWhile) {
   int64_t byte_length = sizeof(int32_t) * length;
 
   // Prepare arguments: a=1, b=0, loop_counter=0, pred=false
+  // Value of `pred` is not important, as it will be updated by `cond_builder`
+  // below.
   DeviceMemory<bool> pred = executor->AllocateArray<bool>(1, 0);
   DeviceMemory<int32_t> loop_counter = executor->AllocateArray<int32_t>(1, 0);
   DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
