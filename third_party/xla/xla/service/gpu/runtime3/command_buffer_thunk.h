@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/service/gpu/runtime3/command_buffer_allocations.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
@@ -56,28 +57,31 @@ class CommandBufferThunk : public Thunk {
     absl::Mutex mutex;
     se::CommandBuffer command_buffer ABSL_GUARDED_BY(mutex);
 
-    // Mapping from buffer allocation index to the device memory passed at that
-    // index to the last call of `commands_.Record(...)` for `command_buffer`.
-    // We can just use a vector instead of map because `BufferAllocation::Index`
-    // is a unique identifier assigned contiguously and thus can be used as
-    // array index.
+    // TODO(ezhulenev): We need to move command buffer allocations all the way
+    // up to the GpuExecutable as we can have Allocate and Free commands in
+    // different command buffers. Consider making it a part of
+    // BufferAllocations (as std::unique_ptr<ExternalAllocations> member).
+
+    // Memory allocations performed by a `command_buffer`.
+    CommandBufferAllocations allocations ABSL_GUARDED_BY(mutex);
+
+    // Mapping from buffer allocation index to the device memory passed at
+    // that index to the last call of `commands_.Record(...)` for
+    // `command_buffer`. We can just use a vector instead of map because
+    // `BufferAllocation::Index` is a unique identifier assigned
+    // contiguously and thus can be used as array index.
     //
-    // If no device memory addresses changed from a previous call to `Record`,
-    // we can skip command buffer update and simply submit it for execution on a
-    // stream. All other pieces of information (like thread and block sizes)
-    // captured by commands at construction time and do not change.
+    // If no device memory addresses changed from a previous call to
+    // `Record`, we can skip command buffer update and simply submit it for
+    // execution on a stream. All other pieces of information (like thread
+    // and block sizes) captured by commands at construction time and do not
+    // change.
     std::vector<se::DeviceMemoryBase> recorded_allocs ABSL_GUARDED_BY(mutex);
   };
 
   // Returns a command buffer instantiated for `executor` or creates new one.
   StatusOr<ExecutorCommandBuffer*> GetOrCreateCommandBuffer(
       se::StreamExecutor* executor);
-
-  // Return the allocation address that was lazilly allocated inside command
-  // buffer. This API is required when the buffers are allocated inside command
-  // buffer but will be consumed by non-command buffer operations.
-  StatusOr<se::DeviceMemoryBase> GetLazyAllocationAddress(
-      const ExecuteParams& params, int64_t index);
 
   // Command sequence that initializes command buffers on each executor.
   CommandBufferCmdSequence commands_;

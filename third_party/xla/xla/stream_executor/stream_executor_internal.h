@@ -147,12 +147,7 @@ class CommandBufferInterface {
                              size_t num_elements) = 0;
 
   // Adds a device memory allocation node to the command buffer.
-  virtual tsl::Status Allocate(CommandBuffer::AllocIndexSize alloc) = 0;
-
-  // Get the device address for allocations performed through command buffer
-  // Allocate command.
-  virtual tsl::StatusOr<DeviceMemoryBase> GetAllocationAddress(
-      int64_t index) const = 0;
+  virtual tsl::StatusOr<DeviceMemoryBase> Allocate(size_t bytes) = 0;
 
   // For all conditional command APIs defined below, nested command buffers
   // constructed for conditional branches owned by *this and should never be

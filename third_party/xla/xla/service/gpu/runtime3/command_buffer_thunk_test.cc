@@ -110,7 +110,7 @@ TEST(CommandBufferThunkTest, MemcpyCmd) {
 // 3. MemCopyDeviceToDevice from "a" to "b" inside command buffer.
 // 4. MemCopyDEviceToDevice from "b" to "c" inside command buffer.
 // 5. Verify that region "c" has the same content as "a".
-TEST(CommandBufferThunkTest, MemallocCmd) {
+TEST(CommandBufferThunkTest, AllocateCmd) {
   se::StreamExecutor* executor = CudaExecutor();
 
   se::Stream stream(executor);

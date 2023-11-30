@@ -63,10 +63,7 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
                      CommandBuffer::BitPattern bit_pattern,
                      size_t num_elements) override;
 
-  tsl::Status Allocate(CommandBuffer::AllocIndexSize alloc) override;
-
-  tsl::StatusOr<DeviceMemoryBase> GetAllocationAddress(
-      int64_t index) const override;
+  tsl::StatusOr<DeviceMemoryBase> Allocate(size_t bytes) override;
 
   tsl::Status If(StreamExecutor* executor, DeviceMemory<bool> predicate,
                  CommandBuffer::Builder then_builder) override;
@@ -221,9 +218,6 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   // Returns OK status if command buffer is primary, otherwise returns internal
   // error.
   tsl::Status CheckPrimary();
-
-  // Keep tracks of allocations that is performed by allocation command.
-  absl::flat_hash_map<int64_t, DeviceMemoryBase> allocations_map_;
 
   // Returns OK status if the number of command buffers is equal to the expected
   // one, otherwise returns internal error.

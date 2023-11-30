@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -137,13 +138,8 @@ tsl::Status CommandBuffer::Memset(DeviceMemoryBase* dst, BitPattern bit_pattern,
   return implementation_->Memset(dst, bit_pattern, num_elements);
 }
 
-tsl::Status CommandBuffer::Allocate(CommandBuffer::AllocIndexSize alloc) {
-  return implementation_->Allocate(alloc);
-}
-
-tsl::StatusOr<DeviceMemoryBase> CommandBuffer::GetAllocationAddress(
-    int64_t index) const {
-  return implementation_->GetAllocationAddress(index);
+tsl::StatusOr<DeviceMemoryBase> CommandBuffer::Allocate(size_t bytes) {
+  return implementation_->Allocate(bytes);
 }
 
 tsl::Status CommandBuffer::If(StreamExecutor* executor, DeviceMemory<bool> pred,

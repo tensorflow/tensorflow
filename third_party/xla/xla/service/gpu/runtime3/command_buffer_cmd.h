@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/runtime3/command_buffer_allocations.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -61,6 +62,7 @@ class CommandBufferCmd {
   struct RecordParams {
     se::StreamExecutor* executor;
     const BufferAllocations* buffer_allocations;
+    CommandBufferAllocations* command_buffer_allocations;
   };
 
   // Prepares a command for recording on a given executor. We split it into a
