@@ -685,6 +685,7 @@ xla_test(
         "cpu",
         "gpu",
     ],
+    tags = ["no_rocm"],
     data = [
         ":data/add.hlo",
         "//xla/service:xla_aot_compile_test_gpu_target_config.prototxt",
