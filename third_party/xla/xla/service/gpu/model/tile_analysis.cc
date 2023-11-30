@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/model/tile_analysis.h"
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -530,11 +531,11 @@ StatusOr<HloInstructionIndexing> ComputeReverseOpIndexing(
       exprs.push_back(dim_expr);
       continue;
     }
-    auto dim_size = getAffineConstantExpr(output_dim, mlir_context);
+    auto dim_bound = getAffineConstantExpr(output_dim - 1, mlir_context);
     auto neg_dim_expr = getAffineBinaryOpExpr(
         AffineExprKind::Mul, getAffineConstantExpr(-1, mlir_context), dim_expr);
     exprs.push_back(
-        getAffineBinaryOpExpr(AffineExprKind::Add, neg_dim_expr, dim_size));
+        getAffineBinaryOpExpr(AffineExprKind::Add, neg_dim_expr, dim_bound));
   }
 
   IndexingMap indexing_map{
@@ -637,6 +638,11 @@ std::string ToStringImpl(const T& value) {
   return ss.str();
 }
 
+int64_t FloorDiv(int64_t dividend, int64_t divisor) {
+  return dividend / divisor -
+         (((dividend >= 0) != (divisor >= 0) && dividend % divisor) ? 1 : 0);
+}
+
 struct IndexingMapSimplifier {
   struct Bounds {
     int64_t lower;
@@ -650,7 +656,6 @@ struct IndexingMapSimplifier {
     switch (expr.getKind()) {
       case AffineExprKind::Constant: {
         int64_t value = mlir::cast<mlir::AffineConstantExpr>(expr).getValue();
-        CHECK_GE(value, 0);
         return bounds[expr] = {value, value};
       }
       case AffineExprKind::DimId: {
@@ -673,12 +678,15 @@ struct IndexingMapSimplifier {
         switch (expr.getKind()) {
           case AffineExprKind::Add:
             return result = {lhs.lower + rhs.lower, lhs.upper + rhs.upper};
-          case AffineExprKind::Mul:
-            return result = {lhs.lower * rhs.lower, lhs.upper * rhs.upper};
+          case AffineExprKind::Mul: {
+            int64_t a = lhs.lower * rhs.lower;
+            int64_t b = lhs.upper * rhs.upper;
+            return result = {std::min(a, b), std::max(a, b)};
+          }
           case AffineExprKind::Mod: {
             CHECK_EQ(rhs.lower, rhs.upper) << "RHS of mod must be a constant";
             int64_t m = rhs.lower;
-            if (lhs.upper < m) {
+            if (0 <= lhs.lower && lhs.upper < m) {
               return result = lhs;
             }
             return result = {0, m - 1};
@@ -687,7 +695,9 @@ struct IndexingMapSimplifier {
             CHECK_EQ(rhs.lower, rhs.upper)
                 << "RHS of floor_div must be a constant";
             int64_t d = rhs.lower;
-            return result = {lhs.lower / d, lhs.upper / d};
+            int a = FloorDiv(lhs.lower, d);
+            int b = FloorDiv(lhs.upper, d);
+            return result = {std::min(a, b), std::max(a, b)};
           }
           default:
             // We don't use ceildiv, so we don't support it.
@@ -706,7 +716,7 @@ struct IndexingMapSimplifier {
     auto rhs = BoundsInclusive(mod.getRHS());
 
     // a % b where b is always larger than a?
-    if (lhs.upper < rhs.lower) return lhs_simplified;
+    if (0 <= lhs.lower && lhs.upper < rhs.lower) return lhs_simplified;
 
     // The logic below assumes we have a constant RHS.
     if (rhs.lower != rhs.upper) return mod;
@@ -744,13 +754,19 @@ struct IndexingMapSimplifier {
     auto lhs = BoundsInclusive(lhs_simplified);
     auto rhs = BoundsInclusive(div.getRHS());
 
-    if (lhs.upper < rhs.lower) {
+    if (0 <= lhs.lower && lhs.upper < rhs.lower) {
       return getAffineConstantExpr(0, mlir_context);
     }
 
     // The logic below assumes we have a constant RHS.
     if (rhs.lower != rhs.upper) return div;
     int64_t d = rhs.lower;
+
+    int64_t a = FloorDiv(lhs.lower, d);
+    int64_t b = FloorDiv(lhs.upper, d);
+    if (a == b) {
+      return getAffineConstantExpr(a, mlir_context);
+    }
 
     AffineExpr extracted = getAffineConstantExpr(0, mlir_context);
     auto new_dividend = RewriteSumIf(lhs_simplified, [&](AffineExpr expr) {
@@ -865,9 +881,9 @@ bool IndexingMap::Simplify(absl::Span<const int64_t> dimension_sizes) {
     return false;
   }
 
-  affine_map =
+  affine_map = mlir::simplifyAffineMap(
       AffineMap::get(affine_map.getNumDims(), affine_map.getNumSymbols(),
-                     results, affine_map.getContext());
+                     results, affine_map.getContext()));
   return true;
 }
 

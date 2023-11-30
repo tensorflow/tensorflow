@@ -63,6 +63,13 @@ class TileAnalysisTest : public HloTestBase {
     TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_string));
     HloInstruction* root = module->entry_computation()->root_instruction();
 
+    for (auto* operand : root->operands()) {
+      TF_RET_CHECK(operand->opcode() == HloOpcode::kParameter ||
+                   operand->opcode() == HloOpcode::kConstant)
+          << "If there are multiple instructions, they need to be wrapped in a "
+             "fusion.";
+    }
+
     return ComputeInstructionIndexing(root, operand_id, &mlir_context_);
   }
   mlir::MLIRContext mlir_context_;
@@ -202,7 +209,8 @@ TEST_F(TileAnalysisTest, FusionExponentialDuplication) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
                           GetIndexingMapsForEntryComputation(R"(
     HloModule test_module
-    ENTRY entry_computation {
+
+    fused_computation {
       p0 = f32[4] parameter(0)
       p1 = f32[4] parameter(1)
       add0 = f32[4] add(p0, p1)
@@ -212,14 +220,27 @@ TEST_F(TileAnalysisTest, FusionExponentialDuplication) {
       slice2.0 = f32[2] slice(add1), slice={[0:2]}
       slice2.1 = f32[2] slice(add1), slice={[1:3]}
       ROOT add2 = f32[2] add(slice2.0, slice2.1)
-  })"));
+    }
+
+    ENTRY entry_computation {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      ROOT fusion = f32[2] fusion(p0, p1), kind=kLoop, calls=fused_computation
+    })"));
   EXPECT_THAT(
       input_indexing.operand_indexing_maps,
-      ElementsAre(
-          MatchOperandIndexing(0, ElementsAre(MatchIndexingMap(
-                                      "(d0) -> (d0)", std::vector<int>{}))),
-          MatchOperandIndexing(1, ElementsAre(MatchIndexingMap(
-                                      "(d0) -> (d0)", std::vector<int>{})))));
+      UnorderedElementsAre(
+          MatchOperandIndexing(
+              0, UnorderedElementsAre(
+                     MatchIndexingMap("(d0) -> (d0)", std::vector<int>{}),
+                     MatchIndexingMap("(d0) -> (d0 + 1)", std::vector<int>{}),
+                     MatchIndexingMap("(d0) -> (d0 + 2)", std::vector<int>{}))),
+          MatchOperandIndexing(
+              1,
+              UnorderedElementsAre(
+                  MatchIndexingMap("(d0) -> (d0)", std::vector<int>{}),
+                  MatchIndexingMap("(d0) -> (d0 + 1)", std::vector<int>{}),
+                  MatchIndexingMap("(d0) -> (d0 + 2)", std::vector<int>{})))));
 }
 
 TEST_F(TileAnalysisTest, FusionOpWithReduceOfReduce) {
@@ -617,15 +638,38 @@ TEST_F(TileAnalysisTest, ReverseOp) {
     HloModule m
     ENTRY e {
       p0 = f32[1, 17, 9, 9] parameter(0)
-     ROOT reverse = f32[1, 17, 9, 9] reverse(p0), dimensions={1, 2}
+      ROOT reverse = f32[1, 17, 9, 9] reverse(p0), dimensions={1, 2}
     }
   )"));
-  // TODO(b/313840171): Support simplifying this.
+  EXPECT_FALSE(input_indexing.Simplify({1, 17, 9, 9}));
   EXPECT_THAT(input_indexing.operand_indexing_maps,
               ElementsAre(MatchOperandIndexing(
                   0, ElementsAre(MatchIndexingMap(
-                         "(d0, d1, d2, d3) -> (d0, -d1 + 17, -d2 + 9, d3)",
+                         "(d0, d1, d2, d3) -> (d0, -d1 + 16, -d2 + 8, d3)",
                          std::vector<int>{})))));
+}
+
+TEST_F(TileAnalysisTest, ReverseReshape) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetIndexingMapsForEntryComputation(R"(
+    HloModule m
+    fused_computation {
+      p0 = f32[10, 11] parameter(0)
+      reverse.0 = f32[10, 11] reverse(p0), dimensions={0, 1}
+      reshape.0 = f32[110] reshape(reverse.0)
+      reverse.1 = f32[110] reverse(reshape.0), dimensions={0}
+      ROOT reshape.1 = f32[10, 11] reshape(reverse.1)
+    }
+    ENTRY e {
+      p0 = f32[10, 11] parameter(0)
+      ROOT fusion = f32[10, 11] fusion(p0), kind=kLoop, calls=fused_computation
+    }
+  )"));
+  EXPECT_TRUE(input_indexing.Simplify({10, 11}));
+  EXPECT_THAT(input_indexing.operand_indexing_maps,
+              ElementsAre(MatchOperandIndexing(
+                  0, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0, d1)",
+                                                  std::vector<int>{})))));
 }
 
 TEST_F(TileAnalysisTest, SliceOp) {
