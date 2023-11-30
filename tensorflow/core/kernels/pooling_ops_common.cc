@@ -462,8 +462,7 @@ void DnnPoolingOp<Eigen::bfloat16>::Compute(
                  context->allocate_output(0, tensor_out_shape, &tensor_out));
 
   auto* stream = context->op_device_context()->stream();
-  const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-      se::CudaComputeCapability::AMPERE);
+  const bool cast_to_float = IsBF16NotSupportedInOps(stream);
   if (cast_to_float) {
     Tensor casted_tensor_in;
     Tensor casted_tensor_out;
@@ -876,8 +875,7 @@ void DnnPoolingGradOp<Eigen::bfloat16>::Compute(
   OP_REQUIRES_OK(context,
                  context->allocate_output(0, tensor_in_shape, &input_backprop));
   auto* stream = context->op_device_context()->stream();
-  const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-      se::CudaComputeCapability::AMPERE);
+  const bool cast_to_float = IsBF16NotSupportedInOps(stream);
   if (cast_to_float) {
     Tensor casted_tensor_in;
     Tensor casted_tensor_out;

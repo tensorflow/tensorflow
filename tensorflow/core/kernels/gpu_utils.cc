@@ -37,6 +37,20 @@ using xla::AutotuningLog;
 using xla::ComputeCapability;
 using xla::CudnnVersion;
 
+bool IsBF16NotSupportedInOps(se::Stream *stream) {
+  if (!stream) {
+    return true;  // no stream: don't know whether it's supported
+  }
+#if GOOGLE_CUDA  
+// Performant bfloat16 operations are supported for Ampere+ GPUs. For
+// pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
+  return !stream->GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE);  
+#elif TENSORFLOW_USE_ROCM
+  return true;  // so far, we return true meaning that the conversion to float is needed
+#endif
+}
+
 bool RedzoneCheckDisabled() {
   const char* disable_rz_str = std::getenv("TF_DISABLE_RZ_CHECK");
   return disable_rz_str != nullptr && std::strcmp(disable_rz_str, "1") == 0;

@@ -118,11 +118,8 @@ void LaunchConvOp<GPUDevice, Eigen::bfloat16>::operator()(
     dilations_spatial[i] =
         GetTensorDim(dilations, data_format, static_cast<char>(i + '0'));
   }
-  // Performant bfloat16 operations are supported for Ampere+ GPUs. For
-  // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
   auto* stream = context->op_device_context()->stream();
-  const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-      se::CudaComputeCapability::AMPERE);
+  const bool cast_to_float = IsBF16NotSupportedInOps(stream);
 
   if (cast_to_float) {
     Tensor casted_input = input;
@@ -173,11 +170,8 @@ void LaunchConv2DOp<GPUDevice, Eigen::bfloat16>::operator()(
   gtl::InlinedVector<int64_t, 3> casted_dilations = {row_dilation,
                                                      col_dilation};
 
-  // Performant bfloat16 operations are supported for Ampere+ GPUs. For
-  // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
   auto* stream = ctx->op_device_context()->stream();
-  const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-      se::CudaComputeCapability::AMPERE);
+  const bool cast_to_float = IsBF16NotSupportedInOps(stream);
 
   if (cast_to_float) {
     Tensor casted_input = input_param;
