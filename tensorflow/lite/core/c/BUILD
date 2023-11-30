@@ -191,6 +191,33 @@ cc_test(
 )
 
 cc_test(
+    name = "c_api_test_with_opaque_delegate",
+    size = "small",
+    srcs = ["c_api_test.cc"],
+    copts = tflite_copts(),
+    data = [
+        "//tensorflow/lite:testdata/2_subgraphs.bin",
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/add_quantized.bin",
+        "//tensorflow/lite:testdata/custom_sinh.bin",
+    ],
+    local_defines = ["TFLITE_USE_OPAQUE_DELEGATE"],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        ":c_api_types",
+        ":common",
+        "//tensorflow/lite:string_util",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/delegates:delegate_test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "selectively_built_c_api_test",
     size = "small",
     srcs = ["c_api_test.cc"],
