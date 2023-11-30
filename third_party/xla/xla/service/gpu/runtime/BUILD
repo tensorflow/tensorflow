@@ -358,8 +358,12 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":gpu_kernel_helper",
+        ":support",
         "//xla:shape_util",
+        "//xla:types",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/runtime:memref_view",
         "//xla/stream_executor",  # build_cleaner: keep
         "//xla/stream_executor:platform",
         "//xla/stream_executor/gpu:gpu_stream_header",
@@ -367,6 +371,9 @@ cc_library(
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ] + if_cuda_is_configured([
         ":topk_kernel_cuda",
     ]) + if_rocm_is_configured([
@@ -422,11 +429,16 @@ xla_cc_test(
         ":gpu_kernel_helper",
         ":topk_kernel",
         "//xla:xla_data_proto_cc",
+        "//xla/stream_executor",  # build_cleaner: keep
+        "//xla/stream_executor:multi_platform_manager",
+        "//xla/stream_executor/gpu:gpu_stream_header",
+        "//xla/stream_executor/gpu:gpu_timer_header",
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/stream_executor/host:host_platform",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
