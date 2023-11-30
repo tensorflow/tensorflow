@@ -2657,32 +2657,7 @@ AutoShardingSolverResult CallSolver(
 
   PopulateTemporalValues(cost_graph, request);
 
-  const AutoShardingSolverResult result = CallORToolsSolver(request);
-  if (result.status.ok()) {
-    const AutoShardingEvaluation evaluation = Evaluate(request, result);
-    LOG(INFO) << "Total Communication Cost: "
-              << evaluation.total.communication_cost
-              << " (lower bound: " << evaluation.lower_bound.communication_cost
-              << ")";
-    LOG(INFO) << "Total Computation Cost: " << evaluation.total.computation_cost
-              << " (lower bound: " << evaluation.lower_bound.computation_cost
-              << ")";
-    LOG(INFO) << "Total Resharding Cost: " << evaluation.total.resharding_cost
-              << " (lower bound: " << evaluation.lower_bound.resharding_cost
-              << ")";
-    LOG(INFO) << "Total Overbudget Cost: " << evaluation.total.overbudget_cost
-              << " (lower bound: " << evaluation.lower_bound.overbudget_cost
-              << ")";
-    LOG(INFO) << "Total Makespan Cost: " << evaluation.total.makespan_cost
-              << " (lower bound: " << evaluation.lower_bound.makespan_cost
-              << ")";
-    LOG(INFO) << "Total Cost: " << evaluation.total.cost()
-              << " (lower bound: " << evaluation.lower_bound.cost() << ")";
-    LOG(INFO) << "Total Departures: " << evaluation.total_departures;
-    LOG(INFO) << "Total Makespan: " << evaluation.total_makespan;
-    LOG(INFO) << "Total Violations: " << evaluation.violation_codes.size();
-  }
-  return result;
+  return CallORToolsSolver(request);
 }
 
 void CheckHloSharding(const HloInstructionSequence& sequence,

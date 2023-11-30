@@ -217,6 +217,10 @@ TEST(CallORToolsSolverTest, HandlesFollowedEdges) {
                          6000, 6100, 6200, 6300,
                          7000, 7100, 7200, 7300}};
   AddCosts(request.mutable_resharding_costs(), r);
+  const CostMatrix t = {{50000, 51000, 52000, 53000,
+                         60000, 61000, 62000, 63000,
+                         70000, 71000, 72000, 73000}};
+  AddCosts(request.mutable_duration_costs(), t);
 
   const AutoShardingSolverResult result = CallORToolsSolver(request);
 
