@@ -22,6 +22,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -45,6 +46,7 @@ limitations under the License.
 #include "tensorflow/tools/proto_splitter/chunk.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 #define IS_OSS true
 
@@ -179,7 +181,8 @@ absl::Status ComposableSplitterBase::Write(std::string file_prefix) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::string> ComposableSplitterBase::WriteToString() {
+absl::StatusOr<std::tuple<std::string, bool>>
+ComposableSplitterBase::WriteToString() {
   TF_RETURN_IF_ERROR(CheckIfWriteImplemented());
 
   auto split_results = Split();
@@ -192,6 +195,8 @@ absl::StatusOr<std::string> ComposableSplitterBase::WriteToString() {
     // Export regular pb.
     if (!message_->SerializeToString(&output))
       return absl::InvalidArgumentError("Serialization to string failed");
+    LOG(INFO) << "Splitter output written to string";
+    return std::make_tuple(output, false);
   } else {
     // Export Riegeli / chunked file.
     using WriterType = riegeli::StringWriter<>;
@@ -200,13 +205,14 @@ absl::StatusOr<std::string> ComposableSplitterBase::WriteToString() {
     TF_RETURN_IF_ERROR(WriteToRecordWriter<WriterType>(
         writer, chunks, chunked_message, Version()));
     if (!writer.Close()) return writer.status();
+    LOG(INFO) << "Splitter output written to string";
+    return std::make_tuple(output, true);
   }
-  LOG(INFO) << "Splitter output written to string";
-  return output;
 }
 
 #if !IS_OSS
-absl::StatusOr<absl::Cord> ComposableSplitterBase::WriteToCord() {
+absl::StatusOr<std::tuple<absl::Cord, bool>>
+ComposableSplitterBase::WriteToCord() {
   TF_RETURN_IF_ERROR(CheckIfWriteImplemented());
 
   auto split_results = Split();
@@ -219,6 +225,8 @@ absl::StatusOr<absl::Cord> ComposableSplitterBase::WriteToCord() {
     // Export regular pb.
     if (!message_->SerializeToCord(&output))
       return absl::InvalidArgumentError("Serialization to absl::Cord failed");
+    LOG(INFO) << "Splitter output written to absl::Cord";
+    return std::make_tuple(output, false);
   } else {
     // Export Riegeli / chunked file.
     using WriterType = riegeli::CordWriter<>;
@@ -227,10 +235,9 @@ absl::StatusOr<absl::Cord> ComposableSplitterBase::WriteToCord() {
     TF_RETURN_IF_ERROR(WriteToRecordWriter<WriterType>(
         writer, chunks, chunked_message, Version()));
     if (!writer.Close()) return writer.status();
+    LOG(INFO) << "Splitter output written to absl::Cord";
+    return std::make_tuple(output, true);
   }
-  LOG(INFO) << "Splitter output written to absl::Cord";
-
-  return output;
 }
 #endif
 

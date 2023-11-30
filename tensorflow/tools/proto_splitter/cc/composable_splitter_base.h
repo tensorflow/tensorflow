@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -66,9 +67,11 @@ class ComposableSplitterBase : public Splitter {
   //     attach a `.pb` or `.cpb` (chunked pb) suffix depending on whether the
   //     proto is split.
   absl::Status Write(std::string file_prefix) override;
-  absl::StatusOr<std::string> WriteToString();
+  // The bool field record whether it's saved as a chunked protobuf (true) or
+  // regular protobuf (false).
+  absl::StatusOr<std::tuple<std::string, bool>> WriteToString();
 #if !IS_OSS
-  absl::StatusOr<absl::Cord> WriteToCord();
+  absl::StatusOr<std::tuple<absl::Cord, bool>> WriteToCord();
 #endif
 
   VersionDef Version() override;

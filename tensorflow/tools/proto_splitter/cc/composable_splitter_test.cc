@@ -186,8 +186,11 @@ TEST(RepeatedStringSplitterTest, TestWriteToString) {
   std::vector<string> strings = {"piece-1", "piece-2", "piece-3"};
   auto message = SetUpRepeatedString(strings);
   RepeatedStringSplitter splitter = RepeatedStringSplitter(&message);
-
-  TF_ASSERT_OK_AND_ASSIGN(std::string string_output, splitter.WriteToString());
+  auto string_output_results = splitter.WriteToString();
+  TF_EXPECT_OK(string_output_results.status());
+  std::string string_output = std::get<0>(string_output_results.value());
+  bool is_chunked = std::get<1>(string_output_results.value());
+  EXPECT_TRUE(is_chunked);
   // Look for the last chunk, which should contain a ChunkMetadata proto.
   riegeli::RecordReader<riegeli::StringReader<>> string_reader(
       std::forward_as_tuple(string_output));
@@ -200,8 +203,11 @@ TEST(RepeatedStringSplitterTest, TestWriteToCord) {
   std::vector<string> strings = {"piece-1", "piece-2", "piece-3"};
   auto message = SetUpRepeatedString(strings);
   RepeatedStringSplitter splitter = RepeatedStringSplitter(&message);
-
-  TF_ASSERT_OK_AND_ASSIGN(absl::Cord cord_output, splitter.WriteToCord());
+  auto cord_output_results = splitter.WriteToCord();
+  TF_EXPECT_OK(cord_output_results.status());
+  absl::Cord cord_output = std::get<0>(cord_output_results.value());
+  bool is_chunked = std::get<1>(cord_output_results.value());
+  EXPECT_TRUE(is_chunked);
   // Look for the last chunk, which should contain a ChunkMetadata proto.
   riegeli::RecordReader<riegeli::CordReader<>> cord_reader(
       std::forward_as_tuple(&cord_output));

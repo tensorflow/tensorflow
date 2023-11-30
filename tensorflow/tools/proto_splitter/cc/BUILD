@@ -49,6 +49,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:protobuf",
         "@riegeli//riegeli/bytes:cord_writer",
         "@riegeli//riegeli/bytes:fd_writer",
