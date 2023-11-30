@@ -1373,4 +1373,13 @@ Status HloValueSemanticsPropagation::HandleDomain(HloInstruction* domain) {
   return OkStatus();
 }
 
+Status HloValueSemanticsPropagation::HandleOptimizationBarrier(
+    HloInstruction* opt_barrier) {
+  HloInstruction* opt_barrier_operand = opt_barrier->mutable_operand(0);
+  const ShapeTree<const HloValueSemantics*>& operand_semantics =
+      analysis_->GetInstructionSemantics(opt_barrier_operand);
+  analysis_->DeepCopyHloValueSemantics(opt_barrier, operand_semantics);
+  return OkStatus();
+}
+
 }  // namespace xla
