@@ -59,6 +59,11 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
 // Get tiling per thread for the given reduction in dimensions [D, H, W].
 Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions);
 
+// How big the reduction dimension can be to be race free.
+int64_t ReductionDimensionRaceFreeBound(
+    const HloModuleConfig& hlo_module_config,
+    const ReductionDimensions& reduction_dimensions);
+
 // Returns whether the given reduction can be safely generated without atomics :
 // that is, at most one block will write to every output element.
 bool ReductionIsRaceFree(const HloModuleConfig& hlo_module_config,

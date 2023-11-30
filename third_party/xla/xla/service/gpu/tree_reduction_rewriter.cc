@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -115,32 +116,36 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     // We do this by splitting the input shape [a, n, b] into [a, k, n / k, b].
     //
     // We want to choose k to be roughly equal to sqrt(n) so that we process
-    // "most of" the reduction in the first step.  We also want k to be a power
-    // of 2, so that the GPU kernel doesn't spend all its time doing slow
-    // integer divmods to compute indices into the shape [a,k,n/k,b].  This
-    // means we may need to pad n so that n is divisible by k.
-    //
-    // Thus we consider two options for k:
-    //
-    //   k1 = round_up_pow2(sqrt(n))
-    //   k2 = round_down_pow2(sqrt(n))
-    //
-    // and we choose the value of k that results in the least amount of padding.
-    int64_t k1 = absl::bit_ceil(static_cast<uint64_t>(std::ceil(std::sqrt(n))));
-    int64_t k2 =
-        absl::bit_floor(static_cast<uint64_t>(std::floor(std::sqrt(n))));
-    int64_t padded_n_k1 = RoundUpTo(n, k1);
-    int64_t padded_n_k2 = RoundUpTo(n, k2);
-
-    int64_t k;
-    int64_t padded_n;
-    if (padded_n_k1 < padded_n_k2) {
-      k = k1;
-      padded_n = padded_n_k1;
-    } else {
-      k = k2;
-      padded_n = padded_n_k2;
+    // "most of" the reduction in the first step. But it is also important that
+    // we choose a value of k with the least amount of padding we need to add to
+    // n to make it divisible by k. We search for the best value of n / k
+    // between sqrt(n)/2 and sqrt(n). If there are several possible values for
+    // n / k that result in the minimum amount of padding, we also want n / k to
+    // be a power of 2, so that the GPU kernel doesn't spend all its time doing
+    // slow integer divmods to compute indices into the shape [a,k,n/k,b].
+    // Note that by searching in the range between sqrt(n)/2 and sqrt(n), we
+    // will have a power of 2 in that range.
+    uint64_t n_div_k = static_cast<uint64_t>(std::floor(std::sqrt(n)));
+    int64_t race_free_bound = ReductionDimensionRaceFreeBound(
+        hlo->GetModule()->config(), reduction_dimensions);
+    if (n_div_k > race_free_bound) {
+      // This means we need more than one split. It is best to limit the n/k
+      // dimension to the maximum size that doesn't require further splitting.
+      // Otherwise we might choose a rather small reduce dimension size for the
+      // first step (in the worst case, sqrt(race_free_bound + 1)).
+      n_div_k = race_free_bound;
     }
+    uint64_t minimum_padding = (n_div_k - n % n_div_k) % n_div_k;
+    uint64_t best_k = (n + minimum_padding) / n_div_k;
+    for (uint64_t i = n_div_k - 1; i > n_div_k / 2; --i) {
+      uint64_t padding = (i - n % i) % i;
+      if (padding < minimum_padding ||
+          (padding == minimum_padding && absl::has_single_bit(i))) {
+        minimum_padding = padding;
+        best_k = (n + padding) / i;
+      }
+    }
+    uint64_t padded_n = n + minimum_padding;
 
     // Pad reduced dimension to the required number of elements.
     bool no_padding_necessary = n == padded_n;
@@ -179,8 +184,8 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     for (int64_t dim_idx = 0; dim_idx < padded[0]->shape().dimensions_size();
          dim_idx++) {
       if (dim_idx == reduced_input_dimension) {
-        reshaped_dimensions.push_back(k);
-        reshaped_dimensions.push_back(padded_n / k);
+        reshaped_dimensions.push_back(best_k);
+        reshaped_dimensions.push_back(padded_n / best_k);
       } else {
         reshaped_dimensions.push_back(padded[0]->shape().dimensions(dim_idx));
       }
