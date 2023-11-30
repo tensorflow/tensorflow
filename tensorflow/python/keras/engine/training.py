@@ -2517,6 +2517,12 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   def layers(self):
     return list(self._flatten_layers(include_self=False, recursive=False))
 
+  @property
+  def dict_layers(self):
+    return {
+      layer.name : layer for layer in self.layers
+    }
+
   def get_layer(self, name=None, index=None):
     """Retrieves a layer based on either its name (unique) or index.
 
