@@ -183,9 +183,9 @@ bool MaybeImproveInstructionSharding(HloSharding sharding,
                                      HloInstruction* instruction,
                                      bool may_combine_partial_sharding,
                                      bool allow_aggressive_resharding = false) {
-  if (auto new_sharding = ReturnImprovedSharding(sharding, instruction,
-                                                 may_combine_partial_sharding,
-                                                 allow_aggressive_resharding)) {
+  if (auto new_sharding = ReturnImprovedSharding(
+          std::move(sharding), instruction, may_combine_partial_sharding,
+          allow_aggressive_resharding)) {
     instruction->set_sharding(std::move(*new_sharding));
     return true;
   }
@@ -200,8 +200,8 @@ bool MaybeImproveInstructionSubSharding(
     bool allow_aggressive_resharding = false) {
   if (instruction->shape().IsTuple()) {
     if (auto new_sub_sharding = ReturnImprovedSubSharding(
-            sharding, instruction, index, may_combine_partial_sharding,
-            allow_aggressive_resharding)) {
+            std::move(sharding), instruction, index,
+            may_combine_partial_sharding, allow_aggressive_resharding)) {
       HloSharding new_sharding =
           instruction->has_sharding()
               ? instruction->sharding()
@@ -217,7 +217,7 @@ bool MaybeImproveInstructionSubSharding(
     }
   }
   CHECK(index.size() == 1 && index[0] == 0);
-  return MaybeImproveInstructionSharding(sharding, instruction,
+  return MaybeImproveInstructionSharding(std::move(sharding), instruction,
                                          may_combine_partial_sharding,
                                          allow_aggressive_resharding);
 }
