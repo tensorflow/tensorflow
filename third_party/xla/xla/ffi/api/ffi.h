@@ -116,6 +116,12 @@ class Error {
 // Arguments
 //===----------------------------------------------------------------------===//
 
+struct BufferBase {
+  DataType dtype;
+  void* data;
+  Span<const int64_t> dimensions;
+};
+
 namespace internal {
 
 // A workaround for the fact that a static_assertion can be evaluated
@@ -149,10 +155,18 @@ inline constexpr size_t kDynamicRank = std::numeric_limits<size_t>::max();
 }  // namespace internal
 
 template <DataType dtype, size_t rank = internal::kDynamicRank>
-struct BufferBase {
+struct Buffer {
   typename internal::PtrType<dtype>::Type* data;
   Span<const int64_t> dimensions;
 };
+
+// clang-format off
+template <DataType dtype> using BufferR0 = Buffer<dtype, 0>;
+template <DataType dtype> using BufferR1 = Buffer<dtype, 1>;
+template <DataType dtype> using BufferR2 = Buffer<dtype, 2>;
+template <DataType dtype> using BufferR3 = Buffer<dtype, 3>;
+template <DataType dtype> using BufferR4 = Buffer<dtype, 4>;
+// clang-format on
 
 //===----------------------------------------------------------------------===//
 // Arguments decoding
@@ -165,10 +179,25 @@ inline std::ostream& operator<<(std::ostream& os, const XLA_FFI_ArgType type) {
   }
 }
 
-template <DataType dtype, size_t rank>
-struct ArgDecoding<BufferBase<dtype, rank>> {
+template <>
+struct ArgDecoding<BufferBase> {
   XLA_ATTRIBUTE_ALWAYS_INLINE
-  static std::optional<BufferBase<dtype, rank>> Decode(
+  static std::optional<BufferBase> Decode(XLA_FFI_ArgType type, void* arg,
+                                          DiagnosticEngine& diagnostic) {
+    if (type != XLA_FFI_ArgType_BUFFER) {
+      return diagnostic.Emit("Wrong argument type: expected ")
+             << XLA_FFI_ArgType_BUFFER << " but got " << type;
+    }
+    auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
+    return BufferBase{static_cast<DataType>(buf->dtype), buf->data,
+                      Span<const int64_t>(buf->dims, buf->rank)};
+  }
+};
+
+template <DataType dtype, size_t rank>
+struct ArgDecoding<Buffer<dtype, rank>> {
+  XLA_ATTRIBUTE_ALWAYS_INLINE
+  static std::optional<Buffer<dtype, rank>> Decode(
       XLA_FFI_ArgType type, void* arg, DiagnosticEngine& diagnostic) {
     if (type != XLA_FFI_ArgType_BUFFER) {
       return diagnostic.Emit("Wrong argument type: expected ")
@@ -189,7 +218,7 @@ struct ArgDecoding<BufferBase<dtype, rank>> {
         return std::nullopt;
       }
     }
-    return BufferBase<dtype, rank>{data, Span<const int64_t>(buf->dims, rank)};
+    return Buffer<dtype, rank>{data, Span<const int64_t>(buf->dims, rank)};
   }
 };
 
