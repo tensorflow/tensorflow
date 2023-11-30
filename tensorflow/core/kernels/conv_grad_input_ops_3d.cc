@@ -1025,7 +1025,7 @@ struct LaunchConvBackpropInputOp<Eigen::bfloat16> {
                      const std::vector<int32>& dilation,
                      const std::vector<int32>& strides, const Padding& padding,
                      Tensor* in_backprop, TensorFormat data_format) {
-    auto* stream = context->op_device_context()->stream();
+    auto* stream = ctx->op_device_context()->stream();
     const bool cast_to_float = IsBF16NotSupportedInOps(stream);
 
     if (cast_to_float) {
