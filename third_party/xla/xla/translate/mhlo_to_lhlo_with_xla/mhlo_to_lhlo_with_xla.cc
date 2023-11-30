@@ -2522,7 +2522,8 @@ tsl::Status HloToLhloModule(
   TF_RETURN_IF_ERROR(emitter.Initialize(ordered_allocations));
 
   const xla::HloInstructionSequence* schedule =
-      assignment.hlo_ordering().SequentialOrder(*computation);
+      &hlo_module.schedule().sequence(computation);
+
   if (!schedule) {
     return tsl::errors::Unimplemented(
         "Missing sequential order for the computation");

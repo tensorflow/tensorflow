@@ -333,19 +333,38 @@ class GpuAotCompilationResult : public AotCompilationResult {
 
 class GpuThunkAotCompilationResult : public AotCompilationResult {
  public:
-  // TODO(anlunx): Add SerializeAsString().
+  GpuThunkAotCompilationResult(HloModule* hlo_module,
+                               BufferAssignment* buffer_assignment,
+                               std::string_view asm_text,
+                               absl::Span<const uint8_t> binary) {
+    *proto_.mutable_hlo_module() = hlo_module->ToProto();
+    *proto_.mutable_buffer_assignment() = buffer_assignment->ToProto();
+    proto_.set_asm_text(std::string(asm_text));
+    proto_.set_binary(binary.data(), binary.size());
+  }
+
+  explicit GpuThunkAotCompilationResult(CompilationResultProto proto)
+      : proto_(proto) {}
+
+  StatusOr<std::string> SerializeAsString() const override {
+    return proto_.SerializeAsString();
+  }
+
+  static StatusOr<std::unique_ptr<GpuThunkAotCompilationResult>> FromString(
+      const std::string& serialized) {
+    CompilationResultProto proto;
+    if (!proto.ParseFromString(serialized)) {
+      return InternalError(
+          "Failed to parse serialized GpuThunkAotCompilationResult.");
+    }
+    return std::make_unique<GpuThunkAotCompilationResult>(proto);
+  }
+
   StatusOr<std::unique_ptr<Executable>> LoadExecutable(
       Compiler* compiler, se::StreamExecutor* stream_exec) override;
 
  private:
-  std::unique_ptr<HloModule> hlo_module_;
-  std::unique_ptr<BufferAssignment> buffer_assignment_;
-  std::string asm_text_;
-  std::vector<uint8_t> binary_;
-
-  // We can call LoadExecutable only once because buffer_assignment_ is
-  // moved to GpuExecutable when LoadExecutable is called.
-  bool loadable_ = true;
+  CompilationResultProto proto_;
 };
 
 }  // end anonymous namespace
@@ -383,10 +402,22 @@ StatusOr<std::unique_ptr<Executable>> GpuAotCompilationResult::LoadExecutable(
 StatusOr<std::unique_ptr<Executable>>
 GpuThunkAotCompilationResult::LoadExecutable(Compiler* compiler,
                                              se::StreamExecutor* stream_exec) {
-  if (!loadable_) {
-    return InternalError("The AOT compilation result is not loadable.");
-  }
-  loadable_ = false;
+  // Recreate HloModule from proto.
+  TF_ASSIGN_OR_RETURN(HloModuleConfig hlo_module_config,
+                      HloModule::CreateModuleConfigFromProto(
+                          proto_.hlo_module(), GetDebugOptionsFromFlags()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> hlo_module,
+      HloModule::CreateFromProto(proto_.hlo_module(), hlo_module_config));
+
+  // Recreate BufferAssignment from proto.
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<BufferAssignment> buffer_assignment,
+      BufferAssignment::FromProto(proto_.buffer_assignment(), hlo_module.get(),
+                                  compiler->BufferSizeBytesFunction(),
+                                  /*can_share_buffer=*/nullptr));
+
+  std::vector<uint8_t> binary(proto_.binary().begin(), proto_.binary().end());
 
   // Build the executable, which should be a thunk sequence.
   TF_ASSIGN_OR_RETURN(
@@ -399,22 +430,28 @@ GpuThunkAotCompilationResult::LoadExecutable(Compiler* compiler,
   auto mlir_context = std::make_unique<mlir::MLIRContext>(registry);
   llvm::LLVMContext llvm_context;
   auto llvm_module = std::make_unique<llvm::Module>("", llvm_context);
-  IrEmitterContext ir_emitter_context(
-      hlo_module_.get(), buffer_assignment_.get(), platform_name,
-      gpu_device_info, mlir_context.get(), llvm_module.get(),
-      /*emit_ir_from_hlo=*/true);
+  auto* gpu_compiler = dynamic_cast<GpuCompiler*>(compiler);
+  if (gpu_compiler == nullptr) {
+    return InternalError("Compiler is not a GpuCompiler.");
+  }
+  llvm_module->setTargetTriple(gpu_compiler->target_triple());
+  llvm_module->setDataLayout(gpu_compiler->data_layout());
+  IrEmitterContext ir_emitter_context(hlo_module.get(), buffer_assignment.get(),
+                                      platform_name, gpu_device_info,
+                                      mlir_context.get(), llvm_module.get(),
+                                      /*emit_ir_from_hlo=*/true);
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module = llvm_ir::CreateMlirModuleOp(
-      mlir::Builder(mlir_context.get()).getUnknownLoc(), hlo_module_->name());
+      mlir::Builder(mlir_context.get()).getUnknownLoc(), hlo_module->name());
   std::vector<const BufferAllocation*> ordered_allocations;
   absl::flat_hash_map<const mlir::Operation*, const xla::HloInstruction*>
       operation_map;
-  TF_RETURN_IF_ERROR(HloToLhloModule(*buffer_assignment_, *hlo_module_,
+  TF_RETURN_IF_ERROR(HloToLhloModule(*buffer_assignment, *hlo_module,
                                      *mlir_module, &ordered_allocations,
                                      &operation_map));
   ir_emitter_context.set_allocations(ordered_allocations);
   auto ir_emitter = IrEmitterUnnested::Create(&ir_emitter_context);
   auto entry_function = mlir::cast<mlir::func::FuncOp>(
-      mlir_module->lookupSymbol(hlo_module_->entry_computation()->name()));
+      mlir_module->lookupSymbol(hlo_module->entry_computation()->name()));
   // TODO(anlunx): EmitLmhloRegion emits fusion kernels. We need to make sure
   // ptx and cubin already contain emission results and disable kernel emission
   // here.
@@ -429,33 +466,33 @@ GpuThunkAotCompilationResult::LoadExecutable(Compiler* compiler,
   std::vector<GpuExecutable::ConstantInfo> constants =
       std::move(ir_emitter_context.constants());
   TF_ASSIGN_OR_RETURN(auto output_info,
-                      GetOutputInfo(*hlo_module_, *buffer_assignment_));
-  const Shape& output_shape = hlo_module_->result_shape();
+                      GetOutputInfo(*hlo_module, *buffer_assignment));
+  const Shape& output_shape = hlo_module->result_shape();
   std::function<std::string()> buffer_assignment_dumper = [] {
     return std::string();
   };
   bool enable_persistent_temp_buffers =
-      hlo_module_->config()
+      hlo_module->config()
           .debug_options()
           .xla_gpu_enable_persistent_temp_buffers();
   int64_t debug_buffer_assignment_show_max =
-      hlo_module_->config()
+      hlo_module->config()
           .debug_options()
           .xla_debug_buffer_assignment_show_max();
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<GpuExecutable> executable,
       GpuExecutable::Create(GpuExecutable::Params{
-          /*asm_text=*/asm_text_,
-          /*binary=*/binary_,
+          /*asm_text=*/proto_.asm_text(),
+          /*binary=*/binary,
           /*gpu_version=*/gpu_device_info.gpu_compute_capability(),
           /*executable=*/std::move(thunk_sequence),
           /*constants=*/std::move(constants),
           /*output_info=*/std::move(output_info),
-          /*module_name=*/std::move(hlo_module_->name()),
+          /*module_name=*/std::move(hlo_module->name()),
           /*output_shape=*/std::move(output_shape),
           /*mlir_allocations=*/std::nullopt,
-          /*buffer_assignment=*/std::move(buffer_assignment_),
+          /*buffer_assignment=*/std::move(buffer_assignment),
           /*enable_persistent_temp_buffers=*/enable_persistent_temp_buffers,
           /*debug_buffer_assignment_show_max=*/debug_buffer_assignment_show_max,
           /*debug_module=*/std::unique_ptr<HloModule>(),
@@ -1859,6 +1896,14 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         CompileToBackendResult(module.get(), &llvm_context, options.executor(),
                                {options.device_allocator()}, gpu_device_info));
 
+    if (!IsXlaRuntimeExecutableEnabled(module->config())) {
+      // Create GpuThunkAotCompilationResult if thunk runtime is enabled.
+      results.emplace_back(std::make_unique<GpuThunkAotCompilationResult>(
+          module.get(), res.compile_module_results.buffer_assignment.get(),
+          res.backend_result.asm_text, res.backend_result.binary));
+      continue;
+    }
+
     const auto* program = std::get_if<GpuExecutable::OwnedGpuRuntimeProgram>(
         &res.compile_module_results.executable);
     if (!program) {
@@ -2030,7 +2075,11 @@ GpuCompiler::LoadAotCompilationResult(
 StatusOr<std::unique_ptr<AotCompilationResult>>
 GpuCompiler::LoadAotCompilationResultStatic(
     const std::string& serialized_aot_result) {
-  return GpuAotCompilationResult::FromString(serialized_aot_result);
+  // TODO(anlunx): Remove the code that loads a GpuAotCompilationResult when we
+  // convert to thunk runtime.
+  auto result = GpuAotCompilationResult::FromString(serialized_aot_result);
+  if (result.ok()) return result;
+  return GpuThunkAotCompilationResult::FromString(serialized_aot_result);
 }
 
 }  // namespace gpu
