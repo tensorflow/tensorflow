@@ -90,6 +90,8 @@ StatusOr<std::string> RenderGraph(const HloComputation& computation,
                                   RenderedGraphFormat format,
                                   HloRenderOptions hlo_render_options = {});
 
+StatusOr<std::string> RenderAllComputationsToHtml(const HloModule& module);
+
 // Like RenderGraph, but renders only nodes "near" the given node in the graph.
 //
 // The number of nodes dumped is controlled by the radius parameter, which

@@ -33,6 +33,7 @@ cc_library(
         "//xla:types",
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
+        "//xla/service:platform_util",
         "//xla/stream_executor:platform",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -51,6 +52,7 @@ cc_library(
         "//xla:types",
         "//xla/service:compiler",
         "//xla/service:dump",
+        "//xla/service:hlo_graph_dumper",
         "//xla/service:platform_util",
         "//xla/service/gpu:executable_proto_cc",
         "//xla/stream_executor/cuda:cuda_platform_id",
@@ -116,5 +118,12 @@ filegroup(
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//mlir:run_lit.sh",
     ],
+    visibility = ["//visibility:public"],
+)
+
+exports_files(
+    glob([
+        "gpu_specs/*.txtpb",
+    ]),
     visibility = ["//visibility:public"],
 )

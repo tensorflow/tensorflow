@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/platform_util.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -100,9 +101,9 @@ struct GpuOptProvider : public OptProvider {
       TF_ASSIGN_OR_RETURN(
           std::unique_ptr<HloModule> optimized_module,
           compiler->RunHloPasses(std::move(module), executor, opts));
-      return RenderGraph(optimized_module->name(), *optimized_module,
-                         RenderedGraphFormat::kHtml,
-                         /*show_fusion_subcomputations=*/false);
+      TF_ASSIGN_OR_RETURN(std::string computations,
+                          RenderAllComputationsToHtml(*optimized_module));
+      return computations;
     }
 
     // Unimplemented stage.

@@ -22,14 +22,17 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <deque>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
 #include <queue>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
@@ -98,8 +101,9 @@ class NodeFilter {
   NodeFilter() : filter_([](const HloInstruction*) { return kNormalNode; }) {}
 
   explicit NodeFilter(
-      std::function<NodeFilterResult(const HloInstruction* instr)> filter)
-      : filter_(std::move(filter)) {}
+      std::function<NodeFilterResult(const HloInstruction* instr)> filter,
+      std::optional<int> num_rendered = std::nullopt)
+      : filter_(std::move(filter)), num_rendered_(num_rendered) {}
 
   bool Show(const HloInstruction* instr) const {
     return filter_(instr) != kHideNode;
@@ -120,8 +124,12 @@ class NodeFilter {
            result == kSomeUsersOmitted;
   }
 
+  // Returns an optionally recorded number of nodes which will be rendered.
+  std::optional<int> GetNumRendered() const { return num_rendered_; }
+
  private:
   std::function<NodeFilterResult(const HloInstruction* instr)> filter_;
+  std::optional<int> num_rendered_;
 };
 
 // We arbitrarily set this as the boundary between "large" and "small"
@@ -1661,17 +1669,19 @@ NodeFilter MakeNodeRadiusAroundFilter(
   // Highlight the root node.
   nodes[root] = kHighlightNode;
 
-  return NodeFilter([=](const HloInstruction* instr) {
-    auto it = nodes.find(instr);
-    if (it != nodes.end()) {
-      return it->second;
-    }
-    // Show all nodes in subcomputations.
-    if (instr->parent() != root->parent()) {
-      return kNormalNode;
-    }
-    return kHideNode;
-  });
+  return NodeFilter(
+      [=](const HloInstruction* instr) {
+        auto it = nodes.find(instr);
+        if (it != nodes.end()) {
+          return it->second;
+        }
+        // Show all nodes in subcomputations.
+        if (instr->parent() != root->parent()) {
+          return kNormalNode;
+        }
+        return kHideNode;
+      },
+      nodes.size());
 }
 
 // Gets a node filter that includes nodes on all paths from `from` to `to`.  If
@@ -1927,6 +1937,14 @@ StatusOr<std::string> WrapFusionExplorer(
       }
       document.getElementById('performance_note').innerText =
         `Rendering took ${(performance.now() - render_start).toFixed(2)}ms`;
+
+      // Change cursor.
+      let text_nodes = document.getElementsByTagName("text");
+      for (var el of text_nodes) {
+        if (title_to_id.has(el.innerHTML)) {
+          el.style.cursor = "pointer";
+        }
+      }
     };
     if (renderCache[dot_ptr]) {
       render_callback(renderCache[dot_ptr]);
@@ -1996,6 +2014,20 @@ StatusOr<std::string> WrapFusionExplorer(
       window.loaded = true;
       renderFrameList();
       renderCurrentFrame();
+    });
+
+    window.title_to_id = new Map();
+    for (let i=0; i < frames.length; i++) {
+       title_to_id.set(frames[i][1], i);
+     }
+
+    // Navigate to next elements on click.
+    document.addEventListener("click", (event) => {
+      let txt = event.target.innerHTML;
+      if (title_to_id.has(txt)) {
+        let id = title_to_id.get(txt);
+        window.location.hash = `#frame${id}`;
+      }
     });
   });
 
@@ -2107,6 +2139,44 @@ StatusOr<std::string> RenderGraph(const HloComputation& computation,
                                           hlo_render_options, NodeFilter())
                                  .Dump();
   return WrapDotInFormat(computation, rendered_dot, format);
+}
+
+StatusOr<std::string> RenderAllComputationsToHtml(const HloModule& module) {
+  FusionVisualizerProgress progress;
+
+  std::vector<HloInstruction*> instrs =
+      module.entry_computation()->MakeInstructionPostOrder();
+  absl::c_reverse(instrs);
+  for (const HloInstruction* instr : instrs) {
+    if (absl::c_linear_search(
+            std::vector<HloOpcode>{HloOpcode::kConstant,
+                                   HloOpcode::kGetTupleElement},
+            instr->opcode())) {
+      continue;
+    }
+
+    HloRenderOptions opts;
+    opts.show_fusion_subcomputations = true;
+    opts.show_backend_config = true;
+    opts.show_while_subcomputations = instr->opcode() == HloOpcode::kWhile;
+
+    // Dynamically adjusts the radius with a magical cutoff of 100.
+    static constexpr int64_t max_nodes_to_render = 100;
+    absl::flat_hash_set<const HloInstruction*> render_boundary;
+
+    NodeFilter filter = MakeNodeRadiusAroundFilter(instr, 2, render_boundary);
+    if (filter.GetNumRendered().value_or(1) > max_nodes_to_render) {
+      filter = MakeNodeRadiusAroundFilter(instr, 1, render_boundary);
+    }
+
+    std::string dot =
+        HloDotDumper(module.entry_computation(), instr->name(),
+                     module.config().debug_options(), opts, filter)
+            .Dump();
+    progress.AddState(dot, instr->name(), std::nullopt);
+  }
+
+  return WrapFusionExplorer(progress, module.name());
 }
 
 StatusOr<std::string> RenderNeighborhoodAround(
