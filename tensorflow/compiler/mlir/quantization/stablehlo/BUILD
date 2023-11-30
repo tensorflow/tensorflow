@@ -25,7 +25,6 @@ package(
     licenses = ["notice"],
 )
 
-# TODO(b/264218457): Add quantize and post_quantize passes.
 cc_library(
     name = "passes",
     srcs = [
@@ -104,9 +103,6 @@ cc_library(
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
     ],
-    # Alwayslink is required for registering the MLIR passes.
-    # TODO(b/255530126): Split the pass registration from the definitions to avoid binary size bloat.
-    alwayslink = True,
 )
 
 cc_library(
