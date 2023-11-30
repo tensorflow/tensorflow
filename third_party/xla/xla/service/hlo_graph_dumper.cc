@@ -644,6 +644,11 @@ bool HloDotDumper::ShouldShowSubcomputation(const HloComputation* subcomp) {
     return false;
   }
 
+  if (subcomp->WhileCallInstruction() != nullptr &&
+      !hlo_render_options_.show_while_subcomputations) {
+    return false;
+  }
+
   // Show the subcomputation if we're showing any of its members.
   return absl::c_any_of(
       subcomp->instructions(),
@@ -1392,11 +1397,12 @@ std::string HloDotDumper::GetInstructionNodeExtraInfo(
   for (const auto& line : instr->ExtraAttributesToString(
            HloPrintOptions().set_print_subcomputation_mode(
                HloPrintOptions::PrintSubcomputationMode::kOff))) {
-    // Some instructions have giant device identifier fields, so truncate their
-    // length to 128.
+    // Some instructions have giant device identifier or control-predecessor
+    // fields, so truncate their length to 128.
     constexpr int kMaxDeviceIdFieldLen = 128;
     if ((absl::StartsWith(line, "replica_groups=") ||
-         absl::StartsWith(line, "source_target_pairs=")) &&
+         absl::StartsWith(line, "source_target_pairs=") ||
+         absl::StartsWith(line, "control-predecessors=")) &&
         line.length() > kMaxDeviceIdFieldLen) {
       lines.push_back(HtmlLikeStringSanitize(
           StrCat(line.substr(0, kMaxDeviceIdFieldLen - 3), "...")));
@@ -1575,8 +1581,20 @@ NodeFilter MakeNodeRadiusAroundFilter(
     // are not interesting to the graph at hand.
     if (instr == root || instr->opcode() != HloOpcode::kTuple) {
       for (const HloInstruction* operand : instr->operands()) {
+        // Special logic for handling bitcasts: since sometimes bitcasts are not
+        // fused, they create a lot of extra nodes in the graph, with exactly
+        // one input and output. Adding such nodes does not "really" increase
+        // the size of the graph (since they don't add extra information), and
+        // stopping the rendering early cuts off important information (you
+        // almost never want the rendering to be cutoff at the bitcast: you'd
+        // like to see it's parent).
         if (!nodes.contains(operand)) {
-          worklist.push_back({operand, depth + 1});
+          int new_depth = (operand->opcode() == HloOpcode::kBitcast ||
+                           instr->opcode() == HloOpcode::kBitcast)
+                              ? depth
+                              : depth + 1;
+
+          worklist.push_back({operand, new_depth});
         }
       }
     }

@@ -72,6 +72,9 @@ struct HloRenderOptions {
 
   // Include the fusion subcomputations in the rendered graph.
   bool show_fusion_subcomputations = true;
+
+  // Include the while subcomputations in the rendered graph.
+  bool show_while_subcomputations = true;
 };
 
 // Renders an HLO module as a human-readable visual graph.
