@@ -3167,19 +3167,27 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+alias(
     name = "ref_variable",
-    srcs = ["ref_variable.py"],
+    actual = ":variable_v1",
+)
+
+py_strict_library(
+    name = "variable_v1",
+    srcs = [
+        "ref_variable.py",
+        "variable_v1.py",
+    ],
     srcs_version = "PY3",
     deps = [
         ":array_ops",
         ":array_ops_gen",
+        ":cond",
         ":resource_variable_ops",
         ":resource_variables_toggle",
         ":state_ops",
         ":state_ops_gen",
         ":variable_scope",
-        ":variable_v1",
         ":variables",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
@@ -3193,19 +3201,6 @@ py_strict_library(
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
-    ],
-)
-
-py_strict_library(
-    name = "variable_v1",
-    srcs = ["variable_v1.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":cond",
-        ":state_ops",
-        ":variable_scope",
-        ":variables",
-        "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_should_use",
     ],
