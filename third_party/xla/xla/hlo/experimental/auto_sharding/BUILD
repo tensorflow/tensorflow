@@ -22,6 +22,7 @@ cc_library(
     srcs = [
         "auto_sharding.cc",
         "auto_sharding_dot_handler.cc",
+        "auto_sharding_strategy.cc",
     ],
     hdrs = [
         "auto_sharding.h",
