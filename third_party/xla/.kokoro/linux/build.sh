@@ -26,10 +26,6 @@ function is_linux_gpu_job() {
   [[ "$KOKORO_JOB_NAME" =~ tensorflow/xla/linux/.*gpu.* ]]
 }
 
-function is_use_nvcc() {
-  [[ "${USE_NVCC:-}" == "true" ]]
-}
-
 # Pull the container (in case it was updated since the instance started) and
 # store its SHA in the Sponge log.
 docker pull "$DOCKER_IMAGE"
@@ -54,11 +50,7 @@ if is_linux_gpu_job ; then
     TAGS_FILTER="$TAGS_FILTER,gpu,requires-gpu-nvidia,-no_gpu"
     ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --run_under=//tools/ci_build/gpu_build:parallel_gpu_execute"
     RC_FILE="/usertools/gpu.bazelrc"
-    if is_use_nvcc ; then
-      RBE_CONFIG="rbe_linux_cuda_nvcc"
-    else
-      RBE_CONFIG="rbe_linux_cuda"
-    fi
+    RBE_CONFIG="rbe_linux_cuda_nvcc"
     echo "***NOTE: nvidia-smi lists the highest CUDA version the driver supports, which may be different than the version of CUDA actually used!!***"
     nvidia-smi
 else
