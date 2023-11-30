@@ -1938,8 +1938,8 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
     case HloOpcode::kSort: {
       HloSharding user_sharding = user.sharding();
       if (user_sharding.IsTuple()) {
-        return user_sharding = user_sharding.GetSubSharding(
-                   user.shape(), {user.operand_index(&instruction)});
+        return user_sharding.GetSubSharding(user.shape(),
+                                            {user.operand_index(&instruction)});
       }
       return user_sharding;
     }
