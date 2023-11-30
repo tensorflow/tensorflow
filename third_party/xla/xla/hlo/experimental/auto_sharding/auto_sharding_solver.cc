@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/util.h"
@@ -560,7 +561,12 @@ AutoShardingSolverResult SolveAndExtractSolution(
     const std::vector<std::vector<MPVariable*>>& e,
     const MPVariable* overbudget_var, const MPVariable* makespan_var,
     MPSolver& solver) {
+  absl::Time start_time = absl::Now();
   auto status = solver.Solve();
+  absl::Time end_time = absl::Now();
+  auto duration = end_time - start_time;
+  LOG(INFO) << "Solver took " << absl::ToInt64Milliseconds(duration) << " ms";
+
   if (status == operations_research::MPSolver::INFEASIBLE) {
     LOG(ERROR) << "MPSolver could not find any feasible solution.";
 #ifdef PLATFORM_GOOGLE
