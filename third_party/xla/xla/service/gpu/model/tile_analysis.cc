@@ -212,6 +212,7 @@ StatusOr<HloInstructionIndexing> ComputeFusionOpIndexing(
     for (const auto& operand_indexing : instr_indexing.operand_indexing_maps) {
       const HloInstruction* producer_instr =
           instr->operand(operand_indexing.operand_id);
+      if (producer_instr->IsConstant()) continue;
       // If the producer is a fusion op parameter, store the result.
       if (auto parameter = DynCast<HloParameterInstruction>(producer_instr)) {
         parameter_indexing_maps[parameter->parameter_number()].insert(
