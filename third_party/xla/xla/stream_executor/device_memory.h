@@ -167,26 +167,6 @@ class DeviceMemory final : public DeviceMemoryBase {
   DeviceMemory(void *opaque, uint64_t size) : DeviceMemoryBase(opaque, size) {}
 };
 
-// A class to encapsulate the type and size of a dynamic shared memory
-// buffer. Because the buffer exists solely on the device and is not copyable
-// to the host, memory objects of this type do not maintain buffer pointers
-// on the host.
-template <typename ElemT>
-class SharedDeviceMemory final : public DeviceMemoryBase {
- public:
-  explicit SharedDeviceMemory(uint64_t elem_count)
-      : DeviceMemoryBase(nullptr, elem_count * kElemSize) {}
-
-  static constexpr size_t kElemSize = sizeof(ElemT);
-
-  // Returns the number of elements of type ElemT that constitute this
-  // allocation.
-  uint64_t ElementCount() const { return size() / kElemSize; }
-
-  // Returns whether this is a single-element allocation.
-  bool IsScalar() const { return ElementCount() == 1; }
-};
-
 // Host-side representation of packed-and-aligned vector datatypes on the device
 // side. Since these can appear in device kernel signatures, we support
 // launching them with these datatypes in launch signatures.
