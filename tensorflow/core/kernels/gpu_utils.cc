@@ -39,16 +39,16 @@ using xla::CudnnVersion;
 
 bool IsBF16SupportedInOps(se::Stream *stream) {
   if (!stream) {
-    return true;  // no stream: don't know whether it's supported
+    return false;  // No stream: don't know whether it's supported.
   }
 #if GOOGLE_CUDA  
 // Performant bfloat16 operations are supported for Ampere+ GPUs. For
 // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
-  return !stream->GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE);  
+  return stream->GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE);
 #elif TENSORFLOW_USE_ROCM
-  // So far, we return true meaning that the conversion to float is needed.
-  return true;
+  // So far, we return false meaning that the conversion to float is needed.
+  return false;
 #endif
 }
 
