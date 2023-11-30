@@ -59,9 +59,14 @@ class CollectivesCommunicator {
   // The all-to-all chunks are passed separately and do not have to be
   // contiguous in memory.
   virtual absl::Status AllToAll(const RendezvousKey& key, size_t chunk_bytes,
-                                absl::Span<const void* const> input_buffer,
-                                absl::Span<void* const> output_buffer,
+                                absl::Span<const void* const> input_buffers,
+                                absl::Span<void* const> output_buffers,
                                 absl::Duration timeout) = 0;
+
+  // Performs an all-gather.
+  virtual absl::Status AllGather(const RendezvousKey& key, size_t chunk_bytes,
+                                 const void* input_buffer, void* output_buffer,
+                                 absl::Duration timeout) = 0;
 };
 
 class CollectivesInterface {

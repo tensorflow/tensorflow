@@ -115,7 +115,6 @@ limitations under the License.
 #include "xla/runtime/executable.h"
 #include "xla/runtime/jit_executable.h"
 #include "xla/service/algebraic_simplifier.h"
-#include "xla/service/all_gather_decomposer.h"
 #include "xla/service/all_reduce_promotion.h"
 #include "xla/service/all_to_all_decomposer.h"
 #include "xla/service/batch_dot_simplification.h"
@@ -685,7 +684,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<QrExpander>();
   pipeline.AddPass<EighExpander>();
   pipeline.AddPass<TriangularSolveExpander>();
-  pipeline.AddPass<AllGatherDecomposer>();
   pipeline.AddPass<AllToAllDecomposer>();
   pipeline.AddPass<ReduceScatterDecomposer>();
   pipeline.AddPass<StochasticConvertDecomposer>();

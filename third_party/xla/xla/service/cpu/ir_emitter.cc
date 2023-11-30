@@ -1344,6 +1344,57 @@ Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
   return OkStatus();
 }
 
+Status IrEmitter::HandleAllGather(HloInstruction* instruction) {
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(instruction));
+
+  std::string replica_groups =
+      ReplicaGroupsToString(instruction->replica_groups());
+  int32_t replica_groups_size = replica_groups.size();
+  llvm::Value* replica_groups_v = b_.CreateGlobalStringPtr(replica_groups);
+
+  std::vector<llvm::Value*> input_buffer_ptrs;
+  std::vector<llvm::Value*> output_buffer_ptrs;
+
+  const HloInstruction* op = instruction->operand(0);
+  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice in_slice,
+                      assignment_.GetUniqueSlice(op, {}));
+  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice out_slice,
+                      assignment_.GetUniqueSlice(instruction, {}));
+  const Shape& operand_shape = op->shape();
+  CHECK(op->shape().IsArray())
+      << "Operand to all-gather must be arrays: " << instruction->ToString();
+  llvm::Value* output_buffer = EmitBufferPointer(out_slice, operand_shape);
+  llvm::Value* input_buffer = GetEmittedValueFor(op);
+  int64_t buffer_size = in_slice.size();
+
+  bool use_global_device_ids =
+      Cast<HloAllGatherInstruction>(instruction)->use_global_device_ids();
+
+  EmitCallToFunc(
+      runtime::kAllGatherSymbolName,
+      {
+          /*run_options=*/GetExecutableRunOptionsArgument(),
+          /*channel_id_present=*/
+          b_.getInt32(
+              static_cast<int32_t>(instruction->channel_id().has_value())),
+          /*use_global_device_ids=*/
+          b_.getInt32(static_cast<int32_t>(use_global_device_ids)),
+          /*op_id=*/
+          b_.getInt64(instruction->channel_id().has_value()
+                          ? *instruction->channel_id()
+                          : instruction->GetModule()->unique_id()),
+          /*replica_groups_str=*/replica_groups_v,
+          /*replica_groups_str_size=*/b_.getInt32(replica_groups_size),
+          /*buffer_size=*/b_.getInt64(buffer_size),
+          /*source_buffer=*/input_buffer,
+          /*destination_buffer=*/output_buffer,
+      },
+      b_.getVoidTy());
+
+  llvm_ir::EmitTuple(GetIrArrayFor(instruction), output_buffer_ptrs, &b_);
+  return OkStatus();
+}
+
 Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
   auto* instr = Cast<HloCollectivePermuteInstruction>(crs);
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(instr));

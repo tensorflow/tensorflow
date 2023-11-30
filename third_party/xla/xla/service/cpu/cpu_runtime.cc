@@ -142,6 +142,7 @@ extern const char* const kTracingStartSymbolName =
 extern const char* const kTracingEndSymbolName = "__xla_cpu_runtime_TracingEnd";
 extern const char* const kXlaCpuRuntimeSymbolNamePrefix = "__xla_cpu_runtime_";
 extern const char* const kAllReduceSymbolName = "__xla_cpu_runtime_AllReduce";
+extern const char* const kAllGatherSymbolName = "__xla_cpu_runtime_AllGather";
 extern const char* const kAllToAllSymbolName = "__xla_cpu_runtime_AllToAll";
 extern const char* const kCollectivePermuteSymbolName =
     "__xla_cpu_runtime_CollectivePermute";
@@ -346,6 +347,34 @@ void AllToAllImpl(const ExecutableRunOptions* run_options,
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
+void AllGatherImpl(const ExecutableRunOptions* run_options,
+                   int32_t channel_id_present, int32_t use_global_device_ids,
+                   int64_t op_id, const void* replica_groups_str,
+                   int32_t replica_groups_str_size, int64_t buffer_size,
+                   void* source_buffer, void* destination_buffer) {
+  GlobalDeviceId device(GetDeviceOrdinal(run_options));
+  std::string_view replica_groups_serialized(
+      static_cast<const char*>(replica_groups_str), replica_groups_str_size);
+  std::vector<ReplicaGroup> group =
+      ParseReplicaGroupsOnly(replica_groups_serialized).value();
+  RendezvousKey rendezvous_key =
+      GetRendezvousKey(run_options, device, group, channel_id_present,
+                       use_global_device_ids, op_id);
+
+  auto it = absl::c_find(rendezvous_key.global_devices, device);
+  CHECK(it != rendezvous_key.global_devices.end());
+  int rank = std::distance(rendezvous_key.global_devices.begin(), it);
+
+  CollectivesInterface* collectives = GetInProcessCollectivesImpl();
+
+  auto communicator =
+      collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
+  TF_CHECK_OK(communicator->AllGather(rendezvous_key, buffer_size,
+                                      source_buffer, destination_buffer,
+                                      DefaultCollectiveTimeout()));
+}
+
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
 void AllReduceImpl(const ExecutableRunOptions* run_options,
                    const void* replica_groups_str,
                    int32_t replica_groups_str_size, int32_t channel_id_present,
@@ -503,6 +532,18 @@ void __xla_cpu_runtime_AllToAll(const xla::ExecutableRunOptions* run_options,
       destination_buffers);
 }
 
+void __xla_cpu_runtime_AllGather(const xla::ExecutableRunOptions* run_options,
+                                 int32_t channel_id_present,
+                                 int32_t use_global_device_ids, int64_t op_id,
+                                 const void* replica_groups_str,
+                                 int32_t replica_groups_str_size,
+                                 int64_t buffer_size, void* source_buffer,
+                                 void* destination_buffer) {
+  return xla::cpu::runtime::AllGatherImpl(
+      run_options, channel_id_present, use_global_device_ids, op_id,
+      replica_groups_str, replica_groups_str_size, buffer_size, source_buffer,
+      destination_buffer);
+}
 void __xla_cpu_runtime_AllReduce(const xla::ExecutableRunOptions* run_options,
                                  const void* replica_groups_str,
                                  int32_t replica_groups_str_size,

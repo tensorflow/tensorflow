@@ -340,6 +340,44 @@ class CpuAllToAllRendezvous
   }
 };
 
+struct AllGatherParticipantData : ParticipantData {
+  AllGatherParticipantData(const RendezvousKey& rendezvous_key_p, int rank)
+      : ParticipantData(rendezvous_key_p, rank) {}
+
+  const void* source_buffer;
+  void* destination_buffer;
+  size_t chunk_size;
+
+  std::string ToString() const override {
+    return absl::StrFormat(
+        "AllGatherParticipantData{rank=%d, "
+        "devices=[%s], source_buffer=%p, "
+        "destination_buffer=%p, chunk_size=%d}",
+        local_rank,
+        absl::StrJoin(rendezvous_key.global_devices, ", ", FormatGlobalId),
+        source_buffer, destination_buffer, chunk_size);
+  }
+};
+
+class CpuAllGatherRendezvous
+    : public Rendezvous<AllGatherParticipantData, std::nullptr_t> {
+ public:
+  explicit CpuAllGatherRendezvous(const RendezvousKey& k)
+      : Rendezvous<AllGatherParticipantData, std::nullptr_t>(k) {}
+
+ protected:
+  CollectivesInterface* collectives_;
+  absl::StatusOr<std::nullptr_t> RunCollectiveOp(
+      const AllGatherParticipantData& p) override {
+    int world_size = p.rendezvous_key.global_devices.size();
+    char* out = static_cast<char*>(p.destination_buffer);
+    for (int i = 0; i < world_size; ++i, out += p.chunk_size) {
+      std::memcpy(out, participants_[i]->source_buffer, p.chunk_size);
+    }
+    return nullptr;
+  }
+};
+
 }  // namespace
 
 struct InProcessCollectivesState {
@@ -349,6 +387,8 @@ struct InProcessCollectivesState {
       collective_permute_rendezvous_map;
   RefcountingHashMap<RendezvousKey, CpuAllToAllRendezvous>
       all_to_all_rendezvous_map;
+  RefcountingHashMap<RendezvousKey, CpuAllGatherRendezvous>
+      all_gather_rendezvous_map;
 };
 
 InProcessCollectivesCommunicator::InProcessCollectivesCommunicator(
@@ -423,6 +463,25 @@ absl::Status InProcessCollectivesCommunicator::AllToAll(
   return CpuAllToAllRendezvous::SubmitParticipant(
              [&] {
                return state_->all_to_all_rendezvous_map.GetOrCreateIfAbsent(
+                   key, make_cpu_rendezvous);
+             },
+             participant)
+      .status();
+}
+
+absl::Status InProcessCollectivesCommunicator::AllGather(
+    const RendezvousKey& key, size_t chunk_bytes, const void* input_buffer,
+    void* output_buffer, absl::Duration timeout) {
+  AllGatherParticipantData participant(key, rank_);
+  participant.chunk_size = chunk_bytes;
+  participant.source_buffer = input_buffer;
+  participant.destination_buffer = output_buffer;
+  auto make_cpu_rendezvous = [](const RendezvousKey& k) {
+    return std::make_unique<CpuAllGatherRendezvous>(k);
+  };
+  return CpuAllGatherRendezvous::SubmitParticipant(
+             [&] {
+               return state_->all_gather_rendezvous_map.GetOrCreateIfAbsent(
                    key, make_cpu_rendezvous);
              },
              participant)
