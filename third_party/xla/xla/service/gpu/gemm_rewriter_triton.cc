@@ -134,8 +134,9 @@ void FuseDotOnly(HloInstruction& hlo, OldToNewHloMap& output_old_to_new_map,
 // an input.
 int64_t NumAddedParameters(const HloInstruction& hlo) {
   // Non-scalar constant is equivalent to a parameter: one input, one output.
-  if (hlo.opcode() == HloOpcode::kConstant &&
-      !ShapeUtil::IsScalar(hlo.shape())) {
+  if (hlo.opcode() == HloOpcode::kParameter ||
+      (hlo.opcode() == HloOpcode::kConstant &&
+       !ShapeUtil::IsScalar(hlo.shape()))) {
     return 0;
   }
   // All other instructions add all own inputs and remove own single output.
@@ -153,7 +154,7 @@ void TryToFuseWithInputsRecursively(HloInstruction& root,
                                     HloComputation::Builder& builder) {
   // Instructions at the fusion edge that can either get fused too or
   // become parameters of the fusion. Used to track the number of parameters.
-  absl::flat_hash_set<const HloInstruction*> inputs;
+  absl::flat_hash_set<const HloInstruction*> inputs = {&root};
   // Traverse all connected instructions that could be fused, analyze them and
   // collect ones that will be fused.
   absl::flat_hash_set<const HloInstruction*> to_fuse_set;
@@ -251,10 +252,10 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
                                    gpu_version, context, old_to_new_map,
                                    fusion_inputs, builder);
     const int new_parameters = fusion_inputs.size() - operand_count_before;
-    TF_RET_CHECK(new_parameters <=
-                 TritonFusionAnalysis::kMaxParameterPerDotScope)
-        << "Too many new parameters: " << new_parameters << " > "
-        << TritonFusionAnalysis::kMaxParameterPerDotScope;
+    if (new_parameters > TritonFusionAnalysis::kMaxParameterPerDotScope) {
+      LOG(WARNING) << "Too many new parameters fused: " << new_parameters
+                   << " > " << TritonFusionAnalysis::kMaxParameterPerDotScope;
+    }
     return context;
   };
 

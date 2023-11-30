@@ -547,6 +547,33 @@ ENTRY e {
             TritonFusionAnalysis::kMaxParameterPerDotScope + 1);
 }
 
+TEST_F(GemmRewriterTritonLevel2Test, DoNotFuseTooManyParametersForConcat) {
+  static_assert(TritonFusionAnalysis::kMaxParameterPerDotScope == 4,
+                "We have to update this test.");
+  // The concat shouldn't overgo the allowed parameter limit.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  a = f32[3,3]{1,0} parameter(0)
+  b = f32[3,3]{1,0} parameter(1)
+  c = f32[3,3]{1,0} parameter(2)
+  d = f32[3,3]{1,0} parameter(3)
+  e = f32[3,3]{1,0} parameter(4)
+  f = f16[3,3]{1,0} parameter(5)
+  concat = f32[15,3]{1,0} concatenate(a, b, c, d, e), dimensions={0}
+  convert = f32[3,3]{1,0} convert(f)
+  ROOT dot = f32[15,3]{1,0} dot(concat, convert), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})"));
+
+  EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
+  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kFusion);
+  EXPECT_EQ(module->entry_computation()->root_instruction()->fusion_kind(),
+            HloInstruction::FusionKind::kCustom);
+  EXPECT_LE(module->entry_computation()->root_instruction()->operand_count(),
+            TritonFusionAnalysis::kMaxParameterPerDotScope + 1);
+}
+
 TEST_F(GemmRewriterTritonLevel2Test,
        InstructionsReachableFromMultipleOperandsAreHandledCorrectly) {
   static_assert(TritonFusionAnalysis::kMaxParameterPerDotScope == 4,
@@ -827,34 +854,34 @@ e {
                           TritonFusionAnalysis::Execute(*computation));
 
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
-                                 computation->parameter_instruction(0), 0),
+                                 computation->parameter_instruction(1), 0),
               ElementsAre(FieldsAre(/*stride=*/1536, /*count=*/153,
                                     /*slice_start=*/0, /*sliced_count=*/153,
                                     /*subfragments=*/ElementsAre(153))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
-                                 computation->parameter_instruction(0), 1),
+                                 computation->parameter_instruction(1), 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/1536,
                                     /*slice_start=*/0, /*sliced_count=*/1536,
                                     /*subfragments=*/ElementsAre(1536))));
 
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
-                                 computation->parameter_instruction(1), 0),
+                                 computation->parameter_instruction(2), 0),
               ElementsAre(FieldsAre(/*stride=*/128, /*count=*/153,
                                     /*slice_start=*/0, /*sliced_count=*/153,
                                     /*subfragments=*/ElementsAre(153))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
-                                 computation->parameter_instruction(1), 1),
+                                 computation->parameter_instruction(2), 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/128,
                                     /*slice_start=*/-1536, /*sliced_count=*/128,
                                     /*subfragments=*/ElementsAre(128))));
 
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
-                                 computation->parameter_instruction(2), 0),
+                                 computation->parameter_instruction(3), 0),
               ElementsAre(FieldsAre(/*stride=*/256, /*count=*/153,
                                     /*slice_start=*/0, /*sliced_count=*/153,
                                     /*subfragments=*/ElementsAre(153))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
-                                 computation->parameter_instruction(2), 1),
+                                 computation->parameter_instruction(3), 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/256,
                                     /*slice_start=*/-1536 - 128,
                                     /*sliced_count=*/256,
@@ -945,7 +972,7 @@ e {
                   .Run(module.get())
                   .value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch((m::Fusion(m::Concatenate(), m::Parameter(),
+              GmockMatch((m::Fusion(m::Parameter(), m::Concatenate(),
                                     m::Parameter(), m::Parameter()))));
 }
 

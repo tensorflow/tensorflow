@@ -72,7 +72,8 @@ bool TensorIterationSpec::operator==(const TensorIterationSpec& other) const {
 
 std::string TensorIterationSpec::IterationSpecFragment::ToString() const {
   return absl::StrCat("{stride=", stride, ", count=", count,
-                      ", slice_start=", slice_start, ", subfragments=[",
+                      ", slice_start=", slice_start,
+                      ", sliced_count=", sliced_count, ", subfragments=[",
                       absl::StrJoin(subfragments, ", "), "]}");
 }
 
