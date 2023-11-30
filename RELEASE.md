@@ -9,6 +9,12 @@
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
+* `tf.summary.trace_on` now takes a `profiler_outdir` argument. This must be set
+  if `profiler` arg is set to `True`.
+    * `tf.summary.trace_export`'s `profiler_outdir` arg is now a no-op. Enabling
+      the profiler now requires setting `profiler_outdir` in `trace_on`.
+
+
 ### Known Caveats
 
 * <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>

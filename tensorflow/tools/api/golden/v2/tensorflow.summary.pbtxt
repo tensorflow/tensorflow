@@ -54,7 +54,7 @@ tf_module {
   }
   member_method {
     name: "trace_export"
-    argspec: "args=[\'name\', \'step\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'name\', \'step\', \'profiler_outdir\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "trace_off"

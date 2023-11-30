@@ -1367,15 +1367,23 @@ def trace_on(graph=True, profiler=False, profiler_outdir=None):  # pylint: disab
       context.context().enable_graph_collection()
     if profiler:
       if profiler_outdir is None:
-        raise ValueError("Argument `profiler_outdir` is not specified.")
-      context.context().enable_run_metadata()
-      _profiler.start(profiler_outdir)
+        # TODO(b/149431324): Change this to throw a ValueError when Tensorflow
+        # major version advances. (current version is 2.15)
+        logging.warn(
+            "No `profiler_outdir` passed to trace_on(). Profiler won't be"
+            " enabled."
+        )
+      else:
+        context.context().enable_run_metadata()
+        _profiler.start(profiler_outdir)
 
     _current_trace_context = _TraceContext(graph=graph, profiler=profiler)
 
 
+# TODO(b/149431324): Delete `profiler_outdir` arg when Tensorflow major version
+# advances. (current version is 2.15)
 @tf_export("summary.trace_export", v1=[])
-def trace_export(name, step=None):
+def trace_export(name, step=None, profiler_outdir=None):
   """Stops and exports the active trace as a Summary and/or profile file.
 
   Stops the trace and exports all metadata collected during the trace to the
@@ -1386,6 +1394,7 @@ def trace_export(name, step=None):
     step: Explicit `int64`-castable monotonic step value for this summary. If
       omitted, this defaults to `tf.summary.experimental.get_step()`, which must
       not be None.
+    profiler_outdir: This arg is a no-op. Please set this in trace_on().
 
   Raises:
     ValueError: if a default writer exists, but no step was provided and
@@ -1416,6 +1425,11 @@ def trace_export(name, step=None):
     run_metadata(name, run_meta, step)
 
   if profiler:
+    if profiler_outdir:
+      logging.warn(
+          "Ignoring `profiler_outdir` passed to trace_export(). Please pass it"
+          " to trace_on() instead."
+      )
     _profiler.stop()
 
   trace_off()
