@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_layout_assignment.h"
 
+#include <cstdint>
 #include <numeric>
+#include <optional>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "xla/map_util.h"
@@ -78,12 +81,17 @@ static optional<int64_t> ShouldMakeOperandColumnMajor(
   return it->second ? operand_idx : nullopt;
 }
 
-static Shape RowMajorShape(const Shape& old_shape) {
-  Shape new_shape(old_shape);
-  std::vector<int64_t> dimension_order(new_shape.dimensions_size());
-  std::iota(dimension_order.rbegin(), dimension_order.rend(), 0);
-  *new_shape.mutable_layout() = LayoutUtil::MakeLayout(dimension_order);
-  return new_shape;
+static Shape RowMajorShape(Shape shape) {
+  ShapeUtil::ForEachMutableSubshape(
+      &shape, [](Shape* subshape, const ShapeIndex& index) {
+        if (!subshape->IsArray()) {
+          return;
+        }
+        std::vector<int64_t> dimension_order(subshape->dimensions_size());
+        std::iota(dimension_order.rbegin(), dimension_order.rend(), 0);
+        *subshape->mutable_layout() = LayoutUtil::MakeLayout(dimension_order);
+      });
+  return shape;
 }
 
 static Shape ColMajorShape(const Shape& old_shape) {
@@ -103,6 +111,8 @@ static bool OperandsAndResultMustHaveRowMajorLayout(
   } else if (instr.opcode() == HloOpcode::kDot) {
     return DotOperandsAndResultMustHaveRowMajorLayout(instr,
                                                       target_machine_features);
+  } else if (instr.opcode() == HloOpcode::kCustomCall) {
+    return instr.custom_call_target() == "TopK";
   }
   return false;
 }

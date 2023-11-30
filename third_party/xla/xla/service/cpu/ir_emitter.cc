@@ -2378,13 +2378,16 @@ Status IrEmitter::HandleTopK(HloInstruction* hlo) {
   const HloInstruction* input = hlo->operand(0);
   const int64_t k = hlo->shape().tuple_shapes(0).dimensions().back();
   const bool has_batch = hlo->shape().tuple_shapes(0).dimensions_size() == 2;
-  TF_RET_CHECK(input->shape().element_type() == F32);
+  TF_RET_CHECK(input->shape().element_type() == F32) << hlo->ToString();
   TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(
-      hlo->shape().tuple_shapes(0).layout()));
+      hlo->shape().tuple_shapes(0).layout()))
+      << hlo->ToString();
   TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(
-      hlo->shape().tuple_shapes(1).layout()));
+      hlo->shape().tuple_shapes(1).layout()))
+      << hlo->ToString();
   TF_RET_CHECK(
-      LayoutUtil::IsMonotonicWithDim0Major(hlo->operand(0)->shape().layout()));
+      LayoutUtil::IsMonotonicWithDim0Major(hlo->operand(0)->shape().layout()))
+      << hlo->ToString();
 
   TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice values_slice,
                       assignment_.GetUniqueSlice(hlo->operand(0), {}));
