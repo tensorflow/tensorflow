@@ -709,6 +709,10 @@ def _create_local_rocm_repository(repository_ctx):
         "-DEIGEN_USE_HIP",
     ])
 
+    rocm_defines["%{link_flags}"] = to_list_of_strings([
+        "-fuse-ld={}".format("lld" if _is_clang_enabled(repository_ctx) else "gold"),
+    ])
+
     rocm_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
 
     rocm_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(

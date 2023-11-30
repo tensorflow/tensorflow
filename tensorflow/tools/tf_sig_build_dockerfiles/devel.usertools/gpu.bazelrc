@@ -13,19 +13,10 @@ build:sigbuild_remote_cache_push --remote_cache="https://storage.googleapis.com/
 build --action_env=CACHEBUSTER=565341047
 
 # Build options for GPU Linux
-build --config=release_gpu_linux
+#build --config=release_gpu_linux
 
 # ROCM: Set up compilation ROCM version and paths
-build:rocm --linkopt="-fuse-ld=gold"
-build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
-build:rocm --define=using_rocm_hipcc=true
-build:rocm --define=tensorflow_mkldnn_contraction_kernel=0
-build:rocm --repo_env TF_NEED_ROCM=1
-build:rocm --action_env=TF_ROCM_CLANG="1"
-build:rocm --repo_env=BAZEL_COMPILER="/usr/lib/llvm-16/bin/clang"
-build:rocm --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-16/bin/clang"
-# Disable unused-result on rocm builds.
-build:rocm --copt="-Wno-error=unused-result"
+# Use default clang build
 
 # Test-related settings below this point.
 test:rocm --test_env=HSA_TOOLS_LIB=libroctracer64.so --test_sharding_strategy=disabled
@@ -88,3 +79,8 @@ test:pycpp_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchma
 test:pycpp_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-no_rocm
 test:pycpp_filters --test_lang_filters=cc,py --test_size_filters=small,medium
 test:pycpp --config=pycpp_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
+
+# For XLA (rocm)
+test:xla_cpp_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,gpu,requires-gpu,-no_gpu,-no_rocm --keep_going
+test:xla_cpp_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,gpu,requires-gpu,-no_gpu,-no_rocm
+test:xla_cpp --config=xla_cpp_filters -- //xla/... //build_tools/...

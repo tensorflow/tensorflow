@@ -38,7 +38,6 @@
 #     xla:          Build TF with XLA
 #     tpu:          Build TF with TPU support
 #     cuda:         Build with full cuda support.
-#     rocm:         Build with AMD GPU support (rocm)
 #     cuda_clang    Build with CUDA Clang support.
 #     rocm:         Build with AMD GPU support (rocm)
 #     mkl:          Enable full mkl support.
@@ -281,11 +280,28 @@ build:tpu --define=enable_mlir_bridge=true
 
 build:tensorrt --repo_env TF_NEED_TENSORRT=1
 
-build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
-build:rocm --define=using_rocm_hipcc=true
-build:rocm --define=tensorflow_mkldnn_contraction_kernel=0
-build:rocm --repo_env TF_NEED_ROCM=1
+build:rocm_base --crosstool_top=@local_config_rocm//crosstool:toolchain
+build:rocm_base --define=using_rocm_hipcc=true
+build:rocm_base --define=tensorflow_mkldnn_contraction_kernel=0
+build:rocm_base --repo_env TF_NEED_ROCM=1
+
+build:rocm --config=rocm_base
+build:rocm --config=release_cpu_linux_base
+build:rocm --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-17/bin/clang"
 build:rocm --action_env=TF_ROCM_CLANG="1"
+build:rocm --linkopt="-fuse-ld=lld"
+# We have some invalid linker scripts in the build,
+# so we need to disable this check
+build:rocm --linkopt=-Wl,--undefined-version
+# Disable clang extention that rejects type definitions within offsetof.
+# This was added in clang-16 by https://reviews.llvm.org/D133574.
+# Can be removed once upb is updated, since a type definition is used within
+# offset of in the current version of ubp.
+# See https://github.com/protocolbuffers/upb/blob/9effcbcb27f0a665f9f345030188c0b291e32482/upb/upb.c#L183.
+build:rocm --copt=-Wno-gnu-offsetof-extensions
+# TODO(rocm): Temporary due to https://github.com/openxla/xla/blob/49ad52b580ad2b81f24cc888f5cc571eb649f373/xla/stream_executor/rocm/rocm_blas.cc#L154
+# to make it work with build_rocm_python3
+build:rocm --copt="-Wno-unused-result"
 
 # Options to disable default on features
 build:noaws --define=no_aws_support=true
@@ -319,9 +335,6 @@ build:linux --copt="-Wno-ignored-attributes"
 build:linux --copt="-Wno-array-bounds"
 # TODO(rocm): Re-enable on clang switch
 #build:linux --copt="-Wno-error=array-parameter"
-# TODO(rocm): Temporary due to https://github.com/openxla/xla/blob/49ad52b580ad2b81f24cc888f5cc571eb649f373/xla/stream_executor/rocm/rocm_blas.cc#L154
-# to make it work with build_rocm_python3
-build:rocm --copt="-Wno-unused-result"
 
 # Add unused-result as an error on Linux.
 build:linux --copt="-Wunused-result"
@@ -331,7 +344,10 @@ build:linux --copt="-Wswitch"
 build:linux --copt="-Werror=switch"
 # Required for building with clang
 build:linux --copt="-Wno-error=unused-but-set-variable"
-
+# We have some invalid linker scripts in the build,
+# so we need to disable this check
+build:linux --linkopt=-Wl,--undefined-version
+build:linux --host_linkopt=-Wl,--undefined-version
 # Linux ARM64 specific options
 build:linux_arm64 --copt="-mtune=generic" --copt="-march=armv8-a" --copt="-O3"
 
@@ -534,7 +550,8 @@ build:rbe_linux_cuda --repo_env=TF_NCCL_CONFIG_REPO="@sigbuild-r2.16-clang_confi
 test:rbe_linux_cuda --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
  
 # ROCm
-build:rbe_linux_rocm_base --config=rocm
+# TODO(rocm) Is this actualy used?
+build:rbe_linux_rocm_base --config=rocm_base
 build:rbe_linux_rocm_base --config=rbe_linux
 build:rbe_linux_rocm_base --crosstool_top="@ubuntu20.04-gcc9_manylinux2014-rocm_config_rocm//crosstool:toolchain"
 build:rbe_linux_rocm_base --extra_toolchains="@ubuntu20.04-gcc9_manylinux2014-rocm_config_rocm//crosstool:toolchain-linux-x86_64"
@@ -740,7 +757,7 @@ test:release_cpu_windows --config=release_base
 build:android --config=no_tfrt
 build:macos   --config=no_tfrt
 build:windows --config=no_tfrt
-build:rocm --config=no_tfrt
+build:rocm_base --config=no_tfrt
 build:no_tfrt --deleted_packages=tensorflow/compiler/mlir/tfrt,tensorflow/compiler/mlir/tfrt/benchmarks,tensorflow/compiler/mlir/tfrt/ir,tensorflow/compiler/mlir/tfrt/ir/mlrt,tensorflow/compiler/mlir/tfrt/jit/python_binding,tensorflow/compiler/mlir/tfrt/jit/transforms,tensorflow/compiler/mlir/tfrt/python_tests,tensorflow/compiler/mlir/tfrt/tests,tensorflow/compiler/mlir/tfrt/tests/ifrt,tensorflow/compiler/mlir/tfrt/tests/mlrt,tensorflow/compiler/mlir/tfrt/tests/ir,tensorflow/compiler/mlir/tfrt/tests/analysis,tensorflow/compiler/mlir/tfrt/tests/jit,tensorflow/compiler/mlir/tfrt/tests/lhlo_to_tfrt,tensorflow/compiler/mlir/tfrt/tests/lhlo_to_jitrt,tensorflow/compiler/mlir/tfrt/tests/tf_to_corert,tensorflow/compiler/mlir/tfrt/tests/tf_to_tfrt_data,tensorflow/compiler/mlir/tfrt/tests/saved_model,tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu,tensorflow/compiler/mlir/tfrt/transforms/mlrt,tensorflow/core/runtime_fallback,tensorflow/core/runtime_fallback/conversion,tensorflow/core/runtime_fallback/kernel,tensorflow/core/runtime_fallback/opdefs,tensorflow/core/runtime_fallback/runtime,tensorflow/core/runtime_fallback/util,tensorflow/core/runtime_fallback/test,tensorflow/core/runtime_fallback/test/gpu,tensorflow/core/runtime_fallback/test/saved_model,tensorflow/core/runtime_fallback/test/testdata,tensorflow/core/tfrt/stubs,tensorflow/core/tfrt/tfrt_session,tensorflow/core/tfrt/mlrt,tensorflow/core/tfrt/mlrt/attribute,tensorflow/core/tfrt/mlrt/kernel,tensorflow/core/tfrt/mlrt/bytecode,tensorflow/core/tfrt/mlrt/interpreter,tensorflow/compiler/mlir/tfrt/translate/mlrt,tensorflow/compiler/mlir/tfrt/translate/mlrt/testdata,tensorflow/core/tfrt/gpu,tensorflow/core/tfrt/run_handler_thread_pool,tensorflow/core/tfrt/runtime,tensorflow/core/tfrt/saved_model,tensorflow/core/tfrt/graph_executor,tensorflow/core/tfrt/saved_model/tests,tensorflow/core/tfrt/tpu,tensorflow/core/tfrt/utils,tensorflow/core/tfrt/utils/debug,tensorflow/core/tfrt/saved_model/python,tensorflow/core/tfrt/graph_executor/python,tensorflow/core/tfrt/saved_model/utils
 
 # BEGIN TF CACHE HELPER OPTIONS
