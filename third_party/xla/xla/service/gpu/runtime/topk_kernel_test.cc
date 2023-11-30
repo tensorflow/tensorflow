@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
@@ -212,7 +213,7 @@ void BM_SmallTopk(benchmark::State& state) {
     CHECK_OK(stream.BlockHostUntilDone());
     auto timer_duration = timer.value().GetElapsedDuration();
     CHECK_OK(timer_duration.status());
-    state.SetIterationTime(ToDoubleMicroseconds(timer_duration.value()));
+    state.SetIterationTime(absl::ToDoubleMicroseconds(timer_duration.value()));
   }
   size_t items_processed = batch_size * n * state.iterations();
   state.SetItemsProcessed(items_processed);

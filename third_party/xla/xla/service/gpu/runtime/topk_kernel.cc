@@ -38,8 +38,6 @@ namespace xla::gpu {
 
 namespace {
 
-using se::gpu::GpuStreamHandle;
-
 size_t NumThreads(size_t n, size_t k, size_t batch_size) {
   // Estimate number of threads per block that can run concurrently given the
   // register footprint.
