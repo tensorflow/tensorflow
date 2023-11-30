@@ -226,7 +226,13 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
              {"cycle_length",
               strings::Printf("%lld", static_cast<long long>(cycle_length))},
              {"deterministic",
-              deterministic.IsNondeterministic() ? "false" : "true"}}) {
+              deterministic.IsNondeterministic() ? "false" : "true"},
+             {"buffer_output_elements",
+              strings::Printf("%lld",
+                              static_cast<long long>(buffer_output_elements_))},
+             {"prefetch_input_elements",
+              strings::Printf(
+                  "%lld", static_cast<long long>(prefetch_input_elements_))}}) {
     input_->Ref();
   }
 
