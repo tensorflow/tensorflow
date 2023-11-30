@@ -371,9 +371,6 @@ def default_variable_creator_v2(next_creator=None, **kwargs):
       )
 
 
-variables.default_variable_creator_v2 = default_variable_creator_v2
-
-
 class BaseResourceVariable(variables.Variable, core.Tensor):
   """A python variable from an existing handle."""
 
