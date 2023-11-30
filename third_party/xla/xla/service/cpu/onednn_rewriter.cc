@@ -46,8 +46,8 @@ Status ValidateDotDimensionNumbers(const DotDimensionNumbers& dim_numbers) {
 }
 
 bool IsSupportedType(xla::PrimitiveType dtype) {
-  using tsl::port::TestCPUFeature;
   using tsl::port::CPUFeature;
+  using tsl::port::TestCPUFeature;
   switch (dtype) {
     case F32:
       return true;
@@ -117,6 +117,17 @@ class OneDnnRewriterVisitor : public DfsHloRewriteVisitor {
     should_rewrite &=
         (dot_dim_numbers.rhs_contracting_dimensions(0) == rhs_shape.rank() - 2);
     if (!should_rewrite) return OkStatus();
+
+    // OneDNN matmul has scratch allocation and copy overheads. The overheads
+    // can be amortized if there is sufficient MAC (multiply-accumulate)
+    // operations. We don't rewrite for small cases (determined empirically).
+    // TODO(intel-tf): Relax the condition when more optimizations in oneDNN
+    // matmul is achieved.
+    auto rank = lhs_shape.rank();
+    auto rhs_dims = rhs_shape.dimensions();
+    int64_t num_mac_ops = ShapeUtil::ElementsIn(lhs_shape) * rhs_dims.back();
+    int mac_ops_threshold = (rank == 2) ? (1 << 23) : (1 << 18);
+    if (num_mac_ops < mac_ops_threshold) return OkStatus();
 
     HloInstruction* matmul_call =
         dot_instr->AddInstruction(HloInstruction::CreateCustomCall(
