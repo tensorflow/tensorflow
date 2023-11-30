@@ -139,3 +139,50 @@ index 162531226..e93ec4809 100644
  }
  
  // If the calling code is not a _pb2.py file, raise AttributeError.
+diff --git a/src/google/protobuf/explicitly_constructed.h b/src/google/protobuf/explicitly_constructed.h
+--- a/src/google/protobuf/explicitly_constructed.h
++++ b/src/google/protobuf/explicitly_constructed.h
+@@ -62,17 +62,19 @@
+ template <typename T, size_t min_align = 1>
+ class ExplicitlyConstructed {
+  public:
+-  void DefaultConstruct() { new (&union_) T(); }
++  void DefaultConstruct() { new (&union_) T(); constructed = true; }
+ 
+   template <typename... Args>
+   void Construct(Args&&... args) {
+     new (&union_) T(std::forward<Args>(args)...);
++    constructed = true;
+   }
+ 
+   void Destruct() { get_mutable()->~T(); }
+ 
+   constexpr const T& get() const { return reinterpret_cast<const T&>(union_); }
+   T* get_mutable() { return reinterpret_cast<T*>(&union_); }
++  bool is_constructed() const { return constructed; }
+ 
+  private:
+@@ -82,6 +84,7 @@
+     int64_t align_to_int64;
+     void* align_to_ptr;
+   } union_;
++   bool constructed = false;
+ };
+ 
+ // ArenaStringPtr compatible explicitly constructed string type.
+diff --git a/src/google/protobuf/arenastring.h b/src/google/protobuf/arenastring.h
+--- a/src/google/protobuf/arenastring.h
++++ b/src/google/protobuf/arenastring.h
+@@ -130,7 +130,11 @@
+ 
+   TaggedStringPtr() = default;
+   explicit constexpr TaggedStringPtr(ExplicitlyConstructedArenaString* ptr)
+-      : ptr_(ptr) {}
++      : ptr_(ptr) {
++         if(ptr && !(ptr->is_constructed()))
++           ptr->DefaultConstruct();
++      }
++      
+ 
+   // Sets the value to `p`, tagging the value as being a 'default' value.
+   // See documentation for kDefault for more info.
