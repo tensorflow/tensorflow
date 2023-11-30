@@ -102,12 +102,11 @@ bool IsShardingStrictlyBetter(const HloSharding& lhs, const HloSharding& rhs) {
 
 // Implementation for returning a improved sharding from another sharding.
 std::optional<HloSharding> ReturnImprovedShardingImpl(
-    HloSharding from, std::optional<const HloSharding> to_improved,
+    HloSharding from, const HloSharding* to_improved,
     const Shape& to_improved_shape, bool may_combine_partial_sharding,
     bool allow_aggressive_resharding = false) {
   // Always allow improve the sharding if it's straightly better.
-  if (to_improved.has_value() &&
-      IsShardingStrictlyBetter(from, to_improved.value())) {
+  if (to_improved != nullptr && IsShardingStrictlyBetter(from, *to_improved)) {
     return from;
   }
   // We don't want to propagate tile maximal shardings.
@@ -115,7 +114,7 @@ std::optional<HloSharding> ReturnImprovedShardingImpl(
     return std::nullopt;
   }
   // Any sharding is better then no sharding.
-  if (!to_improved.has_value()) {
+  if (to_improved == nullptr) {
     return from;
   }
   // We don't want to propagate manual shardings.
@@ -123,18 +122,17 @@ std::optional<HloSharding> ReturnImprovedShardingImpl(
     return std::nullopt;
   }
   int64_t sharding_tiles = from.NumTiles();
-  if (hlo_sharding_util::MergeSharding(to_improved.value(), &from,
+  if (hlo_sharding_util::MergeSharding(*to_improved, &from,
                                        may_combine_partial_sharding)) {
     // Override existing tiled sharding only when the new sharding is compatible
     // with the existing one. This avoids unexpected resharding when `sharding`
     // just has more tiles than existing sharding but they are not mergeable.
     if (!allow_aggressive_resharding && to_improved_shape.IsArray() &&
-        !to_improved.value().IsTileMaximal() &&
-        from.NumTiles() == sharding_tiles) {
-      if (!hlo_sharding_util::IsSubTilingOrEqualSharding(
-              to_improved_shape, from, to_improved.value())) {
+        !to_improved->IsTileMaximal() && from.NumTiles() == sharding_tiles) {
+      if (!hlo_sharding_util::IsSubTilingOrEqualSharding(to_improved_shape,
+                                                         from, *to_improved)) {
         VLOG(10) << "Not merging because of different device distribution";
-        VLOG(10) << "Instr sharding: " << to_improved.value().ToString();
+        VLOG(10) << "Instr sharding: " << to_improved->ToString();
         VLOG(10) << "New sharding " << from.ToString();
         return std::nullopt;
       }
@@ -150,10 +148,8 @@ std::optional<HloSharding> ReturnImprovedSharding(
     bool may_combine_partial_sharding,
     bool allow_aggressive_resharding = false) {
   return ReturnImprovedShardingImpl(
-      sharding,
-      instruction->has_sharding()
-          ? std::optional<HloSharding>(instruction->sharding())
-          : std::nullopt,
+      std::move(sharding),
+      instruction->has_sharding() ? &instruction->sharding() : nullptr,
       instruction->shape(), may_combine_partial_sharding,
       allow_aggressive_resharding);
 }
@@ -164,14 +160,20 @@ std::optional<HloSharding> ReturnImprovedSubSharding(
     HloSharding sharding, HloInstruction* instruction, const ShapeIndex& index,
     bool may_combine_partial_sharding,
     bool allow_aggressive_resharding = false) {
-  return ReturnImprovedShardingImpl(
-      sharding,
-      instruction->has_sharding()
-          ? std::optional<HloSharding>(instruction->sharding().GetSubSharding(
-                instruction->shape(), index))
-          : std::nullopt,
-      ShapeUtil::GetSubshape(instruction->shape(), index),
-      may_combine_partial_sharding, allow_aggressive_resharding);
+  if (instruction->has_sharding()) {
+    const HloSharding to_improved =
+        instruction->sharding().GetSubSharding(instruction->shape(), index);
+    return ReturnImprovedShardingImpl(
+        std::move(sharding), &to_improved,
+        ShapeUtil::GetSubshape(instruction->shape(), index),
+        may_combine_partial_sharding, allow_aggressive_resharding);
+
+  } else {
+    return ReturnImprovedShardingImpl(
+        std::move(sharding), nullptr,
+        ShapeUtil::GetSubshape(instruction->shape(), index),
+        may_combine_partial_sharding, allow_aggressive_resharding);
+  }
 }
 
 // Updates the sharding of the specified instruction with the specified sharding
