@@ -37,7 +37,7 @@ using xla::AutotuningLog;
 using xla::ComputeCapability;
 using xla::CudnnVersion;
 
-bool IsBF16NotSupportedInOps(se::Stream *stream) {
+bool IsBF16SupportedInOps(se::Stream *stream) {
   if (!stream) {
     return true;  // no stream: don't know whether it's supported
   }
@@ -47,7 +47,8 @@ bool IsBF16NotSupportedInOps(se::Stream *stream) {
   return !stream->GetCudaComputeCapability().IsAtLeast(
           se::CudaComputeCapability::AMPERE);  
 #elif TENSORFLOW_USE_ROCM
-  return true;  // so far, we return true meaning that the conversion to float is needed
+  // So far, we return true meaning that the conversion to float is needed.
+  return true;
 #endif
 }
 

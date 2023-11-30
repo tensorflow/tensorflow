@@ -151,7 +151,7 @@ void DnnPooling3dOp<Eigen::bfloat16>::Compute(
     const Tensor& tensor_in, Tensor* output) {
 
   auto* stream = context->op_device_context()->stream();
-  const bool cast_to_float = IsBF16NotSupportedInOps(stream);
+  const bool cast_to_float = !IsBF16SupportedInOps(stream);
   
   if (cast_to_float) {
     Tensor casted_in;
@@ -349,7 +349,7 @@ void DnnPooling3dGradOp<Eigen::bfloat16>::Compute(
     const Tensor* tensor_in, const Tensor* tensor_out, Tensor* input_backprop) {
   
   auto* stream = context->op_device_context()->stream();
-  const bool cast_to_float = IsBF16NotSupportedInOps(stream);
+  const bool cast_to_float = !IsBF16SupportedInOps(stream);
   if (cast_to_float) {
     Tensor casted_out_backprop;
     Tensor casted_tensor_in;

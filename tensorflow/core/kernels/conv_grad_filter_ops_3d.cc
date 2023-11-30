@@ -702,7 +702,7 @@ void LaunchConvBackpropFilterOpImpl(
   OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
   if (DataTypeToEnum<T>::value == DT_BFLOAT16 &&
-        IsBF16NotSupportedInOps(stream)) {
+        !IsBF16SupportedInOps(stream)) {
     context->SetStatus(errors::Unimplemented(
         "Conv3DBackpropFilter for GPU with bfloat16 is only supported "
         "with cuDNN on Ampere GPUs or later."));
@@ -1002,7 +1002,7 @@ struct LaunchConvBackpropFilterOp<Eigen::bfloat16> {
       
       auto* stream = ctx->op_device_context()->stream();
 
-      const bool cast_to_float = IsBF16NotSupportedInOps(stream);
+      const bool cast_to_float = !IsBF16SupportedInOps(stream);
 
       if (cast_to_float) {
       Tensor casted_input = input;

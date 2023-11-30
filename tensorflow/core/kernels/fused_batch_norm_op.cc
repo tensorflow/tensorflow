@@ -1048,7 +1048,7 @@ struct FusedBatchNorm<GPUDevice, Eigen::bfloat16, float, is_training> {
                   bool use_reserved_space) {
     
     auto* stream = context->op_device_context()->stream();
-    const bool cast_to_float = IsBF16NotSupportedInOps(stream);
+    const bool cast_to_float = !IsBF16SupportedInOps(stream);
     
     if (cast_to_float) {
       Tensor casted_x = x;
@@ -1313,7 +1313,7 @@ struct FusedBatchNormGrad<GPUDevice, Eigen::bfloat16, float> {
                   bool use_reserved_space, TensorFormat tensor_format) {
     
     auto* stream = context->op_device_context()->stream();
-    const bool cast_to_float = IsBF16NotSupportedInOps(stream);
+    const bool cast_to_float = !IsBF16SupportedInOps(stream);
     if (cast_to_float) {
       Tensor casted_y_backprop = y_backprop;
       Tensor casted_x = x;

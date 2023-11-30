@@ -77,7 +77,7 @@ REGISTER_TYPED_TEST_SUITE_P(BatchNormOpTest,
                             Simple);
 
 // TODO(ezhulenev): Add support for more data types.
-using DataTypes = ::testing::Types<float, Eigen::half>;//, Eigen::bfloat16>;
+using DataTypes = ::testing::Types<float, Eigen::half>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, BatchNormOpTest,
                                DataTypes);
 

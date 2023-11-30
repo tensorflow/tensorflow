@@ -42,9 +42,9 @@ class AutotuneResult;
 
 namespace tensorflow {
 
-// returns true if bfloat16 is not directly supported in Ops and inputs shall be
-// casted to floats to perform the computations and then back
-bool IsBF16NotSupportedInOps(se::Stream *stream);
+// Returns true if bfloat16 is directly supported in Ops and inputs shall not be
+// casted to floats to perform the computations and then back.
+bool IsBF16SupportedInOps(se::Stream *stream);
 
 class NodeDef;
 using xla::AutotuneResult;

@@ -541,7 +541,7 @@ operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
            Tensor* filter_backprop, TensorFormat data_format) {
   
   auto* stream = ctx->op_device_context()->stream();
-  const bool cast_to_float = IsBF16NotSupportedInOps(stream);
+  const bool cast_to_float = !IsBF16SupportedInOps(stream);
 
   if (cast_to_float) {
     Tensor casted_input = input;

@@ -229,7 +229,7 @@ struct LaunchConv3DOp<GPUDevice, Eigen::bfloat16> {
                                                     dilations.end());
 
     auto* stream = ctx->op_device_context()->stream();
-    const bool cast_to_float = IsBF16NotSupportedInOps(stream);
+    const bool cast_to_float = !IsBF16SupportedInOps(stream);
 
     if (cast_to_float) {
       Tensor casted_input = input_param;

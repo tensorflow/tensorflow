@@ -62,7 +62,7 @@ bool UseCudnnWith16BitFloat(OpKernelContext* ctx, DataType dtype) {
     return true;
   } else if (dtype == DT_BFLOAT16) {
     auto* stream = ctx->op_device_context()->stream();
-    return !IsBF16NotSupportedInOps(stream);
+    return IsBF16SupportedInOps(stream);
   }
   return false;
 }
