@@ -538,13 +538,21 @@ FusionDecision GpuPriorityFusion::ShouldFuse(HloInstruction* consumer,
   // Avoid fusing reduce into reduce. Our cost model doesn't currently
   // understand this case due to a lack of tiling analysis.
   // TODO(b/312200883): Remove this.
-  auto contains_reduce = [&](const HloInstruction* instr) {
-    return HloAnyOf({HloInstructionAdaptor{*instr}},
-                    *HloFusionAdaptor::ForInstruction(instr), [](auto node) {
-                      return node.opcode() == HloOpcode::kReduce;
-                    });
+  auto contains_signficant_reduce = [&](const HloInstruction* instr) {
+    auto fusion = HloFusionAdaptor::ForInstruction(instr);
+    return HloAnyOf(fusion->GetRoots(), *fusion, [](auto node) {
+      if (node.opcode() != HloOpcode::kReduce) return false;
+
+      int64_t reduction_size =
+          ShapeUtil::ElementsIn(node.instruction().operand(0)->shape()) /
+          ShapeUtil::ElementsIn(node.shape());
+
+      // Small reductions are emitted using the elemental emitter anyway.
+      return reduction_size >= 16;
+    });
   };
-  if (contains_reduce(producer) && contains_reduce(consumer)) {
+  if (contains_signficant_reduce(producer) &&
+      contains_signficant_reduce(consumer)) {
     return "both the producer and the consumer contain a reduce";
   }
 
