@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -23,10 +25,12 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
@@ -252,6 +256,45 @@ struct ConvertShapeOfOpPattern : public OpRewritePattern<shape::ShapeOfOp> {
   }
 };
 
+struct ConvertShapeBroadcastOpPattern
+    : public OpRewritePattern<shape::BroadcastOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(shape::BroadcastOp op,
+                                PatternRewriter& rewriter) const override {
+    // Only support broadcasting for two 1D tensors with same size.
+    if (op.getShapes().size() != 2) return failure();
+    auto shape1 = castToI32(rewriter, op.getLoc(), op.getShapes().front());
+    auto shape2 = castToI32(rewriter, op.getLoc(), op.getShapes().back());
+    if (!shape1 || !shape2) return failure();
+    auto tensorType1 = shape1.getType().dyn_cast<RankedTensorType>();
+    auto tensorType2 = shape2.getType().dyn_cast<RankedTensorType>();
+    if (!tensorType1 || !tensorType2 || tensorType1.getRank() != 1 ||
+        tensorType2.getRank() != 1 ||
+        tensorType1.getDimSize(0) != tensorType2.getDimSize(0))
+      return failure();
+
+    // By definition, broadcasted dims are:
+    //   result[i] = lhs[i] if lhs[i] == rhs[i]
+    //             = lhs[i] if rhs[i] == 1
+    //             = rhs[i] if lhs[i] == 1
+    //
+    // We assume that there is shape.cstr_broadcastable check done elsewhere to
+    // make sure the shapes are broadcastable, then we can calculate broadcast
+    // result simply using MaxOp. In case the shapes are not broadcastable, the
+    // result extent tensor is undefined according to spec. So this
+    // implementation is technically correct.
+    auto broadcasted =
+        rewriter.create<mhlo::MaxOp>(op->getLoc(), shape1, shape2);
+
+    auto broadcastedIndex = castToIndex(rewriter, op.getLoc(), broadcasted);
+    if (!broadcastedIndex ||
+        broadcastedIndex.getType() != op.getResult().getType())
+      return rewriter.notifyMatchFailure(op, "cast to index failed");
+    rewriter.replaceOp(op, broadcastedIndex);
+    return success();
+  }
+};
+
 struct ConvertTensorDimPattern : public OpRewritePattern<tensor::DimOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(tensor::DimOp op,
@@ -267,6 +310,48 @@ struct ConvertTensorDimPattern : public OpRewritePattern<tensor::DimOp> {
         op->getLoc(), op.getSource(), constIndex.value());
     auto dimIndex = castToIndex(rewriter, op.getLoc(), dim);
     rewriter.replaceOp(op, dimIndex);
+    return success();
+  }
+};
+
+struct ConvertTensorFromElementsPattern
+    : public OpRewritePattern<tensor::FromElementsOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(tensor::FromElementsOp op,
+                                PatternRewriter& rewriter) const override {
+    // We only handle 1D tensor with index types. tensor.from_elements spec
+    // allows the same element type only for all input/output.
+    auto tensorType =
+        op.getResult().getType().dyn_cast_or_null<RankedTensorType>();
+    if (!tensorType || tensorType.getRank() != 1) {
+      return failure();
+    }
+    if (!hasIndexStyle(op.getResult())) return failure();
+
+    SmallVector<Value> elementI32x1;
+    for (size_t i = 0; i < op.getElements().size(); ++i) {
+      if (auto constIndex = dyn_cast_or_null<arith::ConstantIndexOp>(
+              op.getElements()[i].getDefiningOp())) {
+        elementI32x1.push_back(rewriter.create<ConstantOp>(
+            op.getLoc(), DenseIntElementsAttr::get<int32_t>(
+                             RankedTensorType::get({1}, rewriter.getI32Type()),
+                             static_cast<int32_t>(constIndex.value()))));
+      } else {
+        elementI32x1.push_back(rewriter.create<ReshapeOp>(
+            op.getLoc(), RankedTensorType::get({1}, rewriter.getI32Type()),
+            castToI32(rewriter, op->getLoc(), op.getElements()[i])));
+      }
+    }
+    Value tensorI32 =
+        rewriter.create<mhlo::ConcatenateOp>(op.getLoc(), elementI32x1,
+                                             /*dimension=*/0);
+
+    tensorI32 = hasI32Style(op.getResult())
+                    ? tensorI32
+                    : castToIndex(rewriter, op.getLoc(), tensorI32);
+    if (!tensorI32 || tensorI32.getType() != op.getResult().getType())
+      return rewriter.notifyMatchFailure(op, "cast to index failed");
+    rewriter.replaceOp(op, tensorI32);
     return success();
   }
 };
@@ -326,7 +411,7 @@ struct ShapeLegalizeToHloPass
     // Most of these ops are convertible to MHLO, although the representation is
     // going to be pretty laborious for many of them. Luckily, canonicalization
     // is able to remove unnecessary cruft. At the moment, this pass is a
-    // work in progress, so now all of these ops are supported.
+    // work in progress, so not all of these ops are supported.
     //
     // The only problem (and a big problem at that) are the ops involved in
     // shape constraints: cstr* ops as well as shape.assuming*. Since HLO does
@@ -357,8 +442,10 @@ struct ShapeLegalizeToHloPass
     patterns.add<ConvertComputeReshapeShapeOpPattern>(&getContext());
     patterns.add<ConvertNumElementsOpPattern>(&getContext());
     patterns.add<ConvertShapeOfOpPattern>(&getContext());
+    patterns.add<ConvertShapeBroadcastOpPattern>(&getContext());
     patterns.add<CastOperandsPattern<DynamicBroadcastInDimOp>>(&getContext());
     patterns.add<ConvertTensorDimPattern>(&getContext());
+    patterns.add<ConvertTensorFromElementsPattern>(&getContext());
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       return signalPassFailure();
