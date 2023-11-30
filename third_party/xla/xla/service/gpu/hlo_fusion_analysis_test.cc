@@ -69,24 +69,30 @@ TEST_F(HloFusionAnalysisTest, ReductionWithMultipleUsers) {
       ROOT add = f32[] add(p0, p1)
     }
 
-    ENTRY main {
+    fused_computation {
       %p0 = f32[1024] parameter(0)
       %p1 = f32[] parameter(1)
       %reduce = f32[] reduce(%p0, %p1), dimensions={0}, to_apply=add
       %negate = f32[] negate(%reduce)
       %log = f32[] log(%reduce)
       ROOT %tuple = (f32[], f32[]) tuple(%negate, %log)
+    }
+
+    ENTRY main {
+      %p0 = f32[1024] parameter(0)
+      %p1 = f32[] parameter(1)
+      ROOT %fusion = (f32[], f32[]) fusion(%p0, %p1), kind=kLoop, calls=fused_computation
     })")
                     .value();
 
   auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto analysis,
-      HloFusionAnalysis::Create(
-          FusionBackendConfig::default_instance(),
-          HloFusionAdaptor::ForComputation(module->entry_computation()),
-          &device_info));
+      auto analysis, HloFusionAnalysis::Create(
+                         FusionBackendConfig::default_instance(),
+                         HloFusionAdaptor::ForInstruction(
+                             module->entry_computation()->root_instruction()),
+                         &device_info));
   // This fusion cannot use the reduction emitter because the reduce has two
   // users.
   EXPECT_EQ(analysis.GetEmitterFusionKind(),

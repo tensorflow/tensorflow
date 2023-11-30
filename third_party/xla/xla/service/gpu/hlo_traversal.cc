@@ -78,6 +78,27 @@ class HloComputationFusion : public HloFusionAdaptor {
  public:
   explicit HloComputationFusion(const HloComputation* computation)
       : computation_(computation) {
+    // HloFusionAdaptor should only be created for fusion computations, that
+    // usually have only a few roots, but there is a case when we can it for
+    // non-fusion computations with thousands of roots. It happens inside
+    // `FindNonTrivialHero` and it gets very expensive. Calling
+    // `FindNonTrivialHero` also doesn't make sense on non-fusion computation,
+    // but `InstructionFusion` and `FusionMerger` depend on this behavoiur in
+    // `IsProducerConsumerFusible`.
+    //
+    // `FindNonTrivialHero` only call `ContainsInstruction` and doesn't use
+    // information about roots, so we can skip looking for roots as performance
+    // optimization.
+    // TODO(shyshkov): Clean this up once priority fusion is fully launched.
+    if (computation->IsFusionComputation()) {
+      roots_ = FindRoots(computation);
+    }
+  }
+
+  static absl::InlinedVector<HloInstructionAdaptor, 2> FindRoots(
+      const HloComputation* computation) {
+    absl::InlinedVector<HloInstructionAdaptor, 2> roots;
+
     std::function<void(const HloInstruction*)> get_roots;
     absl::flat_hash_set<HloInstructionAdaptor> roots_set;
     get_roots = [&](const HloInstruction* instr) {
@@ -88,11 +109,13 @@ class HloComputationFusion : public HloFusionAdaptor {
       } else {
         HloInstructionAdaptor wrapped{*instr};
         if (roots_set.insert(wrapped).second) {
-          roots_.push_back(wrapped);
+          roots.push_back(wrapped);
         }
       }
     };
     get_roots(computation->root_instruction());
+
+    return roots;
   }
 
   bool ContainsInstruction(HloInstructionAdaptor instruction) const override {
@@ -100,6 +123,11 @@ class HloComputationFusion : public HloFusionAdaptor {
   }
 
   absl::InlinedVector<HloInstructionAdaptor, 2> GetRoots() const override {
+    CHECK(!roots_.empty())
+        << "No roots found in the computation. HloFusionAdaptor was likely "
+           "created for a non-fusion computation: "
+        << computation_->ToString();
+
     return roots_;
   }
 
