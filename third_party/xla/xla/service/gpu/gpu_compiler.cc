@@ -393,8 +393,8 @@ StatusOr<std::unique_ptr<Executable>> GpuAotCompilationResult::LoadExecutable(
 
   return GpuExecutable::LoadFromObjFile(
       std::move(hlo_module), xla_runtime_executable.obj_file(),
-      xla_runtime_executable.mlir_module(),
-      GetDebugOptionsFromFlags(), xla_runtime_gpu_executable_.gpu_asm_text(),
+      xla_runtime_executable.mlir_module(), GetDebugOptionsFromFlags(),
+      xla_runtime_gpu_executable_.gpu_asm_text(),
       xla_runtime_gpu_executable_.gpu_binary(), std::move(constants),
       GetGpuVersion(executor), executor);
 }
@@ -1112,7 +1112,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
           /*process_different_sized_ops=*/true,
           /*pipelining_direction=*/
           CollectivePipeliner::PipeliningDirection::kBackward,
-          /*should_process=*/may_pipeline_p2p};
+          /*should_process=*/may_pipeline_p2p,
+          /*acceptable_formatting=*/[](const HloInstruction*) { return true; }};
       pipeline.AddPass<CollectivePipeliner>(config);
     }
 
