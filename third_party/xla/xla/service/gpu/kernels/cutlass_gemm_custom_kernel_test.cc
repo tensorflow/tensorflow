@@ -17,7 +17,7 @@ limitations under the License.
 #include <cstring>
 #include <vector>
 
-#include "xla/service/gpu/kernels/cutlass_gemm_kernel.h"
+#include "xla/service/gpu/kernels/cutlass_gemm_custom_kernel.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"

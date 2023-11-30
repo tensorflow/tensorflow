@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/service/gpu/kernels/custom_fusion.h"
 #include "xla/service/gpu/kernels/custom_fusion_pattern.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
-#include "xla/service/gpu/kernels/cutlass_gemm_kernel.h"
+#include "xla/service/gpu/kernels/cutlass_gemm_custom_kernel.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/status.h"
