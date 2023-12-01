@@ -163,14 +163,15 @@ class IrEmitterUnnested : public IrEmitter {
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitCustomCallThunk(mlir::Operation* op);
   Status EmitFftThunk(mlir::Operation* op);
-  StatusOr<FusionEmissionResult> GetFusionEmissionResult(
-      const HloFusionInstruction* instr, HloFusionAnalysis& fusion_analysis);
   Status EmitFusion(
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
-  Status EmitFusion(const HloFusionInstruction* instr,
-                    HloFusionAnalysis& fusion_analysis);
+  Status EmitFusion(
+      const HloFusionInstruction* instr, HloFusionAnalysis& fusion_analysis,
+      mlir::Operation* op,
+      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
+          hlo_for_lmhlo);
   Status EmitSelectAndScatter(
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&

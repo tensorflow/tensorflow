@@ -100,11 +100,7 @@ limitations under the License.
 #include "xla/service/gpu/fused_mha_thunk.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/fusions.h"
-#include "xla/service/gpu/fusions/input_slices.h"
-#include "xla/service/gpu/fusions/loop.h"
-#include "xla/service/gpu/fusions/reduction.h"
 #include "xla/service/gpu/fusions/thunk_util.h"
-#include "xla/service/gpu/fusions/transpose.h"
 #include "xla/service/gpu/gemm_thunk.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
@@ -2161,68 +2157,30 @@ StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitTritonFusion(
 
 #endif  // GOOGLE_CUDA
 
-// Check if the fusion instruction should be emitted as an in place dynamic
-// update slice or a memcpy fusion. The logic is copied from GetFusionEmitter.
-bool IsSpecializedLoopFusion(
-    mlir::Operation* op, absl::Span<const BufferAllocation* const> allocations,
-    HloFusionAnalysis& analysis) {
-  auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(op);
-  if (!allocations.empty() && fusion_op != nullptr) {
-    bool is_single = IsSingleInstructionFusion(fusion_op);
-    if (!is_single &&
-        CanEmitFusedDynamicUpdateSliceInPlaceForGpu(fusion_op, allocations)) {
-      return true;
-    }
-    if (is_single && analysis.fusion_roots().size() == 1 &&
-        analysis.fusion_roots().front()->opcode() == HloOpcode::kCopy) {
-      mlir::Value operand = GetHloOperands(fusion_op).front();
-      mlir::Value output = GetHloOutputs(fusion_op).front();
-      Shape operand_shape = GetShape(operand);
-      Shape output_shape = GetShape(output);
-      if (LayoutUtil::Equal(operand_shape.layout(), output_shape.layout()) &&
-          GetAllocationSlice(operand, allocations).ok()) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-StatusOr<FusionEmissionResult> IrEmitterUnnested::GetFusionEmissionResult(
-    const HloFusionInstruction* instr, HloFusionAnalysis& fusion_analysis) {
+Status IrEmitterUnnested::EmitFusion(
+    const HloFusionInstruction* instr, HloFusionAnalysis& fusion_analysis,
+    mlir::Operation* op,
+    const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
+        hlo_for_lmhlo) {
   FusionEmissionResult emission_result;
   switch (fusion_analysis.GetEmitterFusionKind()) {
-    case HloFusionAnalysis::EmitterFusionKind::kInputSlices: {
-      auto emitter = std::make_unique<InputSlicesFusion>(fusion_analysis);
-      TF_ASSIGN_OR_RETURN(
-          emission_result,
-          emitter->Emit(*ir_emitter_context_, elemental_emitter_, nullptr,
-                        *instr, kernel_reuse_cache_, &b_));
-      break;
-    }
-    case HloFusionAnalysis::EmitterFusionKind::kLoop: {
-      // TODO(anlunx): Support MemcpyFusion and InPlaceDymaicUpdateSlice.
-      auto emitter = std::make_unique<LoopFusion>(fusion_analysis);
-      TF_ASSIGN_OR_RETURN(
-          emission_result,
-          emitter->Emit(*ir_emitter_context_, elemental_emitter_, nullptr,
-                        *instr, kernel_reuse_cache_, &b_));
-      break;
-    }
-    case HloFusionAnalysis::EmitterFusionKind::kTranspose: {
-      auto emitter = std::make_unique<TransposeFusion>(fusion_analysis);
-      TF_ASSIGN_OR_RETURN(
-          emission_result,
-          emitter->Emit(*ir_emitter_context_, elemental_emitter_, nullptr,
-                        *instr, kernel_reuse_cache_, &b_));
-      break;
-    }
+    case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
+    case HloFusionAnalysis::EmitterFusionKind::kLoop:
+    case HloFusionAnalysis::EmitterFusionKind::kTranspose:
     case HloFusionAnalysis::EmitterFusionKind::kReduction: {
-      auto emitter = std::make_unique<ReductionFusion>(fusion_analysis);
+      auto emitter = GetFusionEmitter(fusion_analysis, {}, nullptr);
+      // TODO(anlunx): Support MemcpyFusion and InPlaceDynamicUpdateSlice and
+      // remove this fallback.
+      if (!emitter) {
+        TF_RET_CHECK(op)
+            << "Fusion should have been handled by GetFusionEmitter, fallback "
+               "disabled because no lmhlo op is available.";
+        return EmitFusion(op, hlo_for_lmhlo);
+      }
       TF_ASSIGN_OR_RETURN(
           emission_result,
-          emitter->Emit(*ir_emitter_context_, elemental_emitter_, nullptr,
-                        *instr, kernel_reuse_cache_, &b_));
+          (*emitter)->Emit(*ir_emitter_context_, elemental_emitter_, nullptr,
+                           *instr, kernel_reuse_cache_, &b_));
       break;
     }
     case HloFusionAnalysis::EmitterFusionKind::kTriton: {
@@ -2254,13 +2212,6 @@ StatusOr<FusionEmissionResult> IrEmitterUnnested::GetFusionEmissionResult(
       break;
   }
 
-  return emission_result;
-}
-
-Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
-                                     HloFusionAnalysis& fusion_analysis) {
-  TF_ASSIGN_OR_RETURN(FusionEmissionResult emission_result,
-                      GetFusionEmissionResult(instr, fusion_analysis));
   for (auto& thunk : emission_result.thunks) {
     AddThunkToThunkSequence(std::move(thunk));
   }
@@ -3500,11 +3451,7 @@ Status IrEmitterUnnested::EmitOp(
           ir_emitter_context_->gpu_device_info();
       TF_ASSIGN_OR_RETURN(auto fusion_analysis,
                           HloFusionAnalysis::Create(instr, &device_info));
-      // TODO(anlunx): Add support for emitting specialized kLoops.
-      if (!IsSpecializedLoopFusion(op, ir_emitter_context_->allocations(),
-                                   fusion_analysis)) {
-        return EmitFusion(instr, fusion_analysis);
-      }
+      return EmitFusion(instr, fusion_analysis, op, hlo_for_lmhlo);
     }
 
     return EmitFusion(op, hlo_for_lmhlo);
@@ -3645,7 +3592,7 @@ Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
           ir_emitter_context_->gpu_device_info();
       TF_ASSIGN_OR_RETURN(auto fusion_analysis,
                           HloFusionAnalysis::Create(fusion, &device_info));
-      TF_RETURN_IF_ERROR(EmitFusion(fusion, fusion_analysis));
+      TF_RETURN_IF_ERROR(EmitFusion(fusion, fusion_analysis, nullptr, {}));
       return OkStatus();
     }
     // We don't need to emit thunks for these operations because their semantics

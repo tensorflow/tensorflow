@@ -18,8 +18,10 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/fusions/copy.h"
@@ -35,20 +37,34 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
 
-bool IsSingleInstructionFusion(mlir::lmhlo::FusionOp fusion) {
-  bool seen_instruction = false;
-  for (mlir::Operation& instr : fusion.getRegion().front()) {
-    if (mlir::isa<mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
-                  mlir::bufferization::ToTensorOp,
-                  mlir::bufferization::MaterializeInDestinationOp>(&instr)) {
-      continue;
-    }
-    if (seen_instruction) return false;
-    seen_instruction = true;
+bool IsParameterOrGteOfParameter(const HloInstruction* instr) {
+  if (instr->opcode() == HloOpcode::kParameter) {
+    return true;
   }
-  return seen_instruction;
+  if (instr->opcode() == HloOpcode::kGetTupleElement) {
+    return IsParameterOrGteOfParameter(instr->operand(0));
+  }
+  return false;
 }
+
+bool IsSingleInstructionFusion(const HloFusionAnalysis& analysis) {
+  return analysis.fusion_roots().size() == 1 &&
+         absl::c_all_of(analysis.fusion_roots()[0]->operands(),
+                        IsParameterOrGteOfParameter);
+}
+
+bool IsDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis) {
+  return absl::c_all_of(
+      analysis.fusion_roots(), [](const HloInstruction* root) {
+        return root->opcode() == HloOpcode::kDynamicUpdateSlice ||
+               (root->opcode() == HloOpcode::kBitcast &&
+                root->operand(0)->opcode() == HloOpcode::kDynamicUpdateSlice);
+      });
+}
+
+}  // namespace
 
 std::optional<std::unique_ptr<FusionInterface>> GetFusionEmitter(
     HloFusionAnalysis& analysis,
@@ -58,23 +74,28 @@ std::optional<std::unique_ptr<FusionInterface>> GetFusionEmitter(
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
       return std::make_unique<InputSlicesFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kLoop: {
-      if (!allocations.empty() && fusion_op != nullptr) {
-        bool is_single = IsSingleInstructionFusion(fusion_op);
-        if (!is_single && CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-                              fusion_op, allocations)) {
+      bool is_single = IsSingleInstructionFusion(analysis);
+      if (!is_single && IsDynamicUpdateSliceFusion(analysis)) {
+        if (allocations.empty() || fusion_op == nullptr) {
+          return std::nullopt;
+        }
+        if (CanEmitFusedDynamicUpdateSliceInPlaceForGpu(fusion_op,
+                                                        allocations)) {
           return std::make_unique<InPlaceDynamicUpdateSliceEmitter>(analysis);
         }
-        if (is_single && analysis.fusion_roots().size() == 1 &&
-            analysis.fusion_roots().front()->opcode() == HloOpcode::kCopy) {
-          mlir::Value operand = GetHloOperands(fusion_op).front();
-          mlir::Value output = GetHloOutputs(fusion_op).front();
-          Shape operand_shape = GetShape(operand);
-          Shape output_shape = GetShape(output);
-          if (LayoutUtil::Equal(operand_shape.layout(),
-                                output_shape.layout()) &&
-              GetAllocationSlice(operand, allocations).ok()) {
-            return std::make_unique<MemcpyFusion>(operand, output);
-          }
+      }
+      if (is_single && analysis.fusion_roots().size() == 1 &&
+          analysis.fusion_roots().front()->opcode() == HloOpcode::kCopy) {
+        if (!fusion_op) {
+          return std::nullopt;
+        }
+        mlir::Value operand = GetHloOperands(fusion_op).front();
+        mlir::Value output = GetHloOutputs(fusion_op).front();
+        Shape operand_shape = GetShape(operand);
+        Shape output_shape = GetShape(output);
+        if (LayoutUtil::Equal(operand_shape.layout(), output_shape.layout()) &&
+            GetAllocationSlice(operand, allocations).ok()) {
+          return std::make_unique<MemcpyFusion>(operand, output);
         }
       }
       return std::make_unique<LoopFusion>(analysis);
