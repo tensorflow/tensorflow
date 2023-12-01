@@ -230,6 +230,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":compile_options_proto_cc",
+        ":executable_metadata_proto_cc",
         ":execute_options_proto_cc",
         ":pjrt_common",
         "//xla:shape_layout",
@@ -253,7 +254,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -798,5 +798,14 @@ tf_proto_library(
 tf_proto_library(
     name = "execute_options_proto",
     srcs = ["execute_options.proto"],
+    visibility = ["//visibility:public"],
+)
+
+tf_proto_library(
+    name = "executable_metadata_proto",
+    srcs = ["executable_metadata.proto"],
+    protodeps = [
+        "//xla/service:hlo_proto",
+    ],
     visibility = ["//visibility:public"],
 )

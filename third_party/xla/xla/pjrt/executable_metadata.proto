@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package xla;
+
+import "xla/service/hlo.proto";
+
+// Mirror of xla::CompiledMemoryStats.
+message CompiledMemoryStatsProto {
+  int64 generated_code_size_in_bytes = 1;
+  int64 argument_size_in_bytes = 2;
+  int64 output_size_in_bytes = 3;
+  int64 alias_size_in_bytes = 4;
+  int64 temp_size_in_bytes = 5;
+  xla.HloProto hlo_proto = 6;
+}
