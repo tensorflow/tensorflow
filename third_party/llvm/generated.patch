@@ -1,1 +1,268 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/Target/TargetMachine.h b/llvm/include/llvm/Target/TargetMachine.h
+--- a/llvm/include/llvm/Target/TargetMachine.h
++++ b/llvm/include/llvm/Target/TargetMachine.h
+@@ -239,7 +239,7 @@
+   void setCodeModel(CodeModel::Model CM) { CMModel = CM; }
+ 
+   void setLargeDataThreshold(uint64_t LDT) { LargeDataThreshold = LDT; }
+-  bool isLargeGlobalObject(const GlobalObject *GO) const;
++  bool isLargeData(const GlobalVariable *GV) const;
+ 
+   bool isPositionIndependent() const;
+ 
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/TargetLoweringObjectFileImpl.cpp b/llvm/lib/CodeGen/TargetLoweringObjectFileImpl.cpp
+--- a/llvm/lib/CodeGen/TargetLoweringObjectFileImpl.cpp
++++ b/llvm/lib/CodeGen/TargetLoweringObjectFileImpl.cpp
+@@ -616,7 +616,7 @@
+ /// DataSections.
+ static StringRef getSectionPrefixForGlobal(SectionKind Kind, bool IsLarge) {
+   if (Kind.isText())
+-    return IsLarge ? ".ltext" : ".text";
++    return ".text";
+   if (Kind.isReadOnly())
+     return IsLarge ? ".lrodata" : ".rodata";
+   if (Kind.isBSS())
+@@ -650,7 +650,10 @@
+     Name = ".rodata.cst";
+     Name += utostr(EntrySize);
+   } else {
+-    Name = getSectionPrefixForGlobal(Kind, TM.isLargeGlobalObject(GO));
++    bool IsLarge = false;
++    if (auto *GV = dyn_cast<GlobalVariable>(GO))
++      IsLarge = TM.isLargeData(GV);
++    Name = getSectionPrefixForGlobal(Kind, IsLarge);
+   }
+ 
+   bool HasPrefix = false;
+@@ -770,8 +773,12 @@
+     Group = C->getName();
+     IsComdat = C->getSelectionKind() == Comdat::Any;
+   }
+-  if (TM.isLargeGlobalObject(GO))
+-    Flags |= ELF::SHF_X86_64_LARGE;
++  if (auto *GV = dyn_cast<GlobalVariable>(GO)) {
++    if (TM.isLargeData(GV)) {
++      assert(TM.getTargetTriple().getArch() == Triple::x86_64);
++      Flags |= ELF::SHF_X86_64_LARGE;
++    }
++  }
+   return {Group, IsComdat, Flags};
+ }
+ 
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/TargetMachine.cpp b/llvm/lib/Target/TargetMachine.cpp
+--- a/llvm/lib/Target/TargetMachine.cpp
++++ b/llvm/lib/Target/TargetMachine.cpp
+@@ -39,21 +39,13 @@
+ 
+ TargetMachine::~TargetMachine() = default;
+ 
+-bool TargetMachine::isLargeGlobalObject(const GlobalObject *GO) const {
+-  if (getTargetTriple().getArch() != Triple::x86_64)
++bool TargetMachine::isLargeData(const GlobalVariable *GV) const {
++  if (getTargetTriple().getArch() != Triple::x86_64 || GV->isThreadLocal())
+     return false;
+ 
+   if (getCodeModel() != CodeModel::Medium && getCodeModel() != CodeModel::Large)
+     return false;
+ 
+-  if (isa<Function>(GO))
+-    return getCodeModel() == CodeModel::Large;
+-
+-  auto *GV = cast<GlobalVariable>(GO);
+-
+-  if (GV->isThreadLocal())
+-    return false;
+-
+   // Allowing large metadata sections in the presence of an explicit section is
+   // useful, even if GCC does not allow them. However, we should not mark
+   // certain well-known prefixes as large, because it would make the whole
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86Subtarget.cpp b/llvm/lib/Target/X86/X86Subtarget.cpp
+--- a/llvm/lib/Target/X86/X86Subtarget.cpp
++++ b/llvm/lib/Target/X86/X86Subtarget.cpp
+@@ -83,20 +83,32 @@
+   if (is64Bit()) {
+     // 64-bit ELF PIC local references may use GOTOFF relocations.
+     if (isTargetELF()) {
+-      CodeModel::Model CM = TM.getCodeModel();
+-      assert(CM != CodeModel::Tiny &&
+-             "Tiny codesize model not supported on X86");
+-      // In the large code model, even referencing a global under the large data
+-      // threshold which is considered "small", we need to use GOTOFF.
+-      if (CM == CodeModel::Large)
++      switch (TM.getCodeModel()) {
++      // 64-bit small code model is simple: All rip-relative.
++      case CodeModel::Tiny:
++        llvm_unreachable("Tiny codesize model not supported on X86");
++      case CodeModel::Small:
++      case CodeModel::Kernel:
++        return X86II::MO_NO_FLAG;
++
++      // The large PIC code model uses GOTOFF.
++      case CodeModel::Large:
+         return X86II::MO_GOTOFF;
+-      // Large objects use GOTOFF, otherwise use RIP-rel access.
+-      if (auto *GO = dyn_cast_or_null<GlobalObject>(GV))
+-        return TM.isLargeGlobalObject(GO) ? X86II::MO_GOTOFF
+-                                          : X86II::MO_NO_FLAG;
+-      // For non-GlobalObjects, the small and medium code models treat them as
+-      // accessible with a RIP-rel access.
+-      return X86II::MO_NO_FLAG;
++
++      // Medium is a hybrid: RIP-rel for code and non-large data, GOTOFF for
++      // remaining DSO local data.
++      case CodeModel::Medium:
++        // Constant pool and jump table handling pass a nullptr to this
++        // function so we need to use isa_and_nonnull.
++        if (isa_and_nonnull<Function>(GV))
++          return X86II::MO_NO_FLAG; // All code is RIP-relative
++        if (auto *GVar = dyn_cast_or_null<GlobalVariable>(GV)) {
++          if (TM.isLargeData(GVar))
++            return X86II::MO_GOTOFF;
++        }
++        return X86II::MO_NO_FLAG;    // Local symbols use GOTOFF.
++      }
++      llvm_unreachable("invalid code model");
+     }
+ 
+     // Otherwise, this is either a RIP-relative reference or a 64-bit movabsq,
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/code-model-elf.ll b/llvm/test/CodeGen/X86/code-model-elf.ll
+--- a/llvm/test/CodeGen/X86/code-model-elf.ll
++++ b/llvm/test/CodeGen/X86/code-model-elf.ll
+@@ -9,7 +9,6 @@
+ ; RUN: llc -verify-machineinstrs < %s -relocation-model=pic    -code-model=medium -large-data-threshold=1000 | FileCheck %s --check-prefix=CHECK --check-prefix=MEDIUM-SMALL-DATA-PIC
+ ; RUN: llc -verify-machineinstrs < %s -relocation-model=pic    -code-model=medium | FileCheck %s --check-prefix=CHECK --check-prefix=MEDIUM-PIC
+ ; RUN: llc -verify-machineinstrs < %s -relocation-model=pic    -code-model=large  | FileCheck %s --check-prefix=CHECK --check-prefix=LARGE-PIC
+-; RUN: llc -verify-machineinstrs < %s -relocation-model=pic    -code-model=large  -large-data-threshold=1000 | FileCheck %s --check-prefix=CHECK --check-prefix=LARGE-PIC
+ 
+ ; Generated from this C source:
+ ;
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/code-model-elf-text-sections.ll b/llvm/test/CodeGen/X86/code-model-elf-text-sections.ll
+--- a/llvm/test/CodeGen/X86/code-model-elf-text-sections.ll
++++ b/llvm/test/CodeGen/X86/code-model-elf-text-sections.ll
+@@ -1,25 +0,0 @@
+-; RUN: llc < %s -relocation-model=pic -filetype=obj -code-model=small -o %t
+-; RUN: llvm-readelf -S %t | FileCheck %s --check-prefix=SMALL
+-; RUN: llc < %s -relocation-model=pic -filetype=obj -code-model=medium -o %t
+-; RUN: llvm-readelf -S %t | FileCheck %s --check-prefix=SMALL
+-; RUN: llc < %s -relocation-model=pic -filetype=obj -code-model=large -o %t
+-; RUN: llvm-readelf -S %t | FileCheck %s --check-prefix=LARGE
+-
+-; RUN: llc < %s -relocation-model=pic -filetype=obj -code-model=small -function-sections -o %t
+-; RUN: llvm-readelf -S %t | FileCheck %s --check-prefix=SMALL-DS
+-; RUN: llc < %s -relocation-model=pic -filetype=obj -code-model=medium -function-sections -o %t
+-; RUN: llvm-readelf -S %t | FileCheck %s --check-prefix=SMALL-DS
+-; RUN: llc < %s -relocation-model=pic -filetype=obj -code-model=large -function-sections -o %t
+-; RUN: llvm-readelf -S %t | FileCheck %s --check-prefix=LARGE-DS
+-
+-; SMALL: .text {{.*}} AX {{.*}}
+-; SMALL-DS: .text.func {{.*}} AX {{.*}}
+-; LARGE: .ltext {{.*}} AXl {{.*}}
+-; LARGE-DS: .ltext.func {{.*}} AXl {{.*}}
+-
+-target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
+-target triple = "x86_64--linux"
+-
+-define void @func() {
+-  ret void
+-}
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/pcsections.ll b/llvm/test/CodeGen/X86/pcsections.ll
+--- a/llvm/test/CodeGen/X86/pcsections.ll
++++ b/llvm/test/CodeGen/X86/pcsections.ll
+@@ -19,12 +19,12 @@
+ ; CHECK:       # %bb.0: # %entry
+ ; CHECK-NEXT:    retq
+ ; CHECK-NEXT:  .Lfunc_end0:
+-; CHECK:       .section	section_no_aux,"awo",@progbits,.{{l?}}text
++; CHECK:       .section	section_no_aux,"awo",@progbits,.text
+ ; CHECK-NEXT:  .Lpcsection_base0:
+ ; DEFCM-NEXT:  .long	.Lfunc_begin0-.Lpcsection_base0
+ ; LARGE-NEXT:  .quad	.Lfunc_begin0-.Lpcsection_base0
+ ; CHECK-NEXT:  .long	.Lfunc_end0-.Lfunc_begin0
+-; CHECK-NEXT:  .{{l?}}text
++; CHECK-NEXT:  .text
+ entry:
+   ret void
+ }
+@@ -35,7 +35,7 @@
+ ; CHECK:       # %bb.0: # %entry
+ ; CHECK-NEXT:    retq
+ ; CHECK-NEXT:  .Lfunc_end1:
+-; CHECK:       .section	section_aux,"awo",@progbits,.{{l?}}text
++; CHECK:       .section	section_aux,"awo",@progbits,.text
+ ; CHECK-NEXT:  .Lpcsection_base1:
+ ; DEFCM-NEXT:  .long	.Lfunc_begin1-.Lpcsection_base1
+ ; LARGE-NEXT:  .quad	.Lfunc_begin1-.Lpcsection_base1
+@@ -43,7 +43,7 @@
+ ; CHECK-NEXT:  .long	10
+ ; CHECK-NEXT:  .long	20
+ ; CHECK-NEXT:  .long	30
+-; CHECK-NEXT:  .{{l?}}text
++; CHECK-NEXT:  .text
+ entry:
+   ret void
+ }
+@@ -56,22 +56,22 @@
+ ; CHECK-NEXT:    movq
+ ; CHECK-NEXT:    retq
+ ; CHECK-NEXT:  .Lfunc_end2:
+-; CHECK:       .section	section_no_aux,"awo",@progbits,.{{l?}}text
++; CHECK:       .section	section_no_aux,"awo",@progbits,.text
+ ; CHECK-NEXT:  .Lpcsection_base2:
+ ; DEFCM-NEXT:  .long	.Lfunc_begin2-.Lpcsection_base2
+ ; LARGE-NEXT:  .quad	.Lfunc_begin2-.Lpcsection_base2
+ ; CHECK-NEXT:  .long	.Lfunc_end2-.Lfunc_begin2
+-; CHECK-NEXT:  .section	section_aux_42,"awo",@progbits,.{{l?}}text
++; CHECK-NEXT:  .section	section_aux_42,"awo",@progbits,.text
+ ; CHECK-NEXT:  .Lpcsection_base3:
+ ; DEFCM-NEXT:  .long	.Lpcsection0-.Lpcsection_base3
+ ; LARGE-NEXT:  .quad	.Lpcsection0-.Lpcsection_base3
+ ; CHECK-NEXT:  .long	42
+-; CHECK-NEXT:  .section	section_aux_21264,"awo",@progbits,.{{l?}}text
++; CHECK-NEXT:  .section	section_aux_21264,"awo",@progbits,.text
+ ; CHECK-NEXT:  .Lpcsection_base4:
+ ; DEFCM-NEXT:  .long	.Lpcsection0-.Lpcsection_base4
+ ; LARGE-NEXT:  .quad	.Lpcsection0-.Lpcsection_base4
+ ; CHECK-NEXT:  .long	21264
+-; CHECK-NEXT:  .{{l?}}text
++; CHECK-NEXT:  .text
+ entry:
+   %0 = load i64, ptr @bar, align 8, !pcsections !2
+   ret i64 %0
+@@ -79,7 +79,7 @@
+ 
+ define void @multiple_uleb128() !pcsections !6 {
+ ; CHECK-LABEL: multiple_uleb128:
+-; CHECK:       .section	section_aux,"awo",@progbits,.{{l?}}text
++; CHECK:       .section	section_aux,"awo",@progbits,.text
+ ; CHECK-NEXT:  .Lpcsection_base5:
+ ; DEFCM-NEXT:  .long	.Lfunc_begin3-.Lpcsection_base5
+ ; LARGE-NEXT:  .quad	.Lfunc_begin3-.Lpcsection_base5
+@@ -87,13 +87,13 @@
+ ; CHECK-NEXT:  .byte	42
+ ; CHECK-NEXT:  .ascii	"\345\216&"
+ ; CHECK-NEXT:  .byte	255
+-; CHECK-NEXT:  .section	section_aux_21264,"awo",@progbits,.{{l?}}text
++; CHECK-NEXT:  .section	section_aux_21264,"awo",@progbits,.text
+ ; CHECK-NEXT:  .Lpcsection_base6:
+ ; DEFCM-NEXT:  .long	.Lfunc_begin3-.Lpcsection_base6
+ ; LARGE-NEXT:  .quad	.Lfunc_begin3-.Lpcsection_base6
+ ; CHECK-NEXT:  .long	.Lfunc_end3-.Lfunc_begin3
+ ; CHECK-NEXT:  .long	21264
+-; CHECK-NEXT:  .{{l?}}text
++; CHECK-NEXT:  .text
+ entry:
+   ret void
+ }
+diff -ruN --strip-trailing-cr a/llvm/test/ExecutionEngine/OrcLazy/debug-objects-elf-minimal.ll b/llvm/test/ExecutionEngine/OrcLazy/debug-objects-elf-minimal.ll
+--- a/llvm/test/ExecutionEngine/OrcLazy/debug-objects-elf-minimal.ll
++++ b/llvm/test/ExecutionEngine/OrcLazy/debug-objects-elf-minimal.ll
+@@ -44,7 +44,7 @@
+ ; RUN:     --generate=__dump_jit_debug_objects %s | llvm-objdump --section-headers - | \
+ ; RUN:     FileCheck --check-prefix=CHECK_LOAD_ADDR %s
+ ;
+-; CHECK_LOAD_ADDR-NOT: {{[0-9]*}} .ltext {{.*}} 0000000000000000 TEXT
++; CHECK_LOAD_ADDR-NOT: {{[0-9]*}} .text {{.*}} 0000000000000000 TEXT
+ 
+ target triple = "x86_64-unknown-unknown-elf"
+ 
