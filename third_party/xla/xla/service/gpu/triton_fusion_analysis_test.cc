@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
@@ -566,6 +567,38 @@ ENTRY e {
                           FieldsAre(/*stride=*/8 * 21 * 58, /*count=*/30,
                                     /*slice_start=*/0, /*slice_limit=*/30,
                                     /*subfragments=*/ElementsAre(30))));
+}
+
+TEST_F(TritonDotAnalysisTest,
+       HandlesFurtherPropagationFromTrivialSizedTensorGracefully) {
+  // We could probably support this better, just checking to avoid a crash for
+  // now.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+triton_gemm_r {
+  a = f32[3,3]{1,0} parameter(0)
+  constant = f32[1,1]{1,0} constant({ {0} })
+  broadcast = f32[1,1]{1,0} broadcast(constant), dimensions={0,1}
+  reshape = f32[] reshape(broadcast)
+  broadcast2 = f32[3,3]{1,0} broadcast(reshape), dimensions={}
+  ROOT dot = f32[3,3]{1,0} dot(a, broadcast2),
+                 lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  a = f32[3,3]{1,0} parameter(0)
+  ROOT dot = f32[3,3]{1,0} fusion(a), kind=kCustom, calls=triton_gemm_r,
+             backend_config={kind: "__triton_gemm"}
+}
+)"));
+
+  const HloComputation* dot_computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+
+  StatusOr<TritonFusionAnalysis> analysis =
+      TritonFusionAnalysis::Execute(*dot_computation);
+  // It can fail but shouldn't crash.
+  (void)analysis;
 }
 
 using TritonSoftmaxAnalysisTest = HloTestBase;

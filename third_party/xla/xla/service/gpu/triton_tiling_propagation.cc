@@ -611,6 +611,12 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
   // full dimensions and matching by total size.
   std::vector<std::vector<Fragment*>> src_physical;
   src_physical.reserve(src.shape().rank());
+  if (src_fragments_order.size() < src.shape().rank()) {
+    // It's not supported currently to further propagate dimensions after
+    // reaching a trivial sized tensor. We could probably support it, but now we
+    // just prevent crashing here.
+    return FusionDecision("Cannot propagate further from trivial sized tensor");
+  }
   auto src_fragment_it = src_fragments_order.begin();
   for (int64_t dim_index : src.shape().layout().minor_to_major()) {
     const int64_t dim_size = src.shape().dimensions(dim_index);

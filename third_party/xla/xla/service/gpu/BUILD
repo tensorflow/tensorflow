@@ -1345,6 +1345,7 @@ xla_cc_test(
     deps = [
         ":gemm_rewriter_triton",
         ":triton_fusion_analysis",
+        "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
