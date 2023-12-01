@@ -16,7 +16,8 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cusolverDn.h"
 #include "third_party/gpus/cuda/include/cusolverSp.h"
 #include "tsl/platform/dso_loader.h"
-#include "tsl/platform/env.h"
+#include "tsl/platform/load_library.h"
+#include "tsl/platform/logging.h"
 
 // Implements the cusolver API by forwarding to cusolver loaded from the DSO.
 
@@ -38,8 +39,7 @@ void* GetDsoHandle() {
 void* LoadSymbol(const char* symbol_name) {
   void* symbol = nullptr;
   if (auto handle = GetDsoHandle()) {
-    tsl::Env::Default()
-        ->GetSymbolFromLibrary(handle, symbol_name, &symbol)
+    tsl::internal::GetSymbolFromLibrary(handle, symbol_name, &symbol)
         .IgnoreError();
   }
   return symbol;

@@ -17,26 +17,26 @@ limitations under the License.
 
 #include <dlfcn.h>
 
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
+#include <string>
+
+#include "absl/status/status.h"
 
 namespace tsl {
 
 namespace internal {
 
-Status LoadDynamicLibrary(const char* library_filename, void** handle) {
+absl::Status LoadDynamicLibrary(const char* library_filename, void** handle) {
   *handle = dlopen(library_filename, RTLD_NOW | RTLD_LOCAL);
   if (!*handle) {
     // Note that in C++17 std::string_view(nullptr) gives segfault!
     const char* error_msg = dlerror();
-    return tsl::errors::NotFound(error_msg ? error_msg
-                                           : "(null error message)");
+    return absl::NotFoundError(error_msg ? error_msg : "(null error message)");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
-                            void** symbol) {
+absl::Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
+                                  void** symbol) {
   // Check that the handle is not NULL to avoid dlsym's RTLD_DEFAULT behavior.
   if (!handle) {
     *symbol = nullptr;
@@ -46,14 +46,14 @@ Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
   if (!*symbol) {
     // Note that in C++17 std::string_view(nullptr) gives segfault!
     const char* error_msg = dlerror();
-    return tsl::errors::NotFound(error_msg ? error_msg
-                                           : "(null error message)");
+    return absl::NotFoundError(error_msg ? error_msg : "(null error message)");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-string FormatLibraryFileName(const string& name, const string& version) {
-  string filename;
+std::string FormatLibraryFileName(const std::string& name,
+                                  const std::string& version) {
+  std::string filename;
 #if defined(__APPLE__)
   if (version.size() == 0) {
     filename = "lib" + name + ".dylib";

@@ -19,8 +19,8 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_DEFAULT_DSO_LOADER_H_
 #define TENSORFLOW_TSL_PLATFORM_DEFAULT_DSO_LOADER_H_
 
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 
 namespace tsl {
 namespace internal {
@@ -28,65 +28,65 @@ namespace internal {
 namespace DsoLoader {
 // The following methods either load the DSO of interest and return a dlopen
 // handle or error status.
-StatusOr<void*> GetCudaDriverDsoHandle();
-StatusOr<void*> GetCudaRuntimeDsoHandle();
-StatusOr<void*> GetCublasDsoHandle();
-StatusOr<void*> GetCublasLtDsoHandle();
-StatusOr<void*> GetCufftDsoHandle();
-StatusOr<void*> GetCusolverDsoHandle();
-StatusOr<void*> GetCusparseDsoHandle();
-StatusOr<void*> GetCuptiDsoHandle();
-StatusOr<void*> GetCudnnDsoHandle();
-StatusOr<void*> GetNcclDsoHandle();
-StatusOr<void*> GetNvInferDsoHandle();
-StatusOr<void*> GetNvInferPluginDsoHandle();
+absl::StatusOr<void*> GetCudaDriverDsoHandle();
+absl::StatusOr<void*> GetCudaRuntimeDsoHandle();
+absl::StatusOr<void*> GetCublasDsoHandle();
+absl::StatusOr<void*> GetCublasLtDsoHandle();
+absl::StatusOr<void*> GetCufftDsoHandle();
+absl::StatusOr<void*> GetCusolverDsoHandle();
+absl::StatusOr<void*> GetCusparseDsoHandle();
+absl::StatusOr<void*> GetCuptiDsoHandle();
+absl::StatusOr<void*> GetCudnnDsoHandle();
+absl::StatusOr<void*> GetNcclDsoHandle();
+absl::StatusOr<void*> GetNvInferDsoHandle();
+absl::StatusOr<void*> GetNvInferPluginDsoHandle();
 
-StatusOr<void*> GetRocblasDsoHandle();
-StatusOr<void*> GetMiopenDsoHandle();
-StatusOr<void*> GetHipfftDsoHandle();
-StatusOr<void*> GetRocrandDsoHandle();
-StatusOr<void*> GetRoctracerDsoHandle();
-StatusOr<void*> GetRocsolverDsoHandle();
-StatusOr<void*> GetHipsolverDsoHandle();
-StatusOr<void*> GetHipsparseDsoHandle();
-StatusOr<void*> GetHipDsoHandle();
+absl::StatusOr<void*> GetRocblasDsoHandle();
+absl::StatusOr<void*> GetMiopenDsoHandle();
+absl::StatusOr<void*> GetHipfftDsoHandle();
+absl::StatusOr<void*> GetRocrandDsoHandle();
+absl::StatusOr<void*> GetRoctracerDsoHandle();
+absl::StatusOr<void*> GetRocsolverDsoHandle();
+absl::StatusOr<void*> GetHipsolverDsoHandle();
+absl::StatusOr<void*> GetHipsparseDsoHandle();
+absl::StatusOr<void*> GetHipDsoHandle();
 
 // The following method tries to dlopen all necessary GPU libraries for the GPU
 // platform TF is built with (CUDA or ROCm) only when these libraries should be
 // dynamically loaded. Error status is returned when any of the libraries cannot
 // be dlopened.
-Status MaybeTryDlopenGPULibraries();
+absl::Status MaybeTryDlopenGPULibraries();
 
 // The following method tries to dlopen all necessary TensorRT libraries when
 // these libraries should be dynamically loaded. Error status is returned when
 // any of the libraries cannot be dlopened.
-Status TryDlopenTensorRTLibraries();
+absl::Status TryDlopenTensorRTLibraries();
 }  // namespace DsoLoader
 
 // Wrapper around the DsoLoader that prevents us from dlopen'ing any of the DSOs
 // more than once.
 namespace CachedDsoLoader {
 // Cached versions of the corresponding DsoLoader methods above.
-StatusOr<void*> GetCudaDriverDsoHandle();
-StatusOr<void*> GetCudaRuntimeDsoHandle();
-StatusOr<void*> GetCublasDsoHandle();
-StatusOr<void*> GetCublasLtDsoHandle();
-StatusOr<void*> GetCufftDsoHandle();
-StatusOr<void*> GetCusolverDsoHandle();
-StatusOr<void*> GetCusparseDsoHandle();
-StatusOr<void*> GetCuptiDsoHandle();
-StatusOr<void*> GetCudnnDsoHandle();
+absl::StatusOr<void*> GetCudaDriverDsoHandle();
+absl::StatusOr<void*> GetCudaRuntimeDsoHandle();
+absl::StatusOr<void*> GetCublasDsoHandle();
+absl::StatusOr<void*> GetCublasLtDsoHandle();
+absl::StatusOr<void*> GetCufftDsoHandle();
+absl::StatusOr<void*> GetCusolverDsoHandle();
+absl::StatusOr<void*> GetCusparseDsoHandle();
+absl::StatusOr<void*> GetCuptiDsoHandle();
+absl::StatusOr<void*> GetCudnnDsoHandle();
 
-StatusOr<void*> GetRocblasDsoHandle();
-StatusOr<void*> GetMiopenDsoHandle();
-StatusOr<void*> GetHipfftDsoHandle();
-StatusOr<void*> GetRocrandDsoHandle();
-StatusOr<void*> GetRocsolverDsoHandle();
-StatusOr<void*> GetHipsolverDsoHandle();
-StatusOr<void*> GetRoctracerDsoHandle();
-StatusOr<void*> GetHipsparseDsoHandle();
-StatusOr<void*> GetHipblasltDsoHandle();
-StatusOr<void*> GetHipDsoHandle();
+absl::StatusOr<void*> GetRocblasDsoHandle();
+absl::StatusOr<void*> GetMiopenDsoHandle();
+absl::StatusOr<void*> GetHipfftDsoHandle();
+absl::StatusOr<void*> GetRocrandDsoHandle();
+absl::StatusOr<void*> GetRocsolverDsoHandle();
+absl::StatusOr<void*> GetHipsolverDsoHandle();
+absl::StatusOr<void*> GetRoctracerDsoHandle();
+absl::StatusOr<void*> GetHipsparseDsoHandle();
+absl::StatusOr<void*> GetHipblasltDsoHandle();
+absl::StatusOr<void*> GetHipDsoHandle();
 }  // namespace CachedDsoLoader
 
 }  // namespace internal

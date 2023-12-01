@@ -21,7 +21,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tsl/platform/dso_loader.h"
-#include "tsl/platform/env.h"
+#include "tsl/platform/load_library.h"
+#include "tsl/platform/logging.h"
 
 namespace {
 void *GetDsoHandle() {
@@ -39,8 +40,8 @@ void *GetDsoHandle() {
 
 void *LoadSymbol(const char *symbol_name) {
   void *symbol = nullptr;
-  auto env = tsl::Env::Default();
-  env->GetSymbolFromLibrary(GetDsoHandle(), symbol_name, &symbol).IgnoreError();
+  tsl::internal::GetSymbolFromLibrary(GetDsoHandle(), symbol_name, &symbol)
+      .IgnoreError();
   return symbol;
 }
 
