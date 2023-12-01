@@ -4723,34 +4723,28 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
           SpmdBuilder* b, HloInstruction* operand, HloComputation* reduction,
           const std::vector<std::vector<int64_t>>& partition_subgroups,
           int64_t channel_id) {
-        if (partition_subgroups.size() <= 1) {
-          std::vector<ReplicaGroup> groups(num_replicas);
-          // TODO(yuanzx): Unify subgroup definition with AllToAll.
-          for (int64_t i = 0; i < num_replicas; ++i) {
-            groups[i].add_replica_ids(i);
-          }
-          HloComputation* reduction_clone =
-              reduction->parent()->AddComputationAndUnifyNamesAndIds(
-                  reduction->Clone(), false);
-          HloInstruction* all_reduce =
-              b->AddInstruction(HloInstruction::CreateAllReduce(
-                  operand->shape(), {operand}, reduction_clone, groups,
-                  /*constrain_layout=*/false, channel_id,
-                  /*use_global_device_ids=*/false));
-          reduction_clone->SetCollectiveCallInstruction(all_reduce);
-          return all_reduce;
-        }
-
         std::vector<ReplicaGroup> device_groups;
-        device_groups.reserve(partition_subgroups.size() * num_replicas);
-        for (int64_t i = 0; i < num_replicas; ++i) {
-          for (const auto& pgroup : partition_subgroups) {
+        if (partition_subgroups.size() <= 1) {
+          device_groups.reserve(num_replicas);
+          for (int64_t rid = 0; rid < num_replicas; ++rid) {
             device_groups.emplace_back();
-            for (int64_t pid : pgroup) {
-              device_groups.back().add_replica_ids(i * num_partitions + pid);
+            for (int64_t pid = 0; pid < num_partitions; ++pid) {
+              device_groups.back().add_replica_ids(rid * num_partitions + pid);
+            }
+          }
+        } else {
+          device_groups.reserve(partition_subgroups.size() * num_replicas);
+          for (int64_t rid = 0; rid < num_replicas; ++rid) {
+            for (const auto& pgroup : partition_subgroups) {
+              device_groups.emplace_back();
+              for (int64_t pid : pgroup) {
+                device_groups.back().add_replica_ids(rid * num_partitions +
+                                                     pid);
+              }
             }
           }
         }
+
         HloComputation* reduction_clone =
             reduction->parent()->AddComputationAndUnifyNamesAndIds(
                 reduction->Clone(), false);
