@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -51,7 +52,7 @@ class HloPreOrderDFS {
 };
 
 using EinsumDepthMap =
-    absl::flat_hash_map<const HloInstruction*, ShapeTree<int>>;
+    absl::node_hash_map<const HloInstruction*, ShapeTree<int>>;
 
 // The einsum depth is the length of the einsum dependency chain. And we
 // distinguish instructions that are used by root and that are not used by
@@ -145,7 +146,7 @@ class HloValueSemantics {
 };
 
 using HloValueSemanticsMap =
-    absl::flat_hash_map<const HloInstruction*,
+    absl::node_hash_map<const HloInstruction*,
                         ShapeTree<const HloValueSemantics*>>;
 class HloValueSemanticsPropagation;
 

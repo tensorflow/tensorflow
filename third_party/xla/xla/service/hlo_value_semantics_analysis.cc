@@ -314,7 +314,7 @@ Status EinsumDepthAnalysis::HandleGetTupleElement(
         if (operand_depth.IsLeaf(shape_index)) {
           ShapeIndex output_index = shape_index;
           output_index.pop_front();
-          *depth_ptr = std::max(*depth_ptr, depth_tree.element(output_index));
+          *depth_ptr = MergeDepth(*depth_ptr, depth_tree.element(output_index));
         }
       });
   return OkStatus();
