@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_PASSES_QUANTIZATION_PATTERNS_H_
-#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_PASSES_QUANTIZATION_PATTERNS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_PASSES_QUANTIZATION_PATTERN_H_
+#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_PASSES_QUANTIZATION_PATTERN_H_
 
 #include <string>
 #include <type_traits>
@@ -90,7 +90,6 @@ class StableHloQuantizationPattern : public RewritePattern {
       : RewritePattern(RootOpT::getOperationName(), 300, context),
         quant_params_(quant_params) {}
 
- private:
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
     llvm::SmallVector<Operation*, 4> quantizing_ops;
@@ -158,8 +157,8 @@ class StableHloQuantizationPattern : public RewritePattern {
       // Blocklist op is checked in advance for non-dynamic range quantization
       // case.
       if (!quant_params_.quant_spec.weight_quantization &&
-          (ops_blocklist.contains(
-              quantizing_op->getName().getStringRef().str()))) {
+          (ops_blocklist.find(quantizing_op->getName().getStringRef().str()) !=
+           ops_blocklist.end())) {
         return failure();
       }
 
@@ -261,6 +260,9 @@ class StableHloQuantizationPattern : public RewritePattern {
     }
     return success();
   }
+
+ private:
+  QuantPassSpec quant_params_;
 
   // Checks whether the operation is connnected with a quantized composite
   // function. If not, the same-scale op will not be quantized. This decision is
@@ -365,15 +367,8 @@ class StableHloQuantizationPattern : public RewritePattern {
     }
     return has_quantized_types;
   }
-
-  QuantPassSpec quant_params_;
 };
-
-// Gemm Style Op: glossary/gemm.
-// Populates conversion patterns to unfuse batch normalization operations.
-void PopulateFusedGemmStylePatterns(MLIRContext& ctx,
-                                    RewritePatternSet& patterns);
 
 }  // namespace mlir::quant::stablehlo
 
-#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_PASSES_QUANTIZATION_PATTERNS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_PASSES_QUANTIZATION_PATTERN_H_
