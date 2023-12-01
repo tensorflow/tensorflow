@@ -457,6 +457,51 @@ Status EinsumDepthAnalysis::HandleOutfeed(HloInstruction* outfeed) {
   return OkStatus();
 }
 
+Status EinsumDepthAnalysis::HandleCollectivePermuteStart(
+    HloInstruction* collective_permute_start) {
+  auto depth_iter = einsum_depth_map_.find(collective_permute_start);
+  CHECK(depth_iter != einsum_depth_map_.end());
+  const ShapeTree<int>& depth_tree = depth_iter->second;
+  for (int operand_index = 0;
+       operand_index < collective_permute_start->operand_count();
+       ++operand_index) {
+    HloInstruction* operand =
+        collective_permute_start->mutable_operand(operand_index);
+    if (operand_index >= 2) {
+      TF_RETURN_IF_ERROR(SetInstructionDepth(operand, GetMaxDepth(depth_tree)));
+      continue;
+    }
+    auto operand_depth_iter = GetOrCreateDepthTree(operand);
+    ShapeTree<int>& operand_depth = operand_depth_iter->second;
+    SetDepthFromTupleDepth(operand_depth, depth_tree, 1);
+  }
+  return OkStatus();
+}
+
+Status EinsumDepthAnalysis::HandleCollectivePermuteDone(
+    HloInstruction* collective_permute_done) {
+  auto depth_iter = einsum_depth_map_.find(collective_permute_done);
+  CHECK(depth_iter != einsum_depth_map_.end());
+  const ShapeTree<int>& depth_tree = depth_iter->second;
+  auto operand_depth_iter =
+      GetOrCreateDepthTree(collective_permute_done->mutable_operand(0));
+  ShapeTree<int>& operand_depth = operand_depth_iter->second;
+  int max_depth = GetMaxDepth(depth_tree);
+  operand_depth.ForEachMutableElement([&operand_depth, &depth_tree, max_depth](
+                                          const ShapeIndex& index, int* depth) {
+    if (!operand_depth.IsLeaf(index)) {
+      return;
+    }
+    if (index.front() == 0 || index.front() == 1) {
+      ShapeIndex output_index = index;
+      output_index.pop_front();
+      *depth = depth_tree.element(output_index);
+    }
+    *depth = max_depth;
+  });
+  return OkStatus();
+}
+
 std::string HloValueSemanticLabelToString(HloValueSemanticLabel label) {
   switch (label) {
     case HloValueSemanticLabel::kStatic:
@@ -1165,7 +1210,9 @@ Status HloValueSemanticsPropagation::HandleWhile(HloInstruction* xla_while) {
 
 Status HloValueSemanticsPropagation::HandleCustomCall(
     HloInstruction* custom_call) {
-  if (custom_call->custom_call_target() == "Sharding") {
+  if (custom_call->custom_call_target() == "Sharding" ||
+      custom_call->custom_call_target() == "SPMDFullToShardShape" ||
+      custom_call->custom_call_target() == "SPMDShardToFullShape") {
     const ShapeTree<const HloValueSemantics*>& operand_semantics =
         analysis_->GetInstructionSemantics(custom_call->operand(0));
     analysis_->DeepCopyHloValueSemantics(custom_call, operand_semantics);
@@ -1345,11 +1392,52 @@ Status HloValueSemanticsPropagation::HandleAfterAll(HloInstruction* after_all) {
 
 Status HloValueSemanticsPropagation::HandleAsyncStart(
     HloInstruction* async_start) {
-  return Unimplemented("AsyncStart is not supported yet.");
+  const HloValueSemantics* semantics = analysis_->NewHloValueSemantics(
+      HloValueSemanticLabel::kTupleOrToken, {async_start, {}});
+  ShapeTree<const HloValueSemantics*> semantics_shape_tree(async_start->shape(),
+                                                           semantics);
+  for (int operand_index = 0; operand_index < async_start->operand_count();
+       ++operand_index) {
+    HloInstruction* operand = async_start->mutable_operand(operand_index);
+    const ShapeTree<const HloValueSemantics*>& operand_semantics_tree =
+        analysis_->GetInstructionSemantics(operand);
+    analysis_->DeepCopyHloValueSemantics(
+        semantics_shape_tree, operand_semantics_tree, {}, {0, operand_index});
+  }
+  std::vector<int64_t> operand_indices(async_start->operand_count());
+  std::iota(operand_indices.begin(), operand_indices.end(), 0);
+  TF_ASSIGN_OR_RETURN(
+      HloValueSemantics output_semantics,
+      ComputeSemanticsFromOperands(async_start, operand_indices));
+  semantics_shape_tree.ForEachMutableElement(
+      [&output_semantics, &semantics_shape_tree, this, async_start](
+          const ShapeIndex& index, const HloValueSemantics** semantics_ptr) {
+        if (index.empty() || index.front() == 0) {
+          return;
+        }
+        if (!semantics_shape_tree.IsLeaf(index)) {
+          *semantics_ptr = analysis_->NewHloValueSemantics(
+              HloValueSemanticLabel::kTupleOrToken, {async_start, {}});
+          return;
+        }
+        if (index.front() == 1) {
+          *semantics_ptr = AddSemantics(output_semantics);
+          return;
+        }
+        if (index.front() == 2) {
+          *semantics_ptr = analysis_->NewHloValueSemantics(
+              HloValueSemanticLabel::kRandom, {async_start, {}});
+        }
+      });
+  analysis_->SetHloValueSemantics(async_start, semantics_shape_tree);
+  return OkStatus();
 }
 Status HloValueSemanticsPropagation::HandleAsyncDone(
     HloInstruction* async_done) {
-  return Unimplemented("AsyncDone is not supported yet.");
+  const ShapeTree<const HloValueSemantics*>& operand_semantics_tree =
+      analysis_->GetInstructionSemantics(async_done->operand(0));
+  analysis_->DeepCopyHloValueSemantics(async_done, operand_semantics_tree, {1});
+  return OkStatus();
 }
 
 Status HloValueSemanticsPropagation::HandleInfeed(HloInstruction* infeed) {

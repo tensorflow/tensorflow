@@ -85,6 +85,10 @@ class EinsumDepthAnalysis : public DfsHloVisitorWithDefault {
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandleAfterAll(HloInstruction* after_all) override;
   Status HandleOutfeed(HloInstruction* outfeed) override;
+  Status HandleCollectivePermuteStart(
+      HloInstruction* collective_permute_start) override;
+  Status HandleCollectivePermuteDone(
+      HloInstruction* collective_permute_done) override;
   const EinsumDepthMap& GetEinsumDepthMap() const { return einsum_depth_map_; }
 
  private:
