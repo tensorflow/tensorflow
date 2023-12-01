@@ -155,7 +155,12 @@ double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request) {
   return minimum_memory_budget_required_estimate;
 }
 
-// We formulate the auto sharding process as the following ILP problem:
+// Taking an auto-sharding problem (`request`) as an input, calls the OR tools
+// CP-SAT solver and results a solution to the input problem.
+//
+// We formulate the auto sharding process as the following ILP problem
+// (correspondences to the fields of the request parameter are specified in
+// parenthesis):
 // Variables:
 //   s[i]: Sharding strategy one-hot vector.
 //         dim(s[i]) == # sharding strategies of the i-th XLA op
@@ -163,19 +168,22 @@ double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request) {
 //   e[i, j]: Strategy one-hot vector of edge i -> j.
 //            dim(e[i, j]) == dim(s[i]) * dim(s[j])
 // Constants:
-//   N: Number of total XLA ops
-//   M: Memory budget
-//   E: Edge set {(i, j)}
-//   L[t]: Index of live instructions at time t
-//   c[i]: Computation cost vector of instruction i
+//   N: Number of total XLA ops (request.num_nodes)
+//   M: Memory budget (request.memory_budget)
+//   E: Edge set {(i, j)} (request.edges)
+//   L[t]: Index of live instructions at time t (request.live)
+//   c[i]: Computation cost vector of instruction i (request.computation_costs)
 //   d[i]: Communication cost vector of instruction i
-//   m[i]: Memory cost vector of instruction i
+//         (request.communication_costs)
+//   m[i]: Memory cost vector of instruction i (request.memory_costs)
 //         dim(c[i]) == dim(d[i]) == dim(m[i]) == dim(s[i])
 //   r[i, j]: The resharding cost vector of edge i -> j
+//            (request.resharding_costs)
 //            dim(e[i, j]) == dim(r[i, j])
-//   A: Alias set {(i, j)}
+//   A: Alias set {(i, j)} (request.aliases)
 //   v[i, j]: v[i, j](p, q) == 1 if strategy p is different than q, otherwise
 //            v[i, j](p, q) == 0
+//            (request.value_costs)
 //            dim(e[i, j]) == dim(v[i, j])
 // Problem:
 //   Minimize sum_{0 <= i < N} s[i]^T * (c[i] + d[i])
@@ -200,6 +208,16 @@ double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request) {
 // Serialize parameters of the ILP problem as numpy arrays and call the python
 // solver.
 
+// Beyond what is described, note the following:
+// 1. We also enforce that certain HLO ops have the same sharding as some other
+//    HLO ops (think elementwise ops, for example). This information stored in
+//    request.s_follow, where if s_follow[i] >= 0, then instruction i is forced
+//    the share same sharding as s_follow[i].
+// 2. If request.overbudget_coeff is present, we turn the hard memory budget
+//    constraint into a soft constraint instead.
+// 3. If request.makespan_coeff is present, the objective additionally includes
+//    a makespan term. This is experimental and turned off by default.
+// 4. request.max_departures is used only for debugging and can be ignored
 AutoShardingSolverResult CallORToolsSolver(
     const AutoShardingSolverRequest& request) {
   size_t num_edges = request.edges_size();
