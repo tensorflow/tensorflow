@@ -842,6 +842,10 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
     return GetPropagatedDimOrdersForDimAlteringOp(hlo, direction, src_dim_order,
                                                   properties);
   } else if (hlo.opcode() == HloOpcode::kPad) {
+    if (std::holds_alternative<SoftmaxProperties>(properties)) {
+      return "Pad ops are only supported when they are generated as part of "
+             "the split-k transform of dot fusions.";
+    }
     if (direction != TransformDirection::kOutputToInput) {
       return "Unsupported pad direction.";
     }

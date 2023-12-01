@@ -706,6 +706,38 @@ ENTRY main {
   EXPECT_FALSE(analysis.ok());
 }
 
+TEST_F(TritonSoftmaxAnalysisTest, PadWithinTritonSoftmaxIsNotSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule t
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+triton_softmax_computation {
+  param_1 = f32[4,127]{1,0} parameter(0)
+  constant_0 = f32[] constant(0)
+  reduce = f32[4]{0} reduce(param_1,  constant_0), dimensions={1}, to_apply=add
+  broadcast = f32[4,127]{1,0} broadcast(reduce), dimensions={0}
+  ROOT pad = f32[8,127]{1,0} pad(broadcast, constant_0), padding=0_4x0_0
+}
+
+ENTRY main {
+  param_0 = f32[4,127]{1,0} parameter(0)
+  ROOT fusion = f32[8,127]{1,0} fusion(param_0), kind=kCustom,
+    calls=triton_softmax_computation,
+    backend_config={"kind":"__triton_softmax"}
+})"));
+
+  const HloComputation* computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  const auto analysis = TritonFusionAnalysis::Execute(*computation);
+  EXPECT_FALSE(analysis.ok());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
