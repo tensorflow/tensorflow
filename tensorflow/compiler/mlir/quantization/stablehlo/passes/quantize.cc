@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/quantization_pattern.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/quantization_patterns.h"
 
 namespace mlir::quant::stablehlo {
 
@@ -129,6 +129,9 @@ void QuantizePass::runOnOperation() {
   RewritePatternSet patterns(&ctx);
   patterns.add<StableHloQuantization, StableHloQuantizationReverse>(
       &ctx, quant_params);
+
+  // Support quantization for fused patterns containing Gemm Style ops.
+  PopulateFusedGemmStylePatterns(ctx, patterns);
 
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     // There are cases where no rewrites happen even if a pattern matches,
