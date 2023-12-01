@@ -84,6 +84,7 @@ TEST(CommandBufferThunkTest, MemcpyCmd) {
 
   // Execute command buffer thunk and verify that it copied the memory.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);
@@ -96,6 +97,7 @@ TEST(CommandBufferThunkTest, MemcpyCmd) {
 
   // Thunk execution should automatically update underlying command buffer.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   // Copy `b` data back to host.
   std::fill(dst.begin(), dst.end(), 0);
@@ -151,6 +153,7 @@ TEST(CommandBufferThunkTest, AllocateCmd) {
 
   // Execute command buffer thunk and verify that it copied the memory.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);
@@ -204,6 +207,7 @@ TEST(CommandBufferThunkTest, LaunchCmd) {
 
   // Execute command buffer thunk and verify that it added the value.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);
@@ -220,6 +224,7 @@ TEST(CommandBufferThunkTest, LaunchCmd) {
 
   // Thunk execution should automatically update underlying command buffer.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   // Copy `c` data back to host.
   std::fill(dst.begin(), dst.end(), 0);
@@ -232,6 +237,7 @@ TEST(CommandBufferThunkTest, LaunchCmd) {
 
   // Thunk execution should automatically update underlying command buffer.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   // Copy `c` data back to host.
   std::fill(dst.begin(), dst.end(), 0);
@@ -302,6 +308,7 @@ TEST(CommandBufferThunkTest, GemmCmd) {
 
   // Execute command buffer thunk and verify that it executed a GEMM.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   // Copy `out` data back to host.
   std::vector<float> dst(6, 0);
@@ -319,6 +326,7 @@ TEST(CommandBufferThunkTest, GemmCmd) {
 
   // Thunk execution should automatically update underlying command buffer.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   // Copy `updated_out` data back to host.
   std::fill(dst.begin(), dst.end(), 0);
@@ -331,6 +339,7 @@ TEST(CommandBufferThunkTest, GemmCmd) {
 
   // Thunk execution should automatically update underlying command buffer.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   // Copy `updated_out` data back to host.
   std::fill(dst.begin(), dst.end(), 0);
@@ -394,6 +403,7 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
 
   // Execute command buffer thunk and verify that it added the value.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);
@@ -417,6 +427,7 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
 
   // Thunk execution should automatically update underlying command buffer.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   // Copy `b` data back to host.
   std::fill(dst.begin(), dst.end(), 0);
@@ -433,6 +444,7 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
 
   // Thunk execution should automatically update underlying command buffer.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   // Copy `b` data back to host.
   std::fill(dst.begin(), dst.end(), 0);
@@ -501,6 +513,7 @@ TEST(CommandBufferThunkTest, IfCmd) {
 
   // Execute command buffer thunk and verify that it added the value.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);
@@ -517,12 +530,250 @@ TEST(CommandBufferThunkTest, IfCmd) {
 
   // Thunk execution should automatically update underlying command buffer.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   // Copy `c` data back to host.
   std::fill(dst.begin(), dst.end(), 0);
   stream.ThenMemcpy(dst.data(), c, byte_length);
 
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
+}
+
+TEST(CommandBufferThunkTest, IfElseCmd) {
+  se::StreamExecutor* executor = CudaExecutor();
+  if (!se::CommandBuffer::SupportsConditionalCommands(executor->platform())) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
+
+  se::Stream stream(executor);
+  stream.Init();
+  ASSERT_TRUE(stream.ok());
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: pred=true, a=42, b=0
+  se::DeviceMemory<bool> pred = executor->AllocateArray<bool>(1, 0);
+  se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+
+  constexpr bool kTrue = true;
+  stream.ThenMemcpy(&pred, &kTrue, 1);
+  stream.ThenMemset32(&a, 42, byte_length);
+  stream.ThenMemZero(&b, byte_length);
+
+  // Prepare buffer allocations for recording command buffer.
+  BufferAllocation alloc_p(/*index=*/0, 1, /*color=*/0);
+  BufferAllocation alloc_a(/*index=*/1, byte_length, /*color=*/0);
+  BufferAllocation alloc_b(/*index=*/2, byte_length, /*color=*/0);
+
+  BufferAllocation::Slice slice_p(&alloc_p, 0, 1);
+  BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
+  BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
+
+  // Prepare commands sequence for `then` & `else` branches.
+  CommandBufferCmdSequence then_commands;
+  CommandBufferCmdSequence else_commands;
+
+  {  // Then: b = a + a
+    auto args = {slice_a, slice_a, slice_b};
+    then_commands.Emplace<LaunchCmd>("add", args, LaunchDimensions(1, 4),
+                                     /*shmem_bytes=*/0);
+  }
+
+  {  // Else: b = b + b
+    auto args = {slice_b, slice_b, slice_b};
+    else_commands.Emplace<LaunchCmd>("add", args, LaunchDimensions(1, 4),
+                                     /*shmem_bytes=*/0);
+  }
+
+  // Prepare commands sequence for thunk.
+  CommandBufferCmdSequence commands;
+  commands.Emplace<IfElseCmd>(slice_p, std::move(then_commands),
+                              std::move(else_commands));
+
+  // Construct a thunk with command sequence.
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
+
+  ServiceExecutableRunOptions run_options;
+  BufferAllocations allocations({pred, a, b}, 0, executor->GetAllocator());
+  Thunk::ExecuteParams params(run_options, allocations, &stream, {});
+
+  CommandBufferCmd::ExecutableSource source = {
+      /*text=*/se::cuda::internal::kAddI32Kernel, /*binary=*/{}};
+  TF_ASSERT_OK(thunk.Initialize(executor, source));
+
+  // Execute command buffer thunk and verify that it added the value.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
+
+  // Copy `b` data back to host.
+  std::vector<int32_t> dst(4, 0);
+  stream.ThenMemcpy(dst.data(), b, byte_length);
+
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
+
+  // Change branch to `else` and check that it updated the `b` buffer.
+  constexpr bool kFalse = false;
+  stream.ThenMemcpy(&pred, &kFalse, 1);
+
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
+
+  stream.ThenMemcpy(dst.data(), b, byte_length);
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 2 * (42 + 42)));
+}
+
+TEST(CommandBufferThunkTest, CaseCmd) {
+  se::StreamExecutor* executor = CudaExecutor();
+  if (!se::CommandBuffer::SupportsConditionalCommands(executor->platform())) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
+
+  se::Stream stream(executor);
+  stream.Init();
+  ASSERT_TRUE(stream.ok());
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: index=0, a=42, b=0
+  se::DeviceMemory<int32_t> index = executor->AllocateArray<int32_t>(1, 0);
+  se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+
+  stream.ThenMemset32(&index, 0, sizeof(int32_t));
+  stream.ThenMemset32(&a, 42, byte_length);
+  stream.ThenMemZero(&b, byte_length);
+
+  // Prepare buffer allocations for recording command buffer.
+  BufferAllocation alloc_i(/*index=*/0, 1, /*color=*/0);
+  BufferAllocation alloc_a(/*index=*/1, byte_length, /*color=*/0);
+  BufferAllocation alloc_b(/*index=*/2, byte_length, /*color=*/0);
+
+  BufferAllocation::Slice slice_i(&alloc_i, 0, sizeof(int32_t));
+  BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
+  BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
+
+  // Prepare commands sequence for branches.
+  std::vector<CommandBufferCmdSequence> branches(2);
+
+  {  // Case 0: b = a + a
+    auto args = {slice_a, slice_a, slice_b};
+    branches[0].Emplace<LaunchCmd>("add", args, LaunchDimensions(1, 4),
+                                   /*shmem_bytes=*/0);
+  }
+
+  {  // Case 1: b = b + b
+    auto args = {slice_b, slice_b, slice_b};
+    branches[1].Emplace<LaunchCmd>("add", args, LaunchDimensions(1, 4),
+                                   /*shmem_bytes=*/0);
+  }
+
+  // Prepare commands sequence for thunk.
+  CommandBufferCmdSequence commands;
+  commands.Emplace<CaseCmd>(slice_i, std::move(branches));
+
+  // Construct a thunk with command sequence.
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
+
+  ServiceExecutableRunOptions run_options;
+  BufferAllocations allocations({index, a, b}, 0, executor->GetAllocator());
+  Thunk::ExecuteParams params(run_options, allocations, &stream, {});
+
+  CommandBufferCmd::ExecutableSource source = {
+      /*text=*/se::cuda::internal::kAddI32Kernel, /*binary=*/{}};
+  TF_ASSERT_OK(thunk.Initialize(executor, source));
+
+  // Execute command buffer thunk and verify that it added the value.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
+
+  // Copy `b` data back to host.
+  std::vector<int32_t> dst(4, 0);
+  stream.ThenMemcpy(dst.data(), b, byte_length);
+
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
+
+  // Change `index` to `1` and check that it updated the `b` buffer.
+  stream.ThenMemset32(&index, 1, sizeof(int32_t));
+
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
+
+  stream.ThenMemcpy(dst.data(), b, byte_length);
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 2 * (42 + 42)));
+}
+
+TEST(CommandBufferThunkTest, ForCmd) {
+  se::StreamExecutor* executor = CudaExecutor();
+  if (!se::CommandBuffer::SupportsConditionalCommands(executor->platform())) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
+
+  se::Stream stream(executor);
+  stream.Init();
+  ASSERT_TRUE(stream.ok());
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: loop_cnt=0, a=1, b=0
+  se::DeviceMemory<int32_t> loop_cnt = executor->AllocateArray<int32_t>(1, 0);
+  se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+
+  stream.ThenMemset32(&loop_cnt, 0, sizeof(int32_t));
+  stream.ThenMemset32(&a, 1, byte_length);
+  stream.ThenMemZero(&b, byte_length);
+
+  // Prepare buffer allocations for recording command buffer.
+  BufferAllocation alloc_cnt(/*index=*/0, 1, /*color=*/0);
+  BufferAllocation alloc_a(/*index=*/1, byte_length, /*color=*/0);
+  BufferAllocation alloc_b(/*index=*/2, byte_length, /*color=*/0);
+
+  BufferAllocation::Slice slice_cnt(&alloc_cnt, 0, sizeof(int32_t));
+  BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
+  BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
+
+  auto args = {slice_a, slice_b, slice_b};  // b = a + b
+
+  // Prepare commands sequence for loop `body`.
+  CommandBufferCmdSequence body_commands;
+  body_commands.Emplace<LaunchCmd>("add", args, LaunchDimensions(1, 4),
+                                   /*shmem_bytes=*/0);
+
+  // Prepare commands sequence for thunk.
+  CommandBufferCmdSequence commands;
+  commands.Emplace<ForCmd>(/*num_iterations=*/10, slice_cnt,
+                           std::move(body_commands));
+
+  // Construct a thunk with command sequence.
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
+
+  ServiceExecutableRunOptions run_options;
+  BufferAllocations allocations({loop_cnt, a, b}, 0, executor->GetAllocator());
+  Thunk::ExecuteParams params(run_options, allocations, &stream, {});
+
+  CommandBufferCmd::ExecutableSource source = {
+      /*text=*/se::cuda::internal::kAddI32Kernel, /*binary=*/{}};
+  TF_ASSERT_OK(thunk.Initialize(executor, source));
+
+  // Execute command buffer thunk and verify that it added the value 10 times.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
+
+  // Copy `b` data back to host.
+  std::vector<int32_t> dst(4, 0);
+  stream.ThenMemcpy(dst.data(), b, byte_length);
+
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 10));
+}
+
+TEST(CommandBufferThunkTest, WhileCmd) {
+  // TODO(ezhulenev): Find a way to test WhileCmd: add a test only TraceCmd that
+  // could allow us trace custom kernels to update while loop iterations. Or
+  // maybe add a CustomLaunchCmd and wrap loop update into custom kernel.
 }
 
 }  // namespace xla::gpu

@@ -197,7 +197,7 @@ class MemcpyDeviceToDeviceCmd : public CommandBufferCmd {
 
 class IfCmd : public CommandBufferCmd {
  public:
-  IfCmd(BufferAllocation::Slice pred, CommandBufferCmdSequence then_cmds);
+  IfCmd(BufferAllocation::Slice pred, CommandBufferCmdSequence then_commands);
 
   Status Initialize(se::StreamExecutor* executor,
                     ExecutableSource source) override;
@@ -209,7 +209,99 @@ class IfCmd : public CommandBufferCmd {
 
  private:
   BufferAllocation::Slice pred_;
-  CommandBufferCmdSequence then_cmds_;
+  CommandBufferCmdSequence then_commands_;
+};
+
+//===----------------------------------------------------------------------===//
+// IfElseCmd
+//===----------------------------------------------------------------------===//
+
+class IfElseCmd : public CommandBufferCmd {
+ public:
+  IfElseCmd(BufferAllocation::Slice pred,
+            CommandBufferCmdSequence then_commands,
+            CommandBufferCmdSequence else_commands);
+
+  Status Initialize(se::StreamExecutor* executor,
+                    ExecutableSource source) override;
+
+  Status Record(const RecordParams& params,
+                se::CommandBuffer* command_buffer) override;
+
+  Slices slices() override;
+
+ private:
+  BufferAllocation::Slice pred_;
+  CommandBufferCmdSequence then_commands_;
+  CommandBufferCmdSequence else_commands_;
+};
+
+//===----------------------------------------------------------------------===//
+// CaseCmd
+//===----------------------------------------------------------------------===//
+
+class CaseCmd : public CommandBufferCmd {
+ public:
+  CaseCmd(BufferAllocation::Slice index,
+          std::vector<CommandBufferCmdSequence> branches_commands);
+
+  Status Initialize(se::StreamExecutor* executor,
+                    ExecutableSource source) override;
+
+  Status Record(const RecordParams& params,
+                se::CommandBuffer* command_buffer) override;
+
+  Slices slices() override;
+
+ private:
+  BufferAllocation::Slice index_;
+  std::vector<CommandBufferCmdSequence> branches_commands_;
+};
+
+//===----------------------------------------------------------------------===//
+// ForCmd
+//===----------------------------------------------------------------------===//
+
+class ForCmd : public CommandBufferCmd {
+ public:
+  ForCmd(int32_t num_iterations, BufferAllocation::Slice loop_counter,
+         CommandBufferCmdSequence body_commands);
+
+  Status Initialize(se::StreamExecutor* executor,
+                    ExecutableSource source) override;
+
+  Status Record(const RecordParams& params,
+                se::CommandBuffer* command_buffer) override;
+
+  Slices slices() override;
+
+ private:
+  int32_t num_iterations_;
+  BufferAllocation::Slice loop_counter_;
+  CommandBufferCmdSequence body_commands_;
+};
+
+//===----------------------------------------------------------------------===//
+// WhileCmd
+//===----------------------------------------------------------------------===//
+
+class WhileCmd : public CommandBufferCmd {
+ public:
+  WhileCmd(BufferAllocation::Slice pred, CommandBufferCmdSequence cond_commands,
+           CommandBufferCmdSequence body_commands);
+
+  Status Initialize(se::StreamExecutor* executor,
+                    ExecutableSource source) override;
+
+  Status Record(const RecordParams& params,
+                se::CommandBuffer* command_buffer) override;
+
+  Slices slices() override;
+
+ private:
+  BufferAllocation::Slice pred_;
+  CommandBufferCmdSequence cond_commands_;
+  CommandBufferCmdSequence body_commands_;
 };
 
 //===----------------------------------------------------------------------===//

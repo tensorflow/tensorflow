@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -41,6 +42,27 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
+
+// Creates condition command buffer builder from a cmd sequence.
+static se::CommandBuffer::Builder ConditionBuilder(
+    CommandBufferCmdSequence* commands,
+    const CommandBufferCmd::RecordParams* params) {
+  return [=](se::CommandBuffer* command_buffer) {
+    return commands->Record(*params, command_buffer,
+                            CommandBufferCmdSequence::RecordMode::kConditional);
+  };
+}
+
+// Creates condition command buffer builders from a span of cmd sequences.
+static std::vector<se::CommandBuffer::Builder> ConditionBuilders(
+    absl::Span<CommandBufferCmdSequence> commands,
+    const CommandBufferCmd::RecordParams* params) {
+  std::vector<se::CommandBuffer::Builder> builders;
+  for (CommandBufferCmdSequence& cmd : commands) {
+    builders.push_back(ConditionBuilder(&cmd, params));
+  }
+  return builders;
+}
 
 //===----------------------------------------------------------------------===//
 // CommandBufferCmdSequence
@@ -186,12 +208,13 @@ CommandBufferCmd::Slices MemcpyDeviceToDeviceCmd::slices() {
 // IfCmd
 //===----------------------------------------------------------------------===//
 
-IfCmd::IfCmd(BufferAllocation::Slice pred, CommandBufferCmdSequence then_cmds)
-    : pred_(pred), then_cmds_(std::move(then_cmds)) {}
+IfCmd::IfCmd(BufferAllocation::Slice pred,
+             CommandBufferCmdSequence then_commands)
+    : pred_(pred), then_commands_(std::move(then_commands)) {}
 
 Status IfCmd::Initialize(se::StreamExecutor* executor,
                          ExecutableSource source) {
-  return then_cmds_.Initialize(executor, source);
+  return then_commands_.Initialize(executor, source);
 }
 
 Status IfCmd::Record(const RecordParams& params,
@@ -199,17 +222,146 @@ Status IfCmd::Record(const RecordParams& params,
   se::DeviceMemoryBase pred =
       params.buffer_allocations->GetDeviceAddress(pred_);
 
-  return command_buffer->If(
-      params.executor, se::DeviceMemory<bool>(pred),
-      [&](se::CommandBuffer* then_cmd_buffer) {
-        return then_cmds_.Record(
-            params, then_cmd_buffer,
-            CommandBufferCmdSequence::RecordMode::kConditional);
-      });
+  return command_buffer->If(params.executor, se::DeviceMemory<bool>(pred),
+                            ConditionBuilder(&then_commands_, &params));
 }
 
 CommandBufferCmd::Slices IfCmd::slices() {
-  auto& slices = then_cmds_.slices();
+  absl::flat_hash_set<BufferAllocation::Slice> slices = {pred_};
+  slices.insert(then_commands_.slices().begin(), then_commands_.slices().end());
+  return {slices.begin(), slices.end()};
+}
+
+//===----------------------------------------------------------------------===//
+// IfElseCmd
+//===----------------------------------------------------------------------===//
+
+IfElseCmd::IfElseCmd(BufferAllocation::Slice pred,
+                     CommandBufferCmdSequence then_commands,
+                     CommandBufferCmdSequence else_commands)
+    : pred_(pred),
+      then_commands_(std::move(then_commands)),
+      else_commands_(std::move(else_commands)) {}
+
+Status IfElseCmd::Initialize(se::StreamExecutor* executor,
+                             ExecutableSource source) {
+  TF_RETURN_IF_ERROR(then_commands_.Initialize(executor, source));
+  TF_RETURN_IF_ERROR(else_commands_.Initialize(executor, source));
+  return OkStatus();
+}
+
+Status IfElseCmd::Record(const RecordParams& params,
+                         se::CommandBuffer* command_buffer) {
+  se::DeviceMemoryBase pred =
+      params.buffer_allocations->GetDeviceAddress(pred_);
+
+  return command_buffer->IfElse(params.executor, se::DeviceMemory<bool>(pred),
+                                ConditionBuilder(&then_commands_, &params),
+                                ConditionBuilder(&else_commands_, &params));
+}
+
+CommandBufferCmd::Slices IfElseCmd::slices() {
+  absl::flat_hash_set<BufferAllocation::Slice> slices = {pred_};
+  slices.insert(then_commands_.slices().begin(), then_commands_.slices().end());
+  slices.insert(else_commands_.slices().begin(), else_commands_.slices().end());
+  return {slices.begin(), slices.end()};
+}
+
+//===----------------------------------------------------------------------===//
+// CaseCmd
+//===----------------------------------------------------------------------===//
+
+CaseCmd::CaseCmd(BufferAllocation::Slice index,
+                 std::vector<CommandBufferCmdSequence> branches_commands)
+    : index_(index), branches_commands_(std::move(branches_commands)) {}
+
+Status CaseCmd::Initialize(se::StreamExecutor* executor,
+                           ExecutableSource source) {
+  for (auto& branch : branches_commands_) {
+    TF_RETURN_IF_ERROR(branch.Initialize(executor, source));
+  }
+  return OkStatus();
+}
+
+Status CaseCmd::Record(const RecordParams& params,
+                       se::CommandBuffer* command_buffer) {
+  se::DeviceMemoryBase index =
+      params.buffer_allocations->GetDeviceAddress(index_);
+
+  return command_buffer->Case(
+      params.executor, se::DeviceMemory<int32_t>(index),
+      ConditionBuilders(absl::MakeSpan(branches_commands_), &params));
+}
+
+CommandBufferCmd::Slices CaseCmd::slices() {
+  absl::flat_hash_set<BufferAllocation::Slice> slices = {index_};
+  for (auto& branch : branches_commands_) {
+    slices.insert(branch.slices().begin(), branch.slices().end());
+  }
+  return {slices.begin(), slices.end()};
+}
+
+//===----------------------------------------------------------------------===//
+// ForCmd
+//===----------------------------------------------------------------------===//
+
+ForCmd::ForCmd(int32_t num_iterations, BufferAllocation::Slice loop_counter,
+               CommandBufferCmdSequence body_commands)
+    : num_iterations_(num_iterations),
+      loop_counter_(loop_counter),
+      body_commands_(std::move(body_commands)) {}
+
+Status ForCmd::Initialize(se::StreamExecutor* executor,
+                          ExecutableSource source) {
+  return body_commands_.Initialize(executor, source);
+}
+
+Status ForCmd::Record(const RecordParams& params,
+                      se::CommandBuffer* command_buffer) {
+  se::DeviceMemoryBase loop_counter =
+      params.buffer_allocations->GetDeviceAddress(loop_counter_);
+
+  return command_buffer->For(params.executor, num_iterations_,
+                             se::DeviceMemory<int32_t>(loop_counter),
+                             ConditionBuilder(&body_commands_, &params));
+}
+
+CommandBufferCmd::Slices ForCmd::slices() {
+  absl::flat_hash_set<BufferAllocation::Slice> slices = {loop_counter_};
+  slices.insert(body_commands_.slices().begin(), body_commands_.slices().end());
+  return {slices.begin(), slices.end()};
+}
+
+//===----------------------------------------------------------------------===//
+// WhileCmd
+//===----------------------------------------------------------------------===//
+
+WhileCmd::WhileCmd(BufferAllocation::Slice pred,
+                   CommandBufferCmdSequence cond_commands,
+                   CommandBufferCmdSequence body_commands)
+    : pred_(pred),
+      cond_commands_(std::move(cond_commands)),
+      body_commands_(std::move(body_commands)) {}
+
+Status WhileCmd::Initialize(se::StreamExecutor* executor,
+                            ExecutableSource source) {
+  return body_commands_.Initialize(executor, source);
+}
+
+Status WhileCmd::Record(const RecordParams& params,
+                        se::CommandBuffer* command_buffer) {
+  se::DeviceMemoryBase pred =
+      params.buffer_allocations->GetDeviceAddress(pred_);
+
+  return command_buffer->While(params.executor, se::DeviceMemory<bool>(pred),
+                               ConditionBuilder(&cond_commands_, &params),
+                               ConditionBuilder(&body_commands_, &params));
+}
+
+CommandBufferCmd::Slices WhileCmd::slices() {
+  absl::flat_hash_set<BufferAllocation::Slice> slices = {pred_};
+  slices.insert(cond_commands_.slices().begin(), cond_commands_.slices().end());
+  slices.insert(body_commands_.slices().begin(), body_commands_.slices().end());
   return {slices.begin(), slices.end()};
 }
 

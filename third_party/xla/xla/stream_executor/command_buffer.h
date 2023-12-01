@@ -163,7 +163,7 @@ class CommandBuffer {
   // Adds a conditional operation that will execute a command buffer constructed
   // by the `cond_builder` that must update `pred` value, and then depending on
   // the value might execute command buffer constructed by `body_builder` and
-  // `cond_builder`. Will continue while `pred` value (which is continously
+  // `cond_builder`. Will continue while `pred` value (which is continuously
   // updated by `cond_builder`) is `true`.
   //
   // In pseudocode:
