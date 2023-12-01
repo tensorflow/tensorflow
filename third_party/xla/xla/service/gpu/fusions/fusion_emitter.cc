@@ -15,12 +15,15 @@ limitations under the License.
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Argument.h"
@@ -33,6 +36,7 @@ limitations under the License.
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -203,9 +207,13 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
               ir_emitter_context, suggested_kernel_name,
               kernel_arguments.args(), fusion.operand_count(), launch_dims,
               builder);
-          TF_RETURN_IF_ERROR(EmitKernel(ir_emitter_context, elemental_emitter,
-                                        fusion, launch_dims, std::move(inputs),
-                                        std::move(outputs), builder, i));
+          if (ir_emitter_context.emit_kernels()) {
+            TF_RETURN_IF_ERROR(EmitKernel(
+                ir_emitter_context, elemental_emitter, fusion, launch_dims,
+                std::move(inputs), std::move(outputs), builder, i));
+          } else {
+            VLOG(3) << "Skipped kernel compilation: " << suggested_kernel_name;
+          }
           // TODO(jreiffers): Return shmem_bytes from EmitKernel when
           // converting the Triton emitters to this infrastructure.
           return KernelReuseCache::Entry{kernel->getName().str(), launch_dims,

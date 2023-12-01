@@ -373,7 +373,7 @@ StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   IrEmitterContext ir_emitter_context(
       hlo_module, results.buffer_assignment.get(), platform_name,
       gpu_device_info, mlir_context.get(), results.llvm_module.get(),
-      emit_from_hlo);
+      emit_from_hlo, /*emit_kernels=*/true);
 
   std::vector<BufferAllocation*> allocations;
   if (emit_from_hlo) {

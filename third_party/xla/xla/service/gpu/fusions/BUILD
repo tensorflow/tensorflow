@@ -35,6 +35,7 @@ cc_library(
     hdrs = ["fusion_emitter.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo:lhlo",
         "//xla/service:elemental_ir_emitter",
@@ -48,6 +49,8 @@ cc_library(
         "//xla/service/gpu:thunk",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
