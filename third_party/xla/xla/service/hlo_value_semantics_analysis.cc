@@ -371,7 +371,7 @@ Status EinsumDepthAnalysis::HandleCustomCall(HloInstruction* custom_call) {
 Status EinsumDepthAnalysis::HandleWhile(HloInstruction* xla_while) {
   auto depth_iter = einsum_depth_map_.find(xla_while);
   CHECK(depth_iter != einsum_depth_map_.end());
-  const ShapeTree<int> depth_tree = depth_iter->second;
+  const ShapeTree<int>& depth_tree = depth_iter->second;
   int max_depth = GetMaxDepth(depth_tree);
   HloComputation* condition_computation = xla_while->while_condition();
   HloInstruction* condition_root = condition_computation->root_instruction();
@@ -379,31 +379,36 @@ Status EinsumDepthAnalysis::HandleWhile(HloInstruction* xla_while) {
   TF_RETURN_IF_ERROR(HandleCalledComputation(
       *condition_computation, condition_depth, xla_while->operands()));
   HloComputation* body_computation = xla_while->while_body();
-  TF_RETURN_IF_ERROR(HandleCalledComputation(*body_computation, depth_tree,
-                                             xla_while->operands()));
-  // Elements of while loop outputs may only be used within the while loop.
-  // Set the depth of the while body outputs to have the max of their original
-  // depth and their corresponding operand depth if their original depth was
-  // negative. Then recompute while loop instruction depths.
-  auto body_depth_iter =
+  bool run_depth_propagation_on_body = true;
+  const ShapeTree<int>* root_depth_ptr = &depth_tree;
+  auto root_depth_iter =
       GetOrCreateDepthTree(body_computation->root_instruction());
-  ShapeTree<int>& body_depth = body_depth_iter->second;
-  // Note: while body computations have a single parameter. See
-  // ShapeVerifier::HandleWhile.
-  HloInstruction* operand = body_computation->parameter_instruction(0);
-  auto operand_depth = GetOrCreateDepthTree(operand)->second;
-  body_depth.ForEachMutableElement(
-      [&body_depth, &operand_depth](const ShapeIndex& shape_index,
-                                    int* depth_ptr) {
-        if (body_depth.IsLeaf(shape_index)) {
-          if (body_depth.element(shape_index) < 0 &&
-              operand_depth.element(shape_index) >= 0) {
-            *depth_ptr = 0;
+  ShapeTree<int>& root_depth = root_depth_iter->second;
+  while (run_depth_propagation_on_body) {
+    run_depth_propagation_on_body = false;
+    TF_RETURN_IF_ERROR(HandleCalledComputation(
+        *body_computation, *root_depth_ptr, xla_while->operands()));
+    // Elements of while loop outputs may only be used within the while loop.
+    // If such elements exist, we set its root depth to it operand depth. Then
+    // recompute while loop instruction depths.
+    HloInstruction* operand = body_computation->parameter_instruction(0);
+    const ShapeTree<int>& operand_depth = GetOrCreateDepthTree(operand)->second;
+
+    root_depth.ForEachMutableElement(
+        [&run_depth_propagation_on_body, &root_depth, &operand_depth](
+            const ShapeIndex& shape_index, int* depth_ptr) {
+          if (!root_depth.IsLeaf(shape_index)) {
+            return;
           }
-        }
-      });
-  return HandleCalledComputation(*body_computation, body_depth,
-                                 xla_while->operands());
+          if (root_depth.element(shape_index) < 0 &&
+              operand_depth.element(shape_index) >= 0) {
+            *depth_ptr = operand_depth.element(shape_index);
+            run_depth_propagation_on_body = true;
+          }
+        });
+    root_depth_ptr = &root_depth;
+  }
+  return OkStatus();
 }
 
 Status EinsumDepthAnalysis::HandleConditional(HloInstruction* conditional) {
