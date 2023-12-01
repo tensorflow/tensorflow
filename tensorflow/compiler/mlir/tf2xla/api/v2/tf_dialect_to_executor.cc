@@ -126,6 +126,7 @@ tensorflow::Status ExportFromTensorflowDialectToExecutor(
     ModuleOp module, llvm::StringRef module_name) {
   PassManager tf_to_executor(module.getContext());
   ::tensorflow::applyTensorflowAndCLOptions(tf_to_executor);
+  tf_to_executor.enableVerifier();
   AddTfDialectToExecutorPasses(tf_to_executor);
 
   if (VLOG_IS_ON(1) ||
