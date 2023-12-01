@@ -1436,6 +1436,9 @@ class HloInstruction {
   Status ReplaceOperandWithDifferentShape(int64_t operand_num,
                                           HloInstruction* new_operand);
 
+  // Decomposes fusion back to individual parts.
+  Status Defuse();
+
   // Replaces all uses of this instruction with the new producer. If
   // new_producer is a user of this instruction then new_producer remains a use
   // of this instruction to avoid introducing cycles into the graph.

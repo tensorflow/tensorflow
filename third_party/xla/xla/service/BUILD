@@ -6117,6 +6117,39 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "while_loop_fusible_sinking",
+    srcs = ["while_loop_fusible_sinking.cc"],
+    hdrs = ["while_loop_fusible_sinking.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":call_graph",
+        ":hlo_pass",
+        ":while_util",
+        "//xla:literal_util",
+        "//xla:statusor",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@local_tsl//tsl/platform:errors",
+    ],
+)
+
+xla_cc_test(
+    name = "while_loop_fusible_sinking_test",
+    srcs = ["while_loop_fusible_sinking_test.cc"],
+    deps = [
+        ":while_loop_fusible_sinking",
+        "//xla:test",
+        "//xla/hlo/utils:hlo_matchers",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
+    ],
+)
+
+cc_library(
     name = "despecializer",
     srcs = ["despecializer.cc"],
     hdrs = ["despecializer.h"],
