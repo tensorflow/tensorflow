@@ -39,6 +39,10 @@ exports_files([
     "serialization_utils.h",
     "split_utils.cc",
     "split_utils.h",
+    "file_logger_client_no_op.h",
+    "file_logger_client_no_op.cc",
+    "file_logger_client_interface.h",
+    "file_logger_client_interface.cc",
     "stats_utils.cc",
     "stats_utils.h",
     "tfdataz_metrics.h",
@@ -632,6 +636,8 @@ cc_library(
     hdrs = ["utils.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
+        ":file_logger_client_interface",
+        ":file_logger_client_no_op",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -639,10 +645,25 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "utils_test",
+    srcs = ["utils_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
+    deps = [
+        ":file_logger_client_interface",
+        ":file_logger_client_no_op",
+        ":utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "file_logger_client_interface",
     hdrs = ["file_logger_client_interface.h"],
-    # copybara:uncomment visibility = ["//learning/processing/tf_data_logger/client:__subpackages__"],
+    visibility = [
+        "//learning/processing/tf_data_logger/client:__subpackages__",
+        "//tensorflow:internal",
+    ],
 )
 
 cc_library(

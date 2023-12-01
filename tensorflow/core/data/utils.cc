@@ -14,11 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/utils.h"
 
+#include <memory>
 #include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "tensorflow/core/data/file_logger_client_interface.h"
+#include "tensorflow/core/data/file_logger_client_no_op.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 
@@ -42,6 +45,10 @@ std::string LocalityOptimizedPath(const std::string& path) { return path; }
 absl::StatusOr<bool> DisableCompressionAtRuntime(
     const std::string& data_transfer_protocol, DeploymentMode deployment_mode) {
   return false;
+}
+
+std::unique_ptr<FileLoggerClientInterface> CreateFileLoggerClient() {
+  return std::make_unique<FileLoggerClientNoOp>();
 }
 
 }  // namespace data
