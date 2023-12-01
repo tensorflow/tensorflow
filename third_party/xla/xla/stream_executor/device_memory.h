@@ -29,6 +29,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
+#include "absl/log/check.h"
 #include "xla/stream_executor/platform/port.h"
 
 namespace stream_executor {
@@ -89,6 +90,18 @@ class DeviceMemoryBase {
     return opaque() == other.opaque() && size() == other.size();
   }
 
+  // Creates a memory region (slice) inside another allocated memory region.
+  // Offset and size are in bytes.
+  DeviceMemoryBase GetByteSlice(uint64_t offset_bytes, uint64_t size_bytes) {
+    DCHECK(offset_bytes + size_bytes <= size_)
+        << "requested slice allocation (offset + size) is greater "
+        << "than parent allocation size: (" << offset_bytes << " + "
+        << size_bytes << ") vs. (" << size_ << ")";
+
+    return DeviceMemoryBase(
+        reinterpret_cast<std::byte *>(opaque_) + offset_bytes, size_bytes);
+  }
+
  protected:
   friend class StreamExecutor;
 
@@ -139,11 +152,19 @@ class DeviceMemory final : public DeviceMemoryBase {
   // Returns whether this is a single-element allocation.
   bool IsScalar() const { return ElementCount() == 1; }
 
-  // Create a typed area of DeviceMemory with a given opaque pointer and the
+  // Creates a typed area of DeviceMemory with a given opaque pointer and the
   // quantity of bytes in the allocation. This function is broken out to
   // distinguish bytes from an element count.
   static DeviceMemory<ElemT> MakeFromByteSize(void *opaque, uint64_t bytes) {
     return DeviceMemory<ElemT>(opaque, bytes);
+  }
+
+  // Creates a memory region (slice) inside another allocated memory region.
+  // Offset and size are specified in terms of ElemT elements.
+  DeviceMemory<ElemT> GetSlice(uint64_t element_offset,
+                               uint64_t element_count) {
+    return DeviceMemory<ElemT>(GetByteSlice(sizeof(ElemT) * element_offset,
+                                            sizeof(ElemT) * element_count));
   }
 
   // Resets the DeviceMemory data, in MakeFromByteSize fashion.
