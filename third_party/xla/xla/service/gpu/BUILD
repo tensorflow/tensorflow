@@ -1018,6 +1018,7 @@ cc_library(
         "//xla/service/gpu/kernels:custom_kernel",
         "//xla/service/gpu/runtime:executable",
         "//xla/service/gpu/runtime:support",
+        "//xla/service/gpu/runtime:tracing",
         "//xla/service/gpu/runtime3:custom_call_thunk",
         "//xla/service/gpu/runtime3:fft_thunk",
         "//xla/stream_executor",

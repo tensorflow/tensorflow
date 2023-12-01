@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
+#include "xla/service/gpu/runtime/annotation.h"
 #include "xla/service/gpu/runtime/executable.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/hlo_execution_profile.h"
@@ -306,6 +307,8 @@ class GpuExecutable : public Executable {
   //
   // This object is also used for dumping debug info.
   std::unique_ptr<const xla::BufferAssignment> buffer_assignment_;
+
+  std::optional<ModuleAnnotations> annotation_info_;
 
   bool enable_persistent_temp_buffers_ = false;
 

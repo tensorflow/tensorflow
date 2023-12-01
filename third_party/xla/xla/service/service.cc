@@ -62,6 +62,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
 namespace {
@@ -750,6 +751,10 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
       "BuildExecutable on service %p with serialized module proto: %s", this,
       module_proto.name());
 
+  tsl::profiler::ScopedAnnotation annotation{[&] {
+    return absl::StrCat("XlaCompile:#module=", module_proto.name(), "#");
+  }};
+
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       CreateModuleFromProto(module_proto, *module_config, run_backend_only));
@@ -770,6 +775,9 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
                                     std::move(module), executor, options));
   }
 
+  tsl::profiler::ScopedAnnotation backend_annotation{[&] {
+    return absl::StrCat("XlaCompileBackend:#module=", module_proto.name(), "#");
+  }};
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       backend->compiler()->RunBackend(std::move(module), executor, options));

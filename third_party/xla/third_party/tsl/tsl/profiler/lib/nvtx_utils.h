@@ -24,17 +24,16 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "nvtx3/nvToolsExt.h"
+#else
+// Some typedef to help build without NVTX.
+typedef void* nvtxEventAttributes_t;
+typedef void* nvtxDomainHandle_t;
+typedef void* nvtxStringHandle_t;
 #endif
 
 namespace tsl {
 namespace profiler {
 namespace nvtx {
-
-// Some typedef to help build without NVTX.
-#if !GOOGLE_CUDA
-typedef void* nvtxEventAttributes_t;
-typedef void* nvtxDomainHandle_t;
-#endif
 
 // A helper function that return the domains to use if NVTX profiling
 // is enabled.
@@ -65,15 +64,38 @@ inline bool RangesEnabled() {
 #endif
 }
 
-// Note: The memory backing msg must persist until the result of this function
-// has been consumed by an NVTX API.
-inline void MakeAttributes(const char* msg, nvtxEventAttributes_t* result) {
-  *result = {0};
+// Two types of NVTX range annotation are supported, the older/simpler option
+// is to use std::string and have the NVTX implementation copy a C-style
+// string every time. The other option is to pass a struct implementing two
+// methods:
+//
+//   std::string_view Title() const;
+//   nvtxStringHandle_t NvtxRegisteredTitle() const;
+//
+// in which case NvtxRegisteredTitle() will be used when starting NVTX ranges,
+// avoiding this string copy.
+// The Title() method is needed because AnnotationStack::PushAnnotation(...) is
+// the backend for some annotations when NVTX is not enabled, and it does not
+// recognise registered strings. has_annotation_api_v<AnnotationType>
+// distinguishes between the two types of annotation.
+template <typename AnnotationType>
+inline constexpr bool has_annotation_api_v =
+    !std::is_same_v<AnnotationType, std::string>;
+
+template <typename AnnotationType>
+void RangePush(nvtxDomainHandle_t domain, const AnnotationType& annotation) {
 #if GOOGLE_CUDA
-  result->version = NVTX_VERSION;
-  result->size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
-  result->messageType = NVTX_MESSAGE_TYPE_ASCII;
-  result->message.ascii = msg;
+  nvtxEventAttributes_t attrs{};
+  attrs.version = NVTX_VERSION;
+  attrs.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
+  if constexpr (has_annotation_api_v<std::decay_t<AnnotationType>>) {
+    attrs.messageType = NVTX_MESSAGE_TYPE_REGISTERED;
+    attrs.message.registered = annotation.NvtxRegisteredTitle();
+  } else {
+    attrs.messageType = NVTX_MESSAGE_TYPE_ASCII;
+    attrs.message.ascii = annotation.c_str();
+  }
+  ::nvtxDomainRangePushEx(domain, &attrs);
 #endif
 }
 

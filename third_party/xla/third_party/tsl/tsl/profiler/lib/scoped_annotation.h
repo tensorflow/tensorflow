@@ -53,10 +53,7 @@ class ScopedAnnotationT {
     std::optional<nvtxDomainHandle_t> domain =
         tsl::profiler::nvtx::GetNVTXDomain();
     if (TF_PREDICT_FALSE(domain.has_value())) {
-      nvtxEventAttributes_t attrs;
-      std::string name_str(name);
-      tsl::profiler::nvtx::MakeAttributes(name_str.c_str(), &attrs);
-      ::nvtxDomainRangePushEx(domain.value(), &attrs);
+      tsl::profiler::nvtx::RangePush(domain.value(), std::string{name});
     } else  // NOLINT
 #endif
         if (always_annotate || TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
@@ -74,9 +71,7 @@ class ScopedAnnotationT {
     std::optional<nvtxDomainHandle_t> domain =
         tsl::profiler::nvtx::GetNVTXDomain();
     if (TF_PREDICT_FALSE(domain.has_value())) {
-      nvtxEventAttributes_t attrs;
-      tsl::profiler::nvtx::MakeAttributes(name.c_str(), &attrs);
-      ::nvtxDomainRangePushEx(domain.value(), &attrs);
+      tsl::profiler::nvtx::RangePush(domain.value(), name);
     } else  // NOLINT
 #endif
         if (always_annotate || TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
@@ -91,9 +86,7 @@ class ScopedAnnotationT {
     std::optional<nvtxDomainHandle_t> domain =
         tsl::profiler::nvtx::GetNVTXDomain();
     if (TF_PREDICT_FALSE(domain.has_value())) {
-      nvtxEventAttributes_t attrs;
-      tsl::profiler::nvtx::MakeAttributes(name.c_str(), &attrs);
-      ::nvtxDomainRangePushEx(domain.value(), &attrs);
+      tsl::profiler::nvtx::RangePush(domain.value(), name);
     } else  // NOLINT
 #endif
         if (always_annotate || TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
@@ -109,15 +102,17 @@ class ScopedAnnotationT {
     std::optional<nvtxDomainHandle_t> domain =
         tsl::profiler::nvtx::GetNVTXDomain();
     if (TF_PREDICT_FALSE(domain.has_value())) {
-      auto name = name_generator();
-      nvtxEventAttributes_t attrs;
-      tsl::profiler::nvtx::MakeAttributes(name.c_str(), &attrs);
-      ::nvtxDomainRangePushEx(domain.value(), &attrs);
+      tsl::profiler::nvtx::RangePush(domain.value(), name_generator());
     } else  // NOLINT
 #endif
         if (always_annotate || TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
-      auto name = name_generator();
-      old_length_ = AnnotationStack::PushAnnotation(name);
+      auto annotation = name_generator();
+      if constexpr (tsl::profiler::nvtx::has_annotation_api_v<
+                        std::decay_t<decltype(annotation)>>) {
+        old_length_ = AnnotationStack::PushAnnotation(annotation.Title());
+      } else {
+        old_length_ = AnnotationStack::PushAnnotation(std::move(annotation));
+      }
     }
 #endif
   }

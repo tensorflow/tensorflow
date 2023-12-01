@@ -1116,6 +1116,7 @@ cc_library(
     name = "service",
     srcs = ["service.cc"],
     hdrs = ["service.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     visibility = ["//visibility:public"],
     deps = [
         ":allocation_tracker",
@@ -1163,6 +1164,7 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/profiler/lib:scoped_annotation",
     ],
     alwayslink = 1,
 )
@@ -5100,6 +5102,7 @@ cc_library(
     hdrs = [
         "hlo_pass_pipeline.h",
     ],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     visibility = ["//visibility:public"],
     deps = [
         ":compilation_stats",
@@ -5119,6 +5122,7 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/profiler/lib:scoped_annotation",
     ],
 )
 

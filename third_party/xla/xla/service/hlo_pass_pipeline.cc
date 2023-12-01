@@ -31,6 +31,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
 
@@ -146,6 +147,18 @@ Status HloPassPipeline::RunInvariantCheckers(
   return OkStatus();
 }
 
+namespace {
+std::string UniqueId(const HloModule& mod) {
+  return std::to_string(mod.unique_id());
+}
+std::string UniqueId(const HloModuleGroup& group) {
+  return absl::StrJoin(group.modules(), "-",
+                       [](std::string* out, const HloModule* mod) {
+                         out->append(std::to_string(mod->unique_id()));
+                       });
+}
+}  // namespace
+
 template <typename HloT>
 StatusOr<bool> HloPassPipeline::RunPassesInternal(
     HloT* hlo, const DebugOptions& debug_options,
@@ -157,6 +170,10 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
   static constexpr absl::string_view kPipelineStart = "pipeline-start";
   static constexpr absl::string_view kPipelineEnd = "pipeline-end";
   std::string pipeline_name = std::string(name());
+  tsl::profiler::ScopedAnnotation annotation{[&] {
+    return absl::StrFormat("XlaPassPipeline:#name=%s,module=%s,program_id=%s#",
+                           pipeline_name, hlo->name(), UniqueId(*hlo));
+  }};
 
   TF_RETURN_IF_ERROR(
       RunInvariantCheckers(hlo, kPipelineStart, execution_threads));
@@ -176,6 +193,8 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
     HloPassInterface* pass = passes[i];
     XLA_SCOPED_LOGGING_TIMER(absl::StrCat("HLO pass: ", pass->name()));
     std::string pass_name = std::string(pass->name());
+    tsl::profiler::ScopedAnnotation annotation{
+        [&] { return "XlaPass:" + pass_name; }};
     VLOG(1) << "  HLO pass " << pass_name;
     VLOG(2) << "  Module hash " << absl::HashOf(*hlo);
     if (!pass->IsPassPipeline()) {

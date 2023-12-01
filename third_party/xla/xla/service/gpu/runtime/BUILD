@@ -761,20 +761,27 @@ cc_library(
 
 cc_library(
     name = "tracing",
-    srcs = ["tracing.cc"],
-    hdrs = ["tracing.h"],
+    srcs = [
+        "annotation.cc",
+        "tracing.cc",
+    ],
+    hdrs = [
+        "annotation.h",
+        "tracing.h",
+    ],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     visibility = ["//visibility:public"],
     deps = [
         ":support",
-        "//xla/runtime:custom_call",
+        "//xla/hlo/ir:hlo",
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
         "//xla/runtime:tracing",
         "//xla/runtime:type_id",
-        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/profiler/lib:nvtx_utils",
         "@local_tsl//tsl/profiler/lib:scoped_annotation_stack",
     ],
 )
