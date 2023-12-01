@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/service/gpu/kernels/custom_fusion.h"
 #include "xla/service/gpu/kernels/custom_fusion_pattern.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
+#include "xla/service/gpu/kernels/cutlass_gemm.h"
 #include "xla/service/gpu/kernels/cutlass_gemm_custom_kernel.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -53,6 +53,18 @@ struct GemmWithUpcast {
   HloInstruction* dot;
   HloInstruction* lhs_upcast = nullptr;  // HLO convert instr
   HloInstruction* rhs_upcast = nullptr;  // HLO convert instr
+};
+
+// Pattern for matching GEMM with surrounding dynamic-slice/update-slice.
+struct GemmWithDynamicSlice {
+  explicit GemmWithDynamicSlice(HloDynamicUpdateSliceInstruction* update_slice)
+      : update_slice(update_slice) {}
+
+  std::vector<HloInstruction*> Instrs() { return {dot, bitcast, update_slice}; }
+
+  HloInstruction* dot = nullptr;
+  HloInstruction* bitcast = nullptr;       // result bitcast
+  HloInstruction* update_slice = nullptr;  // update result slice
 };
 }  // namespace
 
@@ -97,21 +109,37 @@ static Status MatchSimpleGemm(HloDotInstruction* dot, PrimitiveType dtype) {
 static StatusOr<GemmWithUpcast> MatchGemmWithUpcast(HloDotInstruction* dot) {
   TF_RETURN_IF_ERROR(MatchRowMajorGemm(dot));
 
-  GemmWithUpcast matched(dot);
+  GemmWithUpcast match(dot);
 
   // C <- convert(A) * B
   if (Match(const_cast<HloInstruction*>(dot->operand(0)),
-            m::Convert(&matched.lhs_upcast, m::Op()))) {
-    return matched;
+            m::Convert(&match.lhs_upcast, m::Op()))) {
+    return match;
   }
 
   // C <- A * convert(B)
   if (Match(const_cast<HloInstruction*>(dot->operand(1)),
-            m::Convert(&matched.rhs_upcast, m::Op()))) {
-    return matched;
+            m::Convert(&match.rhs_upcast, m::Op()))) {
+    return match;
   }
 
   return absl::InternalError("unsupported gemm with upcasing");
+}
+
+// Returns matched GEMM with result used to update a slice.
+static StatusOr<GemmWithDynamicSlice> MatchGemmWithDynamicUpdateSlice(
+    HloDynamicUpdateSliceInstruction* update_slice) {
+  GemmWithDynamicSlice match(update_slice);
+
+  if (!Match(
+          const_cast<HloInstruction*>(update_slice->operand(1)),
+          m::Bitcast(&match.bitcast, m::Dot(&match.dot, m::Op(), m::Op())))) {
+    return absl::InternalError("failed to match update slice instr");
+  }
+
+  TF_RETURN_IF_ERROR(MatchRowMajorGemm(Cast<HloDotInstruction>(match.dot)));
+
+  return match;
 }
 
 //===----------------------------------------------------------------------===//
@@ -129,6 +157,21 @@ std::optional<CustomFusionPattern::Match> CutlassGemmPattern::TryMatch(
   CustomFusionConfig config;
   config.set_name("cutlass_gemm");
   return Match{config, {instr}};
+}
+
+std::optional<CustomFusionPattern::Match>
+CutlassGemmWithDynamicUpdateSlicePattern::TryMatch(
+    HloInstruction* instr) const {
+  auto* update_slice = DynCast<HloDynamicUpdateSliceInstruction>(instr);
+  if (!update_slice) return std::nullopt;
+
+  auto matched = MatchGemmWithDynamicUpdateSlice(update_slice);
+  if (!matched.ok()) return std::nullopt;
+
+  CustomFusionConfig config;
+  config.set_name("cutlass_gemm_with_dynamic_update_slice");
+
+  return Match{config, matched->Instrs()};
 }
 
 std::optional<CustomFusionPattern::Match>
@@ -167,15 +210,24 @@ class CutlassGemmFusion : public CustomFusion {
 
     auto dtype = dot->shape().element_type();
 
-    auto& lhs_shape = dot->operand(0)->shape();
-    auto& rhs_shape = dot->operand(1)->shape();
+    auto* lhs = Cast<HloParameterInstruction>(dot->operand(0));
+    auto* rhs = Cast<HloParameterInstruction>(dot->operand(1));
+
+    // Mapping from fusion arguments to gemm kernel arguments.
+    kernel::gemm_universal::ArgsIndices indices = {
+        lhs->parameter_number(), rhs->parameter_number(),
+        computation->num_parameters()};
+
+    auto& lhs_shape = lhs->shape();
+    auto& rhs_shape = rhs->shape();
 
     size_t m = lhs_shape.dimensions(0);
     size_t k = lhs_shape.dimensions(1);
     size_t n = rhs_shape.dimensions(1);
 
     TF_ASSIGN_OR_RETURN(auto kernel,
-                        kernel::GetCutlassGemmKernel(dtype, m, n, k));
+                        kernel::gemm_universal::GetCutlassGemmKernel(
+                            dtype, m, n, k, indices, /*slices=*/{}));
     return std::vector<CustomKernel>{std::move(kernel)};
   }
 };
@@ -207,10 +259,61 @@ class CutlassGemmWithUpcastFusion : public CustomFusion {
   }
 };
 
+class CutlassGemmWithDynamicUpdateSliceFusion : public CustomFusion {
+ public:
+  StatusOr<std::vector<CustomKernel>> LoadKernels(
+      const HloComputation* computation) const final {
+    auto* dus = DynCast<HloDynamicUpdateSliceInstruction>(
+        computation->root_instruction());
+    if (dus == nullptr) {
+      return absl::InternalError(
+          "cutlass_gemm_with_dynamic_update_slice requires ROOT operation to "
+          "be a dynamic update slice");
+    }
+
+    TF_ASSIGN_OR_RETURN(auto matched, MatchGemmWithDynamicUpdateSlice(dus));
+    TF_RETURN_IF_ERROR(MatchSimpleGemm(Cast<HloDotInstruction>(matched.dot),
+                                       PrimitiveType::F32));
+
+    auto dtype = matched.dot->shape().element_type();
+
+    auto* lhs = Cast<HloParameterInstruction>(matched.dot->operand(0));
+    auto* rhs = Cast<HloParameterInstruction>(matched.dot->operand(1));
+    auto* out = Cast<HloParameterInstruction>(matched.update_slice->operand(0));
+
+    // Mapping from fusion arguments to gemm kernel arguments.
+    kernel::gemm_universal::ArgsIndices args_indices = {
+        lhs->parameter_number(), rhs->parameter_number(),
+        out->parameter_number()};
+
+    // Mapping to a buffer that holds output slice offset.
+    auto* offset =
+        Cast<HloParameterInstruction>(matched.update_slice->operand(2));
+
+    kernel::gemm_universal::DynamicSliceIndices slices;
+    slices.out = offset->parameter_number();
+
+    auto& lhs_shape = lhs->shape();
+    auto& rhs_shape = rhs->shape();
+
+    size_t m = lhs_shape.dimensions(0);
+    size_t k = lhs_shape.dimensions(1);
+    size_t n = rhs_shape.dimensions(1);
+
+    TF_ASSIGN_OR_RETURN(auto kernel,
+                        kernel::gemm_universal::GetCutlassGemmKernel(
+                            dtype, m, n, k, args_indices, slices));
+    return std::vector<CustomKernel>{std::move(kernel)};
+  }
+};
+
 }  // namespace xla::gpu
 
-XLA_REGISTER_CUSTOM_FUSION_PATTERN(::xla::gpu::CutlassGemmPattern);
+XLA_REGISTER_CUSTOM_FUSION_PATTERN(
+    ::xla::gpu::CutlassGemmWithDynamicUpdateSlicePattern);
 
 XLA_REGISTER_CUSTOM_FUSION("cutlass_gemm", ::xla::gpu::CutlassGemmFusion);
 XLA_REGISTER_CUSTOM_FUSION("cutlass_gemm_with_upcast",
                            ::xla::gpu::CutlassGemmWithUpcastFusion);
+XLA_REGISTER_CUSTOM_FUSION("cutlass_gemm_with_dynamic_update_slice",
+                           ::xla::gpu::CutlassGemmWithDynamicUpdateSliceFusion);

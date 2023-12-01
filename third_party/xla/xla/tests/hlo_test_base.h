@@ -313,6 +313,13 @@ class HloTestBase : public ManifestCheckingTest {
       absl::string_view hlo_string_module_1,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes = true);
 
+  // Same as above but requires explicit arguments.
+  ::testing::AssertionResult RunAndCompareTwoModules(
+      absl::string_view hlo_string_module_0,
+      absl::string_view hlo_string_module_1,
+      absl::Span<Literal* const> arguments,
+      const std::optional<ErrorSpec>& error, bool run_hlo_passes = true);
+
   // Executes an hlo module with fake inputs on multiple replicas.
   [[nodiscard]] ::testing::AssertionResult RunReplicated(
       const absl::string_view hlo_string, bool run_hlo_passes = true,

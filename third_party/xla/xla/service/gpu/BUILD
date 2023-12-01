@@ -2854,6 +2854,7 @@ cc_library(
         "//xla/service:hlo_pass",
         "//xla/service/gpu/kernels:custom_fusion_library",
         "//xla/service/gpu/kernels:custom_fusion_pattern",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",

@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/service/gpu/kernels/cutlass_gemm_custom_kernel.h"
+
 #include <cstdint>
 #include <cstring>
 #include <vector>
 
-#include "xla/service/gpu/kernels/cutlass_gemm_custom_kernel.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
@@ -27,7 +28,7 @@ limitations under the License.
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
 
-namespace xla::gpu::kernel {
+namespace xla::gpu::kernel::gemm_universal {
 
 TEST(CutlassGemmKernelTest, SimpleGemm) {
   se::Platform* platform =
@@ -41,7 +42,9 @@ TEST(CutlassGemmKernelTest, SimpleGemm) {
   se::Kernel gemm(executor);
 
   // Load [4, 4] x [4, 4] gemm kernel written in CUDA C++ with CUTLASS.
-  auto custom_kernel = GetCutlassGemmKernel(PrimitiveType::F32, 4, 4, 4);
+  auto custom_kernel =
+      GetCutlassGemmKernel(PrimitiveType::F32, 4, 4, 4,
+                           /*indices=*/{0, 1, 2}, /*slices=*/{});
   TF_ASSERT_OK(executor->GetKernel(custom_kernel->kernel_spec(), &gemm));
 
   int64_t length = 4 * 4;
@@ -75,4 +78,4 @@ TEST(CutlassGemmKernelTest, SimpleGemm) {
   ASSERT_EQ(dst, expected);
 }
 
-}  // namespace xla::gpu::kernel
+}  // namespace xla::gpu::kernel::gemm_universal

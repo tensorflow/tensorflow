@@ -15,10 +15,15 @@ limitations under the License.
 
 #include "xla/service/gpu/kernels/cutlass_gemm_fusion.h"
 
+#include <cstdint>
 #include <utility>
 
+#include "xla/array.h"
+#include "xla/array2d.h"
+#include "xla/array3d.h"
 #include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
+#include "xla/literal_util.h"
 #include "xla/service/gpu/custom_fusion_rewriter.h"
 #include "xla/service/gpu/kernels/custom_fusion_pattern.h"
 #include "xla/tests/hlo_test_base.h"
@@ -115,6 +120,55 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithUpcast) {
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
 }
 
+TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSlice) {
+  const char* hlo = R"(
+    HloModule test
+
+    ENTRY %main (p0: f32[2,2,2], p1: f32[2,2], i: s32[]) -> f32[2,2,2] {
+      %p0 = f32[2,2,2]{2,1,0} parameter(0)
+      %p1 = f32[2,2]{1,0} parameter(1)
+      %i = s32[] parameter(2)
+
+      %dot = f32[2,2]{1,0} dot(%p1, %p1),
+               lhs_contracting_dims={1},
+               rhs_contracting_dims={0}
+      %bc = f32[1,2,2]{2,1,0} bitcast(%dot)
+
+      ROOT %r = f32[2,2,2]{2,1,0} dynamic-update-slice(%p0, %bc, %i, %i, %i)
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK: %cutlass_gemm_with_dynamic_update_slice {{.*}} {
+    ; CHECK-DAG: [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter
+    ; CHECK-DAG: [[P1:%[^ ]+]] = f32[2,2,2]{2,1,0} parameter
+    ; CHECK-DAG: [[P2:%[^ ]+]] = s32[] parameter
+    ; CHECK-DAG: [[DOT:%[^ ]+]] = f32[2,2]{1,0} dot([[P0]], [[P0]])
+    ; CHECK-DAG: [[CAST:%[^ ]+]] = f32[1,2,2]{2,1,0} bitcast([[DOT]])
+    ; CHECK:     ROOT [[DUS:%[^ ]+]] = f32[2,2,2]{2,1,0} dynamic-update-slice(
+    ; CHECK:       [[P1]], [[CAST]], [[P2]], [[P2]], [[P2]]
+    ; CHECK:     )
+    ; CHECK: }
+
+    ; CHECK: ENTRY %main {{.*}} {
+    ; CHECK:   ROOT [[FUSION:%[^ ]+]] = f32[2,2,2]{2,1,0} fusion
+    ; CHECK:     kind=kCustom, calls=%cutlass_gemm_with_dynamic_update_slice,
+    ; CHECK:     backend_config={
+    ; CHECK:       "kind":"__custom_fusion",
+    ; CHECK:       "custom_fusion_config":{
+    ; CHECK:         "name":"cutlass_gemm_with_dynamic_update_slice"
+    ; CHECK:       }
+    ; CHECK:     }
+    ; CHECK: }
+  )";
+
+  CustomFusionPatternRegistry patterns;
+  patterns.Emplace<CutlassGemmWithDynamicUpdateSlicePattern>();
+
+  CustomFusionRewriter pass(&patterns);
+  RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
+}
+
 //===----------------------------------------------------------------------===//
 // Run And Compare Tests
 //===----------------------------------------------------------------------===//
@@ -170,7 +224,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithUpcastKernel) {
     gemm = (bf16[16,8]{1,0}, s8[0]{0}) custom-call(p0, c1),
       custom_call_target="__cublas$gemm",
       backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
-    ROOT get-tuple-element = bf16[16,8]{1,0} get-tuple-element((bf16[16,8]{1,0}, s8[0]{0}) gemm), index=0
+    ROOT get-tuple-element = bf16[16,8]{1,0} get-tuple-element(gemm), index=0
   })";
 
   const char* hlo_text_custom_fusion = R"(
@@ -193,6 +247,65 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithUpcastKernel) {
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_cublas, hlo_text_custom_fusion,
                                       error_spec, /*run_hlo_passes=*/false));
+}
+
+TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSliceKernel) {
+  ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
+
+  const char* hlo_text_cublas = R"(
+  HloModule cublas
+
+  ENTRY e {
+    p0 = f32[2,2,2]{2,1,0} parameter(0)
+    p1 = f32[2,2]{1,0} parameter(1)
+    p2 = s32[] parameter(2)
+    p3 = s32[] parameter(3)
+
+    gemm.tuple = (f32[2,2]{1,0}, s8[0]{0}) custom-call(p1, p1),
+      custom_call_target="__cublas$gemm",
+      backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
+    gemm = f32[2,2]{1,0} get-tuple-element(gemm.tuple), index=0
+    cast = f32[1,2,2]{2,1,0} bitcast(gemm)
+
+    ROOT r = f32[2,2,2]{2,1,0} dynamic-update-slice(p0, cast, p2, p3, p3)
+  })";
+
+  const char* hlo_text_custom_fusion = R"(
+  HloModule cutlass
+
+  cutlass_gemm {
+    p0.1 = f32[2,2]{1,0} parameter(0)
+    p1.1 = f32[2,2,2]{2,1,0} parameter(1)
+    p2 = s32[] parameter(2)
+    p3 = s32[] parameter(3)
+    dot.1 = f32[2,2]{1,0} dot(p0.1, p0.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    bc.1 = f32[1,2,2]{2,1,0} bitcast(dot.1)
+    ROOT r.1 = f32[2,2,2]{2,1,0} dynamic-update-slice(p1.1, bc.1, p2, p3, p3)
+  }
+
+  ENTRY e {
+    p0 = f32[2,2,2]{2,1,0} parameter(0)
+    p1 = f32[2,2]{1,0} parameter(1)
+    p2 = s32[] parameter(2)
+    p3 = s32[] parameter(3)
+    ROOT _ = f32[2,2,2]{2,1,0} fusion(p1, p0, p2, p3), kind=kCustom,
+      calls=%cutlass_gemm,
+      backend_config={"kind":"__custom_fusion","custom_fusion_config":{"name":"cutlass_gemm_with_dynamic_update_slice"}}
+  })";
+
+  Array3D<float> p0_arr(2, 2, 2);
+  Array2D<float> p1_arr({{0.0, 1.0}, {2.0, 3.0}});
+  Array<int32_t> p2_arr({}, 1);
+  Array<int32_t> p3_arr({}, 0);
+
+  auto p0 = LiteralUtil::CreateFromArray(p0_arr);
+  auto p1 = LiteralUtil::CreateFromArray(p1_arr);
+  auto p2 = LiteralUtil::CreateFromArray(p2_arr);
+  auto p3 = LiteralUtil::CreateFromArray(p3_arr);
+
+  EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_cublas, hlo_text_custom_fusion,
+                                      {&p0, &p1, &p2, &p3}, error_spec,
+                                      /*run_hlo_passes=*/false));
 }
 
 }  // namespace xla::gpu

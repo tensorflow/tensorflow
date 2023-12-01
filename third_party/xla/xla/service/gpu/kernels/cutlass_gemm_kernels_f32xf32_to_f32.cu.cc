@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/kernels/cutlass_gemm_kernels.cu.h"
 
-namespace xla::gpu::kernel::internal {
+namespace xla::gpu::kernel::gemm_universal {
 
 template void* GetCutlassGemmKernel<CutlassGemmKernels::F32xF32toF32>();
 
-}  // namespace xla::gpu::kernel::internal
+}  // namespace xla::gpu::kernel::gemm_universal

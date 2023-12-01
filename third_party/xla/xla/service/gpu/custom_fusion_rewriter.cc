@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -66,7 +67,10 @@ static StatusOr<absl::InlinedVector<HloInstruction*, 4>> GetPatternCaptures(
   // Collect instructions captured by a matched pattern.
   for (HloInstruction* instr : match.instructions) {
     for (HloInstruction* operand : instr->operands()) {
-      if (!instructions_set.contains(operand)) captures.push_back(operand);
+      if (!instructions_set.contains(operand) &&
+          absl::c_find(captures, operand) == captures.end()) {
+        captures.push_back(operand);
+      }
     }
   }
 

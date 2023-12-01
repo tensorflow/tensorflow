@@ -17,8 +17,9 @@ limitations under the License.
 #define XLA_SERVICE_GPU_KERNELS_CUTLASS_GEMM_KERNELS_CU_H_
 
 #include "third_party/gpus/cutlass/include/cutlass/gemm/device/gemm_universal.h"
+#include "xla/service/gpu/kernels/cutlass_gemm.h"
 
-namespace xla::gpu::kernel {
+namespace xla::gpu::kernel::gemm_universal {
 
 struct CutlassGemmKernels {
   using F32xF32toF32 =
@@ -27,17 +28,40 @@ struct CutlassGemmKernels {
                                            float, cutlass::layout::RowMajor>;
 };
 
-namespace internal {
+// This entry point is based on `cutlass::Kernel2` template with an extra
+// parameter to pass dynamic slices.
+template <typename Gemm>
+__global__ void Kernel(typename Gemm::Params params,
+                       gemm_universal::DynamicSliceParams slices) {
+  extern __shared__ int SharedStorageBase[];
+  typename Gemm::SharedStorage* shared_storage =
+      reinterpret_cast<typename Gemm::SharedStorage*>(SharedStorageBase);
+
+  // Update output pointers to account for dynamic offsets.
+  if (slices.out.has_value()) {
+    auto m = params.problem_size.m();
+    auto n = params.problem_size.n();
+
+    int32_t out_offset = **slices.out;
+
+    char* ptr_c = reinterpret_cast<char*>(params.ptr_C);
+    char* ptr_d = reinterpret_cast<char*>(params.ptr_D);
+
+    params.ptr_C = ptr_c + 4 * out_offset * (m * n);
+    params.ptr_D = ptr_d + 4 * out_offset * (m * n);
+  }
+
+  Gemm::invoke(params, *shared_storage);
+}
 
 template <typename Gemm>
 void* GetCutlassGemmKernel() {
-  return reinterpret_cast<void*>(cutlass::Kernel2<typename Gemm::GemmKernel>);
+  return reinterpret_cast<void*>(Kernel<typename Gemm::GemmKernel>);
 }
 
 // Extern templates for all supported CUTLASS Gemm kernels.
 extern template void* GetCutlassGemmKernel<CutlassGemmKernels::F32xF32toF32>();
 
-}  // namespace internal
-}  // namespace xla::gpu::kernel
+}  // namespace xla::gpu::kernel::gemm_universal
 
 #endif  // XLA_SERVICE_GPU_KERNELS_CUTLASS_GEMM_KERNELS_CU_H_

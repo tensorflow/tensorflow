@@ -29,6 +29,12 @@ class CutlassGemmPattern : public CustomFusionPattern {
   std::optional<Match> TryMatch(HloInstruction* instr) const override;
 };
 
+// Pattern matches simple row-major gemms with dynamic-update-slice.
+class CutlassGemmWithDynamicUpdateSlicePattern : public CustomFusionPattern {
+ public:
+  std::optional<Match> TryMatch(HloInstruction* instr) const override;
+};
+
 // Pattern matches mixed dtype gemms when one of the operands is upcasted to an
 // accumulator (output) dtype, i.e. BF16 <= BF16 x S8.
 class CutlassGemmWithUpcastPattern : public CustomFusionPattern {
