@@ -82,6 +82,10 @@ message Metrics {
   // Total bytes accessed for each memory type.
   // Index into array using MemBwType enum.
   repeated double raw_bytes_accessed_array = 15;
+  // Number of executions.
+  uint32 occurrences = 16;
+  // Average "accumlated" time in picoseconds that the operation took.
+  double avg_time_ps = 17;
 
   reserved 1, 3, 4, 13, 14;
 }
