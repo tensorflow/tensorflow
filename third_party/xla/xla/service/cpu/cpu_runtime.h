@@ -85,6 +85,7 @@ extern const char* const kTracingStartSymbolName;
 extern const char* const kTracingEndSymbolName;
 extern const char* const kAllToAllSymbolName;
 extern const char* const kAllGatherSymbolName;
+extern const char* const kReduceScatterSymbolName;
 extern const char* const kOneDnnMatMulSymbolName;
 
 // All symbol names for XLA CPU runtime functions need to start with this
@@ -201,6 +202,13 @@ extern void __xla_cpu_runtime_AllGather(
     int32_t use_global_device_ids, int64_t op_id,
     const void* replica_groups_str, int32_t replica_groups_str_size,
     int64_t buffer_size, void* source_buffer, void* destination_buffer);
+
+void __xla_cpu_runtime_ReduceScatter(
+    const xla::ExecutableRunOptions* run_options,
+    const void* replica_groups_str, int32_t replica_groups_str_size,
+    int32_t channel_id_present, int32_t use_global_device_ids, int64_t op_id,
+    int32_t reduction_kind, int32_t element_type, int64_t chunk_elems,
+    void* input_buffer, void* output_buffer);
 
 // Write the partition ID into the output buffer.
 extern void __xla_cpu_runtime_PartitionId(
