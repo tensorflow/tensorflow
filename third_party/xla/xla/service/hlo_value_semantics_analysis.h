@@ -346,8 +346,9 @@ class HloValueSemanticsPropagation : public DfsHloVisitorWithDefault {
   bool OriginDependsOn(const HloValueSemantics& semantics,
                        const HloPosition& origin_dependence,
                        bool recursive = false) const;
-  StatusOr<HloValueSemantics> CreateGradientSemantics(
-      HloInstruction* gradient_candidate) const;
+  StatusOr<HloValueSemantics> MaybeCreateGradientSemantics(
+      HloInstruction* gradient_candidate,
+      HloValueSemanticLabel fallback_label) const;
   StatusOr<HloValueSemantics> ComputeSemanticsFromStaticAndOther(
       const HloValueSemantics& static_semantics,
       const HloValueSemantics& other_semantics,
