@@ -22,10 +22,15 @@ limitations under the License.
 namespace xla::gpu::kernel::gemm_universal {
 
 struct CutlassGemmKernels {
-  using F32xF32toF32 =
-      cutlass::gemm::device::GemmUniversal<float, cutlass::layout::RowMajor,
-                                           float, cutlass::layout::RowMajor,
-                                           float, cutlass::layout::RowMajor>;
+  using F32xF32toF32 = cutlass::gemm::device::GemmUniversal<
+      float, cutlass::layout::RowMajor,   // A
+      float, cutlass::layout::RowMajor,   // B
+      float, cutlass::layout::RowMajor>;  // C
+
+  using BF16xBF16toBF16 = cutlass::gemm::device::GemmUniversal<
+      cutlass::bfloat16_t, cutlass::layout::RowMajor,   // A
+      cutlass::bfloat16_t, cutlass::layout::RowMajor,   // B
+      cutlass::bfloat16_t, cutlass::layout::RowMajor>;  // C
 };
 
 // This entry point is based on `cutlass::Kernel2` template with an extra
@@ -55,12 +60,13 @@ __global__ void Kernel(typename Gemm::Params params,
 }
 
 template <typename Gemm>
-void* GetCutlassGemmKernel() {
+void* GetKernelSymbol() {
   return reinterpret_cast<void*>(Kernel<typename Gemm::GemmKernel>);
 }
 
 // Extern templates for all supported CUTLASS Gemm kernels.
-extern template void* GetCutlassGemmKernel<CutlassGemmKernels::F32xF32toF32>();
+extern template void* GetKernelSymbol<CutlassGemmKernels::F32xF32toF32>();
+extern template void* GetKernelSymbol<CutlassGemmKernels::BF16xBF16toBF16>();
 
 }  // namespace xla::gpu::kernel::gemm_universal
 

@@ -141,6 +141,7 @@ template <typename Gemm>
 KernelArgsPacking ArgsPacking(cutlass::gemm::GemmCoord problem_size,
                               const ArgsIndices &indices,
                               const DynamicSliceIndices &slices) {
+  using Accumulator = typename Gemm::ElementAccumulator;
   using Arguments = typename Gemm::Arguments;
   using Kernel = typename Gemm::GemmKernel;
   using Params = typename Kernel::Params;
@@ -171,7 +172,13 @@ KernelArgsPacking ArgsPacking(cutlass::gemm::GemmCoord problem_size,
     auto ptr_c = ArgPtr<Gemm, 2>(mem_args, indices);
 
     auto mode = cutlass::gemm::GemmUniversalMode::kGemm;
-    float alpha = 1.0, beta = 0.0;
+
+    // TODO(ezhulenev): We hardcode parameters for `LinearCombination` epilogue,
+    // however `Gemm` template can be compiled with arbitrary epilogues. We have
+    // to support custom epilogues in a way that does not leak cutlass types
+    // via the public API function signature.
+    Accumulator alpha{1.0};
+    Accumulator beta{0.0};
 
     // CUTLASS operation arguments.
     Arguments arguments(mode, problem_size,

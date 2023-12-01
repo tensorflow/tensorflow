@@ -196,7 +196,10 @@ cc_library(
 # cuda_library(
 #     name = "cutlass_gemm_kernels",
 #     visibility = ["//visibility:private"],
-#     deps = [":cutlass_gemm_kernels_f32xf32_to_f32"],
+#     deps = [
+#         ":cutlass_gemm_kernels_bf16xbf16_to_bf16",
+#         ":cutlass_gemm_kernels_f32xf32_to_f32",
+#     ],
 # )
 #
 # cuda_library(
@@ -207,6 +210,18 @@ cc_library(
 #         ":cutlass_gemm",
 #         "//third_party/gpus/cutlass",
 #     ],
+# )
+#
+# # CUTLASS requires all loops to be unrolled, and in some kernels defined below we force Clang/LLVM
+# # to unroll them with extra compiler options because by default LLVM is not as aggressive with loop
+# # unrolling as NVCC.
+#
+# cuda_library(
+#     name = "cutlass_gemm_kernels_bf16xbf16_to_bf16",
+#     srcs = ["cutlass_gemm_kernels_bf16xbf16_to_bf16.cu.cc"],
+#     copts = ["-mllvm -unroll-threshold=100000"],
+#     visibility = ["//visibility:private"],
+#     deps = [":cutlass_gemm_kernels_header"],
 # )
 #
 # cuda_library(
