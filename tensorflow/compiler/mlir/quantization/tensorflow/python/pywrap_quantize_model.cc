@@ -29,7 +29,7 @@ limitations under the License.
 #include "pybind11_abseil/import_status_module.h"  // from @pybind11_abseil
 #include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil  // IWYU pragma: keep
 #include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/graph_def.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/debugger.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
@@ -38,15 +38,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
-#include "tensorflow/python/lib/core/pybind11_lib.h"
+
+namespace py = pybind11;
 
 namespace {
 
-using ::stablehlo::quantization::MutateNodeDefs;
+using ::stablehlo::quantization::EnableDebugging;
 using ::stablehlo::quantization::io::CreateTmpDir;
-using ::tensorflow::NodeDef;
 using ::tensorflow::SignatureDef;
-using ::tensorflow::quantization::DebuggerOptions;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PyFunctionLibrary;
 using ::tensorflow::quantization::QuantizationOptions;
@@ -55,56 +54,6 @@ using ::tensorflow::quantization::QuantizePtqModelPostCalibration;
 using ::tensorflow::quantization::QuantizePtqModelPreCalibration;
 using ::tensorflow::quantization::QuantizeQatModel;
 using ::tensorflow::quantization::QuantizeWeightOnly;
-
-// Enables debugging on `exported_model` by updating the `DumpTensor` ops.
-//
-// Saves the current model to `debugger_options.unquantized_dump_model_path()`
-// if the debugger type is `DEBUGGER_TYPE_WHOLE_MODEL`. This is required because
-// in whole-model debugging mode the `DumpTensor` ops for the unquantized
-// tensors are only inserted in the unquantized model whereas `DumpTensor` ops
-// for the quantized tensors are only inserted in the quantized model. Both
-// models are required to be able to dump both quantized and unquantized tensors
-// and compare them offline.
-ExportedModel EnableDebugging(
-    const ExportedModel& exported_model,
-    const DebuggerOptions& debugger_options,
-    const PyFunctionLibrary& py_function_library,
-    const absl::string_view src_saved_model_path,
-    const std::unordered_set<std::string>& tags,
-    const absl::flat_hash_map<std::string, SignatureDef>& signature_def_map) {
-  ExportedModel debugger_enabled_exported_model = exported_model;
-
-  // Enable `DumpTensor` nodes in `graph_def`. DumpTensor is disabled by
-  // default to avoid logging data during calibration.
-  MutateNodeDefs(*debugger_enabled_exported_model.mutable_graph_def(),
-                 [](NodeDef& node_def) {
-                   if (node_def.op() == "DumpTensor") {
-                     (*node_def.mutable_attr())["enabled"].set_b(true);
-                   }
-                 });
-
-  if (debugger_options.debugger_type() ==
-      DebuggerOptions::DEBUGGER_TYPE_WHOLE_MODEL) {
-    // TODO: b/295139417 - Remove CustomAggregator op in unquantized dump model.
-    // TODO: b/296916287 - Create a separate function for saving unquantized
-    // dump model.
-    py_function_library.SaveExportedModel(
-        debugger_options.unquantized_dump_model_path(),
-        debugger_enabled_exported_model, src_saved_model_path, tags,
-        signature_def_map);
-
-    // Update the `DumpTensor` ops' file name in `graph_def`.
-    MutateNodeDefs(*debugger_enabled_exported_model.mutable_graph_def(),
-                   [](NodeDef& node_def) {
-                     if (node_def.op() == "DumpTensor") {
-                       (*node_def.mutable_attr())["file_name"].set_s(
-                           "quantized_tensor_data.pb");
-                     }
-                   });
-  }
-
-  return debugger_enabled_exported_model;
-}
 
 }  // namespace
 
@@ -305,10 +254,10 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
                 representative_dataset);
 
         if (quantization_options.has_debugger_options()) {
-          calibrated_exported_model = EnableDebugging(
-              calibrated_exported_model,
-              quantization_options.debugger_options(), py_function_library,
-              src_saved_model_path, tags, signature_def_map);
+          EnableDebugging(calibrated_exported_model,
+                          quantization_options.debugger_options(),
+                          py_function_library, src_saved_model_path, tags,
+                          signature_def_map);
         }
 
         const absl::StatusOr<std::string> calibrated_saved_model_path =
