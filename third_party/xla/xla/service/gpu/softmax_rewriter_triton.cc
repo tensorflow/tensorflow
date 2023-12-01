@@ -292,12 +292,6 @@ std::optional<HloInstruction*> MatchesTritonCompatibleClosedReductionDiamond(
     return match_failure;
   }
 
-  // TODO(b/291204753): remove this filter. This heuristic enables flipping the
-  // default flag while filtering out cases that could result in regressions.
-  if (reduce->operand(0)->shape().dimensions().back() < 64) {
-    return match_failure;
-  }
-
   while (IsTriviallyFusible(producer, gpu_version)) {
     producer = ChooseOperandForFusionProcessing(producer);
   }

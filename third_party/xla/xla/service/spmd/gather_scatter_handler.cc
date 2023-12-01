@@ -329,7 +329,6 @@ StatusOr<HloInstruction*> PartitionGatherOperandPassthroughDimensions(
   };
 
   SpmdBuilder* b = visitor->builder();
-  GatherDimensionNumbers dnums = gather->gather_dimension_numbers();
   if (auto maybe_passthrough = hlo_sharding_util::
           GatherOutputShardingFromOperandOperandPassthroughDimensions(
               operand.base_shape(), operand.sharding(), *gather, slice_sizes)) {
@@ -1171,7 +1170,6 @@ StatusOr<HloInstruction*> PartitionScatterOperandPassthroughDimensions(
   };
 
   SpmdBuilder* b = visitor->builder();
-  auto dnums = scatter->scatter_dimension_numbers();
   if (auto maybe_passthrough = hlo_sharding_util::
           ScatterUpdateShardingFromOutputOperandPassthroughDimensions(
               operands[0].base_shape(), operands[0].sharding(), *scatter,

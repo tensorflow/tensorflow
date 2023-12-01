@@ -97,6 +97,7 @@ tool_names = [
     'xla-translate',
     'xla-translate-gpu-opt',
     'xla-translate-opt',
+    'hlo-opt',
 ]
 tools = [ToolSubst(s, unresolved='ignore') for s in tool_names]
 llvm_config.add_tool_substitutions(tools, tool_dirs)

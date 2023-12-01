@@ -16,35 +16,76 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 
 #include <algorithm>
+#include <climits>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <functional>
 #include <optional>
 #include <queue>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/FPEnv.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicsNVPTX.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
+#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/primitive_util.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/status_macros.h"
+#include "xla/statusor.h"
 #include "xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/ml_dtypes.h"
 
 namespace xla {
 namespace gpu {
@@ -963,6 +1004,28 @@ std::string GetIrNameFromLoc(mlir::Location loc) {
 
 bool IsAMDGPU(const llvm::Module* module) {
   return llvm::Triple(module->getTargetTriple()).isAMDGPU();
+}
+
+StatusOr<DenseDataIntermediate> LiteralToXlaFormat(const Literal& literal) {
+  PrimitiveType element_type = literal.shape().element_type();
+  if (!primitive_util::IsArrayType(element_type)) {
+    return Internal("Unsupported type in LiteralToXlaFormat");
+  }
+
+  int64_t byte_size = literal.size_bytes();
+  if (primitive_util::Is4BitType(element_type)) {
+    std::vector<uint8_t> output(CeilOfRatio(byte_size, int64_t{2}));
+    absl::Span<char> output_span =
+        absl::MakeSpan(reinterpret_cast<char*>(output.data()), output.size());
+    PackInt4(
+        absl::MakeSpan(reinterpret_cast<const char*>(literal.untyped_data()),
+                       byte_size),
+        output_span);
+    return DenseDataIntermediate::Own(std::move(output));
+  }
+
+  return DenseDataIntermediate::Alias(absl::MakeSpan(
+      reinterpret_cast<const uint8_t*>(literal.untyped_data()), byte_size));
 }
 
 }  // namespace gpu

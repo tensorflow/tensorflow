@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "mlir/Parser/Parser.h"  // from @llvm-project
@@ -125,14 +126,13 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       text_(std::move(params.asm_text)),
       binary_(std::move(params.binary)),
       gpu_version_(params.gpu_version),
-      entry_func_attrs_(params.entry_func_attrs),
       module_name_(params.module_name),
       output_shape_(params.output_shape),
-      allocations_(std::move(params.allocations)),
+      allocations_(std::move(params.mlir_allocations)),
+      buffer_assignment_(std::move(params.buffer_assignment)),
       enable_persistent_temp_buffers_(params.enable_persistent_temp_buffers),
-      debug_buffer_assignment_(std::move(params.debug_buffer_assignment)),
-      verbose_buffer_assignment_string_dumper_(
-          params.verbose_buffer_assignment_string_dumper),
+      debug_buffer_assignment_show_max_(
+          params.debug_buffer_assignment_show_max),
       constants_(std::move(params.constants)),
       output_info_(std::move(params.output_info)),
       enable_debug_info_manager_(params.enable_debug_info_manager) {
@@ -145,7 +145,7 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
 #endif
   if (has_module() && enable_debug_info_manager_) {
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
-                                               debug_buffer_assignment_);
+                                               buffer_assignment_->ToProto());
   }
 }
 
@@ -334,19 +334,20 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
       VLOG(3) << "Resolved global " << info.symbol_name << " to "
               << global.opaque();
 
-      if (!info.content.empty()) {
+      if (!info.content.span().empty()) {
         // This means the constant did not have an initializer in the PTX and
         // therefore must be initialized by XLA here.
-        stream->ThenMemcpy(&global, info.content.data(), info.content.size());
+        stream->ThenMemcpy(&global, info.content.span().data(),
+                           info.content.span().size());
         submitted_mem_copies = true;
       }
     } else {
       // The constant was not defined in the PTX and therefore must be both
       // allocated and initialized by XLA here.
-      CHECK(!info.content.empty());
+      CHECK(!info.content.span().empty());
 
-      TF_ASSIGN_OR_RETURN(
-          auto shared, executor->CreateOrShareConstant(stream, info.content));
+      TF_ASSIGN_OR_RETURN(auto shared, executor->CreateOrShareConstant(
+                                           stream, info.content.span()));
       global = *shared;
       VLOG(3) << "Allocated (or shared) global " << info.symbol_name << " at "
               << global.opaque();
@@ -420,7 +421,8 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
           memory_allocator->Allocate(device_ordinal, buffer_size);
       if (!buffer.ok()) {
         return ResourceExhausted("%s\n%s\n", buffer.status().message(),
-                                 verbose_buffer_assignment_string_dumper_());
+                                 buffer_assignment_->ToVerboseString(
+                                     debug_buffer_assignment_show_max_));
       }
       buffer_address = buffer->Release();
     }
@@ -458,11 +460,12 @@ StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
       [&] { return std::string("Build buffer allocations"); },
       tsl::profiler::TraceMeLevel::kInfo);
 
-  const int64_t num_buffers = allocations_.size();
+  absl::Span<const BufferAllocation> allocations = GetAllocations();
+  const int64_t num_buffers = allocations.size();
   std::vector<se::DeviceMemoryBase> buffers;
   buffers.reserve(num_buffers);
   for (int64_t i = 0; i < num_buffers; ++i) {
-    const BufferAllocation& allocation = allocations_[i];
+    const BufferAllocation& allocation = allocations[i];
     // Check if the buffer is already stored as a persistent buffer.
     se::DeviceMemoryBase buffer;
     if (buffer_alloc_to_persistent_memory_map.contains(allocation.index())) {
@@ -538,7 +541,7 @@ Status GpuExecutable::PopulatePersistentTempBuffers(
 
   // Allocate persistent temp buffers.
   BufferAllocToDeviceMemoryMap buffer_alloc_to_device_memory_map;
-  for (const BufferAllocation& allocation : allocations_) {
+  for (const BufferAllocation& allocation : GetAllocations()) {
     if (!allocation.IsPreallocatedTempBuffer()) {
       continue;
     }
@@ -634,6 +637,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     return true;
   }();
 
+  absl::Span<const BufferAllocation> allocations = GetAllocations();
   for (auto& p : result.MutableResult()->buffers()) {
     const ShapeIndex& index = p.first;
     if (!output_info_.contains(index)) {
@@ -641,7 +645,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     }
     const OutputInfo& output_info = output_info_.at(index);
     const BufferAllocation* allocation =
-        &allocations_[output_info.allocation_index];
+        &allocations[output_info.allocation_index];
     se::DeviceMemoryBase& result_buffer = p.second;
 
     VLOG(4) << "Looking at: allocation " << output_info.allocation_index
@@ -702,7 +706,8 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
         if (!allocated_buffer.ok()) {
           return ResourceExhausted("%s\n%s\n",
                                    allocated_buffer.status().message(),
-                                   verbose_buffer_assignment_string_dumper_());
+                                   buffer_assignment_->ToVerboseString(
+                                       debug_buffer_assignment_show_max_));
         }
         result_buffer = allocated_buffer->Release();
         se::DeviceMemoryBase& aliased_buffer =
@@ -735,7 +740,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
 
   // Free all temporary allocations.
   std::vector<BufferAllocation> non_persistent_allocations;
-  for (const BufferAllocation& allocation : allocations_) {
+  for (const BufferAllocation& allocation : GetAllocations()) {
     if (!persistent_buffers_map.contains(allocation.index())) {
       non_persistent_allocations.push_back(allocation);
     }
@@ -783,7 +788,7 @@ Status GpuExecutable::ExecuteThunksOrXlaRuntime(
   // Match IrEmitter's temp buffer allocation for kernel launches. See
   // IrEmitterUnnested::BuildKernelThunkImpl().
   const BufferAllocation* temp_buffer = nullptr;
-  for (const BufferAllocation& alloc : allocations_) {
+  for (const BufferAllocation& alloc : GetAllocations()) {
     if (alloc.IsPreallocatedTempBuffer()) {
       // Retrieve the first seen temp buffer.
       if (temp_buffer == nullptr) temp_buffer = &alloc;
@@ -806,8 +811,7 @@ int64_t GpuExecutable::SizeOfGeneratedCodeInBytes() const {
     return -1;
   }
   int64_t size = binary().size();
-  for (BufferAllocation::Index i = 0; i < allocations_.size(); ++i) {
-    const BufferAllocation& allocation = allocations_[i];
+  for (const auto& allocation : GetAllocations()) {
     if (allocation.is_constant()) {
       size += allocation.size();
     }
@@ -933,7 +937,6 @@ GpuExecutable::GpuExecutable(
     std::shared_ptr<HloModule> hlo_module, std::string asm_text,
     std::vector<uint8_t> binary, std::vector<ConstantInfo> constants,
     se::GpuComputeCapability gpu_version,
-    xla::EntryFunctionAttributes entry_func_attrs,
     absl::string_view module_name, Shape xla_output_shape,
     std::vector<BufferAllocation> allocations,
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
@@ -943,7 +946,6 @@ GpuExecutable::GpuExecutable(
       binary_(std::move(binary)),
       gpu_version_(gpu_version),
       gpu_runtime_executable_(std::move(gpu_runtime_executable)),
-      entry_func_attrs_(entry_func_attrs),
       module_name_(module_name),
       output_shape_(xla_output_shape),
       allocations_(std::move(allocations)),
@@ -952,7 +954,7 @@ GpuExecutable::GpuExecutable(
       enable_debug_info_manager_(true) {
   if (has_module()) {
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
-                                               debug_buffer_assignment_);
+                                               BufferAssignmentProto());
   }
 }
 
@@ -1051,8 +1053,7 @@ static std::vector<std::vector<int64_t>> GetAllocationIndices(
 
 StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
     std::shared_ptr<HloModule> hlo_module, absl::string_view obj_file,
-    absl::string_view mlir_module,
-    xla::EntryFunctionAttributes entry_func_attrs, DebugOptions debug_options,
+    absl::string_view mlir_module, DebugOptions debug_options,
     absl::string_view asm_text, absl::string_view binary,
     std::vector<ConstantInfo> constants, se::GpuComputeCapability gpu_version,
     se::StreamExecutor* executor) {
@@ -1121,9 +1122,9 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   std::vector<uint8_t> binary_vector(binary.begin(), binary.end());
   return std::unique_ptr<Executable>(new GpuExecutable(
       std::move(hlo_module), std::move(asm_text_string),
-      std::move(binary_vector), std::move(constants), gpu_version,
-      entry_func_attrs, name, result_xla_shape, std::move(allocations),
-      std::move(output_info), std::move(gpu_runtime_executable)));
+      std::move(binary_vector), std::move(constants), gpu_version, name,
+      result_xla_shape, std::move(allocations), std::move(output_info),
+      std::move(gpu_runtime_executable)));
 }
 
 StatusOr<std::string_view> GpuExecutable::GetObjFile() const {

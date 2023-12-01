@@ -380,9 +380,6 @@ std::string GetBatchDimMapKey(const HloInstruction* ins, int64_t idx = -1);
 InstructionBatchDimMap BuildInstructionBatchDimMap(
     const HloInstructionSequence& sequence);
 
-// Remove all custom call makers in an HloModule.
-void RemoveCustomCallMarker(HloModule* module);
-
 /*
  * HloSharding Utility
  */
@@ -421,14 +418,6 @@ inline void ForceOperandSharding(HloInstruction* inst, int operand_num,
 inline bool IsFullyTiled(const HloSharding& sharding) {
   return sharding.NumTiles() == sharding.tile_assignment().num_elements();
 }
-
-// Propagate sharding for broadcast.
-// The output will be tiled along the broadcasted dimension the same way
-// as the input for the broadcast while the other dimensions are kept
-// non-tiled.
-HloSharding BroadcastSharding(const HloSharding& input_spec,
-                              const Shape& new_shape,
-                              absl::Span<const int64_t> dimensions);
 
 // Propagate sharding for dim-wise operations (e.g., slice, pad) which works
 // independently on each dimension.

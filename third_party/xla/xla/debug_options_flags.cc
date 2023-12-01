@@ -85,7 +85,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_fast_math_honor_division(true);
 
   // TODO(AyanmoI): Remove this flag when cuDNN FMHA is fully supported.
-  opts.set_xla_gpu_enable_cudnn_fmha(true);
+  opts.set_xla_gpu_enable_cudnn_fmha(false);
 
   opts.set_xla_gpu_fused_attention_use_cudnn_rng(false);
 
@@ -136,6 +136,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_enable_dumping(true);
 
   opts.set_xla_gpu_enable_xla_runtime_executable(true);
+  opts.set_xla_gpu_enable_custom_fusions(false);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_shared_constants(true);
 
@@ -211,7 +212,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_target_config_filename("");
   opts.set_xla_gpu_enable_cub_radix_sort(true);
   opts.set_xla_gpu_enable_cudnn_layer_norm(false);
-
+  opts.set_xla_gpu_threshold_for_windowed_einsum_mib(100000);
   return opts;
 }
 
@@ -1066,6 +1067,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_xla_runtime_executable),
       debug_options->xla_gpu_enable_xla_runtime_executable(),
       "Whether to enable XLA runtime for XLA:GPU backend"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_custom_fusions",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_custom_fusions),
+      debug_options->xla_gpu_enable_custom_fusions(),
+      "Whether to enable XLA custom fusions"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_custom_fusions_re",
+      string_setter_for(&DebugOptions::set_xla_gpu_enable_custom_fusions_re),
+      debug_options->xla_gpu_enable_custom_fusions_re(),
+      "Limits custom fusion only to fusions which match this regular "
+      "expression. Default is all custom fusions registerered in a current "
+      "process."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_enable_gpu2_runtime",
                 bool_setter_for(&DebugOptions::set_xla_gpu_enable_gpu2_runtime),
@@ -1415,6 +1428,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_cub_radix_sort),
       debug_options->xla_gpu_enable_cub_radix_sort(),
       "Enable radix sort using CUB for simple shapes"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_threshold_for_windowed_einsum_mib",
+      int64_setter_for(
+          &DebugOptions::set_xla_gpu_threshold_for_windowed_einsum_mib),
+      debug_options->xla_gpu_threshold_for_windowed_einsum_mib(),
+      "Threshold to enable windowed einsum (collective matmul) in MB."
+      "Default is 100000"));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

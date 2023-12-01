@@ -88,3 +88,24 @@ func.func @shape_of_ranked_to_shape(%arg0: tensor<?x1xf32>) -> !shape.shape {
   %0 = shape.shape_of %arg0 : tensor<?x1xf32> -> !shape.shape
   func.return %0 : !shape.shape
 }
+
+
+// -----
+
+// CHECK-LABEL: func.func @tensor_dim
+func.func @tensor_dim(%arg0: tensor<?x?xf32>) -> index {
+  %c0 = arith.constant 0 : index
+  %dim = tensor.dim %arg0, %c0 : tensor<?x?xf32>
+  func.return %dim : index
+  //      CHECK: %[[DIM_SIZE:.*]] = "mhlo.get_dimension_size"(%arg0) {dimension = 0 : i64} : (tensor<?x?xf32>) -> tensor<i32>
+  // CHECK-NEXT: %[[DIM_SIZE_INDEX:.*]] = builtin.unrealized_conversion_cast %[[DIM_SIZE]] : tensor<i32> to index
+  // CHECK-NEXT: return %[[DIM_SIZE_INDEX]] : index
+}
+
+// -----
+
+func.func @tensor_dim_dynamic(%arg0: tensor<?x?xf32>, %arg1: index) -> index {
+  // expected-error@+1 {{failed to legalize operation 'tensor.dim' that was explicitly marked illegal}}
+  %dim = tensor.dim %arg0, %arg1 : tensor<?x?xf32>
+  func.return %dim : index
+}

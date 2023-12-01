@@ -571,11 +571,14 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateIota(const Shape& shape,
                                                     int64_t iota_dimension);
 
-  // Creates a Top-K instruction.
+  // Creates a Top-K instruction returning the top k values along the last
+  // dimension of the input operand.
+  //
+  // - `k` indicates how many elements to return in the last dimension.
+  // - `largest` indicates whether to return the largest or smallest elements.
   static std::unique_ptr<HloInstruction> CreateTopK(const Shape& shape,
                                                     HloInstruction* input,
-                                                    int64_t k,
-                                                    HloComputation* compare);
+                                                    int64_t k, bool largest);
 
   // Creates a get tuple element instruction.
   static std::unique_ptr<HloInstruction> CreateGetTupleElement(
@@ -1909,6 +1912,26 @@ class HloInstruction {
   bool is_default_config() const { return is_default_config_; }
   void set_default_config() { is_default_config_ = true; }
 
+  void set_operation_queue_id(int64_t operation_queue_id) {
+    operation_queue_id_ = operation_queue_id;
+  }
+
+  const std::optional<int64_t> operation_queue_id() const {
+    return operation_queue_id_;
+  }
+
+  void set_wait_on_operation_queues(std::vector<int64_t>& operation_queue_ids) {
+    wait_on_operation_queues_ = operation_queue_ids;
+  }
+
+  const std::vector<int64_t> wait_on_operation_queues() const {
+    return wait_on_operation_queues_;
+  }
+
+  void add_wait_on_operation_queues(int64_t operation_queue_id) {
+    wait_on_operation_queues_.push_back(operation_queue_id);
+  }
+
   // Returns a string representation of a proto in the format used by
   // raw_backend_config_string.
   //
@@ -2520,6 +2543,12 @@ class HloInstruction {
   // Intrusive flag used by HloComputation, whether this instruction has
   // been marked as dead.
   bool marked_as_dead_;
+
+  // ID of the operation queue to run this instruction.
+  std::optional<int64_t> operation_queue_id_;
+
+  // IDs of operation queues to await before running this instruction.
+  std::vector<int64_t> wait_on_operation_queues_;
 };
 
 // Explicit instantiations in hlo_instruction.cc.

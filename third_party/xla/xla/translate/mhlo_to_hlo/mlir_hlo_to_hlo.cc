@@ -2733,8 +2733,17 @@ LogicalResult ExportXlaOp(UniformDequantizeOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(TopKOp op, OpLoweringContext ctx) {
-  // TODO(b/284077883): Implement HLO roundtrip for mhlo::TopKOp.
-  return failure();
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+    return failure();
+  auto topk = xla::TopK(operand, op.getK(), op.getLargest());
+
+  // Untuple the two results of XLA's topk.
+  for (const auto& [index, value] : llvm::enumerate(op.getResults())) {
+    value_map[value] = xla::GetTupleElement(topk, index);
+  }
+  return success();
 }
 
 }  // namespace

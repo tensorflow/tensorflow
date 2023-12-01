@@ -98,9 +98,6 @@ namespace internal {
 class KernelInterface;
 }  // namespace internal
 
-class KernelArgsArrayBase;        // forward declare
-class KernelArgsPackedArrayBase;  // forward declare
-
 //===----------------------------------------------------------------------===//
 // Kernel cache config
 //===----------------------------------------------------------------------===//
@@ -152,6 +149,67 @@ class KernelMetadata {
 };
 
 //===----------------------------------------------------------------------===//
+// Kernel arguments
+//===----------------------------------------------------------------------===//
+
+// A virtual base class for passing kernel arguments to a stream executor APIs.
+class KernelArgs {
+ public:
+  template <typename T>
+  using IsKernelArgs = std::enable_if_t<std::is_base_of<KernelArgs, T>::value>;
+
+  enum class Kind {
+    // A list of type-erased DeviceMemoryBase pointers to on-device memory. This
+    // type of kernel arguments used only when the kernel has to do its own
+    // custom packing, e.g. wrap all device pointers into a custom
+    // structure, but can't be implemented as a TypedKernel because it has to be
+    // passed around as a generic Kernel.
+    kDeviceMemoryArray,
+
+    // A list of kernel arguments packed into a storage that can be passed
+    // directly to device kernel as void** kernel parameters.
+    kPackedArray
+  };
+
+  virtual ~KernelArgs() = default;
+
+  // Gets the number of arguments added so far, including shared memory
+  // arguments.
+  virtual size_t number_of_arguments() const = 0;
+
+  // Gets the total number of shared memory bytes added so far.
+  virtual uint64_t number_of_shared_bytes() const = 0;
+
+  virtual Kind kind() const = 0;
+};
+
+//===----------------------------------------------------------------------===//
+// Kernel arguments packed array
+//===----------------------------------------------------------------------===//
+
+// A virtual base class for passing kernel arguments packed into a storage so
+// that we have stable addresses for all arguments. This is a low level API for
+// passing arguments in a platform-specific way that relies on the knowledge of
+// the ABI of the underlying platform.
+//
+// For example `cuLaunchKernel` accepts arguments as `void** kernelParams`, and
+// packed array base guarantees that `argument_addresses` are compatible with
+// the CUDA APIs.
+//
+// See: https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html
+class KernelArgsPackedArrayBase : public KernelArgs {
+ public:
+  // Gets the list of argument addresses.
+  virtual absl::Span<const void *const> argument_addresses() const = 0;
+
+  static bool classof(const KernelArgs *args) {
+    return args->kind() == Kind::kPackedArray;
+  }
+
+  Kind kind() const final { return Kind::kPackedArray; }
+};
+
+//===----------------------------------------------------------------------===//
 // Kernel
 //===----------------------------------------------------------------------===//
 
@@ -168,7 +226,7 @@ class Kernel {
   // StreamExecutor as a generic `Kernel`.
   using KernelArgsPacking =
       std::function<tsl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>(
-          const KernelArgsArrayBase &args)>;
+          const KernelArgs &args)>;
 
   Kernel(Kernel &&from);
 
@@ -255,66 +313,33 @@ class TypedKernel : public Kernel {
 };
 
 //===----------------------------------------------------------------------===//
-// Kernel arguments
+// Kernel arguments LLVM-style RTTI library
 //===----------------------------------------------------------------------===//
 
-// A virtual base class for passing kernel arguments to a stream executor APIs.
-class KernelArgsArrayBase {
- public:
-  template <typename T>
-  using IsKernelArgs =
-      std::enable_if_t<std::is_base_of<KernelArgsArrayBase, T>::value>;
-
-  enum class Kind {
-    // A list of type-erased DeviceMemoryBase pointers to on-device memory. This
-    // type of kernel arguments used only when the kernel has to do its own
-    // custom packing, e.g. wrap all device pointers into a custom
-    // structure, but can't be implemented as a TypedKernel because it has to be
-    // passed around as a generic Kernel.
-    kDeviceMemoryArray,
-
-    // A list of kernel arguments packed into a storage that can be passed
-    // directly to device kernel as void** kernel parameters.
-    kPackedArray
-  };
-
-  virtual ~KernelArgsArrayBase() = default;
-
-  // Gets the number of arguments added so far, including shared memory
-  // arguments.
-  virtual size_t number_of_arguments() const = 0;
-
-  // Gets the total number of shared memory bytes added so far.
-  virtual uint64_t number_of_shared_bytes() const = 0;
-
-  virtual Kind kind() const = 0;
-};
-
-// A small LLVM-style RTTI library for casting kernel arguments.
-template <class T, KernelArgsArrayBase::IsKernelArgs<T> * = nullptr>
-T *Cast(KernelArgsArrayBase *args) {
+template <class T, KernelArgs::IsKernelArgs<T> * = nullptr>
+T *Cast(KernelArgs *args) {
   CHECK(T::classof(args)) << "Invalid arguments casting to a destination type: "
                           << typeid(T).name();
   CHECK(args != nullptr) << "Casted arguments must be not null";
   return static_cast<const T *>(args);
 }
 
-template <class T, KernelArgsArrayBase::IsKernelArgs<T> * = nullptr>
-const T *Cast(const KernelArgsArrayBase *args) {
+template <class T, KernelArgs::IsKernelArgs<T> * = nullptr>
+const T *Cast(const KernelArgs *args) {
   CHECK(T::classof(args)) << "Invalid arguments casting to a destination type: "
                           << typeid(T).name();
   CHECK(args != nullptr) << "Casted arguments must be not null";
   return static_cast<const T *>(args);
 }
 
-template <class T, KernelArgsArrayBase::IsKernelArgs<T> * = nullptr>
-const T *DynCast(const KernelArgsArrayBase *args) {
+template <class T, KernelArgs::IsKernelArgs<T> * = nullptr>
+const T *DynCast(const KernelArgs *args) {
   CHECK(args != nullptr) << "Casted arguments must be not null";
   return T::classof(args) ? static_cast<const T *>(args) : nullptr;
 }
 
-template <class T, KernelArgsArrayBase::IsKernelArgs<T> * = nullptr>
-const T *DynCastOrNull(const KernelArgsArrayBase *args) {
+template <class T, KernelArgs::IsKernelArgs<T> * = nullptr>
+const T *DynCastOrNull(const KernelArgs *args) {
   return args && T::classof(args) ? static_cast<const T *>(args) : nullptr;
 }
 
@@ -322,14 +347,14 @@ const T *DynCastOrNull(const KernelArgsArrayBase *args) {
 // Kernel arguments device memory array
 //===----------------------------------------------------------------------===//
 
-class KernelArgsDeviceMemoryArray : public KernelArgsArrayBase {
+class KernelArgsDeviceMemoryArray : public KernelArgs {
  public:
   KernelArgsDeviceMemoryArray(absl::Span<const DeviceMemoryBase> args,
                               size_t shared_memory_bytes)
       : device_memory_args_(args.begin(), args.end()),
         shared_memory_bytes_(shared_memory_bytes) {}
 
-  static bool classof(const KernelArgsArrayBase *args) {
+  static bool classof(const KernelArgs *args) {
     return args->kind() == Kind::kDeviceMemoryArray;
   }
 
@@ -356,32 +381,6 @@ class KernelArgsDeviceMemoryArray : public KernelArgsArrayBase {
  private:
   absl::InlinedVector<DeviceMemoryBase, 4> device_memory_args_;
   size_t shared_memory_bytes_ = 0;
-};
-
-//===----------------------------------------------------------------------===//
-// Kernel arguments packed array
-//===----------------------------------------------------------------------===//
-
-// A virtual base class for passing kernel arguments packed into a storage so
-// that we have stable addresses for all arguments. This is a low level API for
-// passing arguments in a platform-specific way that relies on the knowledge of
-// the ABI of the underlying platform.
-//
-// For example `cuLaunchKernel` accepts arguments as `void** kernelParams`, and
-// packed array base guarantees that `argument_addresses` are compatible with
-// the CUDA APIs.
-//
-// See: https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html
-class KernelArgsPackedArrayBase : public KernelArgsArrayBase {
- public:
-  // Gets the list of argument addresses.
-  virtual absl::Span<const void *const> argument_addresses() const = 0;
-
-  static bool classof(const KernelArgsArrayBase *args) {
-    return args->kind() == Kind::kPackedArray;
-  }
-
-  Kind kind() const final { return Kind::kPackedArray; }
 };
 
 //===----------------------------------------------------------------------===//

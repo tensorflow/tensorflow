@@ -1524,5 +1524,24 @@ TEST_F(XlaBuilderTest, InvalidSharding) {
               HasSubstr("Number of tile assignment dimensions (excluding "
                         "subgroups) is different than the input rank"));
 }
+
+TEST_F(XlaBuilderTest, TopKDimensions) {
+  XlaBuilder b(TestName());
+  int64_t k = 1;
+  int64_t largest = true;
+  TopK(Parameter(&b, 0, ShapeUtil::MakeShape(F32, {6, 8}), "p0"), k, largest);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(root->opcode() == HloOpcode::kTopK);
+  EXPECT_TRUE(root->shape().IsTuple());
+  EXPECT_EQ(root->shape().tuple_shapes_size(), 2);
+  EXPECT_EQ(root->shape().tuple_shapes(0).rank(), 2);
+  EXPECT_EQ(root->shape().tuple_shapes(1).rank(), 2);
+  EXPECT_EQ(root->shape().tuple_shapes(0).dimensions(0), 6);
+  EXPECT_EQ(root->shape().tuple_shapes(0).dimensions(1), k);
+  EXPECT_EQ(root->shape().tuple_shapes(1).dimensions(0), 6);
+  EXPECT_EQ(root->shape().tuple_shapes(1).dimensions(1), k);
+}
 }  // namespace
 }  // namespace xla

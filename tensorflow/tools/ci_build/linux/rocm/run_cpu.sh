@@ -51,10 +51,10 @@ bazel test \
       //tensorflow/... \
       -//tensorflow/python/integration_testing/... \
       -//tensorflow/compiler/tf2tensorrt/... \
-      -//tensorflow/compiler/xrt/... \
       -//tensorflow/core/tpu/... \
       -//tensorflow/lite/... \
       -//tensorflow/tools/toolchains/... \
       # -//tensorflow/compiler/xla/service/gpu/...
+      #-//tensorflow/compiler/xrt/... \
       
       

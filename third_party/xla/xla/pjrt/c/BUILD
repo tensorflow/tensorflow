@@ -82,6 +82,7 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -135,7 +136,7 @@ cc_library(
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_wrapper_impl",
         "//xla/pjrt:pjrt_client",
-        "//xla/pjrt:tfrt_cpu_pjrt_client",
+        "//xla/pjrt/cpu:cpu_client",
     ],
 )
 

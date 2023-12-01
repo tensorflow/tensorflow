@@ -465,6 +465,14 @@ java_library(
     ],
 )
 
+java_library_with_tflite(
+    name = "test_init",
+    testonly = True,
+    srcs = [
+        "src/test/java/org/tensorflow/lite/TestInit.java",
+    ],
+)
+
 #-----------------------------------------------------------------------------
 # java_library targets that also include native code dependencies.
 
@@ -516,7 +524,6 @@ java_test_with_tflite(
     size = "small",
     srcs = [
         "src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java",
-        "src/test/java/org/tensorflow/lite/TestInit.java",
     ],
     javacopts = JAVACOPTS,
     # We want to ensure that every test case in the test also verifies that the
@@ -532,6 +539,9 @@ java_test_with_tflite(
         "v1only",
     ],
     test_class = "org.tensorflow.lite.TensorFlowLiteTest",
+    tflite_deps = [
+        ":test_init",
+    ],
     tflite_jni_binaries = [
         "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
     ],
@@ -597,7 +607,6 @@ java_test_with_tflite(
     size = "small",
     srcs = [
         "src/test/java/org/tensorflow/lite/NativeInterpreterWrapperTest.java",
-        "src/test/java/org/tensorflow/lite/TestInit.java",
     ],
     data = [
         # The files named as <data_type>.bin reshape the incoming tensor from (2, 8, 8, 3) to (2, 4, 4, 12).
@@ -613,6 +622,9 @@ java_test_with_tflite(
     ],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.NativeInterpreterWrapperTest",
+    tflite_deps = [
+        ":test_init",
+    ],
     tflite_jni_binaries = [
         "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
     ],
@@ -631,7 +643,6 @@ java_test_with_tflite(
     srcs = [
         "src/test/java/org/tensorflow/lite/InterpreterTest.java",
         "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
-        "src/test/java/org/tensorflow/lite/TestInit.java",
         "src/test/java/org/tensorflow/lite/TestUtils.java",
     ],
     data = [
@@ -646,6 +657,9 @@ java_test_with_tflite(
     ],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.InterpreterTest",
+    tflite_deps = [
+        ":test_init",
+    ],
     tflite_jni_binaries = [
         "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
     ],
@@ -663,7 +677,6 @@ java_test_with_tflite(
     srcs = [
         "src/test/java/org/tensorflow/lite/InterpreterApiTest.java",
         "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
-        "src/test/java/org/tensorflow/lite/TestInit.java",
         "src/test/java/org/tensorflow/lite/TestUtils.java",
     ],
     data = [
@@ -677,6 +690,9 @@ java_test_with_tflite(
     ],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.InterpreterApiTest",
+    tflite_deps = [
+        ":test_init",
+    ],
     tflite_jni_binaries = [
         "//tensorflow/lite/java/src/test/native:libtensorflowlite_stable_test_jni.so",
     ],
@@ -695,7 +711,6 @@ java_test_with_tflite(
     srcs = [
         "src/test/java/org/tensorflow/lite/InterpreterApiNoRuntimeTest.java",
         "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
-        "src/test/java/org/tensorflow/lite/TestInit.java",
         "src/test/java/org/tensorflow/lite/TestUtils.java",
     ],
     data = [
@@ -703,6 +718,9 @@ java_test_with_tflite(
     ],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.InterpreterApiNoRuntimeTest",
+    tflite_deps = [
+        ":test_init",
+    ],
     tflite_jni_binaries = [
         "//tensorflow/lite/java/src/test/native:libtensorflowlite_stable_test_jni.so",
     ],
@@ -720,7 +738,6 @@ java_test_with_tflite(
     srcs = [
         "src/test/java/org/tensorflow/lite/NnApiDelegateNativeTest.java",
         "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
-        "src/test/java/org/tensorflow/lite/TestInit.java",
         "src/test/java/org/tensorflow/lite/TestUtils.java",
     ],
     data = [
@@ -728,6 +745,9 @@ java_test_with_tflite(
     ],
     tags = ["no_mac"],
     test_class = "org.tensorflow.lite.NnApiDelegateNativeTest",
+    tflite_deps = [
+        ":test_init",
+    ],
     tflite_jni_binaries = [
         "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
     ],
@@ -745,7 +765,6 @@ java_test_with_tflite(
     size = "small",
     srcs = [
         "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
-        "src/test/java/org/tensorflow/lite/TestInit.java",
         "src/test/java/org/tensorflow/lite/TestUtils.java",
         "src/test/java/org/tensorflow/lite/nnapi/NnApiDelegateTest.java",
     ],
@@ -755,6 +774,9 @@ java_test_with_tflite(
     javacopts = JAVACOPTS,
     tags = ["no_mac"],
     test_class = "org.tensorflow.lite.nnapi.NnApiDelegateTest",
+    tflite_deps = [
+        ":test_init",
+    ],
     tflite_jni_binaries = [
         "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
     ],
@@ -797,7 +819,6 @@ java_test_with_tflite(
     size = "small",
     srcs = [
         "src/test/java/org/tensorflow/lite/TensorTest.java",
-        "src/test/java/org/tensorflow/lite/TestInit.java",
     ],
     data = [
         "src/testdata/add.bin",
@@ -808,6 +829,9 @@ java_test_with_tflite(
     ],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.TensorTest",
+    tflite_deps = [
+        ":test_init",
+    ],
     tflite_jni_binaries = [
         "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
     ],

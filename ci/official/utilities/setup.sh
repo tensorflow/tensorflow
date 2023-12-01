@@ -82,6 +82,11 @@ else
   fi
 fi
 
+# Mac builds have some specific setup needs. See setup_macos.sh for details
+if [[ "${OSTYPE}" =~ darwin* ]]; then
+  source ./ci/official/utilities/setup_macos.sh
+fi
+
 # Force-disable uploads if the job initiator is not Kokoro
 # This is temporary: it's currently standard practice for employees to
 # run nightly jobs for testing purposes. We're aiming to move away from

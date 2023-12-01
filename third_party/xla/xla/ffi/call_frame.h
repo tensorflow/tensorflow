@@ -41,30 +41,67 @@ namespace xla::ffi {
 class CallFrame;  // forward declare
 
 class CallFrameBuilder {
+  // A little bit of template metaprogramming to append type to std::variant.
+  template <typename V, class T>
+  struct AppendType;
+
+  template <typename... Ts, class T>
+  struct AppendType<std::variant<Ts...>, T> {
+    using Type = std::variant<Ts..., T>;
+  };
+
  public:
-  using Attribute = std::variant<int32_t, float, std::string>;
+  CallFrameBuilder();
+  ~CallFrameBuilder();
+
+  CallFrameBuilder(CallFrameBuilder&&);
+  CallFrameBuilder& operator=(CallFrameBuilder&&);
+
+  // Declare implementation detail structs for call frame builder storage.
+  struct Dictionary;
+
+  // Attributes that do not support nested dictionaries.
+  using FlatAttribute = std::variant<int32_t, int64_t, float, std::string>;
+  using FlatAttributesMap = absl::flat_hash_map<std::string, FlatAttribute>;
+
+  // Attributes that support arbitrary nesting.
+  using Attribute = typename AppendType<FlatAttribute, Dictionary>::Type;
   using AttributesMap = absl::flat_hash_map<std::string, Attribute>;
+
+  // Dictionary is just a wrapper around AttributesMap. We need an indirection
+  // through `std::unique_ptr` to be able to define recursive `std::variant`.
+  struct Dictionary {
+    std::unique_ptr<AttributesMap> attrs;
+  };
+
+  // A helper class to build call frame attributes.
+  class AttributesBuilder {
+   public:
+    AttributesBuilder();
+    ~AttributesBuilder();
+
+    void Insert(std::string name, FlatAttribute attr);
+    void Insert(std::string name, FlatAttributesMap attrs);
+
+    void Append(FlatAttributesMap attrs);
+
+    AttributesMap Build();
+
+   private:
+    AttributesMap attrs_;
+  };
 
   CallFrame Build();
 
   void AddBufferArg(se::DeviceMemoryBase memory, PrimitiveType type,
                     absl::Span<const int64_t> dims);
 
-  void AddI32Attr(std::string name, int32_t value);
-  void AddF32Attr(std::string name, float value);
-  void AddStringAttr(std::string name, std::string value);
-
-  void AddAttribute(std::string name, Attribute attr);
-  void AddAttributes(const AttributesMap& attrs);
+  void AddAttributes(AttributesMap attrs);
 
  private:
   friend class CallFrame;
 
-  struct Buffer {
-    se::DeviceMemoryBase memory;
-    PrimitiveType type;
-    std::vector<int64_t> dims;
-  };
+  struct Buffer;
 
   std::vector<Buffer> args_;
   AttributesMap attrs_;
@@ -88,10 +125,11 @@ class CallFrame {
   struct Arguments;
   struct Attributes;
   struct Buffer;
+  struct Dictionary;
   struct NamedAttribute;
   struct String;
 
-  using Attribute = std::variant<int32_t, float, String>;
+  using Attribute = std::variant<int32_t, int64_t, float, String, Dictionary>;
 
   CallFrame(absl::Span<const CallFrameBuilder::Buffer> args,
             const CallFrameBuilder::AttributesMap& attrs);

@@ -15,11 +15,18 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_test_kernels.h"
 
+#include <cstdint>
+
 namespace stream_executor::cuda::internal {
 
 __global__ void AddI32(int32_t* a, int32_t* b, int32_t* c) {
   int index = threadIdx.x + blockIdx.x * blockDim.x;
   c[index] = a[index] + b[index];
+}
+
+__global__ void MulI32(int32_t* a, int32_t* b, int32_t* c) {
+  int index = threadIdx.x + blockIdx.x * blockDim.x;
+  c[index] = a[index] * b[index];
 }
 
 __global__ void AddI32Ptrs3(Ptrs3<int32_t> ptrs) {
@@ -28,6 +35,8 @@ __global__ void AddI32Ptrs3(Ptrs3<int32_t> ptrs) {
 }
 
 void* GetAddI32CudaKernel() { return reinterpret_cast<void*>(&AddI32); }
+
+void* GetMulI32CudaKernel() { return reinterpret_cast<void*>(&MulI32); }
 
 void* GetAddI32Ptrs3CudaKernel() {
   return reinterpret_cast<void*>(&AddI32Ptrs3);

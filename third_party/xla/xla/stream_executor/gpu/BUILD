@@ -74,6 +74,7 @@ cc_library(
         ":gpu_types_header",
         "//xla/stream_executor:device_options",
         "//xla/stream_executor:stream_executor_headers",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
     ] + if_libtpu(
@@ -105,6 +106,7 @@ cc_library(
         ":gpu_types_header",
         "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor:stream_executor_internal",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -115,7 +117,11 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-    ],
+    ] + if_cuda_is_configured([
+        "//xla/stream_executor/cuda:cuda_conditional_kernels",
+    ]) + if_rocm_is_configured([
+        "//xla/stream_executor/rocm:hip_conditional_kernels",
+    ]),
 )
 
 cc_library(
@@ -160,6 +166,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",

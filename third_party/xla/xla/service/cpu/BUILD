@@ -1682,5 +1682,8 @@ cc_library(
     name = "cpu_symbol_repository",
     hdrs = ["cpu_symbol_repository.h"],
     visibility = ["//visibility:public"],
-    deps = ["//xla/service:symbol_repository"],
+    deps = [
+        "//xla:xla_proto_cc",
+        "//xla/service:symbol_repository",
+    ],
 )

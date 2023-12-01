@@ -468,6 +468,17 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
              .xla_gpu_enable_reduction_epilogue_fusion()) {
       return "Reduction epilogue fusion is not enabled.";
     }
+    // TODO(akuegel): Remove workaround when producer_hero is computed
+    // correctly.
+    const HloInstruction& reduce_hero =
+        producer_hero.opcode() == HloOpcode::kFusion
+            ? FindNonTrivialHero(*producer_hero.fused_expression_root())
+            : producer_hero;
+    if (!ReductionIsRaceFree(
+            reduce_hero.GetModule()->config(),
+            GetReductionKindAndContiguousComponents(reduce_hero))) {
+      return "Reduction output fusion only works for race free reductions";
+    }
     if (!AllSatisfy(consumer, [](const HloInstruction* hlo) {
           return IsIntermediate(hlo, /*allowed_operand_count=*/1);
         })) {

@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.module import module
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save as saved_model_save
@@ -128,6 +129,88 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         model,
         saved_model_path,
         signatures=model.matmul.get_concrete_function(
+            tensor_spec.TensorSpec(
+                shape=input_shape, dtype=dtypes.float32, name='input_tensor'
+            )
+        ),
+    )
+    return model
+
+  def _create_matmul_and_same_scale_model(
+      self,
+      input_shape: Sequence[int],
+      weight_shape: Sequence[int],
+      saved_model_path: str,
+      same_scale_op: str,
+  ) -> module.Module:
+    class MatmulAndSameScaleModel(module.Module):
+      """A simple model with a same-scale op.
+
+      Op name in StableHLO dialect is given as a string.
+      """
+
+      def __init__(
+          self,
+          weight_shape: Sequence[int],
+          same_scale_op: str,
+      ) -> None:
+        """Initializes a MatmulModel.
+
+        Args:
+          weight_shape: Shape of the weight tensor.
+          same_scale_op: Name of the same-scale op to be tested. Raises error
+            when an unknown name is given.
+        """
+        self.filters = np.random.uniform(low=-1.0, high=1.0, size=weight_shape)
+        self.same_scale_op = same_scale_op
+
+      @def_function.function
+      def matmul_and_same_scale(
+          self, input_tensor: core.Tensor
+      ) -> Mapping[str, core.Tensor]:
+        """Performs a matrix multiplication.
+
+        Args:
+          input_tensor: Input tensor to matmul with the filter.
+
+        Returns:
+          A map of: output key -> output result.
+        """
+        out = math_ops.matmul(input_tensor, self.filters, name='sample/matmul')
+
+        if self.same_scale_op == 'concatenate':
+          ones = array_ops.ones_like(out)
+          out = array_ops.concat([out, ones], 0)
+        elif self.same_scale_op == 'pad':
+          paddings = array_ops.ones(
+              (array_ops.rank(out), 2), dtype=dtypes.int32
+          )
+          out = array_ops.pad(out, paddings, 'CONSTANT')
+        elif self.same_scale_op == 'reshape':
+          out = array_ops.reshape(out, (array_ops.size(out), -1))
+        elif self.same_scale_op == 'select':
+          rng = np.random.default_rng(seed=1234)
+          condition = ops.convert_to_tensor(
+              rng.uniform(low=0.0, high=1.0, size=out.shape) < 0.5
+          )
+          ones = array_ops.ones_like(out)
+          out = math_ops.select(condition, out, ones)
+        elif self.same_scale_op == 'transpose':
+          out = array_ops.transpose(out)
+        else:
+          raise NotImplementedError(
+              '{} is not implemented for integration test.'.format(
+                  self.same_scale_op
+              )
+          )
+
+        return {'output': out}
+
+    model = MatmulAndSameScaleModel(weight_shape, same_scale_op)
+    saved_model_save.save(
+        model,
+        saved_model_path,
+        signatures=model.matmul_and_same_scale.get_concrete_function(
             tensor_spec.TensorSpec(
                 shape=input_shape, dtype=dtypes.float32, name='input_tensor'
             )

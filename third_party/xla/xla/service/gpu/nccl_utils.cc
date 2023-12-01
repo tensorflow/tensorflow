@@ -259,11 +259,16 @@ StatusOr<NcclComm::Lock> AcquireNcclComm(
     bool enable_clique_optimization) {
   // Ensure that this group of threads have exclusive access to the clique to
   // prevent threads from different groups locking communicators in the clique.
+  // The enable_clique_optimization value is only used for asynchronous
+  // collective stream currenly. For synchronous collectives, we should always
+  // enable the optimization. For P2P stream, we currently have to always enable
+  // the optimization, because we initially implement this optimization to
+  // workaround an NCCL bug related to P2P operations.
   NcclCliqueKey clique_key(std::move(participants), stream_id);
   std::shared_ptr<StatusOr<NcclClique::Lock>> clique = AcquireNcclClique(
       run_id, op_id, clique_key, unique_id_callback, num_local_participants,
       enable_clique_optimization ||
-          stream_id == GetStreamId(true, kAsyncStreamP2P));
+          stream_id != GetStreamId(/*is_async=*/true, kAsyncStreamCollective));
 
   if (!clique->ok()) return clique->status();
 

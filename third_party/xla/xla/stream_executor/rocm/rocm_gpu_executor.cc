@@ -107,9 +107,21 @@ bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
   return UnloadGpuBinary(gpu_binary);
 }
 
+namespace {
+int fpus_per_core(std::string gcn_arch_name) {
+  // Source:
+  // https://www.amd.com/content/dam/amd/en/documents/instinct-business-docs/white-papers/amd-cdna2-white-paper.pdf
+  int n = 128;  // gfx90a and gfx908 -> 128
+  if (gcn_arch_name.substr(0, 6) == "gfx906") {
+    n = 64;
+  }
+  return n;
+}
+}  // namespace
+
 tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 GpuExecutor::CreateOrShareConstant(Stream* stream,
-                                   const std::vector<uint8_t>& content) {
+                                   absl::Span<const uint8_t> content) {
   return tsl::errors::Unimplemented("Not implemented for ROCm");
 }
 
@@ -256,8 +268,7 @@ tsl::Status GpuExecutor::GetKernelMetadata(GpuKernel* rocm_kernel,
 
 tsl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                                 const BlockDim& block_dims,
-                                const Kernel& kernel,
-                                const KernelArgsArrayBase& args) {
+                                const Kernel& kernel, const KernelArgs& args) {
   CHECK_EQ(kernel.Arity() + (args.number_of_shared_bytes() > 0),
            args.number_of_arguments());
   GpuStreamHandle hipstream = AsGpuStreamValue(stream);
@@ -732,6 +743,16 @@ GpuExecutor::GetCommandBufferImplementation(CommandBuffer::Mode mode) {
   return std::make_unique<GpuCommandBuffer>(mode, /*parent=*/this, graph);
 }
 
+std::unique_ptr<internal::CommandBufferInterface>
+GpuExecutor::GetCommandBufferImplementation(CommandBuffer::Mode mode,
+                                            GpuGraphHandle graph,
+                                            bool is_owned_graph) {
+  VLOG(2) << "Create HIP command buffer (HIP graph) from existing graph "
+          << graph << "; is_owned_graph=" << is_owned_graph;
+  return std::make_unique<GpuCommandBuffer>(mode, /*parent=*/this, graph,
+                                            is_owned_graph);
+}
+
 void* GpuExecutor::platform_specific_context() { return context_; }
 
 GpuContext* GpuExecutor::gpu_context() { return context_; }
@@ -894,6 +915,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
       GpuDriver::GetMaxSharedMemoryPerBlock(device).value());
   int core_count = GpuDriver::GetMultiprocessorCount(device).value();
   builder.set_core_count(core_count);
+  builder.set_fpus_per_core(fpus_per_core(gcn_arch_name));
   builder.set_threads_per_core_limit(
       GpuDriver::GetMaxThreadsPerMultiprocessor(device).value());
   builder.set_registers_per_block_limit(

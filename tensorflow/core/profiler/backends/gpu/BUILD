@@ -192,7 +192,7 @@ tf_cuda_library(
     name = "nvtx_utils",
     hdrs = if_cuda(["nvtx_utils.h"]),
     copts = tf_profiler_copts() + tf_copts(),
-    cuda_deps = ["@com_google_absl//absl/strings:string_view"],
+    cuda_deps = ["@com_google_absl//absl/strings"],
     deps = [
         "//tensorflow/core:lib",
         "@local_xla//xla/backends/profiler/gpu:nvtx_utils",

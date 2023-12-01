@@ -22035,6 +22035,14 @@ op {
   is_stateful: true
 }
 op {
+  name: "GlobalIterId"
+  output_arg {
+    name: "iter_id"
+    type: DT_INT64
+  }
+  is_stateful: true
+}
+op {
   name: "Greater"
   input_arg {
     name: "x"

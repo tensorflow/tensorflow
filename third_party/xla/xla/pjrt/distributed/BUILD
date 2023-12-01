@@ -1,7 +1,7 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
-load("@local_tsl//tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 load("//xla:xla.bzl", "xla_cc_test")
+load("@local_tsl//tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
+load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 licenses(["notice"])
 
@@ -12,30 +12,8 @@ package(
 tf_proto_library(
     name = "protocol_proto",
     srcs = ["protocol.proto"],
-    has_services = 1,
     cc_api_version = 2,
-    create_grpc_library = True,
-    use_grpc_namespace = True,
     visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "protocol",
-    hdrs = ["protocol.h"],
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "key_value_store",
-    srcs = ["key_value_store.cc"],
-    hdrs = ["key_value_store.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-    ] + tsl_grpc_cc_dependencies(),
 )
 
 cc_library(
@@ -44,9 +22,6 @@ cc_library(
     hdrs = ["service.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":key_value_store",
-        ":protocol",
-        ":protocol_cc_grpc_proto",
         ":topology_util",
         ":util",
         "//xla:status",
@@ -75,7 +50,14 @@ xla_cc_test(
     deps = [
         ":protocol_proto_cc",
         ":topology_util",
+        "//xla:status",
+        "//xla:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -91,8 +73,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":protocol",
-        ":protocol_cc_grpc_proto",
         ":util",
         "//xla:statusor",
         "//xla:types",
@@ -140,9 +120,21 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protocol_proto_cc",
+        "//xla:status",
+        "//xla:statusor",
+        "//xla:util",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:utils",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -155,6 +147,7 @@ xla_cc_test(
         ":distributed",
         ":protocol_proto_cc",
         ":service",
+        ":topology_util",
         "//xla:protobuf_util",
         "//xla:status_macros",
         "@com_google_absl//absl/strings",

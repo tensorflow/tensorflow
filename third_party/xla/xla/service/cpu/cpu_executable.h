@@ -249,8 +249,6 @@ class CpuExecutable : public Executable {
   // Buffer assignment for the buffers we need to allocate.
   const std::unique_ptr<const BufferAssignment> assignment_;
 
-  std::shared_ptr<const BufferAssignmentProto> buffer_assignment_;
-
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // CpuExecutable. We save a string instead of an llvm::Module* because leaving
   // llvm::Module* in a singleton can cause the heap checker to emit false

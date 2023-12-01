@@ -720,7 +720,9 @@ ENTRY %Scatter {
   EXPECT_THAT(scatter, AnyOf(op::Sharding("{devices=[2,2,1]0,2,1,3}"),
                              op::Sharding("{devices=[2,2,1]0,1,2,3}"),
                              op::Sharding("{devices=[2,1,2]0,2,1,3}"),
-                             op::Sharding("{devices=[2,1,2]0,1,2,3}")));
+                             op::Sharding("{devices=[2,1,2]0,1,2,3}"),
+                             op::Sharding("{devices=[1,2,2]0,1,2,3}"),
+                             op::Sharding("{devices=[1,2,2]0,2,1,3}")));
   auto scatter_sharding = scatter->sharding();
   TF_EXPECT_OK(scatter_sharding.Validate(scatter->shape(), 4));
 }

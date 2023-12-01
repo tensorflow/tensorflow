@@ -23,6 +23,15 @@ package(
 )
 
 pytype_strict_library(
+    name = "quantization",
+    srcs = ["quantization.py"],
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model",
+    ],
+)
+
+pytype_strict_library(
     name = "quantize_model_test_base",
     testonly = 1,
     srcs = ["integration_test/quantize_model_test_base.py"],
@@ -34,6 +43,7 @@ pytype_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/module",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/saved_model:save",
@@ -47,13 +57,14 @@ tf_py_strict_test(
     name = "quantize_model_test",
     srcs = ["integration_test/quantize_model_test.py"],
     deps = [
+        ":quantization",
         ":quantize_model_test_base",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:representative_dataset",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:tag_constants",
         "@absl_py//absl/testing:parameterized",
     ],

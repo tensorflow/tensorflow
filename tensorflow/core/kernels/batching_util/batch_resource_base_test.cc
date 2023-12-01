@@ -70,9 +70,8 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SkipOnNoCostMeasurement) {
   batch.Close();
 
   std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(batch_cost_measurements,
-                                                     /*processed_size=*/16,
-                                                     batch);
+  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
+      "model_name", batch_cost_measurements, /*processed_size=*/16, batch);
   EXPECT_TRUE(batch.task(0).request_cost->GetCosts().empty());
   EXPECT_THAT(batch.task(0).request_cost->GetBatchMetrics(),
               ::testing::ElementsAre(::testing::FieldsAre(
@@ -90,9 +89,8 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SkipOnZeroCost) {
   std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
   batch_cost_measurements.push_back(
       CostMeasurementRegistry::CreateByNameOrNull("no_op", context));
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(batch_cost_measurements,
-                                                     /*processed_size=*/16,
-                                                     batch);
+  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
+      "model_name", batch_cost_measurements, /*processed_size=*/16, batch);
   EXPECT_TRUE(batch.task(0).request_cost->GetCosts().empty());
   EXPECT_THAT(batch.task(0).request_cost->GetBatchMetrics(),
               ::testing::ElementsAre(::testing::FieldsAre(
@@ -108,9 +106,8 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SkipOnZeroBatchSize) {
   std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
   batch_cost_measurements.push_back(
       CostMeasurementRegistry::CreateByNameOrNull("test_tpu", context));
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(batch_cost_measurements,
-                                                     /*processed_size=*/0,
-                                                     batch);
+  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
+      "model_name", batch_cost_measurements, /*processed_size=*/0, batch);
 }
 
 TEST(SplitBatchCostsAndRecordMetricsTest, SkipOnNoRequestCost) {
@@ -123,9 +120,8 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SkipOnNoRequestCost) {
   std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
   batch_cost_measurements.push_back(
       CostMeasurementRegistry::CreateByNameOrNull("test_tpu", context));
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(batch_cost_measurements,
-                                                     /*processed_size=*/16,
-                                                     batch);
+  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
+      "model_name", batch_cost_measurements, /*processed_size=*/16, batch);
 
   EXPECT_EQ(batch.task(0).request_cost, nullptr);
   EXPECT_EQ(batch.task(1).request_cost, nullptr);
@@ -142,9 +138,8 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SplitSingleCostType) {
   std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
   batch_cost_measurements.push_back(
       CostMeasurementRegistry::CreateByNameOrNull("test_tpu", context));
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(batch_cost_measurements,
-                                                     /*processed_size=*/20,
-                                                     batch);
+  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
+      "model_name", batch_cost_measurements, /*processed_size=*/20, batch);
 
   EXPECT_THAT(
       batch.task(0).request_cost->GetCosts(),
@@ -179,9 +174,8 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SplitMultiCostTypes) {
       CostMeasurementRegistry::CreateByNameOrNull("test_tpu", context));
   batch_cost_measurements.push_back(
       CostMeasurementRegistry::CreateByNameOrNull("test_gcu", context));
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(batch_cost_measurements,
-                                                     /*processed_size=*/20,
-                                                     batch);
+  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
+      "model_name", batch_cost_measurements, /*processed_size=*/20, batch);
 
   EXPECT_THAT(
       batch.task(0).request_cost->GetCosts(),
@@ -223,9 +217,8 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SplitOnlyNonZeroCostTypes) {
       CostMeasurementRegistry::CreateByNameOrNull("no_op", context));
   batch_cost_measurements.push_back(
       CostMeasurementRegistry::CreateByNameOrNull("test_tpu", context));
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(batch_cost_measurements,
-                                                     /*processed_size=*/20,
-                                                     batch);
+  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
+      "model_name", batch_cost_measurements, /*processed_size=*/20, batch);
 
   EXPECT_THAT(
       batch.task(0).request_cost->GetCosts(),

@@ -41,6 +41,7 @@ ArenaPlanner::ArenaPlanner(TfLiteContext* context,
     : context_(context),
       graph_info_(std::move(graph_info)),
       arena_(kDefaultArenaAlignment, subgraph_index),
+      has_nonpersistent_memory_(false),
       persistent_arena_(kDefaultArenaAlignment, subgraph_index),
       preserve_all_tensors_(preserve_all_tensors),
       tensor_alignment_(tensor_alignment),
@@ -379,6 +380,7 @@ TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
 TfLiteStatus ArenaPlanner::ReleaseNonPersistentMemory() {
   // Clear non-persistent arena's buffer.
   TF_LITE_ENSURE_STATUS(arena_.ReleaseBuffer());
+  has_nonpersistent_memory_ = false;
   // Set data pointers for all non-persistent tensors to nullptr.
   TfLiteTensor* tensors = graph_info_->tensors();
   for (int i = 0; i < static_cast<int>(graph_info_->num_tensors()); ++i) {
@@ -394,6 +396,7 @@ TfLiteStatus ArenaPlanner::AcquireNonPersistentMemory() {
   // First commit arena_ to allocate underlying buffer.
   bool reallocated;
   TF_LITE_ENSURE_STATUS(arena_.Commit(&reallocated));
+  has_nonpersistent_memory_ = true;
   // Resolve allocations for all tensors not on the persistent arena.
   TfLiteTensor* tensors = graph_info_->tensors();
   for (int i = 0; i < static_cast<int>(graph_info_->num_tensors()); ++i) {
@@ -406,7 +409,7 @@ TfLiteStatus ArenaPlanner::AcquireNonPersistentMemory() {
 }
 
 bool ArenaPlanner::HasNonPersistentMemory() {
-  return arena_.GetBufferSize() != 0;
+  return has_nonpersistent_memory_;
 }
 
 void ArenaPlanner::DumpDebugInfo(const std::vector<int>& execution_plan) const {
@@ -424,6 +427,7 @@ void ArenaPlanner::GetAllocInfo(size_t* arena_size,
 TfLiteStatus ArenaPlanner::Commit(bool* reallocated) {
   bool arena_reallocated, persistent_arena_reallocated;
   TF_LITE_ENSURE_STATUS(arena_.Commit(&arena_reallocated));
+  has_nonpersistent_memory_ = true;
   TF_LITE_ENSURE_STATUS(
       persistent_arena_.Commit(&persistent_arena_reallocated));
   *reallocated = arena_reallocated;

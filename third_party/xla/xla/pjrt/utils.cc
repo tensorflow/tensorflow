@@ -22,13 +22,19 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/types/span.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "xla/client/executable_build_options.h"
 #include "xla/client/xla_computation.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -36,6 +42,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/layout_util.h"
+#include "xla/pjrt/layout_mode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
@@ -165,6 +172,324 @@ Status ParseDeviceAssignmentCompileOptions(
         std::make_shared<DeviceAssignment>(build_options->device_assignment());
   }
   return OkStatus();
+}
+
+// Helper method that takes an ArrayAttr of DictionaryAttrs for each arg or
+// result of a function, and looks for "mhlo.layout_mode". `all_attrs` can be
+// nullptr. `num_values` is the number of arguments or results.
+static StatusOr<std::vector<LayoutMode>> MlirAttrsToLayoutModes(
+    mlir::ArrayAttr all_attrs, size_t num_values) {
+  if (all_attrs == nullptr) {
+    return std::vector<LayoutMode>(num_values);
+  }
+  if (all_attrs.size() != num_values) {
+    return InvalidArgument(
+        "MlirAttrsToLayoutModes got unexpected number of attributes: %d, "
+        "expected: %d",
+        all_attrs.size(), num_values);
+  }
+
+  std::vector<LayoutMode> result;
+  result.reserve(all_attrs.size());
+  for (const mlir::Attribute& dict_attr : all_attrs) {
+    mlir::StringAttr attr =
+        dict_attr.cast<mlir::DictionaryAttr>().getAs<mlir::StringAttr>(
+            "mhlo.layout_mode");
+    if (attr != nullptr) {
+      TF_ASSIGN_OR_RETURN(LayoutMode mode,
+                          LayoutMode::FromString(attr.getValue().str()));
+      result.emplace_back(std::move(mode));
+    } else {
+      result.emplace_back();
+    }
+  }
+  return result;
+}
+
+// Helper function for getting default LayoutModes for tupled arguments or
+// outputs. Returns nullopt if the arguments/outputs are not tupled. Raises an
+// error if layout modes are requested on tupled values.
+static StatusOr<std::optional<std::vector<LayoutMode>>> GetTupleLayoutModes(
+    mlir::ArrayRef<mlir::Type> types, mlir::ArrayAttr all_attrs) {
+  if (types.size() != 1 || !llvm::isa<mlir::TupleType>(types[0])) {
+    return std::nullopt;
+  }
+  if (all_attrs != nullptr) {
+    if (all_attrs.size() != 1) {
+      return InvalidArgument(
+          "GetTupleLayoutModes expected single tuple attr, got %d attrs",
+          all_attrs.size());
+    }
+    mlir::StringAttr attr =
+        all_attrs.begin()->cast<mlir::DictionaryAttr>().getAs<mlir::StringAttr>(
+            "mhlo.layout_mode");
+    if (attr != nullptr) {
+      return Unimplemented("mhlo.layout_mode not supported with tupled values");
+    }
+  }
+  // Use default layout for all outputs.
+  return std::vector<LayoutMode>(types[0].cast<mlir::TupleType>().size());
+}
+
+StatusOr<std::vector<LayoutMode>> GetArgLayoutModes(mlir::ModuleOp module) {
+  mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
+  if (main == nullptr) {
+    return InvalidArgument(
+        "GetArgLayoutModes passed module without main function");
+  }
+
+  // Special case: tupled arguments
+  TF_ASSIGN_OR_RETURN(std::optional<std::vector<LayoutMode>> maybe_result,
+                      GetTupleLayoutModes(main.getFunctionType().getInputs(),
+                                          main.getAllArgAttrs()));
+  if (maybe_result) return *maybe_result;
+
+  return MlirAttrsToLayoutModes(main.getAllArgAttrs(), main.getNumArguments());
+}
+
+StatusOr<std::vector<LayoutMode>> GetOutputLayoutModes(mlir::ModuleOp module) {
+  mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
+  if (main == nullptr) {
+    return InvalidArgument(
+        "GetOutputLayoutModes passed module without main function");
+  }
+
+  // Special case: tupled outputs
+  TF_ASSIGN_OR_RETURN(std::optional<std::vector<LayoutMode>> maybe_tuple_result,
+                      GetTupleLayoutModes(main.getFunctionType().getResults(),
+                                          main.getAllResultAttrs()));
+  if (maybe_tuple_result) return *maybe_tuple_result;
+
+  return MlirAttrsToLayoutModes(main.getAllResultAttrs(), main.getNumResults());
+}
+
+// Make sure to choose delimiter that will never show up in Layout strings.
+static const char* kLayoutModeDelimiter = ";";
+
+static std::string GetFrontendAttr(absl::Span<const LayoutMode> layout_modes) {
+  return absl::StrJoin(layout_modes, kLayoutModeDelimiter,
+                       [](std::string* out, const LayoutMode& mode) {
+                         absl::StrAppend(out, mode.ToString());
+                       });
+}
+
+Status AddLayoutModesToFrontendAttrs(mlir::ModuleOp module,
+                                     XlaComputation& xla_computation) {
+  TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
+                      GetArgLayoutModes(module));
+  TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
+                      GetOutputLayoutModes(module));
+
+  // Type is string->string proto map. Using auto here to deal with different
+  // build environments.
+  auto& frontend_attrs = *xla_computation.mutable_proto()
+                              ->mutable_frontend_attributes()
+                              ->mutable_map();
+  frontend_attrs["arg_layout_modes"] = GetFrontendAttr(arg_layout_modes);
+  frontend_attrs["out_layout_modes"] = GetFrontendAttr(out_layout_modes);
+  return OkStatus();
+}
+
+static StatusOr<std::vector<LayoutMode>> GetLayoutModesFromFrontendAttr(
+    absl::string_view attr) {
+  // SkipEmpty() needed to avoid returning the empty string when attr is empty.
+  std::vector<std::string> str_modes =
+      absl::StrSplit(attr, kLayoutModeDelimiter, absl::SkipEmpty());
+  std::vector<LayoutMode> result;
+  for (const std::string& str_mode : str_modes) {
+    TF_ASSIGN_OR_RETURN(LayoutMode mode, LayoutMode::FromString(str_mode));
+    result.emplace_back(std::move(mode));
+  }
+  return result;
+}
+
+static StatusOr<std::vector<LayoutMode>> GetLayoutModes(
+    const XlaComputation& computation, absl::string_view frontend_attr_name,
+    size_t num_values) {
+  const auto& frontend_attrs = computation.proto().frontend_attributes().map();
+  auto iter = frontend_attrs.find(frontend_attr_name);
+  if (iter == frontend_attrs.end()) {
+    // Return all default layouts if frontend attr isn't present.
+    return std::vector<LayoutMode>(num_values);
+  }
+  return GetLayoutModesFromFrontendAttr(iter->second);
+}
+
+StatusOr<std::vector<LayoutMode>> GetArgLayoutModes(
+    const XlaComputation& computation) {
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      computation.GetProgramShape());
+  size_t num_args = program_shape.parameters_size() == 1 &&
+                            program_shape.parameters(0).IsTuple()
+                        ? program_shape.parameters(0).tuple_shapes_size()
+                        : program_shape.parameters_size();
+  return GetLayoutModes(computation, "arg_layout_modes", num_args);
+}
+
+StatusOr<std::vector<LayoutMode>> GetOutputLayoutModes(
+    const XlaComputation& computation) {
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      computation.GetProgramShape());
+  size_t num_outputs = program_shape.result().IsTuple()
+                           ? program_shape.result().tuple_shapes_size()
+                           : 1;
+  return GetLayoutModes(computation, "out_layout_modes", num_outputs);
+}
+
+static StatusOr<Shape> LayoutModeToXlaShape(
+    const LayoutMode& layout_mode, const Shape& unsharded_shape,
+    const Shape& sharded_shape,
+    std::function<StatusOr<Shape>(Shape)>
+        choose_compact_layout_for_shape_function) {
+  if (unsharded_shape.IsToken() || unsharded_shape.IsOpaque()) {
+    return unsharded_shape;
+  }
+  if (!unsharded_shape.IsArray() || !sharded_shape.IsArray()) {
+    return InvalidArgument(
+        "LayoutModeToXlaShape must be passed array shapes, got "
+        "unsharded_shape: %s, sharded_shape: %s",
+        unsharded_shape.ToString(), sharded_shape.ToString());
+  }
+  // For sharded computations, XLA expects the layout to specified as the global
+  // shape with the sharded layout.
+  Shape result = unsharded_shape;
+  LayoutUtil::ClearLayout(&result);
+  switch (layout_mode.mode) {
+    case LayoutMode::Mode::kDefault: {
+      TF_ASSIGN_OR_RETURN(
+          Shape layout,
+          choose_compact_layout_for_shape_function(sharded_shape));
+      *result.mutable_layout() = layout.layout();
+      break;
+    }
+    case LayoutMode::Mode::kUserSpecified: {
+      CHECK(layout_mode.user_layout);
+      *result.mutable_layout() = *layout_mode.user_layout;
+      break;
+    }
+    case LayoutMode::Mode::kAuto: {
+      // Don't set any layout on `result`.
+      break;
+    }
+  }
+  return result;
+}
+
+StatusOr<std::pair<std::vector<Shape>, Shape>> LayoutModesToXlaShapes(
+    const XlaComputation& computation, std::vector<LayoutMode> arg_layout_modes,
+    std::vector<LayoutMode> out_layout_modes,
+    std::function<StatusOr<Shape>(Shape)>
+        choose_compact_layout_for_shape_function) {
+  // Compute sharded argument and output shapes.
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      computation.GetProgramShape());
+  TF_ASSIGN_OR_RETURN(auto sharded_shapes,
+                      GetShardedProgramShapes(computation, program_shape));
+
+  // Untuple if necessary.
+  bool args_tupled = program_shape.parameters_size() == 1 &&
+                     program_shape.parameters(0).IsTuple();
+  const std::vector<Shape>& unsharded_arg_shapes =
+      args_tupled ? program_shape.parameters(0).tuple_shapes()
+                  : program_shape.parameters();
+  const std::vector<Shape>& sharded_arg_shapes =
+      args_tupled ? sharded_shapes.first[0].tuple_shapes()
+                  : sharded_shapes.first;
+
+  bool out_tupled = program_shape.result().IsTuple();
+  const std::vector<Shape>& unsharded_out_shapes =
+      out_tupled ? program_shape.result().tuple_shapes()
+                 : std::vector<Shape>{program_shape.result()};
+  const std::vector<Shape>& sharded_out_shapes =
+      out_tupled ? sharded_shapes.second.tuple_shapes()
+                 : std::vector<Shape>{sharded_shapes.second};
+
+  if (unsharded_arg_shapes.size() != arg_layout_modes.size()) {
+    return InvalidArgument(
+        "LayoutModesToXlaShapes got mismatched number of arguments and layout "
+        "modes (%d vs %d)",
+        unsharded_arg_shapes.size(), arg_layout_modes.size());
+  }
+  if (sharded_arg_shapes.size() != arg_layout_modes.size()) {
+    return InvalidArgument(
+        "LayoutModesToXlaShapes got mismatched number of sharded arguments and "
+        "layout modes (%d vs %d)",
+        sharded_arg_shapes.size(), arg_layout_modes.size());
+  }
+  if (unsharded_out_shapes.size() != out_layout_modes.size()) {
+    return InvalidArgument(
+        "LayoutModesToXlaShapes got mismatched number of outputs and layout "
+        "modes (%d vs %d)",
+        unsharded_out_shapes.size(), out_layout_modes.size());
+  }
+  if (sharded_out_shapes.size() != out_layout_modes.size()) {
+    return InvalidArgument(
+        "LayoutModesToXlaShapes got mismatched number of sharded outputs and "
+        "layout modes (%d vs %d)",
+        sharded_out_shapes.size(), out_layout_modes.size());
+  }
+
+  // Convert each LayoutMode to an xla::Shape with the appropriate Layout set or
+  // unset.
+  std::vector<Shape> flat_arg_layouts;
+  flat_arg_layouts.reserve(arg_layout_modes.size());
+  for (int i = 0; i < arg_layout_modes.size(); ++i) {
+    TF_ASSIGN_OR_RETURN(
+        Shape layout,
+        LayoutModeToXlaShape(arg_layout_modes[i], unsharded_arg_shapes[i],
+                             sharded_arg_shapes[i],
+                             choose_compact_layout_for_shape_function));
+    flat_arg_layouts.emplace_back(std::move(layout));
+  }
+  std::vector<Shape> flat_out_layouts;
+  flat_out_layouts.reserve(out_layout_modes.size());
+  for (int i = 0; i < out_layout_modes.size(); ++i) {
+    TF_ASSIGN_OR_RETURN(
+        Shape layout,
+        LayoutModeToXlaShape(out_layout_modes[i], unsharded_out_shapes[i],
+                             sharded_out_shapes[i],
+                             choose_compact_layout_for_shape_function));
+    flat_out_layouts.emplace_back(std::move(layout));
+  }
+
+  // Tuple final shapes if necessary.
+  std::vector<Shape> arg_layouts =
+      args_tupled
+          ? std::vector<Shape>{ShapeUtil::MakeTupleShape(flat_arg_layouts)}
+          : std::move(flat_arg_layouts);
+  Shape out_layout = out_tupled ? ShapeUtil::MakeTupleShape(flat_out_layouts)
+                                : flat_out_layouts[0];
+
+  return std::pair<std::vector<Shape>, Shape>{std::move(arg_layouts),
+                                              std::move(out_layout)};
+}
+
+StatusOr<std::pair<std::vector<Shape>, std::vector<const Shape*>>>
+LayoutModesToXla(const XlaComputation& computation,
+                 std::vector<LayoutMode> arg_layout_modes,
+                 std::vector<LayoutMode> out_layout_modes,
+                 std::function<StatusOr<Shape>(Shape)>
+                     choose_compact_layout_for_shape_function,
+                 ExecutableBuildOptions& build_options) {
+  TF_ASSIGN_OR_RETURN(
+      auto pair,
+      LayoutModesToXlaShapes(computation, arg_layout_modes, out_layout_modes,
+                             choose_compact_layout_for_shape_function));
+  std::vector<Shape>& arg_layouts = pair.first;
+  Shape& out_layout = pair.second;
+
+  // Generate result vector of pointers
+  std::vector<const Shape*> arg_layout_pointers;
+  arg_layout_pointers.reserve(arg_layouts.size());
+  for (int i = 0; i < arg_layouts.size(); ++i) {
+    arg_layout_pointers.push_back(&arg_layouts[i]);
+  }
+
+  // Update build_options
+  build_options.set_result_layout(out_layout);
+
+  return std::pair<std::vector<Shape>, std::vector<const Shape*>>{
+      std::move(arg_layouts), std::move(arg_layout_pointers)};
 }
 
 Status DetermineArgumentLayoutsFromCompileOptions(

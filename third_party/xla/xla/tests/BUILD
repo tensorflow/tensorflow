@@ -180,7 +180,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_client_registry",
-        "//xla/pjrt:tfrt_cpu_pjrt_client",
+        "//xla/pjrt/cpu:cpu_client",
     ],
 )
 

@@ -1378,9 +1378,13 @@ class Context:
       fdef: A FunctionDef protocol buffer message.
     """
     self.ensure_initialized()
-    fdef_string = fdef.SerializeToString()
-    pywrap_tfe.TFE_ContextAddFunctionDef(self._handle, fdef_string,
-                                         len(fdef_string))
+    if is_oss:
+      fdef_string = fdef.SerializeToString()
+      pywrap_tfe.TFE_ContextAddFunctionDef(
+          self._handle, fdef_string, len(fdef_string)
+      )
+    else:
+      pywrap_tfe.TFE_ContextAddFunctionDefNoSerialization(self._handle, fdef)
 
   def get_function_def(self, name):
     """Get a function definition from the context.

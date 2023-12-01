@@ -15,12 +15,31 @@ limitations under the License.
 
 #include "xla/service/gpu/ir_emission_utils.h"
 
+#include <cstdint>
+#include <cstring>
+#include <memory>
+#include <vector>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/translate/hlo_to_mhlo/hlo_utils.h"
+#include "xla/types.h"
 #include "xla/util.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -456,6 +475,44 @@ ENTRY entry {
   EXPECT_EQ(result->instr, tr);
   EXPECT_EQ(result->dimensions, Vector3({1100, 12, 8}));
   EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
+}
+
+TEST_F(IrEmissionUtilsTest, LiteralToAttrToXlaFormat) {
+  // int16, should be aliased.
+  {
+    Literal literal = LiteralUtil::CreateR2<int16_t>({{0, 1, 2}, {3, 4, 5}});
+
+    TF_ASSERT_OK_AND_ASSIGN(DenseDataIntermediate data,
+                            LiteralToXlaFormat(literal));
+    EXPECT_EQ(data.span().size(), literal.size_bytes());
+    EXPECT_EQ(reinterpret_cast<const char*>(data.span().data()),
+              literal.untyped_data());
+  }
+
+  // int4, even, should be a new (unaliased) packed array.
+  {
+    Literal literal = LiteralUtil::CreateR2<s4>(
+        {{s4(0), s4(1), s4(2)}, {s4(3), s4(4), s4(5)}});
+
+    TF_ASSERT_OK_AND_ASSIGN(DenseDataIntermediate data,
+                            LiteralToXlaFormat(literal));
+    EXPECT_EQ(data.span(), std::vector<uint8_t>({0x01, 0x23, 0x45}));
+    EXPECT_NE(reinterpret_cast<const void*>(data.span().data()),
+              literal.untyped_data());
+  }
+
+  // int4, odd, should be a new (unaliased) packed array.
+  {
+    Literal literal = LiteralUtil::CreateR2<u4>(
+        {{u4(0), u4(1), u4(2)}, {u4(3), u4(4), u4(5)}, {u4(6), u4(7), u4(8)}});
+
+    TF_ASSERT_OK_AND_ASSIGN(DenseDataIntermediate data,
+                            LiteralToXlaFormat(literal));
+    EXPECT_EQ(data.span(),
+              std::vector<uint8_t>({0x01, 0x23, 0x45, 0x67, 0x80}));
+    EXPECT_NE(reinterpret_cast<const void*>(data.span().data()),
+              literal.untyped_data());
+  }
 }
 
 }  // namespace gpu

@@ -1896,7 +1896,8 @@ bool ShapeInference::InferShapeForXlaSelectAndScatterOp(
 
 bool ShapeInference::InferShapeForXlaGatherOp(XlaGatherOp op) {
   xla::Shape input_shape = xla::TypeToShape(op.getOperand().getType());
-  if (input_shape == xla::Shape()) return false;
+  if (input_shape == xla::Shape() || input_shape.is_unbounded_dynamic())
+    return false;
 
   xla::Shape start_indices_shape =
       xla::TypeToShape(op.getStartIndices().getType());

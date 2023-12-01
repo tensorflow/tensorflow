@@ -189,7 +189,7 @@ struct AutoShardingOption {
   // In order to obtain default sharding strategies for instructions to limit
   // departures from the defaults, use sharding propagation instead of assuming
   // a simple replicated default.
-  bool use_sharding_propagation_for_default_shardings = true;
+  bool use_sharding_propagation_for_default_shardings = false;
 
   // Prints a debug string.
   std::string ToString() const;

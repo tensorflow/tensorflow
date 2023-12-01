@@ -774,17 +774,19 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
       std::unique_ptr<Executable> executable,
       backend->compiler()->RunBackend(std::move(module), executor, options));
 
-  const HloProto* hlo_proto_after_opt = executable->hlo_proto();
+  const BufferAssignmentProto* buffer_assignment_proto_after_opt =
+      executable->buffer_assignment_proto();
 
   // If dumping is enabled RunBackend(...) will emit a hlo_proto in the
   // executable. This contains the buffer_assignment that is only available
   // after RunBackend(). If hlo_proto_before_opt is not null, then we replace
   // its buffer_assignment with the one from after_opt and then store it into
   // the executable.
-  if (hlo_proto_before_opt != nullptr && hlo_proto_after_opt != nullptr) {
+  if (hlo_proto_before_opt != nullptr &&
+      buffer_assignment_proto_after_opt != nullptr) {
     CHECK(DumpingEnabledForHloModule(executable->module()));
     *hlo_proto_before_opt->mutable_buffer_assignment() =
-        hlo_proto_after_opt->buffer_assignment();
+        std::move(*buffer_assignment_proto_after_opt);
     executable->set_hlo_proto(std::move(hlo_proto_before_opt));
   }
   return std::move(executable);

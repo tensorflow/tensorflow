@@ -23,6 +23,7 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -105,10 +106,8 @@ static constexpr char const* kProgram = R"(HloModule HostTransfer
     })";
 
 TEST(StreamExecutorGpuClientTest, SendRecvChunked) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-
-                                              /*node_id=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CompileExecutable(kProgram, *client));
@@ -159,9 +158,8 @@ TEST(StreamExecutorGpuClientTest, SendRecvChunked) {
 }
 
 TEST(StreamExecutorGpuClientTest, SendErrorNoDeadLock) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*node_id=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CompileExecutable(kProgram, *client));
@@ -194,9 +192,8 @@ TEST(StreamExecutorGpuClientTest, SendErrorNoDeadLock) {
 }
 
 TEST(StreamExecutorGpuClientTest, RecvErrorNoDeadLock) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*node_id=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CompileExecutable(kProgram, *client));
@@ -232,9 +229,8 @@ TEST(StreamExecutorGpuClientTest, RecvErrorNoDeadLock) {
 }
 
 TEST(StreamExecutorGpuClientTest, ToLiteralAsync) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*node_id=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
   ASSERT_GE(client->addressable_devices().size(), 1);
 
   auto src_literal = LiteralUtil::CreateR1<float>({41.0f, 42.0f, 43.0f, 44.0f});
@@ -270,9 +266,8 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsync) {
 }
 
 TEST(StreamExecutorGpuClientTest, ToLiteralAsyncBeforeBufferReady) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*node_id=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
   ASSERT_GE(client->addressable_devices().size(), 1);
 
   auto src_literal = LiteralUtil::CreateR1<float>({41.0f, 42.0f, 43.0f, 44.0f});
@@ -311,9 +306,8 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsyncBeforeBufferReady) {
 }
 
 TEST(StreamExecutorGpuClientTest, FromHostAsync) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*node_id=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
   ASSERT_GE(client->addressable_devices().size(), 1);
 
   std::vector<Literal> src_literals;
@@ -379,9 +373,8 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
   }
 }
 TEST(StreamExecutorGpuClientTest, CopyRawToHostFullBuffer) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*node_id=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
   auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> buffer,
@@ -399,9 +392,8 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostFullBuffer) {
 }
 
 TEST(StreamExecutorGpuClientTest, CopyRawToHostSubBuffer) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*node_id=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
   auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -417,9 +409,8 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostSubBuffer) {
 }
 
 TEST(StreamExecutorGpuClientTest, CopyRawToHostOutOfRange) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*node_id=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
   auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -435,9 +426,8 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostOutOfRange) {
 }
 
 TEST(StreamExecutorGpuClientTest, AsyncCopyToDevice) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*node_id=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
   ASSERT_GE(client->addressable_devices().size(), 2);
 
   // d0 is the device we will perform local/remote sends from.
@@ -468,9 +458,8 @@ TEST(StreamExecutorGpuClientTest, AsyncCopyToDevice) {
 }
 
 TEST(StreamExecutorGpuClientTest, CreateMixOfErrorBuffers) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*node_id=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
   ASSERT_GE(client->addressable_devices().size(), 1);
 
   std::vector<Literal> src_literals;
@@ -542,7 +531,7 @@ TEST(StreamExecutorGpuClientTest, DistributeInit) {
   absl::flat_hash_map<std::string, std::string> kv_store;
   absl::Mutex mu;
   PjRtClient::KeyValueGetCallback kv_get =
-      [&kv_store, &mu](const std::string& k,
+      [&kv_store, &mu](std::string_view k,
                        absl::Duration timeout) -> xla::StatusOr<std::string> {
     absl::Duration wait_interval = absl::Milliseconds(10);
     int num_retry = timeout / wait_interval;
@@ -560,8 +549,7 @@ TEST(StreamExecutorGpuClientTest, DistributeInit) {
         absl::StrCat(k, " is not found in the kv store."));
   };
   PjRtClient::KeyValuePutCallback kv_put =
-      [&kv_store, &mu](const std::string& k,
-                       const std::string& v) -> xla::Status {
+      [&kv_store, &mu](std::string_view k, std::string_view v) -> xla::Status {
     {
       absl::MutexLock lock(&mu);
       kv_store[k] = v;
@@ -574,13 +562,12 @@ TEST(StreamExecutorGpuClientTest, DistributeInit) {
   int num_nodes = 2;
   for (int i = 0; i < num_nodes; i++) {
     thread_pool.Schedule([&, i] {
-      TF_ASSERT_OK_AND_ASSIGN(
-          auto client,
-          GetStreamExecutorGpuClient(
-              true, /*allocator_config=*/{},
-              /*node_id=*/i, num_nodes, /*allowed_devices=*/std::nullopt,
-              /*platform_name=*/std::nullopt,
-              /*should_stage_host_to_device_transfers=*/true, kv_get, kv_put));
+      GpuClientOptions options;
+      options.node_id = i;
+      options.num_nodes = num_nodes;
+      options.kv_get = kv_get;
+      options.kv_put = kv_put;
+      TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
       EXPECT_TRUE(client->platform_name() == "cuda" ||
                   client->platform_name() == "rocm");
       EXPECT_EQ(client->addressable_device_count(), 2);
@@ -590,9 +577,8 @@ TEST(StreamExecutorGpuClientTest, DistributeInit) {
 }
 
 TEST(StreamExecutorGpuClientTest, GetAllocatorStatsTest) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*node_id=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
   ASSERT_GE(client->addressable_devices().size(), 2);
 
   for (auto device : client->addressable_devices()) {

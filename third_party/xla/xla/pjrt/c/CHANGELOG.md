@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.39 (Nov 16, 2023)
+* Add non_donatable_input_indices and num_non_donatable_input_indices to
+PJRT_ExecuteOptions.
+
 ## 0.38 (Oct 30, 2023)
 * Use `enum` to define STRUCT_SIZE constants in a header file.
 

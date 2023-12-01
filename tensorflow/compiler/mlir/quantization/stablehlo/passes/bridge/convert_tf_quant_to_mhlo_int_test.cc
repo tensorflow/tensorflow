@@ -579,6 +579,128 @@ func.func @main(%input: tensor<10xi8>) -> tensor<10xi8> {
   ExecuteAndCompareResultsWithTfKernel(kProgram, {&input});
 }
 
+TEST_F(ConvertTfQuantToMhloIntTest, UniformRequantizePerChannel) {
+  constexpr absl::string_view kProgram = R"mlir(
+func.func @main(
+    %input: tensor<10x10xi8>, %input_scale: tensor<10xf32>,
+    %input_zp: tensor<10xi32>, %output_scale: tensor<10xf32>,
+    %output_zp: tensor<10xi32>
+  ) -> tensor<10x10xi8> {
+  %0 = "tf.Cast"(%input) {} : (tensor<10x10xi8>) -> tensor<10x10x!tf_type.qint8>
+  %1 = "tf.UniformRequantize"(
+    %0, %input_scale, %input_zp, %output_scale, %output_zp
+  ) {
+    Tin = "tfdtype$DT_QINT8", Tout = "tfdtype$DT_QINT8", attr_map = "",
+    device = "", input_quantization_axis = 1,
+    input_quantization_max_val = 127 : i64,
+    input_quantization_min_val = -128 : i64,
+    output_quantization_axis = 1 : i64,
+    output_quantization_max_val = 127 : i64,
+    output_quantization_min_val = -128 : i64
+  } : (
+    tensor<10x10x!tf_type.qint8>, tensor<10xf32>, tensor<10xi32>,
+    tensor<10xf32>, tensor<10xi32>
+  ) -> tensor<10x10x!tf_type.qint8>
+  %2 = "tf.Cast"(%1) {} : (tensor<10x10x!tf_type.qint8>) -> tensor<10x10xi8>
+  return %2 : tensor<10x10xi8>
+})mlir";
+  TF_ASSERT_OK_AND_ASSIGN(auto input, CreateRandomI8Literal({10, 10}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto input_scale,
+      CreateRandomF32Literal({10}, /*min=*/0.0001, /*max=*/2));
+  TF_ASSERT_OK_AND_ASSIGN(auto input_zp, CreateRandomI32Literal({10}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto output_scale,
+      CreateRandomF32Literal({10}, /*min=*/0.0001, /*max=*/2));
+  TF_ASSERT_OK_AND_ASSIGN(auto output_zp, CreateRandomI32Literal({10}));
+  // error_tolerance is set to be 1 because different rounding implementations
+  // in TF kernel and the lowering passes may cause +/-1 differences.
+  ExecuteAndCompareResultsWithTfKernel(
+      kProgram, {&input, &input_scale, &input_zp, &output_scale, &output_zp},
+      /*tf_program=*/std::nullopt,
+      /*error_tolerance=*/1.0);
+}
+
+TEST_F(ConvertTfQuantToMhloIntTest, UniformRequantizePerTensorToPerChannel) {
+  constexpr absl::string_view kProgram = R"mlir(
+func.func @main(
+    %input: tensor<10x10xi8>, %input_scale: tensor<f32>, %input_zp: tensor<i32>,
+    %output_scale: tensor<10xf32>, %output_zp: tensor<10xi32>
+  ) -> tensor<10x10xi8> {
+  %0 = "tf.Cast"(%input) {} : (tensor<10x10xi8>) -> tensor<10x10x!tf_type.qint8>
+  %1 = "tf.UniformRequantize"(
+    %0, %input_scale, %input_zp, %output_scale, %output_zp
+  ) {
+    Tin = "tfdtype$DT_QINT8", Tout = "tfdtype$DT_QINT8", attr_map = "",
+    device = "", input_quantization_axis = -1,
+    input_quantization_max_val = 127 : i64,
+    input_quantization_min_val = -128 : i64,
+    output_quantization_axis = 1 : i64,
+    output_quantization_max_val = 127 : i64,
+    output_quantization_min_val = -128 : i64
+  } : (
+    tensor<10x10x!tf_type.qint8>, tensor<f32>, tensor<i32>,
+    tensor<10xf32>, tensor<10xi32>
+  ) -> tensor<10x10x!tf_type.qint8>
+  %2 = "tf.Cast"(%1) {} : (tensor<10x10x!tf_type.qint8>) -> tensor<10x10xi8>
+  return %2 : tensor<10x10xi8>
+})mlir";
+  TF_ASSERT_OK_AND_ASSIGN(auto input, CreateRandomI8Literal({10, 10}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto input_scale, CreateRandomF32Literal({}, /*min=*/0.0001, /*max=*/2));
+  TF_ASSERT_OK_AND_ASSIGN(auto input_zp, CreateRandomI32Literal({}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto output_scale,
+      CreateRandomF32Literal({10}, /*min=*/0.0001, /*max=*/2));
+  TF_ASSERT_OK_AND_ASSIGN(auto output_zp, CreateRandomI32Literal({10}));
+  // error_tolerance is set to be 1 because different rounding implementations
+  // in TF kernel and the lowering passes may cause +/-1 differences.
+  ExecuteAndCompareResultsWithTfKernel(
+      kProgram, {&input, &input_scale, &input_zp, &output_scale, &output_zp},
+      /*tf_program=*/std::nullopt,
+      /*error_tolerance=*/1.0);
+}
+
+TEST_F(ConvertTfQuantToMhloIntTest, UniformRequantizePerChannelToPerTensor) {
+  constexpr absl::string_view kProgram = R"mlir(
+func.func @main(
+    %input: tensor<10x10xi8>, %input_scale: tensor<10xf32>,
+    %input_zp: tensor<10xi32>, %output_scale: tensor<f32>, %output_zp: tensor<i32>
+  ) -> tensor<10x10xi8> {
+  %0 = "tf.Cast"(%input) {} : (tensor<10x10xi8>) -> tensor<10x10x!tf_type.qint8>
+  %1 = "tf.UniformRequantize"(
+    %0, %input_scale, %input_zp, %output_scale, %output_zp
+  ) {
+    Tin = "tfdtype$DT_QINT8", Tout = "tfdtype$DT_QINT8", attr_map = "",
+    device = "", input_quantization_axis = 1,
+    input_quantization_max_val = 127 : i64,
+    input_quantization_min_val = -128 : i64,
+    output_quantization_axis = -1 : i64,
+    output_quantization_max_val = 127 : i64,
+    output_quantization_min_val = -128 : i64
+  } : (
+    tensor<10x10x!tf_type.qint8>, tensor<10xf32>, tensor<10xi32>,
+    tensor<f32>, tensor<i32>
+  ) -> tensor<10x10x!tf_type.qint8>
+  %2 = "tf.Cast"(%1) {} : (tensor<10x10x!tf_type.qint8>) -> tensor<10x10xi8>
+  return %2 : tensor<10x10xi8>
+})mlir";
+  TF_ASSERT_OK_AND_ASSIGN(auto input, CreateRandomI8Literal({10, 10}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto input_scale,
+      CreateRandomF32Literal({10}, /*min=*/0.0001, /*max=*/2));
+  TF_ASSERT_OK_AND_ASSIGN(auto input_zp, CreateRandomI32Literal({10}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto output_scale, CreateRandomF32Literal({}, /*min=*/0.0001, /*max=*/2));
+  TF_ASSERT_OK_AND_ASSIGN(auto output_zp, CreateRandomI32Literal({}));
+  // error_tolerance is set to be 1 because different rounding implementations
+  // in TF kernel and the lowering passes may cause +/-1 differences.
+  ExecuteAndCompareResultsWithTfKernel(
+      kProgram, {&input, &input_scale, &input_zp, &output_scale, &output_zp},
+      /*tf_program=*/std::nullopt,
+      /*error_tolerance=*/1.0);
+}
+
 TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeAdd) {
   constexpr absl::string_view kProgram = R"mlir(
 func.func @main(%lhs: tensor<10x10xi32>, %rhs: tensor<10x10xi32>) -> tensor<10x10xi32> {

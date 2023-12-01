@@ -1,0 +1,49 @@
+// Protobuf messages for configuring StableHLO Quantizer.
+syntax = "proto3";
+
+package stablehlo.quantization;
+
+option cc_enable_arenas = true;
+
+// Represents a single TFRecord file. See
+// https://www.tensorflow.org/tutorials/load_data/tfrecord for details on the
+// TFRecord format.
+// Next ID: 2
+message TfRecordFile {
+  string path = 1;
+}
+
+// Configures a single representative dataset used to calibrate a single
+// function.
+// Next ID: 3
+message RepresentativeDatasetConfig {
+  oneof file {
+    // Represents representative dataset saved as a .tfrecord file format.
+    TfRecordFile tf_record = 1;
+  }
+
+  // [TF SavedModel] Identifies a SignatureDef which represents a single
+  // logical function in a graph.
+  optional string signature_key = 2;
+}
+
+// Preset config for static-range post-training quantization (PTQ).
+// Minimal user input about representative datasets is required. Representative
+// datasets are required for static-range PTQ to retrieve quantization
+// statistics via calibration.
+// Next ID: 2
+message StaticRangePtqPreset {
+  // Configures representative dataset. Each item corresponds to a
+  // representative dataset used to calibrate a function.
+  repeated RepresentativeDatasetConfig representative_datasets = 1;
+}
+
+// Quantization configuration for StableHLO Quantizer. This is the primary
+// message containing all configurable options.
+// Next ID: 2
+message QuantizationConfig {
+  oneof preset {
+    // Performs best-effort static-range post-training quantization (PTQ).
+    StaticRangePtqPreset static_range_ptq_preset = 1;
+  }
+}

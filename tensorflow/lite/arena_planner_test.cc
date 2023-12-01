@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdarg>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <initializer_list>
 #include <memory>
 #include <set>
@@ -25,11 +26,12 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/core/platform/logging.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/graph_info.h"
-#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 
@@ -1079,10 +1081,10 @@ TEST_F(ArenaPlannerTest, SimpleProfilerTest) {
   SetGraph(&graph);
   Execute(0, graph.nodes().size() - 1);
 
-  EXPECT_EQ(gNumAlloc, 2);
+  EXPECT_EQ(gNumAlloc, 1);
   EXPECT_EQ(gNumDealloc, 0);
   Destroy();
-  EXPECT_EQ(gNumDealloc, 2);
+  EXPECT_EQ(gNumDealloc, 1);
 }
 
 }  // namespace

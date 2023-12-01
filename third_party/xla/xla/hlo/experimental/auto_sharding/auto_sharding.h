@@ -135,38 +135,38 @@ HloSharding Tile(const Shape& shape, absl::Span<const int64_t> tensor_dims,
                  absl::Span<const int64_t> mesh_dims,
                  const Array<int64_t>& device_mesh);
 
-std::vector<double> ReshardingCostVector(const StrategyVector* strategies,
+std::vector<double> ReshardingCostVector(const StrategyGroup* strategy_group,
                                          const Shape& shape,
                                          const HloSharding& required_sharding,
                                          const ClusterEnvironment& cluster_env);
 
 std::vector<double> FollowInsCostVector(int64_t source_len, int64_t index);
 
-std::unique_ptr<StrategyVector> CreateLeafStrategyVector(
+std::unique_ptr<StrategyGroup> CreateLeafStrategyGroup(
     size_t instruction_id, const HloInstruction* ins,
-    const StrategyMap& strategy_map, LeafStrategies& leaf_strategies);
+    const StrategyMap& strategy_map, StrategyGroups& strategy_groups);
 
-void SetInNodesWithInstruction(std::unique_ptr<StrategyVector>& strategies,
+void SetInNodesWithInstruction(std::unique_ptr<StrategyGroup>& strategy_group,
                                const HloInstruction* ins,
                                const StrategyMap& strategy_map);
 
-void RemoveDuplicatedStrategy(std::unique_ptr<StrategyVector>& strategies);
+void RemoveDuplicatedStrategy(std::unique_ptr<StrategyGroup>& strategy_group);
 
 Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
-                      std::unique_ptr<StrategyVector>& strategies,
+                      std::unique_ptr<StrategyGroup>& strategy_group,
                       const ClusterEnvironment& cluster_env,
                       const InstructionBatchDimMap& batch_map,
                       const AutoShardingOption& option);
 
-Status HandleDot(std::unique_ptr<StrategyVector>& strategies,
-                 LeafStrategies& leaf_strategies, StrategyMap& strategy_map,
+Status HandleDot(std::unique_ptr<StrategyGroup>& strategy_group,
+                 StrategyGroups& strategy_groups, StrategyMap& strategy_map,
                  const HloInstruction* ins, size_t instruction_id,
                  const ClusterEnvironment& cluster_env,
                  const InstructionBatchDimMap& batch_map,
                  const AutoShardingOption& option, const CallGraph& call_graph);
 
-Status HandleConv(std::unique_ptr<StrategyVector>& strategies,
-                  LeafStrategies& leaf_strategies, StrategyMap& strategy_map,
+Status HandleConv(std::unique_ptr<StrategyGroup>& strategy_group,
+                  StrategyGroups& strategy_groups, StrategyMap& strategy_map,
                   const HloInstruction* ins, size_t instruction_id,
                   const ClusterEnvironment& cluster_env,
                   const InstructionBatchDimMap& batch_map,
@@ -192,7 +192,7 @@ AliasSet BuildAliasSet(const HloModule* module,
                        const StrategyMap& strategy_map);
 
 void CheckAliasSetCompatibility(const AliasSet& alias_set,
-                                const LeafStrategies& leaf_strategies,
+                                const StrategyGroups& strategy_groups,
                                 const HloInstructionSequence& sequence);
 
 void GenerateReduceScatter(
@@ -214,7 +214,7 @@ HloSharding GetReduceScatterOutput(const HloInstruction* ins,
 AutoShardingSolverResult Solve(
     const HloLiveRange& hlo_live_range,
     const LivenessNodeSet& liveness_node_set, const StrategyMap& strategy_map,
-    const LeafStrategies& leaf_strategies, const CostGraph& cost_graph,
+    const StrategyGroups& strategy_groups, const CostGraph& cost_graph,
     const AliasSet& alias_set, const AutoShardingOption& option,
     const absl::flat_hash_map<std::string, const HloInstruction*>&
         sharding_propagation_solution = {});

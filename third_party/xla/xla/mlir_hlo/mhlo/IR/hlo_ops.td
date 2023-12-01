@@ -2976,33 +2976,29 @@ def MHLO_TopKOp : MHLO_Op<"topk", [RecursiveMemoryEffects, InferTensorType]> {
   let summary = "TopK operation";
   let description = [{
     Returns top `k` values and their indices, along the last
-    dimension of the operand using the given `comparator` (for usual topk
-    behavior, it should be strict-greater-than operation).
+    dimension of the operand if `largest=true` or the bottom `k` values if
+    `largest=false`.
 
     See:
     https://www.tensorflow.org/xla/operation_semantics#top-k
 
     Example:
     ```mlir
-    %values, %indices = mhlo.topk(%operand, k=5) {
-      ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
-        %predicate = mhlo.compare GT, %arg0, %arg1 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-        mhlo.return %predicate : tensor<i1>
-    } : tensor<100xf32> -> (tensor<5xf32>, tensor<5xi32>)
+    %values, %indices = mhlo.topk(%operand, k=5, largest=true)
+      : tensor<100xf32> -> (tensor<5xf32>, tensor<5xi32>)
     ```
   }];
 
   let arguments = (ins
     MHLO_Tensor:$operand,
-    I64Attr:$k
+    I64Attr:$k,
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$largest
   );
-  let regions = (region SizedRegion<1>:$body);
   let results = (outs MHLO_Tensor:$values,
                       MHLO_Tensor:$indices);
 
-  let hasVerifier = 1;
   let assemblyFormat = [{
-    `(`$operand `,` `k` `=` $k`)` $body attr-dict `:`
+    `(`$operand `,` `k` `=` $k `,` `largest` `=` $largest `)` attr-dict `:`
     type($operand) `->` `(`type($values)`,` type($indices)`)`
   }];
   let hasCustomHLOConverter = 1;

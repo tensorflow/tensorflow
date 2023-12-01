@@ -128,7 +128,7 @@ class StreamExecutor {
   bool UnloadModule(ModuleHandle module_handle);
 
   tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
-      Stream* stream, const std::vector<uint8_t>& content);
+      Stream* stream, absl::Span<const uint8_t> content);
 
   // Synchronously allocates an array on the device of type T with element_count
   // elements.
@@ -414,7 +414,7 @@ class StreamExecutor {
   // implementation in StreamExecutorInterface::Launch().
   tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                      const BlockDim& block_dims, const Kernel& kernel,
-                     const KernelArgsArrayBase& args);
+                     const KernelArgs& args);
 
   // Submits command buffer for execution to the underlying platform driver.
   tsl::Status Submit(Stream* stream, const CommandBuffer& command_buffer);
