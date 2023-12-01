@@ -51,14 +51,14 @@ You can also pass in debug option flags for the HloModule.
 
 Usage:
 
-  bazel run opt -- --platform=[CUDA|CPU|Interpreter|...] path/to/hlo_module
+  bazel run opt -- --platform=[gpu|cpu|...] path/to/hlo_module
 )";
 
 struct HloOptConfig {
   // Optional flags.
   bool help{false};
   bool split_input_file{false};
-  std::string platform{"cuda"};
+  std::string platform{"gpu"};
   std::string input_file{""};
   std::string input_format{""};
   std::string output_file{"-"};
@@ -109,14 +109,8 @@ StatusOr<std::unique_ptr<HloModule>> GetModule(const HloOptConfig& opts,
 
 StatusOr<std::string> TranslateToStage(int argc, char** argv,
                                        const HloOptConfig& opts) {
-  se::Platform* platform =
-      xla::PlatformUtil::GetPlatform(opts.platform).value();
-
-  OptProvider* provider = OptProvider::ProviderForPlatform(platform->id());
-  if (provider == nullptr) {
-    return absl::UnimplementedError(
-        absl::StrCat("Provider not found for platform: ", platform->Name()));
-  }
+  TF_ASSIGN_OR_RETURN(OptProvider * provider,
+                      OptProvider::ProviderForPlatform(opts.platform));
 
   if (opts.list_stages) {
     return absl::StrJoin(provider->SupportedStages(), "\n");

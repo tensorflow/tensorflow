@@ -1595,7 +1595,7 @@ NodeFilter MakeNodeRadiusAroundFilter(
         // the size of the graph (since they don't add extra information), and
         // stopping the rendering early cuts off important information (you
         // almost never want the rendering to be cutoff at the bitcast: you'd
-        // like to see it's parent).
+        // like to see its parent).
         if (!nodes.contains(operand)) {
           int new_depth = (operand->opcode() == HloOpcode::kBitcast ||
                            instr->opcode() == HloOpcode::kBitcast)
