@@ -560,12 +560,16 @@ FusionDecision GpuPriorityFusion::ShouldFuse(HloInstruction* consumer,
   // switch it to the loop emitter. This often occurs during epilog fusion for
   // reductions, which suffer from limited emitter support.
   // TODO(b/312686229): Cost model should handle this.
-  auto analysis_fused =
-      AnalyzeProducerConsumerFusion(*producer, *consumer, device_info_);
+  const auto& analysis_fused = fusion_analysis_cache_.Get(*producer, *consumer);
   if (producer->IsInputFusion() && analysis_fused &&
       analysis_fused->GetEmitterFusionKind() ==
           HloFusionAnalysis::EmitterFusionKind::kLoop) {
-    return "fusion into output of an input fusion would create a loop fusion";
+    const auto& analysis = fusion_analysis_cache_.Get(*producer);
+    if (!analysis || analysis->GetEmitterFusionKind() ==
+                         HloFusionAnalysis::EmitterFusionKind::kReduction) {
+      return "fusion into output of a reduce fusion would create a loop "
+             "fusion";
+    }
   }
 
   // Avoid cases where we'd create a fusion that hit limitations in ptxas.

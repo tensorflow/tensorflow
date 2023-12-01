@@ -275,8 +275,33 @@ bool IsReadCoalesced(const std::optional<HloFusionAnalysis>& fusion_analysis,
   // Transposing minor dimension breaks coalescing.
   if (analyzed_kind_or_reduction !=
       HloFusionAnalysis::EmitterFusionKind::kTranspose) {
-    if (TransposesMinorDimension(producer)) return false;
-    if (consumer && TransposesMinorDimension(consumer)) return false;
+    auto is_broadcast = [&](const HloInstruction* instr) {
+      while (true) {
+        if (instr->opcode() == HloOpcode::kBroadcast) return true;
+        if (instr->operand_count() != 1) return false;
+        if (instr->opcode() != HloOpcode::kBitcast && !instr->IsElementwise()) {
+          return false;
+        }
+        instr = instr->operand(0);
+      }
+    };
+
+    auto is_bad_transpose = [&](const HloInstruction* instr) {
+      if (instr->opcode() == HloOpcode::kFusion) {
+        for (auto* instr : instr->fused_instructions()) {
+          // Hack: we allow transposes of broadcasts.
+          if (TransposesMinorDimension(instr) &&
+              !is_broadcast(instr->operand(0))) {
+            return true;
+          }
+        }
+        return false;
+      }
+      return TransposesMinorDimension(instr);
+    };
+
+    if (is_bad_transpose(producer)) return false;
+    if (consumer && is_bad_transpose(consumer)) return false;
   }
 
   // Fusing two row reductions breaks coalescing.
