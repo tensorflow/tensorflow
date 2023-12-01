@@ -567,7 +567,7 @@ TEST_F(EinsumDepthAnalysisTest, MnistTrainingLoop) {
                                                        /*num_partitions=*/1));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<EinsumDepthAnalysis> einsum_depth_analysis,
-      EinsumDepthAnalysis::Run(*module->entry_computation()));
+      EinsumDepthAnalysis::Run(*module->entry_computation(), {}));
   const EinsumDepthMap& einsum_depth_map =
       einsum_depth_analysis->GetEinsumDepthMap();
   HloComputation* computation = module->GetComputationWithName("body.49");
@@ -612,7 +612,7 @@ TEST_F(EinsumDepthAnalysisTest, HandleConditional) {
                           ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<EinsumDepthAnalysis> einsum_depth_analysis,
-      EinsumDepthAnalysis::Run(*module->entry_computation()));
+      EinsumDepthAnalysis::Run(*module->entry_computation(), {}));
   const EinsumDepthMap& einsum_depth_map =
       einsum_depth_analysis->GetEinsumDepthMap();
   HloComputation* computation = module->GetComputationWithName("entry");

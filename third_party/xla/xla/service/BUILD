@@ -4400,6 +4400,7 @@ cc_library(
         ":hlo_value",
         "//xla:shape_tree",
         "//xla:shape_util",
+        "//xla:side_effect_util",
         "//xla:status",
         "//xla:statusor",
         "//xla:util",
