@@ -91,7 +91,6 @@ HloInstruction* WhileLoopFusibleSinking::GetSinkableFusion(
         return nullptr;
     }
   }
-  LOG(ERROR) << fusion->fused_instructions_computation()->ToString();
   return fusion;
 }
 
