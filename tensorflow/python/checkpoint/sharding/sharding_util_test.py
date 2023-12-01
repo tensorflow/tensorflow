@@ -23,6 +23,7 @@ from tensorflow.python.checkpoint.sharding import sharding_policies
 from tensorflow.python.checkpoint.sharding import sharding_util
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
+from tensorflow.python.framework import device as device_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor as tensor_lib
@@ -30,7 +31,6 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import variables
 from tensorflow.python.training import server_lib
 from tensorflow.python.training.saving import saveable_object
 
@@ -58,18 +58,50 @@ class ShardingUtilTest(test.TestCase):
                 dtype=tensor_save_spec.dtype,
                 device=tensor_save_spec.device)
           save_spec_tensor = tensor_save_spec.tensor
+          device = (device_lib.DeviceSpec.from_string(tensor_save_spec.device)
+                    if isinstance(tensor_save_spec.device, str)
+                    else tensor_save_spec.device)
           shardable_tensors.append(
               sharding_util.ShardableTensor(
                   _tensor_save_spec=tensor_save_spec,
                   tensor=save_spec_tensor,
                   dtype=tensor_save_spec.dtype,
-                  device=tensor_save_spec.device,
+                  device=device,
                   name=tensor_save_spec.name,
                   shape=save_spec_tensor.shape,
-                  slice_spec=slice_spec,
+                  slice_spec=slice_spec.strip(),
                   checkpoint_key=checkpoint_key,
                   trackable=obj))
     return shardable_tensors
+
+  def test_hash_ShardingCallback(self):
+    class BlankCallback(sharding_util.ShardingCallback):
+      @property
+      def description(self):
+        return ""
+
+      def __call__(
+          self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
+      ) -> Sequence[sharding_util.TensorSlice]:
+        pass
+
+    self.assertEqual(hash(BlankCallback()), hash(BlankCallback()))
+
+    class ValueCallback(sharding_util.ShardingCallback):
+      def __init__(self, val):
+        self.val = val
+
+      @property
+      def description(self):
+        return "value callback"
+
+      def __call__(
+          self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
+      ) -> Sequence[sharding_util.TensorSlice]:
+        pass
+
+    self.assertEqual(hash(ValueCallback(1)), hash(ValueCallback(1)))
+    self.assertNotEqual(hash(ValueCallback(1)), hash(ValueCallback(2)))
 
   def test_validate_shards_correct(self):
     root = module.Module()
@@ -119,23 +151,21 @@ class ShardingUtilTest(test.TestCase):
     root.v1 = v1
 
     class DuplicateTensorCallback(sharding_util.ShardingCallback):
-      def __init__(self):
-        def sharding_callback_impl(shardable_tensors):
-          tensor = shardable_tensors[0].tensor
-          checkpoint_key = shardable_tensors[0].checkpoint_key
-          slice_spec = shardable_tensors[0].slice_spec
-          shards = [
-              {checkpoint_key: {slice_spec: tensor}},
-              {checkpoint_key: {slice_spec: tensor}}
-          ]
-          return shards
-        super().__init__(sharding_callback_impl, "duplicate tensor callback")
+      @property
+      def description(self):
+        return "duplicate tensor callback"
 
       def __call__(
-          self,
-          shardable_tensors: Sequence[sharding_util.ShardableTensor]
+          self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
       ) -> Sequence[sharding_util.TensorSlice]:
-        return self.callback(shardable_tensors)  # pylint: disable=no-value-for-parameter
+        tensor = shardable_tensors[0].tensor
+        checkpoint_key = shardable_tensors[0].checkpoint_key
+        slice_spec = shardable_tensors[0].slice_spec
+        shards = [
+            {checkpoint_key: {slice_spec: tensor}},
+            {checkpoint_key: {slice_spec: tensor}}
+        ]
+        return shards
 
     sharding_callback = DuplicateTensorCallback()
     shardable_tensors = self._get_shardable_tensors(root)
@@ -154,19 +184,17 @@ class ShardingUtilTest(test.TestCase):
     root.v0 = v0
 
     class AddedTensorCallback(sharding_util.ShardingCallback):
-      def __init__(self):
-        def sharding_callback_impl(_):
-          checkpoint_key = "ADDED_TENSOR_ABC123"
-          slice_spec = variables.Variable.SaveSliceInfo()
-          tensor = tensor_lib.Tensor()
-          return [{checkpoint_key: {slice_spec: tensor}}]
-        super().__init__(sharding_callback_impl, "added tensor callback")
+      @property
+      def description(self):
+        return "added tensor callback"
 
       def __call__(
-          self,
-          shardable_tensors: Sequence[sharding_util.ShardableTensor]
+          self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
       ) -> Sequence[sharding_util.TensorSlice]:
-        return self.callback(shardable_tensors)  # pylint: disable=no-value-for-parameter
+        checkpoint_key = "ADDED_TENSOR_ABC123"
+        slice_spec = ""
+        tensor = tensor_lib.Tensor()
+        return [{checkpoint_key: {slice_spec: tensor}}]
 
     sharding_callback = AddedTensorCallback()
     shardable_tensors = self._get_shardable_tensors(root)
@@ -184,24 +212,22 @@ class ShardingUtilTest(test.TestCase):
     root.v0 = v0
 
     class ShapeChangeCallback(sharding_util.ShardingCallback):
-      def __init__(self):
-        def sharding_callback_impl(shardable_tensors):
-          shards = []
-          for shardable_tensor in shardable_tensors:
-            tensor = shardable_tensor.tensor
-            checkpoint_key = shardable_tensor.checkpoint_key
-            slice_spec = shardable_tensor.slice_spec
-            if checkpoint_key == "v0/.ATTRIBUTES/VARIABLE_VALUE":
-              tensor = array_ops.transpose(tensor)
-            shards.append({checkpoint_key: {slice_spec: tensor}})
-          return shards
-        super().__init__(sharding_callback_impl, "shape change callback")
+      @property
+      def description(self):
+        return "shape change callback"
 
       def __call__(
-          self,
-          shardable_tensors: Sequence[sharding_util.ShardableTensor]
+          self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
       ) -> Sequence[sharding_util.TensorSlice]:
-        return self.callback(shardable_tensors)  # pylint: disable=no-value-for-parameter
+        shards = []
+        for shardable_tensor in shardable_tensors:
+          tensor = shardable_tensor.tensor
+          checkpoint_key = shardable_tensor.checkpoint_key
+          slice_spec = shardable_tensor.slice_spec
+          if checkpoint_key == "v0/.ATTRIBUTES/VARIABLE_VALUE":
+            tensor = array_ops.transpose(tensor)
+          shards.append({checkpoint_key: {slice_spec: tensor}})
+        return shards
 
     sharding_callback = ShapeChangeCallback()
     shardable_tensors = self._get_shardable_tensors(root)
@@ -219,24 +245,22 @@ class ShardingUtilTest(test.TestCase):
     root.v0 = v0
 
     class DtypeChangeCallback(sharding_util.ShardingCallback):
-      def __init__(self):
-        def sharding_callback_impl(shardable_tensors):
-          shards = []
-          for shardable_tensor in shardable_tensors:
-            tensor = shardable_tensor.tensor
-            checkpoint_key = shardable_tensor.checkpoint_key
-            slice_spec = shardable_tensor.slice_spec
-            if checkpoint_key == "v0/.ATTRIBUTES/VARIABLE_VALUE":
-              tensor = math_ops.cast(tensor, dtype=dtypes.int32)
-            shards.append({checkpoint_key: {slice_spec: tensor}})
-          return shards
-        super().__init__(sharding_callback_impl, "dtype change callback")
+      @property
+      def description(self):
+        return "dtype change callback"
 
       def __call__(
-          self,
-          shardable_tensors: Sequence[sharding_util.ShardableTensor]
+          self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
       ) -> Sequence[sharding_util.TensorSlice]:
-        return self.callback(shardable_tensors)  # pylint: disable=no-value-for-parameter
+        shards = []
+        for shardable_tensor in shardable_tensors:
+          tensor = shardable_tensor.tensor
+          checkpoint_key = shardable_tensor.checkpoint_key
+          slice_spec = shardable_tensor.slice_spec
+          if checkpoint_key == "v0/.ATTRIBUTES/VARIABLE_VALUE":
+            tensor = math_ops.cast(tensor, dtype=dtypes.int32)
+          shards.append({checkpoint_key: {slice_spec: tensor}})
+        return shards
 
     sharding_callback = DtypeChangeCallback()
     shardable_tensors = self._get_shardable_tensors(root)
@@ -262,22 +286,20 @@ class ShardingUtilTest(test.TestCase):
     root.v1 = v1
 
     class DifferentTasksCallback(sharding_util.ShardingCallback):
-      def __init__(self):
-        def sharding_callback_impl(shardable_tensors):
-          shard = {}
-          for shardable_tensor in shardable_tensors:
-            tensor = shardable_tensor.tensor
-            checkpoint_key = shardable_tensor.checkpoint_key
-            slice_spec = shardable_tensor.slice_spec
-            shard.setdefault(checkpoint_key, {})[slice_spec] = tensor
-          return [shard]
-        super().__init__(sharding_callback_impl, "different tasks callback")
+      @property
+      def description(self):
+        return "different tasks callback"
 
       def __call__(
-          self,
-          shardable_tensors: Sequence[sharding_util.ShardableTensor]
+          self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
       ) -> Sequence[sharding_util.TensorSlice]:
-        return self.callback(shardable_tensors)  # pylint: disable=no-value-for-parameter
+        shard = {}
+        for shardable_tensor in shardable_tensors:
+          tensor = shardable_tensor.tensor
+          checkpoint_key = shardable_tensor.checkpoint_key
+          slice_spec = shardable_tensor.slice_spec
+          shard.setdefault(checkpoint_key, {})[slice_spec] = tensor
+        return [shard]
 
     sharding_callback = DifferentTasksCallback()
     shardable_tensors = self._get_shardable_tensors(root)
@@ -295,16 +317,14 @@ class ShardingUtilTest(test.TestCase):
     root.v0 = v0
 
     class TensorRemovalCallback(sharding_util.ShardingCallback):
-      def __init__(self):
-        def sharding_callback_impl(_):
-          return []
-        super().__init__(sharding_callback_impl, "tensor removal callback")
+      @property
+      def description(self):
+        return "tensor removal callback"
 
       def __call__(
-          self,
-          shardable_tensors: Sequence[sharding_util.ShardableTensor]
+          self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
       ) -> Sequence[sharding_util.TensorSlice]:
-        return self.callback(shardable_tensors)  # pylint: disable=no-value-for-parameter
+        return []
 
     sharding_callback = TensorRemovalCallback()
     shardable_tensors = self._get_shardable_tensors(root)
