@@ -152,7 +152,8 @@ KernelArgsPacking ArgsPacking(cutlass::gemm::GemmCoord problem_size,
 
   using PackedArgs = StatusOr<std::unique_ptr<se::KernelArgsPackedArrayBase>>;
 
-  return [=](const se::KernelArgs &args) -> PackedArgs {
+  return [=](const se::KernelLaunchContext &ctx,
+             const se::KernelArgs &args) -> PackedArgs {
     auto *mem_args = Cast<se::KernelArgsDeviceMemoryArray>(&args);
 
     cutlass::Status can_implement = Kernel::can_implement(problem_size);
@@ -189,11 +190,15 @@ KernelArgsPacking ArgsPacking(cutlass::gemm::GemmCoord problem_size,
                         lda, ldb, ldc, ldc           // strides
     );
 
-    // TODO(ezhulenev): Get number of SMs from a DeviceDescription and calculate
-    // correct kernel occupancy using GpuRuntime.
+    // Query kernel API for SM occupancy for the launch dimensions.
+    TF_ASSIGN_OR_RETURN(int32_t sm_occupancy,
+                        ctx.kernel()->GetMaxOccupiedBlocksPerCore(
+                            ctx.threads(), args.number_of_shared_bytes()));
+
+    // TODO(ezhulenev): Get number of SMs from DeviceDescription.
 
     // Convert CUTLASS operation arguments to a device kernel parameters.
-    Params params(arguments, /*device_sms=*/128, /*sm_occupancy=*/10);
+    Params params(arguments, /*device_sms=*/128, sm_occupancy);
 
     // Optionally set up dynamic slice parameters to allow kernel adjust buffer
     // pointers passed via `params`.

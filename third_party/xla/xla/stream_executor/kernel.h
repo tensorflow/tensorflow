@@ -88,10 +88,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
+class Kernel;
 class StreamExecutor;
 
 namespace internal {
@@ -210,6 +212,25 @@ class KernelArgsPackedArrayBase : public KernelArgs {
 };
 
 //===----------------------------------------------------------------------===//
+// KernelLaunchContext
+//===----------------------------------------------------------------------===//
+
+// Properties of a kernel launch that might impact kernel arguments packing.
+class KernelLaunchContext {
+ public:
+  KernelLaunchContext(const Kernel *kernel, BlockDim blocks, ThreadDim threads);
+
+  const Kernel *kernel() const { return kernel_; }
+  BlockDim blocks() const { return blocks_; }
+  ThreadDim threads() const { return threads_; }
+
+ private:
+  const Kernel *kernel_;
+  BlockDim blocks_;
+  ThreadDim threads_;
+};
+
+//===----------------------------------------------------------------------===//
 // Kernel
 //===----------------------------------------------------------------------===//
 
@@ -226,7 +247,7 @@ class Kernel {
   // StreamExecutor as a generic `Kernel`.
   using KernelArgsPacking =
       std::function<tsl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>(
-          const KernelArgs &args)>;
+          const KernelLaunchContext &ctx, const KernelArgs &args)>;
 
   Kernel(Kernel &&from);
 
@@ -267,6 +288,11 @@ class Kernel {
 
   // Gets the preferred cache configuration for a kernel.
   KernelCacheConfig GetPreferredCacheConfig() const;
+
+  // Returns the maximum number of blocks (per multiprocessor) occupied by the
+  // kernel given the number of threads per block and shared memory size.
+  tsl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
+      ThreadDim threads, size_t dynamic_shared_memory_bytes) const;
 
   // Sets custom kernels arguments packing function for a kernel.
   void set_kernel_args_packing(KernelArgsPacking kernel_args_packing) {

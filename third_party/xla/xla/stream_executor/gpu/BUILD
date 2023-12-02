@@ -223,10 +223,12 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":gpu_driver_header",
+        ":gpu_types_header",
         "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor:stream_executor_internal",
         "//xla/stream_executor/platform",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

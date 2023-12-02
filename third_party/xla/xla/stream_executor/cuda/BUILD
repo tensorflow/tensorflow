@@ -441,10 +441,13 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cuda_driver",
+        "@com_google_absl//absl/log",
         "@local_config_cuda//cuda:cuda_headers",
         "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor/gpu:gpu_kernel_header",
+        "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/platform",
+        "@local_tsl//tsl/platform:statusor",
     ]),
 )
 

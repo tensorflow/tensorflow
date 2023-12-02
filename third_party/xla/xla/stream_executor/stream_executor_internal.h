@@ -99,6 +99,13 @@ class KernelInterface {
   // Gets the preferred cache configuration.
   virtual KernelCacheConfig GetPreferredCacheConfig() const = 0;
 
+  // Returns the maximum number of blocks (per multiprocessor) occupied by the
+  // kernel given the number of threads per block and shared memory size.
+  virtual tsl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
+      ThreadDim threads, size_t dynamic_shared_memory_bytes) const {
+    return absl::UnimplementedError("Not Implemented");
+  }
+
  private:
   KernelInterface(const KernelInterface&) = delete;
   void operator=(const KernelInterface&) = delete;
