@@ -23,6 +23,7 @@ import platform
 import re
 import subprocess
 import sys
+import shutil
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -189,21 +190,23 @@ def setup_python(environ_cp):
   default_python_bin_path = sys.executable
   ask_python_bin_path = ('Please specify the location of python. [Default is '
                          '{}]: ').format(default_python_bin_path)
-  while True:
-    python_bin_path = get_from_env_or_user_or_default(environ_cp,
-                                                      'PYTHON_BIN_PATH',
-                                                      ask_python_bin_path,
-                                                      default_python_bin_path)
-    # Check if the path is valid
-    if os.path.isfile(python_bin_path) and os.access(python_bin_path, os.X_OK):
-      break
-    elif not os.path.exists(python_bin_path):
-      print('Invalid python path: {} cannot be found.'.format(python_bin_path))
-    else:
-      print('{} is not executable.  Is it the python binary?'.format(
-          python_bin_path))
-    environ_cp['PYTHON_BIN_PATH'] = ''
-
+  # Getting the path by 
+  python_bin_path = os.environ.get('PYTHON_BIN_PATH') or default_python_bin_path or input(ask_python_bin_path)
+  # Try to get the python bin path from the environment variable, the user input, or the default value
+  python_bin_path = shutil.which(python_bin_path)
+  # Try to check if the path is valid and executable, and if the python version is 3
+  try:
+    if not (os.path.isfile(python_bin_path) and os.access(python_bin_path, os.X_OK)):
+      raise FileNotFoundError('The python path {} is not valid or executable.'.format(python_bin_path))
+    # Check if the path is a python executable with version 3 
+    python = get_python_major_version(python_bin_path)
+    if python_version != '3':
+      raise ValueError('The python executable at {} is not version 3.'.format(python_bin_path))
+  except Exception as e:
+    # Print the erorr and exit the program
+    print(e)
+    sys.exit(1)
+  os.environ['PYTHON_BIN_PATH'] = python_bin_path # Set PYTHON_BIN_PATH in the env
   # Convert python path to Windows style before checking lib and version
   if is_windows() or is_cygwin():
     python_bin_path = cygpath(python_bin_path)
