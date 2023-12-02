@@ -1,7 +1,7 @@
 # Description: SPMD partitioning pass.
 
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -34,12 +34,16 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//xla:array",
         "//xla:comparison_util",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:protobuf_util",
         "//xla:shape_util",
         "//xla:status",
+        "//xla:status_macros",
+        "//xla:statusor",
+        "//xla:types",
         "//xla:util",
         "//xla:window_util",
         "//xla:xla_data_proto_cc",
@@ -50,12 +54,14 @@ cc_library(
         "//xla/hlo/utils:hlo_query",
         "//xla/hlo/utils:hlo_sharding_util",
         "//xla/service:call_graph",
+        "//xla/service:computation_layout",
         "//xla/service:custom_call_sharding_helper",
         "//xla/service:dot_as_convolution_util",
         "//xla/service:flatten_call_graph",
         "//xla/service:hlo_cse",
         "//xla/service:hlo_dce",
         "//xla/service:hlo_lexer",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_pass",
         "//xla/service:hlo_pass_pipeline",
         "//xla/service:pattern_matcher",
@@ -69,8 +75,11 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:statusor",
     ],
