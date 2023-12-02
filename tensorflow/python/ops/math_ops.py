@@ -3884,7 +3884,7 @@ def matvec(a,
   b = tf.constant([7, 9, 11], shape=[3])
 
   # `a` * `b`
-  # [ 58,  64]
+  # [ 58,  139]
   c = tf.linalg.matvec(a, b)
 
 
