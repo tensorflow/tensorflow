@@ -92,6 +92,9 @@ class LRUCache {
   int Size() const { return entries_.size(); }
   int Capacity() const { return lru_list_->Capacity(); }
 
+  auto begin() const { return entries_.begin(); }
+  auto end() const { return entries_.end(); }
+
  private:
   LRUList* lru_list_;
 
