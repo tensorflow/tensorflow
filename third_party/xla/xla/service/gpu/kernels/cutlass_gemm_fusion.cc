@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -225,9 +226,10 @@ class CutlassGemmFusion : public CustomFusion {
     size_t k = lhs_shape.dimensions(1);
     size_t n = rhs_shape.dimensions(1);
 
-    TF_ASSIGN_OR_RETURN(auto kernel,
-                        kernel::gemm_universal::GetCutlassGemmKernel(
-                            dtype, m, n, k, indices, /*slices=*/{}));
+    TF_ASSIGN_OR_RETURN(
+        auto kernel,
+        kernel::gemm_universal::GetCutlassGemmKernel(
+            "cutlass_gemm", dtype, m, n, k, indices, /*slices=*/{}));
     return std::vector<CustomKernel>{std::move(kernel)};
   }
 };
@@ -300,9 +302,10 @@ class CutlassGemmWithDynamicUpdateSliceFusion : public CustomFusion {
     size_t k = lhs_shape.dimensions(1);
     size_t n = rhs_shape.dimensions(1);
 
-    TF_ASSIGN_OR_RETURN(auto kernel,
-                        kernel::gemm_universal::GetCutlassGemmKernel(
-                            dtype, m, n, k, args_indices, slices));
+    TF_ASSIGN_OR_RETURN(
+        auto kernel, kernel::gemm_universal::GetCutlassGemmKernel(
+                         "cutlass_gemm_with_dynamic_update_slice", dtype, m, n,
+                         k, args_indices, slices));
     return std::vector<CustomKernel>{std::move(kernel)};
   }
 };

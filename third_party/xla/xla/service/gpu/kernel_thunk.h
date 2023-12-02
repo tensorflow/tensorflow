@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -136,7 +137,8 @@ class KernelThunk : public Thunk {
 // compiled by XLA and loaded from an executable source.
 class CustomKernelThunk : public Thunk {
  public:
-  CustomKernelThunk(const HloInstruction* instr, CustomKernel custom_kernel,
+  CustomKernelThunk(std::variant<mlir::Operation*, const HloInstruction*> inst,
+                    CustomKernel custom_kernel,
                     absl::Span<const KernelArgument> kernel_arguments);
 
   std::string ToStringExtra(int indent) const override;
@@ -145,12 +147,37 @@ class CustomKernelThunk : public Thunk {
                     ExecutableSource src) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  // TODO(ezhulenev): All of the APIs below needed only for LMHLO lowering and
+  // should be removed after we migrate to Thunks runtime.
+
+  std::string_view custom_kernel_name() const { return custom_kernel_.name(); }
+
+  const std::vector<bool>& written() const { return written_; }
+  absl::Span<const mlir::Value> values() const { return values_; }
+
+  LaunchDimensions launch_dimensions() const {
+    LaunchDimensions::Dim3D threads;
+    threads.x = custom_kernel_.thread_dims().x;
+    threads.y = custom_kernel_.thread_dims().y;
+    threads.z = custom_kernel_.thread_dims().z;
+    LaunchDimensions::Dim3D blocks;
+    blocks.x = custom_kernel_.block_dims().x;
+    blocks.y = custom_kernel_.block_dims().y;
+    blocks.z = custom_kernel_.block_dims().z;
+    return LaunchDimensions(blocks, threads);
+  }
+
+  int64_t shmem_bytes() const { return custom_kernel_.shared_memory_bytes(); }
+
  private:
   // Buffer slices passed to the kernel as arguments.
   std::vector<BufferAllocation::Slice> args_;
 
   // args_[i] is written iff (written_[i] == true).
   std::vector<bool> written_;
+
+  // mlir::Value(s) corresponding to the buffer slice arguments.
+  std::vector<mlir::Value> values_;
 
   CustomKernel custom_kernel_;
 

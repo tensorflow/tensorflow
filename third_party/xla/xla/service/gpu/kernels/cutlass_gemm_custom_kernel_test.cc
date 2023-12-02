@@ -43,7 +43,7 @@ TEST(CutlassGemmKernelTest, SimpleGemm) {
 
   // Load [4, 4] x [4, 4] gemm kernel written in CUDA C++ with CUTLASS.
   auto custom_kernel =
-      GetCutlassGemmKernel(PrimitiveType::F32, 4, 4, 4,
+      GetCutlassGemmKernel("cutlass_gemm", PrimitiveType::F32, 4, 4, 4,
                            /*indices=*/{0, 1, 2}, /*slices=*/{});
   TF_ASSERT_OK(executor->GetKernel(custom_kernel->kernel_spec(), &gemm));
 

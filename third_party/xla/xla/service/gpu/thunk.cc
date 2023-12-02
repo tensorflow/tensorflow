@@ -50,6 +50,7 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kCubSort);
     CASE(kCublasLtMatmul);
     CASE(kCustomCall);
+    CASE(kCustomKernel);
     CASE(kNcclAllGather);
     CASE(kNcclAllGatherStart);
     CASE(kNcclAllGatherDone);

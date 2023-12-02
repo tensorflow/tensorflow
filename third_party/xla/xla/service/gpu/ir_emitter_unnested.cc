@@ -329,13 +329,23 @@ StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkForFusion(
 
 StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
     IrEmitterContext& ir_emitter_context, const HloFusionInstruction* fusion,
-    CustomKernel custom_kernel) {
-  TF_ASSIGN_OR_RETURN(
-      auto kernel_arguments,
-      KernelArguments::Create(ir_emitter_context.buffer_assignment(), fusion));
+    mlir::lmhlo::FusionOp fusion_op, CustomKernel custom_kernel) {
+  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
+                      ir_emitter_context.emit_ir_from_hlo()
+                          ? KernelArguments::Create(
+                                ir_emitter_context.buffer_assignment(), fusion)
+                          : KernelArguments::Create(
+                                ir_emitter_context.allocations(), fusion_op));
+
+  std::variant<mlir::Operation*, const HloInstruction*> instr;
+  if (ir_emitter_context.emit_ir_from_hlo()) {
+    instr = fusion;
+  } else {
+    instr = fusion_op;
+  }
 
   return std::make_unique<CustomKernelThunk>(
-      fusion, std::move(custom_kernel), std::move(kernel_arguments.args()));
+      instr, std::move(custom_kernel), std::move(kernel_arguments.args()));
 }
 
 // Derives the number of warps to use for processing a Triton Softmax fusion.
@@ -2203,7 +2213,8 @@ Status IrEmitterUnnested::EmitFusion(
                           instr->backend_config<FusionBackendConfig>());
       TF_ASSIGN_OR_RETURN(
           emission_result,
-          EmitCustomFusion(instr, backend_config.custom_fusion_config()));
+          EmitCustomFusion(instr, nullptr,
+                           backend_config.custom_fusion_config()));
       break;
     }
     default:
@@ -2278,8 +2289,13 @@ Status IrEmitterUnnested::EmitFusion(
                           EmitScatter(fusion, fusion_op, fusion_analysis));
       break;
     }
-    case HloFusionAnalysis::EmitterFusionKind::kCustomFusion:
-      LOG(FATAL) << "kCustomFusion is not supported by JitRt runtime";
+    case HloFusionAnalysis::EmitterFusionKind::kCustomFusion: {
+      TF_ASSIGN_OR_RETURN(
+          emission_result,
+          EmitCustomFusion(fusion, fusion_op,
+                           backend_config.custom_fusion_config()));
+      break;
+    }
   }
 
   for (auto& thunk : emission_result.thunks) {
@@ -3305,7 +3321,8 @@ StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitScatter(
 }
 
 StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitCustomFusion(
-    const HloFusionInstruction* fusion, const CustomFusionConfig& config) {
+    const HloFusionInstruction* fusion, mlir::lmhlo::FusionOp fusion_op,
+    const CustomFusionConfig& config) {
   VLOG(3) << "Lower HLO fusion to a custom fusion " << config.name();
 
   auto* registry = CustomFusionRegistry::Default();
@@ -3336,9 +3353,9 @@ StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitCustomFusion(
     return absl::InternalError("Expected exactly one custom kernel");
   }
 
-  TF_ASSIGN_OR_RETURN(
-      auto thunk, BuildCustomKernelThunkForFusion(*ir_emitter_context_, fusion,
-                                                  std::move(kernels[0])));
+  TF_ASSIGN_OR_RETURN(auto thunk, BuildCustomKernelThunkForFusion(
+                                      *ir_emitter_context_, fusion, fusion_op,
+                                      std::move(kernels[0])));
 
   FusionEmissionResult result;
   result.thunks.push_back(std::move(thunk));

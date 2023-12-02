@@ -25,7 +25,8 @@ limitations under the License.
 
 namespace xla::gpu::kernel::gemm_universal {
 
-StatusOr<CustomKernel> GetCutlassGemmKernel(PrimitiveType dtype, int32_t m,
+StatusOr<CustomKernel> GetCutlassGemmKernel(std::string name,
+                                            PrimitiveType dtype, int32_t m,
                                             int32_t n, int32_t k,
                                             const ArgsIndices& indices,
                                             const DynamicSliceIndices& slices);

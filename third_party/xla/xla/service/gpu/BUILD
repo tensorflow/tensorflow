@@ -4446,6 +4446,7 @@ test_suite(
         # copybara:uncomment "//third_party/py/jax/tests:pmap_test_gpu",
         # copybara:uncomment "//tensorflow/compiler/tests:fft_test_gpu",
         "//xla/python:xla_client_test_gpu",
+        # copybara:uncomment "//xla/service/gpu/kernels:cutlass_gemm_fusion_test_gpu",
         "//xla/service/gpu/tests:add_preds.hlo.test",
         "//xla/service/gpu/tests:concat.hlo.test",
         "//xla/service/gpu/tests:constant.hlo.test",

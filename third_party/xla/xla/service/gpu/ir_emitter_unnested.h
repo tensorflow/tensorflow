@@ -374,7 +374,8 @@ class IrEmitterUnnested : public IrEmitter {
   // Emits kernel thunk for a custom fusion implemented with hand written custom
   // device kernels.
   StatusOr<FusionEmissionResult> EmitCustomFusion(
-      const HloFusionInstruction* fusion, const CustomFusionConfig& config);
+      const HloFusionInstruction* fusion, mlir::lmhlo::FusionOp fusion_op,
+      const CustomFusionConfig& config);
 
   // Builds a kernel thunk for a non-fusion operation, without reuse.
   //

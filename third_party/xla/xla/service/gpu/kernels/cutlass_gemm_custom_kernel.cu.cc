@@ -30,8 +30,8 @@ namespace xla::gpu::kernel::gemm_universal {
 
 template <typename Gemm>
 static StatusOr<CustomKernel> LoadCutlassGemmUniversal(
-    int32_t m, int32_t n, int32_t k, const ArgsIndices& indices,
-    const DynamicSliceIndices& slices) {
+    std::string name, int32_t m, int32_t n, int32_t k,
+    const ArgsIndices& indices, const DynamicSliceIndices& slices) {
   using Kernel = typename Gemm::GemmKernel;
 
   cutlass::gemm::GemmCoord problem_size = {m, n, k};
@@ -39,24 +39,25 @@ static StatusOr<CustomKernel> LoadCutlassGemmUniversal(
   auto packing = ArgsPacking<Gemm>(problem_size, indices, slices);
 
   se::MultiKernelLoaderSpec spec(/*arity=*/2, std::move(packing));
-  spec.AddInProcessSymbol(GetKernelSymbol<Gemm>(), "cutlass_gemm");
+  spec.AddInProcessSymbol(GetKernelSymbol<Gemm>(), name);
 
-  return CustomKernel("cutlass_gemm", std::move(spec),
+  return CustomKernel(std::move(name), std::move(spec),
                       BlockDim<Gemm>(problem_size), ThreadDim<Gemm>(),
                       sizeof(typename Kernel::SharedStorage));
 }
 
-StatusOr<CustomKernel> GetCutlassGemmKernel(PrimitiveType dtype, int32_t m,
+StatusOr<CustomKernel> GetCutlassGemmKernel(std::string name,
+                                            PrimitiveType dtype, int32_t m,
                                             int32_t n, int32_t k,
                                             const ArgsIndices& indices,
                                             const DynamicSliceIndices& slices) {
   switch (dtype) {
     case PrimitiveType::F32:
       return LoadCutlassGemmUniversal<CutlassGemmKernels::F32xF32toF32>(
-          m, n, k, indices, slices);
+          std::move(name), m, n, k, indices, slices);
     case PrimitiveType::BF16:
       return LoadCutlassGemmUniversal<CutlassGemmKernels::BF16xBF16toBF16>(
-          m, n, k, indices, slices);
+          std::move(name), m, n, k, indices, slices);
     default:
       return absl::InvalidArgumentError("Unsupported CUTLASS gemm data type");
   }

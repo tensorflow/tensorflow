@@ -21,7 +21,6 @@ limitations under the License.
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
-#include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/custom_fusion_rewriter.h"
@@ -31,14 +30,7 @@ limitations under the License.
 
 namespace xla::gpu {
 
-class CutlassFusionTest : public HloTestBase {
-  // Custom fusions are not supported by XLA runtime.
-  DebugOptions GetDebugOptionsForTest() override {
-    auto debug_options = GetDebugOptionsFromFlags();
-    debug_options.set_xla_gpu_enable_xla_runtime_executable(false);
-    return debug_options;
-  }
-};
+class CutlassFusionTest : public HloTestBase {};
 
 //===----------------------------------------------------------------------===//
 // Pattern matching tests
