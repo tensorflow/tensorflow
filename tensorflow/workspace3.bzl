@@ -6,8 +6,19 @@ load("//third_party/llvm:workspace.bzl", llvm = "repo")
 load("//third_party:repo.bzl", "tf_vendored")
 
 def workspace():
-    tf_vendored(name = "local_xla", relpath = "third_party/xla")
-    tf_vendored(name = "local_tsl", relpath = "third_party/xla/third_party/tsl")
+#    tf_vendored(name = "local_xla", relpath = "third_party/xla")
+#    tf_vendored(name = "local_tsl", relpath = "third_party/xla/third_party/tsl")
+
+    native.local_repository(
+        name = "local_xla",
+        path = "/usr/local/google/home/vam/_/projects/github/vam-google/tensorflow/third_party/xla"
+    )
+
+    native.local_repository(
+        name = "local_tsl",
+        path = "/usr/local/google/home/vam/_/projects/github/vam-google/tensorflow/third_party/xla/third_party/tsl"
+    )
+
 
     http_archive(
         name = "io_bazel_rules_closure",

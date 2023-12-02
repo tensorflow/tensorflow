@@ -803,3 +803,16 @@ test:rbe_cross_compile_linux_arm64 --strategy=TestRunner=local
 test:rbe_cross_compile_linux_arm64 --verbose_failures=true --local_test_jobs=HOST_CPUS --test_output=errors
 test:rbe_cross_compile_linux_arm64 --flaky_test_attempts=3 --build_tests_only
 # END LINUX AARCH64 CROSS-COMPILE CONFIGS
+
+
+test:pycpp_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
+test:pycpp_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
+test:pycpp_filters --test_lang_filters=cc,py --test_size_filters=small,medium
+build:pycpp_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
+build:pycpp_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
+build:pycpp_filters --test_lang_filters=cc,py --test_size_filters=small,medium
+# build:pycpp_filters --deleted_packages=tensorflow/python/integration_testing,tensorflow/compiler/tf2tensorrt,tensorflow/compiler/xrt,tensorflow/core/tpu,tensorflow/lite
+
+test:pycpp --config=pycpp_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
+
+build --config=pycpp_filters
