@@ -392,4 +392,8 @@ def ShapeLegalizeToHloPass : Pass<"shape-legalize-to-hlo", "func::FuncOp"> {
     compilation pipelines that use HLO operations to model dynamism.
   }];
   let dependentDialects = ["mhlo::MhloDialect"];
+  let options = [
+    Option<"legalize_constraints_", "legalize-constraints", "bool",
+           /*default=*/"false", "Whether to legalize Cstr Ops to shape_assertion custom_call">
+  ];
 }
