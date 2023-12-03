@@ -37,7 +37,7 @@ std::vector<int64_t> InversePermutation(
   DCHECK(IsPermutation(input_permutation));
   std::vector<int64_t> output_permutation(input_permutation.size(), -1);
   for (size_t i = 0; i < input_permutation.size(); ++i) {
-    output_permutation.at(input_permutation.at(i)) = i;
+    output_permutation[input_permutation[i]] = i;
   }
   return output_permutation;
 }

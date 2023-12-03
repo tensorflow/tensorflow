@@ -133,7 +133,7 @@ void TrackedTfrtCpuDeviceBuffer::AddUsageEvents(
   if (usage_events_.size() >= 1024) {
     int i = 0;
     while (i < usage_events_.size()) {
-      auto& event = usage_events_.at(i);
+      auto& event = usage_events_[i];
       if (event.IsAvailable()) {
         using std::swap;
         swap(event, usage_events_.back());

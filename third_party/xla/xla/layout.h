@@ -58,7 +58,7 @@ class Tile {
   std::string ToString() const;
 
   // Returns the bound of the tile in the given dimension index.
-  int64_t dimension(int i) const { return dimensions_.at(i); }
+  int64_t dimension(int i) const { return dimensions_[i]; }
 
   // Returns the dimensions of the tile.
   absl::Span<const int64_t> dimensions() const { return dimensions_; }
@@ -203,10 +203,10 @@ class Layout {
   // Methods for accessing the DimLevelType array.
   int dim_level_types_size() const { return dim_level_types_.size(); }
   DimLevelType dim_level_type(int index) const {
-    return dim_level_types_.at(index);
+    return dim_level_types_[index];
   }
   Layout& set_dim_level_type(int index, DimLevelType dim_level_type) {
-    dim_level_types_.at(index) = dim_level_type;
+    dim_level_types_[index] = dim_level_type;
     return *this;
   }
   Layout& add_dim_level_type(DimLevelType dim_level_type) {
@@ -224,9 +224,9 @@ class Layout {
 
   // Methods for accessing the dim_unique array.
   int dim_unique_size() const { return dim_unique_.size(); }
-  bool dim_unique(int index) const { return dim_unique_.at(index); }
+  bool dim_unique(int index) const { return dim_unique_[index]; }
   Layout& set_dim_unique(int index, bool unique) {
-    dim_unique_.at(index) = unique;
+    dim_unique_[index] = unique;
     return *this;
   }
   Layout& add_dim_unique(bool unique) {
@@ -244,9 +244,9 @@ class Layout {
 
   // Methods for accessing the dim_ordered array.
   int dim_ordered_size() const { return dim_ordered_.size(); }
-  bool dim_ordered(int index) const { return dim_ordered_.at(index); }
+  bool dim_ordered(int index) const { return dim_ordered_[index]; }
   Layout& set_dim_ordered(int index, bool ordered) {
-    dim_ordered_.at(index) = ordered;
+    dim_ordered_[index] = ordered;
     return *this;
   }
   Layout& add_dim_ordered(bool ordered) {
@@ -264,9 +264,9 @@ class Layout {
 
   // Methods for accessing the minor-to-major array.
   int minor_to_major_size() const { return minor_to_major_.size(); }
-  int64_t minor_to_major(int index) const { return minor_to_major_.at(index); }
+  int64_t minor_to_major(int index) const { return minor_to_major_[index]; }
   Layout& set_minor_to_major(int index, int64_t value) {
-    minor_to_major_.at(index) = value;
+    minor_to_major_[index] = value;
     return *this;
   }
   Layout& add_minor_to_major(int64_t value) {
@@ -286,8 +286,8 @@ class Layout {
 
   // Methods for accessing the tile field.
   int64_t tiles_size() const { return tiles_.size(); }
-  const Tile& tiles(int index) const { return tiles_.at(index); }
-  Tile* mutable_tiles(int index) { return &tiles_.at(index); }
+  const Tile& tiles(int index) const { return tiles_[index]; }
+  Tile* mutable_tiles(int index) { return &tiles_[index]; }
   Tile* add_tiles() {
     tiles_.push_back(Tile());
     return &tiles_.back();
