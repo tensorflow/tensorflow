@@ -153,5 +153,19 @@ cp "./aarch64-unknown-linux-gnu/libstdc++-v3/src/.libs/libstdc++_nonshared44.a" 
 mkdir -p "${TARGET}/usr/include/aarch64-linux-gnu"
 PYTHON_VERSIONS=("python3.8" "python3.9" "python3.10" "python3.11")
 for v in "${PYTHON_VERSIONS[@]}"; do
-  ln -s "/usr/local/include/${v}" "${TARGET}/usr/include/aarch64-linux-gnu/${v}"
+  # Check for the interpreter 
+  if command -v "$v" &> /dev/null; then
+    # Check for the symbolic link
+    sym_link_py="${TARGET}/usr/include/aarch64-linux-gnu/${v}"
+    if [ -L "${sym_link_py}" ]; then
+      # Re-execute the script with the Python interpreter
+      exec "$v" "$0" "$@"
+      exit
+    else
+      # Create the symbolic link for the Python version
+      ln -s "/usr/local/include/${v}" "${sym_link_py}"
+    fi
+  fi
 done
+echo "No suitable Python version found"
+exit 1
