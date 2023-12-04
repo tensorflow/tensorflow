@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/fusions.h"
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -37,6 +38,7 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
 namespace {
 
 bool IsParameterOrGteOfParameter(const HloInstruction* instr) {
@@ -66,6 +68,40 @@ bool IsDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis) {
 
 }  // namespace
 
+std::optional<std::unique_ptr<FusionInterface>> GetCopyFusion(
+    HloFusionAnalysis& analysis,
+    absl::Span<const BufferAllocation* const> allocations,
+    mlir::lmhlo::FusionOp fusion_op) {
+  if (!fusion_op) {
+    return std::nullopt;
+  }
+
+  auto params = GetHloOperands(fusion_op);
+  auto outputs = GetHloOutputs(fusion_op);
+  std::vector<mlir::Value> srcs;
+  srcs.reserve(outputs.size());
+
+  for (auto* root : analysis.fusion_roots()) {
+    if (root->opcode() != HloOpcode::kCopy ||
+        root->operand(0)->opcode() != HloOpcode::kParameter ||
+        !LayoutUtil::Equal(root->operand(0)->shape().layout(),
+                           root->shape().layout())) {
+      return std::nullopt;
+    }
+
+    mlir::Value src = params[root->operand(0)->parameter_number()];
+    if (!GetAllocationSlice(src, allocations).ok()) return std::nullopt;
+
+    srcs.emplace_back(src);
+  }
+
+  return std::make_unique<MemcpyFusion>(
+      std::move(srcs),
+      std::vector<mlir::Value>(outputs.begin(), outputs.end()));
+}
+
+}  // namespace
+
 std::optional<std::unique_ptr<FusionInterface>> GetFusionEmitter(
     HloFusionAnalysis& analysis,
     absl::Span<const BufferAllocation* const> allocations,
@@ -84,19 +120,8 @@ std::optional<std::unique_ptr<FusionInterface>> GetFusionEmitter(
           return std::make_unique<InPlaceDynamicUpdateSliceEmitter>(analysis);
         }
       }
-      if (is_single && analysis.fusion_roots().size() == 1 &&
-          analysis.fusion_roots().front()->opcode() == HloOpcode::kCopy) {
-        if (!fusion_op) {
-          return std::nullopt;
-        }
-        mlir::Value operand = GetHloOperands(fusion_op).front();
-        mlir::Value output = GetHloOutputs(fusion_op).front();
-        Shape operand_shape = GetShape(operand);
-        Shape output_shape = GetShape(output);
-        if (LayoutUtil::Equal(operand_shape.layout(), output_shape.layout()) &&
-            GetAllocationSlice(operand, allocations).ok()) {
-          return std::make_unique<MemcpyFusion>(operand, output);
-        }
+      if (auto copy_fusion = GetCopyFusion(analysis, allocations, fusion_op)) {
+        return copy_fusion;
       }
       return std::make_unique<LoopFusion>(analysis);
     }
