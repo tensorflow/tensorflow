@@ -16,14 +16,19 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_KERNELS_CUSTOM_FUSION_PATTERN_H_
 #define XLA_SERVICE_GPU_KERNELS_CUSTOM_FUSION_PATTERN_H_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <type_traits>
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
@@ -37,9 +42,38 @@ class CustomFusionPattern {
  public:
   virtual ~CustomFusionPattern() = default;
 
-  struct Match {
-    CustomFusionConfig config;
-    std::vector<HloInstruction *> instructions;
+  // Matched sequence of instructions that can be handled by a custom fusion.
+  class Match {
+   public:
+    Match(CustomFusionConfig config,
+          std::vector<HloInstruction *> instructions);
+
+    // If some of operations matched by a pattern have users outside of the
+    // custom fusion, pattern can optionally provide a replacement that can be
+    // derived from the fusion instruction result, or from other instructions in
+    // the parent computation.
+    using Replacement =
+        std::function<StatusOr<HloInstruction *>(HloFusionInstruction *)>;
+
+    void AddReplacement(HloInstruction *instr, Replacement replacement);
+    bool HasReplacement(HloInstruction *instr) const;
+
+    // Builds a replacement for `instr` using a `fusion` instruction constructed
+    // for a pattern match.
+    StatusOr<HloInstruction *> BuildReplacement(
+        HloInstruction *instr, HloFusionInstruction *fusion) const;
+
+    const CustomFusionConfig &config() const { return config_; }
+    absl::Span<HloInstruction *const> instructions() const {
+      return instructions_;
+    }
+
+    HloInstruction *root() const { return instructions_.back(); }
+
+   private:
+    CustomFusionConfig config_;
+    std::vector<HloInstruction *> instructions_;
+    absl::flat_hash_map<const HloInstruction *, Replacement> replacements_;
   };
 
   // Returns custom fusion config and a list of instructions that matched to a

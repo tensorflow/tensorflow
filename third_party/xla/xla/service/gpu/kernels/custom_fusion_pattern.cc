@@ -19,10 +19,46 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
+
+//===----------------------------------------------------------------------===//
+// CustomFusionPattern::Match
+//===----------------------------------------------------------------------===//
+
+CustomFusionPattern::Match::Match(CustomFusionConfig config,
+                                  std::vector<HloInstruction*> instructions)
+    : config_(std::move(config)), instructions_(std::move(instructions)) {}
+
+void CustomFusionPattern::Match::AddReplacement(HloInstruction* instr,
+                                                Replacement replacement) {
+  replacements_[instr] = std::move(replacement);
+}
+
+bool CustomFusionPattern::Match::HasReplacement(HloInstruction* instr) const {
+  return replacements_.contains(instr);
+}
+
+StatusOr<HloInstruction*> CustomFusionPattern::Match::BuildReplacement(
+    HloInstruction* instr, HloFusionInstruction* fusion) const {
+  if (auto it = replacements_.find(instr); it != replacements_.end()) {
+    return it->second(fusion);
+  }
+
+  return absl::InvalidArgumentError(
+      absl::StrCat("no replacement for instruction: ", instr->name()));
+}
+
+//===----------------------------------------------------------------------===//
+// CustomFusionPatternRegistry
+//===----------------------------------------------------------------------===//
 
 CustomFusionPatternRegistry* CustomFusionPatternRegistry::Default() {
   static auto* registry = new CustomFusionPatternRegistry();

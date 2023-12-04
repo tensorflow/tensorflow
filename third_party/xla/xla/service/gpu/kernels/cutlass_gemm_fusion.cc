@@ -173,7 +173,21 @@ CutlassGemmWithDynamicUpdateSlicePattern::TryMatch(
   CustomFusionConfig config;
   config.set_name("cutlass_gemm_with_dynamic_update_slice");
 
-  return Match{config, matched->Instrs()};
+  Match match(config, matched->Instrs());
+
+  // Add an optional replacement for intermediate dot instruction as a
+  // dynamic-slice from the fusion result.
+  match.AddReplacement(matched->dot, [=](HloFusionInstruction* fusion) {
+    HloComputation* parent = fusion->parent();
+    auto* dus = Cast<HloDynamicUpdateSliceInstruction>(matched->update_slice);
+    auto* slice = parent->AddInstruction(HloInstruction::CreateDynamicSlice(
+        matched->bitcast->shape(), fusion, dus->index_operands(),
+        matched->bitcast->shape().dimensions()));
+    return parent->AddInstruction(
+        HloInstruction::CreateBitcast(matched->dot->shape(), slice));
+  });
+
+  return match;
 }
 
 std::optional<CustomFusionPattern::Match>

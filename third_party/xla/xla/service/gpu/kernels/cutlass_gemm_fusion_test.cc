@@ -165,6 +165,65 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSlice) {
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
 }
 
+TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSliceMultipleUses) {
+  const char* hlo = R"(
+    HloModule test
+
+    ENTRY %main {
+      %p0 = f32[2,2,2]{2,1,0} parameter(0)
+      %p1 = f32[2,2]{1,0} parameter(1)
+      %i = s32[] parameter(2)
+
+      %dot = f32[2,2]{1,0} dot(%p1, %p1),
+               lhs_contracting_dims={1},
+               rhs_contracting_dims={0}
+      %add = f32[2,2]{1,0} add(%dot, %dot)
+
+      %cast = f32[1,2,2]{2,1,0} bitcast(%dot)
+      %dus = f32[2,2,2]{2,1,0} dynamic-update-slice(%p0, %cast, %i, %i, %i)
+
+      ROOT %r = (f32[2,2]{1,0}, f32[2,2,2]{2,1,0}) tuple(%add, %dus)
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK: %cutlass_gemm_with_dynamic_update_slice {{.*}} {
+    ; CHECK-DAG: [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter
+    ; CHECK-DAG: [[P1:%[^ ]+]] = f32[2,2,2]{2,1,0} parameter
+    ; CHECK-DAG: [[P2:%[^ ]+]] = s32[] parameter
+    ; CHECK-DAG: [[DOT:%[^ ]+]] = f32[2,2]{1,0} dot([[P0]], [[P0]])
+    ; CHECK-DAG: [[CAST:%[^ ]+]] = f32[1,2,2]{2,1,0} bitcast([[DOT]])
+    ; CHECK:     ROOT [[DUS:%[^ ]+]] = f32[2,2,2]{2,1,0} dynamic-update-slice(
+    ; CHECK:       [[P1]], [[CAST]], [[P2]], [[P2]], [[P2]]
+    ; CHECK:     )
+    ; CHECK: }
+
+    ; CHECK: ENTRY %main {{.*}} {
+    ; CHECK:   [[OFFSET:%[^ ]+]] = s32[] parameter(2)
+    ; CHECK:   [[FUSION:%[^ ]+]] = f32[2,2,2]{2,1,0} fusion
+    ; CHECK:     kind=kCustom, calls=%cutlass_gemm_with_dynamic_update_slice,
+    ; CHECK:     backend_config={
+    ; CHECK:       "kind":"__custom_fusion",
+    ; CHECK:       "custom_fusion_config":{
+    ; CHECK:         "name":"cutlass_gemm_with_dynamic_update_slice"
+    ; CHECK:       }
+    ; CHECK:     }
+    ; CHECK:   [[SLICE:%[^ ]+]] = f32[1,2,2]{2,1,0} dynamic-slice(
+    ; CHECK:     [[FUSION]], [[OFFSET]], [[OFFSET]], [[OFFSET]]),
+    ; CHECK:     dynamic_slice_sizes={1,2,2}
+    ; CHECK:   [[CAST:%[^. ]+]] = f32[2,2]{1,0} bitcast([[SLICE]])
+    ; CHECK:   [[ADD:%[^. ]+]] = f32[2,2]{1,0} add([[CAST]], [[CAST]])
+    ; CHECK: }
+  )";
+
+  CustomFusionPatternRegistry patterns;
+  patterns.Emplace<CutlassGemmWithDynamicUpdateSlicePattern>();
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  CustomFusionRewriter pass(&device, &patterns);
+  RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
+}
+
 //===----------------------------------------------------------------------===//
 // Run And Compare Tests
 //===----------------------------------------------------------------------===//
