@@ -108,6 +108,7 @@ namespace wrap {
   __macro(hipGraphAddMemcpyNode)                    \
   __macro(hipGraphAddMemcpyNode1D)                  \
   __macro(hipGraphAddMemsetNode)                    \
+  __macro(hipGraphAddMemFreeNode)                   \
   __macro(hipGraphCreate)                           \
   __macro(hipGraphDebugDotPrint)                    \
   __macro(hipGraphDestroy)                          \

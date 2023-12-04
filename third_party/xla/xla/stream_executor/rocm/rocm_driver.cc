@@ -835,6 +835,15 @@ static hipMemAllocationType ToHipAllocationType(
   }
 }
 
+/*static*/ tsl::Status GpuDriver::GraphAddMemFreeNode(
+    GpuGraphNodeHandle* node, GpuGraphHandle graph,
+    absl::Span<GpuGraphNodeHandle> deps, GpuDevicePtr gpu_dst) {
+  RETURN_IF_ROCM_ERROR(wrap::hipGraphAddMemFreeNode(node, graph, deps.data(),
+                                                    deps.size(), gpu_dst),
+                       "Failed to add memory free node to a ROCM graph");
+  return ::tsl::OkStatus();
+}
+
 /*static*/ tsl::Status GpuDriver::GraphAddMemAllocNode(
     GpuGraphNodeHandle* node, GpuGraphHandle graph,
     absl::Span<GpuGraphNodeHandle> deps, MemAccessFlags access_flags,
