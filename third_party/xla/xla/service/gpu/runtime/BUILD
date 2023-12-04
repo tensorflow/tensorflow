@@ -722,7 +722,7 @@ cc_library(
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
         "//xla/service:executable",
-        "//xla/service/gpu:io_feed_manager",
+        "@com_google_absl//absl/base",
     ],
 )
 

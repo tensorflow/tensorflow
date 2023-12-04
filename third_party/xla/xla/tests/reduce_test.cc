@@ -1044,6 +1044,26 @@ XLA_TEST_F(ReduceHloTest, HandleReductionToVectorAndOtherReduction) {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 
+XLA_TEST_F(ReduceHloTest, ReduceAtomicF16) {
+  absl::string_view hlo_string = R"(
+HloModule jit_reduce_axes12
+
+region_0.3 {
+  Arg_0.4 = f16[] parameter(0)
+  Arg_1.5 = f16[] parameter(1)
+  ROOT minimum.6 = f16[] minimum(Arg_0.4, Arg_1.5)
+}
+
+ENTRY main.8 {
+  constant.1 = f16[] constant(1)
+  Arg_0.1 = f16[2,16385,1]{2,1,0} broadcast(constant.1), dimensions={}
+  constant.2 = f16[] constant(inf)
+  ROOT reduce.7 = f16[2]{0} reduce(Arg_0.1, constant.2), dimensions={1,2}, to_apply=region_0.3
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
 class VariadicReduceTest : public HloTestBase {};
 
 XLA_TEST_F(VariadicReduceTest, Reduce_R3x2_to_R2x2_simple) {
