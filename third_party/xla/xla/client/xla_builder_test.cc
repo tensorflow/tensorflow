@@ -1748,6 +1748,23 @@ TEST_F(XlaBuilderTest, UnboundedPowUnsupportedImplicitBroadcast) {
               HasSubstr("Unbounded dynamic shapes not supported"));
 }
 
+TEST_F(XlaBuilderTest, UnboundedSlice) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> operand = ParseShape("f32[1, <=3, ?]");
+  StatusOr<Shape> expected = ParseShape("f32[1, <=2, 3]");
+  ASSERT_IS_OK(operand.status());
+  ASSERT_IS_OK(expected.status());
+  Slice(Parameter(&b, 0, operand.value(), "operand"),
+        /*start_indices=*/{0, 1, 2},
+        /*limit_indices=*/{1, 3, 5},
+        /*strides=*/{1, 1, 1});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto result = module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
 TEST_F(XlaBuilderTest, UnboundedSub) {
   XlaBuilder b(TestName());
   StatusOr<Shape> lhs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");

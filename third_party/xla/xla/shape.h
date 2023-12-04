@@ -113,6 +113,12 @@ class Shape {
     dimensions_[dimension] = kUnboundedSize;
   }
 
+  // Returns true if the given dimension is bounded dynamic.
+  bool is_bounded_dynamic_dimension(int dimension) const {
+    return is_dynamic_dimension(dimension) &&
+           !is_unbounded_dynamic_dimension(dimension);
+  }
+
   // Returns true if the given dimension is dynamically-sized.
   bool is_dynamic_dimension(int dimension) const {
     return dynamic_dimensions_[dimension];

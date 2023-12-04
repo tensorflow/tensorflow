@@ -2652,11 +2652,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     if (start_index < 0) {
       return InvalidArgument("Negative start index to slice: %d.", start_index);
     }
-    if (limit_index > arg.dimensions(dimension)) {
+    int64_t dimension_size = arg.dimensions(dimension);
+    if (!arg.is_unbounded_dynamic_dimension(dimension) &&
+        limit_index > dimension_size) {
       return error(
           StrFormat("limit index (%d) must be less than or equal to dimension "
                     "size (%d)",
-                    limit_index, arg.dimensions(dimension)));
+                    limit_index, dimension_size));
     }
     VLOG(2) << StrFormat("starts[%d] = %d", dimension, start_index);
     VLOG(2) << StrFormat("limits[%d] = %d", dimension, limit_index);
@@ -2678,7 +2680,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     if (sizes[i] == 1) {
       continue;
     }
-    is_dynamic[i] = arg.is_dynamic_dimension(i);
+    is_dynamic[i] = arg.is_bounded_dynamic_dimension(i);
   }
 
   return ShapeUtil::MakeShape(arg.element_type(), sizes, is_dynamic);

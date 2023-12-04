@@ -3898,6 +3898,19 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedPow) {
   }
 }
 
+TEST_F(ShapeInferenceTest, UnboundedSlice) {
+  StatusOr<Shape> operand = ParseShape("f32[1, <=3, ?]");
+  StatusOr<Shape> expected = ParseShape("f32[1, <=2, 3]");
+  ASSERT_IS_OK(operand.status());
+  StatusOr<Shape> inferred_status = ShapeInference::InferSliceShape(
+      operand.value(), /*starts=*/{0, 1, 2}, /*limits=*/{1, 3, 5},
+      /*strides=*/{1, 1, 1});
+  ASSERT_IS_OK(expected.status());
+  ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
+      << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
 TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedSub) {
   auto lhs = ParseShape(GetParam()[0]);
   auto rhs = ParseShape(GetParam()[1]);
