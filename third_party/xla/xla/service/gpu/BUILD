@@ -1762,7 +1762,7 @@ cc_library(
         "//xla/stream_executor:host_or_device_scalar",
     ]) + if_rocm_is_configured([
         "//xla/stream_executor/rocm:hipblas_lt_header",
-        "//xla/stream_executor/rocm:hipblaslt_plugin",
+        "//xla/stream_executor/rocm:amdhipblaslt_plugin",
         "//xla/stream_executor:host_or_device_scalar",
         "//xla/stream_executor/platform:dso_loader",
     ]) + if_static([
