@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "absl/base/internal/sysinfo.h"
 #include "tsl/platform/cpu_info.h"
+#include "tsl/platform/host_info.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/numa.h"
@@ -256,7 +257,6 @@ int NUMAGetThreadNodeAffinity() {
   return node_index;
 }
 
-
 void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
 #ifdef TENSORFLOW_USE_NUMA
   if (HaveHWLocTopology()) {
@@ -306,7 +306,6 @@ int NUMAGetMemAffinity(const void* addr) {
 #endif  // TENSORFLOW_USE_NUMA
   return node;
 }
-
 
 bool Snappy_Compress(const char* input, size_t length, string* output) {
 #ifdef TF_USE_SNAPPY
@@ -447,5 +446,8 @@ MemoryBandwidthInfo GetMemoryBandwidthInfo() {
   MemoryBandwidthInfo membw_info = {INT64_MAX};
   return membw_info;
 }
+
+IOStatistics GetIOStatistics() { return IOStatistics(); }
+
 }  // namespace port
 }  // namespace tsl
