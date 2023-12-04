@@ -1543,7 +1543,16 @@ func.func @op_tanh(%arg0: tensor<f32>) -> tensor<f32> {
   func.return %0 : tensor<f32>
 }
 
-// TopKOp aka mhlo.topk is unsupported at the moment (see negative test below).
+// CHECK-LABEL: "op_topk"
+func.func @op_topk(%arg0: tensor<5x10xf32>) -> (tensor<5x8xf32>, tensor<5x8xi32>) {
+  //               CHECK: "stablehlo.custom_call"(%arg0) {
+  //          CHECK-SAME:    call_target_name = "mhlo.topk"
+  // CHECK-SAME{LITERAL}:    mhlo.attributes = {k = 8 : i64, largest = true}
+  // CHECK-SAME{LITERAL}:    mhlo.version = 1 : i64
+  //          CHECK-SAME: } : (tensor<5x10xf32>) -> (tensor<5x8xf32>, tensor<5x8xi32>)
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true) : tensor<5x10xf32> -> (tensor<5x8xf32>, tensor<5x8xi32>)
+  func.return %0#0, %0#1 : tensor<5x8xf32>, tensor<5x8xi32>
+}
 
 // CHECK-LABEL: "op_torch_index_select"
 func.func @op_torch_index_select(%arg0: tensor<5x1x5xf32>, %arg1: tensor<2xi32>) ->  tensor<2x1x5xf32> {
@@ -2053,14 +2062,6 @@ func.func @op_stochastic_convert(%arg0: tensor<f32>, %arg1: tensor<ui32>) -> ten
   // expected-error@+1 {{failed to legalize operation 'mhlo.stochastic_convert' that was explicitly marked illegal}}
   %0 = "mhlo.stochastic_convert"(%arg0, %arg1) : (tensor<f32>, tensor<ui32>) -> tensor<i8>
   return %0 : tensor<i8>
-}
-
-// -----
-
-func.func @op_topk(%arg0 : tensor<16xf32>) {
-  // expected-error@+1 {{failed to legalize operation 'mhlo.topk' that was explicitly marked illegal}}
-  %0:2 = mhlo.topk(%arg0, k=8, largest=true) : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
-  return
 }
 
 // -----

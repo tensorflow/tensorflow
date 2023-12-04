@@ -52,7 +52,7 @@ bool hasPrivateFeaturesNotInStablehlo(HloOpTy hloOp) {
   // Please let us know if we missed something, and we'll recategorize them.
   if (isa<mhlo::AddDependencyOp, mhlo::AsyncDoneOp, mhlo::AsyncStartOp,
           mhlo::AsyncUpdateOp, mhlo::BitcastOp, mhlo::CopyOp, mhlo::DomainOp,
-          mhlo::FusionOp, mhlo::StochasticConvertOp, mhlo::TopKOp,
+          mhlo::FusionOp, mhlo::StochasticConvertOp,
           mhlo::XlaRngGetAndUpdateStateOp>(hloOp.getOperation())) {
     return true;
   }
@@ -139,6 +139,12 @@ std::optional<int64_t> getPublicFeaturesNotInStablehlo(HloOpTy hloOp) {
     if (hloOp.getApiVersion() ==
         mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI)
       return 1;
+  }
+  // StableHLO doesn't support TopK yet.
+  // Proposal: https://github.com/openxla/stablehlo/pull/1593
+  if constexpr (std::is_same<HloOpTy, mhlo::TopKOp>::value) {
+    // Version 1: Initial version for TopK.
+    return 1;
   }
   return std::nullopt;
 }
@@ -566,7 +572,7 @@ void populateHloToStablehloPatterns(RewritePatternSet* patterns,
 #include "stablehlo/dialect/StablehloOps.cpp.inc"
       >(patterns, converter, context, allowExperimentalFeatures);
 
-  populateHloToStablehloCustomCallPatterns<mhlo::TanOp>(
+  populateHloToStablehloCustomCallPatterns<mhlo::TanOp, mhlo::TopKOp>(
       patterns, converter, context, allowExperimentalFeatures);
 }
 
