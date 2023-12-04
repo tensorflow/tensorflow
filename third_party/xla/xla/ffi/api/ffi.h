@@ -255,7 +255,7 @@ struct CtxDecoding<PlatformStream<T>> {
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine&) {
+                                    DiagnosticEngine& diagnostic) {
     XLA_FFI_Stream_Get_Args args;
     args.struct_size = XLA_FFI_Stream_Get_Args_STRUCT_SIZE;
     args.priv = nullptr;
@@ -263,6 +263,8 @@ struct CtxDecoding<PlatformStream<T>> {
     args.stream = nullptr;
 
     if (XLA_FFI_Error* error = api->XLA_FFI_Stream_Get(&args); error) {
+      diagnostic.Emit("Failed to get platform stream: ")
+          << GetErrorMessage(api, error);
       DestroyError(api, error);
       return std::nullopt;
     }
@@ -270,14 +272,22 @@ struct CtxDecoding<PlatformStream<T>> {
     return reinterpret_cast<T>(args.stream);
   }
 
-  // TODO(ezhulenev): We need to log error message somewhere, currently we
-  // silently destroy it.
+  static const char* GetErrorMessage(const XLA_FFI_Api* api,
+                                     XLA_FFI_Error* error) {
+    XLA_FFI_Error_GetMessage_Args args;
+    args.struct_size = XLA_FFI_Error_GetMessage_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    args.error = error;
+    api->XLA_FFI_Error_GetMessage(&args);
+    return args.message;
+  }
+
   static void DestroyError(const XLA_FFI_Api* api, XLA_FFI_Error* error) {
-    XLA_FFI_Error_Destroy_Args destroy_args;
-    destroy_args.struct_size = XLA_FFI_Error_Destroy_Args_STRUCT_SIZE;
-    destroy_args.priv = nullptr;
-    destroy_args.error = error;
-    api->XLA_FFI_Error_Destroy(&destroy_args);
+    XLA_FFI_Error_Destroy_Args args;
+    args.struct_size = XLA_FFI_Error_Destroy_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    args.error = error;
+    api->XLA_FFI_Error_Destroy(&args);
   }
 };
 

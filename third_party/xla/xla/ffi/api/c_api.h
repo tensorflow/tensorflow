@@ -118,6 +118,17 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Error_Create_Args, errc);
 
 typedef XLA_FFI_Error* XLA_FFI_Error_Create(XLA_FFI_Error_Create_Args* args);
 
+struct XLA_FFI_Error_GetMessage_Args {
+  size_t struct_size;
+  void* priv;
+  XLA_FFI_Error* error;
+  const char* message;  // out
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Error_GetMessage_Args, message);
+
+typedef void XLA_FFI_Error_GetMessage(XLA_FFI_Error_GetMessage_Args* args);
+
 struct XLA_FFI_Error_Destroy_Args {
   size_t struct_size;
   void* priv;
@@ -296,6 +307,7 @@ struct XLA_FFI_Api {
   XLA_FFI_InternalApi* internal_api;
 
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_Create);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_GetMessage);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_Destroy);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Handler_Register);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Stream_Get);
