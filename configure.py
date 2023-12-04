@@ -195,7 +195,7 @@ def setup_python(environ_cp):
   try:
     if not os.path.isfile(python_bin_path):
       if os.access(python_bin_path, os.X_OK):
-        raise FileNotFoundError('The python path {} is not valid.'.format(python_bin_path))
+        raise FileNotFoundError(f'The python path {python_bin_path} is not valid.')
     python_version = get_python_major_version(python_bin_path)
     if python_version != '3':
       raise ValueError('Python found at {} is not at version 3. Please, update.').format(pyton_bin_path)
