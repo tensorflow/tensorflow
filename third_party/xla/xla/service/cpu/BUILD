@@ -2,6 +2,7 @@
 #    LLVM-based CPU backend for XLA.
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load(
     "//xla:xla.bzl",
     "ORC_JIT_MEMORY_MAPPER_TARGETS",
@@ -42,6 +43,19 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
+    visibility = ["//visibility:public"],
+)
+
+bool_flag(
+    name = "experimental_mlir_gpu",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "experimental_mlir_gpu_enabled",
+    flag_values = {
+        ":experimental_mlir_gpu": "True",
+    },
     visibility = ["//visibility:public"],
 )
 
@@ -468,6 +482,10 @@ cc_library(
     name = "hlo_xla_runtime_pipeline",
     srcs = ["hlo_xla_runtime_pipeline.cc"],
     hdrs = ["hlo_xla_runtime_pipeline.h"],
+    local_defines = select({
+        ":experimental_mlir_gpu_enabled": ["EXPERIMENTAL_MLIR_GPU=1"],
+        "//conditions:default": [],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         "//xla:status",
@@ -483,8 +501,6 @@ cc_library(
         "@llvm-project//mlir:ComplexToStandard",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncTransforms",
-        "@llvm-project//mlir:GPUDialect",
-        "@llvm-project//mlir:GPUToNVVMTransforms",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:Pass",
@@ -502,7 +518,13 @@ cc_library(
         "@llvm-project//mlir:VectorTransforms",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
-    ],
+    ] + select({
+        ":experimental_mlir_gpu_enabled": [
+            "@llvm-project//mlir:GPUDialect",
+            "@llvm-project//mlir:GPUToNVVMTransforms",
+        ],
+        "//conditions:default": [],
+    }),
     alwayslink = 1,  # has pipeline registration
 )
 

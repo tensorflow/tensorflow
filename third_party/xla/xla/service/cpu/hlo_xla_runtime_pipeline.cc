@@ -20,7 +20,6 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Conversion/BufferizationToMemRef/BufferizationToMemRef.h"  // from @llvm-project
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
@@ -33,7 +32,6 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/Transforms/AllocationOpInterfaceImpl.h"  // from @llvm-project
@@ -55,6 +53,11 @@ limitations under the License.
 #include "xla/status.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+
+#ifdef EXPERIMENTAL_MLIR_GPU
+#include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
+#endif  // EXPERIMENTAL_MLIR_GPU
 
 namespace xla {
 namespace cpu {
@@ -111,6 +114,7 @@ void AddSparsificationPasses(mlir::OpPassManager& pm, bool new_deallocator,
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createFinalizingBufferizePass());
+#ifdef EXPERIMENTAL_MLIR_GPU
   // Sparse GPU acceleration lowers to GPU dialect.
   if (gpu_codegen) {
     pm.addPass(
@@ -120,6 +124,10 @@ void AddSparsificationPasses(mlir::OpPassManager& pm, bool new_deallocator,
     pm.addNestedPass<mlir::gpu::GPUModuleOp>(
         mlir::createConvertGpuOpsToNVVMOps());
   }
+#else   // EXPERIMENTAL_MLIR_GPU
+  CHECK(!gpu_codegen)
+      << "Experimental MLIR GPU code generation was not enabled at build time";
+#endif  // EXPERIMENTAL_MLIR_GPU
 }
 
 void AddSparsificationPassPipeline(mlir::OpPassManager& pm) {

@@ -100,6 +100,12 @@ cc_library(
     srcs = ["compilation_pipeline_cpu.cc"],
     hdrs = ["compilation_pipeline_cpu.h"],
     compatible_with = get_compatible_with_portable(),
+    local_defines = select({
+        "//xla/service/cpu:experimental_mlir_gpu_enabled": [
+            "EXPERIMENTAL_MLIR_GPU=1",
+        ],
+        "//conditions:default": [],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":compilation_pipeline_options",
@@ -126,8 +132,6 @@ cc_library(
         "@llvm-project//mlir:ControlFlowDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",
-        "@llvm-project//mlir:GPUToGPURuntimeTransforms",
-        "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
         "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:LinalgTransforms",
@@ -142,7 +146,14 @@ cc_library(
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:X86VectorToLLVMIRTranslation",
-    ],
+        "@local_tsl//tsl/platform:logging",
+    ] + select({
+        "//xla/service/cpu:experimental_mlir_gpu_enabled": [
+            "@llvm-project//mlir:GPUToGPURuntimeTransforms",
+            "@llvm-project//mlir:GPUTransforms",
+        ],
+        "//conditions:default": [],
+    }),
     alwayslink = 1,  # has pipeline registration
 )
 
