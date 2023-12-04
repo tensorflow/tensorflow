@@ -28,16 +28,13 @@ limitations under the License.
 namespace xla::gpu {
 
 StatusOr<se::DeviceMemoryBase> CommandBufferAllocations::GetDeviceAddress(
-    BufferAllocation::Slice buffer_slice) const {
-  auto base = allocs_.find(buffer_slice.index());
+    BufferAllocation::Index index) const {
+  auto base = allocs_.find(index);
   if (base == allocs_.end()) {
     return absl::InternalError(absl::StrCat("Command buffer allocation #",
-                                            buffer_slice.index(),
-                                            " was not allocated"));
+                                            index, " was not allocated"));
   }
-
-  char* ptr = static_cast<char*>(const_cast<void*>(base->second.opaque()));
-  return se::DeviceMemoryBase(ptr + buffer_slice.offset(), buffer_slice.size());
+  return allocs_.at(index);
 }
 
 Status CommandBufferAllocations::AddAllocation(BufferAllocation::Index index,

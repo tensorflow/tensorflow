@@ -65,6 +65,8 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
 
   tsl::StatusOr<DeviceMemoryBase> Allocate(size_t bytes) override;
 
+  tsl::Status Free(DeviceMemoryBase dst) override;
+
   tsl::Status If(StreamExecutor* executor, DeviceMemory<bool> predicate,
                  CommandBuffer::Builder then_builder) override;
 

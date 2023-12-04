@@ -531,6 +531,13 @@ class GpuDriver {
   static tsl::StatusOr<std::pair<GpuDevicePtr, uint64_t>>
   GraphGetMemAllocNodeParams(GpuGraphNodeHandle node);
 
+  // Create a memfree node and adds it to a graph.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1geb7cdce5d9be2d28d9428e74eb00fa53
+  static tsl::Status GraphAddMemFreeNode(GpuGraphNodeHandle* node,
+                                         GpuGraphHandle graph,
+                                         absl::Span<GpuGraphNodeHandle> deps,
+                                         GpuDevicePtr gpu_dst);
+
   // Creates a memcpy node and adds it to a graph.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g674da6ab54a677f13e0e0e8206ff5073
   static tsl::Status GraphAddMemcpyD2DNode(GpuContext* context,

@@ -54,7 +54,23 @@ se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
     BufferAllocation::Index buffer_index) const {
   CHECK_GE(buffer_index, 0);
   CHECK_LT(buffer_index, buffers_.size());
-  return buffers_[buffer_index];
+  se::DeviceMemoryBase base = buffers_[buffer_index];
+  if (reinterpret_cast<uintptr_t>(base.opaque()) == kExternalAllocationMarker) {
+    if (!external_allocations_) {
+      LOG(ERROR) << "Does not have external allocations for buffer "
+                 << buffer_index;
+      return se::DeviceMemoryBase();
+    }
+    auto external_address =
+        external_allocations_->GetDeviceAddress(buffer_index);
+    if (external_address.ok()) {
+      return external_address.value();
+    }
+    LOG(ERROR) << "External address for allocation" << buffer_index
+               << " is not allocated yet";
+    return se::DeviceMemoryBase();
+  }
+  return base;
 }
 
 se::DeviceMemoryBase& BufferAllocations::GetMutableDeviceAddress(
@@ -74,14 +90,26 @@ se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
       buffer_slice.size());
 }
 
-StatusOr<se::DeviceMemoryBase> BufferAllocations::GetDeviceAddress(
-    const BufferAllocation::Slice& buffer_slice,
-    const ExternalAllocations& external_allocations) const {
-  // Check if base memory address is an external allocation.
-  se::DeviceMemoryBase base = GetDeviceAddress(buffer_slice.index());
-  return reinterpret_cast<uintptr_t>(base.opaque()) == kExternalAllocationMarker
-             ? external_allocations.GetDeviceAddress(buffer_slice)
-             : GetDeviceAddress(buffer_slice);
+Status BufferAllocations::AddExternalAllocation(
+    BufferAllocation::Index index, se::DeviceMemoryBase memory) const {
+  if (external_allocations_ == nullptr) {
+    return InternalError(
+        "Calling external allocations, but no allocation tracker is provided"
+        "for allocation %d",
+        index);
+  }
+  return external_allocations_->AddAllocation(index, memory);
+}
+
+Status BufferAllocations::EraseExternalAllocation(
+    BufferAllocation::Index index) const {
+  if (external_allocations_ == nullptr) {
+    return InternalError(
+        "Calling external allocations, but no allocation tracker is provided"
+        "for allocation %d",
+        index);
+  }
+  return external_allocations_->EraseAllocation(index);
 }
 
 }  // namespace gpu

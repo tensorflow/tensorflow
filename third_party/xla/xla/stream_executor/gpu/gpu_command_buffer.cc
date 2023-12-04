@@ -305,6 +305,7 @@ tsl::Status GpuCommandBuffer::Memset(DeviceMemoryBase* dst,
 tsl::StatusOr<DeviceMemoryBase> GpuCommandBuffer::Allocate(size_t bytes) {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
+  // Adds a new memory allocation node to the graph under construction.
   if (state_ == State::kCreate) {
     Dependencies deps = GetDependencies();
     GpuGraphNodeHandle* node = &nodes_.emplace_back();
@@ -333,6 +334,30 @@ tsl::StatusOr<DeviceMemoryBase> GpuCommandBuffer::Allocate(size_t bytes) {
                             nodes_[update_state_.node_idx++]));
     return DeviceMemoryBase(reinterpret_cast<void*>(params.first),
                             params.second);
+  }
+
+  return UnsupportedStateError(state_);
+}
+
+tsl::Status GpuCommandBuffer::Free(DeviceMemoryBase dst) {
+  TF_RETURN_IF_ERROR(CheckNotFinalized());
+
+  // Adds a new memfree node to the graph under construction.
+  if (state_ == State::kCreate) {
+    Dependencies deps = GetDependencies();
+    GpuGraphNodeHandle* node = &nodes_.emplace_back();
+    GpuDevicePtr gpu_dptr = AsDevicePtr(dst);
+    TF_RETURN_IF_ERROR(GpuDriver::GraphAddMemFreeNode(
+        node, graph_, absl::MakeSpan(deps), gpu_dptr));
+    return tsl::OkStatus();
+  }
+
+  if (state_ == State::kUpdate) {
+    // memfree node implemented through CUDA graph only free buffers that is
+    // allocated through memory alloc node, so buffer address will not change,
+    // no update is required.
+    update_state_.node_idx++;
+    return tsl::OkStatus();
   }
 
   return UnsupportedStateError(state_);

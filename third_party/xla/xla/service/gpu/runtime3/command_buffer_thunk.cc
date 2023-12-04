@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/runtime3/command_buffer_allocations.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
@@ -79,7 +80,7 @@ Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   absl::MutexLock lock(&cmd_buffer->mutex);
 
   CommandBufferCmd::RecordParams record_params = {
-      executor, params.buffer_allocations, &cmd_buffer->allocations};
+      executor, const_cast<BufferAllocations*>(params.buffer_allocations)};
 
   if (cmd_buffer->ShouldUpdateCommandBuffer(commands_, record_params)) {
     TF_RETURN_IF_ERROR(

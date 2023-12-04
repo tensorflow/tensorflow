@@ -979,6 +979,15 @@ GpuDriver::GraphGetMemAllocNodeParams(CUgraphNode node) {
   return std::pair<CUdeviceptr, uint64_t>{params.dptr, params.bytesize};
 }
 
+/*static*/ tsl::Status GpuDriver::GraphAddMemFreeNode(
+    CUgraphNode* node, CUgraph graph, absl::Span<CUgraphNode> deps,
+    CUdeviceptr gpu_dst) {
+  RETURN_IF_CUDA_RES_ERROR(
+      cuGraphAddMemFreeNode(node, graph, deps.data(), deps.size(), gpu_dst),
+      "Failed to add memory free node to a CUDA graph");
+  return ::tsl::OkStatus();
+}
+
 /* static */ tsl::Status GpuDriver::GraphAddMemcpyD2DNode(
     GpuContext* context, CUgraphNode* node, CUgraph graph,
     absl::Span<CUgraphNode> deps, CUdeviceptr gpu_dst, CUdeviceptr gpu_src,

@@ -204,6 +204,10 @@ class CommandBufferInterface {
                             CommandBuffer::Builder cond_builder,
                             CommandBuffer::Builder body_builder) = 0;
 
+  // Adds a device memory free command to the command buffer, buffer is
+  // allocated in other command buffer, free through real address.
+  virtual tsl::Status Free(DeviceMemoryBase dst) = 0;
+
   // Finalizes command buffer and makes it executable. Once command buffer is
   // finalized no commands can be added to it.
   virtual tsl::Status Finalize() = 0;

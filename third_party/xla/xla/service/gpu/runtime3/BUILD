@@ -157,6 +157,7 @@ xla_test(
     srcs = if_gpu_is_configured(["command_buffer_thunk_test.cc"]),
     backends = ["gpu"],
     deps = [
+        ":command_buffer_allocations",
         ":command_buffer_cmd",
         ":command_buffer_thunk",
         "//xla:shape_util",

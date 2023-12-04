@@ -174,6 +174,10 @@ tsl::Status CommandBuffer::While(StreamExecutor* executor,
                                 std::move(body_builder));
 }
 
+tsl::Status CommandBuffer::Free(DeviceMemoryBase dst) {
+  return implementation_->Free(dst);
+}
+
 CommandBuffer::Mode CommandBuffer::mode() const {
   return implementation_->mode();
 }

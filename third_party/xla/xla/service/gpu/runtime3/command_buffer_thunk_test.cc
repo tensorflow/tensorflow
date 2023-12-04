@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -25,6 +26,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/runtime3/command_buffer_allocations.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/service_executable_run_options.h"
@@ -110,9 +112,11 @@ TEST(CommandBufferThunkTest, MemcpyCmd) {
 // 1. Allocates memory region "a" and "c" outside command buffer.
 // 2. Allocates memory region "b" inside command buffer.
 // 3. MemCopyDeviceToDevice from "a" to "b" inside command buffer.
-// 4. MemCopyDEviceToDevice from "b" to "c" inside command buffer.
-// 5. Verify that region "c" has the same content as "a".
-TEST(CommandBufferThunkTest, AllocateCmd) {
+
+// 4. MemCopyDeviceToDevice from "b" to "c" inside command buffer.
+// 5. Free memory region "b" inside command buffer.
+// 6. Verify that region "c" has the same content as "a".
+TEST(CommandBufferThunkTest, MemallocFreeCmdSameThunk) {
   se::StreamExecutor* executor = CudaExecutor();
 
   se::Stream stream(executor);
@@ -132,9 +136,10 @@ TEST(CommandBufferThunkTest, AllocateCmd) {
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
-  commands.Emplace<AllocateCmd>(&alloc_b);
+  commands.Emplace<AllocateCmd>(alloc_b);
   commands.Emplace<MemcpyDeviceToDeviceCmd>(slice_b, slice_a, byte_length);
   commands.Emplace<MemcpyDeviceToDeviceCmd>(slice_c, slice_b, byte_length);
+  commands.Emplace<FreeCmd>(alloc_b);
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
@@ -142,11 +147,17 @@ TEST(CommandBufferThunkTest, AllocateCmd) {
   // Prepare arguments: a=42, b=0
   se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
   stream.ThenMemset32(&a, 42, byte_length);
+
   se::DeviceMemory<int32_t> b(se::DeviceMemoryBase(
       reinterpret_cast<int32_t*>(BufferAllocations::kExternalAllocationMarker),
       byte_length));
   se::DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
-  BufferAllocations allocations({a, b, c}, 0, executor->GetAllocator());
+
+  std::unique_ptr<CommandBufferAllocations> external_allocation =
+      std::make_unique<CommandBufferAllocations>();
+
+  BufferAllocations allocations({a, b, c}, 0, executor->GetAllocator(),
+                                external_allocation.get());
 
   ServiceExecutableRunOptions run_options;
   Thunk::ExecuteParams params(run_options, allocations, &stream, {});
@@ -156,6 +167,79 @@ TEST(CommandBufferThunkTest, AllocateCmd) {
   TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   // Copy `b` data back to host.
+  std::vector<int32_t> dst(4, 0);
+  stream.ThenMemcpy(dst.data(), allocations.GetMutableDeviceAddress(2),
+                    byte_length);
+
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 42));
+}
+
+// This test does the following operations:
+// 1. Allocates memory region "a" and "c" outside command buffer.
+// 2. Allocates memory region "b" inside command buffer thunk 1.
+// 3. MemCopyDeviceToDevice from "a" to "b" inside command buffer 1.
+// 4. MemCopyDeviceToDevice from "b" to "c" inside command buffer 2.
+// 5. Free memory region "b" inside command buffer 2.
+// 6. Verify that region "c" has the same content as "a".
+TEST(CommandBufferThunkTest, MemallocFreeCmdAcrossThunk) {
+  se::StreamExecutor* executor = CudaExecutor();
+
+  se::Stream stream(executor);
+  stream.Init();
+  ASSERT_TRUE(stream.ok());
+
+  // Prepare arguments:
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
+  BufferAllocation alloc_b(/*index=*/1, byte_length, /*color=*/0);
+  BufferAllocation alloc_c(/*index=*/2, byte_length, /*color=*/0);
+  BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
+  BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
+  BufferAllocation::Slice slice_c(&alloc_c, 0, byte_length);
+
+  // =================Thunk 1=================================
+  // Prepare commands sequence for constructing command buffer.
+  CommandBufferCmdSequence commands1;
+  commands1.Emplace<AllocateCmd>(alloc_b);
+  commands1.Emplace<MemcpyDeviceToDeviceCmd>(slice_b, slice_a, byte_length);
+
+  // Construct a thunk with command sequence.
+  CommandBufferThunk thunk1(std::move(commands1), Thunk::ThunkInfo(nullptr));
+
+  // Prepare arguments: a=42, b=0
+  se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  stream.ThenMemset32(&a, 42, byte_length);
+  se::DeviceMemory<int32_t> b(se::DeviceMemoryBase(
+      reinterpret_cast<int32_t*>(BufferAllocations::kExternalAllocationMarker),
+      byte_length));
+  se::DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+
+  std::unique_ptr<CommandBufferAllocations> external_allocation =
+      std::make_unique<CommandBufferAllocations>();
+
+  BufferAllocations allocations({a, b, c}, 0, executor->GetAllocator(),
+                                external_allocation.get());
+
+  ServiceExecutableRunOptions run_options;
+  Thunk::ExecuteParams params(run_options, allocations, &stream, {});
+
+  // Execute command buffer thunk and verify that it copied the memory.
+  TF_ASSERT_OK(thunk1.ExecuteOnStream(params));
+
+  // =================Thunk 2=================================
+  CommandBufferCmdSequence commands2;
+  commands2.Emplace<MemcpyDeviceToDeviceCmd>(slice_c, slice_b, byte_length);
+  commands2.Emplace<FreeCmd>(alloc_b);
+
+  // Construct a thunk with command sequence.
+  CommandBufferThunk thunk2(std::move(commands2), Thunk::ThunkInfo(nullptr));
+
+  // Execute command buffer thunk and verify that it copied the memory.
+  TF_ASSERT_OK(thunk2.ExecuteOnStream(params));
+
+  // Copy `c` data back to host.
   std::vector<int32_t> dst(4, 0);
   stream.ThenMemcpy(dst.data(), allocations.GetMutableDeviceAddress(2),
                     byte_length);

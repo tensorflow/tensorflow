@@ -62,7 +62,6 @@ class CommandBufferCmd {
   struct RecordParams {
     se::StreamExecutor* executor;
     const BufferAllocations* buffer_allocations;
-    CommandBufferAllocations* command_buffer_allocations;
   };
 
   // Prepares a command for recording on a given executor. We split it into a
@@ -310,16 +309,36 @@ class WhileCmd : public CommandBufferCmd {
 
 class AllocateCmd : public CommandBufferCmd {
  public:
-  explicit AllocateCmd(BufferAllocation* allocation);
+  AllocateCmd(BufferAllocation allocation);
 
-  // After calling this function, the allocated memory address is updated to
+  // After calling this function, the allocated memory is tracked in
+  // CommandBuffer object.
   Status Record(const RecordParams& params,
                 se::CommandBuffer* command_buffer) override;
 
   Slices slices() override;
 
  private:
-  BufferAllocation* allocation_;
+  BufferAllocation allocation_;
+};
+
+//===----------------------------------------------------------------------===//
+// FreeCmd
+//===----------------------------------------------------------------------===//
+
+class FreeCmd : public CommandBufferCmd {
+ public:
+  FreeCmd(BufferAllocation allocation);
+
+  // After calling this function, the allocated memory address for dst
+  // BufferAllocation is freed, no update is required.
+  Status Record(const RecordParams& params,
+                se::CommandBuffer* command_buffer) override;
+
+  Slices slices() override;
+
+ private:
+  BufferAllocation allocation_;
 };
 
 //===----------------------------------------------------------------------===//

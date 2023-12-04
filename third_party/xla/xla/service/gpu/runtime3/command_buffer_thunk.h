@@ -40,6 +40,12 @@ class CommandBufferThunk : public Thunk {
   Status Initialize(se::StreamExecutor*, ExecutableSource) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  // Return the allocation address that was lazilly allocated inside command
+  // buffer. This API is required when the buffers are allocated inside command
+  // buffer but will be consumed by non-command buffer operations.
+  StatusOr<se::DeviceMemoryBase> GetCommandBufferAllocationAddress(
+      const ExecuteParams& params, int64_t index);
+
  private:
   // Command buffer instantiated on a `se::StreamExecutor` instance, and
   // auxiliary state required for efficient command buffer updates.

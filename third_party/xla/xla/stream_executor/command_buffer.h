@@ -181,6 +181,9 @@ class CommandBuffer {
   // Adds a device memory allocation command to the command buffer.
   tsl::StatusOr<DeviceMemoryBase> Allocate(size_t bytes);
 
+  // This API free buffer that is allocated by Allocate command
+  tsl::Status Free(DeviceMemoryBase dst);
+
   // Finalizes command buffer and makes it executable. Once command buffer is
   // finalized no commands can be added to it.
   tsl::Status Finalize();
