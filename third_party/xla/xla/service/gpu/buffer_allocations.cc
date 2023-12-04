@@ -85,9 +85,7 @@ se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
   se::DeviceMemoryBase base = GetDeviceAddress(buffer_slice.index());
   CHECK_LE(buffer_slice.offset(), base.size());
   CHECK_LE(buffer_slice.offset() + buffer_slice.size(), base.size());
-  return se::DeviceMemoryBase(
-      static_cast<char*>(base.opaque()) + buffer_slice.offset(),
-      buffer_slice.size());
+  return base.GetByteSlice(buffer_slice.offset(), buffer_slice.size());
 }
 
 Status BufferAllocations::AddExternalAllocation(

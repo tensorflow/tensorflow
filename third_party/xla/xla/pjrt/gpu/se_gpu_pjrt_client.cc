@@ -308,9 +308,7 @@ class AsyncHostToDeviceTransferManager
     CHECK_LE(offset, buffer_memory.size());
     CHECK_LE(transfer_size, buffer_memory.size() - offset);
     if (transfer_size < buffer_memory.size()) {
-      sub_buffer = se::DeviceMemoryBase(
-          reinterpret_cast<char*>(buffer_memory.opaque()) + offset,
-          transfer_size);
+      sub_buffer = buffer_memory.GetByteSlice(offset, transfer_size);
     } else {
       sub_buffer = buffer_memory;
     }
@@ -482,8 +480,7 @@ PjRtFuture<absl::Status> StreamExecutorGpuClient::CopyRawSubBufferToHost(
   std::unique_ptr<se::DeviceMemoryBase> sub_buffer;
   if (transfer_size < device_memory.size()) {
     sub_buffer = std::make_unique<se::DeviceMemoryBase>(
-        reinterpret_cast<char*>(device_memory.opaque()) + offset,
-        transfer_size);
+        device_memory.GetByteSlice(offset, transfer_size));
   } else {
     sub_buffer = std::make_unique<se::DeviceMemoryBase>(device_memory);
   }
