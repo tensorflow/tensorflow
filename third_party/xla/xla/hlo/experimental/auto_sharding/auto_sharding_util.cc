@@ -68,12 +68,11 @@ inline HloInstruction* PassThroughCustomCallMarkerUser(
     HloInstruction* raw_user, const HloInstruction* inst);
 
 std::optional<HloSharding> GetInputSharding(const HloInstruction* ins,
-                                            const HloInstruction* operand,
                                             int64_t op_index,
                                             const HloSharding& output_sharding,
                                             const CallGraph& call_graph,
                                             int64_t num_devices) {
-  auto ins_clone = ins->Clone();
+  std::unique_ptr<HloInstruction> ins_clone = ins->Clone();
   ins_clone->set_sharding(output_sharding);
 
   std::vector<std::unique_ptr<HloInstruction>> operands;
@@ -95,9 +94,16 @@ std::optional<HloSharding> GetInputSharding(const HloInstruction* ins,
     operands.push_back(std::move(operand_clone));
   }
 
-  auto result = ShardingPropagation::GetShardingFromUser(
-      *ins_clone->operand(op_index), *ins_clone, 10, true, call_graph);
-  return result;
+  std::optional<HloSharding> inferred_sharding =
+      ShardingPropagation::GetShardingFromUser(
+          *ins_clone->operand(op_index), *ins_clone, 10, true, call_graph);
+
+  if (!inferred_sharding.has_value() && IsTopKCustomCall(ins)) {
+    // ShardingPropagation::GetShardingFromUser does not handle TopK custom
+    // calls. Mirroring that function's handling of kSort, we handle TopK below.
+    inferred_sharding = output_sharding;
+  }
+  return inferred_sharding;
 }
 
 // Return whether the instruction is an activation from another pipeline stage.

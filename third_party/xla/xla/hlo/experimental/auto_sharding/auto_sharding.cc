@@ -143,13 +143,6 @@ std::unique_ptr<StrategyGroup> CreateTupleStrategyGroup(size_t instruction_id) {
   return strategy_group;
 }
 
-// ShardingPropagation::GetShardingFromUser does not handle TopK custom
-// calls. Mirroring that function's handling of kSort, we handle TopK below.
-HloSharding InferInputShardingForTopK(const HloInstruction* ins,
-                                      const HloSharding& output_sharding) {
-  return output_sharding;
-}
-
 // Compute the resharding costs as well as input shardings (when missing) for
 // all operands of a given instruction, and an output sharding for that
 // instruction.
@@ -173,13 +166,12 @@ GenerateReshardingCostsAndMissingShardingsForAllOperands(
       }
     } else {
       std::optional<HloSharding> cur_input_sharding;
+      CHECK_EQ(input_shardings.size(), ins->operand_count());
       if (input_shardings[k].has_value()) {
-        CHECK_EQ(input_shardings.size(), ins->operand_count());
         cur_input_sharding = input_shardings[k];
       } else {
-        cur_input_sharding =
-            GetInputSharding(ins, operand, k, output_sharding, call_graph,
-                             cluster_env.NumDevices());
+        cur_input_sharding = GetInputSharding(
+            ins, k, output_sharding, call_graph, cluster_env.NumDevices());
       }
       bool is_sharding_default_replicated = false;
       if (!cur_input_sharding.has_value()) {
@@ -187,8 +179,6 @@ GenerateReshardingCostsAndMissingShardingsForAllOperands(
             (ins->opcode() == HloOpcode::kScatter && k != 0)) {
           is_sharding_default_replicated = true;
           cur_input_sharding = HloSharding::Replicate();
-        } else if (IsTopKCustomCall(ins)) {
-          cur_input_sharding = InferInputShardingForTopK(ins, output_sharding);
         } else if (ins->opcode() == HloOpcode::kCustomCall) {
           is_sharding_default_replicated = true;
           cur_input_sharding = HloSharding::Replicate();
@@ -2031,23 +2021,33 @@ Status SetHloShardingPostProcessing(
     // Here we insert some extra annotated identity instructions to help the
     // spmd partitioner generate correct code.
 
-    if (inst->opcode() == HloOpcode::kDot) {
+    if (inst->opcode() == HloOpcode::kDot ||
+        inst->opcode() == HloOpcode::kConvolution) {
       const ShardingStrategy& stra =
           GetShardingStrategy(inst, strategy_map, cost_graph, s_val);
       const HloInstruction* lhs = inst->operand(0);
       const HloInstruction* rhs = inst->operand(1);
       const HloSharding& lhs_sharding = lhs->sharding();
       const HloSharding& rhs_sharding = rhs->sharding();
-      const DotDimensionNumbers& dot_dnums = inst->dot_dimension_numbers();
-      const auto& lhs_con_dims = dot_dnums.lhs_contracting_dimensions();
-      const auto& rhs_con_dims = dot_dnums.rhs_contracting_dimensions();
+      std::vector<int64_t> lhs_con_dims;
+      std::vector<int64_t> rhs_con_dims;
+      if (inst->opcode() == HloOpcode::kDot) {
+        const DotDimensionNumbers& dot_dnums = inst->dot_dimension_numbers();
+        lhs_con_dims.push_back(dot_dnums.lhs_contracting_dimensions()[0]);
+        rhs_con_dims.push_back(dot_dnums.rhs_contracting_dimensions()[0]);
+      } else {
+        const ConvolutionDimensionNumbers& conv_dnums =
+            inst->convolution_dimension_numbers();
+        lhs_con_dims.push_back(conv_dnums.input_feature_dimension());
+        rhs_con_dims.push_back(conv_dnums.kernel_input_feature_dimension());
+      }
 
-      const auto& lhs_tensor_dim_to_mesh_dim =
+      const std::vector<int64_t>& lhs_tensor_dim_to_mesh_dim =
           cluster_env.GetTensorDimToMeshDimWrapper(
               lhs->shape(), lhs_sharding,
               /* consider_reverse_device_meshes */ true,
               /* crash_at_error */ crash_at_error);
-      const auto& rhs_tensor_dim_to_mesh_dim =
+      const std::vector<int64_t>& rhs_tensor_dim_to_mesh_dim =
           cluster_env.GetTensorDimToMeshDimWrapper(
               rhs->shape(), rhs_sharding,
               /* consider_reverse_device_meshes */ true,
@@ -2058,61 +2058,23 @@ Status SetHloShardingPostProcessing(
         return absl::InvalidArgumentError(
             "Cannot generate tensor dim to mesh dim mapping");
       }
+
       if (absl::StrContains(stra.name, "allreduce") &&
-          lhs_tensor_dim_to_mesh_dim[lhs_con_dims[0]] == -1 &&
-          rhs_tensor_dim_to_mesh_dim[rhs_con_dims[0]] == -1) {
-        // Allow duplicatd dot computation in this case to reduce
+          std::any_of(lhs_con_dims.begin(), lhs_con_dims.end(),
+                      [&lhs_tensor_dim_to_mesh_dim](int64_t dim) {
+                        return lhs_tensor_dim_to_mesh_dim[dim] == -1;
+                      }) &&
+          std::any_of(rhs_con_dims.begin(), rhs_con_dims.end(),
+                      [&rhs_tensor_dim_to_mesh_dim](int64_t dim) {
+                        return rhs_tensor_dim_to_mesh_dim[dim] == -1;
+                      })) {
+        // Allow duplicated dot computation in this case to reduce
         // communication
       } else {
         CHECK(stra.input_shardings.size() == 2)
             << "Dot op requires both operands to have input shardings, "
                "but get instruction: "
             << inst->ToString() << ", strategy : " << stra.ToString();
-        if (stra.input_shardings[0].has_value()) {
-          FixMixedMeshShapeResharding(inst, 0, stra.input_shardings[0].value(),
-                                      device_mesh, resharding_cache);
-        }
-        if (stra.input_shardings[1].has_value()) {
-          FixMixedMeshShapeResharding(inst, 1, stra.input_shardings[1].value(),
-                                      device_mesh, resharding_cache);
-        }
-      }
-    } else if (inst->opcode() == HloOpcode::kConvolution) {
-      const ShardingStrategy& stra =
-          GetShardingStrategy(inst, strategy_map, cost_graph, s_val);
-      const HloInstruction* lhs = inst->operand(0);
-      const HloInstruction* rhs = inst->operand(1);
-      const HloSharding& lhs_sharding = lhs->sharding();
-      const HloSharding& rhs_sharding = rhs->sharding();
-      const ConvolutionDimensionNumbers& conv_dnums =
-          inst->convolution_dimension_numbers();
-      const int lhs_in_channel_dim = conv_dnums.input_feature_dimension();
-      const int rhs_in_channel_dim =
-          conv_dnums.kernel_input_feature_dimension();
-
-      const auto& lhs_tensor_dim_to_mesh_dim =
-          cluster_env.GetTensorDimToMeshDimWrapper(
-              lhs->shape(), lhs_sharding,
-              /* consider_reverse_device_meshes */ true,
-              /* crash_at_error */ crash_at_error);
-      const auto& rhs_tensor_dim_to_mesh_dim =
-          cluster_env.GetTensorDimToMeshDimWrapper(
-              rhs->shape(), rhs_sharding,
-              /* consider_reverse_device_meshes */ true,
-              /* crash_at_error */ crash_at_error);
-
-      if (lhs_tensor_dim_to_mesh_dim.size() != lhs->shape().rank() ||
-          rhs_tensor_dim_to_mesh_dim.size() != rhs->shape().rank()) {
-        return absl::InvalidArgumentError(
-            "Cannot generate tensor dim to mesh dim mapping");
-      }
-
-      if (absl::StrContains(stra.name, "allreduce") &&
-          lhs_tensor_dim_to_mesh_dim[lhs_in_channel_dim] == -1 &&
-          rhs_tensor_dim_to_mesh_dim[rhs_in_channel_dim] == -1) {
-        // Allow duplicatd conv computation in this case to reduce
-        // communication
-      } else {
         if (stra.input_shardings[0].has_value()) {
           FixMixedMeshShapeResharding(inst, 0, stra.input_shardings[0].value(),
                                       device_mesh, resharding_cache);
