@@ -79,12 +79,15 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
         std::unordered_set<std::string> tags;
         tags.insert(quantization_options.tags().begin(),
                     quantization_options.tags().end());
-
         const absl::StatusOr<ExportedModel> exported_model =
             QuantizeQatModel(src_saved_model_path, signature_keys, tags,
                              quantization_options, function_aliases);
         if (!exported_model.ok()) return exported_model.status();
 
+        // Remove the `tpu` tag from the quantized saved model as it is for CPU.
+        // Note the 'tpu' value should be the same as `TPU` defined in
+        // tensorflow/python/saved_model/tag_constants.py.
+        tags.erase("tpu");
         py_function_library.SaveExportedModel(
             dst_saved_model_path, *exported_model, src_saved_model_path, tags,
             signature_def_map);
@@ -133,6 +136,10 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
             QuantizePtqDynamicRange(src_saved_model_path, signature_keys, tags,
                                     quantization_options, function_aliases);
 
+        // Remove the `tpu` tag from the quantized saved model as it is for CPU.
+        // Note the 'tpu' value should be the same as `TPU` defined in
+        // tensorflow/python/saved_model/tag_constants.py.
+        tags.erase("tpu");
         py_function_library.SaveExportedModel(
             dst_saved_model_path, *exported_model, src_saved_model_path, tags,
             signature_def_map);
@@ -283,6 +290,10 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
         if (!post_calibrated_exported_model.ok())
           return post_calibrated_exported_model.status();
 
+        // Remove the `tpu` tag from the quantized saved model as it is for CPU.
+        // Note the 'tpu' value should be the same as `TPU` defined in
+        // tensorflow/python/saved_model/tag_constants.py.
+        tags.erase("tpu");
         py_function_library.SaveExportedModel(
             dst_saved_model_path, *post_calibrated_exported_model,
             *calibrated_saved_model_path, tags, signature_def_map);

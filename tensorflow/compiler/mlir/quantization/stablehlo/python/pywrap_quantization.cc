@@ -139,6 +139,10 @@ PYBIND11_MODULE(pywrap_quantization, m) {
           return post_calibrated_exported_model.status();
         }
 
+        // Remove the `tpu` tag from the quantized saved model as it is for CPU.
+        // Note the 'tpu' value should be the same as `TPU` defined in
+        // tensorflow/python/saved_model/tag_constants.py.
+        tags.erase("tpu");
         py_function_library.SaveExportedModel(
             dst_saved_model_path, *post_calibrated_exported_model,
             *calibrated_saved_model_path, tags, signature_def_map);
