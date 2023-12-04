@@ -114,7 +114,7 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
 
   // Register a kernel with a custom arguments packing function that packs
   // device memory arguments into a struct with pointers.
-  MultiKernelLoaderSpec spec(/*arity=*/1, [&](const KernelLaunchContext&,
+  MultiKernelLoaderSpec spec(/*arity=*/1, [&](const Kernel& kernel,
                                               const KernelArgs& args) {
     auto bufs = Cast<KernelArgsDeviceMemoryArray>(&args)->device_memory_args();
     auto cast = [](auto m) { return reinterpret_cast<int32_t*>(m.opaque()); };

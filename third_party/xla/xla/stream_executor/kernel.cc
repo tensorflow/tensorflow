@@ -48,14 +48,6 @@ void KernelMetadata::set_shared_memory_bytes(int shared_memory_bytes) {
 }
 
 //===----------------------------------------------------------------------===//
-// KernelLaunchContext
-//===----------------------------------------------------------------------===//
-
-KernelLaunchContext::KernelLaunchContext(const Kernel *kernel, BlockDim blocks,
-                                         ThreadDim threads)
-    : kernel_(kernel), blocks_(blocks), threads_(threads) {}
-
-//===----------------------------------------------------------------------===//
 // Kernel
 //===----------------------------------------------------------------------===//
 

@@ -212,25 +212,6 @@ class KernelArgsPackedArrayBase : public KernelArgs {
 };
 
 //===----------------------------------------------------------------------===//
-// KernelLaunchContext
-//===----------------------------------------------------------------------===//
-
-// Properties of a kernel launch that might impact kernel arguments packing.
-class KernelLaunchContext {
- public:
-  KernelLaunchContext(const Kernel *kernel, BlockDim blocks, ThreadDim threads);
-
-  const Kernel *kernel() const { return kernel_; }
-  BlockDim blocks() const { return blocks_; }
-  ThreadDim threads() const { return threads_; }
-
- private:
-  const Kernel *kernel_;
-  BlockDim blocks_;
-  ThreadDim threads_;
-};
-
-//===----------------------------------------------------------------------===//
 // Kernel
 //===----------------------------------------------------------------------===//
 
@@ -247,7 +228,7 @@ class Kernel {
   // StreamExecutor as a generic `Kernel`.
   using KernelArgsPacking =
       std::function<tsl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>(
-          const KernelLaunchContext &ctx, const KernelArgs &args)>;
+          const Kernel &kernel, const KernelArgs &args)>;
 
   Kernel(Kernel &&from);
 

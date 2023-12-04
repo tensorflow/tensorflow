@@ -469,8 +469,7 @@ tsl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
           "Kernel is missing a custom arguments packing function for device "
           "memory arguments array");
 
-    KernelLaunchContext ctx(&kernel, block_dims, thread_dims);
-    TF_ASSIGN_OR_RETURN(auto packed, pack(ctx, *device_mem));
+    TF_ASSIGN_OR_RETURN(auto packed, pack(kernel, *device_mem));
     return launch(*packed);
   }
 
