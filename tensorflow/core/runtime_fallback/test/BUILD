@@ -1,5 +1,5 @@
-load("@tf_runtime//tools:mlir_to_bef.bzl", "mlir_to_bef")
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_test", "tf_cc_test")
+load("@tf_runtime//tools:mlir_to_bef.bzl", "mlir_to_bef")
 # copybara:uncomment load("//third_party/tf_runtime_google/cpp_tests:gen_tests.bzl", "tfrt_cc_test_and_strict_benchmark")
 
 package(
@@ -157,7 +157,9 @@ cc_library(
 #     deps = [
 #         "//base",
 #         "//devtools/build/runtime:get_runfiles_dir",
+#         "@com_google_absl//absl/log:check",
 #         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_async_opdefs",
+#         "//tensorflow/core:framework",
 #         "//tensorflow/core/platform:env",
 #         "//tensorflow/core/platform:resource_loader",
 #         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_op_handler",

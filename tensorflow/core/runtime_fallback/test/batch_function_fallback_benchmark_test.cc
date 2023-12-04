@@ -12,46 +12,45 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "base/logging.h"
-#include "devtools/build/runtime/get_runfiles_dir.h"
 #include "testing/base/public/benchmark.h"
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_op_handler.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
 #include "tensorflow/core/runtime_fallback/util/fallback_test_util.h"
-#include "tensorflow/core/runtime_fallback/util/tensor_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
-#include "tfrt/core_runtime/tensor_handle.h"  // from @tf_runtime
+#include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/function.h"  // from @tf_runtime
+#include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
-#include "tfrt/support/aligned_buffer.h"  // from @tf_runtime
+#include "tfrt/support/forward_decls.h"  // from @tf_runtime
 #include "tfrt/support/rc_array.h"  // from @tf_runtime
 #include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
-#include "tfrt/tensor/tensor_metadata.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {
 namespace {
 
 // Creates a BEF file with a program that runs
-// tfrt_fallback_async.batch_function with a empty function forwarding inputs or
-// outputs.
+// tfrt_fallback_async.batch_function with an "identity" function (i.e. forward
+// inputs to outputs).
 std::pair<tfrt::BefBuffer, tfrt::RCReference<tfrt::BEFFile>> CreateBefFile(
     tfrt::HostContext* host) {
   std::string file_path = GetDataDependencyFilepath(
@@ -65,14 +64,14 @@ std::pair<tfrt::BefBuffer, tfrt::RCReference<tfrt::BEFFile>> CreateBefFile(
 
   auto bef_file = tfrt::BEFFile::Open(bef_buffer, host->GetKernelRegistry(),
                                       host->diag_handler(), host->allocator());
-  CHECK(bef_file);
+  CHECK(bef_file != nullptr);
   return std::make_pair(std::move(bef_buffer), std::move(bef_file));
 }
 
 std::unique_ptr<tfrt::CoreRuntime> CreateTestCoreRuntime() {
   auto corert = tfrt::CoreRuntime::Create(
-      /*diag_handler=*/[](const tfrt::DecodedDiagnostic&
-                              diag) { LOG(ERROR) << diag.message(); },
+      /*diag_handler=*/
+      [](const tfrt::DecodedDiagnostic& diag) { LOG(ERROR) << diag.message(); },
       tfrt::CreateMallocAllocator(),
       tfrt::CreateMultiThreadedWorkQueue(16, 16));
   CHECK(corert);
@@ -83,13 +82,14 @@ std::unique_ptr<tfrt::CoreRuntime> CreateTestCoreRuntime() {
   return std::move(corert.get());
 }
 
-tfrt::RCArray<tfrt::AsyncValue> CreateTestArguments(const tfrt::Function* func,
-                                                    tfrt::HostContext* host) {
-  Tensor tensor(DataType::DT_INT32, TensorShape({1}));
+tfrt::RCArray<tfrt::AsyncValue> CreateTestArguments(
+    const tfrt::Function* func) {
+  size_t num_args = func->num_arguments();
   std::vector<tfrt::RCReference<tfrt::AsyncValue>> arguments;
-  arguments.reserve(func->argument_types().size());
+  arguments.reserve(num_args);
   arguments.push_back(tfrt::GetReadyChain());
-  for (int i = 1, e = func->argument_types().size(); i < e; ++i) {
+  Tensor tensor(DataType::DT_INT32, TensorShape({1}));
+  for (int i = 1; i < num_args; ++i) {
     arguments.push_back(
         tfrt::MakeAvailableAsyncValueRef<tfrt_stub::FallbackTensor>(tensor));
   }
@@ -102,19 +102,21 @@ TEST(BatchFunctionTest, Basic) {
   auto* host = corert->GetHostContext();
   auto [bef_buffer, bef_file] = CreateBefFile(host);
   auto* func = bef_file->GetFunction("main");
-  CHECK(func);
-  CHECK_EQ(func->result_types().size(), 113);
-  CHECK_EQ(func->argument_types().size(), 113);
+  CHECK(func != nullptr);
+  size_t num_args = func->num_arguments();
+  size_t num_results = func->num_results();
+  CHECK_EQ(num_args, 113);
+  CHECK_EQ(num_results, 113);
 
-  auto arguments = CreateTestArguments(func, host);
+  auto arguments = CreateTestArguments(func);
 
   tfrt::ResourceContext resource_ctx;
   auto exec_ctx = CreateFallbackTestExecutionContext(host, &resource_ctx);
 
   std::vector<tfrt::RCReference<tfrt::AsyncValue>> results;
-  results.resize(func->result_types().size());
+  results.resize(num_results);
   std::vector<tfrt::RCReference<tfrt::AsyncValue>> result_tensors;
-  result_tensors.resize(func->result_types().size() - 1);
+  result_tensors.resize(num_results - 1);
 
   func->Execute(exec_ctx, arguments.values(), results);
   host->Await(results);
@@ -134,17 +136,19 @@ void BM_BatchFunctionFallbackWithLargeAttributesAndManyInputsOutputs(
   auto* host = corert->GetHostContext();
   auto [bef_buffer, bef_file] = CreateBefFile(host);
   auto* func = bef_file->GetFunction("main");
-  CHECK(func);
-  CHECK_EQ(func->result_types().size(), 113);
-  CHECK_EQ(func->argument_types().size(), 113);
+  CHECK(func != nullptr);
+  size_t num_args = func->num_arguments();
+  size_t num_results = func->num_results();
+  CHECK_EQ(num_args, 113);
+  CHECK_EQ(num_results, 113);
 
-  auto arguments = CreateTestArguments(func, host);
+  auto arguments = CreateTestArguments(func);
 
   tfrt::ResourceContext resource_ctx;
   auto exec_ctx = CreateFallbackTestExecutionContext(host, &resource_ctx);
 
   std::vector<tfrt::RCReference<tfrt::AsyncValue>> results;
-  results.resize(func->result_types().size());
+  results.resize(num_results);
 
   for (auto _ : state) {
     func->Execute(exec_ctx, arguments.values(), results);
