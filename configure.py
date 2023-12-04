@@ -193,8 +193,8 @@ def setup_python(environ_cp):
   python_bin_path = os.environ.get('PYTHON_BIN_PATH') or default_python_bin_path
   python_bin_path = shutil.which(python_bin_path) # Looking for the path in the system
   try:
-    if not (os.path.isfile(python_bin_path):
-      if os.access(python_bin_path, os.X_OK)):
+    if not os.path.isfile(python_bin_path):
+      if os.access(python_bin_path, os.X_OK):
         raise FileNotFoundError('The python path {} is not valid.'.format(python_bin_path))
     python_version = get_python_major_version(python_bin_path)
     if python_version != '3':
