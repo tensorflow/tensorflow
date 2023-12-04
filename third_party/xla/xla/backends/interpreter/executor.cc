@@ -34,12 +34,6 @@ DeviceMemoryBase XlaInterpreterExecutor::Allocate(uint64_t size,
   return DeviceMemoryBase(new char[size], size);
 }
 
-void *XlaInterpreterExecutor::GetSubBuffer(DeviceMemoryBase *parent,
-                                           uint64_t offset_bytes,
-                                           uint64_t /*size_bytes*/) {
-  return parent + offset_bytes;
-}
-
 void XlaInterpreterExecutor::Deallocate(DeviceMemoryBase *mem) {
   delete[] static_cast<char *>(mem->opaque());
 }

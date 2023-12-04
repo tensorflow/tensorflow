@@ -73,11 +73,6 @@ DeviceMemoryBase HostExecutor::Allocate(uint64_t size, int64_t memory_space) {
       tsl::port::AlignedMalloc(size, /*minimum_alignment=*/64), size);
 }
 
-void* HostExecutor::GetSubBuffer(DeviceMemoryBase* parent,
-                                 uint64_t offset_bytes, uint64_t size_bytes) {
-  return reinterpret_cast<char*>(parent->opaque()) + offset_bytes;
-}
-
 void HostExecutor::Deallocate(DeviceMemoryBase* mem) {
   tsl::port::AlignedFree(mem->opaque());
 }

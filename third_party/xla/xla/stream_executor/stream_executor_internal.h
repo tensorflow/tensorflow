@@ -331,8 +331,6 @@ class StreamExecutorInterface {
   DeviceMemoryBase Allocate(uint64_t size) {
     return Allocate(size, /*memory_space=*/0);
   }
-  virtual void* GetSubBuffer(DeviceMemoryBase* parent, uint64_t offset,
-                             uint64_t size) = 0;
   virtual void Deallocate(DeviceMemoryBase* mem) = 0;
   // Allocates unified memory space of the given size, if supported.
   // See

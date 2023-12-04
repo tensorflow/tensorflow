@@ -171,10 +171,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
     LOG(FATAL) << "Not yet implemented";
   }
 
-  void* GetSubBuffer(DeviceMemoryBase* parent, uint64_t offset,
-                     uint64_t size) override {
-    LOG(FATAL) << "not yet implemented";
-  }
   tsl::Status MemZero(Stream* stream, DeviceMemoryBase* location,
                       uint64_t size) override {
     LOG(FATAL) << "not yet implemented";

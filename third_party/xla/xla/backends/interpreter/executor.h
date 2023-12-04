@@ -64,8 +64,6 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   }
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
-  void *GetSubBuffer(DeviceMemoryBase *parent, uint64_t offset_bytes,
-                     uint64_t size_bytes) override;
   void Deallocate(DeviceMemoryBase *mem) override;
 
   void *HostMemoryAllocate(uint64_t size) override { return new char[size]; }
