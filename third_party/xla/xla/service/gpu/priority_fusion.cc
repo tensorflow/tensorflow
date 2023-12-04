@@ -154,6 +154,14 @@ class GpuPriorityFusionQueue : public FusionQueue {
         continue;
       }
       current_consumers_ = current_producer_->users();
+
+      if (current_producer_->opcode() == HloOpcode::kBitcast) {
+        // We don't check if bitcasts can be fused with all consumers, so we
+        // have to do it here.
+        llvm::erase_if(current_consumers_, [&](HloInstruction* consumer) {
+          return !CanFuseCached(current_producer_, consumer);
+        });
+      }
     }
 
     auto next_consumer = current_consumers_.back();
@@ -286,6 +294,11 @@ class GpuPriorityFusionQueue : public FusionQueue {
   // Returns the priority of the producer based on its current operands and
   // users.
   Priority CalculateProducerPriority(HloInstruction* producer) {
+    // Bitcasts should always be fused first, since they are no-ops.
+    if (producer->opcode() == HloOpcode::kBitcast) {
+      return std::numeric_limits<Priority>::max();
+    }
+
     // Don't fuse if we can't fuse in all users.
     if (auto fusion_decision = CanFuseWithAllUsers(producer);
         !fusion_decision) {
