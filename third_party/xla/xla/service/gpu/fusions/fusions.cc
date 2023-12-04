@@ -51,12 +51,6 @@ bool IsParameterOrGteOfParameter(const HloInstruction* instr) {
   return false;
 }
 
-bool IsSingleInstructionFusion(const HloFusionAnalysis& analysis) {
-  return analysis.fusion_roots().size() == 1 &&
-         absl::c_all_of(analysis.fusion_roots()[0]->operands(),
-                        IsParameterOrGteOfParameter);
-}
-
 bool IsDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis) {
   return absl::c_all_of(
       analysis.fusion_roots(), [](const HloInstruction* root) {
@@ -110,8 +104,7 @@ std::optional<std::unique_ptr<FusionInterface>> GetFusionEmitter(
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
       return std::make_unique<InputSlicesFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kLoop: {
-      bool is_single = IsSingleInstructionFusion(analysis);
-      if (!is_single && IsDynamicUpdateSliceFusion(analysis)) {
+      if (IsDynamicUpdateSliceFusion(analysis)) {
         if (allocations.empty() || fusion_op == nullptr) {
           return std::nullopt;
         }
