@@ -22,7 +22,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/Hashing.h"
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -65,10 +67,12 @@ namespace gpu {
 // could not be expressed via dimensions of the output.
 struct IndexingMap {
   std::string ToString() const;
+
   // Returns true if the map was simplified.
   bool Simplify(absl::Span<const int64_t> dimension_sizes);
 
   mlir::AffineMap affine_map;
+  // Upper iteration bounds for dimensions only present in the input.
   std::vector<int64_t> input_dims_sizes;
 };
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map);
@@ -80,21 +84,6 @@ H AbslHashValue(H h, const IndexingMap& indexing_map) {
   return H::combine(std::move(h), static_cast<size_t>(affine_map_hash));
 }
 
-// Contains 1 or more indexing maps for the `operand_id`. There are cases, when
-// the same input operand is read multiple times in various ways. Especially, it
-// happens a lot in fusion ops.
-struct HloOperandIndexing {
-  std::string ToString() const;
-
-  // Returns true if the indexing was simplified.
-  bool Simplify(absl::Span<const int64_t> dimension_sizes);
-
-  absl::flat_hash_set<IndexingMap> indexing_maps;
-  int64_t operand_id;
-};
-std::ostream& operator<<(std::ostream& out,
-                         const HloOperandIndexing& operand_indexing);
-
 // Contains indexing maps for all N-dimensional tensor input operands that
 // correspond to a particular output.
 struct HloInstructionIndexing {
@@ -103,7 +92,15 @@ struct HloInstructionIndexing {
   // Returns true if the indexing was simplified.
   bool Simplify(absl::Span<const int64_t> dimension_sizes);
 
-  std::vector<HloOperandIndexing> operand_indexing_maps;
+  // Creates a HloInstructionIndexing from a list of indexing maps for all
+  // operands and sorted w.r.t. operand index, i.e. indexing_maps[i] corresponds
+  // to operand[i] of the instruction.
+  static HloInstructionIndexing FromIndexingMaps(
+      absl::Span<const IndexingMap> indexing_maps);
+
+  // Maps input operand index to the indexing map for one particular output.
+  absl::flat_hash_map<int64_t, absl::flat_hash_set<IndexingMap>>
+      operand_indexing_maps;
 };
 std::ostream& operator<<(std::ostream& out,
                          const HloInstructionIndexing& instr_indexing);
