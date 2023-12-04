@@ -59,8 +59,8 @@ MATCHER_P2(MatchInstrIndexing, operand_id, indexing_map_matchers, "") {
 
 class TileAnalysisTest : public HloTestBase {
  public:
-  StatusOr<HloInstructionIndexing> GetIndexingMapsForEntryComputation(
-      absl::string_view hlo_string, int operand_id = 0) {
+  StatusOr<HloInstructionIndexing> GetOutputToInputIndexingForEntryComputation(
+      absl::string_view hlo_string, int output_id = 0) {
     TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_string));
     HloInstruction* root = module->entry_computation()->root_instruction();
 
@@ -70,33 +70,61 @@ class TileAnalysisTest : public HloTestBase {
           << "If there are multiple instructions, they need to be wrapped in a "
              "fusion.";
     }
+    return ComputeOutputToInputIndexing(root, output_id, &mlir_context_);
+  }
 
-    return ComputeInstructionIndexing(root, operand_id, &mlir_context_);
+  StatusOr<HloInstructionIndexing> GetInputToOutputIndexingForEntryComputation(
+      absl::string_view hlo_string, int input_id = 0) {
+    TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+    HloInstruction* root = module->entry_computation()->root_instruction();
+
+    for (auto* operand : root->operands()) {
+      TF_RET_CHECK(operand->opcode() == HloOpcode::kParameter ||
+                   operand->opcode() == HloOpcode::kConstant)
+          << "If there are multiple instructions, they need to be wrapped in a "
+             "fusion.";
+    }
+    return ComputeInputToOutputIndexing(root, input_id, &mlir_context_);
   }
   mlir::MLIRContext mlir_context_;
 };
 
 TEST_F(TileAnalysisTest, ElementwiseOp) {
-  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+  auto ir = R"(
     HloModule m
     ENTRY e {
       p0 = f32[10, 20] parameter(0)
       p1 = f32[10, 20] parameter(1)
       ROOT add0 = f32[10, 20] add(p0, p1)
     }
-  )"));
-  EXPECT_THAT(input_indexing.operand_indexing_maps,
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetOutputToInputIndexingForEntryComputation(ir));
+  EXPECT_THAT(input_indexing.indexing_maps,
               UnorderedElementsAre(
                   Pair(0, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0, d1)",
                                                        std::vector<int>{}))),
                   Pair(1, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0, d1)",
                                                        std::vector<int>{})))));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto output_indexing,
+      GetInputToOutputIndexingForEntryComputation(ir, /*input_id=*/0));
+  EXPECT_THAT(output_indexing.indexing_maps,
+              UnorderedElementsAre(
+                  Pair(0, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0, d1)",
+                                                       std::vector<int>{})))));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto output_indexing1,
+      GetInputToOutputIndexingForEntryComputation(ir, /*input_id=*/1));
+  EXPECT_THAT(output_indexing1.indexing_maps,
+              UnorderedElementsAre(
+                  Pair(0, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0, d1)",
+                                                       std::vector<int>{})))));
 }
 
 TEST_F(TileAnalysisTest, BitcastIsReshape) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
       p0 = f32[4, 32] parameter(0)
@@ -104,7 +132,7 @@ TEST_F(TileAnalysisTest, BitcastIsReshape) {
     }
   )"));
   EXPECT_THAT(
-      input_indexing.operand_indexing_maps,
+      input_indexing.indexing_maps,
       UnorderedElementsAre(Pair(
           0, ElementsAre(MatchIndexingMap("(d0, d1, d2) -> (d0, d1 * 4 + d2)",
                                           std::vector<int>{})))));
@@ -112,7 +140,7 @@ TEST_F(TileAnalysisTest, BitcastIsReshape) {
 
 TEST_F(TileAnalysisTest, BitcastIsTranspose) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
       p0 = f32[3, 12288, 6, 128] parameter(0)
@@ -120,38 +148,46 @@ TEST_F(TileAnalysisTest, BitcastIsTranspose) {
     }
   )"));
   EXPECT_THAT(
-      input_indexing.operand_indexing_maps,
+      input_indexing.indexing_maps,
       UnorderedElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
                                        "(d0, d1, d2, d3) -> (d0, d3, d1, d2)",
                                        std::vector<int>{})))));
 }
 
 TEST_F(TileAnalysisTest, BitcastIsTransposeReshapeTranspose) {
-  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+  auto ir = R"(
     HloModule m
     ENTRY e {
       p0 = f32[16, 17, 3] parameter(0)
       ROOT bitcast = f32[51, 16] {0, 1} bitcast(p0)
     }
-  )"));
-  EXPECT_THAT(input_indexing.operand_indexing_maps,
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetOutputToInputIndexingForEntryComputation(ir));
+  EXPECT_THAT(input_indexing.indexing_maps,
               UnorderedElementsAre(
                   Pair(0, ElementsAre(MatchIndexingMap(
                               "(d0, d1) -> (d1, d0 floordiv 3, d0 mod 3)",
                               std::vector<int>{})))));
+  TF_ASSERT_OK_AND_ASSIGN(auto output_indexing,
+                          GetInputToOutputIndexingForEntryComputation(ir));
+  EXPECT_THAT(
+      output_indexing.indexing_maps,
+      UnorderedElementsAre(Pair(
+          0, ElementsAre(MatchIndexingMap("(d0, d1, d2) -> (d1 * 3 + d2, d0)",
+                                          std::vector<int>{})))));
 }
 
 TEST_F(TileAnalysisTest, BroadcastOp) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
       p0 = f32[20] parameter(0)
       ROOT bc0 = f32[10, 20, 30] broadcast(p0), dimensions={1}
     }
   )"));
-  EXPECT_THAT(input_indexing.operand_indexing_maps,
+  EXPECT_THAT(input_indexing.indexing_maps,
               UnorderedElementsAre(
                   Pair(0, ElementsAre(MatchIndexingMap("(d0, d1, d2) -> (d1)",
                                                        std::vector<int>{})))));
@@ -159,7 +195,7 @@ TEST_F(TileAnalysisTest, BroadcastOp) {
 
 TEST_F(TileAnalysisTest, FusionOpWithSingleBinaryOp) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     f {
       p0 = f32[100] parameter(0)
@@ -173,7 +209,7 @@ TEST_F(TileAnalysisTest, FusionOpWithSingleBinaryOp) {
     }
   )"));
   EXPECT_THAT(
-      input_indexing.operand_indexing_maps,
+      input_indexing.indexing_maps,
       UnorderedElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
                                        "(d0) -> (d0)", std::vector<int>{}))),
                            Pair(1, ElementsAre(MatchIndexingMap(
@@ -182,7 +218,7 @@ TEST_F(TileAnalysisTest, FusionOpWithSingleBinaryOp) {
 
 TEST_F(TileAnalysisTest, FusionOpWithDot) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     f {
       p0 = s8[3,12288,6,128]{3,2,1,0} parameter(0)
       bitcast1 = s8[3,6,128,12288]{2,1,3,0} bitcast(p0)
@@ -243,7 +279,7 @@ TEST_F(TileAnalysisTest, FusionOpWithDot) {
   EXPECT_TRUE(input_indexing.Simplify({16, 16, 3, 1, 6, 128}));
 
   EXPECT_THAT(
-      input_indexing.operand_indexing_maps,
+      input_indexing.indexing_maps,
       UnorderedElementsAre(
           Pair(0,
                ElementsAre(MatchIndexingMap("(d0, d1, d2, d3, d4, d5)[s0] -> "
@@ -267,7 +303,7 @@ TEST_F(TileAnalysisTest, FusionOpWithDot) {
 
 TEST_F(TileAnalysisTest, FusionOpTensorPlusTransposedTensor) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     f {
       p0 = f32[1000, 1000] parameter(0)
@@ -280,7 +316,7 @@ TEST_F(TileAnalysisTest, FusionOpTensorPlusTransposedTensor) {
     }
   )"));
   EXPECT_THAT(
-      input_indexing.operand_indexing_maps,
+      input_indexing.indexing_maps,
       UnorderedElementsAre(Pair(
           0,
           UnorderedElementsAre(
@@ -290,7 +326,7 @@ TEST_F(TileAnalysisTest, FusionOpTensorPlusTransposedTensor) {
 
 TEST_F(TileAnalysisTest, FusionExponentialDuplication) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule test_module
 
     fused_computation {
@@ -311,7 +347,7 @@ TEST_F(TileAnalysisTest, FusionExponentialDuplication) {
       ROOT fusion = f32[2] fusion(p0, p1), kind=kLoop, calls=fused_computation
     })"));
   EXPECT_THAT(
-      input_indexing.operand_indexing_maps,
+      input_indexing.indexing_maps,
       UnorderedElementsAre(
           Pair(0,
                UnorderedElementsAre(
@@ -327,7 +363,7 @@ TEST_F(TileAnalysisTest, FusionExponentialDuplication) {
 
 TEST_F(TileAnalysisTest, FusionOpWithReduceOfReduce) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     max {
       p0 = f32[] parameter(0)
@@ -349,7 +385,7 @@ TEST_F(TileAnalysisTest, FusionOpWithReduceOfReduce) {
     }
   )"));
   EXPECT_THAT(
-      input_indexing.operand_indexing_maps,
+      input_indexing.indexing_maps,
       UnorderedElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
                                        "(d0)[s0, s1, s2] -> (s0, s2, d0, s1)",
                                        std::vector<int>{150, 50, 20})))));
@@ -357,7 +393,7 @@ TEST_F(TileAnalysisTest, FusionOpWithReduceOfReduce) {
 
 TEST_F(TileAnalysisTest, FusionOpWithReduceOfBroadcast) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     max {
       p0 = f32[] parameter(0)
@@ -378,7 +414,7 @@ TEST_F(TileAnalysisTest, FusionOpWithReduceOfBroadcast) {
       ROOT fusion = f32[15, 64] fusion(p0, p0_init), kind=kLoop, calls=f
     }
   )"));
-  EXPECT_THAT(input_indexing.operand_indexing_maps,
+  EXPECT_THAT(input_indexing.indexing_maps,
               UnorderedElementsAre(Pair(
                   0, ElementsAre(MatchIndexingMap("(d0, d1)[s0] -> (d0, s0)",
                                                   std::vector<int>{20})))));
@@ -386,7 +422,7 @@ TEST_F(TileAnalysisTest, FusionOpWithReduceOfBroadcast) {
 
 TEST_F(TileAnalysisTest, FusionOpWithTransposeOfTranspose) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     f {
       p0 = f32[20, 10, 50] parameter(0)
@@ -410,7 +446,7 @@ TEST_F(TileAnalysisTest, FusionOpWithTransposeOfTranspose) {
       ROOT fusion = f32[10, 50, 20] fusion(p0), kind=kLoop, calls=f
     }
   )"));
-  EXPECT_THAT(input_indexing.operand_indexing_maps,
+  EXPECT_THAT(input_indexing.indexing_maps,
               UnorderedElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
                                                "(d0, d1, d2) -> (d2, d0, d1)",
                                                std::vector<int>{})))));
@@ -418,7 +454,7 @@ TEST_F(TileAnalysisTest, FusionOpWithTransposeOfTranspose) {
 
 TEST_F(TileAnalysisTest, FusionOpWithReducedSlice) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     max {
       p0 = f32[] parameter(0)
@@ -439,7 +475,7 @@ TEST_F(TileAnalysisTest, FusionOpWithReducedSlice) {
       ROOT fusion = f32[32] fusion(p0, p0_init), kind=kLoop, calls=f
     }
   )"));
-  EXPECT_THAT(input_indexing.operand_indexing_maps,
+  EXPECT_THAT(input_indexing.indexing_maps,
               UnorderedElementsAre(
                   Pair(0, ElementsAre(MatchIndexingMap(
                               "(d0)[s0, s1] -> (s0 + 5, d0 * 2, s1 * 3 + 50)",
@@ -448,7 +484,7 @@ TEST_F(TileAnalysisTest, FusionOpWithReducedSlice) {
 
 TEST_F(TileAnalysisTest, FusionOpWithReshape_CollapseOfExpand) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     f {
       p0 = f32[128] parameter(0)
@@ -460,14 +496,14 @@ TEST_F(TileAnalysisTest, FusionOpWithReshape_CollapseOfExpand) {
       ROOT fusion = f32[128] fusion(p0), kind=kLoop, calls=f
     }
   )"));
-  EXPECT_THAT(input_indexing.operand_indexing_maps,
+  EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
                                       "(d0) -> (d0)", std::vector<int>{})))));
 }
 
 TEST_F(TileAnalysisTest, FusionOpWithReshape_ExpandOfCollapse) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     f {
       p0 = f32[8, 16] parameter(0)
@@ -481,14 +517,14 @@ TEST_F(TileAnalysisTest, FusionOpWithReshape_ExpandOfCollapse) {
   )"));
   EXPECT_TRUE(input_indexing.Simplify({8, 16}));
   EXPECT_THAT(
-      input_indexing.operand_indexing_maps,
+      input_indexing.indexing_maps,
       ElementsAre(Pair(0, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0, d1)",
                                                        std::vector<int>{})))));
 }
 
 TEST_F(TileAnalysisTest, FusionOpWithReshape_ChainedGenericReshapes) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     f {
       p0 = f32[10, 10, 10] parameter(0)
@@ -501,7 +537,7 @@ TEST_F(TileAnalysisTest, FusionOpWithReshape_ChainedGenericReshapes) {
     }
   )"));
   EXPECT_TRUE(input_indexing.Simplify({10, 10, 10}));
-  EXPECT_THAT(input_indexing.operand_indexing_maps,
+  EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
                                       "(d0, d1, d2) -> (d0, d1, d2)",
                                       std::vector<int>{})))));
@@ -509,7 +545,7 @@ TEST_F(TileAnalysisTest, FusionOpWithReshape_ChainedGenericReshapes) {
 
 TEST_F(TileAnalysisTest, FusionOpWithSliceOfSlice) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     f {
       p0 = f32[150, 64, 1024] parameter(0)
@@ -524,7 +560,7 @@ TEST_F(TileAnalysisTest, FusionOpWithSliceOfSlice) {
     }
   )"));
   EXPECT_THAT(
-      input_indexing.operand_indexing_maps,
+      input_indexing.indexing_maps,
       ElementsAre(
           Pair(0, ElementsAre(MatchIndexingMap(
                       "(d0, d1, d2) -> (d0 * 2 + 8, d1 * 6 + 8, d2 * 12 + 65)",
@@ -533,7 +569,7 @@ TEST_F(TileAnalysisTest, FusionOpWithSliceOfSlice) {
 
 TEST_F(TileAnalysisTest, ReshapeOpCollapseShape) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
       p0 = f32[4,8] parameter(0)
@@ -541,7 +577,7 @@ TEST_F(TileAnalysisTest, ReshapeOpCollapseShape) {
     }
   )"));
   EXPECT_FALSE(input_indexing.Simplify({32}));
-  EXPECT_THAT(input_indexing.operand_indexing_maps,
+  EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
                                       "(d0) -> (d0 floordiv 8, d0 mod 8)",
                                       std::vector<int>{})))));
@@ -549,7 +585,7 @@ TEST_F(TileAnalysisTest, ReshapeOpCollapseShape) {
 
 TEST_F(TileAnalysisTest, ReshapeOpExpandShape) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
       p0 = f32[32] parameter(0)
@@ -557,33 +593,44 @@ TEST_F(TileAnalysisTest, ReshapeOpExpandShape) {
     }
   )"));
   EXPECT_FALSE(input_indexing.Simplify({4, 8}));
-  EXPECT_THAT(input_indexing.operand_indexing_maps,
+  EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(Pair(
                   0, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0 * 8 + d1)",
                                                   std::vector<int>{})))));
 }
 
 TEST_F(TileAnalysisTest, ReshapeOpExpandAndCollapseShape) {
-  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+  auto ir = R"(
     HloModule m
     ENTRY e {
       p0 = f32[4, 8, 12] parameter(0)
       ROOT reshape = f32[32, 3, 4] reshape(p0)
     }
-  )"));
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetOutputToInputIndexingForEntryComputation(ir));
   EXPECT_FALSE(input_indexing.Simplify({32, 3, 4}));
   EXPECT_THAT(
-      input_indexing.operand_indexing_maps,
+      input_indexing.indexing_maps,
       ElementsAre(
           Pair(0, ElementsAre(MatchIndexingMap(
                       "(d0, d1, d2) -> (d0 floordiv 8, d0 mod 8, d1 * 4 + d2)",
+                      std::vector<int>{})))));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto output_indexing,
+                          GetInputToOutputIndexingForEntryComputation(ir));
+  EXPECT_FALSE(output_indexing.Simplify({4, 8, 12}));
+  EXPECT_THAT(
+      output_indexing.indexing_maps,
+      ElementsAre(
+          Pair(0, ElementsAre(MatchIndexingMap(
+                      "(d0, d1, d2) -> (d0 * 8 + d1, d2 floordiv 4, d2 mod 4)",
                       std::vector<int>{})))));
 }
 
 TEST_F(TileAnalysisTest, ReshapeOpExpandSubshapeOnly) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
       p0 = f32[16, 8] parameter(0)
@@ -591,7 +638,7 @@ TEST_F(TileAnalysisTest, ReshapeOpExpandSubshapeOnly) {
     }
   )"));
   EXPECT_FALSE(input_indexing.Simplify({4, 4, 8}));
-  EXPECT_THAT(input_indexing.operand_indexing_maps,
+  EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
                                       "(d0, d1, d2) -> (d0 * 4 + d1, d2)",
                                       std::vector<int>{})))));
@@ -599,7 +646,7 @@ TEST_F(TileAnalysisTest, ReshapeOpExpandSubshapeOnly) {
 
 TEST_F(TileAnalysisTest, ReshapeOpGenericReshape2DTO3D) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
       p0 = f32[4,8] parameter(0)
@@ -608,7 +655,7 @@ TEST_F(TileAnalysisTest, ReshapeOpGenericReshape2DTO3D) {
   )"));
   EXPECT_TRUE(input_indexing.Simplify({2, 4, 4}));
   // TODO(b/313840171): Simplify `(d1 * 4 + d2) floordiv 8` to `d1 floordiv 2`.
-  EXPECT_THAT(input_indexing.operand_indexing_maps,
+  EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(Pair(
                   0, ElementsAre(MatchIndexingMap(
                          "(d0, d1, d2) -> (d0 * 2 + (d1 * 4 + d2) floordiv 8, "
@@ -618,7 +665,7 @@ TEST_F(TileAnalysisTest, ReshapeOpGenericReshape2DTO3D) {
 
 TEST_F(TileAnalysisTest, ReshapeOpGenericReshape3DTO2D) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
       p0 = f32[2, 4, 4] parameter(0)
@@ -630,7 +677,7 @@ TEST_F(TileAnalysisTest, ReshapeOpGenericReshape3DTO2D) {
   // TODO(b/313840171): Simplify `((d0 * 8 + d1) mod 16) floordiv 4` to
   // `((d0 * 8 + d1) floordiv 4) mod 4` to `(d0 * 2 + d1 floordiv 4) mod 4`.
   EXPECT_THAT(
-      input_indexing.operand_indexing_maps,
+      input_indexing.indexing_maps,
       ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
                               "(d0, d1) -> ((d0 * 8 + d1) floordiv 16, "
                               "((d0 * 8 + d1) mod 16) floordiv 4, d1 mod 4)",
@@ -639,7 +686,7 @@ TEST_F(TileAnalysisTest, ReshapeOpGenericReshape3DTO2D) {
 
 TEST_F(TileAnalysisTest, ReduceOp) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     max {
       p0 = f32[] parameter(0)
@@ -653,7 +700,7 @@ TEST_F(TileAnalysisTest, ReduceOp) {
         dimensions={3, 1}, to_apply=max
     }
   )"));
-  EXPECT_THAT(input_indexing.operand_indexing_maps,
+  EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
                                       "(d0, d1)[s0, s1] -> (d0, s0, d1, s1)",
                                       std::vector<int>{20, 50})))));
@@ -685,20 +732,20 @@ TEST_F(TileAnalysisTest, VariadicReduceOp) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
 
-  auto input_indexing_0 = ComputeInstructionIndexing(root, 0, &mlir_context_);
+  auto input_indexing_0 = ComputeOutputToInputIndexing(root, 0, &mlir_context_);
   ASSERT_IS_OK(input_indexing_0);
   EXPECT_THAT(
-      input_indexing_0->operand_indexing_maps,
+      input_indexing_0->indexing_maps,
       UnorderedElementsAre(
           Pair(0, ElementsAre(MatchIndexingMap("(d0)[s0] -> (s0, d0)",
                                                std::vector<int>{256}))),
           Pair(1, ElementsAre(MatchIndexingMap("(d0)[s0] -> (s0, d0)",
                                                std::vector<int>{256})))));
 
-  auto input_indexing_1 = ComputeInstructionIndexing(root, 1, &mlir_context_);
+  auto input_indexing_1 = ComputeOutputToInputIndexing(root, 1, &mlir_context_);
   ASSERT_IS_OK(input_indexing_1);
   EXPECT_THAT(
-      input_indexing_1->operand_indexing_maps,
+      input_indexing_1->indexing_maps,
       UnorderedElementsAre(
           Pair(0, ElementsAre(MatchIndexingMap("(d0)[s0] -> (s0, d0)",
                                                std::vector<int>{256}))),
@@ -707,17 +754,27 @@ TEST_F(TileAnalysisTest, VariadicReduceOp) {
 }
 
 TEST_F(TileAnalysisTest, ReverseOp) {
-  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+  auto ir = R"(
     HloModule m
     ENTRY e {
       p0 = f32[1, 17, 9, 9] parameter(0)
       ROOT reverse = f32[1, 17, 9, 9] reverse(p0), dimensions={1, 2}
     }
-  )"));
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetOutputToInputIndexingForEntryComputation(ir));
   EXPECT_FALSE(input_indexing.Simplify({1, 17, 9, 9}));
   EXPECT_THAT(
-      input_indexing.operand_indexing_maps,
+      input_indexing.indexing_maps,
+      ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
+                              "(d0, d1, d2, d3) -> (d0, -d1 + 16, -d2 + 8, d3)",
+                              std::vector<int>{})))));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto output_indexing,
+                          GetInputToOutputIndexingForEntryComputation(ir));
+  EXPECT_FALSE(output_indexing.Simplify({1, 17, 9, 9}));
+  EXPECT_THAT(
+      output_indexing.indexing_maps,
       ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
                               "(d0, d1, d2, d3) -> (d0, -d1 + 16, -d2 + 8, d3)",
                               std::vector<int>{})))));
@@ -725,7 +782,7 @@ TEST_F(TileAnalysisTest, ReverseOp) {
 
 TEST_F(TileAnalysisTest, ReverseReshape) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     fused_computation {
       p0 = f32[10, 11] parameter(0)
@@ -741,14 +798,14 @@ TEST_F(TileAnalysisTest, ReverseReshape) {
   )"));
   EXPECT_TRUE(input_indexing.Simplify({10, 11}));
   EXPECT_THAT(
-      input_indexing.operand_indexing_maps,
+      input_indexing.indexing_maps,
       ElementsAre(Pair(0, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0, d1)",
                                                        std::vector<int>{})))));
 }
 
 TEST_F(TileAnalysisTest, SliceOp) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
       p0 = f32[10, 20, 50] parameter(0)
@@ -757,38 +814,46 @@ TEST_F(TileAnalysisTest, SliceOp) {
     }
   )"));
   EXPECT_THAT(
-      input_indexing.operand_indexing_maps,
+      input_indexing.indexing_maps,
       ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
                               "(d0, d1, d2) -> (d0 + 5, d1 * 7 + 3, d2 * 2)",
                               std::vector<int>{})))));
 }
 
 TEST_F(TileAnalysisTest, TransposeOp) {
-  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+  auto ir = R"(
     HloModule m
     ENTRY e {
       p0 = f32[3, 12288, 6, 128] parameter(0)
       ROOT transpose = f32[3, 6, 128, 12288]
         transpose(p0), dimensions={0, 2, 3, 1}
     }
-  )"));
-  EXPECT_THAT(input_indexing.operand_indexing_maps,
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetOutputToInputIndexingForEntryComputation(ir));
+  EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
                                       "(d0, d1, d2, d3) -> (d0, d3, d1, d2)",
+                                      std::vector<int>{})))));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto output_indexing,
+                          GetInputToOutputIndexingForEntryComputation(ir));
+  EXPECT_THAT(output_indexing.indexing_maps,
+              ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
+                                      "(d0, d1, d2, d3) -> (d0, d2, d3, d1)",
                                       std::vector<int>{})))));
 }
 
 TEST_F(TileAnalysisTest, TransposeOp4D) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
       p0 = f32[3, 12288, 6, 128] parameter(0)
       ROOT bitcast = f32[3, 6, 128, 12288] {2, 1, 3, 0} bitcast(p0)
     }
   )"));
-  EXPECT_THAT(input_indexing.operand_indexing_maps,
+  EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
                                       "(d0, d1, d2, d3) -> (d0, d3, d1, d2)",
                                       std::vector<int>{})))));
@@ -796,7 +861,7 @@ TEST_F(TileAnalysisTest, TransposeOp4D) {
 
 TEST_F(TileAnalysisTest, DotOp) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetIndexingMapsForEntryComputation(R"(
+                          GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
       p0 = f32[4, 38, 17, 11, 18, 10] parameter(0)
@@ -807,7 +872,7 @@ TEST_F(TileAnalysisTest, DotOp) {
     }
   )"));
   EXPECT_THAT(
-      input_indexing.operand_indexing_maps,
+      input_indexing.indexing_maps,
       UnorderedElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
                                        "(d0, d1, d2, d3, d4, d5)[s0, s1] -> "
                                        "(d2, d1, s1, d3, s0, d0)",
@@ -819,7 +884,7 @@ TEST_F(TileAnalysisTest, DotOp) {
 }
 
 TEST_F(TileAnalysisTest, UnsupportedOps) {
-  ASSERT_IS_NOT_OK(GetIndexingMapsForEntryComputation(R"(
+  ASSERT_IS_NOT_OK(GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
       p0 = f32[1, 17, 9, 9] parameter(0)
@@ -827,7 +892,7 @@ TEST_F(TileAnalysisTest, UnsupportedOps) {
       ROOT concat = f32[6, 17, 9, 9] concatenate(p0, p1)
     }
   )"));
-  ASSERT_IS_NOT_OK(GetIndexingMapsForEntryComputation(R"(
+  ASSERT_IS_NOT_OK(GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
       input = s32[1,1,25,1] parameter(0)

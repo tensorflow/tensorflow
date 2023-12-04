@@ -99,8 +99,7 @@ struct HloInstructionIndexing {
       absl::Span<const IndexingMap> indexing_maps);
 
   // Maps input operand index to the indexing map for one particular output.
-  absl::flat_hash_map<int64_t, absl::flat_hash_set<IndexingMap>>
-      operand_indexing_maps;
+  absl::flat_hash_map<int64_t, absl::flat_hash_set<IndexingMap>> indexing_maps;
 };
 std::ostream& operator<<(std::ostream& out,
                          const HloInstructionIndexing& instr_indexing);
@@ -109,9 +108,14 @@ std::string ToString(const mlir::AffineMap& affine_map);
 
 // Computes indexing maps for all input operands necessary to compute an element
 // of the `output_id` instruction output.
-StatusOr<HloInstructionIndexing> ComputeInstructionIndexing(
+StatusOr<HloInstructionIndexing> ComputeOutputToInputIndexing(
     const HloInstruction* instr, int output_id,
     mlir::MLIRContext* mlir_context);
+
+// Computes indexing maps for all output operands that the element of the
+// `input_id` instruction input will participate in.
+StatusOr<HloInstructionIndexing> ComputeInputToOutputIndexing(
+    const HloInstruction* instr, int input_id, mlir::MLIRContext* mlir_context);
 
 }  // namespace gpu
 }  // namespace xla

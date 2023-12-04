@@ -68,7 +68,7 @@ using mlir::getAffineConstantExpr;
 using mlir::getAffineDimExpr;
 using mlir::MLIRContext;
 
-StatusOr<HloInstructionIndexing> ComputeCwiseOpIndexing(
+StatusOr<HloInstructionIndexing> ComputeOutputToInputCwiseOpIndexing(
     const HloInstruction* instr, MLIRContext* mlir_context) {
   auto dims = instr->shape().dimensions();
   IndexingMap identity_map{.affine_map = AffineMap::getMultiDimIdentityMap(
@@ -78,12 +78,21 @@ StatusOr<HloInstructionIndexing> ComputeCwiseOpIndexing(
   HloInstructionIndexing instr_indexing;
   int64_t operand_count = instr->operand_count();
   for (int64_t operand_id = 0; operand_id < operand_count; ++operand_id) {
-    instr_indexing.operand_indexing_maps[operand_id].insert(identity_map);
+    instr_indexing.indexing_maps[operand_id].insert(identity_map);
   }
   return instr_indexing;
 }
 
-StatusOr<HloInstructionIndexing> ComputeBroadcastOpIndexing(
+StatusOr<HloInstructionIndexing> ComputeInputToOutputCwiseOpIndexing(
+    const HloInstruction* instr, MLIRContext* mlir_context) {
+  auto dims = instr->shape().dimensions();
+  IndexingMap identity_map{.affine_map = AffineMap::getMultiDimIdentityMap(
+                               dims.size(), mlir_context),
+                           .input_dims_sizes = {}};
+  return HloInstructionIndexing::FromIndexingMaps({identity_map});
+}
+
+StatusOr<HloInstructionIndexing> ComputeOutputToInputBroadcastOpIndexing(
     const HloBroadcastInstruction* bcast, MLIRContext* mlir_context) {
   auto output_dims = bcast->shape().dimensions();
 
@@ -171,9 +180,9 @@ HloInstructionIndexing ComputeFusedProducerConsumerIndexing(
   // have 1 or more read accesses to its operands. So, to get the composed
   // indexing maps we have to compute a "cross product" here.
   for (const auto& [producer_operand_id, producer_operand_indexing] :
-       producer_indexing.operand_indexing_maps) {
+       producer_indexing.indexing_maps) {
     auto& composed_operand_indexing =
-        fused_instr_indexing.operand_indexing_maps[producer_operand_id];
+        fused_instr_indexing.indexing_maps[producer_operand_id];
     for (const IndexingMap& producer_map : producer_operand_indexing) {
       for (const IndexingMap& consumer_map : operand_indexing_maps) {
         composed_operand_indexing.insert(
@@ -186,7 +195,7 @@ HloInstructionIndexing ComputeFusedProducerConsumerIndexing(
 
 // Composes instruction indexing maps starting at the root instruction
 // until the HloParameterInstruction is found.
-StatusOr<HloInstructionIndexing> ComputeFusionOpIndexing(
+StatusOr<HloInstructionIndexing> ComputeOutputToInputFusionOpIndexing(
     const HloFusionInstruction* fusion, int output_id,
     MLIRContext* mlir_context) {
   const HloInstruction* root =
@@ -194,7 +203,7 @@ StatusOr<HloInstructionIndexing> ComputeFusionOpIndexing(
           ? fusion->fused_expression_root()->operand(output_id)
           : fusion->fused_expression_root();
   std::queue<std::pair<const HloInstruction*, HloInstructionIndexing>> bfs;
-  TF_ASSIGN_OR_RETURN(auto root_indexing, ComputeInstructionIndexing(
+  TF_ASSIGN_OR_RETURN(auto root_indexing, ComputeOutputToInputIndexing(
                                               root, output_id, mlir_context));
 
   bfs.push(std::make_pair(root, root_indexing));
@@ -203,7 +212,7 @@ StatusOr<HloInstructionIndexing> ComputeFusionOpIndexing(
   while (!bfs.empty()) {
     const auto& [instr, instr_indexing] = bfs.front();
     for (const auto& [operand_id, operand_indexing_maps] :
-         instr_indexing.operand_indexing_maps) {
+         instr_indexing.indexing_maps) {
       const HloInstruction* producer_instr = instr->operand(operand_id);
       if (producer_instr->IsConstant()) continue;
       // If the producer is a fusion op parameter, store the result.
@@ -213,7 +222,7 @@ StatusOr<HloInstructionIndexing> ComputeFusionOpIndexing(
         continue;
       }
       TF_ASSIGN_OR_RETURN(auto producer_instr_indexing,
-                          ComputeInstructionIndexing(
+                          ComputeOutputToInputIndexing(
                               producer_instr, /*output_id=*/0, mlir_context));
       bfs.push(std::make_pair(
           producer_instr, ComputeFusedProducerConsumerIndexing(
@@ -221,11 +230,11 @@ StatusOr<HloInstructionIndexing> ComputeFusionOpIndexing(
     }
     bfs.pop();
   }
-  return HloInstructionIndexing{.operand_indexing_maps =
+  return HloInstructionIndexing{.indexing_maps =
                                     std::move(parameter_indexing_maps)};
 }
 
-StatusOr<HloInstructionIndexing> ComputeDotOpIndexing(
+StatusOr<HloInstructionIndexing> ComputeOutputToInputDotOpIndexing(
     const HloDotInstruction* dot, MLIRContext* mlir_context) {
   CHECK_NE(dot, nullptr);
   const DotDimensionNumbers& dim_numbers = dot->dot_dimension_numbers();
@@ -304,7 +313,7 @@ StatusOr<HloInstructionIndexing> ComputeDotOpIndexing(
       {lhs_indexing_map, rhs_indexing_map});
 }
 
-StatusOr<HloInstructionIndexing> ComputeReduceOpIndexing(
+StatusOr<HloInstructionIndexing> ComputeOutputToInputReduceOpIndexing(
     const HloReduceInstruction* reduce, int output_id,
     MLIRContext* mlir_context) {
   absl::flat_hash_set<int64_t> reduce_dims_ids(reduce->dimensions().begin(),
@@ -490,12 +499,22 @@ IndexingMap ComputeReshapeIndexingMap(absl::Span<const int64_t> input_dims,
       .input_dims_sizes = {}};
 }
 
-StatusOr<HloInstructionIndexing> ComputeReshapeOpIndexing(
+StatusOr<HloInstructionIndexing> ComputeOutputToInputReshapeOpIndexing(
     const HloReshapeInstruction* reshape, MLIRContext* mlir_context) {
   auto input_dims = reshape->operand(0)->shape().dimensions();
   auto output_dims = reshape->shape().dimensions();
   IndexingMap reshape_indexing_map =
       ComputeReshapeIndexingMap(input_dims, output_dims, mlir_context);
+
+  return HloInstructionIndexing::FromIndexingMaps({reshape_indexing_map});
+}
+
+StatusOr<HloInstructionIndexing> ComputeInputToOutputReshapeOpIndexing(
+    const HloReshapeInstruction* reshape, MLIRContext* mlir_context) {
+  auto input_dims = reshape->operand(0)->shape().dimensions();
+  auto output_dims = reshape->shape().dimensions();
+  IndexingMap reshape_indexing_map =
+      ComputeReshapeIndexingMap(output_dims, input_dims, mlir_context);
 
   return HloInstructionIndexing::FromIndexingMaps({reshape_indexing_map});
 }
@@ -528,7 +547,7 @@ StatusOr<HloInstructionIndexing> ComputeReverseOpIndexing(
   return HloInstructionIndexing::FromIndexingMaps({indexing_map});
 }
 
-StatusOr<HloInstructionIndexing> ComputeSliceOpIndexing(
+StatusOr<HloInstructionIndexing> ComputeOutputToInputSliceOpIndexing(
     const HloSliceInstruction* slice, MLIRContext* mlir_context) {
   auto output_dims = slice->shape().dimensions();
 
@@ -561,16 +580,25 @@ IndexingMap ComputeTransposeIndexingMap(absl::Span<const int64_t> permutation,
       .input_dims_sizes = {}};
 }
 
-StatusOr<HloInstructionIndexing> ComputeTransposeOpIndexing(
+StatusOr<HloInstructionIndexing> ComputeOutputToInputTransposeOpIndexing(
     const HloTransposeInstruction* transpose, MLIRContext* mlir_context) {
   return HloInstructionIndexing::FromIndexingMaps(
       {ComputeTransposeIndexingMap(transpose->dimensions(), mlir_context)});
 }
 
-StatusOr<HloInstructionIndexing> ComputeBitcastOpIndexing(
-    const HloInstruction* bitcast, MLIRContext* mlir_context) {
-  const Shape& input_shape = bitcast->operand(0)->shape();
-  const Shape& output_shape = bitcast->shape();
+StatusOr<HloInstructionIndexing> ComputeInputToOutputTransposeOpIndexing(
+    const HloTransposeInstruction* transpose, MLIRContext* mlir_context) {
+  auto forward_permutation = AffineMap::getPermutationMap(
+      std::vector<unsigned>(transpose->dimensions().begin(),
+                            transpose->dimensions().end()),
+      mlir_context);
+  return HloInstructionIndexing::FromIndexingMaps(
+      {IndexingMap{.affine_map = forward_permutation, .input_dims_sizes = {}}});
+}
+
+StatusOr<HloInstructionIndexing> ComputeOutputToInputBitcastOpIndexingImpl(
+    const Shape& input_shape, const Shape& output_shape,
+    MLIRContext* mlir_context) {
   ShapeUtil::BitcastDecomposition decomposed_bitcast =
       ShapeUtil::DecomposeBitcast(input_shape, output_shape);
 
@@ -601,6 +629,22 @@ StatusOr<HloInstructionIndexing> ComputeBitcastOpIndexing(
   IndexingMap composed_map = ComposeIndexingMaps(
       ComposeIndexingMaps(transpose_map_1, reshape_map), transpose_map_2);
   return HloInstructionIndexing::FromIndexingMaps({composed_map});
+}
+
+StatusOr<HloInstructionIndexing> ComputeOutputToInputBitcastOpIndexing(
+    const HloInstruction* bitcast, MLIRContext* mlir_context) {
+  const Shape& input_shape = bitcast->operand(0)->shape();
+  const Shape& output_shape = bitcast->shape();
+  return ComputeOutputToInputBitcastOpIndexingImpl(input_shape, output_shape,
+                                                   mlir_context);
+}
+
+StatusOr<HloInstructionIndexing> ComputeInputToOutputBitcastOpIndexing(
+    const HloInstruction* bitcast, MLIRContext* mlir_context) {
+  const Shape& input_shape = bitcast->operand(0)->shape();
+  const Shape& output_shape = bitcast->shape();
+  return ComputeOutputToInputBitcastOpIndexingImpl(output_shape, input_shape,
+                                                   mlir_context);
 }
 
 template <typename T>
@@ -863,7 +907,7 @@ bool IndexingMap::Simplify(absl::Span<const int64_t> dimension_sizes) {
 bool HloInstructionIndexing::Simplify(
     absl::Span<const int64_t> dimension_sizes) {
   bool any_simplified = false;
-  for (auto& operand_indexing : operand_indexing_maps) {
+  for (auto& operand_indexing : indexing_maps) {
     std::vector<IndexingMap> to_remove;
     std::vector<IndexingMap> to_add;
     absl::flat_hash_set<IndexingMap>& indexing_maps = operand_indexing.second;
@@ -906,8 +950,7 @@ std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map) {
 
 std::ostream& operator<<(std::ostream& out,
                          const HloInstructionIndexing& instr_indexing) {
-  for (const auto& [operand_id, indexing_maps] :
-       instr_indexing.operand_indexing_maps) {
+  for (const auto& [operand_id, indexing_maps] : instr_indexing.indexing_maps) {
     out << "operand id = " << operand_id << ' ';
     for (const auto& indexing_map : indexing_maps) {
       out << indexing_map;
@@ -921,9 +964,9 @@ std::string IndexingMap::ToString() const { return ToStringImpl(*this); }
 HloInstructionIndexing HloInstructionIndexing::FromIndexingMaps(
     absl::Span<const IndexingMap> indexing_maps) {
   HloInstructionIndexing instr_indexing;
-  instr_indexing.operand_indexing_maps.reserve(indexing_maps.size());
+  instr_indexing.indexing_maps.reserve(indexing_maps.size());
   for (const auto& [index, map] : llvm::enumerate(indexing_maps)) {
-    instr_indexing.operand_indexing_maps[index].insert(map);
+    instr_indexing.indexing_maps[index].insert(map);
   }
   return instr_indexing;
 }
@@ -932,37 +975,59 @@ std::string HloInstructionIndexing::ToString() const {
   return ToStringImpl(*this);
 }
 
-StatusOr<HloInstructionIndexing> ComputeInstructionIndexing(
+StatusOr<HloInstructionIndexing> ComputeOutputToInputIndexing(
     const HloInstruction* instr, int output_id, MLIRContext* mlir_context) {
   if (HloInstruction::IsOpElementwise(instr->opcode())) {
-    return ComputeCwiseOpIndexing(instr, mlir_context);
+    return ComputeOutputToInputCwiseOpIndexing(instr, mlir_context);
   }
   if (auto bcast = DynCast<HloBroadcastInstruction>(instr)) {
-    return ComputeBroadcastOpIndexing(bcast, mlir_context);
+    return ComputeOutputToInputBroadcastOpIndexing(bcast, mlir_context);
   }
   if (instr->opcode() == HloOpcode::kBitcast) {
-    return ComputeBitcastOpIndexing(instr, mlir_context);
+    return ComputeOutputToInputBitcastOpIndexing(instr, mlir_context);
   }
   if (auto dot = DynCast<HloDotInstruction>(instr)) {
-    return ComputeDotOpIndexing(dot, mlir_context);
+    return ComputeOutputToInputDotOpIndexing(dot, mlir_context);
   }
   if (auto fusion = DynCast<HloFusionInstruction>(instr)) {
-    return ComputeFusionOpIndexing(fusion, output_id, mlir_context);
+    return ComputeOutputToInputFusionOpIndexing(fusion, output_id,
+                                                mlir_context);
   }
   if (auto reduce = DynCast<HloReduceInstruction>(instr)) {
-    return ComputeReduceOpIndexing(reduce, output_id, mlir_context);
+    return ComputeOutputToInputReduceOpIndexing(reduce, output_id,
+                                                mlir_context);
   }
   if (auto reshape = DynCast<HloReshapeInstruction>(instr)) {
-    return ComputeReshapeOpIndexing(reshape, mlir_context);
+    return ComputeOutputToInputReshapeOpIndexing(reshape, mlir_context);
   }
   if (auto reverse = DynCast<HloReverseInstruction>(instr)) {
     return ComputeReverseOpIndexing(reverse, mlir_context);
   }
   if (auto slice = DynCast<HloSliceInstruction>(instr)) {
-    return ComputeSliceOpIndexing(slice, mlir_context);
+    return ComputeOutputToInputSliceOpIndexing(slice, mlir_context);
   }
   if (auto transpose = DynCast<HloTransposeInstruction>(instr)) {
-    return ComputeTransposeOpIndexing(transpose, mlir_context);
+    return ComputeOutputToInputTransposeOpIndexing(transpose, mlir_context);
+  }
+  return InvalidArgument("Unsupported instruction type");
+}
+
+StatusOr<HloInstructionIndexing> ComputeInputToOutputIndexing(
+    const HloInstruction* instr, int input_id, MLIRContext* mlir_context) {
+  if (HloInstruction::IsOpElementwise(instr->opcode())) {
+    return ComputeInputToOutputCwiseOpIndexing(instr, mlir_context);
+  }
+  if (instr->opcode() == HloOpcode::kBitcast) {
+    return ComputeInputToOutputBitcastOpIndexing(instr, mlir_context);
+  }
+  if (auto reshape = DynCast<HloReshapeInstruction>(instr)) {
+    return ComputeInputToOutputReshapeOpIndexing(reshape, mlir_context);
+  }
+  if (auto reverse = DynCast<HloReverseInstruction>(instr)) {
+    return ComputeReverseOpIndexing(reverse, mlir_context);
+  }
+  if (auto transpose = DynCast<HloTransposeInstruction>(instr)) {
+    return ComputeInputToOutputTransposeOpIndexing(transpose, mlir_context);
   }
   return InvalidArgument("Unsupported instruction type");
 }
