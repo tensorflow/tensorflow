@@ -266,12 +266,11 @@ auto* tf_data_model_gauge =
     tsl::monitoring::Gauge<std::function<std::string()>, 1>::New(
         "/tensorflow/data/model", "tf.data autotuning model proto.", "id");
 
-auto* tf_data_pipeline_processing_time =
-    tsl::monitoring::Gauge<int64_t, 1>::New(
-        "/tensorflow/data/pipeline_processing_time",
-        "The total processing time of the slowest stage in the input pipeline "
-        "in microseconds",
-        "id");
+auto* tf_data_pipeline_processing_time = tsl::monitoring::Gauge<double, 1>::New(
+    "/tensorflow/data/pipeline_processing_time",
+    "The total processing time of the slowest stage in the input pipeline "
+    "in microseconds",
+    "id");
 
 auto* tf_data_auto_shard = tsl::monitoring::Gauge<int64, 2>::New(
     "/tensorflow/data/autoshard", "tf.data autoshard statistics.", "id",
@@ -474,7 +473,7 @@ tsl::monitoring::GaugeCell<std::function<std::string()>>* GetTFDataModelGauge(
   return tf_data_model_gauge->GetCell(id);
 }
 
-tsl::monitoring::GaugeCell<int64_t>* GetTFDataPipelineProcessingTimeGauge(
+tsl::monitoring::GaugeCell<double>* GetTFDataPipelineProcessingTimeGauge(
     const string& id) {
   return tf_data_pipeline_processing_time->GetCell(id);
 }
@@ -835,7 +834,7 @@ void RecordUnusedOutput(const string& op_name) {
 }
 
 void RecordPipelineProcessingTime(const string& id,
-                                  int64_t pipeline_processing_time_usec) {
+                                  double pipeline_processing_time_usec) {
   GetTFDataPipelineProcessingTimeGauge(id)->Set(pipeline_processing_time_usec);
 }
 

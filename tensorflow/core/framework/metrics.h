@@ -245,7 +245,7 @@ void RecordUnusedOutput(const string& op_name);
 
 // Records the pipeline processing time in microseconds
 void RecordPipelineProcessingTime(const string& id,
-                                  int64_t pipeline_processing_time_usec);
+                                  double pipeline_processing_time_usec);
 
 // Updates the metrics stored about time spent building graphs.
 //

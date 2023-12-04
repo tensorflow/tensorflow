@@ -2363,7 +2363,7 @@ void Model::Optimize(AutotuneAlgorithm algorithm,
     optimization_params_ = optimization_params;
 
     if (snapshot_) {
-      int64_t pipeline_processing_usec = 0;
+      double pipeline_processing_usec = 0;
       ModelTiming model_timing(snapshot_);
       auto bfs_stage_roots = model_timing.GetStageRoots();
       for (const auto& root : bfs_stage_roots) {
@@ -2382,14 +2382,8 @@ void Model::Optimize(AutotuneAlgorithm algorithm,
                                       root_timing->pipeline_ratio /
                                       EnvTime::kMicrosToNanos;
 
-        // Cap the computed value to ensure that there is no integer overflow.
-        if (root_total_time_usec < std::numeric_limits<int64_t>::max()) {
-          pipeline_processing_usec =
-              std::max(pipeline_processing_usec,
-                       static_cast<int64_t>(root_total_time_usec));
-        } else {
-          pipeline_processing_usec = std::numeric_limits<int64_t>::max();
-        }
+        pipeline_processing_usec =
+            std::max(pipeline_processing_usec, root_total_time_usec);
       }
       // Only updates the pipeline processing time when it is greater than 0.
       // If it is zero, we assume the pipeline processing time is the same
