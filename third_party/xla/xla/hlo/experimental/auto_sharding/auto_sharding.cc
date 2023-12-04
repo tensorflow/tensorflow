@@ -3592,24 +3592,20 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     std::vector<spmd::NodeStrategyIdx> s_val;
     std::vector<spmd::EdgeStrategyIdx> e_val;
     double objective = -1.0;
-    if (!option_.load_solution_vector) {
-      auto solver_result =
-          Solve(*module, *hlo_live_range, liveness_node_set, strategy_map,
-                strategy_groups, cost_graph, alias_set, option_,
-                sharding_propagation_solution);
-      if (solver_result.skip_auto_sharding) {
-        return AutoShardingResult::kModuleUnchangedNoShardingPerfomed;
-      } else if (!solver_result.status.ok()) {
-        return AutoShardingResult::kModuleUnchanged;
-      } else {
-        TF_ASSIGN_OR_RETURN(auto solution, solver_result.status);
-        std::tie(s_val, e_val, objective) = solution;
-        if (mesh_idx == partial_mesh_shapes.size() - 1) {
-          this->solver_optimal_objective_value_ = objective;
-        }
-      }
+    auto solver_result =
+        Solve(*module, *hlo_live_range, liveness_node_set, strategy_map,
+              strategy_groups, cost_graph, alias_set, option_,
+              sharding_propagation_solution);
+    if (solver_result.skip_auto_sharding) {
+      return AutoShardingResult::kModuleUnchangedNoShardingPerfomed;
+    } else if (!solver_result.status.ok()) {
+      return AutoShardingResult::kModuleUnchanged;
     } else {
-      s_val = option_.strategy_vector;
+      TF_ASSIGN_OR_RETURN(auto solution, solver_result.status);
+      std::tie(s_val, e_val, objective) = solution;
+      if (mesh_idx == partial_mesh_shapes.size() - 1) {
+        this->solver_optimal_objective_value_ = objective;
+      }
     }
 
     XLA_VLOG_LINES(5, PrintAutoShardingSolution(sequence, liveness_set,

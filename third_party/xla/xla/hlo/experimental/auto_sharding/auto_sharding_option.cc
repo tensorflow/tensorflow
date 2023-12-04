@@ -85,7 +85,6 @@ std::string AutoShardingOption::ToString() const {
       absl::StrCat("allow_mixed_mesh_shape: ", allow_mixed_mesh_shape));
   lines.push_back(
       absl::StrCat("grad_acc_num_micro_batches: ", grad_acc_num_micro_batches));
-  lines.push_back(absl::StrCat("load_solution_vector: ", load_solution_vector));
   lines.push_back(
       absl::StrCat("force_simple_heuristic: ", force_simple_heuristic));
   lines.push_back(absl::StrCat("force_strategy: ", force_strategy));
@@ -117,12 +116,6 @@ std::string AutoShardingOption::ToString() const {
                                absl::StrJoin(device_mesh_alpha, ","), "]"));
   lines.push_back(absl::StrCat("device_mesh_beta: [",
                                absl::StrJoin(device_mesh_beta, ","), "]"));
-
-  lines.push_back(absl::StrCat("load_strategy: ", load_strategy));
-  if (load_strategy) {
-    lines.push_back(absl::StrCat("strategy_vector: [",
-                                 absl::StrJoin(strategy_vector, ","), "]"));
-  }
 
   return absl::StrJoin(lines, "\n");
 }
