@@ -26,9 +26,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "xla/client/xla_builder.h"
+#include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
-#include "xla/python/exceptions.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/statusor.h"

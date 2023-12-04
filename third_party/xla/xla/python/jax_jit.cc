@@ -46,10 +46,10 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/python/py_values.h"
 #include "xla/python/pytree.h"
 #include "xla/python/sharding.h"
-#include "xla/python/status_casters.h"
 #include "xla/python/types.h"
 #include "tsl/platform/status.h"
 #include "tsl/profiler/lib/traceme.h"

@@ -41,7 +41,7 @@ limitations under the License.
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
-#include "xla/python/exceptions.h"
+#include "xla/pjrt/exceptions.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {

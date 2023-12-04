@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_PYTHON_EXCEPTIONS_H_
-#define XLA_PYTHON_EXCEPTIONS_H_
+#ifndef XLA_PJRT_EXCEPTIONS_H_
+#define XLA_PJRT_EXCEPTIONS_H_
 
 #include <cstdlib>
 #include <cstring>
@@ -64,4 +64,4 @@ class XlaRuntimeError : public std::runtime_error {
 
 }  // namespace xla
 
-#endif  // XLA_PYTHON_EXCEPTIONS_H_
+#endif  // XLA_PJRT_EXCEPTIONS_H_

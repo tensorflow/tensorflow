@@ -809,3 +809,36 @@ tf_proto_library(
     ],
     visibility = ["//visibility:public"],
 )
+
+cc_library(
+    name = "exceptions",
+    hdrs = ["exceptions.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "status_casters",
+    hdrs = ["status_casters.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":exceptions",
+        "//xla:status",
+        "//xla:statusor",
+        "@local_tsl//tsl/platform:macros",
+    ],
+)
