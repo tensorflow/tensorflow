@@ -168,6 +168,25 @@ cc_library(
 #         "@local_tsl//tsl/lib/core:status_test_util",
 #         "@local_tsl//tsl/platform:status",
 #         "@local_tsl//tsl/platform:test",
+#         "@local_tsl//tsl/platform:test_main",
+#     ],
+# )
+#
+# xla_test(
+#     name = "cutlass_gemm_custom_kernel_benchmarks",
+#     srcs = if_cuda_is_configured(["cutlass_gemm_custom_kernel_benchmarks.cc"]),
+#     backends = ["gpu"],
+#     deps = [
+#         ":cutlass_gemm_custom_kernel",
+#         "//xla:types",
+#         "//xla:xla_data_proto_cc",
+#         "//xla/stream_executor",
+#         "//xla/stream_executor:multi_platform_manager",
+#         "//xla/stream_executor:platform",
+#         "//xla/stream_executor/cuda:cuda_platform",
+#         "@local_tsl//tsl/lib/core:status_test_util",
+#         "@local_tsl//tsl/platform:status",
+#         "@local_tsl//tsl/platform:test",
 #         "@local_tsl//tsl/platform:test_benchmark",
 #         "@local_tsl//tsl/platform:test_main",
 #     ],
