@@ -22,7 +22,7 @@ import dataclasses
 import logging  # Intended to run on vanilla Github Actions runner
 import re
 import sys
-from typing import Iterable, Optional, Sequence
+from typing import Iterable, Sequence
 
 from xla.build_tools.lint import diff_parser
 
@@ -92,7 +92,7 @@ def check_diffs(
     hunks: Iterable[diff_parser.Hunk],
     *,
     prohibited_regex: str,
-    suppression_regex: Optional[str] = None,  # TODO(ddunleavy): CI not on 3.10
+    suppression_regex: str | None = None,
 ) -> list[RegexLocation]:
   """Checks FileDiffs for prohibited regexes.
 
