@@ -2229,6 +2229,8 @@ Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
                 result_shape.layout().tiles().begin(),
                 result_shape.layout().tiles().end());
           }
+          subshape->mutable_layout()->set_element_size_in_bits(
+              result_shape.layout().element_size_in_bits());
         }
       };
       xla::ShapeUtil::ForEachMutableSubshape(
