@@ -217,7 +217,6 @@ _gen_kernel_bin_rule = rule(
     outputs = {"kernel": "%{name}_kernel.o"},
     toolchains = use_cpp_toolchain(),
     implementation = _gen_kernel_bin_impl,
-    provides = [CcInfo],
 )
 
 # Returns the shape string (e.g. "4x4" or "16Bx2") as comma-separated integers.
