@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
 
@@ -29,10 +30,10 @@ CustomFusionPatternRegistry* CustomFusionPatternRegistry::Default() {
 }
 
 std::vector<CustomFusionPattern::Match> CustomFusionPatternRegistry::Match(
-    HloInstruction* instr) const {
+    const se::DeviceDescription& device, HloInstruction* instr) const {
   std::vector<CustomFusionPattern::Match> matches;
   for (auto& pattern : patterns_) {
-    if (auto matched = pattern->TryMatch(instr); matched.has_value())
+    if (auto matched = pattern->TryMatch(device, instr); matched.has_value())
       matches.push_back(std::move(*matched));
   }
   return matches;

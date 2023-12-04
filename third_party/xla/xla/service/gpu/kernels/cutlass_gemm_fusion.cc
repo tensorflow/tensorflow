@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -148,7 +149,7 @@ static StatusOr<GemmWithDynamicSlice> MatchGemmWithDynamicUpdateSlice(
 //===----------------------------------------------------------------------===//
 
 std::optional<CustomFusionPattern::Match> CutlassGemmPattern::TryMatch(
-    HloInstruction* instr) const {
+    const se::DeviceDescription& device, HloInstruction* instr) const {
   auto* dot = DynCast<HloDotInstruction>(instr);
   if (!dot) return std::nullopt;
 
@@ -162,7 +163,7 @@ std::optional<CustomFusionPattern::Match> CutlassGemmPattern::TryMatch(
 
 std::optional<CustomFusionPattern::Match>
 CutlassGemmWithDynamicUpdateSlicePattern::TryMatch(
-    HloInstruction* instr) const {
+    const se::DeviceDescription& device, HloInstruction* instr) const {
   auto* update_slice = DynCast<HloDynamicUpdateSliceInstruction>(instr);
   if (!update_slice) return std::nullopt;
 
@@ -176,7 +177,8 @@ CutlassGemmWithDynamicUpdateSlicePattern::TryMatch(
 }
 
 std::optional<CustomFusionPattern::Match>
-CutlassGemmWithUpcastPattern::TryMatch(HloInstruction* instr) const {
+CutlassGemmWithUpcastPattern::TryMatch(const se::DeviceDescription& device,
+                                       HloInstruction* instr) const {
   auto* dot = DynCast<HloDotInstruction>(instr);
   if (!dot) return std::nullopt;
 
@@ -200,6 +202,7 @@ CutlassGemmWithUpcastPattern::TryMatch(HloInstruction* instr) const {
 class CutlassGemmFusion : public CustomFusion {
  public:
   StatusOr<std::vector<CustomKernel>> LoadKernels(
+      const se::DeviceDescription& device,
       const HloComputation* computation) const final {
     auto* dot = DynCast<HloDotInstruction>(computation->root_instruction());
     if (dot == nullptr) {
@@ -229,7 +232,7 @@ class CutlassGemmFusion : public CustomFusion {
     TF_ASSIGN_OR_RETURN(
         auto kernel,
         kernel::gemm_universal::GetCutlassGemmKernel(
-            "cutlass_gemm", dtype, m, n, k, indices, /*slices=*/{}));
+            "cutlass_gemm", dtype, m, n, k, indices, /*slices=*/{}, device));
     return std::vector<CustomKernel>{std::move(kernel)};
   }
 };
@@ -237,6 +240,7 @@ class CutlassGemmFusion : public CustomFusion {
 class CutlassGemmWithUpcastFusion : public CustomFusion {
  public:
   StatusOr<std::vector<CustomKernel>> LoadKernels(
+      const se::DeviceDescription& device,
       const HloComputation* computation) const final {
     auto* dot = DynCast<HloDotInstruction>(computation->root_instruction());
     if (dot == nullptr) {
@@ -264,6 +268,7 @@ class CutlassGemmWithUpcastFusion : public CustomFusion {
 class CutlassGemmWithDynamicUpdateSliceFusion : public CustomFusion {
  public:
   StatusOr<std::vector<CustomKernel>> LoadKernels(
+      const se::DeviceDescription& device,
       const HloComputation* computation) const final {
     auto* dus = DynCast<HloDynamicUpdateSliceInstruction>(
         computation->root_instruction());
@@ -305,7 +310,7 @@ class CutlassGemmWithDynamicUpdateSliceFusion : public CustomFusion {
     TF_ASSIGN_OR_RETURN(
         auto kernel, kernel::gemm_universal::GetCutlassGemmKernel(
                          "cutlass_gemm_with_dynamic_update_slice", dtype, m, n,
-                         k, args_indices, slices));
+                         k, args_indices, slices, device));
     return std::vector<CustomKernel>{std::move(kernel)};
   }
 };

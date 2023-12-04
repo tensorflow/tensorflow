@@ -184,7 +184,8 @@ static StatusOr<std::unique_ptr<se::Kernel>> CreateCustomKernel(
 
   // Load custom kernels that can implement a fusion computation.
   TF_ASSIGN_OR_RETURN(std::vector<CustomKernel> kernels,
-                      custom_fusion->LoadKernels(computation.get()));
+                      custom_fusion->LoadKernels(
+                          executor->GetDeviceDescription(), computation.get()));
 
   // This should never happen, it means that compilation pipeline created a
   // fusion operation that is not supported by a given custom fusion.

@@ -32,14 +32,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/kernels/custom_fusion_pattern.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 
 namespace xla::gpu {
 
 CustomFusionRewriter::CustomFusionRewriter(
+    const se::DeviceDescription* device,
     const CustomFusionPatternRegistry* patterns)
-    : patterns_(patterns) {}
+    : device_(device), patterns_(patterns) {}
 
 // Returns instructions that have to become custom fusion parameters. Returns an
 // error if matched pattern can't be outlined as a fusion.
@@ -144,7 +146,7 @@ StatusOr<bool> CustomFusionRewriter::Run(
   // Collect all potential custom fusion matches in the module.
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instr : computation->instructions()) {
-      auto matched = patterns_->Match(instr);
+      auto matched = patterns_->Match(*device_, instr);
       matches.insert(matches.end(), matched.begin(), matched.end());
     }
   }

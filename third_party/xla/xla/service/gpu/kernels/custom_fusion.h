@@ -26,10 +26,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/service/gpu/kernels/custom_fusion.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "tsl/platform/logging.h"
 
 namespace xla::gpu {
@@ -98,8 +98,9 @@ class CustomFusion {
  public:
   virtual ~CustomFusion() = default;
 
-  // Loads kernels implementing `hlo_computation`.
+  // Loads kernels implementing `hlo_computation` optimized for a given device.
   virtual StatusOr<std::vector<CustomKernel>> LoadKernels(
+      const se::DeviceDescription& device,
       const HloComputation* computation) const = 0;
 };
 

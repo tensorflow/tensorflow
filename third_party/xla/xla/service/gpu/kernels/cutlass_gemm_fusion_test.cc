@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/custom_fusion_rewriter.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/kernels/custom_fusion_pattern.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
@@ -69,7 +70,8 @@ TEST_F(CutlassFusionTest, RowMajorGemm) {
   CustomFusionPatternRegistry patterns;
   patterns.Emplace<CutlassGemmPattern>();
 
-  CustomFusionRewriter pass(&patterns);
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  CustomFusionRewriter pass(&device, &patterns);
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
 }
 
@@ -108,7 +110,8 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithUpcast) {
   CustomFusionPatternRegistry patterns;
   patterns.Emplace<CutlassGemmWithUpcastPattern>();
 
-  CustomFusionRewriter pass(&patterns);
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  CustomFusionRewriter pass(&device, &patterns);
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
 }
 
@@ -157,7 +160,8 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSlice) {
   CustomFusionPatternRegistry patterns;
   patterns.Emplace<CutlassGemmWithDynamicUpdateSlicePattern>();
 
-  CustomFusionRewriter pass(&patterns);
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  CustomFusionRewriter pass(&device, &patterns);
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
 }
 

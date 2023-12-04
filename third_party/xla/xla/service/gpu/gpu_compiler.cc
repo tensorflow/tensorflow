@@ -1213,7 +1213,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // heuristic, so we can mix and match various Gemm implementations based
     // on projected (measured) performance.
     if (debug_options.xla_gpu_enable_custom_fusions()) {
-      pipeline.AddPass<CustomFusionRewriter>();
+      pipeline.AddPass<CustomFusionRewriter>(
+          &gpu_target_config.device_description);
     }
 
     // Rewrite GEMMs into custom calls.

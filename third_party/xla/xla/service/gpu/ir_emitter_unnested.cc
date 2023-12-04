@@ -3338,7 +3338,8 @@ StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitCustomFusion(
   // Load custom kernels that can implement a fusion computation.
   TF_ASSIGN_OR_RETURN(
       std::vector<CustomKernel> kernels,
-      custom_fusion->LoadKernels(fusion->fused_instructions_computation()));
+      custom_fusion->LoadKernels(ir_emitter_context_->gpu_device_info(),
+                                 fusion->fused_instructions_computation()));
 
   // This should never happen, it means that compilation pipeline created a
   // fusion operation that is not supported by a given custom fusion.

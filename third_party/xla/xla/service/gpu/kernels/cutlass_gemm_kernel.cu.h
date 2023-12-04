@@ -140,7 +140,8 @@ int32_t *SlicePtr(const se::KernelArgsDeviceMemoryArray *args, int64_t index) {
 template <typename Gemm>
 KernelArgsPacking ArgsPacking(cutlass::gemm::GemmCoord problem_size,
                               const ArgsIndices &indices,
-                              const DynamicSliceIndices &slices) {
+                              const DynamicSliceIndices &slices,
+                              int32_t device_sms) {
   using Accumulator = typename Gemm::ElementAccumulator;
   using Arguments = typename Gemm::Arguments;
   using Kernel = typename Gemm::GemmKernel;
@@ -195,10 +196,8 @@ KernelArgsPacking ArgsPacking(cutlass::gemm::GemmCoord problem_size,
                         ctx.kernel()->GetMaxOccupiedBlocksPerCore(
                             ctx.threads(), args.number_of_shared_bytes()));
 
-    // TODO(ezhulenev): Get number of SMs from DeviceDescription.
-
     // Convert CUTLASS operation arguments to a device kernel parameters.
-    Params params(arguments, /*device_sms=*/128, sm_occupancy);
+    Params params(arguments, device_sms, sm_occupancy);
 
     // Optionally set up dynamic slice parameters to allow kernel adjust buffer
     // pointers passed via `params`.

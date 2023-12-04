@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
 
@@ -48,7 +49,8 @@ class CustomFusionPattern {
   // TODO(ezhulenev): Today the last instruction defines custom fusion root
   // (results), however we need to add support for custom fusion that can return
   // intermediate result, and custom fusions that require an extra workspace.
-  virtual std::optional<Match> TryMatch(HloInstruction *instr) const = 0;
+  virtual std::optional<Match> TryMatch(const se::DeviceDescription &device,
+                                        HloInstruction *instr) const = 0;
 };
 
 //===----------------------------------------------------------------------===//
@@ -61,7 +63,8 @@ class CustomFusionPatternRegistry {
   // global static registry.
   static CustomFusionPatternRegistry *Default();
 
-  std::vector<CustomFusionPattern::Match> Match(HloInstruction *instr) const;
+  std::vector<CustomFusionPattern::Match> Match(
+      const se::DeviceDescription &device, HloInstruction *instr) const;
 
   void Add(std::unique_ptr<CustomFusionPattern> pattern);
 
