@@ -1148,7 +1148,8 @@ StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
     const StrategyMap& strategy_map, const AutoShardingOption& option,
     double replicated_penalty, const InstructionBatchDimMap& batch_dim_map,
     const CallGraph& call_graph, bool only_allow_divisible,
-    bool create_replicated_strategies) {
+    bool create_replicated_strategies,
+    bool create_partially_replicated_strategies) {
   std::unique_ptr<StrategyGroup> strategy_group;
   if (shape.IsTuple()) {
     strategy_group = CreateTupleStrategyGroup(instruction_id);
@@ -1159,7 +1160,8 @@ StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
                                    strategy_groups, cluster_env, strategy_map,
                                    option, replicated_penalty, batch_dim_map,
                                    call_graph, only_allow_divisible,
-                                   create_replicated_strategies)
+                                   create_replicated_strategies,
+                                   create_partially_replicated_strategies)
               .value();
       child_strategies->tuple_element_idx = i;
       strategy_group->childs.push_back(std::move(child_strategies));
@@ -1167,9 +1169,12 @@ StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
   } else if (shape.IsArray()) {
     strategy_group = CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
                                              strategy_groups);
-    EnumerateAll1DPartition(ins, shape, cluster_env.device_mesh_, cluster_env,
-                            strategy_map, strategy_group, only_allow_divisible,
-                            "", call_graph);
+    if (create_partially_replicated_strategies ||
+        cluster_env.IsDeviceMesh1D()) {
+      EnumerateAll1DPartition(ins, shape, cluster_env.device_mesh_, cluster_env,
+                              strategy_map, strategy_group,
+                              only_allow_divisible, "", call_graph);
+    }
     // Split 2 dims
     if (cluster_env.IsDeviceMesh2D()) {
       EnumerateAllPartition(ins, shape, cluster_env.device_mesh_, cluster_env,

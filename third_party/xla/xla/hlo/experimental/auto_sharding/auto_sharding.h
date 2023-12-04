@@ -247,7 +247,8 @@ StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
     const StrategyMap& strategy_map, const AutoShardingOption& option,
     double replicated_penalty, const InstructionBatchDimMap& batch_dim_map,
     const CallGraph& call_graph, bool only_allow_divisible,
-    bool create_replicated_strategies);
+    bool create_replicated_strategies,
+    bool create_partially_replicated_strategies);
 
 // Enumerates sharding strategies for elementwise operators by following
 // strategies of an operand of the elementwise op.

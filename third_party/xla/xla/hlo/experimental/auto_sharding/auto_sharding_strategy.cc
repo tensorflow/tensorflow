@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 
 #include <algorithm>
 #include <cmath>
@@ -37,8 +37,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
-#include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_wrapper.h"
 #include "xla/hlo/experimental/auto_sharding/cluster_environment.h"
@@ -75,7 +75,6 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                      const HloCostAnalysis& hlo_cost_analysis,
                      bool trying_multiple_mesh_shapes) {
   const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
-  const Array<int64_t>& device_mesh_1d = cluster_env.device_mesh_1d_;
   StrategyMap strategy_map;
   // This map stores all of the trimmed strategies due to user specified
   // sharding. The key is the instruction id, the value is the strategies. This
@@ -127,11 +126,12 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       case HloOpcode::kRngBitGenerator:
       case HloOpcode::kRng: {
         strategy_group =
-            CreateAllStrategiesGroup(ins, ins->shape(), instruction_id,
-                                     strategy_groups, cluster_env, strategy_map,
-                                     option, replicated_penalty, batch_dim_map,
-                                     call_graph, only_allow_divisible,
-                                     option.allow_replicated_parameters)
+            CreateAllStrategiesGroup(
+                ins, ins->shape(), instruction_id, strategy_groups, cluster_env,
+                strategy_map, option, replicated_penalty, batch_dim_map,
+                call_graph, only_allow_divisible,
+                option.allow_replicated_parameters,
+                /* create_partially_replicated_strategies */ true)
                 .value();
         break;
       }
@@ -260,28 +260,18 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         break;
       }
       case HloOpcode::kBroadcast: {
-        strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
-                                                 strategy_map, strategy_groups);
-
-        if (ins->shape().rank() == 1 || cluster_env.IsDeviceMesh1D()) {
-          EnumerateAll1DPartition(ins, ins->shape(), cluster_env.device_mesh_,
-                                  cluster_env, strategy_map, strategy_group,
-                                  only_allow_divisible, "", call_graph);
-        } else {
-          EnumerateAllPartition(ins, ins->shape(), cluster_env.device_mesh_,
-                                cluster_env, strategy_map, strategy_group,
-                                batch_dim_map, only_allow_divisible, call_graph,
-                                /*partitions*/ 2);
-          if (option.allow_mixed_mesh_shape) {
-            EnumerateAll1DPartition(ins, ins->shape(),
-                                    cluster_env.device_mesh_1d_, cluster_env,
-                                    strategy_map, strategy_group,
-                                    only_allow_divisible, "1d", call_graph);
-          }
-        }
-        AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
-                              strategy_group, replicated_penalty);
-
+        // For an unknown reason, we do not generate partially replicated
+        // strategies for >1D broadcast ops. This can be changed if we find that
+        // our search isn't exhaustive enough for certain ops.
+        strategy_group =
+            CreateAllStrategiesGroup(
+                ins, ins->shape(), instruction_id, strategy_groups, cluster_env,
+                strategy_map, option, replicated_penalty, batch_dim_map,
+                call_graph, only_allow_divisible,
+                /* create_replicated_strategies */ true,
+                /* create_partially_replicated_strategies */
+                (ins->shape().rank() == 1))
+                .value();
         break;
       }
       case HloOpcode::kReshape: {
@@ -561,38 +551,17 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         break;
       }
       case HloOpcode::kIota: {
-        strategy_group = CreateLeafStrategyGroupWithoutInNodes(instruction_id,
-                                                               strategy_groups);
-        if (cluster_env.IsDeviceMesh1D()) {
-          EnumerateAll1DPartition(ins, ins->shape(), device_mesh, cluster_env,
-                                  strategy_map, strategy_group,
-                                  only_allow_divisible, "", call_graph);
-        }
-        if (cluster_env.IsDeviceMesh2D()) {
-          // Split 2 dims
-          EnumerateAllPartition(ins, ins->shape(), device_mesh, cluster_env,
-                                strategy_map, strategy_group, batch_dim_map,
-                                only_allow_divisible, call_graph, /*parts*/ 2);
-        }
-        if (cluster_env.IsDeviceMesh3D()) {
-          // Split 3 dims
-          EnumerateAllPartition(ins, ins->shape(), device_mesh, cluster_env,
-                                strategy_map, strategy_group, batch_dim_map,
-                                only_allow_divisible, call_graph, /*parts*/ 3);
-        }
-        if (cluster_env.IsDeviceMesh2D() && option.allow_mixed_mesh_shape) {
-          // Split 1 dim, but for 1d flattened version of the 2d mesh
-          // For example, when the mesh shape is (2, 4), we add strategies for
-          // mesh shape (1, 8) here in addition.
-          EnumerateAll1DPartition(ins, ins->shape(), device_mesh_1d,
-                                  cluster_env, strategy_map, strategy_group,
-                                  only_allow_divisible, " 1d", call_graph);
-        }
-
-        // Replicate
-        AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
-                              strategy_group, replicated_penalty * 5);
-
+        // For an unknown reason, we do not generate partially replicated
+        // strategies for iota ops. This can be changed if we find that our
+        // search isn't exhaustive enough for certain ops.
+        strategy_group =
+            CreateAllStrategiesGroup(
+                ins, ins->shape(), instruction_id, strategy_groups, cluster_env,
+                strategy_map, option, replicated_penalty, batch_dim_map,
+                call_graph, only_allow_divisible,
+                /* create_replicated_strategies */ true,
+                /* create_partially_replicated_strategies */ false)
+                .value();
         break;
       }
       case HloOpcode::kTuple: {
@@ -649,7 +618,9 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                       CreateAllStrategiesGroup(
                           ins, ins->shape(), instruction_id, strategy_groups,
                           cluster_env, strategy_map, option, replicated_penalty,
-                          batch_dim_map, call_graph, only_allow_divisible, true)
+                          batch_dim_map, call_graph, only_allow_divisible,
+                          /* create_replicated_strategies */ true,
+                          /* create_partially_replicated_strategies */ true)
                           .value();
                 }
               } else {
@@ -664,7 +635,9 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                       CreateAllStrategiesGroup(
                           ins, ins->shape(), instruction_id, strategy_groups,
                           cluster_env, strategy_map, option, replicated_penalty,
-                          batch_dim_map, call_graph, only_allow_divisible, true)
+                          batch_dim_map, call_graph, only_allow_divisible,
+                          /* create_replicated_strategies */ true,
+                          /* create_partially_replicated_strategies */ true)
                           .value();
                 }
               }
@@ -723,11 +696,12 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       case HloOpcode::kInfeed:
       case HloOpcode::kSort: {
         strategy_group =
-            CreateAllStrategiesGroup(ins, ins->shape(), instruction_id,
-                                     strategy_groups, cluster_env, strategy_map,
-                                     option, replicated_penalty, batch_dim_map,
-                                     call_graph, only_allow_divisible,
-                                     /*create_replicated_strategies*/ true)
+            CreateAllStrategiesGroup(
+                ins, ins->shape(), instruction_id, strategy_groups, cluster_env,
+                strategy_map, option, replicated_penalty, batch_dim_map,
+                call_graph, only_allow_divisible,
+                /* create_replicated_strategies */ true,
+                /* create_partially_replicated_strategies */ true)
                 .value();
         break;
       }
