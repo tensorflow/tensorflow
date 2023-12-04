@@ -3779,6 +3779,32 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedAdd) {
   }
 }
 
+TEST_F(ShapeInferenceTest, UnboundedTranspose) {
+  auto operand = ParseShape("f32[1, ?, 2, ?, <=2]{4,3,2,1,0}");
+  auto expected = ParseShape("f32[<=2, 1, ?, 2, ?]{0,2,3,4,1}");
+  ASSERT_IS_OK(operand.status());
+  auto inferred_status = ShapeInference::InferTransposeShape(
+      operand.value(), /*dimensions=*/{4, 0, 3, 2, 1});
+  ASSERT_IS_OK(expected.status());
+  ASSERT_IS_OK(inferred_status.status());
+  ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
+      << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
+TEST_F(ShapeInferenceTest, UnboundedTransposeRank1) {
+  auto operand = ParseShape("f32[?]");
+  auto expected = ParseShape("f32[?]");
+  ASSERT_IS_OK(operand.status());
+  auto inferred_status =
+      ShapeInference::InferTransposeShape(operand.value(), /*dimensions=*/{0});
+  ASSERT_IS_OK(expected.status());
+  ASSERT_IS_OK(inferred_status.status());
+  ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
+      << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
 TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedDiv) {
   auto lhs = ParseShape(GetParam()[0]);
   auto rhs = ParseShape(GetParam()[1]);
