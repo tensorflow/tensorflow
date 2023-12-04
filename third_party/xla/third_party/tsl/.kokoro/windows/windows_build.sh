@@ -50,7 +50,7 @@ export PATH="$PATH:/c/Python38"
   -- //tsl/... \
   || { echo "Bazel Build Failed" && exit 1; }
 
-# Test TSL TODO(ddunleavy) enable all tests
+# Test TSL
 /c/tools/bazel.exe test \
   --output_filter="" \
   --flaky_test_attempts=3 \
@@ -60,7 +60,7 @@ export PATH="$PATH:/c/Python38"
   --build_tag_filters=$TAGS_FILTER  \
   --test_tag_filters=$TAGS_FILTER \
   --keep_going \
-  -- //tsl/... -//tsl/platform:subprocess_test -//tsl/platform/cloud:google_auth_provider_test -//tsl/platform/cloud:oauth_client_test \
+  -- //tsl/... \
   || { echo "Bazel Test Failed" && exit 1; }
 
 exit 0
