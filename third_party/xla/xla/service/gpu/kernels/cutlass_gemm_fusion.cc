@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -94,16 +95,19 @@ static Status MatchRowMajorGemm(HloDotInstruction* dot) {
 
 // Return OK if dot instruction is a simple gemm with all operands and result
 // having the same data type.
-static Status MatchSimpleGemm(HloDotInstruction* dot, PrimitiveType dtype) {
+static Status MatchSimpleGemm(HloDotInstruction* dot,
+                              absl::Span<const PrimitiveType> support_dtypes) {
   TF_RETURN_IF_ERROR(MatchRowMajorGemm(dot));
 
-  if (dot->operand(0)->shape().element_type() != dtype ||
-      dot->operand(1)->shape().element_type() != dtype ||
-      dot->shape().element_type() != dtype) {
-    return absl::InternalError("operands and result must have the same type");
+  for (PrimitiveType dtype : support_dtypes) {
+    if (dot->operand(0)->shape().element_type() == dtype &&
+        dot->operand(1)->shape().element_type() == dtype &&
+        dot->shape().element_type() == dtype) {
+      return OkStatus();
+    }
   }
 
-  return OkStatus();
+  return absl::InternalError("unsupported operands type");
 }
 
 // Returns matched GEMM with one of the operands upcasted to the accumulator
@@ -153,7 +157,7 @@ std::optional<CustomFusionPattern::Match> CutlassGemmPattern::TryMatch(
   auto* dot = DynCast<HloDotInstruction>(instr);
   if (!dot) return std::nullopt;
 
-  auto matched = MatchSimpleGemm(dot, PrimitiveType::F32);
+  auto matched = MatchSimpleGemm(dot, {PrimitiveType::F32});
   if (!matched.ok()) return std::nullopt;
 
   CustomFusionConfig config;
@@ -224,7 +228,7 @@ class CutlassGemmFusion : public CustomFusion {
           "cutlass_gemm requires ROOT operation to be a dot");
     }
 
-    TF_RETURN_IF_ERROR(MatchSimpleGemm(dot, PrimitiveType::F32));
+    TF_RETURN_IF_ERROR(MatchSimpleGemm(dot, {PrimitiveType::F32}));
 
     auto dtype = dot->shape().element_type();
 
@@ -293,8 +297,9 @@ class CutlassGemmWithDynamicUpdateSliceFusion : public CustomFusion {
     }
 
     TF_ASSIGN_OR_RETURN(auto matched, MatchGemmWithDynamicUpdateSlice(dus));
-    TF_RETURN_IF_ERROR(MatchSimpleGemm(Cast<HloDotInstruction>(matched.dot),
-                                       PrimitiveType::F32));
+    TF_RETURN_IF_ERROR(
+        MatchSimpleGemm(Cast<HloDotInstruction>(matched.dot),
+                        {PrimitiveType::F32, PrimitiveType::BF16}));
 
     auto dtype = matched.dot->shape().element_type();
 

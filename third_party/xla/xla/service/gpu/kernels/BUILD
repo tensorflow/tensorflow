@@ -92,6 +92,7 @@ cc_library(
 #         ":cutlass_gemm",
 #         ":cutlass_gemm_custom_kernel",
 #         "@com_google_absl//absl/status",
+#         "@com_google_absl//absl/types:span",
 #         "//xla:shape_util",
 #         "//xla:status",
 #         "//xla:statusor",

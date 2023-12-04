@@ -52,8 +52,9 @@ __global__ void Kernel(typename Gemm::Params params,
     char* ptr_c = reinterpret_cast<char*>(params.ptr_C);
     char* ptr_d = reinterpret_cast<char*>(params.ptr_D);
 
-    params.ptr_C = ptr_c + 4 * out_offset * (m * n);
-    params.ptr_D = ptr_d + 4 * out_offset * (m * n);
+    using ElementC = typename Gemm::ElementC;
+    params.ptr_C = ptr_c + sizeof(ElementC) * out_offset * (m * n);
+    params.ptr_D = ptr_d + sizeof(ElementC) * out_offset * (m * n);
   }
 
   Gemm::invoke(params, *shared_storage);
