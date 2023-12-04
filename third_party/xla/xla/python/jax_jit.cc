@@ -344,7 +344,6 @@ void BuildJaxjitSubmodule(py::module& m) {
       },
       py::return_value_policy::reference);
 
-  jitlib.def("jit_is_disabled", &GetDisableJit);
   jitlib.def("get_enable_x64", &GetEnableX64);
   jitlib.def("set_thread_local_state_initialization_callback",
              [](py::object f) { initialize_local_state = f; });
