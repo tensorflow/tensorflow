@@ -83,3 +83,12 @@ if [[ "$TFCI_PYTHON_VERSION" == "3.12" ]]; then
   # Once the wheels are added, this should be removed - b/308399490.
   brew install cmake
 fi
+
+# Scheduled nightly and release builds upload build artifacts (Pip packages,
+# Libtensorflow archives) to GCS buckets. TFCI Mac VMs need to authenticate as
+# a service account that has the right permissions to be able to do so.
+set +x
+if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
+  gcloud auth activate-service-account
+fi
+set -x

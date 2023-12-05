@@ -671,6 +671,15 @@ test:release_cpu_macos --config=release_base
 build:release_macos_base --action_env  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 build:release_macos_base --define=no_nccl_support=true --output_filter=^$
 
+# Build configs for macOS x86
+build:release_macos_x86 --config=release_macos_base
+# Build with the AVX instruction set when on macOS x86
+build:release_macos_x86 --config=avx_linux
+build:release_macos_x86 --cpu=darwin
+# Target Catalina as the minimum compatible OS version
+build:release_macos_x86 --macos_minimum_os=10.15
+build:release_macos_x86 --action_env MACOSX_DEPLOYMENT_TARGET=10.15
+
 # Build configs for macOS Arm64
 build:release_macos_arm64 --config=release_macos_base
 build:release_macos_arm64 --cpu=darwin_arm64
@@ -684,6 +693,9 @@ test:release_macos_base --verbose_failures=true --local_test_jobs=HOST_CPUS
 test:release_macos_base --test_timeout=300,450,1200,3600 --test_output=errors
 test:release_macos_base --build_tests_only --keep_going
 test:release_macos_base --flaky_test_attempts=3
+
+# Test configs for macOS x86
+test:release_macos_x86 --config=release_macos_base
 
 # Test configs for macOS Arm64
 test:release_macos_arm64 --config=release_macos_base
@@ -746,6 +758,11 @@ test:macos_arm64_wheel_test_filters --test_tag_filters=-no_oss,-oss_excluded,-os
 test:macos_arm64_wheel_test_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
 test:macos_arm64_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
 test:macos_arm64_wheel_test --config=macos_arm64_wheel_test_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/compiler/aot/...
+# MACOS X86 WHEEL
+test:macos_x86_wheel_test_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
+test:macos_x86_wheel_test_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
+test:macos_x86_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
+test:macos_x86_wheel_test --config=macos_x86_wheel_test_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/compiler/aot/...
 
 # PYCPP TESTS run a suite of Python and C++ tests to verify general correctness over
 # the whole TF code base. These are usually run continuously or upon presubmit.
