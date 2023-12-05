@@ -19,6 +19,8 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
@@ -27,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/custom_device.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
@@ -333,16 +336,24 @@ Status EagerOperation::Reset(
   if (!is_function) {
     const auto& exempt_ops = InputColocationExemptionRegistry::Global()->Get();
     colocation_exempt_ = exempt_ops.find(op) != exempt_ops.end();
-
     TF_RETURN_IF_ERROR(OpDefForOp(op, &op_def_));
-  } else if (!remote && !ctx_.FindFunctionByName(op)) {
-    return errors::NotFound(
-        "'", op,
-        "' is neither a type of a primitive operation nor a name "
-        "of a function registered in binary running on ",
-        port::Hostname(),
-        ". Make sure the operation or function is "
-        "registered in the binary running in this process.");
+  } else if (!remote) {
+    const FunctionLibraryDefinition* func_lib_def;
+    if (eager_func_params.has_value() &&
+        eager_func_params.value().func_lib_def_override != nullptr) {
+      func_lib_def = eager_func_params.value().func_lib_def_override;
+    } else {
+      func_lib_def = ctx_.FuncLibDef();
+    }
+    if (func_lib_def->Find(op) == nullptr) {
+      return absl::NotFoundError(absl::StrCat(
+          "'", op,
+          "' is neither a type of a primitive operation nor a name "
+          "of a function registered in binary running on ",
+          port::Hostname(),
+          ". Make sure the operation or function is "
+          "registered in the binary running in this process."));
+    }
   }
   attrs_.Reset(op);
   stack_trace_.reset();

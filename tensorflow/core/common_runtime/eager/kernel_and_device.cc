@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -103,9 +104,14 @@ KernelAndDeviceFunc::~KernelAndDeviceFunc() {
   }
 }
 
-Status KernelAndDeviceOp::Init(const bool log_device_placement,
-                               const NodeDef& ndef,
-                               GraphCollector* graph_collector) {
+Status KernelAndDeviceOp::Init(
+    const bool log_device_placement, const NodeDef& ndef,
+    GraphCollector* graph_collecto,
+    const absl::optional<EagerFunctionParams>& eager_func_params) {
+  if (eager_func_params.has_value()) {
+    return absl::InternalError(
+        "KernelAndDeviceOp does not support EagerFunctionParams.");
+  }
   OpKernel* k = nullptr;
   if (flr_ == nullptr) {
     return errors::Internal(
@@ -141,22 +147,31 @@ Status KernelAndDeviceOp::Init(const bool log_device_placement,
   return OkStatus();
 }
 
-Status KernelAndDeviceFunc::InstantiateFunc(const bool log_device_placement,
-                                            const NodeDef& ndef,
-                                            GraphCollector* graph_collector) {
+Status KernelAndDeviceFunc::InstantiateFunc(
+    const bool log_device_placement, const NodeDef& ndef,
+    GraphCollector* graph_collector,
+    const absl::optional<EagerFunctionParams>& eager_func_params) {
   const OpDef* op_def = nullptr;
-  const FunctionDef* function_def;
-  if (flr_ == nullptr) {
-    // If function is being executed without an explicit device request,
-    // lookup the FunctionDef in the CPU's FLR. All FLRs share the same
-    // library.
-    function_def = pflr_->GetFLR(host_cpu_device_->name())
-                       ->GetFunctionLibraryDefinition()
-                       ->Find(ndef.op());
+  const FunctionLibraryDefinition* func_lib_def;
+  FunctionLibraryRuntime::InstantiateOptions options;
+
+  if (eager_func_params.has_value() &&
+      eager_func_params.value().func_lib_def_override != nullptr) {
+    func_lib_def = eager_func_params.value().func_lib_def_override;
+    options.lib_def = func_lib_def;
   } else {
-    function_def = flr_->GetFunctionLibraryDefinition()->Find(ndef.op());
+    if (flr_ == nullptr) {
+      // If function is being executed without an explicit device request,
+      // lookup the FunctionDef in the CPU's FLR. All FLRs share the same
+      // library.
+      func_lib_def = pflr_->GetFLR(host_cpu_device_->name())
+                         ->GetFunctionLibraryDefinition();
+    } else {
+      func_lib_def = flr_->GetFunctionLibraryDefinition();
+    }
   }
 
+  const FunctionDef* function_def = func_lib_def->Find(ndef.op());
   if (function_def != nullptr) {
     op_def = &(function_def->signature());
   } else {
@@ -165,7 +180,6 @@ Status KernelAndDeviceFunc::InstantiateFunc(const bool log_device_placement,
   TF_RETURN_IF_ERROR(
       InOutTypesForNode(ndef, *op_def, &input_dtypes_, &output_dtypes_));
 
-  FunctionLibraryRuntime::InstantiateOptions options;
   options.target = device_ == nullptr ? "" : device_->name();
   options.is_multi_device_function = true;
   for (const Device* device : input_devices_) {
@@ -174,13 +188,10 @@ Status KernelAndDeviceFunc::InstantiateFunc(const bool log_device_placement,
   options.composite_devices = composite_devices_;
   options.input_resource_dtypes_and_shapes = input_resource_dtypes_and_shapes_;
   if (outputs_on_op_device_) {
-    const FunctionLibraryDefinition* lib_def =
-        pflr_->GetFunctionLibraryDefinition();
-    const FunctionDef* fdef = lib_def->Find(ndef.op());
-    if (fdef == nullptr) {
+    if (function_def == nullptr) {
       return errors::InvalidArgument("Failed to find function ", ndef.op());
     }
-    for (int i = 0; i < fdef->signature().output_arg_size(); ++i) {
+    for (int i = 0; i < function_def->signature().output_arg_size(); ++i) {
       options.output_devices.push_back(options.target);
     }
   }
@@ -248,11 +259,12 @@ Status KernelAndDeviceFunc::InstantiateFunc(const bool log_device_placement,
   return pflr_->IsCrossProcess(handle_, &is_cross_process_);
 }
 
-Status KernelAndDeviceFunc::Init(const bool log_device_placement,
-                                 const NodeDef& ndef,
-                                 GraphCollector* graph_collector) {
-  TF_RETURN_IF_ERROR(
-      InstantiateFunc(log_device_placement, ndef, graph_collector));
+Status KernelAndDeviceFunc::Init(
+    const bool log_device_placement, const NodeDef& ndef,
+    GraphCollector* graph_collector,
+    const absl::optional<EagerFunctionParams>& eager_func_params) {
+  TF_RETURN_IF_ERROR(InstantiateFunc(log_device_placement, ndef,
+                                     graph_collector, eager_func_params));
   return pflr_->GetOutputDevices(handle_, &output_devices_);
 }
 

@@ -42,7 +42,8 @@ class RemoteExecuteNode : public AsyncRemoteExecuteNode {
                     std::unique_ptr<EnqueueRequest> request, Device* device,
                     uint64 context_view_id, EagerClient* eager_client,
                     CancellationManager* cancellation_manager,
-                    const NodeDef& ndef, FunctionLibraryDefinition* lib_def,
+                    const NodeDef& ndef,
+                    const FunctionLibraryDefinition* lib_def,
                     const gtl::InlinedVector<TensorHandle*, 4>& inputs,
                     absl::Span<TensorHandle*> retvals)
       : AsyncRemoteExecuteNode(),

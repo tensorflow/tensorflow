@@ -26,6 +26,8 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -1004,6 +1006,42 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
   }
   if (is_first_ref && !add_to_local_only) {
     return MaybeRegisterFunctionRemotely(fdef);
+  }
+  return OkStatus();
+}
+
+Status EagerContext::AddComponentFunction(const FunctionDef& fdef,
+                                          const FunctionDefLibrary& library) {
+  {
+    mutex_lock l(cache_mu_);
+    auto iter = component_function_libraries_.find(fdef.signature().name());
+    if (iter == component_function_libraries_.end()) {
+      // TODO(mrry): For any functions in the main function library, consider
+      //   deduplicating them here.
+      auto component_func_lib_def = std::make_unique<FunctionLibraryDefinition>(
+          OpRegistry::Global(), library);
+      TF_RETURN_IF_ERROR(component_func_lib_def->AddFunctionDef(fdef, {}));
+      component_function_libraries_.insert(
+          {fdef.signature().name(), std::move(component_func_lib_def)});
+    } else {
+      // The function has been registered before. If the function is different,
+      // we error out.
+      const FunctionDef* prev_fdef =
+          iter->second->Find(fdef.signature().name());
+      if (prev_fdef == nullptr) {
+        return absl::InternalError(
+            absl::StrCat("Component function: ", fdef.signature().name(),
+                         " is in the cache but not in the library"));
+      }
+      if (!FunctionDefsEqual(fdef, *prev_fdef)) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Attempting to add a duplicate function with name: ",
+            fdef.signature().name(), " where the previous and current ",
+            "definitions differ. Previous definition: ",
+            prev_fdef->DebugString(),
+            " and current definition: ", fdef.DebugString()));
+      }
+    }
   }
   return OkStatus();
 }

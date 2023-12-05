@@ -309,6 +309,46 @@ tensorflow::FunctionDef MatMulFunction() {
   return def;
 }
 
+tensorflow::FunctionDef MatMulTransposeFunction() {
+  tensorflow::FunctionDef def;
+  CHECK(tensorflow::protobuf::TextFormat::ParseFromString(
+      "    signature {"
+      "      name: 'MatMulFunction'"
+      "      input_arg {"
+      "        name: 'a'"
+      "        type: DT_FLOAT"
+      "      }"
+      "      output_arg {"
+      "        name: 'm'"
+      "        type: DT_FLOAT"
+      "      }"
+      "    }"
+      "    node_def {"
+      "      name: 'matmul'"
+      "      op: 'MatMul'"
+      "      input: 'a'"
+      "      input: 'a'"
+      "      attr {"
+      "        key: 'T'"
+      "        value {"
+      "          type: DT_FLOAT"
+      "        }"
+      "      }"
+      "      attr {"
+      "        key: 'transpose_a'"
+      "        value {"
+      "          b: true"
+      "        }"
+      "      }"
+      "    }"
+      "    ret {"
+      "      key: 'm'"
+      "      value: 'matmul:product'"
+      "    }",
+      &def));
+  return def;
+}
+
 tensorflow::FunctionDef MatMulNestedFunction() {
   tensorflow::FunctionDef def;
   CHECK(tensorflow::protobuf::TextFormat::ParseFromString(
@@ -710,13 +750,176 @@ TEST_F(EagerServiceImplFunctionTest, FunctionCancellationTest) {
 TEST_F(EagerServiceImplFunctionTest, ComponentFunctionTest) {
   RegisterFunctionOp register_op;
   *register_op.mutable_function_def() = MatMulFunction();
+  register_op.set_is_component_function(true);
   TestComponentFunction(register_op, "MatMulFunction", false);
 }
 
 TEST_F(EagerServiceImplFunctionTest, ComponentFunctionCancellationTest) {
   RegisterFunctionOp register_op;
   *register_op.mutable_function_def() = SingleRecvNodeFunction();
+  register_op.set_is_component_function(true);
   TestComponentFunction(register_op, "SingleRecvNodeFunction", true);
+}
+
+TEST_F(EagerServiceImplFunctionTest, ComponentNestedFunctionTest) {
+  RegisterFunctionOp register_op;
+  *register_op.mutable_function_def() = MatMulNestedFunction();
+  *register_op.mutable_library()->add_function() = MatMulFunction();
+  register_op.set_is_component_function(true);
+  TestComponentFunction(register_op, "MatMulNestedFunction", false);
+}
+
+TEST_F(EagerServiceImplFunctionTest, ComponentNestedFunctionWithNameClashTest) {
+  TestEagerServiceImpl eager_service_impl(&worker_env_);
+  uint64 context_id = random::New64();
+
+  // Create context.
+  CreateContextRequest request;
+  request.mutable_server_def()->set_job_name("localhost");
+  request.mutable_server_def()->set_task_index(0);
+  request.set_context_id(context_id);
+  CreateContextResponse response;
+  TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));
+
+  // Register first function.
+  {
+    EnqueueRequest enqueue_request;
+    enqueue_request.set_context_id(context_id);
+    RegisterFunctionOp* register_op =
+        enqueue_request.add_queue()->mutable_register_function();
+    *register_op->mutable_function_def() = MatMulNestedFunction();
+    *register_op->mutable_library()->add_function() = MatMulFunction();
+    register_op->set_is_component_function(true);
+    EnqueueResponse enqueue_response;
+    TF_ASSERT_OK(eager_service_impl.Enqueue(nullptr, &enqueue_request,
+                                            &enqueue_response));
+  }
+
+  // Register second function.
+  // In the second registration, the library contains a function named
+  // "MatMulFunction" but a different body.
+  {
+    EnqueueRequest enqueue_request;
+    enqueue_request.set_context_id(context_id);
+    RegisterFunctionOp* register_op =
+        enqueue_request.add_queue()->mutable_register_function();
+
+    *register_op->mutable_function_def() = MatMulNestedFunction();
+    register_op->mutable_function_def()->mutable_signature()->set_name(
+        "MatMulNestedTransposeFunction");
+    *register_op->mutable_library()->add_function() = MatMulTransposeFunction();
+    register_op->set_is_component_function(true);
+    EnqueueResponse enqueue_response;
+    TF_ASSERT_OK(eager_service_impl.Enqueue(nullptr, &enqueue_request,
+                                            &enqueue_response));
+  }
+
+  // First run an op to generate input for the functions.
+  EnqueueRequest remote_enqueue_request;
+  remote_enqueue_request.set_context_id(context_id);
+  EnqueueResponse remote_enqueue_response;
+
+  std::unordered_map<string, AttrValue> const_attrs;
+  AttrValue val;
+  val.set_type(tensorflow::DataType::DT_FLOAT);
+  const_attrs.insert({"dtype", val});
+  val.Clear();
+  SetTensorProto(val.mutable_tensor());
+  const_attrs.insert({"value", val});
+  AddOperationToEnqueueRequest(1, "Const", {}, const_attrs,
+                               "/job:localhost/replica:0/task:0/device:CPU:0",
+                               &remote_enqueue_request);
+  TF_ASSERT_OK(eager_service_impl.Enqueue(nullptr, &remote_enqueue_request,
+                                          &remote_enqueue_response));
+
+  {
+    // Run first function with input from the previous op.
+    RunComponentFunctionRequest run_comp_func_request;
+    run_comp_func_request.set_context_id(context_id);
+    RunComponentFunctionResponse run_comp_func_response;
+    const int output_num = 5;
+    AddOperationToRunComponentFunctionRequest(
+        2, "MatMulNestedFunction", {std::make_pair(1, 0)},
+        std::unordered_map<string, AttrValue>(),
+        "/job:localhost/replica:0/task:0/device:CPU:0", output_num,
+        &run_comp_func_request);
+
+    CallOptions call_opts;
+    Notification n;
+    Status status;
+    eager_service_impl.RunComponentFunction(&call_opts, &run_comp_func_request,
+                                            &run_comp_func_response,
+                                            [&status, &n](const Status& s) {
+                                              status.Update(s);
+                                              n.Notify();
+                                            });
+    n.WaitForNotification();
+
+    TF_ASSERT_OK(status);
+    // Retrieve the output.
+    const tensorflow::Tensor* t = nullptr;
+    tensorflow::TensorHandle* tensor_handle;
+    TF_ASSERT_OK(eager_service_impl.GetTensorHandle(
+        context_id, RemoteTensorHandleInternal(2, output_num), &tensor_handle));
+    TF_ASSERT_OK(tensor_handle->Tensor(&t));
+
+    auto actual = t->flat<float>();
+    EXPECT_EQ(4, actual.size());
+
+    EXPECT_EQ(7, actual(0));
+    EXPECT_EQ(10, actual(1));
+    EXPECT_EQ(15, actual(2));
+    EXPECT_EQ(22, actual(3));
+  }
+
+  {
+    // Run second function with input from the constant op. The result should
+    // be different, because we are using the transposed implementation of
+    // MatMulFunction in the second function's library.
+    RunComponentFunctionRequest run_comp_func_request;
+    run_comp_func_request.set_context_id(context_id);
+    RunComponentFunctionResponse run_comp_func_response;
+    const int output_num = 5;
+    AddOperationToRunComponentFunctionRequest(
+        3, "MatMulNestedTransposeFunction", {std::make_pair(1, 0)},
+        std::unordered_map<string, AttrValue>(),
+        "/job:localhost/replica:0/task:0/device:CPU:0", output_num,
+        &run_comp_func_request);
+
+    CallOptions call_opts;
+    Notification n;
+    Status status;
+    eager_service_impl.RunComponentFunction(&call_opts, &run_comp_func_request,
+                                            &run_comp_func_response,
+                                            [&status, &n](const Status& s) {
+                                              status.Update(s);
+                                              n.Notify();
+                                            });
+    n.WaitForNotification();
+
+    TF_ASSERT_OK(status);
+    // Retrieve the output.
+    const tensorflow::Tensor* t = nullptr;
+    tensorflow::TensorHandle* tensor_handle;
+    TF_ASSERT_OK(eager_service_impl.GetTensorHandle(
+        context_id, RemoteTensorHandleInternal(3, output_num), &tensor_handle));
+    TF_ASSERT_OK(tensor_handle->Tensor(&t));
+
+    auto actual = t->flat<float>();
+    EXPECT_EQ(4, actual.size());
+
+    EXPECT_EQ(10, actual(0));
+    EXPECT_EQ(14, actual(1));
+    EXPECT_EQ(14, actual(2));
+    EXPECT_EQ(20, actual(3));
+  }
+
+  CloseContextRequest close_context_request;
+  close_context_request.set_context_id(context_id);
+  close_context_request.set_context_view_id(0);
+  CloseContextResponse close_context_response;
+  TF_ASSERT_OK(eager_service_impl.CloseContext(&close_context_request,
+                                               &close_context_response));
 }
 
 class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
@@ -987,7 +1190,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
 
   // Instantiate MatMulFunction on remote_device.
   const NodeDef node_def = MatMulFunctionNodeDef();
-  TF_ASSERT_OK(kernel->InstantiateFunc({}, node_def, nullptr));
+  TF_ASSERT_OK(kernel->InstantiateFunc({}, node_def, nullptr, std::nullopt));
 
   // Run MatMulFunction on remote_device.
   gtl::InlinedVector<TensorValue, 4> input_tensors = {TensorValue()};
@@ -1042,7 +1245,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
 
   // Instantiate MatMulFunction on remote_device.
   const NodeDef node_def = MatMulFunctionNodeDef();
-  TF_ASSERT_OK(kernel->InstantiateFunc({}, node_def, nullptr));
+  TF_ASSERT_OK(kernel->InstantiateFunc({}, node_def, nullptr, std::nullopt));
 
   // Run MatMulFunction on remote_device.
   gtl::InlinedVector<TensorValue, 4> input_tensors = {TensorValue()};
