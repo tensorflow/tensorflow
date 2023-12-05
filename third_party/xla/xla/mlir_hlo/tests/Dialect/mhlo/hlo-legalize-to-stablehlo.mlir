@@ -559,6 +559,19 @@ func.func @op_count_leading_zeros(%arg0: tensor<i32>) -> tensor<i32> {
   func.return %0 : tensor<i32>
 }
 
+// CHECK-LABEL: "op_collective_broadcast"
+func.func @op_collective_broadcast(%arg0: tensor<1x2xi64>) -> tensor<1x2xi64> {
+  //               CHECK: "stablehlo.collective_broadcast"(%arg0) {
+  //          CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 0, type = 0>,
+  // CHECK-SAME{LITERAL}:   replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+  //          CHECK-SAME: } : (tensor<1x2xi64>) -> tensor<1x2xi64>
+  %0 = "mhlo.collective_broadcast"(%arg0) {
+    replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>,
+    channel_handle = #mhlo.channel_handle<handle = 0, type = 0>
+  } : (tensor<1x2xi64>) -> tensor<1x2xi64>
+  func.return %0 : tensor<1x2xi64>
+}
+
 // CHECK-LABEL: "op_collective_permute"
 func.func @op_collective_permute(%arg0: tensor<16x8xf32>) -> tensor<16x8xf32> {
   //               CHECK: "stablehlo.collective_permute"(%arg0) {
