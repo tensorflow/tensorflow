@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/statusor.h"
@@ -30,11 +31,11 @@ namespace xla {
 namespace gpu {
 
 // Filters GEMMs which can be handled using Triton.
-FusionDecision CanTritonHandleGEMM(const HloInstruction&,
+FusionDecision CanTritonHandleGEMM(const HloDotInstruction&,
                                    se::GpuComputeCapability gpu_version);
 
 // Filters GEMMs which are better to handle using Triton.
-bool ShouldTritonHandleGEMM(HloInstruction&,
+bool ShouldTritonHandleGEMM(HloDotInstruction&,
                             se::GpuComputeCapability gpu_version);
 
 // Rewrite compatible dot() calls into custom calls with fused computations

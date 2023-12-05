@@ -399,17 +399,7 @@ DimOrderMap GetPropagatedDimOrdersForElementwise(
     return map;
   }
 
-  DimOrderMap map;
-  map.insert({&hlo, src_dim_order});
-  // TODO(tdanyluk): For now, the "input to output" direction of this function
-  // also returns the dim orders for the operands, not just the output. This is
-  // needed to propagate the dim order of one input to the other(s) when fusing
-  // elementwise ops to the output. Perhaps we can separate the "input to
-  // output" and "output to input" directions of that in a later CL.
-  for (const HloInstruction* operand : hlo.operands()) {
-    map.insert({operand, src_dim_order});
-  }
-  return map;
+  return {{&hlo, src_dim_order}};
 }
 
 const HloInstruction& GetSourceHlo(const HloInstruction& hlo,
