@@ -9115,15 +9115,15 @@ Yamazaki, Yuan (Terry) Tang, Yuan, Man, zhaoyongke, ÁRon Ricardo Perez-Lopez,
     going to be the preferred endpoints going forward and may replace some of
     the existing endpoints in the future. See below for the complete list. New
     symbols have been added to the following modules:
-    [`tf.debugging`](https://www.tensorflow.org/versions/master/api_docs/python/tf/debugging),
-    [`tf.dtypes`](https://www.tensorflow.org/versions/master/api_docs/python/tf/dtypes),
-    [`tf.image`](https://www.tensorflow.org/versions/master/api_docs/python/tf/image),
-    [`tf.io`](https://www.tensorflow.org/versions/master/api_docs/python/tf/io),
-    [`tf.linalg`](https://www.tensorflow.org/versions/master/api_docs/python/tf/linalg),
+    [`tf.debugging`](https://www.tensorflow.org/api_docs/python/tf/debugging),
+    [`tf.dtypes`](https://www.tensorflow.org/api_docs/python/tf/dtypes),
+    [`tf.image`](https://www.tensorflow.org/api_docs/python/tf/image),
+    [`tf.io`](https://www.tensorflow.org/api_docs/python/tf/io),
+    [`tf.linalg`](https://www.tensorflow.org/api_docs/python/tf/linalg),
     [`tf.manip`](https://www.tensorflow.org/versions/master/api_docs/python/tf/manip),
-    [`tf.math`](https://www.tensorflow.org/versions/master/api_docs/python/tf/math),
-    [`tf.quantization`](https://www.tensorflow.org/versions/master/api_docs/python/tf/quantization),
-    [`tf.strings`](https://www.tensorflow.org/versions/master/api_docs/python/tf/strings)
+    [`tf.math`](https://www.tensorflow.org/api_docs/python/tf/math),
+    [`tf.quantization`](https://www.tensorflow.org/api_docs/python/tf/quantization),
+    [`tf.strings`](https://www.tensorflow.org/api_docs/python/tf/strings)
 
 ## Breaking Changes
 
