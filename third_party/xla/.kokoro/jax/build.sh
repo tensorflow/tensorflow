@@ -63,7 +63,7 @@ build_and_test_on_rbe_cpu() {
       --override_repository=xla="${KOKORO_ARTIFACTS_DIR}"/github/xla \
       --config=avx_posix \
       --config=mkl_open_source_only \
-      --config="rbe_cpu_linux_py312" \
+      --config="rbe_cpu_linux_py3.12" \
       --config=tensorflow_testing_rbe_linux \
       --test_env=JAX_NUM_GENERATED_CASES=25 \
       --test_output=errors \
