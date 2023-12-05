@@ -285,12 +285,18 @@ TF_CALL_uint4(REGISTER_READ_VARIABLE_XLA_SPLIT_ND);
 #undef REGISTER_READ_VARIABLE_XLA_SPLIT_ND
 
 // Shared base class to save code space
+template <typename Device, typename T>
 class XlaConcatNDShared : public OpKernel {
  public:
   explicit TF_ATTRIBUTE_NOINLINE XlaConcatNDShared(OpKernelConstruction* ctx)
       : OpKernel(ctx), num_slices_(1), has_paddings_(false) {
     GetAndValidateAttributes(/*split=*/false, ctx, num_concats_, num_slices_,
                              paddings_, has_paddings_);
+
+    auto xla_nd_concatenator = XlaNDConcatenator<Device, T>::Create(
+        num_concats_, num_slices_, paddings_, has_paddings_);
+    OP_REQUIRES_OK(ctx, xla_nd_concatenator.status());
+    concatenator_ = *std::move(xla_nd_concatenator);
   }
 
  protected:
@@ -328,132 +334,31 @@ class XlaConcatNDShared : public OpKernel {
 
     return absl::OkStatus();
   }
-  void ApplyAssignOrCopyShared(
-      OpKernelContext* ctx,
-      const std::function<Status(const Tensor&)>& assign_or_copy_value_fn,
-      const Tensor& input) {
-    OP_REQUIRES_OK(ctx, assign_or_copy_value_fn(input));
-  }
-
-  template <int Rank>
-  class MaybeUnpadAndAssignState {
-   public:
-    int num_complete_pad_dims_;
-    int num_partial_pad_dims_;
-    TensorShape non_padded_slice_shape_;
-    Eigen::DSizes<Eigen::DenseIndex, Rank> slice_shape_dsizes_;
-    Eigen::array<Eigen::IndexPair<int64_t>, Rank> slice_paddings_;
-    Eigen::DSizes<Eigen::DenseIndex, Rank> slice_indices_;
-    Eigen::DSizes<Eigen::DenseIndex, Rank> output_slice_shape_dsizes_;
-    Eigen::DSizes<Eigen::DenseIndex, Rank> non_padded_slice_shape_dsizes_;
-
-    TF_ATTRIBUTE_NOINLINE MaybeUnpadAndAssignState(
-        absl::Span<const int32_t> num_concats, const Tensor& input0,
-        Tensor* output, int slice_index) {
-      slice_shape_dsizes_ = input0.shape().AsEigenDSizes<Rank>();
-      slice_indices_ =
-          GetSliceIndices<Rank>(num_concats, slice_shape_dsizes_, slice_index);
-      num_complete_pad_dims_ = 0;
-      num_partial_pad_dims_ = 0;
-      // Calculate paddings necessary to strip from slice.
-      for (int dim = 0; dim < Rank; ++dim) {
-        const int64_t dim_size = output->shape().dim_size(dim);
-        int64_t non_padded_dim = 0;
-        if (slice_indices_[dim] >= dim_size) {
-          // Complete padding.
-          slice_indices_[dim] = dim_size;
-          non_padded_dim = 0;
-          num_complete_pad_dims_++;
-        } else if (slice_indices_[dim] + slice_shape_dsizes_[dim] > dim_size) {
-          // Partial padding.
-          non_padded_dim = dim_size - slice_indices_[dim];
-          num_partial_pad_dims_++;
-        } else {
-          non_padded_dim = slice_shape_dsizes_[dim];
-        }
-        non_padded_slice_shape_.AddDim(non_padded_dim);
-      }
-      non_padded_slice_shape_dsizes_ =
-          non_padded_slice_shape_.AsEigenDSizes<Rank>();
-    }
-  };
 
   std::vector<int32_t> num_concats_;
   int num_slices_;
   std::vector<int32_t> paddings_;
   bool has_paddings_;
+  std::optional<XlaNDConcatenator<Device, T>> concatenator_;
 };
 
 template <typename Device, typename T>
-class XlaConcatNDBaseOp : public XlaConcatNDShared {
+class XlaConcatNDBaseOp : public XlaConcatNDShared<Device, T> {
  public:
   explicit TF_ATTRIBUTE_NOINLINE XlaConcatNDBaseOp(OpKernelConstruction* ctx)
-      : XlaConcatNDShared(ctx) {}
+      : XlaConcatNDShared<Device, T>(ctx) {}
 
  protected:
   void ComputeInternal(
       bool resource, OpKernelContext* ctx, const OpInputList& inputs,
       const std::function<Status(const Tensor&)>& assign_or_copy_value_fn,
       const std::function<StatusOr<Tensor*>()>& get_output_fn) {
-    const int rank = inputs[0].shape().dims();
-
-    OP_REQUIRES(ctx, rank > 0 && rank <= 8,
-                absl::InvalidArgumentError(absl::StrCat(
-                    "'inputs' tensors must have rank in range (0, 8], but got ",
-                    rank, ".")));
-
-    if (num_slices_ == 1 && !has_paddings_) {
-      // Simple case
-      ApplyAssignOrCopyShared(ctx, assign_or_copy_value_fn, inputs[0]);
-      return;
-    }
-
     const Device& device = ctx->eigen_device<Device>();
-    auto status_or_output = get_output_fn();
-    OP_REQUIRES_OK(ctx, status_or_output.status());
-    Tensor* output = std::move(status_or_output).value();
-
-    if (rank == 1) {
-      MaybeUnpadAndAssign<1>(ctx, device, inputs, output);
-    } else if (rank == 2) {
-      MaybeUnpadAndAssign<2>(ctx, device, inputs, output);
-    } else if (rank == 3) {
-      MaybeUnpadAndAssign<3>(ctx, device, inputs, output);
-    } else if (rank == 4) {
-      MaybeUnpadAndAssign<4>(ctx, device, inputs, output);
-    } else if (rank == 5) {
-      MaybeUnpadAndAssign<5>(ctx, device, inputs, output);
-    } else if (rank == 6) {
-      MaybeUnpadAndAssign<6>(ctx, device, inputs, output);
-    } else if (rank == 7) {
-      MaybeUnpadAndAssign<7>(ctx, device, inputs, output);
-    } else if (rank == 8) {
-      MaybeUnpadAndAssign<8>(ctx, device, inputs, output);
-    }
-  }
-
- private:
-  template <int Rank>
-  void TF_ATTRIBUTE_NOINLINE MaybeUnpadAndAssign(OpKernelContext* ctx,
-                                                 const Device& device,
-                                                 const OpInputList& inputs,
-                                                 Tensor* output) {
-    for (int i = 0; i < num_slices_; ++i) {
-      MaybeUnpadAndAssignState<Rank> r(num_concats_, inputs[0], output, i);
-      if (r.num_complete_pad_dims_ == Rank) {
-        continue;
-      } else if (r.num_complete_pad_dims_ > 0 || r.num_partial_pad_dims_ > 0) {
-        output->tensor<T, Rank>()
-            .slice(r.slice_indices_, r.non_padded_slice_shape_dsizes_)
-            .device(device) = inputs[i].tensor<T, Rank>().slice(
-            Eigen::DSizes<Eigen::DenseIndex, Rank>(),
-            r.non_padded_slice_shape_dsizes_);
-      } else {
-        output->tensor<T, Rank>()
-            .slice(r.slice_indices_, r.slice_shape_dsizes_)
-            .device(device) = inputs[i].tensor<T, Rank>();
-      }
-    }
+    std::vector<Tensor> input_tensors(inputs.begin(), inputs.end());
+    auto status = this->concatenator_->ComputeInternal(
+        absl::MakeSpan(input_tensors), assign_or_copy_value_fn, get_output_fn,
+        device);
+    OP_REQUIRES_OK(ctx, status);
   }
 };
 

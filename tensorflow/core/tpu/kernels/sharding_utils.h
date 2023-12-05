@@ -26,11 +26,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/status.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/macros.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace sharding_internal {
@@ -298,6 +300,152 @@ class XlaNDSplitter {
       } else {
         AssignFromInput<Rank>(output_slice, device, input, r.slice_indices_,
                               r.output_slice_shape_dsizes_);
+      }
+    }
+  }
+};
+
+// Shared base class to save code space
+template <typename Device, typename T>
+class XlaNDConcatenator {
+ public:
+  static absl::StatusOr<XlaNDConcatenator<Device, T>> Create(
+      const std::vector<int32_t>& num_concats, int num_slices,
+      const std::vector<int32_t>& paddings, bool has_paddings) {
+    if (num_concats.size() != paddings.size()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("num_concats size ", num_concats.size(),
+                       " mismatch with paddings size ", paddings.size(), "."));
+    }
+
+    int concats_cnt = 1;
+    for (auto concat : num_concats) {
+      concats_cnt *= concat;
+    }
+
+    if (num_slices != concats_cnt) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Expect num_slices ", concats_cnt, " but got ", num_slices));
+    }
+
+    return XlaNDConcatenator<Device, T>(num_concats, num_slices, paddings,
+                                        has_paddings);
+  }
+  absl::Status ComputeInternal(
+      absl::Span<Tensor> inputs,
+      const std::function<Status(const Tensor&)>& assign_or_copy_value_fn,
+      const std::function<StatusOr<Tensor*>()>& get_output_fn,
+      const Device& device) {
+    const int rank = inputs[0].shape().dims();
+
+    if (rank < 1 || rank > 8) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "'inputs' tensors must have rank in range (0, 8], but got ", rank,
+          "."));
+    }
+
+    if (num_slices_ == 1 && !has_paddings_) {
+      // Simple case
+      return assign_or_copy_value_fn(inputs[0]);
+    }
+
+    TF_ASSIGN_OR_RETURN(Tensor * output, get_output_fn());
+
+    if (rank == 1) {
+      MaybeUnpadAndAssign<1>(device, inputs, output);
+    } else if (rank == 2) {
+      MaybeUnpadAndAssign<2>(device, inputs, output);
+    } else if (rank == 3) {
+      MaybeUnpadAndAssign<3>(device, inputs, output);
+    } else if (rank == 4) {
+      MaybeUnpadAndAssign<4>(device, inputs, output);
+    } else if (rank == 5) {
+      MaybeUnpadAndAssign<5>(device, inputs, output);
+    } else if (rank == 6) {
+      MaybeUnpadAndAssign<6>(device, inputs, output);
+    } else if (rank == 7) {
+      MaybeUnpadAndAssign<7>(device, inputs, output);
+    } else if (rank == 8) {
+      MaybeUnpadAndAssign<8>(device, inputs, output);
+    }
+    return absl::OkStatus();
+  }
+
+ private:
+  template <int Rank>
+  class MaybeUnpadAndAssignState {
+   public:
+    int num_complete_pad_dims_;
+    int num_partial_pad_dims_;
+    TensorShape non_padded_slice_shape_;
+    Eigen::DSizes<Eigen::DenseIndex, Rank> slice_shape_dsizes_;
+    Eigen::array<Eigen::IndexPair<int64_t>, Rank> slice_paddings_;
+    Eigen::DSizes<Eigen::DenseIndex, Rank> slice_indices_;
+    Eigen::DSizes<Eigen::DenseIndex, Rank> output_slice_shape_dsizes_;
+    Eigen::DSizes<Eigen::DenseIndex, Rank> non_padded_slice_shape_dsizes_;
+
+    TF_ATTRIBUTE_NOINLINE MaybeUnpadAndAssignState(
+        absl::Span<const int32_t> num_concats, const Tensor& input0,
+        Tensor* output, int slice_index) {
+      slice_shape_dsizes_ = input0.shape().AsEigenDSizes<Rank>();
+      slice_indices_ =
+          GetSliceIndices<Rank>(num_concats, slice_shape_dsizes_, slice_index);
+      num_complete_pad_dims_ = 0;
+      num_partial_pad_dims_ = 0;
+      // Calculate paddings necessary to strip from slice.
+      for (int dim = 0; dim < Rank; ++dim) {
+        const int64_t dim_size = output->shape().dim_size(dim);
+        int64_t non_padded_dim = 0;
+        if (slice_indices_[dim] >= dim_size) {
+          // Complete padding.
+          slice_indices_[dim] = dim_size;
+          non_padded_dim = 0;
+          num_complete_pad_dims_++;
+        } else if (slice_indices_[dim] + slice_shape_dsizes_[dim] > dim_size) {
+          // Partial padding.
+          non_padded_dim = dim_size - slice_indices_[dim];
+          num_partial_pad_dims_++;
+        } else {
+          non_padded_dim = slice_shape_dsizes_[dim];
+        }
+        non_padded_slice_shape_.AddDim(non_padded_dim);
+      }
+      non_padded_slice_shape_dsizes_ =
+          non_padded_slice_shape_.AsEigenDSizes<Rank>();
+    }
+  };
+
+  std::vector<int32_t> num_concats_;
+  int num_slices_;
+  std::vector<int32_t> paddings_;
+  bool has_paddings_;
+
+  explicit TF_ATTRIBUTE_NOINLINE XlaNDConcatenator(
+      const std::vector<int32_t>& num_concats, int num_slices,
+      const std::vector<int32_t>& paddings, bool has_paddings)
+      : num_concats_(num_concats),
+        num_slices_(num_slices),
+        paddings_(paddings),
+        has_paddings_(has_paddings) {}
+
+  template <int Rank>
+  void TF_ATTRIBUTE_NOINLINE MaybeUnpadAndAssign(const Device& device,
+                                                 absl::Span<Tensor> inputs,
+                                                 Tensor* output) {
+    for (int i = 0; i < num_slices_; ++i) {
+      MaybeUnpadAndAssignState<Rank> r(num_concats_, inputs[0], output, i);
+      if (r.num_complete_pad_dims_ == Rank) {
+        continue;
+      } else if (r.num_complete_pad_dims_ > 0 || r.num_partial_pad_dims_ > 0) {
+        output->tensor<T, Rank>()
+            .slice(r.slice_indices_, r.non_padded_slice_shape_dsizes_)
+            .device(device) = inputs[i].tensor<T, Rank>().slice(
+            Eigen::DSizes<Eigen::DenseIndex, Rank>(),
+            r.non_padded_slice_shape_dsizes_);
+      } else {
+        output->tensor<T, Rank>()
+            .slice(r.slice_indices_, r.slice_shape_dsizes_)
+            .device(device) = inputs[i].tensor<T, Rank>();
       }
     }
   }
