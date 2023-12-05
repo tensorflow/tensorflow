@@ -22,6 +22,7 @@ limitations under the License.
 namespace tensorflow {
 namespace port {
 using tsl::port::Hostname;
+using tsl::port::IOStatistics;
 using tsl::port::JobName;
 using tsl::port::JobUid;
 }  // namespace port
