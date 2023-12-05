@@ -2395,8 +2395,9 @@ tsl::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerBlockOptin(
 
   int max_blocks;
   RETURN_IF_CUDA_RES_ERROR(
-      cuOccupancyMaxActiveBlocksPerMultiprocessor(
-          &max_blocks, kernel, threads_per_block, dynamic_shared_memory_bytes),
+      cuOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
+          &max_blocks, kernel, threads_per_block, dynamic_shared_memory_bytes,
+          CU_OCCUPANCY_DISABLE_CACHING_OVERRIDE),
       absl::StrFormat("Failed to calculate occupancy of kernel %p", kernel));
   return max_blocks;
 }

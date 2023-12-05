@@ -17,6 +17,6 @@ limitations under the License.
 
 namespace xla::gpu::kernel::gemm_universal {
 
-template void* GetKernelSymbol<Default::F32xF32toF32>();
+template void* GetKernelSymbol<Sm80::BF16xBF16toBF16>();
 
 }  // namespace xla::gpu::kernel::gemm_universal

@@ -17,6 +17,6 @@ limitations under the License.
 
 namespace xla::gpu::kernel::gemm_universal {
 
-template void* GetKernelSymbol<CutlassGemmKernels::BF16xBF16toBF16>();
+template void* GetKernelSymbol<Default::BF16xBF16toBF16>();
 
 }  // namespace xla::gpu::kernel::gemm_universal

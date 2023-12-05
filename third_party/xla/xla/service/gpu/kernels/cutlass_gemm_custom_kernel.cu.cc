@@ -16,13 +16,16 @@ limitations under the License.
 #include "xla/service/gpu/kernels/cutlass_gemm_custom_kernel.h"
 
 #include <cstdint>
+#include <string>
 #include <utility>
 
 #include "absl/status/status.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
+#include "xla/service/gpu/kernels/cutlass_gemm.h"
 #include "xla/service/gpu/kernels/cutlass_gemm_kernel.cu.h"
 #include "xla/service/gpu/kernels/cutlass_gemm_kernels.cu.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/xla_data.pb.h"
 
@@ -52,12 +55,19 @@ StatusOr<CustomKernel> GetCutlassGemmKernel(
     std::string name, PrimitiveType dtype, int32_t m, int32_t n, int32_t k,
     const ArgsIndices& indices, const DynamicSliceIndices& slices,
     const se::DeviceDescription& device) {
+  auto& cuda_cc =
+      std::get<se::CudaComputeCapability>(device.gpu_compute_capability());
+
   switch (dtype) {
     case PrimitiveType::F32:
-      return LoadCutlassGemmUniversal<CutlassGemmKernels::F32xF32toF32>(
+      return LoadCutlassGemmUniversal<Default::F32xF32toF32>(
           std::move(name), m, n, k, indices, slices, device);
     case PrimitiveType::BF16:
-      return LoadCutlassGemmUniversal<CutlassGemmKernels::BF16xBF16toBF16>(
+      if (cuda_cc.IsAtLeastAmpere()) {
+        return LoadCutlassGemmUniversal<Sm80::BF16xBF16toBF16>(
+            std::move(name), m, n, k, indices, slices, device);
+      }
+      return LoadCutlassGemmUniversal<Default::BF16xBF16toBF16>(
           std::move(name), m, n, k, indices, slices, device);
     default:
       return absl::InvalidArgumentError("Unsupported CUTLASS gemm data type");

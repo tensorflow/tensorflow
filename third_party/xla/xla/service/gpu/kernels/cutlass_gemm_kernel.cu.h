@@ -19,12 +19,10 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/gpus/cutlass/include/cutlass/cutlass.h"
-#include "third_party/gpus/cutlass/include/cutlass/gemm/device/gemm_universal.h"
 #include "third_party/gpus/cutlass/include/cutlass/gemm/gemm_enumerated_types.h"
 #include "third_party/gpus/cutlass/include/cutlass/gemm_coord.h"
 #include "third_party/gpus/cutlass/include/cutlass/layout/matrix.h"
@@ -196,6 +194,18 @@ KernelArgsPacking ArgsPacking(cutlass::gemm::GemmCoord problem_size,
     static int32_t sm_occupancy =
         kernel.GetMaxOccupiedBlocksPerCore(ThreadDim<Gemm>(), shared_mem_bytes)
             .value_or(1);
+
+    // TODO(ezhulenev): In theory when sm_occupancy is 0 we should not be able
+    // to run kernels, and we could return error here, however in practice it's
+    // not true, and kernels with 0 occupancy run just fine! Figure out where is
+    // the problem, and how we can reliably use sm occupancy numbers.
+    if (sm_occupancy == 0) {
+      se::ThreadDim threads = ThreadDim<Gemm>();
+      LOG_FIRST_N(WARNING, 1)
+          << "CUTLASS gemm kernel reported 0 occupancy: threads_per_block="
+          << (threads.x * threads.y * threads.z)
+          << ", dynamic_shared_memory_bytes=" << shared_mem_bytes;
+    }
 
     // Convert CUTLASS operation arguments to a device kernel parameters.
     Params params(arguments, device_sms, sm_occupancy);
