@@ -257,6 +257,16 @@ StatusOr<DeviceAssignment> PjRtStreamExecutorClient::GetDefaultDeviceAssignment(
                                                                 num_partitions);
 }
 
+StatusOr<Layout> PjRtStreamExecutorClient::GetDefaultLayout(
+    PrimitiveType element_type, absl::Span<const int64_t> dims) {
+  Shape shape = ShapeUtil::MakeShape(element_type, dims);
+  TF_ASSIGN_OR_RETURN(
+      shape,
+      client()->backend().transfer_manager()->ChooseCompactLayoutForShape(
+          shape));
+  return shape.layout();
+}
+
 StatusOr<std::unique_ptr<HloCostAnalysis>>
 PjRtStreamExecutorClient::GetHloCostAnalysis() const {
   return std::make_unique<HloCostAnalysis>(

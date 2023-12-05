@@ -235,6 +235,10 @@ class TfPjRtClient : public PjRtClient {
       int num_replicas, int num_partitions) const override {
     return wrapped_->GetDefaultDeviceAssignment(num_replicas, num_partitions);
   }
+  StatusOr<Layout> GetDefaultLayout(PrimitiveType element_type,
+                                    absl::Span<const int64_t> dims) override {
+    return wrapped_->GetDefaultLayout(element_type, dims);
+  }
   StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const override {
     return wrapped_->GetHloCostAnalysis();

@@ -276,6 +276,12 @@ class PjRtCApiClient : public PjRtClient {
     return Unimplemented("PJRT C API does not support GetHloCostAnalysis");
   }
 
+  StatusOr<Layout> GetDefaultLayout(PrimitiveType element_type,
+                                    absl::Span<const int64_t> dims) override {
+    // TODO(skyewm): implement
+    return Unimplemented("PJRT C API does not support GetDefaultLayout");
+  }
+
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
 

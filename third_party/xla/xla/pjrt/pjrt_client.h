@@ -549,6 +549,15 @@ class PjRtClient {
     return Unimplemented("Multi slice device assignment is not supported.");
   }
 
+  // Returns the default device layout for a buffer with `element_type` and
+  // `dims`. The default layout is a platform-specific layout used when no other
+  // layout is specified, e.g. for host-to-device transfers. When compiling, the
+  // default layout is used for program arguments and outputs unless
+  // user-specified or compiler-chosen layouts are requested via the
+  // "mhlo.layout_mode" attribute.
+  virtual StatusOr<Layout> GetDefaultLayout(PrimitiveType element_type,
+                                            absl::Span<const int64_t> dims) = 0;
+
   // Returns a backend-specific HLO cost analysis visitor.
   virtual StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const = 0;
