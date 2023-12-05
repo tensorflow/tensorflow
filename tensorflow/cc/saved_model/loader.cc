@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/loader.h"
 
+#include <memory>
 #include <string>
 #include <unordered_set>
 
@@ -267,7 +268,7 @@ Status RunRestore(const RunOptions& run_options, const string& export_dir,
 
 }  // namespace
 
-SavedModelBundleInterface::~SavedModelBundleInterface() {}
+SavedModelBundleInterface::~SavedModelBundleInterface() = default;
 
 Status LoadMetagraphIntoSession(const SessionOptions& session_options,
                                 const MetaGraphDef& meta_graph,
@@ -491,7 +492,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
   TF_RETURN_IF_ERROR(LoadSavedModel(rewritten_options, run_options, export_dir,
                                     tags, &legacy_bundle));
   *bundle = SavedModelBundleLite(
-      absl::make_unique<LiteSessionWrapper>(std::move(legacy_bundle.session)),
+      std::make_unique<LiteSessionWrapper>(std::move(legacy_bundle.session)),
       std::move(*legacy_bundle.meta_graph_def.mutable_signature_def()));
   return OkStatus();
 }

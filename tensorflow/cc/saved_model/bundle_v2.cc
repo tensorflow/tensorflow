@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -113,8 +114,8 @@ absl::Status SavedModelV2Bundle::Load(const std::string& export_dir,
     // Load the variables checkpoint reader.
     const std::string variables_prefix =
         io::JoinPath(variables_dir, kSavedModelVariablesFilename);
-    bundle->variable_reader_.reset(
-        new BundleReader(Env::Default(), variables_prefix));
+    bundle->variable_reader_ =
+        std::make_unique<BundleReader>(Env::Default(), variables_prefix);
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         bundle->variable_reader_->status(),
         "Unable to load SavedModel variables checkpoint from ",
