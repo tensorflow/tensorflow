@@ -337,13 +337,62 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputReduceOpIndexing(
     }
     exprs.push_back(getAffineDimExpr(output_dim_id++, mlir_context));
   }
-  IndexingMap indexing_map{
+  IndexingMap inputs_indexing_map{
       .affine_map = AffineMap::get(output_shape.rank(), reduce_dims_ids.size(),
                                    exprs, mlir_context),
-      .input_dims_sizes = std::move(input_dims_sizes)};
+      .input_dims_sizes = input_dims_sizes};
+  IndexingMap inits_indexing_map{
+      .affine_map = AffineMap::get(output_shape.rank(), 0, {}, mlir_context),
+      .input_dims_sizes = {}};
 
-  return HloInstructionIndexing::FromIndexingMaps(
-      std::vector<IndexingMap>(reduce->input_count(), indexing_map));
+  HloInstructionIndexing instr_indexing;
+  for (int64_t id = 0; id < reduce->input_count(); ++id) {
+    instr_indexing.indexing_maps[id].insert(inputs_indexing_map);
+  }
+  for (int64_t id = reduce->input_count(); id < reduce->operand_count(); ++id) {
+    instr_indexing.indexing_maps[id].insert(inits_indexing_map);
+  }
+  return instr_indexing;
+}
+
+StatusOr<HloInstructionIndexing> ComputeInputToOutputReduceOpIndexing(
+    const HloReduceInstruction* reduce, int input_id,
+    MLIRContext* mlir_context) {
+  absl::flat_hash_set<int64_t> reduce_dims_ids(reduce->dimensions().begin(),
+                                               reduce->dimensions().end());
+  const Shape& input_shape = reduce->operand(input_id)->shape();
+  const Shape& output_shape = reduce->shape().IsTuple()
+                                  ? ShapeUtil::GetSubshape(reduce->shape(), {0})
+                                  : reduce->shape();
+  int64_t output_dim_id = 0;
+  std::vector<AffineExpr> inputs_exprs, inits_exprs;
+  for (auto [input_dim_id, input_dim] :
+       llvm::enumerate(input_shape.dimensions())) {
+    if (reduce_dims_ids.contains(input_dim_id)) {
+      continue;
+    }
+    inputs_exprs.push_back(getAffineDimExpr(input_dim_id, mlir_context));
+    inits_exprs.push_back(
+        mlir::getAffineSymbolExpr(output_dim_id++, mlir_context));
+  }
+  IndexingMap inputs_indexing_map{
+      .affine_map = AffineMap::get(input_shape.rank(), /*symbolCount=*/0,
+                                   inputs_exprs, mlir_context),
+      .input_dims_sizes = {}};
+  IndexingMap inits_indexing_map{
+      .affine_map = AffineMap::get(0, /*symbolCount=*/output_shape.rank(),
+                                   inits_exprs, mlir_context),
+      .input_dims_sizes = {output_shape.dimensions().begin(),
+                           output_shape.dimensions().end()}};
+
+  HloInstructionIndexing instr_indexing;
+  for (int64_t id = 0; id < reduce->input_count(); ++id) {
+    instr_indexing.indexing_maps[id].insert(inputs_indexing_map);
+  }
+  for (int64_t id = reduce->input_count(); id < reduce->operand_count(); ++id) {
+    instr_indexing.indexing_maps[id].insert(inits_indexing_map);
+  }
+  return instr_indexing;
 }
 
 // Computes strides for a shape.
@@ -1019,6 +1068,9 @@ StatusOr<HloInstructionIndexing> ComputeInputToOutputIndexing(
   }
   if (instr->opcode() == HloOpcode::kBitcast) {
     return ComputeInputToOutputBitcastOpIndexing(instr, mlir_context);
+  }
+  if (auto reduce = DynCast<HloReduceInstruction>(instr)) {
+    return ComputeInputToOutputReduceOpIndexing(reduce, input_id, mlir_context);
   }
   if (auto reshape = DynCast<HloReshapeInstruction>(instr)) {
     return ComputeInputToOutputReshapeOpIndexing(reshape, mlir_context);

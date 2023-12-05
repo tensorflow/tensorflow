@@ -388,7 +388,9 @@ TEST_F(TileAnalysisTest, FusionOpWithReduceOfReduce) {
       input_indexing.indexing_maps,
       UnorderedElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
                                        "(d0)[s0, s1, s2] -> (s0, s2, d0, s1)",
-                                       std::vector<int>{150, 50, 20})))));
+                                       std::vector<int>{150, 50, 20}))),
+                           Pair(1, ElementsAre(MatchIndexingMap(
+                                       "(d0) -> ()", std::vector<int>{})))));
 }
 
 TEST_F(TileAnalysisTest, FusionOpWithReduceOfBroadcast) {
@@ -414,10 +416,13 @@ TEST_F(TileAnalysisTest, FusionOpWithReduceOfBroadcast) {
       ROOT fusion = f32[15, 64] fusion(p0, p0_init), kind=kLoop, calls=f
     }
   )"));
-  EXPECT_THAT(input_indexing.indexing_maps,
-              UnorderedElementsAre(Pair(
-                  0, ElementsAre(MatchIndexingMap("(d0, d1)[s0] -> (d0, s0)",
-                                                  std::vector<int>{20})))));
+  EXPECT_THAT(
+      input_indexing.indexing_maps,
+      UnorderedElementsAre(
+          Pair(0, ElementsAre(MatchIndexingMap("(d0, d1)[s0] -> (d0, s0)",
+                                               std::vector<int>{20}))),
+          Pair(1, ElementsAre(MatchIndexingMap("(d0, d1) -> ()",
+                                               std::vector<int>{})))));
 }
 
 TEST_F(TileAnalysisTest, FusionOpWithTransposeOfTranspose) {
@@ -479,7 +484,9 @@ TEST_F(TileAnalysisTest, FusionOpWithReducedSlice) {
               UnorderedElementsAre(
                   Pair(0, ElementsAre(MatchIndexingMap(
                               "(d0)[s0, s1] -> (s0 + 5, d0 * 2, s1 * 3 + 50)",
-                              std::vector<int>{16, 128})))));
+                              std::vector<int>{16, 128}))),
+                  Pair(1, ElementsAre(MatchIndexingMap("(d0) -> ()",
+                                                       std::vector<int>{})))));
 }
 
 TEST_F(TileAnalysisTest, FusionOpWithReshape_CollapseOfExpand) {
@@ -685,8 +692,7 @@ TEST_F(TileAnalysisTest, ReshapeOpGenericReshape3DTO2D) {
 }
 
 TEST_F(TileAnalysisTest, ReduceOp) {
-  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetOutputToInputIndexingForEntryComputation(R"(
+  auto ir = R"(
     HloModule m
     max {
       p0 = f32[] parameter(0)
@@ -699,15 +705,30 @@ TEST_F(TileAnalysisTest, ReduceOp) {
       ROOT reduce = f32[150, 10] reduce(p0, p0_init),
         dimensions={3, 1}, to_apply=max
     }
-  )"));
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetOutputToInputIndexingForEntryComputation(ir));
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
-                                      "(d0, d1)[s0, s1] -> (d0, s0, d1, s1)",
-                                      std::vector<int>{20, 50})))));
+              UnorderedElementsAre(
+                  Pair(0, ElementsAre(MatchIndexingMap(
+                              "(d0, d1)[s0, s1] -> (d0, s0, d1, s1)",
+                              std::vector<int>{20, 50}))),
+                  Pair(1, ElementsAre(MatchIndexingMap("(d0, d1) -> ()",
+                                                       std::vector<int>{})))));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto output_indexing,
+                          GetInputToOutputIndexingForEntryComputation(ir));
+  EXPECT_THAT(
+      output_indexing.indexing_maps,
+      UnorderedElementsAre(
+          Pair(0, ElementsAre(MatchIndexingMap("(d0, d1, d2, d3) -> (d0, d2)",
+                                               std::vector<int>{}))),
+          Pair(1, ElementsAre(MatchIndexingMap("()[s0, s1] -> (s0, s1)",
+                                               std::vector<int>{150, 10})))));
 }
 
 TEST_F(TileAnalysisTest, VariadicReduceOp) {
-  absl::string_view hlo_string = R"(
+  absl::string_view ir = R"(
     HloModule m
     min {
       tmp_0 = f32[] parameter(0)
@@ -728,29 +749,60 @@ TEST_F(TileAnalysisTest, VariadicReduceOp) {
         dimensions={0}, to_apply=min
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  HloInstruction* root = module->entry_computation()->root_instruction();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto output_indexing_0,
+      GetOutputToInputIndexingForEntryComputation(ir, /*output_id=*/0));
+  EXPECT_THAT(output_indexing_0.indexing_maps,
+              UnorderedElementsAre(
+                  Pair(0, ElementsAre(MatchIndexingMap("(d0)[s0] -> (s0, d0)",
+                                                       std::vector<int>{256}))),
+                  Pair(1, ElementsAre(MatchIndexingMap("(d0)[s0] -> (s0, d0)",
+                                                       std::vector<int>{256}))),
+                  Pair(2, ElementsAre(MatchIndexingMap("(d0) -> ()",
+                                                       std::vector<int>{}))),
+                  Pair(3, ElementsAre(MatchIndexingMap("(d0) -> ()",
+                                                       std::vector<int>{})))));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto output_indexing_1,
+      GetOutputToInputIndexingForEntryComputation(ir, /*output_id=*/1));
+  EXPECT_THAT(output_indexing_1.indexing_maps,
+              UnorderedElementsAre(
+                  Pair(0, ElementsAre(MatchIndexingMap("(d0)[s0] -> (s0, d0)",
+                                                       std::vector<int>{256}))),
+                  Pair(1, ElementsAre(MatchIndexingMap("(d0)[s0] -> (s0, d0)",
+                                                       std::vector<int>{256}))),
+                  Pair(2, ElementsAre(MatchIndexingMap("(d0) -> ()",
+                                                       std::vector<int>{}))),
+                  Pair(3, ElementsAre(MatchIndexingMap("(d0) -> ()",
+                                                       std::vector<int>{})))));
 
-  auto input_indexing_0 = ComputeOutputToInputIndexing(root, 0, &mlir_context_);
-  ASSERT_IS_OK(input_indexing_0);
-  EXPECT_THAT(
-      input_indexing_0->indexing_maps,
-      UnorderedElementsAre(
-          Pair(0, ElementsAre(MatchIndexingMap("(d0)[s0] -> (s0, d0)",
-                                               std::vector<int>{256}))),
-          Pair(1, ElementsAre(MatchIndexingMap("(d0)[s0] -> (s0, d0)",
-                                               std::vector<int>{256})))));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto input_indexing_0,
+      GetInputToOutputIndexingForEntryComputation(ir, /*input_id=*/0));
+  EXPECT_THAT(input_indexing_0.indexing_maps,
+              UnorderedElementsAre(
+                  Pair(0, ElementsAre(MatchIndexingMap("(d0, d1) -> (d1)",
+                                                       std::vector<int>{}))),
+                  Pair(1, ElementsAre(MatchIndexingMap("(d0, d1) -> (d1)",
+                                                       std::vector<int>{}))),
+                  Pair(2, ElementsAre(MatchIndexingMap("()[s0] -> (s0)",
+                                                       std::vector<int>{10}))),
+                  Pair(3, ElementsAre(MatchIndexingMap(
+                              "()[s0] -> (s0)", std::vector<int>{10})))));
 
-  auto input_indexing_1 = ComputeOutputToInputIndexing(root, 1, &mlir_context_);
-  ASSERT_IS_OK(input_indexing_1);
-  EXPECT_THAT(
-      input_indexing_1->indexing_maps,
-      UnorderedElementsAre(
-          Pair(0, ElementsAre(MatchIndexingMap("(d0)[s0] -> (s0, d0)",
-                                               std::vector<int>{256}))),
-          Pair(1, ElementsAre(MatchIndexingMap("(d0)[s0] -> (s0, d0)",
-                                               std::vector<int>{256})))));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto input_indexing_1,
+      GetInputToOutputIndexingForEntryComputation(ir, /*input_id=*/1));
+  EXPECT_THAT(input_indexing_1.indexing_maps,
+              UnorderedElementsAre(
+                  Pair(0, ElementsAre(MatchIndexingMap("(d0, d1) -> (d1)",
+                                                       std::vector<int>{}))),
+                  Pair(1, ElementsAre(MatchIndexingMap("(d0, d1) -> (d1)",
+                                                       std::vector<int>{}))),
+                  Pair(2, ElementsAre(MatchIndexingMap("()[s0] -> (s0)",
+                                                       std::vector<int>{10}))),
+                  Pair(3, ElementsAre(MatchIndexingMap(
+                              "()[s0] -> (s0)", std::vector<int>{10})))));
 }
 
 TEST_F(TileAnalysisTest, ReverseOp) {
