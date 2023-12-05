@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/while_loop_fusible_sinking.h"
 
+#include <cstdint>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -22,8 +23,6 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/literal_util.h"
-#include "xla/service/call_graph.h"
 #include "xla/service/while_util.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
@@ -31,64 +30,87 @@ limitations under the License.
 
 namespace xla {
 
-HloInstruction* WhileLoopFusibleSinking::GetSinkableFusion(
-    HloInstruction* while_operand) {
-  std::vector<HloInstruction*> worklist;
+namespace {
+// Constant and Iota have no operands and an output and broadcasts add
+// dimensions to the output so we are looking fusions that have much smaller
+// operand sizes compared to output sizes to avoid materialization
+bool IsPurelyExpanding(const HloInstruction* instr) {
+  return instr->opcode() == HloOpcode::kBroadcast ||
+         (instr->opcode() == HloOpcode::kConstant &&
+          instr->shape().rank() == 0) ||
+         instr->opcode() == HloOpcode::kIota;
+}
+
+bool IsFusionCandidate(const HloInstruction* instr) {
+  return instr->IsElementwise() || instr->opcode() == HloOpcode::kReshape ||
+         instr->opcode() == HloOpcode::kTranspose;
+}
+}  // namespace
+
+bool WhileLoopFusibleSinking::IsSinkableFusion(HloInstruction* while_operand) {
+  absl::InlinedVector<HloInstruction*, 8> worklist;
+  absl::flat_hash_set<int> visited;
   worklist.push_back(while_operand);
-  HloInstruction* fusion = nullptr;
-  auto fuse = [&](HloInstruction* instr) -> bool {
-    if (!instr->IsFusible()) {
-      return false;
-    }
-    if (!fusion) {
-      fusion = instr->AddInstruction(instr->CreateFusion(
-          instr->shape(), HloInstruction::FusionKind::kLoop, instr));
-      return true;
-    }
-    // The instruction has already been visited, just skip it.
-    if (!fusion->IsUserOf(instr)) {
-      return false;
-    }
-    fusion->FuseInstruction(instr);
-    return true;
-  };
-  std::vector<HloInstruction*> new_operands;
   while (!worklist.empty()) {
     HloInstruction* to_process = worklist.back();
     worklist.pop_back();
-    if (to_process->IsElementwise() && fuse(to_process)) {
+    if (!to_process->IsFusible()) {
+      return false;
+    }
+    if (!visited.insert(to_process->unique_id()).second) {
+      // Do not sink extremely large subgraphs as they will be expensive to
+      // recompute in the loop.
+      if (visited.size() > 100) {
+        return false;
+      }
+      continue;
+    }
+    if (IsPurelyExpanding(to_process)) {
+      continue;
+    }
+    if (IsFusionCandidate(to_process)) {
       for (auto* op : to_process->operands()) {
         worklist.push_back(op);
       }
       continue;
     }
-    switch (to_process->opcode()) {
-      case HloOpcode::kBroadcast: {
-        HloInstruction* op = to_process->mutable_operand(0);
-        if (fuse(to_process) && (op->opcode() == HloOpcode::kConstant ||
-                                 op->opcode() == HloOpcode::kIota)) {
-          fuse(op);
-        }
+    return false;
+  }
+  return true;
+}
+
+HloInstruction* WhileLoopFusibleSinking::CreateSinkableFusion(
+    HloInstruction* while_operand) {
+  HloInstruction* fusion =
+      while_operand->AddInstruction(while_operand->CreateFusion(
+          while_operand->shape(), HloInstruction::FusionKind::kLoop,
+          while_operand));
+  bool did_fuse = IsFusionCandidate(while_operand);
+  // Fuse up to broadcasts, this function expects that IsSinkableFusion is true
+  // and does not verify that
+  while (did_fuse) {
+    did_fuse = false;
+    for (int64_t i = fusion->operand_count() - 1; i >= 0; --i) {
+      HloInstruction* op = fusion->mutable_operand(i);
+      if (IsPurelyExpanding(op)) {
+        continue;
+      }
+      fusion->FuseInstruction(op);
+      did_fuse = true;
+      break;
+    }
+  }
+  // Fuse the broadcasts, constants and iota at the terminals.
+  did_fuse = true;
+  while (did_fuse) {
+    did_fuse = false;
+    for (int64_t i = fusion->operand_count() - 1; i >= 0; --i) {
+      HloInstruction* op = fusion->mutable_operand(i);
+      if (IsPurelyExpanding(op)) {
+        fusion->FuseInstruction(op);
+        did_fuse = true;
         break;
       }
-      case HloOpcode::kConstant:
-      case HloOpcode::kIota: {
-        fuse(to_process);
-        break;
-      }
-      case HloOpcode::kReshape:
-      case HloOpcode::kTranspose: {
-        HloInstruction* op = to_process->mutable_operand(0);
-        if (fuse(to_process)) {
-          worklist.push_back(op);
-        }
-        break;
-      }
-      default:
-        if (fusion) {
-          fusion->parent()->RemoveInstruction(fusion).IgnoreError();
-        }
-        return nullptr;
     }
   }
   return fusion;
@@ -100,8 +122,7 @@ StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
   HloComputation* while_body = while_instr->while_body();
 
   // Don't try to mutate unflattened while loop computations.
-  if (call_graph_->GetNode(while_cond).callers().size() > 1 ||
-      call_graph_->GetNode(while_body).callers().size() > 1) {
+  if (call_counts_[while_body] > 1 || call_counts_[while_cond] > 1) {
     return false;
   }
   HloInstruction* init_value = while_instr->mutable_operand(0);
@@ -116,6 +137,8 @@ StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
           WhileUtil::GetGTEsMapForWhileConditional(*while_cond);
   std::vector<HloInstruction*> invariant_body_gtes =
       WhileUtil::GetInvariantGTEsForWhileBody(*while_body);
+  std::vector<int64_t> tuple_indices;
+  std::vector<HloInstruction*> new_operands;
 
   for (HloInstruction* invariant_body_gte : invariant_body_gtes) {
     int64_t index = invariant_body_gte->tuple_index();
@@ -126,17 +149,19 @@ StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
       TF_RETURN_IF_ERROR(while_instr->ReplaceOperandWith(0, init_value));
     }
     // Original value should be a fusible subgraph.
-    HloInstruction* fusion = GetSinkableFusion(invariant_value);
-    if (fusion == nullptr) {
+    if (!IsSinkableFusion(invariant_value)) {
       continue;
     }
+    HloInstruction* fusion = CreateSinkableFusion(invariant_value);
     changed = true;
-    auto uses = while_instr->users();
     if (fusion->operand_count() > 0 &&
         (while_instr->IsRoot() ||
-         absl::c_any_of(uses, [&](HloInstruction* use) {
+         absl::c_any_of(while_instr->users(), [&](HloInstruction* use) {
            return use->opcode() != HloOpcode::kGetTupleElement;
          }))) {
+      // This really only occurs in unit tests or toy programs. Copy the current
+      // users for later replacement.
+      auto uses = while_instr->users();
       std::vector<HloInstruction*> gtes(init_value->operand_count());
       for (int64_t i = 0; i < gtes.size(); ++i) {
         gtes[i] = while_instr->AddInstruction(
@@ -161,9 +186,9 @@ StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
 
     HloInstruction* root = while_body->root_instruction();
     HloInstruction* parameter = while_body->parameter_instruction(0);
-    std::vector<int64_t> tuple_indices(fusion->operand_count());
+    tuple_indices.resize(fusion->operand_count());
     int64_t next_index = init_value->operand_count();
-    std::vector<HloInstruction*> new_operands(fusion->operand_count());
+    new_operands.resize(fusion->operand_count());
     for (int64_t i = 0; i < fusion->operand_count(); ++i) {
       init_value->AppendOperand(fusion->mutable_operand(i));
       parameter->mutable_shape()->mutable_tuple_shapes()->push_back(
@@ -191,8 +216,6 @@ StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
 StatusOr<bool> WhileLoopFusibleSinking::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  auto call_graph = CallGraph::Build(module, execution_threads);
-  call_graph_ = call_graph.get();
   bool changed = false;
   std::vector<HloInstruction*> while_instrs;
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
@@ -219,6 +242,11 @@ StatusOr<bool> WhileLoopFusibleSinking::Run(
     // into the inner while in a single run of this pass.
     absl::c_copy_if(comp->instructions(), std::back_inserter(while_instrs),
                     HloPredicateIsOp<HloOpcode::kWhile>);
+  }
+
+  for (HloInstruction* while_instr : while_instrs) {
+    call_counts_[while_instr->while_body()]++;
+    call_counts_[while_instr->while_condition()]++;
   }
 
   for (HloInstruction* while_instr : while_instrs) {

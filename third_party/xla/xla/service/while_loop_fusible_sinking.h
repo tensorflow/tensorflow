@@ -16,12 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_WHILE_LOOP_FUSIBLE_SINKING_H_
 #define XLA_SERVICE_WHILE_LOOP_FUSIBLE_SINKING_H_
 
-#include <vector>
-
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/call_graph.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/statusor.h"
 
@@ -73,9 +72,10 @@ class WhileLoopFusibleSinking : public HloModulePass {
   // Creates a loop fusion instruction containing the computation to move into
   // the while loop to avoid conflicts with actual instruction fusion, the loop
   // fusion will be defused.
-  HloInstruction* GetSinkableFusion(HloInstruction* while_operand);
+  bool IsSinkableFusion(HloInstruction* while_operand);
+  HloInstruction* CreateSinkableFusion(HloInstruction* while_operand);
 
-  CallGraph* call_graph_;
+  absl::flat_hash_map<HloComputation*, int> call_counts_;
 };
 }  // namespace xla
 
