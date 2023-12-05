@@ -1660,6 +1660,10 @@ class MklFusedConvOp
       OP_REQUIRES(context, num_args == 1,
                   absl::InvalidArgumentError(
                       "Fused Conv2D must have one extra argument: bias."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "_FusedHardSwish"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_activation(true, dnnl::algorithm::eltwise_hardswish,
+                                1.0 / 6.0, 0.5);
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Add"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_add(true);
@@ -1831,6 +1835,10 @@ class MklFusedDepthwiseConvOp
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Elu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_elu, 1.0);
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "_FusedHardSwish"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_activation(true, dnnl::algorithm::eltwise_hardswish,
+                                1.0 / 6.0, 0.5);
     } else {
       OP_REQUIRES(context, false,
                   absl::InvalidArgumentError(
