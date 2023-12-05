@@ -152,15 +152,14 @@ bool IsNestableVariadicReduction(const HloInstruction& instr) {
 }
 
 bool IsInputFusibleTranspose(const HloInstruction& instr) {
-  if (instr.opcode() == HloOpcode::kBitcast) {
+  if (instr.opcode() == HloOpcode::kBitcast || instr.IsCustomFusion()) {
     return false;
   }
-  auto& hero = FindNonTrivialHero(instr);
-  if (GetDescriptionForTiledTransposeEmitter(instr, hero).has_value()) {
-    return true;
+  if (instr.opcode() == HloOpcode::kFusion) {
+    return HasAnyTiledTransposeRoot(*instr.fused_instructions_computation());
   }
-  return !instr.IsCustomFusion() && instr.opcode() == HloOpcode::kFusion &&
-         HasAnyTiledTransposeRoot(*instr.called_computations()[0]);
+  auto& hero = FindNonTrivialHero(instr);
+  return GetDescriptionForTiledTransposeEmitter(instr, hero).has_value();
 }
 
 const HloInstruction* GetRealHeroForMultiOutputFusion(

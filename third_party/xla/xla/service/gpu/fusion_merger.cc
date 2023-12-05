@@ -220,6 +220,10 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
       ++num_fail_merge_all_users_;
       return "not fusing bitcast ops";
     }
+    if (user->IsCustomFusion()) {
+      ++num_fail_merge_all_users_;
+      return "not fusing custom fusions";
+    }
     auto consumer_hero = GetRealHeroForMultiOutputFusion(*user);
     if (auto compatible =
             FusionHeroesAreCompatible(producer_hero, consumer_hero);
