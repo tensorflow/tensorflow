@@ -317,6 +317,7 @@ cc_library(
         "//xla/service:map_inliner",
         "//xla/service:operand_upcaster",
         "//xla/service:optimization_barrier_expander",
+        "//xla/service:optimize_input_output_buffer_alias",
         "//xla/service:qr_expander",
         "//xla/service:reduce_decomposer",
         "//xla/service:reshape_decomposer",
