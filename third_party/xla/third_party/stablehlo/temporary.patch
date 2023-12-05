@@ -167,6 +167,17 @@ diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists
  add_subdirectory(integrations)
  add_subdirectory(reference)
  add_subdirectory(tests)
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/dialect/StablehloOps.h
+--- stablehlo/stablehlo/dialect/StablehloOps.h
++++ stablehlo/stablehlo/dialect/StablehloOps.h
+@@ -75,6 +75,7 @@
+ class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
+  public:
+   using Base::Base;
++  static constexpr StringLiteral name = "stablehlo.token";
+ };
+ 
+ // Verifies the source target pairs attached to collective permute.
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel

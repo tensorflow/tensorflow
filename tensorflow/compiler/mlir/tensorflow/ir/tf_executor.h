@@ -52,11 +52,13 @@ class TensorFlowExecutorDialect : public Dialect {
 class ControlType : public Type::TypeBase<ControlType, Type, TypeStorage> {
  public:
   using Base::Base;
+  static constexpr ::mlir::StringLiteral name = "tf_executor.control";
 };
 
 class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
  public:
   using Base::Base;
+  static constexpr ::mlir::StringLiteral name = "tf_executor.token";
 };
 
 }  // namespace tf_executor
