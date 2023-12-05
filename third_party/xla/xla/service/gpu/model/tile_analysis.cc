@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/model/tile_analysis.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -104,6 +105,35 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputBroadcastOpIndexing(
       .affine_map = AffineMap::get(output_dims.size(), /*symbolCount=*/0, exprs,
                                    mlir_context),
       .input_dims_sizes = {}};
+  return HloInstructionIndexing::FromIndexingMaps({indexing_map});
+}
+
+StatusOr<HloInstructionIndexing> ComputeInputToOutputBroadcastOpIndexing(
+    const HloBroadcastInstruction* bcast, MLIRContext* mlir_context) {
+  absl::Span<const int64_t> bcast_dims = bcast->dimensions();
+
+  const Shape& input_shape = bcast->operand(0)->shape();
+  const Shape& output_shape = bcast->shape();
+
+  std::vector<int64_t> added_dims_sizes;
+  std::vector<AffineExpr> exprs;
+  for (auto [output_dim_id, output_dim] :
+       llvm::enumerate(output_shape.dimensions())) {
+    auto bcast_dim =
+        std::find(bcast_dims.begin(), bcast_dims.end(), output_dim_id);
+    if (bcast_dim == bcast_dims.end()) {
+      exprs.push_back(
+          getAffineSymbolExpr(added_dims_sizes.size(), mlir_context));
+      added_dims_sizes.push_back(output_dim);
+      continue;
+    }
+    exprs.push_back(getAffineDimExpr(
+        std::distance(bcast_dims.begin(), bcast_dim), mlir_context));
+  }
+  IndexingMap indexing_map{
+      .affine_map = AffineMap::get(input_shape.rank(), added_dims_sizes.size(),
+                                   exprs, mlir_context),
+      .input_dims_sizes = std::move(added_dims_sizes)};
   return HloInstructionIndexing::FromIndexingMaps({indexing_map});
 }
 
@@ -324,15 +354,15 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputReduceOpIndexing(
                                   ? ShapeUtil::GetSubshape(reduce->shape(), {0})
                                   : reduce->shape();
 
-  std::vector<int64_t> input_dims_sizes;
-  int64_t reduced_dim_id = 0;
+  std::vector<int64_t> parallel_dims_sizes;
   int64_t output_dim_id = 0;
   std::vector<AffineExpr> exprs;
   for (auto [input_dim_id, input_dim] :
        llvm::enumerate(input_shape.dimensions())) {
     if (reduce_dims_ids.contains(input_dim_id)) {
-      exprs.push_back(getAffineSymbolExpr(reduced_dim_id++, mlir_context));
-      input_dims_sizes.push_back(input_dim);
+      exprs.push_back(
+          getAffineSymbolExpr(parallel_dims_sizes.size(), mlir_context));
+      parallel_dims_sizes.push_back(input_dim);
       continue;
     }
     exprs.push_back(getAffineDimExpr(output_dim_id++, mlir_context));
@@ -340,7 +370,7 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputReduceOpIndexing(
   IndexingMap inputs_indexing_map{
       .affine_map = AffineMap::get(output_shape.rank(), reduce_dims_ids.size(),
                                    exprs, mlir_context),
-      .input_dims_sizes = input_dims_sizes};
+      .input_dims_sizes = parallel_dims_sizes};
   IndexingMap inits_indexing_map{
       .affine_map = AffineMap::get(output_shape.rank(), 0, {}, mlir_context),
       .input_dims_sizes = {}};
@@ -1029,11 +1059,11 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputIndexing(
   if (HloInstruction::IsOpElementwise(instr->opcode())) {
     return ComputeOutputToInputCwiseOpIndexing(instr, mlir_context);
   }
-  if (auto bcast = DynCast<HloBroadcastInstruction>(instr)) {
-    return ComputeOutputToInputBroadcastOpIndexing(bcast, mlir_context);
-  }
   if (instr->opcode() == HloOpcode::kBitcast) {
     return ComputeOutputToInputBitcastOpIndexing(instr, mlir_context);
+  }
+  if (auto broadcast = DynCast<HloBroadcastInstruction>(instr)) {
+    return ComputeOutputToInputBroadcastOpIndexing(broadcast, mlir_context);
   }
   if (auto dot = DynCast<HloDotInstruction>(instr)) {
     return ComputeOutputToInputDotOpIndexing(dot, mlir_context);
@@ -1068,6 +1098,9 @@ StatusOr<HloInstructionIndexing> ComputeInputToOutputIndexing(
   }
   if (instr->opcode() == HloOpcode::kBitcast) {
     return ComputeInputToOutputBitcastOpIndexing(instr, mlir_context);
+  }
+  if (auto broadcast = DynCast<HloBroadcastInstruction>(instr)) {
+    return ComputeInputToOutputBroadcastOpIndexing(broadcast, mlir_context);
   }
   if (auto reduce = DynCast<HloReduceInstruction>(instr)) {
     return ComputeInputToOutputReduceOpIndexing(reduce, input_id, mlir_context);

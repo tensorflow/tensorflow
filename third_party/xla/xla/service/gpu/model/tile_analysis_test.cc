@@ -179,18 +179,26 @@ TEST_F(TileAnalysisTest, BitcastIsTransposeReshapeTranspose) {
 }
 
 TEST_F(TileAnalysisTest, BroadcastOp) {
-  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetOutputToInputIndexingForEntryComputation(R"(
+  auto ir = R"(
     HloModule m
     ENTRY e {
       p0 = f32[20] parameter(0)
       ROOT bc0 = f32[10, 20, 30] broadcast(p0), dimensions={1}
     }
-  )"));
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetOutputToInputIndexingForEntryComputation(ir));
   EXPECT_THAT(input_indexing.indexing_maps,
               UnorderedElementsAre(
                   Pair(0, ElementsAre(MatchIndexingMap("(d0, d1, d2) -> (d1)",
                                                        std::vector<int>{})))));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto output_indexing,
+                          GetInputToOutputIndexingForEntryComputation(ir));
+  EXPECT_THAT(output_indexing.indexing_maps,
+              UnorderedElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
+                                               "(d0)[s0, s1] -> (s0, d0, s1)",
+                                               std::vector<int>{10, 30})))));
 }
 
 TEST_F(TileAnalysisTest, FusionOpWithSingleBinaryOp) {
