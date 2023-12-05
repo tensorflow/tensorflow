@@ -584,6 +584,7 @@ AutoShardingSolverResult SolveAndExtractSolution(
   absl::Time end_time = absl::Now();
   auto duration = end_time - start_time;
   LOG(INFO) << "Solver took " << absl::ToInt64Milliseconds(duration) << " ms";
+  LOG(INFO) << "Solver Status: " << status;
 
   if (status == operations_research::MPSolver::INFEASIBLE) {
     LOG(ERROR) << "MPSolver could not find any feasible solution.";
@@ -623,7 +624,6 @@ AutoShardingSolverResult SolveAndExtractSolution(
                   "likely a bug and should be reported.";
   } else if (status != operations_research::MPSolver::OPTIMAL) {
     auto err_msg = "Solver timed out.";
-    LOG(WARNING) << err_msg << " Solver status " << status;
     return AutoShardingSolverResult(absl::InternalError(err_msg), true);
   }
 
@@ -634,10 +634,10 @@ AutoShardingSolverResult SolveAndExtractSolution(
   uint64_t model_fprint = tsl::Fingerprint64(model_proto.SerializeAsString());
   operations_research::MPSolutionResponse response;
   solver.FillSolutionResponseProto(&response);
+  response.clear_solve_info();  // Remove for fingerprint; can vary between runs
   uint64_t solution_fprint = tsl::Fingerprint64(response.SerializeAsString());
 
-  LOG(INFO) << "Solver Status: " << status
-            << " Objective value: " << solver.Objective().Value()
+  LOG(INFO) << "Objective value: " << solver.Objective().Value()
             << " Model fingerprint: " << model_fprint
             << " Solution fingerprint: " << solution_fprint;
   if (solver.Objective().Value() >= kInfinityCost) {
