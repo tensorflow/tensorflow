@@ -67,7 +67,8 @@ static StatusOr<std::string> AotCompileCpuExecutable(
 
 static StatusOr<std::string> CompileGpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
-    std::optional<Compiler::TargetConfig> target_config) {
+    std::optional<Compiler::TargetConfig> target_config,
+    CompilationResult& result) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   const bool aot = target_config.has_value();
 
@@ -99,6 +100,7 @@ static StatusOr<std::string> CompileGpuExecutable(
       gpu_compiler.RunHloPasses(std::move(hlo_module), stream_executor,
                                 compile_options));
 
+  *result.mutable_hlo_module() = module_after_opt->ToProto();
   if (aot) {
     auto module_group =
         std::make_unique<HloModuleGroup>(std::move(module_after_opt));
@@ -127,11 +129,12 @@ static StatusOr<std::string> CompileGpuExecutable(
 
 StatusOr<std::string> CompileExecutable(
     std::unique_ptr<HloModule> hlo_module, absl::string_view platform,
-    std::optional<Compiler::TargetConfig> target_config) {
+    std::optional<Compiler::TargetConfig> target_config,
+    CompilationResult& result) {
   if (platform == "cpu") {
     return AotCompileCpuExecutable(std::move(hlo_module));
   } else if (platform == "gpu") {
-    return CompileGpuExecutable(std::move(hlo_module), target_config);
+    return CompileGpuExecutable(std::move(hlo_module), target_config, result);
   }
 
   return absl::UnimplementedError(

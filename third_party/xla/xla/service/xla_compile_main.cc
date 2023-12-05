@@ -191,7 +191,8 @@ Status XlaCompileMain(
     cfg = (use_attached_device) ? std::nullopt
                                 : std::make_optional(*std::move(target_config));
   }
-  auto result = CompileExecutable(std::move(hlo_module), platform, cfg);
+  auto result = CompileExecutable(std::move(hlo_module), platform, cfg,
+                                  compilation_result);
   if (!result.ok()) {
     *compilation_result.mutable_status() = tsl::StatusToProto(result.status());
     return result.status();
