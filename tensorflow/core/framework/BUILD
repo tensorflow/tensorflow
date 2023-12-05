@@ -712,6 +712,7 @@ cc_library(
     hdrs = ["resource_base.h"],
     visibility = default_visibility + [
         "//learning/brain/google/data/core/kernels:__pkg__",
+        "//learning/deepmind/tensorflow/queues:__pkg__",
         "//learning/deepmind/tensorflow/sstable:__pkg__",
     ],
     deps = [
