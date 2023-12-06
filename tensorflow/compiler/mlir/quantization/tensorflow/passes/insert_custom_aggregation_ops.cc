@@ -52,16 +52,24 @@ class InsertCustomAggregationOpsPass
                          OperationPass<func::FuncOp>> {
  public:
   explicit InsertCustomAggregationOpsPass() : test_mode_(true) {
+    insert_at_xla_call_module_op_only_.setValue(false);
     initializeForTest();
   }
 
-  explicit InsertCustomAggregationOpsPass(const CalibrationOptions &calib_opts)
-      : test_mode_(false), calib_opts_(calib_opts) {}
+  explicit InsertCustomAggregationOpsPass(
+      const CalibrationOptions &calib_opts,
+      bool insert_at_xla_call_module_op_only)
+      : test_mode_(false), calib_opts_(calib_opts) {
+    insert_at_xla_call_module_op_only_.setValue(
+        insert_at_xla_call_module_op_only);
+  }
 
   InsertCustomAggregationOpsPass(const InsertCustomAggregationOpsPass &other) {
     test_mode_ = other.test_mode_;
     test_case_ = other.test_case_;
     calib_opts_ = other.calib_opts_;
+    insert_at_xla_call_module_op_only_ =
+        other.insert_at_xla_call_module_op_only_;
     initializeForTest();
   }
 
@@ -96,6 +104,10 @@ class InsertCustomAggregationOpsPass
 
   bool test_mode_;
   CalibrationOptions calib_opts_;
+  Option<bool> insert_at_xla_call_module_op_only_{
+      *this, "insert-at-xla-call-module-op-only",
+      llvm::cl::desc("Whether to insert adjacent to XlaCallModuleOp only"),
+      llvm::cl::init(false)};
   Option<TestCase> test_case_{
       *this, "test-case",
       llvm::cl::desc(
@@ -187,9 +199,11 @@ class AddCustomAggregationOp : public RewritePattern {
   // Does not take ownership of context, which must refer to a valid value that
   // outlives this object.
   explicit AddCustomAggregationOp(MLIRContext *context,
-                                  const CalibrationOptions &calib_opts)
+                                  const CalibrationOptions &calib_opts,
+                                  bool insert_at_xla_call_module_op_only)
       : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, context),
-        calib_opts_(calib_opts) {}
+        calib_opts_(calib_opts),
+        insert_at_xla_call_module_op_only_(insert_at_xla_call_module_op_only) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -224,6 +238,14 @@ class AddCustomAggregationOp : public RewritePattern {
       // Skip calibration when the given operand comes from a constant.
       if (defining_op != nullptr &&
           defining_op->hasTrait<OpTrait::ConstantLike>()) {
+        continue;
+      }
+
+      // With insert_at_xla_call_module_op_only_, only insert next to
+      // tf.XlaCallModuleOp.
+      if (insert_at_xla_call_module_op_only_ &&
+          (!defining_op || !isa<TF::XlaCallModuleOp>(defining_op)) &&
+          !isa<TF::XlaCallModuleOp>(op)) {
         continue;
       }
 
@@ -266,6 +288,7 @@ class AddCustomAggregationOp : public RewritePattern {
 
  private:
   CalibrationOptions calib_opts_;
+  bool insert_at_xla_call_module_op_only_;
 };
 
 void InsertCustomAggregationOpsPass::runOnOperation() {
@@ -273,7 +296,8 @@ void InsertCustomAggregationOpsPass::runOnOperation() {
   RewritePatternSet patterns(ctx);
   func::FuncOp func = getOperation();
 
-  patterns.add<AddCustomAggregationOp>(ctx, calib_opts_);
+  patterns.add<AddCustomAggregationOp>(
+      ctx, calib_opts_, insert_at_xla_call_module_op_only_.getValue());
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     func.emitError() << "quant-insert-custom-aggregation-ops failed.";
     signalPassFailure();
@@ -283,8 +307,10 @@ void InsertCustomAggregationOpsPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>>
-CreateInsertCustomAggregationOpsPass(const CalibrationOptions &calib_opts) {
-  return std::make_unique<InsertCustomAggregationOpsPass>(calib_opts);
+CreateInsertCustomAggregationOpsPass(const CalibrationOptions &calib_opts,
+                                     bool insert_at_xla_call_module_op_only) {
+  return std::make_unique<InsertCustomAggregationOpsPass>(
+      calib_opts, insert_at_xla_call_module_op_only);
 }
 
 }  // namespace quant
