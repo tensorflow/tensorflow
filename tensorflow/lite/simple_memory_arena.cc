@@ -41,6 +41,48 @@ T AlignTo(size_t alignment, T offset) {
 
 // Allocates memory and aligns it to the specified size. Returns a pair of the
 // allocation pointer and the aligned pointer.
+tflite::PointerAlignedPointerPair AlignedAlloc(size_t size, size_t alignment);
+
+// Frees up aligned memory.
+void AlignedFree(const tflite::PointerAlignedPointerPair& buffer);
+
+// Reallocates aligned memory
+//
+// The function either extends the memory allocation in-place, or if that is not
+// possible a new allocation is created, the data is copied, and the old buffer
+// is deallocated. It is an error to change the alignment during reallocation.
+// If the previous allocation is null, this is equivalent to AlignedAlloc.
+// Returns pointers to the new allocation.
+tflite::PointerAlignedPointerPair AlignedRealloc(
+    const tflite::PointerAlignedPointerPair& old_buffer, size_t old_size,
+    size_t new_size, size_t alignment);
+
+#if defined(__WIN32)
+// On Windows <cstdlib> provides _aligned_malloc, _aligned_free, and
+// _aligned_realloc, use them to implement the Aligned functions.
+
+tflite::PointerAlignedPointerPair AlignedAlloc(size_t size, size_t alignment) {
+  char* pointer = reinterpret_cast<char*>(_aligned_malloc(size, alignment));
+  char* aligned_ptr = pointer;
+  return {pointer, aligned_ptr};
+}
+
+void AlignedFree(const tflite::PointerAlignedPointerPair& buffer) {
+  _aligned_free(buffer.pointer);
+}
+
+tflite::PointerAlignedPointerPair AlignedRealloc(
+    const tflite::PointerAlignedPointerPair& old_buffer, size_t old_size,
+    size_t new_size, size_t alignment) {
+  char* pointer = reinterpret_cast<char*>(
+      _aligned_realloc(old_buffer.pointer, new_size, alignment));
+  char* aligned_ptr = pointer;
+  return {pointer, aligned_ptr};
+}
+#else
+// Default implementation: Use malloc, allocating extra memory, and align the
+// pointer in the allocated buffer.
+
 tflite::PointerAlignedPointerPair AlignedAlloc(size_t size, size_t alignment) {
   const size_t allocation_size = size + alignment - 1;
   char* pointer = reinterpret_cast<char*>(std::malloc(allocation_size));
@@ -54,18 +96,10 @@ tflite::PointerAlignedPointerPair AlignedAlloc(size_t size, size_t alignment) {
   return {pointer, aligned_ptr};
 }
 
-// Frees up aligned memory.
 void AlignedFree(const tflite::PointerAlignedPointerPair& buffer) {
   std::free(buffer.pointer);
 }
 
-// Reallocates aligned memory
-//
-// The function either extends the memory allocation in-place, or if that is not
-// possible a new allocation is created, the data is copied, and the old buffer
-// is deallocated. It is an error to change the alignment during reallocation.
-// If the previous allocation is null, this is equivalent to AlignedAlloc.
-// Returns pointers to the new allocation.
 tflite::PointerAlignedPointerPair AlignedRealloc(
     const tflite::PointerAlignedPointerPair& old_buffer, size_t old_size,
     size_t new_size, size_t alignment) {
@@ -80,6 +114,7 @@ tflite::PointerAlignedPointerPair AlignedRealloc(
   AlignedFree(old_buffer);
   return new_buffer;
 }
+#endif
 }  // namespace
 
 namespace tflite {
