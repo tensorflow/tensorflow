@@ -47,11 +47,11 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/save_variables.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/status_macro.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/unfreeze_constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
@@ -69,7 +69,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -339,47 +338,6 @@ absl::StatusOr<std::string> GetLocalTempFilename() {
   return tmp_fname;
 }
 
-// Unfreezes constants into variables and saves them to a checkpoint files under
-// `checkpoint_dir`. `checkpoint_dir` will be created within this function. It
-// will return a non-OK status if it already exists or permission is denied.
-// TODO(b/261652258): Make sure this works for when there are non-frozen
-// variables in the model.
-// TODO(b/262189534): Move this to a separate file for better testing.
-absl::Status UnfreezeConstantsAndSaveVariables(
-    const absl::string_view checkpoint_dir, mlir::MLIRContext &ctx,
-    mlir::ModuleOp module_op) {
-  TF_QUANT_RETURN_IF_ERROR(RunPasses(
-      /*name=*/kTfQuantConstantUnfreezingStepName,
-      /*add_passes_func=*/
-      [](mlir::PassManager &pm) {
-        pm.addPass(mlir::quant::CreateUnfreezeConstantsPass());
-      },
-      ctx, module_op));
-
-  if (const tsl::Status create_dir_status =
-          Env::Default()->CreateDir(std::string(checkpoint_dir));
-      !create_dir_status.ok()) {
-    LOG(ERROR) << "Failed to create checkpoint directory at: "
-               << checkpoint_dir;
-    return create_dir_status;
-  }
-
-  TF_ASSIGN_OR_RETURN(const auto _,
-                      SaveVariablesToCheckpoint(checkpoint_dir, module_op));
-
-  return RunPasses(
-      /*name=*/kTfQuantInsertRestoreOpStepName,
-      /*add_passes_func=*/
-      [](mlir::PassManager &pm) {
-        pm.addPass(mlir::quant::CreateInsertRestoreOpPass());
-        pm.addPass(mlir::quant::CreateInsertSaveOpPass());
-        // Initialization by `tf.ConstOp` is no longer required as there is
-        // a `tf.RestoreV2Op` now.
-        pm.addPass(
-            mlir::quant::CreateRemoveVariableInitializationByConstPass());
-      },
-      ctx, module_op);
-}
 
 // Sets up and runs the passes for exporting `module_op`. The behavior of the
 // exporting passes is controlled by `export_opts`. Returns `AssetFileDef`s that
