@@ -39,11 +39,6 @@ namespace {
 class BufferComparatorTest : public testing::Test {
  protected:
   BufferComparatorTest()
-<<<<<<< HEAD
-      : platform_(
-            se::MultiPlatformManager::PlatformWithName(PLATFORM).ValueOrDie()),
-        stream_exec_(platform_->ExecutorForDevice(0).value()) {}
-=======
 #if GOOGLE_CUDA
       : platform_(se::MultiPlatformManager::PlatformWithName("CUDA").value()),
 #elif TENSORFLOW_USE_ROCM
@@ -51,7 +46,6 @@ class BufferComparatorTest : public testing::Test {
 #endif
         stream_exec_(platform_->ExecutorForDevice(0).value()) {
   }
->>>>>>> db579439eef970657f5ddbf05dc9b798cb748c51
 
   // Take floats only for convenience. Still uses ElementType internally.
   template <typename ElementType>

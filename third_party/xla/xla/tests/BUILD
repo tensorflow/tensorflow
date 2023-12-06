@@ -777,13 +777,9 @@ xla_test(
 xla_test(
     name = "array_elementwise_ops_test",
     srcs = ["array_elementwise_ops_test.cc"],
-<<<<<<< HEAD
-    tags = ["no_rocm"],
-=======
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
->>>>>>> db579439eef970657f5ddbf05dc9b798cb748c51
     shard_count = 25,
     deps = [
         ":client_library_test_base",

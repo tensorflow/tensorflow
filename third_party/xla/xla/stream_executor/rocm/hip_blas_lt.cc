@@ -478,24 +478,6 @@ tsl::Status BlasLt::MatmulPlan::ExecuteOnStream(
   }
 
   // Other data types:
-<<<<<<< HEAD
-  TYPED_MATMUL(float, HIP_R_16BF, HIP_R_16BF, HIP_R_16BF,
-               HIP_R_16BF)
-  TYPED_MATMUL(float, HIP_R_16F, HIP_R_16F, HIP_R_16F,
-               HIP_R_16F)
-  TYPED_MATMUL(float, HIP_R_16BF, HIP_R_16BF, HIP_R_32F,
-               HIP_R_32F)
-  TYPED_MATMUL(float, HIP_R_16F, HIP_R_16F, HIP_R_32F,
-               HIP_R_32F)
-  TYPED_MATMUL(float, HIP_R_32F, HIP_R_32F, HIP_R_32F,
-               HIP_R_32F)
-  TYPED_MATMUL(double, HIP_R_64F, HIP_R_64F, HIP_R_64F,
-               HIP_R_64F)
-  TYPED_MATMUL(complex64, HIP_C_32F, HIP_C_32F, HIP_C_32F,
-               HIP_C_32F)
-  TYPED_MATMUL(complex128, HIP_C_64F, HIP_C_64F, HIP_C_64F,
-               HIP_C_64F)
-=======
   TYPED_MATMUL(float, HIP_R_16BF, HIP_R_16BF, HIP_R_16BF, HIP_R_16BF)
   TYPED_MATMUL(float, HIP_R_16F, HIP_R_16F, HIP_R_16F, HIP_R_16F)
   TYPED_MATMUL(float, HIP_R_16BF, HIP_R_16BF, HIP_R_32F, HIP_R_32F)
@@ -504,7 +486,6 @@ tsl::Status BlasLt::MatmulPlan::ExecuteOnStream(
   TYPED_MATMUL(double, HIP_R_64F, HIP_R_64F, HIP_R_64F, HIP_R_64F)
   TYPED_MATMUL(complex64, HIP_C_32F, HIP_C_32F, HIP_C_32F, HIP_C_32F)
   TYPED_MATMUL(complex128, HIP_C_64F, HIP_C_64F, HIP_C_64F, HIP_C_64F)
->>>>>>> db579439eef970657f5ddbf05dc9b798cb748c51
 
 #undef TYPED_MATMUL
 
