@@ -895,13 +895,14 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     return empty_buffer_;
   }
 
-  if (const_attribute_to_buffer_map_.find(attr) !=
-          const_attribute_to_buffer_map_.end() &&
-      can_be_deduplicated) {
-    index = const_attribute_to_buffer_map_[attr];
-    return empty_buffer_;
+  if (can_be_deduplicated) {
+    if (const_attribute_to_buffer_map_.find(attr) !=
+        const_attribute_to_buffer_map_.end()) {
+      index = const_attribute_to_buffer_map_[attr];
+      return empty_buffer_;
+    }
+    const_attribute_to_buffer_map_[attr] = index;
   }
-  const_attribute_to_buffer_map_[attr] = index;
 
   // TF doesn't currently support 4-bit types (DT_INT4), so we'll run into
   // trouble calling ConvertToTensor(). For now, extract the tensor data from
