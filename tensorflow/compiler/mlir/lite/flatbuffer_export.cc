@@ -588,9 +588,10 @@ class Translator {
 
   // Returns TFLite buffer populated with constant value if the operation is
   // TFLite constant operation. Otherwise, returns an empty buffer. Emits error
-  // and returns std::nullopt on failure.
-  std::optional<BufferOffset<tflite::Buffer>> BuildBuffer(Value value,
-                                                          int index);
+  // and returns std::nullopt on failure. The buffer index may be changed if
+  // duplicated buffer is found.
+  std::optional<BufferOffset<tflite::Buffer>> BuildBuffer(
+      Value value, bool can_be_deduplicated, int& index);
 
   // Build TFLite tensor from the given type. This function is for tfl.lstm
   // intermediates, which should have UniformQuantizedType.
@@ -844,6 +845,10 @@ class Translator {
   bool require_use_buffer_offset_ = false;
 
   std::optional<size_t> custom_option_alignment_ = std::nullopt;
+
+  // Map from mlir constant attribute to the buffer index. This is used to
+  // deduplicate the buffers in the flatbuffer.
+  llvm::DenseMap<mlir::ElementsAttr, int> const_attribute_to_buffer_map_;
 };
 
 bool Translator::EstimateArithmeticCount(int64_t* count) {
@@ -867,7 +872,7 @@ std::string Translator::UniqueName(mlir::Value val) {
 }
 
 std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
-    mlir::Value value, int index) {
+    mlir::Value value, bool can_be_deduplicated, int& index) {
   auto inst = value.getDefiningOp();
   ElementsAttr attr;
   if (auto cst = dyn_cast<mlir::arith::ConstantOp>(inst)) {
@@ -889,6 +894,14 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   } else {
     return empty_buffer_;
   }
+
+  if (const_attribute_to_buffer_map_.find(attr) !=
+          const_attribute_to_buffer_map_.end() &&
+      can_be_deduplicated) {
+    index = const_attribute_to_buffer_map_[attr];
+    return empty_buffer_;
+  }
+  const_attribute_to_buffer_map_[attr] = index;
 
   // TF doesn't currently support 4-bit types (DT_INT4), so we'll run into
   // trouble calling ConvertToTensor(). For now, extract the tensor data from
@@ -2419,22 +2432,31 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
         quant_parameters = GetQuantizationForQuantStatsOpOutput(stats_op);
       }
     }
-    auto tensor_or =
-        BuildTensor(value, tensor_name, buffers_.size(), quant_parameters);
-    if (!tensor_or) return false;
-    tensors.push_back(*tensor_or);
 
+    int buffer_index = buffers_.size();
+    // If a constant is returned as subgraph's output, this constant cannot be
+    // deduplicated.
+    const bool not_returned_by_subgraph = llvm::none_of(
+        value.getUsers(),
+        [](Operation* user) { return llvm::isa<mlir::func::ReturnOp>(user); });
     // TODO(ashwinm): Check if for stateful tensors, if it is also needed to
     // make the Buffer empty apart from setting the buffer_idx=0 in the
     // Tensor. This does not seem to affect runtime behavior for RNN/LSTM,
     // but would be good for reducing memory footprint.
     if (value.getDefiningOp()) {
-      auto buffer_or = BuildBuffer(value, buffers_.size());
+      auto buffer_or =
+          BuildBuffer(value, not_returned_by_subgraph, buffer_index);
       if (!buffer_or) return false;
       buffers_.push_back(*buffer_or);
     } else {
       buffers_.push_back(empty_buffer_);
     }
+
+    auto tensor_or =
+        BuildTensor(value, tensor_name, buffer_index, quant_parameters);
+    if (!tensor_or) return false;
+    tensors.push_back(*tensor_or);
+
     return true;
   };
 
