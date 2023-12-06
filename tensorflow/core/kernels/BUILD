@@ -4267,6 +4267,7 @@ tf_kernel_library(
     deps = NN_DEPS + [
         ":cast_op",
         ":fill_functor",
+        ":gpu_util_hdrs",
         ":redux_functor",
         ":transpose_functor",
         "//tensorflow/core/util:determinism_for_kernels",
