@@ -110,8 +110,14 @@ class MapFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
           r = function(r)
       expected_output.append(r)
 
-    if num_parallel_calls is None or deterministic in [None, True]:
-      self.assertDatasetProduces(dataset, expected_output=expected_output)
+    nondeterministic_ordering = (
+        num_parallel_calls is not None and deterministic is False  # pylint: disable=g-bool-id-comparison
+    )
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=expected_output,
+        assert_items_equal=nondeterministic_ordering,
+    )
 
   @combinations.generate(
       combinations.times(
