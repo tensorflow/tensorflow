@@ -950,9 +950,9 @@ struct IndexingMapSimplifier {
         return getAffineBinaryOpExpr(expr.getKind(), lhs, rhs);
       }
       case AffineExprKind::Mod:
-        return RewriteMod(cast<AffineBinaryOpExpr>(expr));
+        return RewriteMod(mlir::cast<AffineBinaryOpExpr>(expr));
       case AffineExprKind::FloorDiv:
-        return RewriteFloorDiv(cast<AffineBinaryOpExpr>(expr));
+        return RewriteFloorDiv(mlir::cast<AffineBinaryOpExpr>(expr));
       default:
         return expr;
     }
