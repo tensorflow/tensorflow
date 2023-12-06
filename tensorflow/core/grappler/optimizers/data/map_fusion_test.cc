@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -184,6 +185,47 @@ TEST(MapFusionTest, FuseTwoParallelMapNodesIntoOne) {
   EXPECT_TRUE(graph_utils::ContainsNodeWithOp("ParallelMapDatasetV2", output));
   EXPECT_FALSE(graph_utils::ContainsGraphNodeWithName("map1", output));
   EXPECT_FALSE(graph_utils::ContainsGraphNodeWithName("map2", output));
+}
+
+TEST(MapFusionTest, FusedNodesAreNamedAfterOldNodes) {
+  using test::function::NDef;
+  NodeDef num_parallel_calls_node = CreateScalarConstNodeHelper(
+      "num_parallel_calls", DT_INT64,
+      [](TensorProto* proto) { proto->add_int64_val(-1); });
+  auto graph = [&num_parallel_calls_node](
+                   absl::string_view parent_map_node_name,
+                   absl::string_view map_node_name) {
+    return test::function::GDef(
+        {NDef("start", "Const", {}, {{"value", 0}, {"dtype", DT_INT32}}),
+         NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
+         NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
+         NDef("range", "RangeDataset", {"start", "stop", "step"}, {}),
+         num_parallel_calls_node,
+         MakeParallelMapV2Node(parent_map_node_name, "range",
+                               num_parallel_calls_node.name(), "XTimesTwo",
+                               "default"),
+         MakeParallelMapV2Node(map_node_name, parent_map_node_name,
+                               num_parallel_calls_node.name(), "XTimesTwo",
+                               "default")},
+        // FunctionLib
+        {
+            test::function::XTimesTwo(),
+        });
+  };
+
+  GrapplerItem item_1;
+  item_1.graph = graph("map1", "map2");
+  GraphDef output_1;
+  TF_ASSERT_OK(OptimizeWithMapFusion(item_1, &output_1, true));
+  EXPECT_TRUE(
+      graph_utils::ContainsGraphNodeWithName("fused_map/map1/map2", output_1));
+
+  GrapplerItem item_2;
+  item_2.graph = graph("map3", "map4");
+  GraphDef output_2;
+  TF_ASSERT_OK(OptimizeWithMapFusion(item_2, &output_2, true));
+  EXPECT_TRUE(
+      graph_utils::ContainsGraphNodeWithName("fused_map/map3/map4", output_2));
 }
 
 }  // namespace

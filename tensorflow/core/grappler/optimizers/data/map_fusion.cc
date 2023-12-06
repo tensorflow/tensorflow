@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -79,13 +80,24 @@ bool SameDeterministicAttr(const NodeDef& parallel_map_node,
   return false;
 }
 
+// Constructs a name for a new node that fuses the two input nodes. This is not
+// only for debugging: in some cases, graphs are optimized separately and then
+// later combined without name deduping, in which case, if this optimization
+// were to add new nodes with the same name to multiple graphs, there would be
+// collisions.
+string GetFusedName(const NodeDef& parent_map_node, const NodeDef& map_node) {
+  return absl::StrCat("fused_map/", parent_map_node.name(), "/",
+                      map_node.name());
+}
+
 // Sets basic function parameters and copies attributes from parent and map
 // node.
 NodeDef MakeFusedNode(const NodeDef& parent_map_node, const NodeDef& map_node,
                       const FunctionDef& fused_function,
                       MutableGraphView* graph) {
   NodeDef fused_node;
-  graph_utils::SetUniqueGraphNodeName("fused_map", graph->graph(), &fused_node);
+  graph_utils::SetUniqueGraphNodeName(GetFusedName(parent_map_node, map_node),
+                                      graph->graph(), &fused_node);
 
   if (map_node.op() == kMapDatasetOp) {
     fused_node.set_op(kMapDatasetOp);
@@ -185,9 +197,10 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
       return nullptr;
     }
     return fusion_utils::FuseFunctions(
-        *parent_func, *func, "fused_map", fusion_utils::ComposeSignature,
-        fusion_utils::ComposeInput, fusion_utils::ComposeOutput,
-        fusion_utils::MergeNodes, output->mutable_library());
+        *parent_func, *func, GetFusedName(*parent_map_node, *map_node),
+        fusion_utils::ComposeSignature, fusion_utils::ComposeInput,
+        fusion_utils::ComposeOutput, fusion_utils::MergeNodes,
+        output->mutable_library());
   };
 
   for (const NodeDef& node : sorted_old_graph.node()) {
