@@ -13,6 +13,7 @@ limitations under the License.
 #include "xla/service/gpu/fusion_merger_triton.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -44,12 +44,18 @@ namespace {
 // triton softmax fusion.
 // The following is assumed:
 //  * The producer is an HloFusionInstruction
-//  * The consumer is a triton softmax fusion
+//  * The (sole) consumer of the producer is a triton softmax fusion
 //
-// Returns true if the producer is merged into the consumer and replaced
-// in the original computation. Returns false otherwise.
-StatusOr<bool> TryMergeFusionProducerIntoTritonSoftmaxConsumer(
+// Returns StatusOr<HloInstruction*>, i.e. returns a pointer to the new (fused)
+// triton softmax instruction if the producer was successfully merged into the
+// consumer. If the merge was unsuccessful, the original computation remains
+// unchanged and a non-ok status is returned.
+std::optional<HloFusionInstruction*>
+TryMergeFusionProducerIntoTritonSoftmaxConsumer(
     HloFusionInstruction* producer) {
+  // TODO(b/313026024): Add support for multiple users
+  CHECK_EQ(producer->user_count(), 1);
+
   HloComputation* computation = producer->parent();
   HloInstruction* original_softmax_instruction = producer->users().front();
   CHECK_EQ(original_softmax_instruction->opcode(), HloOpcode::kFusion);
@@ -65,8 +71,11 @@ StatusOr<bool> TryMergeFusionProducerIntoTritonSoftmaxConsumer(
   HloComputation* fused_computation =
       candidate_fusion->called_computations().front();
 
-  TF_ASSIGN_OR_RETURN(const auto analysis,
-                      TritonFusionAnalysis::Execute(*fused_computation));
+  const auto analysis = TritonFusionAnalysis::Execute(*fused_computation);
+
+  if (!analysis.ok()) {
+    return std::nullopt;
+  }
 
   computation->AddInstruction(std::move(candidate));
 
@@ -76,12 +85,42 @@ StatusOr<bool> TryMergeFusionProducerIntoTritonSoftmaxConsumer(
 
   TF_CHECK_OK(
       original_softmax_instruction->ReplaceAllUsesWith(candidate_fusion));
-  TF_RETURN_IF_ERROR(
-      computation->RemoveInstruction(original_softmax_instruction));
+  TF_CHECK_OK(computation->RemoveInstruction(original_softmax_instruction));
 
   CHECK_EQ(0, producer->user_count()) << producer->ToString();
-  TF_RETURN_IF_ERROR(computation->RemoveInstruction(producer));
-  return true;
+  TF_CHECK_OK(computation->RemoveInstruction(producer));
+
+  return Cast<HloFusionInstruction>(candidate_fusion);
+}
+
+bool TryMergeProducerAndConsumerFusionsIntoTritonSoftmax(
+    HloFusionInstruction* softmax_fusion) {
+  // The softmax_fusion should come directly from the matcher, and have a single
+  // operand.
+  CHECK_EQ(softmax_fusion->operand_count(), 1);
+
+  bool producer_is_fusion =
+      softmax_fusion->operand(0)->opcode() == HloOpcode::kFusion;
+
+  if (producer_is_fusion) {
+    HloFusionInstruction* producer =
+        Cast<HloFusionInstruction>(softmax_fusion->mutable_operand(0));
+
+    VLOG(6) << "Fusing producer " << producer->ToShortString() << " into "
+            << softmax_fusion->ToShortString();
+
+    std::optional<HloFusionInstruction*> result =
+        TryMergeFusionProducerIntoTritonSoftmaxConsumer(producer);
+
+    if (!result.has_value()) {
+      VLOG(6) << "Did not fuse producer into "
+              << softmax_fusion->ToShortString();
+    } else {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 }  // anonymous namespace
@@ -102,27 +141,18 @@ StatusOr<bool> FusionMergerTriton::Run(
           instr->backend_config<FusionBackendConfig>().ok() &&
           instr->backend_config<FusionBackendConfig>()->kind() ==
               kTritonSoftmaxFusionKind) {
-        // TODO(b/313026024): Add support for multiple users
-        if (instr->operand(0)->opcode() != HloOpcode::kFusion ||
-            instr->operand(0)->user_count() != 1) {
-          continue;
-        }
+        VLOG(6) << "Matched triton_softmax fusion: " << instr->ToShortString();
 
-        HloFusionInstruction* producer =
-            Cast<HloFusionInstruction>(instr->mutable_operand(0));
+        HloFusionInstruction* softmax = Cast<HloFusionInstruction>(instr);
 
-        VLOG(6) << "Matched triton_softmax kernel, Fusing producer "
-                << producer->ToShortString() << " into "
-                << instr->ToShortString();
+        bool result =
+            TryMergeProducerAndConsumerFusionsIntoTritonSoftmax(softmax);
 
-        absl::StatusOr<bool> result =
-            TryMergeFusionProducerIntoTritonSoftmaxConsumer(producer);
-
-        if (!result.ok()) {
+        if (!result) {
           VLOG(6) << "Did not fuse producer into " << instr->ToShortString();
+        } else {
+          ++fused_comps;
         }
-
-        if (result.ok() && *result) ++fused_comps;
       }
     }
   }
