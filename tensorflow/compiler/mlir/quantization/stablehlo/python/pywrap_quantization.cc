@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil   // IWYU pragma: keep
 #include "pybind11_abseil/import_status_module.h"  // from @pybind11_abseil
 #include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/statistics.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/debugger.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
@@ -44,6 +46,7 @@ namespace py = pybind11;
 
 namespace {
 
+using ::stablehlo::quantization::AddCalibrationStatistics;
 using ::stablehlo::quantization::EnableDebugging;
 using ::stablehlo::quantization::io::CreateTmpDir;
 using ::tensorflow::SignatureDef;
@@ -84,7 +87,7 @@ PYBIND11_MODULE(pywrap_quantization, m) {
                                            function_aliases);
         if (!exported_model.ok()) return exported_model.status();
 
-        const ExportedModel exported_model_ids_assigned =
+        ExportedModel exported_model_for_calibration =
             py_function_library.AssignIdsToCustomAggregatorOps(*exported_model);
 
         const absl::StatusOr<std::string> precalibrated_saved_model_dir =
@@ -96,19 +99,27 @@ PYBIND11_MODULE(pywrap_quantization, m) {
         }
 
         py_function_library.SaveExportedModel(
-            *precalibrated_saved_model_dir, exported_model_ids_assigned,
+            *precalibrated_saved_model_dir, exported_model_for_calibration,
             src_saved_model_path, tags, signature_def_map);
 
-        ExportedModel calibrated_exported_model =
-            py_function_library.RunCalibration(
-                *precalibrated_saved_model_dir, signature_keys, tags,
-                exported_model_ids_assigned,
+        py_function_library.RunCalibration(
+            *precalibrated_saved_model_dir, signature_keys, tags,
+            quantization_options.calibration_options(),
+            quantization_options.force_graph_mode_calibration(),
+            representative_dataset);
+
+        if (absl::Status status = AddCalibrationStatistics(
+                *exported_model_for_calibration.mutable_graph_def(),
                 quantization_options.calibration_options(),
-                quantization_options.force_graph_mode_calibration(),
-                representative_dataset);
+                py_function_library);
+            !status.ok()) {
+          LOG(WARNING) << "Some CustomAggregator ops do not have min or max "
+                          "values. Parts of the graph are not quantized. "
+                       << status;
+        }
 
         if (quantization_options.has_debugger_options()) {
-          EnableDebugging(calibrated_exported_model,
+          EnableDebugging(exported_model_for_calibration,
                           quantization_options.debugger_options(),
                           py_function_library, src_saved_model_path, tags,
                           signature_def_map);
@@ -123,13 +134,13 @@ PYBIND11_MODULE(pywrap_quantization, m) {
         }
 
         py_function_library.SaveExportedModel(
-            *calibrated_saved_model_path, calibrated_exported_model,
+            *calibrated_saved_model_path, exported_model_for_calibration,
             src_saved_model_path, tags, signature_def_map);
 
         const absl::flat_hash_map<std::string, std::string>
             function_aliases_after_calibration(
-                calibrated_exported_model.function_aliases().begin(),
-                calibrated_exported_model.function_aliases().end());
+                exported_model_for_calibration.function_aliases().begin(),
+                exported_model_for_calibration.function_aliases().end());
 
         const absl::StatusOr<ExportedModel> post_calibrated_exported_model =
             QuantizePtqModelPostCalibration(

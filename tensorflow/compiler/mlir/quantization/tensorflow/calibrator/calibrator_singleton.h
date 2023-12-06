@@ -35,6 +35,7 @@ namespace calibrator {
 
 using tensorflow::quantization::CalibrationOptions;
 
+// TODO: b/315084876 - Move to stablehlo quantizer directory.
 class CalibratorSingleton {
  public:
   // Clears the collected information.

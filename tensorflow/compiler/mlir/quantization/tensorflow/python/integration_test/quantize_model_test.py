@@ -3304,7 +3304,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
   @test_util.run_in_graph_and_eager_modes
-  def test_model_ptq_no_representative_sample_shows_warnings(self):
+  def test_model_ptq_no_representative_sample_not_quantized(self):
     self._create_matmul_model(
         input_shape=(1, 1024),
         weight_shape=(1024, 3),
@@ -3320,30 +3320,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         signature_keys=['serving_default'],
     )
 
-    with self.assertLogs(level='WARN') as warning_logs:
-      # Save the logger verbosity.
-      prev_log_level = logging.get_verbosity()
-      logging.set_verbosity(logging.WARN)
-
-      try:
-        converted_model = quantize_model.quantize(
-            self._input_saved_model_path,
-            self._output_saved_model_path,
-            quantization_options,
-            # Put no sample into the representative dataset to make calibration
-            # impossible.
-            representative_dataset=[],
-        )
-      finally:
-        # Restore the logger verbosity.
-        logging.set_verbosity(prev_log_level)
-
-      self.assertNotEmpty(warning_logs.records)
-      self.assertTrue(
-          self._any_log_contains(
-              'does not have min or max values', warning_logs.records
-          )
-      )
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        quantization_options,
+        # Put no sample into the representative dataset to make calibration
+        # impossible.
+        representative_dataset=[],
+    )
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(
@@ -3424,36 +3408,12 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         op_set=quant_opts_pb2.TF,
     )
 
-    with self.assertLogs(level='WARN') as warning_logs:
-      # Save the logger verbosity.
-      log_level = logging.get_verbosity()
-      logging.set_verbosity(logging.WARN)
-
-      try:
-        converted_model = quantize_model.quantize(
-            self._input_saved_model_path,
-            self._output_saved_model_path,
-            quantization_options,
-            representative_dataset=data_gen(),
-        )
-      finally:
-        # Restore the logger verbosity.
-        logging.set_verbosity(log_level)
-
-      self.assertNotEmpty(warning_logs.records)
-
-      # Warning message should contain the function name. The uncalibrated path
-      # is when the condition is true, so 'cond_true' function must be part of
-      # the warning message.
-      self.assertTrue(self._any_log_contains('cond_true', warning_logs.records))
-      self.assertFalse(
-          self._any_log_contains('cond_false', warning_logs.records)
-      )
-      self.assertTrue(
-          self._any_log_contains(
-              'does not have min or max values', warning_logs.records
-          )
-      )
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        quantization_options,
+        representative_dataset=data_gen(),
+    )
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(
@@ -3464,6 +3424,25 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
     self.assertTrue(self._contains_quantized_function_call(output_graphdef))
+
+    # Tests that the false branch contains a quantized function call whereas the
+    # true branch doesn't.
+    def _is_quantized_function_call_node(
+        node_def: node_def_pb2.NodeDef,
+    ) -> bool:
+      return node_def.op == 'PartitionedCall' and node_def.attr[
+          'f'
+      ].func.name.startswith('quantized_')
+
+    for func in output_graphdef.library.function:
+      if func.signature.name.startswith('cond_false'):
+        self.assertTrue(
+            any(map(_is_quantized_function_call_node, func.node_def))
+        )
+      elif func.signature.name.startswith('cond_true'):
+        self.assertFalse(
+            any(map(_is_quantized_function_call_node, func.node_def))
+        )
 
   # Run this test only with the eager mode.
   @test_util.run_v2_only
