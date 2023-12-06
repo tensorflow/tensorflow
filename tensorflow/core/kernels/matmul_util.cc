@@ -166,6 +166,8 @@ StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
         .beta = 0.0,
         .compute_precision = se::blas::kDefaultComputePrecision,
         .algorithm = {},
+        .grad_x = false,
+        .grad_y = false,
         .compute_type = computation_type,
     };
 
