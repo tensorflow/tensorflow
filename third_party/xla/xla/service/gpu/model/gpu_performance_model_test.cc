@@ -105,7 +105,7 @@ ENTRY e {
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
       root, &analysis_, GpuPerformanceModelOptions::Default());
   // Dominated by the kernel launch overhead.
-  EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 5, 1);
+  EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 1, 1);
 
   GpuPerformanceModel::RecordEstimatedRunTime(
       root, &analysis_, GpuPerformanceModelOptions::Default());
@@ -237,7 +237,7 @@ TEST_F(GpuPerformanceModelTest, UnusedParameter) {
 
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
       root, &analysis_, GpuPerformanceModelOptions::Default());
-  EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 5, 1);
+  EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 1, 1);
 }
 
 using GpuPerformanceWithCollectiveModelTest = GpuPerformanceModelTest;
@@ -513,6 +513,39 @@ ENTRY e2 {
       GpuPerformanceModelOptions::PriorityFusion(nullptr, nullptr), {});
 
   EXPECT_EQ(t1.time_fused, t2.time_unfused);
+}
+
+TEST_F(GpuPerformanceModelTest, DoNotFuseDivideIntoSmallReduce) {
+  // Fusing this divide is not supported by reduce epilogue fusion.
+  constexpr absl::string_view kHlo = R"(
+HloModule testmodule
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+ENTRY fusion {
+  c = f32[] constant(0)
+  p0 = f32[3072] parameter(0)
+  p1 = f32[] parameter(1)
+  reduce = f32[] reduce(p0, c), dimensions={0}, to_apply=add
+  ROOT divide = f32[] divide(reduce, p1)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  auto* producer =
+      module->entry_computation()->GetInstructionWithName("reduce");
+  std::vector<HloInstruction*> consumers{
+      module->entry_computation()->GetInstructionWithName("divide")};
+  GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
+      producer, &analysis_,
+      GpuPerformanceModelOptions::PriorityFusion(nullptr, nullptr), consumers);
+
+  EXPECT_LT(t.time_unfused, t.time_fused);
 }
 
 }  // namespace

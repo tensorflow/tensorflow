@@ -45,7 +45,9 @@ namespace gpu {
 namespace {
 
 // Estimated values in the absence of easy ways to query them.
-static constexpr absl::Duration kKernelLaunchOverhead = absl::Microseconds(5);
+static constexpr absl::Duration kKernelLaunchOverhead = absl::Microseconds(1);
+static constexpr absl::Duration kNcclKernelLaunchOverhead =
+    absl::Microseconds(5);
 static constexpr float kL2CacheSpeedup = 2.5;
 static constexpr float kL1CacheSpeedup = 8;
 // A very conservative estimate. L1 size varies because it can be dynamically
@@ -933,7 +935,7 @@ GpuPerformanceWithCollectiveModel::ComputeAllreduceTime(
     const se::DeviceDescription& gpu_device_info) {
   // We use nccl group call to launch multiple allreduces so launch overhead
   // only occurs once.
-  absl::Duration total_time = kKernelLaunchOverhead;
+  absl::Duration total_time = kNcclKernelLaunchOverhead;
   stream_executor::CudaComputeCapability compute_cap =
       gpu_device_info.cuda_compute_capability();
 
@@ -1010,7 +1012,7 @@ GpuPerformanceWithCollectiveModel::ComputeCollectiveTime(
     const se::DeviceDescription& gpu_device_info) {
   if (cost_analysis->NumOfDevices(instr) == 1) {
     VLOG(8) << "Returning only kernel launch overhead for a single partition.";
-    return kKernelLaunchOverhead;
+    return kNcclKernelLaunchOverhead;
   }
 
   if (HloDataflowAnalysis::IsAsynchronousOperationDone(instr.opcode())) {
@@ -1025,7 +1027,7 @@ GpuPerformanceWithCollectiveModel::ComputeCollectiveTime(
       LOG(WARNING)
           << "Runtime estimate for " << instr.name()
           << " not implemented. Returning only the kernel launch time.";
-      return kKernelLaunchOverhead;
+      return kNcclKernelLaunchOverhead;
     }
   }
 }

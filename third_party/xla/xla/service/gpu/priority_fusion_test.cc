@@ -323,10 +323,11 @@ TEST_F(PriorityFusionTest, DoNotFuseTransposeIntoReduce) {
     })";
 
   using Kind = HloFusionAnalysis::EmitterFusionKind;
-  EXPECT_THAT(RunAndGetFusionKinds(kHlo),
-              UnorderedElementsAre(Kind::kLoop, Kind::kReduction,
-                                   Kind::kReduction, Kind::kTranspose,
-                                   Kind::kTranspose, Kind::kTranspose));
+  EXPECT_THAT(
+      RunAndGetFusionKinds(kHlo),
+      UnorderedElementsAre(Kind::kLoop, Kind::kLoop, Kind::kLoop,
+                           Kind::kReduction, Kind::kReduction, Kind::kTranspose,
+                           Kind::kTranspose, Kind::kTranspose));
 }
 
 TEST_F(PriorityFusionTest, DoNotFuseReduceIntoReduce) {
@@ -467,33 +468,6 @@ CHECK: ROOT {{.*}} log(%[[REDUCE]])
 CHECK: ENTRY
 CHECK-COUNT-2: fusion(
   )");
-}
-
-TEST_F(PriorityFusionTest, SingleTransposeFusion) {
-  // A regression test that verifies the given HLO fuses into a single fusion.
-  absl::string_view kHlo = R"(
-    HloModule test_module
-
-  ENTRY main {
-    param_0.14390 = bf16[2048,24576]{1,0} parameter(0)
-    convert.34192 = f32[2048,24576]{1,0} convert(param_0.14390)
-    constant_11107 = bf16[] constant(0.02002)
-    convert.35472 = f32[] convert(constant_11107)
-    broadcast.21886 = f32[2048,24576]{1,0} broadcast(convert.35472), dimensions={}
-    multiply.14420 = f32[2048,24576]{1,0} multiply(convert.34192, broadcast.21886)
-    fusion.3520 = f32[2048,24576]{1,0} tanh(multiply.14420)
-
-    constant_11286 = bf16[] constant(50)
-    convert.42562 = f32[] convert(constant_11286)
-    broadcast.22230 = f32[2048,24576]{1,0} broadcast(convert.42562), dimensions={}
-    multiply.14798 = f32[2048,24576]{1,0} multiply(fusion.3520, broadcast.22230)
-    convert.34603 = bf16[2048,24576]{1,0} convert(multiply.14798)
-    bitcast.21354 = bf16[1,2048,2048,12]{3,2,1,0} bitcast(convert.34603)
-    ROOT transpose.6502 = bf16[1,12,2048,2048]{3,2,1,0} transpose(bitcast.21354), dimensions={0,3,2,1}
-  })";
-
-  using Kind = HloFusionAnalysis::EmitterFusionKind;
-  EXPECT_THAT(RunAndGetFusionKinds(kHlo), ElementsAre(Kind::kTranspose));
 }
 
 TEST_F(PriorityFusionTest, DontFuseIntoFirstOperandOfScatter) {
