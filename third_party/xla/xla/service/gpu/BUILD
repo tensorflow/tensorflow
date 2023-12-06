@@ -594,11 +594,9 @@ xla_test(
 xla_test(
     name = "ir_emitter_triton_parametrized_test",
     srcs = if_cuda_is_configured(["ir_emitter_triton_parametrized_test.cc"]),
-    backend_tags = {"gpu": [
-        "requires-gpu-sm70",
-    ]},
     backends = [
-        "gpu",
+        "gpu_a100",
+        "gpu_v100",
     ],
     shard_count = 10,
     tags = ["nomac"],
