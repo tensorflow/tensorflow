@@ -543,6 +543,7 @@ NamedSharding = _xla.NamedSharding
 SingleDeviceSharding = _xla.SingleDeviceSharding
 PmapSharding = _xla.PmapSharding
 GSPMDSharding = _xla.GSPMDSharding
+PjRtLayout = _xla.PjRtLayout
 
 
 def LoadedExecutable_execute(self, arguments, device=None):
