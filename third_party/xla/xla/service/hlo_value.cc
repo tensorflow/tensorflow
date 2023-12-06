@@ -179,10 +179,17 @@ HloValue::Uses HloValue::ComputeUses() const {
           continue;
         }
 
+#ifndef NDEBUG
+        // If user is in the root positions of this value, it must be a root.
+        if (root_positions.contains(user)) {
+          CHECK(user->IsRoot());
+        }
+#endif  // NDEBUG
+
         // Root instructions of computations are considered to be uses whether
         // or not the root instruction itself actually uses the value.
         if (MayUseOperandValue(i, position.index, user) ||
-            root_positions.contains(user)) {
+            (user->IsRoot() && root_positions.contains(user))) {
           HloUse new_use{user, i, position.index};
 
 #ifndef NDEBUG
