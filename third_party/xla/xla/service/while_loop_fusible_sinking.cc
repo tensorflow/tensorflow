@@ -42,8 +42,9 @@ bool IsPurelyExpanding(const HloInstruction* instr) {
 }
 
 bool IsFusionCandidate(const HloInstruction* instr) {
-  return instr->IsElementwise() || instr->opcode() == HloOpcode::kReshape ||
-         instr->opcode() == HloOpcode::kTranspose;
+  return instr->opcode() != HloOpcode::kRng &&
+         (instr->IsElementwise() || instr->opcode() == HloOpcode::kReshape ||
+          instr->opcode() == HloOpcode::kTranspose);
 }
 }  // namespace
 
