@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_memory_util.h"
+#include "xla/service/cpu/onednn_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/status_macros.h"
 #include "tsl/platform/cpu_info.h"
@@ -43,21 +44,6 @@ Status ValidateDotDimensionNumbers(const DotDimensionNumbers& dim_numbers) {
   TF_RET_CHECK(
       absl::c_equal(batch_dim_numbers, dim_numbers.rhs_batch_dimensions()));
   return OkStatus();
-}
-
-bool IsSupportedType(xla::PrimitiveType dtype) {
-  using tsl::port::CPUFeature;
-  using tsl::port::TestCPUFeature;
-  switch (dtype) {
-    case F32:
-      return true;
-    case BF16:
-      return TestCPUFeature(CPUFeature::AVX512_BF16) ||
-             TestCPUFeature(CPUFeature::AMX_BF16);
-    default:
-      return false;
-  }
-  return false;
 }
 
 }  // namespace

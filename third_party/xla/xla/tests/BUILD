@@ -2875,3 +2875,21 @@ xla_test(
         "@local_tsl//tsl/platform:platform_port",
     ],
 )
+
+xla_test(
+    name = "onednn_layer_norm_test",
+    srcs = ["onednn_layer_norm_test.cc"],
+    backends = [
+        "cpu",
+    ],
+    copts = tsl_copts(),
+    deps = [
+        ":hlo_test_base",
+        ":test_macros_header",
+        ":xla_internal_test_main",
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:test",
+        "//xla:test_helpers",
+    ],
+)
