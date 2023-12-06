@@ -547,7 +547,6 @@ Status EmitAtomicOperationUsingCAS(llvm::IRBuilder<>* builder,
   llvm::PointerType* output_address_type =
       llvm::dyn_cast<llvm::PointerType>(output_address->getType());
   CHECK_NE(output_address_type, nullptr);
-  CHECK(output_address_type->isOpaqueOrPointeeTypeMatches(element_type));
 
   int element_size = llvm_ir::GetSizeInBits(element_type);
 
