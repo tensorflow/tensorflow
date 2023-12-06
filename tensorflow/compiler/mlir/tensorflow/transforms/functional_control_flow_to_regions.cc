@@ -102,7 +102,9 @@ Value ConvertConditionToBoolean(Operation* op, Value cond) {
       return cond;
 
   OpBuilder builder(op);
-  return builder.create<TF::ToBoolOp>(op->getLoc(), cond);
+  Value to_bool = builder.create<TF::ToBoolOp>(op->getLoc(), cond);
+  CopyDeviceAndUnderscoredAttributes(op, to_bool.getDefiningOp());
+  return to_bool;
 }
 
 // Transform a functional IfOp to a region based IfRegionOp.
