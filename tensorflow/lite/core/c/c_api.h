@@ -79,9 +79,9 @@ limitations under the License.
 // clang-format off
 // NOLINTBEGIN(whitespace/line_length)
 /// \note Users of TensorFlow Lite should use
-///
-///     #include "tensorflow/lite/c/c_api.h"
-///
+/// \code
+/// #include "tensorflow/lite/c/c_api.h"
+/// \endcode
 /// to access the APIs documented on this page.
 // NOLINTEND(whitespace/line_length)
 // clang-format on
