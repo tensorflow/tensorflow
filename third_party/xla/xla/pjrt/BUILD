@@ -92,6 +92,8 @@ cc_library(
         "//xla/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/profiler/lib:connected_traceme",
+        "@local_tsl//tsl/profiler/lib:context_types_hdrs",
     ],
 )
 
