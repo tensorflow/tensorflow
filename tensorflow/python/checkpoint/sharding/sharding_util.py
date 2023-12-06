@@ -145,8 +145,9 @@ class ShardingCallback(abc.ABC):
 
   def __hash__(self) -> int:
     hash_val = hash(self.description)
-    for attr_name, attr_val in inspect.getmembers(self):
-      if not inspect.ismethod(attr_val) and not inspect.isfunction(attr_val):
+    # vars() only includes user-defined attributes.
+    for attr_name, attr_val in vars(self).items():
+      if not (inspect.ismethod(attr_val) or inspect.isfunction(attr_val)):
         hash_val ^= hash(attr_name)
         if isinstance(attr_val, Hashable):
           hash_val ^= hash(attr_val)
