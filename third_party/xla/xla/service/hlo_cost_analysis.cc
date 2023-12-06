@@ -78,7 +78,7 @@ Status HloCostAnalysis::Postprocess(const HloInstruction* hlo) {
       if (key == kOptimalSecondsKey) {
         return;
       }
-      float per_second_rate = options_.per_second_rates[key];
+      float per_second_rate = options_.per_second_rate(key);
       if (per_second_rate != 0) {
         optimal_seconds = std::max(optimal_seconds, val / per_second_rate);
       }

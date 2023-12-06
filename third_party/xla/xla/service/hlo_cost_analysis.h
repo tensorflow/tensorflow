@@ -399,7 +399,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
     }
 
     // Returns the specified per-second rate used by cost analysis.
-    float per_second_rate(const std::string& key) const {
+    float per_second_rate(absl::string_view key) const {
       return per_second_rates[key];
     }
   };
@@ -547,7 +547,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
   // Returns the specified per-second rate used by cost analysis.
   float per_second_rate(absl::string_view key) const {
-    return options_.per_second_rates[key];
+    return options_.per_second_rate(key);
   }
 
   // Return the key that is used to index into Properties for the specified
