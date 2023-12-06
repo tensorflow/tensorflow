@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_KERNELS_CUTLASS_GEMM_KERNEL_CU_H_
-#define XLA_SERVICE_GPU_KERNELS_CUTLASS_GEMM_KERNEL_CU_H_
+#ifndef XLA_SERVICE_GPU_KERNELS_CUTLASS_GEMM_ADAPTOR_CU_H_
+#define XLA_SERVICE_GPU_KERNELS_CUTLASS_GEMM_ADAPTOR_CU_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -38,8 +38,10 @@ namespace xla::gpu::kernel::gemm_universal {
 // GemmUniversal kernel to StreamExecutor primitives for kernel arguments
 // packing and kernel launching.
 //
-// In all templates defined below `typename Gemm` should be a
-// an instance of `cutlass::gemm::device::GemmUniversal` template.
+// This library is based on `GemmUniversalAdaptor` from CUTLASS itself, but
+// instead of targeting CUDA runtime for launching kernels, it targets XLA
+// StreamExecutor abstractions, but conceptually it has the same role: wrapping
+// device kernels into C++ API to make them launchable on streams.
 
 namespace se = ::stream_executor;
 
@@ -224,4 +226,4 @@ KernelArgsPacking ArgsPacking(cutlass::gemm::GemmCoord problem_size,
 
 }  // namespace xla::gpu::kernel::gemm_universal
 
-#endif  // XLA_SERVICE_GPU_KERNELS_CUTLASS_GEMM_KERNEL_CU_H_
+#endif  // XLA_SERVICE_GPU_KERNELS_CUTLASS_GEMM_ADAPTOR_CU_H_

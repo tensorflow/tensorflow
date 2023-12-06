@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/kernels/cutlass_gemm.h"
-#include "xla/service/gpu/kernels/cutlass_gemm_kernel.cu.h"
+#include "xla/service/gpu/kernels/cutlass_gemm_adaptor.cu.h"
 #include "xla/service/gpu/kernels/cutlass_gemm_kernels.cu.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
