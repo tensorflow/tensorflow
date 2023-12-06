@@ -637,12 +637,13 @@ std::vector<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
   // include the computation itself in the list of embedded computations.
   for (auto* instruction : instructions()) {
     auto process_called_computations =
-        [&](std::vector<HloComputation*> called_computations) {
+        [&](const std::vector<HloComputation*>& called_computations) {
           // Put the called computations in reverse order onto the stack.
           // Otherwise we don't match the recursive enumeration of
           // computations, which processes the first called computation first.
-          absl::c_reverse(called_computations);
-          for (HloComputation* called_computation : called_computations) {
+          for (auto i = called_computations.rbegin();
+               i != called_computations.rend(); ++i) {
+            HloComputation* called_computation = *i;
             if (visited.insert(called_computation).second) {
               st.emplace(called_computation,
                          called_computation->instructions_.cbegin());
