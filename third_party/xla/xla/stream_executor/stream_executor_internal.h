@@ -320,6 +320,13 @@ class StreamExecutorInterface {
     return absl::UnimplementedError("Not Implemented");
   }
 
+  virtual tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
+                             const BlockDim& block_dims,
+                             const ClusterDim& cluster_dims, const Kernel& k,
+                             const KernelArgs& args) {
+    return absl::UnimplementedError("Not Implemented");
+  }
+
   virtual tsl::Status Submit(Stream* stream,
                              const CommandBuffer& command_buffer) {
     return absl::UnimplementedError("Not Implemented");

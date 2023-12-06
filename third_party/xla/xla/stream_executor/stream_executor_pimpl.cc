@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_internal.h"
@@ -446,6 +447,18 @@ tsl::Status StreamExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
               kernel, args);
 
   return implementation_->Launch(stream, thread_dims, block_dims, kernel, args);
+}
+
+tsl::Status StreamExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
+                                   const BlockDim& block_dims,
+                                   const ClusterDim& cluster_dims,
+                                   const Kernel& kernel,
+                                   const KernelArgs& args) {
+  SubmitTrace(&TraceListener::LaunchSubmit, stream, thread_dims, block_dims,
+              kernel, args);
+
+  return implementation_->Launch(stream, thread_dims, block_dims, cluster_dims,
+                                 kernel, args);
 }
 
 tsl::Status StreamExecutor::Submit(Stream* stream,
