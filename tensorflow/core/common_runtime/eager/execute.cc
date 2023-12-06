@@ -291,7 +291,7 @@ Status GetOutputDTypes(EagerOperation* op, DataTypeVector* output_dtypes) {
   const auto& node_def = op->MutableAttrs()->BuildNodeDef();
   const OpDef* op_def = nullptr;
 
-  const FunctionDef* function_def = op->FunctionDef();
+  const FunctionDef* function_def = op->GetFunctionDef();
   if (function_def != nullptr) {
     op_def = &(function_def->signature());
   } else {
@@ -419,7 +419,7 @@ Status GetFuncAttr(const EagerOperation* op, const EagerContext& ctx,
     return OkStatus();
   }
 
-  const FunctionDef* function_def = op->FunctionDef();
+  const FunctionDef* function_def = op->GetFunctionDef();
   if (function_def == nullptr) {
     return errors::NotFound("Failed to find function '", op->Name(), "'");
   }
@@ -443,7 +443,7 @@ Status HasTPUReplication(const EagerOperation& op, const EagerContext& ctx,
     return OkStatus();
   }
 
-  const FunctionDef* function_def = op.FunctionDef();
+  const FunctionDef* function_def = op.GetFunctionDef();
   if (function_def == nullptr) {
     return errors::NotFound("Failed to find function '", op.Name(), "'");
   }
@@ -1546,7 +1546,7 @@ Status GetOrCreateKernelAndDevice(
     // programs that build input pipeline graphs in a loop.
     const OpDef* op_def;
     if (op->is_function()) {
-      const FunctionDef* function_def = op->FunctionDef();
+      const FunctionDef* function_def = op->GetFunctionDef();
       if (function_def != nullptr) {
         op_def = &(function_def->signature());
       } else {

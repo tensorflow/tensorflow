@@ -163,7 +163,7 @@ class EagerOperation : public ImmediateExecutionOperation {
     }
   }
 
-  const FunctionDef* FunctionDef() const {
+  const FunctionDef* GetFunctionDef() const {
     if (is_function_) {
       return FuncLibDef()->Find(attrs_.op_name());
     } else {
