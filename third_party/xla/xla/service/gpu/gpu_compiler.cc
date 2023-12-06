@@ -33,7 +33,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
@@ -241,7 +240,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "third_party/tensorflow/core/platform/logging.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/cpu_info.h"
@@ -542,13 +540,6 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
                                       const CompileOptions& options,
                                       const TargetConfig& gpu_target_config) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
-
-  // LOG_LINES is used instead of LOG since the message can exceed the
-  // maximum line length, which results in the message being truncated.
-  XLA_LOG_LINES(
-      tensorflow::INFO,
-      absl::StrFormat("GpuCompilationEnvironment of hlo_module %s:\n%s",
-                      hlo_module->name(), debug_options.DebugString()));
 
   MaybeOwningThreadPool thread_pool = MaybeOwningThreadPool::GetOrCreate(
       /*parallelism=*/hlo_module->config()
