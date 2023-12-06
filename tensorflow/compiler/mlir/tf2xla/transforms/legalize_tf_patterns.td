@@ -392,7 +392,7 @@ foreach src = [TF_PreventGradientOp, TF_CheckNumericsOp] in
 def GetPrecisionConfig: NativeCodeCall<
   "GetPrecisionConfig(&$_builder)">;
 
-def : Pat<(TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
+def : Pat<(TF_MatMulOp $a, $b, $transpose_a, $transpose_b, $grad_a, $grad_b),
           (MHLO_DotOp
           (TF_TransposeOp $a, (TF_ConstOp (Get2DTransposePerm $transpose_a))),
           (TF_TransposeOp $b, (TF_ConstOp (Get2DTransposePerm $transpose_b))),

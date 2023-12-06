@@ -3613,16 +3613,20 @@ def trace(x, name=None):
 
 @tf_export("linalg.matmul", "matmul")
 @dispatch.add_dispatch_support
-def matmul(a,
-           b,
-           transpose_a=False,
-           transpose_b=False,
-           adjoint_a=False,
-           adjoint_b=False,
-           a_is_sparse=False,
-           b_is_sparse=False,
-           output_type=None,
-           name=None):
+def matmul(
+    a,
+    b,
+    transpose_a=False,
+    transpose_b=False,
+    adjoint_a=False,
+    adjoint_b=False,
+    a_is_sparse=False,
+    b_is_sparse=False,
+    output_type=None,
+    grad_a=False,
+    grad_b=False,
+    name=None,
+):
   """Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
 
   The inputs must, following any transpositions, be tensors of rank >= 2
@@ -3708,17 +3712,19 @@ def matmul(a,
       multiplication.
     a_is_sparse: If `True`, `a` is treated as a sparse matrix. Notice, this
       **does not support `tf.sparse.SparseTensor`**, it just makes optimizations
-      that assume most values in `a` are zero.
-      See `tf.sparse.sparse_dense_matmul`
-      for some support for `tf.sparse.SparseTensor` multiplication.
+      that assume most values in `a` are zero. See
+      `tf.sparse.sparse_dense_matmul` for some support for
+      `tf.sparse.SparseTensor` multiplication.
     b_is_sparse: If `True`, `b` is treated as a sparse matrix. Notice, this
       **does not support `tf.sparse.SparseTensor`**, it just makes optimizations
-      that assume most values in `b` are zero.
-      See `tf.sparse.sparse_dense_matmul`
-      for some support for `tf.sparse.SparseTensor` multiplication.
+      that assume most values in `b` are zero. See
+      `tf.sparse.sparse_dense_matmul` for some support for
+      `tf.sparse.SparseTensor` multiplication.
     output_type: The output datatype if needed. Defaults to None in which case
       the output_type is the same as input type. Currently only works when input
       tensors are type (u)int8 and output_type can be int32.
+    grad_a: Set it to `True` to hint that Tensor `a` is for the backward pass.
+    grad_b: Set it to `True` to hint that Tensor `b` is for the backward pass.
     name: Name for the operation (optional).
 
   Returns:
@@ -3790,10 +3796,25 @@ def matmul(a,
         adjoint_b = True
       if use_batch_matmul_v3:
         return gen_math_ops.batch_mat_mul_v3(
-            a, b, adj_x=adjoint_a, adj_y=adjoint_b, Tout=output_type, name=name)
+            a,
+            b,
+            adj_x=adjoint_a,
+            adj_y=adjoint_b,
+            Tout=output_type,
+            grad_x=grad_a,
+            grad_y=grad_b,
+            name=name,
+        )
       else:
         return gen_math_ops.batch_mat_mul_v2(
-            a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
+            a,
+            b,
+            adj_x=adjoint_a,
+            adj_y=adjoint_b,
+            grad_x=grad_a,
+            grad_y=grad_b,
+            name=name,
+        )
 
     # Neither matmul nor sparse_matmul support adjoint, so we conjugate
     # the matrix and use transpose instead. Conj() is a noop for real
@@ -3837,10 +3858,25 @@ def matmul(a,
         adjoint_a = adjoint_a or transpose_a
         adjoint_b = adjoint_b or transpose_b
         return gen_math_ops.batch_mat_mul_v3(
-            a, b, adj_x=adjoint_a, adj_y=adjoint_b, Tout=output_type, name=name)
+            a,
+            b,
+            adj_x=adjoint_a,
+            adj_y=adjoint_b,
+            Tout=output_type,
+            grad_x=grad_a,
+            grad_y=grad_b,
+            name=name,
+        )
       else:
         return gen_math_ops.mat_mul(
-            a, b, transpose_a=transpose_a, transpose_b=transpose_b, name=name)
+            a,
+            b,
+            transpose_a=transpose_a,
+            transpose_b=transpose_b,
+            grad_a=grad_a,
+            grad_b=grad_b,
+            name=name,
+        )
 
 
 @tf_export("linalg.matvec")
