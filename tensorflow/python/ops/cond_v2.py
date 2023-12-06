@@ -207,7 +207,11 @@ def _is_op_stateful(op):
   Returns:
     Boolean indicates whether the operation is stateless or not.
   """
+  # TODO(pineapplejuice233): Remove these hardcode op names once they can be marked as
+  # stateless in TF.
   if op.type == "GlobalIterId":
+    return False
+  if op.type == "UpdateFdoWithGlobalMinibatchStatistics":
     return False
   if op.type == "CollectiveGatherV2" and op.get_attr("is_stateless"):
     return False
