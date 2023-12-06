@@ -197,6 +197,10 @@ class GpuExecutable : public Executable {
                                     : buffer_assignment_->Allocations();
   }
 
+  bool IsXlaRuntimeEnabled() const {
+    return gpu_runtime_executable_ != nullptr;
+  }
+
   const std::vector<ConstantInfo>& constants() const { return constants_; }
 
   StatusOr<std::string_view> GetObjFile() const;

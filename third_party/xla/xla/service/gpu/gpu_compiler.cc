@@ -333,8 +333,8 @@ class GpuAotCompilationResult : public AotCompilationResult {
 
 class GpuThunkAotCompilationResult : public AotCompilationResult {
  public:
-  GpuThunkAotCompilationResult(HloModule* hlo_module,
-                               BufferAssignment* buffer_assignment,
+  GpuThunkAotCompilationResult(const HloModule* hlo_module,
+                               const BufferAssignment* buffer_assignment,
                                std::string_view asm_text,
                                absl::Span<const uint8_t> binary) {
     *proto_.mutable_hlo_module() = hlo_module->ToProto();
@@ -496,7 +496,7 @@ GpuThunkAotCompilationResult::LoadExecutable(Compiler* compiler,
           /*buffer_assignment=*/std::move(buffer_assignment),
           /*enable_persistent_temp_buffers=*/enable_persistent_temp_buffers,
           /*debug_buffer_assignment_show_max=*/debug_buffer_assignment_show_max,
-          /*debug_module=*/std::unique_ptr<HloModule>(),
+          /*debug_module=*/std::move(hlo_module),
           /*enable_debug_info_manager=*/true}));
   return executable;
 }
@@ -1977,15 +1977,19 @@ StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
     Executable* executable) const {
   auto* gpu_executable = tensorflow::down_cast<GpuExecutable*>(executable);
   if (!gpu_executable) return Internal("GpuExecutable is null");
-  HloModuleProto module_proto = gpu_executable->module().ToProto();
-  auto obj_file = gpu_executable->GetObjFile().value_or("");
-  auto mlir_module = gpu_executable->GetMlirModule().value_or("");
-  auto text = gpu_executable->text();
-  auto binary = gpu_executable->binary();
 
-  return std::make_unique<xla::gpu::GpuAotCompilationResult>(
-      module_proto, obj_file, mlir_module, text, binary,
-      gpu_executable->constants());
+  if (gpu_executable->IsXlaRuntimeEnabled()) {
+    HloModuleProto module_proto = gpu_executable->module().ToProto();
+    auto obj_file = gpu_executable->GetObjFile().value_or("");
+    auto mlir_module = gpu_executable->GetMlirModule().value_or("");
+    return std::make_unique<xla::gpu::GpuAotCompilationResult>(
+        module_proto, obj_file, mlir_module, gpu_executable->text(),
+        gpu_executable->binary(), gpu_executable->constants());
+  } else {
+    return std::make_unique<xla::gpu::GpuThunkAotCompilationResult>(
+        &gpu_executable->module(), gpu_executable->buffer_assignment(),
+        gpu_executable->text(), gpu_executable->binary());
+  }
 }
 
 Status GpuCompiler::RunPostSchedulingPipelines(
