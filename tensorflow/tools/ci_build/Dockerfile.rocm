@@ -24,16 +24,17 @@ RUN bin/bash -c 'if [[ $ROCM_DEB_REPO == https://repo.radeon.com/rocm/*  ]] ; th
     else \
       echo "deb [arch=amd64 trusted=yes] $ROCM_DEB_REPO $ROCM_BUILD_NAME $ROCM_BUILD_NUM" > /etc/apt/sources.list.d/rocm.list ; \
     fi'
-RUN echo "deb [arch=amd64 trusted=yes] http://apt.llvm.org/focal/ llvm-toolchain-focal-16 main" > /etc/apt/sources.list.d/llvm.list
+RUN echo "deb [arch=amd64 trusted=yes] http://apt.llvm.org/focal/ llvm-toolchain-focal-17 main" > /etc/apt/sources.list.d/llvm.list
 
 
 # Install misc pkgs
 RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteractive apt-get install -y \
   build-essential \
   bsdmainutils \
-  clang-16 \
-  clang-format-16 \
-  clang-tidy-16 \
+  clang-17 \
+  clang-format-17 \
+  clang-tidy-17 \
+  lld-17 \
   cmake \
   cmake-qt-gui \
   ssh \
