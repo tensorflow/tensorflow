@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/model/hlo_op_profiler.h"
 
-#include <algorithm>
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <random>
@@ -24,6 +22,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/debug_options_flags.h"
@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 #ifdef GOOGLE_CUDA
 #include "xla/backends/profiler/gpu/cupti_collector.h"

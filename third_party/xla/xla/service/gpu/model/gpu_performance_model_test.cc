@@ -18,7 +18,9 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <utility>
+#include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -32,7 +34,10 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

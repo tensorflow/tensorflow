@@ -19,7 +19,8 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/status/statusor.h"
+#include <gtest/gtest.h>
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
@@ -28,7 +29,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

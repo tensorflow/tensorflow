@@ -22,6 +22,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"

@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 
+#include <optional>
+#include <utility>
+
+#include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 
 namespace xla::gpu {
 
