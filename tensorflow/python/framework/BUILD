@@ -361,6 +361,16 @@ py_strict_library(
 )
 
 py_strict_library(
+    name = "constant_tensor_conversion",
+    srcs = ["constant_tensor_conversion.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":constant_op",
+        ":tensor_conversion_registry",
+    ],
+)
+
+py_strict_library(
     name = "device_spec",
     srcs = ["device_spec.py"],
     srcs_version = "PY3",

@@ -797,6 +797,7 @@ py_strict_library(
         "//tensorflow/python/framework:common_shapes",
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:constant_tensor_conversion",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:indexed_slices",

@@ -329,24 +329,6 @@ def is_constant(tensor_or_op):
   return op.type == "Const"
 
 
-def _constant_tensor_conversion_function(v, dtype=None, name=None,
-                                         as_ref=False):
-  _ = as_ref
-  return constant(v, dtype=dtype, name=name)
-
-# Register the conversion function for the "unconvertible" types
-# as a conversion to a constant.
-tensor_conversion_registry.register_tensor_conversion_function_internal(
-    tensor_conversion_registry._CONSTANT_OP_CONVERTIBLES,  # pylint: disable=protected-access
-    _constant_tensor_conversion_function,
-    0)
-
-tensor_conversion_registry.register_tensor_conversion_function(
-    (list, tuple), _constant_tensor_conversion_function, 100)
-tensor_conversion_registry.register_tensor_conversion_function(
-    object, _constant_tensor_conversion_function, 200)
-
-
 def _tensor_shape_tensor_conversion_function(s,
                                              dtype=None,
                                              name=None,

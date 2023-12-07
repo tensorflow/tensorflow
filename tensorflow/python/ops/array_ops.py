@@ -25,6 +25,7 @@ from tensorflow.python.eager import record
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import constant_tensor_conversion  # pylint: disable=unused-import
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
