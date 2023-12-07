@@ -177,12 +177,17 @@ StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
         TF_RETURN_IF_ERROR(while_instr->ReplaceUsesWith(uses, tuple));
       }
     }
+
+    absl::InlinedVector<HloInstruction*, 2> invariant_output_uses;
     for (auto use : while_instr->users()) {
       if (use->opcode() == HloOpcode::kGetTupleElement &&
           use->tuple_index() == index) {
-        TF_RETURN_IF_ERROR(
-            while_instr->parent()->ReplaceInstruction(use, invariant_value));
+        invariant_output_uses.push_back(use);
       }
+    }
+    for (auto use : invariant_output_uses) {
+      TF_RETURN_IF_ERROR(
+          while_instr->parent()->ReplaceInstruction(use, invariant_value));
     }
 
     HloInstruction* root = while_body->root_instruction();
