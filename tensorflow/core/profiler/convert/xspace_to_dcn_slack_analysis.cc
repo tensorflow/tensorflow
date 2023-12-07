@@ -75,7 +75,7 @@ using xla::HloOpcode;
 // TODO: Identify mechanism to maintain consistency between producer and
 // consumer here.
 const char kHostEventRegex[] = {
-    "device_[0-9][0-9][0-9]([0-9][0-9][0-9])_gid_(.*)"};
+    "device_[0-9]+([0-9][0-9][0-9][0-9][0-9])_gid_(.*)"};
 
 std::optional<std::string> GetAttributeFromInstr(
     const xla::HloInstruction* instr, std::string_view attribute) {
