@@ -1236,7 +1236,9 @@ cc_library(
     name = "gemm_rewriter",
     srcs = ["gemm_rewriter.cc"],
     hdrs = ["gemm_rewriter.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     visibility = ["//visibility:public"],
     deps = [
         ":backend_configs_cc",
@@ -3405,6 +3407,8 @@ cc_library(
         ":gpu_conv_padding_legalization",
         ":gpu_conv_rewriter",
         ":gpu_layout_assignment",
+        ":cublas_pad_for_gemms",
+        ":cublas_padding_requirements",
         ":reduction_degenerate_dim_remover",
         ":reduction_dimension_grouper",
         ":reduction_layout_normalizer",
@@ -3416,6 +3420,7 @@ cc_library(
         "//xla/service:algebraic_simplifier",
         "//xla/service:call_inliner",
         "//xla/hlo/ir:hlo",
+        "//xla/service:dot_dimension_merger",
         "//xla/service:hlo_constant_folding",
         "//xla/service:hlo_cse",
         "//xla/service:hlo_pass",

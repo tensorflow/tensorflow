@@ -61,6 +61,13 @@ namespace gpu {
 
 namespace {
 
+template <class... Ts>
+struct Overload : Ts... {
+  using Ts::operator()...;
+};
+template <class... Ts>
+Overload(Ts...) -> Overload<Ts...>;
+
 using triton_fusion::CombineRequirements;
 using triton_fusion::DimensionOrder;
 using triton_fusion::DimOrderMap;
@@ -594,7 +601,8 @@ StatusOr<FusionDecision> CreateDotFusion(
 // operations that can target the triton GEMM emitter.
 class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit GemmRewriterTritonVisitor(const se::GpuComputeCapability gpu_version)
+  explicit GemmRewriterTritonVisitor(
+      const se::GpuComputeCapability& gpu_version)
       : gpu_version_(gpu_version) {}
   // Checks that a dot() should be targeting the triton GEMM emitter;
   // if so - fuses all its compatible inputs and outputs as a new computation
@@ -616,9 +624,7 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
     // If a GEMM requiring padding for cuBLAS is encountered here this
     // happened because earlier ShouldTritonHandleGEMM() accepted it and padding
     // was skipped. Accept it ignoring profitability checks.
-    if (!CublasRequiresPadding(
-            *Cast<HloDotInstruction>(dot),
-            std::get<se::CudaComputeCapability>(gpu_version_)) &&
+    if (!CublasRequiresPadding(*Cast<HloDotInstruction>(dot), gpu_version_) &&
         !should_fuse) {
       return OkStatus();
     }
@@ -655,7 +661,7 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
 };
 
 StatusOr<bool> RunOnComputation(HloComputation* computation,
-                                se::GpuComputeCapability gpu_version) {
+                                const se::GpuComputeCapability& gpu_version) {
   GemmRewriterTritonVisitor visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
@@ -663,8 +669,8 @@ StatusOr<bool> RunOnComputation(HloComputation* computation,
 
 }  // namespace
 
-FusionDecision CanTritonHandleGEMM(const HloDotInstruction& dot,
-                                   const se::GpuComputeCapability gpu_version) {
+FusionDecision CanTritonHandleGEMM(
+    const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version) {
   if (!tsl::tensor_float_32_execution_enabled() ||
       absl::c_any_of(dot.precision_config().operand_precision(),
                      [](int x) { return x != PrecisionConfig::DEFAULT; })) {
@@ -672,15 +678,20 @@ FusionDecision CanTritonHandleGEMM(const HloDotInstruction& dot,
   }
 
   auto supported_output_type = [&](const PrimitiveType t) {
-    const auto cuda_compute_capability =
-        std::get<se::CudaComputeCapability>(gpu_version);
     switch (t) {
       case F16:
       case F32:
         return true;
       case BF16:
-        return cuda_compute_capability.IsAtLeast(
-            stream_executor::CudaComputeCapability::AMPERE);
+        return std::visit(
+            Overload{[](const se::CudaComputeCapability& cc) {
+                       return cc.IsAtLeast(
+                           stream_executor::CudaComputeCapability::AMPERE);
+                     },
+                     [](const se::RocmComputeCapability&) {
+                       return true;  // TODO check rocm support!
+                     }},
+            gpu_version);
       default:
         return false;
     }
@@ -732,7 +743,7 @@ FusionDecision CanTritonHandleGEMM(const HloDotInstruction& dot,
 }
 
 bool ShouldTritonHandleGEMM(HloDotInstruction& dot,
-                            const se::GpuComputeCapability gpu_version) {
+                            const se::GpuComputeCapability& gpu_version) {
   std::vector<HloInstruction*> fusion_inputs;
   HloComputation::Builder builder("disposable");
   return CreateDotFusion(dot, gpu_version, builder, fusion_inputs,

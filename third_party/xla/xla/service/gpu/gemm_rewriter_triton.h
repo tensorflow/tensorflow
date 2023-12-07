@@ -32,17 +32,17 @@ namespace gpu {
 
 // Filters GEMMs which can be handled using Triton.
 FusionDecision CanTritonHandleGEMM(const HloDotInstruction&,
-                                   se::GpuComputeCapability gpu_version);
+                                   const se::GpuComputeCapability&);
 
 // Filters GEMMs which are better to handle using Triton.
 bool ShouldTritonHandleGEMM(HloDotInstruction&,
-                            se::GpuComputeCapability gpu_version);
+                            const se::GpuComputeCapability&);
 
 // Rewrite compatible dot() calls into custom calls with fused computations
 // that target Triton-based matmul emitter.
 class GemmRewriterTriton : public HloModulePass {
  public:
-  explicit GemmRewriterTriton(se::GpuComputeCapability gpu_version)
+  explicit GemmRewriterTriton(const se::GpuComputeCapability& gpu_version)
       : gpu_version_(gpu_version) {}
   absl::string_view name() const override { return "triton-gemm-rewriter"; }
 

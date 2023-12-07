@@ -17,10 +17,15 @@ load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
+    "tf_gpu_tests_tags",
 )
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
+)
+load(
+    "//xla/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
 )
 
 package(
@@ -140,9 +145,11 @@ xla_cc_test(
 
 xla_cc_test(
     name = "gemm_rewrite_test",
-    srcs = if_cuda_is_configured(["gemm_rewrite_test.cc"]) + if_rocm_is_configured(["gemm_rewrite_test.cc"]),
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
-    tags = tf_cuda_tests_tags(),
+    srcs = if_gpu_is_configured(["gemm_rewrite_test.cc"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    tags = tf_gpu_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//xla:statusor",
@@ -156,6 +163,7 @@ xla_cc_test(
         "//xla/service/gpu:gemm_rewriter",
         "//xla/service/gpu:gpu_executable",
         "//xla/tests:filecheck",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/lib/core:status_test_util",
@@ -169,12 +177,11 @@ xla_cc_test(
 
 xla_cc_test(
     name = "gemm_broadcast_folding_rewrite_test",
-    srcs = [
-        "gemm_broadcast_folding_rewrite_test.cc",
-    ],
-    tags = tf_cuda_tests_tags() + [
-        "no_rocm",
-    ],
+    srcs = ["gemm_broadcast_folding_rewrite_test.cc"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    tags = tf_gpu_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
