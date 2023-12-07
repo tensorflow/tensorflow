@@ -70,8 +70,9 @@ class TensorIterationSpec {
     int64_t count;
     int64_t slice_start;
     int64_t sliced_count;
-    // Logical subfragments when this iteration is composed
-    // of several HLO dimensions.
+    // Logical subfragments:
+    // These are the sizes of the HLO dimensions which make up this basic
+    // iteration.
     std::vector<int64_t> subfragments;
 
     bool is_sliced() const { return count != sliced_count; }
