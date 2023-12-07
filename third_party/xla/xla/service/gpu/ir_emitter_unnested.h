@@ -164,7 +164,8 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitCholeskyThunk(mlir::Operation* op);
   Status EmitCholeskyThunk(const HloInstruction* instr);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  Status EmitCustomCallThunk(mlir::Operation* op);
+  Status EmitCustomCallThunk(mlir::Operation* op,
+                             const HloCustomCallInstruction* instr);
   Status EmitFftThunk(mlir::Operation* op);
   Status EmitFusion(
       mlir::Operation* op,

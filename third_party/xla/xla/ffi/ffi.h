@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/runtime/memref_view.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/status.h"
@@ -38,6 +39,9 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla::ffi {
+
+// A tag to declare called computation argument in FFI handler.
+struct CalledComputation {};
 
 //===----------------------------------------------------------------------===//
 // Arguments
@@ -78,6 +82,8 @@ struct ArgDecoding<Buffer> {
 // Context decoding
 //===----------------------------------------------------------------------===//
 
+// TODO(ezhulenev): We should remove `ServiceExecutableRunOptions` context and
+// pass only se::Stream to FFI handlers.
 template <>
 struct CtxDecoding<ServiceExecutableRunOptions> {
   using Type = const ServiceExecutableRunOptions*;
@@ -86,6 +92,18 @@ struct CtxDecoding<ServiceExecutableRunOptions> {
                                     XLA_FFI_ExecutionContext* ctx,
                                     DiagnosticEngine&) {
     void* ptr = api->internal_api->XLA_FFI_ServiceExecutableRunOptions_Get(ctx);
+    return reinterpret_cast<Type>(ptr);
+  }
+};
+
+template <>
+struct CtxDecoding<CalledComputation> {
+  using Type = const HloComputation*;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine&) {
+    void* ptr = api->internal_api->XLA_FFI_CalledComputation_Get(ctx);
     return reinterpret_cast<Type>(ptr);
   }
 };

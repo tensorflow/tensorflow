@@ -1683,7 +1683,8 @@ static StatusOr<CustomCallThunk::AttributesMap> BuildAttributesMap(
   return attributes;
 }
 
-Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
+Status IrEmitterUnnested::EmitCustomCallThunk(
+    mlir::Operation* op, const HloCustomCallInstruction* instr) {
   auto custom_call = mlir::cast<mlir::lmhlo::CustomCallOp>(op);
   const std::string call_target_name = custom_call.getCallTargetName().str();
 
@@ -1837,9 +1838,11 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
   }
 
   auto ffi_thunk = [&] {
+    auto& called_computations = instr->called_computations();
     return std::make_unique<CustomCallThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(op), *handler,
-        std::move(operands), std::move(results), std::move(attributes));
+        std::move(operands), std::move(results), std::move(attributes),
+        called_computations.empty() ? nullptr : called_computations[0]);
   };
 
   auto legacy_thunk = [&] {
@@ -3461,7 +3464,8 @@ Status IrEmitterUnnested::EmitOp(
     }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-    return EmitCustomCallThunk(op);
+    return EmitCustomCallThunk(
+        op, Cast<HloCustomCallInstruction>(hlo_for_lmhlo.at(op)));
   }
 
   if (mlir::isa<mlir::lmhlo_gpu::GEMMOp>(op)) {
