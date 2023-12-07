@@ -31,7 +31,7 @@ namespace tensorflow {
 namespace ifrt_serving {
 
 // Sharded the given `data` by the `sharding` specification.
-// It currently only supports a split of input tensor into equal shapes.
+// It currently supports even sharding, replication and partial replication.
 StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeAssembledArrayFromHostBuffer(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
     std::shared_ptr<xla::ifrt::Sharding> sharding,

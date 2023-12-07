@@ -51,7 +51,7 @@ namespace {
 
 using tsl::testing::StatusIs;
 
-struct ShardingUtilsTestParam {
+struct ShardingParamTestParam {
   tensorflow::Tensor in_tensor;
   std::vector<tensorflow::Tensor> expected_out_tensors;
   std::vector<int> device_indices;
@@ -62,9 +62,9 @@ struct ShardingUtilsTestParam {
   llvm::SmallVector<int, 4> axis_sizes;
 };
 
-using ShardingUtilsTest = ::testing::TestWithParam<ShardingUtilsTestParam>;
+using ShardingParamTest = ::testing::TestWithParam<ShardingParamTestParam>;
 
-TEST_P(ShardingUtilsTest, MakeAssembledArrayFromHostBuffer) {
+TEST_P(ShardingParamTest, MakeAssembledArrayFromHostBuffer) {
   constexpr int kMaxParallelism = 16;
   auto thread_pool = std::make_unique<tsl::thread::ThreadPool>(
       tsl::Env::Default(), tsl::ThreadOptions(), "Resharding", kMaxParallelism);
@@ -122,8 +122,8 @@ TEST_P(ShardingUtilsTest, MakeAssembledArrayFromHostBuffer) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    ShardingUtilsTests, ShardingUtilsTest,
-    ::testing::ValuesIn<ShardingUtilsTestParam>(
+    ShardingParamTests, ShardingParamTest,
+    ::testing::ValuesIn<ShardingParamTestParam>(
         {
             {
                 .in_tensor = test::AsTensor<int32_t>({1, 2, 3, 4},
@@ -187,6 +187,70 @@ INSTANTIATE_TEST_SUITE_P(
                 .dim_shards = {2, 1},
                 .permutation = {1, 0},
                 .axis_sizes = {2, 1},
+            },
+            // Full replication
+            {
+                .in_tensor = test::AsTensor<int32_t>({1, 2, 3, 4},
+                                                     TensorShape({2, 2})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 2, 3, 4},
+                                                TensorShape({2, 2})),
+                        test::AsTensor<int32_t>({1, 2, 3, 4},
+                                                TensorShape({2, 2})),
+                    },
+                .device_indices = {0, 1},
+                .dim_shards = {1, 1},
+                .permutation = {0},
+                .axis_sizes = {2},
+            },
+            // Partial replication (aka replicate_on_last_tile_dim = true)
+            {
+                .in_tensor = test::AsTensor<int32_t>({1, 2, 3, 4},
+                                                     TensorShape({2, 2})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 3}, TensorShape({2, 1})),
+                        test::AsTensor<int32_t>({1, 3}, TensorShape({2, 1})),
+                        test::AsTensor<int32_t>({2, 4}, TensorShape({2, 1})),
+                        test::AsTensor<int32_t>({2, 4}, TensorShape({2, 1})),
+                    },
+                .device_indices = {0, 1, 2, 3},
+                .dim_shards = {1, 2},
+                .permutation = {0, 1},
+                .axis_sizes = {2, 2},
+            },
+            // Partial replication that shards along the first dimension.
+            {
+                .in_tensor = test::AsTensor<int32_t>({1, 2, 3, 4},
+                                                     TensorShape({2, 2})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 2}, TensorShape({1, 2})),
+                        test::AsTensor<int32_t>({1, 2}, TensorShape({1, 2})),
+                        test::AsTensor<int32_t>({3, 4}, TensorShape({1, 2})),
+                        test::AsTensor<int32_t>({3, 4}, TensorShape({1, 2})),
+                    },
+                .device_indices = {0, 1, 2, 3},
+                .dim_shards = {2, 1},
+                .permutation = {0, 1},
+                .axis_sizes = {2, 2},
+            },
+            // Partial replication with random device indices.
+            {
+                .in_tensor = test::AsTensor<int32_t>({1, 2, 3, 4},
+                                                     TensorShape({2, 2})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 3}, TensorShape({2, 1})),
+                        test::AsTensor<int32_t>({1, 3}, TensorShape({2, 1})),
+                        test::AsTensor<int32_t>({2, 4}, TensorShape({2, 1})),
+                        test::AsTensor<int32_t>({2, 4}, TensorShape({2, 1})),
+                    },
+                .device_indices = {3, 1, 2, 0},
+                .dim_shards = {1, 2},
+                .permutation = {0, 1},
+                .axis_sizes = {2, 2},
             },
         }));
 

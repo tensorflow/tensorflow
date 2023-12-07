@@ -87,6 +87,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/tpu/kernels:sharding_utils",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
