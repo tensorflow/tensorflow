@@ -38,6 +38,7 @@
     * Added support for `stablehlo.multiply`.
     * Added support for `stablehlo.maximum`.
     * Added support for `stablehlo.minimum`.
+    * Added boolean parameter support for `tfl.gather_nd`.
 
 ## Keras
 
