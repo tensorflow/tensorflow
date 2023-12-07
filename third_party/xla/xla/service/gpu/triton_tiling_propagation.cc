@@ -448,6 +448,7 @@ DimOrderMapOrError GetPropagatedDimOrdersForBitcast(
   DimensionOrder& dst_dim_order =
       dst_dim_orders.insert({&dst, DimensionOrder()}).first->second;
   Fragments& dst_fragments_order = dst_dim_order.TensorFragmentsOrder();
+  bool dst_remainder_comes_from_reduce_dim = false;
   // Size of not yet assigned part of current target dimension.
   int64_t dst_remaining_size = 1;
   // Track destination fragments created from a source one.
@@ -472,6 +473,14 @@ DimOrderMapOrError GetPropagatedDimOrdersForBitcast(
       // Find a continuous group of fragments corresponding to this dimension in
       // the source and assign the corresponding size in fragments of the
       // destination ignoring the source ones.
+
+      // If there is dst_remaining_size leftover from our previous src_dim,
+      // and it came from a reduce dim, we cannot tile it in a batch dim.
+      if (dst_remainder_comes_from_reduce_dim) {
+        return R"(Unsupported bitcast splits dimension between batch and
+                  reduction dimensions in softmax)";
+      }
+
       dst_remaining_size = src_dim->full_count();
       while (src_dim + 1 != src_fragments_order.cend() &&
              (src_dim + 1)->dst_dim_number() == src_dim->dst_dim_number()) {
@@ -539,6 +548,16 @@ DimOrderMapOrError GetPropagatedDimOrdersForBitcast(
         ++dst_dim_it;
       }
     }
+
+    // We cannot tile a single dim with fragments across both reduce and batch
+    // dimensions. As such, if we have a dst remainder leftover from tiling a
+    // src fragment on the reduce dimension in softmax, we must only tile it
+    // with other src_dim fragments on the reduce dimension.
+    dst_remainder_comes_from_reduce_dim =
+        (dst_remaining_size > 1 &&
+         std::holds_alternative<SoftmaxProperties>(properties) &&
+         src_dim->dst_dim_number() == std::get<SoftmaxProperties>(properties)
+                                          .softmax_reduction_dimension);
   }
   CHECK_EQ(dst_remaining_size, 1);
 
