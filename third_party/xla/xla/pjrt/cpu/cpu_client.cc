@@ -399,6 +399,16 @@ absl::Span<PjRtMemorySpace* const> TfrtCpuClient::memory_spaces() const {
 
 StatusOr<DeviceAssignment> TfrtCpuClient::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
+  if (num_partitions * num_replicas <= addressable_devices().size()) {
+    xla::DeviceAssignment assignment(num_replicas, num_partitions);
+    for (int i = 0; i < num_replicas; ++i) {
+      for (int j = 0; j < num_partitions; ++j) {
+        assignment(i, j) =
+            addressable_devices().at(i * num_partitions + j)->id();
+      }
+    }
+    return assignment;
+  }
   return computation_placer_->AssignDevices(num_replicas, num_partitions);
 }
 
