@@ -151,11 +151,11 @@ inline void ReluX(const tflite::ReluParams& params,
   ruy::profiler::ScopeLabel label("Quantized ReluX (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
-    const int32 val = static_cast<int32_t>(input_data[i]);
-    int32 clamped = params.output_offset +
-                    MultiplyByQuantizedMultiplier(val - params.input_offset,
-                                                  params.output_multiplier,
-                                                  params.output_shift);
+    const int32_t val = static_cast<int32_t>(input_data[i]);
+    int32_t clamped = params.output_offset +
+                      MultiplyByQuantizedMultiplier(val - params.input_offset,
+                                                    params.output_multiplier,
+                                                    params.output_shift);
     clamped = std::max(params.quantized_activation_min, clamped);
     clamped = std::min(params.quantized_activation_max, clamped);
     output_data[i] = static_cast<T>(clamped);
@@ -185,11 +185,11 @@ inline void ReluX(const tflite::ActivationParams& params,
 // generate max(D1, D2) nested for loops.
 inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
                                  const RuntimeShape& unswitched_input1_shape,
-                                 const uint8* unswitched_input1_data,
+                                 const uint8_t* unswitched_input1_data,
                                  const RuntimeShape& unswitched_input2_shape,
-                                 const uint8* unswitched_input2_data,
+                                 const uint8_t* unswitched_input2_data,
                                  const RuntimeShape& output_shape,
-                                 uint8* output_data) {
+                                 uint8_t* output_data) {
   ArithmeticParams switched_params = unswitched_params;
   switched_params.input1_offset = unswitched_params.input2_offset;
   switched_params.input2_offset = unswitched_params.input1_offset;
@@ -200,25 +200,25 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
 
   const ArithmeticParams& params =
       use_unswitched ? unswitched_params : switched_params;
-  const uint8* input1_data =
+  const uint8_t* input1_data =
       use_unswitched ? unswitched_input1_data : unswitched_input2_data;
-  const uint8* input2_data =
+  const uint8_t* input2_data =
       use_unswitched ? unswitched_input2_data : unswitched_input1_data;
 
   // Fivefold nested loops. The second input resets its position for each
   // iteration of the second loop. The first input resets its position at the
   // beginning of the fourth loop. The innermost loop is an elementwise Mul of
   // sections of the arrays.
-  uint8* output_data_ptr = output_data;
-  const uint8* input1_data_ptr = input1_data;
-  const uint8* input2_data_reset = input2_data;
+  uint8_t* output_data_ptr = output_data;
+  const uint8_t* input1_data_ptr = input1_data;
+  const uint8_t* input2_data_reset = input2_data;
   int y0 = params.broadcast_shape[0];
   int y1 = params.broadcast_shape[1];
   int y2 = params.broadcast_shape[2];
   int y3 = params.broadcast_shape[3];
   int y4 = params.broadcast_shape[4];
   for (int i0 = 0; i0 < y0; ++i0) {
-    const uint8* input2_data_ptr;
+    const uint8_t* input2_data_ptr;
     for (int i1 = 0; i1 < y1; ++i1) {
       input2_data_ptr = input2_data_reset;
       for (int i2 = 0; i2 < y2; ++i2) {
@@ -236,9 +236,9 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
 }
 
 inline void Mul(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const int16* input1_data,
-                const RuntimeShape& input2_shape, const int16* input2_data,
-                const RuntimeShape& output_shape, int16* output_data) {
+                const RuntimeShape& input1_shape, const int16_t* input1_data,
+                const RuntimeShape& input2_shape, const int16_t* input2_data,
+                const RuntimeShape& output_shape, int16_t* output_data) {
   ruy::profiler::ScopeLabel label("Mul/Int16");
 
   const int flat_size =
@@ -255,13 +255,13 @@ inline void Mul(const ArithmeticParams& params,
 }
 
 inline void Mul(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const int16* input1_data,
-                const RuntimeShape& input2_shape, const int16* input2_data,
-                const RuntimeShape& output_shape, uint8* output_data) {
+                const RuntimeShape& input1_shape, const int16_t* input1_data,
+                const RuntimeShape& input2_shape, const int16_t* input2_data,
+                const RuntimeShape& output_shape, uint8_t* output_data) {
   ruy::profiler::ScopeLabel label("Mul/Int16Uint8");
-  int32 output_offset = params.output_offset;
-  int32 output_activation_min = params.quantized_activation_min;
-  int32 output_activation_max = params.quantized_activation_max;
+  int32_t output_offset = params.output_offset;
+  int32_t output_activation_min = params.quantized_activation_min;
+  int32_t output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
 
   const int flat_size =
@@ -273,12 +273,12 @@ inline void Mul(const ArithmeticParams& params,
 
     F0 unclamped_result =
         F0::FromRaw(input1_data[i]) * F0::FromRaw(input2_data[i]);
-    int16 rescaled_result =
+    int16_t rescaled_result =
         gemmlowp::RoundingDivideByPOT(unclamped_result.raw(), 8);
-    int16 clamped_result =
-        std::min<int16>(output_activation_max - output_offset, rescaled_result);
-    clamped_result =
-        std::max<int16>(output_activation_min - output_offset, clamped_result);
+    int16_t clamped_result = std::min<int16_t>(
+        output_activation_max - output_offset, rescaled_result);
+    clamped_result = std::max<int16_t>(output_activation_min - output_offset,
+                                       clamped_result);
     output_data[i] = output_offset + clamped_result;
   }
 }
@@ -291,14 +291,15 @@ inline void Sub16(const ArithmeticParams& params,
   const int input1_shift = params.input1_shift;
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
-  const int16 output_activation_min = params.quantized_activation_min;
-  const int16 output_activation_max = params.quantized_activation_max;
+  const int16_t output_activation_min = params.quantized_activation_min;
+  const int16_t output_activation_max = params.quantized_activation_max;
 
   TFLITE_DCHECK(input1_shift == 0 || params.input2_shift == 0);
   TFLITE_DCHECK_LE(input1_shift, 0);
   TFLITE_DCHECK_LE(params.input2_shift, 0);
-  const int16* not_shift_input = input1_shift == 0 ? input1_data : input2_data;
-  const int16* shift_input = input1_shift == 0 ? input2_data : input1_data;
+  const int16_t* not_shift_input =
+      input1_shift == 0 ? input1_data : input2_data;
+  const int16_t* shift_input = input1_shift == 0 ? input2_data : input1_data;
   const int input_right_shift =
       input1_shift == 0 ? -params.input2_shift : -input1_shift;
 
@@ -310,8 +311,8 @@ inline void Sub16(const ArithmeticParams& params,
       F0 scaled_input = F0::FromRaw(
           gemmlowp::RoundingDivideByPOT(shift_input[i], input_right_shift));
       F0 result = SaturatingSub(input_ready_scaled, scaled_input);
-      const int16 raw_output = result.raw();
-      const int16 clamped_output = std::min(
+      const int16_t raw_output = result.raw();
+      const int16_t clamped_output = std::min(
           output_activation_max, std::max(output_activation_min, raw_output));
       output_data[i] = clamped_output;
     }
@@ -323,8 +324,8 @@ inline void Sub16(const ArithmeticParams& params,
       F0 scaled_input = F0::FromRaw(
           gemmlowp::RoundingDivideByPOT(shift_input[i], input_right_shift));
       F0 result = SaturatingSub(scaled_input, input_ready_scaled);
-      const int16 raw_output = result.raw();
-      const int16 clamped_output = std::min(
+      const int16_t raw_output = result.raw();
+      const int16_t clamped_output = std::min(
           output_activation_max, std::max(output_activation_min, raw_output));
       output_data[i] = clamped_output;
     }
@@ -395,15 +396,15 @@ void Unpack(const UnpackParams& params, const RuntimeShape& input_shape,
 template <typename Scalar>
 void PackWithScaling(const PackParams& params,
                      const RuntimeShape* const* input_shapes,
-                     const uint8* const* input_data,
-                     const RuntimeShape& output_shape, uint8* output_data) {
+                     const uint8_t* const* input_data,
+                     const RuntimeShape& output_shape, uint8_t* output_data) {
   ruy::profiler::ScopeLabel label("PackWithScaling");
   const int dimensions = output_shape.DimensionsCount();
   int axis = params.axis;
-  const int32* input_zeropoint = params.input_zeropoint;
+  const int32_t* input_zeropoint = params.input_zeropoint;
   const float* input_scale = params.input_scale;
   int inputs_count = params.inputs_count;
-  const int32 output_zeropoint = params.output_zeropoint;
+  const int32_t output_zeropoint = params.output_zeropoint;
   const float output_scale = params.output_scale;
 
   int outer_size = 1;
@@ -599,7 +600,7 @@ inline GatherNdHelperResult GatherNdHelper(const RuntimeShape& params_shape,
 // Implements GatherNd.
 // Returns an error if any of the indices_data would cause an out of bounds
 // memory read.
-template <typename ParamsT, typename IndicesT = int32>
+template <typename ParamsT, typename IndicesT = int32_t>
 inline TfLiteStatus GatherNd(const RuntimeShape& params_shape,
                              const ParamsT* params_data,
                              const RuntimeShape& indices_shape,
@@ -627,7 +628,7 @@ inline TfLiteStatus GatherNd(const RuntimeShape& params_shape,
 // Implements GatherNd on strings.
 // Returns an error if any of the indices_data would cause an out of bounds
 // memory read.
-template <typename IndicesT = int32>
+template <typename IndicesT = int32_t>
 inline TfLiteStatus GatherNdString(const RuntimeShape& params_shape,
                                    const TfLiteTensor* params_data,
                                    const RuntimeShape& indices_shape,
