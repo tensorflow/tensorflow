@@ -1,5 +1,6 @@
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
@@ -179,6 +180,23 @@ xla_test(
 )
 
 cc_library(
+    name = "conditional_thunk",
+    srcs = ["conditional_thunk.cc"],
+    hdrs = ["conditional_thunk.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":sequential_thunk",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/service/gpu:thunk",
+        "//xla/stream_executor",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+    ],
+)
+
+cc_library(
     name = "custom_call_thunk",
     srcs = ["custom_call_thunk.cc"],
     hdrs = ["custom_call_thunk.h"],
@@ -232,6 +250,38 @@ cc_library(
 )
 
 cc_library(
+    name = "for_thunk",
+    srcs = ["for_thunk.cc"],
+    hdrs = ["for_thunk.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":sequential_thunk",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/service/gpu:thunk",
+        "//xla/stream_executor",
+        "@local_tsl//tsl/platform:errors",
+    ],
+)
+
+cc_library(
+    name = "sequential_thunk",
+    srcs = ["sequential_thunk.cc"],
+    hdrs = ["sequential_thunk.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/service/gpu:thunk",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/profiler/lib:scoped_annotation",
+    ],
+)
+
+cc_library(
     name = "triangular_solve_thunk",
     srcs = if_gpu_is_configured(["triangular_solve_thunk.cc"]),
     hdrs = if_gpu_is_configured(["triangular_solve_thunk.h"]),
@@ -252,4 +302,19 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor/gpu:gpu_asm_opts",
     ]) + ["@local_tsl//tsl/platform:status"],
+)
+
+cc_library(
+    name = "while_thunk",
+    srcs = ["while_thunk.cc"],
+    hdrs = ["while_thunk.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":sequential_thunk",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/service/gpu:thunk",
+        "//xla/stream_executor",
+        "@local_tsl//tsl/platform:errors",
+    ],
 )

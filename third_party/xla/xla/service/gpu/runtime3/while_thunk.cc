@@ -13,12 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/while_thunk.h"
+#include "xla/service/gpu/runtime3/while_thunk.h"
 
 #include <memory>
 #include <utility>
 
-#include "xla/util.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {

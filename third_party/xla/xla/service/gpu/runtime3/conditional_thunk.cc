@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/conditional_thunk.h"
+#include "xla/service/gpu/runtime3/conditional_thunk.h"
 
 #include <memory>
 

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/sequential_thunk.h"
+#include "xla/service/gpu/runtime3/sequential_thunk.h"
 
 #include "tsl/platform/errors.h"
 #include "tsl/profiler/lib/scoped_annotation.h"

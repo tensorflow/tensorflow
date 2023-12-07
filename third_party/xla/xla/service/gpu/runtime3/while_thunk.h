@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_WHILE_THUNK_H_
-#define XLA_SERVICE_GPU_WHILE_THUNK_H_
+#ifndef XLA_SERVICE_GPU_RUNTIME3_WHILE_THUNK_H_
+#define XLA_SERVICE_GPU_RUNTIME3_WHILE_THUNK_H_
 
 #include <vector>
 
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/sequential_thunk.h"
+#include "xla/service/gpu/runtime3/sequential_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -63,4 +63,4 @@ class WhileThunk : public Thunk {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_WHILE_THUNK_H_
+#endif  // XLA_SERVICE_GPU_RUNTIME3_WHILE_THUNK_H_
