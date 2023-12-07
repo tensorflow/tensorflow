@@ -207,6 +207,8 @@ the feature that the XNNPACK delegate is applied by default in TfLite runtime,
 explictly setting this flag to `false` will cause the benchmark tool to disable
 the feature at runtime, and to use the original non-delegated CPU execution path
 for model benchmarking.
+*   `xnnpack_force_fp16`: `bool` (default=false) \
+Enforce float16 inference.
 
 #### CoreML delegate
 *   `use_coreml`: `bool` (default=false)
