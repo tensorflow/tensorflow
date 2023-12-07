@@ -132,6 +132,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime3/custom_call_thunk.h"
 #include "xla/service/gpu/runtime3/fft_thunk.h"
 #include "xla/service/gpu/runtime3/for_thunk.h"
+#include "xla/service/gpu/runtime3/send_recv_thunk.h"
 #include "xla/service/gpu/runtime3/sequential_thunk.h"
 #include "xla/service/gpu/runtime3/while_thunk.h"
 #include "xla/service/gpu/thunk.h"
@@ -383,6 +384,7 @@ int DeriveNumWarpsFromTritonSoftmaxComputation(
 
 IrEmitterUnnested::IrEmitterUnnested(IrEmitterContext* ir_emitter_context)
     : IrEmitter(ir_emitter_context, /*is_nested=*/false),
+      send_recv_events_(std::make_shared<SendRecvAsyncEvents>()),
       elemental_emitter_(*ir_emitter_context, &b_) {}
 
 std::unique_ptr<IrEmitterUnnested> IrEmitterUnnested::Create(
@@ -3320,6 +3322,69 @@ StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitScatter(
   return result;
 }
 
+static absl::flat_hash_map<std::string, std::string> ConvertFrontendAttributes(
+    const FrontendAttributes& attrs) {
+  absl::flat_hash_map<std::string, std::string> result;
+  for (auto& [k, v] : attrs.map()) result[k] = v;
+  return result;
+}
+
+Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
+  if (!instr->channel_id().has_value())
+    return absl::InternalError("Unknown send instruction channel id");
+
+  const HloInstruction* src = instr->operand(0);
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice buffer,
+                      GetAllocationSliceForHlo(src, {}));
+
+  AddThunkToThunkSequence(std::make_unique<SendThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr), src->shape(), buffer,
+      *instr->channel_id(), send_recv_events_,
+      ConvertFrontendAttributes(instr->frontend_attributes())));
+
+  return OkStatus();
+}
+
+Status IrEmitterUnnested::EmitSendDoneThunk(
+    const HloSendDoneInstruction* instr) {
+  if (!instr->channel_id().has_value())
+    return absl::InternalError("Unknown send done instruction channel id");
+
+  AddThunkToThunkSequence(std::make_unique<SendDoneThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr), *instr->channel_id(),
+      send_recv_events_));
+
+  return OkStatus();
+}
+
+Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
+  if (!instr->channel_id().has_value())
+    return absl::InternalError("Unknown recv instruction channel id");
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice buffer,
+                      GetAllocationSliceForHlo(instr, {0}));
+
+  AddThunkToThunkSequence(std::make_unique<RecvThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr),
+      instr->shape().tuple_shapes()[0], buffer, *instr->channel_id(),
+      send_recv_events_,
+      ConvertFrontendAttributes(instr->frontend_attributes())));
+
+  return OkStatus();
+}
+
+Status IrEmitterUnnested::EmitRecvDoneThunk(
+    const HloRecvDoneInstruction* instr) {
+  if (!instr->channel_id().has_value())
+    return absl::InternalError("Unknown recv done instruction channel id");
+
+  AddThunkToThunkSequence(std::make_unique<RecvDoneThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr), *instr->channel_id(),
+      send_recv_events_));
+
+  return OkStatus();
+}
+
 StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitCustomFusion(
     const HloFusionInstruction* fusion, mlir::lmhlo::FusionOp fusion_op,
     const CustomFusionConfig& config) {
@@ -3574,16 +3639,36 @@ Status IrEmitterUnnested::EmitOp(
     return EmitCommandBufferThunk(hlo_for_lmhlo.at(op));
   }
 
-  // Point to point communication operations are only implemented as XLA
-  // GPU runtime custom calls.
   bool is_gpu_runtime = ir_emitter_context_->debug_options()
                             .xla_gpu_enable_xla_runtime_executable();
+
+  // In GPU runtime point-to-point communications implemented as runtime custom
+  // calls, and we do not need real thunks to construct them, so we can emit
+  // stubs that always fail. This is deprecated and will be removed in Q1 2024.
   if (is_gpu_runtime &&
       mlir::isa<mlir::lmhlo::SendOp, mlir::lmhlo::RecvOp,
                 mlir::lmhlo::SendDoneOp, mlir::lmhlo::RecvDoneOp>(op)) {
     return EmitUnreachable(op,
                            "Point-to-point communication operations are not "
                            "implemented as thunks");
+  }
+
+  if (mlir::isa<mlir::lmhlo::SendOp>(op)) {
+    return EmitSendThunk(Cast<HloSendInstruction>(hlo_for_lmhlo.at(op)));
+  }
+
+  if (mlir::isa<mlir::lmhlo::SendDoneOp>(op)) {
+    return EmitSendDoneThunk(
+        Cast<HloSendDoneInstruction>(hlo_for_lmhlo.at(op)));
+  }
+
+  if (mlir::isa<mlir::lmhlo::RecvOp>(op)) {
+    return EmitRecvThunk(Cast<HloRecvInstruction>(hlo_for_lmhlo.at(op)));
+  }
+
+  if (mlir::isa<mlir::lmhlo::RecvDoneOp>(op)) {
+    return EmitRecvDoneThunk(
+        Cast<HloRecvDoneInstruction>(hlo_for_lmhlo.at(op)));
   }
 
   return InternalError("Unrecognized op: %s", llvm_ir::DumpToString(op));

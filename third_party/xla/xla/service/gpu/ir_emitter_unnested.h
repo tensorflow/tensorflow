@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_IR_EMITTER_UNNESTED_H_
 
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -24,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -40,6 +42,7 @@ limitations under the License.
 #include "xla/service/gpu/kernel_mapping_scheme.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/service/gpu/runtime3/send_recv_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -190,6 +193,12 @@ class IrEmitterUnnested : public IrEmitter {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitTriangularSolveCustomCall(mlir::Operation* op);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+  Status EmitSendThunk(const HloSendInstruction* instr);
+  Status EmitSendDoneThunk(const HloSendDoneInstruction* instr);
+
+  Status EmitRecvThunk(const HloRecvInstruction* instr);
+  Status EmitRecvDoneThunk(const HloRecvDoneInstruction* instr);
 
   template <typename NcclThunkType, typename OpT>
   Status EmitNcclThunk(mlir::Operation* op);
@@ -435,6 +444,9 @@ class IrEmitterUnnested : public IrEmitter {
   // Executor may be null if the start op is degenerate (so not emitted).
   absl::flat_hash_map<mlir::Operation*, NcclCollectiveThunk::AsyncExecutor*>
       async_executors_;
+
+  // Container for async send/recv events shared by send/recv thunks.
+  std::shared_ptr<SendRecvAsyncEvents> send_recv_events_;
 
   // Begin optional members for XLA HLO -> LMHLO:
   absl::flat_hash_map<const mlir::Region*, std::unique_ptr<HloModule>>
