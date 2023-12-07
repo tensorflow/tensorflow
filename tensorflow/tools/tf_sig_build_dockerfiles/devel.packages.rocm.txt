@@ -20,7 +20,7 @@ hipsolver-dev
 apt-transport-https
 ca-certificates
 colordiff
-clang-16
+clang-17
 curl
 ffmpeg
 git
@@ -34,6 +34,7 @@ libhdf5-serial-dev
 libssl-dev
 libtool
 libzmq3-dev
+lld-17
 mlocate
 moreutils
 openjdk-11-jdk
