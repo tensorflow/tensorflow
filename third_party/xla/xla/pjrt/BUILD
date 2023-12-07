@@ -329,6 +329,9 @@ cc_library(
     name = "pjrt_common",
     hdrs = ["pjrt_common.h"],
     visibility = ["//visibility:public"],
+    deps = [
+        "@local_tsl//tsl/lib/gtl:int_type",
+    ],
 )
 
 cc_library(
