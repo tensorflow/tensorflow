@@ -114,6 +114,7 @@ xla_test(
         "//xla:debug_options_flags",
         "//xla:error_spec",
         "//xla:literal_util",
+        "//xla:types",
         "//xla/service/gpu:custom_fusion_rewriter",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/tests:hlo_test_base",

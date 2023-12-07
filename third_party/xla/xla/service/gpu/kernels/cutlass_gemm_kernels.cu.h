@@ -35,9 +35,10 @@ struct Default {
       float, cutlass::layout::RowMajor>;  // C
 
   using BF16xBF16toBF16 = cutlass::gemm::device::GemmUniversal<
-      cutlass::bfloat16_t, cutlass::layout::RowMajor,   // A
-      cutlass::bfloat16_t, cutlass::layout::RowMajor,   // B
-      cutlass::bfloat16_t, cutlass::layout::RowMajor>;  // C
+      cutlass::bfloat16_t, cutlass::layout::RowMajor,  // A
+      cutlass::bfloat16_t, cutlass::layout::RowMajor,  // B
+      cutlass::bfloat16_t, cutlass::layout::RowMajor,  // C
+      float>;                                          // Accumulator
 };
 
 //===----------------------------------------------------------------------===//
