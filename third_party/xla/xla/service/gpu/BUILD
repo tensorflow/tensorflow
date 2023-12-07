@@ -4445,10 +4445,9 @@ test_suite(
         ":cudnn_fused_conv_rewriter_test",
         ":cudnn_fused_mha_rewriter_test",
         ":custom_call_test",
-        # TODO(anlunx): Re-enable when AOT is available in Thunk-based runtime.
-        # copybara:uncomment # ":gpu_aot_compilation_test",
+        # copybara:uncomment ":gpu_aot_compilation_test",
         # copybara:uncomment "//platforms/xla/tests/internal:xfeed_test_gpu",
-        # TODO(anlunx): Re-enable when the FFI mechanism is available in Thunk-based runtime.
+        # TODO(anlunx): Re-enable when the TopK is available in Thunk-based runtime.
         # copybara:uncomment # "//third_party/py/jax/experimental/jax2tf/tests:primitives_test_gpu",
         # copybara:uncomment "//third_party/py/jax/tests:pmap_test_gpu",
         # copybara:uncomment "//tensorflow/compiler/tests:fft_test_gpu",
