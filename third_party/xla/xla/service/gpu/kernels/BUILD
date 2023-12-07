@@ -170,15 +170,15 @@ xla_test(
     ],
 )
 
-xla_test(
+cc_binary(
     name = "cutlass_gemm_custom_kernel_benchmarks",
+    testonly = 1,
     srcs = if_cuda_is_configured(["cutlass_gemm_custom_kernel_benchmarks.cc"]),
-    backends = ["gpu"],
-    linkstatic = 1,  # benchmarks
     deps = [
         ":cutlass_gemm_custom_kernel",
         "//xla:types",
         "//xla:xla_data_proto_cc",
+        "//xla/service:gpu_plugin",
         "//xla/stream_executor",
         "//xla/stream_executor:multi_platform_manager",
         "//xla/stream_executor:platform",
@@ -225,9 +225,12 @@ cuda_library(
     name = "cutlass_gemm_kernels",
     visibility = ["//visibility:public"],
     deps = [
-        ":cutlass_gemm_kernels_bf16xbf16_to_bf16",
-        ":cutlass_gemm_kernels_bf16xbf16_to_bf16_sm80",
-        ":cutlass_gemm_kernels_f32xf32_to_f32",
+        ":cutlass_gemm_kernels_bf16xbf16_to_bf16_device",
+        ":cutlass_gemm_kernels_bf16xbf16_to_bf16_host",
+        ":cutlass_gemm_kernels_bf16xbf16_to_bf16_sm80_device",
+        ":cutlass_gemm_kernels_bf16xbf16_to_bf16_sm80_host",
+        ":cutlass_gemm_kernels_f32xf32_to_f32_device",
+        ":cutlass_gemm_kernels_f32xf32_to_f32_host",
     ],
 )
 
@@ -248,8 +251,8 @@ cuda_library(
 # TODO(ezhulenev): Write a build rule to simplify kernel target declarations.
 
 cuda_library(
-    name = "cutlass_gemm_kernels_bf16xbf16_to_bf16",
-    srcs = if_cuda_is_configured(["cutlass_gemm_kernels_bf16xbf16_to_bf16.cu.cc"]),
+    name = "cutlass_gemm_kernels_bf16xbf16_to_bf16_device",
+    srcs = if_cuda_is_configured(["cutlass_gemm_kernels_bf16xbf16_to_bf16_device.cu.cc"]),
     copts = ["-mllvm -unroll-threshold=100000"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
@@ -259,8 +262,19 @@ cuda_library(
 )
 
 cuda_library(
-    name = "cutlass_gemm_kernels_bf16xbf16_to_bf16_sm80",
-    srcs = if_cuda_is_configured(["cutlass_gemm_kernels_bf16xbf16_to_bf16_sm80.cu.cc"]),
+    name = "cutlass_gemm_kernels_bf16xbf16_to_bf16_host",
+    srcs = if_cuda_is_configured(["cutlass_gemm_kernels_bf16xbf16_to_bf16_host.cu.cc"]),
+    visibility = ["//visibility:public"],
+    deps = if_cuda_is_configured([
+        ":cutlass_gemm_adaptor",
+        ":cutlass_gemm_kernels_header",
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
+)
+
+cuda_library(
+    name = "cutlass_gemm_kernels_bf16xbf16_to_bf16_sm80_device",
+    srcs = if_cuda_is_configured(["cutlass_gemm_kernels_bf16xbf16_to_bf16_sm80_device.cu.cc"]),
     copts = ["-mllvm -unroll-threshold=100000"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
@@ -270,10 +284,32 @@ cuda_library(
 )
 
 cuda_library(
-    name = "cutlass_gemm_kernels_f32xf32_to_f32",
-    srcs = if_cuda_is_configured(["cutlass_gemm_kernels_f32xf32_to_f32.cu.cc"]),
+    name = "cutlass_gemm_kernels_bf16xbf16_to_bf16_sm80_host",
+    srcs = if_cuda_is_configured(["cutlass_gemm_kernels_bf16xbf16_to_bf16_sm80_host.cu.cc"]),
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
+        ":cutlass_gemm_adaptor",
+        ":cutlass_gemm_kernels_header",
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
+)
+
+cuda_library(
+    name = "cutlass_gemm_kernels_f32xf32_to_f32_device",
+    srcs = if_cuda_is_configured(["cutlass_gemm_kernels_f32xf32_to_f32_device.cu.cc"]),
+    visibility = ["//visibility:public"],
+    deps = if_cuda_is_configured([
+        ":cutlass_gemm_kernels_header",
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
+)
+
+cuda_library(
+    name = "cutlass_gemm_kernels_f32xf32_to_f32_host",
+    srcs = if_cuda_is_configured(["cutlass_gemm_kernels_f32xf32_to_f32_host.cu.cc"]),
+    visibility = ["//visibility:public"],
+    deps = if_cuda_is_configured([
+        ":cutlass_gemm_adaptor",
         ":cutlass_gemm_kernels_header",
         "@local_config_cuda//cuda:cuda_headers",
     ]),

@@ -31,6 +31,13 @@ limitations under the License.
 
 namespace xla::gpu::kernel::gemm_universal {
 
+// We split compilation of arguments packing into different targets to avoid
+// instantiating all templates in a single translation unit, as it can lead
+// to extremely long compilation times (we need a lot of templates).
+extern template struct ArgsPacking<Default::F32xF32toF32>;
+extern template struct ArgsPacking<Default::BF16xBF16toBF16>;
+extern template struct ArgsPacking<Sm80::BF16xBF16toBF16>;
+
 template <typename Gemm>
 static StatusOr<CustomKernel> LoadCutlassGemmUniversal(
     std::string name, int32_t m, int32_t n, int32_t k,
@@ -40,8 +47,8 @@ static StatusOr<CustomKernel> LoadCutlassGemmUniversal(
 
   cutlass::gemm::GemmCoord problem_size = {m, n, k};
 
-  auto packing =
-      ArgsPacking<Gemm>(problem_size, indices, slices, device.core_count());
+  auto packing = ArgsPacking<Gemm>::For(problem_size, indices, slices,
+                                        device.core_count());
 
   se::MultiKernelLoaderSpec spec(/*arity=*/2, std::move(packing));
   spec.AddInProcessSymbol(GetKernelSymbol<Gemm>(), name);
