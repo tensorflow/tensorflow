@@ -139,6 +139,11 @@ StatusOr<HloInstructionIndexing> ComputeInputToOutputBroadcastOpIndexing(
   return HloInstructionIndexing::FromIndexingMaps({indexing_map});
 }
 
+StatusOr<HloInstructionIndexing> ComputeOutputToInputConstantOpIndexing(
+    const HloConstantInstruction* constant, MLIRContext* mlir_context) {
+  return HloInstructionIndexing{};
+}
+
 // Composes affine maps, i.e. consumer_map ∘ producer_map.
 IndexingMap ComposeIndexingMaps(const IndexingMap& producer_map,
                                 const IndexingMap& consumer_map) {
@@ -248,7 +253,6 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputFusionOpIndexing(
     for (const auto& [operand_id, operand_indexing_maps] :
          instr_indexing.indexing_maps) {
       const HloInstruction* producer_instr = instr->operand(operand_id);
-      if (producer_instr->IsConstant()) continue;
       // If the producer is a fusion op parameter, store the result.
       if (auto parameter = DynCast<HloParameterInstruction>(producer_instr)) {
         parameter_indexing_maps[parameter->parameter_number()].insert(
@@ -377,7 +381,8 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputReduceOpIndexing(
                                    exprs, mlir_context),
       .input_dims_sizes = parallel_dims_sizes};
   IndexingMap inits_indexing_map{
-      .affine_map = AffineMap::get(output_shape.rank(), 0, {}, mlir_context),
+      .affine_map = AffineMap::get(output_shape.rank(), /*symbolCount=*/0, {},
+                                   mlir_context),
       .input_dims_sizes = {}};
 
   HloInstructionIndexing instr_indexing;
@@ -1078,6 +1083,9 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputIndexing(
   }
   if (auto broadcast = DynCast<HloBroadcastInstruction>(instr)) {
     return ComputeOutputToInputBroadcastOpIndexing(broadcast, mlir_context);
+  }
+  if (auto constant = DynCast<HloConstantInstruction>(instr)) {
+    return ComputeOutputToInputConstantOpIndexing(constant, mlir_context);
   }
   if (auto dot = DynCast<HloDotInstruction>(instr)) {
     return ComputeOutputToInputDotOpIndexing(dot, mlir_context);

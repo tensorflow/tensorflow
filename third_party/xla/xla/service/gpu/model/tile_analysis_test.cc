@@ -37,6 +37,7 @@ using ::testing::ElementsAreArray;
 using ::testing::Eq;
 using ::testing::ExplainMatchResult;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
 using ::testing::Pair;
 using ::testing::PrintToString;
 using ::testing::UnorderedElementsAre;
@@ -199,6 +200,18 @@ TEST_F(TileAnalysisTest, BroadcastOp) {
               UnorderedElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
                                                "(d0)[s0, s1] -> (s0, d0, s1)",
                                                std::vector<int>{10, 30})))));
+}
+
+TEST_F(TileAnalysisTest, ConstantOp) {
+  auto ir = R"(
+    HloModule m
+    ENTRY e {
+      ROOT c1 = bf16[17, 22] constant(1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetOutputToInputIndexingForEntryComputation(ir));
+  EXPECT_THAT(input_indexing.indexing_maps, IsEmpty());
 }
 
 TEST_F(TileAnalysisTest, FusionOpWithSingleBinaryOp) {
