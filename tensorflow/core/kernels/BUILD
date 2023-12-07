@@ -6477,6 +6477,7 @@ filegroup(
         "fill_empty_rows_functor.h",
         "function_ops.h",
         "fused_batch_norm_op.h",
+        "gpu_utils.h",
         "inplace_ops.cc",
         "inplace_ops_functor.h",
         "l2loss_op.h",
