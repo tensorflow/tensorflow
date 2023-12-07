@@ -191,45 +191,17 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& producer_map,
                      .input_dims_sizes = std::move(combined_sizes)};
 }
 
-// Computes HloInstructionIndexing that maps the iteration space of the
-// consumer's output tensor to the iteration space of the producer's inputs and
-// the remaining outputs of the consumer as if the producer was fused.
-//
-// Example:
-//
-//  operand1 operand2
-//     |        |       # producer_instr_indexing edges
-//  producer_instr
-//      |               # consumer_operand_indexing edge
-//  consumer
-//
-// The function has two inputs:
-//
-// 1. `producer_instr_indexing` is the producer's HloInstructionIndexing
-//    that maps the iteration space of its output tensor to the inputs of
-//    producers.
-// 2. `consumer_operand_indexing` is the consumer's HloOperandIndexing for the
-//    operand that corresponds to the provided producer.
-HloInstructionIndexing ComputeFusedProducerConsumerIndexing(
-    const HloInstructionIndexing& producer_indexing,
-    const absl::flat_hash_set<IndexingMap>& operand_indexing_maps) {
-  HloInstructionIndexing fused_instr_indexing;
-
-  // Every operand can be read 1 or more times by the consumer which also can
-  // have 1 or more read accesses to its operands. So, to get the composed
-  // indexing maps we have to compute a "cross product" here.
-  for (const auto& [producer_operand_id, producer_operand_indexing] :
-       producer_indexing.indexing_maps) {
-    auto& composed_operand_indexing =
-        fused_instr_indexing.indexing_maps[producer_operand_id];
-    for (const IndexingMap& producer_map : producer_operand_indexing) {
-      for (const IndexingMap& consumer_map : operand_indexing_maps) {
-        composed_operand_indexing.insert(
-            ComposeIndexingMaps(producer_map, consumer_map));
-      }
-    }
+// Groups indexing maps by  instructions.
+absl::flat_hash_map<const HloInstruction*, absl::flat_hash_set<IndexingMap>>
+GroupIndexingMapsByProducers(const HloInstructionIndexing& indexing,
+                             const HloInstruction* instr) {
+  absl::flat_hash_map<const HloInstruction*, absl::flat_hash_set<IndexingMap>>
+      result;
+  for (const auto& [operand_id, indexing_maps] : indexing.indexing_maps) {
+    result[instr->operand(operand_id)].insert(indexing_maps.begin(),
+                                              indexing_maps.end());
   }
-  return fused_instr_indexing;
+  return result;
 }
 
 // Composes instruction indexing maps starting at the root instruction
@@ -241,35 +213,53 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputFusionOpIndexing(
       fusion->shape().IsTuple()
           ? fusion->fused_expression_root()->operand(output_id)
           : fusion->fused_expression_root();
-  std::queue<std::pair<const HloInstruction*, HloInstructionIndexing>> bfs;
   TF_ASSIGN_OR_RETURN(auto root_indexing, ComputeOutputToInputIndexing(
                                               root, output_id, mlir_context));
 
-  bfs.push(std::make_pair(root, root_indexing));
-  absl::flat_hash_map<int64_t, absl::flat_hash_set<IndexingMap>>
-      parameter_indexing_maps;
-  while (!bfs.empty()) {
-    const auto& [instr, instr_indexing] = bfs.front();
-    for (const auto& [operand_id, operand_indexing_maps] :
-         instr_indexing.indexing_maps) {
-      const HloInstruction* producer_instr = instr->operand(operand_id);
-      // If the producer is a fusion op parameter, store the result.
-      if (auto parameter = DynCast<HloParameterInstruction>(producer_instr)) {
-        parameter_indexing_maps[parameter->parameter_number()].insert(
-            operand_indexing_maps.begin(), operand_indexing_maps.end());
-        continue;
-      }
-      TF_ASSIGN_OR_RETURN(auto producer_instr_indexing,
-                          ComputeOutputToInputIndexing(
-                              producer_instr, /*output_id=*/0, mlir_context));
-      bfs.push(std::make_pair(
-          producer_instr, ComputeFusedProducerConsumerIndexing(
-                              producer_instr_indexing, operand_indexing_maps)));
-    }
-    bfs.pop();
+  auto grouped_indexing_maps =
+      GroupIndexingMapsByProducers(root_indexing, root);
+
+  // `bfs` is initialized with all producer instructions of the fusion root that
+  // are not parameters of the fusion.
+  std::queue<const HloInstruction*> bfs;
+  for (const auto& [instr, indexing_maps] : grouped_indexing_maps) {
+    if (instr->opcode() == HloOpcode::kParameter) continue;
+    bfs.push(instr);
   }
-  return HloInstructionIndexing{.indexing_maps =
-                                    std::move(parameter_indexing_maps)};
+  while (!bfs.empty()) {
+    const HloInstruction* producer_instr = bfs.front();
+    bfs.pop();
+
+    TF_ASSIGN_OR_RETURN(auto producer_indexing,
+                        ComputeOutputToInputIndexing(
+                            producer_instr, /*output_id=*/0, mlir_context));
+
+    auto consumer_indexing_maps = grouped_indexing_maps[producer_instr];
+    for (const auto& [producer_operand_id, producer_operand_indexing] :
+         producer_indexing.indexing_maps) {
+      const HloInstruction* producer_operand_instr =
+          producer_instr->operand(producer_operand_id);
+      for (const IndexingMap& producer_map : producer_operand_indexing) {
+        for (const IndexingMap& consumer_map : consumer_indexing_maps) {
+          grouped_indexing_maps[producer_operand_instr].insert(
+              ComposeIndexingMaps(producer_map, consumer_map));
+        }
+      }
+      if (producer_operand_instr->opcode() != HloOpcode::kParameter) {
+        bfs.push(producer_operand_instr);
+      }
+    }
+    grouped_indexing_maps.erase(producer_instr);
+  }
+
+  // After the traversal, `grouped_indexing_maps` is keyed by
+  // HloParameterInstructions. Convert them back to the operand id and return.
+  HloInstructionIndexing fusion_indexing;
+  for (auto& [instr, indexing_maps] : grouped_indexing_maps) {
+    fusion_indexing.indexing_maps[instr->parameter_number()] =
+        std::move(indexing_maps);
+  }
+  return fusion_indexing;
 }
 
 StatusOr<HloInstructionIndexing> ComputeOutputToInputDotOpIndexing(
