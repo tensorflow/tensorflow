@@ -77,6 +77,23 @@ using dnn::PoolingDescriptor;
 
 namespace gpu {
 
+// Populates the profile result if not empty.
+static tsl::Status PopulateProfileFromTimer(
+    std::optional<GpuTimer>& timer, const dnn::AlgorithmDesc& algorithm,
+    dnn::ProfileResult* profile_result,
+    std::optional<uint64_t> scratch_size = std::nullopt) {
+  if (profile_result) {
+    TF_ASSIGN_OR_RETURN(absl::Duration duration, timer->GetElapsedDuration());
+    profile_result->set_algorithm(algorithm);
+    profile_result->set_elapsed_time_in_ms(
+        absl::ToDoubleMilliseconds(duration));
+    if (scratch_size.has_value()) {
+      profile_result->set_scratch_size(*scratch_size);
+    }
+  }
+  return tsl::OkStatus();
+}
+
 string ToString(miopenStatus_t status) {
   switch (status) {
     case miopenStatusSuccess:
@@ -2285,7 +2302,7 @@ bool CreateRnnWorkspace(Stream* stream, miopenHandle_t miopen_handle,
 }  // namespace
 
 template <class T>
-bool MIOpenSupport::DoRnnForwardImpl(
+tsl::Status MIOpenSupport::DoRnnForwardImpl(
     Stream* stream, const MIOpenRnnDescriptor& rnn_desc,
     const MIOpenRnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<T>& input_data,
@@ -2311,7 +2328,7 @@ bool MIOpenSupport::DoRnnForwardImpl(
       &model_dims);
   if (!res) {
     LOG(ERROR) << "Invalid parameters for RNN Model";
-    return false;
+    return tsl::errors::Internal("ExtractAndCheckRnnForward returned false");
   }
 
   auto miopen = miopen_->GetHandle(parent_, stream);
@@ -2320,7 +2337,7 @@ bool MIOpenSupport::DoRnnForwardImpl(
 
   if (!CheckRNNParameterSize(miopen.handle(), rnn_desc, input_desc)) {
     LOG(ERROR) << "Invalid parameters";
-    return false;
+    return tsl::errors::Internal("CheckRNNParameterSize returned false");
   }
 
   // create the workspace
@@ -2328,8 +2345,7 @@ bool MIOpenSupport::DoRnnForwardImpl(
   if (!CreateRnnWorkspace(stream, miopen.handle(), rnn_desc, input_desc,
                           workspace_allocator, &workspace)) {
     LOG(ERROR) << "Unable to create rnn workspace";
-
-    return false;
+    return tsl::errors::Internal("CreateRnnWorkspace returned false");
   }
 
   // query the reserve space size
@@ -2343,7 +2359,8 @@ bool MIOpenSupport::DoRnnForwardImpl(
         &reserve_space_size_in_bytes /*sizeInBytes*/);
     if (status != miopenStatusSuccess) {
       LOG(ERROR) << "Unable to query reserve space size: " << ToString(status);
-      return false;
+      return tsl::errors::Internal(
+          "miopenGetRNNTrainingReserveSize returned failure");
     }
 
     if (reserve_space_size_in_bytes > 0) {
@@ -2351,23 +2368,17 @@ bool MIOpenSupport::DoRnnForwardImpl(
           reserve_space_allocator->AllocateBytes(reserve_space_size_in_bytes);
       if (!allocated.ok() || (reserve_space = allocated.value()) == nullptr) {
         LOG(ERROR) << "Fail to allocate RNN reserve space";
-        return false;
+        return tsl::errors::Internal("AllocateBytes for RNN failed");
       }
       stream->ThenMemZero(&reserve_space, reserve_space_size_in_bytes);
     }
   }
 
-  std::optional<GpuTimer> timer;
   const bool is_profiling = output_profile_result != nullptr;
 
-  if (is_profiling) {
-    auto timer_or_status = GpuTimer::Create(AsGpuStream(stream));
-    if (!timer_or_status.ok()) {
-      LOG(ERROR) << "Failed to create timer";
-      return false;
-    }
-    timer.emplace(std::move(*timer_or_status));
-  }
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
 
   // make the forward call
   if (!is_training) {
@@ -2386,7 +2397,7 @@ bool MIOpenSupport::DoRnnForwardImpl(
     if (status != miopenStatusSuccess) {
       LOG(ERROR) << "Failed to call miopenRNNForwardInference: "
                  << ToString(status);
-      return false;
+      return tsl::errors::Internal("miopenRNNForwardInference failed");
     }
   } else {
     auto status = wrap::miopenRNNForwardTraining(
@@ -2405,27 +2416,21 @@ bool MIOpenSupport::DoRnnForwardImpl(
     if (status != miopenStatusSuccess) {
       LOG(ERROR) << "Failed to call miopenRNNForwardTraining"
                  << ToString(status);
-      return false;
+      return tsl::errors::Internal("miopenRNNForwardTraining failed");
     }
   }
 
   if (is_profiling) {
-    tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
-    if (!elapsed.ok()) {
-      LOG(ERROR) << "Failed to get elapsed duration";
-      return false;
-    }
-    auto algo_desc = *rnn_desc.algorithm_config().algorithm();
-    output_profile_result->set_algorithm(algo_desc);
-    output_profile_result->set_elapsed_time_in_ms(
-        absl::ToDoubleMilliseconds(*elapsed));
+    TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
+        timer, *rnn_desc.algorithm_config().algorithm(),
+        output_profile_result));
   }
 
-  return true;
+  return ::tsl::OkStatus();
 }
 
 template <class T>
-bool MIOpenSupport::DoRnnBackwardImpl(
+tsl::Status MIOpenSupport::DoRnnBackwardImpl(
     Stream* stream, const MIOpenRnnDescriptor& rnn_desc,
     const MIOpenRnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<T>& input_data,
@@ -2457,7 +2462,7 @@ bool MIOpenSupport::DoRnnBackwardImpl(
       output_h_desc, output_h_data, output_c_desc, output_c_data, &model_dims);
   if (!res) {
     LOG(ERROR) << "Invalid parameters for RNN Model";
-    return false;
+    return tsl::errors::Internal("ExtractAndCheckRnnForward failed");
   }
 
   auto miopen = miopen_->GetHandle(parent_, stream);
@@ -2466,7 +2471,7 @@ bool MIOpenSupport::DoRnnBackwardImpl(
 
   if (!CheckRNNParameterSize(miopen.handle(), rnn_desc, input_desc)) {
     LOG(ERROR) << "Invalid parameters";
-    return false;
+    return tsl::errors::Internal("CheckRNNParameterSize failed");
   }
 
   // create the workspace
@@ -2474,7 +2479,7 @@ bool MIOpenSupport::DoRnnBackwardImpl(
   if (!CreateRnnWorkspace(stream, miopen.handle(), rnn_desc, input_desc,
                           workspace_allocator, &workspace)) {
     LOG(ERROR) << "Unable to create rnn workspace";
-    return false;
+    return tsl::errors::Internal("CreateRnnWorkspace failed");
   }
 
   // workaround for missing initialization support in MIOpen.
@@ -2495,17 +2500,11 @@ bool MIOpenSupport::DoRnnBackwardImpl(
   if ((size_data > 0) && (input_c_backprop_data->opaque() != nullptr))
     stream->ThenMemZero(input_c_backprop_data, size_data * type_size);
 
-  std::optional<GpuTimer> timer;
   const bool is_profiling = output_profile_result != nullptr;
 
-  if (is_profiling) {
-    auto timer_or_status = GpuTimer::Create(AsGpuStream(stream));
-    if (!timer_or_status.ok()) {
-      LOG(ERROR) << "Failed to create timer";
-      return false;
-    }
-    timer.emplace(std::move(*timer_or_status));
-  }
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
 
   // make the backward data call
   auto status = wrap::miopenRNNBackwardData(
@@ -2529,7 +2528,7 @@ bool MIOpenSupport::DoRnnBackwardImpl(
       reserve_space_data->size() /*reserveSpaceSizeInBytes*/);
   if (status != miopenStatusSuccess) {
     LOG(ERROR) << "Failed to call miopenRNNBackwardData: " << ToString(status);
-    return false;
+    return tsl::errors::Internal("miopenRNNBackwardData failed");
   }
 
   if (params_backprop_data != nullptr) {
@@ -2549,23 +2548,17 @@ bool MIOpenSupport::DoRnnBackwardImpl(
     if (status != miopenStatusSuccess) {
       LOG(ERROR) << "Failed to call miopenRNNBackwardWeights: "
                  << ToString(status);
-      return false;
+      return tsl::errors::Internal("miopenRNNBackwardWeights failed");
     }
   }
 
   if (is_profiling) {
-    tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
-    if (!elapsed.ok()) {
-      LOG(ERROR) << "Failed to get elapsed duration";
-      return false;
-    }
-    auto algo_desc = *rnn_desc.algorithm_config().algorithm();
-    output_profile_result->set_algorithm(algo_desc);
-    output_profile_result->set_elapsed_time_in_ms(
-        absl::ToDoubleMilliseconds(*elapsed));
+    TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
+        timer, *rnn_desc.algorithm_config().algorithm(),
+        output_profile_result));
   }
 
-  return true;
+  return ::tsl::OkStatus();
 }
 
 MIOpenRnnParamsDescriptor::MIOpenRnnParamsDescriptor(
@@ -2865,12 +2858,14 @@ bool MIOpenSupport::DoRnnForward(
   const MIOpenRnnStateTensorDescriptor& miopen_output_c_desc =
       static_cast<const MIOpenRnnStateTensorDescriptor&>(output_c_desc);
 
-  return DoRnnForwardImpl<Eigen::half>(
-      stream, miopen_rnn_desc, miopen_input_desc, input_data,
-      miopen_input_h_desc, input_h_data, miopen_input_c_desc, input_c_data,
-      params, miopen_output_desc, output_data, miopen_output_h_desc,
-      output_h_data, miopen_output_c_desc, output_c_data, is_training,
-      reserve_space_allocator, workspace_allocator, output_profile_result);
+  return IsStatusOk(
+      DoRnnForwardImpl<Eigen::half>(
+          stream, miopen_rnn_desc, miopen_input_desc, input_data,
+          miopen_input_h_desc, input_h_data, miopen_input_c_desc, input_c_data,
+          params, miopen_output_desc, output_data, miopen_output_h_desc,
+          output_h_data, miopen_output_c_desc, output_c_data, is_training,
+          reserve_space_allocator, workspace_allocator, output_profile_result),
+      /*report_error=*/!output_profile_result);
 }
 
 bool MIOpenSupport::DoRnnForward(
@@ -2906,12 +2901,14 @@ bool MIOpenSupport::DoRnnForward(
   const MIOpenRnnStateTensorDescriptor& miopen_output_c_desc =
       static_cast<const MIOpenRnnStateTensorDescriptor&>(output_c_desc);
 
-  return DoRnnForwardImpl<float>(
-      stream, miopen_rnn_desc, miopen_input_desc, input_data,
-      miopen_input_h_desc, input_h_data, miopen_input_c_desc, input_c_data,
-      params, miopen_output_desc, output_data, miopen_output_h_desc,
-      output_h_data, miopen_output_c_desc, output_c_data, is_training,
-      reserve_space_allocator, workspace_allocator, output_profile_result);
+  return IsStatusOk(
+      DoRnnForwardImpl<float>(
+          stream, miopen_rnn_desc, miopen_input_desc, input_data,
+          miopen_input_h_desc, input_h_data, miopen_input_c_desc, input_c_data,
+          params, miopen_output_desc, output_data, miopen_output_h_desc,
+          output_h_data, miopen_output_c_desc, output_c_data, is_training,
+          reserve_space_allocator, workspace_allocator, output_profile_result),
+      /*report_error=*/!output_profile_result);
 }
 
 bool MIOpenSupport::DoRnnForward(
@@ -2978,14 +2975,17 @@ bool MIOpenSupport::DoRnnBackward(
   const MIOpenRnnStateTensorDescriptor& miopen_output_c_desc =
       static_cast<const MIOpenRnnStateTensorDescriptor&>(output_c_desc);
 
-  return DoRnnBackwardImpl<Eigen::half>(
-      stream, miopen_rnn_desc, miopen_input_desc, input_data,
-      miopen_input_h_desc, input_h_data, miopen_input_c_desc, input_c_data,
-      params, miopen_output_desc, output_data, miopen_output_h_desc,
-      output_h_data, miopen_output_c_desc, output_c_data, output_backprop_data,
-      output_h_backprop_data, output_c_backprop_data, input_backprop_data,
-      input_h_backprop_data, input_c_backprop_data, params_backprop_data,
-      reserve_space_data, workspace_allocator, output_profile_result);
+  return IsStatusOk(
+      DoRnnBackwardImpl<Eigen::half>(
+          stream, miopen_rnn_desc, miopen_input_desc, input_data,
+          miopen_input_h_desc, input_h_data, miopen_input_c_desc, input_c_data,
+          params, miopen_output_desc, output_data, miopen_output_h_desc,
+          output_h_data, miopen_output_c_desc, output_c_data,
+          output_backprop_data, output_h_backprop_data, output_c_backprop_data,
+          input_backprop_data, input_h_backprop_data, input_c_backprop_data,
+          params_backprop_data, reserve_space_data, workspace_allocator,
+          output_profile_result),
+      /*report_error=*/true);
 }
 
 bool MIOpenSupport::DoRnnBackward(
@@ -3028,14 +3028,17 @@ bool MIOpenSupport::DoRnnBackward(
   const MIOpenRnnStateTensorDescriptor& miopen_output_c_desc =
       static_cast<const MIOpenRnnStateTensorDescriptor&>(output_c_desc);
 
-  return DoRnnBackwardImpl<float>(
-      stream, miopen_rnn_desc, miopen_input_desc, input_data,
-      miopen_input_h_desc, input_h_data, miopen_input_c_desc, input_c_data,
-      params, miopen_output_desc, output_data, miopen_output_h_desc,
-      output_h_data, miopen_output_c_desc, output_c_data, output_backprop_data,
-      output_h_backprop_data, output_c_backprop_data, input_backprop_data,
-      input_h_backprop_data, input_c_backprop_data, params_backprop_data,
-      reserve_space_data, workspace_allocator, output_profile_result);
+  return IsStatusOk(
+      DoRnnBackwardImpl<float>(
+          stream, miopen_rnn_desc, miopen_input_desc, input_data,
+          miopen_input_h_desc, input_h_data, miopen_input_c_desc, input_c_data,
+          params, miopen_output_desc, output_data, miopen_output_h_desc,
+          output_h_data, miopen_output_c_desc, output_c_data,
+          output_backprop_data, output_h_backprop_data, output_c_backprop_data,
+          input_backprop_data, input_h_backprop_data, input_c_backprop_data,
+          params_backprop_data, reserve_space_data, workspace_allocator,
+          output_profile_result),
+      /*report_error=*/true);
 }
 
 bool MIOpenSupport::DoRnnBackward(
