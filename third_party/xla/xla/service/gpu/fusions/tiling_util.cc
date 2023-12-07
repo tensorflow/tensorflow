@@ -15,11 +15,32 @@ limitations under the License.
 
 #include "xla/service/gpu/fusions/tiling_util.h"
 
+#include <array>
+#include <cstdint>
+#include <limits>
+#include <string>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/types/span.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Value.h"
+#include "llvm/Support/Casting.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/kernel_mapping_scheme.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/kernel_support_library.h"
+#include "xla/service/llvm_ir/llvm_loop.h"
+#include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/statusor.h"
+#include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
