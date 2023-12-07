@@ -75,8 +75,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateInsertQuantizedFunctionsPass(
 // Inserts custom aggregation operators for the calibration procedure.
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateInsertCustomAggregationOpsPass(
-    const tensorflow::quantization::CalibrationOptions& calib_opts,
-    bool insert_at_xla_call_module_op_only = false);
+    const tensorflow::quantization::CalibrationOptions& calib_opts);
 
 // Replaces composite functions with quantized composite functions. After this
 // pass runs, functions in the given graph will be replaced with their quantized

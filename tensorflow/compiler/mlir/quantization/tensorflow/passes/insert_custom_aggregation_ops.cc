@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -52,24 +53,16 @@ class InsertCustomAggregationOpsPass
                          OperationPass<func::FuncOp>> {
  public:
   explicit InsertCustomAggregationOpsPass() : test_mode_(true) {
-    insert_at_xla_call_module_op_only_.setValue(false);
     initializeForTest();
   }
 
-  explicit InsertCustomAggregationOpsPass(
-      const CalibrationOptions &calib_opts,
-      bool insert_at_xla_call_module_op_only)
-      : test_mode_(false), calib_opts_(calib_opts) {
-    insert_at_xla_call_module_op_only_.setValue(
-        insert_at_xla_call_module_op_only);
-  }
+  explicit InsertCustomAggregationOpsPass(const CalibrationOptions &calib_opts)
+      : test_mode_(false), calib_opts_(calib_opts) {}
 
   InsertCustomAggregationOpsPass(const InsertCustomAggregationOpsPass &other) {
     test_mode_ = other.test_mode_;
     test_case_ = other.test_case_;
     calib_opts_ = other.calib_opts_;
-    insert_at_xla_call_module_op_only_ =
-        other.insert_at_xla_call_module_op_only_;
     initializeForTest();
   }
 
@@ -104,10 +97,6 @@ class InsertCustomAggregationOpsPass
 
   bool test_mode_;
   CalibrationOptions calib_opts_;
-  Option<bool> insert_at_xla_call_module_op_only_{
-      *this, "insert-at-xla-call-module-op-only",
-      llvm::cl::desc("Whether to insert adjacent to XlaCallModuleOp only"),
-      llvm::cl::init(false)};
   Option<TestCase> test_case_{
       *this, "test-case",
       llvm::cl::desc(
@@ -199,56 +188,63 @@ class AddCustomAggregationOp : public RewritePattern {
   // Does not take ownership of context, which must refer to a valid value that
   // outlives this object.
   explicit AddCustomAggregationOp(MLIRContext *context,
-                                  const CalibrationOptions &calib_opts,
-                                  bool insert_at_xla_call_module_op_only)
+                                  const CalibrationOptions &calib_opts)
       : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, context),
-        calib_opts_(calib_opts),
-        insert_at_xla_call_module_op_only_(insert_at_xla_call_module_op_only) {}
+        calib_opts_(calib_opts) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     // Return early if the given operator is the custom aggregator op.
     if (dyn_cast_or_null<TF::CustomAggregatorOp>(op)) return failure();
 
-    // Return early if the given op is a non-quantizable op.
-    auto call_op = dyn_cast_or_null<TF::PartitionedCallOp>(op);
-    if (call_op && !op->hasAttr(kQuantTraitAttrName)) {
-      return failure();
+    // The CustomAggregatorOp is only added after quantizable values.
+    SmallVector<Value> quantizable_values;
+    if (isCallToLiftedFunction(op)) {
+      // Quantize inputs of quantizable composite functions.
+      for (Value input : op->getOperands()) {
+        Type element_type = getElementTypeOrSelf(input.getType());
+        // Non-float cases won't be calibrated.
+        if (!element_type.isF32()) {
+          continue;
+        }
+
+        // Skip when there is any already existing CustomAggregatorOp found.
+        Operation *defining_op = input.getDefiningOp();
+        if (dyn_cast_or_null<TF::CustomAggregatorOp>(defining_op)) {
+          continue;
+        }
+
+        // Skip calibration when the given operand comes from a constant.
+        if (defining_op != nullptr &&
+            defining_op->hasTrait<OpTrait::ConstantLike>()) {
+          continue;
+        }
+
+        quantizable_values.push_back(input);
+      }
+    } else {
+      // Quantize output of fully quantizable composite functions.
+      for (Value input : op->getOperands()) {
+        auto defining_op = input.getDefiningOp();
+        if (!isCallToLiftedFunction(defining_op)) {
+          continue;
+        }
+
+        // Do not add CustomAggregatorOp after Gather since it is a weight-only
+        // quantizable op.
+        if (auto call_op =
+                dyn_cast_or_null<TF::PartitionedCallOp>(defining_op)) {
+          StringRef function_name =
+              call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+          if (function_name.contains("gather")) continue;
+        }
+
+        quantizable_values.push_back(input);
+      }
     }
+    if (quantizable_values.empty()) return failure();
 
-    bool mutated = false;
-    for (Value input : op->getOperands()) {
-      Type element_type = getElementTypeOrSelf(input.getType());
-      // Non-float cases won't be calibrated.
-      if (!element_type.isF32()) {
-        continue;
-      }
-
-      // Skip when the given operator is under the quantizable spot.
-      if (IsInLiftedFunc(op)) {
-        continue;
-      }
-
-      // Skip when there is any already existing CustomAggregatorOp found.
-      Operation *defining_op = input.getDefiningOp();
-      if (dyn_cast_or_null<TF::CustomAggregatorOp>(defining_op)) {
-        continue;
-      }
-
-      // Skip calibration when the given operand comes from a constant.
-      if (defining_op != nullptr &&
-          defining_op->hasTrait<OpTrait::ConstantLike>()) {
-        continue;
-      }
-
-      // With insert_at_xla_call_module_op_only_, only insert next to
-      // tf.XlaCallModuleOp.
-      if (insert_at_xla_call_module_op_only_ &&
-          (!defining_op || !isa<TF::XlaCallModuleOp>(defining_op)) &&
-          !isa<TF::XlaCallModuleOp>(op)) {
-        continue;
-      }
-
+    for (Value value : quantizable_values) {
       // ID attribute will have empty value for now.
       SmallVector<NamedAttribute, 5> attributes{
           rewriter.getNamedAttr("id", rewriter.getStringAttr("")),
@@ -270,25 +266,32 @@ class AddCustomAggregationOp : public RewritePattern {
       };
 
       // Insert custom aggregation op between operand and operator.
-      rewriter.setInsertionPointAfterValue(input);
+      rewriter.setInsertionPointAfterValue(value);
       Operation *aggregator_op = rewriter.create<TF::CustomAggregatorOp>(
-          op->getLoc(), input.getType(), input, attributes);
+          op->getLoc(), value.getType(), value, attributes);
 
       Value aggregator_op_result = aggregator_op->getOpResult(0);
-      input.replaceAllUsesWith(aggregator_op_result);
-      aggregator_op->replaceUsesOfWith(aggregator_op_result, input);
-
-      // Mark mutated.
-      mutated = true;
+      value.replaceAllUsesWith(aggregator_op_result);
+      aggregator_op->replaceUsesOfWith(aggregator_op_result, value);
     }
 
-    // Return failure when there is no matching operand.
-    return mutated ? success() : failure();
+    return success();
   }
 
  private:
   CalibrationOptions calib_opts_;
-  bool insert_at_xla_call_module_op_only_;
+
+  // Whether the op is a call op to lifted composite function.
+  bool isCallToLiftedFunction(Operation *op) const {
+    if (!op) return false;
+    if (isa<TF::XlaCallModuleOp>(op)) return true;
+
+    TF::PartitionedCallOp call_op = dyn_cast_or_null<TF::PartitionedCallOp>(op);
+    return call_op && call_op->hasAttrOfType<StringAttr>(kQuantTraitAttrName) &&
+           call_op->getAttrOfType<StringAttr>(kQuantTraitAttrName)
+               .getValue()
+               .equals(QuantTraitValues[QuantizationTrait::FullyQuantizable]);
+  }
 };
 
 void InsertCustomAggregationOpsPass::runOnOperation() {
@@ -296,8 +299,7 @@ void InsertCustomAggregationOpsPass::runOnOperation() {
   RewritePatternSet patterns(ctx);
   func::FuncOp func = getOperation();
 
-  patterns.add<AddCustomAggregationOp>(
-      ctx, calib_opts_, insert_at_xla_call_module_op_only_.getValue());
+  patterns.add<AddCustomAggregationOp>(ctx, calib_opts_);
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     func.emitError() << "quant-insert-custom-aggregation-ops failed.";
     signalPassFailure();
@@ -307,10 +309,8 @@ void InsertCustomAggregationOpsPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>>
-CreateInsertCustomAggregationOpsPass(const CalibrationOptions &calib_opts,
-                                     bool insert_at_xla_call_module_op_only) {
-  return std::make_unique<InsertCustomAggregationOpsPass>(
-      calib_opts, insert_at_xla_call_module_op_only);
+CreateInsertCustomAggregationOpsPass(const CalibrationOptions &calib_opts) {
+  return std::make_unique<InsertCustomAggregationOpsPass>(calib_opts);
 }
 
 }  // namespace quant

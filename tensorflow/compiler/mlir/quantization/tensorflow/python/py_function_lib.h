@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow::quantization {
