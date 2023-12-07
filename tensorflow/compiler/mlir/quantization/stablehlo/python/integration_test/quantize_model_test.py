@@ -52,7 +52,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       parameter_combinations([{
           'activation_fn': [None],
           'has_bias': [True, False],
-          'batch_sizes': [([], []), ([10], [10]), ([2, 3], [2, 3])],
+          'dim_sizes': [
+              # tf.MatMul cases.
+              ([None, 1024], [1024, 3]),  # dynamic batch dim.
+              ([1, 1024], [1024, 3]),
+              # tf.BatchMatMul cases.
+              ([10, 1, 1024], [10, 1024, 3]),
+              ([2, 3, 1, 1024], [2, 3, 1024, 3]),
+          ],
       }])
   )
   @test_util.run_in_graph_and_eager_modes
@@ -60,13 +67,13 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       self,
       activation_fn: Optional[ops.Operation],
       has_bias: bool,
-      batch_sizes: Sequence[int],
+      dim_sizes: Sequence[int],
   ):
     target_opset = quant_opts_pb2.STABLEHLO
 
-    lhs_batch_size, rhs_batch_size = batch_sizes
-    input_shape = (*lhs_batch_size, 1, 1024)
-    filter_shape = (*rhs_batch_size, 1024, 3)
+    lhs_dim_size, rhs_dim_size = dim_sizes
+    input_shape = (*lhs_dim_size,)
+    filter_shape = (*rhs_dim_size,)
     static_input_shape = [dim if dim is not None else 2 for dim in input_shape]
     model = self._create_matmul_model(
         input_shape,
@@ -130,7 +137,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # Tests that the quantized graph outputs similar values. The rtol value is
     # arbitrary.
     # TODO: b/309674337 - Fix the large numerical errors.
-    self.assertAllClose(new_outputs, expected_outputs, rtol=0.3)
+    self.assertAllClose(new_outputs, expected_outputs, atol=0.3)
 
   @parameterized.parameters(
       parameter_combinations([{

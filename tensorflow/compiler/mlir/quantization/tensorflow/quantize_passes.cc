@@ -17,6 +17,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/strings/string_view.h"
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -62,11 +63,26 @@ void AddConvertTpuToCpuModelPasses(mlir::PassManager &pm) {
   pm.addPass(mlir::quant::CreateCastBf16OpsToF32Pass());
 }
 
+// Legalizes shape/tensor/arith dialect ops to StableHLO for handling dynamic
+// shapes, by going through a round-trip to MHLO.
+void AddShapeLegalizationPasses(mlir::PassManager &pm) {
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createShapeLegalizeToHloPass(/*legalizeConstraints=*/true));
+  // The following 2 passes are used to clean up the spurious UnrealizedCast ops
+  // and shape.assuming regions leftover from the ShapeLegalizeToHlo pass. See
+  // pass definition for details.
+  pm.addPass(mlir::createReconcileUnrealizedCastsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+}
+
 // NOMUTANTS -- Add tests for individual passes with migration below.
 // Serializes the StableHLO module into a tf.XlaCallModuleOp for compatibility
 // with passes that expect TF format. This also allows the StableHLO ops to be
 // exported as a TF SavedModel.
 void AddCallModuleSerializationPasses(mlir::PassManager &pm) {
+  AddShapeLegalizationPasses(pm);
   pm.addPass(
       mlir::quant::stablehlo::
           createReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass());
