@@ -22,7 +22,7 @@ namespace xla::gpu {
 const std::optional<HloFusionAnalysis>& HloFusionAnalysisCache::Get(
     const HloInstruction& instruction) {
   {
-    absl::ReaderMutexLock lock(&mutex_);
+    absl::MutexLock lock(&mutex_);
     auto it = analyses_.find(instruction.unique_id());
     if (it != analyses_.end()) {
       return it->second;
@@ -47,7 +47,7 @@ const std::optional<HloFusionAnalysis>& HloFusionAnalysisCache::Get(
     const HloInstruction& producer, const HloInstruction& consumer) {
   std::pair<int, int> key{producer.unique_id(), consumer.unique_id()};
   {
-    absl::ReaderMutexLock lock(&mutex_);
+    absl::MutexLock lock(&mutex_);
     auto it = producer_consumer_analyses_.find(key);
     if (it != producer_consumer_analyses_.end()) {
       return it->second;
