@@ -16,9 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_KERNELS_CUTLASS_GEMM_KERNELS_CU_H_
 #define XLA_SERVICE_GPU_KERNELS_CUTLASS_GEMM_KERNELS_CU_H_
 
+#include <cstddef>
 #include <cstdint>
 
-#include "third_party/gpus/cutlass/include/cutlass/gemm/device/gemm_universal.h"
+#include "cutlass/gemm/device/gemm_universal.h"
 #include "xla/service/gpu/kernels/cutlass_gemm.h"
 
 namespace xla::gpu::kernel::gemm_universal {

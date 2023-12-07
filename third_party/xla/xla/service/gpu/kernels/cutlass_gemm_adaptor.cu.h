@@ -22,10 +22,10 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "third_party/gpus/cutlass/include/cutlass/cutlass.h"
-#include "third_party/gpus/cutlass/include/cutlass/gemm/gemm_enumerated_types.h"
-#include "third_party/gpus/cutlass/include/cutlass/gemm_coord.h"
-#include "third_party/gpus/cutlass/include/cutlass/layout/matrix.h"
+#include "cutlass/cutlass.h"
+#include "cutlass/gemm/gemm_enumerated_types.h"
+#include "cutlass/gemm_coord.h"
+#include "cutlass/layout/matrix.h"
 #include "xla/service/gpu/kernels/cutlass_gemm.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/kernel.h"
@@ -132,7 +132,8 @@ auto *ArgPtr(const se::KernelArgsDeviceMemoryArray *args,
   }
 }
 
-int32_t *SlicePtr(const se::KernelArgsDeviceMemoryArray *args, int64_t index) {
+inline int32_t *SlicePtr(const se::KernelArgsDeviceMemoryArray *args,
+                         int64_t index) {
   const void *opaque = args->device_memory_ptr(index);
   return static_cast<int32_t *>(const_cast<void *>(opaque));
 }
@@ -153,7 +154,7 @@ KernelArgsPacking ArgsPacking(cutlass::gemm::GemmCoord problem_size,
 
   return [=](const se::Kernel &kernel, const se::KernelArgs &args)
              -> StatusOr<std::unique_ptr<se::KernelArgsPackedArrayBase>> {
-    auto *mem_args = Cast<se::KernelArgsDeviceMemoryArray>(&args);
+    auto *mem_args = se::Cast<se::KernelArgsDeviceMemoryArray>(&args);
 
     cutlass::Status can_implement = Kernel::can_implement(problem_size);
     if (can_implement != cutlass::Status::kSuccess) {
