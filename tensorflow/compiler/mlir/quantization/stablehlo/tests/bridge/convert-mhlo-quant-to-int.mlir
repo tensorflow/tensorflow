@@ -581,12 +581,44 @@ func.func @dot_dynamic_result_dim(
   // CHECK-SAME: broadcast_dimensions = dense<1>
   // CHECK-SAME: (tensor<?xi32>, tensor<2xi64>) -> tensor<?x?xi32>
 
-
   %0 = "mhlo.dot" (%arg0, %arg1) : (
       tensor<?x2x!quant.uniform<i8:f32, 2.000000e+00:3>>,
       tensor<2x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
     ) -> tensor<?x?x!quant.uniform<i32:f32, 1.000000e+00:3>>
   return %0 : tensor<?x?x!quant.uniform<i32:f32, 1.000000e+00:3>>
+}
+
+// -----
+
+// CHECK-LABEL: func @dot_dynamic_batch_dim
+func.func @dot_dynamic_batch_dim(
+    %arg0: tensor<?x2x!quant.uniform<i8:f32, 2.000000e+00:3>>,
+    %arg1: tensor<2x2x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  ) -> tensor<?x2x!quant.uniform<i32:f32, 1.000000e+00:3>> {
+  // CHECK: "mhlo.dot_general"
+  // CHECK-SAME: lhs_contracting_dimensions = [1]
+  // CHECK-SAME: rhs_contracting_dimensions = [0]
+  // CHECK-SAME: (tensor<?x2xi8>, tensor<2x2xi8>) -> tensor<?x2xi32>
+
+  // CHECK: mhlo.reduce
+  // CHECK-SAME: applies mhlo.add across dimensions = [1]
+  // CHECK-SAME: (tensor<?x2xi32>, tensor<i32>) -> tensor<?xi32>
+  // CHECK: mhlo.dynamic_broadcast_in_dim
+  // CHECK-SAME: broadcast_dimensions = dense<0>
+  // CHECK-SAME: (tensor<?xi32>, tensor<2xi64>) -> tensor<?x2xi32>
+
+  // CHECK: mhlo.reduce
+  // CHECK-SAME: applies mhlo.add across dimensions = [0]
+  // CHECK-SAME: (tensor<2x2xi32>, tensor<i32>) -> tensor<2xi32>
+  // CHECK: mhlo.dynamic_broadcast_in_dim
+  // CHECK-SAME: broadcast_dimensions = dense<1>
+  // CHECK-SAME: (tensor<2xi32>, tensor<2xi64>) -> tensor<?x2xi32>
+
+  %0 = "mhlo.dot" (%arg0, %arg1) : (
+      tensor<?x2x!quant.uniform<i8:f32, 2.000000e+00:3>>,
+      tensor<2x2x!quant.uniform<i8:f32, 1.000000e+00:3>>
+    ) -> tensor<?x2x!quant.uniform<i32:f32, 1.000000e+00:3>>
+  return %0 : tensor<?x2x!quant.uniform<i32:f32, 1.000000e+00:3>>
 }
 
 // -----
