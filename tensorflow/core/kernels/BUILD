@@ -1611,7 +1611,6 @@ cc_library(
     deps = [
         ":batch_kernels",
         ":ops_testutil",
-        ":ops_util",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
     ],
@@ -1645,8 +1644,10 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "@com_google_googletest//:gtest",
     ],
 )
 
