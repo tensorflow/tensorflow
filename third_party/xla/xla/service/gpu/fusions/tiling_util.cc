@@ -372,9 +372,9 @@ llvm::Value* TilingThreadIdInfo::GEPIntoSharedMemory(
   llvm::Value* gep =
       b->CreateInBoundsGEP(shared->getValueType(), shared, idxs_scaled, name);
 
-  llvm::PointerType* pointer_in_addressspace =
-      llvm::PointerType::getWithSamePointeeType(
-          llvm::cast<llvm::PointerType>(gep->getType()), /*AddressSpace=*/0);
+  llvm::PointerType* pointer_in_addressspace = llvm::PointerType::get(
+      llvm::cast<llvm::PointerType>(gep->getType())->getContext(),
+      /*AddressSpace=*/0);
 
   // __shared__ memory uses a different address space, so we cast it to
   // global address space before writing or reading.

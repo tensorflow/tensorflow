@@ -268,8 +268,8 @@ llvm::Value* AddrCastToDefault(llvm::Value* arg, llvm::IRBuilder<>& b) {
   llvm::Type* arg_type = arg->getType();
   CHECK(arg_type->isPointerTy());
   if (arg_type->getPointerAddressSpace() != 0) {
-    llvm::Type* generic_arg_type = llvm::PointerType::getWithSamePointeeType(
-        llvm::cast<llvm::PointerType>(arg_type), 0);
+    llvm::Type* generic_arg_type = llvm::PointerType::get(
+        llvm::cast<llvm::PointerType>(arg_type)->getContext(), 0);
     llvm::Value* addrspacecast_arg =
         b.CreateAddrSpaceCast(arg, generic_arg_type);
     return addrspacecast_arg;
@@ -292,8 +292,8 @@ void EmitAMDGPUAtomicAdd(llvm::IRBuilder<>* builder,
           // is in global addrspace (1)
           : builder->CreateAddrSpaceCast(
                 output_address,
-                llvm::PointerType::getWithSamePointeeType(output_address_type,
-                                                          /*AddressSpace=*/1));
+                llvm::PointerType::get(output_address_type->getContext(),
+                                       /*AddressSpace=*/1));
 
   builder->CreateAtomicRMW(
       llvm::AtomicRMWInst::FAdd, output_ptr, source, llvm::MaybeAlign(),

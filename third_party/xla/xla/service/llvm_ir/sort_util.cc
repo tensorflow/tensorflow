@@ -227,10 +227,11 @@ Status EmitTiledCompareLoop(
     // We need a generic pointer with address space 0 instead of a pointer to
     // shared memory (address space 3) so that we can pass it to the comparison
     // computation.
-    return b->CreateAddrSpaceCast(shared_memory_address,
-                                  llvm::PointerType::getWithSamePointeeType(
-                                      llvm::cast<llvm::PointerType>(ptr_type),
-                                      /*AddressSpace=*/0));
+    return b->CreateAddrSpaceCast(
+        shared_memory_address,
+        llvm::PointerType::get(
+            llvm::cast<llvm::PointerType>(ptr_type)->getContext(),
+            /*AddressSpace=*/0));
   };
   auto element_address_pointee_type = [&](int64_t operand, llvm::Value* index) {
     return llvm::GetElementPtrInst::getIndexedType(
