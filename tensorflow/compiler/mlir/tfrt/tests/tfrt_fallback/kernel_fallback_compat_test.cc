@@ -16,12 +16,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/resource_loader.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/runtime_fallback/util/fallback_test_util.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
@@ -30,14 +30,15 @@ limitations under the License.
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
+#include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
-#include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
+#include "tfrt/host_context/resource_context.h"  // from @tf_runtime
+#include "tfrt/support/ref_count.h"  // from @tf_runtime
 #include "tfrt/tracing/tracing.h"  // from @tf_runtime
 
 namespace tensorflow {
-namespace tfd {
 namespace {
 
 // Creates a BEF file with a program that runs tfrt_fallback.batch_function with
@@ -48,9 +49,9 @@ namespace {
 std::pair<tfrt::BefBuffer, tfrt::RCReference<tfrt::BEFFile>> CreateBefFile(
     absl::string_view file_name, tfrt::HostContext* host) {
   std::string file_path = GetDataDependencyFilepath(absl::StrCat(
-      "tensorflow/core/runtime_fallback/test/testdata/", file_name));
+      "tensorflow/compiler/mlir/tfrt/tests/tfrt_fallback/", file_name));
   std::string data;
-  TF_CHECK_OK(ReadFileToString(Env::Default(), file_path, &data));
+  CHECK_OK(ReadFileToString(Env::Default(), file_path, &data));
 
   tfrt::BefBuffer bef_buffer(data.begin(), data.end());
 
@@ -69,7 +70,7 @@ TEST(KernelFallbackCompatTest, CreateOp) {
   auto& bef_file = pair.second;
 
   tfrt::ResourceContext resource_ctx;
-  auto exec_ctx = CreateFallbackTestExecutionContext(host, &resource_ctx);
+  auto exec_ctx = tfd::CreateFallbackTestExecutionContext(host, &resource_ctx);
 
   auto chain = tfrt::GetReadyChain();
 
@@ -86,7 +87,7 @@ TEST(KernelFallbackCompatTest, CreateOp) {
 
   auto* fallback_request_state =
       exec_ctx.request_ctx()
-          ->GetDataIfExists<KernelFallbackCompatRequestState>();
+          ->GetDataIfExists<tfd::KernelFallbackCompatRequestState>();
 
   ASSERT_TRUE(fallback_request_state != nullptr);
 
@@ -120,8 +121,8 @@ TEST(KernelFallbackCompatTest, CustomThreadPool) {
   tensorflow::tfrt_stub::TfThreadPool thread_pool(/*name=*/"test",
                                                   /*num_threads=*/1);
 
-  auto exec_ctx =
-      CreateFallbackTestExecutionContext(host, &resource_ctx, &thread_pool);
+  auto exec_ctx = tfd::CreateFallbackTestExecutionContext(host, &resource_ctx,
+                                                          &thread_pool);
 
   auto chain = tfrt::GetReadyChain();
 
@@ -146,5 +147,4 @@ TEST(KernelFallbackCompatTest, CustomThreadPool) {
 }
 
 }  // namespace
-}  // namespace tfd
 }  // namespace tensorflow
