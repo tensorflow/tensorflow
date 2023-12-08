@@ -641,7 +641,6 @@ message DebugOptions {
 
   bool xla_gpu_enable_split_k_autotuning = 241;
 
-  bool xla_gpu_single_wave_autotuning = 242;
   // Whether reduction epilogue fusion is enabled in fusion passes.
   bool xla_gpu_enable_reduction_epilogue_fusion = 243;
   // Allow early return when acquiring NCCL cliques.
@@ -672,7 +671,10 @@ message DebugOptions {
   // Enable radix sort using CUB.
   bool xla_gpu_enable_cub_radix_sort = 259;
 
-  // Next id: 265
+  // Threshold to enable windowed einsum (collective matmul) in MB.
+  int64 xla_gpu_threshold_for_windowed_einsum_mib = 265;
+
+  // Next id: 266
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -686,13 +688,18 @@ message DebugOptions {
   // xla_gpu_allow_all_reduce_kernel
   // xla_gpu_enable_experimental_block_size
   // xla_gpu_graph_level
-  reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194;
+  // xla_gpu_single_wave_autotuning
+  reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 242;
 }
 
 // Contains flags which affects the GPU compilation result.
 // These flags are part of Debug Options as of now, and will be migrated to
 // this proto.
-message GpuCompilationEnvironment {}
+message GpuCompilationEnvironment {
+  // Temporary dummy flag is added to test the flow.
+  // To be removed when we add flags here.
+  int64 dummy_flag = 1;
+}
 
 message ShardableValueUpdatePairProto {
   int64 input_parameter_number = 1;

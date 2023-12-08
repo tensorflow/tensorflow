@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform.h"
@@ -128,7 +129,7 @@ class StreamExecutor {
   bool UnloadModule(ModuleHandle module_handle);
 
   tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
-      Stream* stream, const std::vector<uint8_t>& content);
+      Stream* stream, absl::Span<const uint8_t> content);
 
   // Synchronously allocates an array on the device of type T with element_count
   // elements.
@@ -154,18 +155,6 @@ class StreamExecutor {
   ScopedDeviceMemory<T> AllocateOwnedScalar() {
     return AllocateOwnedArray<T>(1);
   }
-
-  // Allocate a memory region inside another allocated memory region.
-  // Offset and size are specified in terms of T elements.
-  // Warning: Do not free a parent buffer before its sub-buffers; this may cause
-  // use-after-free issues (the specific behavior is not consistent across
-  // platforms).
-  //  - Note: OpenCL uses refcounting to manage buffer lifetimes, so use of a
-  //    sub-buffer after parent deallocation is expected to be safe. This will
-  //    render your code non-platform-portable, however.
-  template <typename T>
-  DeviceMemory<T> GetSubBuffer(DeviceMemory<T>* parent, uint64_t element_offset,
-                               uint64_t element_count);
 
   // An untyped version of GetSymbol.
   tsl::StatusOr<DeviceMemoryBase> GetUntypedSymbol(
@@ -416,6 +405,10 @@ class StreamExecutor {
                      const BlockDim& block_dims, const Kernel& kernel,
                      const KernelArgs& args);
 
+  tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
+                     const BlockDim& block_dims, const ClusterDim& cluster_dims,
+                     const Kernel& kernel, const KernelArgs& args);
+
   // Submits command buffer for execution to the underlying platform driver.
   tsl::Status Submit(Stream* stream, const CommandBuffer& command_buffer);
 
@@ -492,9 +485,6 @@ class StreamExecutor {
   // a DeviceMemoryBase representing that allocation. In the case of failure,
   // nullptr is returned.
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space);
-
-  void* GetUntypedSubBuffer(DeviceMemoryBase* parent, uint64_t offset,
-                            uint64_t size);
 
   // Causes the host code to synchronously wait for operations entrained
   // onto stream to complete. Effectively a join on the asynchronous device
@@ -748,25 +738,6 @@ ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(
       TF_CHECK_OK(Free());
     }
   }
-}
-
-template <typename T>
-DeviceMemory<T> StreamExecutor::GetSubBuffer(DeviceMemory<T>* parent,
-                                             uint64_t element_offset,
-                                             uint64_t element_count) {
-  if (element_offset + element_count > parent->ElementCount()) {
-    LOG(ERROR) << "requested sub-buffer allocation (offset + size) is greater "
-               << "than parent allocation size: (" << element_offset << " + "
-               << element_count << ") vs. (" << parent->ElementCount() << ")";
-    return DeviceMemory<T>{};
-  }
-
-  void* opaque = GetUntypedSubBuffer(parent, sizeof(T) * element_offset,
-                                     sizeof(T) * element_count);
-  if (opaque == nullptr) {
-    return DeviceMemory<T>{};
-  }
-  return DeviceMemory<T>(DeviceMemoryBase(opaque, sizeof(T) * element_count));
 }
 
 }  // namespace stream_executor

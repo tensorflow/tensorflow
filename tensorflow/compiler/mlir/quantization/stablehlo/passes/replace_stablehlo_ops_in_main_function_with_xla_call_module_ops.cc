@@ -45,6 +45,8 @@ namespace mlir::quant::stablehlo {
 namespace {
 
 constexpr StringRef kQuantizeTargetOpAttr = "tf_quant.composite_function";
+constexpr StringRef kStablehloModuleAttrsAttrName = "_stablehlo_module_attrs";
+constexpr StringRef kUsesShapePolymorphismAttr = "jax.uses_shape_polymorphism";
 
 // Default version number for native serialization.
 constexpr int64_t kDefaultVersion = 9;
@@ -157,8 +159,8 @@ class LiveOuts {
 };
 
 // Creates the tf.XlaCallModuleOp from attributes.
-void CreateXlaCallModuleOp(ArrayRef<Value> inputs, ArrayRef<Value> outputs,
-                           ArrayRef<Type> result_types,
+void CreateXlaCallModuleOp(ValueRange inputs, ValueRange outputs,
+                           TypeRange result_types,
                            ArrayRef<Operation*> reverse_subgraph,
                            func::FuncOp stablehlo_func_op, ModuleOp module_op) {
   MLIRContext* ctx = module_op.getContext();
@@ -187,6 +189,12 @@ void CreateXlaCallModuleOp(ArrayRef<Value> inputs, ArrayRef<Value> outputs,
       /*disabled_checks=*/empty_array_attr);
   xla_call_module_op->setAttr(TF::kStablehloEntryFunctionAttrName,
                               SymbolRefAttr::get(stablehlo_func_op));
+  // Set jax.uses_shape_polymorphism=true to enable shape refinement at runtime.
+  // This is needed for native serialization version >= 8.
+  xla_call_module_op->setAttr(
+      kStablehloModuleAttrsAttrName,
+      builder.getDictionaryAttr(builder.getNamedAttr(
+          kUsesShapePolymorphismAttr, builder.getBoolAttr(true))));
 
   for (auto [original_output_value, xla_call_module_op_result_value] :
        llvm::zip_equal(outputs, xla_call_module_op->getResults())) {

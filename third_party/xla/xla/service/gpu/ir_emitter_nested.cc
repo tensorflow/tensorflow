@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
@@ -252,7 +254,9 @@ Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
 
         global_name,
         /*allocation_idx=*/-1,
-        llvm::ArrayRef<uint8_t>(base, base + literal.size_bytes()), &b_);
+        DenseDataIntermediate::Alias(
+            absl::MakeSpan(base, base + literal.size_bytes())),
+        &b_);
   }
   return OkStatus();
 }
@@ -264,8 +268,8 @@ llvm::Value* AddrCastToDefault(llvm::Value* arg, llvm::IRBuilder<>& b) {
   llvm::Type* arg_type = arg->getType();
   CHECK(arg_type->isPointerTy());
   if (arg_type->getPointerAddressSpace() != 0) {
-    llvm::Type* generic_arg_type = llvm::PointerType::getWithSamePointeeType(
-        llvm::cast<llvm::PointerType>(arg_type), 0);
+    llvm::Type* generic_arg_type = llvm::PointerType::get(
+        llvm::cast<llvm::PointerType>(arg_type)->getContext(), 0);
     llvm::Value* addrspacecast_arg =
         b.CreateAddrSpaceCast(arg, generic_arg_type);
     return addrspacecast_arg;
@@ -288,8 +292,8 @@ void EmitAMDGPUAtomicAdd(llvm::IRBuilder<>* builder,
           // is in global addrspace (1)
           : builder->CreateAddrSpaceCast(
                 output_address,
-                llvm::PointerType::getWithSamePointeeType(output_address_type,
-                                                          /*AddressSpace=*/1));
+                llvm::PointerType::get(output_address_type->getContext(),
+                                       /*AddressSpace=*/1));
 
   builder->CreateAtomicRMW(
       llvm::AtomicRMWInst::FAdd, output_ptr, source, llvm::MaybeAlign(),
@@ -543,7 +547,6 @@ Status EmitAtomicOperationUsingCAS(llvm::IRBuilder<>* builder,
   llvm::PointerType* output_address_type =
       llvm::dyn_cast<llvm::PointerType>(output_address->getType());
   CHECK_NE(output_address_type, nullptr);
-  CHECK(output_address_type->isOpaqueOrPointeeTypeMatches(element_type));
 
   int element_size = llvm_ir::GetSizeInBits(element_type);
 

@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 38
+#define PJRT_API_MINOR 40
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1264,6 +1264,16 @@ struct PJRT_ExecuteOptions {
   // multi-host programs are launched in different orders on different hosts,
   // the launch IDs may be used by the runtime to detect the mismatch.
   int launch_id;
+  // A list of indices denoting the input buffers that should not be donated.
+  // An input buffer may be non-donable, for example, if it is referenced more
+  // than once. Since such runtime information is not available at compile time,
+  // the compiler might mark the input as `may-alias`, which could lead PjRt to
+  // donate the input buffer when it should not. By defining this list of
+  // indices, a higher-level PJRT caller can instruct PJRT client not to donate
+  // specific input buffers. The caller needs to make sure to keep it alive
+  // during the call.
+  const int64_t* non_donatable_input_indices;
+  size_t num_non_donatable_input_indices;
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecuteOptions, launch_id);
 
@@ -1365,6 +1375,27 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_GetCostAnalysis_Args, properties);
 // program analysis.
 typedef PJRT_Error* PJRT_Executable_GetCostAnalysis(
     PJRT_Executable_GetCostAnalysis_Args* args);
+
+struct PJRT_Executable_GetCompiledMemoryStats_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Executable* executable;
+
+  // Mirrors xla::CompiledMemoryStats.
+  int64_t generated_code_size_in_bytes;  // out
+  int64_t argument_size_in_bytes;        // out
+  int64_t output_size_in_bytes;          // out
+  // How much argument is reused for output.
+  int64_t alias_size_in_bytes;  // out
+  int64_t temp_size_in_bytes;   // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_GetCompiledMemoryStats_Args,
+                          temp_size_in_bytes);
+
+// Return memory stats that allow callers to estimate device memory usage
+// when running this executable.
+typedef PJRT_Error* PJRT_Executable_GetCompiledMemoryStats(
+    PJRT_Executable_GetCompiledMemoryStats_Args* args);
 
 struct PJRT_Executable_OutputElementTypes_Args {
   size_t struct_size;
@@ -2126,6 +2157,8 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Fingerprint);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Client_TopologyDescription);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Executable_GetCompiledMemoryStats);
 } PJRT_Api;
 
 enum {

@@ -34,9 +34,6 @@ namespace xla {
 StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
     const LiteralBase& literal, mlir::Builder builder);
 
-Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
-                                        std::vector<uint8_t>* output);
-
 StatusOr<int> GetElementTypeBytes(mlir::Type type);
 
 // Creates an DenseIntElementsAttr using the elements of the vector and the
@@ -66,7 +63,7 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
   for (int64_t dim = 0; dim < rank; ++dim) {
     int64_t dim_size = xla_ty.dimensions(dim);
     if (xla_ty.is_dynamic_dimension(dim)) {
-      if (dim_size != Shape::kUnboundedSize) {
+      if (!xla_ty.is_unbounded_dynamic_dimension(dim)) {
         bounds[dim] = dim_size;
         is_bounded_dynamic = true;
       }
@@ -94,7 +91,7 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
       if (is_bounded_dynamic)
         return Unimplemented(
             "MHLO doesn't support bounded dynamic shapes for sparse tensors");
-      llvm::SmallVector<mlir::sparse_tensor::DimLevelType> dlts;
+      llvm::SmallVector<mlir::sparse_tensor::LevelType> lts;
       for (size_t i = 0, e = layout.dim_level_types().size(); i < e; ++i) {
         auto dlt = layout.dim_level_types()[i];
         bool ordered =
@@ -103,19 +100,19 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
             i < layout.dim_unique().size() ? layout.dim_unique()[i] : true;
         switch (dlt) {
           case DimLevelType::DIM_DENSE:
-            dlts.push_back(*mlir::sparse_tensor::buildLevelType(
+            lts.push_back(*mlir::sparse_tensor::buildLevelType(
                 mlir::sparse_tensor::LevelFormat::Dense, ordered, unique));
             break;
           case DimLevelType::DIM_COMPRESSED:
-            dlts.push_back(*mlir::sparse_tensor::buildLevelType(
+            lts.push_back(*mlir::sparse_tensor::buildLevelType(
                 mlir::sparse_tensor::LevelFormat::Compressed, ordered, unique));
             break;
           case DimLevelType::DIM_SINGLETON:
-            dlts.push_back(*mlir::sparse_tensor::buildLevelType(
+            lts.push_back(*mlir::sparse_tensor::buildLevelType(
                 mlir::sparse_tensor::LevelFormat::Singleton, ordered, unique));
             break;
           case DimLevelType::DIM_LOOSE_COMPRESSED:
-            dlts.push_back(*mlir::sparse_tensor::buildLevelType(
+            lts.push_back(*mlir::sparse_tensor::buildLevelType(
                 mlir::sparse_tensor::LevelFormat::LooseCompressed, ordered,
                 unique));
             break;
@@ -130,7 +127,7 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
                                                        builder.getContext());
       // TODO(atondwal): support sizes other than 32 when XLA does
       encoding = SparseTensorEncodingAttr::get(
-          builder.getContext(), dlts, id_map, mlir::AffineMap(), 32, 32);
+          builder.getContext(), lts, id_map, mlir::AffineMap(), 32, 32);
     }
   }
   return TypeT::get(shape, element_type_or.value(), encoding);

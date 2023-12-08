@@ -103,3 +103,8 @@ def QuantizeCompositeFunctionsPass : Pass<"stablehlo-quantize-composite-function
     "TF::TensorFlowDialect",
   ];
 }
+
+def UnwrapXlaCallModuleOpPass : Pass<"stablehlo-unwrap-xla-call-module-op", "ModuleOp"> {
+  let summary = "Unwrap XlaCallModuleOps into inline functions if not used for quantizing fused patterns.";
+  let dependentDialects = ["TF::TensorFlowDialect"];
+}

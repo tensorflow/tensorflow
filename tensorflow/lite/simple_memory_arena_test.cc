@@ -56,7 +56,7 @@ TEST(SimpleMemoryArenaTest, BasicZeroAlloc) {
   char* resolved_ptr = nullptr;
   bool reallocated = false;
   ASSERT_EQ(arena.Commit(&reallocated), kTfLiteOk);
-  ASSERT_TRUE(reallocated);
+  EXPECT_FALSE(reallocated);  // Don't allocate when zero bytes are needed.
   EXPECT_EQ(resolved_ptr, nullptr);
 }
 
@@ -349,7 +349,9 @@ TEST_P(BufferAndPlanClearingTest, TestClearBufferAndClearPlan) {
 
   // Just committing won't work, allocations need to be made again.
   ASSERT_EQ(arena.Commit(&reallocated), kTfLiteOk);
-  ASSERT_TRUE(reallocated);
+  // There was no allocation, the buffer has 0 bytes (was released) and the high
+  // water mark is 0 (plan was cleared).
+  EXPECT_FALSE(reallocated);
   char* resolved_ptr = nullptr;
   ASSERT_NE(arena.ResolveAlloc(&context, allocs[0], &resolved_ptr), kTfLiteOk);
 

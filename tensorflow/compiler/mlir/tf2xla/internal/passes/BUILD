@@ -229,6 +229,7 @@ cc_library(
     deps = [
         ":dialect_to_executor_passes_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tf2xla/internal/utils:dialect_detection_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core/transforms/toposort:Pass",
         "@com_google_absl//absl/strings",

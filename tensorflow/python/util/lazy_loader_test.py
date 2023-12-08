@@ -17,6 +17,7 @@
 # pylint: disable=unused-import
 import doctest
 import inspect
+import pickle
 import types
 
 from tensorflow.python.platform import test
@@ -52,6 +53,17 @@ class LazyLoaderTest(test.TestCase):
 
     # Check that values stayed the same
     self.assertEqual(lazy_loader_module.foo, foo)
+
+
+class PickleTest(test.TestCase):
+
+  def testPickleLazyLoader(self):
+    name = PickleTest.__module__  # Try to pickle current module.
+    lazy_loader_module = lazy_loader.LazyLoader(
+        "lazy_loader_module", globals(), name)
+    restored = pickle.loads(pickle.dumps(lazy_loader_module))
+    self.assertEqual(restored.__name__, name)
+    self.assertIsNotNone(restored.PickleTest)
 
 
 if __name__ == "__main__":

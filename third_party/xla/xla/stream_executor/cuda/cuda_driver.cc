@@ -21,6 +21,8 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -59,17 +61,17 @@ static constexpr bool FLAGS_gpuexec_cuda_driver_inject_init_error = false;
 static constexpr bool FLAGS_gpuexec_cuda_sync_around_driver_calls = false;
 static constexpr bool FLAGS_gpuexec_cuda_device_0_only = false;
 
-#define RETURN_IF_CUDA_RES_ERROR(expr, ...)                                   \
-  do {                                                                        \
-    CUresult _res = (expr);                                                   \
-    if (ABSL_PREDICT_FALSE(_res != CUDA_SUCCESS)) {                           \
-      if (_res == CUDA_ERROR_OUT_OF_MEMORY)                                   \
-        return tsl::errors::ResourceExhausted(                                \
-            __VA_ARGS__, ":", ::stream_executor::gpu::ToString(_res));        \
-      else                                                                    \
-        return tsl::errors::Internal(__VA_ARGS__, ": ",                       \
-                                     ::stream_executor::gpu::ToString(_res)); \
-    }                                                                         \
+#define RETURN_IF_CUDA_RES_ERROR(expr, ...)                              \
+  do {                                                                   \
+    CUresult _res = (expr);                                              \
+    if (ABSL_PREDICT_FALSE(_res != CUDA_SUCCESS)) {                      \
+      if (_res == CUDA_ERROR_OUT_OF_MEMORY)                              \
+        return absl::ResourceExhaustedError(absl::StrCat(                \
+            __VA_ARGS__, ":", ::stream_executor::gpu::ToString(_res)));  \
+      else                                                               \
+        return absl::InternalError(absl::StrCat(                         \
+            __VA_ARGS__, ": ", ::stream_executor::gpu::ToString(_res))); \
+    }                                                                    \
   } while (0)
 
 #define FAIL_IF_CUDA_RES_ERROR(expr, ...)                   \
@@ -715,6 +717,90 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
   return status == CU_STREAM_CAPTURE_STATUS_ACTIVE;
 }
 
+/* static */ tsl::Status GpuDriver::GraphConditionalHandleCreate(
+    GpuGraphConditionalHandle* handle, CUgraph graph, GpuContext* context,
+    unsigned int default_launch_value, unsigned int flags) {
+  VLOG(2) << "Create conditional handle for a graph " << graph
+          << "; context: " << context
+          << "; default_launch_value: " << default_launch_value
+          << "; flags: " << flags;
+
+#if CUDA_VERSION >= 12030
+  RETURN_IF_CUDA_RES_ERROR(
+      cuGraphConditionalHandleCreate(handle, graph, context->context(),
+                                     default_launch_value, flags),
+      "Failed to create conditional handle for a CUDA graph");
+#else
+  return absl::UnimplementedError(
+      "CUDA graph conditional nodes are not implemented");
+#endif  // CUDA_VERSION >= 12030
+  return ::tsl::OkStatus();
+}
+
+static std::string ConditionalTypeToString(
+    GpuDriver::GpuGraphConditionalNodeParams::Type type) {
+  switch (type) {
+    case GpuDriver::GpuGraphConditionalNodeParams::Type::kIf:
+      return "IF";
+    case GpuDriver::GpuGraphConditionalNodeParams::Type::kWhile:
+      return "WHILE";
+  }
+}
+
+/* static */ tsl::StatusOr<GpuDriver::GpuGraphNodeResult>
+GpuDriver::GraphAddNode(CUgraphNode* node, CUgraph graph,
+                        absl::Span<CUgraphNode> deps,
+                        const GpuGraphNodeParams& params) {
+#if CUDA_VERSION >= 12030
+  // Add conditional node to a graph.
+  if (auto* conditional = std::get_if<GpuGraphConditionalNodeParams>(&params)) {
+    VLOG(2) << "Add conditional node to a graph " << graph
+            << "; type: " << ConditionalTypeToString(conditional->type)
+            << "; deps: " << deps.size();
+
+    CUgraphNodeParams cu_params;
+    memset(&cu_params, 0, sizeof(cu_params));
+
+    cu_params.type = CU_GRAPH_NODE_TYPE_CONDITIONAL;
+    cu_params.conditional.handle = conditional->handle;
+    cu_params.conditional.ctx = conditional->context->context();
+    cu_params.conditional.size = 1;
+
+    switch (conditional->type) {
+      case GpuDriver::GpuGraphConditionalNodeParams::Type::kIf:
+        cu_params.conditional.type = CU_GRAPH_COND_TYPE_IF;
+        break;
+      case GpuDriver::GpuGraphConditionalNodeParams::Type::kWhile:
+        cu_params.conditional.type = CU_GRAPH_COND_TYPE_WHILE;
+        break;
+    }
+
+    RETURN_IF_CUDA_RES_ERROR(
+        cuGraphAddNode(node, graph, deps.data(), deps.size(), &cu_params),
+        "Failed to add conditional node to a CUDA graph");
+
+    GpuGraphConditionalNodeParams::Result result;
+    result.graph = cu_params.conditional.phGraph_out[0];
+
+    VLOG(2) << "Created conditional CUDA graph " << result.graph;
+    return result;
+  }
+#endif  // CUDA_VERSION >= 12030
+
+  return absl::UnimplementedError("unsupported node type");
+}
+
+/* static */ tsl::Status GpuDriver::GraphAddEmptyNode(
+    CUgraphNode* node, CUgraph graph, absl::Span<CUgraphNode> deps) {
+  VLOG(2) << "Add empty node to a graph " << graph << "; deps: " << deps.size();
+
+  RETURN_IF_CUDA_RES_ERROR(
+      cuGraphAddEmptyNode(node, graph, deps.data(), deps.size()),
+      "Failed to add empty node to a CUDA graph");
+
+  return tsl::OkStatus();
+}
+
 /* static */ tsl::Status GpuDriver::GraphAddKernelNode(
     CUgraphNode* node, CUgraph graph, absl::Span<CUgraphNode> deps,
     absl::string_view kernel_name, CUfunction function, unsigned int grid_dim_x,
@@ -742,6 +828,9 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
   params.kernelParams = kernel_params;
   params.extra = extra;
 
+  // TODO(ezhulenev): Why do we do it on every call to launch kernel? This
+  // should be moved one level up to se::Kernel level, and done just once (or
+  // updated once we get a new larger shared memory request).
   if (shared_mem_bytes != 0) {
     RETURN_IF_CUDA_RES_ERROR(
         cuFuncSetAttribute(function,
@@ -783,6 +872,9 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
   params.kernelParams = kernel_params;
   params.extra = extra;
 
+  // TODO(ezhulenev): Why do we do it on every call to launch kernel? This
+  // should be moved one level up to se::Kernel level, and done just once (or
+  // updated once we get a new larger shared memory request).
   if (shared_mem_bytes != 0) {
     RETURN_IF_CUDA_RES_ERROR(
         cuFuncSetAttribute(function,
@@ -794,6 +886,111 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
   RETURN_IF_CUDA_RES_ERROR(cuGraphExecKernelNodeSetParams(exec, node, &params),
                            "Failed to set CUDA graph kernel node params");
 
+  return ::tsl::OkStatus();
+}
+
+static CUmemAccess_flags ToCudaMemAccessFlags(
+    GpuDriver::MemAccessFlags access_flags) {
+  switch (access_flags) {
+    case GpuDriver::MemAccessFlags::kNone:
+      return CU_MEM_ACCESS_FLAGS_PROT_NONE;
+    case GpuDriver::MemAccessFlags::kRead:
+      return CU_MEM_ACCESS_FLAGS_PROT_READ;
+    case GpuDriver::MemAccessFlags::kReadWrite:
+      return CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
+  }
+}
+
+static CUmemLocationType ToCudaLocationType(
+    GpuDriver::MemLocationType location_type) {
+  switch (location_type) {
+    case GpuDriver::MemLocationType::kInvalid:
+      return CU_MEM_LOCATION_TYPE_INVALID;
+    case GpuDriver::MemLocationType::kDevice:
+      return CU_MEM_LOCATION_TYPE_DEVICE;
+#if CUDA_VERSION >= 12000
+    case GpuDriver::MemLocationType::kHost:
+      return CU_MEM_LOCATION_TYPE_HOST;
+    case GpuDriver::MemLocationType::kHostNuma:
+      return CU_MEM_LOCATION_TYPE_HOST_NUMA;
+    case GpuDriver::MemLocationType::kHostNumaCurrent:
+      return CU_MEM_LOCATION_TYPE_HOST_NUMA_CURRENT;
+#else
+    case GpuDriver::MemLocationType::kHost:
+    case GpuDriver::MemLocationType::kHostNuma:
+    case GpuDriver::MemLocationType::kHostNumaCurrent:
+      return CU_MEM_LOCATION_TYPE_INVALID;
+#endif  // CUDA_VERSION >= 12000
+  }
+}
+
+static CUmemAllocationType ToCudaAllocationType(
+    GpuDriver::MemAllocationType alocation_type) {
+  switch (alocation_type) {
+    case GpuDriver::MemAllocationType::kInvalid:
+      return CU_MEM_ALLOCATION_TYPE_INVALID;
+    case GpuDriver::MemAllocationType::kPinned:
+      return CU_MEM_ALLOCATION_TYPE_PINNED;
+  }
+}
+
+/*static*/ tsl::Status GpuDriver::GraphAddMemAllocNode(
+    CUgraphNode* node, CUgraph graph, absl::Span<CUgraphNode> deps,
+    GpuDriver::MemAccessFlags access_flags,
+    GpuDriver::MemLocationType location_type, int device_id,
+    GpuDriver::MemAllocationType allocation_type, uint64_t size,
+    CUdeviceptr* d_ptr, uint64_t max_pool_size) {
+  CUDA_MEM_ALLOC_NODE_PARAMS params;
+  memset(&params, 0, sizeof(params));
+
+  CUmemLocation mem_location;
+  mem_location.id = device_id;
+  mem_location.type = ToCudaLocationType(location_type);
+
+  CUmemAccessDesc mem_desc;
+  mem_desc.flags = ToCudaMemAccessFlags(access_flags);
+  mem_desc.location = mem_location;
+
+  CUmemPoolProps mem_pool_props;
+  mem_pool_props.allocType = ToCudaAllocationType(allocation_type);
+  mem_pool_props.handleTypes = CU_MEM_HANDLE_TYPE_NONE;
+  mem_pool_props.location = mem_location;
+#if CUDA_VERSION >= 12000
+  mem_pool_props.maxSize = max_pool_size;
+#endif  // CUDA_VERSION >= 12000
+  // cuda graph requires reserved space initialized to 0
+  memset(mem_pool_props.reserved, 0, sizeof(mem_pool_props.reserved));
+
+  params.accessDescCount = 1;
+  params.bytesize = size;
+  params.accessDescs = &mem_desc;
+  params.poolProps = mem_pool_props;
+
+  RETURN_IF_CUDA_RES_ERROR(
+      cuGraphAddMemAllocNode(node, graph, deps.data(), deps.size(), &params),
+      "Failed to add memory allocation node to a CUDA graph");
+
+  VLOG(2) << "Add MemAllocNode to a graph " << graph << " size " << size
+          << " address " << reinterpret_cast<void*>(params.dptr);
+
+  *d_ptr = params.dptr;
+  return ::tsl::OkStatus();
+}
+
+/*static*/ tsl::StatusOr<std::pair<CUdeviceptr, uint64_t>>
+GpuDriver::GraphGetMemAllocNodeParams(CUgraphNode node) {
+  CUDA_MEM_ALLOC_NODE_PARAMS params;
+  RETURN_IF_CUDA_RES_ERROR(cuGraphMemAllocNodeGetParams(node, &params),
+                           "Failed to get memory allocation node parameter");
+  return std::pair<CUdeviceptr, uint64_t>{params.dptr, params.bytesize};
+}
+
+/*static*/ tsl::Status GpuDriver::GraphAddMemFreeNode(
+    CUgraphNode* node, CUgraph graph, absl::Span<CUgraphNode> deps,
+    CUdeviceptr gpu_dst) {
+  RETURN_IF_CUDA_RES_ERROR(
+      cuGraphAddMemFreeNode(node, graph, deps.data(), deps.size(), gpu_dst),
+      "Failed to add memory free node to a CUDA graph");
   return ::tsl::OkStatus();
 }
 
@@ -821,6 +1018,124 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
       cuGraphAddMemcpyNode(node, graph, deps.data(), deps.size(), &params,
                            context->context()),
       "Failed to add memcpy d2d node to a CUDA graph");
+
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::GraphExecMemcpyD2DNodeSetParams(
+    GpuContext* context, GpuGraphExecHandle exec, GpuGraphNodeHandle node,
+    GpuDevicePtr gpu_dst, GpuDevicePtr gpu_src, uint64_t size) {
+  VLOG(2) << "Set memcpy d2d node params " << node << " in graph executable "
+          << exec << "; dst: " << reinterpret_cast<void*>(gpu_dst)
+          << "; src: " << reinterpret_cast<void*>(gpu_src) << "; size: " << size
+          << "; context: " << context->context();
+
+  CUDA_MEMCPY3D params;
+  memset(&params, 0, sizeof(params));
+
+  params.srcMemoryType = CU_MEMORYTYPE_DEVICE;
+  params.srcDevice = gpu_src;
+  params.dstMemoryType = CU_MEMORYTYPE_DEVICE;
+  params.dstDevice = gpu_dst;
+  params.WidthInBytes = size;
+  params.Height = 1;
+  params.Depth = 1;
+
+  RETURN_IF_CUDA_RES_ERROR(
+      cuGraphExecMemcpyNodeSetParams(exec, node, &params, context->context()),
+      "Failed to set memcpy d2d node params");
+
+  return ::tsl::OkStatus();
+}
+
+namespace {
+
+struct BitPatternToString {
+  std::string operator()(uint8_t pattern) {
+    return absl::StrCat("u8:", pattern);
+  }
+  std::string operator()(uint16_t pattern) {
+    return absl::StrCat("u16:", pattern);
+  }
+  std::string operator()(uint32_t pattern) {
+    return absl::StrCat("u32:", pattern);
+  }
+};
+
+// Broadcasts a pattern value of 1/2/4 bytes to a 4 byte value.
+struct BitPatternToValue {
+  std::pair<unsigned, unsigned> operator()(uint8_t pattern) {
+    unsigned value = pattern;
+    return {(value << 24) | (value << 16) | (value << 8) | value,
+            /*element_size=*/1};
+  }
+  std::pair<unsigned, unsigned> operator()(uint16_t pattern) {
+    unsigned value = pattern;
+    return {(value << 16) | value, /*element_size=*/2};
+  }
+  std::pair<unsigned, unsigned> operator()(uint32_t pattern) {
+    return {pattern, /*element_size=*/4};
+  }
+};
+
+}  // namespace
+
+/* static */ tsl::Status GpuDriver::GraphAddMemsetNode(
+    GpuContext* context, CUgraphNode* node, GpuGraphHandle graph,
+    absl::Span<CUgraphNode> deps, CUdeviceptr dst,
+    std::variant<uint8_t, uint16_t, uint32_t> bit_pattern,
+    uint64_t num_elements) {
+  VLOG(2) << "Add memset node to a graph " << graph
+          << "; dst: " << reinterpret_cast<void*>(dst)
+          << "; bit_pattern: " << std::visit(BitPatternToString(), bit_pattern)
+          << "; num_elements: " << num_elements
+          << "; context: " << context->context() << "; deps: " << deps.size();
+
+  CUDA_MEMSET_NODE_PARAMS params;
+  memset(&params, 0, sizeof(params));
+
+  auto [value, element_size] = std::visit(BitPatternToValue(), bit_pattern);
+
+  params.dst = dst;
+  params.elementSize = element_size;
+  params.height = 1;
+  params.pitch = 0;  // unused if height is 1
+  params.value = value;
+  params.width = num_elements;
+
+  RETURN_IF_CUDA_RES_ERROR(
+      cuGraphAddMemsetNode(node, graph, deps.data(), deps.size(), &params,
+                           context->context()),
+      "Failed to add memset node to a CUDA graph");
+
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::GraphExecMemsetNodeSetParams(
+    GpuContext* context, CUgraphExec exec, CUgraphNode node, CUdeviceptr dst,
+    std::variant<uint8_t, uint16_t, uint32_t> bit_pattern,
+    uint64_t num_elements) {
+  VLOG(2) << "Set memset node params " << node << " in graph executable "
+          << exec << "; dst: " << reinterpret_cast<void*>(dst)
+          << "; bit_pattern: " << std::visit(BitPatternToString(), bit_pattern)
+          << "; num_elements: " << num_elements
+          << "; context: " << context->context();
+
+  CUDA_MEMSET_NODE_PARAMS params;
+  memset(&params, 0, sizeof(params));
+
+  auto [value, element_size] = std::visit(BitPatternToValue(), bit_pattern);
+
+  params.dst = dst;
+  params.elementSize = element_size;
+  params.height = 1;
+  params.pitch = 0;  // unused if height is 1
+  params.value = value;
+  params.width = num_elements;
+
+  RETURN_IF_CUDA_RES_ERROR(
+      cuGraphExecMemsetNodeSetParams(exec, node, &params, context->context()),
+      "Failed to set memset node params");
 
   return ::tsl::OkStatus();
 }
@@ -861,7 +1176,12 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
   VLOG(2) << "launching kernel: " << kernel_name << "; gdx: " << grid_dim_x
           << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
           << " bdx: " << block_dim_x << " bdy: " << block_dim_y
-          << " bdz: " << block_dim_z;
+          << " bdz: " << block_dim_z
+          << "; shared_mem_bytes: " << shared_mem_bytes;
+
+  // TODO(ezhulenev): Why do we do it on every call to launch kernel? This
+  // should be moved one level up to se::Kernel level, and done just once (or
+  // updated once we get a new larger shared memory request).
   if (shared_mem_bytes != 0) {
     RETURN_IF_CUDA_RES_ERROR(
         cuFuncSetAttribute(function,
@@ -869,14 +1189,75 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
                            shared_mem_bytes),
         "Failed to set shared memory size");
   }
+
   RETURN_IF_CUDA_RES_ERROR(
       cuLaunchKernel(function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x,
                      block_dim_y, block_dim_z, shared_mem_bytes, stream,
                      kernel_params, extra),
       "Failed to launch CUDA kernel: ", kernel_name,
-      " with block dimensions: ", block_dim_x, "x", block_dim_y, "x",
-      block_dim_z, " and grid dimensions: ", grid_dim_x, "x", grid_dim_y, "x",
-      grid_dim_z, " and shared memory size: ", shared_mem_bytes);
+      "; block dims: ", block_dim_x, "x", block_dim_y, "x", block_dim_z,
+      "; grid dims: ", grid_dim_x, "x", grid_dim_y, "x", grid_dim_z,
+      "; shared memory size: ", shared_mem_bytes);
+
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::LaunchKernel(
+    GpuContext* context, absl::string_view kernel_name,
+    GpuFunctionHandle function, unsigned int cluster_dim_x,
+    unsigned int cluster_dim_y, unsigned int cluster_dim_z,
+    unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
+    unsigned int block_dim_x, unsigned int block_dim_y,
+    unsigned int block_dim_z, unsigned int shared_mem_bytes,
+    GpuStreamHandle stream, void** kernel_params, void** extra) {
+  ScopedActivateContext activation(context);
+  VLOG(2) << "launching kernel: " << kernel_name << "; cdx: " << cluster_dim_x
+          << " cdy: " << cluster_dim_y << " cdz: " << cluster_dim_z
+          << " gdx: " << grid_dim_x << " gdy: " << grid_dim_y
+          << " gdz: " << grid_dim_z << " bdx: " << block_dim_x
+          << " bdy: " << block_dim_y << " bdz: " << block_dim_z
+          << "; shared_mem_bytes: " << shared_mem_bytes;
+
+  // TODO(ezhulenev): Why do we do it on every call to launch kernel? This
+  // should be moved one level up to se::Kernel level, and done just once (or
+  // updated once we get a new larger shared memory request).
+  if (shared_mem_bytes != 0) {
+    RETURN_IF_CUDA_RES_ERROR(
+        cuFuncSetAttribute(function,
+                           CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+                           shared_mem_bytes),
+        "Failed to set shared memory size");
+  }
+
+  CUlaunchConfig launch_config;
+  memset(&launch_config, 0, sizeof(launch_config));
+  launch_config.blockDimX = block_dim_x;
+  launch_config.blockDimY = block_dim_y;
+  launch_config.blockDimZ = block_dim_z;
+  launch_config.gridDimX = grid_dim_x;
+  launch_config.gridDimY = grid_dim_y;
+  launch_config.gridDimZ = grid_dim_z;
+  launch_config.hStream = stream;
+  launch_config.sharedMemBytes = shared_mem_bytes;
+
+  CUlaunchAttribute cluster_dims;
+  memset(&cluster_dims, 0, sizeof(cluster_dims));
+  cluster_dims.id = CU_LAUNCH_ATTRIBUTE_CLUSTER_DIMENSION;
+  cluster_dims.value.clusterDim.x = cluster_dim_x;
+  cluster_dims.value.clusterDim.y = cluster_dim_y;
+  cluster_dims.value.clusterDim.z = cluster_dim_z;
+
+  launch_config.attrs = &cluster_dims;
+  launch_config.numAttrs = 1;
+
+  RETURN_IF_CUDA_RES_ERROR(
+      cuLaunchKernelEx(&launch_config, function, kernel_params, extra),
+      "Failed to launch CUDA kernel: ", kernel_name,
+      "; cluster dims: ", cluster_dim_x, "x", cluster_dim_y, "x", cluster_dim_z,
+      "; block dims: ", block_dim_x, "x", block_dim_y, "x", block_dim_z,
+      "; grid dims: ", grid_dim_x, "x", grid_dim_y, "x", grid_dim_z,
+      "; shared memory size: ", shared_mem_bytes);
+
   return ::tsl::OkStatus();
 }
 
@@ -2085,8 +2466,9 @@ tsl::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerBlockOptin(
 
   int max_blocks;
   RETURN_IF_CUDA_RES_ERROR(
-      cuOccupancyMaxActiveBlocksPerMultiprocessor(
-          &max_blocks, kernel, threads_per_block, dynamic_shared_memory_bytes),
+      cuOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
+          &max_blocks, kernel, threads_per_block, dynamic_shared_memory_bytes,
+          CU_OCCUPANCY_DISABLE_CACHING_OVERRIDE),
       absl::StrFormat("Failed to calculate occupancy of kernel %p", kernel));
   return max_blocks;
 }

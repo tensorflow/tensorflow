@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
+#include "xla/stream_executor/gpu/gpu_runtime.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/platform.h"
@@ -107,9 +108,21 @@ bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
   return UnloadGpuBinary(gpu_binary);
 }
 
+namespace {
+int fpus_per_core(std::string gcn_arch_name) {
+  // Source:
+  // https://www.amd.com/content/dam/amd/en/documents/instinct-business-docs/white-papers/amd-cdna2-white-paper.pdf
+  int n = 128;  // gfx90a and gfx908 -> 128
+  if (gcn_arch_name.substr(0, 6) == "gfx906") {
+    n = 64;
+  }
+  return n;
+}
+}  // namespace
+
 tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 GpuExecutor::CreateOrShareConstant(Stream* stream,
-                                   const std::vector<uint8_t>& content) {
+                                   absl::Span<const uint8_t> content) {
   return tsl::errors::Unimplemented("Not implemented for ROCm");
 }
 
@@ -201,13 +214,7 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   hipModule_t module = nullptr;
   const string* kernel_name;
 
-  const OnDiskKernelLoaderSpec* on_disk_spec = nullptr;
-
-  VLOG(3) << "GetKernel on kernel " << kernel << " : " << kernel->name();
-
-  if (spec.has_cuda_cubin_on_disk()) on_disk_spec = &spec.cuda_cubin_on_disk();
-
-  if (on_disk_spec != nullptr) {
+  if (spec.has_cuda_cubin_on_disk()) {
     return tsl::errors::Internal(
         "Loading ROCM kernel from disk is not supported");
   } else if (spec.has_cuda_cubin_in_memory()) {
@@ -221,22 +228,40 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
       TF_RETURN_IF_ERROR(GpuDriver::LoadHsaco(context_, hsaco, &module));
     }
     kernel_to_gpu_binary_[kernel] = hsaco;
+  } else if (spec.has_in_process_symbol()) {
+    kernel_name = &spec.in_process_symbol().kernel_name();
+    void* symbol = spec.in_process_symbol().symbol();
+
+    VLOG(1) << "Resolve ROCM kernel " << *kernel_name
+            << " from symbol pointer: " << symbol;
+
+    *rocm_kernel->gpu_function_ptr() =
+        static_cast<hipFunction_t>(spec.in_process_symbol().symbol());
   } else {
     return tsl::errors::Internal("No method of loading ROCM kernel provided");
   }
 
-  VLOG(2) << "getting function " << *kernel_name << " from module " << module;
-  TF_RETURN_IF_ERROR(GpuDriver::GetModuleFunction(
-      context_, module, kernel_name->c_str(), rocm_kernel->gpu_function_ptr()));
+  // If we resolved kernel from a symbol pointer, there is no need to load it
+  // from a module, as ROCm runtime did that automatically for us.
+  if (!spec.has_in_process_symbol()) {
+    VLOG(2) << "getting function " << *kernel_name << " from module " << module;
+    TF_RETURN_IF_ERROR(
+        GpuDriver::GetModuleFunction(context_, module, kernel_name->c_str(),
+                                     rocm_kernel->gpu_function_ptr()));
+  }
 
   // We have to trust the kernel loader spec arity because there doesn't appear
   // to be a way to reflect on the number of expected arguments w/the ROCM API.
   rocm_kernel->set_arity(spec.arity());
 
-  KernelMetadata kernel_metadata;
-  TF_RETURN_IF_ERROR(GetKernelMetadata(rocm_kernel, &kernel_metadata));
-  kernel->set_metadata(kernel_metadata);
+  // unable to get kernel metadata for in-process kernel
+  if (!spec.has_in_process_symbol()) {
+    KernelMetadata kernel_metadata;
+    TF_RETURN_IF_ERROR(GetKernelMetadata(rocm_kernel, &kernel_metadata));
+    kernel->set_metadata(kernel_metadata);
+  }
   kernel->set_name(*kernel_name);
+  kernel->set_kernel_args_packing(spec.kernel_args_packing());
   return tsl::OkStatus();
 }
 
@@ -388,12 +413,6 @@ void GpuExecutor::VlogOccupancyInfo(const Kernel& kernel,
 DeviceMemoryBase GpuExecutor::Allocate(uint64_t size, int64_t memory_space) {
   CHECK_EQ(memory_space, 0);
   return DeviceMemoryBase(GpuDriver::DeviceAllocate(context_, size), size);
-}
-
-void* GpuExecutor::GetSubBuffer(DeviceMemoryBase* mem, uint64_t offset_bytes,
-                                uint64_t size_bytes) {
-  // offset and size are in bytes, so char* works as the pointer type.
-  return reinterpret_cast<char*>(mem->opaque()) + offset_bytes;
 }
 
 void GpuExecutor::Deallocate(DeviceMemoryBase* mem) {
@@ -731,6 +750,16 @@ GpuExecutor::GetCommandBufferImplementation(CommandBuffer::Mode mode) {
   return std::make_unique<GpuCommandBuffer>(mode, /*parent=*/this, graph);
 }
 
+std::unique_ptr<internal::CommandBufferInterface>
+GpuExecutor::GetCommandBufferImplementation(CommandBuffer::Mode mode,
+                                            GpuGraphHandle graph,
+                                            bool is_owned_graph) {
+  VLOG(2) << "Create HIP command buffer (HIP graph) from existing graph "
+          << graph << "; is_owned_graph=" << is_owned_graph;
+  return std::make_unique<GpuCommandBuffer>(mode, /*parent=*/this, graph,
+                                            is_owned_graph);
+}
+
 void* GpuExecutor::platform_specific_context() { return context_; }
 
 GpuContext* GpuExecutor::gpu_context() { return context_; }
@@ -893,6 +922,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
       GpuDriver::GetMaxSharedMemoryPerBlock(device).value());
   int core_count = GpuDriver::GetMultiprocessorCount(device).value();
   builder.set_core_count(core_count);
+  builder.set_fpus_per_core(fpus_per_core(gcn_arch_name));
   builder.set_threads_per_core_limit(
       GpuDriver::GetMaxThreadsPerMultiprocessor(device).value());
   builder.set_registers_per_block_limit(

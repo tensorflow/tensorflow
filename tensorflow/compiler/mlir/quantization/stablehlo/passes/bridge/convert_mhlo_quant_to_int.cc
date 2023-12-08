@@ -744,9 +744,9 @@ Value BroadcastZpContribution(OpBuilder &builder, Location loc,
       broadcast_dims[idx] = result_batching_idx++;
     }
   }
-  // Use broadcast_in_dim or dyanmic_broadcast_in_dim based on input shape
+  // Use broadcast_in_dim or dyanmic_broadcast_in_dim based on output shape
   // dynamism.
-  if (zp_contribution.getType().cast<ShapedType>().hasStaticShape()) {
+  if (output_tensor_type.cast<ShapedType>().hasStaticShape()) {
     zp_contribution = builder.create<mhlo::BroadcastInDimOp>(
         loc, output_tensor_type, zp_contribution,
         DenseIntElementsAttr::get(
@@ -1269,8 +1269,10 @@ class ConvertGenericOp : public ConversionPattern {
       Operation *op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     // This pattern only handle selected ops.
-    if (!isa<mhlo::ConstantOp, mhlo::ConvertOp, mhlo::BroadcastInDimOp,
-             mhlo::MaxOp, mhlo::MinOp>(op)) {
+    if (!isa<mhlo::BroadcastInDimOp, mhlo::ConcatenateOp, mhlo::ConstantOp,
+             mhlo::ConvertOp, mhlo::GatherOp, mhlo::MaxOp, mhlo::MinOp,
+             mhlo::PadOp, mhlo::ReshapeOp, mhlo::SelectOp, mhlo::SliceOp,
+             mhlo::TransposeOp>(op)) {
       return failure();
     }
 

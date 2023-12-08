@@ -21,9 +21,7 @@ namespace {
 
 // Register GPU as the backend for tests in pjrt_client_test.cc.
 const bool kUnused = (RegisterTestClientFactory([]() {
-                        return GetStreamExecutorGpuClient(
-                            /*asynchronous=*/true, GpuAllocatorConfig{},
-                            /*node_id=*/0);
+                        return GetStreamExecutorGpuClient(GpuClientOptions());
                       }),
                       true);
 

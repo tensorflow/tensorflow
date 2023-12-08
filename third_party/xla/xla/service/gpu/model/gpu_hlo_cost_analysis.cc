@@ -16,13 +16,19 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -38,8 +44,12 @@ limitations under the License.
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/stream_executor/device_description.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -307,8 +317,7 @@ int64_t GpuHloCostAnalysis::GetConvolutionFlops(
 
 using ProfilesNestedMap = absl::flat_hash_map<
     std::string,  // compute capability.
-    absl::flat_hash_map<PrimitiveType,
-                        absl::flat_hash_map<HloOpcode, int64_t>>>;
+    absl::flat_hash_map<std::pair<HloOpcode, PrimitiveType>, int64_t>>;
 
 const ProfilesNestedMap* LoadOpProfiles() {
   ProfilesNestedMap* ret = new ProfilesNestedMap();
@@ -317,9 +326,11 @@ const ProfilesNestedMap* LoadOpProfiles() {
       std::string(kDeviceHloOpProfiles), &all_device_profiles));
   for (const auto& device_profile : all_device_profiles.entries()) {
     for (const auto& entry : device_profile.second.entries()) {
-      (*ret)[device_profile.first][entry.instruction().shape().element_type()]
-            [StringToHloOpcode(entry.instruction().opcode()).value()] =
-                entry.clock_cycles();
+      auto op_code = StringToHloOpcode(entry.instruction().opcode()).value();
+      auto element_type = entry.instruction().shape().element_type();
+
+      (*ret)[device_profile.first][std::make_pair(op_code, element_type)] =
+          entry.clock_cycles();
     }
   }
   return ret;
@@ -339,16 +350,12 @@ int64_t FlopsPerElement(const se::DeviceDescription* device_info,
 
   static const auto* all_profiles = LoadOpProfiles();
   static const auto& default_profile = all_profiles->at("sm_86");
-  auto device_profiles =
+  auto device_profile =
       FindOrDefault(*all_profiles, compute_capability, default_profile);
-  auto dtype_profiles = MaybeFind(device_profiles, type);
-
   // Elementwise instructions typically take at least a few clock cycles.
   constexpr int64_t kDefaultFlopsPerElement = 3;
-  if (!dtype_profiles.ok()) {
-    return kDefaultFlopsPerElement;
-  }
-  return FindOrDefault(dtype_profiles->get(), opcode, kDefaultFlopsPerElement);
+  return FindOrDefault(device_profile, std::make_pair(opcode, type),
+                       kDefaultFlopsPerElement);
 }
 
 int64_t GetFlopsForElementwiseOp(const se::DeviceDescription* gpu_device_info,

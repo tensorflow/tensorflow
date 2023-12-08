@@ -237,10 +237,11 @@ tf_cc_test(
     ],
 )
 
+# Do not depend on this rule! Depend on the fine-grained sub-targets instead.
 py_strict_library(
     name = "for_generated_wrappers",
-    deprecation = "Depending on this target can cause build dependency cycles. Depend on the fine-grained sub-targets instead.",
     srcs_version = "PY3",
+    tags = ["avoid_dep"],
     visibility = ["//visibility:public"],
     deps = [
         ":byte_swap_tensor",
@@ -335,7 +336,10 @@ py_strict_library(
 
 py_strict_library(
     name = "constant_op",
-    srcs = ["constant_op.py"],
+    srcs = [
+        "constant_op.py",
+        "constant_tensor_conversion.py",
+    ],
     srcs_version = "PY3",
     visibility = visibility + [
         "//smartass:__subpackages__",
@@ -1950,7 +1954,7 @@ pytype_strict_library(
     ]),
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "stack",
     srcs = ["stack.py"],
     visibility = visibility + ["//tensorflow:internal"],
@@ -2037,7 +2041,7 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "traceable_stack",
     srcs = ["traceable_stack.py"],
     srcs_version = "PY3",
@@ -2063,7 +2067,7 @@ py_strict_library(
     deps = [],
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "test_lib",
     srcs = ["test_util.py"],
     srcs_version = "PY3",

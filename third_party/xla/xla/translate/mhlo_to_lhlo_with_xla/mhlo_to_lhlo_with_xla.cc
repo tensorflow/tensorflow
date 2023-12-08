@@ -119,6 +119,12 @@ bool IsSyncCollective(const HloInstruction* instr) {
   return backend_config.is_sync();
 }
 
+bool NoParallelCustomCallCollective(const HloInstruction* instr) {
+  auto backend_config =
+      instr->backend_config<xla::gpu::CollectiveBackendConfig>().value();
+  return backend_config.no_parallel_custom_call();
+}
+
 // Convert the MLIR `module` from HLO dialect to LHLO dialect using XLA for the
 // given platform.
 tsl::Status ConvertHloToLmhlo(std::unique_ptr<HloModule> hlo_module,
@@ -429,6 +435,16 @@ tsl::StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
   TF_ASSIGN_OR_RETURN(std::string backend_config_str,
                       HloInstruction::BackendConfigToRawString(backend_config));
   fusion.setBackendConfigAttr(builder_.getStringAttr(backend_config_str));
+
+  // For custom fusion backend config we also attach serialized version of the
+  // attached HLO computation.
+  if (backend_config.kind() == "__custom_fusion") {
+    std::string computation_str;
+    fusion_instr->fused_instructions_computation()->ToProto().SerializeToString(
+        &computation_str);
+    fusion->setAttr("__custom_fusion_computation",
+                    builder_.getStringAttr(computation_str));
+  }
 
   // Fold GTE/Tuple pairs.
   //
@@ -1693,6 +1709,8 @@ LhloDialectEmitter::EmitAllToAllStartOp(const xla::HloInstruction* instr) {
         builder_.getI64IntegerAttr(*all_to_all->split_dimension()));
   }
   all_to_all_start_op.setIsSync(IsSyncCollective(instr));
+  all_to_all_start_op.setNoParallelCustomCall(
+      NoParallelCustomCallCollective(instr));
 
   auto [_, was_inserted] =
       ret_tokens_.insert({instr, all_to_all_start_op.getToken()});
@@ -1728,6 +1746,8 @@ LhloDialectEmitter::EmitAllGatherStartOp(const HloInstruction* instr) {
   all_gather_start_op.setAllGatherDimensionAttr(
       builder_.getI64IntegerAttr(all_gather->all_gather_dimension()));
   all_gather_start_op.setIsSync(IsSyncCollective(instr));
+  all_gather_start_op.setNoParallelCustomCall(
+      NoParallelCustomCallCollective(instr));
   auto [_, was_inserted] =
       ret_tokens_.insert({instr, all_gather_start_op.getToken()});
   TF_RET_CHECK(was_inserted) << "all-gather-start already lowered";
@@ -1759,6 +1779,8 @@ LhloDialectEmitter::EmitAllReduceStartOp(const HloInstruction* instr) {
   all_reduce_start_op.setUseGlobalDeviceIdsAttr(
       builder_.getBoolAttr(all_reduce->use_global_device_ids()));
   all_reduce_start_op.setIsSync(IsSyncCollective(instr));
+  all_reduce_start_op.setNoParallelCustomCall(
+      NoParallelCustomCallCollective(instr));
 
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
       *instr->called_computations()[0], symbol_table_,
@@ -1833,6 +1855,8 @@ LhloDialectEmitter::EmitReduceScatterStartOp(const xla::HloInstruction* instr) {
   reduce_scatter_start_op.setScatterDimensionAttr(
       builder_.getI64IntegerAttr(reduce_scatter->scatter_dimension()));
   reduce_scatter_start_op.setIsSync(IsSyncCollective(instr));
+  reduce_scatter_start_op.setNoParallelCustomCall(
+      NoParallelCustomCallCollective(instr));
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
       *reduce_scatter->to_apply(), symbol_table_,
       &reduce_scatter_start_op.getComputation(), &builder_));
@@ -1871,6 +1895,8 @@ LhloDialectEmitter::EmitCollectivePermuteStartOp(const HloInstruction* instr) {
   permute_start_op->setAttr(source_target_pairs_attr.getName(),
                             source_target_pairs_attr.getValue());
   permute_start_op.setIsSync(IsSyncCollective(instr));
+  permute_start_op.setNoParallelCustomCall(
+      NoParallelCustomCallCollective(instr));
 
   auto [_, was_inserted] =
       ret_tokens_.insert({instr, permute_start_op.getToken()});
@@ -2506,7 +2532,8 @@ tsl::Status HloToLhloModule(
   TF_RETURN_IF_ERROR(emitter.Initialize(ordered_allocations));
 
   const xla::HloInstructionSequence* schedule =
-      assignment.hlo_ordering().SequentialOrder(*computation);
+      &hlo_module.schedule().sequence(computation);
+
   if (!schedule) {
     return tsl::errors::Unimplemented(
         "Missing sequential order for the computation");

@@ -501,8 +501,8 @@ Value CreateSubTuple(OpBuilder& builder, Value value, size_t end) {
 // return the first element. Otherwise, `mhlo.get_tuple_element` users are
 // simply updated with `replacement`, and all other users are updated with a
 // slice of `replacement`.
-void ReplaceWithTupleResult(OpBuilder& builder, ArrayRef<Value> values,
-                            ArrayRef<Value> replacements, bool flatten_tuple) {
+void ReplaceWithTupleResult(OpBuilder& builder, ValueRange values,
+                            ValueRange replacements, bool flatten_tuple) {
   if (flatten_tuple) {
     for (size_t result_index = 0; result_index < values.size(); result_index++)
       values[result_index].replaceAllUsesWith(replacements[result_index]);
@@ -547,10 +547,8 @@ Value UpdateControlFlowBlockArgWithToken(OpBuilder& builder, Block& block,
   block.addArguments(
       types, SmallVector<Location>(types.size(), block.getParent()->getLoc()));
 
-  auto old_args = ArrayRef<Value>(block.getArguments().begin(),
-                                  block.getArguments().begin() + old_args_size);
-  auto new_args = ArrayRef<Value>(block.getArguments().begin() + old_args_size,
-                                  block.getArguments().end());
+  ValueRange old_args = block.getArguments().take_front(old_args_size);
+  ValueRange new_args = block.getArguments().drop_front(old_args_size);
   assert(!new_args.empty());
 
   ReplaceWithTupleResult(builder, old_args, new_args, /*flatten_tuple=*/true);

@@ -106,6 +106,9 @@ class LazyLoader(types.ModuleType):
     module = self._load()
     return dir(module)
 
+  def __reduce__(self):
+    return importlib.import_module, (self.__name__,)
+
 
 class KerasLazyLoader(LazyLoader):
   """LazyLoader that handles routing to different Keras version."""

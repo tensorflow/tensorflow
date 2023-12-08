@@ -24,30 +24,36 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/batch_kernel_test_util.h"
 #include "tensorflow/core/kernels/batching_util/warmup.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/status.h"
 
 namespace tensorflow {
+namespace {
 
 using PerModelData = serving::WarmupStateRegistry::PerModelData;
 
-class BatchFunctionKernelTest : public BatchFunctionKernelTestBase {};
+class BatchFunctionKernelTest : public test_util::BatchFunctionKernelTestBase {
+};
 
 TEST_P(BatchFunctionKernelTest, EnableAdaptiveScheduler) {
-  TF_EXPECT_OK(Init());
+  const bool adaptive_scheduler_enabled = GetParam();
+
+  TF_EXPECT_OK(Init(adaptive_scheduler_enabled));
+
   BatchFunctionKernel *batch_kernel =
       dynamic_cast<BatchFunctionKernel *>(op_kernel());
-  EXPECT_EQ(internal::BatchFunctionKernelTestAccess(batch_kernel)
-                .enable_adaptive_batch_threads(),
-            enable_adaptive_scheduler());
+  EXPECT_EQ(adaptive_scheduler_enabled,
+            test_util::BatchFunctionKernelTestAccess(batch_kernel)
+                .enable_adaptive_batch_threads());
 }
 
 INSTANTIATE_TEST_SUITE_P(Params, BatchFunctionKernelTest, ::testing::Bool());
@@ -250,5 +256,5 @@ TEST_P(BatchFunctionKernelParallelWarmupTest, ParallelWarmupAutoBatch) {
 INSTANTIATE_TEST_SUITE_P(BatchFunctionKernelParallelWarmupTestSuite,
                          BatchFunctionKernelParallelWarmupTest,
                          ::testing::Bool());
-
+}  // namespace
 }  // namespace tensorflow

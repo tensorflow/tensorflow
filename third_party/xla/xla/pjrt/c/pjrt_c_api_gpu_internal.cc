@@ -111,15 +111,18 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
     num_nodes = std::get<int64_t>(it->second);
   }
 
+  xla::GpuClientOptions options;
+  options.allocator_config = allocator_config;
+  options.node_id = node_id;
+  options.num_nodes = num_nodes;
+  options.allowed_devices = visible_devices;
+  options.platform_name = platform_name;
+  options.kv_get = pjrt::ToCppKeyValueGetCallback(args->kv_get_callback,
+                                                  args->kv_get_user_arg);
+  options.kv_put = pjrt::ToCppKeyValuePutCallback(args->kv_put_callback,
+                                                  args->kv_put_user_arg);
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
-                        xla::GetStreamExecutorGpuClient(
-                            /*asynchronous=*/true, allocator_config, node_id,
-                            num_nodes, visible_devices, platform_name,
-                            /*should_stage_host_to_device_transfers=*/true,
-                            pjrt::ToCppKeyValueGetCallback(
-                                args->kv_get_callback, args->kv_get_user_arg),
-                            pjrt::ToCppKeyValuePutCallback(
-                                args->kv_put_callback, args->kv_put_user_arg)));
+                        xla::GetStreamExecutorGpuClient(options));
   args->client = pjrt::CreateWrapperClient(std::move(client));
   return nullptr;
 }

@@ -23,13 +23,14 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/comparison_util.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/gemm_rewriter_triton.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/gpu/triton_support.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -515,22 +516,22 @@ TEST_P(SelectTest, SelectFusionExecutesCorrectly) {
 
   const std::string kHloTestTemplate = R"(
 triton_gemm___computation {
-  parameter_0 = $1[92,11]{1,0} parameter(0)
-  parameter_1 = $0[11,63]{1,0} parameter(1)
-  parameter_2 = $0[11,63]{1,0} parameter(2)
-  parameter_3 = pred[11,63]{1,0} parameter(3)
-  f1.1 = $0[11,63]{1,0} select(parameter_3, parameter_1, parameter_2)
-  c.1 = $1[11,63]{1,0} convert(f1.1)
+  parameter_0 = $1[92,13]{1,0} parameter(0)
+  parameter_1 = $0[13,63]{1,0} parameter(1)
+  parameter_2 = $0[13,63]{1,0} parameter(2)
+  parameter_3 = pred[13,63]{1,0} parameter(3)
+  f1.1 = $0[13,63]{1,0} select(parameter_3, parameter_1, parameter_2)
+  c.1 = $1[13,63]{1,0} convert(f1.1)
   ROOT _.1 = $1[92,63]{1,0} dot(parameter_0, c.1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
     operand_precision={HIGH, HIGH}
 }
 
 ENTRY e {
-  p0 = $1[92,11]{1,0} parameter(0)
-  p1 = $0[11,63]{1,0} parameter(1)
-  p2 = $0[11,63]{1,0} parameter(2)
-  p3 = pred[11,63]{1,0} parameter(3)
+  p0 = $1[92,13]{1,0} parameter(0)
+  p1 = $0[13,63]{1,0} parameter(1)
+  p2 = $0[13,63]{1,0} parameter(2)
+  p3 = pred[13,63]{1,0} parameter(3)
   ROOT triton_gemm__ = $1[92,63]{1,0} fusion(p0, p1, p2, p3), kind=kCustom,
     calls=triton_gemm___computation,
     backend_config={"kind":"__triton_gemm",
@@ -544,19 +545,19 @@ ENTRY e {
 
   const std::string kHloRefTemplate = R"(
 fused_computation {
-  p0 = $0[11,63]{1,0} parameter(0)
-  p1 = $0[11,63]{1,0} parameter(1)
-  p2 = pred[11,63]{1,0} parameter(2)
-  f.1 = $0[11,63]{1,0} select(p2, p0, p1)
-  ROOT convert.1 = $1[11,63]{1,0} convert(f.1)
+  p0 = $0[13,63]{1,0} parameter(0)
+  p1 = $0[13,63]{1,0} parameter(1)
+  p2 = pred[13,63]{1,0} parameter(2)
+  f.1 = $0[13,63]{1,0} select(p2, p0, p1)
+  ROOT convert.1 = $1[13,63]{1,0} convert(f.1)
 }
 
 ENTRY e {
-  p3 = pred[11,63]{1,0} parameter(3)
-  p2 = $0[11,63]{1,0} parameter(2)
-  p1 = $0[11,63]{1,0} parameter(1)
-  p0 = $1[92,11]{1,0} parameter(0)
-  fusion = $1[11,63]{1,0} fusion(p1, p2, p3), kind=kLoop,
+  p3 = pred[13,63]{1,0} parameter(3)
+  p2 = $0[13,63]{1,0} parameter(2)
+  p1 = $0[13,63]{1,0} parameter(1)
+  p0 = $1[92,13]{1,0} parameter(0)
+  fusion = $1[13,63]{1,0} fusion(p1, p2, p3), kind=kLoop,
     calls=fused_computation
   gemm = ($1[92,63]{1,0}, s8[0]{0}) custom-call(p0, fusion),
     custom_call_target="__cublas$$gemm",
@@ -914,6 +915,49 @@ ENTRY main {
   }
   EXPECT_TRUE(RunAndCompare(hlo_text,
                             ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
+}
+
+TEST_P(TritonSoftmaxTest, CanFuseAndEmitSoftmaxDiamondWithSmallRows) {
+  PrimitiveType data_type = GetParam();
+  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
+                               se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
+    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
+  }
+
+  constexpr absl::string_view kHloTextTemplate = R"(
+HloModule softmax
+min_computation {
+  arg_0 = $0[] parameter(0)
+  arg_1 = $0[] parameter(1)
+  ROOT minimum = $0[] minimum(arg_0, arg_1)
+}
+ENTRY main {
+  param_0 = $0[127,7]{1,0} parameter(0)
+  constant_neg_inf = $0[] constant(-inf)
+  reduce = $0[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=min_computation
+  broadcast = $0[127,7]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = $0[127,7]{1,0} subtract(param_0, broadcast)
+}
+)";
+
+  const std::string hlo_text = absl::Substitute(
+      kHloTextTemplate, primitive_util::LowercasePrimitiveTypeName(data_type));
+
+  constexpr absl::string_view kHloRefTemplate = R"(
+; CHECK:    ENTRY
+; CHECK:      %[[param_0:.*]] = $0[127,7]{1,0} parameter(0)
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[param_0]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
+)";
+
+  const std::string hlo_ref = absl::Substitute(
+      kHloRefTemplate, primitive_util::LowercasePrimitiveTypeName(data_type));
+
+  MatchOptimizedHlo(hlo_text, hlo_ref);
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(/*aabs=*/0, /*arel=*/0)));
 }
 
 TEST_F(TritonSoftmaxTest, CanFuseAndEmitDiamondWithBF16Converts) {
@@ -2318,6 +2362,90 @@ ENTRY main {
 
 INSTANTIATE_TEST_SUITE_P(TritonSoftmaxTestSuite, TritonSoftmaxTest,
                          ::testing::Values(F32, F16, BF16));
+
+TEST_F(TritonSoftmaxTest, CanFuseAndEmitTritonSoftmaxWithTwoParameters) {
+  const std::string hlo_text = R"(
+HloModule layernorm
+
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+ENTRY main {
+  param_0 = f32[125,127]{1,0} parameter(0)
+  param_1 = f32[127]{0} parameter(1)
+  broadcast_0 = f32[125,127]{1,0} broadcast(param_1), dimensions={1}
+  multiply_0 = f32[125,127]{1,0} multiply(param_0, broadcast_0)
+  constant_0 = f32[] constant(0)
+  reduce_0 = f32[125]{0} reduce(multiply_0, constant_0), dimensions={1}, to_apply=add
+  broadcast_4 = f32[125,127]{1,0} broadcast(reduce_0), dimensions={0}
+  ROOT multiply = f32[125,127]{1,0} multiply(multiply_0, broadcast_4)
+}
+)";
+
+  // Param order is arbitrary. We test that only param_1 is in the fused root
+  // instruction below.
+  const std::string hlo_ref = R"(
+; CHECK:    ENTRY
+; CHECK-DAG:    %[[param_0:.*]] = f32[125,127]{1,0} parameter(0)
+; CHECK-DAG:    %[[param_1:.*]] = f32[127]{0} parameter(1)
+; CHECK:      ROOT
+; CHECK-SAME:   f32[125,127]{1,0} fusion
+; CHECK-SAME:   %[[param_1]]
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   triton_softmax
+)";
+  MatchOptimizedHlo(hlo_text, hlo_ref);
+
+  float tolerance = 2e-6;
+  EXPECT_TRUE(RunAndCompare(hlo_text,
+                            ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
+}
+
+TEST_F(TritonSoftmaxTest, CanFuseAndEmitTritonSoftmaxWithNonBatchReduce) {
+  const std::string hlo_text = R"(
+HloModule layernorm
+
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+ENTRY main {
+  param_0 = f32[125,127]{1,0} parameter(0)
+  param_1 = f32[10,125,127]{2,1,0} parameter(1)
+  constant = f32[] constant(0)
+  reduce_0 = f32[125,127]{1,0} reduce(param_1, constant), dimensions={0}, to_apply=add
+  multiply_0 = f32[125,127]{1,0} multiply(param_0, reduce_0)
+  constant_0 = f32[] constant(0)
+  reduce_1 = f32[125]{0} reduce(multiply_0, constant_0), dimensions={1}, to_apply=add
+  broadcast_4 = f32[125,127]{1,0} broadcast(reduce_1), dimensions={0}
+  ROOT multiply = f32[125,127]{1,0} multiply(multiply_0, broadcast_4)
+}
+)";
+
+  // We expect to not fuse everything into the triton softmax, because of the
+  // reduce over the non-row dimension.
+  const std::string hlo_ref = R"(
+; CHECK:      ENTRY
+; CHECK-DAG:    %[[P0:.*]] = f32[125,127]{1,0} parameter(0)
+; CHECK-DAG:    %[[P1:.*]] = f32[10,125,127]{2,1,0} parameter(1)
+; CHECK:        %[[FUSION:.*]] = f32[125,127]{1,0} fusion(%[[P0]], %[[P1]])
+; CHECK:        kind=kLoop
+; CHECK:      ROOT
+; CHECK-SAME:   f32[125,127]{1,0} fusion(%[[FUSION]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   triton_softmax
+)";
+  MatchOptimizedHlo(hlo_text, hlo_ref);
+
+  float tolerance = 2e-6;
+  EXPECT_TRUE(RunAndCompare(hlo_text,
+                            ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
+}
 
 }  // namespace
 }  // namespace gpu

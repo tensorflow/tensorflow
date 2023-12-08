@@ -417,7 +417,9 @@ TEST_F(HorizontalLoopFusionTest, FusingDifferentOutputs) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec{0, 0}));
 }
 
-TEST_F(HorizontalLoopFusionTest, RMSPropLike) {
+// TODO(b/315265703): Re-enable when horizontal loop fusion has better limits
+// to prevent generating too large LLVM IR that causes timeouts.
+TEST_F(HorizontalLoopFusionTest, DISABLED_RMSPropLike) {
   HloComputation::Builder builder(TestName());
 
   std::vector<HloInstruction*> all_outputs;

@@ -1611,7 +1611,6 @@ cc_library(
     deps = [
         ":batch_kernels",
         ":ops_testutil",
-        ":ops_util",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
     ],
@@ -1645,8 +1644,10 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -5565,7 +5566,7 @@ tf_kernel_library(
     name = "tensor_to_hash_bucket_op",
     prefix = "tensor_to_hash_bucket_op",
     deps = STRING_DEPS + if_oss(
-        if_cuda(["@farmhash_gpu_archive//:farmhash_gpu"]),
+        if_cuda_or_rocm(["@farmhash_gpu_archive//:farmhash_gpu"]),
         tf_fingerprint_deps(),
     ),
 )
@@ -6476,6 +6477,7 @@ filegroup(
         "fill_empty_rows_functor.h",
         "function_ops.h",
         "fused_batch_norm_op.h",
+        "gpu_utils.h",
         "inplace_ops.cc",
         "inplace_ops_functor.h",
         "l2loss_op.h",

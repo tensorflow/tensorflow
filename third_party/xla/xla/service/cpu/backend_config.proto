@@ -10,6 +10,7 @@ message BackendConfig {
   repeated int64 outer_dimension_partitions = 1;
   // Configuration to be used by oneDNN matmul
   OneDnnMatMulConfig onednn_matmul_config = 2;
+  OneDnnLayerNormConfig onednn_layer_norm_config = 3;
 }
 
 message OneDnnMatMulConfig {
@@ -24,4 +25,16 @@ message OneDnnMatMulConfig {
     GELU_TANH = 5;
   }
   repeated FusionKind fused_ops = 3;
+}
+
+message OneDnnLayerNormConfig {
+  // These enum needs to be mapped to oneDNN enum for post_op algorithm.
+  // TODO(intel-tf): Add kinds supported by oneDNN.
+  enum FusionKind {
+    UNDEFINED = 0;
+    SCALE = 1;
+    SHIFT = 2;
+    SCALE_AND_SHIFT = 3;
+  }
+  FusionKind fused_ops = 1;
 }

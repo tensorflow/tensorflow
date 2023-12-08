@@ -173,9 +173,15 @@ Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
 //===----------------------------------------------------------------------===//
 
 CustomKernelThunk::CustomKernelThunk(
-    const HloInstruction* instr, CustomKernel custom_kernel,
+    std::variant<mlir::Operation*, const HloInstruction*> instr,
+    CustomKernel custom_kernel,
     absl::Span<const KernelArgument> kernel_arguments)
-    : Thunk(Kind::kKernel, Thunk::ThunkInfo::WithProfileAnnotation(instr)),
+    : Thunk(Kind::kCustomKernel,
+            std::holds_alternative<mlir::Operation*>(instr)
+                ? Thunk::ThunkInfo::WithProfileAnnotation(
+                      std::get<mlir::Operation*>(instr))
+                : Thunk::ThunkInfo::WithProfileAnnotation(
+                      std::get<const HloInstruction*>(instr))),
       custom_kernel_(std::move(custom_kernel)) {
   args_.reserve(kernel_arguments.size());
   written_.reserve(kernel_arguments.size());
@@ -183,6 +189,18 @@ CustomKernelThunk::CustomKernelThunk(
     if (!kernel_argument.first_with_same_slice().has_value()) {
       args_.push_back(kernel_argument.slice());
       written_.push_back(kernel_argument.written());
+    }
+  }
+
+  if (std::holds_alternative<const HloInstruction*>(instr)) {
+    // Skip populating MLIR values_ if emitting from HLO.
+    return;
+  }
+
+  values_.reserve(kernel_arguments.size());
+  for (const auto& kernel_argument : kernel_arguments) {
+    if (!kernel_argument.first_with_same_slice().has_value()) {
+      values_.push_back(RemoveTransformingOperations(kernel_argument.value()));
     }
   }
 }
@@ -231,8 +249,15 @@ Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   se::KernelArgsDeviceMemoryArray args(buffer_args,
                                        custom_kernel_.shared_memory_bytes());
-  return executor->Launch(params.stream, custom_kernel_.thread_dims(),
-                          custom_kernel_.block_dims(), *kernel, args);
+
+  if (auto cluster = custom_kernel_.cluster_dims(); cluster.has_value()) {
+    return executor->Launch(params.stream, custom_kernel_.thread_dims(),
+                            custom_kernel_.block_dims(), *cluster, *kernel,
+                            args);
+  } else {
+    return executor->Launch(params.stream, custom_kernel_.thread_dims(),
+                            custom_kernel_.block_dims(), *kernel, args);
+  }
 }
 
 }  // namespace gpu

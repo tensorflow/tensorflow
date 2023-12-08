@@ -110,8 +110,41 @@ class MapFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
           r = function(r)
       expected_output.append(r)
 
-    if num_parallel_calls is None or deterministic in [None, True]:
-      self.assertDatasetProduces(dataset, expected_output=expected_output)
+    nondeterministic_ordering = (
+        num_parallel_calls is not None and deterministic is False  # pylint: disable=g-bool-id-comparison
+    )
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=expected_output,
+        assert_items_equal=nondeterministic_ordering,
+    )
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testMapFusionLongMapChain(self):
+    n = 5
+    dataset = dataset_ops.Dataset.range(n)
+    dataset = dataset.apply(
+        testing.assert_next(["ParallelMap", "MemoryCacheImpl"])
+    )
+
+    k = 50
+    for _ in range(k):
+      dataset = dataset.map(
+          lambda x: 2 * x,
+          num_parallel_calls=dataset_ops.AUTOTUNE,
+      )
+
+    dataset = dataset.cache()
+    options = options_lib.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.map_fusion = True
+    dataset = dataset.with_options(options)
+
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[x * 2**k for x in range(n)],
+        assert_items_equal=True,
+    )
 
   @combinations.generate(
       combinations.times(

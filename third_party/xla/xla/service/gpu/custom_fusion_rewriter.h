@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/service/gpu/kernels/custom_fusion_pattern.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
 
@@ -61,7 +62,8 @@ namespace xla::gpu {
 //
 class CustomFusionRewriter : public HloModulePass {
  public:
-  explicit CustomFusionRewriter(const CustomFusionPatternRegistry* patterns =
+  explicit CustomFusionRewriter(const se::DeviceDescription* device,
+                                const CustomFusionPatternRegistry* patterns =
                                     CustomFusionPatternRegistry::Default());
 
   absl::string_view name() const override { return "custom-fusion-rewriter"; }
@@ -71,6 +73,7 @@ class CustomFusionRewriter : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
+  const se::DeviceDescription* device_;
   const CustomFusionPatternRegistry* patterns_;
 };
 

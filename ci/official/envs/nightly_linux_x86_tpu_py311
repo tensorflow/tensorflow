@@ -4,7 +4,7 @@ TFCI_BAZEL_COMMON_ARGS="--config tf_public_cache_push --config resultstore --rep
 TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=linux_tpu
 TFCI_BUILD_PIP_PACKAGE_ARGS="--tpu --nightly_flag"
 TFCI_DOCKER_IMAGE=tensorflow/build:latest-python${TFCI_PYTHON_VERSION}
-TFCI_DOCKER_REBUILD_ARGS="--build-arg PYTHON_VERSION=$TFCI_PYTHON_VERSION --target=devel tools/tf_sig_build_dockerfiles"
+TFCI_DOCKER_REBUILD_ARGS="--build-arg PYTHON_VERSION=python$TFCI_PYTHON_VERSION --target=devel tensorflow/tools/tf_sig_build_dockerfiles"
 TFCI_NIGHTLY_UPDATE_VERSION_ENABLE=1
 TFCI_PYTHON_VERIFY_PIP_INSTALL_ARGS="-f https://storage.googleapis.com/libtpu-releases/index.html"
 TFCI_PYTHON_VERSION=3.11

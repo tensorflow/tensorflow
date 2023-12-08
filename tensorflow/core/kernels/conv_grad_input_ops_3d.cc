@@ -657,7 +657,6 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
 TF_CALL_bfloat16(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
 
-
 // GPU definitions of both ops.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
@@ -1025,11 +1024,8 @@ struct LaunchConvBackpropInputOp<Eigen::bfloat16> {
                      const std::vector<int32>& dilation,
                      const std::vector<int32>& strides, const Padding& padding,
                      Tensor* in_backprop, TensorFormat data_format) {
-    // Performant bfloat16 operations are supported for Ampere+ GPUs. For
-    // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
     auto* stream = ctx->op_device_context()->stream();
-    const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-        se::CudaComputeCapability::AMPERE);
+    const bool cast_to_float = !IsBF16SupportedInOps(stream);
 
     if (cast_to_float) {
       Tensor casted_out_backprop = out_backprop;
@@ -1153,15 +1149,14 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
   bool cudnn_use_autotune_;
 };
 
-
-#define REGISTER_GPU_KERNEL(T)                                                \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("Conv3DBackpropInput").Device(DEVICE_GPU).TypeConstraint<T>("T"),  \
-      Conv3DBackpropInputOp<GPUDevice, T>);                                   \
-  REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropInputV2")                       \
-                              .Device(DEVICE_GPU)                             \
-                              .TypeConstraint<T>("T")                         \
-                              .HostMemory("input_sizes"),                     \
+#define REGISTER_GPU_KERNEL(T)                                               \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("Conv3DBackpropInput").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      Conv3DBackpropInputOp<GPUDevice, T>);                                  \
+  REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropInputV2")                      \
+                              .Device(DEVICE_GPU)                            \
+                              .TypeConstraint<T>("T")                        \
+                              .HostMemory("input_sizes"),                    \
                           Conv3DBackpropInputOp<GPUDevice, T>);
 TF_CALL_half(REGISTER_GPU_KERNEL);
 TF_CALL_bfloat16(REGISTER_GPU_KERNEL);

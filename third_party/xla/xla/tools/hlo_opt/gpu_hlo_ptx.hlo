@@ -1,6 +1,6 @@
-// RUN: hlo-opt %s --platform=CUDA --stage=ptx --xla_gpu_target_config_filename=%S/gpu_specs/a100.txtpb | FileCheck %s --dump-input-filter=all
+// RUN: hlo-opt %s --platform=CUDA --stage=ptx --xla_gpu_target_config_filename=%S/gpu_specs/a100.txtpb | FileCheck %s
 
-HloModule m, is_scheduled=true
+HloModule m
 
 add {
  a = f16[] parameter(0)

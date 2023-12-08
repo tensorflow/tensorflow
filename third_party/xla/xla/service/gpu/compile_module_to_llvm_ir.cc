@@ -53,15 +53,15 @@ limitations under the License.
 #include "xla/service/buffer_value.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/buffer_sharing.h"
-#include "xla/service/gpu/conditional_thunk.h"
-#include "xla/service/gpu/for_thunk.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_unnested.h"
 #include "xla/service/gpu/metrics.h"
-#include "xla/service/gpu/sequential_thunk.h"
-#include "xla/service/gpu/while_thunk.h"
+#include "xla/service/gpu/runtime3/conditional_thunk.h"
+#include "xla/service/gpu/runtime3/for_thunk.h"
+#include "xla/service/gpu/runtime3/sequential_thunk.h"
+#include "xla/service/gpu/runtime3/while_thunk.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
@@ -106,16 +106,40 @@ static bool HasFp8(const HloModule& hlo_module) {
   return false;
 }
 
+class DumpAfterPassIfEnabled : public mlir::PassInstrumentation {
+ public:
+  DumpAfterPassIfEnabled(const HloModule* hlo_module,
+                         const mlir::ModuleOp* mlir_module)
+      : hlo_module_{hlo_module}, mlir_module_{mlir_module} {}
+  void runAfterPass(mlir::Pass* pass, mlir::Operation* op) override {
+    std::string pass_name = pass->getName().str();
+    bool should_dump_pass = DumpingEnabledForHloPass(
+        pass_name, hlo_module_->config().debug_options());
+    if (!should_dump_pass) return;
+    std::string module_str = llvm_ir::DumpToString(*mlir_module_);
+    auto prefix = "lower_to_xla_gpu_runtime";
+    auto suffix =
+        absl::StrCat("pass_", absl::StrFormat("%02d", pass_counter_++), ".",
+                     "after", ".", pass_name, ".mlir");
+    DumpToFileInDirOrStdout(*hlo_module_, prefix, suffix, module_str);
+  }
+
+ private:
+  const HloModule* hlo_module_;
+  const mlir::ModuleOp* mlir_module_;
+  int pass_counter_ = 0;
+};
+
 // Lowers MLIR module to the XLA Gpu runtime custom calls.
 static Status LowerToXlaGpuRuntime(
     mlir::ModuleOp module, llvm::StringRef entry_function_name,
     llvm::ArrayRef<int64_t> buffer_sizes, ThunkSequence* thunk_sequence,
-    const DebugOptions& debug_options,
-    se::GpuComputeCapability compute_capability) {
+    const HloModule* hlo_module, se::GpuComputeCapability compute_capability) {
   if (!module) {
     return InternalError("No MLIR module to lower.");
   }
 
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
   bool should_verify = debug_options.xla_gpu_llvm_verification_level() >= 1;
 #ifndef NDEBUG
   should_verify = true;
@@ -123,6 +147,10 @@ static Status LowerToXlaGpuRuntime(
 
   mlir::PassManager pm(module->getName(), mlir::PassManager::Nesting::Implicit);
   pm.enableVerifier(should_verify);
+  if (hlo_module != nullptr && DumpingEnabledForHloModule(*hlo_module)) {
+    pm.addInstrumentation(
+        std::make_unique<DumpAfterPassIfEnabled>(hlo_module, &module));
+  }
 
   absl::flat_hash_set<DebugOptions::CommandBufferCmdType> command_types;
   for (int command_type_num : debug_options.xla_gpu_enable_command_buffer()) {
@@ -148,6 +176,8 @@ static Status LowerToXlaGpuRuntime(
 
   return OkStatus();
 }
+
+}  // namespace
 
 void ForAllThunks(const std::function<void(Thunk*)>& fn,
                   ThunkSequence* thunk_sequence) {
@@ -175,8 +205,6 @@ void ForAllThunks(const std::function<void(Thunk*)>& fn,
   }
 }
 
-}  // namespace
-
 static void ForwardCollectiveAttrs(mlir::ModuleOp module,
                                    llvm::StringRef entry_function_name,
                                    const HloModuleConfig& config) {
@@ -188,26 +216,24 @@ static void ForwardCollectiveAttrs(mlir::ModuleOp module,
 
 StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
     mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
-    llvm::ArrayRef<int64_t> buffer_sizes, const HloModuleConfig& module_config,
-    std::unique_ptr<ThunkSequence> thunk_sequence,
-    const HloModule* hlo_module_for_dump,
+    llvm::ArrayRef<int64_t> buffer_sizes,
+    std::unique_ptr<ThunkSequence> thunk_sequence, const HloModule* hlo_module,
     se::GpuComputeCapability compute_capability) {
+  const auto& module_config = hlo_module->config();
   // Forward collective (NCCL) attributes for use by the lowering pipeline.
   ForwardCollectiveAttrs(mlir_module, entry_function_name, module_config);
 
   // Lower LMHLO operations to the XLA:GPU runtime custom calls.
   TF_RETURN_IF_ERROR(LowerToXlaGpuRuntime(
       mlir_module, {entry_function_name.data(), entry_function_name.size()},
-      buffer_sizes, thunk_sequence.get(), module_config.debug_options(),
-      compute_capability));
+      buffer_sizes, thunk_sequence.get(), hlo_module, compute_capability));
 
   // TODO(b/232033540): Pass MLIR module directly to Gpu runtime executable
   // without forcing serialization.
   std::string module_str = llvm_ir::DumpToString(mlir_module);
 
-  if (hlo_module_for_dump != nullptr) {
-    DumpToFileInDirOrStdout(*hlo_module_for_dump, "gpu_rt_host", "mlir",
-                            module_str);
+  if (hlo_module != nullptr) {
+    DumpToFileInDirOrStdout(*hlo_module, "gpu_rt_host", "mlir", module_str);
   }
 
   // Collect allocation indices for handling graph capture functions.
@@ -226,7 +252,7 @@ StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
 static Status GetMlirAllocationInfo(
     mlir::func::FuncOp func, std::vector<BufferAllocation>* allocations,
     absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>* output_info,
-    Shape* output_shape, EntryFunctionAttributes* entry_func_attrs) {
+    Shape* output_shape) {
   CHECK(allocations->empty());
   allocations->reserve(func.getNumArguments());
 
@@ -253,41 +279,6 @@ static Status GetMlirAllocationInfo(
                    attr.getName() == "lmhlo.output_index");
     }
   }
-
-  // Encode buffer parameter metadata in a proto for persisting, because BEF
-  // doesn't persist function attributes.
-  for (int i = 0; i < func.getNumArguments(); i++) {
-    auto buffer = entry_func_attrs->add_buffers();
-    if (auto param_attr = func.getArgAttr(i, "lmhlo.params")) {
-      buffer->set_lmhlo_params_present(true);
-      buffer->set_lmhlo_params(param_attr.cast<mlir::IntegerAttr>().getInt());
-    }
-    if (auto shape_index_attr = func.getArgAttr(i, "lmhlo.param_shape_index")) {
-      auto param_shape_index = buffer->mutable_lmhlo_param_shape_index();
-      for (const llvm::APInt& element :
-           shape_index_attr.cast<mlir::DenseIntElementsAttr>()) {
-        param_shape_index->add_indices(element.getSExtValue());
-      }
-    }
-    if (auto constant_name_attr = func.getArgAttr(i, "lmhlo.constant_name")) {
-      buffer->set_lmhlo_constant_name(
-          constant_name_attr.cast<mlir::StringAttr>().str());
-    }
-    if (func.getArgAttr(i, "lmhlo.must_alias")) {
-      buffer->set_lmhlo_must_alias(true);
-    }
-    if (auto output_index_attr = func.getArgAttr(i, "lmhlo.output_index")) {
-      auto output_index = buffer->mutable_lmhlo_output_index();
-      for (const llvm::APInt& element :
-           output_index_attr.cast<mlir::DenseIntElementsAttr>()) {
-        output_index->add_indices(element.getSExtValue());
-      }
-    }
-  }
-  entry_func_attrs->set_result_xla_shape(
-      func->getAttrOfType<mlir::StringAttr>("result_xla_shape")
-          .getValue()
-          .str());
 
   return GpuExecutable::SetUpMlirAllocation(func, buffer_sizes, allocations,
                                             output_info, output_shape);
@@ -375,14 +366,14 @@ StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   std::vector<BufferAllocation> mlir_allocations;
   absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo> mlir_output_info;
   Shape mlir_output_shape;
-  TF_RETURN_IF_ERROR(GetMlirAllocationInfo(
-      entry_function, &mlir_allocations, &mlir_output_info, &mlir_output_shape,
-      &results.entry_func_attrs));
+  TF_RETURN_IF_ERROR(GetMlirAllocationInfo(entry_function, &mlir_allocations,
+                                           &mlir_output_info,
+                                           &mlir_output_shape));
 
   IrEmitterContext ir_emitter_context(
       hlo_module, results.buffer_assignment.get(), platform_name,
       gpu_device_info, mlir_context.get(), results.llvm_module.get(),
-      emit_from_hlo);
+      emit_from_hlo, /*emit_kernels=*/true);
 
   std::vector<BufferAllocation*> allocations;
   if (emit_from_hlo) {
@@ -445,8 +436,7 @@ StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     TF_ASSIGN_OR_RETURN(
         results.executable,
         LowerToJitRt(*mlir_module, entry_function.getName(), buffer_sizes,
-                     hlo_module->config(), ir_emitter->ConsumeThunkSequence(),
-                     /*hlo_module_for_dump=*/hlo_module,
+                     ir_emitter->ConsumeThunkSequence(), hlo_module,
                      gpu_device_info.gpu_compute_capability()));
   } else {
     auto thunk_sequence = ir_emitter->ConsumeThunkSequence();
@@ -465,7 +455,7 @@ void RemoveUnusedAndUninitializedGlobals(
   for (const auto& info : constants) {
     // Empty content means the constant is initialized in the LLVM IR, so we
     // must not remove it.
-    if (!info.content.empty()) {
+    if (!info.content.span().empty()) {
       llvm::GlobalVariable* global =
           llvm_module->getGlobalVariable(info.symbol_name);
       CHECK(global != nullptr);

@@ -152,15 +152,14 @@ bool IsNestableVariadicReduction(const HloInstruction& instr) {
 }
 
 bool IsInputFusibleTranspose(const HloInstruction& instr) {
-  if (instr.opcode() == HloOpcode::kBitcast) {
+  if (instr.opcode() == HloOpcode::kBitcast || instr.IsCustomFusion()) {
     return false;
   }
-  auto& hero = FindNonTrivialHero(instr);
-  if (GetDescriptionForTiledTransposeEmitter(instr, hero).has_value()) {
-    return true;
+  if (instr.opcode() == HloOpcode::kFusion) {
+    return HasAnyTiledTransposeRoot(*instr.fused_instructions_computation());
   }
-  return !instr.IsCustomFusion() && instr.opcode() == HloOpcode::kFusion &&
-         HasAnyTiledTransposeRoot(*instr.called_computations()[0]);
+  auto& hero = FindNonTrivialHero(instr);
+  return GetDescriptionForTiledTransposeEmitter(instr, hero).has_value();
 }
 
 const HloInstruction* GetRealHeroForMultiOutputFusion(
@@ -467,6 +466,17 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
              .debug_options()
              .xla_gpu_enable_reduction_epilogue_fusion()) {
       return "Reduction epilogue fusion is not enabled.";
+    }
+    // TODO(akuegel): Remove workaround when producer_hero is computed
+    // correctly.
+    const HloInstruction& reduce_hero =
+        producer_hero.opcode() == HloOpcode::kFusion
+            ? FindNonTrivialHero(*producer_hero.fused_expression_root())
+            : producer_hero;
+    if (!ReductionIsRaceFree(
+            reduce_hero.GetModule()->config(),
+            GetReductionKindAndContiguousComponents(reduce_hero))) {
+      return "Reduction output fusion only works for race free reductions";
     }
     if (!AllSatisfy(consumer, [](const HloInstruction* hlo) {
           return IsIntermediate(hlo, /*allowed_operand_count=*/1);

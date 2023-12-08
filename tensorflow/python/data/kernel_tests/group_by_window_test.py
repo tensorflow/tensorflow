@@ -16,6 +16,7 @@
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.core.lib.core import error_codes_pb2
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -278,26 +279,6 @@ class GroupByWindowTest(test_base.DatasetTestBase, parameterized.TestCase):
       print(self.evaluate(get_next()))
 
   @combinations.generate(test_base.default_test_combinations())
-  def testReduceFuncError(self):
-    components = np.random.randint(100, size=(200,)).astype(np.int64)
-
-    def reduce_func(_, xs):
-      # Introduce an incorrect padded shape that cannot (currently) be
-      # detected at graph construction time.
-      return xs.padded_batch(
-          4,
-          padded_shapes=(tensor_shape.TensorShape([]),
-                         constant_op.constant([5], dtype=dtypes.int64) * -1))
-
-    dataset = dataset_ops.Dataset.from_tensor_slices(components)
-    dataset = dataset.map(lambda x: (x, ops.convert_to_tensor([x * x])))
-    dataset = dataset.group_by_window(
-        key_func=lambda x, _: x % 2, reduce_func=reduce_func, window_size=32)
-    get_next = self.getNext(dataset)
-    with self.assertRaises(errors.InvalidArgumentError):
-      self.evaluate(get_next())
-
-  @combinations.generate(test_base.default_test_combinations())
   def testConsumeWindowDatasetMoreThanOnce(self):
     components = np.random.randint(50, size=(200,)).astype(np.int64)
 
@@ -397,6 +378,74 @@ class GroupByWindowCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         lambda: self._build_dataset(components),
         num_outputs=12,
         verify_exhausted=False)
+
+
+class GroupByWindowErrorMessageTest(
+    test_base.DatasetTestBase, parameterized.TestCase
+):
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testReduceFuncError(self):
+    components = np.random.randint(100, size=(200,)).astype(np.int64)
+
+    def my_reduce_func(_, window_dataset):
+      # Introduce an incorrect padded shape that cannot (currently) be
+      # detected at graph construction time.
+      return window_dataset.padded_batch(
+          4,
+          padded_shapes=(
+              tensor_shape.TensorShape([]),
+              constant_op.constant([5], dtype=dtypes.int64) * -1,
+          ),
+      )
+
+    dataset = dataset_ops.Dataset.from_tensor_slices(components)
+    dataset = dataset.map(lambda x: (x, ops.convert_to_tensor([x * x])))
+    dataset = dataset.group_by_window(
+        key_func=lambda x, _: x % 2, reduce_func=my_reduce_func, window_size=32
+    )
+    get_next = self.getNext(dataset)
+    with self.assertRaises(errors.InternalError) as error:
+      self.evaluate(get_next())
+
+    msg = str(error.exception)
+    self.assertIn(error_codes_pb2.Code.Name(errors.INVALID_ARGUMENT), msg)
+    self.assertIn(
+        my_reduce_func.__name__,
+        msg,
+        "{} should show up in the error message".format(
+            my_reduce_func.__name__
+        ),
+    )
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testPropagateUserDefinedFunctionErrorMessage(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices([0])
+
+    def a_cool_user_defined_reduce_func(unused_key, window_dataset):
+      it = iter(window_dataset)
+      l = [next(it) for _ in range(2)]  # This causes OutOfRange error
+      return dataset_ops.Dataset.from_tensor_slices(l)
+
+    dataset = dataset.group_by_window(
+        key_func=lambda x: 0,
+        window_size=2,
+        reduce_func=a_cool_user_defined_reduce_func,
+    )
+
+    get_next = self.getNext(dataset)
+    with self.assertRaisesRegex(
+        errors.InternalError,
+        ".*{}.*".format(a_cool_user_defined_reduce_func.__name__),
+        msg=(
+            "The name of user-defined-function should show up in the error"
+            " message"
+        ),
+    ):
+      # Loop over the dataset
+      with self.assertRaises(errors.OutOfRangeError):
+        while True:
+          self.evaluate(get_next())
 
 
 if __name__ == "__main__":

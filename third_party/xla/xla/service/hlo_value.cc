@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -169,22 +170,34 @@ HloValue::Uses HloValue::ComputeUses() const {
   Uses uses;
   // Build vector of HloUses for the value.
   for (const HloPosition& position : positions_) {
-    for (HloInstruction* user : position.instruction->users()) {
-      for (int64_t i = 0; i < user->operand_count(); ++i) {
-        if (user->operand(i) != position.instruction) {
+    for (HloInstruction* const user : position.instruction->users()) {
+      int i = -1;
+      for (const auto& operand : user->operands()) {
+        ++i;
+
+        if (operand != position.instruction) {
           continue;
         }
+
+#ifndef NDEBUG
+        // If user is in the root positions of this value, it must be a root.
+        if (root_positions.contains(user)) {
+          CHECK(user->IsRoot());
+        }
+#endif  // NDEBUG
 
         // Root instructions of computations are considered to be uses whether
         // or not the root instruction itself actually uses the value.
         if (MayUseOperandValue(i, position.index, user) ||
-            root_positions.contains(user)) {
+            (user->IsRoot() && root_positions.contains(user))) {
           HloUse new_use{user, i, position.index};
 
+#ifndef NDEBUG
           // The new use must not already exist in uses.
           for (const HloUse& use : uses) {
             DCHECK_NE(use, new_use);
           }
+#endif  // NDEBUG
 
           uses.push_back(std::move(new_use));
         }

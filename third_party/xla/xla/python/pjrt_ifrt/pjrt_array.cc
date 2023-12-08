@@ -22,7 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
-#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -387,55 +386,35 @@ StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
             "first fetched to the host and then sent to the destination "
             "device.");
       }
-      if (new_sharding_has_memory_kind && memories_supported &&
-          semantics == ArrayCopySemantics::kDonateInput && !memory_kind_equal) {
-        return Unimplemented(
-            "Donation across different memory kinds is not implemented.");
-      }
-      // Try using `PjRtBuffer::CopyToMemorySpace` instead of
+      // Use `PjRtBuffer::CopyToMemorySpace` instead of
       // `PjRtBuffer::CopyToDevice` when memories are supported. Because the
       // semantics of the latter one is to copy to the default memory space of
       // the device.
-      std::unique_ptr<PjRtBuffer> copied_buffer;
       if (new_sharding_has_memory_kind && memories_supported) {
         TF_ASSIGN_OR_RETURN(
             auto memory_space,
             GetMemorySpaceFromMemoryKind(new_sharding->devices()[i],
                                          canonicalized_sharding_memory_kind));
-        StatusOr<std::unique_ptr<PjRtBuffer>> copied_buffer_using_memory_space =
-            pjrt_buffers_[i]->CopyToMemorySpace(memory_space);
-        if (copied_buffer_using_memory_space.ok()) {
-          copied_buffer = std::move(*copied_buffer_using_memory_space);
-        } else if (!absl::IsUnimplemented(
-                       copied_buffer_using_memory_space.status())) {
-          return copied_buffer_using_memory_space.status();
-        } else {
-          // Returns unimplemented if the sharding's memory space isn't the
-          // device's default memory space. Otherwise continue on to the
-          // CopyToDevice fallback.
-          // TODO(b/307743645): clean up this branch when memory space is better
-          // supported.
-          TF_ASSIGN_OR_RETURN(
-              PjRtMemorySpace * default_memory_space,
-              new_sharding->devices()[i]->default_memory_space());
-          if (canonicalized_sharding_memory_kind.memory_kind() !=
-              default_memory_space->memory_space_kind()) {
-            return copied_buffer_using_memory_space.status();
+        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> copied_buffer,
+                            pjrt_buffers_[i]->CopyToMemorySpace(memory_space));
+        if (semantics == ArrayCopySemantics::kDonateInput) {
+          if (!memory_kind_equal) {
+            return Unimplemented(
+                "Donation across different memory kinds is not implemented.");
           }
+          pjrt_buffers_[i] = nullptr;
         }
+        buffers.push_back(std::shared_ptr<PjRtBuffer>(copied_buffer.release()));
+      } else {
+        // Use `PjRtBuffer::CopyToDevice` when memories are not supported.
+        TF_ASSIGN_OR_RETURN(
+            std::unique_ptr<xla::PjRtBuffer> copied_buffer,
+            pjrt_buffers_[i]->CopyToDevice(new_sharding->devices()[i]));
+        if (semantics == ArrayCopySemantics::kDonateInput) {
+          pjrt_buffers_[i] = nullptr;
+        }
+        buffers.push_back(std::shared_ptr<PjRtBuffer>(copied_buffer.release()));
       }
-      // Fallback to `PjRtBuffer::CopyToDevice` if (1) memories are not
-      // supported or (2) `PjRtBuffer::CopyToMemorySpace` returns unimplemented
-      // and canonicalized_sharding_memory_kind is the same as the
-      // default_memory_space of `new_sharding->devices()[i]`.
-      if (copied_buffer == nullptr) {
-        TF_ASSIGN_OR_RETURN(copied_buffer, pjrt_buffers_[i]->CopyToDevice(
-                                               new_sharding->devices()[i]));
-      }
-      if (semantics == ArrayCopySemantics::kDonateInput) {
-        pjrt_buffers_[i] = nullptr;
-      }
-      buffers.push_back(std::shared_ptr<PjRtBuffer>(copied_buffer.release()));
     }
   }
   return PjRtArray::Create(client_, dtype_, shape_, std::move(new_sharding),

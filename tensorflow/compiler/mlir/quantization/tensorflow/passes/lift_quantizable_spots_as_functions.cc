@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -277,6 +278,16 @@ class CheckQuantizableOps
           call_op->getOperand(0).getType().dyn_cast<ShapedType>();
       if (!shaped_type || !shaped_type.hasRank()) {
         return absl::InternalError("The input of BatchMatMul must have rank.");
+      }
+    } else if (function_name.contains("gather")) {
+      // This op is guaranteed to be a constant as ODS checks IsConstTensor.
+      // Check if the number of elements meets the requirement.
+      int64_t num_elements =
+          call_op.getOperand(0).getType().cast<ShapedType>().getNumElements();
+      if (num_elements < quant_options_.min_num_elements_for_weights()) {
+        return absl::InternalError(
+            "The params of Gather have fewer number of elements than "
+            "the `min_num_elements_for_weights`.");
       }
     }
 

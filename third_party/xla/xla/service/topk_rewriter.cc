@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 #include "tsl/platform/errors.h"
@@ -439,37 +440,26 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
-  StatusOr<HloComputation*> CreateVariadicComparator(HloInstruction* topk) {
+  bool HasSingleUserReadingOnlyTheValueOutput(HloInstruction* inst) {
+    return inst->user_count() == 1 && inst->users().front()->tuple_index() == 0;
+  }
+
+  StatusOr<HloComputation*> CreateVariadicComparator(HloInstruction* inst) {
+    HloTopKInstruction* topk = DynCast<HloTopKInstruction>(inst);
     XlaBuilder b(absl::StrCat("comparator_", topk->name()));
     std::vector<PrimitiveType> ptypes = {
-        topk->operand(0)->shape().element_type(), PrimitiveType::S32};
-    HloComputation* comparison_computation = topk->to_apply();
+        topk->operand(0)->shape().element_type()};
 
-    auto comparison = [&]() -> StatusOr<XlaComputation> {
-      if (Match(comparison_computation->root_instruction(),
-                m::Compare(m::Parameter(0), m::Parameter(1))
-                    .WithComparisonDirection(ComparisonDirection::kGt)) ||
-          Match(comparison_computation->root_instruction(),
-                m::Compare(m::Parameter(1), m::Parameter(0))
-                    .WithComparisonDirection(ComparisonDirection::kLt))) {
-        return CreateScalarGtComputation(ptypes, &b);
-      } else if (Match(
-                     comparison_computation->root_instruction(),
-                     m::Compare(m::Parameter(0), m::Parameter(1))
-                         .WithComparisonDirection(ComparisonDirection::kLt)) ||
-                 Match(
-                     comparison_computation->root_instruction(),
-                     m::Compare(m::Parameter(1), m::Parameter(0))
-                         .WithComparisonDirection(ComparisonDirection::kGt))) {
-        return CreateScalarLtComputation(ptypes, &b);
-      } else {
-        return InternalError("Unexpected comparator: %s",
-                             comparison_computation->ToString());
-      }
-    }();
-    TF_RETURN_IF_ERROR(comparison.status());
+    if (!HasSingleUserReadingOnlyTheValueOutput(inst)) {
+      ptypes.emplace_back(PrimitiveType::S32);
+    }
+
+    XlaComputation comparison = topk->largest()
+                                    ? CreateScalarGtComputation(ptypes, &b)
+                                    : CreateScalarLtComputation(ptypes, &b);
+
     TF_ASSIGN_OR_RETURN(HloComputation * comparator,
-                        BuilderToHloComputation(*comparison, topk->parent()));
+                        BuilderToHloComputation(comparison, topk->parent()));
     return comparator;
   }
 
@@ -492,10 +482,10 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     };
     CHECK_NE(variadic_comparator, nullptr);
     // If only the topk values are necessary, skip the iota.
-    if (call->user_count() == 1 && call->users().front()->tuple_index() == 0 &&
-        call->to_apply()->num_parameters() == 2) {
+    if (HasSingleUserReadingOnlyTheValueOutput(call) &&
+        variadic_comparator->num_parameters() == 2) {
       HloInstruction* sort = comp->AddInstruction(HloInstruction::CreateSort(
-          {input->shape()}, sort_dimension, {input}, call->to_apply(),
+          {input->shape()}, sort_dimension, {input}, variadic_comparator,
           /*is_stable=*/true));
       TF_RETURN_IF_ERROR(ReplaceInstruction(
           call->users().front(),

@@ -16,7 +16,19 @@ limitations under the License.
 
 #include <memory>
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/IR/IRBuilder.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
+#include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/copy_thunk.h"
+#include "xla/service/gpu/fusions/fusion_emitter.h"
+#include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/kernel_reuse_cache.h"
+#include "xla/service/gpu/thunk.h"
+#include "xla/shape_util.h"
+#include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -25,17 +37,21 @@ StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
     IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
     mlir::lmhlo::FusionOp fusion_op, const HloFusionInstruction& fusion,
     KernelReuseCache& kernel_cache, llvm::IRBuilder<>*) const {
-  auto src_buffer = *GetAllocationSlice(src_, ir_emitter_context.allocations());
-  auto dst_buffer = *GetAllocationSlice(dst_, ir_emitter_context.allocations());
   FusionEmissionResult result;
-  if (src_buffer != dst_buffer) {
-    result.thunks.emplace_back(std::make_unique<DeviceToDeviceCopyThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(fusion_op),
-        /*source_buffer=*/src_buffer,
-        /*destination_buffer=*/dst_buffer,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(GetShape(src_)),
-        /*source_value=*/src_,
-        /*destination_value=*/dst_));
+  for (auto [src, dst] : llvm::zip(srcs_, dsts_)) {
+    auto src_buffer =
+        *GetAllocationSlice(src, ir_emitter_context.allocations());
+    auto dst_buffer =
+        *GetAllocationSlice(dst, ir_emitter_context.allocations());
+    if (src_buffer != dst_buffer) {
+      result.thunks.emplace_back(std::make_unique<DeviceToDeviceCopyThunk>(
+          Thunk::ThunkInfo::WithProfileAnnotation(fusion_op),
+          /*source_buffer=*/src_buffer,
+          /*destination_buffer=*/dst_buffer,
+          /*mem_size=*/ShapeUtil::ByteSizeOf(GetShape(src)),
+          /*source_value=*/src,
+          /*destination_value=*/dst));
+    }
   }
   return result;
 }

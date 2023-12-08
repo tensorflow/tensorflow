@@ -19,13 +19,11 @@ from typing import Mapping, Optional
 
 from absl import logging
 
-from tensorflow.compiler.mlir.quantization.tensorflow import exported_model_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
 from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
 from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
-from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import load as saved_model_load
@@ -134,42 +132,6 @@ def _run_static_range_qat(
   )
 
 
-def _enable_dump_tensor(graph_def: graph_pb2.GraphDef) -> None:
-  """Enable DumpTensor in the graph def.
-
-  DumpTensor is disabled by default to avoid logging data during calibration.
-  This function is called after calibration to enable DumpTensor.
-
-  Args:
-    graph_def: GraphDef to enable DumpTensor
-  """
-  for function_def in graph_def.library.function:
-    for node_def in function_def.node_def:
-      if node_def.op != 'DumpTensor':
-        continue
-
-      node_def.attr['enabled'].b = True
-
-
-def _change_dump_tensor_file_name(graph_def: graph_pb2.GraphDef) -> None:
-  """Change file_name used by DumpTensor to quantized_tensor_data.pb.
-
-  In whole model verify, DumpTensor in unquantized model uses file_name
-  unquantized_tensor_data.pb.
-  After unquantized dump model is created, this function allows quantized dump
-  model to use quantized_tensor_data.pb as file_name.
-
-  Args:
-    graph_def: GraphDef to change file_name of DumpTensor
-  """
-  for function_def in graph_def.library.function:
-    for node_def in function_def.node_def:
-      if node_def.op != 'DumpTensor':
-        continue
-
-      node_def.attr['file_name'].s = 'quantized_tensor_data.pb'.encode('utf-8')
-
-
 def _run_static_range_ptq(
     src_saved_model_path: str,
     dst_saved_model_path: str,
@@ -196,7 +158,7 @@ def _run_static_range_ptq(
   Raises:
     ValueError if the graph doesn't contain a valid signature.
   """
-  logging.info('Running post-training quantization pre-calibration step.')
+  logging.info('Running static-range post-training quantization.')
 
   loader = saved_model_loader.SavedModelLoader(src_saved_model_path)
   function_aliases = loader.get_meta_graph_def_from_tags(
@@ -204,65 +166,15 @@ def _run_static_range_ptq(
   ).meta_info_def.function_aliases
 
   signature_def_map_serialized = _serialize_signature_def_map(signature_def_map)
-
-  exported_model_serialized, pre_calib_output_model_path = (
-      pywrap_quantize_model.quantize_ptq_model_pre_calibration(
-          src_saved_model_path,
-          quantization_options_serialized=quant_opts.SerializeToString(),
-          signature_keys=list(quant_opts.signature_keys),
-          signature_def_map_serialized=signature_def_map_serialized,
-          function_aliases=dict(function_aliases),
-          py_function_library=py_function_lib.PyFunctionLibrary(),
-          representative_dataset=representative_dataset,
-      )
-  )
-  exported_model = exported_model_pb2.ExportedModel.FromString(
-      exported_model_serialized
-  )
-  graph_def = exported_model.graph_def
-
-  py_function_library = py_function_lib.PyFunctionLibrary()
-  if quant_opts.HasField('debugger_options'):
-    # Since DumpTensor was disabled by default, we need to enable them.
-    _enable_dump_tensor(graph_def)
-
-    if (
-        quant_opts.debugger_options.debugger_type
-        == quant_opts_pb2.DebuggerOptions.DebuggerType.DEBUGGER_TYPE_WHOLE_MODEL
-    ):
-      # TODO: b/295139417 - Remove CustomAggregator op in unquantized dump model
-      # TODO: b/296916287 - Create a separate function for saving unquantized
-      # dump model
-      py_function_library.save_exported_model(
-          dst_saved_model_path=quant_opts.debugger_options.unquantized_dump_model_path,
-          exported_model_serialized=exported_model.SerializeToString(),
-          src_saved_model_path=src_saved_model_path,
-          tags=quant_opts.tags,
-          serialized_signature_def_map=signature_def_map_serialized,
-      )
-
-      _change_dump_tensor_file_name(graph_def)
-
-  calibrated_model_path = tempfile.mkdtemp()
-  # TODO: b/309601030 - Integrate model functionality to
-  # `quantize_ptq_model_pre_calibration`.
-  py_function_library.save_exported_model(
-      dst_saved_model_path=calibrated_model_path,
-      exported_model_serialized=exported_model.SerializeToString(),
-      src_saved_model_path=pre_calib_output_model_path,
-      tags=quant_opts.tags,
-      serialized_signature_def_map=signature_def_map_serialized,
-  )
-
-  logging.info('Running post-training quantization post-calibration step.')
-  pywrap_quantize_model.quantize_ptq_model_post_calibration(
-      src_saved_model_path=calibrated_model_path,
-      dst_saved_model_path=dst_saved_model_path,
+  pywrap_quantize_model.quantize_ptq_static_range(
+      src_saved_model_path,
+      dst_saved_model_path,
       quantization_options_serialized=quant_opts.SerializeToString(),
       signature_keys=list(quant_opts.signature_keys),
       signature_def_map_serialized=signature_def_map_serialized,
-      function_aliases=dict(exported_model.function_aliases),
+      function_aliases=dict(function_aliases),
       py_function_library=py_function_lib.PyFunctionLibrary(),
+      representative_dataset=representative_dataset,
   )
 
 
@@ -725,24 +637,17 @@ def _populate_quantization_options_default_values(
   # TODO(b/242805842): Find good minimum_elements_for_weights number for server.
   # please also update default value in tflite converter:
   # tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.cc;l=201
-  if (
-      quantization_options.quantization_method.preset_method
-      == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
-  ) or (
-      quantization_options.quantization_method.preset_method
-      == _PresetMethod.METHOD_DYNAMIC_RANGE_INT8
-  ):
-    if quantization_options.min_num_elements_for_weights == 0:
-      quantization_options.min_num_elements_for_weights = (
-          _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS
-      )
-      logging.warning(
-          (
-              'QuantizationOptions.min_num_elements_for_weights is not set (0).'
-              ' Setting to the default value: %d.'
-          ),
-          _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS,
-      )
+  if quantization_options.min_num_elements_for_weights == 0:
+    quantization_options.min_num_elements_for_weights = (
+        _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS
+    )
+    logging.warning(
+        (
+            'QuantizationOptions.min_num_elements_for_weights is not set (0).'
+            ' Setting to the default value: %d.'
+        ),
+        _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS,
+    )
 
   # TODO: b/307900054 - Set the per-channel quantization by default.
   if quantization_options.enable_per_channel_quantization and not (

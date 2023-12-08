@@ -259,6 +259,7 @@ enum StatType {
   kModelVersion,
   kBytesTransferred,
   kDmaQueue,
+  kDcnCollectiveInfo,
   // Performance counter related.
   kRawValue,
   kScaledValue,

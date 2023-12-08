@@ -37,8 +37,18 @@ class PyFunctionLibrary:
   def run_calibration(
       self,
       saved_model_path: str,
-      exported_model_serialized: bytes,
-      quantization_options_serialized: bytes,
+      signature_keys: list[str],
+      tags: set[str],
+      calibration_options_serialized: bytes,
+      force_graph_mode_calibration: bool,
       representative_dataset: Any,
-  ) -> bytes: ...
+  ) -> None: ...
+  # LINT.ThenChange()
+
+  # LINT.IfChange(get_calibration_min_max_value)
+  def get_calibration_min_max_value(
+      self,
+      calibration_statistics_serialized: bytes,
+      calibration_options_serialized: bytes,
+  ) -> tuple[float, float]: ...
   # LINT.ThenChange()

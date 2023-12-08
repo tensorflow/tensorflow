@@ -242,7 +242,7 @@ void ConvertXSpaceToTraceEventsContainer(absl::string_view hostname,
   for (const XPlane* custom_plane :
        FindPlanesWithPrefix(space, tsl::profiler::kCustomPlanePrefix)) {
     ConvertXPlaneToTraceEventsContainer(
-        tsl::profiler::kCustomPlaneDeviceId + custom_plane->id(), hostname,
+        tsl::profiler::kFirstCustomPlaneDeviceId + custom_plane->id(), hostname,
         *custom_plane, container);
   }
 }

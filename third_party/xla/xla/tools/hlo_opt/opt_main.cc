@@ -51,19 +51,18 @@ You can also pass in debug option flags for the HloModule.
 
 Usage:
 
-  bazel run opt -- --platform=[CUDA|CPU|Interpreter|...] path/to/hlo_module
+  bazel run opt -- --platform=[gpu|cpu|...] path/to/hlo_module
 )";
 
 struct HloOptConfig {
   // Optional flags.
   bool help{false};
   bool split_input_file{false};
-  std::string platform{"cuda"};
+  std::string platform{"gpu"};
   std::string input_file{""};
   std::string input_format{""};
   std::string output_file{"-"};
-  std::string stage{"optimized_hlo"};
-  std::string input_stage{"hlo"};
+  std::string stage{"hlo"};
   bool list_stages{false};
 };
 
@@ -110,14 +109,8 @@ StatusOr<std::unique_ptr<HloModule>> GetModule(const HloOptConfig& opts,
 
 StatusOr<std::string> TranslateToStage(int argc, char** argv,
                                        const HloOptConfig& opts) {
-  se::Platform* platform =
-      xla::PlatformUtil::GetPlatform(opts.platform).value();
-
-  OptProvider* provider = OptProvider::ProviderForPlatform(platform->id());
-  if (provider == nullptr) {
-    return absl::UnimplementedError(
-        absl::StrCat("Provider not found for platform: ", platform->Name()));
-  }
+  TF_ASSIGN_OR_RETURN(OptProvider * provider,
+                      OptProvider::ProviderForPlatform(opts.platform));
 
   if (opts.list_stages) {
     return absl::StrJoin(provider->SupportedStages(), "\n");
@@ -169,7 +162,8 @@ int main(int argc, char** argv) {
                 "Valid values depend on the platform, for GPUs:\n"
                 "\t\t\t * hlo : HLO after all optimizations\n"
                 "\t\t\t * llvm : LLVM IR\n"
-                "\t\t\t * ptx : PTX dump\n"),
+                "\t\t\t * ptx : PTX dump\n"
+                "\t\t\t * buffer-assignment: Buffer Assignment\n"),
       tsl::Flag("list-stages", &opts.list_stages,
                 "Print all supported stages for a given platform and exit")};
   // Modifies global DebugOptions, populates flags with every flag available

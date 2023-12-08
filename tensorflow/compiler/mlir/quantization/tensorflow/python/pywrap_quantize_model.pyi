@@ -59,22 +59,8 @@ def quantize_weight_only(
 
 # LINT.ThenChange()
 
-# LINT.IfChange(quantize_ptq_model_pre_calibration)
-def quantize_ptq_model_pre_calibration(
-    src_saved_model_path: str,
-    quantization_options_serialized: bytes,
-    *,
-    signature_keys: list[str],
-    signature_def_map_serialized: dict[str, bytes],
-    function_aliases: dict[str, str],
-    py_function_library: py_function_lib.PyFunctionLibrary,
-    representative_dataset: rd.RepresentativeDatasetOrMapping,
-) -> tuple[bytes, str]: ...
-
-# LINT.ThenChange()
-
-# LINT.IfChange(quantize_ptq_model_post_calibration)
-def quantize_ptq_model_post_calibration(
+# LINT.IfChange(quantize_ptq_static_range)
+def quantize_ptq_static_range(
     src_saved_model_path: str,
     dst_saved_model_path: str,
     quantization_options_serialized: bytes,
@@ -83,6 +69,7 @@ def quantize_ptq_model_post_calibration(
     signature_def_map_serialized: dict[str, bytes],
     function_aliases: dict[str, str],
     py_function_library: py_function_lib.PyFunctionLibrary,
+    representative_dataset: rd.RepresentativeDatasetOrMapping,
 ) -> Any: ...  # Status
 
 # LINT.ThenChange()

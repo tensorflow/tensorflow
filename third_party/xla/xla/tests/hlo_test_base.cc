@@ -591,6 +591,29 @@ HloTestBase::RunAndCompareTwoModulesInternal(
                                  run_hlo_passes);
 }
 
+::testing::AssertionResult HloTestBase::RunAndCompareTwoModules(
+    absl::string_view hlo_string_module_0,
+    absl::string_view hlo_string_module_1,
+    const absl::Span<Literal* const> arguments,
+    const std::optional<ErrorSpec>& error, bool run_hlo_passes) {
+  auto module_0_or_status = ParseAndReturnVerifiedModule(hlo_string_module_0);
+  if (!module_0_or_status.ok()) {
+    return ::testing::AssertionFailure()
+           << "Error while parsing HLO text format: "
+           << module_0_or_status.status().ToString();
+  }
+
+  auto module_1_or_status = ParseAndReturnVerifiedModule(hlo_string_module_1);
+  if (!module_1_or_status.ok()) {
+    return ::testing::AssertionFailure()
+           << "Error while parsing HLO text format: "
+           << module_1_or_status.status().ToString();
+  }
+  return RunAndCompareTwoModules(std::move(module_0_or_status).value(),
+                                 std::move(module_1_or_status).value(),
+                                 arguments, error, run_hlo_passes);
+}
+
 ::testing::AssertionResult HloTestBase::Run(
     string_view hlo_string, bool run_hlo_passes, ExecutionProfile* profile,
     const tsl::protobuf::Message* backend_config) {

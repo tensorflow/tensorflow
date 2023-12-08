@@ -15,26 +15,26 @@ limitations under the License.
 #include "xla/service/gpu/fusions/thunk_util.h"
 
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <optional>
 
+#include "absl/algorithm/container.h"
 #include "absl/types/span.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/memset_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/shape.h"
-#include "xla/translate/hlo_to_mhlo/hlo_utils.h"
+#include "xla/shape_util.h"
+#include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {

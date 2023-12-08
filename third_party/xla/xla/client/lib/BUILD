@@ -208,10 +208,10 @@ cc_library(
 xla_test(
     name = "math_test",
     srcs = ["math_test.cc"],
-    tags = [
+    backend_tags = {
         # Times out.
-        "noasan",
-    ],
+        "ghostfish_iss": ["noasan"],
+    },
     deps = [
         ":constants",
         ":math",

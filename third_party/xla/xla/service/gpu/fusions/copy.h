@@ -15,17 +15,20 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_COPY_H_
 #define XLA_SERVICE_GPU_FUSIONS_COPY_H_
 
+#include <vector>
+
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 
 namespace xla {
 namespace gpu {
 
-// Special case of a fusion consisting only of a kCopy instruction that can be
-// implemented using a memcpy.
+// Special case of a fusion consisting only of `kCopy` instructions that can be
+// implemented using `memcpy`s.
 class MemcpyFusion : public FusionInterface {
  public:
-  MemcpyFusion(mlir::Value src, mlir::Value dst) : src_(src), dst_(dst) {}
+  MemcpyFusion(std::vector<mlir::Value> srcs, std::vector<mlir::Value> dsts)
+      : srcs_(std::move(srcs)), dsts_(std::move(dsts)) {}
 
   StatusOr<FusionEmissionResult> Emit(IrEmitterContext& ir_emitter_context,
                                       ElementalIrEmitter& elemental_emitter,
@@ -35,8 +38,8 @@ class MemcpyFusion : public FusionInterface {
                                       llvm::IRBuilder<>*) const final;
 
  private:
-  mlir::Value src_;
-  mlir::Value dst_;
+  std::vector<mlir::Value> srcs_;
+  std::vector<mlir::Value> dsts_;
 };
 
 }  // namespace gpu

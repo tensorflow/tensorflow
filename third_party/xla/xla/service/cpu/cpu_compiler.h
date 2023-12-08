@@ -122,7 +122,7 @@ class CpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
   }
 
   StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler, se::StreamExecutor* executor) const override;
+      Compiler* compiler, se::StreamExecutor* executor) override;
 
  private:
   XlaRuntimeCpuExecutableProto xla_runtime_cpu_executable_;

@@ -22,7 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/verifier.h"
@@ -387,14 +387,14 @@ std::map<std::string, std::string> FlatBufferModel::ReadAllMetadata(
 }
 
 bool FlatBufferModel::CheckModelIdentifier() const {
+  if (allocation_->bytes() < 7) {
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
+        "Model provided must have at least 7 bytes to hold identifier.\n");
+    return false;
+  }
   if (!tflite::ModelBufferHasIdentifier(allocation_->base())) {
     const char* ident = flatbuffers::GetBufferIdentifier(allocation_->base());
-    if (strlen(ident) < 4) {
-      TF_LITE_REPORT_ERROR(
-          error_reporter_,
-          "Model provided must have at least 8 bytes to hold identifier.\n");
-      return false;
-    }
     TF_LITE_REPORT_ERROR(
         error_reporter_,
         "Model provided has model identifier '%c%c%c%c', should be '%s'\n",

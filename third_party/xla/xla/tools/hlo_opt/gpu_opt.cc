@@ -13,12 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <optional>
+#include <set>
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/compiler.h"
+#include "xla/service/dump.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/platform_util.h"
@@ -27,75 +32,45 @@ limitations under the License.
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/tools/hlo_opt/opt_lib.h"
 #include "xla/types.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
 namespace {
 
-// TODO(cheshire): Switch CUDA/ROCM
-static auto kGpuPlatformId = se::cuda::kCudaPlatformId;
-
-static StatusOr<std::unique_ptr<Executable>> ToGpuExecutable(
-    std::unique_ptr<HloModule> module, Compiler* compiler,
-    se::StreamExecutor* executor, const Compiler::CompileOptions& opts) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> optimized_module,
-      compiler->RunHloPasses(std::move(module), executor, opts));
-  DebugOptions d = optimized_module->config().debug_options();
-  d.set_xla_embed_ir_in_executable(true);
-  optimized_module->mutable_config().set_debug_options(d);
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Executable> executable,
-      compiler->RunBackend(std::move(optimized_module), executor, opts));
-  return executable;
-}
-
-struct GpuOptProvider : public OptProvider {
+class GpuOptProvider : public OptProvider {
+ public:
   StatusOr<std::optional<std::string>> GenerateStage(
       std::unique_ptr<HloModule> module, absl::string_view s) override {
-    TF_ASSIGN_OR_RETURN(
-        se::Platform * platform,
-        se::MultiPlatformManager::PlatformWithId(kGpuPlatformId));
-
-    TF_ASSIGN_OR_RETURN(Compiler * compiler,
-                        Compiler::GetForPlatform(platform));
-    DebugOptions debug_opts = GetDebugOptionsFromFlags();
-
-    Compiler::CompileOptions opts;
-
-    se::StreamExecutor* executor = nullptr;
-    if (debug_opts.xla_gpu_target_config_filename().empty()) {
-      TF_ASSIGN_OR_RETURN(std::vector<se::StreamExecutor*> stream_executors,
-                          PlatformUtil::GetStreamExecutors(
-                              platform, /*allowed_devices=*/std::nullopt));
-      executor = stream_executors[0];
-    }
-
-    if (s == "hlo") {
-      TF_ASSIGN_OR_RETURN(
-          std::unique_ptr<HloModule> optimized_module,
-          compiler->RunHloPasses(std::move(module), executor, opts));
-      return optimized_module->ToString();
-    } else if (s == "llvm") {
-      TF_ASSIGN_OR_RETURN(
-          std::unique_ptr<Executable> executable,
-          ToGpuExecutable(std::move(module), compiler, executor, opts));
+    if (s == "llvm") {
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                          GetExecutable(std::move(module)));
       return static_cast<gpu::GpuExecutable*>(executable.get())
           ->ir_module_string();
     } else if (s == "ptx") {
-      TF_ASSIGN_OR_RETURN(
-          std::unique_ptr<Executable> executable,
-          ToGpuExecutable(std::move(module), compiler, executor, opts));
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                          GetExecutable(std::move(module)));
       return static_cast<gpu::GpuExecutable*>(executable.get())->text();
+    } else if (s == "buffer-assignment") {
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                          GetExecutable(std::move(module)));
+      return static_cast<gpu::GpuExecutable*>(executable.get())
+          ->buffer_assignment()
+          ->ToVerboseString(9999);
+    } else {
+      // Delegate to base class.
+      TF_ASSIGN_OR_RETURN(std::optional<std::string> out,
+                          OptProvider::GenerateStage(std::move(module), s));
+      return out;
     }
-
-    // Unimplemented stage.
-    return std::nullopt;
   }
 
-  std::vector<std::string> SupportedStages() override {
-    return {"hlo", "llvm", "ptx"};
+  std::string GetPlatformName() override { return "gpu"; }
+
+  std::set<std::string> SupportedStages() override {
+    std::set<std::string> supported = OptProvider::SupportedStages();
+    supported.insert({"ptx", "llvm", "buffer-assignment"});
+    return supported;
   }
 };
 
@@ -104,5 +79,5 @@ struct GpuOptProvider : public OptProvider {
 
 REGISTER_MODULE_INITIALIZER(gpu_opt_provider, {
   xla::OptProvider::RegisterForPlatform(
-      xla::kGpuPlatformId, std::make_unique<xla::GpuOptProvider>());
+      "gpu", std::make_unique<xla::GpuOptProvider>());
 });

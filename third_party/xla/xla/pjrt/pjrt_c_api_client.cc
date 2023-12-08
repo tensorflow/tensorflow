@@ -1426,7 +1426,8 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
     std::vector<std::vector<PJRT_Buffer*>>& c_output_lists_storage,
     std::vector<PJRT_Buffer**>& c_output_lists,
     std::optional<std::vector<PJRT_Event*>>& device_complete_events,
-    SendRecvCallbackData& callback_data) {
+    SendRecvCallbackData& callback_data,
+    std::vector<int64_t>& non_donatable_input_indices_storage) {
   bool using_host_callbacks =
       !options.send_callbacks.empty() || !options.recv_callbacks.empty();
   if (using_host_callbacks &&
@@ -1443,6 +1444,13 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
   args.options = &c_options;
   args.options->struct_size = PJRT_ExecuteOptions_STRUCT_SIZE;
   args.options->launch_id = options.launch_id;
+  for (auto i : options.non_donatable_input_indices) {
+    non_donatable_input_indices_storage.push_back(i);
+  }
+  args.options->num_non_donatable_input_indices =
+      options.non_donatable_input_indices.size();
+  args.options->non_donatable_input_indices =
+      non_donatable_input_indices_storage.data();
   args.num_devices = argument_handles.size();
   CHECK_GT(args.num_devices, 0);
   args.num_args = argument_handles[0].size();
@@ -1516,6 +1524,7 @@ PjRtCApiLoadedExecutable::Execute(
   std::vector<std::vector<PJRT_Buffer*>> c_argument_lists_storage;
   std::vector<std::vector<PJRT_Buffer*>> c_output_lists_storage;
   std::vector<PJRT_Buffer**> c_output_lists;
+  std::vector<int64_t> non_donatable_input_indices_storage;
   PJRT_ExecuteOptions c_options;
   c_options.num_send_ops = 0;
   c_options.num_recv_ops = 0;
@@ -1531,7 +1540,8 @@ PjRtCApiLoadedExecutable::Execute(
       GetCommonExecuteArgs(argument_handles, options, c_options,
                            c_argument_lists_storage, c_arguments,
                            c_output_lists_storage, c_output_lists,
-                           device_complete_events, *callback_data));
+                           device_complete_events, *callback_data,
+                           non_donatable_input_indices_storage));
 
   args.execute_device = nullptr;
 
@@ -1581,6 +1591,7 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
   std::vector<std::vector<PJRT_Buffer*>> c_argument_lists_storage;
   std::vector<std::vector<PJRT_Buffer*>> c_output_lists_storage;
   std::vector<PJRT_Buffer**> c_output_lists;
+  std::vector<int64_t> non_donatable_input_indices_storage;
   PJRT_ExecuteOptions c_options;
   c_options.num_send_ops = 0;
   c_options.num_recv_ops = 0;
@@ -1596,7 +1607,8 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
       GetCommonExecuteArgs(argument_handles_vec, options, c_options,
                            c_argument_lists_storage, c_arguments,
                            c_output_lists_storage, c_output_lists,
-                           device_complete_events, *callback_data));
+                           device_complete_events, *callback_data,
+                           non_donatable_input_indices_storage));
 
   args.execute_device =
       tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();

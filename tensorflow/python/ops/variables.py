@@ -44,9 +44,11 @@ from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
 
 
-def default_variable_creator_v2(_, **kwds):
-  del kwds
-  raise NotImplementedError("resource_variable_ops needs to be imported")
+def default_variable_creator_v2(next_creator=None, **kwds):
+  from tensorflow.python.ops import resource_variable_ops  # pylint: disable=g-import-not-at-top
+
+  return resource_variable_ops.default_variable_creator_v2(
+      next_creator=next_creator, **kwds)
 
 
 def _make_getter(captured_getter, captured_previous):

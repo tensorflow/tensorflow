@@ -27,7 +27,6 @@ from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import pywrap_c
 from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_function_lib
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as rd
 from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
-from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session
@@ -527,43 +526,6 @@ def _get_min_max_from_calibrator(
   return min_value, max_value
 
 
-def _add_calibration_statistics(
-    graph_def: graph_pb2.GraphDef,
-    calib_opts: quantization_options_pb2.CalibrationOptions,
-) -> None:
-  """Adds calibration statistics to the graph def.
-
-  This function must be run after running the graph with a representative
-  dataset. Retrieves calibration statistics from the global calibrator and adds
-  them to the corresponding nodes as attributes.
-
-  Args:
-    graph_def: GraphDef to add calibration statistics to.
-    calib_opts: Calibration options to calculate min and max.
-  """
-  for function_def in graph_def.library.function:
-    for node_def in function_def.node_def:
-      if node_def.op != 'CustomAggregator':
-        continue
-
-      node_id = node_def.attr['id'].s
-      try:
-        min_value, max_value = _get_min_max_from_calibrator(node_id, calib_opts)
-        pywrap_calibration.clear_data_from_calibrator(node_id)
-
-        node_def.attr['min'].f = min_value
-        node_def.attr['max'].f = max_value
-      except ValueError:
-        logging.warning(
-            (
-                'CustomAggregator id "%s" from FunctionDef "%s" does not have '
-                'min or max values. Parts of this function are not quantized.'
-            ),
-            node_id.decode('utf-8'),
-            function_def.signature.name,
-        )
-
-
 class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
   """Wrapper class for overridden python method definitions.
 
@@ -649,18 +611,22 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
   def run_calibration(
       self,
       saved_model_path: str,
-      exported_model_serialized: bytes,
-      quantization_options_serialized: bytes,
+      signature_keys: list[str],
+      tags: set[str],
+      calibration_options_serialized: bytes,
+      force_graph_mode_calibration: bool,
       representative_dataset: rd.RepresentativeDatasetOrMapping,
-  ) -> bytes:
+  ) -> None:
     # LINT.ThenChange(py_function_lib.h:run_calibration)
     """Runs calibration and adds calibration statistics to exported model.
 
     Args:
       saved_model_path: Path to the SavedModel to run calibration.
-      exported_model_serialized: Serialized `ExportedModel` that corresponds to
-        the SavedModel at `saved_model_path`.
-      quantization_options_serialized: Serialized `QuantizationOptions`.
+      signature_keys: List of signature keys corresponding to SignatureDefs to
+        run calibration on.
+      tags: A set of tags that identify the MetaGraphDef.
+      calibration_options_serialized: Serialized `CalibrationOptions`.
+      force_graph_mode_calibration: If True, runs the calibration in graph mode.
       representative_dataset: Representative dataset to run calibration.
 
     Returns:
@@ -668,29 +634,43 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
       statistics are added to `CustomerAggregator` nodes at the `min` and `max`
       attributes.
     """
-    quantization_options = (
-        quantization_options_pb2.QuantizationOptions.FromString(
-            quantization_options_serialized
-        )
-    )
-
     # Uses the representative dataset to collect statistics for calibration.
     # After this operation, min & max values are stored separately in a global
     # CalibratorSingleton instance.
     _run_graph_for_calibration(
         saved_model_path,
-        quantization_options.signature_keys,
-        quantization_options.tags,
+        signature_keys,
+        tags,
         representative_dataset,
-        quantization_options.force_graph_mode_calibration,
+        force_graph_mode_calibration,
     )
 
-    exported_model = exported_model_pb2.ExportedModel.FromString(
-        exported_model_serialized
-    )
-    _add_calibration_statistics(
-        exported_model.graph_def,
-        quantization_options.calibration_options,
-    )
+  # LINT.IfChange(get_calibration_min_max_value)
+  def get_calibration_min_max_value(
+      self,
+      calibration_statistics_serialized: bytes,
+      calibration_options_serialized: bytes,
+  ) -> tuple[float, float]:
+    """Calculates min and max values from statistics.
 
-    return exported_model.SerializeToString()
+    Args:
+      calibration_statistics_serialized: Serialized `CalibrationStatistics`.
+        This will be the source to calculate min and max values from.
+      calibration_options_serialized: Serialized `CalibrationOptions`. Specifies
+        how the min / max should be calculated.
+
+    Returns:
+      (min_value, max_value): Min and max calculated using calib_opts.
+
+    Raises:
+      ValueError: Unsupported calibration method is given.
+    """
+    # LINT.ThenChange(py_function_lib.h:get_calibration_min_max_value)
+    return calibration_algorithm.get_min_max_value(
+        calibration_statistics_pb2.CalibrationStatistics.FromString(
+            calibration_statistics_serialized
+        ),
+        quantization_options_pb2.CalibrationOptions.FromString(
+            calibration_options_serialized
+        ),
+    )

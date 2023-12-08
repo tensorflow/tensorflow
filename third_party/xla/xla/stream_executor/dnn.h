@@ -882,6 +882,9 @@ class AlgorithmDesc {
 
   uint64_t hash() const;
 
+  template <typename H>
+  friend H AbslHashValue(H h, const AlgorithmDesc& algo_desc);
+
   AlgorithmProto ToProto() const { return proto_; }
 
   std::string ToString() const;
@@ -889,6 +892,11 @@ class AlgorithmDesc {
  private:
   AlgorithmProto proto_;
 };
+
+template <typename H>
+H AbslHashValue(H h, const AlgorithmDesc& algo_desc) {
+  return H::combine(std::move(h), algo_desc.hash());
+}
 
 // Describes the result from a perf experiment.
 //

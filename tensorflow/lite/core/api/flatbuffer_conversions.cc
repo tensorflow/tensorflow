@@ -2201,27 +2201,34 @@ TfLiteStatus ParseStablehloScatter(const Operator* op,
   if (schema_params) {
     params->indices_are_sorted = schema_params->indices_are_sorted();
 
-    TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-        schema_params->update_window_dims()->size() * sizeof(int64_t),
-        schema_params->update_window_dims(), params->update_window_dims,
-        error_reporter, "stablehlo_scatter"));
-    params->num_update_window_dims =
-        schema_params->update_window_dims()->size();
+    if (schema_params->update_window_dims()) {
+      TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+          schema_params->update_window_dims()->size() * sizeof(int64_t),
+          schema_params->update_window_dims(), params->update_window_dims,
+          error_reporter, "stablehlo_scatter"));
+      params->num_update_window_dims =
+          schema_params->update_window_dims()->size();
+    }
 
-    TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-        schema_params->inserted_window_dims()->size() * sizeof(int64_t),
-        schema_params->inserted_window_dims(), params->inserted_window_dims,
-        error_reporter, "stablehlo_scatter"));
-    params->num_inserted_window_dims =
-        schema_params->inserted_window_dims()->size();
+    if (schema_params->inserted_window_dims()) {
+      TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+          schema_params->inserted_window_dims()->size() * sizeof(int64_t),
+          schema_params->inserted_window_dims(), params->inserted_window_dims,
+          error_reporter, "stablehlo_scatter"));
+      params->num_inserted_window_dims =
+          schema_params->inserted_window_dims()->size();
+    }
 
-    TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-        schema_params->scatter_dims_to_operand_dims()->size() * sizeof(int64_t),
-        schema_params->scatter_dims_to_operand_dims(),
-        params->scatter_dims_to_operand_dims, error_reporter,
-        "stablehlo_scatter"));
-    params->num_scatter_dims_to_operand_dims =
-        schema_params->scatter_dims_to_operand_dims()->size();
+    if (schema_params->scatter_dims_to_operand_dims()) {
+      TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+          schema_params->scatter_dims_to_operand_dims()->size() *
+              sizeof(int64_t),
+          schema_params->scatter_dims_to_operand_dims(),
+          params->scatter_dims_to_operand_dims, error_reporter,
+          "stablehlo_scatter"));
+      params->num_scatter_dims_to_operand_dims =
+          schema_params->scatter_dims_to_operand_dims()->size();
+    }
 
     params->index_vector_dim = schema_params->index_vector_dim();
     params->unique_indices = schema_params->unique_indices();

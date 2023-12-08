@@ -19,7 +19,6 @@ package_group(
     name = "friends",
     packages = [
         "//tensorflow/compiler/...",
-        "//tensorflow/core/runtime_fallback/...",
         "//tensorflow/core/tfrt/experimental/data/...",
         "//tensorflow/core/tfrt/graph_executor/...",
         "//tensorflow/core/tfrt/ifrt/...",
@@ -470,7 +469,7 @@ tf_proto_library(
 cc_library(
     name = "passes",
     visibility = [
-        ":__subpackages__",
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
     ],
     deps = [
         "//tensorflow/compiler/mlir/tfrt:tf_to_tfrt",
@@ -521,8 +520,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
-        "@local_xla//xla/mlir_hlo:gml_st",
-        "@local_xla//xla/mlir_hlo:gml_st_passes",
         "@tf_runtime//:init_tfrt_dialects",
         "@tf_runtime//:print_stream_pass",
     ],

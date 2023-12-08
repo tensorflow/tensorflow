@@ -160,6 +160,10 @@ struct StrategyGroup {
     absl::StrAppend(&str, indent, "node_idx: ", node_idx, "\n");
     absl::StrAppend(&str, indent, "instruction id: ", instruction_id, "\n");
     absl::StrAppend(&str, indent, "is_tuple: ", is_tuple, "\n");
+    if (tuple_element_idx.has_value()) {
+      absl::StrAppend(&str, indent,
+                      "index in producer inst.: ", *tuple_element_idx, "\n");
+    }
     if (following != nullptr) {
       absl::StrAppend(&str, indent,
                       "following instruction: ", following->instruction_id,

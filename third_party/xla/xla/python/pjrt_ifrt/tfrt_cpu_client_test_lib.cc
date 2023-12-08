@@ -16,7 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "xla/pjrt/tfrt_cpu_pjrt_client.h"
+#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 
@@ -27,7 +27,7 @@ namespace {
 const bool kUnused = (test_util::RegisterClientFactory(
                           []() -> StatusOr<std::shared_ptr<Client>> {
                             CpuClientOptions options;
-                            options.cpu_device_count = 2;
+                            options.cpu_device_count = 4;
                             TF_ASSIGN_OR_RETURN(auto pjrt_client,
                                                 xla::GetTfrtCpuClient(options));
                             return std::shared_ptr<Client>(

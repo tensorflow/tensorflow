@@ -36,6 +36,11 @@ StatusOr<bool> MultiOutputFusion::Run(
 
   for (auto* computation :
        module->MakeNonfusionComputations(execution_threads)) {
+    // Do not operate over async computations (computations of async
+    // instructions).
+    if (computation->IsAsyncComputation()) {
+      continue;
+    }
     computation_ = computation;
     candidates_.clear();
     candidates_index_.clear();

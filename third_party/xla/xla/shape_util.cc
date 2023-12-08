@@ -145,7 +145,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
       index_primitive_type, pointer_primitive_type, element_size_in_bits,
       memory_space, std::move(physical_shape));
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
-  return shape;
+  return std::move(shape);
 }
 
 template <typename T>
@@ -311,7 +311,7 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
                            static_cast<int>(element_type),
                            absl::StrJoin(dimensions, ","));
   }
-  return shape;
+  return std::move(shape);
 }
 
 /* static */ StatusOr<Shape> ShapeUtil::MakeValidatedShape(
@@ -331,8 +331,13 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
   }
   for (int i = 0, n = dimensions.size(); i < n; i++) {
     shape.set_dynamic_dimension(i, dynamic_dimensions[i]);
+    if (shape.dimensions(i) == Shape::kUnboundedSize &&
+        !dynamic_dimensions[i]) {
+      return InvalidArgument(
+          "Cannot mark a dynamic dimension at dim=%d as static", i);
+    }
   }
-  return shape;
+  return std::move(shape);
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithDenseLayout(

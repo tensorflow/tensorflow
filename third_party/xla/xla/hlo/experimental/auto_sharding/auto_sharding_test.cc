@@ -720,7 +720,9 @@ ENTRY %Scatter {
   EXPECT_THAT(scatter, AnyOf(op::Sharding("{devices=[2,2,1]0,2,1,3}"),
                              op::Sharding("{devices=[2,2,1]0,1,2,3}"),
                              op::Sharding("{devices=[2,1,2]0,2,1,3}"),
-                             op::Sharding("{devices=[2,1,2]0,1,2,3}")));
+                             op::Sharding("{devices=[2,1,2]0,1,2,3}"),
+                             op::Sharding("{devices=[1,2,2]0,1,2,3}"),
+                             op::Sharding("{devices=[1,2,2]0,2,1,3}")));
   auto scatter_sharding = scatter->sharding();
   TF_EXPECT_OK(scatter_sharding.Validate(scatter->shape(), 4));
 }
@@ -1557,6 +1559,32 @@ ENTRY %entry {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
+}
+
+TEST_F(AutoShardingTest, ReshapeWithInvalidUserSharding) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param.0 = bf16[24,16,16]{2,1,0} parameter(0), sharding={devices=[32,1,1]<=[32]}
+  %reshape = bf16[1,24,16,16]{3,2,1,0} reshape(%param.0)
+  %copy = bf16[1,24,16,16]{3,2,1,0} copy(%reshape)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {32, 1};
+  option.device_mesh_ids.resize(32);
+  std::iota(option.device_mesh_ids.begin(), option.device_mesh_ids.end(), 0);
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+  HloInstruction* reshape = FindInstruction(module.get(), "reshape");
+  EXPECT_THAT(reshape, op::Sharding("{devices=[1,32,1,1]<=[32]}"));
 }
 
 TEST_F(AutoShardingTest, Broadcast) {

@@ -60,10 +60,11 @@ limitations under the License.
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
+#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/tfrt_cpu_pjrt_client.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/python/custom_call_sharding.h"
 #include "xla/python/dlpack.h"
 #include "xla/python/jax_jit.h"
@@ -84,7 +85,6 @@ limitations under the License.
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/pytree.h"
 #include "xla/python/sharding.h"
-#include "xla/python/status_casters.h"
 #include "xla/python/traceback.h"
 #include "xla/python/transfer_guard_lib.h"
 #include "xla/python/types.h"
@@ -581,12 +581,17 @@ static void Init(py::module_& m) {
                                                    v);
           };
         }
+        GpuClientOptions options;
+        options.allocator_config = allocator_config;
+        options.node_id = node_id;
+        options.num_nodes = num_nodes;
+        options.allowed_devices = allowed_devices;
+        options.platform_name = platform_name;
+        options.kv_get = kv_get;
+        options.kv_put = kv_put;
+        options.enable_mock_nccl = mock.value_or(false);
         std::unique_ptr<PjRtClient> client =
-            xla::ValueOrThrow(GetStreamExecutorGpuClient(
-                asynchronous, allocator_config, node_id, num_nodes,
-                allowed_devices, platform_name,
-                /*should_stage_host_to_device_transfers=*/true, kv_get, kv_put,
-                /*enable_mock_nccl=*/mock.value_or(false)));
+            xla::ValueOrThrow(GetStreamExecutorGpuClient(options));
         return std::make_shared<PyClient>(
             ifrt::PjRtClient::Create(std::move(client)));
       },

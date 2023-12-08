@@ -30,9 +30,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/notification.h"
+#include "absl/types/span.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_internal.h"
@@ -192,8 +194,8 @@ bool StreamExecutor::UnloadModule(ModuleHandle module_handle) {
 
 tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 StreamExecutor::CreateOrShareConstant(Stream* stream,
-                                      const std::vector<uint8_t>& content) {
-  return implementation_->CreateOrShareConstant(stream, std::move(content));
+                                      absl::Span<const uint8_t> content) {
+  return implementation_->CreateOrShareConstant(stream, content);
 }
 
 void StreamExecutor::Deallocate(DeviceMemoryBase* mem) {
@@ -447,6 +449,18 @@ tsl::Status StreamExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
   return implementation_->Launch(stream, thread_dims, block_dims, kernel, args);
 }
 
+tsl::Status StreamExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
+                                   const BlockDim& block_dims,
+                                   const ClusterDim& cluster_dims,
+                                   const Kernel& kernel,
+                                   const KernelArgs& args) {
+  SubmitTrace(&TraceListener::LaunchSubmit, stream, thread_dims, block_dims,
+              kernel, args);
+
+  return implementation_->Launch(stream, thread_dims, block_dims, cluster_dims,
+                                 kernel, args);
+}
+
 tsl::Status StreamExecutor::Submit(Stream* stream,
                                    const CommandBuffer& command_buffer) {
   return implementation_->Submit(stream, command_buffer);
@@ -479,11 +493,6 @@ DeviceMemoryBase StreamExecutor::Allocate(uint64_t size, int64_t memory_space) {
           << StackTraceIfVLOG10();
 
   return buf;
-}
-
-void* StreamExecutor::GetUntypedSubBuffer(DeviceMemoryBase* parent,
-                                          uint64_t offset, uint64_t size) {
-  return implementation_->GetSubBuffer(parent, offset, size);
 }
 
 tsl::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(

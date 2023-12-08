@@ -72,6 +72,63 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "sharding_utils",
+    srcs = [
+        "sharding_utils.cc",
+    ],
+    hdrs = [
+        "sharding_utils.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/tpu/kernels:sharding_utils",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/concurrency:ref_count",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla:executable_run_options",
+        "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/python/pjrt_ifrt",
+    ],
+)
+
+tf_cc_test(
+    name = "sharding_utils_test",
+    srcs = ["sharding_utils_test.cc"],
+    tags = ["no_oss"],
+    deps = [
+        ":sharding_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core/framework:tensor_matcher",
+        "//tensorflow/core/framework:tensor_testutil",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/python/ifrt:test_util",
+        "@local_xla//xla/python/ifrt/ir",
+        "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
+    ],
+)
+
 tf_cc_test(
     name = "ifrt_serving_executable_test",
     srcs = [

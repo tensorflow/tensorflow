@@ -95,6 +95,7 @@ from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.ops.numpy_ops import np_dtypes
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
@@ -231,11 +232,6 @@ arg_max = deprecation.deprecated(None, "Use `tf.math.argmax` instead")(arg_max) 
 arg_min = deprecation.deprecated(None, "Use `tf.math.argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
 tf_export(v1=["arg_max"])(dispatch.add_dispatch_support(arg_max))
 tf_export(v1=["arg_min"])(dispatch.add_dispatch_support(arg_min))
-
-
-# This is set by resource_variable_ops.py. It is included in this way since
-# there is a circular dependency between math_ops and resource_variable_ops
-_resource_variable_type = None
 
 
 def _set_doc(doc):
@@ -997,8 +993,9 @@ def cast(x, dtype, name=None):
 
   """
   base_type = dtypes.as_dtype(dtype).base_dtype
-  if isinstance(
-      x, (tensor_lib.Tensor, _resource_variable_type)) and base_type == x.dtype:
+  if (
+      isinstance(x, tensor_lib.Tensor) or _pywrap_utils.IsResourceVariable(x)
+  ) and base_type == x.dtype:
     return x
   with ops.name_scope(name, "Cast", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
@@ -3616,16 +3613,20 @@ def trace(x, name=None):
 
 @tf_export("linalg.matmul", "matmul")
 @dispatch.add_dispatch_support
-def matmul(a,
-           b,
-           transpose_a=False,
-           transpose_b=False,
-           adjoint_a=False,
-           adjoint_b=False,
-           a_is_sparse=False,
-           b_is_sparse=False,
-           output_type=None,
-           name=None):
+def matmul(
+    a,
+    b,
+    transpose_a=False,
+    transpose_b=False,
+    adjoint_a=False,
+    adjoint_b=False,
+    a_is_sparse=False,
+    b_is_sparse=False,
+    output_type=None,
+    grad_a=False,
+    grad_b=False,
+    name=None,
+):
   """Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
 
   The inputs must, following any transpositions, be tensors of rank >= 2
@@ -3711,17 +3712,19 @@ def matmul(a,
       multiplication.
     a_is_sparse: If `True`, `a` is treated as a sparse matrix. Notice, this
       **does not support `tf.sparse.SparseTensor`**, it just makes optimizations
-      that assume most values in `a` are zero.
-      See `tf.sparse.sparse_dense_matmul`
-      for some support for `tf.sparse.SparseTensor` multiplication.
+      that assume most values in `a` are zero. See
+      `tf.sparse.sparse_dense_matmul` for some support for
+      `tf.sparse.SparseTensor` multiplication.
     b_is_sparse: If `True`, `b` is treated as a sparse matrix. Notice, this
       **does not support `tf.sparse.SparseTensor`**, it just makes optimizations
-      that assume most values in `b` are zero.
-      See `tf.sparse.sparse_dense_matmul`
-      for some support for `tf.sparse.SparseTensor` multiplication.
+      that assume most values in `b` are zero. See
+      `tf.sparse.sparse_dense_matmul` for some support for
+      `tf.sparse.SparseTensor` multiplication.
     output_type: The output datatype if needed. Defaults to None in which case
       the output_type is the same as input type. Currently only works when input
       tensors are type (u)int8 and output_type can be int32.
+    grad_a: Set it to `True` to hint that Tensor `a` is for the backward pass.
+    grad_b: Set it to `True` to hint that Tensor `b` is for the backward pass.
     name: Name for the operation (optional).
 
   Returns:
@@ -3755,9 +3758,12 @@ def matmul(a,
           f"`adjoint_b`={adjoint_b}.")
 
     if context.executing_eagerly():
-      if not isinstance(a, (ops.EagerTensor, _resource_variable_type)):
+      if not (
+          isinstance(a, ops.EagerTensor) or _pywrap_utils.IsResourceVariable(a)
+      ):
         a = ops.convert_to_tensor(a, name="a")
-      if not isinstance(b, (ops.EagerTensor, _resource_variable_type)):
+      if not isinstance(b, ops.EagerTensor) or _pywrap_utils.IsResourceVariable(
+          b):
         b = ops.convert_to_tensor(b, dtype_hint=a.dtype.base_dtype, name="b")
     else:
       a = ops.convert_to_tensor(a, name="a")
@@ -3790,10 +3796,25 @@ def matmul(a,
         adjoint_b = True
       if use_batch_matmul_v3:
         return gen_math_ops.batch_mat_mul_v3(
-            a, b, adj_x=adjoint_a, adj_y=adjoint_b, Tout=output_type, name=name)
+            a,
+            b,
+            adj_x=adjoint_a,
+            adj_y=adjoint_b,
+            Tout=output_type,
+            grad_x=grad_a,
+            grad_y=grad_b,
+            name=name,
+        )
       else:
         return gen_math_ops.batch_mat_mul_v2(
-            a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
+            a,
+            b,
+            adj_x=adjoint_a,
+            adj_y=adjoint_b,
+            grad_x=grad_a,
+            grad_y=grad_b,
+            name=name,
+        )
 
     # Neither matmul nor sparse_matmul support adjoint, so we conjugate
     # the matrix and use transpose instead. Conj() is a noop for real
@@ -3837,10 +3858,25 @@ def matmul(a,
         adjoint_a = adjoint_a or transpose_a
         adjoint_b = adjoint_b or transpose_b
         return gen_math_ops.batch_mat_mul_v3(
-            a, b, adj_x=adjoint_a, adj_y=adjoint_b, Tout=output_type, name=name)
+            a,
+            b,
+            adj_x=adjoint_a,
+            adj_y=adjoint_b,
+            Tout=output_type,
+            grad_x=grad_a,
+            grad_y=grad_b,
+            name=name,
+        )
       else:
         return gen_math_ops.mat_mul(
-            a, b, transpose_a=transpose_a, transpose_b=transpose_b, name=name)
+            a,
+            b,
+            transpose_a=transpose_a,
+            transpose_b=transpose_b,
+            grad_a=grad_a,
+            grad_b=grad_b,
+            name=name,
+        )
 
 
 @tf_export("linalg.matvec")
@@ -3884,7 +3920,7 @@ def matvec(a,
   b = tf.constant([7, 9, 11], shape=[3])
 
   # `a` * `b`
-  # [ 58,  64]
+  # [ 58,  139]
   c = tf.linalg.matvec(a, b)
 
 

@@ -86,10 +86,11 @@ tsl::StatusOr<std::array<int64_t, 3>> GetToolVersion(
     return tsl::errors::FailedPrecondition(
         "Couldn't get ptxas/nvlink version string: ", tool_version.status());
   }
+  static constexpr LazyRE2 kVersionRegex = {R"(\bV(\d+)\.(\d+)\.(\d+)\b)"};
   std::array<int64_t, 3> version;
-  std::string vmaj_str, vmin_str, vdot_str;
-  if (!RE2::PartialMatch(tool_version.value(), R"(\bV(\d+)\.(\d+)\.(\d+)\b)",
-                         &vmaj_str, &vmin_str, &vdot_str) ||
+  absl::string_view vmaj_str, vmin_str, vdot_str;
+  if (!RE2::PartialMatch(tool_version.value(), *kVersionRegex, &vmaj_str,
+                         &vmin_str, &vdot_str) ||
       !absl::SimpleAtoi(vmaj_str, &version[0]) ||
       !absl::SimpleAtoi(vmin_str, &version[1]) ||
       !absl::SimpleAtoi(vdot_str, &version[2])) {
@@ -257,6 +258,12 @@ tsl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
                                                   const char* ptx_contents,
                                                   GpuAsmOpts options,
                                                   bool cancel_if_reg_spill) {
+  auto ptxas_version_tuple = GetAsmCompilerVersion(options.preferred_cuda_dir);
+  if (ptxas_version_tuple.value() == std::array<int64_t, 3>{12, 3, 1}) {
+    return tsl::errors::Internal(
+        absl::StrFormat("ptxas 12.3.1 has a bug that we think can affect XLA. "
+                        "Please use a different version."));
+  }
   std::string ptxas_path =
       FindCudaExecutable("ptxas", options.preferred_cuda_dir);
 

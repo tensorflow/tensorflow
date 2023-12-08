@@ -471,7 +471,7 @@ auto OptionalBitcast(HloInstruction **optional_bitcast, Pattern pattern) {
 // when the output of the GEMM is requested in FP8 format.
 class GemmRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit GemmRewriterVisitor(se::GpuComputeCapability gpu_version)
+  explicit GemmRewriterVisitor(const se::GpuComputeCapability &gpu_version)
       : gpu_version_(gpu_version) {}
 
   Status HandleDot(HloInstruction *instr) override {
@@ -1869,12 +1869,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     TF_ASSIGN_OR_RETURN(bool output_is_column_major,
                         MatrixIsColumnMajor(instr, gemm_backend_config));
 
-    if (std::holds_alternative<se::RocmComputeCapability>(gpu_version_)) {
-      auto rocm_compute_capability_ =
-          std::get<se::RocmComputeCapability>(gpu_version_);
-
-      // as of ROCm 5.5, hipblaslt only supports MI200.
-      if (rocm_compute_capability_.gcn_arch_name().substr(0, 6) != "gfx90a") {
+    if (auto isrocm = std::get_if<se::RocmComputeCapability>(&gpu_version_);
+        isrocm) {
+      if (!isrocm->has_hipblaslt()) {
         return false;
       }
     }
@@ -1965,7 +1962,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 // having to match output tuples.
 class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit GemmWorkspaceRewriteVisitor(se::GpuComputeCapability gpu_version)
+  explicit GemmWorkspaceRewriteVisitor(
+      const se::GpuComputeCapability &gpu_version)
       : gpu_version_(gpu_version) {}
 
   Status HandleCustomCall(HloInstruction *instr) override {
@@ -1979,7 +1977,7 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
     // Pass a user-managed workspace to legacy cuBLAS operations, as
     // otherwise cuBLAS will use its own internal pool which will be competing
     // with XLA allocator for device memory.
-    int64_t workspace = cuda_cc == nullptr ? 0
+    int64_t workspace = cuda_cc == nullptr ? GemmConfig::kDefaultWorkspace
                         : cuda_cc->IsAtLeastHopper()
                             ? GemmConfig::kHopperWorkspace
                             : GemmConfig::kDefaultWorkspace;

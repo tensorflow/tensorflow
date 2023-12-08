@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_SIMPLE_MEMORY_ARENA_H_
 #define TENSORFLOW_LITE_SIMPLE_MEMORY_ARENA_H_
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -54,11 +53,16 @@ struct ArenaAllocWithUsageInterval {
   }
 };
 
+struct PointerAlignedPointerPair {
+  char* pointer;
+  char* aligned_pointer;
+};
+
 class ResizableAlignedBuffer {
  public:
-  explicit ResizableAlignedBuffer(size_t alignment, int subgraph_index)
-      : buffer_(nullptr),
-        allocation_size_(0),
+  ResizableAlignedBuffer(size_t alignment, int subgraph_index)
+      : buffer_{nullptr, nullptr},
+        data_size_(0),
         alignment_(alignment),
         subgraph_index_(subgraph_index) {
     // To silence unused private member warning, only used with
@@ -76,23 +80,22 @@ class ResizableAlignedBuffer {
   void Release();
 
   // Pointer to the data array.
-  char* GetPtr() const { return aligned_ptr_; }
-  // Size of the allocation (NOT of the data array).
-  size_t GetAllocationSize() const { return allocation_size_; }
+  char* GetPtr() const { return buffer_.aligned_pointer; }
+  // Size of the data array. Note: the allocated memory block might be larger
+  // due to excess alignment requirements.
+  size_t GetSize() const { return data_size_; }
   // Alignment of the data array.
   size_t GetAlignment() const { return alignment_; }
 
  private:
-  size_t RequiredAllocationSize(size_t data_array_size) const {
-    // malloc guarantees returned pointers are aligned to at least max_align_t.
-    return data_array_size +
-           std::max(std::size_t{0}, alignment_ - alignof(std::max_align_t));
-  }
+  ResizableAlignedBuffer(const ResizableAlignedBuffer&) = delete;
+  ResizableAlignedBuffer& operator=(const ResizableAlignedBuffer&) = delete;
+  ResizableAlignedBuffer(ResizableAlignedBuffer&&) = delete;
+  ResizableAlignedBuffer& operator=(ResizableAlignedBuffer&&) = delete;
 
-  char* buffer_;
-  size_t allocation_size_;
+  PointerAlignedPointerPair buffer_;
+  size_t data_size_;
   size_t alignment_;
-  char* aligned_ptr_;
 
   int subgraph_index_;
 };
@@ -155,9 +158,7 @@ class SimpleMemoryArena {
   // again until Commit() is called & tensor allocations are resolved.
   TfLiteStatus ReleaseBuffer();
 
-  size_t GetBufferSize() const {
-    return underlying_buffer_.GetAllocationSize();
-  }
+  size_t GetBufferSize() const { return underlying_buffer_.GetSize(); }
 
   std::intptr_t BasePointer() const {
     return reinterpret_cast<std::intptr_t>(underlying_buffer_.GetPtr());

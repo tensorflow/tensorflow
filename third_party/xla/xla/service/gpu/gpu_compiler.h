@@ -102,6 +102,9 @@ class GpuCompiler : public LLVMCompiler {
   Status RunPostSchedulingPipelines(HloModule* module,
                                     int64_t scheduler_mem_limit) const;
 
+  std::string target_triple() const { return target_triple_; }
+  std::string data_layout() const { return data_layout_; }
+
  protected:
   struct BackendCompileResult {
     std::string asm_text;

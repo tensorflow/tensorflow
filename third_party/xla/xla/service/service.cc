@@ -62,6 +62,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
 namespace {
@@ -750,6 +751,10 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
       "BuildExecutable on service %p with serialized module proto: %s", this,
       module_proto.name());
 
+  tsl::profiler::ScopedAnnotation annotation{[&] {
+    return absl::StrCat("XlaCompile:#module=", module_proto.name(), "#");
+  }};
+
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       CreateModuleFromProto(module_proto, *module_config, run_backend_only));
@@ -770,21 +775,26 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
                                     std::move(module), executor, options));
   }
 
+  tsl::profiler::ScopedAnnotation backend_annotation{[&] {
+    return absl::StrCat("XlaCompileBackend:#module=", module_proto.name(), "#");
+  }};
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       backend->compiler()->RunBackend(std::move(module), executor, options));
 
-  const HloProto* hlo_proto_after_opt = executable->hlo_proto();
+  const BufferAssignmentProto* buffer_assignment_proto_after_opt =
+      executable->buffer_assignment_proto();
 
   // If dumping is enabled RunBackend(...) will emit a hlo_proto in the
   // executable. This contains the buffer_assignment that is only available
   // after RunBackend(). If hlo_proto_before_opt is not null, then we replace
   // its buffer_assignment with the one from after_opt and then store it into
   // the executable.
-  if (hlo_proto_before_opt != nullptr && hlo_proto_after_opt != nullptr) {
+  if (hlo_proto_before_opt != nullptr &&
+      buffer_assignment_proto_after_opt != nullptr) {
     CHECK(DumpingEnabledForHloModule(executable->module()));
     *hlo_proto_before_opt->mutable_buffer_assignment() =
-        hlo_proto_after_opt->buffer_assignment();
+        std::move(*buffer_assignment_proto_after_opt);
     executable->set_hlo_proto(std::move(hlo_proto_before_opt));
   }
   return std::move(executable);

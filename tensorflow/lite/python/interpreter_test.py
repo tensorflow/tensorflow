@@ -308,11 +308,11 @@ class InterpreterTest(test_util.TensorFlowTestCase):
 
 class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
 
-  # Model must have at least 8 bytes to hold model identifier
+  # Model must have at least 7 bytes to hold model identifier
   def testTooShortModelContent(self):
     with self.assertRaisesRegex(
         ValueError,
-        'Model provided must have at least 8 bytes to hold identifier.',
+        'Model provided must have at least 7 bytes to hold identifier.',
     ):
       interpreter_wrapper.Interpreter(model_content=b'short')
 

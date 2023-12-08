@@ -33,12 +33,20 @@ namespace {
 
 namespace m = ::xla::match;
 
-class GemmAlgorithmPickerTest : public HloTestBase {
+class GemmAlgorithmPickerTest : public HloTestBase,
+                                public ::testing::WithParamInterface<bool> {
  public:
   GemmAlgorithmPickerTest() { AutotunerUtil::ClearAutotuneResults(); }
+
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_cublaslt(GetParam());
+    debug_options.set_xla_gpu_enable_triton_gemm(false);
+    return debug_options;
+  }
 };
 
-TEST_F(GemmAlgorithmPickerTest, SetAlgorithm) {
+TEST_P(GemmAlgorithmPickerTest, SetAlgorithm) {
   constexpr absl::string_view kHlo = R"(
 HloModule module
 
@@ -47,7 +55,10 @@ ENTRY main {
   %arg1 = f32[100,100]{1,0} parameter(1)
   ROOT %dot = f32[100,100]{1,0} dot(arg0, arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHlo));
+
+  auto module_cfg = GetModuleConfigForTest();
+  TF_ASSERT_OK_AND_ASSIGN(auto m,
+                          ParseAndReturnVerifiedModule(kHlo, module_cfg));
 
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
   TF_ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
@@ -57,7 +68,7 @@ ENTRY main {
   bool changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
       changed, RunHloPass(GemmRewriter(stream_exec->GetDeviceDescription()
-                                           .cuda_compute_capability()),
+                                           .gpu_compute_capability()),
                           m.get()));
   changed = false;
   DebugOptions opts;
@@ -79,11 +90,11 @@ ENTRY main {
 
   // Now send the same module through GemmAlgorithmPicker again.  The dot should
   // have the new algorithm.
-  TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(kHlo));
+  TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(kHlo, module_cfg));
   changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
       changed, RunHloPass(GemmRewriter(stream_exec->GetDeviceDescription()
-                                           .cuda_compute_capability()),
+                                           .gpu_compute_capability()),
                           m.get()));
   changed = false;
   TF_ASSERT_OK_AND_ASSIGN(changed,
@@ -92,15 +103,20 @@ ENTRY main {
 
   SCOPED_TRACE(m->ToString());
   HloInstruction* dot;
-  ASSERT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
+  if (module_cfg.debug_options().xla_gpu_enable_cublaslt()) {
+    ASSERT_THAT(m->entry_computation()->root_instruction(),
+                GmockMatch(m::CustomCall(&dot)));
+  } else {
+    ASSERT_THAT(m->entry_computation()->root_instruction(),
+                GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(GemmBackendConfig config,
                           dot->backend_config<GemmBackendConfig>());
   EXPECT_EQ(config.selected_algorithm(), new_algo_id);
 }
 
-TEST_F(GemmAlgorithmPickerTest, GetAlgorithmWithoutDevice) {
+TEST_P(GemmAlgorithmPickerTest, GetAlgorithmWithoutDevice) {
   constexpr absl::string_view kHlo = R"(
 HloModule module
 
@@ -109,7 +125,8 @@ ENTRY main {
   %arg1 = f32[100,100]{1,0} parameter(1)
   ROOT %dot = f32[100,100]{1,0} dot(arg0, arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto m, ParseAndReturnVerifiedModule(kHlo, GetModuleConfigForTest()));
 
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
   TF_ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
@@ -120,7 +137,7 @@ ENTRY main {
   bool changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
       changed, RunHloPass(GemmRewriter(stream_exec->GetDeviceDescription()
-                                           .cuda_compute_capability()),
+                                           .gpu_compute_capability()),
                           m.get()));
   changed = false;
 
@@ -142,9 +159,10 @@ ENTRY main {
   AutotunerUtil::ClearAutotuneResults();
   TF_ASSERT_OK(AutotunerUtil::LoadAutotuneResults(results));
 
+  auto module_cfg = GetModuleConfigForTest();
   // Now send the same module through GemmAlgorithmPicker again.  The dot should
   // have the new algorithm.
-  TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(kHlo));
+  TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(kHlo, module_cfg));
   changed = false;
 
   DevicelessConfig deviceless_config{
@@ -153,7 +171,7 @@ ENTRY main {
   AutotuneConfig deviceless_cfg{deviceless_config, opts};
   TF_ASSERT_OK_AND_ASSIGN(
       changed, RunHloPass(GemmRewriter(stream_exec->GetDeviceDescription()
-                                           .cuda_compute_capability()),
+                                           .gpu_compute_capability()),
                           m.get()));
   changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -162,13 +180,22 @@ ENTRY main {
 
   SCOPED_TRACE(m->ToString());
   HloInstruction* dot;
-  ASSERT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
+
+  if (module_cfg.debug_options().xla_gpu_enable_cublaslt()) {
+    ASSERT_THAT(m->entry_computation()->root_instruction(),
+                GmockMatch(m::CustomCall(&dot)));
+  } else {
+    ASSERT_THAT(m->entry_computation()->root_instruction(),
+                GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(GemmBackendConfig config,
                           dot->backend_config<GemmBackendConfig>());
   EXPECT_EQ(config.selected_algorithm(), new_algo_id);
 }
+
+INSTANTIATE_TEST_SUITE_P(GemmAlgorithmPickerTestSuite, GemmAlgorithmPickerTest,
+                         ::testing::Bool());
 
 }  // namespace
 }  // namespace xla::gpu

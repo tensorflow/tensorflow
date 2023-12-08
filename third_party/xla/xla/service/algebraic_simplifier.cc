@@ -6102,6 +6102,10 @@ Status AlgebraicSimplifierVisitor::HandleRsqrt(HloInstruction* rsqrt) {
 
 Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
     HloInstruction* dynamic_slice) {
+  // Skip optimizations for async dynamic-slices.
+  if (dynamic_slice->parent()->IsAsyncComputation()) {
+    return OkStatus();
+  }
   auto operand = dynamic_slice->mutable_operand(0);
   if (ShapeUtil::IsScalar(dynamic_slice->shape())) {
     return ReplaceInstruction(dynamic_slice, operand);
@@ -6358,6 +6362,10 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
 
 Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
     HloInstruction* dynamic_update_slice) {
+  // Skip optimizations for async dynamic update slices
+  if (dynamic_update_slice->parent()->IsAsyncComputation()) {
+    return OkStatus();
+  }
   // Rewriting DynamicUpdateSlice when it matches
   // dynamic_update_slice(broadcast(constant),data,constant_index0,...)
   // to a Pad(x, constant)

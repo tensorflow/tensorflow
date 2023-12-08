@@ -24,7 +24,8 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/call_frame.h"
-#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
@@ -59,12 +60,14 @@ CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info,
 CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info, XLA_FFI_Handler* handler,
                                  std::vector<std::optional<Slice>> operands,
                                  std::vector<std::optional<Slice>> results,
-                                 AttributesMap attributes)
+                                 AttributesMap attributes,
+                                 const HloComputation* called_computation)
     : Thunk(Thunk::kCustomCall, thunk_info),
       operands_(std::move(operands)),
       results_(std::move(results)),
       handler_(std::move(handler)),
-      attributes_(std::move(attributes)) {}
+      attributes_(std::move(attributes)),
+      called_computation_(called_computation) {}
 
 Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
   // gpu_stream is CUstream or e.g. the equivalent type in ROCm.
@@ -125,7 +128,10 @@ Status CustomCallThunk::ExecuteFfiHandler(const ExecuteParams& params) {
     }
   }
 
-  builder.AddAttributes(attributes_);
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Append(attributes_);
+
+  builder.AddAttributes(attrs.Build());
   CallFrame call_frame = builder.Build();
 
   // TODO(ezhulenev): Remove `ServiceExecutableRunOptions` from FFI handler
@@ -134,7 +140,7 @@ Status CustomCallThunk::ExecuteFfiHandler(const ExecuteParams& params) {
   run_options.set_stream(params.stream);
   ServiceExecutableRunOptions service_run_options(run_options);
 
-  CallOptions options = {&service_run_options};
+  CallOptions options = {&service_run_options, called_computation_};
   return Call(handler_, call_frame, options);
 }
 

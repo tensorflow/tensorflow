@@ -705,6 +705,7 @@ HloModule TestAllGatherAsyncWithSyncFlagFalse
 // CHECK: %[[TOKEN:.*]] = "lmhlo_gpu.all_gather_start"(%{{.*}}, %{{.*}}) <
 // CHECK-SAME: all_gather_dimension = 1 : i64
 // CHECK-SAME: is_sync = false
+// CHECK-SAME: no_parallel_custom_call = false
 // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
 // CHECK-SAME: use_global_device_ids = false
 // CHECK ""lmhlo_gpu.all_gather_done"(%[[TOKEN]])
@@ -723,12 +724,13 @@ HloModule TestAllGatherAsyncWithSyncFlagTrue
 // CHECK: %[[TOKEN:.*]] = "lmhlo_gpu.all_gather_start"(%{{.*}}, %{{.*}}) <
 // CHECK-SAME: all_gather_dimension = 1 : i64
 // CHECK-SAME: is_sync = true
+// CHECK-SAME: no_parallel_custom_call = true
 // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
 // CHECK-SAME: use_global_device_ids = false
 // CHECK ""lmhlo_gpu.all_gather_done"(%[[TOKEN]])
 ENTRY main {
   param0 = f32[10,20] parameter(0)
   ags = (f32[10,20], f32[10,80]) all-gather-start(param0), replica_groups={{0,1,2,3}},
-    dimensions={1}, backend_config="{\"is_sync\":true}"
+    dimensions={1}, backend_config="{\"is_sync\":true, \"no_parallel_custom_call\":true}"
   ROOT ag = f32[10,80] all-gather-done(ags)
 }

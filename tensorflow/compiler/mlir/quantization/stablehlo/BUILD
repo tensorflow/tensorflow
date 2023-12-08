@@ -25,7 +25,6 @@ package(
     licenses = ["notice"],
 )
 
-# TODO(b/264218457): Add quantize and post_quantize passes.
 cc_library(
     name = "passes",
     srcs = [
@@ -40,6 +39,7 @@ cc_library(
         "passes/replace_stablehlo_ops_in_main_function_with_xla_call_module_ops.cc",
         "passes/restore_function_name.cc",
         "passes/unfuse_mhlo_batch_norm.cc",
+        "passes/unwrap_xla_call_module_op.cc",
     ],
     hdrs = [
         "passes/passes.h",
@@ -91,6 +91,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Rewrite",
+        "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
@@ -102,9 +103,6 @@ cc_library(
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
     ],
-    # Alwayslink is required for registering the MLIR passes.
-    # TODO(b/255530126): Split the pass registration from the definitions to avoid binary size bloat.
-    alwayslink = True,
 )
 
 cc_library(
@@ -130,9 +128,6 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
     ],
-    # Alwayslink is required for registering the MLIR passes.
-    # TODO(b/255530126): Split the pass registration from the definitions to avoid binary size bloat.
-    alwayslink = True,
 )
 
 td_library(
@@ -253,8 +248,6 @@ cc_library(
         "@local_xla//xla/translate/hlo_to_mhlo:attribute_importer",
         "@stablehlo//:chlo_ops",
     ],
-    # Force link to ensure ConvertTFQuantOpsToMHLOPass is registered.
-    alwayslink = True,
 )
 
 tf_cc_test(
@@ -362,11 +355,8 @@ cc_library(
         ":fill_quantization_options",
         ":passes",
         ":quantization_options_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
         "//tensorflow/core/platform:path",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
     ],
@@ -515,6 +505,22 @@ tf_proto_library(
 #     api_version = 2,
 #     visibility = [":internal_visibility_allowlist_package"],
 #     deps = [":quantization_options_proto"],
+# )
+# copybara:uncomment_end
+
+tf_proto_library(
+    name = "quantization_config_proto",
+    srcs = ["quantization_config.proto"],
+    cc_api_version = 2,
+    visibility = ["//visibility:public"],
+)
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "quantization_config_py_pb2",
+#     api_version = 2,
+#     visibility = [":internal_visibility_allowlist_package"],
+#     deps = [":quantization_config_proto"],
 # )
 # copybara:uncomment_end
 

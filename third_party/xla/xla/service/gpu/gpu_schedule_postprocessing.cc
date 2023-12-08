@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
@@ -34,31 +35,32 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
-// Maps a computation to a boolean that indicates whether the computation
-// invokes gpu ops directly or indirectly.
-using GpuOpInComputation = absl::flat_hash_map<const HloComputation*, bool>;
+// Maps a computation to a boolean that indicates whether the computation may
+// invoke custom-calls directly or indirectly, which can eventually trigger gpu
+// synchronization.
+using CustomCallInComputation =
+    absl::flat_hash_map<const HloComputation*, bool>;
 
-// Returns whether the hlo may invoke gpu-ops which are operations that call
-// into CUDA, directly or indirectly. Currently, we only check for custom-calls
-// and fusion, because they are the only gpu-ops that can be parallel with
-// asynchronous collectives operations.
-bool MayInvokeGpuOp(HloInstruction* hlo,
-                    GpuOpInComputation& gpu_op_in_computation) {
-  if (hlo->opcode() == HloOpcode::kCustomCall ||
-      hlo->opcode() == HloOpcode::kFusion) {
+// Returns whether the hlo may invoke custom-calls which may trigger gpu
+// synchronization. Currently, we only check for custom-calls, because they are
+// the only operations that can be parallel with asynchronous collectives
+// operations in an hlo-schedule and may trigger gpu synchronization.
+bool MayInvokeCustomCall(
+    const HloInstruction* hlo,
+    const CustomCallInComputation& custom_call_in_computation) {
+  if (hlo->opcode() == HloOpcode::kCustomCall) {
     return true;
   }
 
-  return std::any_of(hlo->called_computations().begin(),
-                     hlo->called_computations().end(),
-                     [&](const HloComputation* callee) {
-                       return gpu_op_in_computation.find(callee)->second;
-                     });
+  return absl::c_any_of(
+      hlo->called_computations(), [&](const HloComputation* callee) {
+        return custom_call_in_computation.find(callee)->second;
+      });
 }
 
 // Returns true if this is an asynchronous collective start operation, excluding
 // P2P operations.
-StatusOr<bool> IsRelevantAsynchronousStart(HloInstruction* hlo) {
+StatusOr<bool> IsRelevantAsynchronousStart(const HloInstruction* hlo) {
   HloOpcode opcode = hlo->opcode();
   if (!hlo_query::IsAsyncCollectiveStartOp(opcode,
                                            /*include_send_recv=*/false)) {
@@ -71,37 +73,35 @@ StatusOr<bool> IsRelevantAsynchronousStart(HloInstruction* hlo) {
 
 // Returns true if this is a collective done operation, excluding P2P
 // operations.
-StatusOr<bool> IsRelevantAsynchronousDone(HloInstruction* hlo) {
+StatusOr<bool> IsRelevantAsynchronousDone(const HloInstruction* hlo) {
   HloOpcode opcode = hlo->opcode();
   return hlo_query::IsAsyncCollectiveDoneOp(opcode,
                                             /*include_send_recv=*/false);
 }
 
 // For a given computation, finds all the asynchronous collective operations
-// that aren't parallel with other gpu-op-invoking instructions and sets its
-// no_parallel_gpu_op attribute to true. Also records whether the given
-// computation may invoke gpu-ops.
-StatusOr<bool> ProcessComputation(HloSchedule& schedule,
-                                  HloComputation* computation,
-                                  GpuOpInComputation& gpu_op_in_computation) {
+// that aren't parallel with custom-calls and sets its no_parallel_custom_call
+// attribute to true. Also records whether the given computation may invoke
+// custom-calls.
+StatusOr<bool> ProcessComputation(
+    const HloSchedule& schedule, HloComputation* computation,
+    CustomCallInComputation& custom_call_in_computation) {
   bool changed = false;
-  bool has_gpu_op = false;
+  bool has_custom_call = false;
   absl::flat_hash_set<HloInstruction*> async_starts;
   const HloInstructionSequence& sequence = schedule.sequence(computation);
 
   // Visit instructions in the sequence. Collect relevant asynchronous
   // collective start ops. When we see a relevant asynchronous collective done
   // op, remove the corresponding start op from the collection and set its
-  // attribute no_parallel_gpu_op to true. When we see a gpu-op, clear the start
-  // ops from the collection and keep their attribute no_parallel_gpu_op as
-  // false.
+  // attribute no_parallel_custom_call to true. When we see a custom-call, clear
+  // the start ops from the collection and keep their attribute
+  // no_parallel_custom_call as false.
   const std::vector<HloInstruction*> all_instructions = sequence.instructions();
-  for (auto instr_it = all_instructions.begin();
-       instr_it != all_instructions.end(); ++instr_it) {
-    HloInstruction* hlo = *instr_it;
-    if (MayInvokeGpuOp(hlo, gpu_op_in_computation)) {
+  for (HloInstruction* hlo : all_instructions) {
+    if (MayInvokeCustomCall(hlo, custom_call_in_computation)) {
       async_starts.clear();
-      has_gpu_op = true;
+      has_custom_call = true;
       continue;
     }
     TF_ASSIGN_OR_RETURN(bool is_async_start, IsRelevantAsynchronousStart(hlo));
@@ -118,7 +118,7 @@ StatusOr<bool> ProcessComputation(HloSchedule& schedule,
         TF_ASSIGN_OR_RETURN(
             CollectiveBackendConfig collective_backend_config,
             async_start->backend_config<CollectiveBackendConfig>());
-        collective_backend_config.set_no_parallel_gpu_op(true);
+        collective_backend_config.set_no_parallel_custom_call(true);
         TF_RETURN_IF_ERROR(
             async_start->set_backend_config(collective_backend_config));
         async_starts.erase(async_start);
@@ -126,7 +126,7 @@ StatusOr<bool> ProcessComputation(HloSchedule& schedule,
     }
   }
 
-  gpu_op_in_computation[computation] = has_gpu_op;
+  custom_call_in_computation[computation] = has_custom_call;
   return changed;
 }
 
@@ -138,7 +138,7 @@ StatusOr<bool> GpuSchedulePostprocessing::Run(
   if (!module->has_schedule()) return false;
   HloSchedule& schedule = module->schedule();
   bool changed = false;
-  GpuOpInComputation gpu_op_in_computation;
+  CustomCallInComputation custom_call_in_computation;
 
   // We visit computations in the order of callees to callers, as information is
   // propagated from calles to callers.
@@ -148,12 +148,13 @@ StatusOr<bool> GpuSchedulePostprocessing::Run(
        ++iter) {
     HloComputation* computation = *iter;
     if (computation->IsFusionComputation()) {
-      gpu_op_in_computation[computation] = false;
+      custom_call_in_computation[computation] = false;
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(bool result, ProcessComputation(schedule, computation,
-                                                        gpu_op_in_computation));
+    TF_ASSIGN_OR_RETURN(
+        bool result,
+        ProcessComputation(schedule, computation, custom_call_in_computation));
     changed |= result;
   }
 

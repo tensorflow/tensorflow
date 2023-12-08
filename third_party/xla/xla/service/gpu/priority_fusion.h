@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/service/fusion_node_indexing_evaluation.h"
 #include "xla/service/fusion_queue.h"
 #include "xla/service/gpu/fusion_process_dump.pb.h"
+#include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_pass_interface.h"
@@ -42,12 +43,13 @@ namespace gpu {
 class GpuPriorityFusion : public InstructionFusion {
  public:
   GpuPriorityFusion(tsl::thread::ThreadPool* thread_pool,
-                    const se::DeviceDescription& d,
+                    const se::DeviceDescription& device,
                     GpuHloCostAnalysis::Options cost_analysis_options)
       : InstructionFusion(GpuPriorityFusion::IsExpensive),
         thread_pool_(thread_pool),
-        device_info_(d),
-        cost_analysis_options_(std::move(cost_analysis_options)) {}
+        device_info_(device),
+        cost_analysis_options_(std::move(cost_analysis_options)),
+        fusion_analysis_cache_(device_info_) {}
 
   absl::string_view name() const override { return "priority-fusion"; }
 
@@ -86,6 +88,7 @@ class GpuPriorityFusion : public InstructionFusion {
   absl::Mutex fusion_node_evaluations_mutex_;
   absl::flat_hash_map<const HloInstruction*, FusionNodeIndexingEvaluation>
       fusion_node_evaluations_;
+  HloFusionAnalysisCache fusion_analysis_cache_;
 };
 
 }  // namespace gpu
