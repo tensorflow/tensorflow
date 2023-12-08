@@ -170,7 +170,7 @@ py_strict_library(
         "//tensorflow/python/framework:_test_metrics_util",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:config",
-        "//tensorflow/python/framework:constant_tensor_conversion",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:extension_type",
         "//tensorflow/python/framework:flexible_dtypes",

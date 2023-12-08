@@ -25,6 +25,11 @@ from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
+# Import constant_tensor_conversion.py to register tensor conversion functions
+# for builtins. These functions were previously in this file, but were
+# refactored out so they can be registered at TF import time without importing
+# all of constant_op.py.
+from tensorflow.python.framework import constant_tensor_conversion  # pylint: disable=unused-import
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor as tensor_lib

@@ -336,7 +336,10 @@ py_strict_library(
 
 py_strict_library(
     name = "constant_op",
-    srcs = ["constant_op.py"],
+    srcs = [
+        "constant_op.py",
+        "constant_tensor_conversion.py",
+    ],
     srcs_version = "PY3",
     visibility = visibility + [
         "//smartass:__subpackages__",
@@ -357,16 +360,6 @@ py_strict_library(
         "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
-    ],
-)
-
-py_strict_library(
-    name = "constant_tensor_conversion",
-    srcs = ["constant_tensor_conversion.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":constant_op",
-        ":tensor_conversion_registry",
     ],
 )
 
