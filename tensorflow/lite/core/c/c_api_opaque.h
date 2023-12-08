@@ -108,6 +108,7 @@ TFL_CAPI_EXPORT extern size_t TfLiteOpaqueTensorByteSize(
     const TfLiteOpaqueTensor* opaque_tensor);
 
 /// Returns a pointer to the underlying data buffer.
+/// Returns nullptr if input is also nullptr.
 TFL_CAPI_EXPORT extern void* TfLiteOpaqueTensorData(
     const TfLiteOpaqueTensor* opaque_tensor);
 
