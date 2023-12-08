@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <iterator>
 #include <optional>
 #include <ostream>
@@ -33,7 +32,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -50,9 +48,11 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -193,19 +193,6 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& producer_map,
                      .input_dims_sizes = std::move(combined_sizes)};
 }
 
-// Groups indexing maps by  instructions.
-absl::flat_hash_map<const HloInstruction*, absl::flat_hash_set<IndexingMap>>
-GroupIndexingMapsByProducers(const HloInstructionIndexing& indexing,
-                             const HloInstruction* instr) {
-  absl::flat_hash_map<const HloInstruction*, absl::flat_hash_set<IndexingMap>>
-      result;
-  for (const auto& [operand_id, indexing_maps] : indexing.indexing_maps) {
-    result[instr->operand(operand_id)].insert(indexing_maps.begin(),
-                                              indexing_maps.end());
-  }
-  return result;
-}
-
 // Composes instruction indexing maps starting at the root instruction
 // until the HloParameterInstruction is found.
 StatusOr<HloInstructionIndexing> ComputeOutputToInputFusionOpIndexing(
@@ -231,29 +218,16 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputFusionOpIndexing(
   while (!bfs.empty()) {
     const HloInstruction* producer_instr = bfs.front();
     bfs.pop();
+    TF_CHECK_OK(FuseProducerConsumerOutputToInputIndexing(
+        producer_instr, &grouped_indexing_maps, mlir_context));
 
-    TF_ASSIGN_OR_RETURN(auto producer_indexing,
-                        ComputeOutputToInputIndexing(
-                            producer_instr, /*output_id=*/0, mlir_context));
-
-    auto consumer_indexing_maps = grouped_indexing_maps[producer_instr];
-    for (const auto& [producer_operand_id, producer_operand_indexing] :
-         producer_indexing.indexing_maps) {
-      const HloInstruction* producer_operand_instr =
-          producer_instr->operand(producer_operand_id);
-      for (const IndexingMap& producer_map : producer_operand_indexing) {
-        for (const IndexingMap& consumer_map : consumer_indexing_maps) {
-          grouped_indexing_maps[producer_operand_instr].insert(
-              ComposeIndexingMaps(producer_map, consumer_map));
-        }
-      }
+    for (const HloInstruction* producer_operand_instr :
+         producer_instr->operands()) {
       if (producer_operand_instr->opcode() != HloOpcode::kParameter) {
         bfs.push(producer_operand_instr);
       }
     }
-    grouped_indexing_maps.erase(producer_instr);
   }
-
   // After the traversal, `grouped_indexing_maps` is keyed by
   // HloParameterInstructions. Convert them back to the operand id and return.
   HloInstructionIndexing fusion_indexing;
@@ -1063,6 +1037,43 @@ HloInstructionIndexing HloInstructionIndexing::FromIndexingMaps(
 
 std::string HloInstructionIndexing::ToString() const {
   return ToStringImpl(*this);
+}
+
+absl::flat_hash_map<const HloInstruction*, absl::flat_hash_set<IndexingMap>>
+GroupIndexingMapsByProducers(const HloInstructionIndexing& indexing,
+                             const HloInstruction* instr) {
+  absl::flat_hash_map<const HloInstruction*, absl::flat_hash_set<IndexingMap>>
+      result;
+  for (const auto& [operand_id, indexing_maps] : indexing.indexing_maps) {
+    result[instr->operand(operand_id)].insert(indexing_maps.begin(),
+                                              indexing_maps.end());
+  }
+  return result;
+}
+
+Status FuseProducerConsumerOutputToInputIndexing(
+    const HloInstruction* producer_instr,
+    absl::flat_hash_map<const HloInstruction*,
+                        absl::flat_hash_set<IndexingMap>>* consumer_indexing,
+    MLIRContext* mlir_context) {
+  TF_ASSIGN_OR_RETURN(auto producer_indexing,
+                      ComputeOutputToInputIndexing(
+                          producer_instr, /*output_id=*/0, mlir_context));
+
+  auto consumer_indexing_maps = (*consumer_indexing)[producer_instr];
+  for (const auto& [producer_operand_id, producer_operand_indexing] :
+       producer_indexing.indexing_maps) {
+    const HloInstruction* producer_operand_instr =
+        producer_instr->operand(producer_operand_id);
+    for (const IndexingMap& producer_map : producer_operand_indexing) {
+      for (const IndexingMap& consumer_map : consumer_indexing_maps) {
+        (*consumer_indexing)[producer_operand_instr].insert(
+            ComposeIndexingMaps(producer_map, consumer_map));
+      }
+    }
+  }
+  consumer_indexing->erase(producer_instr);
+  return OkStatus();
 }
 
 StatusOr<HloInstructionIndexing> ComputeOutputToInputIndexing(

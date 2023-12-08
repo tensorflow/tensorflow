@@ -92,6 +92,44 @@ class TileAnalysisTest : public HloTestBase {
   mlir::MLIRContext mlir_context_;
 };
 
+TEST_F(TileAnalysisTest, FuseProducerConsumerOutputToInputIndexing) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[1000, 1000] parameter(0)
+      transpose_p0 = f32[1000, 1000]{0, 1} transpose(p0), dimensions={1, 0}
+      ROOT a0 = f32[1000, 1000] add(p0, transpose_p0)
+    }
+  )"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* parameter = root->operand(0);
+  const HloInstruction* transpose = root->operand(1);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto root_indexing,
+      ComputeOutputToInputIndexing(root, /*output_id=*/0, &mlir_context_));
+
+  auto grouped_by_key = GroupIndexingMapsByProducers(root_indexing, root);
+
+  EXPECT_THAT(
+      grouped_by_key,
+      UnorderedElementsAre(
+          Pair(parameter, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0, d1)",
+                                                       std::vector<int>{}))),
+          Pair(transpose, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0, d1)",
+                                                       std::vector<int>{})))));
+
+  TF_CHECK_OK(FuseProducerConsumerOutputToInputIndexing(
+      transpose, &grouped_by_key, &mlir_context_));
+  EXPECT_THAT(
+      grouped_by_key,
+      UnorderedElementsAre(Pair(
+          parameter,
+          UnorderedElementsAre(
+              MatchIndexingMap("(d0, d1) -> (d0, d1)", std::vector<int>{}),
+              MatchIndexingMap("(d0, d1) -> (d1, d0)", std::vector<int>{})))));
+}
+
 TEST_F(TileAnalysisTest, ElementwiseOp) {
   auto ir = R"(
     HloModule m
