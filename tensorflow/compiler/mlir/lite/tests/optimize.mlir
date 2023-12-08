@@ -2586,6 +2586,42 @@ func.func @DontConvertConstSelectMixed(%arg0: tensor<2xf32>, %arg1: tensor<2xf32
   // CHECK: return %0, %1
 }
 
+// CHECK-LABEL: FoldFillOpIntoDivOpRHS
+func.func @FoldFillOpIntoDivOpRHS(%arg0: tensor<1x4x1440x1440xf32>, %arg1: tensor<4xi64>) -> tensor<1x4x1440x1440xf32> {
+  %cst_2 = arith.constant dense<5.0> : tensor<f32>
+
+  %1 = "tfl.fill"(%arg1, %cst_2) : (tensor<4xi64>, tensor<f32>) -> tensor<1x4x1440x1440xf32>
+  %36 = tfl.div %arg0, %1 {fused_activation_function = "NONE"} : tensor<1x4x1440x1440xf32>
+  return %36 : tensor<1x4x1440x1440xf32>
+  // CHECK: %cst = arith.constant dense<5.000000e+00> : tensor<f32>
+  // CHECK: %0 = tfl.div(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<1x4x1440x1440xf32>, tensor<f32>) -> tensor<1x4x1440x1440xf32>
+  // CHECK: return %0 : tensor<1x4x1440x1440xf32>
+}
+
+// CHECK-LABEL: FoldFillOpIntoDivOpLHS
+func.func @FoldFillOpIntoDivOpLHS(%arg0: tensor<1x4x1440x1440xf32>, %arg1: tensor<4xi64>) -> tensor<1x4x1440x1440xf32> {
+  %cst_2 = arith.constant dense<5.0> : tensor<f32>
+
+  %1 = "tfl.fill"(%arg1, %cst_2) : (tensor<4xi64>, tensor<f32>) -> tensor<1x4x1440x1440xf32>
+  %36 = tfl.div %1, %arg0 {fused_activation_function = "NONE"} : tensor<1x4x1440x1440xf32>
+  return %36 : tensor<1x4x1440x1440xf32>
+  // CHECK: %cst = arith.constant dense<5.000000e+00> : tensor<f32>
+  // CHECK: %0 = tfl.div(%cst, %arg0) <{fused_activation_function = "NONE"}> : (tensor<f32>, tensor<1x4x1440x1440xf32>) -> tensor<1x4x1440x1440xf32>
+  // CHECK: return %0 : tensor<1x4x1440x1440xf32>
+}
+
+// CHECK-LABEL: FoldFillOpIntoMulOp
+func.func @FoldFillOpIntoMulOp(%arg0: tensor<1x4x1440x1440xf32>, %arg1: tensor<4xi64>) -> tensor<1x4x1440x1440xf32> {
+  %cst_2 = arith.constant dense<5.0> : tensor<f32>
+
+  %1 = "tfl.fill"(%arg1, %cst_2) : (tensor<4xi64>, tensor<f32>) -> tensor<1x4x1440x1440xf32>
+  %36 = tfl.mul %arg0, %1 {fused_activation_function = "NONE"} : tensor<1x4x1440x1440xf32>
+  return %36 : tensor<1x4x1440x1440xf32>
+  // CHECK: %cst = arith.constant dense<5.000000e+00> : tensor<f32>
+  // CHECK: %0 = tfl.mul(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<1x4x1440x1440xf32>, tensor<f32>) -> tensor<1x4x1440x1440xf32>
+  // CHECK: return %0 : tensor<1x4x1440x1440xf32>
+}
+
 // CHECK-LABEL: FuseBroadcastToIntoSelectCondition
 func.func @FuseBroadcastToIntoSelectCondition(%arg0: tensor<1x8x1024x2048xf32>, %arg1: tensor<1x8x1024x2048xf32>, %arg2: tensor<1x1x1x2048xi1>) -> (tensor<1x8x1024x2048xf32>, tensor<1x8x1024x2048xf32>) {
   %cst_0 = arith.constant dense<[1, 8, 1024, 2048]> : tensor<4xi32>

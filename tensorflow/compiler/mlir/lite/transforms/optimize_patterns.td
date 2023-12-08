@@ -497,6 +497,26 @@ multiclass FuseTileBroadcastIntoFollowingBinary<Op BinaryOp> {
   [(OperandsBroadcastToOutputType $operand, $input, $result),
    (HasRankAtMost<4> $operand),
    (HasRankAtMost<4> $input)]>;
+
+  def FoldFillOpIntoBinaryOpRHS#BinaryOp : Pat<
+    (BinaryOp:$result $operand,
+      (TFL_FillOp:$fill_output $fill_dims,
+        (Arith_ConstantOp:$fill_value $val)), $act_func),
+    (BinaryOp $operand, $fill_value, $act_func),
+  [(OperandsBroadcastToOutputType $operand, $fill_value, $result),
+   (HasRankAtMost<4> $operand),
+   (HasRankAtMost<4> $fill_output),
+   (IsRankLessThanEqualTo $fill_output, $operand)]>;
+
+  def FoldFillOpIntoBinaryOpLHS#BinaryOp : Pat<
+    (BinaryOp:$result
+      (TFL_FillOp:$fill_output $fill_dims, (Arith_ConstantOp:$fill_value $val)),
+      $operand, $act_func),
+    (BinaryOp $fill_value, $operand, $act_func),
+  [(OperandsBroadcastToOutputType $operand, $fill_value, $result),
+   (HasRankAtMost<4> $operand),
+   (HasRankAtMost<4> $fill_output),
+   (IsRankLessThanEqualTo $fill_output, $operand)]>;
 }
 
 // Multi-pattern consisting of matching stand-alone op or op followed by relu.
