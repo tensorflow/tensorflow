@@ -74,10 +74,11 @@ class ShardingCallback(abc.ABC):
   A callback function wrapper that will be executed to determine how tensors
   will be split into shards when the saver writes the checkpoint shards to disk.
 
-  When calling the callback, it takes a list of
-  `tf.train.experimental.ShardableTensor`s as input (as well as any kwargs
-  defined by the `tf.train.experimental.ShardingCallback` subclass), and outputs
-  a `tensors_by_shard` dict.
+  The callback takes a list of `tf.train.experimental.ShardableTensor`s as input
+  (as well as any kwargs defined by the `tf.train.experimental.ShardingCallback`
+  subclass), and organizes the input tensors into different shards. Tensors are
+  first organized by device task (see `tf.DeviceSpec`), then the callback will
+  be called for each collection of tensors.
 
   There are a few restrictions to keep in mind when creating a custom callback:
     - Tensors must not be removed from the checkpoint.
@@ -140,7 +141,7 @@ class ShardingCallback(abc.ABC):
   @abc.abstractmethod
   def __call__(
       self, shardable_tensors: Sequence[ShardableTensor]
-  ) -> Sequence[TensorSlice]:
+  ) -> Sequence[TensorSliceDict]:
     pass
 
   def __hash__(self) -> int:

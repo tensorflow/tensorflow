@@ -33,18 +33,18 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training import server_lib
 from tensorflow.python.training.saving import saveable_object
+from tensorflow.python.training.saving import saveable_object_util
 
 
 class ShardingUtilTest(test.TestCase):
 
-  def _get_shardable_tensors(self, root):
+  def _get_shardable_tensors_by_task(self, root):
     serialized_tensors, _, _, _ = (
         checkpoint.TrackableSaver(graph_view.ObjectGraphView(root))
         ._gather_serialized_tensors(None))
 
-    shardable_tensors = []
+    shardable_tensors_by_task = {}
     for obj, tensor_dict in serialized_tensors.items():
-      # Divide tensor_dict by device.
       for checkpoint_key, tensor_slice_dict in tensor_dict.items():
         if not isinstance(tensor_slice_dict, dict):
           # Make sure that maybe_tensor is structured as {slice_spec -> tensor}.
@@ -61,7 +61,9 @@ class ShardingUtilTest(test.TestCase):
           device = (device_lib.DeviceSpec.from_string(tensor_save_spec.device)
                     if isinstance(tensor_save_spec.device, str)
                     else tensor_save_spec.device)
-          shardable_tensors.append(
+          task = device_lib.DeviceSpec.from_string(
+              saveable_object_util.set_cpu0(device.to_string()))
+          shardable_tensors_by_task.setdefault(task, []).append(
               sharding_util.ShardableTensor(
                   _tensor_save_spec=tensor_save_spec,
                   tensor=save_spec_tensor,
@@ -72,7 +74,7 @@ class ShardingUtilTest(test.TestCase):
                   slice_spec=slice_spec.strip(),
                   checkpoint_key=checkpoint_key,
                   trackable=obj))
-    return shardable_tensors
+    return shardable_tensors_by_task.values()
 
   def test_hash_ShardingCallback(self):
     class BlankCallback(sharding_util.ShardingCallback):
@@ -82,7 +84,7 @@ class ShardingUtilTest(test.TestCase):
 
       def __call__(
           self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
-      ) -> Sequence[sharding_util.TensorSlice]:
+      ) -> Sequence[sharding_util.TensorSliceDict]:
         pass
 
     self.assertEqual(hash(BlankCallback()), hash(BlankCallback()))
@@ -97,7 +99,7 @@ class ShardingUtilTest(test.TestCase):
 
       def __call__(
           self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
-      ) -> Sequence[sharding_util.TensorSlice]:
+      ) -> Sequence[sharding_util.TensorSliceDict]:
         pass
 
     self.assertEqual(hash(ValueCallback(1)), hash(ValueCallback(1)))
@@ -115,12 +117,18 @@ class ShardingUtilTest(test.TestCase):
     root.v1 = v1
     root.v2 = v2
 
-    shardable_tensors = self._get_shardable_tensors(root)
-    sharding_callback = sharding_policies.ShardByDevicePolicy()
-    shards = sharding_callback(shardable_tensors)
+    shardable_tensors = self._get_shardable_tensors_by_task(root)
+    shardable_tensors_flat = []
+    for tensors in shardable_tensors:
+      shardable_tensors_flat.extend(tensors)
+
+    sharding_callback = sharding_policies.ShardByTaskPolicy()
+    shards = []
+    for tensors in shardable_tensors:
+      shards.extend(sharding_callback(tensors))
 
     sharding_util.validate_shards(
-        shards, shardable_tensors, sharding_callback.description)
+        shards, shardable_tensors_flat, sharding_callback.description)
 
     self.assertEqual(
         [list(shard.keys()) for shard in shards],
@@ -157,7 +165,7 @@ class ShardingUtilTest(test.TestCase):
 
       def __call__(
           self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
-      ) -> Sequence[sharding_util.TensorSlice]:
+      ) -> Sequence[sharding_util.TensorSliceDict]:
         tensor = shardable_tensors[0].tensor
         checkpoint_key = shardable_tensors[0].checkpoint_key
         slice_spec = shardable_tensors[0].slice_spec
@@ -167,15 +175,21 @@ class ShardingUtilTest(test.TestCase):
         ]
         return shards
 
+    shardable_tensors = self._get_shardable_tensors_by_task(root)
+    shardable_tensors_flat = []
+    for tensors in shardable_tensors:
+      shardable_tensors_flat.extend(tensors)
+
     sharding_callback = DuplicateTensorCallback()
-    shardable_tensors = self._get_shardable_tensors(root)
-    shards = sharding_callback(shardable_tensors)
+    shards = []
+    for tensors in shardable_tensors:
+      shards.extend(sharding_callback(tensors))
 
     with self.assertRaisesRegex(RuntimeError,
                                 "multiple tensors with the same checkpoint "
                                 "key and slice spec were found"):
       sharding_util.validate_shards(
-          shards, shardable_tensors, sharding_callback.description)
+          shards, shardable_tensors_flat, sharding_callback.description)
 
   def test_validate_shards_added_tensor(self):
     root = module.Module()
@@ -190,20 +204,26 @@ class ShardingUtilTest(test.TestCase):
 
       def __call__(
           self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
-      ) -> Sequence[sharding_util.TensorSlice]:
+      ) -> Sequence[sharding_util.TensorSliceDict]:
         checkpoint_key = "ADDED_TENSOR_ABC123"
         slice_spec = ""
         tensor = tensor_lib.Tensor()
         return [{checkpoint_key: {slice_spec: tensor}}]
 
+    shardable_tensors = self._get_shardable_tensors_by_task(root)
+    shardable_tensors_flat = []
+    for tensors in shardable_tensors:
+      shardable_tensors_flat.extend(tensors)
+
     sharding_callback = AddedTensorCallback()
-    shardable_tensors = self._get_shardable_tensors(root)
-    shards = sharding_callback(shardable_tensors)
+    shards = []
+    for tensors in shardable_tensors:
+      shards.extend(sharding_callback(tensors))
 
     with self.assertRaisesRegex(RuntimeError,
                                 "a tensor not originally in the object graph"):
       sharding_util.validate_shards(
-          shards, shardable_tensors, sharding_callback.description)
+          shards, shardable_tensors_flat, sharding_callback.description)
 
   def test_validate_shards_shape_change(self):
     root = module.Module()
@@ -218,7 +238,7 @@ class ShardingUtilTest(test.TestCase):
 
       def __call__(
           self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
-      ) -> Sequence[sharding_util.TensorSlice]:
+      ) -> Sequence[sharding_util.TensorSliceDict]:
         shards = []
         for shardable_tensor in shardable_tensors:
           tensor = shardable_tensor.tensor
@@ -229,14 +249,20 @@ class ShardingUtilTest(test.TestCase):
           shards.append({checkpoint_key: {slice_spec: tensor}})
         return shards
 
+    shardable_tensors = self._get_shardable_tensors_by_task(root)
+    shardable_tensors_flat = []
+    for tensors in shardable_tensors:
+      shardable_tensors_flat.extend(tensors)
+
     sharding_callback = ShapeChangeCallback()
-    shardable_tensors = self._get_shardable_tensors(root)
-    shards = sharding_callback(shardable_tensors)
+    shards = []
+    for tensors in shardable_tensors:
+      shards.extend(sharding_callback(tensors))
 
     with self.assertRaisesRegex(RuntimeError,
                                 "a tensor was found with an altered shape"):
       sharding_util.validate_shards(
-          shards, shardable_tensors, sharding_callback.description)
+          shards, shardable_tensors_flat, sharding_callback.description)
 
   def test_validate_shards_dtype_change(self):
     root = module.Module()
@@ -251,7 +277,7 @@ class ShardingUtilTest(test.TestCase):
 
       def __call__(
           self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
-      ) -> Sequence[sharding_util.TensorSlice]:
+      ) -> Sequence[sharding_util.TensorSliceDict]:
         shards = []
         for shardable_tensor in shardable_tensors:
           tensor = shardable_tensor.tensor
@@ -262,14 +288,20 @@ class ShardingUtilTest(test.TestCase):
           shards.append({checkpoint_key: {slice_spec: tensor}})
         return shards
 
+    shardable_tensors = self._get_shardable_tensors_by_task(root)
+    shardable_tensors_flat = []
+    for tensors in shardable_tensors:
+      shardable_tensors_flat.extend(tensors)
+
     sharding_callback = DtypeChangeCallback()
-    shardable_tensors = self._get_shardable_tensors(root)
-    shards = sharding_callback(shardable_tensors)
+    shards = []
+    for tensors in shardable_tensors:
+      shards.extend(sharding_callback(tensors))
 
     with self.assertRaisesRegex(RuntimeError,
                                 "a tensor was found with an altered dtype"):
       sharding_util.validate_shards(
-          shards, shardable_tensors, sharding_callback.description)
+          shards, shardable_tensors_flat, sharding_callback.description)
 
   def test_validate_shards_different_tasks(self):
     servers = [server_lib.Server.create_local_server() for _ in range(3)]
@@ -292,7 +324,7 @@ class ShardingUtilTest(test.TestCase):
 
       def __call__(
           self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
-      ) -> Sequence[sharding_util.TensorSlice]:
+      ) -> Sequence[sharding_util.TensorSliceDict]:
         shard = {}
         for shardable_tensor in shardable_tensors:
           tensor = shardable_tensor.tensor
@@ -301,14 +333,18 @@ class ShardingUtilTest(test.TestCase):
           shard.setdefault(checkpoint_key, {})[slice_spec] = tensor
         return [shard]
 
+    shardable_tensors = self._get_shardable_tensors_by_task(root)
+    shardable_tensors_flat = []
+    for tensors in shardable_tensors:
+      shardable_tensors_flat.extend(tensors)
+
     sharding_callback = DifferentTasksCallback()
-    shardable_tensors = self._get_shardable_tensors(root)
-    shards = sharding_callback(shardable_tensors)
+    shards = sharding_callback(shardable_tensors_flat)
 
     with self.assertRaisesRegex(RuntimeError,
                                 "tensors with different tasks were found"):
       sharding_util.validate_shards(
-          shards, shardable_tensors, sharding_callback.description)
+          shards, shardable_tensors_flat, sharding_callback.description)
 
   def test_validate_shards_tensor_removal(self):
     root = module.Module()
@@ -323,17 +359,23 @@ class ShardingUtilTest(test.TestCase):
 
       def __call__(
           self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
-      ) -> Sequence[sharding_util.TensorSlice]:
+      ) -> Sequence[sharding_util.TensorSliceDict]:
         return []
 
+    shardable_tensors = self._get_shardable_tensors_by_task(root)
+    shardable_tensors_flat = []
+    for tensors in shardable_tensors:
+      shardable_tensors_flat.extend(tensors)
+
     sharding_callback = TensorRemovalCallback()
-    shardable_tensors = self._get_shardable_tensors(root)
-    shards = sharding_callback(shardable_tensors)
+    shards = []
+    for tensors in shardable_tensors:
+      shards.extend(sharding_callback(tensors))
 
     with self.assertRaisesRegex(RuntimeError,
                                 "tensors in the object graph were not found"):
       sharding_util.validate_shards(
-          shards, shardable_tensors, sharding_callback.description)
+          shards, shardable_tensors_flat, sharding_callback.description)
 
 
 if __name__ == "__main__":

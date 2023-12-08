@@ -21,7 +21,6 @@ from absl import logging
 
 from tensorflow.python.checkpoint.sharding import sharding_util
 from tensorflow.python.eager import context
-from tensorflow.python.framework import device as device_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor as tensor_lib
@@ -29,21 +28,20 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.training.saving import saveable_object_util
 
 
-class ShardByDevicePolicy(sharding_util.ShardingCallback):
-  """Policy that splits tensors into shards based on their device spec."""
+class ShardByTaskPolicy(sharding_util.ShardingCallback):
+  """Policy that splits tensors into shards based on their device spec task."""
 
   @property
   def description(self) -> str:
-    return "Split tensors into shards based on their device spec."
+    return "Split tensors into shards based on their device spec task."
 
   def __call__(
       self,
       shardable_tensors: Sequence[sharding_util.ShardableTensor]
-  ) -> Sequence[sharding_util.TensorSlice]:
-    """Callback to split tensors into shards based on their device spec.
+  ) -> Sequence[sharding_util.TensorSliceDict]:
+    """Callback to split tensors into shards based on their device spec task.
 
     Args:
       shardable_tensors: A list of ShardableTensors.
@@ -52,20 +50,17 @@ class ShardByDevicePolicy(sharding_util.ShardingCallback):
       List of shard dicts containing tensors.
           [ {checkpoint key: {slice_spec: tensor} } ]
     """
-    tensors_by_device = {}
+    tensors_by_task = {}
 
     for shardable_tensor in shardable_tensors:
       tensor = shardable_tensor.tensor
       checkpoint_key = shardable_tensor.checkpoint_key
       slice_spec = shardable_tensor.slice_spec
-      device = device_lib.DeviceSpec.from_string(
-          saveable_object_util.set_cpu0(shardable_tensor.device.to_string()))
 
-      (tensors_by_device
-       .setdefault(device, {})
+      (tensors_by_task
        .setdefault(checkpoint_key, {})[slice_spec]) = tensor
 
-    return list(tensors_by_device.values())
+    return [tensors_by_task]
 
 
 _PartitionAxisAndSize = tuple[int, int]
@@ -230,7 +225,8 @@ class MaxShardSizePolicy(sharding_util.ShardingCallback):
 
       if dtype == dtypes.string:
         if not context.executing_eagerly():
-          root_tensor = ops.get_default_session().run(root_tensor)
+          with ops.device(shardable_tensor.device):
+            root_tensor = ops.get_default_session().run(root_tensor)
         if root_shape.rank is None or root_shape.rank == 0:
           sizes = [string_ops.string_length(root_tensor, unit="BYTE")]
         else:
@@ -239,7 +235,8 @@ class MaxShardSizePolicy(sharding_util.ShardingCallback):
         if context.executing_eagerly():
           sizes = [size.numpy() for size in sizes]
         else:
-          sizes = ops.get_default_session().run(sizes)
+          with ops.device(shardable_tensor.device):
+            sizes = ops.get_default_session().run(sizes)
         total_size = sum(sizes)
         dtype_size = max(sizes)
 
