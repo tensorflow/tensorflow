@@ -3742,6 +3742,26 @@ func.func @convert_gather(%arg0: tensor<147456xf16>, %arg1: tensor<192x256x1xi32
   func.return %0 : tensor<192x256xf16>
 }
 
+// CHECK-LABEL:   func @convert_gather_with_ui32indices(
+// CHECK-SAME:                         %[[ARG_0:.*]]: tensor<147456xf16>,
+// CHECK-SAME:                         %[[ARG_1:.*]]: tensor<192x256x1xui32>)
+// CHECK:            %[[INDICES:.*]] = "tf.Cast"(%arg1) <{Truncate = false}> : (tensor<192x256x1xui32>) -> tensor<192x256x1xi64>
+// CHECK:            %[[VAL_0:.*]] = "tf.GatherNd"(%[[ARG_0]], %[[INDICES]]) : {{.*}} -> tensor<192x256xf16>
+// CHECK:            return %[[VAL_0]]
+// CHECK:         }
+func.func @convert_gather_with_ui32indices(%arg0: tensor<147456xf16>, %arg1: tensor<192x256x1xui32>) -> tensor<192x256xf16> {
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0],
+      index_vector_dim = 2,
+			start_index_map = [0],
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<1> : tensor<1xi64>
+  } : (tensor<147456xf16>, tensor<192x256x1xui32>) -> tensor<192x256xf16>
+  func.return %0 : tensor<192x256xf16>
+}
+
 // CHECK-LABEL:   func @convert_gather_nd(
 // CHECK-SAME:                            %[[VAL_0:.*]]: tensor<98x128xf32>,
 // CHECK-SAME:                            %[[VAL_1:.*]]: tensor<4x64xi32>)
