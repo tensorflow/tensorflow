@@ -240,6 +240,15 @@ std::pair<int64_t, bool> ChooseOperandToFollow(
     const StrategyMap& strategy_map, const InstructionDepthMap& depth_map,
     const AliasMap& alias_map, int64_t max_depth, const HloInstruction* ins);
 
+void FillAllStrategiesForArray(
+    std::unique_ptr<StrategyGroup>& strategy_group, const HloInstruction* ins,
+    const Shape& shape, const ClusterEnvironment& cluster_env,
+    const StrategyMap& strategy_map, const AutoShardingOption& option,
+    double replicated_penalty, const InstructionBatchDimMap& batch_dim_map,
+    const CallGraph& call_graph, bool only_allow_divisible,
+    bool create_replicated_strategies,
+    bool create_partially_replicated_strategies);
+
 StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
     const HloInstruction* ins, const Shape& shape, size_t instruction_id,
     StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
@@ -272,7 +281,8 @@ std::unique_ptr<StrategyGroup> CreateReshapeStrategies(
     const StrategyMap& strategy_map, const ClusterEnvironment& cluster_env,
     bool only_allow_divisible, double replicated_penalty,
     const InstructionBatchDimMap& batch_dim_map,
-    const AutoShardingOption& option, StrategyGroups& strategy_groups);
+    const AutoShardingOption& option, StrategyGroups& strategy_groups,
+    const CallGraph& call_graph);
 
 std::unique_ptr<StrategyGroup> CreateTupleStrategyGroup(size_t instruction_id);
 

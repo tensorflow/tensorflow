@@ -278,7 +278,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         strategy_group = CreateReshapeStrategies(
             instruction_id, ins, strategy_map, cluster_env,
             only_allow_divisible, replicated_penalty, batch_dim_map, option,
-            strategy_groups);
+            strategy_groups, call_graph);
         break;
       }
       case HloOpcode::kTranspose:
@@ -424,7 +424,6 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
                                 strategy_group, 0);
         }
-
         break;
       }
       case HloOpcode::kOptimizationBarrier: {
@@ -445,7 +444,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           strategy_group = CreateReshapeStrategies(
               instruction_id, ins, strategy_map, cluster_env,
               only_allow_divisible, replicated_penalty, batch_dim_map, option,
-              strategy_groups);
+              strategy_groups, call_graph);
         }
         break;
       }
@@ -690,6 +689,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           child_strategies->tuple_element_idx = i;
           strategy_group->childs.push_back(std::move(child_strategies));
         }
+
         break;
       }
       case HloOpcode::kConditional:
