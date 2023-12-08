@@ -82,7 +82,6 @@ class CPUIDInfo {
       : have_adx_(0),
         have_aes_(0),
         have_amx_bf16_(0),
-        have_amx_fp16_(0),
         have_amx_int8_(0),
         have_amx_tile_(0),
         have_avx_(0),
@@ -99,11 +98,8 @@ class CPUIDInfo {
         have_avx512_4vnniw_(0),
         have_avx512_4fmaps_(0),
         have_avx512_bf16_(0),
-        have_avx512_fp16_(0),
         have_avx512_vnni_(0),
         have_avx_vnni_(0),
-        have_avx_vnni_int8_(0),
-        have_avx_ne_convert_(0),
         have_bmi1_(0),
         have_bmi2_(0),
         have_cmov_(0),
@@ -230,19 +226,12 @@ class CPUIDInfo {
     cpuid->have_amx_int8_ = (edx >> 25) & 0x1;
     cpuid->have_amx_bf16_ = (edx >> 22) & 0x1;
 
-    // Check for avx512_fp16 using information from Xbyak in oneDNN:
-    // https://github.com/oneapi-src/oneDNN/blob/acf8d214cedfe7e24c9446bacc1f9f648c9273f8/src/cpu/x64/xbyak/xbyak_util.h#L516
-    cpuid->have_avx512_fp16_ = have_avx512 && ((edx >> 23) & 0x1);
-
     // Get more Structured Extended Feature info by issuing CPUID with
     // sub-leaf = 1 (eax = 7, ecx = 1)
     if (kMaxNumSubLeaves >= 1) {
       GETCPUID(eax, ebx, ecx, edx, 7, 1);
       cpuid->have_avx_vnni_ = (eax >> 4) & 0x1;
       cpuid->have_avx512_bf16_ = have_avx512 && ((eax >> 5) & 0x1);
-      cpuid->have_amx_fp16_ = (eax >> 21) & 0x1;
-      cpuid->have_avx_vnni_int8_ = (edx >> 4) & 0x1;
-      cpuid->have_avx_ne_convert_ = (edx >> 5) & 0x1;
     }
   }
 
@@ -250,53 +239,49 @@ class CPUIDInfo {
     InitCPUIDInfo();
     // clang-format off
     switch (feature) {
-      case ADX:            return cpuid->have_adx_;
-      case AES:            return cpuid->have_aes_;
-      case AMX_BF16:       return cpuid->have_amx_bf16_;
-      case AMX_FP16:       return cpuid->have_amx_fp16_;
-      case AMX_INT8:       return cpuid->have_amx_int8_;
-      case AMX_TILE:       return cpuid->have_amx_tile_;
-      case AVX2:           return cpuid->have_avx2_;
-      case AVX:            return cpuid->have_avx_;
-      case AVX512F:        return cpuid->have_avx512f_;
-      case AVX512CD:       return cpuid->have_avx512cd_;
-      case AVX512PF:       return cpuid->have_avx512pf_;
-      case AVX512ER:       return cpuid->have_avx512er_;
-      case AVX512VL:       return cpuid->have_avx512vl_;
-      case AVX512BW:       return cpuid->have_avx512bw_;
-      case AVX512DQ:       return cpuid->have_avx512dq_;
-      case AVX512VBMI:     return cpuid->have_avx512vbmi_;
-      case AVX512IFMA:     return cpuid->have_avx512ifma_;
-      case AVX512_4VNNIW:  return cpuid->have_avx512_4vnniw_;
-      case AVX512_4FMAPS:  return cpuid->have_avx512_4fmaps_;
-      case AVX512_BF16:    return cpuid->have_avx512_bf16_;
-      case AVX512_FP16:    return cpuid->have_avx512_fp16_;
-      case AVX512_VNNI:    return cpuid->have_avx512_vnni_;
-      case AVX_VNNI:       return cpuid->have_avx_vnni_;
-      case AVX_VNNI_INT8:  return cpuid->have_avx_vnni_int8_;
-      case AVX_NE_CONVERT: return cpuid->have_avx_ne_convert_;
-      case BMI1:           return cpuid->have_bmi1_;
-      case BMI2:           return cpuid->have_bmi2_;
-      case CMOV:           return cpuid->have_cmov_;
-      case CMPXCHG16B:     return cpuid->have_cmpxchg16b_;
-      case CMPXCHG8B:      return cpuid->have_cmpxchg8b_;
-      case F16C:           return cpuid->have_f16c_;
-      case FMA:            return cpuid->have_fma_;
-      case MMX:            return cpuid->have_mmx_;
-      case PCLMULQDQ:      return cpuid->have_pclmulqdq_;
-      case POPCNT:         return cpuid->have_popcnt_;
-      case PREFETCHW:      return cpuid->have_prefetchw_;
-      case PREFETCHWT1:    return cpuid->have_prefetchwt1_;
-      case RDRAND:         return cpuid->have_rdrand_;
-      case RDSEED:         return cpuid->have_rdseed_;
-      case SMAP:           return cpuid->have_smap_;
-      case SSE2:           return cpuid->have_sse2_;
-      case SSE3:           return cpuid->have_sse3_;
-      case SSE4_1:         return cpuid->have_sse4_1_;
-      case SSE4_2:         return cpuid->have_sse4_2_;
-      case SSE:            return cpuid->have_sse_;
-      case SSSE3:          return cpuid->have_ssse3_;
-      case HYPERVISOR:     return cpuid->have_hypervisor_;
+      case ADX:           return cpuid->have_adx_;
+      case AES:           return cpuid->have_aes_;
+      case AMX_BF16:      return cpuid->have_amx_bf16_;
+      case AMX_INT8:      return cpuid->have_amx_int8_;
+      case AMX_TILE:      return cpuid->have_amx_tile_;
+      case AVX2:          return cpuid->have_avx2_;
+      case AVX:           return cpuid->have_avx_;
+      case AVX512F:       return cpuid->have_avx512f_;
+      case AVX512CD:      return cpuid->have_avx512cd_;
+      case AVX512PF:      return cpuid->have_avx512pf_;
+      case AVX512ER:      return cpuid->have_avx512er_;
+      case AVX512VL:      return cpuid->have_avx512vl_;
+      case AVX512BW:      return cpuid->have_avx512bw_;
+      case AVX512DQ:      return cpuid->have_avx512dq_;
+      case AVX512VBMI:    return cpuid->have_avx512vbmi_;
+      case AVX512IFMA:    return cpuid->have_avx512ifma_;
+      case AVX512_4VNNIW: return cpuid->have_avx512_4vnniw_;
+      case AVX512_4FMAPS: return cpuid->have_avx512_4fmaps_;
+      case AVX512_BF16:   return cpuid->have_avx512_bf16_;
+      case AVX512_VNNI:   return cpuid->have_avx512_vnni_;
+      case AVX_VNNI:      return cpuid->have_avx_vnni_;
+      case BMI1:          return cpuid->have_bmi1_;
+      case BMI2:          return cpuid->have_bmi2_;
+      case CMOV:          return cpuid->have_cmov_;
+      case CMPXCHG16B:    return cpuid->have_cmpxchg16b_;
+      case CMPXCHG8B:     return cpuid->have_cmpxchg8b_;
+      case F16C:          return cpuid->have_f16c_;
+      case FMA:           return cpuid->have_fma_;
+      case MMX:           return cpuid->have_mmx_;
+      case PCLMULQDQ:     return cpuid->have_pclmulqdq_;
+      case POPCNT:        return cpuid->have_popcnt_;
+      case PREFETCHW:     return cpuid->have_prefetchw_;
+      case PREFETCHWT1:   return cpuid->have_prefetchwt1_;
+      case RDRAND:        return cpuid->have_rdrand_;
+      case RDSEED:        return cpuid->have_rdseed_;
+      case SMAP:          return cpuid->have_smap_;
+      case SSE2:          return cpuid->have_sse2_;
+      case SSE3:          return cpuid->have_sse3_;
+      case SSE4_1:        return cpuid->have_sse4_1_;
+      case SSE4_2:        return cpuid->have_sse4_2_;
+      case SSE:           return cpuid->have_sse_;
+      case SSSE3:         return cpuid->have_ssse3_;
+      case HYPERVISOR:    return cpuid->have_hypervisor_;
       default:
         break;
     }
@@ -312,7 +297,6 @@ class CPUIDInfo {
   int have_adx_ : 1;
   int have_aes_ : 1;
   int have_amx_bf16_ : 1;
-  int have_amx_fp16_ : 1;
   int have_amx_int8_ : 1;
   int have_amx_tile_ : 1;
   int have_avx_ : 1;
@@ -329,11 +313,8 @@ class CPUIDInfo {
   int have_avx512_4vnniw_ : 1;
   int have_avx512_4fmaps_ : 1;
   int have_avx512_bf16_ : 1;
-  int have_avx512_fp16_ : 1;
   int have_avx512_vnni_ : 1;
   int have_avx_vnni_ : 1;
-  int have_avx_vnni_int8_ : 1;
-  int have_avx_ne_convert_ : 1;
   int have_bmi1_ : 1;
   int have_bmi2_ : 1;
   int have_cmov_ : 1;
