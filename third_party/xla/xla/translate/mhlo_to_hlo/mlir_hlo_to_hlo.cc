@@ -3233,6 +3233,15 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
       any_arg_replicated |= entry_args_same_across_replicas.back();
       // Pass the alias info to the builder so that it will build the alias info
       // into the resulting HloModule.
+      auto buffer_donor =
+          f.getArgAttrOfType<mlir::BoolAttr>(i, "jax.buffer_donor");
+      if (buffer_donor) {
+        if (use_tuple_args_) {
+          builder.AddBufferDonor(/*param_number=*/0, /*param_index=*/{i});
+        } else {
+          builder.AddBufferDonor(/*param_number=*/i, /*param_index=*/{});
+        }
+      }
       auto aliasing_output =
           f.getArgAttrOfType<mlir::IntegerAttr>(i, "tf.aliasing_output");
       if (!aliasing_output) continue;
