@@ -44,10 +44,10 @@ cc_library(
     srcs = [
         "android_armv7a_cpu_utils_helper.h",
         "cpu_utils.cc",
-        "i_cpu_utils_helper.h",
     ],
     hdrs = [
         "cpu_utils.h",
+        "i_cpu_utils_helper.h",
     ],
     copts = tsl_copts(),
     visibility = ["//visibility:public"],

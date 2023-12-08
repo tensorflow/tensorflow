@@ -21,7 +21,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "xla/literal_util.h"
-#include "xla/pjrt/tfrt_cpu_pjrt_client.h"
+#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/service/hlo_parser.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/file_system.h"

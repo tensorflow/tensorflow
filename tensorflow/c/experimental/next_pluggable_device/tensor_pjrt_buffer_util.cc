@@ -15,11 +15,15 @@ limitations under the License.
 #include "tensorflow/c/experimental/next_pluggable_device/tensor_pjrt_buffer_util.h"
 
 #include <memory>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/jit/pjrt_tensor_buffer_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
@@ -50,14 +54,16 @@ absl::StatusOr<PJRT_Buffer*> GetPjRtCBufferFromTensor(const Tensor* tensor) {
 absl::Status SetPjRtCBufferToTensor(PJRT_Buffer* c_buffer,
                                     xla::PjRtCApiClient* c_api_client,
                                     Tensor* tensor) {
+  auto buffer = std::make_unique<xla::PjRtCApiBuffer>(c_api_client, c_buffer);
   tensorflow::AsyncValueTensor* av_tensor =
       tensorflow::AsyncValueTensor::FromTensor(tensor);
   if (av_tensor == nullptr) {
-    return absl::InternalError(
-        "The tensor to set PjRtBuffer is not an AsyncValueTensor.");
+    TF_ASSIGN_OR_RETURN(
+        *tensor, MakeTensorFromPjRtBuffer(tensor->dtype(), tensor->shape(),
+                                          std::move(buffer)));
+  } else {
+    av_tensor->SetBuffer(std::move(buffer));
   }
-  av_tensor->SetBuffer(
-      std::make_unique<xla::PjRtCApiBuffer>(c_api_client, c_buffer));
   return absl::OkStatus();
 }
 

@@ -42,6 +42,10 @@ limitations under the License.
 #include "xla/tests/test_macros.h"
 #include "xla/types.h"
 
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
+
 namespace xla {
 namespace {
 
@@ -1590,6 +1594,11 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareLtU32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, PowF32s) {
+#if TENSORFLOW_USE_ROCM && TF_ROCM_VERSION == 50700
+  GTEST_SKIP()
+      << "This test fails on rocm-5.7.0 platform due to a compiler bug";
+#endif
+
   SetFastMathDisabled(true);
   XlaBuilder builder(TestName());
   auto eps = std::numeric_limits<float>::epsilon();
@@ -1622,10 +1631,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, PowNonIntegerF32s) {
 XLA_TEST_F(ArrayElementwiseOpTest, PowC64s) {
   SetFastMathDisabled(true);
   XlaBuilder builder(TestName());
-  auto lhs = ConstantR1<complex64>(
-      &builder, {-2.0f, -0.6f, -0.6f, 0.0f, 0.0f, 0.0f, 1.0f});
-  auto rhs = ConstantR1<complex64>(
-      &builder, {0.5f, 0.6f, -0.6f, 0.5f, 0.6f, 0.0f, INFINITY});
+  auto lhs = ConstantR1<complex64>(&builder, {-2.0f, -0.6f, -0.6f, 0.0f, 0.0f,
+                                              0.0f, 1.0f, INFINITY, INFINITY});
+  auto rhs = ConstantR1<complex64>(&builder, {0.5f, 0.6f, -0.6f, 0.5f, 0.6f,
+                                              0.0f, INFINITY, 1.0f, -1.1234f});
   Pow(lhs, rhs);
 
   ComputeAndCompareR1<complex64>(&builder,
@@ -1637,6 +1646,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, PowC64s) {
                                      {0, 0},
                                      {1, 0},
                                      {1, 0},
+                                     {INFINITY, 0},
+                                     {0, 0},
                                  },
                                  {}, error_spec_);
 }

@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/hash/hash.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tsl/profiler/lib/context_types.h"

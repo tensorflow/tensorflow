@@ -38,6 +38,14 @@ def _tf_repositories():
     )
 
     tf_http_archive(
+        name = "cutlass_archive",
+        build_file = "//third_party:cutlass.BUILD",
+        sha256 = "ea1b7f96919460a5d80b09c1b246652539a8605600b2be4cccc02c254bccbe50",
+        strip_prefix = "cutlass-5783d6dbd0c34032371cce2bd999fc76007520d7",
+        urls = tf_mirror_urls("https://github.com/chsigg/cutlass/archive/5783d6dbd0c34032371cce2bd999fc76007520d7.tar.gz"),
+    )
+
+    tf_http_archive(
         name = "boringssl",
         sha256 = "9dc53f851107eaf87b391136d13b815df97ec8f76dadb487b58b2fc45e624d2c",
         strip_prefix = "boringssl-c00d7ca810e93780bd0c8ee4eea28f4f2ea4bcdc",

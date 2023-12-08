@@ -37,7 +37,6 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = default_package_visibility,
     features = [
-        "-layering_check",
         "-parse_headers",
     ],
     licenses = ["notice"],
@@ -726,6 +725,7 @@ tf_kernel_library(
     srcs = ["cuda_solvers.cc"],
     hdrs = ["gpu_solvers.h"],
     compatible_with = [],
+    features = ["-layering_check"],
     # @local_config_cuda//cuda:cusolver_static, //third_party/eigen3:blas,
     # and //third_party/libf2c all contain various parts of BLAS, LAPACK,
     # and f2c helper functions in global namespace. Tell the compiler to
@@ -773,6 +773,7 @@ tf_kernel_library(
         "gpu_solvers.h",
     ],
     compatible_with = [],
+    features = ["-layering_check"],
     deps = [
         ":cuda_solvers",
         "//tensorflow/core:framework",
@@ -852,6 +853,7 @@ tf_cuda_only_cc_test(
     srcs = [
         "gpu_kernel_helper_test.cu.cc",
     ],
+    features = ["-layering_check"],
     tags = [
         "no_cuda_asan",  # TODO(b/171342366): re-enable.
     ],
@@ -890,6 +892,7 @@ tf_cc_tests(
         "tensor_slice_writer_test.cc",
         "work_sharder_test.cc",
     ],
+    features = ["-layering_check"],
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],

@@ -21,10 +21,8 @@ import sys
 import threading
 import traceback
 
-from tensorflow.python import tf2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
-from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
@@ -33,10 +31,10 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import resource_variables_toggle
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import core
-from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
@@ -49,10 +47,6 @@ __all__ = [
     "get_local_variable", "variable_scope", "variable_op_scope",
     "no_regularizer", "VariableSynchronization", "VariableAggregation"
 ]
-
-_api_usage_gauge = monitoring.BoolGauge(
-    "/tensorflow/api/resource_variables",
-    "Whether variable_scope.enable_resource_variables() is called.")
 
 
 class _PartitionInfo:
@@ -218,65 +212,6 @@ When passed in as the value for the `reuse` flag, `AUTO_REUSE` indicates that
 get_variable() should create the requested variable if it doesn't exist or, if
 it does exist, simply return it.
 """
-
-_DEFAULT_USE_RESOURCE = tf2.enabled()
-
-
-@tf_export(v1=["enable_resource_variables"])
-def enable_resource_variables():
-  """Creates resource variables by default.
-
-  Resource variables are improved versions of TensorFlow variables with a
-  well-defined memory model. Accessing a resource variable reads its value, and
-  all ops which access a specific read value of the variable are guaranteed to
-  see the same value for that tensor. Writes which happen after a read (by
-  having a control or data dependency on the read) are guaranteed not to affect
-  the value of the read tensor, and similarly writes which happen before a read
-  are guaranteed to affect the value. No guarantees are made about unordered
-  read/write pairs.
-
-  Calling tf.enable_resource_variables() lets you opt-in to this TensorFlow 2.0
-  feature.
-  """
-  global _DEFAULT_USE_RESOURCE
-  _DEFAULT_USE_RESOURCE = True
-  logging.vlog(1, "Enabling resource variables")
-  _api_usage_gauge.get_cell().set(True)
-
-
-@tf_export(v1=["resource_variables_enabled"])
-def resource_variables_enabled():
-  """Returns `True` if resource variables are enabled.
-
-  Resource variables are improved versions of TensorFlow variables with a
-  well-defined memory model. Accessing a resource variable reads its value, and
-  all ops which access a specific read value of the variable are guaranteed to
-  see the same value for that tensor. Writes which happen after a read (by
-  having a control or data dependency on the read) are guaranteed not to affect
-  the value of the read tensor, and similarly writes which happen before a read
-  are guaranteed to affect the value. No guarantees are made about unordered
-  read/write pairs.
-
-  Calling tf.enable_resource_variables() lets you opt-in to this TensorFlow 2.0
-  feature.
-  """
-  global _DEFAULT_USE_RESOURCE
-  return _DEFAULT_USE_RESOURCE
-
-
-@deprecation.deprecated(
-    None, "non-resource variables are not supported in the long term")
-@tf_export(v1=["disable_resource_variables"])
-def disable_resource_variables():
-  """Opts out of resource variables.
-
-  If your code needs tf.disable_resource_variables() to be called to work
-  properly please file a bug.
-  """
-  global _DEFAULT_USE_RESOURCE
-  _DEFAULT_USE_RESOURCE = False
-  logging.vlog(1, "Disabling resource variables")
-  _api_usage_gauge.get_cell().set(False)
 
 
 def _needs_no_arguments(python_callable):
@@ -964,7 +899,7 @@ class _VariableStore:
     # Create the variable.
     if use_resource is None:
       # Set the default value if unspecified.
-      use_resource = _DEFAULT_USE_RESOURCE
+      use_resource = resource_variables_toggle.resource_variables_enabled()
     v = _variable_v1(
         initial_value=init_val,
         name=name,

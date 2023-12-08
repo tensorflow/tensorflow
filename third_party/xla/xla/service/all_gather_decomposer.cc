@@ -52,30 +52,51 @@ HloComputation* MakeBinaryAdd(PrimitiveType type, HloModule* module) {
   return reduction;
 }
 
+HloInstruction* TranslateAllGatherToAllReducePerOperand(
+    CollectiveOpGroupMode group_mode, const HloAllGatherInstruction& ag,
+    const Shape& output_shape, HloInstruction* operand, HloComputation* comp) {
+  std::vector<HloInstruction*> start_indices =
+      CreateStartIndicesForCollectiveDecomposition(
+          group_mode, ag.replica_groups(), operand->shape(),
+          ag.all_gather_dimension(), comp)
+          .value();
+
+  auto zero = comp->AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::Zero(output_shape.element_type())));
+  zero = comp->AddInstruction(
+      HloInstruction::CreateBroadcast(output_shape, zero, {}));
+
+  auto dus = comp->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+      zero->shape(), zero, operand, start_indices));
+  auto ar = comp->AddInstruction(HloInstruction::CreateAllReduce(
+      dus->shape(), {dus},
+      MakeBinaryAdd(dus->shape().element_type(), comp->parent()),
+      ag.replica_groups(),
+      /*constrain_layout=*/ag.constrain_layout(), ag.channel_id(),
+      ag.use_global_device_ids()));
+  return ar;
+}
+
 Status DecomposeAllGather(HloAllGatherInstruction* ag, HloComputation* comp) {
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
                       GetCollectiveOpGroupMode(ag->channel_id().has_value(),
                                                ag->use_global_device_ids()));
-  TF_ASSIGN_OR_RETURN(
-      std::vector<HloInstruction*> start_indices,
-      CreateStartIndicesForCollectiveDecomposition(
-          group_mode, ag->replica_groups(), ag->operand(0)->shape(),
-          ag->all_gather_dimension(), comp));
-
-  auto zero = comp->AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::Zero(ag->shape().element_type())));
-  zero = comp->AddInstruction(
-      HloInstruction::CreateBroadcast(ag->shape(), zero, {}));
-
-  auto dus = comp->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-      zero->shape(), zero, ag->mutable_operand(0), start_indices));
-  auto ar = comp->AddInstruction(HloInstruction::CreateAllReduce(
-      dus->shape(), {dus},
-      MakeBinaryAdd(dus->shape().element_type(), comp->parent()),
-      ag->replica_groups(),
-      /*constrain_layout=*/ag->constrain_layout(), ag->channel_id(),
-      ag->use_global_device_ids()));
-  TF_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(ar));
+  if (ag->operand_count() > 1) {
+    std::vector<HloInstruction*> tuple_inputs;
+    for (int i = 0; i < ag->operand_count(); ++i) {
+      auto* input_operand = ag->mutable_operand(i);
+      const auto& output_shape = ag->shape().tuple_shapes(i);
+      auto* ar = TranslateAllGatherToAllReducePerOperand(
+          group_mode, *ag, output_shape, input_operand, comp);
+      tuple_inputs.push_back(ar);
+    }
+    auto tup = comp->AddInstruction(HloInstruction::CreateTuple(tuple_inputs));
+    TF_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(tup));
+  } else {
+    auto* ar = TranslateAllGatherToAllReducePerOperand(
+        group_mode, *ag, ag->shape(), ag->mutable_operand(0), comp);
+    TF_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(ar));
+  }
   TF_RETURN_IF_ERROR(comp->RemoveInstructionAndUnusedOperands(ag));
   return OkStatus();
 }

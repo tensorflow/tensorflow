@@ -58,4 +58,8 @@ message MemoryBoundLoopOptimizerOptions {
   // pipelined prefetch starts the same time as its counterpart in the previous
   // iteration finishes.
   optional bool allow_unsatisfied_fully_pipelined_prefetch = 3;
+
+  // The minimum number of iterations that the loop needs to be unrolled for the
+  // memory-bound loop optimizer to kick in.
+  optional float min_num_iterations = 4;
 }

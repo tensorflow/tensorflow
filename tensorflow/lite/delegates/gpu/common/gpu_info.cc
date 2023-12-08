@@ -39,6 +39,7 @@ GpuVendor GetGpuVendor(const std::string& gpu_description) {
       {"nvidia", GpuVendor::kNvidia},
       {"amd", GpuVendor::kAMD},
       {"radeon", GpuVendor::kAMD},
+      {"xclipse", GpuVendor::kAMD},
       {"power", GpuVendor::kPowerVR},
   };
   for (const auto& v : kMapping) {

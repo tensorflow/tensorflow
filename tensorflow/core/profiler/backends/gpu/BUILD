@@ -19,9 +19,6 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
-    features = [
-        "-layering_check",
-    ],
     licenses = ["notice"],
 )
 
@@ -49,6 +46,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/common_runtime:direct_session_internal",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/profiler/lib:profiler_interface",
         "//tensorflow/core/profiler/lib:profiler_session",
@@ -98,6 +97,8 @@ tf_cuda_library(
         ":cupti_interface",
         ":cupti_wrapper",
         "@local_xla//xla/backends/profiler/gpu:cupti_error_manager",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:thread_annotations",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -190,6 +191,7 @@ tf_cuda_library(
     name = "nvtx_utils",
     hdrs = if_cuda(["nvtx_utils.h"]),
     copts = tf_profiler_copts() + tf_copts(),
+    cuda_deps = ["@com_google_absl//absl/strings:string_view"],
     deps = [
         "//tensorflow/core:lib",
         "@local_xla//xla/backends/profiler/gpu:nvtx_utils",

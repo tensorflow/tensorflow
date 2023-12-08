@@ -84,6 +84,7 @@ message DcnSlackSummary {
   string transfer_type = 13;
 
   int64 host_stall_us = 14;
+  uint64 host_events_count = 15;
 }
 
 message DcnSlackAnalysis {

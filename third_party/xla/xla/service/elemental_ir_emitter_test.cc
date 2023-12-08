@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/string_view.h"
+#include "xla/error_spec.h"
 #include "xla/execution_options_util.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/status_macros.h"
@@ -45,6 +47,18 @@ class ElementalIrEmitterExecutionTest : public HloTestBase {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                             ParseAndReturnVerifiedModule(hlo_text, config));
     EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{(0.)}));
+  }
+};
+
+class ElementalIrEmitterExecutionTestWithoutFastMinMax
+    : public ElementalIrEmitterExecutionTest {
+ protected:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options =
+        ElementalIrEmitterExecutionTest::GetDebugOptionsForTest();
+    debug_options.set_xla_cpu_enable_fast_min_max(false);
+    debug_options.set_xla_gpu_enable_fast_min_max(false);
+    return debug_options;
   }
 };
 
@@ -667,6 +681,134 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest, IotaF8E5FNUZ) {
   )";
 
   RunTest(hlo_text, {});
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+           MinimumHandlesNaNsOnTheLeft) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+ENTRY e {
+  neg1 = f32[] constant(-1)
+  neg1s = f32[5,5] broadcast(neg1), dimensions={}
+  nans = f32[5,5] sqrt(neg1s)
+  ROOT min = f32[5,5] minimum(nans, neg1s)
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+           MinimumHandlesNaNsOnTheRight) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+ENTRY e {
+  neg1 = f32[] constant(-1)
+  neg1s = f32[5,5] broadcast(neg1), dimensions={}
+  nans = f32[5,5] sqrt(neg1s)
+  ROOT min = f32[5,5] minimum(neg1s, nans)
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+           MaximumHandlesNaNsOnTheLeft) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+ENTRY e {
+  neg1 = f32[] constant(-1)
+  neg1s = f32[5,5] broadcast(neg1), dimensions={}
+  nans = f32[5,5] sqrt(neg1s)
+  ROOT max = f32[5,5] maximum(nans, neg1s)
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+           MaximumHandlesNaNsOnTheRight) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+ENTRY e {
+  neg1 = f32[] constant(-1)
+  neg1s = f32[5,5] broadcast(neg1), dimensions={}
+  nans = f32[5,5] sqrt(neg1s)
+  ROOT max = f32[5,5] maximum(neg1s, nans)
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+           MinimumReturnsLHS) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+ENTRY e {
+  zero = f32[] constant(0)
+  zeros = f32[5,5] broadcast(zero), dimensions={}
+  one = f32[] constant(1)
+  ones = f32[5,5] broadcast(one), dimensions={}
+  ROOT min = f32[5,5] minimum(zeros, ones)
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3,
+                                                /*arel=*/1e-3}));
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+           MinimumReturnsRHS) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+ENTRY e {
+  zero = f32[] constant(0)
+  zeros = f32[5,5] broadcast(zero), dimensions={}
+  one = f32[] constant(1)
+  ones = f32[5,5] broadcast(one), dimensions={}
+  ROOT min = f32[5,5] minimum(ones, zeros)
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3,
+                                                /*arel=*/1e-3}));
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+           MaximumReturnsLHS) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+ENTRY e {
+  zero = f32[] constant(0)
+  zeros = f32[5,5] broadcast(zero), dimensions={}
+  one = f32[] constant(1)
+  ones = f32[5,5] broadcast(one), dimensions={}
+  ROOT max = f32[5,5] maximum(ones, zeros)
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3,
+                                                /*arel=*/1e-3}));
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+           MaximumReturnsRHS) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+ENTRY e {
+  zero = f32[] constant(0)
+  zeros = f32[5,5] broadcast(zero), dimensions={}
+  one = f32[] constant(1)
+  ones = f32[5,5] broadcast(one), dimensions={}
+  ROOT max = f32[5,5] maximum(zeros, ones)
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3,
+                                                /*arel=*/1e-3}));
 }
 
 }  // namespace

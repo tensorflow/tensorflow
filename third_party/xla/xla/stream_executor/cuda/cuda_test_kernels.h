@@ -20,8 +20,12 @@ limitations under the License.
 
 namespace stream_executor::cuda::internal {
 
-// This is a collection of CUDA kernels compiled to PTX for use in various CUDA
-// tests in this package.
+// This is a collection of CUDA kernels for writing simple StreamExecutor tests.
+//
+// Some of the kernels available as pre-compiled PTX blobs (can be loaded with
+// CUDA driver API), and some of the kernels are written directly in CUDA C++
+// and can be loaded from a symbol pointer (to test StreamExecutor CUDA runtime
+// integration).
 
 // PTX kernel compiled from:
 //
@@ -70,6 +74,28 @@ inline constexpr std::string_view kAddI32Kernel = R"(
         ret;
 
 })";
+
+template <typename T>
+struct Ptrs3 {
+  T* a;
+  T* b;
+  T* c;
+};
+
+// Returns a pointer to device kernel compiled from the CUDA C++ code above.
+void* GetAddI32CudaKernel();
+
+// Returns a pointer to device kernel doing multiplication instead of addition.
+void* GetMulI32CudaKernel();
+
+// Returns a pointer to device kernel doing increment and compare, intended for
+// testing on-device while loops.
+void* GetIncAndCmpCudaKernel();
+
+// Returns a pointer to device kernel compiled from the CUDA C++ but with all
+// three pointers passed to argument as an instance of `Ptr3` template to test
+// StreamExecutor arguments packing for custom C++ types.
+void* GetAddI32Ptrs3CudaKernel();
 
 }  // namespace stream_executor::cuda::internal
 

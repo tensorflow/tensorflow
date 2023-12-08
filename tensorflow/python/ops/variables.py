@@ -44,9 +44,11 @@ from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
 
 
-def default_variable_creator_v2(_, **kwds):
-  del kwds
-  raise NotImplementedError("resource_variable_ops needs to be imported")
+def default_variable_creator_v2(next_creator=None, **kwds):
+  from tensorflow.python.ops import resource_variable_ops  # pylint: disable=g-import-not-at-top
+
+  return resource_variable_ops.default_variable_creator_v2(
+      next_creator=next_creator, **kwds)
 
 
 def _make_getter(captured_getter, captured_previous):
@@ -352,7 +354,7 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
         variable and return the Tensor for the projected value (which must have
         the same shape). Constraints are not safe to use when doing asynchronous
         distributed training.
-      synchronization: Indicates when a distributed a variable will be
+      synchronization: Indicates when a distributed variable will be
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses when to

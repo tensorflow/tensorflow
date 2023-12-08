@@ -124,6 +124,18 @@ fused_computation.2 {
   ROOT updates.1 = s32[2,3]{1,0} add(s32[2,3]{1,0} param_0.2, s32[2,3]{1,0} param_0.2)
 }
 
+fused_computation.3 {
+  operand = s32[3,3]{1,0} parameter(0)
+  indices = s32[2]{0} parameter(1)
+  updates = s32[2,3]{1,0} parameter(2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
+
 ENTRY main {
   p1 = s32[2] parameter(1)
   wrapped_indices = s32[2]{0} fusion(s32[2]{0} p1), kind=kLoop, calls=fused_computation.1
@@ -131,10 +143,5 @@ ENTRY main {
   wrapped_updates = s32[2,3]{1,0} fusion(s32[2,3]{1,0} p2), kind=kLoop, calls=fused_computation.2
   p0 = s32[3,3] parameter(0)
   wrapped_operand = s32[3,3]{1,0} fusion(s32[3,3]{1,0} p0), kind=kLoop, calls=fused_computation
-  ROOT scatter = s32[3,3] scatter(wrapped_operand, wrapped_indices, wrapped_updates),
-      to_apply=update_s32,
-      update_window_dims={1},
-      inserted_window_dims={0},
-      scatter_dims_to_operand_dims={0},
-      index_vector_dim=1
+  ROOT wrapped_scatter = s32[3,3] fusion(wrapped_operand, wrapped_indices, wrapped_updates), kind=kInput, calls=fused_computation.3
 }

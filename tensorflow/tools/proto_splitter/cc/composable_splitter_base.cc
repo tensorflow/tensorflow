@@ -1,5 +1,7 @@
 #include "tensorflow/tools/proto_splitter/cc/composable_splitter_base.h"
 
+#include <unistd.h>
+
 /* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,25 +16,39 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <iterator>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "riegeli/bytes/cord_writer.h"  // from @riegeli
 #include "riegeli/bytes/fd_writer.h"  // from @riegeli
+#include "riegeli/bytes/string_writer.h"  // from @riegeli
 #include "riegeli/records/record_writer.h"  // from @riegeli
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/tools/proto_splitter/cc/max_size.h"
+#include "tensorflow/tools/proto_splitter/cc/split.h"
 #include "tensorflow/tools/proto_splitter/cc/util.h"
 #include "tensorflow/tools/proto_splitter/chunk.pb.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
+
+#define IS_OSS true
 
 namespace tensorflow {
 namespace tools::proto_splitter {
@@ -86,27 +102,67 @@ ComposableSplitterBase::Split() {
   return std::make_pair(&chunks_, &chunked_message_);
 }
 
-absl::Status ComposableSplitterBase::Write(std::string file_prefix) {
+template <typename T>
+static absl::Status WriteToRecordWriter(
+    riegeli::RecordWriter<T>& writer, const std::vector<MessageBytes>& chunks,
+    ChunkedMessage& chunked_message,
+    const ::proto_splitter::VersionDef& version) {
+  // Export Riegeli / chunked file.
+  ChunkMetadata metadata;
+  *metadata.mutable_message() = chunked_message;
+  *metadata.mutable_version() = version;
+  auto* metadata_chunks = metadata.mutable_chunks();
+
+  for (const auto& chunk : chunks) {
+    auto* chunk_metadata = metadata_chunks->Add();
+    if (std::holds_alternative<std::shared_ptr<tsl::protobuf::Message>>(
+            chunk)) {
+      const auto& msg_chunk =
+          std::get<std::shared_ptr<tsl::protobuf::Message>>(chunk);
+      LOG(INFO) << "Writing chunk of size " << msg_chunk->ByteSizeLong();
+      writer.WriteRecord(*msg_chunk);
+      chunk_metadata->set_size(msg_chunk->ByteSizeLong());
+      chunk_metadata->set_type(::proto_splitter::ChunkInfo::MESSAGE);
+    } else if (std::holds_alternative<tsl::protobuf::Message*>(chunk)) {
+      auto* msg_chunk = std::get<tsl::protobuf::Message*>(chunk);
+      writer.WriteRecord(*msg_chunk);
+      chunk_metadata->set_size(msg_chunk->ByteSizeLong());
+      chunk_metadata->set_type(::proto_splitter::ChunkInfo::MESSAGE);
+    } else {
+      const auto& str_chunk = std::get<std::string>(chunk);
+      writer.WriteRecord(str_chunk);
+      chunk_metadata->set_size(str_chunk.size());
+      chunk_metadata->set_type(::proto_splitter::ChunkInfo::BYTES);
+    }
+    chunk_metadata->set_offset(writer.LastPos().get().numeric());
+  }
+  writer.WriteRecord(metadata);
+  return absl::OkStatus();
+}
+
+absl::Status ComposableSplitterBase::CheckIfWriteImplemented() {
   if (parent_splitter_ != nullptr) {
     return absl::UnimplementedError(
         "The `Write` function behavior for children ComposableSplitter has not "
-        "been defined. Please call the parent ComposableSplitter's `Write` "
-        "instead.");
+        "been defined. Please call `parent_splitter.Write()` instead.");
   }
-  auto split_status = Split();
-  if (!split_status.ok()) {
-    return split_status.status();
-  }
+  return absl::OkStatus();
+}
 
-  auto chunks = split_status.value().first;
-  auto chunked_message = split_status.value().second;
+absl::Status ComposableSplitterBase::Write(std::string file_prefix) {
+  TF_RETURN_IF_ERROR(CheckIfWriteImplemented());
+
+  auto split_results = Split();
+  if (!split_results.ok()) return split_results.status();
+  auto& chunks = *split_results.value().first;
+  auto& chunked_message = *split_results.value().second;
 
   tsl::Env* env = tsl::Env::Default();
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(
       std::string{tensorflow::io::Dirname(file_prefix)}));
 
   std::string output_path;
-  if (chunked_message->chunked_fields().empty()) {
+  if (chunked_message.chunked_fields().empty()) {
     // Export regular pb.
     output_path = absl::StrCat(file_prefix, ".pb");
     TF_RETURN_IF_ERROR(
@@ -114,42 +170,76 @@ absl::Status ComposableSplitterBase::Write(std::string file_prefix) {
   } else {
     // Export Riegeli / chunked file.
     output_path = absl::StrCat(file_prefix, ".cpb");
-    riegeli::RecordWriter writer((riegeli::FdWriter(output_path)));
-
-    ChunkMetadata metadata;
-    metadata.mutable_message()->MergeFrom(*chunked_message);
-    metadata.mutable_version()->MergeFrom(Version());
-    auto metadata_chunks = metadata.mutable_chunks();
-
-    for (auto chunk : *chunks) {
-      auto chunk_metadata = metadata_chunks->Add();
-      if (std::holds_alternative<std::shared_ptr<tsl::protobuf::Message>>(
-              chunk)) {
-        auto msg_chunk =
-            std::get<std::shared_ptr<tsl::protobuf::Message>>(chunk);
-        writer.WriteRecord(*msg_chunk);
-        chunk_metadata->set_size(msg_chunk->ByteSizeLong());
-        chunk_metadata->set_type(::proto_splitter::ChunkInfo::MESSAGE);
-      } else if (std::holds_alternative<tsl::protobuf::Message*>(chunk)) {
-        auto msg_chunk = std::get<tsl::protobuf::Message*>(chunk);
-        writer.WriteRecord(*msg_chunk);
-        chunk_metadata->set_size(msg_chunk->ByteSizeLong());
-        chunk_metadata->set_type(::proto_splitter::ChunkInfo::MESSAGE);
-      } else {
-        auto str_chunk = std::get<std::string>(chunk);
-        writer.WriteRecord(str_chunk);
-        chunk_metadata->set_size(str_chunk.size());
-        chunk_metadata->set_type(::proto_splitter::ChunkInfo::BYTES);
-      }
-      chunk_metadata->set_offset(writer.LastPos().get().numeric());
-    }
-
-    writer.WriteRecord(metadata);
+    using WriterType = riegeli::FdWriter<>;
+    riegeli::RecordWriter<WriterType> writer((WriterType(output_path)));
+    if (!writer.is_open()) return writer.status();
+    TF_RETURN_IF_ERROR(WriteToRecordWriter<WriterType>(
+        writer, chunks, chunked_message, Version()));
     if (!writer.Close()) return writer.status();
   }
   LOG(INFO) << "Splitter output written to " << output_path;
   return absl::OkStatus();
 }
+
+absl::StatusOr<std::tuple<std::string, bool>>
+ComposableSplitterBase::WriteToString() {
+  TF_RETURN_IF_ERROR(CheckIfWriteImplemented());
+
+  auto split_results = Split();
+  if (!split_results.ok()) return split_results.status();
+  auto& chunks = *split_results.value().first;
+  auto& chunked_message = *split_results.value().second;
+
+  std::string output;
+  if (chunked_message.chunked_fields().empty()) {
+    // Export regular pb.
+    if (!message_->SerializeToString(&output))
+      return absl::InvalidArgumentError("Serialization to string failed");
+    LOG(INFO) << "Splitter output written to string";
+    return std::make_tuple(output, false);
+  } else {
+    // Export Riegeli / chunked file.
+    using WriterType = riegeli::StringWriter<>;
+    riegeli::RecordWriter<WriterType> writer((WriterType(&output)));
+    if (!writer.is_open()) return writer.status();
+    TF_RETURN_IF_ERROR(WriteToRecordWriter<WriterType>(
+        writer, chunks, chunked_message, Version()));
+    if (!writer.Close()) return writer.status();
+    LOG(INFO) << "Splitter output written to string";
+    return std::make_tuple(output, true);
+  }
+}
+
+#if !IS_OSS
+absl::StatusOr<std::tuple<absl::Cord, bool>>
+ComposableSplitterBase::WriteToCord() {
+  TF_RETURN_IF_ERROR(CheckIfWriteImplemented());
+
+  auto split_results = Split();
+  if (!split_results.ok()) return split_results.status();
+  auto& chunks = *split_results.value().first;
+  auto& chunked_message = *split_results.value().second;
+
+  absl::Cord output;
+  if (chunked_message.chunked_fields().empty()) {
+    // Export regular pb.
+    if (!message_->SerializeToCord(&output))
+      return absl::InvalidArgumentError("Serialization to absl::Cord failed");
+    LOG(INFO) << "Splitter output written to absl::Cord";
+    return std::make_tuple(output, false);
+  } else {
+    // Export Riegeli / chunked file.
+    using WriterType = riegeli::CordWriter<>;
+    riegeli::RecordWriter<WriterType> writer((WriterType(&output)));
+    if (!writer.is_open()) return writer.status();
+    TF_RETURN_IF_ERROR(WriteToRecordWriter<WriterType>(
+        writer, chunks, chunked_message, Version()));
+    if (!writer.Close()) return writer.status();
+    LOG(INFO) << "Splitter output written to absl::Cord";
+    return std::make_tuple(output, true);
+  }
+}
+#endif
 
 absl::Status ComposableSplitterBase::SetMessageAsBaseChunk() {
   if (!chunks_.empty()) {

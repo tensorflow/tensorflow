@@ -86,7 +86,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     t = _create_tensor(values)
     self.assertAllEqual(values, t)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testNumpyDtypeSurvivesThroughTensorConversion(self):
     scalar_creators = [np.int32, np.int64, np.float32, np.float64]
     conversion_functions = [ops.convert_to_tensor, constant_op.constant]
@@ -359,7 +359,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     _ = ops.convert_to_tensor(123456789, dtype=dtypes.uint8)
 
   @test_util.run_in_graph_and_eager_modes
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testConvertToTensorNumpyZeroDim(self):
     for np_type, dtype in [(np.int32, dtypes.int32), (np.half, dtypes.half),
                            (np.float32, dtypes.float32)]:
@@ -370,7 +370,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(x, [65, 16])
 
   @test_util.run_in_graph_and_eager_modes
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testConvertToTensorNumpyScalar(self):
     x = ops.convert_to_tensor([
         np.array(321, dtype=np.int64).item(),
@@ -422,19 +422,19 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     t = constant_op.constant([0.0])
     self.assertTrue(memoryview(t).readonly)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testMemoryviewScalar(self):
     t = constant_op.constant(42.0)
     self.assertAllEqual(
         np.array(memoryview(t)), np.array(42.0, dtype=np.float32))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testMemoryviewEmpty(self):
     t = constant_op.constant([], dtype=np.float32)
     self.assertAllEqual(np.array(memoryview(t)), np.array([]))
 
   @test_util.run_gpu_only
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testMemoryviewCopyToCPU(self):
     with ops.device("/device:GPU:0"):
       t = constant_op.constant([0.0])
@@ -620,7 +620,7 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
         "but tensor at index 2 has rank 0"):
       pywrap_tfe.TFE_Py_TensorShapeSlice([t2, t1, t3], 0)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testTensorDir(self):
     t = array_ops.ones(1)
     t.test_attr = "Test"
@@ -639,7 +639,7 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(ValueError, "non-rectangular Python sequence"):
       constant_op.constant(l)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testFloatAndIntAreConvertibleToComplex(self):
     a = [[1., 1], [1j, 2j]]
     np_value = np.array(a, dtype=np.complex128)

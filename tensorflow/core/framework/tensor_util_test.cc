@@ -294,6 +294,34 @@ TEST(TensorUtil, ConcatSplitStrings) {
   }
 }
 
+TEST(TensorProtoUtil, CreateTensorProtoSpan_string) {
+  // Don't use vector to trigger Span version.
+  string s[2] = {"a", "b"};
+  std::vector<size_t> shape{1, 2};
+  auto proto = tensor::CreateTensorProtoSpan<string>(s, shape);
+  TensorProto expected_tensor_proto;
+  expected_tensor_proto.set_dtype(DT_STRING);
+  expected_tensor_proto.mutable_tensor_shape()->add_dim()->set_size(1);
+  expected_tensor_proto.mutable_tensor_shape()->add_dim()->set_size(2);
+  expected_tensor_proto.add_string_val("a");
+  expected_tensor_proto.add_string_val("b");
+  EXPECT_EQ(proto.DebugString(), expected_tensor_proto.DebugString());
+}
+
+TEST(TensorProtoUtil, CreateTensorProtoSpan_int32) {
+  // Don't use vector to trigger Span version.
+  int32 s[2] = {123, 456};
+  std::vector<size_t> shape{1, 2};
+  auto proto = tensor::CreateTensorProtoSpan<int32>(s, shape);
+  TensorProto expected_tensor_proto;
+  expected_tensor_proto.set_dtype(DT_INT32);
+  expected_tensor_proto.mutable_tensor_shape()->add_dim()->set_size(1);
+  expected_tensor_proto.mutable_tensor_shape()->add_dim()->set_size(2);
+  expected_tensor_proto.add_int_val(123);
+  expected_tensor_proto.add_int_val(456);
+  EXPECT_EQ(proto.DebugString(), expected_tensor_proto.DebugString());
+}
+
 TEST(TensorProtoUtil, CreatesStringTensorProto) {
   std::vector<string> values{"a", "b", "c"};
   std::vector<size_t> shape{1, 3};

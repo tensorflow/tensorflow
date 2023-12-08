@@ -144,7 +144,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
   CompileAndVerifyIr(std::move(module),
                      R"(
 ; CHECK: %[[urem1:.*]] = urem i{{[0-9]*}} %[[linear_index:.*]], 14
-; CHECK: %[[idx1:.*]] = zext i{{[0-9]*}} %[[urem1]] to i64
+; CHECK: %[[idx1:.*]] = zext nneg i{{[0-9]*}} %[[urem1]] to i64
 ; CHECK: getelementptr inbounds float, ptr{{( addrspace\(1\))?}} %[[alloc:.*]], i64 %[[idx1]]
       )",
                      /*match_optimized_ir=*/true);

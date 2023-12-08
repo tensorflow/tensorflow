@@ -88,12 +88,14 @@ cc_library(
     hdrs = [
         "export.h",
     ],
-    features = ["-layering_check"],
     visibility = ["//visibility:public"],
     deps = [
         ":operator",
         ":types",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/lite:context",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/toco:model",
@@ -110,11 +112,13 @@ tf_cc_test(
     srcs = [
         "export_test.cc",
     ],
-    features = ["-layering_check"],
     deps = [
         ":export",
         ":operator",
+        ":types",
+        "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_googletest//:gtest_main",

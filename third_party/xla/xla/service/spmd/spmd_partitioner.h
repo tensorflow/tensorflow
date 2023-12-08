@@ -605,6 +605,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
       std::vector<std::vector<int64_t>>& groups);
 
   const CallGraph& call_graph() { return call_graph_; }
+  int64_t num_partitions() const { return num_partitions_; }
 
   // Information about a loop created for windowed dot-general. Used when
   // DoCodeMotionForWindowedDotGeneralLoops() executes after the visitor

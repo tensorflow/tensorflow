@@ -52,6 +52,15 @@ absl::Status AtomicallyWriteTFRecords(absl::string_view filename,
                                       absl::string_view compression,
                                       tsl::Env* env);
 
+// Same as the above function, except using the specified `temp_file` for
+// renaming. This is used in corner cases where multiple temp files could lead
+// to race conditions.
+absl::Status AtomicallyWriteTFRecords(absl::string_view filename,
+                                      const std::vector<Tensor>& tensors,
+                                      absl::string_view compression,
+                                      absl::string_view temp_file,
+                                      tsl::Env* env);
+
 // Returns the relative paths of the children of `directory`, ignoring temporary
 // files. Returns an empty vector if the directory does not have any children.
 absl::StatusOr<std::vector<std::string>> GetChildren(
@@ -60,6 +69,10 @@ absl::StatusOr<std::vector<std::string>> GetChildren(
 // Returns true if `filename` is a temporary file and should be ignored in
 // normal data processing.
 bool IsTemporaryFile(absl::string_view filename);
+
+// If `filename` is a temporary file, returns the actual file name. Otherwise,
+// returns an internal error.
+absl::StatusOr<std::string> ParseTemporaryFile(absl::string_view filename);
 
 }  // namespace data
 }  // namespace tensorflow

@@ -2573,6 +2573,20 @@ func.func @fold_sitosi() -> tensor<i32> {
   func.return %1 : tensor<i32>
 }
 
+func.func @fold_predtosi() -> tensor<i8> {
+  %0 = mhlo.constant dense<false> : tensor<i1>
+  // CHECK: mhlo.constant dense<0> : tensor<i8>
+  %1 = "mhlo.convert"(%0) : (tensor<i1>) -> tensor<i8>
+  func.return %1 : tensor<i8>
+}
+
+func.func @not_fold_itouq() -> tensor<!quant.uniform<i8:f32, 1.000000e+00:3>> {
+  // CHECK: mhlo.constant dense<1> : tensor<i8>
+  %0 = mhlo.constant dense<1> : tensor<i8>
+  %1 = "mhlo.convert"(%0) : (tensor<i8>) -> tensor<!quant.uniform<i8:f32, 1.000000e+00:3>>
+  func.return %1 : tensor<!quant.uniform<i8:f32, 1.000000e+00:3>>
+}
+
 // CHECK-LABEL: @eliminate_redundant_reshape
 func.func @eliminate_redundant_reshape(%arg : tensor<1x32xi16>) -> tensor<1x32xi16> {
   %0 = "mhlo.reshape"(%arg) : (tensor<1x32xi16>) -> tensor<2x16xi16>

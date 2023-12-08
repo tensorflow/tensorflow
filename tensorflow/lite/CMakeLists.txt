@@ -268,7 +268,11 @@ else()
 endif()
 
 populate_tflite_source_vars("core" TFLITE_CORE_SRCS)
-populate_tflite_source_vars("core/acceleration/configuration" TFLITE_CORE_ACCELERATION_SRCS)
+populate_tflite_source_vars(
+  "core/acceleration/configuration" TFLITE_CORE_ACCELERATION_SRCS
+  FILTER "xnnpack_plugin.*"
+  FILTER "(_test)\\.(cc|h)$"
+)
 populate_tflite_source_vars("core/api" TFLITE_CORE_API_SRCS)
 populate_tflite_source_vars("core/async" TFLITE_CORE_ASYNC_SRCS)
 populate_tflite_source_vars("core/async/c" TFLITE_CORE_ASYNC_C_SRCS)
@@ -491,6 +495,8 @@ if(TFLITE_ENABLE_XNNPACK)
     XNNPACK
   )
   list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DTFLITE_BUILD_WITH_XNNPACK_DELEGATE")
+  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DXNNPACK_DELEGATE_ENABLE_QS8")
+  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DXNNPACK_DELEGATE_ENABLE_QU8")
 endif()
 if(TFLITE_ENABLE_EXTERNAL_DELEGATE)
   populate_tflite_source_vars("delegates/external"

@@ -263,6 +263,34 @@ LogicalResult rewriteCustomCallAsMhloOp(stablehlo::CustomCallOp stablehloOp,
   return success();
 }
 
+// Preserve backward compatibility of typed_ffi custom calls by converting:
+// `stablehlo.custom_call @foo(%arg0) { mhlo.backend_config = {...} }`
+// ==>
+// `mhlo.custom_call @foo(%arg0) { backend_config = {...}, api_version = 4}`
+//
+// Fails if StableHLO op has non-empty backend_config, or uses API version
+// other than API_VERSION_ORIGINAL.
+LogicalResult fixupMhloBackendConfig(stablehlo::CustomCallOp stablehloOp,
+                                     mhlo::CustomCallOp hloOp) {
+  auto stablehloBackendConfig = stablehloOp->getAttr("mhlo.backend_config");
+  if (stablehloBackendConfig) {
+    if (auto oldHloBackendConfig =
+            hloOp.getBackendConfigAttr()
+                .template dyn_cast_or_null<StringAttr>()) {
+      if (!oldHloBackendConfig.empty()) return failure();
+    } else {
+      return failure();
+    }
+    if (stablehloOp.getApiVersion() !=
+        stablehlo::CustomCallApiVersion::API_VERSION_ORIGINAL)
+      return failure();
+
+    hloOp.setBackendConfigAttr(stablehloBackendConfig);
+    hloOp.setApiVersion(mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  }
+  return success();
+}
+
 template <typename StablehloOpTy>
 class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
  public:
@@ -323,23 +351,9 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
           stablehloOp, hloTypes, hloOperands, hloAttrs);
     }
 
+    // For backward compatibility, fix custom call with mhlo.backend_config
     if constexpr (std::is_same<StablehloOpTy, stablehlo::CustomCallOp>::value) {
-      auto stablehloBackendConfig = stablehloOp->getAttr("mhlo.backend_config");
-      if (stablehloBackendConfig) {
-        if (auto oldHloBackendConfig =
-                hloOp.getBackendConfigAttr()
-                    .template dyn_cast_or_null<StringAttr>()) {
-          if (oldHloBackendConfig != "") return failure();
-        } else {
-          return failure();
-        }
-        if (stablehloOp.getApiVersion() !=
-            stablehlo::CustomCallApiVersion::API_VERSION_ORIGINAL)
-          return failure();
-
-        hloOp.setBackendConfigAttr(stablehloBackendConfig);
-        hloOp.setApiVersion(mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI);
-      }
+      if (failed(fixupMhloBackendConfig(stablehloOp, hloOp))) return failure();
     }
 
     // Finally, populate the regions while converting argument types

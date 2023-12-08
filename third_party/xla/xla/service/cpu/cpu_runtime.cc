@@ -15,37 +15,43 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_runtime.h"
 
-#include <complex>
 #include <cstdarg>
-#include <cstddef>
+#include <cstdint>
 #include <cstring>
-#include <functional>
-#include <limits>
-#include <map>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
-#include <type_traits>
+#include <string_view>
 #include <utility>
 #include <vector>
 
-#include "absl/base/dynamic_annotations.h"
+#include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/strings/str_format.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/layout_util.h"
-#include "xla/primitive_util.h"
-#include "xla/refcounting_hash_map.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/cpu/collectives_interface.h"
+#include "xla/service/cpu/in_process_collectives.h"
 #include "xla/service/cpu/xfeed_manager.h"
+#include "xla/service/global_device_id.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -96,9 +102,9 @@ extern const char* const kEigenConv3DF16SymbolName =
     "__xla_cpu_runtime_EigenConv3DF16";
 extern const char* const kEigenConv3DF32SymbolName =
     "__xla_cpu_runtime_EigenConv3DF32";
-extern const char* const kEigenFftSymbolName = "__xla_cpu_runtime_EigenFft";
-extern const char* const kEigenSingleThreadedFftSymbolName =
-    "__xla_cpu_runtime_EigenSingleThreadedFft";
+extern const char* const kDuccFftSymbolName = "__xla_cpu_runtime_DuccFft";
+extern const char* const kDuccSingleThreadedFftSymbolName =
+    "__xla_cpu_runtime_DuccSingleThreadedFft";
 extern const char* const kEigenSingleThreadedMatMulF16SymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedMatMulF16";
 extern const char* const kEigenSingleThreadedMatMulF32SymbolName =
@@ -141,6 +147,9 @@ extern const char* const kTracingStartSymbolName =
 extern const char* const kTracingEndSymbolName = "__xla_cpu_runtime_TracingEnd";
 extern const char* const kXlaCpuRuntimeSymbolNamePrefix = "__xla_cpu_runtime_";
 extern const char* const kAllReduceSymbolName = "__xla_cpu_runtime_AllReduce";
+extern const char* const kAllGatherSymbolName = "__xla_cpu_runtime_AllGather";
+extern const char* const kReduceScatterSymbolName =
+    "__xla_cpu_runtime_ReduceScatter";
 extern const char* const kAllToAllSymbolName = "__xla_cpu_runtime_AllToAll";
 extern const char* const kCollectivePermuteSymbolName =
     "__xla_cpu_runtime_CollectivePermute";
@@ -149,71 +158,10 @@ extern const char* const kPartitionIdSymbolName =
 extern const char* const kReplicaIdSymbolName = "__xla_cpu_runtime_ReplicaId";
 extern const char* const kOneDnnMatMulSymbolName =
     "__xla_cpu_runtime_OneDnnMatMul";
+extern const char* const kOneDnnLayerNormSymbolName =
+    "__xla_cpu_runtime_OneDnnLayerNorm";
 
 namespace {
-
-struct CollectivePermuteParticipantData : ParticipantData {
-  CollectivePermuteParticipantData(const RendezvousKey& rendezvous_key_p,
-                                   int64_t device_ordinal_p,
-                                   se::Stream* stream_p)
-      : ParticipantData(rendezvous_key_p),
-        device_ordinal(device_ordinal_p),
-        stream(stream_p) {}
-
-  int64_t device_ordinal;
-  se::Stream* stream;
-  int replica_id;
-  se::DeviceMemoryBase source_data;
-  se::DeviceMemoryBase destination_data;
-  int64_t byte_size;
-  std::vector<int> replica_ids_to_copy_to;
-
-  std::string ToString() const override {
-    return absl::StrFormat(
-        "CollectivePermuteParticipantData{replica_id=%d, "
-        "source_data=%p, destination_data=%p, byte_size=%d, "
-        "replica_ids_to_copy_to=[%s], device_ordinal=%d, stream=%p}",
-        replica_id, source_data.opaque(), destination_data.opaque(), byte_size,
-        absl::StrJoin(replica_ids_to_copy_to, ", "), device_ordinal, stream);
-  }
-};
-
-struct AllToAllParticipantData : ParticipantData {
-  AllToAllParticipantData(const RendezvousKey& rendezvous_key_p,
-                          int64_t device_ordinal_p, se::Stream* stream_p)
-      : ParticipantData(rendezvous_key_p),
-        device_ordinal(device_ordinal_p),
-        stream(stream_p) {}
-
-  int64_t device_ordinal;
-  se::Stream* stream;
-  std::vector<se::DeviceMemoryBase> source_buffers;
-  std::vector<se::DeviceMemoryBase> destination_buffers;
-  GlobalDeviceId device_id;
-
-  // Replica ids participating in AllToAll, concatenation happens in the order
-  // of appearance.
-  std::vector<GlobalDeviceId> devices_to_copy_to;
-
-  std::string ToString() const override {
-    auto addr_formatter = [](std::string* out,
-                             const se::DeviceMemoryBase& mem) {
-      absl::StrAppend(out, absl::StrFormat("%p", mem.opaque()));
-    };
-    auto device_formatter = [](std::string* out, const GlobalDeviceId& device) {
-      absl::StrAppend(out, device.value());
-    };
-    return absl::StrFormat(
-        "AllToAllParticipantData{replica_id=%d, "
-        "replica_ids_to_copy_to=[%s], source_buffers=[%s], "
-        "destination_buffers=[%s], device_ordinal=%d, stream=%p}",
-        device_id.value(),
-        absl::StrJoin(devices_to_copy_to, ", ", device_formatter),
-        absl::StrJoin(source_buffers, ", ", addr_formatter),
-        absl::StrJoin(destination_buffers, ", ", addr_formatter),
-        device_ordinal, stream);
-  }
-};
 
 // Inverses the encoding of a Shape protobuf into an LLVM global variable.
 StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
@@ -248,343 +196,6 @@ int GetDeviceOrdinal(const ExecutableRunOptions* run_options) {
     return run_options->device_ordinal();
   }
   return run_options->stream()->parent()->device_ordinal();
-}
-
-class CpuAllToAllRendezvous
-    : public Rendezvous<AllToAllParticipantData, std::nullptr_t> {
- public:
-  explicit CpuAllToAllRendezvous(const RendezvousKey& k)
-      : Rendezvous<AllToAllParticipantData, std::nullptr_t>(k) {}
-
- protected:
-  StatusOr<std::nullptr_t> RunCollectiveOp(
-      const AllToAllParticipantData& /*participant*/) override {
-    bool is_primary = InitializationBarrier();
-
-    if (is_primary) {
-      absl::MutexLock lock(&mu_);
-
-      CHECK(!participants_.empty());
-      CHECK(!participants_[0].source_buffers.empty());
-      int expected_buffer_size = participants_[0].source_buffers[0].size();
-
-      // Device id -> position in participants_.
-      absl::flat_hash_map<GlobalDeviceId, int> device_map;
-
-      for (int pos = 0; pos < participants_.size(); pos++) {
-        const AllToAllParticipantData& p = participants_[pos];
-        CHECK_EQ(p.source_buffers.size(), p.destination_buffers.size());
-        CHECK_EQ(p.source_buffers.size(), participants_.size());
-        for (int i = 0; i < p.source_buffers.size(); i++) {
-          CHECK_EQ(p.destination_buffers[i].size(), expected_buffer_size);
-          CHECK_EQ(p.source_buffers[i].size(), expected_buffer_size);
-        }
-        device_map[p.device_id] = pos;
-      }
-
-      const std::vector<GlobalDeviceId>& devices_to_copy_to =
-          participants_[0].devices_to_copy_to;
-
-      // Device id -> rank
-      absl::flat_hash_map<GlobalDeviceId, int> device_ranks;
-      for (int rank = 0; rank < devices_to_copy_to.size(); ++rank) {
-        auto device_id = devices_to_copy_to[rank];
-        device_ranks[device_id] = rank;
-      }
-
-      for (const AllToAllParticipantData& sender : participants_) {
-        VLOG(3) << "Processing AllToAll participant: " << sender.ToString();
-
-        int rank = FindOrDie(device_ranks, sender.device_id);
-
-        for (int i = 0; i < participants_.size(); ++i) {
-          auto device_id = devices_to_copy_to[i];
-          int participant_num = FindOrDie(device_map, device_id);
-          AllToAllParticipantData& receiver = participants_[participant_num];
-
-          std::memcpy(receiver.destination_buffers[rank].opaque(),
-                      sender.source_buffers[i].opaque(), expected_buffer_size);
-        }
-      }
-    }
-    return nullptr;
-  }
-};
-
-class CpuCollectivePermuteRendezvous
-    : public Rendezvous<CollectivePermuteParticipantData, std::nullptr_t> {
- public:
-  explicit CpuCollectivePermuteRendezvous(const RendezvousKey& k)
-      : Rendezvous<CollectivePermuteParticipantData, std::nullptr_t>(k) {}
-
- protected:
-  StatusOr<std::nullptr_t> RunCollectiveOp(
-      const CollectivePermuteParticipantData& /*participant*/) override {
-    bool primary = InitializationBarrier();
-
-    // Perform all copies from the primary thread.
-    if (primary) {
-      absl::MutexLock lock(&mu_);
-
-      std::map<int, int> replica_idx_to_participant_idx;
-      for (int p_idx = 0; p_idx < participants_.size(); p_idx++) {
-        replica_idx_to_participant_idx[participants_[p_idx].replica_id] = p_idx;
-      }
-      for (auto& p : participants_) {
-        for (int dest_replica : p.replica_ids_to_copy_to) {
-          auto& dest_p = participants_[FindOrDie(replica_idx_to_participant_idx,
-                                                 dest_replica)];
-          std::memcpy(dest_p.destination_data.opaque(), p.source_data.opaque(),
-                      p.byte_size);
-
-          // Each replica may be copied into only once.
-          replica_idx_to_participant_idx.erase(dest_replica);
-        }
-      }
-
-      // Zero out untouched participants.
-      for (auto& replica_p : replica_idx_to_participant_idx) {
-        auto& p = participants_[replica_p.second];
-        std::memset(p.destination_data.opaque(), 0, p.byte_size);
-      }
-    }
-    return nullptr;
-  }
-};
-
-class CpuAllReduceRendezvous
-    : public Rendezvous<AllReduceParticipantData, std::nullptr_t> {
- public:
-  explicit CpuAllReduceRendezvous(const RendezvousKey& k)
-      : Rendezvous<AllReduceParticipantData, std::nullptr_t>(k) {}
-
- protected:
-  StatusOr<std::nullptr_t> RunCollectiveOp(
-      const AllReduceParticipantData& participant) override {
-    PrimitiveType datatype = participant.buffers.front().primitive_type;
-    bool primary = InitializationBarrier();
-
-    if (primary) {
-      switch (datatype) {
-        case S8:
-          DoAllReduce<S8>(participant);
-          break;
-        case PRED:
-        case U8:
-          DoAllReduce<U8>(participant);
-          break;
-        case S16:
-          DoAllReduce<S16>(participant);
-          break;
-        case U16:
-          DoAllReduce<U16>(participant);
-          break;
-        case S32:
-          DoAllReduce<S32>(participant);
-          break;
-        case U32:
-          DoAllReduce<U32>(participant);
-          break;
-        case S64:
-          DoAllReduce<S64>(participant);
-          break;
-        case U64:
-          DoAllReduce<U64>(participant);
-          break;
-        case F16:
-          DoAllReduce<F16>(participant);
-          break;
-        case F32:
-          DoAllReduce<F32>(participant);
-          break;
-        case F64:
-          DoAllReduce<F64>(participant);
-          break;
-        case C64:
-          DoAllReduce<C64>(participant);
-          break;
-        case C128:
-          DoAllReduce<C128>(participant);
-          break;
-        default:
-          LOG(FATAL) << "Unexpected datatype;";
-      }
-    }
-    return nullptr;
-  }
-
- private:
-  template <PrimitiveType PT>
-  void DoAllReduce(AllReduceParticipantData participant) {
-    using T = typename primitive_util::PrimitiveTypeToNative<PT>::type;
-    absl::MutexLock lock(&mu_);
-    CHECK(!participants_.empty());
-    ReductionKind reduction_kind = participant.reduction_kind;
-    for (const auto& p : participants_) {
-      CHECK(p.reduction_kind == reduction_kind);
-    }
-    int num_participants = participants_.size();
-
-    // participant_idx -> buffer_idx -> buffer.
-    std::vector<std::vector<absl::Span<T>>> input_buffers;
-    std::vector<std::vector<absl::Span<T>>> output_buffers;
-    input_buffers.reserve(num_participants);
-    output_buffers.reserve(num_participants);
-    const AllReduceParticipantData& first_participant = participants_.front();
-
-    int buffers_per_participant = first_participant.buffers.size();
-    for (AllReduceParticipantData& p : participants_) {
-      CHECK_EQ(p.buffers.size(), buffers_per_participant);
-
-      input_buffers.emplace_back();
-      output_buffers.emplace_back();
-      std::vector<absl::Span<T>>& participant_input_buffers =
-          input_buffers.back();
-      std::vector<absl::Span<T>>& participant_output_buffers =
-          output_buffers.back();
-      participant_input_buffers.reserve(p.buffers.size());
-      participant_output_buffers.reserve(p.buffers.size());
-
-      for (int buffer_idx = 0; buffer_idx < buffers_per_participant;
-           buffer_idx++) {
-        auto& participant_buffer = p.buffers[buffer_idx];
-        participant_input_buffers.emplace_back(
-            static_cast<T*>(participant_buffer.source_data.opaque()),
-            participant_buffer.element_count);
-        participant_output_buffers.emplace_back(
-            static_cast<T*>(participant_buffer.destination_data.opaque()),
-            participant_buffer.element_count);
-        CHECK_EQ(participant_buffer.element_count,
-                 first_participant.buffers[buffer_idx].element_count);
-      }
-    }
-
-    for (int buffer_idx = 0; buffer_idx < buffers_per_participant;
-         buffer_idx++) {
-      int element_count = first_participant.buffers[buffer_idx].element_count;
-      for (int idx = 0; idx < element_count; idx++) {
-        T out = GetInitialValue<T>(reduction_kind);
-        for (int participant_idx = 0; participant_idx < participants_.size();
-             participant_idx++) {
-          out = PerformReductionStep<T>(
-              reduction_kind, out,
-              input_buffers[participant_idx][buffer_idx][idx]);
-        }
-        for (int participant_idx = 0; participant_idx < participants_.size();
-             participant_idx++) {
-          output_buffers[participant_idx][buffer_idx][idx] = out;
-        }
-      }
-    }
-  }
-
-  template <typename T>
-  T GetInitialValue(ReductionKind reduction_kind) {
-    switch (reduction_kind) {
-      case ReductionKind::SUM:
-        return static_cast<T>(0);
-      case ReductionKind::PRODUCT:
-        return static_cast<T>(1);
-      case ReductionKind::MIN:
-        return std::numeric_limits<T>::max();
-      case ReductionKind::MAX:
-        return std::numeric_limits<T>::min();
-    }
-  }
-
-  template <typename T, bool kIsSignedIntegralType>
-  struct SumProductTypeForReductionStep {
-    using type = T;
-  };
-
-  template <typename T>
-  struct SumProductTypeForReductionStep<T, /*kIsSignedIntegralType=*/true> {
-    using type = typename std::make_unsigned_t<T>;
-  };
-
-  template <typename T,
-            typename std::enable_if<!is_complex_v<T>>::type* = nullptr>
-  T PerformReductionStep(ReductionKind reduction_kind, T a, T b) {
-    using SumProductType = typename SumProductTypeForReductionStep<
-        T, std::is_integral<T>::value && std::is_signed<T>::value>::type;
-    switch (reduction_kind) {
-      case ReductionKind::SUM:
-        return absl::bit_cast<T>(
-            static_cast<SumProductType>(absl::bit_cast<SumProductType>(a) +
-                                        absl::bit_cast<SumProductType>(b)));
-      case ReductionKind::PRODUCT:
-        return absl::bit_cast<T>(
-            static_cast<SumProductType>(absl::bit_cast<SumProductType>(a) *
-                                        absl::bit_cast<SumProductType>(b)));
-      case ReductionKind::MIN:
-        return std::min(a, b);
-      case ReductionKind::MAX:
-        return std::max(a, b);
-    }
-  }
-
-  template <typename T,
-            typename std::enable_if<is_complex_v<T>>::type* = nullptr>
-  T PerformReductionStep(ReductionKind reduction_kind, T a, T b) {
-    using SumProductType = typename SumProductTypeForReductionStep<
-        T, std::is_integral<T>::value && std::is_signed<T>::value>::type;
-    switch (reduction_kind) {
-      case ReductionKind::SUM:
-        return absl::bit_cast<T>(
-            static_cast<SumProductType>(absl::bit_cast<SumProductType>(a) +
-                                        absl::bit_cast<SumProductType>(b)));
-      case ReductionKind::PRODUCT:
-        return absl::bit_cast<T>(
-            static_cast<SumProductType>(absl::bit_cast<SumProductType>(a) *
-                                        absl::bit_cast<SumProductType>(b)));
-      case ReductionKind::MIN:
-      case ReductionKind::MAX:
-        LOG(FATAL) << "min/max not valid for complex types";
-    }
-  }
-};
-
-RefcountingHashMap<RendezvousKey, CpuAllReduceRendezvous>&
-GlobalAllReduceRendezvousMap() {
-  static auto& m =
-      *new RefcountingHashMap<RendezvousKey, CpuAllReduceRendezvous>;
-  return m;
-}
-
-RefcountingHashMap<RendezvousKey, CpuCollectivePermuteRendezvous>&
-GlobalCollectivePermuteRendezvousMap() {
-  static auto& m =
-      *new RefcountingHashMap<RendezvousKey, CpuCollectivePermuteRendezvous>;
-  return m;
-}
-
-RefcountingHashMap<RendezvousKey, CpuAllToAllRendezvous>&
-GlobalAllToAllRendezvousMap() {
-  static auto& m =
-      *new RefcountingHashMap<RendezvousKey, CpuAllToAllRendezvous>;
-  return m;
-}
-
-RendezvousKey GetRendezvousKey(const ExecutableRunOptions* run_options,
-                               std::vector<ReplicaGroup> group,
-                               int32_t channel_id_present,
-                               std::optional<bool> use_global_device_ids,
-                               int64_t op_id) {
-  const DeviceAssignment& device_assignment = *run_options->device_assignment();
-  int device_ordinal = GetDeviceOrdinal(run_options);
-  RendezvousKey::CollectiveOpKind op_kind = channel_id_present
-                                                ? RendezvousKey::kCrossModule
-                                                : RendezvousKey::kCrossReplica;
-  std::vector<GlobalDeviceId> participating_devices =
-      GetParticipatingDevices(GlobalDeviceId(device_ordinal), device_assignment,
-                              group,
-                              GetCollectiveOpGroupMode(channel_id_present != 0,
-                                                       use_global_device_ids)
-                                  .value())
-          .value();
-  int num_local_participants = participating_devices.size();
-  return RendezvousKey{run_options->run_id(), std::move(participating_devices),
-                       num_local_participants, op_kind, op_id};
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
@@ -665,102 +276,6 @@ void ReleaseOutfeedBufferAfterPopulationImpl(
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
-void AllToAllImpl(const ExecutableRunOptions* run_options,
-                  int32_t channel_id_present, int64_t op_id,
-                  const void* replica_groups_str,
-                  int32_t replica_groups_str_size, int32_t num_buffers,
-                  int64_t buffer_size, void** source_buffers,
-                  void** destination_buffers) {
-  int device_ordinal = GetDeviceOrdinal(run_options);
-  absl::string_view replica_groups_serialized(
-      static_cast<const char*>(replica_groups_str), replica_groups_str_size);
-  std::vector<ReplicaGroup> group =
-      ParseReplicaGroupsOnly(replica_groups_serialized).value();
-  RendezvousKey rendezvous_key =
-      GetRendezvousKey(run_options, group, channel_id_present,
-                       /*use_global_device_ids=*/std::nullopt, op_id);
-
-  AllToAllParticipantData participant(rendezvous_key, device_ordinal,
-                                      run_options->stream());
-  participant.device_id = GlobalDeviceId(device_ordinal);
-  participant.devices_to_copy_to =
-      GetParticipatingDevices(
-          GlobalDeviceId(device_ordinal), *run_options->device_assignment(),
-          group,
-          GetCollectiveOpGroupMode(channel_id_present != 0,
-                                   /*use_global_device_ids=*/std::nullopt)
-              .value())
-          .value();
-  for (int i = 0; i < num_buffers; i++) {
-    participant.source_buffers.emplace_back(source_buffers[i], buffer_size);
-    participant.destination_buffers.emplace_back(destination_buffers[i],
-                                                 buffer_size);
-  }
-  auto make_cpu_rendezvous = [](const RendezvousKey& k) {
-    return std::make_unique<CpuAllToAllRendezvous>(k);
-  };
-  TF_CHECK_OK(CpuAllToAllRendezvous::SubmitParticipant(
-                  [&] {
-                    return GlobalAllToAllRendezvousMap().GetOrCreateIfAbsent(
-                        rendezvous_key, make_cpu_rendezvous);
-                  },
-                  participant)
-                  .status());
-}
-
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
-void AllReduceImpl(const ExecutableRunOptions* run_options,
-                   const void* replica_groups_str,
-                   int32_t replica_groups_str_size, int32_t channel_id_present,
-                   int32_t use_global_device_ids, int64_t op_id,
-                   int32_t reduction_kind, const void* shape_ptr,
-                   int32_t shape_length, int32_t num_buffers,
-                   void** input_buffers, void** output_buffers) {
-  int device_ordinal = GetDeviceOrdinal(run_options);
-  absl::string_view replica_groups_serialized(
-      static_cast<const char*>(replica_groups_str), replica_groups_str_size);
-  std::vector<ReplicaGroup> group =
-      ParseReplicaGroupsOnly(replica_groups_serialized).value();
-  RendezvousKey rendezvous_key = GetRendezvousKey(
-      run_options, group, channel_id_present, use_global_device_ids, op_id);
-  auto shape_str = ShapeString(shape_ptr, shape_length);
-  VLOG(2) << "All-reduce input/output shape : " << shape_str;
-
-  Shape shape =
-      DecodeSelfDescribingShapeConstant(shape_ptr, shape_length).value();
-
-  CHECK((num_buffers > 1 && shape.IsTuple()) ||
-        (num_buffers == 1 && LayoutUtil::IsDenseArray(shape)));
-
-  AllReduceParticipantData participant(rendezvous_key, device_ordinal,
-                                       run_options->stream());
-  participant.reduction_kind = static_cast<ReductionKind>(reduction_kind);
-  for (int i = 0; i < num_buffers; i++) {
-    Shape subshape = num_buffers == 1 ? shape : shape.tuple_shapes(i);
-    AllReduceParticipantData::Buffer buffer;
-    buffer.element_count = ShapeUtil::ElementsIn(subshape);
-    buffer.primitive_type = subshape.element_type();
-    buffer.source_data =
-        se::DeviceMemoryBase(input_buffers[i], ShapeUtil::ByteSizeOf(subshape));
-    buffer.destination_data = se::DeviceMemoryBase(
-        output_buffers[i], ShapeUtil::ByteSizeOf(subshape));
-    participant.buffers.push_back(buffer);
-  }
-
-  auto make_cpu_rendezvous = [](const RendezvousKey& k) {
-    return std::make_unique<CpuAllReduceRendezvous>(k);
-  };
-
-  TF_CHECK_OK(CpuAllReduceRendezvous::SubmitParticipant(
-                  [&] {
-                    return GlobalAllReduceRendezvousMap().GetOrCreateIfAbsent(
-                        rendezvous_key, make_cpu_rendezvous);
-                  },
-                  participant)
-                  .status());
-}
-
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
 void ReplicaIdImpl(const ExecutableRunOptions* run_options,
                    void* output_buffer) {
   int device_ordinal = GetDeviceOrdinal(run_options);
@@ -781,23 +296,188 @@ void PartitionIdImpl(const ExecutableRunOptions* run_options,
   std::memcpy(output_buffer, &logical_id.computation_id, 4);
 }
 
+RendezvousKey GetRendezvousKey(const ExecutableRunOptions* run_options,
+                               GlobalDeviceId device,
+                               std::vector<ReplicaGroup> group,
+                               int32_t channel_id_present,
+                               std::optional<bool> use_global_device_ids,
+                               int64_t op_id) {
+  const DeviceAssignment& device_assignment = *run_options->device_assignment();
+  RendezvousKey::CollectiveOpKind op_kind = channel_id_present
+                                                ? RendezvousKey::kCrossModule
+                                                : RendezvousKey::kCrossReplica;
+  std::vector<GlobalDeviceId> participating_devices =
+      GetParticipatingDevices(GlobalDeviceId(device), device_assignment, group,
+                              GetCollectiveOpGroupMode(channel_id_present != 0,
+                                                       use_global_device_ids)
+                                  .value())
+          .value();
+  int num_local_participants = participating_devices.size();
+  return RendezvousKey{run_options->run_id(), std::move(participating_devices),
+                       num_local_participants, op_kind, op_id};
+}
+
+CollectivesInterface* GetInProcessCollectivesImpl() {
+  static InProcessCollectives* c = new InProcessCollectives();
+  return c;
+}
+
+absl::Duration DefaultCollectiveTimeout() { return absl::InfiniteDuration(); }
+
+absl::StatusOr<int> RankInGlobalDevices(
+    absl::Span<GlobalDeviceId const> devices, GlobalDeviceId device) {
+  auto it = absl::c_find(devices, device);
+  if (it == devices.end()) {
+    return InvalidArgument(
+        "Device %d not present in global devices %s.", device.value(),
+        absl::StrJoin(devices, ", ", [](std::string* out, GlobalDeviceId id) {
+          absl::StrAppend(out, id.value());
+        }));
+  }
+  return std::distance(devices.begin(), it);
+}
+
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
+void AllToAllImpl(const ExecutableRunOptions* run_options,
+                  int32_t channel_id_present, int64_t op_id,
+                  const void* replica_groups_str,
+                  int32_t replica_groups_str_size, int32_t num_buffers,
+                  int64_t buffer_size, void** source_buffers,
+                  void** destination_buffers) {
+  GlobalDeviceId device(GetDeviceOrdinal(run_options));
+  std::string_view replica_groups_serialized(
+      static_cast<const char*>(replica_groups_str), replica_groups_str_size);
+  std::vector<ReplicaGroup> group =
+      ParseReplicaGroupsOnly(replica_groups_serialized).value();
+  RendezvousKey rendezvous_key =
+      GetRendezvousKey(run_options, device, group, channel_id_present,
+                       /*use_global_device_ids=*/std::nullopt, op_id);
+
+  int rank = RankInGlobalDevices(rendezvous_key.global_devices, device).value();
+
+  CollectivesInterface* collectives = GetInProcessCollectivesImpl();
+
+  auto communicator =
+      collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
+  TF_CHECK_OK(communicator->AllToAll(
+      rendezvous_key, buffer_size,
+      absl::Span<const void* const>(source_buffers, num_buffers),
+      absl::Span<void* const>(destination_buffers, num_buffers),
+      DefaultCollectiveTimeout()));
+}
+
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
+void AllGatherImpl(const ExecutableRunOptions* run_options,
+                   int32_t channel_id_present, int32_t use_global_device_ids,
+                   int64_t op_id, const void* replica_groups_str,
+                   int32_t replica_groups_str_size, int64_t buffer_size,
+                   void* source_buffer, void* destination_buffer) {
+  GlobalDeviceId device(GetDeviceOrdinal(run_options));
+  std::string_view replica_groups_serialized(
+      static_cast<const char*>(replica_groups_str), replica_groups_str_size);
+  std::vector<ReplicaGroup> group =
+      ParseReplicaGroupsOnly(replica_groups_serialized).value();
+  RendezvousKey rendezvous_key =
+      GetRendezvousKey(run_options, device, group, channel_id_present,
+                       use_global_device_ids, op_id);
+
+  int rank = RankInGlobalDevices(rendezvous_key.global_devices, device).value();
+
+  CollectivesInterface* collectives = GetInProcessCollectivesImpl();
+
+  auto communicator =
+      collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
+  TF_CHECK_OK(communicator->AllGather(rendezvous_key, buffer_size,
+                                      source_buffer, destination_buffer,
+                                      DefaultCollectiveTimeout()));
+}
+
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
+void ReduceScatterImpl(const ExecutableRunOptions* run_options,
+                       const void* replica_groups_str,
+                       int32_t replica_groups_str_size,
+                       int32_t channel_id_present,
+                       int32_t use_global_device_ids, int64_t op_id,
+                       int32_t reduction_kind, int32_t element_type,
+                       int64_t chunk_elems, void* input_buffer,
+                       void* output_buffer) {
+  GlobalDeviceId device(GetDeviceOrdinal(run_options));
+  std::string_view replica_groups_serialized(
+      static_cast<const char*>(replica_groups_str), replica_groups_str_size);
+  std::vector<ReplicaGroup> group =
+      ParseReplicaGroupsOnly(replica_groups_serialized).value();
+  RendezvousKey rendezvous_key =
+      GetRendezvousKey(run_options, device, group, channel_id_present,
+                       use_global_device_ids, op_id);
+
+  int rank = RankInGlobalDevices(rendezvous_key.global_devices, device).value();
+
+  CollectivesInterface* collectives = GetInProcessCollectivesImpl();
+
+  auto communicator =
+      collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
+  TF_CHECK_OK(communicator->ReduceScatter(
+      rendezvous_key, static_cast<ReductionKind>(reduction_kind),
+      static_cast<PrimitiveType>(element_type), chunk_elems, input_buffer,
+      output_buffer, DefaultCollectiveTimeout()));
+}
+
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
+void AllReduceImpl(const ExecutableRunOptions* run_options,
+                   const void* replica_groups_str,
+                   int32_t replica_groups_str_size, int32_t channel_id_present,
+                   int32_t use_global_device_ids, int64_t op_id,
+                   int32_t reduction_kind, const void* shape_ptr,
+                   int32_t shape_length, int32_t num_buffers,
+                   void** input_buffers, void** output_buffers) {
+  GlobalDeviceId device(GetDeviceOrdinal(run_options));
+  std::string_view replica_groups_serialized(
+      static_cast<const char*>(replica_groups_str), replica_groups_str_size);
+  std::vector<ReplicaGroup> group =
+      ParseReplicaGroupsOnly(replica_groups_serialized).value();
+  RendezvousKey rendezvous_key =
+      GetRendezvousKey(run_options, device, group, channel_id_present,
+                       use_global_device_ids, op_id);
+  auto shape_str = ShapeString(shape_ptr, shape_length);
+  VLOG(2) << "All-reduce input/output shape : " << shape_str;
+
+  Shape shape =
+      DecodeSelfDescribingShapeConstant(shape_ptr, shape_length).value();
+
+  CHECK((num_buffers > 1 && shape.IsTuple()) ||
+        (num_buffers == 1 && LayoutUtil::IsDenseArray(shape)));
+
+  int rank = RankInGlobalDevices(rendezvous_key.global_devices, device).value();
+
+  CollectivesInterface* collectives = GetInProcessCollectivesImpl();
+
+  auto communicator =
+      collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
+  for (int i = 0; i < num_buffers; i++) {
+    Shape subshape = num_buffers == 1 ? shape : shape.tuple_shapes(i);
+    TF_CHECK_OK(communicator->AllReduce(
+        rendezvous_key, static_cast<ReductionKind>(reduction_kind),
+        subshape.element_type(), ShapeUtil::ElementsIn(subshape),
+        input_buffers[i], output_buffers[i], DefaultCollectiveTimeout()));
+  }
+}
+
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
 void CollectivePermuteImpl(const ExecutableRunOptions* run_options,
                            int32_t channel_id_present, int64_t op_id,
                            int32_t byte_size, void* input_buffer,
                            void* output_buffer, const void* source_target_pairs,
                            int32_t source_target_pairs_size) {
-  int device_ordinal = GetDeviceOrdinal(run_options);
-  absl::string_view source_target_pairs_serialized(
+  GlobalDeviceId device(GetDeviceOrdinal(run_options));
+  std::string_view source_target_pairs_serialized(
       static_cast<const char*>(source_target_pairs), source_target_pairs_size);
   auto pairs = absl::StrSplit(source_target_pairs_serialized, ',');
   const DeviceAssignment::LogicalID logical_id =
-      run_options->device_assignment()
-          ->LogicalIdForDevice(GlobalDeviceId(device_ordinal))
-          .value();
+      run_options->device_assignment()->LogicalIdForDevice(device).value();
   int32_t logical_device_id =
       channel_id_present ? logical_id.computation_id : logical_id.replica_id;
 
+  std::optional<int> source_replica_id;
   std::vector<int> copy_to;
   for (auto& p : pairs) {
     std::vector<std::string> mapping = absl::StrSplit(p, '=');
@@ -807,30 +487,24 @@ void CollectivePermuteImpl(const ExecutableRunOptions* run_options,
     if (from == logical_device_id) {
       copy_to.push_back(to);
     }
+    if (to == logical_device_id) {
+      CHECK(!source_replica_id.has_value());
+      source_replica_id = from;
+    }
   }
   RendezvousKey rendezvous_key =
-      GetRendezvousKey(run_options, {}, channel_id_present,
+      GetRendezvousKey(run_options, device, {}, channel_id_present,
                        /*use_global_device_ids=*/std::nullopt, op_id);
 
-  CollectivePermuteParticipantData participant(rendezvous_key, device_ordinal,
-                                               run_options->stream());
-  participant.replica_id = logical_device_id;
-  participant.source_data = se::DeviceMemoryBase(input_buffer, byte_size);
-  participant.destination_data = se::DeviceMemoryBase(output_buffer, byte_size);
-  participant.replica_ids_to_copy_to = copy_to;
-  participant.byte_size = byte_size;
+  int rank = RankInGlobalDevices(rendezvous_key.global_devices, device).value();
 
-  auto make_cpu_rendezvous = [](const RendezvousKey& k) {
-    return std::make_unique<CpuCollectivePermuteRendezvous>(k);
-  };
-  TF_CHECK_OK(
-      CpuCollectivePermuteRendezvous::SubmitParticipant(
-          [&] {
-            return GlobalCollectivePermuteRendezvousMap().GetOrCreateIfAbsent(
-                rendezvous_key, make_cpu_rendezvous);
-          },
-          participant)
-          .status());
+  CollectivesInterface* collectives = GetInProcessCollectivesImpl();
+
+  auto communicator =
+      collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
+  TF_CHECK_OK(communicator->CollectivePermute(
+      rendezvous_key, byte_size, source_replica_id, copy_to, input_buffer,
+      output_buffer, DefaultCollectiveTimeout()));
 }
 }  // namespace
 }  // namespace runtime
@@ -900,6 +574,31 @@ void __xla_cpu_runtime_AllToAll(const xla::ExecutableRunOptions* run_options,
       run_options, channel_id_present, op_id, replica_groups_str,
       replica_groups_str_size, num_buffers, buffer_size, source_buffers,
       destination_buffers);
+}
+
+void __xla_cpu_runtime_AllGather(const xla::ExecutableRunOptions* run_options,
+                                 int32_t channel_id_present,
+                                 int32_t use_global_device_ids, int64_t op_id,
+                                 const void* replica_groups_str,
+                                 int32_t replica_groups_str_size,
+                                 int64_t buffer_size, void* source_buffer,
+                                 void* destination_buffer) {
+  return xla::cpu::runtime::AllGatherImpl(
+      run_options, channel_id_present, use_global_device_ids, op_id,
+      replica_groups_str, replica_groups_str_size, buffer_size, source_buffer,
+      destination_buffer);
+}
+
+void __xla_cpu_runtime_ReduceScatter(
+    const xla::ExecutableRunOptions* run_options,
+    const void* replica_groups_str, int32_t replica_groups_str_size,
+    int32_t channel_id_present, int32_t use_global_device_ids, int64_t op_id,
+    int32_t reduction_kind, int32_t element_type, int64_t chunk_elems,
+    void* input_buffer, void* output_buffer) {
+  return xla::cpu::runtime::ReduceScatterImpl(
+      run_options, replica_groups_str, replica_groups_str_size,
+      channel_id_present, use_global_device_ids, op_id, reduction_kind,
+      element_type, chunk_elems, input_buffer, output_buffer);
 }
 
 void __xla_cpu_runtime_AllReduce(const xla::ExecutableRunOptions* run_options,

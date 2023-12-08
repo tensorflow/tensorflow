@@ -18,17 +18,18 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <iostream>
 #include <iterator>
 #include <map>
 #include <memory>
 #include <optional>
 #include <set>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -44,6 +45,8 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/call_graph.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -68,9 +71,10 @@ bool IsSubTilingOrEqualSharding(const Shape& potential_sharded_shape,
   if (potential_subsharding.IsTileMaximal()) {
     return false;
   }
+  const int32_t tiled_data_rank = potential_subsharding.TiledDataRank();
   // Different tiled ranks can't be compared (something is wrong, are the
   // shardings for different shapes?)
-  if (potential_subsharding.TiledDataRank() != sharding.TiledDataRank()) {
+  if (tiled_data_rank != sharding.TiledDataRank()) {
     return false;
   }
   // Helper to construct the base tile bounds based on a shape and a sharding.
@@ -95,56 +99,61 @@ bool IsSubTilingOrEqualSharding(const Shape& potential_sharded_shape,
       return false;
     }
   }
-  const int32_t num_devices =
-      potential_subsharding.tile_assignment().num_elements();
+  // Use one contiguous storage to reduce allocation overhead.
+  auto storage = std::make_unique<int32_t[]>(
+      sharding.tile_assignment().num_elements() * tiled_data_rank);
+  int32_t* storage_cursor = storage.get();
   // Need a map here, because the MPMD partitioner sharding annotations can have
   // non contiguous partition numbers.
-  absl::flat_hash_map<int32_t, std::vector<int32_t>> subsharding_offsets;
-  absl::flat_hash_map<int32_t, std::vector<int32_t>> sharding_offsets;
-  const int32_t indices_count = potential_subsharding.TiledDataRank();
-  // Collect the start offsets for each tile for the subsharding we are
-  // evaluating.
-  potential_subsharding.tile_assignment().Each(
-      [&](absl::Span<const int64_t> indices, int64_t device) {
-        auto& indices_per_device = subsharding_offsets[device];
-        for (int64_t i = 0; i < indices_count; ++i) {
-          indices_per_device.push_back(potential_base_tile[i] * indices[i]);
-        }
-      });
+  absl::flat_hash_map<int32_t, int32_t*> sharding_offsets;
+  sharding_offsets.reserve(sharding.tile_assignment().num_elements());
+  auto get_sharding_offsets = [&](int64_t device) -> absl::Span<int32_t> {
+    auto it = sharding_offsets.find(device);
+    if (it == sharding_offsets.end()) {
+      bool emplaced;
+      std::tie(it, emplaced) = sharding_offsets.emplace(device, storage_cursor);
+      DCHECK(emplaced);
+      storage_cursor += tiled_data_rank;
+    }
+    return absl::MakeSpan(it->second, tiled_data_rank);
+  };
   // Collect the start offsets for each tile for the sharding we are evaluating
   // against.
   sharding.tile_assignment().Each(
       [&](absl::Span<const int64_t> indices, int64_t device) {
-        auto& indices_per_device = sharding_offsets[device];
-        for (int64_t i = 0; i < indices_count; ++i) {
-          indices_per_device.push_back(base_tile[i] * indices[i]);
+        auto indices_per_device = get_sharding_offsets(device);
+        for (int64_t i = 0; i < tiled_data_rank; ++i) {
+          indices_per_device[i] = base_tile[i] * indices[i];
         }
       });
   // Compare the start offsets and the end offset of the tiles for each device.
-  for (int i = 0; i < num_devices; ++i) {
-    const int32_t device_id =
-        potential_subsharding.tile_assignment().array().data()[i];
-    auto& subsharding_offset = subsharding_offsets[device_id];
-    auto& sharding_offset = sharding_offsets[device_id];
-    for (int j = 0; j < indices_count; ++j) {
-      // The subsharding contains data outside of the tile we are comparing
-      // against.
-      if (subsharding_offset[j] < sharding_offset[j]) {
-        return false;
-      }
-      // Skip last tile. It can never go beyond the limit as the shape is the
-      // same for both shardings and sometimes there's padding making one of the
-      // two limits bigger than the other, but it shouldn't be counted.
-      const bool is_last_tile =
-          subsharding_offset[j] + potential_base_tile[j] >=
-          potential_sharded_shape.dimensions(j);
-      if (!is_last_tile && subsharding_offset[j] + potential_base_tile[j] >
-                               sharding_offset[j] + base_tile[j]) {
-        return false;
-      }
-    }
-  }
-  return true;
+  auto& potential_ta = potential_subsharding.tile_assignment().array();
+  absl::Status ok_if_no_vialation = potential_ta.EachStatus(
+      [&](absl::Span<const int64_t> indices, int64_t device) {
+        auto sharding_offset = get_sharding_offsets(device);
+        for (int j = 0; j < tiled_data_rank; ++j) {
+          const int32_t subsharding_offset_j =
+              potential_base_tile[j] * indices[j];
+          // The subsharding contains data outside of the tile we are comparing
+          // against.
+          if (subsharding_offset_j < sharding_offset[j]) {
+            return InternalError("");
+          }
+          // Skip last tile. It can never go beyond the limit as the shape is
+          // the same for both shardings and sometimes there's padding making
+          // one of the two limits bigger than the other, but it shouldn't be
+          // counted.
+          const bool is_last_tile =
+              subsharding_offset_j + potential_base_tile[j] >=
+              potential_sharded_shape.dimensions(j);
+          if (!is_last_tile && subsharding_offset_j + potential_base_tile[j] >
+                                   sharding_offset[j] + base_tile[j]) {
+            return InternalError("");
+          }
+        }
+        return absl::OkStatus();
+      });
+  return ok_if_no_vialation.ok();
 }
 
 bool IsShardingMoreSpecific(const HloSharding& lhs, const HloSharding& rhs) {
@@ -2748,6 +2757,37 @@ std::optional<HloSharding> GetOutputSharding(
     return instruction->sharding().tuple_elements().back();
   }
   return instruction->sharding();
+}
+
+Shape UntileShape(const HloSharding& sharding, const Shape& shape) {
+  if (!sharding.IsTuple()) {
+    return UntileLeafShape(sharding, shape);
+  }
+  Shape result_shape = shape;
+  ShapeUtil::ForEachMutableSubshape(
+      &result_shape,
+      [&shape, &sharding](Shape* subshape, const ShapeIndex& index) {
+        if (!ShapeUtil::IsLeafIndex(shape, index)) {
+          return;
+        }
+        const HloSharding& subshape_sharding =
+            sharding.GetSubSharding(shape, index);
+        *subshape = UntileLeafShape(subshape_sharding, *subshape);
+      });
+
+  return result_shape;
+}
+
+Shape UntileLeafShape(const HloSharding& sharding, const Shape& shape) {
+  if (sharding.IsTileMaximal() || sharding.IsManual() || sharding.IsUnknown()) {
+    return shape;
+  }
+  Shape result_shape = shape;
+  for (int64_t i = 0; i < sharding.TiledDataRank(); ++i) {
+    result_shape.set_dimensions(
+        i, shape.dimensions(i) * sharding.tile_assignment().dim(i));
+  }
+  return result_shape;
 }
 
 }  // namespace hlo_sharding_util

@@ -4326,7 +4326,7 @@ tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertFunctionToMlir(
     mlir::MLIRContext* context) {
   tensorflow::GraphDebugInfo dummy_debug_info;
   tensorflow::GraphImportConfig specs;
-  specs.graph_func_name = fbody->fdef.signature().name();
+  specs.graph_func_name = fbody->record->fdef().signature().name();
   specs.enable_shape_inference = false;
   specs.graph_as_function = true;
   for (const auto* control_ret_node : fbody->control_ret_nodes)

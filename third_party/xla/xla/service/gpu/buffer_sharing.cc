@@ -20,14 +20,21 @@ limitations under the License.
 #include <queue>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -35,7 +42,8 @@ namespace gpu {
 std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
                                              const HloInstruction* operand,
                                              const ShapeIndex& user_index) {
-  if (user->opcode() != HloOpcode::kFusion) {
+  const HloFusionInstruction* fusion = DynCast<HloFusionInstruction>(user);
+  if (fusion == nullptr) {
     return std::nullopt;
   }
 
@@ -65,20 +73,35 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
     }
   }
 
+  // Allow multiple output users, if they end in reductions.
+  // This only works for the reduction emitter, as it calculates the reduction
+  // first, i.e. before processing other outputs (that may overwrite the input).
+  stream_executor::GpuDeviceInfoProto device_info;
+  stream_executor::DeviceDescription device_description(device_info);
+  auto analysis = HloFusionAnalysis::Create(fusion, &device_description);
+  bool is_reduction_emitter = analysis->GetEmitterFusionKind() ==
+                              HloFusionAnalysis::EmitterFusionKind::kReduction;
+  const HloInstruction* reduction_hero =
+      is_reduction_emitter ? reduction_hero = analysis->FindHeroReduction()
+                           : nullptr;
+
   // We need to make sure that the fusion parameter is accessed in the same
-  // iteration order as the fusion output. Also, there should not be two fusion
-  // outputs that consume the fusion parameter, because we do not want to share
-  // the same fusion operand with two different fusion outputs. To make sure
+  // iteration order as the fusion output. Also, there should not be any other
+  // fusion output that accesses it in a different iteration order. To make sure
   // that the iteration order is the same, we only allow ops on the path from
   // fusion parameter to fusion output which are elementwise (no copy) or
   // bitcast or an elementwise dynamic update slice (i.e. with the first operand
   // being on this path).
+  // In addition to that, we can also share the buffer for Scatter fusions if
+  // the scatter is the single output of the fusion.
   HloInstruction* fusion_param =
       user->fused_parameter(user->operand_index(operand));
   HloInstruction* output = user->fused_expression_root();
-  for (int64_t o : user_index) {
-    output = output->mutable_operand(o);
+  if (output->opcode() == HloOpcode::kTuple) {
+    CHECK(!user_index.empty());
+    output = output->mutable_operand(user_index[0]);
   }
+  CHECK_NE(output->opcode(), HloOpcode::kTuple);
   const HloInstruction* non_bitcast_root = output;
   if (non_bitcast_root->opcode() == HloOpcode::kBitcast) {
     non_bitcast_root = non_bitcast_root->operand(0);
@@ -93,14 +116,28 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
     q.pop();
     if (hlo_operand == output) {
       found_path_to_output = true;
-      // The output should have at most 1 user: the tuple op (in case of a
-      // multi-output fusion)
-      if (hlo_operand->user_count() > 1) {
-        return false;
-      }
+      // We still need to process the users of 'hlo_operand'. There can be other
+      // users in addition to the tuple user.
+    }
+    // Reduction emitter processes the reduction first, so the values below it
+    // will not interfere with buffer sharing.
+    if (hlo_operand == reduction_hero) {
       continue;
     }
     for (HloInstruction* hlo : hlo_operand->users()) {
+      if (visited.insert(hlo).second) {
+        q.push(hlo);
+      }
+      // For scatter, we can share the buffer if the path goes through one of
+      // the scatter inputs.
+      if (hlo == non_bitcast_root && hlo->opcode() == HloOpcode::kScatter) {
+        int64_t num_scatter_inputs =
+            hlo->shape().IsTuple() ? hlo->shape().tuple_shapes_size() : 1;
+        if (hlo->operand_index(hlo_operand) < num_scatter_inputs &&
+            absl::c_count(hlo->operands(), hlo_operand) == 1) {
+          continue;
+        }
+      }
       if (non_bitcast_root->opcode() == HloOpcode::kDynamicUpdateSlice &&
           hlo->opcode() == HloOpcode::kDynamicSlice &&
           non_bitcast_root->operand(0) == hlo->operand(0) &&
@@ -125,7 +162,8 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
       } else if ((!hlo->IsElementwiseOnOperand(
                       hlo->operand_index(hlo_operand)) ||
                   hlo->opcode() == HloOpcode::kCopy) &&
-                 hlo->opcode() != HloOpcode::kBitcast) {
+                 hlo->opcode() != HloOpcode::kBitcast &&
+                 hlo->opcode() != HloOpcode::kTuple && hlo != reduction_hero) {
         // This check also catches the case that we reach a different fusion
         // output, as that fusion output would have a tuple op as user, which we
         // do not allow here.
@@ -142,8 +180,18 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
           return false;
         }
       }
-      if (visited.insert(hlo).second) {
-        q.push(hlo);
+    }
+  }
+  // Special case: multi-output fusions with Scatter or DynamicUpdateSlice. For
+  // Scatter, we currently do not support multi-output fusions anyway, but still
+  // handle it here. To be on the safe side, check for !IsElementwise() instead
+  // of checking whether it is Scatter or DynamicUpdateSlice.
+  if (user->IsMultiOutputFusion() && !non_bitcast_root->IsElementwise()) {
+    // Check if any other fusion output was reached. If yes, we cannot share,
+    // because the order in which the output is written might be different.
+    for (HloInstruction* operand : user->fused_expression_root()->operands()) {
+      if (operand != output && visited.find(operand) != visited.end()) {
+        return false;
       }
     }
   }

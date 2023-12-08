@@ -231,6 +231,8 @@ class ShardingParamSharding
   static StatusOr<std::unique_ptr<ShardingParamSharding>> Create(
       ShardingParam sharding_param, DeviceList devices, MemoryKind memory_kind);
 
+  const ShardingParam& sharding_param() const { return sharding_param_; }
+
   StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const override;
 

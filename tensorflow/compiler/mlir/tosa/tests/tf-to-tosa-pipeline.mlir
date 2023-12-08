@@ -1137,3 +1137,12 @@ func.func @test_broadcast_to_smaller_rank(%arg0: tensor<2x3x13x1xi32>) -> (tenso
   %1 = "tf.BroadcastTo"(%arg0, %s) : (tensor<2x3x13x1xi32>, tensor<2xi32>) -> tensor<13x7xi32>
   return %1 : tensor<13x7xi32>
 }
+
+// -----
+
+// CHECK-LABEL: test_erf
+// CHECK: %[[VAR0:.*]] = tosa.erf %arg0 :
+func.func @test_erf(%arg0: tensor<4x4xf32>) -> tensor<4x4xf32> {
+  %0 = "tf.Erf"(%arg0) : (tensor<4x4xf32>) -> tensor<4x4xf32>
+  func.return %0 : tensor<4x4xf32>
+}

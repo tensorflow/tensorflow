@@ -76,7 +76,7 @@ class Device : public DeviceBase {
   // human-readable and not computer-parsed, except that two devices
   // with the same device_type() are expected to perform similarly
   // (both from a computation and communication perspective).
-  const std::string& device_type() const {
+  const std::string& device_type() const override {
     return device_attributes_.device_type();
   }
 

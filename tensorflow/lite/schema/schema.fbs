@@ -427,10 +427,10 @@ enum BuiltinOperator : int32 {
   // All Operators start with STABLEHLO_ prefixes are subject to change
   // Many of the ops below can not be executed by TFlite runtime
   STABLEHLO_LOGISTIC = 162, // WARNING: Do not have runtime support
-  STABLEHLO_ADD = 163, // WARNING: No runtime support yet
+  STABLEHLO_ADD = 163,
   STABLEHLO_DIVIDE = 164, // WARNING: No runtime support yet
-  STABLEHLO_MULTIPLY = 165, // WARNING: No runtime support yet
-  STABLEHLO_MAXIMUM = 166, // WARNING: No runtime support yet
+  STABLEHLO_MULTIPLY = 165,
+  STABLEHLO_MAXIMUM = 166,
   STABLEHLO_RESHAPE = 167, // WARNING: No runtime support yet
   STABLEHLO_CLAMP = 168, // WARNING: No runtime support
   STABLEHLO_CONCATENATE = 169, // WARNING: No runtime support
@@ -445,7 +445,7 @@ enum BuiltinOperator : int32 {
   STABLEHLO_EXPONENTIAL = 178, // WARNING: No runtime support
   STABLEHLO_FLOOR = 179, // WARNING: No runtime support
   STABLEHLO_LOG = 180, // WARNING: No runtime support
-  STABLEHLO_MINIMUM = 181, // WARNING: No runtime support
+  STABLEHLO_MINIMUM = 181,
   STABLEHLO_NEGATE = 182, // WARNING: No runtime support
   STABLEHLO_OR = 183, // WARNING: No runtime support
   STABLEHLO_POWER = 184, // WARNING: No runtime support
@@ -459,17 +459,17 @@ enum BuiltinOperator : int32 {
   STABLEHLO_CONVERT = 192, // WARNING: No runtime support
   STABLEHLO_DYNAMIC_SLICE = 193, // WARNING: No runtime support
   STABLEHLO_DYNAMIC_UPDATE_SLICE = 194, // WARNING: No runtime support
-  STABLEHLO_PAD = 195, // WARNING: No runtime support
+  STABLEHLO_PAD = 195,
   STABLEHLO_IOTA = 196, // WARNING: No runtime support
   STABLEHLO_DOT_GENERAL = 197, // WARNING: No runtime support
-  STABLEHLO_REDUCE_WINDOW = 198, // WARNING: No runtime support
+  STABLEHLO_REDUCE_WINDOW = 198,
   STABLEHLO_SORT = 199, // WARNING: No runtime support
   STABLEHLO_WHILE = 200, // WARNING: No runtime support
-  STABLEHLO_GATHER = 201, // WARNING: No runtime support
+  STABLEHLO_GATHER = 201,
   STABLEHLO_TRANSPOSE = 202, // WARNING: No runtime support
   DILATE = 203,
   STABLEHLO_RNG_BIT_GENERATOR = 204,
-  REDUCE_WINDOW = 205,
+  REDUCE_WINDOW = 205 (deprecated),
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -626,7 +626,7 @@ union BuiltinOptions2{
   StablehloTransposeOptions,
   DilateOptions,
   StablehloRngBitGeneratorOptions,
-  ReduceWindowOptions,
+  ReduceWindowOptions (deprecated),
 }
 
 table StablehloGatherOptions{
@@ -1458,7 +1458,7 @@ enum ReduceWindowFunction : int {
   ANY,
 }
 
-table ReduceWindowOptions{
+table ReduceWindowOptions (deprecated) {
   reduce_function: ReduceWindowFunction;
 }
 

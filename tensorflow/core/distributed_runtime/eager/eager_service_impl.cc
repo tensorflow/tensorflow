@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/platform/errors.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tsl/distributed_runtime/preemption/preemption_notifier.h"
 #include "tsl/protobuf/coordination_config.pb.h"
@@ -55,13 +57,14 @@ namespace tensorflow {
 namespace eager {
 
 namespace {
-Status GetNumRetvals(tensorflow::EagerContext* context, const string& op_name,
+Status GetNumRetvals(FunctionLibraryDefinition* func_lib_def,
+                     const string& op_name,
                      const google::protobuf::Map<string, tensorflow::AttrValue>& attrs,
                      int* num_retvals) {
   const tensorflow::OpRegistrationData* op_reg_data = nullptr;
   auto status = tensorflow::OpRegistry::Global()->LookUp(op_name, &op_reg_data);
   if (absl::IsNotFound(status)) {
-    status = context->FindFunctionOpData(op_name, &op_reg_data);
+    status = func_lib_def->LookUp(op_name, &op_reg_data);
   }
   TF_RETURN_IF_ERROR(status);
 
@@ -100,14 +103,27 @@ Status GetEagerOperationAndNumRetvals(const Operation& operation,
   const char* name = operation.name().c_str();  // Shorthand
   std::optional<tensorflow::EagerFunctionParams> remote_func_params =
       std::nullopt;
+  FunctionLibraryDefinition* func_lib_def;
   if (operation.is_function()) {
     if (operation.is_component_function()) {
+      func_lib_def =
+          eager_context->GetComponentFunctionFunctionLibraryDefinition(
+              operation.name());
+      if (func_lib_def == nullptr) {
+        return absl::InternalError(
+            absl::StrCat("Could not find function library for registered "
+                         "component function: ",
+                         operation.name()));
+      }
       remote_func_params = {operation.id(), /*is_component_function=*/true,
-                            operation.func_step_id()};
+                            operation.func_step_id(), func_lib_def};
     } else {
+      func_lib_def = eager_context->FuncLibDef();
       remote_func_params = {operation.id(), /*is_component_function=*/false,
-                            std::nullopt};
+                            std::nullopt, /*func_lib_def=*/nullptr};
     }
+  } else {
+    func_lib_def = eager_context->FuncLibDef();
   }
   TF_RETURN_IF_ERROR(eager_op->Reset(name, operation.device().c_str(), false,
                                      eager_executor, remote_func_params));
@@ -143,7 +159,7 @@ Status GetEagerOperationAndNumRetvals(const Operation& operation,
   }
 
   // TODO(nareshmodi): Consider caching this.
-  return GetNumRetvals(eager_context, operation.name(), operation.attrs(),
+  return GetNumRetvals(func_lib_def, operation.name(), operation.attrs(),
                        num_retvals);
 }
 
@@ -770,9 +786,14 @@ Status EagerServiceImpl::RegisterFunction(
     const RegisterFunctionOp& register_function, EagerContext* eager_context) {
   // If the function is a component of a multi-device function, we only need to
   // register it locally.
-  return eager_context->AddFunctionDef(
-      register_function.function_def(), register_function.library(),
-      register_function.is_component_function());
+  if (register_function.is_component_function()) {
+    return eager_context->AddComponentFunction(register_function.function_def(),
+                                               register_function.library());
+  } else {
+    return eager_context->AddFunctionDef(register_function.function_def(),
+                                         register_function.library(),
+                                         /*add_to_local_only=*/false);
+  }
 }
 
 Status EagerServiceImpl::RemoveFunction(const RemoveFunctionOp& remove_function,

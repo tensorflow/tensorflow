@@ -30,8 +30,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/python/inspect_sharding.h"
-#include "xla/python/status_casters.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/hlo_pass_pipeline.h"
@@ -122,7 +122,7 @@ class PyCustomCallPartitioner : public CustomCallPartitioner {
       auto py_result =
           partition_(GetArgShapes(instruction), GetArgShardings(instruction),
                      instruction->shape(), instruction->sharding(),
-                     instruction->raw_backend_config_string());
+                     py::bytes(instruction->raw_backend_config_string()));
 
       const XlaComputation* computation = nullptr;  // Kept alive by py_result.
       std::vector<HloSharding> arg_shardings;
@@ -186,27 +186,37 @@ class PyCustomCallPartitioner : public CustomCallPartitioner {
       const HloInstruction* instruction, const HloInstruction* user,
       const HloSharding& sharding) const override {
     py::gil_scoped_acquire gil;
-    // TODO(parkers): expand this API to handle the `user` sharding.
-    // The user is used when the custom call returns a Tuple and
-    // the user is a get-tuple-element. In this case we must update only
-    // part of the sharding spec.
-    auto result = py::cast<HloSharding>(
-        prop_user_sharding_(sharding, instruction->shape(),
-                            instruction->raw_backend_config_string()));
-    return result;
+    try {
+      // TODO(parkers): expand this API to handle the `user` sharding.
+      // The user is used when the custom call returns a Tuple and
+      // the user is a get-tuple-element. In this case we must update only
+      // part of the sharding spec.
+      auto result = py::cast<HloSharding>(prop_user_sharding_(
+          sharding, instruction->shape(),
+          py::bytes(instruction->raw_backend_config_string())));
+      return result;
+    } catch (const pybind11::error_already_set& e) {
+      LOG(FATAL) << absl::StrFormat("custom_partitioner: %s", e.what());
+    }
   }
   std::optional<HloSharding> InferShardingFromOperands(
       const HloInstruction* instruction) const override {
+    std::optional<HloSharding> result;
     std::vector<Shape> arg_shapes = GetArgShapes(instruction);
     auto arg_shardings = GetArgShardings(instruction);
     py::gil_scoped_acquire gil;
-    auto py_result = infer_sharding_from_operands_(
-        arg_shapes, arg_shardings, instruction->shape(),
-        instruction->raw_backend_config_string());
-    if (py_result.is_none()) {
-      return std::nullopt;
+    try {
+      auto py_result = infer_sharding_from_operands_(
+          arg_shapes, arg_shardings, instruction->shape(),
+          py::bytes(instruction->raw_backend_config_string()));
+      if (py_result.is_none()) {
+        return std::nullopt;
+      }
+      return py::cast<HloSharding>(py_result);
+    } catch (const pybind11::error_already_set& e) {
+      LOG(FATAL) << absl::StrFormat("custom_partitioner: %s", e.what());
     }
-    return py::cast<HloSharding>(py_result);
+    return result;
   }
   bool IsCustomCallShardable(const HloInstruction* instruction) const override {
     return true;

@@ -32,9 +32,8 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/gpu_conv_runner.h"
-#include "xla/stream_executor/cuda/cuda_blas_lt.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #endif
 

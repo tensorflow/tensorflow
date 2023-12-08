@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/service/gpu/command_buffer_scheduling.h"
 
 #include <cstdint>
+#include <functional>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -27,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/shape.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -42,14 +45,8 @@ namespace {
 // category.
 // 2. Intermediates: Instructions that produce intermediate values that are
 // used by commands.
-bool IsCommand(const HloInstruction* inst) {
-  // TODO(anlunx): Add support for conditionals and while loops.
-  return inst->opcode() == HloOpcode::kFusion;
-}
-
 bool IsIntermediate(const HloInstruction* inst) {
   switch (inst->opcode()) {
-    case HloOpcode::kConstant:
     case HloOpcode::kGetTupleElement:
       return true;
     default:
@@ -77,7 +74,8 @@ constexpr int kMinNumCommands = 2;
 // subsequences that will be extracted as command buffers.
 std::vector<HloInstructionSequence>
 CommandBufferScheduling::CollectCommandBufferSequences(
-    const HloInstructionSequence inst_sequence) {
+    const HloInstructionSequence inst_sequence,
+    std::function<bool(const HloInstruction*)> is_command) {
   struct Accumulator {
     std::vector<HloInstructionSequence> sequences;
     HloInstructionSequence current_seq;
@@ -94,10 +92,10 @@ CommandBufferScheduling::CollectCommandBufferSequences(
     return acc;
   };
 
-  auto process_instruction = [&start_new_sequence](
+  auto process_instruction = [&start_new_sequence, &is_command](
                                  Accumulator* acc,
                                  HloInstruction* inst) -> Accumulator* {
-    if (IsCommand(inst)) {
+    if (is_command(inst)) {
       acc->current_seq.push_back(inst);
       acc->num_commands_in_current_seq += 1;
       return acc;
@@ -225,7 +223,7 @@ CommandBufferScheduling::BuildCommandBuffer(HloInstructionSequence seq) {
   builder.AddInstruction(HloInstruction::CreateTuple(new_instructions));
 
   BuildCommandBufferResult result = {builder.Build(), parameters_map,
-                                     inst_to_tuple_index_map};
+                                     inst_to_tuple_index_map, instructions_map};
   return result;
 }
 
@@ -237,44 +235,98 @@ StatusOr<bool> CommandBufferScheduling::Run(
   }
   HloComputation* entry = module->entry_computation();
   MoveParametersToFront(entry);
-  std::vector<HloInstruction*> instructions = entry->MakeInstructionPostOrder();
 
-  // TODO(anlunx): Add support for multiple fusion instructions.
-  // TODO(anlunx): Add support for conditionals and while loops.
-  for (HloInstruction* instruction : instructions) {
-    if (instruction->opcode() != HloOpcode::kFusion) {
-      continue;
+  absl::flat_hash_set<DebugOptions::CommandBufferCmdType> command_types;
+  for (auto cmd_type_num :
+       module->config().debug_options().xla_gpu_enable_command_buffer()) {
+    DebugOptions::CommandBufferCmdType cmd_type =
+        static_cast<DebugOptions::CommandBufferCmdType>(cmd_type_num);
+    command_types.insert(cmd_type);
+  }
+
+  std::function<bool(const HloInstruction*)> is_command =
+      [&command_types =
+           std::as_const(command_types)](const HloInstruction* inst) {
+        if (inst->opcode() == HloOpcode::kFusion) {
+          if (command_types.contains(DebugOptions::FUSION)) return true;
+        }
+        return false;
+      };
+
+  std::vector<HloInstructionSequence> sequences = CollectCommandBufferSequences(
+      module->schedule().sequence(entry), is_command);
+
+  for (const HloInstructionSequence& seq : sequences) {
+    TF_ASSIGN_OR_RETURN(BuildCommandBufferResult result,
+                        BuildCommandBuffer(seq));
+
+    Shape shape;
+    shape.set_element_type(TUPLE);
+    shape.mutable_tuple_shapes()->resize(result.inst_to_tuple_index_map.size());
+    for (const auto [inst, index] : result.inst_to_tuple_index_map) {
+      shape.mutable_tuple_shapes()->at(index) = inst->shape();
     }
 
-    auto* fusion = static_cast<HloFusionInstruction*>(instruction);
-    auto builder = HloComputation::Builder("command_buffer");
-
-    // Create parameters to the command buffer computation.
-    std::vector<HloInstruction*> parameters;
-    for (int64_t i = 0; i < fusion->operand_count(); i++) {
-      const HloInstruction* operand = fusion->operand(i);
-      TF_ASSIGN_OR_RETURN(HloInstruction * parameter,
-                          builder.AddParameter(HloInstruction::CreateParameter(
-                              i, operand->shape(), "param")));
-      parameters.push_back(parameter);
+    std::vector<HloInstruction*> operands(result.parameters_map.size());
+    for (const auto [inst, parameter] : result.parameters_map) {
+      operands[parameter->parameter_number()] = inst;
     }
-
-    // Create the fusion instruction inside the command buffer.
-    builder.AddInstruction(HloInstruction::CreateFusion(
-        fusion->shape(), fusion->fusion_kind(), parameters,
-        fusion->fused_instructions_computation()));
 
     HloComputation* command_buffer =
-        module->AddComputationAndUnifyNamesAndIds(builder.Build(),
+        module->AddComputationAndUnifyNamesAndIds(std::move(result.computation),
                                                   /*is_entry=*/false);
+    HloInstruction* call_command_buffer = entry->AddInstruction(
+        HloInstruction::CreateCall(shape, operands, command_buffer));
 
-    // Replace the fusion instruction with a call to the command buffer.
-    HloInstruction* call_command_buffer =
-        entry->AddInstruction(HloInstruction::CreateCall(
-            fusion->shape(), fusion->operands(), command_buffer));
-    TF_RETURN_IF_ERROR(call_command_buffer->CopyAllControlDepsFrom(fusion));
-    TF_RETURN_IF_ERROR(fusion->DropAllControlDeps());
-    TF_RETURN_IF_ERROR(entry->ReplaceInstruction(fusion, call_command_buffer));
+    std::vector<HloInstruction*> results(result.inst_to_tuple_index_map.size());
+    for (int i = 0; i < result.inst_to_tuple_index_map.size(); i++) {
+      results[i] = entry->AddInstruction(
+          HloInstruction::CreateGetTupleElement(call_command_buffer, i));
+    }
+
+    // Remove instructions in the command buffer sequence.
+    bool first_inst = true;
+    for (HloInstruction* inst : seq.instructions()) {
+      // Replace the first instruction in the sequence by command buffer call.
+      // Removal of the rest of the instructions in the sequence is handled by
+      // HloSchedule::Update().
+      if (first_inst) {
+        first_inst = false;
+        HloInstructionSequence& sequence =
+            module->schedule().GetOrCreateSequence(entry);
+        sequence.replace_instruction(inst, call_command_buffer);
+      }
+
+      // Forward control dependencies to the new instruction inside command
+      // buffer. If the dependent instruction is not captured by the command
+      // buffer, forward the dependency to the command buffer call instead.
+      HloInstruction* new_inst = result.instructions_map[inst];
+      for (HloInstruction* predecessor : inst->control_predecessors()) {
+        if (auto it = result.instructions_map.find(predecessor);
+            it != result.instructions_map.end()) {
+          HloInstruction* new_predecessor = it->second;
+          TF_RETURN_IF_ERROR(new_predecessor->AddControlDependencyTo(new_inst));
+        } else {
+          TF_RETURN_IF_ERROR(
+              predecessor->AddControlDependencyTo(call_command_buffer));
+        }
+      }
+      for (HloInstruction* successor : inst->control_successors()) {
+        if (auto it = result.instructions_map.find(successor);
+            it != result.instructions_map.end()) {
+          HloInstruction* new_successor = it->second;
+          TF_RETURN_IF_ERROR(new_inst->AddControlDependencyTo(new_successor));
+        } else {
+          TF_RETURN_IF_ERROR(
+              call_command_buffer->AddControlDependencyTo(successor));
+        }
+      }
+      TF_RETURN_IF_ERROR(inst->DropAllControlDeps());
+
+      int64_t tuple_index = result.inst_to_tuple_index_map[inst];
+      TF_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(results[tuple_index]));
+      TF_RETURN_IF_ERROR(entry->RemoveInstruction(inst));
+    }
   }
 
   TF_RETURN_IF_ERROR(module->schedule().Update());

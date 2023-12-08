@@ -40,7 +40,7 @@ std::unique_ptr<GpuVirtualMemAllocator> CreateAllocator() {
                       se::GPUMachineManager(), gpu_id)
                       .value();
   GpuContext* gpu_context = reinterpret_cast<GpuContext*>(
-      executor->implementation()->GpuContextHack());
+      executor->platform_specific_handle().context);
   return GpuVirtualMemAllocator::Create(
              {}, {}, *gpu_context, gpu_id,
              /*virtual_address_space_size=*/4 * k2MiB, {})
@@ -53,7 +53,7 @@ TEST(GpuVirtualMemAllocatorTest, SimpleAlloc) {
                       se::GPUMachineManager(), gpu_id)
                       .value();
   GpuContext* gpu_context = reinterpret_cast<GpuContext*>(
-      executor->implementation()->GpuContextHack());
+      executor->platform_specific_handle().context);
   auto allocator = GpuVirtualMemAllocator::Create(
                        {}, {}, *gpu_context, gpu_id,
                        /*virtual_address_space_size=*/4 * k2MiB, {})

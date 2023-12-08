@@ -29,9 +29,6 @@ limitations under the License.
 
 namespace xla {
 
-// For details about the syntax accepted by this parser, see
-// g3doc/hlo_parser.md.
-
 // Given a string in the HloModule::ToString() format, parses the string and
 // creates a HloModule with the given config.
 // Note: Tests derived from HloTestBase should use
@@ -80,6 +77,9 @@ StatusOr<PaddingConfig> ParsePaddingConfig(absl::string_view str);
 
 // Parses and returns a Shape::ToString-format string.
 StatusOr<Shape> ParseShape(absl::string_view str);
+
+// Parses and returns a Layout::ToString-format string.
+StatusOr<Layout> ParseLayout(absl::string_view str);
 
 // Parses and returns a std::vector<ReplicaGroup> from str. str is supposed to
 // contain a list of the replica groups, i.e. just the rhs of the

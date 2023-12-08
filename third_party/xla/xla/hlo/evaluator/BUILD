@@ -1,8 +1,8 @@
 # Description:
 #   XLA evaluator implementation.
 
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -94,14 +94,21 @@ cc_library(
 xla_cc_test(
     name = "hlo_evaluator_test",
     srcs = ["hlo_evaluator_test.cc"],
+    tags = [
+        "noasan",  # times out
+    ],
     deps = [
         ":hlo_evaluator",
+        "//xla:array2d",
+        "//xla:array3d",
+        "//xla:array4d",
+        "//xla:comparison_util",
+        "//xla:debug_options_flags",
+        "//xla:error_spec",
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:permutation_util",
-        "//xla:reference_util",
         "//xla:shape_util",
-        "//xla:status",
-        "//xla:status_macros",
         "//xla:statusor",
         "//xla:test",
         "//xla:types",
@@ -109,14 +116,21 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
         "//xla/hlo/ir:hlo",
+        "//xla/service:dynamic_dimension_inference",
         "//xla/service:hlo_element_type_converter",
+        "//xla/service:hlo_module_config",
+        "//xla/service:shape_inference",
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:test_utils",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:status",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
     ],

@@ -16,7 +16,10 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/map_fusion.h"
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -29,10 +32,63 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {
 namespace {
+
+constexpr char kMapDatasetOp[] = "MapDataset";
+constexpr char kParallelMapDatasetOp[] = "ParallelMapDatasetV2";
+constexpr char kDeterministicAttr[] = "deterministic";
+constexpr char kConstOp[] = "Const";
+constexpr char kValueAttr[] = "value";
+constexpr int kAutotuneValue = -1;
+
+// Returns true if it is a `tf.data.AUTOTUNE` node.
+bool IsAutotuneNode(const string& node_name, const MutableGraphView& graph) {
+  const NodeDef* node = graph.GetNode(node_name);
+  if (!node) return false;
+  if (node->op() != kConstOp) return false;
+
+  const auto* value = gtl::FindOrNull(node->attr(), kValueAttr);
+  if (!value) return false;
+
+  if (value->has_tensor()) {
+    if (value->tensor().int64_val_size()) {
+      return value->tensor().int64_val(0) == kAutotuneValue;
+    }
+  }
+
+  return false;
+}
+
+// Returns true if both parent and child parallel map nodes have same
+// `determistic` attr value.
+bool SameDeterministicAttr(const NodeDef& parallel_map_node,
+                           const NodeDef& parent_parallel_map_node) {
+  const auto* first_deterministic_val =
+      gtl::FindOrNull(parallel_map_node.attr(), kDeterministicAttr);
+  const auto* second_deterministic_val =
+      gtl::FindOrNull(parent_parallel_map_node.attr(), kDeterministicAttr);
+
+  if (first_deterministic_val && second_deterministic_val) {
+    return first_deterministic_val->s() == second_deterministic_val->s();
+  }
+
+  return false;
+}
+
+// Constructs a name for a new node that fuses the two input nodes. This is not
+// only for debugging: in some cases, graphs are optimized separately and then
+// later combined without name deduping, in which case, if this optimization
+// were to add new nodes with the same name to multiple graphs, there would be
+// collisions.
+string GetFusedName(const NodeDef& parent_map_node, const NodeDef& map_node) {
+  return absl::StrCat("fused_map/", parent_map_node.name(), "/",
+                      map_node.name());
+}
 
 // Sets basic function parameters and copies attributes from parent and map
 // node.
@@ -40,9 +96,17 @@ NodeDef MakeFusedNode(const NodeDef& parent_map_node, const NodeDef& map_node,
                       const FunctionDef& fused_function,
                       MutableGraphView* graph) {
   NodeDef fused_node;
-  graph_utils::SetUniqueGraphNodeName("fused_map", graph->graph(), &fused_node);
-  fused_node.set_op("MapDataset");
-  fused_node.add_input(parent_map_node.input(0));
+  graph_utils::SetUniqueGraphNodeName(GetFusedName(parent_map_node, map_node),
+                                      graph->graph(), &fused_node);
+
+  if (map_node.op() == kMapDatasetOp) {
+    fused_node.set_op(kMapDatasetOp);
+    fused_node.add_input(parent_map_node.input(0));  // `input_dataset`
+  } else if (map_node.op() == kParallelMapDatasetOp) {
+    fused_node.set_op(kParallelMapDatasetOp);
+    fused_node.add_input(parent_map_node.input(0));  // `input_dataset`
+    fused_node.add_input(parent_map_node.input(1));  // `num_parallel_calls`
+  }
 
   auto attr = parent_map_node.attr().at("f");
   *attr.mutable_func()->mutable_name() = fused_function.signature().name();
@@ -74,6 +138,10 @@ NodeDef MakeFusedNode(const NodeDef& parent_map_node, const NodeDef& map_node,
 
   graph_utils::MaybeSetFusedMetadata(parent_map_node, map_node, &fused_node);
 
+  if (map_node.op() == kParallelMapDatasetOp) {
+    graph_utils::CopyAttribute(kDeterministicAttr, map_node, &fused_node);
+  }
+
   return fused_node;
 }
 
@@ -87,15 +155,28 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
   TF_RETURN_IF_ERROR(TopologicalSort(&sorted_old_graph));
   *output = sorted_old_graph;
 
+  if (!autotune_) {
+    VLOG(1) << "The optimization map_fusion is not applied if "
+               "autotune is off.";
+    return OkStatus();
+  }
+
   MutableGraphView graph(output);
   absl::flat_hash_set<string> nodes_to_delete;
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item.graph.library());
 
-  auto get_map_node = [](const NodeDef& node) -> const NodeDef* {
+  auto get_map_node = [&graph](const NodeDef& node) -> const NodeDef* {
     // TODO(b/148614504): Support ParallelMapDataset and MapAndBatchDataset.
     // TODO(b/148614315): Support captured inputs.
-    if (node.op() == "MapDataset" && node.input_size() == 1) return &node;
+    if (node.op() == kMapDatasetOp && node.input_size() == 1) return &node;
+    // Only parallel map with no captured inputs (empty `other_arguments`) and
+    // parallelism set to "AUTOTUNE" would be eligible for rewrite.
+    if (node.op() == kParallelMapDatasetOp) {
+      if (node.input_size() != 2) return nullptr;
+      if (!IsAutotuneNode(node.input(1), graph)) return nullptr;
+      return &node;
+    }
     return nullptr;
   };
 
@@ -116,9 +197,10 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
       return nullptr;
     }
     return fusion_utils::FuseFunctions(
-        *parent_func, *func, "fused_map", fusion_utils::ComposeSignature,
-        fusion_utils::ComposeInput, fusion_utils::ComposeOutput,
-        fusion_utils::MergeNodes, output->mutable_library());
+        *parent_func, *func, GetFusedName(*parent_map_node, *map_node),
+        fusion_utils::ComposeSignature, fusion_utils::ComposeInput,
+        fusion_utils::ComposeOutput, fusion_utils::MergeNodes,
+        output->mutable_library());
   };
 
   for (const NodeDef& node : sorted_old_graph.node()) {
@@ -128,6 +210,15 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
     const NodeDef* parent_map_node =
         get_map_node(*graph_utils::GetInputNode(*map_node, graph));
     if (!parent_map_node) continue;
+
+    // TODO(b/148614504): Support fusing different types of map operations.
+    if (parent_map_node->op() != map_node->op()) continue;
+
+    // TODO(b/148614504): Support fusing parallel map operations with different
+    // `deterministic` attr values.
+    if (map_node->op() == kParallelMapDatasetOp) {
+      if (!SameDeterministicAttr(*parent_map_node, *map_node)) continue;
+    }
 
     const auto* fused_function = make_fused_function(parent_map_node, map_node);
     if (fused_function == nullptr) continue;

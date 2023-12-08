@@ -134,6 +134,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // special in some way are handled explicitly in HandleFoo methods.
   Status DefaultAction(HloInstruction* hlo) override;
 
+  Status HandleAllGather(HloInstruction* instruction) override;
   Status HandleAllToAll(HloInstruction* instruction) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleConstant(HloInstruction* constant) override;
@@ -144,6 +145,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleFft(HloInstruction* fft) override;
   Status HandleAllReduce(HloInstruction* crs) override;
+  Status HandleReduceScatter(HloInstruction* crs) override;
   Status HandleCollectivePermute(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* instruction) override;
   Status HandleOutfeed(HloInstruction* outfeed) override;
@@ -194,6 +196,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleAllReduceMultipleReplica(HloInstruction* crs);
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   Status HandleOneDnnMatMul(HloInstruction* hlo);
+  Status HandleOneDnnLayerNorm(HloInstruction* hlo);
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
   // Private helper to initialize an IR function for the computation.
   void InitializeIrFunction(const std::string& function_name);

@@ -49,7 +49,6 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import handle_data_util
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 # go/tf-wildcard-import
@@ -370,9 +369,6 @@ def default_variable_creator_v2(next_creator=None, **kwargs):
       shape=shape,
       experimental_enable_variable_lifting=experimental_enable_variable_lifting,
       )
-
-
-variables.default_variable_creator_v2 = default_variable_creator_v2
 
 
 class BaseResourceVariable(variables.Variable, core.Tensor):
@@ -2333,7 +2329,6 @@ class UninitializedVariable(BaseResourceVariable):
 
 
 _pywrap_utils.RegisterType("ResourceVariable", ResourceVariable)
-math_ops._resource_variable_type = ResourceVariable  # pylint: disable=protected-access
 
 
 def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):

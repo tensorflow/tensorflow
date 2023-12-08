@@ -89,15 +89,12 @@
 // CHECK:         br label %[[VAL_14]]
 // CHECK:       entry:
 // CHECK:         %[[VAL_56:.*]] = alloca i8, align 1
-// CHECK-GCN:     %[[VAL_56_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_56]] to ptr
 // CHECK:         %[[VAL_57:.*]] = load float, ptr %[[VAL_58:.*]], align 4
 // CHECK:         %[[VAL_59:.*]] = load float, ptr %[[VAL_60:.*]], align 4
 // CHECK:         %[[VAL_61:.*]] = fcmp oge float %[[VAL_57]], %[[VAL_59]]
 // CHECK:         %[[VAL_62:.*]] = zext i1 %[[VAL_61]] to i8
-// CHECK-PTX:     store i8 %[[VAL_62]], ptr %[[VAL_56]], align 1
-// CHECK-PTX:     %[[VAL_63:.*]] = load i8, ptr %[[VAL_56]], align 1
-// CHECK-GCN:     store i8 %[[VAL_62]], ptr %[[VAL_56_2]], align 1
-// CHECK-GCN:     %[[VAL_63:.*]] = load i8, ptr %[[VAL_56_2]], align 1
+// CHECK:         store i8 %[[VAL_62]], ptr [[ADDRSPACE_ANNOTATION]]%[[VAL_56]], align 1
+// CHECK:         %[[VAL_63:.*]] = load i8, ptr [[ADDRSPACE_ANNOTATION]]%[[VAL_56]], align 1
 // CHECK:         store i8 %[[VAL_63]], ptr %[[VAL_64:.*]], align 1
 // CHECK:         ret void
 

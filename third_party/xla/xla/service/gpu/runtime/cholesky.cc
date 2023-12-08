@@ -23,7 +23,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/cholesky_thunk.h"
+#include "xla/service/gpu/runtime3/cholesky_thunk.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {

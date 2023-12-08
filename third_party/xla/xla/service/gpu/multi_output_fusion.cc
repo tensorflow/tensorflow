@@ -31,8 +31,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_reachability.h"
 #include "xla/service/gpu/gpu_fusible.h"
-#include "xla/service/gpu/gpu_hlo_cost_analysis.h"
-#include "xla/service/gpu/gpu_performance_model.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape_util.h"
@@ -217,7 +217,7 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
       [&](const HloInstruction& producer,
           const HloInstruction& consumer) -> FusionDecision {
         GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-            &producer, cost_analysis,
+            &producer, cost_analysis, GpuPerformanceModelOptions::Default(),
             // `EstimateRunTimes`'s interface violates const correctness, so we
             // need the const cast here.
             {const_cast<HloInstruction*>(&consumer)},

@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "tsl/lib/math/math_util.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 

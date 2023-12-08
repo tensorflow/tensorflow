@@ -545,6 +545,19 @@ func.func @op_count_leading_zeros(%arg0: tensor<i32>) -> tensor<i32> {
   func.return %0 : tensor<i32>
 }
 
+// CHECK-LABEL: "op_collective_broadcast"
+func.func @op_collective_broadcast(%arg0: tensor<1x2xi64>) -> tensor<1x2xi64> {
+  //               CHECK: "mhlo.collective_broadcast"(%arg0) {
+  //          CHECK-SAME:   channel_handle = #mhlo.channel_handle<handle = 0, type = 0>,
+  // CHECK-SAME{LITERAL}:   replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+  //          CHECK-SAME: } : (tensor<1x2xi64>) -> tensor<1x2xi64>
+  %0 = "stablehlo.collective_broadcast"(%arg0) {
+    replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>,
+    channel_handle = #stablehlo.channel_handle<handle = 0, type = 0>
+  } : (tensor<1x2xi64>) -> tensor<1x2xi64>
+  func.return %0 : tensor<1x2xi64>
+}
+
 // CHECK-LABEL: "op_collective_permute"
 func.func @op_collective_permute(%arg0: tensor<16x8xf32>) -> tensor<16x8xf32> {
   //               CHECK: "mhlo.collective_permute"(%arg0) {
@@ -715,7 +728,8 @@ func.func @op_custom_call_api_version_typed_ffi(%arg0: tensor<f32>) -> tensor<f3
   // CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
   %0 = "stablehlo.custom_call"(%arg0) {
     call_target_name = "mhlo.custom_call",
-    mhlo.attributes = {api_version = 4 : i32, backend_config = {foo = "bar"}, call_target_name = "foo"}
+    mhlo.attributes = {api_version = 4 : i32, backend_config = {foo = "bar"}, call_target_name = "foo"},
+    mhlo.version = 1 : i64
   } : (tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
 }
@@ -729,7 +743,7 @@ func.func @op_custom_call_mhlo_backend_config(%arg0: tensor<16x256xbf16>) -> ten
   // CHECK-SAME: } : (tensor<16x256xbf16>) -> tensor<16x4xbf16>
   %4 = stablehlo.custom_call @foo(%arg0) {
     "mhlo.backend_config" = {aggregate_to_topk = true}
-    } : (tensor<16x256xbf16>) -> tensor<16x4xbf16>
+  } : (tensor<16x256xbf16>) -> tensor<16x4xbf16>
   return %4 : tensor<16x4xbf16>
 }
 
@@ -1837,12 +1851,19 @@ func.func @type_quantization(%arg0: tensor<!quant.uniform<i8:f32, 34.0:16>>, %ar
   func.return %0 : tensor<f32>
 }
 
+// -----
+
+#SV = #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>
+
+// CHECK: #[[$SV:.*]] = #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>
 // CHECK-LABEL: "type_sparsity"
-func.func @type_sparsity(%arg0: tensor<16xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> tensor<16xf32> {
-  // CHECK: "mhlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<16xf32>
-  %0 = "stablehlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> tensor<16xf32>
+func.func @type_sparsity(%arg0: tensor<16xf32, #SV>) -> tensor<16xf32> {
+  // CHECK: "mhlo.abs"(%arg0) : (tensor<16xf32, #[[$SV]]>) -> tensor<16xf32>
+  %0 = "stablehlo.abs"(%arg0) : (tensor<16xf32, #SV>) -> tensor<16xf32>
   func.return %0 : tensor<16xf32>
 }
+
+// -----
 
 func.func @type_token_callee(%arg0: !stablehlo.token) -> !stablehlo.token {
   // CHECK: function_type = (!mhlo.token) -> !mhlo.token, sym_name = "type_token_callee"
@@ -1933,4 +1954,18 @@ func.func @op_custom_call_botched_mhlo_backend_config_version(%arg0: tensor<f32>
     mhlo.backend_config = 3
   } : (tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
+}
+
+// -----
+
+// CHECK-LABEL: "op_topk_mhlo_v1"
+func.func @op_topk_mhlo_v1(%arg0: tensor<5x10xf32>) -> (tensor<5x8xf32>, tensor<5x8xi32>) {
+  // CHECK: "mhlo.topk"(%arg0) {k = 8 : i64, largest = true} : (tensor<5x10xf32>) -> (tensor<5x8xf32>, tensor<5x8xi32>)
+  %0:2 = "stablehlo.custom_call"(%arg0) {
+    backend_config = "",
+    call_target_name = "mhlo.topk",
+    mhlo.attributes = {k = 8 : i64, largest = true},
+    mhlo.version = 1 : i64
+  } : (tensor<5x10xf32>) -> (tensor<5x8xf32>, tensor<5x8xi32>)
+  func.return %0#0, %0#1 : tensor<5x8xf32>, tensor<5x8xi32>
 }

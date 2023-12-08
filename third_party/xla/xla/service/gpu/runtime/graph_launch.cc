@@ -31,8 +31,10 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/runtime/custom_call.h"
 #include "xla/runtime/executable.h"
+#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "xla/service/gpu/runtime/concurrent_region.h"
 #include "xla/service/gpu/runtime/conv.h"
@@ -183,6 +185,8 @@ static void EvictAllGraphs(
     return (diff / (1000 * 1000)) > *eviction_timeout_seconds;
   };
 
+  int64_t num_evicted = 0;
+
   for (auto& weak_ptr : vec) {
     auto ptr = weak_ptr.lock();
     if (!ptr) continue;
@@ -212,6 +216,15 @@ static void EvictAllGraphs(
     }
     ptr->graphs.erase(it);
     ptr->mu.Unlock();
+    ++num_evicted;
+  }
+
+  if (num_evicted > 0) {
+    VLOG(3) << "Evicted " << num_evicted << " graphs from executor "
+            << executor;
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    se::gpu::GpuGraphSupport::TrimDeviceMemory(executor);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   }
 }
 
@@ -270,7 +283,9 @@ bool GraphInstances::InstantiatedAllGraphs(
 Status GraphInstances::InstantiateAllGraphs(
     const ServiceExecutableRunOptions* run_options,
     const Executable& executable, const CustomCall::UserData& user_data,
-    void* ptr, OrdinalToFallback::Snapshot* ordinal_to_fallback,
+    const BufferAllocations& buffer_allocations,
+    absl::Span<const int64_t> buffer_sizes,
+    absl::Span<const std::vector<int64_t>> allocation_indices,
     std::optional<uint64_t> eviction_timeout_seconds) {
   // We have only "main" function in the executable.
   if (executable.num_functions() == 1) return OkStatus();
@@ -303,9 +318,6 @@ Status GraphInstances::InstantiateAllGraphs(
                           "xla.gpu.graph.capture"))
       continue;
 
-    StatusOr<std::monostate*> fallback = ordinal_to_fallback->Get(ordinal);
-    if (fallback.ok()) continue;
-
     VLOG(3) << "Instantiate Gpu graph defined by capture function @"
             << executable.function_name(ordinal) << " (ordinal = " << ordinal
             << ")";
@@ -319,6 +331,12 @@ Status GraphInstances::InstantiateAllGraphs(
     const FunctionType& signature = executable.signature(ordinal);
     assert(signature.num_results() == 0 && "unexpected number of results");
     Arguments<MemrefDesc> args(signature.num_operands());
+
+    // Mapping from graph capture argument to buffer allocation index.
+    absl::Span<const int64_t> capture_allocs = allocation_indices[ordinal];
+    if (capture_allocs.size() != signature.num_operands())
+      return absl::InternalError(
+          "Invalid number of allocation indices for a graph capture function");
 
     // Prepare arguments for the graph capture function.
     for (size_t j = 0; j < signature.num_operands(); ++j) {
@@ -336,8 +354,11 @@ Status GraphInstances::InstantiateAllGraphs(
       std::array<int64_t, 1> sizes = {memref->size(0)};
       std::array<int64_t, 1> strides = {1};
 
-      args.emplace_back<MemrefDesc>(memref->element_type(), ptr,
-                                    /*offset=*/0, sizes, strides);
+      int64_t allocation_index = capture_allocs[j];
+      args.emplace_back<MemrefDesc>(
+          memref->element_type(),
+          buffer_allocations.GetDeviceAddress(allocation_index).opaque(),
+          /*offset=*/0, sizes, strides);
     }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -354,6 +375,9 @@ Status GraphInstances::InstantiateAllGraphs(
 
     if (instance.status().code() == absl::StatusCode::kResourceExhausted) {
       if (num_retries == 0) {
+        LOG(WARNING) << "InstantiateAllGraph failed due to insufficient memory."
+                        " Try to evict all graphs and free device memory.";
+
         // Retry on OOM error after evicting all graphs from executor.
         EvictAllGraphs(executor);
         num_retries++;
@@ -361,7 +385,7 @@ Status GraphInstances::InstantiateAllGraphs(
         continue;
       } else {
         LOG(WARNING) << "InstantiateAllGraph failed due to insufficient memory."
-                        " Uninitializd graphs will run in op-by-op mode.";
+                        " Unitialized graphs will run in op-by-op mode.";
         return OkStatus();
       }
     }
@@ -557,7 +581,6 @@ static absl::Status LaunchGraph(
     StreamExecutorConvRunners::Snapshot* convs,
     StreamExecutorGraphInstances::Snapshot* instances,
     CapturedFunctionExecutionCount::Snapshot* counts,
-    OrdinalToFallback::Snapshot* ordinal_to_fallback,
     GemmConfigs::Snapshot* gemm_config, runtime::Executable* executable,
     NonAtomicallyUpgradeableRWLock* gpu_lock,
     ConcurrentRegionStatus* region_status, CustomCall::RemainingArgs fwd_args,
@@ -591,10 +614,7 @@ static absl::Status LaunchGraph(
   // work around disable graph execution and run everything in op-by-op mode.
   bool is_profiling = tsl::profiler::ProfilerLock::HasActiveSession();
 
-  StatusOr<std::monostate*> fallback =
-      ordinal_to_fallback->Get(capture.ordinal);
-
-  if (count < num_runs_to_instantiate || is_profiling || fallback.ok()) {
+  if (count < num_runs_to_instantiate || is_profiling) {
     VLOG(3) << "Run gpu graph in op-by-op mode: ordinal = " << capture.ordinal;
     return RunGraphOpByOp(run_options, function_ref, fwd_args, user_data());
   }
@@ -656,43 +676,22 @@ static absl::Status LaunchGraph(
   TF_ASSIGN_OR_RETURN(
       auto g, CaptureGraph(run_options, function_ref, args, user_data()));
 
-  se::gpu::OwnedGpuGraphExec::UpdateResult update_result;
-  {
-    // At this point we have to grab a writer lock, because we might potentially
-    // have concurrent execution of the cached graph instance.
-    absl::WriterMutexLock lock(instance->mutex.get());
+  // At this point we have to grab a writer lock, because we might potentially
+  // have concurrent execution of the cached graph instance.
+  absl::WriterMutexLock lock(instance->mutex.get());
 
-    // Update captured graph executable.
-    TF_ASSIGN_OR_RETURN(update_result, instance->exec.Update(std::move(g)));
-  }
+  // Update captured graph executable.
+  TF_RETURN_IF_ERROR(instance->exec.Update(std::move(g)));
 
-  switch (update_result) {
-    case se::gpu::OwnedGpuGraphExec::UpdateResult::kFallback: {
-      LOG(WARNING) << "Fallback to op-by-op mode because memset node breaks "
-                      "graph update";
-      // Deallocate instance.
-      TF_RETURN_IF_ERROR(instances->Erase(capture.ordinal));
-      // Set ordinal_to_fallback to prevent future instantiation of this graph.
-      TF_ASSIGN_OR_RETURN(
-          std::monostate * fallback,
-          ordinal_to_fallback->GetOrCreate(
-              capture.ordinal,
-              []() -> StatusOr<std::monostate> { return std::monostate{}; }));
-      DCHECK(fallback);
-      return RunGraphOpByOp(run_options, function_ref, fwd_args, user_data());
-    }
-    case se::gpu::OwnedGpuGraphExec::UpdateResult::kSuccess:
-      // Update captured pointer hash.
-      absl::WriterMutexLock lock(instance->mutex.get());
-      instance->ptr_hash = ptrs_hash;
+  // Update captured pointer hash.
+  instance->ptr_hash = ptrs_hash;
 
-      TraceMe trace([&] {
-        return TraceMeEncode("gpu.graph.launch_updated",
-                             {{"ordinal", capture.ordinal}});
-      });
+  TraceMe trace([&] {
+    return TraceMeEncode("gpu.graph.launch_updated",
+                         {{"ordinal", capture.ordinal}});
+  });
 
-      return instance->exec.Launch(run_options->stream());
-  }
+  return instance->exec.Launch(run_options->stream());
 
 #else  // #if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
 
@@ -715,7 +714,6 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .UserData<StreamExecutorConvRunners::Snapshot*>()
         .UserData<StreamExecutorGraphInstances::Snapshot*>()
         .UserData<CapturedFunctionExecutionCount::Snapshot*>()
-        .UserData<OrdinalToFallback::Snapshot*>()
         .UserData<GemmConfigs::Snapshot*>()
         .UserData<Executable*>()
         .UserData<NonAtomicallyUpgradeableRWLock*>()

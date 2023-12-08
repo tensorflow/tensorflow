@@ -17,10 +17,15 @@ load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
+    "tf_gpu_tests_tags",
 )
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
+)
+load(
+    "//xla/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
 )
 
 package(
@@ -140,12 +145,15 @@ xla_cc_test(
 
 xla_cc_test(
     name = "gemm_rewrite_test",
-    srcs = if_cuda_is_configured(["gemm_rewrite_test.cc"]) + if_rocm_is_configured(["gemm_rewrite_test.cc"]),
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
-    tags = tf_cuda_tests_tags(),
+    srcs = if_gpu_is_configured(["gemm_rewrite_test.cc"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    tags = tf_gpu_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//xla:statusor",
+        "//xla:test",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:gpu_plugin",
@@ -155,6 +163,7 @@ xla_cc_test(
         "//xla/service/gpu:gemm_rewriter",
         "//xla/service/gpu:gpu_executable",
         "//xla/tests:filecheck",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/lib/core:status_test_util",
@@ -168,12 +177,11 @@ xla_cc_test(
 
 xla_cc_test(
     name = "gemm_broadcast_folding_rewrite_test",
-    srcs = [
-        "gemm_broadcast_folding_rewrite_test.cc",
-    ],
-    tags = tf_cuda_tests_tags() + [
-        "no_rocm",
-    ],
+    srcs = ["gemm_broadcast_folding_rewrite_test.cc"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    tags = tf_gpu_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -423,11 +431,9 @@ xla_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_module_config",
-        "//xla/service:hlo_parser",
-        "//xla/tests:hlo_test_base",
-        "@local_tsl//tsl/platform:test",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -699,24 +705,23 @@ xla_cc_test(
 xla_cc_test(
     name = "sorting_test",
     srcs = ["sorting_test.cc"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
-        "//xla:debug_options_flags",
-        "//xla:statusor",
-        "//xla:xla_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:gpu_plugin",
-        "//xla/service:hlo_module_config",
-        "//xla/service:hlo_parser",
-        "//xla/service/gpu:gpu_executable",
-        "//xla/tests:filecheck",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:llvm_irgen_test_base",
-        "@com_google_absl//absl/memory",
-        "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:test",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -738,6 +743,7 @@ xla_cc_binary(
     deps = [
         "//xla:status",
         "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:buffer_sharing",
         "//xla/service/gpu:compile_module_to_llvm_ir",
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:gpu_device_info_for_tests",
@@ -883,6 +889,7 @@ xla_test(
         ":gpu_codegen_test",
         "//xla:error_spec",
         "//xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:tensor_float_32_utils",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -921,5 +928,82 @@ xla_cc_test(
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
+    ],
+)
+
+# This library is here to be reused by tests.
+cc_library(
+    name = "simple_optimization_test",
+    testonly = True,
+    srcs = ["simple_optimization_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/lib/core:status_test_util",
+    ],
+)
+
+# This shows that tests can load an autotune cache.
+#
+# If the GPU used for running the test is different from the one in the cache, then the cache will
+# be loaded, but not used.
+xla_test(
+    name = "load_autotune_results_using_execpath_test",
+    srcs = [],
+    backends = ["gpu"],
+    # Data dependency must be declared for the cache.
+    data = ["test_autotune_cache.textproto"],
+    env = {"XLA_FLAGS": "--xla_gpu_load_autotune_results_from=" +
+                        "$(execpath test_autotune_cache.textproto)"},
+    deps = [":simple_optimization_test"],
+)
+
+# This shows that tests can load an autotune cache using the TEST_WORKSPACE prefix.
+#
+# This also works from the command line, by specifying this arguments:
+# --test_env=XLA_FLAGS=--xla_gpu_load_autotune_results_from=TEST_WORKSPACE/my/package/autotune_results_test.textproto.
+#
+# If the GPU used for running the test is different from the one in the cache, then the cache will
+# be loaded, but not used.
+xla_test(
+    name = "load_autotune_results_from_test_workspace_test",
+    srcs = [],
+    backends = ["gpu"],
+    # Data dependency must be declared for the cache.
+    data = ["test_autotune_cache.textproto"],
+    env = {"XLA_FLAGS": "--xla_gpu_load_autotune_results_from=TEST_WORKSPACE/" +
+                        package_name() +
+                        "/test_autotune_cache.textproto"},
+    deps = [":simple_optimization_test"],
+)
+
+# This shows that tests can dump an autotune cache into their output directory.
+#
+# This also works from the command line, by specifying these arguments:
+# --test_env=XLA_FLAGS=--xla_gpu_dump_autotune_results_to=TEST_UNDECLARED_OUTPUTS_DIR/autotune_cache.textproto
+# --test_sharding_strategy=disabled
+xla_test(
+    name = "dump_autotune_results_to_test_outputs_test",
+    srcs = [],
+    backends = ["gpu"],
+    env = {"XLA_FLAGS": "--xla_gpu_dump_autotune_results_to=" +
+                        "TEST_UNDECLARED_OUTPUTS_DIR/autotune_cache.textproto"},
+    # Sharding must be disabled to correctly dump the autotune cache for all test.
+    shard_count = 1,
+    deps = [":simple_optimization_test"],
+)
+
+xla_cc_test(
+    name = "gpu_int4_test",
+    srcs = ["gpu_int4_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )

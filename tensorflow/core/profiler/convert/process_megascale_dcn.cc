@@ -47,6 +47,8 @@ void ProcessMegascaleDcn(XSpace* space) {
   for (XPlane* device_xplane : device_xplanes) {
     dcn_events_processor.AddTpuCollectiveDcnTrafficToXPlane(device_xplane);
   }
+
+  SortXSpace(space);
 }
 }  // namespace profiler
 }  // namespace tensorflow

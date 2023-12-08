@@ -62,7 +62,8 @@ class DeviceCompilerClient {
   virtual ClientType* client() const = 0;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(DeviceCompilerClient);
+  DeviceCompilerClient(const DeviceCompilerClient&) = delete;
+  void operator=(const DeviceCompilerClient&) = delete;
 };
 
 // Generates the ExecutableBuildOptions for compilation from HLO to

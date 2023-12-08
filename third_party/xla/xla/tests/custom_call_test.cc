@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
-#include "xla/runtime/ffi/ffi_api.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/shape_util.h"
@@ -358,62 +357,6 @@ XLA_TEST_F(CustomCallClientAPITest, IllegalCustomCallTarget) {
   StatusOr<std::unique_ptr<GlobalData>> result =
       Execute(&builder, /*arguments=*/{});
   EXPECT_FALSE(result.ok());
-}
-
-//===----------------------------------------------------------------------===//
-// XLA runtime FFI modules is an external version of custom calls (C API based).
-//===----------------------------------------------------------------------===//
-namespace ffi = ::xla::runtime::ffi;
-
-struct TestFfiModule : ffi::StatelessModule {
-  explicit TestFfiModule(const XLA_FFI_Api* api)
-      : StatelessModule(api, "TestFfiModule",
-                        {{"ffi.add_const", FFI_AddConst}}) {}
-
-  XLA_FFI_DEFINE_FUNCTION(FFI_AddConst, AddConst,
-                          ffi::Ffi::Binding()
-                              .Arg<ffi::StridedBufferArg>()
-                              .Arg<ffi::StridedBufferArg>()
-                              .Attr<float>("cst"));
-
-  static ffi::FfiStatus AddConst(ffi::StridedBufferArg src,
-                                 ffi::StridedBufferArg dst, float cst) {
-    if (src.dtype != ffi::PrimitiveType::F32 ||
-        dst.dtype != ffi::PrimitiveType::F32)
-      return ffi::FfiStatus::Internal("Unsupported data type");
-
-    if (src.sizes.size() != dst.sizes.size())
-      return ffi::FfiStatus::Internal("Sizes must be the same");
-
-    size_t num_values = 1;
-    for (unsigned d = 0; d < src.sizes.size(); ++d) num_values *= src.sizes[d];
-
-    const float* src_data = reinterpret_cast<float*>(src.data);
-    float* dst_data = reinterpret_cast<float*>(dst.data);
-
-    for (size_t i = 0; i < num_values; ++i) dst_data[i] = src_data[i] + cst;
-
-    return ffi::FfiStatus::Ok();
-  }
-};
-
-XLA_REGISTER_FFI_MODULE(std::make_unique<TestFfiModule>(GetXlaFfiApi()));
-
-XLA_TEST_F(CustomCallClientAPITest, FfiAdd) {
-  // TODO(ezhulenev): Remove once XLA runtime is enabled by default.
-  mutable_debug_options()->set_xla_cpu_use_xla_runtime(true);
-
-  XlaBuilder b(TestName());
-  CustomCall(&b, "ffi.add_const",
-             /*operands=*/{Broadcast(ConstantR0WithType(&b, F32, 42.0), {128})},
-             ShapeUtil::MakeShape(F32, {128}),
-             /*opaque=*/"{ cst = 2.0 : f32 }",
-             /*has_side_effect=*/false,
-             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
-             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
-             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
-  EXPECT_THAT(result.data<float>(), ::testing::Each(44.0));
 }
 
 }  // namespace

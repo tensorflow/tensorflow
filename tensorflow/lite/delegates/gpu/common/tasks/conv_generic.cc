@@ -886,7 +886,8 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
                       std::to_string(s * 4 + ch + shared_offset);
                   std::string w_val;
                   if (conv_params.AreWeightsBuffer()) {
-                    if (gpu_info.SupportsPointersInKernels()) {
+                    if (need_local_mem ||
+                        gpu_info.SupportsPointersInKernels()) {
                       w_val = "weights_cache[" + weight_id + "]";
                     } else {
                       w_val = "args.weights.Read(filters_offset + " +
@@ -926,7 +927,7 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
                 std::string weight_id =
                     std::to_string(s * 4 + i + shared_offset);
                 if (conv_params.AreWeightsBuffer()) {
-                  if (gpu_info.SupportsPointersInKernels()) {
+                  if (need_local_mem || gpu_info.SupportsPointersInKernels()) {
                     F[i] = "weights_cache[" + weight_id + "]";
                   } else {
                     F[i] =
@@ -1113,7 +1114,7 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
     c += "  if (DST_S + " + sind + " >= args.dst_tensor.Slices()) return;\n";
     c += "  {\n";
     if (conv_params.AreWeightsBuffer() &&
-        gpu_info.SupportsPointersInKernels()) {
+        (need_local_mem || gpu_info.SupportsPointersInKernels())) {
       c += "    FLT4 bias_val = TO_FLT4(weights_cache[" + sind + "]);\n";
     } else {
       c += "    FLT4 bias_val = args.biases.Read(DST_S + " + sind + ");\n";

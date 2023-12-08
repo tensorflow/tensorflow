@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <string>
+#include <string_view>
 #include <thread>  // NOLINT(build/c++11)
 #include <utility>
 #include <variant>
@@ -157,7 +158,7 @@ TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
 std::unique_ptr<::pjrt::PJRT_KeyValueCallbackData> CreateTestCKVCallback(
     absl::flat_hash_map<std::string, std::string>* kv_store, absl::Mutex& mu) {
   xla::PjRtClient::KeyValueGetCallback kv_get =
-      [kv_store, &mu](const std::string& k,
+      [kv_store, &mu](std::string_view k,
                       absl::Duration timeout) -> xla::StatusOr<std::string> {
     absl::Duration wait_interval = absl::Milliseconds(10);
     int num_retry = timeout / wait_interval;
@@ -175,8 +176,7 @@ std::unique_ptr<::pjrt::PJRT_KeyValueCallbackData> CreateTestCKVCallback(
         absl::StrCat(k, " is not found in the kv store."));
   };
   xla::PjRtClient::KeyValuePutCallback kv_put =
-      [kv_store, &mu](const std::string& k,
-                      const std::string& v) -> xla::Status {
+      [kv_store, &mu](std::string_view k, std::string_view v) -> xla::Status {
     {
       absl::MutexLock lock(&mu);
       kv_store->insert(std::pair<std::string, std::string>(k, v));
@@ -324,6 +324,83 @@ TEST(PjrtCApiGpuAllocatorTest, InvalidAllocatorOptionsParsing) {
                   "Allocator invalid_allocator not supported for PJRT GPU "
                   "plugin. Supported allocator options are: 'default', "
                   "'platform', 'bfc' and 'cuda_async'."));
+
+  PJRT_Error_Destroy_Args error_destroy_args;
+  error_destroy_args.struct_size = PJRT_Error_Destroy_Args_STRUCT_SIZE;
+  error_destroy_args.priv = nullptr;
+  error_destroy_args.error = error;
+
+  api->PJRT_Error_Destroy(&error_destroy_args);
+}
+
+TEST(PjrtCApiPlatformNameTest, AvailablePlatformName) {
+  auto api = GetPjrtApi();
+  std::string expected_platform_name_for_cuda = "cuda";
+  std::string expected_platform_name_for_rocm = "rocm";
+  absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
+      {"platform_name", static_cast<std::string>("gpu")},
+      {"allocator", static_cast<std::string>("default")},
+      {"visible_devices", xla::PjRtValueType(std::vector<int64_t>{0, 1})},
+  };
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<PJRT_NamedValue> c_options,
+      ::pjrt::ConvertToPjRtNamedValueList(options, /*api_minor_version=*/30));
+  PJRT_Client_Create_Args create_arg;
+  create_arg.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
+  create_arg.priv = nullptr;
+  create_arg.client = nullptr;
+  create_arg.create_options = c_options.data();
+  create_arg.num_options = c_options.size();
+  PJRT_Error* error = api->PJRT_Client_Create(&create_arg);
+  EXPECT_EQ(error, nullptr) << error->status.message();
+
+  PJRT_Client_PlatformName_Args platform_name_args;
+  platform_name_args.struct_size = PJRT_Client_PlatformName_Args_STRUCT_SIZE;
+  platform_name_args.priv = nullptr;
+  platform_name_args.client = create_arg.client;
+
+  PJRT_Error* platform_name_error =
+      api->PJRT_Client_PlatformName(&platform_name_args);
+  EXPECT_EQ(platform_name_error, nullptr);
+#if TENSORFLOW_USE_ROCM
+  EXPECT_EQ(platform_name_args.platform_name, expected_platform_name_for_rocm);
+#else
+  EXPECT_EQ(platform_name_args.platform_name, expected_platform_name_for_cuda);
+#endif
+
+  PJRT_Client_Destroy_Args destroy_args;
+  destroy_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
+  destroy_args.priv = nullptr;
+  destroy_args.client = create_arg.client;
+
+  PJRT_Error* destroy_error = api->PJRT_Client_Destroy(&destroy_args);
+  CHECK_EQ(destroy_error, nullptr);
+}
+
+TEST(PjrtCApiPlatformNameTest, UnavailablePlatformName) {
+  auto api = GetPjrtApi();
+  absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
+      {"platform_name", static_cast<std::string>("invalid_platform_name")},
+      {"allocator", static_cast<std::string>("default")},
+      {"visible_devices", xla::PjRtValueType(std::vector<int64_t>{0, 1})},
+  };
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<PJRT_NamedValue> c_options,
+      ::pjrt::ConvertToPjRtNamedValueList(options, /*api_minor_version=*/30));
+  PJRT_Client_Create_Args create_arg;
+  create_arg.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
+  create_arg.priv = nullptr;
+  create_arg.client = nullptr;
+  create_arg.create_options = c_options.data();
+  create_arg.num_options = c_options.size();
+  PJRT_Error* error = api->PJRT_Client_Create(&create_arg);
+  EXPECT_NE(error, nullptr);
+  EXPECT_THAT(error->status,
+              ::tsl::testing::StatusIs(
+                  absl::StatusCode::kNotFound,
+                  testing::StartsWith("Could not find registered platform with "
+                                      "name: \"invalid_platform_name\". "
+                                      "Available platform names are:")));
 
   PJRT_Error_Destroy_Args error_destroy_args;
   error_destroy_args.struct_size = PJRT_Error_Destroy_Args_STRUCT_SIZE;

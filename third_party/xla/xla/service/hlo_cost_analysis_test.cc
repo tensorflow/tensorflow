@@ -1478,7 +1478,7 @@ ENTRY e {
   fusion_root->mutable_slice_limits()->at(0) = 2;
   fusion_root->mutable_shape()->mutable_dimensions()[0] = 2;
   root->mutable_shape()->mutable_dimensions()[0] = 2;
-  module->config().SetDefaultComputationLayout(
+  module->mutable_config().SetDefaultComputationLayout(
       module->entry_computation()->ComputeProgramShape());
   ASSERT_IS_OK(modified_analysis.RevisitInstruction(root));
 

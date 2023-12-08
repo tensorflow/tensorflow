@@ -26,6 +26,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_FUSED_EIGEN_OUTPUT_KERNELS_H_
 #define TENSORFLOW_CORE_KERNELS_FUSED_EIGEN_OUTPUT_KERNELS_H_
 
+#include <type_traits>
+
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -103,6 +105,22 @@ struct Relu6 {
   };
 };
 
+// Applies `Tanh` to the passed input expression.
+struct Tanh {
+  template <typename XprType>
+  static auto apply(XprType expr) -> decltype(expr.tanh()) {
+    return expr.tanh();
+  };
+};
+
+// Applies `Sigmoid` to the passed input expression.
+struct Sigmoid {
+  template <typename XprType>
+  static auto apply(XprType expr) -> decltype(expr.sigmoid()) {
+    return expr.sigmoid();
+  };
+};
+
 // Applies `Elu` to the passed input expression.
 struct Elu {
   template <typename XprType>
@@ -142,6 +160,8 @@ struct BiasAddArgs {
     return fusion == FusedComputationType::kBiasAdd ||
            fusion == FusedComputationType::kBiasAddWithRelu ||
            fusion == FusedComputationType::kBiasAddWithRelu6 ||
+           fusion == FusedComputationType::kBiasAddWithTanh ||
+           fusion == FusedComputationType::kBiasAddWithSigmoid ||
            fusion == FusedComputationType::kBiasAddWithElu ||
            fusion == FusedComputationType::kBiasAddWithLeakyRelu;
   }
@@ -219,10 +239,16 @@ struct BiasAddOutputKernel {
     typename TTypes<T>::UnalignedConstTensor bias(bias_base, num_rows);
 
     for (int col = 0; col < num_cols; ++col) {
-      T* output_base = &output_mapper(0, col);
-      typename TTypes<T>::UnalignedTensor output(output_base, num_rows);
-      const auto expr = output + bias;
-      output = Activation::template apply<decltype(expr)>(expr);
+      Scalar* output_base = &output_mapper(0, col);
+      typename TTypes<Scalar>::UnalignedTensor output(output_base, num_rows);
+      if constexpr (std::is_same_v<Scalar, T>) {
+        const auto expr = output + bias;
+        output = Activation::template apply<decltype(expr)>(expr);
+      } else {
+        const auto bias_expr = bias.template cast<Scalar>();
+        const auto expr = output + bias_expr;
+        output = Activation::template apply<decltype(expr)>(expr);
+      }
     }
   }
 
@@ -246,10 +272,18 @@ struct BiasAddOutputKernel<T, LeakyRelu> {
     typename TTypes<T>::UnalignedConstTensor bias(bias_base, num_rows);
 
     for (int col = 0; col < num_cols; ++col) {
-      T* output_base = &output_mapper(0, col);
-      typename TTypes<T>::UnalignedTensor output(output_base, num_rows);
-      const auto expr = output + bias;
-      output = LeakyRelu::template apply<decltype(expr)>(expr, leakyrelu_alpha);
+      Scalar* output_base = &output_mapper(0, col);
+      typename TTypes<Scalar>::UnalignedTensor output(output_base, num_rows);
+      if constexpr (std::is_same_v<Scalar, T>) {
+        const auto expr = output + bias;
+        output =
+            LeakyRelu::template apply<decltype(expr)>(expr, leakyrelu_alpha);
+      } else {
+        const auto bias_expr = bias.template cast<Scalar>();
+        const auto expr = output + bias_expr;
+        output =
+            LeakyRelu::template apply<decltype(expr)>(expr, leakyrelu_alpha);
+      }
     }
   }
 
@@ -355,6 +389,10 @@ template <typename T>
 using WithBiasAddAndRelu = BiasAddOutputKernel<T, Relu>;
 template <typename T>
 using WithBiasAddAndRelu6 = BiasAddOutputKernel<T, Relu6>;
+template <typename T>
+using WithBiasAddAndTanh = BiasAddOutputKernel<T, Tanh>;
+template <typename T>
+using WithBiasAddAndSigmoid = BiasAddOutputKernel<T, Sigmoid>;
 template <typename T>
 using WithBiasAddAndElu = BiasAddOutputKernel<T, Elu>;
 template <typename T>

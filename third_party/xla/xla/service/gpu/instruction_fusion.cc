@@ -74,7 +74,7 @@ FusionDecision GpuInstructionFusion::ShouldFuseInexpensiveChecks(
 
   // Cost condition: not fuse (simple, expensive producers) and (consumers who
   // reuse operand elements).
-  if (producer->opcode() != HloOpcode::kFusion && is_expensive(*producer) &&
+  if (is_expensive(*producer) &&
       ReusesOperandElements(consumer, operand_index)) {
     return "the producer is expensive, and the consumer reuses inputs";
   }

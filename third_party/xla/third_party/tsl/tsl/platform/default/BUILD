@@ -1,8 +1,9 @@
+load("//tsl:tsl.bzl", "if_not_fuchsia", "if_not_windows", "set_external_visibility", "tsl_copts")
+load("//tsl:tsl.default.bzl", "filegroup")
+load("//tsl/platform:rules_cc.bzl", "cc_library")
+
 # Tensorflow default + linux implementations of tensorflow/core/platform libraries.
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("//tsl:tsl.default.bzl", "filegroup")
-load("//tsl:tsl.bzl", "if_not_fuchsia", "if_not_windows", "set_external_visibility", "tsl_copts")
-load("//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -81,12 +82,11 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//tsl/platform:env",
-        "//tsl/platform:errors",
+        "//tsl/platform:load_library",
         "//tsl/platform:logging",
         "//tsl/platform:path",
-        "//tsl/platform:status",
-        "//tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
@@ -246,8 +246,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//tsl/platform:errors",
-        "//tsl/platform:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -361,7 +360,6 @@ cc_library(
         "//tsl:with_numa_support": ["TENSORFLOW_USE_NUMA"],
         "//conditions:default": [],
     }),
-    features = ["-layering_check"],
     tags = [
         "manual",
         "no_oss",

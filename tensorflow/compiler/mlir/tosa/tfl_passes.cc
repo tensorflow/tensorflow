@@ -30,9 +30,8 @@ void createTFLtoTOSALegalizationPipeline(
   //----------------------------------------------------------------------------
   // Prepare TFL module for conversion
   //----------------------------------------------------------------------------
-  if (opts.target_compilation_backend) {
-    pm.addPass(createRetainCallOnceFuncsPass());
-  }
+  pm.addPass(createRetainCallOnceFuncsPass());
+
   // Inline all functions into main and then delete the functions themselves.
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(createCanonicalizerPass());
@@ -59,6 +58,7 @@ void createTFLtoTOSALegalizationPipeline(
   if (opts.dequantize_tfl_softmax) {
     pm.addPass(mlir::tosa::createDequantizeTFLSoftmaxPass());
   }
+  pm.addPass(mlir::tosa::createLegalizeTFLStatefulPass());
   pm.addPass(mlir::tosa::createLegalizeTFLPass(opts.disabled_patterns,
                                                opts.enabled_patterns));
 

@@ -29,10 +29,12 @@ namespace gpu {
 
 // Returns the emitter for the given fusion. Returns nullopt if the fusion
 // type is not yet supported.
-// `allocations` may be empty and `fusion_op` may be nullptr if buffer
-// assignment didn't run yet.
+// `allocations` may be empty and `fusion_op` may be nullptr if no LMHLO ops are
+// available. In this case, this function will return nullopt if it cannot
+// detect whether a loop fusion can be optimized.
 std::optional<std::unique_ptr<FusionInterface>> GetFusionEmitter(
-    HloFusionAnalysis& analysis, absl::Span<const BufferAllocation> allocations,
+    HloFusionAnalysis& analysis,
+    absl::Span<const BufferAllocation* const> allocations,
     mlir::lmhlo::FusionOp fusion_op);
 
 }  // namespace gpu

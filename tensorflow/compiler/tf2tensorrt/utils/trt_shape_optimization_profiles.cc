@@ -144,11 +144,8 @@ Status TrtShapeOptimizationProfile::CollectShapeValues(OpKernelContext* ctx) {
   tensorflow::profiler::TraceMe activity(
       "TrtShapeOptimizationProfile::CollectShapeValues",
       tensorflow::profiler::TraceMeLevel::kInfo);
-  const cudaStream_t* stream = CHECK_NOTNULL(
-      reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
-                                                ->stream()
-                                                ->implementation()
-                                                ->GpuStreamMemberHack()));
+  cudaStream_t stream = reinterpret_cast<cudaStream_t>(CHECK_NOTNULL(
+      ctx->op_device_context()->stream()->platform_specific_handle().stream));
   actual_shape_values_.resize(ctx->num_inputs());
   if (is_shape_tensor_.empty()) {
     is_shape_tensor_.resize(ctx->num_inputs());
@@ -179,7 +176,7 @@ Status TrtShapeOptimizationProfile::CollectShapeValues(OpKernelContext* ctx) {
       actual_shape_values_[i].nbDims = input.NumElements();
       auto ret = cudaMemcpyAsync(
           actual_shape_values_[i].d, input.flat<int32>().data(),
-          input.NumElements() * sizeof(int32), cudaMemcpyDeviceToHost, *stream);
+          input.NumElements() * sizeof(int32), cudaMemcpyDeviceToHost, stream);
       if (ret != 0) {
         return errors::Internal("Could not copy shape tensor values");
       }
@@ -192,7 +189,7 @@ Status TrtShapeOptimizationProfile::CollectShapeValues(OpKernelContext* ctx) {
   if (n_shape_val > 0) {
     // If we have any shape values candidates, then wait until data is copied
     // to host.
-    cudaStreamSynchronize(*stream);
+    cudaStreamSynchronize(stream);
   }
   return OkStatus();
 }

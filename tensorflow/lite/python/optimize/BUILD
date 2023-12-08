@@ -88,6 +88,9 @@ py_strict_test(
     tags = ["no_oss"],
     deps = [
         ":calibrator",
+        "@absl_py//absl/testing:parameterized",
+        #internal proto upb dep
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/lite/python:lite",
         "//tensorflow/lite/python:schema_py",
@@ -96,7 +99,5 @@ py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )

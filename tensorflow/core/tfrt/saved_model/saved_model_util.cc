@@ -53,7 +53,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
-#include "tensorflow/core/tfrt/saved_model/utils/serialize_bef_utils.h"
+#include "tensorflow/core/tfrt/saved_model/utils/serialize_utils.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
@@ -182,10 +182,15 @@ StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
     const FallbackState& fallback_state, std::string saved_model_dir,
-    bool import_user_signatures, bool run_placer_grappler_on_functions) {
+    bool import_user_signatures, bool run_placer_grappler_on_functions,
+    const std::vector<std::string>& import_signature_names) {
   std::vector<std::string> signature_names;
   if (import_user_signatures) {
-    signature_names = FindNamesForValidSignatures(meta_graph_def);
+    if (!import_signature_names.empty()) {
+      signature_names = import_signature_names;
+    } else {
+      signature_names = FindNamesForValidSignatures(meta_graph_def);
+    }
     if (signature_names.empty())
       LOG(WARNING) << "No valid signature found for model: " << saved_model_dir;
   }
@@ -226,25 +231,25 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
 }
 
 std::string GetAotPackagePath(absl::string_view saved_model_dir) {
-  return tsl::io::JoinPath(std::string(saved_model_dir), kAoTPackagesDirectory);
+  return tsl::io::JoinPath(std::string(saved_model_dir), kAotPackagesDirectory);
 }
 
-std::string GetBEFFilePath(std::string aot_package_directory) {
+std::string GetBefFilePath(std::string aot_package_directory) {
   return tsl::io::JoinPath(aot_package_directory,
-                           std::string(kBefBufferFilenameMLIRBEF));
+                           std::string(kBefBufferFileName));
 }
 
 std::string GetMlirFilePath(const std::string& aot_package_directory) {
-  return tsl::io::JoinPath(aot_package_directory, kMLIRModuleFilename);
+  return tsl::io::JoinPath(aot_package_directory, kMlirModuleFilename);
 }
 
-absl::StatusOr<tfrt::BefBuffer> LoadAotPackages(
+absl::StatusOr<tfrt::BefBuffer> LoadBefAndMlir(
     const TfrtCompileOptions& options, mlir::ModuleOp mlir_module,
     const std::string& saved_model_dir,
     tfrt_stub::FallbackState* fallback_state) {
   const std::string aot_package_directory = GetAotPackagePath(saved_model_dir);
   const std::string bef_file_path =
-      tfrt_stub::GetBEFFilePath(aot_package_directory);
+      tfrt_stub::GetBefFilePath(aot_package_directory);
   TF_ASSIGN_OR_RETURN(tfrt::BefBuffer bef, DeserializeBEFBuffer(bef_file_path));
 
   if (bef.empty()) {
@@ -258,7 +263,7 @@ absl::StatusOr<tfrt::BefBuffer> LoadAotPackages(
   return bef;
 }
 
-absl::Status DeserializeAoTMlirModule(
+absl::Status DeserializeAotMlirModule(
     absl::string_view saved_model_dir, mlir::MLIRContext* context,
     mlir::OwningOpRef<mlir::ModuleOp>* mlir_module) {
   const std::string aot_package_directory = GetAotPackagePath(saved_model_dir);
@@ -271,7 +276,7 @@ absl::Status DeserializeAoTMlirModule(
   return absl::OkStatus();
 }
 
-void RegisterTFRTDialectsForAoT(mlir::DialectRegistry& registry) {
+void RegisterTfrtDialectsForAot(mlir::DialectRegistry& registry) {
   tfrt::RegisterTFRTDialects(registry);
   registry.insert<tfrt::fallback::FallbackDialect>();
   registry.insert<tfrt::fallback_async::FallbackAsyncDialect>();

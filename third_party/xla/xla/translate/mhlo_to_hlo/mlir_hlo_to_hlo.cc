@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -57,6 +58,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "xla/array.h"
 #include "xla/client/lib/approx_topk.h"
 #include "xla/client/lib/approx_topk_shape.h"
 #include "xla/client/lib/matrix.h"
@@ -76,6 +78,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_parser.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
@@ -83,6 +86,7 @@ limitations under the License.
 #include "xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "xla/translate/mhlo_to_hlo/stack_frame_index_builder.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/float8.h"
 #include "tsl/platform/statusor.h"
@@ -155,6 +159,30 @@ bool IsBoundedOrStatic(mlir::Type ty) {
   return true;
 }
 
+template <typename T>
+xla::Array<T> ArrayFromDenseElementsAttr(mlir::DenseElementsAttr dense_attr) {
+  constexpr xla::PrimitiveType type =
+      xla::primitive_util::NativeToPrimitiveType<T>();
+  xla::Shape shape = xla::TypeToShape(dense_attr.getType());
+  xla::Array<T> array(shape.dimensions());
+  if constexpr (!xla::primitive_util::Is4BitType(type)) {
+    array.SetValues(dense_attr.getValues<T>());
+  } else {
+    // The only way to get subbyte integers from getValues() is to get them as
+    // APInts.
+    auto values = dense_attr.getValues<llvm::APInt>();
+    for (int i = 0; i < values.size(); i++) {
+      if constexpr (type == xla::U4) {
+        array.data()[i] = xla::u4{values[i].getZExtValue()};
+      } else {
+        static_assert(type == xla::S4);
+        array.data()[i] = xla::s4(values[i].getSExtValue());
+      }
+    }
+  }
+  return array;
+}
+
 StatusOr<xla::Literal> CreateArrayLiteralFromAttr(mlir::ElementsAttr attr,
                                                   xla::Layout layout) {
   auto dense_attr = attr.dyn_cast<mlir::DenseElementsAttr>();
@@ -169,8 +197,8 @@ StatusOr<xla::Literal> CreateArrayLiteralFromAttr(mlir::ElementsAttr attr,
                           primitive_type_constant)) {
           using cpp_type =
               xla::primitive_util::NativeTypeOf<primitive_type_constant>;
-          xla::Array<cpp_type> source_data(shape.dimensions());
-          source_data.SetValues(dense_attr.getValues<cpp_type>());
+          xla::Array<cpp_type> source_data =
+              ArrayFromDenseElementsAttr<cpp_type>(dense_attr);
           return xla::LiteralUtil::CreateFromArrayWithLayout(source_data,
                                                              layout);
         }
@@ -806,6 +834,11 @@ bool SimplyReturnedOp(mlir::Operation* op) {
 namespace mlir {
 namespace mhlo {
 namespace {
+
+LogicalResult ExportXlaOp(CollectiveBroadcastOp, OpLoweringContext) {
+  // TODO: b/314330871 - Implement MHLO export for CollectiveBroadcastOp.
+  return failure();
+}
 
 LogicalResult ExportXlaOp(ComputeReshapeShapeOp, OpLoweringContext) {
   // This op should've been removed during PrepareForExport.
@@ -2705,8 +2738,17 @@ LogicalResult ExportXlaOp(UniformDequantizeOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(TopKOp op, OpLoweringContext ctx) {
-  // TODO(b/284077883): Implement HLO roundtrip for mhlo::TopKOp.
-  return failure();
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+    return failure();
+  auto topk = xla::TopK(operand, op.getK(), op.getLargest());
+
+  // Untuple the two results of XLA's topk.
+  for (const auto& [index, value] : llvm::enumerate(op.getResults())) {
+    value_map[value] = xla::GetTupleElement(topk, index);
+  }
+  return success();
 }
 
 }  // namespace
@@ -3191,6 +3233,15 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
       any_arg_replicated |= entry_args_same_across_replicas.back();
       // Pass the alias info to the builder so that it will build the alias info
       // into the resulting HloModule.
+      auto buffer_donor =
+          f.getArgAttrOfType<mlir::BoolAttr>(i, "jax.buffer_donor");
+      if (buffer_donor) {
+        if (use_tuple_args_) {
+          builder.AddBufferDonor(/*param_number=*/0, /*param_index=*/{i});
+        } else {
+          builder.AddBufferDonor(/*param_number=*/i, /*param_index=*/{});
+        }
+      }
       auto aliasing_output =
           f.getArgAttrOfType<mlir::IntegerAttr>(i, "tf.aliasing_output");
       if (!aliasing_output) continue;

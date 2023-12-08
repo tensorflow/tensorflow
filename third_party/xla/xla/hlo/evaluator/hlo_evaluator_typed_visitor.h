@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/shape_inference.h"
+#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -508,13 +509,53 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   Status HandlePower(const HloInstruction* power) override {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[power],
-        ElementWiseBinaryOp(
-            power, [](ElementwiseT lhs_el, ElementwiseT rhs_el) {
-              return lhs_el == ElementwiseT(1) ? static_cast<ElementwiseT>(1)
-                     : lhs_el == ElementwiseT(0) && rhs_el == ElementwiseT(0)
-                         ? static_cast<ElementwiseT>(1)
-                         : std::pow(lhs_el, rhs_el);
-            }));
+        ElementWiseBinaryOp(power, [](ElementwiseT lhs_el,
+                                      ElementwiseT rhs_el) {
+          // Case 0: 1^x = 1
+          if (lhs_el == ElementwiseT(1)) {
+            return static_cast<ElementwiseT>(1);
+          }
+          // Case 1: 0^0 = 1
+          if (lhs_el == ElementwiseT(0) && rhs_el == ElementwiseT(0)) {
+            return static_cast<ElementwiseT>(1);
+          }
+          // Case 2:
+          // 1. inf^(a + 0i) = inf, if a > 0.
+          // 2. inf^(a + 0i) = 0, if a < 0.
+          if constexpr (is_complex_v<ElementwiseT>) {
+            auto is_positive_infinity = [](ElementwiseT c) {
+              return c.imag() == 0 && c.real() > 0 && std::isinf(c.real());
+            };
+            auto is_positive_real = [](ElementwiseT c) {
+              return c.real() > 0 && c.imag() == 0;
+            };
+            auto is_negative_real = [](ElementwiseT c) {
+              return c.real() < 0 && c.imag() == 0;
+            };
+            if (is_positive_infinity(lhs_el) && is_positive_real(rhs_el)) {
+              return static_cast<ElementwiseT>(lhs_el);
+            }
+            if (is_positive_infinity(lhs_el) && is_negative_real(rhs_el)) {
+              return static_cast<ElementwiseT>(0);
+            }
+          }
+          // Case 3:
+          // Fallback to pow.
+          if constexpr (std::is_same_v<ElementwiseT, bool>) {
+            return lhs_el || !rhs_el;
+          } else if constexpr (std::is_integral_v<ElementwiseT>) {
+            if constexpr (std::is_signed_v<ElementwiseT>) {
+              if (rhs_el < static_cast<ElementwiseT>(0)) {
+                return static_cast<ElementwiseT>(
+                    lhs_el == static_cast<ElementwiseT>(1) ? 1 : 0);
+              }
+            }
+            return static_cast<ElementwiseT>(
+                IPow<std::make_unsigned_t<ElementwiseT>>(lhs_el, rhs_el));
+          } else {
+            return static_cast<ElementwiseT>(std::pow(lhs_el, rhs_el));
+          }
+        }));
     return OkStatus();
   }
 

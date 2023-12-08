@@ -502,6 +502,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/stablehlo:rename_entrypoint_to_main",
         "//tensorflow/compiler/mlir/lite/stablehlo:tf_stablehlo",
         "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
@@ -519,7 +520,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo:all_passes",
-        "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
     ],
 )
 
@@ -543,6 +543,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
     ],
@@ -616,5 +617,6 @@ tf_cc_binary(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:ShapeDialect",
+        "@stablehlo//:stablehlo_ops",
     ],
 )

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V1_TF_DIALECT_TO_EXECUTOR_H_
 #define TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V1_TF_DIALECT_TO_EXECUTOR_H_
 
+#include "absl/base/attributes.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/core/platform/status.h"
@@ -42,6 +43,10 @@ namespace v1 {
 // Input: A MLIR Module in the Tensorflow Dialect with no
 // `tf_device.cluster_func` ops.
 // Output: A MLIR module in the Tensorflow Executor Dialect.
+
+ABSL_DEPRECATED(
+    "Use v2/tf_dialect_to_executor.h::ExportFromTensorflowDialectToExecutor "
+    "instead.")
 tensorflow::Status ExportFromTensorflowDialectToExecutor(
     mlir::ModuleOp module, llvm::StringRef module_name = llvm::StringRef());
 

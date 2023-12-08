@@ -26,7 +26,8 @@ int64_t GetSizeOfShape(const Shape& shape, int pointer_size);
 
 // Determines the schedule of HLO instructions for a module run on the GPU.
 Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
-                         int64_t memory_limit);
+                         int64_t memory_limit,
+                         const se::DeviceDescription& gpu_device_info);
 HloInstructionSequence PostProcessSchedule(const HloInstructionSequence& input);
 
 int64_t GetSchedulerMemoryLimit(const HloModule* module,

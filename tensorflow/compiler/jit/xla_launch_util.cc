@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <set>
@@ -25,6 +26,7 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/jit/pjrt_tensor_buffer.h"
 #include "tensorflow/compiler/jit/pjrt_tensor_buffer_util.h"
 #include "tensorflow/compiler/jit/variable_info.h"
@@ -51,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 #include "tsl/framework/device_id_utils.h"
@@ -510,7 +513,10 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
     absl::Span<int const> must_be_constant_idxs,
     absl::Span<const Tensor* const> inputs,
     absl::Span<VariableInfo const> variable_args, Device* device) {
-  CHECK(absl::c_is_sorted(must_be_constant_idxs));
+  if (!must_be_constant_idxs.empty() &&
+      !absl::c_is_sorted(must_be_constant_idxs)) {
+    return absl::InvalidArgumentError("must_be_constant_idxs is not sorted");
+  }
   VLOG(2) << "Must be const args: {"
           << absl::StrJoin(must_be_constant_idxs, ",") << "} out of "
           << inputs.size() << " args";
@@ -519,17 +525,19 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
 
   // TODO(cheshire): Avoid duplication with framework/op_kernel.h
   DeviceContext* device_context = nullptr;
-  TF_RETURN_IF_ERROR(device->TryGetDeviceContext(&device_context));
-  bool using_default_context = false;
-  auto cleanup = absl::MakeCleanup([&] {
-    if (device_context != nullptr && !using_default_context) {
-      device_context->Unref();
+  if (device != nullptr) {
+    TF_RETURN_IF_ERROR(device->TryGetDeviceContext(&device_context));
+    bool using_default_context = false;
+    auto cleanup = absl::MakeCleanup([&] {
+      if (device_context != nullptr && !using_default_context) {
+        device_context->Unref();
+      }
+    });
+    if (device_context == nullptr) {
+      using_default_context = true;
+      auto* dev_info = device->tensorflow_accelerator_device_info();
+      if (dev_info) device_context = dev_info->default_context;
     }
-  });
-  if (device_context == nullptr) {
-    using_default_context = true;
-    auto* dev_info = device->tensorflow_accelerator_device_info();
-    if (dev_info) device_context = dev_info->default_context;
   }
 
   absl::flat_hash_map<int, const VariableInfo*> variable_info_lookup;
@@ -538,7 +546,7 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
     const Tensor* input = inputs[input_num];
 
     XlaCompiler::Argument& arg = out[input_num];
-    if (variable_info_lookup.count(input_num)) {
+    if (variable_info_lookup.count(input_num) && device != nullptr) {
       // Handles resource variables.
       TF_RET_CHECK(input->dtype() == DT_RESOURCE);
       const VariableInfo& variable = *variable_info_lookup[input_num];

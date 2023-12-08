@@ -53,6 +53,7 @@ do_external_licenses_check(){
 @com_github_grpc_grpc//src/compiler
 @platforms//os
 @ruy//
+@stablehlo//stablehlo/experimental
 EOF
 
   # grep patterns for targets which are allowed to be extra licenses
@@ -171,17 +172,17 @@ EOF
 
   # Get the full list of files and targets which get included into the pip
   # package
-  bazel query --keep_going 'deps(//tensorflow/tools/pip_package:build_pip_package)' | sort -u > $BATS_TEST_TMPDIR/pip_deps
+  bazel cquery --keep_going 'deps(//tensorflow/tools/pip_package:build_pip_package)' | sort -u > $BATS_TEST_TMPDIR/pip_deps
   # Find all Python py_test targets not tagged "no_pip" or "manual", excluding
   # any targets in ignored packages. Combine this list of targets into a bazel
   # query list (e.g. the list becomes "target+target2+target3")
-  bazel query --keep_going 'kind(py_test, //tensorflow/python/...) - attr("tags", "no_pip|manual", //tensorflow/python/...)' | grep -v -f $BATS_TEST_TMPDIR/ignore_deps_for_these_packages | paste -sd "+" - > $BATS_TEST_TMPDIR/deps
+  bazel cquery --keep_going 'kind(py_test, //tensorflow/python/...) - attr("tags", "no_pip|manual", //tensorflow/python/...)' | grep -v -f $BATS_TEST_TMPDIR/ignore_deps_for_these_packages | paste -sd "+" - > $BATS_TEST_TMPDIR/deps
   # Find all one-step dependencies of those tests which are from //tensorflow
   # (since external deps will come from Python-level pip dependencies),
   # excluding dependencies and files that are known to be unneccessary.
   # This creates a list of targets under //tensorflow that are required for
   # TensorFlow python tests.
-  bazel query --keep_going "deps($(cat $BATS_TEST_TMPDIR/deps), 1)" | grep "^//tensorflow" | grep -v -f $BATS_TEST_TMPDIR/ignore_these_deps | sort -u > $BATS_TEST_TMPDIR/required_deps
+  bazel cquery --keep_going "deps($(cat $BATS_TEST_TMPDIR/deps), 1)" | grep "^//tensorflow" | grep -v -f $BATS_TEST_TMPDIR/ignore_these_deps | sort -u > $BATS_TEST_TMPDIR/required_deps
 
 
   # Find if any required dependencies are missing from the list of dependencies
@@ -203,7 +204,7 @@ EOF
       # For every missing dependency, find the tests which directly depend on
       # it, and print that list for debugging. Not really clear if this is
       # helpful since the only examples I've seen are enormous.
-      bazel query "rdeps(kind(py_test, $(cat $BATS_TEST_TMPDIR/deps)), $dep, 1)"
+      bazel cquery "rdeps(kind(py_test, $(cat $BATS_TEST_TMPDIR/deps)), $dep, 1)"
     done < $BATS_TEST_TMPDIR/missing_deps
     exit 1
   fi

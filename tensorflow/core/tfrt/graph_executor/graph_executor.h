@@ -87,8 +87,7 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
     tfrt::ResourceContext* resource_context,
     tfrt::ResourceContext* client_graph_resource_context,
     OpKernelRunnerTable* runner_table,
-    tfd::FallbackResourceArray* resource_array,
-    const FallbackState& fallback_state,
+    tfd::FallbackResourceArray* resource_array, FallbackState& fallback_state,
     const ProcessFunctionLibraryRuntime& process_function_library_runtime,
     CostRecorder* cost_recorder = nullptr);
 
@@ -110,7 +109,7 @@ tensorflow::Status GraphExecutionRunOnFunction(
     tfrt::ResourceContext* client_graph_resource_context,
     OpKernelRunnerTable* runner_table,
     tfd::FallbackResourceArray* resource_array, const Runtime& runtime,
-    const FallbackState& fallback_state,
+    FallbackState& fallback_state,
     const tensorflow::ProcessFunctionLibraryRuntime&
         process_function_library_runtime,
     tfrt::RequestDeadlineTracker* req_deadline_tracker,
@@ -232,13 +231,13 @@ class GraphExecutor {
 
   // Creates a `GraphExecutor` given the args.
   static StatusOr<std::unique_ptr<GraphExecutor>> Create(
-      Options options, const FallbackState& fallback_state,
+      Options options, std::unique_ptr<FallbackState> fallback_state,
       std::unique_ptr<tfrt::ResourceContext> resource_context,
       tensorflow::GraphDef graph_def,
       std::unique_ptr<mlrt::KernelRegistry> kernel_registry);
 
   // Ctor. Public for `Create()`. Do not use directly.
-  GraphExecutor(Options options, const FallbackState& fallback_state,
+  GraphExecutor(Options options, std::unique_ptr<FallbackState> fallback_state,
                 std::unique_ptr<tfrt::ResourceContext> resource_context,
                 std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
                     graph_execution_state,
@@ -282,7 +281,8 @@ class GraphExecutor {
   tfrt::ResourceContext& resource_context() { return *resource_context_; }
 
   const Options& options() const { return options_; }
-  const FallbackState& fallback_state() const { return fallback_state_; }
+  const FallbackState& fallback_state() const { return *fallback_state_; }
+  FallbackState& fallback_state() { return *fallback_state_; }
 
   // Compiles graph for `graph_name` and runs any initializers.
   tensorflow::Status CompileGraph(
@@ -329,7 +329,7 @@ class GraphExecutor {
       TF_LOCKS_EXCLUDED(loaded_client_graphs_mu_);
 
   Options options_;
-  std::reference_wrapper<const FallbackState> fallback_state_;
+  std::unique_ptr<FallbackState> fallback_state_;
 
   std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
       graph_execution_state_;

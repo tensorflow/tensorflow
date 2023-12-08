@@ -150,9 +150,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "f9c5e1cf1bcc7920985df92322b95e537f284914339c0836e91c352f51345182",
-        strip_prefix = "XNNPACK-bbbaa7352a3ea729987d3e654d37be93e8009691",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/bbbaa7352a3ea729987d3e654d37be93e8009691.zip"),
+        sha256 = "ca829b6486d7dcc0a63eae9d5d5be21dcb542e6601af4cada17b9d5f7d5fafb7",
+        strip_prefix = "XNNPACK-0cbbe74a16e6ca11acf8484ccac85f620336dea4",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/0cbbe74a16e6ca11acf8484ccac85f620336dea4.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -172,9 +172,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "cpuinfo",
-        strip_prefix = "cpuinfo-959002f82d7962a473d8bf301845f2af720e0aa4",
-        sha256 = "a0f53ccfb477c57753c595df02bf79ed67bf092fd9a5c61ec5b8992b81bc1e65",
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/959002f82d7962a473d8bf301845f2af720e0aa4.zip"),
+        strip_prefix = "cpuinfo-ef634603954d88d2643d5809011288b890ac126e",
+        sha256 = "e07512a11e1c71687359a133f49d60583d7465b737fe5dbe11f461c9aaa72a2b",
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/ef634603954d88d2643d5809011288b890ac126e.zip"),
     )
 
     tf_http_archive(
@@ -184,6 +184,14 @@ def _tf_repositories():
         sha256 = "d8dba9e2607a0c256aa8eacb45b39986ab6f3f24a4d431d4397047a3cb0cd4fb",
         strip_prefix = "cudnn-frontend-0.9",
         urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.9.zip"),
+    )
+
+    tf_http_archive(
+        name = "cutlass_archive",
+        build_file = "//third_party:cutlass.BUILD",
+        sha256 = "ea1b7f96919460a5d80b09c1b246652539a8605600b2be4cccc02c254bccbe50",
+        strip_prefix = "cutlass-5783d6dbd0c34032371cce2bd999fc76007520d7",
+        urls = tf_mirror_urls("https://github.com/chsigg/cutlass/archive/5783d6dbd0c34032371cce2bd999fc76007520d7.tar.gz"),
     )
 
     tf_http_archive(
@@ -197,9 +205,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "onednn",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "2f76b407ef8893cca71340f88cd800019a1f14f8ac1bbdbb89a84be1370b52e3",
-        strip_prefix = "oneDNN-3.2.1",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.2.1.tar.gz"),
+        sha256 = "8d150a77025f38bff182aaef4dd643625563b2f311c635f86cf4b769b04d7b48",
+        strip_prefix = "oneDNN-3.3",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.3.tar.gz"),
     )
 
     tf_http_archive(
@@ -410,10 +418,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "f98bdb06c0f52bdd19e63c4a77b5eb19b243bcbbd0f5b002b9f3cba7295a3a42",
-        strip_prefix = "curl-8.2.1",
+        sha256 = "816e41809c043ff285e8c0f06a75a1fa250211bbfb2dc0a037eeef39f1a9e427",
+        strip_prefix = "curl-8.4.0",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-8.2.1.tar.gz"),
+        urls = tf_mirror_urls("https://curl.se/download/curl-8.4.0.tar.gz"),
     )
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
@@ -507,9 +515,9 @@ def _tf_repositories():
         name = "nccl_archive",
         build_file = "//third_party:nccl/archive.BUILD",
         patch_file = ["//third_party/nccl:archive.patch"],
-        sha256 = "0e3d7b6295beed81dc15002e88abf7a3b45b5c686b13b779ceac056f5612087f",
-        strip_prefix = "nccl-2.16.5-1",
-        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.16.5-1.tar.gz"),
+        sha256 = "16ac98f3e926c024ce48e10ab220e19ce734adc48c423cfd55ad6f509bd1179f",
+        strip_prefix = "nccl-2.18.5-1",
+        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.18.5-1.tar.gz"),
     )
 
     java_import_external(
@@ -610,10 +618,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "cython",
         build_file = "//third_party:cython.BUILD",
-        sha256 = "08dbdb6aa003f03e65879de8f899f87c8c718cd874a31ae9c29f8726da2f5ab0",
-        strip_prefix = "cython-3.0.0a11",
+        sha256 = "0c2eae8a4ceab7955be1e11a4ddc5dcc3aa06ce22ad594262f1555b9d10667f0",
+        strip_prefix = "cython-3.0.3",
         system_build_file = "//third_party/systemlibs:cython.BUILD",
-        urls = tf_mirror_urls("https://github.com/cython/cython/archive/3.0.0a11.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/cython/cython/archive/3.0.3.tar.gz"),
     )
 
     # LINT.IfChange

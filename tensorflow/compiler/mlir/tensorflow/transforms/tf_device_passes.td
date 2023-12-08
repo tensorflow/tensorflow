@@ -337,50 +337,6 @@ def LaunchToDeviceAttributePass : Pass<"tf-launch-to-device-attribute", "mlir::f
   let constructor = "TFDevice::CreateLaunchToDeviceAttributePass()";
 }
 
-def XlaClusterFormationPass : Pass<"tf-xla-cluster-formation", "ModuleOp"> {
-  let summary = "Encapsulate partitioned calls within a Cluster op";
-  let description = [{
-    This pass clusters `tf.PartitionedCall` and `tf.StatefulPartitionedCall`
-    with `_xla_compile_device_type` attribute into a `tf_device.cluster`.
-    Notice this pass will only rewrite the outermost call if there are nested
-    calls to avoid nested `tf.XlaLaunch` operations from being created later.
-
-    For example, the following code
-
-    ```mlir
-    func.func @main() -> tensor<i32> {
-      %0 = "tf.StatefulPartitionedCall"() {_xla_compile_device_type = "CPU", f = @stateful_pcall_func} : () -> (tensor<i32>)
-      func.return %0 : tensor<i32>
-    }
-
-    func.func @stateful_pcall_func() -> tensor<i32> {
-      %0 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-      func.return %0 : tensor<i32>
-    }
-    ```
-
-    will be transformed into,
-
-    ```mlir
-    func.func @main() -> tensor<i32> {
-      %0 = "tf_device.cluster"() ({
-        %1 = "tf.StatefulPartitionedCall"() {_xla_compile_device_type = "CPU", f = @stateful_pcall_func} : () -> tensor<i32>
-        tf_device.return %1 : tensor<i32>
-      }) : () -> tensor<i32>
-      func.return %0 : tensor<i32>
-    }
-
-    func.func @stateful_pcall_func() -> tensor<i32> {
-      %0 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-      func.return %0 : tensor<i32>
-    }
-
-    ```
-  }];
-  let constructor = "TFDevice::CreateXlaClusterFormationPass()";
-  let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
-}
-
 def XlaInlineDeviceOpsPass : Pass<"tf-xla-inline-device-ops", "ModuleOp"> {
   let summary = "Inline all Cluster op based in the parent region";
   let constructor = "TFDevice::CreateXlaInlineDeviceOpsPass()";

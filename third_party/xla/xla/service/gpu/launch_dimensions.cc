@@ -180,8 +180,7 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
   if (num_elements <= 1) {
     return LaunchDimensions();
   }
-  CHECK_EQ(num_elements % dim_config.unroll_factor, 0);
-  num_elements = num_elements / dim_config.unroll_factor;
+  num_elements = CeilOfRatio(num_elements, int64_t{dim_config.unroll_factor});
   BlockSizes sizes =
       GetBlockSizes(dim_config, gpu_device_info, shape, num_elements);
   if (gpu_device_info.block_dim_limit().x > 0 &&

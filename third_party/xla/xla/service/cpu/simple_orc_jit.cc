@@ -64,6 +64,7 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#include "xla/service/cpu/onednn_layer_norm.h"
 #include "xla/service/cpu/onednn_matmul.h"
 #endif
 
@@ -485,6 +486,8 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(AllReduce);
   REGISTER_CPU_RUNTIME_SYMBOL(CollectivePermute);
   REGISTER_CPU_RUNTIME_SYMBOL(AllToAll);
+  REGISTER_CPU_RUNTIME_SYMBOL(AllGather);
+  REGISTER_CPU_RUNTIME_SYMBOL(ReduceScatter);
   REGISTER_CPU_RUNTIME_SYMBOL(PartitionId);
   REGISTER_CPU_RUNTIME_SYMBOL(ReplicaId);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLConv2DF32);
@@ -492,7 +495,7 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConv2DF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConv3DF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConv3DF32);
-  REGISTER_CPU_RUNTIME_SYMBOL(EigenFft);
+  REGISTER_CPU_RUNTIME_SYMBOL(DuccFft);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF64);
@@ -507,7 +510,7 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv2DF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv3DF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv3DF32);
-  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedFft);
+  REGISTER_CPU_RUNTIME_SYMBOL(DuccSingleThreadedFft);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF64);
@@ -525,6 +528,7 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(TracingEnd);
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnMatMul);
+  REGISTER_CPU_RUNTIME_SYMBOL(OneDnnLayerNorm);
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
   registry->Register("__gnu_f2h_ieee", reinterpret_cast<void*>(__gnu_f2h_ieee),

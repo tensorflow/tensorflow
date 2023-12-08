@@ -1,39 +1,14 @@
 diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
 --- stablehlo/BUILD.bazel
 +++ stablehlo/BUILD.bazel
-@@ -279,6 +279,24 @@
- )
- 
- cc_library(
-+    name = "experimental_ops",
-+    srcs = [
-+        "stablehlo/dialect/ExperimentalOps.cpp",
-+    ],
-+    hdrs = [
-+        "stablehlo/dialect/ExperimentalOps.h",
-+    ],
-+    strip_include_prefix = ".",
-+    deps = [
-+        ":stablehlo_ops",
-+        "@llvm-project//llvm:Support",
-+        "@llvm-project//mlir:FuncDialect",
-+        "@llvm-project//mlir:IR",
-+        "@llvm-project//mlir:Support",
-+    ],
-+)
-+
-+cc_library(
-     name = "interpreter_ops",
-     srcs = [
-         "stablehlo/reference/InterpreterOps.cpp",
-@@ -763,6 +781,7 @@
+@@ -889,6 +889,7 @@
+     hdrs = [
+         "stablehlo/transforms/MapStablehloToVhlo.h",
+         "stablehlo/transforms/Passes.h",
++        "stablehlo/transforms/StablehloRefineShapes.h",
+     ],
+     strip_include_prefix = ".",
      deps = [
-         ":base",
-         ":chlo_ops",
-+        ":experimental_ops",
-         ":stablehlo_ops",
-         ":stablehlo_ops_inc_gen",
-         ":stablehlo_pass_inc_gen",
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
@@ -181,13 +156,196 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
  
  #-------------------------------------------------------------------------------
  # Directory setup
-diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
---- stablehlo/stablehlo/dialect/Base.cpp
-+++ stablehlo/stablehlo/dialect/Base.cpp
-@@ -600,5 +600,18 @@
-   return UnrankedTensorType::get(components.getElementType());
- }
+diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists.txt
+--- stablehlo/stablehlo/CMakeLists.txt
++++ stablehlo/stablehlo/CMakeLists.txt
+@@ -15,6 +15,7 @@
+ add_subdirectory(api)
+ add_subdirectory(conversions)
+ add_subdirectory(dialect)
++add_subdirectory(experimental)
+ add_subdirectory(integrations)
+ add_subdirectory(reference)
+ add_subdirectory(tests)
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/dialect/StablehloOps.h
+--- stablehlo/stablehlo/dialect/StablehloOps.h
++++ stablehlo/stablehlo/dialect/StablehloOps.h
+@@ -75,6 +75,7 @@
+ class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
+  public:
+   using Base::Base;
++  static constexpr StringLiteral name = "stablehlo.token";
+ };
  
+ // Verifies the source target pairs attached to collective permute.
+diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
+--- stablehlo/stablehlo/experimental/BUILD.bazel
++++ stablehlo/stablehlo/experimental/BUILD.bazel
+@@ -0,0 +1,114 @@
++# Copyright 2023 The StableHLO Authors. All Rights Reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#      https://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
++
++package(
++    default_visibility = ["//visibility:public"],
++    licenses = ["notice"],
++)
++
++cc_library(
++    name = "experimental_base",
++    srcs = [
++        "dialect/Base.cpp",
++    ],
++    hdrs = [
++        "dialect/Base.h",
++    ],
++    deps = [
++        "@llvm-project//llvm:Support",
++        "@llvm-project//mlir:IR",
++    ],
++)
++
++cc_library(
++    name = "experimental_stablehlo_ops",
++    srcs = [
++        "dialect/StablehloOps.cpp",
++    ],
++    hdrs = [
++        "dialect/StablehloOps.h",
++    ],
++    deps = [
++        ":experimental_base",
++        "//:stablehlo_ops",
++        "@llvm-project//llvm:Support",
++        "@llvm-project//mlir:FuncDialect",
++        "@llvm-project//mlir:IR",
++        "@llvm-project//mlir:Support",
++    ],
++)
++
++gentbl_cc_library(
++    name = "experimental_stablehlo_pass_inc_gen",
++    tbl_outs = [
++        (
++            [
++                "-gen-pass-decls",
++            ],
++            "transforms/Passes.h.inc",
++        ),
++    ],
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "transforms/Passes.td",
++    deps = ["@llvm-project//mlir:PassBaseTdFiles"],
++)
++
++cc_library(
++    name = "experimental_stablehlo_passes",
++    srcs = [
++        "transforms/StablehloCanonicalizeDynamism.cpp",
++        "transforms/StablehloRefineShapes.cpp",
++    ],
++    hdrs = [
++        "transforms/Passes.h",
++    ],
++    deps = [
++        ":experimental_stablehlo_ops",
++        ":experimental_stablehlo_pass_inc_gen",
++        "//:base",
++        "//:chlo_ops",
++        "//:stablehlo_ops",
++        "//:stablehlo_ops_inc_gen",
++        "//:stablehlo_passes",
++        "//:stablehlo_type_inference",
++        "@llvm-project//llvm:Support",
++        "@llvm-project//mlir:FuncDialect",
++        "@llvm-project//mlir:IR",
++        "@llvm-project//mlir:InferTypeOpInterface",
++        "@llvm-project//mlir:Pass",
++        "@llvm-project//mlir:Support",
++        "@llvm-project//mlir:TransformUtils",
++        "@llvm-project//mlir:Transforms",
++    ],
++)
++
++cc_binary(
++    name = "experimental-stablehlo-opt",
++    srcs = [
++        "tools/StablehloOptMain.cpp",
++    ],
++    deps = [
++        ":experimental_stablehlo_passes",
++        "//:interpreter_ops",
++        "//:register",
++        "//:stablehlo_passes",
++        "//:test_utils",
++        "//:tosa_passes",
++        "@llvm-project//mlir:AllExtensions",
++        "@llvm-project//mlir:AllPassesAndDialects",
++        "@llvm-project//mlir:MlirOptLib",
++        "@llvm-project//mlir:TosaDialect",
++    ],
++)
+diff --ruN a/stablehlo/stablehlo/experimental/CMakeLists.txt b/stablehlo/stablehlo/experimental/CMakeLists.txt
+--- stablehlo/stablehlo/experimental/CMakeLists.txt
++++ stablehlo/stablehlo/experimental/CMakeLists.txt
+@@ -0,0 +1,18 @@
++# Copyright 2023 The StableHLO Authors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#      https://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++add_subdirectory(dialect)
++add_subdirectory(tests)
++add_subdirectory(tools)
++add_subdirectory(transforms)
+diff --ruN a/stablehlo/stablehlo/experimental/dialect/Base.cpp b/stablehlo/stablehlo/experimental/dialect/Base.cpp
+--- stablehlo/stablehlo/experimental/dialect/Base.cpp
++++ stablehlo/stablehlo/experimental/dialect/Base.cpp
+@@ -0,0 +1,39 @@
++/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
++   Copyright 2022 The StableHLO Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#include "stablehlo/experimental/dialect/Base.h"
++
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypes.h"
++
++namespace mlir {
++namespace hlo {
++
 +DenseIntElementsAttr getPaddingAttr(MLIRContext* context,
 +                                    ArrayRef<int64_t> values) {
 +  return DenseIntElementsAttr::get(
@@ -201,50 +359,97 @@ diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/
 +  return getPaddingAttr(builder->getContext(), values);
 +}
 +
- }  // namespace hlo
- }  // namespace mlir
-diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Base.h
---- stablehlo/stablehlo/dialect/Base.h
-+++ stablehlo/stablehlo/dialect/Base.h
-@@ -194,6 +194,10 @@
- 
- ShapedType createShapedType(ShapedTypeComponents components);
- 
++}  // namespace hlo
++}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/experimental/dialect/Base.h b/stablehlo/stablehlo/experimental/dialect/Base.h
+--- stablehlo/stablehlo/experimental/dialect/Base.h
++++ stablehlo/stablehlo/experimental/dialect/Base.h
+@@ -0,0 +1,35 @@
++/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
++   Copyright 2022 The StableHLO Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#ifndef STABLEHLO_EXPERIMENTAL_DIALECT_BASE_H
++#define STABLEHLO_EXPERIMENTAL_DIALECT_BASE_H
++
++#include "llvm/ADT/ArrayRef.h"
++#include "mlir/IR/Builders.h"
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/MLIRContext.h"
++
++namespace mlir {
++namespace hlo {
++
 +DenseIntElementsAttr getPaddingAttr(MLIRContext *context,
 +                                    ArrayRef<int64_t> value);
 +DenseIntElementsAttr getPaddingAttr(Builder *builder, ArrayRef<int64_t> value);
 +
- // This interface is implemented by both StableHLO and MHLO dialects
- // and is used as the foundation for sharing verification, type inference and
- // prettyprinting logic between them.
-diff --ruN a/stablehlo/stablehlo/dialect/CMakeLists.txt b/stablehlo/stablehlo/dialect/CMakeLists.txt
---- stablehlo/stablehlo/dialect/CMakeLists.txt
-+++ stablehlo/stablehlo/dialect/CMakeLists.txt
-@@ -77,6 +77,20 @@
- target_include_directories(ChloOps INTERFACE
-   $<BUILD_INTERFACE:${STABLEHLO_SOURCE_DIR}>
-   $<BUILD_INTERFACE:${STABLEHLO_BINARY_DIR}>
++}  // namespace hlo
++}  // namespace mlir
++
++#endif  // STABLEHLO_EXPERIMENTAL_DIALECT_BASE_H
+diff --ruN a/stablehlo/stablehlo/experimental/dialect/CMakeLists.txt b/stablehlo/stablehlo/experimental/dialect/CMakeLists.txt
+--- stablehlo/stablehlo/experimental/dialect/CMakeLists.txt
++++ stablehlo/stablehlo/experimental/dialect/CMakeLists.txt
+@@ -0,0 +1,42 @@
++# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
++# Copyright 2023 The StableHLO Authors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#      https://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++add_mlir_library(ExperimentalStablehloBase
++  PARTIAL_SOURCES_INTENDED
++  Base.cpp
++
++  LINK_LIBS PUBLIC
++  MLIRIR
 +)
 +
-+add_mlir_dialect_library(ExperimentalOps
++add_mlir_dialect_library(ExperimentalStablehloOps
 +  PARTIAL_SOURCES_INTENDED
-+  ExperimentalOps.cpp
++  StablehloOps.cpp
 +
 +  DEPENDS
 +  StablehloOpsIncGen
 +
 +  LINK_LIBS PUBLIC
++  ExperimentalStablehloBase
 +  MLIRFuncDialect
 +  MLIRIR
 +  MLIRSupport
 +  StablehloOps
- )
- 
- add_mlir_dialect_library(StablehloRegister
-diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stablehlo/dialect/ExperimentalOps.cpp
---- stablehlo/stablehlo/dialect/ExperimentalOps.cpp
-+++ stablehlo/stablehlo/dialect/ExperimentalOps.cpp
-@@ -0,0 +1,504 @@
++)
++
++target_include_directories(ExperimentalStablehloOps INTERFACE
++  $<BUILD_INTERFACE:${STABLEHLO_SOURCE_DIR}>
++  $<BUILD_INTERFACE:${STABLEHLO_BINARY_DIR}>
++)
+diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
+@@ -0,0 +1,506 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -260,7 +465,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stableh
 +limitations under the License.
 +==============================================================================*/
 +
-+#include "stablehlo/dialect/ExperimentalOps.h"
++#include "stablehlo/experimental/dialect/StablehloOps.h"
 +
 +#include <optional>
 +
@@ -274,6 +479,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stableh
 +
 +namespace mlir {
 +namespace stablehlo {
++namespace experimental {
 +
 +LogicalResult DynamicReduceWindowOpAdaptor::verify() {
 +  // Before checking the constraints inherited from ReduceWindowOp,
@@ -747,12 +953,13 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stableh
 +  return DynamicTopKOpAdaptor(op);
 +}
 +
++}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
-diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo/dialect/ExperimentalOps.h
---- stablehlo/stablehlo/dialect/ExperimentalOps.h
-+++ stablehlo/stablehlo/dialect/ExperimentalOps.h
-@@ -0,0 +1,227 @@
+diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.h b/stablehlo/stablehlo/experimental/dialect/StablehloOps.h
+--- stablehlo/stablehlo/experimental/dialect/StablehloOps.h
++++ stablehlo/stablehlo/experimental/dialect/StablehloOps.h
+@@ -0,0 +1,230 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -768,8 +975,8 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo
 +limitations under the License.
 +==============================================================================*/
 +
-+#ifndef STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
-+#define STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
++#ifndef STABLEHLO_EXPERIMENTAL_DIALECT_STABLEHLO_OPS_H
++#define STABLEHLO_EXPERIMENTAL_DIALECT_STABLEHLO_OPS_H
 +
 +// This file supports XLA-specific experiments with the StableHLO opset.
 +// These experiments are not yet ready to be upstreamed to openxla/stablehlo
@@ -786,9 +993,11 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo
 +#include "mlir/IR/ValueRange.h"
 +#include "mlir/Support/LogicalResult.h"
 +#include "stablehlo/dialect/StablehloOps.h"
++#include "stablehlo/experimental/dialect/Base.h"
 +
 +namespace mlir {
 +namespace stablehlo {
++namespace experimental {
 +
 +// The DynamicReduceWindowOp experiment provides a dynamic version of
 +// ReduceWindowOp. Once the dynamism RFC is figured out, we expect to have an
@@ -976,17 +1185,184 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo
 +// "stablehlo.dynamic_top_k".
 +std::optional<DynamicTopKOpAdaptor> getDynamicTopKOp(CustomCallOp op);
 +
++}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
 +
-+#endif  // STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
-diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
---- stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
-+++ stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
-@@ -426,6 +426,172 @@
- 
- // -----
- 
++#endif  // STABLEHLO_EXPERIMENTAL_DIALECT_STABLEHLO_OPS_H
+diff --ruN a/stablehlo/stablehlo/experimental/tests/BUILD.bazel b/stablehlo/stablehlo/experimental/tests/BUILD.bazel
+--- stablehlo/stablehlo/experimental/tests/BUILD.bazel
++++ stablehlo/stablehlo/experimental/tests/BUILD.bazel
+@@ -0,0 +1,59 @@
++# Copyright 2023 The StableHLO Authors. All Rights Reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#      https://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
++load("@llvm-project//llvm:lit_test.bzl", "lit_test", "package_path")
++
++package(
++    default_visibility = ["//visibility:public"],
++    licenses = ["notice"],
++)
++
++# Equivalent of configure_lit_site_cfg from CMakeLists.txt.
++expand_template(
++    name = "lit_site_cfg_py_gen",
++    testonly = True,
++    out = "lit.site.cfg.py",
++    substitutions = {
++        "@LIT_SITE_CFG_IN_HEADER@": "# Autogenerated, do not edit.",
++        "@LLVM_TOOLS_DIR@": package_path("@llvm-project//llvm:BUILD"),
++        "\"@STABLEHLO_TOOLS_DIR@\"": "os.path.join(os.environ['TEST_SRCDIR'], 'stablehlo')",
++        "\"@STABLEHLO_SOURCE_DIR@\"": "os.path.join(os.environ['TEST_SRCDIR'], 'stablehlo')",
++    },
++    template = "lit.site.cfg.py.in",
++)
++
++# Equivalent of add_lit_testsuite from CMakeLists.txt.
++[
++    lit_test(
++        name = "%s.test" % src,
++        size = "small",
++        srcs = [src],
++        data = [
++            "lit.cfg.py",
++            "lit.site.cfg.py",
++            "//:stablehlo-opt",
++            "//:stablehlo-translate",
++            "//stablehlo/experimental:experimental-stablehlo-opt",
++            "@llvm-project//llvm:FileCheck",
++            "@llvm-project//llvm:not",
++        ] + glob(["%s.bc" % src]),
++        tags = ["stablehlo_tests"],
++    )
++    for src in glob(["**/*.mlir"])
++]
++
++test_suite(
++    name = "experimental_stablehlo_tests",
++    tags = ["experimental_stablehlo_tests"],
++)
+diff --ruN a/stablehlo/stablehlo/experimental/tests/CMakeLists.txt b/stablehlo/stablehlo/experimental/tests/CMakeLists.txt
+--- stablehlo/stablehlo/experimental/tests/CMakeLists.txt
++++ stablehlo/stablehlo/experimental/tests/CMakeLists.txt
+@@ -0,0 +1,29 @@
++# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
++# Copyright 2023 The StableHLO Authors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#      https://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++configure_lit_site_cfg(
++  ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.py.in
++  ${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg.py
++  MAIN_CONFIG
++  ${CMAKE_CURRENT_SOURCE_DIR}/lit.cfg.py
++)
++add_lit_testsuite(check-experimental-stablehlo-tests "Running the experimental/tests/ suite"
++  ${CMAKE_CURRENT_BINARY_DIR}
++  DEPENDS
++  FileCheck
++  experimental-stablehlo-opt
++  stablehlo-translate
++)
++add_dependencies(check-stablehlo-quick check-experimental-stablehlo-tests)
+diff --ruN a/stablehlo/stablehlo/experimental/tests/lit.cfg.py b/stablehlo/stablehlo/experimental/tests/lit.cfg.py
+--- stablehlo/stablehlo/experimental/tests/lit.cfg.py
++++ stablehlo/stablehlo/experimental/tests/lit.cfg.py
+@@ -0,0 +1,42 @@
++"""Lit configuration to drive test in this repo."""
++# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
++# Copyright 2023 The StableHLO Authors.
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++# -*- Python -*-
++# pylint: disable=undefined-variable
++
++import os
++
++import lit.formats
++from lit.llvm import llvm_config
++
++# Populate Lit configuration with the minimal required metadata.
++# Some metadata is populated in lit.site.cfg.py.in.
++config.name = 'STABLEHLO_TESTS_SUITE'
++config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
++config.suffixes = ['.mlir']
++config.test_source_root = os.path.dirname(__file__)
++
++# Make LLVM and StableHLO tools available in RUN directives
++tools = [
++  'FileCheck',
++  'experimental-stablehlo-opt',
++  'stablehlo-translate',
++  'not',
++]
++tool_dirs = [
++  config.llvm_tools_dir,
++  config.stablehlo_tools_dir,
++]
++llvm_config.add_tool_substitutions(tools, tool_dirs)
+diff --ruN a/stablehlo/stablehlo/experimental/tests/lit.site.cfg.py.in b/stablehlo/stablehlo/experimental/tests/lit.site.cfg.py.in
+--- stablehlo/stablehlo/experimental/tests/lit.site.cfg.py.in
++++ stablehlo/stablehlo/experimental/tests/lit.site.cfg.py.in
+@@ -0,0 +1,21 @@
++# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
++# Copyright 2023 The StableHLO Authors.
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++@LIT_SITE_CFG_IN_HEADER@
++
++import lit.llvm
++lit.llvm.initialize(lit_config, config)
++config.llvm_tools_dir = "@LLVM_TOOLS_DIR@"
++config.stablehlo_tools_dir = "@STABLEHLO_TOOLS_DIR@"
++lit_config.load_config(config, "@STABLEHLO_SOURCE_DIR@" + "/stablehlo/experimental/tests/lit.cfg.py")
+diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynamism.mlir
+--- stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynamism.mlir
++++ stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynamism.mlir
+@@ -0,0 +1,344 @@
++// RUN: experimental-stablehlo-opt --experimental-stablehlo-canonicalize-dynamism --split-input-file --verify-diagnostics %s | FileCheck %s
++
 +// CHECK-LABEL: func @dynamic_reduce_window_success_static_result_type
 +func.func @dynamic_reduce_window_success_static_result_type(%arg0: tensor<3x2xf32>, %arg1: tensor<f32>) -> tensor<2x2xf32> {
 +  //           CHECK-NOT: stablehlo.dynamic_reduce_window
@@ -1149,17 +1525,6 @@ diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/st
 +func.func private @dynamic_reduce_window0(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 +  %0 = stablehlo.add %arg0, %arg1 : tensor<f32>
 +  func.return %0 : tensor<f32>
-+}
-+
-+// -----
-+
- // CHECK-LABEL: func @dynamic_reshape_success
- func.func @dynamic_reshape_success(%arg0: tensor<4xf32>) -> tensor<1x4xf32> {
-   // CHECK-NOT: stablehlo.dynamic_reshape
-@@ -452,6 +618,185 @@
-   %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi64>
-   %1 = stablehlo.dynamic_reshape %arg0, %0 : (tensor<4xf32>, tensor<2xi64>) -> tensor<1x?xf32>
-   return %1 : tensor<1x?xf32>
 +}
 +
 +// -----
@@ -1339,16 +1704,13 @@ diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/st
 +  %k = stablehlo.constant dense<3> : tensor<ui64>
 +  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xf32>, tensor<ui64>) -> (tensor<3xf32>, tensor<4xi32>)
 +  return %1#0, %1#1 : tensor<3xf32>, tensor<4xi32>
- }
- 
- // -----
-diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
---- stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
-+++ stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
-@@ -607,12 +607,55 @@
- 
- // -----
- 
++}
+diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
+--- stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
++++ stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
+@@ -0,0 +1,42 @@
++// RUN: experimental-stablehlo-opt --experimental-stablehlo-refine-shapes --split-input-file --verify-diagnostics %s | FileCheck %s
++
 +// CHECK-LABEL: @main
 +func.func @main(%arg0: tensor<3x2xf32>, %arg1: tensor<f32>) -> tensor<*xf32> {
 +  // CHECK: stablehlo.dynamic_reduce_window{{.*}} -> tensor<2x2xf32>
@@ -1366,16 +1728,6 @@ diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/
 +func.func private @dynamic_reduce_window0(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 +  %0 = stablehlo.add %arg0, %arg1 : tensor<f32>
 +  func.return %0 : tensor<f32>
-+}
-+
-+// -----
-+
- // CHECK-LABEL: @refine_dynamic_reshape
- func.func @refine_dynamic_reshape(%arg0: tensor<4xf32>) -> tensor<*xf32> {
-   // CHECK: stablehlo.dynamic_reshape{{.*}} -> tensor<1x4xf32>
-   %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi64>
-   %1 = stablehlo.dynamic_reshape %arg0, %0 : (tensor<4xf32>, tensor<2xi64>) -> tensor<*xf32>
-   func.return %1 : tensor<*xf32>
 +}
 +
 +// -----
@@ -1398,36 +1750,264 @@ diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/
 +  %k = stablehlo.constant dense<4> : tensor<ui64>
 +  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xf32>, tensor<ui64>) -> (tensor<?xf32>, tensor<?xi32>)
 +  return %1#0, %1#1 : tensor<?xf32>, tensor<?xi32>
- }
- 
- // -----
-diff --ruN a/stablehlo/stablehlo/transforms/Passes.td b/stablehlo/stablehlo/transforms/Passes.td
---- stablehlo/stablehlo/transforms/Passes.td
-+++ stablehlo/stablehlo/transforms/Passes.td
-@@ -25,6 +25,7 @@
-     For example, if the output_shape operand of DynamicReshapeOp is a constant
-     value, then the operation can be transformed to ReshapeOp.
-   }];
++}
+diff --ruN a/stablehlo/stablehlo/experimental/tools/CMakeLists.txt b/stablehlo/stablehlo/experimental/tools/CMakeLists.txt
+--- stablehlo/stablehlo/experimental/tools/CMakeLists.txt
++++ stablehlo/stablehlo/experimental/tools/CMakeLists.txt
+@@ -0,0 +1,41 @@
++# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
++# Copyright 2023 The StableHLO Authors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#      https://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++set(LLVM_OPTIONAL_SOURCES
++  StablehloOptMain.cpp
++)
++
++# stablehlo-opt
++get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
++get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
++get_property(extension_libs GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
++set(LIBS
++        ${dialect_libs}
++        ${conversion_libs}
++        ${extension_libs}
++        ExperimentalStablehloPasses
++        MLIROptLib
++        StablehloRegister
++        StablehloTestUtils
++        StablehloPasses
++        InterpreterOps
++        StablehloTOSATransforms
++        )
++add_llvm_executable(experimental-stablehlo-opt StablehloOptMain.cpp)
++llvm_update_compile_flags(experimental-stablehlo-opt)
++target_link_libraries(experimental-stablehlo-opt PRIVATE ${LIBS})
++
++mlir_check_all_link_libraries(experimental-stablehlo-opt)
++
+diff --ruN a/stablehlo/stablehlo/experimental/tools/StablehloOptMain.cpp b/stablehlo/stablehlo/experimental/tools/StablehloOptMain.cpp
+--- stablehlo/stablehlo/experimental/tools/StablehloOptMain.cpp
++++ stablehlo/stablehlo/experimental/tools/StablehloOptMain.cpp
+@@ -0,0 +1,46 @@
++/* Copyright 2023 The StableHLO Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#include "mlir/Dialect/Tosa/IR/TosaOps.h"
++#include "mlir/Dialect/Tosa/Transforms/Passes.h"
++#include "mlir/InitAllDialects.h"
++#include "mlir/InitAllExtensions.h"
++#include "mlir/InitAllPasses.h"
++#include "mlir/Tools/mlir-opt/MlirOptMain.h"
++#include "stablehlo/conversions/tosa/transforms/Passes.h"
++#include "stablehlo/dialect/Register.h"
++#include "stablehlo/experimental/transforms/Passes.h"
++#include "stablehlo/reference/InterpreterOps.h"
++#include "stablehlo/tests/TestUtils.h"
++#include "stablehlo/transforms/Passes.h"
++
++int main(int argc, char **argv) {
++  mlir::registerAllPasses();
++  mlir::hlo::registerAllTestPasses();
++  mlir::stablehlo::registerPassPipelines();
++  mlir::stablehlo::registerPasses();
++  mlir::stablehlo::experimental::registerPasses();
++  mlir::tosa::registerStablehloLegalizeToTosaPassPass();
++  mlir::tosa::registerStablehloPrepareForTosaPassPass();
++
++  mlir::DialectRegistry registry;
++  mlir::registerAllDialects(registry);
++  mlir::registerAllExtensions(registry);
++  mlir::stablehlo::registerAllDialects(registry);
++  registry.insert<mlir::stablehlo::interpreter::InterpreterDialect>();
++
++  return failed(
++      mlir::MlirOptMain(argc, argv, "Experimental StableHLO optimizer driver\n", registry));
++}
+diff --ruN a/stablehlo/stablehlo/experimental/transforms/CMakeLists.txt b/stablehlo/stablehlo/experimental/transforms/CMakeLists.txt
+--- stablehlo/stablehlo/experimental/transforms/CMakeLists.txt
++++ stablehlo/stablehlo/experimental/transforms/CMakeLists.txt
+@@ -0,0 +1,39 @@
++# Copyright 2023 The StableHLO Authors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#      https://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++set(LLVM_TARGET_DEFINITIONS Passes.td)
++mlir_tablegen(Passes.h.inc -gen-pass-decls)
++add_public_tablegen_target(ExperimentalPassesIncGen)
++
++add_mlir_dialect_library(ExperimentalStablehloPasses
++  PARTIAL_SOURCES_INTENDED
++  StablehloCanonicalizeDynamism.cpp
++  StablehloRefineShapes.cpp
++
++  DEPENDS
++  ExperimentalPassesIncGen
++
++  LINK_LIBS PUBLIC
++  ChloOps
++  MLIRFuncDialect
++  MLIRIR
++  MLIRInferTypeOpInterface
++  MLIRSupport
++  MLIRTransformUtils
++  ExperimentalStablehloOps
++  StablehloBase
++  StablehloOps
++  StablehloPasses
++  StablehloTypeInference
++)
+diff --ruN a/stablehlo/stablehlo/experimental/transforms/Passes.h b/stablehlo/stablehlo/experimental/transforms/Passes.h
+--- stablehlo/stablehlo/experimental/transforms/Passes.h
++++ stablehlo/stablehlo/experimental/transforms/Passes.h
+@@ -0,0 +1,37 @@
++/* Copyright 2023 The StableHLO Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#ifndef STABLEHLO_EXPERIMENTAL_TRANSFORMS_PASSES_H
++#define STABLEHLO_EXPERIMENTAL_TRANSFORMS_PASSES_H
++
++#include <memory>
++
++#include "mlir/Pass/Pass.h"
++#include "mlir/Transforms/DialectConversion.h"
++
++namespace mlir {
++namespace stablehlo {
++namespace experimental {
++  
++#define GEN_PASS_DECL_STABLEHLOCANONICALIZEDYNAMISMPASS
++#define GEN_PASS_DECL_STABLEHLOREFINESHAPESPASS
++#define GEN_PASS_REGISTRATION
++#include "stablehlo/experimental/transforms/Passes.h.inc"
++
++}  // namespace experimental
++}  // namespace stablehlo
++}  // namespace mlir
++
++#endif  // STABLEHLO_EXPERIMENTAL_TRANSFORMS_PASSES_H
+diff --ruN a/stablehlo/stablehlo/experimental/transforms/Passes.td b/stablehlo/stablehlo/experimental/transforms/Passes.td
+--- stablehlo/stablehlo/experimental/transforms/Passes.td
++++ stablehlo/stablehlo/experimental/transforms/Passes.td
+@@ -0,0 +1,31 @@
++/* Copyright 2023 The StableHLO Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++include "mlir/Pass/PassBase.td"
++
++def StablehloCanonicalizeDynamismPass : Pass<"experimental-stablehlo-canonicalize-dynamism", "func::FuncOp"> {
++  let summary = "(Experimental) Canonicalizes dynamic StableHLO ops into static ops.";
++  let description = [{
++    Experimental version of the --stablehlo-canonicalize-dynamism pass.
++  }];
 +  let dependentDialects = ["mlir::chlo::ChloDialect"];
- }
- 
- def StablehloLegalizeToVhloPass : Pass<"stablehlo-legalize-to-vhlo", "ModuleOp"> {
-diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
---- stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
-+++ stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
-@@ -24,6 +24,8 @@
- #include "mlir/Interfaces/InferTypeOpInterface.h"
- #include "mlir/Support/LogicalResult.h"
- #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
++}
++
++def StablehloRefineShapesPass : Pass<"experimental-stablehlo-refine-shapes", "ModuleOp"> {
++  let summary = "(Experimental) Refines shapes across a StableHLO program.";
++  let description = [{
++    Experimental version of the --stablehlo-refine-shapes pass.
++  }];
++}
+diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDynamism.cpp b/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDynamism.cpp
+--- stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDynamism.cpp
++++ stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDynamism.cpp
+@@ -0,0 +1,167 @@
++/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
++   Copyright 2023 The StableHLO Authors.
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#include <cstdint>
++
++#include "llvm/ADT/STLExtras.h"
++#include "llvm/ADT/SmallVector.h"
++#include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/IR/PatternMatch.h"
++#include "mlir/Interfaces/InferTypeOpInterface.h"
++#include "mlir/Support/LogicalResult.h"
++#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 +#include "stablehlo/dialect/ChloOps.h"
-+#include "stablehlo/dialect/ExperimentalOps.h"
- #include "stablehlo/dialect/StablehloOps.h"
- #include "stablehlo/transforms/Passes.h"
- 
-@@ -198,6 +200,54 @@
-   }
- };
- 
++#include "stablehlo/dialect/StablehloOps.h"
++#include "stablehlo/experimental/dialect/StablehloOps.h"
++#include "stablehlo/experimental/transforms/Passes.h"
++#include "stablehlo/transforms/Passes.h"
++
++namespace mlir {
++namespace stablehlo {
++namespace experimental {
++
++#define GEN_PASS_DEF_STABLEHLOCANONICALIZEDYNAMISMPASS
++#include "stablehlo/experimental/transforms/Passes.h.inc"
++
++namespace {
++
 +struct CanonicalizeDynamicReduceWindowOpPattern
 +    : public OpRewritePattern<CustomCallOp> {
 +  using OpRewritePattern::OpRewritePattern;
@@ -1472,17 +2052,6 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/
 +    rewriter.replaceOpWithNewOp<stablehlo::ReturnOp>(
 +        funcReturnOp, funcReturnOp.getOperands());
 +    rewriter.replaceOp(op, newOp->getResults());
-+    return success();
-+  }
-+};
-+
- struct CanonicalizeDynamicReshapeOpPattern
-     : public OpRewritePattern<DynamicReshapeOp> {
-   using OpRewritePattern::OpRewritePattern;
-@@ -210,6 +260,56 @@
-     if (!op.getType().hasStaticShape())
-       return rewriter.notifyMatchFailure(op, "expected static result type");
-     rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.getOperand());
 +    return success();
 +  }
 +};
@@ -1533,35 +2102,84 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/
 +
 +    rewriter.replaceOpWithNewOp<chlo::TopKOp>(
 +        op, op->getResultTypes(), op.getOperand(), k[0]);
-     return success();
-   }
- };
-@@ -320,7 +420,10 @@
-     patterns.add<CanonicalizeDynamicGatherOpPattern>(&getContext());
-     patterns.add<CanonicalizeDynamicIotaOpPattern>(&getContext());
-     patterns.add<CanonicalizeDynamicPadOpPattern>(&getContext());
++    return success();
++  }
++};
++
++struct StablehloCanonicalizeDynamismPass
++    : public impl::StablehloCanonicalizeDynamismPassBase<
++          StablehloCanonicalizeDynamismPass> {
++  using StablehloCanonicalizeDynamismPassBase::
++      StablehloCanonicalizeDynamismPassBase;
++
++  void runOnOperation() override {
++    GreedyRewriteConfig config;
++    config.useTopDownTraversal = true;
++    config.enableRegionSimplification = true;
++    config.maxIterations = 2;
++    config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
++    config.strictMode = GreedyRewriteStrictness::AnyOp;
++
++    RewritePatternSet patterns(&getContext());
++    populateStablehloCanonicalizeDynamismPatterns(&patterns, &getContext());
 +    patterns.add<CanonicalizeDynamicReduceWindowOpPattern>(&getContext());
-     patterns.add<CanonicalizeDynamicReshapeOpPattern>(&getContext());
 +    patterns.add<CanonicalizeDynamicRngBitGeneratorOpPattern>(&getContext());
 +    patterns.add<CanonicalizeDynamicTopKOpPattern>(&getContext());
-     patterns.add<CanonicalizeRealDynamicSliceOpToDynamicSliceOpPattern>(
-         &getContext());
-     patterns.add<CanonicalizeRealDynamicSliceOpToSliceOpPattern>(&getContext());
-diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
---- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
-+++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
-@@ -43,6 +43,7 @@
- #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
- #include "stablehlo/dialect/Base.h"
- #include "stablehlo/dialect/ChloOps.h"
-+#include "stablehlo/dialect/ExperimentalOps.h"
- #include "stablehlo/dialect/StablehloOps.h"
- #include "stablehlo/dialect/TypeInference.h"
- #include "stablehlo/transforms/Passes.h"
-@@ -844,12 +845,97 @@
-   }
- };
- 
++    if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
++                                            config))) {
++      return signalPassFailure();
++    }
++  }
++};
++
++}  // namespace
++}  // namespace experimental
++}  // namespace stablehlo
++}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
+--- stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
++++ stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
+@@ -0,0 +1,162 @@
++/* Copyright 2022 The StableHLO Authors.
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#include "stablehlo/transforms/StablehloRefineShapes.h"
++
++#include <cstdint>
++
++#include "llvm/ADT/SmallVector.h"
++#include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/IR/PatternMatch.h"
++#include "mlir/Interfaces/InferTypeOpInterface.h"
++#include "mlir/Support/LogicalResult.h"
++#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
++#include "stablehlo/dialect/Base.h"
++#include "stablehlo/dialect/StablehloOps.h"
++#include "stablehlo/dialect/TypeInference.h"
++#include "stablehlo/experimental/dialect/StablehloOps.h"
++#include "stablehlo/experimental/transforms/Passes.h"
++#include "stablehlo/transforms/Passes.h"
++
++namespace mlir {
++namespace stablehlo {
++namespace experimental {
++
++#define GEN_PASS_DEF_STABLEHLOREFINESHAPESPASS
++#include "stablehlo/experimental/transforms/Passes.h.inc"
++
++namespace {
++
 +struct RefineDynamicReduceWindowOpPattern
 +    : public OpRewritePattern<CustomCallOp> {
 +  using OpRewritePattern::OpRewritePattern;
@@ -1601,15 +2219,6 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehl
 +            hlo::getPaddingAttr(&rewriter, padding), inferredReturnTypes)))
 +      return rewriter.notifyMatchFailure(op, "inferReduceWindowOp failed");
 +    return refineReturnTypes(rewriter, op, inferredReturnTypes);
-+  }
-+};
-+
- struct RefineDynamicReshapeOpPattern
-     : public OpRewritePattern<DynamicReshapeOp> {
-   using OpRewritePattern::OpRewritePattern;
-   LogicalResult matchAndRewrite(DynamicReshapeOp op,
-                                 PatternRewriter& rewriter) const override {
-     return refineReturnShape(rewriter, op, op.getOutputShape());
 +  }
 +};
 +
@@ -1653,18 +2262,865 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehl
 +
 +    outputShape[operandType.getRank() - 1] = k[0];
 +    return refineReturnTypes(rewriter, op, {{outputShape}, {outputShape}});
-   }
- };
- 
-@@ -1181,7 +1267,10 @@
-     patterns.add<RefineDynamicConvOpPattern>(&getContext());
-     patterns.add<RefineDynamicIotaOpPattern>(&getContext());
-     patterns.add<RefineDynamicPadOpPattern>(&getContext());
++  }
++};
++
++struct StablehloRefineShapesPass
++    : public impl::StablehloRefineShapesPassBase<StablehloRefineShapesPass> {
++  using StablehloRefineShapesPassBase::StablehloRefineShapesPassBase;
++
++  void runOnOperation() override {
++    auto func = getStablehloRefineShapesTarget(getOperation());
++    if (!func) return signalPassFailure();
++
++    // The algorithm behind this pass consists of a single traversal of the
++    // function. This is sufficient because we only support one function per
++    // program at the moment.
++    // TODO(#1048): Find out why .maxIterations = 1 no longer works.
++    // There have been recent refactors to applyPatternsAndFoldGreedily
++    // upstream, and that might be the reason.
++    GreedyRewriteConfig config;
++    config.useTopDownTraversal = true;
++    config.enableRegionSimplification = true;
++    config.maxIterations = 2;
++    config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
++    config.strictMode = GreedyRewriteStrictness::AnyOp;
++
++    RewritePatternSet patterns(&getContext());
++    populateStablehloRefineShapesPatterns(&patterns, &getContext());
 +    patterns.add<RefineDynamicReduceWindowOpPattern>(&getContext());
-     patterns.add<RefineDynamicReshapeOpPattern>(&getContext());
 +    patterns.add<RefineDynamicRngBitGeneratorOpPattern>(&getContext());
 +    patterns.add<RefineDynamicTopKOpPattern>(&getContext());
-     patterns.add<RefineInferTypeOpInterfacePattern>(&getContext());
-     patterns.add<RefineRealDynamicSliceOpPattern>(&getContext());
-     patterns.add<RefineReduceScatterOpPattern>(&getContext());
++    if (failed(
++            applyPatternsAndFoldGreedily(func, std::move(patterns), config))) {
++      return signalPassFailure();
++    }
++  }
++};
++
++}  // namespace
++}  // namespace experimental
++}  // namespace stablehlo
++}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/tests/infer_chlo.mlir b/stablehlo/stablehlo/tests/infer_chlo.mlir
+--- stablehlo/stablehlo/tests/infer_chlo.mlir
++++ stablehlo/stablehlo/tests/infer_chlo.mlir
+@@ -120,10 +120,10 @@
+ // -----
+ // CHECK-LABEL: @broadcast_select_reify
+ func.func @broadcast_select_reify(%arg0: tensor<2xi1>, %arg1: tensor<?xi32>, %arg2: tensor<?xi32>) -> tensor<1xindex> {
+-  // CHECK:      %0 = shape.const_shape [2] : tensor<1xindex>
++  // CHECK:      %0 = shape.shape_of %arg0 : tensor<2xi1> -> tensor<1xindex>
+   // CHECK-NEXT: %1 = shape.shape_of %arg1 : tensor<?xi32> -> tensor<1xindex>
+   // CHECK-NEXT: %2 = shape.shape_of %arg2 : tensor<?xi32> -> tensor<1xindex>
+-  // CHECK-NEXT: %3 = shape.broadcast %1, %2, %0 : tensor<1xindex>, tensor<1xindex>, tensor<1xindex> -> tensor<1xindex>
++  // CHECK-NEXT: %3 = shape.broadcast %0, %1, %2 : tensor<1xindex>, tensor<1xindex>, tensor<1xindex> -> tensor<1xindex>
+   %0 = "chlo.broadcast_select"(%arg0, %arg1, %arg2) : (tensor<2xi1>, tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
+   %1 = "hlo_test_infer.reify_return_type_shapes"(%0) : (tensor<?xi32>) -> tensor<1xindex>
+   return %1: tensor<1xindex>
+diff --ruN a/stablehlo/stablehlo/transforms/Passes.h b/stablehlo/stablehlo/transforms/Passes.h
+--- stablehlo/stablehlo/transforms/Passes.h
++++ stablehlo/stablehlo/transforms/Passes.h
+@@ -18,9 +18,12 @@
+ 
+ #include <memory>
+ 
++#include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/Dialect/Quant/QuantOps.h"
+ #include "mlir/Dialect/Shape/IR/Shape.h"
++#include "mlir/IR/BuiltinOps.h"
+ #include "mlir/Pass/Pass.h"
++#include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/DialectConversion.h"
+ 
+ namespace mlir {
+@@ -33,6 +36,14 @@
+ #define GEN_PASS_DECL_VHLOTOVERSIONPASS
+ #define GEN_PASS_REGISTRATION
+ #include "stablehlo/transforms/Passes.h.inc"
++
++// Populates --stablehlo-canonicalize-dynamism patterns.
++void populateStablehloCanonicalizeDynamismPatterns(RewritePatternSet *patterns,
++                                                   MLIRContext *context);
++
++// Populates --stablehlo-refine-shapes patterns.
++void populateStablehloRefineShapesPatterns(RewritePatternSet *patterns,
++                                           MLIRContext *context);
+ 
+ // Populates StableHLO ops to VHLO ops rewriting patterns.
+ void populateStablehloToVhloPatterns(RewritePatternSet *patterns,
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
+--- stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
++++ stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
+@@ -314,16 +314,7 @@
+     config.strictMode = GreedyRewriteStrictness::AnyOp;
+ 
+     RewritePatternSet patterns(&getContext());
+-    patterns.add<CanonicalizeCustomCallOpPattern>(&getContext());
+-    patterns.add<CanonicalizeDynamicBroadcastInDimOpPattern>(&getContext());
+-    patterns.add<CanonicalizeDynamicConvOpPattern>(&getContext());
+-    patterns.add<CanonicalizeDynamicGatherOpPattern>(&getContext());
+-    patterns.add<CanonicalizeDynamicIotaOpPattern>(&getContext());
+-    patterns.add<CanonicalizeDynamicPadOpPattern>(&getContext());
+-    patterns.add<CanonicalizeDynamicReshapeOpPattern>(&getContext());
+-    patterns.add<CanonicalizeRealDynamicSliceOpToDynamicSliceOpPattern>(
+-        &getContext());
+-    patterns.add<CanonicalizeRealDynamicSliceOpToSliceOpPattern>(&getContext());
++    populateStablehloCanonicalizeDynamismPatterns(&patterns, &getContext());
+     if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
+                                             config))) {
+       return signalPassFailure();
+@@ -332,5 +323,19 @@
+ };
+ 
+ }  // namespace
++
++void populateStablehloCanonicalizeDynamismPatterns(RewritePatternSet* patterns,
++                                                   MLIRContext* context) {
++  patterns->add<CanonicalizeCustomCallOpPattern>(context);
++  patterns->add<CanonicalizeDynamicBroadcastInDimOpPattern>(context);
++  patterns->add<CanonicalizeDynamicConvOpPattern>(context);
++  patterns->add<CanonicalizeDynamicGatherOpPattern>(context);
++  patterns->add<CanonicalizeDynamicIotaOpPattern>(context);
++  patterns->add<CanonicalizeDynamicPadOpPattern>(context);
++  patterns->add<CanonicalizeDynamicReshapeOpPattern>(context);
++  patterns->add<CanonicalizeRealDynamicSliceOpToDynamicSliceOpPattern>(context);
++  patterns->add<CanonicalizeRealDynamicSliceOpToSliceOpPattern>(context);
++}
++
+ }  // namespace stablehlo
+ }  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+--- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
++++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+@@ -11,6 +11,8 @@
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ ==============================================================================*/
++
++#include "stablehlo/transforms/StablehloRefineShapes.h"
+ 
+ #include <cstdint>
+ #include <memory>
+@@ -53,6 +55,193 @@
+ #define GEN_PASS_DEF_STABLEHLOREFINESHAPESPASS
+ #include "stablehlo/transforms/Passes.h.inc"
+ 
++LogicalResult refineValues(PatternRewriter& rewriter, Operation* op,
++                           ValueRange values, TypeRange types) {
++  if (values.size() != types.size())
++    return rewriter.notifyMatchFailure(op, [&](Diagnostic& diag) {
++      diag << "refineValues failed for " << types << ": expected "
++           << values.size() << " types, got " << types.size();
++    });
++
++  // Check whether `types` contain any new information with respect to existing
++  // return types. Even if just a single dimension size out of an entire tensor
++  // type got updated, using `inferMostSpecificType` ensures that we don't
++  // miss that.
++  bool needsRefinement = false;
++  SmallVector<Type> refinedTypes;
++  for (auto it : llvm::zip(values.getTypes(), types)) {
++    // Cannot use structured bindings to simplify this because capturing
++    // structured bindings in a lambda is a C++ 20 extension.
++    auto currentType = std::get<0>(it);
++    auto refinement = std::get<1>(it);
++    auto refinedType = hlo::inferMostSpecificType(
++        /*location=*/{}, {currentType, refinement});
++    if (failed(refinedType))
++      return rewriter.notifyMatchFailure(op, [&](Diagnostic& diag) {
++        diag << "inferMostSpecificType failed for " << currentType << " and "
++             << refinement;
++      });
++    refinedTypes.push_back(*refinedType);
++    needsRefinement |= (currentType != *refinedType);
++  }
++  if (!needsRefinement)
++    return rewriter.notifyMatchFailure(op, "doesn't need refinement");
++
++  for (auto it : llvm::zip(values, refinedTypes)) {
++    // Cannot use structured bindings to simplify this because capturing
++    // structured bindings in a lambda is a C++ 20 extension.
++    auto value = std::get<0>(it);
++    auto refinedType = std::get<1>(it);
++    if (value.getType() == refinedType) continue;
++
++    // Check whether the users of this value are ready for the type of the
++    // value to be refined.
++    for (Operation* user : value.getUsers()) {
++      // CHLO and StableHLO ops are designed to support type refinements of
++      // their operands and results. Any operand type in these ops can change
++      // within what's supported by `inferMostSpecificType` without breaking
++      // verification of the op.
++      if (isa<chlo::ChloDialect, StablehloDialect>(user->getDialect()))
++        continue;
++
++      // Simply changing operand type of `func.return` won't work because
++      // that won't update the FunctionType of the enclosing `func.func`.
++      // Nonetheless, we still want to support these ops because they are widely
++      // used in StableHLO programs (although the plan of record is to replace
++      // `func.return` ops in StableHLO programs with `stablehlo.return`:
++      // https://github.com/openxla/stablehlo/issues/425).
++      if (isa<func::ReturnOp>(user)) continue;
++
++      // Unlike in TensorFlow's type inference pass, here we work only with
++      // allowlisted ops to focus our support on well-defined semantics of
++      // StableHLO programs.
++      return rewriter.notifyMatchFailure(op, [&](Diagnostic& diag) {
++        diag << "unsupported refinement: tried to refine " << value.getType()
++             << " to " << refinedType << " for user " << user;
++      });
++    }
++
++    // Happy path: simply call setType here because most of our users are
++    // fine with that.
++    auto unrefinedType = value.getType();
++    value.setType(refinedType);
++
++    // Special case: for `func.return`, guard the refinement with a cast
++    // and leave propagation of the refined return type to a dedicated pattern.
++    auto isFuncReturn = [](OpOperand& use) -> bool {
++      return isa<func::ReturnOp>(use.getOwner());
++    };
++    if (llvm::none_of(value.getUses(), isFuncReturn)) continue;
++    rewriter.setInsertionPointAfter(op);
++    auto castToUnrefinedType = rewriter.create<UnrealizedConversionCastOp>(
++        op->getLoc(), unrefinedType, value);
++    value.replaceUsesWithIf(castToUnrefinedType.getOutputs()[0], isFuncReturn);
++  }
++
++  return success();
++}
++
++LogicalResult refineReturnTypes(PatternRewriter& rewriter, Operation* op,
++                                ArrayRef<Type> types) {
++  if (failed(refineValues(rewriter, op, op->getResults(), types)))
++    return failure();
++
++  // This `replaceOpWithIf` call doesn't actually change the IR, but
++  // it does ask the rewriter to visit all the users of this op. There is no
++  // upstream API to achieve this directly, but if it's introduced in the
++  // future, we could use it here.
++  rewriter.replaceOpWithIf(op, op->getResults(),
++                           [](OpOperand& use) { return false; });
++  return success();
++}
++
++LogicalResult refineReturnTypes(PatternRewriter& rewriter, Operation* op,
++                                ArrayRef<ShapedTypeComponents> refinements) {
++  SmallVector<Type> flattenedTypes;
++  hlo::flattenTupleTypes(op->getResultTypes(), flattenedTypes);
++  auto flattenedSize = flattenedTypes.size();
++  if (flattenedSize != refinements.size())
++    return rewriter.notifyMatchFailure(op, [&](Diagnostic& diag) {
++      diag << "refineReturnTypes failed: expected " << flattenedSize
++           << " refinements, got " << refinements.size();
++    });
++
++  SmallVector<Type> flattenedRefinedTypes;
++  for (auto it : llvm::zip(flattenedTypes, refinements)) {
++    // Cannot use structured bindings to simplify this because capturing
++    // structured bindings in a lambda is a C++ 20 extension.
++    ShapedType currentType = std::get<0>(it).dyn_cast<ShapedType>();
++    ShapedTypeComponents refinement = std::get<1>(it);
++    auto failWithReason = [&](StringRef reason) {
++      return rewriter.notifyMatchFailure(op, [&](Diagnostic& diag) {
++        diag << "refineTypes failed: refining " << currentType
++             << "with refinement: {";
++        if (refinement.hasRank()) {
++          diag << "shape = [" << refinement.getDims() << "]";
++          if (refinement.getAttribute())
++            diag << "attribute = " << refinement.getAttribute();
++        } else {
++          diag << "hasRank = false";
++        }
++        diag << ", elementType = " << refinement.getElementType();
++        diag << "} failed: " << reason;
++      });
++    };
++
++    // If the current type is not a shaped type, then the refinement must
++    // be completely empty.
++    if (!currentType) {
++      if (refinement.hasRank() || refinement.getElementType() ||
++          refinement.getAttribute())
++        return failWithReason("unsupported refinement");
++      flattenedRefinedTypes.push_back(currentType);
++      continue;
++    }
++
++    // If the refinement has an element type, then it must be the same as
++    // the current element type.
++    Type currentElementType = currentType.getElementType();
++    if (refinement.getElementType() &&
++        currentElementType != refinement.getElementType())
++      return failWithReason("expected compatible element types");
++
++    // If neither the current type nor the refinement are ranked, then there's
++    // nothing to refine, and we return the current type.
++    bool hasRank = currentType.hasRank() || refinement.hasRank();
++    if (!hasRank) {
++      flattenedRefinedTypes.push_back(currentType);
++      continue;
++    }
++
++    // If either the current type or the refinement have encodings, then
++    // we fail. Encodings are left for future work.
++    Attribute currentEncoding = nullptr;
++    if (auto currentRankedType = currentType.dyn_cast<RankedTensorType>()) {
++      currentEncoding = currentRankedType.getEncoding();
++    }
++    Attribute refinedEncoding = refinement.getAttribute();
++    if (currentEncoding || refinedEncoding)
++      return failWithReason("expected compatible encodings");
++
++    // If both the current type and the refinement have shapes, use the shape
++    // from the refinement. Otherwise, pick whatever is available.
++    // Make sure that the resulting type is compatible with the current type
++    // to avoid creating invalid code.
++    auto refinedShape =
++        refinement.hasRank() ? refinement.getDims() : currentType.getShape();
++    auto refinedType = RankedTensorType::get(refinedShape, currentElementType);
++    if (!hlo::isCompatibleForHloTypeInference(currentType, refinedType))
++      return failWithReason("expected compatible shapes");
++    flattenedRefinedTypes.push_back(refinedType);
++  }
++
++  SmallVector<Type> refinedTypes;
++  if (failed(hlo::unflattenTupleTypes(op->getResultTypes(),
++                                      flattenedRefinedTypes, refinedTypes)))
++    return failure();
++  return refineReturnTypes(rewriter, op, refinedTypes);
++}
++
+ namespace {
+ 
+ // DenseElementsAttr can be constructed from ArrayRef<APInt> but not from
+@@ -422,245 +611,6 @@
+ // StableHLO-specific extension to refine return types based on potentially
+ // refined operands.
+ 
+-// Refines the values using the given types.
+-// Tricky implementation details:
+-//   1) Need to support partial shape refinements, e.g. if just a single
+-//      dimension size out of an entire tensor type got refined. This is done
+-//      via inferMostSpecificType.
+-//   2) Need to signal propagation of the refined shapes across the
+-//      StableHLO program. Different callers of this function have different
+-//      propagation needs, so this function doesn't signal anything on its own
+-//      and leaves that to the callers.
+-LogicalResult refineValues(PatternRewriter& rewriter, Operation* op,
+-                           ValueRange values, TypeRange types) {
+-  if (values.size() != types.size())
+-    return rewriter.notifyMatchFailure(op, [&](Diagnostic& diag) {
+-      diag << "refineValues failed for " << types << ": expected "
+-           << values.size() << " types, got " << types.size();
+-    });
+-
+-  // Check whether `types` contain any new information with respect to existing
+-  // return types. Even if just a single dimension size out of an entire tensor
+-  // type got updated, using `inferMostSpecificType` ensures that we don't
+-  // miss that.
+-  bool needsRefinement = false;
+-  SmallVector<Type> refinedTypes;
+-  for (auto it : llvm::zip(values.getTypes(), types)) {
+-    // Cannot use structured bindings to simplify this because capturing
+-    // structured bindings in a lambda is a C++ 20 extension.
+-    auto currentType = std::get<0>(it);
+-    auto refinement = std::get<1>(it);
+-    auto refinedType = hlo::inferMostSpecificType(
+-        /*location=*/{}, {currentType, refinement});
+-    if (failed(refinedType))
+-      return rewriter.notifyMatchFailure(op, [&](Diagnostic& diag) {
+-        diag << "inferMostSpecificType failed for " << currentType << " and "
+-             << refinement;
+-      });
+-    refinedTypes.push_back(*refinedType);
+-    needsRefinement |= (currentType != *refinedType);
+-  }
+-  if (!needsRefinement)
+-    return rewriter.notifyMatchFailure(op, "doesn't need refinement");
+-
+-  for (auto it : llvm::zip(values, refinedTypes)) {
+-    // Cannot use structured bindings to simplify this because capturing
+-    // structured bindings in a lambda is a C++ 20 extension.
+-    auto value = std::get<0>(it);
+-    auto refinedType = std::get<1>(it);
+-    if (value.getType() == refinedType) continue;
+-
+-    // Check whether the users of this value are ready for the type of the
+-    // value to be refined.
+-    for (Operation* user : value.getUsers()) {
+-      // CHLO and StableHLO ops are designed to support type refinements of
+-      // their operands and results. Any operand type in these ops can change
+-      // within what's supported by `inferMostSpecificType` without breaking
+-      // verification of the op.
+-      if (isa<chlo::ChloDialect, StablehloDialect>(user->getDialect()))
+-        continue;
+-
+-      // Simply changing operand type of `func.return` won't work because
+-      // that won't update the FunctionType of the enclosing `func.func`.
+-      // Nonetheless, we still want to support these ops because they are widely
+-      // used in StableHLO programs (although the plan of record is to replace
+-      // `func.return` ops in StableHLO programs with `stablehlo.return`:
+-      // https://github.com/openxla/stablehlo/issues/425).
+-      if (isa<func::ReturnOp>(user)) continue;
+-
+-      // Unlike in TensorFlow's type inference pass, here we work only with
+-      // allowlisted ops to focus our support on well-defined semantics of
+-      // StableHLO programs.
+-      return rewriter.notifyMatchFailure(op, [&](Diagnostic& diag) {
+-        diag << "unsupported refinement: tried to refine " << value.getType()
+-             << " to " << refinedType << " for user " << user;
+-      });
+-    }
+-
+-    // Happy path: simply call setType here because most of our users are
+-    // fine with that.
+-    auto unrefinedType = value.getType();
+-    value.setType(refinedType);
+-
+-    // Special case: for `func.return`, guard the refinement with a cast
+-    // and leave propagation of the refined return type to a dedicated pattern.
+-    auto isFuncReturn = [](OpOperand& use) -> bool {
+-      return isa<func::ReturnOp>(use.getOwner());
+-    };
+-    if (llvm::none_of(value.getUses(), isFuncReturn)) continue;
+-    rewriter.setInsertionPointAfter(op);
+-    auto castToUnrefinedType = rewriter.create<UnrealizedConversionCastOp>(
+-        op->getLoc(), unrefinedType, value);
+-    value.replaceUsesWithIf(castToUnrefinedType.getOutputs()[0], isFuncReturn);
+-  }
+-
+-  return success();
+-}
+-
+-// Refines the return types of the given operation using the given types.
+-// This function also signals PatternRewriter that it needs to visit all the
+-// users of this op if any updates to its results have happened during execution
+-// of the function.
+-LogicalResult refineReturnTypes(PatternRewriter& rewriter, Operation* op,
+-                                ArrayRef<Type> types) {
+-  if (failed(refineValues(rewriter, op, op->getResults(), types)))
+-    return failure();
+-
+-  // This `replaceOpWithIf` call doesn't actually change the IR, but
+-  // it does ask the rewriter to visit all the users of this op. There is no
+-  // upstream API to achieve this directly, but if it's introduced in the
+-  // future, we could use it here.
+-  rewriter.replaceOpWithIf(op, op->getResults(),
+-                           [](OpOperand& use) { return false; });
+-  return success();
+-}
+-
+-// Refines the return types of the given operation using the given types.
+-// Tricky implementation details:
+-//   1) `types` can include non-shaped types. If there are tuple types,
+-//      then they are first flattened into non-tuple types using in-order
+-//      traversal, and only then we apply the refinements. If there are other
+-//      types, then the corresponding refinements must be completely empty.
+-//   2) Encodings are not supported. In principle, TypeExtensions should be
+-//      supportable, but this needs careful thinking through. Given that no one
+-//      asked for support for bounded dynamism in this pass yet, this is left
+-//      for future work.
+-// This function also signals PatternRewriter that it needs to visit all the
+-// users of this op if any updates to its results have happened during execution
+-// of the function.
+-LogicalResult refineReturnTypes(PatternRewriter& rewriter, Operation* op,
+-                                ArrayRef<ShapedTypeComponents> refinements) {
+-  SmallVector<Type> flattenedTypes;
+-  hlo::flattenTupleTypes(op->getResultTypes(), flattenedTypes);
+-  auto flattenedSize = flattenedTypes.size();
+-  if (flattenedSize != refinements.size())
+-    return rewriter.notifyMatchFailure(op, [&](Diagnostic& diag) {
+-      diag << "refineReturnTypes failed: expected " << flattenedSize
+-           << " refinements, got " << refinements.size();
+-    });
+-
+-  SmallVector<Type> flattenedRefinedTypes;
+-  for (auto it : llvm::zip(flattenedTypes, refinements)) {
+-    // Cannot use structured bindings to simplify this because capturing
+-    // structured bindings in a lambda is a C++ 20 extension.
+-    ShapedType currentType = std::get<0>(it).dyn_cast<ShapedType>();
+-    ShapedTypeComponents refinement = std::get<1>(it);
+-    auto failWithReason = [&](StringRef reason) {
+-      return rewriter.notifyMatchFailure(op, [&](Diagnostic& diag) {
+-        diag << "refineTypes failed: refining " << currentType
+-             << "with refinement: {";
+-        if (refinement.hasRank()) {
+-          diag << "shape = [" << refinement.getDims() << "]";
+-          if (refinement.getAttribute())
+-            diag << "attribute = " << refinement.getAttribute();
+-        } else {
+-          diag << "hasRank = false";
+-        }
+-        diag << ", elementType = " << refinement.getElementType();
+-        diag << "} failed: " << reason;
+-      });
+-    };
+-
+-    // If the current type is not a shaped type, then the refinement must
+-    // be completely empty.
+-    if (!currentType) {
+-      if (refinement.hasRank() || refinement.getElementType() ||
+-          refinement.getAttribute())
+-        return failWithReason("unsupported refinement");
+-      flattenedRefinedTypes.push_back(currentType);
+-      continue;
+-    }
+-
+-    // If the refinement has an element type, then it must be the same as
+-    // the current element type.
+-    Type currentElementType = currentType.getElementType();
+-    if (refinement.getElementType() &&
+-        currentElementType != refinement.getElementType())
+-      return failWithReason("expected compatible element types");
+-
+-    // If neither the current type nor the refinement are ranked, then there's
+-    // nothing to refine, and we return the current type.
+-    bool hasRank = currentType.hasRank() || refinement.hasRank();
+-    if (!hasRank) {
+-      flattenedRefinedTypes.push_back(currentType);
+-      continue;
+-    }
+-
+-    // If either the current type or the refinement have encodings, then
+-    // we fail. Encodings are left for future work.
+-    Attribute currentEncoding = nullptr;
+-    if (auto currentRankedType = currentType.dyn_cast<RankedTensorType>()) {
+-      currentEncoding = currentRankedType.getEncoding();
+-    }
+-    Attribute refinedEncoding = refinement.getAttribute();
+-    if (currentEncoding || refinedEncoding)
+-      return failWithReason("expected compatible encodings");
+-
+-    // If both the current type and the refinement have shapes, use the shape
+-    // from the refinement. Otherwise, pick whatever is available.
+-    // Make sure that the resulting type is compatible with the current type
+-    // to avoid creating invalid code.
+-    auto refinedShape =
+-        refinement.hasRank() ? refinement.getDims() : currentType.getShape();
+-    auto refinedType = RankedTensorType::get(refinedShape, currentElementType);
+-    if (!hlo::isCompatibleForHloTypeInference(currentType, refinedType))
+-      return failWithReason("expected compatible shapes");
+-    flattenedRefinedTypes.push_back(refinedType);
+-  }
+-
+-  SmallVector<Type> refinedTypes;
+-  if (failed(hlo::unflattenTupleTypes(op->getResultTypes(),
+-                                      flattenedRefinedTypes, refinedTypes)))
+-    return failure();
+-  return refineReturnTypes(rewriter, op, refinedTypes);
+-}
+-
+-// Refines the return type of the given operation using the given shape.
+-// This function also signals PatternRewriter that it needs to visit all the
+-// users of this op if any updates to its results have happened during execution
+-// of the function.
+-template <typename OpType>
+-LogicalResult refineReturnShape(PatternRewriter& rewriter, OpType op,
+-                                ArrayRef<int64_t> shape) {
+-  return refineReturnTypes(rewriter, op, ShapedTypeComponents(shape));
+-}
+-
+-// Refines the return type of the given operation using the given shape.
+-// This function also signals PatternRewriter that it needs to visit all the
+-// users of this op if any updates to its results have happened during execution
+-// of the function.
+-template <typename OpType>
+-LogicalResult refineReturnShape(PatternRewriter& rewriter, OpType op,
+-                                Value shapeValue) {
+-  // At the moment, we only support refining return types using fully static
+-  // shape values which serves the current use cases well.
+-  // Support for partially static shape values is left for future work.
+-  SmallVector<int64_t> shape;
+-  if (failed(hlo::matchInts(shapeValue, shape)))
+-    return rewriter.notifyMatchFailure(op, "expected constant output shape");
+-  return refineReturnShape(rewriter, op, shape);
+-}
+-
+ struct RefineAllGatherOpPattern : public OpRewritePattern<AllGatherOp> {
+   using OpRewritePattern::OpRewritePattern;
+   LogicalResult matchAndRewrite(AllGatherOp op,
+@@ -1119,39 +1069,8 @@
+   using StablehloRefineShapesPassBase::StablehloRefineShapesPassBase;
+ 
+   void runOnOperation() override {
+-    // Only one function per module is supported at the moment to avoid the need
+-    // to think about iterative type inference algorithms.
+-    // Current use cases are served well by inlining multiple functions into
+-    // a single function, so we leave native support for multiple functions to
+-    // future work.
+-    // To enable modules that contain CustomCallOp::called_computations,
+-    // we allow multiple functions, in which case we only refine the main
+-    // function called "main", assuming that the called computations will have
+-    // static shapes. Lifting this assumption and expanding refinement to
+-    // multiple functions is left for future work.
+-    ModuleOp module = getOperation();
+-    auto funcs = llvm::to_vector(module.getOps<func::FuncOp>());
+-    if (funcs.empty()) return;
+-    func::FuncOp func;
+-    if (funcs.size() == 1) {
+-      func = funcs[0];
+-    } else {
+-      func = module.lookupSymbol<func::FuncOp>("main");
+-    }
+-    if (!func) {
+-      module.emitOpError()
+-          << "must have no more than one function or a `main`"
+-          << " function to clearly identify which function will be refined";
+-      return signalPassFailure();
+-    }
+-
+-    // Similarly, only one block per function is supported at the moment.
+-    // At the StableHLO level, functions are expected to only have one block,
+-    // so supporting more is out of scope for this pass.
+-    if (!func.getRegion().hasOneBlock()) {
+-      func.emitOpError() << "must have exactly one block";
+-      return signalPassFailure();
+-    }
++    auto func = getStablehloRefineShapesTarget(getOperation());
++    if (!func) return signalPassFailure();
+ 
+     // The algorithm behind this pass consists of a single traversal of the
+     // function. This is sufficient because we only support one function per
+@@ -1167,44 +1086,7 @@
+     config.strictMode = GreedyRewriteStrictness::AnyOp;
+ 
+     RewritePatternSet patterns(&getContext());
+-    patterns.add<EvalAddOpPattern>(&getContext());
+-    patterns.add<EvalAndOpPattern>(&getContext());
+-    patterns.add<EvalBroadcastInDimOpPattern>(&getContext());
+-    patterns.add<EvalClampOpPattern>(&getContext());
+-    patterns.add<EvalCompareOpPattern>(&getContext());
+-    patterns.add<EvalConcatenateOpPattern>(&getContext());
+-    patterns.add<EvalConvertOpPattern>(&getContext());
+-    patterns.add<EvalDivOpPattern>(&getContext());
+-    patterns.add<EvalGetDimensionSizeOpPattern>(&getContext());
+-    patterns.add<EvalMaxOpPattern>(&getContext());
+-    patterns.add<EvalMinOpPattern>(&getContext());
+-    patterns.add<EvalMulOpPattern>(&getContext());
+-    patterns.add<EvalOrOpPattern>(&getContext());
+-    patterns.add<EvalRemOpPattern>(&getContext());
+-    patterns.add<EvalReshapeOpPattern>(&getContext());
+-    patterns.add<EvalSelectOpPattern>(&getContext());
+-    patterns.add<EvalSignOpPattern>(&getContext());
+-    patterns.add<EvalSliceOpPattern>(&getContext());
+-    patterns.add<EvalSubtractOpPattern>(&getContext());
+-    patterns.add<RefineAllGatherOpPattern>(&getContext());
+-    patterns.add<RefineBitcastConvertOpPattern>(&getContext());
+-    patterns.add<RefineConvertOpPattern>(&getContext());
+-    patterns.add<RefineConvolutionOpPattern>(&getContext());
+-    patterns.add<RefineCustomCallOpPattern>(&getContext());
+-    patterns.add<RefineDotGeneralOpPattern>(&getContext());
+-    patterns.add<RefineDynamicBroadcastInDimOpPattern>(&getContext());
+-    patterns.add<RefineDynamicConvOpPattern>(&getContext());
+-    patterns.add<RefineDynamicIotaOpPattern>(&getContext());
+-    patterns.add<RefineDynamicPadOpPattern>(&getContext());
+-    patterns.add<RefineDynamicReshapeOpPattern>(&getContext());
+-    patterns.add<RefineInferTypeOpInterfacePattern>(&getContext());
+-    patterns.add<RefineRealDynamicSliceOpPattern>(&getContext());
+-    patterns.add<RefineReduceScatterOpPattern>(&getContext());
+-    patterns.add<RefineRngOpPattern>(&getContext());
+-    patterns.add<RefineUniformQuantizeOpPattern>(&getContext());
+-    patterns.add<RefineWhileOpPattern>(&getContext());
+-    patterns.add<UpdateFunctionTypePattern>(&getContext());
+-    patterns.add<UpdateRegionTypePattern>(&getContext());
++    populateStablehloRefineShapesPatterns(&patterns, &getContext());
+     if (failed(
+             applyPatternsAndFoldGreedily(func, std::move(patterns), config))) {
+       return signalPassFailure();
+@@ -1213,5 +1095,86 @@
+ };
+ 
+ }  // namespace
++
++func::FuncOp getStablehloRefineShapesTarget(ModuleOp module) {
++  // Only one function per module is supported at the moment to avoid the need
++  // to think about iterative type inference algorithms.
++  // Current use cases are served well by inlining multiple functions into
++  // a single function, so we leave native support for multiple functions to
++  // future work.
++  // To enable modules that contain CustomCallOp::called_computations,
++  // we allow multiple functions, in which case we only refine the main
++  // function called "main", assuming that the called computations will have
++  // static shapes. Lifting this assumption and expanding refinement to
++  // multiple functions is left for future work.
++  auto funcs = llvm::to_vector(module.getOps<func::FuncOp>());
++  if (funcs.empty()) return nullptr;
++
++  func::FuncOp result;
++  if (funcs.size() == 1) {
++    result = funcs[0];
++  } else {
++    result = module.lookupSymbol<func::FuncOp>("main");
++  }
++  if (!result) {
++    module.emitOpError()
++        << "must have no more than one function or a `main`"
++        << " function to clearly identify which function will be refined";
++    return nullptr;
++  }
++
++  // Similarly, only one block per function is supported at the moment.
++  // At the StableHLO level, functions are expected to only have one block,
++  // so supporting more is out of scope for this pass.
++  if (!result.getRegion().hasOneBlock()) {
++    result.emitOpError() << "must have exactly one block";
++    return nullptr;
++  }
++
++  return result;
++}
++
++void populateStablehloRefineShapesPatterns(RewritePatternSet* patterns,
++                                           MLIRContext* context) {
++  patterns->add<EvalAddOpPattern>(context);
++  patterns->add<EvalAndOpPattern>(context);
++  patterns->add<EvalBroadcastInDimOpPattern>(context);
++  patterns->add<EvalClampOpPattern>(context);
++  patterns->add<EvalCompareOpPattern>(context);
++  patterns->add<EvalConcatenateOpPattern>(context);
++  patterns->add<EvalConvertOpPattern>(context);
++  patterns->add<EvalDivOpPattern>(context);
++  patterns->add<EvalGetDimensionSizeOpPattern>(context);
++  patterns->add<EvalMaxOpPattern>(context);
++  patterns->add<EvalMinOpPattern>(context);
++  patterns->add<EvalMulOpPattern>(context);
++  patterns->add<EvalOrOpPattern>(context);
++  patterns->add<EvalRemOpPattern>(context);
++  patterns->add<EvalReshapeOpPattern>(context);
++  patterns->add<EvalSelectOpPattern>(context);
++  patterns->add<EvalSignOpPattern>(context);
++  patterns->add<EvalSliceOpPattern>(context);
++  patterns->add<EvalSubtractOpPattern>(context);
++  patterns->add<RefineAllGatherOpPattern>(context);
++  patterns->add<RefineBitcastConvertOpPattern>(context);
++  patterns->add<RefineConvertOpPattern>(context);
++  patterns->add<RefineConvolutionOpPattern>(context);
++  patterns->add<RefineCustomCallOpPattern>(context);
++  patterns->add<RefineDotGeneralOpPattern>(context);
++  patterns->add<RefineDynamicBroadcastInDimOpPattern>(context);
++  patterns->add<RefineDynamicConvOpPattern>(context);
++  patterns->add<RefineDynamicIotaOpPattern>(context);
++  patterns->add<RefineDynamicPadOpPattern>(context);
++  patterns->add<RefineDynamicReshapeOpPattern>(context);
++  patterns->add<RefineInferTypeOpInterfacePattern>(context);
++  patterns->add<RefineRealDynamicSliceOpPattern>(context);
++  patterns->add<RefineReduceScatterOpPattern>(context);
++  patterns->add<RefineRngOpPattern>(context);
++  patterns->add<RefineUniformQuantizeOpPattern>(context);
++  patterns->add<RefineWhileOpPattern>(context);
++  patterns->add<UpdateFunctionTypePattern>(context);
++  patterns->add<UpdateRegionTypePattern>(context);
++}
++
+ }  // namespace stablehlo
+ }  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.h b/stablehlo/stablehlo/transforms/StablehloRefineShapes.h
+--- stablehlo/stablehlo/transforms/StablehloRefineShapes.h
++++ stablehlo/stablehlo/transforms/StablehloRefineShapes.h
+@@ -0,0 +1,102 @@
++/* Copyright 2022 The StableHLO Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#ifndef STABLEHLO_TRANSFORMS_STABLEHLO_REFINE_SHAPES_H
++#define STABLEHLO_TRANSFORMS_STABLEHLO_REFINE_SHAPES_H
++
++#include "llvm/ADT/SmallVector.h"
++#include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/IR/BuiltinOps.h"
++#include "mlir/IR/Operation.h"
++#include "mlir/IR/PatternMatch.h"
++#include "mlir/IR/Types.h"
++#include "mlir/IR/Value.h"
++#include "mlir/Interfaces/InferTypeOpInterface.h"
++#include "mlir/Support/LogicalResult.h"
++#include "stablehlo/dialect/Base.h"
++
++namespace mlir {
++namespace stablehlo {
++
++// Gets a FuncOp that --stablehlo-refine-shapes will run on.
++// Returns a nullptr and emits appropriate errors if such a function cannot
++// be obtained from the module.
++func::FuncOp getStablehloRefineShapesTarget(ModuleOp module);
++
++// Refines the values using the given types.
++// Tricky implementation details:
++//   1) Need to support partial shape refinements, e.g. if just a single
++//      dimension size out of an entire tensor type got refined. This is done
++//      via inferMostSpecificType.
++//   2) Need to signal propagation of the refined shapes across the
++//      StableHLO program. Different callers of this function have different
++//      propagation needs, so this function doesn't signal anything on its own
++//      and leaves that to the callers.
++LogicalResult refineValues(PatternRewriter& rewriter, Operation* op,
++                           ValueRange values, TypeRange types);
++
++// Refines the return types of the given operation using the given types.
++// This function also signals PatternRewriter that it needs to visit all the
++// users of this op if any updates to its results have happened during execution
++// of the function.
++LogicalResult refineReturnTypes(PatternRewriter& rewriter, Operation* op,
++                                ArrayRef<Type> types);
++
++// Refines the return types of the given operation using the given types.
++// Tricky implementation details:
++//   1) `types` can include non-shaped types. If there are tuple types,
++//      then they are first flattened into non-tuple types using in-order
++//      traversal, and only then we apply the refinements. If there are other
++//      types, then the corresponding refinements must be completely empty.
++//   2) Encodings are not supported. In principle, TypeExtensions should be
++//      supportable, but this needs careful thinking through. Given that no one
++//      asked for support for bounded dynamism in this pass yet, this is left
++//      for future work.
++// This function also signals PatternRewriter that it needs to visit all the
++// users of this op if any updates to its results have happened during execution
++// of the function.
++LogicalResult refineReturnTypes(PatternRewriter& rewriter, Operation* op,
++                                ArrayRef<ShapedTypeComponents> refinements);
++
++// Refines the return type of the given operation using the given shape.
++// This function also signals PatternRewriter that it needs to visit all the
++// users of this op if any updates to its results have happened during execution
++// of the function.
++template <typename OpType>
++LogicalResult refineReturnShape(PatternRewriter& rewriter, OpType op,
++                                ArrayRef<int64_t> shape) {
++  return refineReturnTypes(rewriter, op, ShapedTypeComponents(shape));
++}
++
++// Refines the return type of the given operation using the given shape.
++// This function also signals PatternRewriter that it needs to visit all the
++// users of this op if any updates to its results have happened during execution
++// of the function.
++template <typename OpType>
++LogicalResult refineReturnShape(PatternRewriter& rewriter, OpType op,
++                                Value shapeValue) {
++  // At the moment, we only support refining return types using fully static
++  // shape values which serves the current use cases well.
++  // Support for partially static shape values is left for future work.
++  SmallVector<int64_t> shape;
++  if (failed(hlo::matchInts(shapeValue, shape)))
++    return rewriter.notifyMatchFailure(op, "expected constant output shape");
++  return refineReturnShape(rewriter, op, shape);
++}
++
++}  // namespace stablehlo
++}  // namespace mlir
++
++#endif  // STABLEHLO_TRANSFORMS_STABLEHLO_REFINE_SHAPES_H
 

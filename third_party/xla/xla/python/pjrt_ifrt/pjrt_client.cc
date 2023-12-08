@@ -24,11 +24,13 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_tuple.h"
+#include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/util.h"
+#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/statusor.h"
-#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
 namespace xla {
 namespace ifrt {
@@ -125,12 +127,12 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
     }
     return arrays[0];
   } else if (!llvm::isa<const OpaqueSharding, const ConcreteSharding,
-                        const ConcreteEvenSharding,
-                        const ShardingParamSharding>(sharding.get())) {
+                        const ConcreteEvenSharding, const ShardingParamSharding,
+                        const HloSharding>(sharding.get())) {
     return InvalidArgument(
         "Only SingleDeviceSharding, OpaqueSharding, ConcreteSharding, "
-        "ConcreteEvenSharding, and ShardingParamSharding are supported: "
-        "sharding=%s",
+        "ConcreteEvenSharding, ShardingParamSharding, HloSharding are "
+        "supported: sharding=%s",
         sharding->DebugString());
   }
   if (sharding->devices().size() != arrays.size()) {

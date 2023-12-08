@@ -19,7 +19,7 @@ load(
 
 NCCL_MAJOR = 2
 
-NCCL_MINOR = 16
+NCCL_MINOR = 18
 
 NCCL_PATCH = 5
 
@@ -210,6 +210,10 @@ cuda_library(
     ],
     include_prefix = "third_party/nccl",
     linkopts = ["-lrt"],
+    # The following definition is needed to enable placeholder literals such as
+    # PRIx64 defined at the inttypes.h since Tensorflow docker image uses
+    # an old version of glibc.
+    local_defines = ["__STDC_FORMAT_MACROS"],
     strip_include_prefix = "src",
     target_compatible_with = select({
         "@local_config_cuda//cuda:using_clang": [],

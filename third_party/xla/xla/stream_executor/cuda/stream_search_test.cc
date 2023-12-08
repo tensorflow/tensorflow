@@ -51,8 +51,8 @@ TEST_F(StreamSearchTest, FoundPrevExecutor) {
   Stream s2(*executor);
   s2.Init();
 
-  void* gpu_ptr = s.implementation()->GpuStreamHack();
-  void* gpu_ptr_2 = s2.implementation()->GpuStreamHack();
+  void* gpu_ptr = s.platform_specific_handle().stream;
+  void* gpu_ptr_2 = s2.platform_specific_handle().stream;
 
   StreamExecutorConfig c;
   c.gpu_stream = gpu_ptr;

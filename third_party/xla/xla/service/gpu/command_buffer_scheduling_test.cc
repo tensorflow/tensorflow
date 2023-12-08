@@ -38,7 +38,7 @@ namespace {
 
 class CommandBufferSchedulingTest : public HloTestBase {};
 
-TEST_F(CommandBufferSchedulingTest, SingleFusion) {
+TEST_F(CommandBufferSchedulingTest, SingleCommandBuffer) {
   const char* hlo = R"(
       HloModule TestModule, is_scheduled=true
 
@@ -48,24 +48,123 @@ TEST_F(CommandBufferSchedulingTest, SingleFusion) {
         ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
       }
 
+      %fused_computation.1 (param_0: s32[], param_1: s32[]) -> s32[] {
+        %p0 = s32[] parameter(0)
+        %p1 = s32[] parameter(1)
+        ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
+      }
+
       ENTRY %main (a: s32[], b: s32[]) -> s32[] {
         %a = s32[] parameter(0)
         %b = s32[] parameter(1)
-        ROOT %fusion = s32[] fusion(s32[] %a, s32[] %b), kind=kLoop, calls=%fused_computation
+        %fusion = s32[] fusion(s32[] %a, s32[] %b), kind=kLoop, calls=%fused_computation
+        %fusion.1 = s32[] fusion(s32[] %a, s32[] %b), kind=kLoop, calls=%fused_computation.1
+        ROOT %custom-call = s32[] custom-call(s32[] %fusion, s32[] %fusion.1), custom_call_target="some target"
       })";
 
-  RunAndFilecheckHloRewrite(hlo, CommandBufferScheduling(), R"(
-// CHECK: %command_buffer (param: s32[], param.1: s32[]) -> s32[] {
+  const char* expected = R"(
+// CHECK: %command_buffer (param: s32[], param.1: s32[]) -> (s32[], s32[]) {
 // CHECK:   %param = s32[] parameter(0)
 // CHECK:   %param.1 = s32[] parameter(1)
-// CHECK:   ROOT %fusion.1 = s32[] fusion(%param, %param.1), kind=kLoop, calls=%fused_computation
+// CHECK:   %fusion.2 = s32[] fusion(%param, %param.1), kind=kLoop, calls=%fused_computation
+// CHECK:   %fusion.3 = s32[] fusion(%param, %param.1), kind=kLoop, calls=%fused_computation.1
+// CHECK:   ROOT %tuple = (s32[], s32[]) tuple(%fusion.2, %fusion.3)
 // CHECK: }
 //
 // CHECK: ENTRY %main (a: s32[], b: s32[]) -> s32[] {
 // CHECK:   %a = s32[] parameter(0)
 // CHECK:   %b = s32[] parameter(1)
-// CHECK:   ROOT %call = s32[] call(%a, %b), to_apply=%command_buffer
-// CHECK: })",
+// CHECK:   %call = (s32[], s32[]) call(%a, %b), to_apply=%command_buffer
+// CHECK:   %get-tuple-element = s32[] get-tuple-element(%call), index=0
+// CHECK:   %get-tuple-element.1 = s32[] get-tuple-element(%call), index=1
+// CHECK:   ROOT %custom-call = s32[] custom-call(%get-tuple-element, %get-tuple-element.1), custom_call_target="some target"
+// CHECK: })";
+
+  RunAndFilecheckHloRewrite(hlo, CommandBufferScheduling(), expected,
+                            [](HloModule* module) {
+                              EXPECT_TRUE(module->has_schedule());
+                              TF_CHECK_OK(module->schedule().Verify());
+                            });
+}
+
+TEST_F(CommandBufferSchedulingTest, MultipleCommandBuffers) {
+  const char* hlo = R"(
+      HloModule TestModule, is_scheduled=true
+
+      %fused_computation(param_0: s32[], param_1: s32[]) -> s32[] {
+        %p0 = s32[] parameter(0)
+        %p1 = s32[] parameter(1)
+        ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
+      }
+
+      %fused_computation.1(param_0: s32[], param_1: s32[]) -> s32[] {
+        %p0 = s32[] parameter(0)
+        %p1 = s32[] parameter(1)
+        ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
+      }
+
+      %fused_computation.2(param_0: s32[], param_1: s32[]) -> s32[] {
+        %p0 = s32[] parameter(0)
+        %p1 = s32[] parameter(1)
+        ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
+      }
+
+      %fused_computation.3(param_0: s32[], param_1: s32[]) -> s32[] {
+        %p0 = s32[] parameter(0)
+        %p1 = s32[] parameter(1)
+        ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
+      }
+
+      ENTRY %main (a: s32[], b: s32[], c: (s32[], s32[])) -> s32[] {
+        %a = s32[] parameter(0)
+        %b = s32[] parameter(1)
+        %c = (s32[], s32[]) parameter(2)
+        %fusion = s32[] fusion(s32[] %a, s32[] %b), kind=kLoop, calls=%fused_computation
+        %d = s32[] get-tuple-element((s32[], s32[]) %c), index=0
+        %fusion.1 = s32[] fusion(s32[] %fusion, s32[] %d), kind=kLoop, calls=%fused_computation.1
+        %e = s32[] get-tuple-element((s32[], s32[]) %c), index=1
+        %custom-call = s32[] custom-call(s32[] %fusion.1, s32[] %e), custom_call_target="some target"
+        %fusion.2 = s32[] fusion(s32[] %custom-call, s32[] %a), kind=kLoop, calls=%fused_computation.2
+        %fusion.3 = s32[] fusion(s32[] %custom-call, s32[] %fusion.2), kind=kLoop, calls=%fused_computation.3
+        ROOT %custom-call.1 = s32[] custom-call(s32[] %fusion.3), custom_call_target="some target"
+      })";
+
+  const char* expected = R"(
+// CHECK:  %command_buffer (param: s32[], param.1: s32[], param.2: (s32[], s32[])) -> (s32[], s32[], s32[]) {
+// CHECK:    %param = s32[] parameter(0)
+// CHECK:    %param.1 = s32[] parameter(1)
+// CHECK:    %param.2 = (s32[], s32[]) parameter(2)
+// CHECK:    %fusion.4 = s32[] fusion(%param, %param.1), kind=kLoop, calls=%fused_computation
+// CHECK:    %get-tuple-element = s32[] get-tuple-element(%param.2), index=0
+// CHECK:    %fusion.5 = s32[] fusion(%fusion.4, %get-tuple-element), kind=kLoop, calls=%fused_computation.1
+// CHECK:    ROOT %tuple = (s32[], s32[], s32[]) tuple(%fusion.4, %get-tuple-element, %fusion.5)
+// CHECK:  }
+
+// CHECK:  %command_buffer.1 (param.3: s32[], param.4: s32[]) -> (s32[], s32[]) {
+// CHECK:    %param.3 = s32[] parameter(0)
+// CHECK:    %param.4 = s32[] parameter(1)
+// CHECK:    %fusion.6 = s32[] fusion(%param.3, %param.4), kind=kLoop, calls=%fused_computation.2
+// CHECK:    %fusion.7 = s32[] fusion(%param.3, %fusion.6), kind=kLoop, calls=%fused_computation.3
+// CHECK:    ROOT %tuple.1 = (s32[], s32[]) tuple(%fusion.6, %fusion.7)
+// CHECK:  }
+
+// CHECK:  ENTRY %main (a: s32[], b: s32[], c: (s32[], s32[])) -> s32[] {
+// CHECK:    %a = s32[] parameter(0)
+// CHECK:    %b = s32[] parameter(1)
+// CHECK:    %c = (s32[], s32[]) parameter(2)
+// CHECK:    %call = (s32[], s32[], s32[]) call(%a, %b, %c), to_apply=%command_buffer
+// CHECK:    %get-tuple-element.1 = s32[] get-tuple-element(%call), index=0
+// CHECK:    %get-tuple-element.2 = s32[] get-tuple-element(%call), index=1
+// CHECK:    %get-tuple-element.3 = s32[] get-tuple-element(%call), index=2
+// CHECK:    %e = s32[] get-tuple-element(%c), index=1
+// CHECK:    %custom-call = s32[] custom-call(%get-tuple-element.3, %e), custom_call_target="some target"
+// CHECK:    %call.1 = (s32[], s32[]) call(%custom-call, %a), to_apply=%command_buffer.1
+// CHECK:    %get-tuple-element.4 = s32[] get-tuple-element(%call.1), index=0
+// CHECK:    %get-tuple-element.5 = s32[] get-tuple-element(%call.1), index=1
+// CHECK:    ROOT %custom-call.1 = s32[] custom-call(%get-tuple-element.5), custom_call_target="some target"
+// CHECK:  })";
+
+  RunAndFilecheckHloRewrite(hlo, CommandBufferScheduling(), expected,
                             [](HloModule* module) {
                               EXPECT_TRUE(module->has_schedule());
                               TF_CHECK_OK(module->schedule().Verify());
@@ -123,7 +222,10 @@ TEST_F(CommandBufferSchedulingTest, CollectCommandBufferSequence) {
   EXPECT_EQ(seq.size(), 10);
 
   std::vector<HloInstructionSequence> command_buffer_sequences =
-      CommandBufferScheduling::CollectCommandBufferSequences(seq);
+      CommandBufferScheduling::CollectCommandBufferSequences(
+          seq, [](const HloInstruction* instr) {
+            return instr->opcode() == HloOpcode::kFusion;
+          });
   EXPECT_EQ(command_buffer_sequences.size(), 2);
 
   std::vector<HloInstruction*> seq_0 =
@@ -256,6 +358,67 @@ TEST_F(CommandBufferSchedulingTest, BuildComputation) {
   EXPECT_EQ(inst_to_tuple_index_map[instructions[2]], 0);
   EXPECT_EQ(inst_to_tuple_index_map[instructions[3]], 1);
   EXPECT_EQ(inst_to_tuple_index_map[instructions[4]], 2);
+}
+
+TEST_F(CommandBufferSchedulingTest, RelayControlDependencies) {
+  const char* hlo = R"(
+      HloModule TestModule, is_scheduled=true
+
+      %fused_computation (param_0: s32[], param_1: s32[]) -> s32[] {
+        %p0 = s32[] parameter(0)
+        %p1 = s32[] parameter(1)
+        ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
+      }
+
+      %fused_computation.1 (param_0: s32[], param_1: s32[]) -> s32[] {
+        %p0 = s32[] parameter(0)
+        %p1 = s32[] parameter(1)
+        ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
+      }
+
+      %fused_computation.2 (param_0: s32[], param_1: s32[]) -> s32[] {
+        %p0 = s32[] parameter(0)
+        %p1 = s32[] parameter(1)
+        ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
+      }
+
+      ENTRY %main (a: s32[], b: s32[]) -> s32[] {
+        %a = s32[] parameter(0)
+        %b = s32[] parameter(1)
+        %custom-call = s32[] custom-call(), custom_call_target="some target"
+        %fusion = s32[] fusion(s32[] %a, s32[] %b), kind=kLoop, calls=%fused_computation, control-predecessors={%custom-call}
+        %fusion.1 = s32[] fusion(s32[] %a, s32[] %b), kind=kLoop, calls=%fused_computation.1, control-predecessors={%fusion}
+        %custom-call.1 = s32[] custom-call(), custom_call_target="some target"
+        %fusion.2 = s32[] fusion(s32[] %a, s32[] %b), kind=kLoop, calls=%fused_computation.2, control-predecessors={%fusion.1}
+        ROOT %custom-call.2 = s32[] custom-call(), custom_call_target="some target"
+      })";
+
+  const char* expected = R"(
+// CHECK: %command_buffer (param: s32[], param.1: s32[]) -> (s32[], s32[]) {
+// CHECK:   %param = s32[] parameter(0)
+// CHECK:   %param.1 = s32[] parameter(1)
+// CHECK:   %fusion.3 = s32[] fusion(%param, %param.1), kind=kLoop, calls=%fused_computation
+// CHECK:   %fusion.4 = s32[] fusion(%param, %param.1), kind=kLoop, calls=%fused_computation.1, control-predecessors={%fusion.3}
+// CHECK:   ROOT %tuple = (s32[], s32[]) tuple(%fusion.3, %fusion.4)
+// CHECK: }
+//
+// CHECK: ENTRY %main (a: s32[], b: s32[]) -> s32[] {
+// CHECK:   %a = s32[] parameter(0)
+// CHECK:   %b = s32[] parameter(1)
+// CHECK:   %custom-call = s32[] custom-call(), custom_call_target="some target"
+// CHECK:   %call = (s32[], s32[]) call(%a, %b), to_apply=%command_buffer, control-predecessors={%custom-call}
+// CHECK:   %get-tuple-element = s32[] get-tuple-element(%call), index=0
+// CHECK:   %get-tuple-element.1 = s32[] get-tuple-element(%call), index=1
+// CHECK:   %custom-call.1 = s32[] custom-call(), custom_call_target="some target"
+// CHECK:   %fusion.2 = s32[] fusion(%a, %b), kind=kLoop, calls=%fused_computation.2, control-predecessors={%call}
+// CHECK:   ROOT %custom-call.2 = s32[] custom-call(), custom_call_target="some target"
+// CHECK: })";
+
+  RunAndFilecheckHloRewrite(hlo, CommandBufferScheduling(), expected,
+                            [](HloModule* module) {
+                              EXPECT_TRUE(module->has_schedule());
+                              TF_CHECK_OK(module->schedule().Verify());
+                            });
 }
 
 }  // namespace

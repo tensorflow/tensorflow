@@ -17,10 +17,12 @@ limitations under the License.
 #include <optional>
 
 #include "absl/strings/string_view.h"
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -49,9 +51,9 @@ void AddStablehloQuantToIntPasses(mlir::PassManager &pm) {
 }
 
 void AddStaticRangeQuantizationPass(
-    mlir::PassManager &pm, const QuantizationOptions &quantization_options,
+    mlir::PassManager &pm,
     std::optional<const absl::string_view> mlir_dump_file_prefix) {
-  // TODO: b/299545840 - Include QuantizeCompositeFunctionsPass as in bug.
+  pm.addPass(mlir::quant::stablehlo::createQuantizeCompositeFunctionsPass());
 }
 
 void AddConvertTpuToCpuModelPasses(mlir::PassManager &pm) {
@@ -61,13 +63,32 @@ void AddConvertTpuToCpuModelPasses(mlir::PassManager &pm) {
   pm.addPass(mlir::quant::CreateCastBf16OpsToF32Pass());
 }
 
+// Legalizes shape/tensor/arith dialect ops to StableHLO for handling dynamic
+// shapes, by going through a round-trip to MHLO.
+void AddShapeLegalizationPasses(mlir::PassManager &pm) {
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createShapeLegalizeToHloPass(/*legalizeConstraints=*/true));
+  // The following 2 passes are used to clean up the spurious UnrealizedCast ops
+  // and shape.assuming regions leftover from the ShapeLegalizeToHlo pass. See
+  // pass definition for details.
+  pm.addPass(mlir::createReconcileUnrealizedCastsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+}
+
 // NOMUTANTS -- Add tests for individual passes with migration below.
 // Serializes the StableHLO module into a tf.XlaCallModuleOp for compatibility
 // with passes that expect TF format. This also allows the StableHLO ops to be
 // exported as a TF SavedModel.
 void AddCallModuleSerializationPasses(mlir::PassManager &pm) {
-  // TODO: b/299545836 - Include ReplaceStablehloSubgraphWithXlaCallModuleOpPass
-  // as in bug.
+  AddShapeLegalizationPasses(pm);
+  pm.addPass(
+      mlir::quant::stablehlo::
+          createReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass());
+  // ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass may create
+  // duplicate constants. Add canonicalizer to deduplicate.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   pm.addPass(mlir::TF::CreateXlaCallModuleSerializationPass());
 }
 }  // namespace
@@ -82,6 +103,9 @@ void AddQuantizeQatPasses(
         mlir::TF::CreateUnrollBatchMatMulPassPass());
   }
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  if (quantization_options.experimental_enable_tpu_model_support()) {
+    AddConvertTpuToCpuModelPasses(pm);
+  }
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertTfXlaOpToTfOpPass());
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -223,13 +247,12 @@ void AddQuantizePtqPostCalibrationPasses(
 }
 
 // StableHLO Quantization passes that are ran if StableHLO opset is selected.
-// TODO: b/298581932 - Add tests for passes below once migration is complete.
 void AddQuantizePtqPreCalibrationStablehloPasses(
-    mlir::PassManager &pm, const QuantizationOptions &quantization_options) {
-  // TODO: b/299545835 - Merge LiftQuantizableSpotsAsFunctionsPass here.
+    mlir::PassManager &pm, const CalibrationOptions &calibration_options) {
+  pm.addPass(
+      mlir::quant::stablehlo::createLiftQuantizableSpotsAsFunctionsPass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::CreateInsertCustomAggregationOpsPass(
-          quantization_options.calibration_options()));
+      mlir::quant::CreateInsertCustomAggregationOpsPass(calibration_options));
   pm.addPass(mlir::quant::CreateIssueIDsOfCustomAggregationOpsPass());
   // NOMUTANTS -- Add tests after all passes in function below are migrated.
   // StableHLO Quantizer currently uses TF's calibration passes. Serialize
@@ -237,20 +260,19 @@ void AddQuantizePtqPreCalibrationStablehloPasses(
   AddCallModuleSerializationPasses(pm);
 }
 
-// TODO: b/298581932 - Migrate and add passes below.
 void AddQuantizePtqPostCalibrationStablehloPasses(
-    mlir::PassManager &pm, const QuantizationOptions &quantization_options,
+    mlir::PassManager &pm,
     std::optional<const absl::string_view> mlir_dump_file_prefix) {
   // Deserializes the StableHLO module embedded in tf.XlaCallModule and lifts
   // the StableHLO functions to the top level module. This is needed for
   // StableHLO quantization.
   pm.addPass(mlir::TF::CreateXlaCallModuleDeserializationPass());
-  // TODO: b/299545788 - Include RestoreFunctionNameFromXlaCallModuleOpPass as
-  // in bug.
+  pm.addPass(mlir::quant::stablehlo::createRestoreFunctionNamePass());
+  pm.addPass(mlir::quant::stablehlo::createUnwrapXlaCallModuleOpPass());
+  pm.addPass(mlir::createSymbolDCEPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertCustomAggregationOpToQuantStatsPass());
-  AddStaticRangeQuantizationPass(pm, quantization_options,
-                                 mlir_dump_file_prefix);
+  AddStaticRangeQuantizationPass(pm, mlir_dump_file_prefix);
   AddStablehloQuantToIntPasses(pm);
   AddCallModuleSerializationPasses(pm);
 }

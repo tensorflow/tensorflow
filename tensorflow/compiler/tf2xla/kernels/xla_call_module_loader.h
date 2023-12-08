@@ -26,22 +26,28 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "xla/client/xla_computation.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
+
+bool IsTokenType(mlir::Type type);
 
 class XlaCallModuleLoader {
  public:
   static tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> Create(
       mlir::MLIRContext* context, int version, std::string module_str,
-      std::vector<std::string> dim_args_spec,
       std::vector<std::string> disabled_checks,
       std::vector<std::string> platforms, std::string loading_platform,
       int num_invocation_args, bool main_has_token_input_output);
 
-  int nr_outputs() { return main_.getNumResults(); }
-  mlir::TypeRange output_types() { return main_.getResultTypes(); }
+  int NrInputs() { return main_.getNumArguments(); }
+  mlir::TypeRange InputTypes() { return main_.getArgumentTypes(); }
+
+  int NrOutputs() { return main_.getNumResults(); }
+  mlir::TypeRange OutputTypes() { return main_.getResultTypes(); }
 
   // Refines the dynamic module arguments based on the static argument shapes.
   // This assumes that the module has a "main" function without dimension args,
@@ -82,7 +88,6 @@ class XlaCallModuleLoader {
   // Initializes the loader with the given serialized module string.
   tsl::Status LoadAndPreprocessModule(mlir::MLIRContext* context, int version,
                                       std::string module_str,
-                                      std::vector<std::string> dim_args_spec,
                                       std::vector<std::string> disabled_checks,
                                       std::vector<std::string> platforms,
                                       std::string loading_platform,
@@ -99,7 +104,6 @@ class XlaCallModuleLoader {
   // Index in platforms of the current platform, or -1 if module does not take
   // a platform index arg.
   int platform_index_;
-  std::vector<std::string> dim_args_spec_;
   // The disabled checks at loading time, including those from the
   // disabled_checks attribute and the TF_XLA_FLAGS environment variable.
   std::vector<std::string> loading_disabled_checks_;

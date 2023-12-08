@@ -35,7 +35,6 @@ limitations under the License.
 #include <vector>
 
 #include "google/protobuf/wrappers.pb.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/data_type.h"
 #include "xla/stream_executor/device_description.h"
@@ -146,15 +145,6 @@ enum class RnnDirectionMode {
   kRnnUnidirectional = 0,
   kRnnBidirectional = 1,
 };
-
-// Relevant to DepthToSpace and SpaceToDepth. This is the write layout when
-// performing depth to space and the read layout when performing space to depth.
-// It's specified with most-major dimension first and most-minor dimension last.
-// In DepthToSpace, the D*M^2 values are read in and then, for DepthHeightWidth,
-// written out to the output patch, by varying first width, then height, then
-// depth. In C array format, it looks like [depth][height][width]. See
-// DepthToSpace comment for more information.
-enum class DepthToSpaceLayout { DepthHeightWidth };
 
 class TensorDescriptor {
  public:
@@ -892,6 +882,9 @@ class AlgorithmDesc {
 
   uint64_t hash() const;
 
+  template <typename H>
+  friend H AbslHashValue(H h, const AlgorithmDesc& algo_desc);
+
   AlgorithmProto ToProto() const { return proto_; }
 
   std::string ToString() const;
@@ -899,6 +892,11 @@ class AlgorithmDesc {
  private:
   AlgorithmProto proto_;
 };
+
+template <typename H>
+H AbslHashValue(H h, const AlgorithmDesc& algo_desc) {
+  return H::combine(std::move(h), algo_desc.hash());
+}
 
 // Describes the result from a perf experiment.
 //
@@ -988,6 +986,9 @@ using FusedMatmulSignature = void(DeviceMemoryBase /* a_data */,
                                   DeviceMemoryBase /* c_data */);
 using FusedMatmulRunner = OpRunner<FusedMatmulSignature>;
 
+using NormSignature = void(std::vector<DeviceMemoryBase>);
+using NormRunner = OpRunner<NormSignature>;
+
 using FusedMHASignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
                                DeviceMemoryBase /* BMM1_inputB_data */,
                                DeviceMemoryBase /* BMM2_inputA_data */,
@@ -1005,8 +1006,11 @@ using FusedMHABackwardSignature = void(
     DeviceMemoryBase /* d_output_data */,
     DeviceMemoryBase /* d_BMM1_inputA_data */,
     DeviceMemoryBase /* d_BMM1_inputB_data */,
-    DeviceMemoryBase /* d_BMM2_inputB_data */, DeviceMemoryBase /* d_s_data */,
-    DeviceMemoryBase /* mask_data */, DeviceMemoryBase /* d_bias_data */);
+    DeviceMemoryBase /* d_BMM2_inputB_data */, DeviceMemoryBase /* d_S_data */,
+    DeviceMemoryBase /* softmax_sum_data */,
+    DeviceMemoryBase /* d_Q_accum_data */, DeviceMemoryBase /* mask_data */,
+    DeviceMemoryBase /* d_bias_data */, DeviceMemoryBase /* fwd_output_data */,
+    DeviceMemoryBase /* bias_data */);
 using FusedMHABackwardRunner = OpRunner<FusedMHABackwardSignature>;
 
 // Describes the configuration for the algorithms that will used.
@@ -1655,6 +1659,16 @@ class DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       dnn::ActivationMode activation_mode);
 
+  virtual tsl::StatusOr<std::unique_ptr<const dnn::NormRunner>>
+  NormRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc, double epsilon,
+      const dnn::TensorDescriptor& input_descriptor,
+      const dnn::TensorDescriptor& scale_descriptor,
+      const dnn::TensorDescriptor& bias_descriptor,
+      const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> expectation_descriptor,
+      std::optional<dnn::TensorDescriptor> norm_factor_descriptor);
+
   virtual tsl::StatusOr<std::unique_ptr<const dnn::FusedMHARunner>>
   FusedMHARunnerFromDesc(
       Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
@@ -1667,7 +1681,8 @@ class DnnSupport {
       std::optional<dnn::TensorDescriptor> activation_descriptor,
       std::optional<dnn::TensorDescriptor> mask_descriptor,
       std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed);
+      std::optional<double> dropout_rate, std::optional<int64_t> seed,
+      bool is_flash_attention, bool is_causal_mask);
 
   virtual tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABackwardRunner>>
   FusedMHABackwardRunnerFromDesc(
@@ -1681,10 +1696,13 @@ class DnnSupport {
       const TensorDescriptor& d_bmm1_lhs_descriptor,
       const TensorDescriptor& d_bmm1_rhs_descriptor,
       const TensorDescriptor& d_bmm2_rhs_descriptor,
-      const TensorDescriptor& d_s_descriptor,
+      std::optional<dnn::TensorDescriptor> d_s_descriptor,
       std::optional<dnn::TensorDescriptor> mask_descriptor,
-      std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed);
+      std::optional<dnn::TensorDescriptor> d_bias_descriptor,
+      std::optional<dnn::TensorDescriptor> fwd_output_descriptor,
+      std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed,
+      bool is_flash_attention, bool is_causal_mask);
 
   virtual bool GetMIOpenConvolveAlgorithms(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
@@ -1699,32 +1717,6 @@ class DnnSupport {
 
   // Returns a list of supported rnn algorithms.
   virtual bool GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms);
-
-  // Version of DoConvolve that uses pre-quantized 8 bit coefficients.
-  // coefficient_scales specifies the scaling of each column of coefficients:
-  // original float coefficient[row * num_columns + column] =
-  //     quantized coefficient[row * num_columns + column] *
-  //     coefficient_scales[column].
-  virtual bool DoConvolveQuantized(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<float>& input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<int8_t>& filter_coefficients,
-      const DeviceMemory<float>& coefficient_scales,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data) = 0;
-
-  // Same as DoConvolveQuantized above, but int8 filter coefficients.
-  virtual bool DoConvolveQuantized(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<float>& input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<int16>& filter_coefficients,
-      const DeviceMemory<float>& coefficient_scales,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data) = 0;
 
   // Variation of the above with the weight matrix split into two matrices.
   // first_weights: Coefficients of the first matrix.
@@ -1968,35 +1960,6 @@ class DnnSupport {
       Stream* stream, absl::Span<const dnn::BatchDescriptor> input_dimensions,
       absl::Span<const DeviceMemory<float>* const> input_data,
       DeviceMemory<float>* output_data) = 0;
-
-  // Depth to space takes an X by Y image with depth D*M^2 and changes it to an
-  // MX x MY image with depth D. Each input location (x,y) with depth D*M^2 in
-  // the input image is changed to an MxM contiguous area in the output image,
-  // with the values being laid out in the raster order by DepthToSpaceLayout,
-  // and will have a new depth of D.
-  //
-  // Example.
-  // M=2, Din =8, Xin=2, Yin=2. Xout=4, Yout=4,  Dout=2
-  // DepthHeightWidth layout
-  // Values within a 'cell' are at different depths and same x & y.
-  // Input:
-  // abcdefgh  ijklmnop
-  // qrstuvwx  yz012345
-  // Output:
-  // ae bf im jn
-  // cg dh ko lp
-  // qu rv y2 z3
-  // sw tx 04 15
-  //
-  // sqrt_depth_reduction: 'M' in the comment above
-  virtual bool DoDepthToSpace(Stream* stream,
-                              const dnn::BatchDescriptor& input_dimensions,
-                              const DeviceMemory<float>& input_data,
-                              const DepthToSpaceLayout& depth_to_space_layout,
-                              const int& sqrt_depth_reduction,
-                              DeviceMemory<float>* output_data) {
-    return false;
-  }
 
   // Computes the specified operation (e.g. addition or multiplication)
   // between corresponding elements in the inputs and stores the result in the

@@ -286,6 +286,7 @@ cc_library(
         "//tsl/platform:stringpiece",
         "//tsl/platform:stringprintf",
         "//tsl/platform:types",
+        "@com_google_absl//absl/strings",
     ],
 )
 

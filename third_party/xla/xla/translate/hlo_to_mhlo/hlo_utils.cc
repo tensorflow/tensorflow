@@ -93,27 +93,6 @@ StatusOr<AffineMap> GetPermutationIfAvailable(const Shape& shape,
   return makeStridedLinearLayoutMap(strides, /*offset=*/0,
                                     builder.getContext());
 }
-
-template <typename T>
-void CopyDenseElementsBy(mlir::DenseElementsAttr data,
-                         std::vector<uint8_t>* output) {
-  output->resize(data.getNumElements() * sizeof(T));
-  int i = 0;
-  for (T element : data.getValues<T>()) {
-    std::memcpy(&(*output)[i], &element, sizeof(T));
-    i += sizeof(T);
-  }
-}
-
-template <>
-void CopyDenseElementsBy<u4>(mlir::DenseElementsAttr data,
-                             std::vector<uint8_t>* output) {
-  output->resize(CeilOfRatio(data.getNumElements(), int64_t{2}));
-  absl::Span<char> output_span =
-      absl::MakeSpan(reinterpret_cast<char*>(output->data()), output->size());
-  PackInt4(data.getRawData(), output_span);
-}
-
 }  // namespace
 
 StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
@@ -150,84 +129,6 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
                         PrimitiveType_Name(element_type));
       },
       element_type);
-}
-
-Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
-                                        std::vector<uint8_t>* output) {
-  mlir::Type element_type = data.getType().getElementType();
-
-  // TODO(hinsu): Support remaining XLA primitive types.
-  if (element_type.isInteger(1)) {
-    CopyDenseElementsBy<bool>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isInteger(4)) {
-    CopyDenseElementsBy<u4>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isInteger(8)) {
-    CopyDenseElementsBy<uint8_t>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isInteger(16)) {
-    CopyDenseElementsBy<uint16_t>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isInteger(32)) {
-    CopyDenseElementsBy<uint32_t>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isInteger(64)) {
-    CopyDenseElementsBy<uint64_t>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isFloat8E5M2()) {
-    CopyDenseElementsBy<tsl::float8_e5m2>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isFloat8E4M3FN()) {
-    CopyDenseElementsBy<tsl::float8_e4m3fn>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isFloat8E4M3B11FNUZ()) {
-    CopyDenseElementsBy<tsl::float8_e4m3b11>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isFloat8E5M2FNUZ()) {
-    CopyDenseElementsBy<tsl::float8_e5m2fnuz>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isFloat8E4M3FNUZ()) {
-    CopyDenseElementsBy<tsl::float8_e4m3fnuz>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isBF16()) {
-    CopyDenseElementsBy<bfloat16>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isF16()) {
-    CopyDenseElementsBy<half>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isF32()) {
-    CopyDenseElementsBy<float>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isF64()) {
-    CopyDenseElementsBy<double>(data, output);
-    return OkStatus();
-  }
-  if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
-    if (complex_type.getElementType().isF32()) {
-      CopyDenseElementsBy<complex64>(data, output);
-      return OkStatus();
-    }
-    if (complex_type.getElementType().isF64()) {
-      CopyDenseElementsBy<complex128>(data, output);
-      return OkStatus();
-    }
-  }
-  return Internal("Unsupported type in CopyDenseElementsDataToXlaFormat");
 }
 
 StatusOr<int> GetElementTypeBytes(mlir::Type type) {
@@ -388,6 +289,8 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kConvolution;
   } else if (isa<mlir::mhlo::SortOp, mlir::lmhlo::SortOp>(op)) {
     return xla::HloOpcode::kSort;
+  } else if (isa<mlir::mhlo::TopKOp>(op)) {
+    return xla::HloOpcode::kTopK;
   } else if (isa<mlir::mhlo::RngBitGeneratorOp>(op)) {
     return xla::HloOpcode::kRngBitGenerator;
   } else if (isa<mlir::mhlo::XlaRngGetAndUpdateStateOp>(op)) {

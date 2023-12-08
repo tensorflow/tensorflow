@@ -125,3 +125,11 @@ def ConvertFunctionMetadata :
   let constructor = "createConvertFunctionMetadataPass()";
 }
 
+def TosaLegalizeTFLStatefulPass : Pass<"tosa-legalize-tfl-stateful-tensors", "mlir::ModuleOp"> {
+  let summary = "Legalize tfl stateful operators to tosa stateful operators";
+  let description = [{
+    This pass is legalizing the tfl.call_once op to tosa stateful operators
+  }];
+  let constructor = "createLegalizeTFLStatefulPass()";
+  let dependentDialects = ["mlir::TFL::TFLDialect"];
+}

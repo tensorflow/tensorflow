@@ -16,6 +16,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_COMMAND_BUFFER_SCHEDULING_H_
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -79,7 +80,8 @@ class CommandBufferScheduling : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   static std::vector<HloInstructionSequence> CollectCommandBufferSequences(
-      HloInstructionSequence inst_sequence);
+      HloInstructionSequence inst_sequence,
+      std::function<bool(const HloInstruction*)> is_command);
   static void MoveParametersToFront(HloComputation* computation);
 
   struct BuildCommandBufferResult {
@@ -96,6 +98,10 @@ class CommandBufferScheduling : public HloModulePass {
     // the original instruction to the tuple index of the result that replaces
     // the original instruction.
     absl::flat_hash_map<HloInstruction*, int64_t> inst_to_tuple_index_map;
+
+    // Map original instructions to their clones in the command buffer
+    // computation.
+    absl::flat_hash_map<HloInstruction*, HloInstruction*> instructions_map;
   };
 
   // Builds a computation from the instruction sequence. Used values constructed

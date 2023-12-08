@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
@@ -178,7 +179,7 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
   name_buffer.append("_blob");
   Value module_blob = LLVM::createGlobalString(loc, rewriter, name_buffer.str(),
                                                binary_attr.getValue(),
-                                               LLVM::Linkage::Internal, true);
+                                               LLVM::Linkage::Internal);
 
   // Make sure the trailing zero is included in the constant.
   auto kernel_name = launch_op.getKernelName().getValue();
@@ -192,7 +193,7 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
           .toStringRef(kernel_name_global_name_buffer);
   auto kernel_name_global = LLVM::createGlobalString(
       loc, rewriter, kernel_name_global_name, kernel_name_buffer,
-      LLVM::Linkage::Internal, true);
+      LLVM::Linkage::Internal);
 
   // The TensorFlow OpKernelContext is the first argument of the surrounding
   // LLVMFunc.

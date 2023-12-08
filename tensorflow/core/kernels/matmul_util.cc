@@ -19,11 +19,6 @@ limitations under the License.
 #include <utility>
 
 #include "xla/status_macros.h"
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_blas_lt.h"
-#else
-#include "xla/stream_executor/rocm/hip_blas_lt.h"
-#endif
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/util/env_var.h"
@@ -57,20 +52,23 @@ bool BlasLtMatmulPlanParams::operator==(
   return internal::AsTuple(*this) == internal::AsTuple(other);
 }
 
-const PlanAndAlgorithms* BlasLtMatmulPlanMap::Find(
-    const BlasLtMatmulPlanParams& params) const {
-  absl::MutexLock lock(&mu_);
-  auto it = params_plan_map_.find(params);
-  return (it != params_plan_map_.end()) ? &it->second : nullptr;
-}
-
-const PlanAndAlgorithms* BlasLtMatmulPlanMap::Insert(
-    const BlasLtMatmulPlanParams& params, PlanAndAlgorithms value) {
-  absl::MutexLock lock(&mu_);
-  return &params_plan_map_.emplace(params, std::move(value)).first->second;
-}
-
 namespace {
+
+// Thread-safe map from matmul parameters to their corresponding plan and
+// algorithms.
+struct BlasLtMatmulPlanMap {
+  absl::Mutex mu;
+
+  template <class... Args>
+  auto emplace(Args&&... args) {
+    absl::MutexLock lock(&mu);
+    return map_.emplace(std::forward<Args>(args)...);
+  }
+
+ private:
+  absl::flat_hash_map<BlasLtMatmulPlanParams, PlanAndAlgorithms> map_
+      ABSL_GUARDED_BY(mu);
+};
 
 int MatmulMaxAutotuneAlgorithmCount() {
   int64_t value;
@@ -88,7 +86,7 @@ int MatmulMaxAutotuneAlgorithmCount() {
 }
 
 StatusOr<se::blas::ComputationType> GetBlasComputationType(
-    const se::blas::DataType& dtype) {
+    se::blas::DataType dtype) {
   using se::blas::ComputationType;
   static bool use_f32_for_f16_computation = MatmulDoFP32ComputationFP16Input();
   switch (dtype) {
@@ -109,14 +107,6 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
   }
 }
 
-se::blas::DataType GetScaleType(se::blas::DataType c_type,
-                                se::blas::ComputationType computation_type) {
-  return ((computation_type == se::blas::ComputationType::kF32) &&
-          (c_type != se::blas::DataType::kComplexFloat))
-             ? se::blas::DataType::kFloat
-             : c_type;
-}
-
 }  // namespace
 
 StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
@@ -129,83 +119,69 @@ StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
 
   if (!max_algorithm_count) max_algorithm_count = max_autotune_algorithm_count;
 
-  static auto& plan_map = *new BlasLtMatmulPlanMap();
+  static BlasLtMatmulPlanMap plan_map;
 
-  const PlanAndAlgorithms* plan_and_algorithms = plan_map.Find(params);
-  if (!plan_and_algorithms) {
-    se::gpu::BlasLt* blas_lt = se::gpu::GetBlasLt(stream);
-    TF_RET_CHECK(blas_lt != nullptr);
-
-    TF_ASSIGN_OR_RETURN(se::blas::ComputationType computation_type,
+  auto [ptr, inserted] = plan_map.emplace(params, PlanAndAlgorithms{});
+  if (inserted) {
+    TF_ASSIGN_OR_RETURN(auto xlatype,
+                        se::gpu::AsXlaPrimitiveType(params.dtype));
+    TF_ASSIGN_OR_RETURN(auto computation_type,
                         GetBlasComputationType(params.dtype));
 
-    se::blas::DataType scale_type =
-        GetScaleType(params.dtype, computation_type);
+    auto scale_type = se::gpu::GetScaleType(params.dtype, computation_type);
 
-    // cublas_lt's output is column-major. We want row-major so use identity:
-    // C^T = (A @ B)^T = B^T @ A^T.
-    constexpr auto kColMajor =
-        se::gpu::BlasLt::MatrixLayout::Order::kColumnMajor;
+    // row-major output is now handled automatically by blas-lt API
+    constexpr auto kRowMajor = se::gpu::MatrixLayout::Order::kRowMajor;
 
-    size_t rows_a = params.k;
-    size_t cols_a = params.m;
-    size_t rows_b = params.n;
-    size_t cols_b = params.k;
+    int64_t rows_a = static_cast<int64_t>(params.m),
+            cols_a = static_cast<int64_t>(params.k),
+            rows_b = static_cast<int64_t>(params.k),
+            cols_b = static_cast<int64_t>(params.n),
+            rows_c = static_cast<int64_t>(params.m),
+            cols_c = static_cast<int64_t>(params.n),
+            batch_sz = static_cast<int64_t>(params.batch_count);
 
     if (params.trans_a != se::blas::Transpose::kNoTranspose) {
       std::swap(rows_a, cols_a);
     }
-
     if (params.trans_b != se::blas::Transpose::kNoTranspose) {
       std::swap(rows_b, cols_b);
     }
-
-    int64_t batch_stride_a =
-        params.broadcast_a ? 0 : static_cast<int64_t>(rows_a * cols_a);
-    int64_t batch_stride_b =
-        params.broadcast_b ? 0 : static_cast<int64_t>(rows_b * cols_b);
-
-    TF_ASSIGN_OR_RETURN(
-        auto a_desc,
-        se::gpu::BlasLt::MatrixLayout::Create(
-            params.dtype, rows_a, cols_a, kColMajor, params.batch_count,
-            /*leading_dim_stride=*/std::nullopt, batch_stride_a));
-    TF_ASSIGN_OR_RETURN(
-        auto b_desc,
-        se::gpu::BlasLt::MatrixLayout::Create(
-            params.dtype, rows_b, cols_b, kColMajor, params.batch_count,
-            /*leading_dim_stride=*/std::nullopt, batch_stride_b));
-    TF_ASSIGN_OR_RETURN(auto c_desc, se::gpu::BlasLt::MatrixLayout::Create(
-                                         params.dtype, params.n, params.m,
-                                         kColMajor, params.batch_count));
-    TF_ASSIGN_OR_RETURN(auto d_desc, se::gpu::BlasLt::MatrixLayout::Create(
-                                         params.dtype, params.n, params.m,
-                                         kColMajor, params.batch_count));
+    int64_t batch_stride_a = params.broadcast_a ? 0 : rows_a * cols_a;
+    int64_t batch_stride_b = params.broadcast_b ? 0 : rows_b * cols_b;
 
     // `A` and `B` swapped (see above re. column-major output).
-    TF_ASSIGN_OR_RETURN(auto op_desc,
-                        se::gpu::BlasLt::MatmulDesc::Create(
-                            computation_type, scale_type,
-                            /*trans_a=*/params.trans_b,
-                            /*trans_b=*/params.trans_a, params.epilogue));
+    se::gpu::GemmConfig cfg = {
+        .lhs_layout =
+            se::gpu::MatrixLayout{xlatype, rows_a, cols_a, kRowMajor, batch_sz,
+                                  std::nullopt, batch_stride_a, params.trans_a},
+        .rhs_layout =
+            se::gpu::MatrixLayout{xlatype, rows_b, cols_b, kRowMajor, batch_sz,
+                                  std::nullopt, batch_stride_b, params.trans_b},
+        .c_layout =
+            se::gpu::MatrixLayout{xlatype, rows_c, cols_c, kRowMajor, batch_sz},
+        .output_layout =
+            se::gpu::MatrixLayout{xlatype, rows_c, cols_c, kRowMajor, batch_sz},
+        .alpha = xla::complex128{1.0, 0.0},
+        .beta = 0.0,
+        .compute_precision = se::blas::kDefaultComputePrecision,
+        .algorithm = {},
+        .grad_x = false,
+        .grad_y = false,
+        .compute_type = computation_type,
+    };
 
-    // `A` and `B` swapped (see above re. column-major output).
-    se::gpu::BlasLt::MatmulPlan plan{std::move(op_desc), std::move(b_desc),
-                                     std::move(a_desc), std::move(c_desc),
-                                     std::move(d_desc)};
+    TF_ASSIGN_OR_RETURN(auto plan, se::gpu::BlasLt::GetMatmulPlan(
+                                       stream, cfg, params.epilogue));
+
     TF_ASSIGN_OR_RETURN(
-        auto preference,
-        se::gpu::BlasLt::MatmulPreference::Create(max_scratch_size));
+        auto algorithms,
+        plan->GetAlgorithms(*max_algorithm_count, max_scratch_size));
 
-    TF_ASSIGN_OR_RETURN(
-        std::vector<se::gpu::BlasLt::MatmulAlgorithm> algorithms,
-        blas_lt->GetMatmulAlgorithms(plan, preference, *max_algorithm_count));
-
-    plan_and_algorithms =
-        plan_map.Insert(params, {std::move(plan), std::move(algorithms)});
+    ptr->second = {std::move(plan), std::move(algorithms), scale_type};
   }
-  *ppmu = &plan_map.mu_;
-  return plan_and_algorithms;
+  *ppmu = &plan_map.mu;
+  return &ptr->second;
 }
 
 }  // namespace tensorflow

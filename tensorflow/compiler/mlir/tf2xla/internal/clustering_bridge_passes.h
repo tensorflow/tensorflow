@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_CLUSTERING_BRIDGE_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_CLUSTERING_BRIDGE_PASSES_H_
 
+#include "absl/base/attributes.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 
@@ -26,6 +27,11 @@ namespace internal {
 // Given the pass manager, add Bridge passes to cluster the input.
 void AddBridgeClusteringPipelinePasses(
     mlir::OpPassManager& pm, llvm::StringRef module_name = llvm::StringRef());
+
+// Same as above but for non TPU use cases (CPU/GPU). However, this should
+// slowly migrate to be the same as above.
+ABSL_DEPRECATED("Use AddBridgeClusteringPipelinePasses instead.")
+void AddNonTPUBridgeClusteringPipelinePasses(mlir::OpPassManager& pm);
 
 };  // namespace internal
 };  // namespace tf2xla

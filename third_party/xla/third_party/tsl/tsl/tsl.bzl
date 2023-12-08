@@ -562,6 +562,7 @@ def tsl_pybind_extension_opensource(
         data = [],
         defines = [],
         deprecation = None,
+        enable_stub_generation = False,  # @unused
         features = [],
         licenses = None,
         linkopts = [],
@@ -753,9 +754,6 @@ def tsl_pybind_extension_opensource(
         restricted_to = restricted_to,
         compatible_with = compatible_with,
     )
-
-# Export open source version of pybind_extension under base name as well.
-tsl_pybind_extension = tsl_pybind_extension_opensource
 
 # Used for specifying external visibility constraints. In non-monorepo situations, this needs to be
 # public, but monorepos can have more precise constraints.

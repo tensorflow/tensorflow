@@ -28,7 +28,9 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace gpu {
@@ -1036,7 +1038,7 @@ ENTRY main {
       SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
 }
 
-TEST_P(SoftmaxRewriterTritonTest, DoNotFuseSoftmaxWithSmallRows) {
+TEST_P(SoftmaxRewriterTritonTest, CanFuseSoftmaxDiamondWithSmallRows) {
   PrimitiveType data_type = GetParam();
   const std::string hlo_string_template = R"(
 HloModule softmax
@@ -1046,11 +1048,11 @@ max_computation {
   ROOT maximum = $0[] maximum(arg_0, arg_1)
 }
 ENTRY main {
-  param_0 = $0[127,50]{1,0} parameter(0)
+  param_0 = $0[127,7]{1,0} parameter(0)
   constant_neg_inf = $0[] constant(-inf)
   reduce = $0[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
-  broadcast = $0[127,50]{1,0} broadcast(reduce), dimensions={0}
-  ROOT subtract = $0[127,50]{1,0} subtract(param_0, broadcast)
+  broadcast = $0[127,7]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = $0[127,7]{1,0} subtract(param_0, broadcast)
 }
 )";
   const std::string hlo_string =
@@ -1058,8 +1060,12 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(
-      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
+  EXPECT_THAT(SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()),
+              tsl::testing::IsOkAndHolds(true));
+  TF_EXPECT_OK(verifier().Run(module.get()).status());
+  VLOG(2) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter())));
 }
 
 TEST_P(

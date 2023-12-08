@@ -23,7 +23,6 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 from absl import logging
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.core.tpu.kernels import gen_global_iter_id_op
 from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -58,6 +57,7 @@ from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 _PIPELINE_ATTRIBUTE = "_embedding_pipelining"
 _PIPELINE_MODE_FORWARD = "forward"
@@ -150,6 +150,23 @@ class TPUEmbeddingShardedVariable(
   @property
   def shard_dim(self) -> int:
     return 0
+
+  @property
+  def shape(self) -> tensor_shape.TensorShape:
+    """Returns the shape of the embedding variable for the current context."""
+    local_shape = self._values[0].shape
+    global_shape = local_shape.as_list()
+    global_shape[self.shard_dim] = global_shape[self.shard_dim] * len(
+        self.values
+    )
+    return tensor_shape.TensorShape(global_shape)
+
+  def _write_object_proto(self, proto, options):
+    super()._write_object_proto(proto, options)
+    # TODO(b/305882915): Reset the saved model shape to the local shape
+    # for backward compatibility of users that directly access the full
+    # variable shape as the shape of values.
+    proto.variable.shape.CopyFrom(self._values[0].shape.as_proto())
 
   def _gather_saveables_for_checkpoint(self) -> Dict[str, Callable[..., Any]]:
     """Overrides Trackable method.
@@ -246,6 +263,7 @@ PartitionedCsrFormatTensor = collections.namedtuple(
 
 
 # TODO(b/233952762): Add tests of this version of the mid-level API.
+@tf_export("tpu.experimental.embedding.TPUEmbeddingV2")
 class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
   """The TPUEmbedding mid level API running on TPU with sparse core accelerator."""
 
@@ -529,13 +547,19 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           trainable=False,
       )
 
-    parameters = variable_creator(stacked_table_name, table_initialize_fn)
+    with variable_scope.variable_creator_scope(
+        make_sharded_variable_creator(self._strategy)
+    ):
+      parameters = variable_creator(stacked_table_name, table_initialize_fn)
 
     def slot_creator(name, initializer):
       return variable_creator(stacked_table_name + "/" + name, initializer)
 
     if optimizer is not None:
-      slot_vars = optimizer._create_slots(parameters, slot_creator)  # pylint: disable=protected-access
+      with variable_scope.variable_creator_scope(
+          make_sharded_variable_creator(self._strategy)
+      ):
+        slot_vars = optimizer._create_slots(parameters, slot_creator)  # pylint: disable=protected-access
     else:
       slot_vars = {}
     slot_vars["parameters"] = parameters
@@ -628,11 +652,11 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     self._table_to_sample_count = {
         table_name: 0 for table_name in self._stacked_table_to_tables
     }
-    for _, feature in self._flat_features:
+    for feature_path, feature in self._flat_features:
       stacked_table_name = self._table_to_stacked_table_offset[
           feature.table.name
       ][0]
-      self._feature_to_sample_offset[feature.name] = (
+      self._feature_to_sample_offset[feature_path] = (
           self._table_to_sample_count[stacked_table_name]
       )
       self._table_to_sample_count[stacked_table_name] += functools.reduce(
@@ -650,12 +674,9 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     """
     variables = {}
     for stacked_table_name, tables in self._stacked_table_to_tables.items():
-      with variable_scope.variable_creator_scope(
-          make_sharded_variable_creator(self._strategy)
-      ):
-        variables[stacked_table_name] = self._create_variables(
-            tables, stacked_table_name=stacked_table_name
-        )
+      variables[stacked_table_name] = self._create_variables(
+          tables, stacked_table_name=stacked_table_name
+      )
     return variables
 
   def _maybe_build(self):
@@ -936,9 +957,9 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
 
   @staticmethod
   def _convert_input_feature_to_coo(
-      input_feature: tensor.Tensor
-      | sparse_tensor.SparseTensor
-      | ragged_tensor.RaggedTensor,
+      input_feature: Union[
+          tensor.Tensor, sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor
+      ],
       weight: Optional[tensor.Tensor],
       feature_config: tpu_embedding_v2_utils.FeatureConfig,
       row_offset: int,
@@ -1032,13 +1053,13 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     table_to_list_of_coos = {
         table_name: ([], [], []) for table_name in stacked_table_to_tables
     }
-    for inp, weight, (_, feature) in zip(
+    for inp, weight, (feature_path, feature) in zip(
         flat_inputs, flat_weights, flat_features
     ):
       table_name, col_offset, col_shift = table_to_stacked_table_offset[
           feature.table.name
       ]
-      row_offset = feature_to_sample_offset[feature.name]
+      row_offset = feature_to_sample_offset[feature_path]
       # Consider making this into one op per table rather than per feature?
       row_ids, col_ids, gains = TPUEmbeddingV2._convert_input_feature_to_coo(
           inp,
@@ -1256,9 +1277,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
         input=per_replica_table_splits,
         group_size=num_replicas_in_sync,
         group_key=0,
-        instance_key=math_ops.cast(
-            gen_global_iter_id_op.global_iter_id(), dtypes.int32
-        ),
+        instance_key=math_ops.cast(xla_ops.global_iter_id(), dtypes.int32),
         ordering_token=[],
     )
 
@@ -1313,13 +1332,10 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           flat_weights=flat_weights,
       )
     elif device is None:
-      # This is used by keras function tracing.
+      # This is used by keras function tracing. Use any of the TPU devices
+      # and trace once for a single device.
       tpu_devices = self._strategy.extended._tpu_devices  # pylint:disable=protected-access
-      num_replicas, num_cores_per_replica = tpu_devices.shape
-      if num_replicas > 1 or num_cores_per_replica > 1:
-        raise NotImplementedError(
-            "SPMD is not implemented, use strategy.run instead."
-        )
+
       with ops.device(device_util.get_host_for_device(tpu_devices[0][0])):
         return TPUEmbeddingV2.preprocess_features(
             num_replicas_in_sync=self._strategy.num_replicas_in_sync,
@@ -1511,9 +1527,9 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
 
     partitioned_tensors = self.enqueue(features, weights)
 
-    result = self.dequeue(partitioned_tensors)
-
     context.Exit()
+
+    result = self.dequeue(partitioned_tensors)
 
     return result
 
@@ -1565,9 +1581,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
             input=is_minibatching_needed_per_replica,
             group_size=num_replicas_in_sync,
             group_key=0,
-            instance_key=math_ops.cast(
-                gen_global_iter_id_op.global_iter_id(), dtypes.int32
-            ),
+            instance_key=math_ops.cast(xla_ops.global_iter_id(), dtypes.int32),
             ordering_token=[],
         )
     )
@@ -1602,9 +1616,9 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
   # TODO(pineapplejuice233): Do not use it as they are experimental.
   @staticmethod
   def _experimental_convert_input_feature_to_list_of_coo_tensors(
-      input_feature: tensor.Tensor
-      | sparse_tensor.SparseTensor
-      | ragged_tensor.RaggedTensor,
+      input_feature: Union[
+          tensor.Tensor, sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor
+      ],
       weight: Optional[tensor.Tensor],
       feature_config: tpu_embedding_v2_utils.FeatureConfig,
       row_offset: int,
@@ -1722,14 +1736,14 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
         )
         for table_name in stacked_table_to_tables
     }
-    for inp, weight, (_, feature) in zip(
+    for inp, weight, (feature_path, feature) in zip(
         flat_inputs, flat_weights, flat_features
     ):
       table_name, col_offset, col_shift = table_to_stacked_table_offset[
           feature.table.name
       ]
       stacked_table_sample_count = stacked_table_to_sample_count[table_name]
-      row_offset = feature_to_sample_offset[feature.name]
+      row_offset = feature_to_sample_offset[feature_path]
       # Consider making this into one op per table rather than per feature?
       row_ids_list, col_ids_list, gains_list, sample_count = (
           TPUEmbeddingV2._experimental_convert_input_feature_to_list_of_coo_tensors(
@@ -1908,9 +1922,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
         input=per_replica_table_splits,
         group_size=num_replicas_in_sync,
         group_key=1,
-        instance_key=math_ops.cast(
-            gen_global_iter_id_op.global_iter_id(), dtypes.int32
-        ),
+        instance_key=math_ops.cast(xla_ops.global_iter_id(), dtypes.int32),
         ordering_token=[],
     )
 

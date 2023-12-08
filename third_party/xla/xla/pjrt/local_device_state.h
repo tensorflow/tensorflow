@@ -225,6 +225,7 @@ class LocalDeviceState {
   // Callback map pairs callback stream with a device stream and is used for
   // running short host-side callbacks after device side events, without
   // preventing the device-side stream from doing useful work.
+  absl::Mutex callback_stream_map_mu_;
   std::optional<absl::flat_hash_map<se::Stream*, std::unique_ptr<se::Stream>>>
       callback_stream_map_;
 

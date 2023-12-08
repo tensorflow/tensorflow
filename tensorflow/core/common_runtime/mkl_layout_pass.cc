@@ -1586,7 +1586,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // impact.
     TF_CHECK_OK(GetNodeAttr(n->def(), "transpose_a", &trans_a));
 
-    return !trans_a;
+    // Only rewrite float and bfloat16.
+    DataType T_m;
+    TF_CHECK_OK(GetNodeAttr(n->def(), "T", &T_m));
+
+    return !trans_a && (T_m == DT_FLOAT || T_m == DT_BFLOAT16);
   }
 
   // Check if we are performing pooling on depth or batch. If it is, then we
@@ -1864,6 +1868,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
             fused_ops == std::vector<string>{"BiasAdd", "Relu"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Relu6"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Elu"} ||
+            fused_ops == std::vector<string>{"BiasAdd", "_FusedHardSwish"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Add"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu6"} ||
@@ -1899,7 +1904,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     return (fused_ops == std::vector<string>{"BiasAdd"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Relu"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Relu6"} ||
-            fused_ops == std::vector<string>{"BiasAdd", "Elu"});
+            fused_ops == std::vector<string>{"BiasAdd", "Elu"} ||
+            fused_ops == std::vector<string>{"BiasAdd", "_FusedHardSwish"});
   }
 
   // Rewrites input node to a new node specified by its matching rewrite info.

@@ -190,36 +190,6 @@ XLA_TEST_F(MultiOutputFusionTest, DifferentTypesNoFusion) {
 }
 XLA_TEST_F(MultiOutputFusionTest, DifferentTypesFusion) { RunTest1D(true, 8); }
 
-XLA_TEST_F(MultiOutputFusionTest, FusionNodeIsRoot) {
-  const char* testcase = R"(
-    HloModule m, is_scheduled=true
-
-    fused_computation {
-      x.param_0 = (((s32[]), f32[]), (f32[], s32[])) parameter(0)
-      gte.3 = ((s32[]), f32[]) get-tuple-element(x.param_0), index=0
-      gte.2 = (s32[]) get-tuple-element(gte.3), index=0
-      gte.4 = s32[] get-tuple-element(gte.2), index=0
-      copy = s32[] copy(gte.4)
-      ROOT tuple = (s32[]) tuple(copy)
-    }
-
-    ENTRY thing.v3 {
-      x = (((s32[]), f32[]), (f32[], s32[])) parameter(0)
-      ROOT fusion = (s32[]) fusion(x), kind=kLoop, calls=fused_computation
-    }
-  )";
-  auto module = ParseAndReturnVerifiedModule(testcase).value();
-  auto param = LiteralUtil::MakeTupleOwned(
-      LiteralUtil::MakeTupleOwned(
-          LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR0<int32_t>(42)),
-          LiteralUtil::CreateR0<float>(1.0)),
-      LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR0<float>(3.0),
-                                  LiteralUtil::CreateR0<int32_t>(4)));
-  Literal result = ExecuteNoHloPasses(std::move(module), {&param});
-  EXPECT_TRUE(LiteralTestUtil::Equal(
-      LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR0<int32_t>(42)), result));
-}
-
 XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFusion) {
   const char* testcase = R"(
     HloModule m, is_scheduled=true

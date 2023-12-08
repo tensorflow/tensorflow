@@ -33,6 +33,14 @@ class CublasGemmPadForTensorCoresTest : public HloTestBase {
         .Run(module)
         .value();
   }
+
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    // Some pads would not be added if we detect that Triton will handle the
+    // given dot operation.
+    debug_options.set_xla_gpu_triton_gemm_any(false);
+    return debug_options;
+  }
 };
 
 TEST_F(CublasGemmPadForTensorCoresTest, OneDotRootComputation) {

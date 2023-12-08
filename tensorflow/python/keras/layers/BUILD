@@ -145,7 +145,7 @@ py_library(
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],

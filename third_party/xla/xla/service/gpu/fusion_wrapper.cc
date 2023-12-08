@@ -15,7 +15,6 @@ limitations under the License.
 #include "xla/service/gpu/fusion_wrapper.h"
 
 #include <functional>
-#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
@@ -61,6 +60,7 @@ StatusOr<bool> FusionWrapper::Run(
       case HloOpcode::kComplex:
       case HloOpcode::kConcatenate:
       case HloOpcode::kConvert:
+      case HloOpcode::kCopy:
       case HloOpcode::kCos:
       case HloOpcode::kDivide:
       case HloOpcode::kDot:
@@ -87,6 +87,7 @@ StatusOr<bool> FusionWrapper::Run(
       case HloOpcode::kPower:
       case HloOpcode::kReal:
       case HloOpcode::kReshape:
+      case HloOpcode::kReduce:
       case HloOpcode::kReducePrecision:
       case HloOpcode::kReduceWindow:
       case HloOpcode::kRemainder:
@@ -94,6 +95,7 @@ StatusOr<bool> FusionWrapper::Run(
       case HloOpcode::kRoundNearestAfz:
       case HloOpcode::kRoundNearestEven:
       case HloOpcode::kRsqrt:
+      case HloOpcode::kScatter:
       case HloOpcode::kSelect:
       case HloOpcode::kShiftLeft:
       case HloOpcode::kShiftRightLogical:
@@ -107,9 +109,7 @@ StatusOr<bool> FusionWrapper::Run(
       case HloOpcode::kTan:
       case HloOpcode::kTanh:
       case HloOpcode::kTranspose:
-      case HloOpcode::kXor:
-      case HloOpcode::kCopy:
-      case HloOpcode::kReduce: {
+      case HloOpcode::kXor: {
         auto* computation = instruction->parent();
         auto* fusion_instruction =
             computation->AddInstruction(HloInstruction::CreateFusion(

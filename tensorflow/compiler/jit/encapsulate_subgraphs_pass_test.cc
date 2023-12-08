@@ -735,7 +735,7 @@ TEST(EncapsulateSubgraphsTest, InputDeduplication) {
   Graph graph_before_encapsulation(OpRegistry::Global());
   TF_ASSERT_OK(root.ToGraph(&graph_before_encapsulation));
 
-  FunctionLibraryDefinition library(OpRegistry::Global(), {});
+  FunctionLibraryDefinition library(OpRegistry::Global(), FunctionDefLibrary());
   std::unique_ptr<Graph> graph;
   TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
       "_cluster", graph_before_encapsulation,
@@ -787,7 +787,7 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Simple) {
   TF_ASSERT_OK(root.ToGraph(&graph_before));
 
   std::unique_ptr<Graph> graph_after;
-  FunctionLibraryDefinition library(OpRegistry::Global(), {});
+  FunctionLibraryDefinition library(OpRegistry::Global(), FunctionDefLibrary());
   int guaranteed_consts = 0;
   TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
       "_encapsulate", graph_before,
@@ -832,7 +832,7 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Add) {
   TF_ASSERT_OK(root.ToGraph(&graph_before));
 
   std::unique_ptr<Graph> graph_after;
-  FunctionLibraryDefinition library(OpRegistry::Global(), {});
+  FunctionLibraryDefinition library(OpRegistry::Global(), FunctionDefLibrary());
   int guaranteed_consts = 0;
   TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
       "_encapsulate", graph_before,

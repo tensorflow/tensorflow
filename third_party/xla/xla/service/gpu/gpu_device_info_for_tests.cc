@@ -53,7 +53,7 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI210DeviceInfo() {
   b.set_shared_memory_per_core(64 * 1024);
   b.set_threads_per_core_limit(2048);
   b.set_core_count(104);
-  b.set_fpus_per_core(0);
+  b.set_fpus_per_core(128);
   b.set_block_dim_limit_x(2'147'483'647);
   b.set_block_dim_limit_y(2'147'483'647);
   b.set_block_dim_limit_z(2'147'483'647);

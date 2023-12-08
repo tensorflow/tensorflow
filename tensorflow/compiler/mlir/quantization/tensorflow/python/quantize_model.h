@@ -39,10 +39,6 @@ inline constexpr absl::string_view kTfQuantPtqDynamicRangeStepName =
     "tf_quant_ptq_dynamic_range";
 inline constexpr absl::string_view kTfQuantWeightOnlyStepName =
     "tf_quant_weight_only";
-inline constexpr absl::string_view kTfQuantConstantUnfreezingStepName =
-    "tf_quant_constant_unfreezing";
-inline constexpr absl::string_view kTfQuantInsertRestoreOpStepName =
-    "tf_quant_insert_restore_op";
 
 // StableHLO Quantization passes that are ran if StableHLO opset is selected.
 inline constexpr absl::string_view kTfQuantPtqPreCalibrationStepStableHloName =

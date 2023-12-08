@@ -18,7 +18,9 @@ import random
 import numpy as np
 
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
@@ -223,6 +225,57 @@ class RepresentativeDatasetTest(test.TestCase):
         )
 
     self.assertIsNone(repr_dataset.get_num_samples(LenRaisingError()))
+
+  @test_util.deprecated_graph_mode_only
+  def test_create_feed_dict_from_input_data(self):
+    signature_def = meta_graph_pb2.SignatureDef(
+        inputs={'input_tensor': meta_graph_pb2.TensorInfo(name='input:0')}
+    )
+    rng = np.random.default_rng(seed=14)
+
+    input_tensor_value = rng.random(size=(2, 2))
+    sample = {'input_tensor': input_tensor_value}
+
+    feed_dict = repr_dataset.create_feed_dict_from_input_data(
+        sample, signature_def
+    )
+
+    self.assertLen(feed_dict, 1)
+    self.assertIn('input:0', feed_dict)
+    self.assertAllEqual(feed_dict['input:0'], input_tensor_value)
+
+  @test_util.deprecated_graph_mode_only
+  def test_create_feed_dict_from_input_data_core_tensors(self):
+    signature_def = meta_graph_pb2.SignatureDef(
+        inputs={'input_tensor': meta_graph_pb2.TensorInfo(name='input:0')}
+    )
+
+    with self.session():
+      input_tensor = constant_op.constant([1, 2, 3, 4, 5, 6])
+      sample = {'input_tensor': input_tensor}
+
+      feed_dict = repr_dataset.create_feed_dict_from_input_data(
+          sample, signature_def
+      )
+      input_tensor_data = input_tensor.eval()
+
+    self.assertLen(feed_dict, 1)
+    self.assertIn('input:0', feed_dict)
+    self.assertIsInstance(feed_dict['input:0'], np.ndarray)
+    self.assertAllEqual(feed_dict['input:0'], input_tensor_data)
+
+  @test_util.deprecated_graph_mode_only
+  def test_create_feed_dict_from_input_data_empty(self):
+    signature_def = meta_graph_pb2.SignatureDef(
+        inputs={'input_tensor': meta_graph_pb2.TensorInfo(name='input:0')}
+    )
+
+    sample = {}
+    feed_dict = repr_dataset.create_feed_dict_from_input_data(
+        sample, signature_def
+    )
+
+    self.assertEmpty(feed_dict)
 
 
 class RepresentativeDatasetSaverTest(test.TestCase):

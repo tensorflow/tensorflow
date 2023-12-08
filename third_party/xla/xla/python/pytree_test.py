@@ -87,6 +87,11 @@ class PyTreeTest(absltest.TestCase):
     self.roundtrip_node_data(ExampleType(field0=o, field1=o))
     self.roundtrip_node_data(ExampleType2(field0=o, field1=o))
 
+  def testCompose(self):
+    x = registry.flatten(0)[1]
+    y = registry.flatten((0, 0))[1]
+    self.assertEqual((x.compose(y)).num_leaves, 2)
+
 
 if __name__ == "__main__":
   absltest.main()

@@ -31,20 +31,22 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "xla/stream_executor/allocator_stats.h"
+#include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_options.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/kernel_cache_config.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/port.h"
-#include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/trace_listener.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
@@ -76,7 +78,7 @@ class EventInterface {
 // KernelInterface
 //===----------------------------------------------------------------------===//
 
-// Pointer-to-implementation object type (i.e. the KernelBase class delegates to
+// Pointer-to-implementation object type (i.e. the Kernel class delegates to
 // this interface) with virtual destruction. This class exists for the
 // platform-dependent code to hang any kernel data/resource info/functionality
 // off of.
@@ -96,6 +98,13 @@ class KernelInterface {
 
   // Gets the preferred cache configuration.
   virtual KernelCacheConfig GetPreferredCacheConfig() const = 0;
+
+  // Returns the maximum number of blocks (per multiprocessor) occupied by the
+  // kernel given the number of threads per block and shared memory size.
+  virtual tsl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
+      ThreadDim threads, size_t dynamic_shared_memory_bytes) const {
+    return absl::UnimplementedError("Not Implemented");
+  }
 
  private:
   KernelInterface(const KernelInterface&) = delete;
@@ -129,13 +138,75 @@ class CommandBufferInterface {
 
   // Adds a kernel launch command to the command buffer.
   virtual tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
-                             const KernelBase& kernel,
-                             const KernelArgsArrayBase& args) = 0;
+                             const Kernel& kernel, const KernelArgs& args) = 0;
+
+  // Adds a nested command buffer to the command buffer.
+  virtual tsl::Status AddNestedCommandBuffer(const CommandBuffer& nested) = 0;
 
   // Adds a device-to-device memory copy to the command buffer.
   virtual tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                            const DeviceMemoryBase& src,
                                            uint64_t size) = 0;
+
+  // Adds a memset node to the command buffer.
+  virtual tsl::Status Memset(DeviceMemoryBase* dst,
+                             CommandBuffer::BitPattern bit_pattern,
+                             size_t num_elements) = 0;
+
+  // Adds a device memory allocation node to the command buffer.
+  virtual tsl::StatusOr<DeviceMemoryBase> Allocate(size_t bytes) = 0;
+
+  // For all conditional command APIs defined below, nested command buffers
+  // constructed for conditional branches owned by *this and should never be
+  // finalized or updated inside builders.
+
+  // Adds a conditional operation that will run a command buffer constructed by
+  // `then_builder` if `predicate` value is `true`.
+  virtual tsl::Status If(StreamExecutor* executor, DeviceMemory<bool> predicate,
+                         CommandBuffer::Builder then_builder) = 0;
+
+  // Adds a conditional operation that will run a command buffer constructed by
+  // `then_builder` if `predicate` value is `true`, or a command buffer
+  // constructed by `else_builder` if `predicate` is `false`.
+  virtual tsl::Status IfElse(StreamExecutor* executor,
+                             DeviceMemory<bool> predicate,
+                             CommandBuffer::Builder then_builder,
+                             CommandBuffer::Builder else_builder) = 0;
+
+  // Adds a conditional operation that will run a command buffer constructed by
+  // the `branches` builder at `index`. If `index` is out of range, then it will
+  // run a conditional command buffer constructed by the last builder.
+  //
+  // See: https://github.com/openxla/stablehlo/blob/main/docs/spec.md#case
+  virtual tsl::Status Case(StreamExecutor* executor,
+                           DeviceMemory<int32_t> index,
+                           std::vector<CommandBuffer::Builder> branches) = 0;
+
+  // Adds a conditional operation that will run a command buffer constructed by
+  // the `body_builder` exactly `num_iteration` times.
+  virtual tsl::Status For(StreamExecutor* executor, int32_t num_iteration,
+                          DeviceMemory<int32_t> loop_index,
+                          CommandBuffer::Builder body_builder) = 0;
+
+  // Adds a conditional operation that will execute a command buffer constructed
+  // by the `cond_builder` that must update `pred` value, and then depending on
+  // the value might execute command buffer constructed by `body_builder` and
+  // `cond_builder`. Will continue while `pred` value is `true`.
+  //
+  // In pseudocode:
+  //
+  //   cond_builder()
+  //   while(pred):
+  //     body_builder()
+  //     cond_builder()
+  //
+  virtual tsl::Status While(StreamExecutor* executor, DeviceMemory<bool> pred,
+                            CommandBuffer::Builder cond_builder,
+                            CommandBuffer::Builder body_builder) = 0;
+
+  // Adds a device memory free command to the command buffer, buffer is
+  // allocated in other command buffer, free through real address.
+  virtual tsl::Status Free(DeviceMemoryBase dst) = 0;
 
   // Finalizes command buffer and makes it executable. Once command buffer is
   // finalized no commands can be added to it.
@@ -186,13 +257,11 @@ class StreamInterface {
     return StreamPriority::Default;
   }
 
-  // Returns the GPU stream associated with this platform's stream
-  // implementation, or nullptr otherwise.
-  virtual void* GpuStreamHack() { return nullptr; }
-
-  // Returns a pointer to a GPU stream associated with this platform's stream,
-  // or a nullptr.
-  virtual void** GpuStreamMemberHack() { return nullptr; }
+  // Returns a pointer to a platform specific stream associated with this object
+  // if it exists, or nullptr otherwise. This is available via Stream public API
+  // as Stream::PlatformSpecificHandle, and should not be accessed directly
+  // outside of a StreamExecutor package.
+  virtual void* platform_specific_stream() { return nullptr; }
 
  private:
   StreamInterface(const StreamInterface&) = delete;
@@ -230,8 +299,10 @@ class StreamExecutorInterface {
     return std::nullopt;
   }
 
+  virtual int device_ordinal() const { return -1; }
+
   virtual tsl::Status GetKernel(const MultiKernelLoaderSpec& spec,
-                                KernelBase* kernel) {
+                                Kernel* kernel) {
     return absl::UnimplementedError("Not Implemented");
   }
   virtual bool UnloadModule(ModuleHandle module_handle) { return false; }
@@ -240,12 +311,19 @@ class StreamExecutorInterface {
     return absl::UnimplementedError("Not Implemented");
   }
   virtual tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
-  CreateOrShareConstant(Stream* stream, const std::vector<uint8_t>& content) {
+  CreateOrShareConstant(Stream* stream, absl::Span<const uint8_t> content) {
     return absl::UnimplementedError("Not Implemented");
   }
   virtual tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
-                             const BlockDim& block_dims, const KernelBase& k,
-                             const KernelArgsArrayBase& args) {
+                             const BlockDim& block_dims, const Kernel& k,
+                             const KernelArgs& args) {
+    return absl::UnimplementedError("Not Implemented");
+  }
+
+  virtual tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
+                             const BlockDim& block_dims,
+                             const ClusterDim& cluster_dims, const Kernel& k,
+                             const KernelArgs& args) {
     return absl::UnimplementedError("Not Implemented");
   }
 
@@ -255,13 +333,11 @@ class StreamExecutorInterface {
   }
 
   // Releases any state associated with the kernel.
-  virtual void UnloadKernel(const KernelBase* kernel) {}
+  virtual void UnloadKernel(const Kernel* kernel) {}
   virtual DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) = 0;
   DeviceMemoryBase Allocate(uint64_t size) {
     return Allocate(size, /*memory_space=*/0);
   }
-  virtual void* GetSubBuffer(DeviceMemoryBase* parent, uint64_t offset,
-                             uint64_t size) = 0;
   virtual void Deallocate(DeviceMemoryBase* mem) = 0;
   // Allocates unified memory space of the given size, if supported.
   // See
@@ -398,14 +474,11 @@ class StreamExecutorInterface {
     return absl::UnimplementedError("Command buffers are not implemented");
   }
 
-  // Returns the CUDA or ROCm context associated with this StreamExecutor
-  // platform implementation.
-  //
-  // WARNING: checks that the underlying platform is, in fact, CUDA or ROCm,
-  // causing a fatal error if it is not. This hack is made available solely for
-  // use from distbelief code, which temporarily has strong ties to CUDA or ROCm
-  // as a platform.
-  virtual void* GpuContextHack() { return nullptr; }
+  // Returns a pointer to a platform specific context associated with this
+  // object if it exists, or nullptr otherwise. This is available via
+  // StreamExecutor public API as StreamExecuto::PlatformSpecificHandle, and
+  // should not be accessed directly outside of a StreamExecutor package.
+  virtual void* platform_specific_context() { return nullptr; }
 
   // Return allocator statistics.
   virtual std::optional<AllocatorStats> GetAllocatorStats() {

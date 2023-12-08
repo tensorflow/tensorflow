@@ -228,7 +228,8 @@ func.func @ag_start(%arg : memref<10x10xf32>, %out: memref<20x10xf32>) {
     {
       replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
       all_gather_dimension = 0,
-      is_sync = false
+      is_sync = false,
+      no_parallel_custom_call = false
     }
     : (memref<10x10xf32>, memref<20x10xf32>) -> (!mhlo.token)
   func.return
@@ -241,7 +242,8 @@ func.func @ag_start_mixed(%arg0 : memref<10x10xf32>, %arg1 : memref<10x10xf16>,
     {
       replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
       all_gather_dimension = 0,
-      is_sync = true
+      is_sync = true,
+      no_parallel_custom_call = true
     }
     : (memref<10x10xf32>, memref<10x10xf16>, memref<20x10xf32>, memref<20x10xf16>) -> (!mhlo.token)
   func.return
