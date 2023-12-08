@@ -4457,6 +4457,7 @@ test_suite(
         # copybara:uncomment # "//third_party/py/jax/experimental/jax2tf/tests:primitives_test_gpu",
         # copybara:uncomment "//third_party/py/jax/tests:pmap_test_gpu",
         # copybara:uncomment "//tensorflow/compiler/tests:fft_test_gpu",
+        "//xla/pjrt/gpu:se_gpu_pjrt_client_test",
         "//xla/python:xla_client_test_gpu",
         # copybara:uncomment "//xla/service/gpu/kernels:cutlass_gemm_fusion_test_gpu",
         "//xla/service/gpu/tests:add_preds.hlo.test",
