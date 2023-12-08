@@ -57,7 +57,7 @@ tflite::PointerAlignedPointerPair AlignedRealloc(
     const tflite::PointerAlignedPointerPair& old_buffer, size_t old_size,
     size_t new_size, size_t alignment);
 
-#if defined(__WIN32)
+#if defined(_WIN32)
 // On Windows <cstdlib> provides _aligned_malloc, _aligned_free, and
 // _aligned_realloc, use them to implement the Aligned functions.
 
