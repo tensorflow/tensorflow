@@ -89,3 +89,13 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
     ],
 )
+
+cc_library(
+    name = "export",
+    srcs = [],
+    hdrs = ["export.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)

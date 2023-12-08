@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/export.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/status_macro.h"
@@ -80,28 +81,8 @@ using ::mlir::quant::kTfQuantSaveOpName;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
-
-// Suffix string for the module export step. Used for debugging.
-constexpr absl::string_view kExportStepSuffix = "_export";
-
-// Options when running passes for exporting an MLIR ModuleOp.
-struct ExportOptions {
-  // If set to `true`, it runs `DuplicateShapeDeterminingConstantsPass` before
-  // lowering to tf_executor dialect.
-  bool duplicate_shape_determining_constants = true;
-
-  // If set to `true`, unfreezes constants into variables and saves them to a
-  // checkpoint file. Setting this to `true` is an experimental feature that has
-  // no stability guarantees.
-  bool unfreeze_constants = false;
-
-  // Path to the directory where checkpoint files are saved.
-  std::string checkpoint_dir = "";
-
-  // Name used to identify the ModuleOp this is exporting. Only used for
-  // debugging and does not modify the behavior of the export.
-  std::string debug_name = "tf_quant";
-};
+using ::stablehlo::quantization::ExportOptions;
+using ::stablehlo::quantization::kExportStepSuffix;
 
 // Add passes for transforming the MLIR module op so that it can be exported
 // back to GraphDef. Roughly, this consists of:
@@ -337,7 +318,6 @@ absl::StatusOr<std::string> GetLocalTempFilename() {
 
   return tmp_fname;
 }
-
 
 // Sets up and runs the passes for exporting `module_op`. The behavior of the
 // exporting passes is controlled by `export_opts`. Returns `AssetFileDef`s that
