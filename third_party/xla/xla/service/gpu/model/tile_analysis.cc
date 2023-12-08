@@ -141,11 +141,6 @@ StatusOr<HloInstructionIndexing> ComputeInputToOutputBroadcastOpIndexing(
   return HloInstructionIndexing::FromIndexingMaps({indexing_map});
 }
 
-StatusOr<HloInstructionIndexing> ComputeOutputToInputConstantOpIndexing(
-    const HloConstantInstruction* constant, MLIRContext* mlir_context) {
-  return HloInstructionIndexing{};
-}
-
 // Composes affine maps, i.e. consumer_map ∘ producer_map.
 IndexingMap ComposeIndexingMaps(const IndexingMap& producer_map,
                                 const IndexingMap& consumer_map) {
@@ -1077,41 +1072,42 @@ Status FuseProducerConsumerOutputToInputIndexing(
 }
 
 StatusOr<HloInstructionIndexing> ComputeOutputToInputIndexing(
-    const HloInstruction* instr, int output_id, MLIRContext* mlir_context) {
+    const HloInstruction* instr, int output_id, MLIRContext* ctx) {
   if (HloInstruction::IsOpElementwise(instr->opcode())) {
-    return ComputeOutputToInputCwiseOpIndexing(instr, mlir_context);
+    return ComputeOutputToInputCwiseOpIndexing(instr, ctx);
   }
   if (instr->opcode() == HloOpcode::kBitcast) {
-    return ComputeOutputToInputBitcastOpIndexing(instr, mlir_context);
+    return ComputeOutputToInputBitcastOpIndexing(instr, ctx);
   }
   if (auto broadcast = DynCast<HloBroadcastInstruction>(instr)) {
-    return ComputeOutputToInputBroadcastOpIndexing(broadcast, mlir_context);
+    return ComputeOutputToInputBroadcastOpIndexing(broadcast, ctx);
   }
   if (auto constant = DynCast<HloConstantInstruction>(instr)) {
-    return ComputeOutputToInputConstantOpIndexing(constant, mlir_context);
+    return HloInstructionIndexing{};
   }
   if (auto dot = DynCast<HloDotInstruction>(instr)) {
-    return ComputeOutputToInputDotOpIndexing(dot, mlir_context);
+    return ComputeOutputToInputDotOpIndexing(dot, ctx);
   }
   if (auto fusion = DynCast<HloFusionInstruction>(instr)) {
-    return ComputeOutputToInputFusionOpIndexing(fusion, output_id,
-                                                mlir_context);
+    return ComputeOutputToInputFusionOpIndexing(fusion, output_id, ctx);
+  }
+  if (auto iota = DynCast<HloIotaInstruction>(instr)) {
+    return HloInstructionIndexing{};
   }
   if (auto reduce = DynCast<HloReduceInstruction>(instr)) {
-    return ComputeOutputToInputReduceOpIndexing(reduce, output_id,
-                                                mlir_context);
+    return ComputeOutputToInputReduceOpIndexing(reduce, output_id, ctx);
   }
   if (auto reshape = DynCast<HloReshapeInstruction>(instr)) {
-    return ComputeOutputToInputReshapeOpIndexing(reshape, mlir_context);
+    return ComputeOutputToInputReshapeOpIndexing(reshape, ctx);
   }
   if (auto reverse = DynCast<HloReverseInstruction>(instr)) {
-    return ComputeReverseOpIndexing(reverse, mlir_context);
+    return ComputeReverseOpIndexing(reverse, ctx);
   }
   if (auto slice = DynCast<HloSliceInstruction>(instr)) {
-    return ComputeOutputToInputSliceOpIndexing(slice, mlir_context);
+    return ComputeOutputToInputSliceOpIndexing(slice, ctx);
   }
   if (auto transpose = DynCast<HloTransposeInstruction>(instr)) {
-    return ComputeOutputToInputTransposeOpIndexing(transpose, mlir_context);
+    return ComputeOutputToInputTransposeOpIndexing(transpose, ctx);
   }
   return InvalidArgument("Unsupported instruction type");
 }

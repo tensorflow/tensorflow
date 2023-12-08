@@ -635,6 +635,18 @@ TEST_F(TileAnalysisTest, FusionOpWithSliceOfSlice) {
                       std::vector<int>{})))));
 }
 
+TEST_F(TileAnalysisTest, IotaOp) {
+  auto ir = R"(
+    HloModule m
+    ENTRY e {
+      ROOT iota = s32[5,5,111,42] iota(), iota_dimension=0
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetOutputToInputIndexingForEntryComputation(ir));
+  EXPECT_THAT(input_indexing.indexing_maps, IsEmpty());
+}
+
 TEST_F(TileAnalysisTest, ReshapeOpCollapseShape) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
                           GetOutputToInputIndexingForEntryComputation(R"(
