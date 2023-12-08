@@ -207,17 +207,36 @@ cc_library(
 )
 
 cc_library(
-    name = "dialect_to_executor_passes",
+    name = "mlir_to_graph_passes",
     hdrs = [
-        "dialect_to_executor_passes.h",
+        "mlir_to_graph_passes.h",
     ],
     textual_hdrs = [
-        "dialect_to_executor_passes.h.inc",
+        "mlir_to_graph_passes.h.inc",
     ],
     deps = [
         ":verify_input_dialect_to_executor_pass",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
+    ],
+)
+
+gentbl_cc_library(
+    name = "mlir_to_graph_passes_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=TFXLABridgeMlirToGraph",
+            ],
+            "mlir_to_graph_passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "mlir_to_graph_passes.td",
+    deps = [
+        "@llvm-project//mlir:PassBaseTdFiles",
     ],
 )
 
@@ -227,37 +246,11 @@ cc_library(
         "verify_input_dialect_to_executor_pass.cc",
     ],
     deps = [
-        ":dialect_to_executor_passes_inc_gen",
-        "//tensorflow/compiler/mlir/tensorflow",
+        ":mlir_to_graph_passes_inc_gen",
         "//tensorflow/compiler/mlir/tf2xla/internal/utils:dialect_detection_utils",
-        "//tensorflow/core:framework",
-        "//tensorflow/core/transforms/toposort:Pass",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-    ],
-)
-
-gentbl_cc_library(
-    name = "dialect_to_executor_passes_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=TFXLABridgeDialectToExecutor",
-            ],
-            "dialect_to_executor_passes.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "dialect_to_executor_passes.td",
-    deps = [
-        "@llvm-project//mlir:PassBaseTdFiles",
     ],
 )
 
