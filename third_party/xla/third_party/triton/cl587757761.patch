@@ -1,0 +1,33 @@
+diff --git a/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp b/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
+This will become obsolete when this PR is merged: https://github.com/openai/triton/pull/2767
+--- a/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
+@@ -524,6 +524,18 @@ public:
+       : ConvertTritonGPUOpToLLVMPattern<SourceOp>(typeConverter, benefit),
+         axisAnalysisPass(axisAnalysisPass) {}
+ 
++  // True if elements allocated to a thread are contiguous within the axis. This
++  // is not the case in MMA-like encodings wherea thread might have elements
++  // (0,0),(0,1) and (8,0),(8,1) for example. The problem with this is that the
++  // deduplication mechanism assumes that for example constancy=4 and
++  // elements/thread=4 that if a thread has all elements constant.
++  bool contiguouslyMapped(Attribute encoding) const {
++    if (auto slice = encoding.dyn_cast<triton::gpu::SliceEncodingAttr>()) {
++      return contiguouslyMapped(slice.getParent());
++    }
++    return encoding.isa<triton::gpu::BlockedEncodingAttr>();
++  }
++
+   // Try to deduplicate the resultVals based on the
+   // constancy properties of the result discovered by
+   // the axis analysis pass. If possible, redundant
+@@ -549,8 +561,7 @@ public:
+     if (!encoding)
+       // encoding not available
+       return resultVals;
+-    if (!encoding.dyn_cast<triton::gpu::BlockedEncodingAttr>() &&
+-        !encoding.dyn_cast<triton::gpu::SliceEncodingAttr>()) {
++    if (!contiguouslyMapped(encoding)) {
+       // TODO: constraining the ecndoing type here is necessary
+       // for avoiding crashes in the triton::gpu::getElemsPerThread
+       // call below happening in the test_core::test_fp8_dot_acc
