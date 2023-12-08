@@ -16,10 +16,54 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_KERNELS_CUTLASS_GEMM_H_
 #define XLA_SERVICE_GPU_KERNELS_CUTLASS_GEMM_H_
 
+//===-------------------------------------------------------------------------//
+//                 ! ! ! ! !      WARNING      ! ! ! ! !                      //
+//===-------------------------------------------------------------------------//
+//                                                                            //
+//   Do not add external dependencies to this header. Use only std library.   //
+//                                                                            //
+//===-------------------------------------------------------------------------//
+//                 ! ! ! ! !      WARNING      ! ! ! ! !                      //
+//===-------------------------------------------------------------------------//
+
 #include <cstdint>
 #include <optional>
 
 namespace xla::gpu::kernel::gemm_universal {
+
+//===----------------------------------------------------------------------===//
+// Tag based GEMM dispatching
+//===----------------------------------------------------------------------===//
+
+// We use tag-based template specializations to carefully avoid including
+// CUTLASS headers into regular libraries, and specialize templates in separate
+// CUDA build targets that have no dependencies on other parts of XLA or ABSL to
+// enable parallel compilation and minimize recompilations on code changes.
+//
+// Here we re-define some of the enums and types defined in CUTLASS and CUTE to
+// break a dependency on them from XLA.
+
+enum class Arch { kDefault, kSm80 };
+
+template <Arch arch>
+struct Bf16xBf16ToBf16 {};
+
+template <Arch arch>
+struct F32xF32ToF32 {};
+
+//===----------------------------------------------------------------------===//
+// CUTLASS gemm arguments
+//===----------------------------------------------------------------------===//
+
+struct Arguments {
+  int32_t m;
+  int32_t n;
+  int32_t k;
+
+  void* a;
+  void* b;
+  void* c;
+};
 
 // Indices of a custom fusion parameters corresponding to Gemm kernel arguments.
 //
@@ -87,6 +131,53 @@ struct DynamicSliceIndices {
 struct DynamicSliceParams {
   // Dynamic slice offset along the major dimension.
   std::optional<int32_t*> out;
+};
+
+//===----------------------------------------------------------------------===//
+// CUTLASS Host Side Adaptor
+//===----------------------------------------------------------------------===//
+
+template <typename Tag>
+struct Traits;
+
+struct Dim3 {
+  uint32_t x = 1;
+  uint32_t y = 1;
+  uint32_t z = 1;
+};
+
+// This is a type-erased adaptor that has all details required for launching
+// CUTLASS kernel on a device. At run time device kernel parameters is really
+// just a bag of bytes that driver sends to a kernel, so we rely on it to hide
+// CUTLASS templates inside individual build targets and don't leak them into
+// XLA, as they contain device code and can't be parsed by regular clang.
+//
+// TODO(ezhulenev): For simplicity adaptor has all functions defined as static,
+// however we should support adaptors for loading kernels from disk, and all
+// functions should become member functions. Figure out how to do it!
+template <typename Tag>
+struct Adaptor {
+  static int32_t shared_memory_bytes();
+
+  static std::optional<Dim3> ClusterDim();
+  static Dim3 BlockDim(int32_t m, int32_t n, int32_t k);
+  static Dim3 ThreadDim();
+
+  static bool CanImplement(const Arguments& args);
+  static void Initialize(void* params, const Arguments& args,
+                         int32_t device_sms, int32_t sm_occupancy);
+};
+
+//===----------------------------------------------------------------------===//
+// CUTLASS Device Side Adaptor
+//===----------------------------------------------------------------------===//
+
+// We keep device side adaptor separate from host side adaptor so that we could
+// easily split host and device code compilation if needed.
+
+template <typename Tag>
+struct DeviceKernel {
+  static void* symbol();
 };
 
 }  // namespace xla::gpu::kernel::gemm_universal
