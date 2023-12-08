@@ -606,7 +606,7 @@ Status HloCostAnalysis::HandleBitcast(const HloInstruction*) {
 Status HloCostAnalysis::HandleBroadcast(const HloInstruction* broadcast) {
   if (options_.count_multiple_input_accesses) {
     current_properties_.set_operand_bytes_accessed(
-        0, ShapeUtil::ElementsIn(broadcast->shape()));
+        0, GetShapeSize(broadcast->shape()));
     current_properties_.set_operand_utilization(
         0, 1.0 * ShapeUtil::ElementsIn(broadcast->shape()) /
                ShapeUtil::ElementsIn(broadcast->operand(0)->shape()));
