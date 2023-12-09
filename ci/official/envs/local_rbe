@@ -1,3 +1,0 @@
-# Use RBE and Resultstore. If using Docker, requires passthrough of gcloud credentials.
-TFCI_DOCKER_ARGS="$TFCI_DOCKER_ARGS -v $HOME/.config/gcloud:/root/.config/gcloud"
-TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config rbe"
