@@ -1,7 +1,18 @@
-# Note: this gets sourced in utilities/setup.sh
+# Note: this file gets sourced in utilities/setup.sh, which has "set -u"
+# (error on undefined variables). This ensures that (a) every TFCI variable
+# has an explicit default value, and (b) no script can accidentally use a
+# variable that doesn't exist. Please keep this list in alphabetical order.
+#
+# Find usage in scripts with e.g.:
+#   cd ci/official
+#   ls *.sh utilities/*.sh | xargs grep -H --color=always TFCI_ARG_HERE
+# You may also get an overview, e.g.:
+#   cd ci/official
+#   grep -o '^TFCI\w*' envs/ci_default | xargs -n 1 -I{} bash -c "echo; echo {}; grep -R -H --exclude-dir=envs --color=always '{}'"
+
 TFCI_BAZEL_BAZELRC_ARGS=
 TFCI_BAZEL_COMMON_ARGS=
-TFCI_BAZEL_CONFIG_PREFIX=
+TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=
 TFCI_BUILD_PIP_PACKAGE_ARGS=
 TFCI_DOCKER_ARGS=
 TFCI_DOCKER_ENABLE=1
@@ -12,6 +23,12 @@ TFCI_DOCKER_REBUILD_ENABLE=0
 TFCI_DOCKER_REBUILD_UPLOAD_ENABLE=0
 TFCI_INDEX_HTML_ENABLE=1
 TFCI_LIB_SUFFIX=
+TFCI_MACOS_BAZEL_TEST_DIR_ENABLE=
+TFCI_MACOS_BAZEL_TEST_DIR_PATH=
+TFCI_MACOS_INSTALL_BAZELISK_ENABLE=
+TFCI_MACOS_INSTALL_BAZELISK_URL=
+TFCI_MACOS_PYENV_INSTALL_ENABLE=
+TFCI_MACOS_UPGRADE_PYENV_ENABLE=
 TFCI_NIGHTLY_UPDATE_VERSION_ENABLE=
 TFCI_NVIDIA_SMI_ENABLE=
 TFCI_OUTPUT_DIR=build_output
@@ -30,9 +47,3 @@ TFCI_WHL_AUDIT_PLAT=
 TFCI_WHL_BAZEL_TEST_ENABLE=1
 TFCI_WHL_SIZE_LIMIT=
 TFCI_WHL_SIZE_LIMIT_ENABLE=1
-TFCI_MACOS_UPGRADE_PYENV_ENABLE=
-TFCI_MACOS_INSTALL_BAZELISK_ENABLE=
-TFCI_MACOS_INSTALL_BAZELISK_URL=
-TFCI_MACOS_PYENV_INSTALL_ENABLE=
-TFCI_MACOS_BAZEL_TEST_DIR_ENABLE=
-TFCI_MACOS_BAZEL_TEST_DIR_PATH=

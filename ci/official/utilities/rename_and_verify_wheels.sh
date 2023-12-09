@@ -23,9 +23,15 @@ set -euxo pipefail
 
 cd "$TFCI_OUTPUT_DIR"
 
+# Move extra wheel files somewhere out of the way. This script
+# expects just one wheel file to exist.
 if [[ "$(ls *.whl | wc -l | tr -d ' ')" != "1" ]]; then
-  echo "Error: $TFCI_OUTPUT_DIR should contain exactly one .whl file."
-  exit 1
+  echo "More than one wheel file is present: moving the oldest to"
+  echo "$TFCI_OUTPUT_DIR/extra_wheels."
+  # List all .whl files by their modification time (ls -t) and move anything
+  # other than the most recently-modified one (the newest one).
+  mkdir -p $TFCI_OUTPUT_DIR/extra_wheels
+  ls -t *.whl | tail -n +2 | xargs mv -t $TFCI_OUTPUT_DIR/extra_wheels
 fi
 
 # Repair wheels with auditwheel and delete the old one.
