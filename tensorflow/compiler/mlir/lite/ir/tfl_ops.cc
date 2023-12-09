@@ -2121,6 +2121,33 @@ void PackOp::getCanonicalizationPatterns(RewritePatternSet& results,
 }
 
 //===----------------------------------------------------------------------===//
+// QuantizeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult QuantizeOp::verify() {
+  const auto type = quant::QuantizedType::getQuantizedElementType(getQtype());
+  if (!type) {
+    return success();
+  }
+  constexpr double threshold{1e+10};
+  if (auto q_type = type.dyn_cast<quant::UniformQuantizedType>()) {
+    const double scale = q_type.getScale();
+    if (scale > threshold) {
+      return emitOpError() << "Quant scale (" << scale << ") too large";
+    }
+  } else if (auto q_type =
+                 type.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
+    const auto scales = q_type.getScales();
+    for (const double scale : scales) {
+      if (scale > threshold) {
+        return emitOpError() << "Quant scale (" << scale << ") too large";
+      }
+    }
+    return success();
+  }
+}
+
+//===----------------------------------------------------------------------===//
 // SliceOp
 //===----------------------------------------------------------------------===//
 
