@@ -16,12 +16,6 @@ from typing import Any
 
 class PyFunctionLibrary:
 
-  # LINT.IfChange(assign_ids_to_custom_aggregator_ops)
-  def assign_ids_to_custom_aggregator_ops(
-      self, exported_model_serialized: bytes
-  ) -> bytes: ...
-  # LINT.ThenChange()
-
   # LINT.IfChange(save_exported_model)
   def save_exported_model(
       self,

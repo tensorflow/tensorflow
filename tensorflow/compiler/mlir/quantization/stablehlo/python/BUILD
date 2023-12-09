@@ -88,6 +88,7 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:debugger",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:io",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:assign_ids",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:statistics",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",

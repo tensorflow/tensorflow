@@ -15,7 +15,6 @@
 """Defines a wrapper class for overridden python method definitions."""
 from collections.abc import Callable, Collection, Mapping, Sequence
 from typing import Optional
-import uuid
 
 from absl import logging
 
@@ -532,33 +531,6 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
   This class contains python methods that overrides C++ virtual functions
   declared in `pywrap_function_lib.PyFunctionLibrary`.
   """
-
-  # LINT.IfChange(assign_ids_to_custom_aggregator_ops)
-  def assign_ids_to_custom_aggregator_ops(
-      self,
-      exported_model_serialized: bytes,
-  ) -> bytes:
-    # LINT.ThenChange(py_function_lib.h:assign_ids_to_custom_aggregator_ops)
-    """Assigns UUIDs to each CustomAggregator op find in the graph def.
-
-    Args:
-      exported_model_serialized: Serialized `ExportedModel` instance.
-
-    Returns:
-      Serialized `ExportedModel` whose CustomAggregator ops are assigned UUIDs
-      to their `id` attributes.
-    """
-    exported_model = exported_model_pb2.ExportedModel.FromString(
-        exported_model_serialized
-    )
-
-    graph_def = exported_model.graph_def
-    for function_def in graph_def.library.function:
-      for node_def in function_def.node_def:
-        if node_def.op == 'CustomAggregator':
-          node_def.attr['id'].s = uuid.uuid4().hex.encode('ascii')
-
-    return exported_model.SerializeToString()
 
   # LINT.IfChange(save_exported_model)
   def save_exported_model(

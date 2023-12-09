@@ -36,7 +36,6 @@ cc_library(
     srcs = ["calibrator_singleton.cc"],
     hdrs = ["calibrator_singleton.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:private"],
     deps = [
         ":calibration_statistics_collector_average_min_max",
         ":calibration_statistics_collector_base",
