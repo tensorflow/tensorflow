@@ -2336,7 +2336,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase,
         self.evaluate(v)
 
 
-class ImageProjectiveTransformVX(test_util.TensorFlowTestCase):
+class ImageProjectiveTransform(test_util.TensorFlowTestCase):
 
   def _testShapeTooLarge(self, cdtype, V2=True):
     interpolation = "BILINEAR"
