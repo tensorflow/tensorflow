@@ -111,7 +111,16 @@ SplitAndCreateArraysFromHostBuffer(
     return absl::OkStatus();
   };
 
-  switch (input_tensor.dtype()) {
+  // XlaNDSplitter only support rank (0, 8] as there is no concept of split for
+  // rank 0 tensor.
+  if (input_tensor.shape().dims() == 0) {
+    if (split_tensors.size() != 1) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Rank 0 tensor only expects 1 slice but got ", split_tensors.size()));
+    }
+    split_tensors[0] = input_tensor;
+  } else {
+    switch (input_tensor.dtype()) {
 #define CASE(type)                                                             \
   case tensorflow::DataTypeToEnum<type>::value: {                              \
     TF_ASSIGN_OR_RETURN(auto splitter,                                         \
@@ -127,6 +136,7 @@ SplitAndCreateArraysFromHostBuffer(
 #undef CASE
     default:
       return absl::InvalidArgumentError("Unsupported data type");
+    }
   }
 
   if (split_tensors.size() * num_replicas != devices.size()) {

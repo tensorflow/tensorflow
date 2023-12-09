@@ -143,6 +143,16 @@ INSTANTIATE_TEST_SUITE_P(
         {
             // Full replication.
             {
+                .in_tensor = test::AsTensor<int32_t>({1}, TensorShape({})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1}, TensorShape({})),
+                        test::AsTensor<int32_t>({1}, TensorShape({})),
+                    },
+                .device_indices = {0, 1},
+                .sharding = Replicate(),
+            },
+            {
                 .in_tensor = test::AsTensor<int32_t>({1, 2, 3},
                                                      TensorShape({3, 1})),
                 .expected_out_tensors =
