@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
@@ -246,6 +247,7 @@ limitations under the License.
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
@@ -541,6 +543,13 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
                                       const CompileOptions& options,
                                       const TargetConfig& gpu_target_config) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
+
+  // LOG_LINES is used instead of LOG since the message can exceed the
+  // maximum line length, which results in the message being truncated.
+  XLA_LOG_LINES(
+      ::tsl::INFO,
+      absl::StrFormat("GpuCompilationEnvironment of hlo_module %s:\n%s",
+                      hlo_module->name(), debug_options.DebugString()));
 
   MaybeOwningThreadPool thread_pool = MaybeOwningThreadPool::GetOrCreate(
       /*parallelism=*/hlo_module->config()
