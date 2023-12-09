@@ -242,10 +242,10 @@ AutoShardingSolverResult CallORToolsSolver(
   MPVariable* overbudget_var = nullptr;
   MPVariable* makespan_var = nullptr;
 
-  size_t var_vector_cnt = 0;
+  size_t unique_nodes = 0;
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
     if (request.s_follow(node_idx) < 0) {
-      var_vector_cnt += 1;
+      unique_nodes += 1;
       // Creates variables for instructions that do not follow others.
       solver->MakeBoolVarArray(request.s_len(node_idx),
                                absl::StrCat("s[", node_idx, "]"), &s[node_idx]);
@@ -260,6 +260,7 @@ AutoShardingSolverResult CallORToolsSolver(
     }
   }
 
+  size_t unique_edges = 0;
   std::vector<EdgeIdx> e_follow(num_edges, -1);
   absl::flat_hash_map<std::pair<NodeIdx, NodeIdx>, EdgeIdx> edge_map;
   for (EdgeIdx edge_idx = 0; edge_idx < num_edges; ++edge_idx) {
@@ -273,6 +274,7 @@ AutoShardingSolverResult CallORToolsSolver(
       e_follow[edge_idx] = it->second;
       continue;
     }
+    unique_edges += 1;
     solver->MakeBoolVarArray(
         request.s_len(edge.first) * request.s_len(edge.second),
         absl::StrCat("e[", edge.first, ",", edge.second, "]"), &e[edge_idx]);
@@ -533,7 +535,8 @@ AutoShardingSolverResult CallORToolsSolver(
           << "Number of threads: " << solver->GetNumThreads() << "\n"
           << "Time limit: " << solver->time_limit() << "\n"
           << "Number variables for ILP: " << solver->NumVariables() << "\n"
-          << "Total vector of variables: " << var_vector_cnt << "\n"
+          << "Unique nodes: " << unique_nodes << "\n"
+          << "Unique edges: " << unique_edges << "\n"
           << "Total instructions: " << request.num_nodes() << "\n"
           << "Memory budget: " << request.memory_budget() / (1024 * 1024 * 1024)
           << "GB\n"
