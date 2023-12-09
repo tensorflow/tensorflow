@@ -135,13 +135,13 @@ def _abs_factory(x, name=None):
 def _tensor_equals_factory(self, other):
   from tensorflow.python.ops import math_ops
 
-  return math_ops.tensor_equals(self=self, other=other)
+  return math_ops.tensor_equals(self, other)
 
 
 def _tensor_not_equals_factory(self, other):
   from tensorflow.python.ops import math_ops
 
-  return math_ops.tensor_not_equals(self=self, other=other)
+  return math_ops.tensor_not_equals(self, other)
 
 
 def _promote_dtypes_decorator(fn):
