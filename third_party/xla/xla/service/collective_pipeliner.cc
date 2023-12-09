@@ -590,6 +590,15 @@ void UpdateInstructionChannelId(HloInstruction* cloned_instr,
     }
   }
   if (auto* channel_instr = DynCast<HloChannelInstruction>(cloned_instr)) {
+    if (channel_instr->opcode() == HloOpcode::kSendDone ||
+        channel_instr->opcode() == HloOpcode::kRecvDone) {
+      auto* operand = channel_instr->operand(0);
+      CHECK(operand->opcode() == HloOpcode::kSend ||
+            operand->opcode() == HloOpcode::kRecv);
+      channel_instr->set_channel_id(
+          Cast<HloChannelInstruction>(operand)->channel_id());
+      return;
+    }
     if (channel_instr->channel_id()) {
       channel_instr->set_channel_id(next_channel_id++);
     }
