@@ -32,6 +32,7 @@ cc_library(
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo:lhlo",
+        "//xla/service:buffer_assignment",
         "//xla/service:elemental_ir_emitter",
         "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu:ir_emission_utils",
@@ -40,6 +41,7 @@ cc_library(
         "//xla/service/gpu:thunk",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -87,14 +89,19 @@ cc_library(
         ":reduction",
         ":transpose",
         "//xla:shape_util",
+        "//xla:status",
+        "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo:lhlo",
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emission_utils",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

@@ -2183,9 +2183,13 @@ Status IrEmitterUnnested::EmitFusion(
     case HloFusionAnalysis::EmitterFusionKind::kLoop:
     case HloFusionAnalysis::EmitterFusionKind::kTranspose:
     case HloFusionAnalysis::EmitterFusionKind::kReduction: {
-      auto emitter = GetFusionEmitter(fusion_analysis, {}, nullptr);
-      // TODO(anlunx): Support MemcpyFusion and InPlaceDynamicUpdateSlice and
-      // remove this fallback.
+      TF_ASSIGN_OR_RETURN(
+          std::optional<std::unique_ptr<FusionInterface>> emitter,
+          GetFusionEmitter(
+              fusion_analysis,
+              HloFusionInfo(instr, &ir_emitter_context_->buffer_assignment())));
+      // TODO(anlunx): Support InPlaceDynamicUpdateSlice and remove this
+      // fallback.
       if (!emitter) {
         TF_RET_CHECK(op)
             << "Fusion should have been handled by GetFusionEmitter, fallback "
@@ -2268,9 +2272,11 @@ Status IrEmitterUnnested::EmitFusion(
     case HloFusionAnalysis::EmitterFusionKind::kLoop:
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
     case HloFusionAnalysis::EmitterFusionKind::kTranspose: {
-      std::optional<std::unique_ptr<FusionInterface>> emitter =
-          GetFusionEmitter(fusion_analysis, ir_emitter_context_->allocations(),
-                           fusion_op);
+      TF_ASSIGN_OR_RETURN(
+          std::optional<std::unique_ptr<FusionInterface>> emitter,
+          GetFusionEmitter(
+              fusion_analysis,
+              LmhloFusionInfo(fusion_op, ir_emitter_context_->allocations())));
       if (emitter == std::nullopt) {
         return FailedPrecondition(
             "Fusion should have been handled by GetFusionEmitter.");

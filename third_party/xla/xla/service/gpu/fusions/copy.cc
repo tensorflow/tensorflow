@@ -34,23 +34,24 @@ namespace xla {
 namespace gpu {
 
 StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
-    IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
+    IrEmitterContext& ir_emitter_context, ElementalIrEmitter&,
     mlir::lmhlo::FusionOp fusion_op, const HloFusionInstruction& fusion,
-    KernelReuseCache& kernel_cache, llvm::IRBuilder<>*) const {
+    KernelReuseCache&, llvm::IRBuilder<>*) const {
   FusionEmissionResult result;
-  for (auto [src, dst] : llvm::zip(srcs_, dsts_)) {
-    auto src_buffer =
-        *GetAllocationSlice(src, ir_emitter_context.allocations());
-    auto dst_buffer =
-        *GetAllocationSlice(dst, ir_emitter_context.allocations());
-    if (src_buffer != dst_buffer) {
+  for (int i = 0; i < src_buffers_.size(); ++i) {
+    if (src_buffers_[i] != dst_buffers_[i]) {
       result.thunks.emplace_back(std::make_unique<DeviceToDeviceCopyThunk>(
-          Thunk::ThunkInfo::WithProfileAnnotation(fusion_op),
-          /*source_buffer=*/src_buffer,
-          /*destination_buffer=*/dst_buffer,
-          /*mem_size=*/ShapeUtil::ByteSizeOf(GetShape(src)),
-          /*source_value=*/src,
-          /*destination_value=*/dst));
+          ir_emitter_context.emit_ir_from_hlo()
+              ? Thunk::ThunkInfo::WithProfileAnnotation(&fusion)
+              : Thunk::ThunkInfo::WithProfileAnnotation(fusion_op),
+          /*source_buffer=*/src_buffers_[i],
+          /*destination_buffer=*/dst_buffers_[i],
+          /*mem_size=*/src_buffers_[i].size(),
+          /*source_value=*/ir_emitter_context.emit_ir_from_hlo() ? nullptr
+                                                                 : srcs_[i],
+          /*destination_value=*/ir_emitter_context.emit_ir_from_hlo()
+              ? nullptr
+              : dsts_[i]));
     }
   }
   return result;
