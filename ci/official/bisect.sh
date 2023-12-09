@@ -34,8 +34,10 @@
 #   export TF_ANY_MODE=test
 set -euxo pipefail
 cd "$(dirname "$0")/../../"  # tensorflow/
-cp "$TFCI" bisect
-echo "source ci/official/envs/disable_all_uploads" >> bisect
-export TFCI=$(realpath bisect)
+REQUESTED_TFCI="$TFCI"
+export TFCI=$(mktemp)
+echo >>$TFCI "source $REQUESTED_TFCI"
+echo >>$TFCI "source ci/official/envs/disable_all_uploads"
+echo >>$TFCI "source ci/official/envs/local_multicache"
 git bisect start "$TF_BISECT_BAD" "$TF_BISECT_GOOD"
-git bisect run "$TF_BISECT_SCRIPT"
+git bisect run $TF_BISECT_SCRIPT
