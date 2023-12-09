@@ -20,7 +20,11 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/AsmState.h"
+#include "mlir/Pass/PassManager.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
+#include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -47,7 +51,10 @@ TfLiteStatus QuantizeAnnotatedModel(llvm::StringRef buffer,
 }  // namespace mlir
 
 int main(int argc, char** argv) {
-  llvm::InitLLVM y(argc, argv);
+  tensorflow::InitMlir y(&argc, &argv);
+  mlir::registerAsmPrinterCLOptions();
+  mlir::registerMLIRContextCLOptions();
+  mlir::registerPassManagerCLOptions();
   llvm::cl::ParseCommandLineOptions(argc, argv);
   auto file_or_err = llvm::MemoryBuffer::getFileOrSTDIN(inputFileName.c_str());
   if (std::error_code error = file_or_err.getError()) {

@@ -4229,6 +4229,8 @@ def TFL_QuantizeOp: TFL_Op<"quantize", [
   );
 
   let results = (outs TFL_TensorOf<[QI4, QI8, QUI8, QI16, TFL_Quint8]>:$output);
+
+  let hasVerifier = 1;
 }
 
 def TFL_DensifyOp: TFL_Op<"densify", [

@@ -78,8 +78,16 @@ TfLiteStatus QuantizeModel(
     return kTfLiteError;
   }
 
-  // Apply quantization passes.
   PassManager pm((*module)->getName(), OpPassManager::Nesting::Implicit);
+  pm.enableIRPrinting(
+          std::make_unique<mlir::PassManager::IRPrinterConfig>());
+  mlir::registerPassManagerCLOptions();
+  if (mlir::failed(mlir::applyPassManagerCLOptions(pm))) {
+    error_reporter->Report("failed to apply MLIR pass manager CL options.");
+    return kTfLiteError;
+  }
+
+  // Apply quantization passes.
   quant::QuantizationSpecs quant_specs;
   quant_specs.inference_type = tflite::TflTypeToTfType(inference_type);
   quant_specs.post_training_quantization = true;
