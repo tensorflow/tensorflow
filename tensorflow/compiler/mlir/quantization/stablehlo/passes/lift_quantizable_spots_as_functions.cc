@@ -29,8 +29,8 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 
 namespace mlir::quant::stablehlo {
 
@@ -38,10 +38,6 @@ namespace mlir::quant::stablehlo {
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"
 
 namespace {
-
-using ::mlir::quant::common::FunctionCallOpType;
-using ::mlir::quant::common::IsInLiftedFunc;
-using ::mlir::quant::common::kNullAttributeValue;
 
 // TODO - b/303543789: Move the helper functions below to a separate util.
 // Fetches the default or null attribute, used for pattern matching.

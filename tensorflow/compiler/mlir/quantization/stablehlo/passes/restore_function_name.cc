@@ -39,8 +39,6 @@ namespace mlir::quant::stablehlo {
 
 namespace {
 
-using ::mlir::quant::common::kOriginalStablehloEntryFunctionAttrName;
-
 // Restores entry function name from XlaCallModuleOp attribute.
 // This restoration is required because StableHLO functions are renamed during
 // the XlaCallModuleSerialization.

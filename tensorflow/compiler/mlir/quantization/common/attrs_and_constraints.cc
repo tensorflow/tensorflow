@@ -12,16 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
-
-#include <memory>
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
-namespace mlir {
-namespace quant {
+namespace mlir::quant {
 
 bool HasQuantizedTensors(Operation* op) {
   if (!IsOpQuantizable(op)) return false;
@@ -72,5 +76,4 @@ SmallVector<Value> CloneOpWithReplacedOperands(
   return builder.clone(*op, mapping)->getResults();
 }
 
-}  // namespace quant
-}  // namespace mlir
+}  // namespace mlir::quant

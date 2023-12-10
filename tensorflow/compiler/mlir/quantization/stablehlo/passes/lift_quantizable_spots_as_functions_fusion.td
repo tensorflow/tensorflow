@@ -20,9 +20,8 @@ include "mlir/IR/OpBase.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "stablehlo/dialect/StablehloOps.td"
-include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
+include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.td"
 include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.td"
-include "tensorflow/compiler/mlir/quantization/stablehlo/passes/utils.td"
 
 //===----------------------------------------------------------------------===//
 // Pattern rules for lifting ops with bias as functions

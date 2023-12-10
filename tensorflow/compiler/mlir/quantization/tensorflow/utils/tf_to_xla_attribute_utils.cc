@@ -20,8 +20,8 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/lite/kernels/padding.h"
 

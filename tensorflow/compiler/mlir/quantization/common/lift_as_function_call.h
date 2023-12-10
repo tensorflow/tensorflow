@@ -24,7 +24,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 
-namespace mlir::quant::common {
+namespace mlir::quant {
 
 // This attribute will be set for functions created by this pass.
 // Presence of this attribute will mark the function as quantization target.
@@ -70,6 +70,6 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
 llvm::SmallVector<Value> AppendToVector(
     const llvm::SmallVector<Value> &arguments, Value append);
 
-}  // namespace mlir::quant::common
+}  // namespace mlir::quant
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_LIFT_AS_FUNCTION_CALL_H_

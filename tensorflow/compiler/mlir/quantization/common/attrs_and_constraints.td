@@ -147,3 +147,15 @@ def GetDefiningOp :  NativeCodeCall<"$0.getDefiningOp()">;
 def CloneOpWithReplacedOperands : NativeCodeCall<
   "CloneOpWithReplacedOperands("
     "$_builder, $0, llvm::SmallVector<Value>{$1...}).front()">;
+
+// Checks whether the value of a constant equals the given float, regardless
+// of the tensor dimension.
+class FloatValueEquals<string val> : Constraint<CPred<
+  "FloatValueEquals($0, " # val # ")">>;
+
+// Fetches the default or null attribute, used for pattern matching.
+def DefaultOrNullAttr : NativeCodeCall<"DefaultOrNullAttr($_builder, $0)">;
+
+// Returns true if the given op is a StableHLO constant op.
+def IsStableHLOConstantOp : Constraint<CPred<"dyn_cast_or_null<::mlir::stablehlo::ConstantOp>($0.getDefiningOp())">>;
+

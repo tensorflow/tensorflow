@@ -96,7 +96,7 @@ absl::flat_hash_set<int> GetQuantizableOperands(Operation* op) {
   } else if (isa<TF::GatherOp>(op)) {
     quantizable_operands.insert(0);
   } else if (auto einsum_op = dyn_cast<TF::EinsumOp>(op)) {
-    if (common::IsEinsumSupportedByXlaDotV2(einsum_op.getEquationAttr())) {
+    if (IsEinsumSupportedByXlaDotV2(einsum_op.getEquationAttr())) {
       quantizable_operands.insert(1);
     }
   }

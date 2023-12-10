@@ -46,15 +46,15 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/utils/stablehlo_type_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/quantization_unit_loc.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/platform/mutex.h"
 
-namespace mlir::quant::common {
+namespace mlir::quant {
 
 // Default version number for native serialization.
 constexpr int64_t kDefaultVersion = 9;
@@ -463,4 +463,4 @@ bool IsEinsumSupportedByXlaDotV2(mlir::StringAttr equation_attr) {
          rhs_out_idx_start >= batch_dim_size;
 }
 
-}  // namespace mlir::quant::common
+}  // namespace mlir::quant
