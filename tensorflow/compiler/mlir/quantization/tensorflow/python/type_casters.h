@@ -38,7 +38,7 @@ namespace internal {
 
 // Serializes a protobuf object. Raises python ValueError if serialization
 // fails.
-std::string Serialize(const tsl::protobuf::Message& protobuf_object) {
+inline std::string Serialize(const tsl::protobuf::Message& protobuf_object) {
   const std::string serialized = protobuf_object.SerializeAsString();
 
   // Empty string means it failed to serialize the protobuf with an error. See
