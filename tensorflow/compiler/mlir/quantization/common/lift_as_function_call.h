@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,22 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_UTILS_LIFT_AS_FUNCTION_CALL_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_UTILS_LIFT_AS_FUNCTION_CALL_UTILS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_LIFT_AS_FUNCTION_CALL_H_
+#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_LIFT_AS_FUNCTION_CALL_H_
 
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
-// This header file defines common utils used by TF-Quant transformation
-// passes to lift op compositions to a function.
-namespace mlir {
-namespace quant {
+namespace mlir::quant::common {
 
 // This attribute will be set for functions created by this pass.
+// Presence of this attribute will mark the function as quantization target.
 inline constexpr absl::string_view kFusedFunctionAttr =
     "tf_quant.composite_function";
 // The keyword to detect if this is a `NullAttribute`.
@@ -43,7 +43,7 @@ inline constexpr absl::string_view kOriginalStablehloEntryFunctionAttrName =
 enum FunctionCallOpType { TFPartitionedCallOp = 0, TFXlaCallModuleOp = 1 };
 
 // Checks if the op is inside a lifted function.
-bool IsInLiftedFunc(Operation *op);
+bool IsInLiftedFunc(Operation &op);
 
 // Checks if the given einsum op is supported for XlaDotV2 quantization.
 bool IsEinsumSupportedByXlaDotV2(mlir::StringAttr equation_attr);
@@ -70,6 +70,6 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
 llvm::SmallVector<Value> AppendToVector(
     const llvm::SmallVector<Value> &arguments, Value append);
 
-}  // namespace quant
-}  // namespace mlir
-#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_UTILS_LIFT_AS_FUNCTION_CALL_UTILS_H_
+}  // namespace mlir::quant::common
+
+#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_LIFT_AS_FUNCTION_CALL_H_

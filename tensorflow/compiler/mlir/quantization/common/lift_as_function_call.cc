@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -22,50 +22,74 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/utils/stablehlo_type_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/quantization_unit_loc.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
+#include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/platform/mutex.h"
 
-namespace mlir {
-namespace quant {
+namespace mlir::quant::common {
+
+// Default version number for native serialization.
+constexpr int64_t kDefaultVersion = 9;
+// Default platform for XlaCallModuleOp.
+constexpr StringRef kPlatformCpu = "CPU";
+// Name of `tf.XlaCallModule`'s dictionary attribute for keeping the
+// deserialized stablehlo module's attributes.
+constexpr llvm::StringRef kStablehloModuleAttrsAttrName =
+    "_stablehlo_module_attrs";
+// Attribute required for running shape refinement pass enabled in XlaCallModule
+// version 8 and above.
+constexpr llvm::StringRef kUsesShapePolymorphismAttr =
+    "jax.uses_shape_polymorphism";
 
 // Checks if the op is inside a lifted function.
-bool IsInLiftedFunc(Operation *op) {
-  return op->getParentOfType<func::FuncOp>()->hasAttr(kFusedFunctionAttr);
+bool IsInLiftedFunc(Operation& op) {
+  return op.getParentOfType<func::FuncOp>()->hasAttr(kFusedFunctionAttr);
 }
 
 // Inserts the function to the symbol table of the module thread-safely.
-StringAttr InsertToSymbolTable(Operation *module, Operation *function,
-                               const std::string &func_name) {
-  static tensorflow::mutex *mtx = new tensorflow::mutex();
+StringAttr InsertToSymbolTable(Operation& module, Operation& function,
+                               const std::string& func_name) {
+  static tensorflow::mutex* mtx = new tensorflow::mutex();
   tensorflow::mutex_lock lock(*mtx);
 
-  SymbolTable symbol_table(module);
+  SymbolTable symbol_table(&module);
   std::string unique_name = func_name;
   int32_t uniquing_counter = 0;
   while (symbol_table.lookup(unique_name) != nullptr) {
     ++uniquing_counter;
     unique_name = func_name + "_" + std::to_string(uniquing_counter);
   }
-  function->setAttr("sym_name",
-                    StringAttr::get(module->getContext(), unique_name));
-  return symbol_table.insert(function);
+  function.setAttr("sym_name",
+                   StringAttr::get(module.getContext(), unique_name));
+  return symbol_table.insert(&function);
 }
 
 // Creates the TF::PartitionedCallOp with the given arguments and output types.
@@ -100,15 +124,16 @@ ValueRange createTFXlaCallModuleOp(OpBuilder builder, Location location,
         tf_type::ShapeAttr::get(ctx, result_type.cast<ShapedType>()));
   }
   auto empty_array_attr = ArrayAttr::get(ctx, {});
+  auto platforms = ArrayAttr::get(ctx, {StringAttr::get(ctx, kPlatformCpu)});
 
   TF::XlaCallModuleOp call_op = builder.create<TF::XlaCallModuleOp>(
       location,
       /*output=*/output_types,
       /*args=*/args,
-      /*version=*/5, /*module=*/"",
+      /*version=*/kDefaultVersion, /*module=*/"",
       /*Sout=*/ArrayAttr::get(ctx, shape_attrs),
       /*dim_args_spec=*/empty_array_attr,
-      /*platforms=*/empty_array_attr,
+      /*platforms=*/platforms,
       /*function_list=*/empty_array_attr,
       /*has_token_input_output=*/false,
       /*disabled_checks=*/empty_array_attr);
@@ -129,6 +154,12 @@ ValueRange createTFXlaCallModuleOp(OpBuilder builder, Location location,
       kQuantTraitAttrName,
       builder.getStringAttr(llvm::StringRef(
           std::string(QuantTraitValues[QuantizationTrait::FullyQuantizable]))));
+
+  // Set jax.uses_shape_polymorphism=true to enable shape refinement at runtime.
+  // This is needed for native serialization version >= 8.
+  call_op->setAttr(kStablehloModuleAttrsAttrName,
+                   builder.getDictionaryAttr(builder.getNamedAttr(
+                       kUsesShapePolymorphismAttr, builder.getBoolAttr(true))));
 
   return call_op.getOutput();
 }
@@ -152,14 +183,14 @@ ValueRange createFunctionCallOp(OpBuilder builder, Location location,
 
 // Finds ops in the paths from arguments to results. The ops is listed in an
 // order that the former ops shouldn't have any dependencies on the later ones.
-llvm::SmallVector<Operation *> FindOpsFromArgumentsToResults(
-    const llvm::SmallVector<Value> &arguments,
-    const llvm::SmallVector<Value> &results) {
+llvm::SmallVector<Operation*> FindOpsFromArgumentsToResults(
+    const llvm::SmallVector<Value>& arguments,
+    const llvm::SmallVector<Value>& results) {
   std::queue<Value> value_queue;
   for (Value result : results) {
     value_queue.push(result);
   }
-  absl::flat_hash_set<mlir::detail::ValueImpl *> argument_set;
+  absl::flat_hash_set<mlir::detail::ValueImpl*> argument_set;
   for (Value argument : arguments) {
     argument_set.insert(argument.getImpl());
   }
@@ -167,15 +198,15 @@ llvm::SmallVector<Operation *> FindOpsFromArgumentsToResults(
   // Searching for ops from results to arguments. Duplicate ops in the op stack
   // are intentional in order to make sure the op on the top of the stack
   // doesn't depends on any ops below it.
-  std::stack<Operation *> op_stack;
+  std::stack<Operation*> op_stack;
   while (!value_queue.empty()) {
     Value current_value = value_queue.front();
     value_queue.pop();
 
-    Operation *defining_node = current_value.getDefiningOp();
+    Operation* defining_node = current_value.getDefiningOp();
     if (defining_node == nullptr) continue;
     op_stack.push(defining_node);
-    for (const auto &arg : defining_node->getOperands()) {
+    for (const auto& arg : defining_node->getOperands()) {
       if (!argument_set.contains(arg.getImpl())) {
         value_queue.push(arg);
       }
@@ -183,10 +214,10 @@ llvm::SmallVector<Operation *> FindOpsFromArgumentsToResults(
   }
 
   // Remove duplicate ops from the op stack.
-  llvm::SmallVector<Operation *> sorted_ops;
-  absl::flat_hash_set<Operation *> unique_ops;
+  llvm::SmallVector<Operation*> sorted_ops;
+  absl::flat_hash_set<Operation*> unique_ops;
   while (!op_stack.empty()) {
-    Operation *current_op = op_stack.top();
+    Operation* current_op = op_stack.top();
     op_stack.pop();
     if (unique_ops.contains(current_op)) continue;
     sorted_ops.push_back(current_op);
@@ -206,21 +237,20 @@ llvm::SmallVector<Operation *> FindOpsFromArgumentsToResults(
 // identifiers.
 // This function returns success if all attributes could be found.
 LogicalResult SetAttributeMap(
-    MLIRContext *context, const llvm::SmallVector<NamedAttribute> &attributes,
-    const llvm::SmallVector<Operation *> &ops) {
+    MLIRContext& context, const llvm::SmallVector<NamedAttribute>& attributes,
+    const llvm::SmallVector<Operation*>& ops) {
   // A map to find which operation an attribute belongs to.
   // The key for this map uses the entire NamedAttribute object, i.e. the
   // {attribute_name, attribute_value} pair.
-  llvm::SmallDenseMap<NamedAttribute, Operation *> attr_to_op_map;
-  for (Operation *op : ops) {
-    for (const auto &named_attr : op->getAttrs()) {
+  llvm::SmallDenseMap<NamedAttribute, Operation*> attr_to_op_map;
+  for (Operation* op : ops) {
+    for (const NamedAttribute named_attr : op->getAttrs()) {
       attr_to_op_map.insert({named_attr, op});
     }
   }
 
   for (int idx : llvm::seq<int>(0, attributes.size())) {
-    const NamedAttribute &attribute = attributes[idx];
-
+    const NamedAttribute& attribute = attributes[idx];
     // Skip the following steps if the attribute value is `NullAttribute`.
     if (const auto string_attr =
             attribute.getValue().dyn_cast_or_null<StringAttr>();
@@ -229,27 +259,38 @@ LogicalResult SetAttributeMap(
       continue;
     }
 
-    if (attr_to_op_map.count(attribute) == 0) {
-      mlir::emitError(UnknownLoc::get(context),
+    if (std::find_if(
+            attr_to_op_map.begin(), attr_to_op_map.end(), [&](auto attr_op) {
+              return std::get<0>(attr_op).getName() == attribute.getName();
+            }) == attr_to_op_map.end()) {
+      mlir::emitError(UnknownLoc::get(&context),
                       "Could not find attribute: " + attribute.getName().str());
       return failure();
     }
 
-    Operation *owner_op = attr_to_op_map[attribute];
-
-    std::string new_attr_map_str{};
-    if (owner_op->hasAttr(kAttrMapAttribute)) {
-      new_attr_map_str =
-          owner_op->getAttrOfType<StringAttr>(kAttrMapAttribute).str();
-      absl::StrAppend(&new_attr_map_str, ",");
+    Operation* owner_op;
+    for (const auto& [attr, val] : attr_to_op_map) {
+      if (attr.getName() == attribute.getName()) owner_op = val;
     }
+    if (stablehlo::IsStablehloOp(owner_op)) {
+      owner_op->setAttr(StringRef(attribute.getName()), attribute.getValue());
+    } else {
+      owner_op = attr_to_op_map[attribute];
 
-    // Append "<identifier>:<attribute_name>". Ex) "0:transpose_a".
-    const std::string identifier = std::to_string(idx);
-    const mlir::StringAttr attribute_name = attribute.getName();
-    absl::StrAppend(&new_attr_map_str, identifier, ":", attribute_name.str());
-    owner_op->setAttr(kAttrMapAttribute,
-                      StringAttr::get(context, new_attr_map_str));
+      std::string new_attr_map_str{};
+      if (owner_op->hasAttr(kAttrMapAttribute)) {
+        new_attr_map_str =
+            owner_op->getAttrOfType<StringAttr>(kAttrMapAttribute).str();
+        absl::StrAppend(&new_attr_map_str, ",");
+      }
+
+      // Append "<identifier>:<attribute_name>". Ex) "0:transpose_a".
+      const std::string identifier = std::to_string(idx);
+      const mlir::StringAttr attribute_name = attribute.getName();
+      absl::StrAppend(&new_attr_map_str, identifier, ":", attribute_name.str());
+      owner_op->setAttr(kAttrMapAttribute,
+                        StringAttr::get(&context, new_attr_map_str));
+    }
   }
   return success();
 }
@@ -257,15 +298,15 @@ LogicalResult SetAttributeMap(
 // Creates a function to wrap the section between arguments and results.
 llvm::SmallVector<Value, 4> LiftAsFunctionCall(
     OpBuilder builder, Location location, FunctionCallOpType call_op_type,
-    StringRef func_name, const llvm::SmallVector<Value> &arguments,
-    const llvm::SmallVector<Value> &results,
-    const llvm::SmallVector<NamedAttribute> &attributes) {
-  MLIRContext *context = builder.getContext();
+    StringRef func_name, const llvm::SmallVector<Value>& arguments,
+    const llvm::SmallVector<Value>& results,
+    const llvm::SmallVector<NamedAttribute>& attributes) {
+  MLIRContext* context = builder.getContext();
   if (results.empty()) {
     mlir::emitError(UnknownLoc::get(context), "No result values specified");
     return {};
   }
-  Operation *result_op = results[0].getDefiningOp();
+  Operation* result_op = results[0].getDefiningOp();
   auto module = result_op->getParentOfType<ModuleOp>();
 
   // Create a private function and copy all ops between arguments and results.
@@ -277,7 +318,7 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
   auto func_type = FunctionType::get(context, arg_types, result_types);
 
   llvm::SmallVector<Location> arg_locs;
-  for (const auto &arg : arguments) {
+  for (const auto& arg : arguments) {
     arg_locs.push_back(arg.getLoc());
   }
   auto wrap_func = builder.create<func::FuncOp>(location, func_name, func_type);
@@ -298,7 +339,7 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
   auto cloning_ops = FindOpsFromArgumentsToResults(arguments, results);
   // Set the location of call op to QuantizationUnitLoc if found.
   Location call_op_loc = location;
-  for (Operation *op : cloning_ops) {
+  for (Operation* op : cloning_ops) {
     std::optional<QuantizationUnitLoc::QuantizationUnit> unit =
         FindQuantizationUnitFromLoc(op->getLoc());
     if (unit.has_value()) {
@@ -306,10 +347,10 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
     }
   }
 
-  if (failed(SetAttributeMap(context, attributes, cloning_ops))) {
+  if (failed(SetAttributeMap(*context, attributes, cloning_ops))) {
     current_func.emitError() << "Some attributes couldn't be found.";
   }
-  for (Operation *op : cloning_ops) {
+  for (Operation* op : cloning_ops) {
     builder.clone(*op, mapping);
   }
 
@@ -321,7 +362,7 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
 
   // Create a function call to the newly created function.
   StringAttr new_func_name =
-      InsertToSymbolTable(module, wrap_func, func_name.str());
+      InsertToSymbolTable(*module, *wrap_func, func_name.str());
   builder.setInsertionPointAfter(result_op);
   ValueRange new_results =
       createFunctionCallOp(builder, call_op_loc, call_op_type,
@@ -331,15 +372,15 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
 
 llvm::SmallVector<Value, 4> LiftAsFunctionCall(
     OpBuilder builder, Location location, FunctionCallOpType call_op_type,
-    StringRef func_name, const llvm::SmallVector<Value> &arguments,
-    const llvm::SmallVector<Value> &results) {
+    StringRef func_name, const llvm::SmallVector<Value>& arguments,
+    const llvm::SmallVector<Value>& results) {
   llvm::SmallVector<NamedAttribute> attributes;
   return LiftAsFunctionCall(builder, location, call_op_type, func_name,
                             arguments, results, attributes);
 }
 
 llvm::SmallVector<Value> AppendToVector(
-    const llvm::SmallVector<Value> &arguments, Value append) {
+    const llvm::SmallVector<Value>& arguments, Value append) {
   llvm::SmallVector<Value> ret(arguments);
   ret.push_back(append);
   return ret;
@@ -422,5 +463,4 @@ bool IsEinsumSupportedByXlaDotV2(mlir::StringAttr equation_attr) {
          rhs_out_idx_start >= batch_dim_size;
 }
 
-}  // namespace quant
-}  // namespace mlir
+}  // namespace mlir::quant::common

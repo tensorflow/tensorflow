@@ -1,4 +1,3 @@
-load("@llvm-project//mlir:tblgen.bzl", "td_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
@@ -31,39 +30,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "@llvm-project//mlir:IR",
-    ],
-)
-
-td_library(
-    name = "lift_as_function_call_utils_td_files",
-    srcs = [
-        "lift_as_function_call_utils.td",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "@llvm-project//mlir:FuncTdFiles",
-    ],
-)
-
-cc_library(
-    name = "lift_as_function_call_utils",
-    srcs = ["lift_as_function_call_utils.cc"],
-    hdrs = ["lift_as_function_call_utils.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:quantization_unit_loc",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
-        "//tensorflow/compiler/mlir/tensorflow:xla_call_module_attrs",
-        "//tensorflow/core:framework_lite",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
     ],
 )
 

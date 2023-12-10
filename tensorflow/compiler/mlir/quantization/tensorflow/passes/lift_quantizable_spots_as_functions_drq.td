@@ -17,7 +17,7 @@ include "mlir/IR/OpBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
-include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.td"
+include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.td"
 include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
 
 //===----------------------------------------------------------------------===//

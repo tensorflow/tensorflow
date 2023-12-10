@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/test_base.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/test.h"
@@ -34,44 +35,9 @@ limitations under the License.
 namespace mlir::quant::stablehlo {
 namespace {
 
-using ::testing::Test;
+using ::mlir::quant::common::QuantizationTestBase;
 
-class IsOpQuantizableStableHloTest : public Test {
- protected:
-  IsOpQuantizableStableHloTest() {
-    ctx_.loadDialect<arith::ArithDialect, mlir::stablehlo::StablehloDialect,
-                     func::FuncDialect, TF::TensorFlowDialect,
-                     quant::QuantizationDialect,
-                     quantfork::QuantizationForkDialect>();
-  }
-
-  // Parses `module_op_str` to create a `ModuleOp`. Checks whether the created
-  // module op is valid.
-  OwningOpRef<ModuleOp> ParseModuleOpString(
-      const absl::string_view module_op_str) {
-    auto module_op_ref = parseSourceString<ModuleOp>(module_op_str, &ctx_);
-    EXPECT_TRUE(module_op_ref);
-    return module_op_ref;
-  }
-
-  // Gets the function with the given name from the module.
-  func::FuncOp GetFunctionFromModule(ModuleOp module,
-                                     absl::string_view function_name) {
-    SymbolTable symbol_table(module);
-    return symbol_table.lookup<func::FuncOp>(function_name);
-  }
-
-  // Returns the first operation with the given type in the function.
-  template <typename OpType>
-  OpType FindOperationOfType(func::FuncOp function) {
-    for (auto op : function.getBody().getOps<OpType>()) {
-      return op;
-    }
-    return nullptr;
-  }
-
-  mlir::MLIRContext ctx_{};
-};
+class IsOpQuantizableStableHloTest : public QuantizationTestBase {};
 
 // Quantizable ops: constants
 // Non-quantizable ops: normal StableHLO ops and terminators
