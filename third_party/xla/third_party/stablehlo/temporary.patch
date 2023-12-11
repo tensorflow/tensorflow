@@ -1,7 +1,7 @@
 diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
 --- stablehlo/BUILD.bazel
 +++ stablehlo/BUILD.bazel
-@@ -889,6 +889,7 @@
+@@ -890,6 +890,7 @@
      hdrs = [
          "stablehlo/transforms/MapStablehloToVhlo.h",
          "stablehlo/transforms/Passes.h",
@@ -167,17 +167,19 @@ diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists
  add_subdirectory(integrations)
  add_subdirectory(reference)
  add_subdirectory(tests)
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/dialect/StablehloOps.h
---- stablehlo/stablehlo/dialect/StablehloOps.h
-+++ stablehlo/stablehlo/dialect/StablehloOps.h
-@@ -75,6 +75,7 @@
- class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
-  public:
-   using Base::Base;
-+  static constexpr StringLiteral name = "stablehlo.token";
- };
+diff --ruN a/stablehlo/stablehlo/api/PortableApi.h b/stablehlo/stablehlo/api/PortableApi.h
+--- stablehlo/stablehlo/api/PortableApi.h
++++ stablehlo/stablehlo/api/PortableApi.h
+@@ -27,7 +27,8 @@
  
- // Verifies the source target pairs attached to collective permute.
+ /// Return the current version for portable API.
+ /// Increments on all meaningful changes to this file.
+-inline int64_t getApiVersion() { return 4; }
++/// Or on large breaking source changes that are difficult to integrate.
++inline int64_t getApiVersion() { return 5; }
+ 
+ // Get the current StableHLO version.
+ //
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
@@ -2334,7 +2336,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/Passes.h b/stablehlo/stablehlo/trans
  #include "mlir/Transforms/DialectConversion.h"
  
  namespace mlir {
-@@ -33,6 +36,14 @@
+@@ -34,6 +37,14 @@
  #define GEN_PASS_DECL_VHLOTOVERSIONPASS
  #define GEN_PASS_REGISTRATION
  #include "stablehlo/transforms/Passes.h.inc"
@@ -2352,7 +2354,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/Passes.h b/stablehlo/stablehlo/trans
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
 --- stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
 +++ stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
-@@ -314,16 +314,7 @@
+@@ -307,16 +307,7 @@
      config.strictMode = GreedyRewriteStrictness::AnyOp;
  
      RewritePatternSet patterns(&getContext());
@@ -2370,7 +2372,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/
      if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
                                              config))) {
        return signalPassFailure();
-@@ -332,5 +323,19 @@
+@@ -325,5 +316,19 @@
  };
  
  }  // namespace
@@ -2842,7 +2844,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehl
  struct RefineAllGatherOpPattern : public OpRewritePattern<AllGatherOp> {
    using OpRewritePattern::OpRewritePattern;
    LogicalResult matchAndRewrite(AllGatherOp op,
-@@ -1119,39 +1069,8 @@
+@@ -1115,39 +1065,8 @@
    using StablehloRefineShapesPassBase::StablehloRefineShapesPassBase;
  
    void runOnOperation() override {
@@ -2884,7 +2886,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehl
  
      // The algorithm behind this pass consists of a single traversal of the
      // function. This is sufficient because we only support one function per
-@@ -1167,44 +1086,7 @@
+@@ -1163,44 +1082,7 @@
      config.strictMode = GreedyRewriteStrictness::AnyOp;
  
      RewritePatternSet patterns(&getContext());
@@ -2930,7 +2932,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehl
      if (failed(
              applyPatternsAndFoldGreedily(func, std::move(patterns), config))) {
        return signalPassFailure();
-@@ -1213,5 +1095,86 @@
+@@ -1209,5 +1091,86 @@
  };
  
  }  // namespace
@@ -3123,4 +3125,31 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.h b/stablehlo/
 +}  // namespace mlir
 +
 +#endif  // STABLEHLO_TRANSFORMS_STABLEHLO_REFINE_SHAPES_H
+diff --ruN a/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
+@@ -430,9 +430,20 @@
+                                 SmallVector<NamedAttribute>& stablehloAttrs) {
+   auto tensorAttr = dyn_cast<vhlo::TensorV1Attr>(vhloAttr);
+   if (!tensorAttr) return specialFailure();
+-  ArrayRef<int64_t> data(
+-      reinterpret_cast<const int64_t*>(tensorAttr.getData().data()),
+-      tensorAttr.getData().size() / sizeof(int64_t));
++
++  auto data = ArrayRef<int64_t>(
++                  reinterpret_cast<const int64_t*>(tensorAttr.getData().data()),
++                  tensorAttr.getData().size() / sizeof(int64_t))
++                  .vec();
++
++  // Handle splats
++  if (data.size() == 1) {
++    auto tensorType = tensorAttr.getType().dyn_cast<vhlo::RankedTensorV1Type>();
++    if (!tensorType || (tensorType.getShape().size() != 1))
++      return specialFailure();
++    auto size = tensorType.getShape()[0];
++    data.resize(size, data[0]);
++  }
+ 
+   stablehloAttrs.emplace_back(
+       vhloName, DenseI64ArrayAttr::get(vhloAttr.getContext(), data));
 

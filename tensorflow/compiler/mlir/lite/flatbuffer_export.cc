@@ -1643,12 +1643,12 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildStablehloPadOp(
   uint32_t opcode_index =
       GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_PAD);
 
-  auto edge_padding_low = builder_.CreateVector(
-      mlir::GetOptionalVector<int64_t>(pad_op.getEdgePaddingLowAttr()));
-  auto edge_padding_high = builder_.CreateVector(
-      mlir::GetOptionalVector<int64_t>(pad_op.getEdgePaddingHighAttr()));
-  auto interior_padding = builder_.CreateVector(
-      mlir::GetOptionalVector<int64_t>(pad_op.getInteriorPaddingAttr()));
+  auto edge_padding_low =
+      builder_.CreateVector(pad_op.getEdgePaddingLow().vec());
+  auto edge_padding_high =
+      builder_.CreateVector(pad_op.getEdgePaddingHigh().vec());
+  auto interior_padding =
+      builder_.CreateVector(pad_op.getInteriorPadding().vec());
 
   auto pad_option = tflite::CreateStablehloPadOptions(
       builder_, edge_padding_low, edge_padding_high, interior_padding);
@@ -1877,8 +1877,7 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
         uint32_t opcode_index = GetOpcodeIndex(
             op_name, tflite::BuiltinOperator_STABLEHLO_DYNAMIC_SLICE);
 
-        auto slice_sizes = builder_.CreateVector(
-            mlir::GetOptionalVector<int64_t>(shlo_op.getSliceSizes()));
+        auto slice_sizes = builder_.CreateVector(shlo_op.getSliceSizes().vec());
 
         auto dynamic_slice_option =
             tflite::CreateStablehloDynamicSliceOptions(builder_, slice_sizes);
@@ -1934,12 +1933,11 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
         uint32_t opcode_index =
             GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_SLICE);
 
-        auto start_indices = builder_.CreateVector(
-            mlir::GetOptionalVector<int64_t>(shlo_op.getStartIndicesAttr()));
-        auto limit_indices = builder_.CreateVector(
-            mlir::GetOptionalVector<int64_t>(shlo_op.getLimitIndicesAttr()));
-        auto strides = builder_.CreateVector(
-            mlir::GetOptionalVector<int64_t>(shlo_op.getStridesAttr()));
+        auto start_indices =
+            builder_.CreateVector(shlo_op.getStartIndices().vec());
+        auto limit_indices =
+            builder_.CreateVector(shlo_op.getLimitIndices().vec());
+        auto strides = builder_.CreateVector(shlo_op.getStrides().vec());
 
         auto slice_option = tflite::CreateStablehloSliceOptions(
             builder_, start_indices, limit_indices, strides);
@@ -2211,8 +2209,7 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
             op_name, tflite::BuiltinOperator_STABLEHLO_TRANSPOSE);
 
         auto transpose_option = tflite::CreateStablehloTransposeOptions(
-            builder_, builder_.CreateVector(mlir::GetOptionalVector<int64_t>(
-                          shlo_op.getPermutation())));
+            builder_, builder_.CreateVector(shlo_op.getPermutation().vec()));
 
         return tflite::CreateOperator(
             builder_, opcode_index, builder_.CreateVector(operands),
