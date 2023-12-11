@@ -2371,16 +2371,16 @@ class ImageProjectiveTransform(test_util.TensorFlowTestCase):
 
 
   def testShapeTooLargeFp32V2(self):
-      self._testShapeTooLarge(dtypes.float32)
+    self._testShapeTooLarge(dtypes.float32)
 
   def testShapeTooLargeBfloat16V2(self):
-      self._testShapeTooLarge(dtypes.bfloat16)
+    self._testShapeTooLarge(dtypes.bfloat16)
 
   def testShapeTooLargeFp32V3(self):
-      self._testShapeTooLarge(dtypes.float32, False)
+    self._testShapeTooLarge(dtypes.float32, False)
 
   def testShapeTooLargeBfloat16V3(self):
-      self._testShapeTooLarge(dtypes.bfloat16, False)
+    self._testShapeTooLarge(dtypes.bfloat16, False)
 
 
 class InternalPadToBoundingBoxTest(test_util.TensorFlowTestCase,
