@@ -519,6 +519,7 @@ def get_tfrt_cpu_client(
     distributed_client: Optional[DistributedRuntimeClient] = ...,
     node_id: int = ...,
     num_nodes: int = ...,
+    enable_gloo_collectives: bool = ...,
 ) -> Client: ...
 def get_gpu_client(
     asynchronous: bool = ...,

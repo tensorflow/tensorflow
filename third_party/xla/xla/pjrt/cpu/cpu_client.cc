@@ -73,8 +73,10 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/cpu/buffer_desc.h"
+#include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/cpu_executable.h"
+#include "xla/service/cpu/cpu_executable_run_options.h"
 #include "xla/service/cpu/cpu_xfeed.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/dump.h"
@@ -329,12 +331,13 @@ StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
   }
 
   return std::unique_ptr<PjRtClient>(std::make_unique<TfrtCpuClient>(
-      /*process_index=*/options.node_id, std::move(devices), num_threads));
+      /*process_index=*/options.node_id, std::move(devices),
+      std::move(options.collectives), num_threads));
 }
 
 TfrtCpuClient::TfrtCpuClient(
     int process_index, std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
-    size_t num_threads)
+    std::shared_ptr<cpu::CollectivesInterface> collectives, size_t num_threads)
     : process_index_(process_index),
       owned_devices_(std::move(devices)),
       computation_placer_(std::make_unique<ComputationPlacer>()),
@@ -349,7 +352,8 @@ TfrtCpuClient::TfrtCpuClient(
                                       eigen_intraop_pool_->NumThreads())),
       last_collective_launch_event_(
           tsl::MakeAvailableAsyncValueRef<CpuEvent>()),
-      transpose_cache_(1024) {
+      transpose_cache_(1024),
+      collectives_(std::move(collectives)) {
   for (const std::unique_ptr<TfrtCpuDevice>& device : owned_devices_) {
     devices_.push_back(device.get());
     CHECK(id_to_device_.insert({device->id(), device.get()}).second)
@@ -654,9 +658,7 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
       },
       &num_replicas, &num_partitions, &device_assignment));
 
-  // TODO(phawkins): cross-process computations aren't implemented yet. Check
-  // for these and error.
-  if (device_assignment) {
+  if (collectives_ == nullptr && device_assignment) {
     for (int replica = 0; replica < device_assignment->replica_count();
          ++replica) {
       for (int computation = 0;
@@ -665,6 +667,8 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
         int id = (*device_assignment)(replica, computation);
         TF_ASSIGN_OR_RETURN(auto* device, LookupDevice(id));
         if (device->process_index() != process_index()) {
+          // TODO(phawkins): improve this error message when we're ready to
+          // publicize that multiprocess collectives exist.
           return InvalidArgument(
               "Multiprocess computations aren't implemented on the CPU "
               "backend.");
@@ -1253,6 +1257,10 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
   run_options.set_device_assignment(device_assignment.get());
   run_options.set_intra_op_thread_pool(client_->eigen_intraop_device());
 
+  auto cpu_run_options = std::make_shared<cpu::CpuExecutableRunOptions>();
+  cpu_run_options->set_collectives(client_->collectives_.get());
+  run_options.set_cpu_executable_run_options(cpu_run_options.get());
+
   // Schedule only one collective at a time.
   bool is_a_collective_launch = !!last_collective_launch_event;
   if (is_a_collective_launch) {
@@ -1321,6 +1329,7 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
          run_options = std::move(run_options),
          cpu_executable_copy = cpu_executable_,
          device_assignment = std::move(device_assignment),
+         cpu_run_options = std::move(cpu_run_options),
          compute_reservation = std::move(compute_reservation),
          tuplized_arg = std::move(tuplized_arg),
          donation_transactions = std::move(donation_transactions),

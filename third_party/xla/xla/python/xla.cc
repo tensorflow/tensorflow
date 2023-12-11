@@ -60,7 +60,10 @@ limitations under the License.
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
+#include "third_party/gloo/gloo/transport/tcp/device.h"
 #include "xla/pjrt/cpu/cpu_client.h"
+#include "xla/pjrt/cpu/gloo_collectives.h"
+#include "xla/pjrt/cpu/gloo_kv_store.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -496,7 +499,8 @@ static void Init(py::module_& m) {
       "get_tfrt_cpu_client",
       [](bool asynchronous,
          std::shared_ptr<DistributedRuntimeClient> distributed_client,
-         int node_id, int num_nodes) -> std::shared_ptr<PyClient> {
+         int node_id, int num_nodes,
+         bool enable_gloo_collectives) -> std::shared_ptr<PyClient> {
         py::gil_scoped_release gil_release;
         CpuClientOptions options;
         if (distributed_client != nullptr) {
@@ -516,6 +520,14 @@ static void Init(py::module_& m) {
           };
           options.node_id = node_id;
           options.num_nodes = num_nodes;
+
+          if (enable_gloo_collectives) {
+            auto gloo_kv_store = std::make_unique<cpu::GlooKeyValueStore>(
+                options.kv_get, options.kv_put);
+            auto tcp_device = gloo::transport::tcp::CreateDevice("localhost");
+            options.collectives = std::make_shared<cpu::GlooCollectives>(
+                std::move(gloo_kv_store), std::move(tcp_device));
+          }
         }
 
         options.asynchronous = asynchronous;
@@ -525,7 +537,8 @@ static void Init(py::module_& m) {
             ifrt::PjRtClient::Create(std::move(client)));
       },
       py::arg("asynchronous") = true, py::arg("distributed_client") = nullptr,
-      py::arg("node_id") = 0, py::arg("num_nodes") = 1);
+      py::arg("node_id") = 0, py::arg("num_nodes") = 1,
+      py::arg("enable_gloo_collectives") = false);
   m.def("pjrt_plugin_loaded", [](std::string platform_name) -> bool {
     xla::StatusOr<const PJRT_Api*> pjrt_api = pjrt::PjrtApi(platform_name);
     return pjrt_api.ok();
