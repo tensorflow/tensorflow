@@ -3144,7 +3144,6 @@ py_strict_library(
         "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/types:core",
-        "//tensorflow/python/util:_pywrap_utils",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:object_identity",

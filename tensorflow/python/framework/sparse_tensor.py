@@ -37,7 +37,6 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.types import internal
-from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
@@ -373,7 +372,6 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
 SparseTensorValue = collections.namedtuple("SparseTensorValue",
                                            ["indices", "values", "dense_shape"])
 tf_export(v1=["SparseTensorValue"])(SparseTensorValue)
-_pywrap_utils.RegisterType("SparseTensorValue", SparseTensorValue)
 
 
 @tf_export("SparseTensorSpec")
