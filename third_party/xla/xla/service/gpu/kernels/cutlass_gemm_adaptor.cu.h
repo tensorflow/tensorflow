@@ -81,22 +81,17 @@ int64_t LdC(const cutlass::gemm::GemmCoord &problem_size) {
 //===----------------------------------------------------------------------===//
 
 template <typename Tag>
-int32_t Adaptor<Tag>::shared_memory_bytes() {
-  return sizeof(typename Traits<Tag>::Kernel::SharedStorage);
-};
-
-template <typename Tag>
-std::optional<Dim3> Adaptor<Tag>::ClusterDim() {
+std::optional<Dim3> Adaptor<Tag>::ClusterDim() const {
   return std::nullopt;
 }
 
 template <typename Tag>
-Dim3 Adaptor<Tag>::ThreadDim() {
+Dim3 Adaptor<Tag>::ThreadDim() const {
   return Dim3{Traits<Tag>::Kernel::kThreadCount};
 }
 
 template <typename Tag>
-Dim3 Adaptor<Tag>::BlockDim(int32_t m, int32_t n, int32_t k) {
+Dim3 Adaptor<Tag>::BlockDim(int32_t m, int32_t n, int32_t k) const {
   using Operation = typename Traits<Tag>::Operation;
   using ThreadblockSwizzle = typename Operation::ThreadblockSwizzle;
   using ThreadblockShape = typename Operation::ThreadblockShape;
@@ -113,7 +108,12 @@ Dim3 Adaptor<Tag>::BlockDim(int32_t m, int32_t n, int32_t k) {
 }
 
 template <typename Tag>
-bool Adaptor<Tag>::CanImplement(const Arguments &args) {
+int32_t Adaptor<Tag>::SharedMemoryBytes() const {
+  return sizeof(typename Traits<Tag>::Kernel::SharedStorage);
+};
+
+template <typename Tag>
+bool Adaptor<Tag>::CanImplement(const Arguments &args) const {
   cutlass::gemm::GemmCoord problem_size(args.m, args.n, args.k);
   return Traits<Tag>::Kernel::can_implement(problem_size) ==
          cutlass::Status::kSuccess;
@@ -121,7 +121,7 @@ bool Adaptor<Tag>::CanImplement(const Arguments &args) {
 
 template <typename Tag>
 void Adaptor<Tag>::Initialize(void *params, const Arguments &args,
-                              int32_t device_sms, int32_t sm_occupancy) {
+                              int32_t device_sms, int32_t sm_occupancy) const {
   // Sanity check that parameters struct is compatible with parameters storage
   // defined by custom gemm kernel.
   static_assert(sizeof(typename Traits<Tag>::Params) <= 1024,
@@ -192,7 +192,7 @@ __global__ void KernelEntryPoint(typename Kernel::Params params,
 }
 
 template <typename Tag>
-void *DeviceKernel<Tag>::symbol() {
+void *DeviceKernel<Tag>::symbol() const {
   return reinterpret_cast<void *>(
       KernelEntryPoint<typename Traits<Tag>::Kernel>);
 };

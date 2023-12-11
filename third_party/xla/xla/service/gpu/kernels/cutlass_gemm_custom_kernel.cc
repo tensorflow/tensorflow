@@ -81,7 +81,7 @@ template <typename Tag>
 KernelArgsPacking ArgsPacking(int32_t m, int32_t n, int32_t k,
                               const ArgsIndices& indices,
                               const DynamicSliceIndices& slices,
-                              int32_t device_sms) {
+                              int32_t device_sms, Adaptor<Tag> adaptor) {
   using Packed = StatusOr<std::unique_ptr<se::KernelArgsPackedArrayBase>>;
 
   // TODO(ezhulenev): CUTLASS kernel Params struct not necessarily trivially
@@ -100,14 +100,14 @@ KernelArgsPacking ArgsPacking(int32_t m, int32_t n, int32_t k,
     arguments.b = const_cast<void*>(mem_args->device_memory_ptr(indices.rhs));
     arguments.c = const_cast<void*>(mem_args->device_memory_ptr(indices.out));
 
-    if (!Adaptor<Tag>::CanImplement(arguments)) {
+    if (!adaptor.CanImplement(arguments)) {
       return absl::InternalError(absl::StrCat(
           "CUTLASS kernel can not implement gemm for a given problem size",
           ": m=", m, ", n=", n, ", k=", k));
     }
 
-    auto threads = As<se::ThreadDim>(Adaptor<Tag>::ThreadDim());
-    auto shmem_bytes = Adaptor<Tag>::shared_memory_bytes();
+    auto threads = As<se::ThreadDim>(adaptor.ThreadDim());
+    auto shmem_bytes = adaptor.SharedMemoryBytes();
 
     // We keep max_occupancy in a static variable as currently for all
     // practical purposes all stream executors in the process have identical
@@ -132,7 +132,7 @@ KernelArgsPacking ArgsPacking(int32_t m, int32_t n, int32_t k,
 
     // Initialize parameters storage using adaptor.
     Params params;
-    Adaptor<Tag>::Initialize(&params, arguments, device_sms, sm_occupancy);
+    adaptor.Initialize(&params, arguments, device_sms, sm_occupancy);
 
     // Optionally set up dynamic slice parameters to allow kernel adjust
     // buffer pointers passed via `params`.
@@ -153,17 +153,19 @@ template <typename Tag>
 static StatusOr<CustomKernel> Load(std::string name, int32_t m, int32_t n,
                                    int32_t k, const ArgsIndices& indices,
                                    const DynamicSliceIndices& slices,
-                                   const se::DeviceDescription& device) {
+                                   const se::DeviceDescription& device,
+                                   Adaptor<Tag> adaptor = {},
+                                   DeviceKernel<Tag> kernel = {}) {
   // Get the dispatch grid size and shared memory requirements.
-  auto block_dim = As<se::BlockDim>(Adaptor<Tag>::BlockDim(m, n, k));
-  auto thread_dim = As<se::ThreadDim>(Adaptor<Tag>::ThreadDim());
-  auto shared_memory_bytes = Adaptor<Tag>::shared_memory_bytes();
+  auto block_dim = As<se::BlockDim>(adaptor.BlockDim(m, n, k));
+  auto thread_dim = As<se::ThreadDim>(adaptor.ThreadDim());
+  auto shared_memory_bytes = adaptor.SharedMemoryBytes();
 
   auto packing =
-      ArgsPacking<Tag>(m, n, k, indices, slices, device.core_count());
+      ArgsPacking<Tag>(m, n, k, indices, slices, device.core_count(), adaptor);
 
   se::MultiKernelLoaderSpec spec(/*arity=*/2, std::move(packing));
-  spec.AddInProcessSymbol(DeviceKernel<Tag>::symbol(), name);
+  spec.AddInProcessSymbol(kernel.symbol(), name);
 
   return CustomKernel(std::move(name), std::move(spec), block_dim, thread_dim,
                       shared_memory_bytes);
@@ -191,6 +193,27 @@ StatusOr<CustomKernel> GetCutlassGemmKernel(
     default:
       return absl::InvalidArgumentError("Unsupported CUTLASS gemm data type");
   }
+}
+
+StatusOr<CustomKernel> LoadCutlassGemmKernel(
+    std::string name, const std::string& library_path, PrimitiveType dtype,
+    int32_t m, int32_t n, int32_t k, const ArgsIndices& indices,
+    const DynamicSliceIndices& slices, const se::DeviceDescription& device) {
+  auto adaptor = Adaptor<DlOpenedKernel>::Load(library_path);
+  if (!adaptor.has_value()) {
+    return absl::InternalError(
+        absl::StrCat("Failed to load CUTLASS adaptor from a shared library: ",
+                     library_path));
+  }
+
+  auto kernel = DeviceKernel<DlOpenedKernel>::Load(library_path);
+  if (!kernel.has_value()) {
+    return absl::InternalError(absl::StrCat(
+        "Failed to load CUTLASS kernel from a shared library: ", library_path));
+  }
+
+  return Load<DlOpenedKernel>(std::move(name), m, n, k, indices, slices, device,
+                              *adaptor, *kernel);
 }
 
 }  // namespace xla::gpu::kernel::gemm_universal

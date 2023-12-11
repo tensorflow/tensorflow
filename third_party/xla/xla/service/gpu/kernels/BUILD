@@ -154,6 +154,7 @@ xla_test(
     name = "cutlass_gemm_custom_kernel_test",
     srcs = if_cuda_is_configured(["cutlass_gemm_custom_kernel_test.cc"]),
     backends = ["gpu"],
+    data = [":cutlass_gemm_kernel_f32xf32_to_f32.so"],
     deps = [
         ":cutlass_gemm_custom_kernel",
         "//xla:types",
@@ -163,7 +164,10 @@ xla_test(
         "//xla/stream_executor:platform",
         "//xla/stream_executor/cuda:cuda_platform",
         "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -196,8 +200,10 @@ cc_binary(
 
 cc_library(
     name = "cutlass_gemm",
+    srcs = ["cutlass_gemm.cc"],
     hdrs = ["cutlass_gemm.h"],
     visibility = ["//visibility:public"],
+    deps = ["@local_tsl//tsl/platform:logging"],
 )
 
 cuda_library(
@@ -266,4 +272,19 @@ cuda_library(
         "@cutlass_archive//:cutlass",
         "@local_config_cuda//cuda:cuda_headers",
     ]),
+)
+
+#===--------------------------------------------------------------------------------------------===#
+# CUTLASS Gemm kernel libraries
+#===--------------------------------------------------------------------------------------------===#
+
+cc_binary(
+    name = "cutlass_gemm_kernel_f32xf32_to_f32.so",
+    srcs = if_cuda_is_configured(["cutlass_gemm_kernel_f32xf32_to_f32.cc"]),
+    linkshared = True,
+    linkstatic = False,
+    deps = [
+        ":cutlass_gemm",
+        ":cutlass_gemm_kernel_f32xf32_to_f32",
+    ],
 )

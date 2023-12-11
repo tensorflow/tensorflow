@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/base/optimization.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -39,6 +40,7 @@ static const char* ToString(cudaError_t error) {
   } while (0)
 
 tsl::StatusOr<GpuFunctionHandle> GpuRuntime::GetFuncBySymbol(void* symbol) {
+  VLOG(2) << "Get CUDA function from a symbol: " << symbol;
   cudaFunction_t func;
   RETURN_IF_CUDA_RES_ERROR(cudaGetFuncBySymbol(&func, symbol),
                            "Failed call to cudaGetFuncBySymbol");
