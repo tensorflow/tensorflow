@@ -95,4 +95,13 @@ void HloFusionAnalysisCache::Invalidate(const HloInstruction& instruction) {
   }
 }
 
+void HloFusionAnalysisCache::Clear() {
+  absl::MutexLock lock(&mutex_);
+
+  analyses_.clear();
+  producer_consumer_analyses_.clear();
+  consumers_for_producers_.clear();
+  producers_for_consumers_.clear();
+}
+
 }  // namespace xla::gpu

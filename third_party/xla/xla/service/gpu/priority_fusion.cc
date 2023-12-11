@@ -212,9 +212,34 @@ class GpuPriorityFusionQueue : public FusionQueue {
     return {next_consumer, {producer_operand_index}};
   }
 
-  // Calculates the compute cost and free computation of the new fusion in the
-  // PreFusion callback.
-  void PreFusion(HloInstruction* producer, HloInstruction* consumer) override {}
+  // Prepares producer and consumer instruction to be fused. Invalidates caches
+  // and writes logs.
+  void PreFusion(HloInstruction* producer, HloInstruction* consumer) override {
+    InvalidateCaches(producer);
+    InvalidateCaches(consumer);
+  }
+
+  // Invalidates all cached value related to this instruction. Called before the
+  // instruction is fused. The instruction can be either producer or consumer.
+  void InvalidateCaches(HloInstruction* instruction) {
+    HloInstructionAdaptor instruction_adaptor(*instruction);
+
+    can_fuse_cache_.erase(instruction_adaptor);
+    for (auto operand : instruction_adaptor.GetOperands()) {
+      auto it = can_fuse_cache_.find(operand);
+      if (it != can_fuse_cache_.end()) {
+        it->second.erase(instruction_adaptor);
+      }
+    }
+
+    gpu_performance_model_cache_.Invalidate(*instruction);
+    fusion_analysis_cache_.Invalidate(*instruction);
+
+    for (auto* user : instruction->users()) {
+      fusion_node_evaluations_.erase(user);
+    }
+    fusion_node_evaluations_.erase(instruction);
+  }
 
   // Updates data for the new fusion instruction and its users and operands.
   void OnFusingInstruction(HloInstruction* fusion,
@@ -229,20 +254,6 @@ class GpuPriorityFusionQueue : public FusionQueue {
       fusion_step->set_producer_name(std::string(original_producer->name()));
       fusion_step->set_consumer_name(std::string(original_consumer->name()));
     }
-
-    HloInstructionAdaptor fusion_adaptor(*fusion);
-    can_fuse_cache_.erase(fusion_adaptor);
-
-    gpu_performance_model_cache_.Invalidate(*fusion);
-
-    fusion_analysis_cache_.Invalidate(*fusion);
-    fusion_analysis_cache_.Invalidate(*original_producer);
-
-    // Invalidate cached values for the fusion and all users.
-    for (auto* user : fusion->users()) {
-      fusion_node_evaluations_.erase(user);
-    }
-    fusion_node_evaluations_.erase(fusion);
 
     // The original consumer was replaced with the fusion, but it's pointer can
     // still be referenced somewhere, for example, in to_update_priority_.
@@ -275,8 +286,6 @@ class GpuPriorityFusionQueue : public FusionQueue {
         continue;
       }
 
-      HloInstructionAdaptor operand_adaptor(*operand);
-      can_fuse_cache_[operand_adaptor].erase(fusion_adaptor);
       to_update_priority_.insert(operand);
     }
     to_update_priority_.insert(fusion);
@@ -638,6 +647,11 @@ StatusOr<bool> GpuPriorityFusion::Run(
       }
     }
   }
+
+  // FusionAnalysis cache uses unique_id as key. IDs are only unique inside one
+  // module. It's important to fully clear the cache if the same instance of the
+  // pass will be called on a different module.
+  fusion_analysis_cache_.Clear();
 
   if (dump_enabled) {
     DumpPerModuleProtobufToFile(*module, *fusion_process_dump_,
