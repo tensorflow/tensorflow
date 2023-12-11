@@ -996,6 +996,7 @@ tf_kernel_library(
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:split_utils",
         "@com_google_absl//absl/memory",
+        "@local_tsl//tsl/platform:types",
     ],
 )
 

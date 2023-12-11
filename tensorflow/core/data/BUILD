@@ -445,6 +445,7 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:thread_annotations",
+        "@local_tsl//tsl/platform:types",
     ],
 )
 

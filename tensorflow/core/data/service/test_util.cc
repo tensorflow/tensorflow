@@ -53,9 +53,11 @@ using ::tensorflow::test::function::NDef;
 constexpr int64_t kShardHint = -1;
 constexpr const char kTestdataDir[] =
     "tensorflow/core/data/service/testdata";
+constexpr const char kEnumerateDatasetFile[] = "enumerate_dataset.pbtxt";
 constexpr const char kInterleaveTextlineDatasetFile[] =
     "interleave_textline_dataset.pbtxt";
 constexpr const char kChooseFromDatasetsFile[] = "choose_from_datasets.pbtxt";
+constexpr const char kSampleFromDatasetsFile[] = "sample_from_datasets.pbtxt";
 
 NodeDef GetMapNode(absl::string_view name, absl::string_view input_node_name,
                    absl::string_view function_name) {
@@ -182,9 +184,25 @@ DatasetDef InfiniteDataset() {
   return dataset_def;
 }
 
+StatusOr<DatasetDef> EnumerateDataset() {
+  DatasetDef dataset;
+  std::string graph_file = io::JoinPath(kTestdataDir, kEnumerateDatasetFile);
+  TF_RETURN_IF_ERROR(
+      ReadTextProto(Env::Default(), graph_file, dataset.mutable_graph()));
+  return dataset;
+}
+
 StatusOr<DatasetDef> ChooseFromDatasets() {
   DatasetDef dataset;
   std::string graph_file = io::JoinPath(kTestdataDir, kChooseFromDatasetsFile);
+  TF_RETURN_IF_ERROR(
+      ReadTextProto(Env::Default(), graph_file, dataset.mutable_graph()));
+  return dataset;
+}
+
+StatusOr<DatasetDef> SampleFromDatasets() {
+  DatasetDef dataset;
+  std::string graph_file = io::JoinPath(kTestdataDir, kSampleFromDatasetsFile);
   TF_RETURN_IF_ERROR(
       ReadTextProto(Env::Default(), graph_file, dataset.mutable_graph()));
   return dataset;

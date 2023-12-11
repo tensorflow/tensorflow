@@ -52,12 +52,25 @@ DatasetDef RangeDatasetWithShardHint(int64_t range);
 DatasetDef InfiniteDataset();
 
 // Returns a test dataset representing
+// dataset = tf.data.Dataset.from_tensor_slices(["a", "b", "c"])
+// dataset = dataset.enumerate()
+StatusOr<DatasetDef> EnumerateDataset();
+
+// Returns a test dataset representing
 // datasets = [tf.data.Dataset.from_tensor_slices(["a", "a", "a", "a", "a"]),
 //             tf.data.Dataset.from_tensor_slices(["b", "b", "b", "b", "b"]),
 //             tf.data.Dataset.from_tensor_slices(["c", "c", "c", "c", "c"])]
 // choice_dataset = tf.data.Dataset.range(3).repeat()
 // dataset = tf.data.Dataset.choose_from_datasets(datasets, choice_dataset)
 StatusOr<DatasetDef> ChooseFromDatasets();
+
+// Returns a test dataset representing
+// datasets = [tf.data.Dataset.from_tensor_slices(["a", "a", "a", "a", "a"]),
+//             tf.data.Dataset.from_tensor_slices(["b", "b", "b", "b", "b"]),
+//             tf.data.Dataset.from_tensor_slices(["c", "c", "c", "c", "c"])]
+// dataset = tf.data.Dataset.sample_from_datasets(
+//     datasets, weights=[1.0] * len(datasets))
+StatusOr<DatasetDef> SampleFromDatasets();
 
 // Returns a distributed snapshot metadata for a dummy dataset.
 experimental::DistributedSnapshotMetadata

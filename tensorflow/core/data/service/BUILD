@@ -1,16 +1,16 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+)
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "get_compatible_with_portable", "tf_grpc_cc_dependencies")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
     "tf_proto_library",
     "tf_protos_profiler_service",
 )
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "get_compatible_with_portable", "tf_grpc_cc_dependencies")
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
-)
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package_group(
     name = "data_transfer_visibility",
@@ -736,6 +736,22 @@ cc_library(
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:thread_annotations",
+    ],
+)
+
+tf_cc_test(
+    name = "split_provider_test",
+    srcs = ["split_provider_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
+    deps = [
+        ":common_proto_cc",
+        ":split_provider",
+        ":test_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

@@ -172,10 +172,6 @@ class DistributedSaveLoadTest(
           test_base.default_test_combinations(),
           combinations.combine(num_workers=[1, 3], num_repetitions=[1, 3])))
   def test_save_after_sample(self, num_workers: int, num_repetitions: int):
-    self.skipTest(
-        "TODO(b/297930782): SnapshotManager::CountSplits does not work with "
-        "RandomDataset which is used to generate random numbers for sampling. "
-        "The random dataset generates an infinite number of splits.")
     num_elements = 10
     num_datasets = 3
     test_snapshot = TestSnapshot()
@@ -201,10 +197,6 @@ class DistributedSaveLoadTest(
           test_base.default_test_combinations(),
           combinations.combine(num_workers=[1, 3])))
   def test_enumerate(self, num_workers: int):
-    self.skipTest(
-        "TODO(b/297930782): SnapshotManager::CountSplits does not work with "
-        "enumerate since the enumerated index split provider has infinite "
-        "splits.")
     test_snapshot = TestSnapshot()
     cluster = data_service_test_base.TestCluster(num_workers)
     dataset = dataset_ops.Dataset.from_tensor_slices(["a", "b", "c"])
@@ -215,8 +207,10 @@ class DistributedSaveLoadTest(
             dataset, test_snapshot.path, cluster.dispatcher_address()))
 
     dataset = load_op._load_distributed_snapshot_v2(test_snapshot.path)
-    self.assertDatasetProduces(
-        dataset, ["a", "b", "c"] * 3, assert_items_equal=True)
+    indexes, elements = map(list, zip(*self.getDatasetOutput(dataset)))
+    if num_workers == 1:
+      self.assertCountEqual(indexes, list(range(9)))
+    self.assertCountEqual(elements, [b"a", b"b", b"c"] * 3)
 
 
 if __name__ == "__main__":

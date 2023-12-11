@@ -32,6 +32,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/mutex.h"
+#include "tsl/platform/types.h"
 
 namespace tensorflow {
 namespace data {
@@ -76,6 +77,16 @@ absl::Status IndexSplitProvider::Restore(
     IteratorStateReader* reader) {
   tsl::mutex_lock l(mu_);
   return reader->ReadScalar(full_name(kIndex), &i_);
+}
+
+int64_t IndexSplitProvider::Cardinality() const {
+  // RandomDataset uses kint64max to simulate infinite splits.
+  // See RandomDatasetOp::Dataset::MakeSplitProviders.
+  if (n_ == tsl::kint64max) {
+    return kInfiniteCardinality;
+  }
+  // TODO(b/297930782): Handle repetitions.
+  return n_;
 }
 
 ShardingSplitProvider::ShardingSplitProvider(
