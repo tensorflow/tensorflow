@@ -73,6 +73,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":command_buffer_cmd",
+        ":sequential_thunk",
+        ":while_thunk",
         "//xla:statusor",
         "//xla:util",
         "//xla/service/gpu:gpu_executable",

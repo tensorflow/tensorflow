@@ -3768,10 +3768,10 @@ Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
                           HloFusionAnalysis::Create(fusion, &device_info));
       return EmitFusion(fusion, fusion_analysis, nullptr, {});
     }
-    case HloOpcode::kConstant:
-      return EmitConstant(Cast<HloConstantInstruction>(instr));
     case HloOpcode::kWhile:
       return EmitWhile(instr);
+    case HloOpcode::kConstant:
+      return EmitConstant(Cast<HloConstantInstruction>(instr));
     // We don't need to emit thunks for these operations because their semantics
     // are encoded by buffers.
     case HloOpcode::kBitcast:

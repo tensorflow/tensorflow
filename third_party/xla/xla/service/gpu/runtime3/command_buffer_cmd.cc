@@ -345,6 +345,7 @@ WhileCmd::WhileCmd(BufferAllocation::Slice pred,
 
 Status WhileCmd::Initialize(se::StreamExecutor* executor,
                             ExecutableSource source) {
+  TF_RETURN_IF_ERROR(cond_commands_.Initialize(executor, source));
   return body_commands_.Initialize(executor, source);
 }
 
