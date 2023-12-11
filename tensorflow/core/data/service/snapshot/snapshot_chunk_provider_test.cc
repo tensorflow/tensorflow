@@ -81,6 +81,16 @@ absl::StatusOr<std::vector<std::string>> GetAllChunks(
   return chunks;
 }
 
+std::vector<std::string> JoinPaths(absl::string_view snapshot_path,
+                                   const std::vector<std::string> chunks) {
+  std::vector<std::string> joined_chunks;
+  for (absl::string_view chunk : chunks) {
+    joined_chunks.push_back(
+        tsl::io::JoinPath(CommittedChunksDirectory(snapshot_path), chunk));
+  }
+  return joined_chunks;
+}
+
 TEST(SnapshotChunkProviderTest, EmptySnapshot) {
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
   TF_ASSERT_OK(SetDone(snapshot_path));
@@ -93,10 +103,10 @@ TEST(SnapshotChunkProviderTest, EmptySnapshot) {
 
 TEST(SnapshotChunkProviderTest, SingleReader) {
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
-  std::vector<std::string> expected_chunks = {"chunk_0_0_0", "chunk_1_1_1",
-                                              "chunk_2_2_2", "chunk_3_3_3",
-                                              "chunk_4_4_4"};
-  for (absl::string_view chunk : expected_chunks) {
+  std::vector<std::string> chunks = {"chunk_0_0_0", "chunk_1_1_1",
+                                     "chunk_2_2_2", "chunk_3_3_3",
+                                     "chunk_4_4_4"};
+  for (absl::string_view chunk : chunks) {
     TF_ASSERT_OK(WriteChunk(snapshot_path, chunk));
   }
   TF_ASSERT_OK(SetDone(snapshot_path));
@@ -104,7 +114,8 @@ TEST(SnapshotChunkProviderTest, SingleReader) {
   SnapshotChunkProvider snapshot_chunk_provider(snapshot_path,
                                                 tsl::Env::Default());
   EXPECT_THAT(GetAllChunks(snapshot_chunk_provider),
-              IsOkAndHolds(UnorderedElementsAreArray(expected_chunks)));
+              IsOkAndHolds(
+                  UnorderedElementsAreArray(JoinPaths(snapshot_path, chunks))));
 }
 
 TEST(SnapshotChunkProviderTest, WaitForSnapshot) {
@@ -138,7 +149,8 @@ TEST(SnapshotChunkProviderTest, WaitForSnapshot) {
   // The reader should be able to get chunks now.
   reader_thread.reset();
   absl::MutexLock l(&mu);
-  EXPECT_THAT(result, ElementsAre("chunk_0_0_0"));
+  EXPECT_THAT(result, UnorderedElementsAreArray(
+                          JoinPaths(snapshot_path, {"chunk_0_0_0"})));
 }
 
 TEST(SnapshotChunkProviderTest, ConcurrentReadWrite) {
@@ -191,7 +203,8 @@ TEST(SnapshotChunkProviderTest, ConcurrentReadWrite) {
       expected.push_back(absl::StrCat("chunk_", i, "_", j));
     }
   }
-  EXPECT_THAT(result, UnorderedElementsAreArray(expected));
+  EXPECT_THAT(result,
+              UnorderedElementsAreArray(JoinPaths(snapshot_path, expected)));
 }
 
 }  // namespace

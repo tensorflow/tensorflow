@@ -964,6 +964,7 @@ tf_kernel_library(
         ":to_tf_record_op",
         ":unbatch_dataset_op",
         ":unique_dataset_op",
+        "//tensorflow/core/data/service/snapshot:list_snapshot_chunks_dataset_op",
         "//tensorflow/core/data/service/snapshot:snapshot_chunk_dataset_op",
     ] + select({
         "//tensorflow:fuchsia": [],

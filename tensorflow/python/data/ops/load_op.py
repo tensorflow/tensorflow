@@ -15,6 +15,8 @@
 """Implementation of LoadDataset in Python."""
 import multiprocessing
 import os
+import time
+from typing import Optional
 
 from google.protobuf import message
 from google.protobuf import text_format
@@ -22,6 +24,9 @@ from tensorflow.core.protobuf import snapshot_pb2
 from tensorflow.python.data.experimental.service import _pywrap_snapshot_utils
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import structured_function
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.platform import gfile
 # TODO(b/238903802): Use TypeSpec serialization methods directly.
@@ -30,22 +35,6 @@ from tensorflow.python.saved_model import nested_structure_coder
 
 def _load(path, element_spec, compression, reader_func):
   """Loads dataset from tf.data snapshot."""
-
-  def _get_distributed_snapshot_metadata():
-    """Reads the distributed snapshot metadata.
-
-    Returns:
-      DistributedSnapshotMetadata if the snapshot is a distributed snapshot.
-      Returns None if it is a non-distributed snapshot.
-    """
-    try:
-      with gfile.GFile(
-          _pywrap_snapshot_utils.TF_DATA_SnapshotMetadataFilePath(path), "r"
-      ) as f:
-        return text_format.ParseLines(
-            f, snapshot_pb2.DistributedSnapshotMetadata())
-    except (text_format.ParseError, message.DecodeError, UnicodeDecodeError):
-      return None
 
   if reader_func is None:
     reader_func = lambda datasets: datasets.interleave(  # pylint:disable=g-long-lambda
@@ -59,13 +48,39 @@ def _load(path, element_spec, compression, reader_func):
       encoded_spec = f.read()
     element_spec = _parse_element_spec(encoded_spec)
 
-  distributed_snapshot_metadata = _get_distributed_snapshot_metadata()
+  distributed_snapshot_metadata = _load_distributed_snapshot_metadata(path)
   if distributed_snapshot_metadata:
     _validate_snapshot(
         path, distributed_snapshot_metadata, element_spec, compression)
     return _load_distributed_snapshot(
         path, distributed_snapshot_metadata, reader_func)
   return _LoadDataset(path, element_spec, compression, reader_func)
+
+
+def _load_distributed_snapshot_metadata(
+    path: str,
+) -> Optional[snapshot_pb2.DistributedSnapshotMetadata]:
+  """Reads the distributed snapshot metadata.
+
+  Args:
+    path: Base path of the snapshot.
+
+  Returns:
+    DistributedSnapshotMetadata if the snapshot is a distributed snapshot.
+    Returns None if it is a non-distributed snapshot.
+  """
+  try:
+    with gfile.GFile(
+        _pywrap_snapshot_utils.TF_DATA_SnapshotMetadataFilePath(path), "r"
+    ) as f:
+      return text_format.ParseLines(
+          f, snapshot_pb2.DistributedSnapshotMetadata())
+  except (
+      errors.NotFoundError,
+      text_format.ParseError,
+      message.DecodeError,
+      UnicodeDecodeError):
+    return None
 
 
 def _load_distributed_snapshot(path, metadata, reader_func):
@@ -75,6 +90,46 @@ def _load_distributed_snapshot(path, metadata, reader_func):
   chunk_files = [
       os.path.join(chunks_dir, f) for f in gfile.ListDirectory(chunks_dir)]
   dataset = dataset_ops.Dataset.from_tensor_slices(chunk_files)
+  dataset = dataset.map(
+      lambda chunk_file: _SnapshotChunkDataset(  # pylint:disable=g-long-lambda
+          chunk_file,
+          element_spec=_parse_element_spec(metadata.element_spec),
+          compression=metadata.compression))
+  return reader_func(dataset)
+
+
+def _load_distributed_snapshot_v2(
+    path: str, reader_func=None
+) -> dataset_ops.Dataset:
+  """Load a distributed snapshot using the updated loading algorithm.
+
+  The new version allows the load job to read the snapshot while it is being
+  written.
+
+  TODO(b/297930782): Merge this into `_load` when it's ready. Currently, this is
+  for testing only.
+
+  Args:
+    path: Base path of the snapshot.
+    reader_func: Optional. A function to control how to read data from shards.
+      If present, the function will be traced and executed as graph computation.
+
+  Returns:
+    The loaded dataset.
+  """
+
+  if not reader_func:
+    reader_func = lambda datasets: datasets.interleave(  # pylint:disable=g-long-lambda
+        lambda x: x,
+        cycle_length=multiprocessing.cpu_count(),
+        num_parallel_calls=dataset_ops.AUTOTUNE)
+
+  metadata = _load_distributed_snapshot_metadata(path)
+  while not metadata:
+    time.sleep(2)
+    metadata = _load_distributed_snapshot_metadata(path)
+
+  dataset = _ListSnapshotChunksDataset(path)
   dataset = dataset.map(
       lambda chunk_file: _SnapshotChunkDataset(  # pylint:disable=g-long-lambda
           chunk_file,
@@ -125,6 +180,25 @@ class _SnapshotChunkDataset(dataset_ops.DatasetSource):
   @property
   def element_spec(self):
     return self._element_spec
+
+
+class _ListSnapshotChunksDataset(dataset_ops.DatasetSource):
+  """A dataset for listing snapshot chunk files.
+
+  It supports listing partially written snapshots. When a snapshot is being
+  written, it returns the currently available chunk files.
+  """
+
+  def __init__(self, snapshot_path: str):
+    self._snapshot_path = snapshot_path
+    variant_tensor = ged_ops.list_snapshot_chunks_dataset(
+        snapshot_path, **self._flat_structure
+    )
+    super().__init__(variant_tensor)
+
+  @property
+  def element_spec(self) -> tensor_spec.TensorSpec:
+    return tensor_spec.TensorSpec([], dtypes.string)
 
 
 def _validate_snapshot(path, metadata, element_spec, compression):

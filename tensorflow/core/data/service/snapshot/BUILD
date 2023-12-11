@@ -1,7 +1,7 @@
 # Distributed snapshot library.
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
+load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies", "tf_kernel_library")
 load("//tensorflow/core/platform:build_config.bzl", "tf_protos_profiler_service")
 load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 
@@ -82,6 +82,28 @@ tf_cc_test(
         "@local_tsl//tsl/platform:status_to_from_proto",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/protobuf:protos_all_cc",
+    ],
+)
+
+tf_kernel_library(
+    name = "list_snapshot_chunks_dataset_op",
+    srcs = ["list_snapshot_chunks_dataset_op.cc"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":snapshot_chunk_provider",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/framework:op_requires",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:tstring",
     ],
 )
 
@@ -259,6 +281,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

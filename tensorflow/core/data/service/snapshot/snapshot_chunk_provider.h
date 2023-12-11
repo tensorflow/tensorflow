@@ -38,9 +38,9 @@ class SnapshotChunkProvider {
   SnapshotChunkProvider(const SnapshotChunkProvider&) = delete;
   SnapshotChunkProvider& operator=(const SnapshotChunkProvider&) = delete;
 
-  // Returns the next snapshot chunk to read. If there is no available chunk,
-  // blocks until the next chunk is unavailable, or all the chunks are read.
-  // Returns std::nullopt if all chunks have been read.
+  // Returns the absolute file path of next snapshot chunk to read. If there is
+  // no available chunk, blocks until the next chunk is unavailable, or all the
+  // chunks are read. Returns std::nullopt if all chunks have been read.
   absl::StatusOr<std::optional<std::string>> GetNext();
 
   // TODO(b/297930782): Support save/load.

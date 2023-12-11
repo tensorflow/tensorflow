@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/path.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -45,7 +46,8 @@ absl::StatusOr<std::optional<std::string>> SnapshotChunkProvider::GetNext()
       std::string next_chunk = *chunks_unread_.begin();
       chunks_read_.insert(next_chunk);
       chunks_unread_.erase(next_chunk);
-      return next_chunk;
+      return tsl::io::JoinPath(CommittedChunksDirectory(snapshot_path_),
+                               next_chunk);
     }
     if (snapshot_is_done_) {
       return std::nullopt;
