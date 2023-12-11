@@ -530,9 +530,7 @@ xla_test(
     backend_tags = {"gpu": [
         "requires-gpu-sm70",
     ]},
-    backends = [
-        "gpu",
-    ],
+    backends = ["gpu"],
     shard_count = 20,
     tags = ["nomac"],
     deps = [
@@ -579,9 +577,7 @@ xla_test(
     backend_tags = {"gpu": [
         "requires-gpu-sm70",
     ]},
-    backends = [
-        "gpu",
-    ],
+    backends = ["gpu"],
     tags = [
         "large",
         "no_oss",  # requires-mem:16g tag doesn't work in open source
