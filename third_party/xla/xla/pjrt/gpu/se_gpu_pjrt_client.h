@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
@@ -147,6 +148,10 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
   absl::string_view device_vendor() const;
 
   absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
+
+  absl::Span<int const> coords() const;
+
+  int core_on_chip() const;
 
  private:
   std::string device_vendor_;

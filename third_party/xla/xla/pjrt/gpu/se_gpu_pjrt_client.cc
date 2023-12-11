@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 
+#include <array>
 #include <map>
 #include <memory>
 #include <optional>
@@ -44,6 +45,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/stream_executor_executable.h"
@@ -846,13 +848,26 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
                                std::move(device_kind), node_id),
       device_vendor_(std::move(device_vendor)),
       slice_index_(slice_index) {
+  int64_t core_index = 0;
+  description().SetCoreOnChip(core_index);
+  std::array<int, 1> coords = {local_hardware_id()};
+  description().SetCoords(coords);
+  std::vector<int64_t> v_coords(description().coords().begin(),
+                                description().coords().end());
+
   description().SetAttributes({
+      {"coords", xla::PjRtDeviceAttribute(v_coords)},
+      {"core_on_chip", xla::PjRtDeviceAttribute(core_index)},
       {"device_vendor", device_vendor_},
       {"slice_index", static_cast<int64_t>(slice_index)},
   });
   description().SetToString(absl::StrFormat(
-      "StreamExecutorGpuDevice(id=%i, process_index=%i, slice_index=%i)", id,
-      process_index(), slice_index));
+      "StreamExecutorGpuDevice(device_kind=%s, id=%i, process_index=%i, "
+      "slice_index=%i))",
+      description().device_kind(), id, process_index(), slice_index));
+  description().SetDebugString(absl::StrFormat("%s_%i(process=%i,(%i))",
+                                               description().device_kind(), id,
+                                               process_index(), v_coords[0]));
 }
 
 int StreamExecutorGpuDevice::slice_index() const { return slice_index_; }
@@ -878,6 +893,14 @@ absl::StatusOr<tsl::AllocatorStats> StreamExecutorGpuDevice::GetAllocatorStats()
   auto stats = allocator->GetStats();
   TF_RET_CHECK(stats.has_value());
   return stats.value();
+}
+
+absl::Span<int const> StreamExecutorGpuDevice::coords() const {
+  return description().coords();
+}
+
+int StreamExecutorGpuDevice::core_on_chip() const {
+  return description().core_on_chip();
 }
 
 StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
