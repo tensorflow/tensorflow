@@ -2427,6 +2427,78 @@ ENTRY test {
   }
 }
 
+TEST_F(AlgebraicSimplifierTest, MinimumOfMinimum1) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  min1 = f32[] minimum(x, y)
+  ROOT min = f32[] minimum(min1, y)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Minimum(m::Parameter(0), m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MinimumOfMinimum2) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  min1 = f32[] minimum(x, y)
+  ROOT min = f32[] minimum(min1, x)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Minimum(m::Parameter(0), m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MinimumOfMinimum3) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  min1 = f32[] minimum(x, y)
+  ROOT min = f32[] minimum(y, min1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Minimum(m::Parameter(1), m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MinimumOfMinimum4) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  min1 = f32[] minimum(x, y)
+  ROOT min = f32[] minimum(x, min1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Minimum(m::Parameter(0), m::Parameter(1))));
+}
+
 TEST_F(AlgebraicSimplifierTest, TrivialReduceWindow_Add) {
   const char* const hlo_string = R"(
 HloModule test
