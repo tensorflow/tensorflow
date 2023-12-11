@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/runtime3/command_buffer_allocations.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/status.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -189,11 +188,15 @@ Status MemcpyDeviceToDeviceCmd::Record(const RecordParams& params,
   se::DeviceMemoryBase dst = params.buffer_allocations->GetDeviceAddress(dst_);
   se::DeviceMemoryBase src = params.buffer_allocations->GetDeviceAddress(src_);
 
-  VLOG(5) << "MemcpyDeviceToDeviceCmd: dst=" << dst_ << "("
-          << reinterpret_cast<void*>(dst.opaque()) << ")"
-          << ", src=" << src_ << "(" << reinterpret_cast<void*>(src.opaque())
-          << ")"
-          << ", num_bytes=" << num_bytes_;
+  VLOG(5) << "MemcpyDeviceToDeviceCmd: dst=" << dst_ << " (" << dst.opaque()
+          << "), src=" << src_ << " (" << src.opaque()
+          << "), num_bytes=" << num_bytes_;
+
+  if (num_bytes_ == 0) {
+    VLOG(5) << "Skip recording MemcpyDeviceToDeviceCmd command of 0 bytes";
+    return OkStatus();
+  }
+
   return command_buffer->MemcpyDeviceToDevice(&dst, src, num_bytes_);
 }
 

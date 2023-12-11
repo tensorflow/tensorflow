@@ -3710,13 +3710,14 @@ Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
     }
     // We don't need to emit thunks for these operations because their semantics
     // are encoded by buffers.
+    case HloOpcode::kBitcast:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kParameter:
-    case HloOpcode::kTuple: {
+    case HloOpcode::kTuple:
       return OkStatus();
-    }
     default:
-      return InternalError("Unsupported instruction opcode");
+      return InternalError("Unsupported instruction opcode: %s",
+                           HloOpcodeString(instr->opcode()));
   }
 
   return InternalError("Unhandled HLO instruction");

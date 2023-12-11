@@ -1714,12 +1714,6 @@ GpuCompiler::CompileToBackendResult(
   TF_RETURN_IF_ERROR(ScheduleGpuModule(module, pointer_size_,
                                        scheduler_mem_limit, gpu_device_info));
 
-  if (!IsXlaRuntimeExecutableEnabled(module->config())) {
-    HloPassPipeline pipeline("command-buffer-scheduling");
-    pipeline.AddPass<CommandBufferScheduling>();
-    TF_RETURN_IF_ERROR(pipeline.Run(module).status());
-  }
-
   TF_RETURN_IF_ERROR(RunPostSchedulingPipelines(module, scheduler_mem_limit));
 
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
@@ -2051,6 +2045,15 @@ Status GpuCompiler::RunPostSchedulingPipelines(
     // insert additional copies.
     TF_RETURN_IF_ERROR(pipeline.Run(module).status());
   }
+
+  // After we have a scheduled module and all operations wrapped into fusions we
+  // can decide how to wrap them into command buffers.
+  if (!IsXlaRuntimeExecutableEnabled(module->config())) {
+    HloPassPipeline pipeline("command-buffer-scheduling");
+    pipeline.AddPass<CommandBufferScheduling>();
+    TF_RETURN_IF_ERROR(pipeline.Run(module).status());
+  }
+
   return OkStatus();
 }
 

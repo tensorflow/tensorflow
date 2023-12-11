@@ -16,7 +16,6 @@ limitations under the License.
 #define XLA_SERVICE_GPU_COMMAND_BUFFER_SCHEDULING_H_
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <vector>
 
@@ -70,6 +69,11 @@ namespace xla::gpu {
 // custom call to a first class operation later.
 class CommandBufferScheduling : public HloModulePass {
  public:
+  // DebugOptions control which commands are enabled. Long term we want to
+  // remove that flag and enable all supported commands by default.
+  using CommandBufferConfig =
+      absl::flat_hash_set<DebugOptions::CommandBufferCmdType>;
+
   absl::string_view name() const override {
     return "command-buffer-scheduling";
   }
@@ -80,8 +84,8 @@ class CommandBufferScheduling : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   static std::vector<HloInstructionSequence> CollectCommandBufferSequences(
-      HloInstructionSequence inst_sequence,
-      std::function<bool(const HloInstruction*)> is_command);
+      HloInstructionSequence inst_sequence, const CommandBufferConfig& config);
+
   static void MoveParametersToFront(HloComputation* computation);
 
   struct BuildCommandBufferResult {
@@ -90,8 +94,7 @@ class CommandBufferScheduling : public HloModulePass {
     // Maps external instructions used by the command buffer to a parameter
     // of the command buffer computation. The command buffer uses parameters
     // to access the results of external instructions.
-    absl::flat_hash_map<HloInstruction*, HloParameterInstruction*>
-        parameters_map;
+    absl::flat_hash_map<HloInstruction*, HloParameterInstruction*> captures;
 
     // We move some instructions to the command buffer computation and return
     // the results back to the original computation by tuple. This field maps
@@ -101,7 +104,7 @@ class CommandBufferScheduling : public HloModulePass {
 
     // Map original instructions to their clones in the command buffer
     // computation.
-    absl::flat_hash_map<HloInstruction*, HloInstruction*> instructions_map;
+    absl::flat_hash_map<HloInstruction*, HloInstruction*> instr_mapping;
   };
 
   // Builds a computation from the instruction sequence. Used values constructed
