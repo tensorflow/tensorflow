@@ -139,6 +139,7 @@ class IrEmitterUnnested : public IrEmitter {
   // IrEmitter. It also mixes in some special handling for custom kernels
   // via the ThunkEmitter.
   Status EmitConstant(mlir::Operation* op, const Literal& literal);
+  Status EmitConstant(const HloConstantInstruction* instr);
 
   Status EmitConditional(
       mlir::Operation* op,
@@ -181,9 +182,10 @@ class IrEmitterUnnested : public IrEmitter {
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
   Status EmitWhile(
-      mlir::Operation* op,
+      mlir::Operation* op, const HloInstruction* instr,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
+  Status EmitWhile(const HloInstruction* instr);
   Status EmitInfeed(mlir::Operation* op);
   Status EmitOutfeed(mlir::Operation* op);
   Status EmitRngGetAndUpdateState(mlir::Operation* op);
@@ -418,6 +420,9 @@ class IrEmitterUnnested : public IrEmitter {
       mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
+
+  StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(
+      const HloInstruction* instr, const Thunk::ThunkInfo& thunk_info);
 
   // Returns a ForThunk which executes 'loop_limit' invocations of a thunk
   // sequence from the 'body' sub-computation of the while instruction 'hlo'.

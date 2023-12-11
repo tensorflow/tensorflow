@@ -441,6 +441,25 @@ Status IrEmitterUnnested::EmitConstant(mlir::Operation* op,
   return OkStatus();
 }
 
+Status IrEmitterUnnested::EmitConstant(const HloConstantInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(DenseDataIntermediate content,
+                      LiteralToXlaFormat(instr->literal()));
+
+  int element_bytes =
+      primitive_util::ByteWidth(instr->literal().shape().element_type());
+  TF_RET_CHECK(content.span().size() % element_bytes == 0);
+  // Treat int4 constant as int8 constant with half the number of elements.
+  int num_elements = content.span().size() / element_bytes;
+
+  std::string global_name = llvm_ir::ConstantHloToGlobalName(*instr);
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                      GetAllocationSliceForHlo(instr, {}));
+
+  ir_emitter_context_->emit_constant(num_elements, element_bytes, global_name,
+                                     slice.index(), std::move(content), &b_);
+  return OkStatus();
+}
+
 static ConditionalThunkConfig GetConditionalThunkConfig(
     mlir::lmhlo::CaseOp op, std::vector<ThunkSequence> branch_thunk_sequences) {
   ConditionalThunkConfig config;
@@ -2571,7 +2590,7 @@ Status IrEmitterUnnested::EmitSelectAndScatter(
 }
 
 Status IrEmitterUnnested::EmitWhile(
-    mlir::Operation* op,
+    mlir::Operation* op, const HloInstruction* instr,
     const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
         hlo_for_lmhlo) {
   auto while_op = mlir::cast<mlir::lmhlo::WhileOp>(op);
@@ -2599,12 +2618,32 @@ Status IrEmitterUnnested::EmitWhile(
                       *while_op.getTripCount(), hlo_for_lmhlo));
     AddThunkToThunkSequence(std::move(thunk));
   } else {
-    TF_ASSIGN_OR_RETURN(
-        auto thunk,
-        BuildWhileThunk(while_op, Thunk::ThunkInfo::WithProfileAnnotation(op),
-                        hlo_for_lmhlo));
-    AddThunkToThunkSequence(std::move(thunk));
+    // TODO(ezhulenev): We have few remaining tests that depend on emitting
+    // special fusions, so we can't yet enable while thunk emission here.
+    static constexpr bool kWhileThunkNotSupported = false;
+    if (ir_emitter_context_->emit_ir_from_hlo() && kWhileThunkNotSupported) {
+      TF_ASSIGN_OR_RETURN(
+          auto thunk,
+          BuildWhileThunk(instr,
+                          Thunk::ThunkInfo::WithProfileAnnotation(instr)));
+      AddThunkToThunkSequence(std::move(thunk));
+    } else {
+      TF_ASSIGN_OR_RETURN(
+          auto thunk,
+          BuildWhileThunk(while_op, Thunk::ThunkInfo::WithProfileAnnotation(op),
+                          hlo_for_lmhlo));
+      AddThunkToThunkSequence(std::move(thunk));
+    }
   }
+  return OkStatus();
+}
+
+Status IrEmitterUnnested::EmitWhile(const HloInstruction* instr) {
+  // TODO(ezhulenev): Add support for emitting ForThunks for known trip count.
+  TF_ASSIGN_OR_RETURN(
+      auto thunk,
+      BuildWhileThunk(instr, Thunk::ThunkInfo::WithProfileAnnotation(instr)));
+  AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
 }
 
@@ -3248,6 +3287,28 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
                      ir_emitter_body->ConsumeThunkSequence()));
 }
 
+StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
+    const HloInstruction* instr, const Thunk::ThunkInfo& thunk_info) {
+  HloComputation* condition = instr->while_condition();
+  HloComputation* body = instr->while_body();
+
+  // Generate thunk sequence for while 'condition'.
+  auto ir_emitter_condition = IrEmitterUnnested::Create(ir_emitter_context_);
+  TF_RETURN_IF_ERROR(ir_emitter_condition->EmitHloComputation(condition));
+
+  // Generate thunk sequence for while 'body'.
+  auto ir_emitter_body = IrEmitterUnnested::Create(ir_emitter_context_);
+  TF_RETURN_IF_ERROR(ir_emitter_body->EmitHloComputation(body));
+
+  // Buffer slice holding while loop predicate.
+  TF_ASSIGN_OR_RETURN(
+      auto pred, GetAllocationSliceForHlo(condition->root_instruction(), {}));
+
+  return std::unique_ptr<Thunk>(new WhileThunk(
+      thunk_info, pred, ir_emitter_condition->ConsumeThunkSequence(),
+      ir_emitter_body->ConsumeThunkSequence()));
+}
+
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildForThunk(
     mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
     const int64_t loop_limit,
@@ -3635,7 +3696,7 @@ Status IrEmitterUnnested::EmitOp(
   }
 
   if (mlir::isa<mlir::lmhlo::WhileOp>(op)) {
-    return EmitWhile(op, hlo_for_lmhlo);
+    return EmitWhile(op, hlo_for_lmhlo.at(op), hlo_for_lmhlo);
   }
 
   // Remaining arith.constant ops are the gpu.launch_func dimensions as a result
@@ -3705,9 +3766,12 @@ Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
           ir_emitter_context_->gpu_device_info();
       TF_ASSIGN_OR_RETURN(auto fusion_analysis,
                           HloFusionAnalysis::Create(fusion, &device_info));
-      TF_RETURN_IF_ERROR(EmitFusion(fusion, fusion_analysis, nullptr, {}));
-      return OkStatus();
+      return EmitFusion(fusion, fusion_analysis, nullptr, {});
     }
+    case HloOpcode::kConstant:
+      return EmitConstant(Cast<HloConstantInstruction>(instr));
+    case HloOpcode::kWhile:
+      return EmitWhile(instr);
     // We don't need to emit thunks for these operations because their semantics
     // are encoded by buffers.
     case HloOpcode::kBitcast:
