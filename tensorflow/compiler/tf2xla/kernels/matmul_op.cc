@@ -37,7 +37,10 @@ constexpr std::array<DataType, 10> kMatmulTypes = {
 class MatMulOp : public XlaOpKernel {
  public:
   explicit MatMulOp(OpKernelConstruction* ctx, bool is_sparse = false)
-      : XlaOpKernel(ctx), is_sparse_(is_sparse) {
+      : XlaOpKernel(ctx),
+        is_sparse_(is_sparse),
+        grad_a_(false),
+        grad_b_(false) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_a", &transpose_a_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_b", &transpose_b_));
     if (!is_sparse) {
