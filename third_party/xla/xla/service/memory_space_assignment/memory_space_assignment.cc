@@ -5399,23 +5399,24 @@ void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
           continue;
         }
         int64_t constant_instruction_time = constant_instruction_it->second;
-        for (const auto& indexed_shape :
-             ShapeUtil::GetLeafShapes(instruction->shape())) {
-          const ShapeIndex& index = indexed_shape.index;
-          for (const HloBuffer* buffer :
-               alias_analysis_.ComputeBuffersAt(instruction, index)) {
-            for (const HloValue* value : buffer->values()) {
-              VLOG(3) << "Adding required assignment for constant value = "
-                      << value->ToShortString()
-                      << " time = " << constant_instruction_time
-                      << " space = def";
-              AddRequiredAssignment(value, instruction, MemorySpace::kDefault,
-                                    constant_instruction_time,
-                                    /*offset=*/nullptr,
-                                    /*add_to_pending=*/false);
-            }
-          }
-        }
+        ShapeUtil::ForEachLeafShape(
+            instruction->shape(),
+            [&](const Shape& /*sub_shape*/, const ShapeIndex& index) {
+              for (const HloBuffer* buffer :
+                   alias_analysis_.ComputeBuffersAt(instruction, index)) {
+                for (const HloValue* value : buffer->values()) {
+                  VLOG(3) << "Adding required assignment for constant value = "
+                          << value->ToShortString()
+                          << " time = " << constant_instruction_time
+                          << " space = def";
+                  AddRequiredAssignment(value, instruction,
+                                        MemorySpace::kDefault,
+                                        constant_instruction_time,
+                                        /*offset=*/nullptr,
+                                        /*add_to_pending=*/false);
+                }
+              }
+            });
       }
     }
   }

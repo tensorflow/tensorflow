@@ -545,6 +545,23 @@ class ShapeUtil {
     }).IgnoreError();
   }
 
+  // Calls the given visitor function for each leaf subshape of the given shape.
+  // Subshapes are visited in DFS pre-order starting with the entire shape
+  // (index {}).
+  //
+  // The visitor function must have the signature
+  //
+  //   void fn(const Shape& subshape, const ShapeIndex& index)
+  template <typename Fn>
+  static void ForEachLeafShape(const Shape& shape, Fn&& fn) {
+    ForEachSubshape(shape,
+                    [&](const Shape& sub_shape, const ShapeIndex& index) {
+                      if (IsLeafIndex(shape, index)) {
+                        fn(sub_shape, index);
+                      }
+                    });
+  }
+
   // Variants of ForEach(Mutable)Subshape which propagate Status from the
   // visitor function.
   //

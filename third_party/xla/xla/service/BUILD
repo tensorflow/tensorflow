@@ -4806,6 +4806,7 @@ cc_library(
     deps = [
         ":hlo_dataflow_analysis",
         ":hlo_pass",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
     ],
 )
