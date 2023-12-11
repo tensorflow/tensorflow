@@ -1130,6 +1130,57 @@ void DisableIncompatibleMixedMeshShapeAndForceBatchDim(
   }
 }
 
+void FillAllStrategiesForArray(
+    std::unique_ptr<StrategyGroup>& strategy_group, const HloInstruction* ins,
+    const Shape& shape, const ClusterEnvironment& cluster_env,
+    const StrategyMap& strategy_map, const AutoShardingOption& option,
+    const double replicated_penalty,
+    const InstructionBatchDimMap& batch_dim_map, const CallGraph& call_graph,
+    const bool only_allow_divisible, const bool create_replicated_strategies,
+    const bool create_partially_replicated_strategies) {
+  if (create_partially_replicated_strategies || cluster_env.IsDeviceMesh1D()) {
+    EnumerateAll1DPartition(ins, shape, cluster_env.device_mesh_, cluster_env,
+                            strategy_map, strategy_group, only_allow_divisible,
+                            "", call_graph);
+  }
+  // Split 2 dims
+  if (cluster_env.IsDeviceMesh2D()) {
+    EnumerateAllPartition(ins, shape, cluster_env.device_mesh_, cluster_env,
+                          strategy_map, strategy_group, batch_dim_map,
+                          only_allow_divisible, call_graph, /*partitions*/ 2);
+  }
+  // Split 3 dims
+  if (cluster_env.IsDeviceMesh3D()) {
+    EnumerateAllPartition(ins, shape, cluster_env.device_mesh_, cluster_env,
+                          strategy_map, strategy_group, batch_dim_map,
+                          only_allow_divisible, call_graph, /*partitions*/ 3);
+  }
+
+  if (option.allow_mixed_mesh_shape && cluster_env.IsDeviceMesh2D()) {
+    // Set penalty for 1d partial tiled layout
+    for (size_t i = 0; i < strategy_group->strategies.size(); ++i) {
+      strategy_group->strategies[i].compute_cost += replicated_penalty * 0.8;
+    }
+
+    // Split 1 dim, but for 1d mesh
+    EnumerateAll1DPartition(ins, shape, cluster_env.device_mesh_1d_,
+                            cluster_env, strategy_map, strategy_group,
+                            only_allow_divisible, " 1d", call_graph);
+  }
+  if (create_replicated_strategies || strategy_group->strategies.empty()) {
+    AddReplicatedStrategy(ins, shape, cluster_env, strategy_map, strategy_group,
+                          replicated_penalty);
+  }
+
+  // If force_batch_dim_to_mesh_dim is set, filter out invalid strategies
+  // and only keep the data parallel strategies.
+  if (option.force_batch_dim_to_mesh_dim >= 0 &&
+      batch_dim_map.contains(GetBatchDimMapKey(ins))) {
+    CHECK_OK(FilterStrategy(ins, shape, strategy_group, cluster_env,
+                            batch_dim_map, option));
+  }
+}
+
 StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
     const HloInstruction* ins, const Shape& shape, const size_t instruction_id,
     StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
@@ -1157,48 +1208,11 @@ StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
   } else if (shape.IsArray()) {
     strategy_group = CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
                                              strategy_groups);
-    if (create_partially_replicated_strategies ||
-        cluster_env.IsDeviceMesh1D()) {
-      EnumerateAll1DPartition(ins, shape, cluster_env.device_mesh_, cluster_env,
-                              strategy_map, strategy_group,
-                              only_allow_divisible, "", call_graph);
-    }
-    // Split 2 dims
-    if (cluster_env.IsDeviceMesh2D()) {
-      EnumerateAllPartition(ins, shape, cluster_env.device_mesh_, cluster_env,
-                            strategy_map, strategy_group, batch_dim_map,
-                            only_allow_divisible, call_graph, /*partitions*/ 2);
-    }
-    // Split 3 dims
-    if (cluster_env.IsDeviceMesh3D()) {
-      EnumerateAllPartition(ins, shape, cluster_env.device_mesh_, cluster_env,
-                            strategy_map, strategy_group, batch_dim_map,
-                            only_allow_divisible, call_graph, /*partitions*/ 3);
-    }
 
-    if (option.allow_mixed_mesh_shape && cluster_env.IsDeviceMesh2D()) {
-      // Set penalty for 1d partial tiled layout
-      for (size_t i = 0; i < strategy_group->strategies.size(); ++i) {
-        strategy_group->strategies[i].compute_cost += replicated_penalty * 0.8;
-      }
-
-      // Split 1 dim, but for 1d mesh
-      EnumerateAll1DPartition(ins, shape, cluster_env.device_mesh_1d_,
-                              cluster_env, strategy_map, strategy_group,
-                              only_allow_divisible, " 1d", call_graph);
-    }
-    if (create_replicated_strategies || strategy_group->strategies.empty()) {
-      AddReplicatedStrategy(ins, shape, cluster_env, strategy_map,
-                            strategy_group, replicated_penalty);
-    }
-
-    // If force_batch_dim_to_mesh_dim is set, filter out invalid strategies
-    // and only keep the data parallel strategies.
-    if (option.force_batch_dim_to_mesh_dim >= 0 &&
-        batch_dim_map.contains(GetBatchDimMapKey(ins))) {
-      TF_RETURN_IF_ERROR(FilterStrategy(ins, shape, strategy_group, cluster_env,
-                                        batch_dim_map, option));
-    }
+    FillAllStrategiesForArray(
+        strategy_group, ins, shape, cluster_env, strategy_map, option,
+        replicated_penalty, batch_dim_map, call_graph, only_allow_divisible,
+        create_replicated_strategies, create_partially_replicated_strategies);
   } else if (shape.IsToken()) {
     strategy_group = CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
                                              strategy_groups);
@@ -1581,16 +1595,18 @@ std::unique_ptr<StrategyGroup> CreateReshapeStrategies(
     const StrategyMap& strategy_map, const ClusterEnvironment& cluster_env,
     const bool only_allow_divisible, const double replicated_penalty,
     const InstructionBatchDimMap& batch_dim_map,
-    const AutoShardingOption& option, StrategyGroups& strategy_groups) {
-  std::unique_ptr<StrategyGroup> strategy_group = CreateLeafStrategyGroup(
-      instruction_id, ins, strategy_map, strategy_groups);
-  const HloInstruction* operand = ins->operand(0);
+    const AutoShardingOption& option, StrategyGroups& strategy_groups,
+    const CallGraph& call_graph) {
   const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
-  const Array<int64_t>& device_mesh_1d = cluster_env.device_mesh_1d_;
 
   int mesh_nn_dims = VectorGreaterThanOneElementCount(device_mesh.dimensions());
+  std::unique_ptr<StrategyGroup> strategy_group = CreateLeafStrategyGroup(
+      instruction_id, ins, strategy_map, strategy_groups);
+
   if (mesh_nn_dims < 2 || !option.allow_mixed_mesh_shape) {
-    // Create follow strategies.
+    const HloInstruction* operand = ins->operand(0);
+
+    // Create follow strategies
     const StrategyGroup* src_strategy_group = strategy_map.at(operand).get();
     CHECK(!src_strategy_group->is_tuple);
     strategy_group->following = src_strategy_group;
@@ -1629,42 +1645,16 @@ std::unique_ptr<StrategyGroup> CreateReshapeStrategies(
     }
   }
 
-  // Fail to create follow strategies, enumerate all possible cases.
   if (strategy_group->strategies.empty()) {
-    strategy_group->strategies.clear();
-    strategy_group->following = nullptr;
-
-    // Split 1 dim
-    if (cluster_env.IsDeviceMesh1D()) {
-      EnumerateAll1DPartitionReshape(ins, device_mesh, cluster_env,
-                                     strategy_map, strategy_group,
-                                     only_allow_divisible, "");
-    }
-    if (option.allow_mixed_mesh_shape && cluster_env.IsDeviceMesh2D()) {
-      // Split 1 dim, but for 1d mesh
-      EnumerateAll1DPartitionReshape(ins, device_mesh_1d, cluster_env,
-                                     strategy_map, strategy_group,
-                                     only_allow_divisible, " 1d");
-    }
-    if (cluster_env.IsDeviceMesh2D()) {
-      // Split 2 dim, one is always the batch dim
-      EnumeratePartitionReshape(ins, device_mesh, cluster_env, strategy_map,
-                                batch_dim_map, strategy_group,
-                                only_allow_divisible,
-                                /*partitions*/ 2);
-    }
-    if (cluster_env.IsDeviceMesh3D()) {
-      // Split 3 dim, one is always the batch dim
-      EnumeratePartitionReshape(ins, device_mesh, cluster_env, strategy_map,
-                                batch_dim_map, strategy_group,
-                                only_allow_divisible,
-                                /*partitions*/ 3);
-    }
-
-    // Replicate.
-    AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
-                          strategy_group, replicated_penalty);
+    // Fail to create follow strategies, enumerate all possible cases
+    VLOG(2) << "Enumerating all strategies for reshape";
+    FillAllStrategiesForArray(
+        strategy_group, ins, ins->shape(), cluster_env, strategy_map, option,
+        replicated_penalty, batch_dim_map, call_graph, only_allow_divisible,
+        /* create_replicated_strategies */ true,
+        /* create_partially_replicated_strategies */ true);
   }
+
   return strategy_group;
 }
 

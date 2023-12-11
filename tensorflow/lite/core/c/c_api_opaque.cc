@@ -147,7 +147,10 @@ size_t TfLiteOpaqueTensorByteSize(const TfLiteOpaqueTensor* opaque_tensor) {
 }
 
 void* TfLiteOpaqueTensorData(const TfLiteOpaqueTensor* opaque_tensor) {
-  return TfLiteTensorData(reinterpret_cast<const TfLiteTensor*>(opaque_tensor));
+  return opaque_tensor != nullptr
+             ? TfLiteTensorData(
+                   reinterpret_cast<const TfLiteTensor*>(opaque_tensor))
+             : nullptr;
 }
 
 TfLiteAllocationType TfLiteOpaqueTensorGetAllocationType(

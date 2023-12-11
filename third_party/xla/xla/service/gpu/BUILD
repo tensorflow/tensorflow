@@ -530,9 +530,7 @@ xla_test(
     backend_tags = {"gpu": [
         "requires-gpu-sm70",
     ]},
-    backends = [
-        "gpu",
-    ],
+    backends = ["gpu"],
     shard_count = 20,
     tags = ["nomac"],
     deps = [
@@ -579,9 +577,7 @@ xla_test(
     backend_tags = {"gpu": [
         "requires-gpu-sm70",
     ]},
-    backends = [
-        "gpu",
-    ],
+    backends = ["gpu"],
     tags = [
         "large",
         "no_oss",  # requires-mem:16g tag doesn't work in open source
@@ -3008,6 +3004,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:variant",
         "@llvm-project//llvm:AsmParser",
         "@llvm-project//llvm:BitReader",

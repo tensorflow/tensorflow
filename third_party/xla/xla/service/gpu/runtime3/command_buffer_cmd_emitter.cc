@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "xla/service/gpu/copy_thunk.h"
 #include "xla/service/gpu/kernel_thunk.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 #include "xla/service/gpu/thunk.h"
@@ -39,6 +40,13 @@ StatusOr<std::unique_ptr<CommandBufferCmd>> ConvertToCommand(
           kernel_thunk.kernel_name(), kernel_thunk.arguments(),
           kernel_thunk.launch_dimensions(), kernel_thunk.shmem_bytes());
       return kernel_cmd;
+    }
+    case Thunk::Kind::kCopy: {
+      auto& copy_thunk = static_cast<const DeviceToDeviceCopyThunk&>(thunk);
+      auto copy_cmd = std::make_unique<MemcpyDeviceToDeviceCmd>(
+          copy_thunk.destination(), copy_thunk.source(),
+          copy_thunk.size_bytes());
+      return copy_cmd;
     }
     default:
       return InternalError("Unsupported thunk kind");

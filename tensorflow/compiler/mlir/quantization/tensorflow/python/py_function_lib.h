@@ -38,21 +38,6 @@ class PyFunctionLibrary {
  public:
   virtual ~PyFunctionLibrary() = default;
 
-  // Assigns UUIDs to each CustomAggregator op found in each GraphDef in
-  // `exported_model`. The UUIDs are set to the `id` attributes. The UUIDs will
-  // be used during calibration step to identify the collected quantization
-  // statistics for each CustsomAggregator op.
-  //
-  // If the function signature changes, likely its corresponding .pyi type
-  // hinting and definition should also change.
-  // LINT.IfChange
-  virtual ExportedModel AssignIdsToCustomAggregatorOps(
-      const ExportedModel& exported_model) const = 0;
-  // LINT.ThenChange(
-  //     pywrap_function_lib.pyi:assign_ids_to_custom_aggregator_ops,
-  //     py_function_lib.py:assign_ids_to_custom_aggregator_ops,
-  // )
-
   // Saves `exported_model` to `dst_saved_model_path` as SavedModel.
   // `src_saved_model_path` is the path to the source SavedModel from which the
   // exported model is produced. It is used to copy the asset files to

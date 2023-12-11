@@ -30,6 +30,7 @@ limitations under the License.
 #include "pybind11_abseil/import_status_module.h"  // from @pybind11_abseil
 #include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil  // IWYU pragma: keep
 #include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/assign_ids.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/statistics.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/debugger.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
@@ -46,6 +47,7 @@ namespace py = pybind11;
 namespace {
 
 using ::stablehlo::quantization::AddCalibrationStatistics;
+using ::stablehlo::quantization::AssignIdsToCustomAggregatorOps;
 using ::stablehlo::quantization::EnableDebugging;
 using ::stablehlo::quantization::io::CreateTmpDir;
 using ::tensorflow::SignatureDef;
@@ -239,14 +241,13 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
         tags.insert(quantization_options.tags().begin(),
                     quantization_options.tags().end());
 
-        const absl::StatusOr<ExportedModel> exported_model =
+        absl::StatusOr<ExportedModel> exported_model =
             QuantizePtqModelPreCalibration(src_saved_model_path, signature_keys,
                                            tags, quantization_options,
                                            function_aliases);
         if (!exported_model.ok()) return exported_model.status();
 
-        ExportedModel exported_model_for_calibration =
-            py_function_library.AssignIdsToCustomAggregatorOps(*exported_model);
+        AssignIdsToCustomAggregatorOps(*exported_model->mutable_graph_def());
 
         const absl::StatusOr<std::string> precalibrated_saved_model_dir =
             CreateTmpDir();
@@ -256,7 +257,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
         }
 
         py_function_library.SaveExportedModel(
-            *precalibrated_saved_model_dir, exported_model_for_calibration,
+            *precalibrated_saved_model_dir, *exported_model,
             src_saved_model_path, tags, signature_def_map);
 
         py_function_library.RunCalibration(
@@ -266,7 +267,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
             representative_dataset);
 
         if (absl::Status status = AddCalibrationStatistics(
-                *exported_model_for_calibration.mutable_graph_def(),
+                *exported_model->mutable_graph_def(),
                 quantization_options.calibration_options(),
                 py_function_library);
             !status.ok()) {
@@ -276,7 +277,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
         }
 
         if (quantization_options.has_debugger_options()) {
-          EnableDebugging(exported_model_for_calibration,
+          EnableDebugging(*exported_model,
                           quantization_options.debugger_options(),
                           py_function_library, src_saved_model_path, tags,
                           signature_def_map);
@@ -290,13 +291,13 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
         }
 
         py_function_library.SaveExportedModel(
-            *calibrated_saved_model_path, exported_model_for_calibration,
-            src_saved_model_path, tags, signature_def_map);
+            *calibrated_saved_model_path, *exported_model, src_saved_model_path,
+            tags, signature_def_map);
 
         const absl::flat_hash_map<std::string, std::string>
             function_aliases_after_calibration(
-                exported_model_for_calibration.function_aliases().begin(),
-                exported_model_for_calibration.function_aliases().end());
+                exported_model->function_aliases().begin(),
+                exported_model->function_aliases().end());
 
         const absl::StatusOr<ExportedModel> post_calibrated_exported_model =
             QuantizePtqModelPostCalibration(

@@ -1373,6 +1373,7 @@ cc_library(
         ":bfc_allocator",
         ":pool_allocator",
         "//tensorflow/core:lib",
+        "//tensorflow/core/util:env_var",
         "//tensorflow/core/util:onednn_env_vars",
     ],
 )
@@ -1388,6 +1389,7 @@ cc_library(
     deps = [
         ":function",
         ":optimization_registry",
+        ":process_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",

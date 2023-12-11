@@ -39,12 +39,12 @@ limitations under the License.
 #include "re2/re2.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/quantization_unit_loc.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -52,14 +52,12 @@ namespace mlir {
 namespace quant {
 namespace {
 
-using QuantizationOptions = tensorflow::quantization::QuantizationOptions;
-using QuantizationMethod = tensorflow::quantization::QuantizationMethod;
-using QuantizationComponentSpec =
-    tensorflow::quantization::QuantizationComponentSpec;
-using UnitWiseQuantizationSpec =
-    tensorflow::quantization::UnitWiseQuantizationSpec;
 using QuantizationUnit =
-    tensorflow::quantization::UnitWiseQuantizationSpec::QuantizationUnit;
+    ::tensorflow::quantization::UnitWiseQuantizationSpec::QuantizationUnit;
+using ::tensorflow::quantization::QuantizationComponentSpec;
+using ::tensorflow::quantization::QuantizationMethod;
+using ::tensorflow::quantization::QuantizationOptions;
+using ::tensorflow::quantization::UnitWiseQuantizationSpec;
 
 class LiftQuantizableSpotsAsFunctionsPass
     : public PassWrapper<LiftQuantizableSpotsAsFunctionsPass,

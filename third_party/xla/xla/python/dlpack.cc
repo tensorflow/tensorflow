@@ -377,6 +377,21 @@ StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
   Shape shape = ShapeUtil::MakeShapeWithDenseLayout(element_type, dimensions,
                                                     minor_to_major);
 
+  // Raise an error if the resulting PjRtBuffer would have a non-default layout.
+  // TODO(skyewm): we do this because JAX doesn't currently have good support
+  // for non-default layouts, and will return wrong results if a non-default
+  // layout is passed to a computation expecting default layouts. Remove this
+  // special case when non-default layouts are better supported by JAX.
+  TF_ASSIGN_OR_RETURN(Layout default_layout, device->client()->GetDefaultLayout(
+                                                 element_type, dimensions));
+  if (shape.layout() != default_layout) {
+    return Unimplemented(
+        "from_dlpack got array with non-default layout with minor-to-major "
+        "dimensions (%s), expected (%s)",
+        absl::StrJoin(shape.layout().minor_to_major(), ","),
+        absl::StrJoin(default_layout.minor_to_major(), ","));
+  }
+
   std::function<void()> on_delete_callback;
   if (dlmt->deleter) {
     on_delete_callback = [dlmt]() { dlmt->deleter(dlmt); };

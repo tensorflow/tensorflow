@@ -53,12 +53,6 @@ class PyFunctionLibraryTrampoline : public PyFunctionLibrary {
  public:
   using PyFunctionLibrary::PyFunctionLibrary;
 
-  ExportedModel AssignIdsToCustomAggregatorOps(
-      const ExportedModel& exported_model) const override {
-    PYBIND11_OVERRIDE_PURE(ExportedModel, PyFunctionLibrary,
-                           assign_ids_to_custom_aggregator_ops, exported_model);
-  }
-
   void SaveExportedModel(const absl::string_view dst_saved_model_path,
                          const ExportedModel& exported_model,
                          const absl::string_view src_saved_model_path,
@@ -97,9 +91,6 @@ PYBIND11_MODULE(pywrap_function_lib, m) {
   py::class_<PyFunctionLibrary, PyFunctionLibraryTrampoline>(
       m, "PyFunctionLibrary")
       .def(py::init<>())
-      .def("assign_ids_to_custom_aggregator_ops",
-           &PyFunctionLibrary::AssignIdsToCustomAggregatorOps,
-           py::arg("exported_model_serialized"))
       .def("save_exported_model", &PyFunctionLibrary::SaveExportedModel,
            py::arg("dst_saved_model_path"),
            py::arg("exported_model_serialized"),

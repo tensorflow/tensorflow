@@ -24,7 +24,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 
@@ -54,12 +54,12 @@ class RestoreFunctionNamePass
 
 void RestoreFunctionNameFromXlaCallModuleOp(TF::XlaCallModuleOp& call_op,
                                             SymbolTable& symbol_table) {
-  if (!call_op->hasAttr(mlir::quant::kOriginalStablehloEntryFunctionAttrName)) {
+  if (!call_op->hasAttr(kOriginalStablehloEntryFunctionAttrName)) {
     return;
   }
 
   auto original_function_name = call_op->getAttrOfType<StringAttr>(
-      mlir::quant::kOriginalStablehloEntryFunctionAttrName);
+      kOriginalStablehloEntryFunctionAttrName);
   auto current_function_name = call_op->getAttrOfType<FlatSymbolRefAttr>(
       TF::kStablehloEntryFunctionAttrName);
 

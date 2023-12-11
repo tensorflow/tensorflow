@@ -19,7 +19,6 @@ py_strict_library(
     deps = [
         ":sharding_util",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
@@ -27,7 +26,6 @@ py_strict_library(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:string_ops",
         "//tensorflow/python/ops:variables",
-        "//tensorflow/python/training/saving:saveable_object_util",
         "@absl_py//absl/logging",
     ],
 )
@@ -41,6 +39,7 @@ tf_py_strict_test(
         ":sharding_util",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:graph_view",
+        "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:dtypes",
@@ -48,9 +47,10 @@ tf_py_strict_test(
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/module",
-        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
+        "//tensorflow/python/training:server_lib",
         "//tensorflow/python/training/saving:saveable_object",
+        "//tensorflow/python/training/saving:saveable_object_util",
     ],
 )
 
@@ -91,5 +91,6 @@ tf_py_strict_test(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/training:server_lib",
         "//tensorflow/python/training/saving:saveable_object",
+        "//tensorflow/python/training/saving:saveable_object_util",
     ],
 )

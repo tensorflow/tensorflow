@@ -63,6 +63,7 @@ class GpuPriorityFusion : public InstructionFusion {
  protected:
   std::unique_ptr<FusionQueue> GetFusionQueue(
       HloComputation* computation) override;
+
   FusionDecision ShouldFuse(HloInstruction* consumer,
                             int64_t operand_index) override;
 
@@ -83,11 +84,6 @@ class GpuPriorityFusion : public InstructionFusion {
   // null, logging is disabled.
   std::unique_ptr<FusionProcessDumpProto> fusion_process_dump_;
 
-  // Keep track of the number of times each instruction inside a fusion node is
-  // indexed with different index vectors.
-  absl::Mutex fusion_node_evaluations_mutex_;
-  absl::flat_hash_map<const HloInstruction*, FusionNodeIndexingEvaluation>
-      fusion_node_evaluations_;
   HloFusionAnalysisCache fusion_analysis_cache_;
 };
 

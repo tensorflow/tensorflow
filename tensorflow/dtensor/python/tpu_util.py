@@ -142,7 +142,8 @@ def shutdown_tpu_system():
 def tpu_system_init_helper(task_id,
                            num_tasks,
                            num_devices,
-                           use_tfrt_host_runtime=True):
+                           use_tfrt_host_runtime=True,
+                           use_megacore=False):
   """A helper function to initialize multi-client tpu system."""
 
   @def_function.function
@@ -156,6 +157,10 @@ def tpu_system_init_helper(task_id,
 
   with ops.device("/job:" + config.full_job_name() + "/device:TPU_SYSTEM:0"):  # pylint: disable=protected-access
     my_core_ids = _tpu_init_fn()
+
+  if use_megacore:
+    logging.info("Using TPU megacore")
+    my_core_ids = my_core_ids * 2
   logging.info("TPU core IDs: %s", my_core_ids)
 
   # `my_core_ids` contains the IDs of TPU cores attached to this host.
@@ -240,7 +245,7 @@ def tpu_system_init_helper(task_id,
   return tpu_topology, device
 
 
-def initialize_tpu_system():
+def initialize_tpu_system(use_megacore=False):
   """Initializes the TPU system."""
 
   # Make sure the server change is fully propagated before attempting to run
@@ -260,7 +265,8 @@ def initialize_tpu_system():
         task_id,
         num_tasks,
         num_devices,
-        use_tfrt_host_runtime=use_tfrt_host_runtime)
+        use_tfrt_host_runtime=use_tfrt_host_runtime,
+        use_megacore=use_megacore)
     global _tpu_topology
     _tpu_topology = tpu_topology
     logging.vlog(1, "TPU Topology: %s, %s", tpu_topology.mesh_shape,

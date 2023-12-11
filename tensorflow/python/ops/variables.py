@@ -35,7 +35,6 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.trackable import base as trackable
-from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util import traceback_utils
@@ -1326,7 +1325,6 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
 
 
 Variable._OverloadAllOperators()  # pylint: disable=protected-access
-_pywrap_utils.RegisterType("Variable", Variable)
 
 
 def _try_guard_against_uninitialized_dependencies(name, initial_value):

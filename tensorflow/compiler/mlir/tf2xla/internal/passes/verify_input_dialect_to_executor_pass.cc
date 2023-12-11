@@ -30,7 +30,7 @@ using mlir::WalkResult;
 using mlir::func::FuncOp;
 
 #define GEN_PASS_DEF_VERIFYINPUTDIALECTTOEXECUTORPASS
-#include "tensorflow/compiler/mlir/tf2xla/internal/passes/dialect_to_executor_passes.h.inc"
+#include "tensorflow/compiler/mlir/tf2xla/internal/passes/mlir_to_graph_passes.h.inc"
 
 class VerifyInputDialectToExecutorPass
     : public impl::VerifyInputDialectToExecutorPassBase<

@@ -13,11 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "cutlass/gemm/device/gemm_universal.h"
 #include "xla/service/gpu/kernels/cutlass_gemm_adaptor.cu.h"
-#include "xla/service/gpu/kernels/cutlass_gemm_kernels.cu.h"
 
 namespace xla::gpu::kernel::gemm_universal {
 
-template struct ArgsPacking<Default::F32xF32toF32>;
+using GemmOperation =
+    cutlass::gemm::device::GemmUniversal<float, cutlass::layout::RowMajor,
+                                         float, cutlass::layout::RowMajor,
+                                         float, cutlass::layout::RowMajor>;
 
+XLA_GPU_DEFINE_CUTLASS_GEMM_TRAITS(F32xF32ToF32<Arch::kDefault>,
+                                   GemmOperation);
+
+template struct Adaptor<F32xF32ToF32<Arch::kDefault>>;
+template struct DeviceKernel<F32xF32ToF32<Arch::kDefault>>;
 }  // namespace xla::gpu::kernel::gemm_universal

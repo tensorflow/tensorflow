@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ class NamedAttr<string attr_name> :
 // Checks if the value is not defined inside a lifted function by checking the
 // `tf_quant.composite_function` attribute.
 def IsNotInLiftedFunc :
-      Constraint<CPred<"!IsInLiftedFunc($0.getDefiningOp())">>;
+      Constraint<CPred<"!IsInLiftedFunc(*$0.getDefiningOp())">>;
 
 // Checks if the given einsum op is supported for XlaDotV2 quantization.
 def IsEinsumSupportedByXlaDotV2 :

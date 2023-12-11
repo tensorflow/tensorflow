@@ -31,6 +31,25 @@ limitations under the License.
 #include "tensorflow/lite/tensorflow_profiler_logger.h"
 #endif  // TF_LITE_TENSORFLOW_PROFILER
 
+#if defined(__ANDROID__)
+// Android has C11 aligned_alloc only with API 28 or newer, even with C++17 or
+// C11 compilation (this is a non-standard behavior).
+#define TF_LITE_HAS_ALIGNED_ALLOC (__ANDROID_API__ >= 28)
+#elif defined(__APPLE__)
+// Apple does not provide aligned_alloc, even with C++17 or C11 compilation
+// (this is a non-standard behavior).
+#define TF_LITE_HAS_ALIGNED_ALLOC 0
+#elif defined(_WIN32)
+// Windows does not provide aligned_alloc, even with C++17 or C11 compilation
+// (this is a non-standard behavior). However, it provides _aligned_malloc,
+// _aligned_realloc, and _aligned_free, with a slightly different behavior than
+// the C11/C++17 standard functions (size requirement, and free function name.)
+#define TF_LITE_HAS_ALIGNED_ALLOC 0
+#elif __cplusplus >= 201703L || __STDC_VERSION__ >= 201112L
+// C++17 or C11 has (std::)aligned_alloc
+#define TF_LITE_HAS_ALIGNED_ALLOC 1
+#endif
+
 namespace {
 
 template <typename T>
@@ -57,7 +76,7 @@ tflite::PointerAlignedPointerPair AlignedRealloc(
     const tflite::PointerAlignedPointerPair& old_buffer, size_t old_size,
     size_t new_size, size_t alignment);
 
-#if defined(__WIN32)
+#if defined(_WIN32)
 // On Windows <cstdlib> provides _aligned_malloc, _aligned_free, and
 // _aligned_realloc, use them to implement the Aligned functions.
 
@@ -84,15 +103,26 @@ tflite::PointerAlignedPointerPair AlignedRealloc(
 // pointer in the allocated buffer.
 
 tflite::PointerAlignedPointerPair AlignedAlloc(size_t size, size_t alignment) {
+#if TF_LITE_HAS_ALIGNED_ALLOC
+  // (std::)aligned_alloc requires size to be multiple of alignment.
+  // TODO(b/311495100): when bug is fixed, remove `size + alignment - 1` part.
+  const size_t allocation_size = AlignTo(alignment, size + alignment - 1);
+  char* pointer =
+      reinterpret_cast<char*>(::aligned_alloc(alignment, allocation_size));
+  char* aligned_ptr = pointer;
+#else
+  // TODO(b/311495100): when bug is fixed, change this to
+  // `size + std::max(size_t{0}, alignment - alignof(std::max_align_t))`
   const size_t allocation_size = size + alignment - 1;
   char* pointer = reinterpret_cast<char*>(std::malloc(allocation_size));
+  char* aligned_ptr = reinterpret_cast<char*>(
+      AlignTo(alignment, reinterpret_cast<std::uintptr_t>(pointer)));
+#endif
 #if defined(__clang__)
 #if __has_feature(memory_sanitizer)
   std::memset(pointer, 0, allocation_size);
 #endif
 #endif
-  char* aligned_ptr = reinterpret_cast<char*>(
-      AlignTo(alignment, reinterpret_cast<std::uintptr_t>(pointer)));
   return {pointer, aligned_ptr};
 }
 

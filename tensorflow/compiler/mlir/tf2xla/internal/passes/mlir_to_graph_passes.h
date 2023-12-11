@@ -9,8 +9,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_PASSES_DIALECT_TO_EXECUTOR_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_PASSES_DIALECT_TO_EXECUTOR_PASSES_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_PASSES_MLIR_TO_GRAPH_PASSES_H_
+#define TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_PASSES_MLIR_TO_GRAPH_PASSES_H_
 
 #include <memory>
 
@@ -27,9 +27,9 @@ CreateVerifyInputDialectToExecutorPass();
 
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_VERIFYINPUTDIALECTTOEXECUTORPASS
-#include "tensorflow/compiler/mlir/tf2xla/internal/passes/dialect_to_executor_passes.h.inc"
+#include "tensorflow/compiler/mlir/tf2xla/internal/passes/mlir_to_graph_passes.h.inc"
 
 }  // namespace internal
 }  // namespace tf2xla
 }  // namespace tensorflow
-#endif  // TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_PASSES_DIALECT_TO_EXECUTOR_PASSES_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_PASSES_MLIR_TO_GRAPH_PASSES_H_

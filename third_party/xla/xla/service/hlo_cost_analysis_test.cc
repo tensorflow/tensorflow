@@ -631,6 +631,23 @@ TEST_F(HloCostAnalysisTest, Broadcast) {
   EXPECT_EQ(analysis.output_bytes_accessed(*root), sizeof(float) * 10 * 7);
 }
 
+TEST_F(HloCostAnalysisTest, BroadcastCountMultipleInputAccesses) {
+  XlaBuilder b("broadcast");
+  Broadcast(ConstantR0<float>(&b, 42), {10, 7});
+  auto hlo_module = BuildHloGraph(&b);
+  HloCostAnalysis analysis(HloCostAnalysis::Options{
+      .shape_size = ShapeSize, .count_multiple_input_accesses = true});
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+  EXPECT_EQ(analysis.flop_count(), 0);
+
+  EXPECT_EQ(analysis.bytes_accessed(), sizeof(float) * (1 + 10 * 7));
+
+  HloInstruction* root = hlo_module->entry_computation()->root_instruction();
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), sizeof(float) * 10 * 7);
+  EXPECT_EQ(analysis.output_bytes_accessed(*root), sizeof(float) * 10 * 7);
+}
+
 // Calculates the computation cost of a graph with more than one HLO node.
 TEST_F(HloCostAnalysisTest, FullyConnectedForward) {
   XlaBuilder builder("fully_connected_forward");

@@ -1233,6 +1233,27 @@ func.func @conv2d_static(
 
 // -----
 
+// CHECK-LABEL: func @conv2d_default_attr
+func.func @conv2d_default_attr(
+    %arg0: tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>,
+    %arg1: tensor<3x3x1x128x!quant.uniform<i8:f32, 3.000000e+00:0>>
+  ) -> tensor<128x26x26x128x!quant.uniform<i32:f32, 1.000000e+00:5>> {
+  // CHECK: mhlo.convolution
+  // CHECK-NOT: quant.uniform
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {
+    }
+    {
+      batch_group_count = 1 : i64,
+      feature_group_count = 1 : i64
+    } : (tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>, tensor<3x3x1x128x!quant.uniform<i8:f32, 3.000000e+00:0>>)
+    -> tensor<128x26x26x128x!quant.uniform<i32:f32, 1.000000e+00:5>>
+  return %0 : tensor<128x26x26x128x!quant.uniform<i32:f32, 1.000000e+00:5>>
+}
+
+// -----
+
 // CHECK-LABEL: func @conv2d_static_padding
 func.func @conv2d_static_padding(
     %arg0: tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>,

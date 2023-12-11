@@ -107,6 +107,30 @@ tf_proto {
       type: TYPE_BOOL
     }
     field {
+      name: "use_pathways"
+      number: 27
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "pathways_server_port"
+      number: 28
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+    }
+    field {
+      name: "target_tpu"
+      number: 29
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "target_gpu"
+      number: 30
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
       name: "disable_functional_ops_lowering"
       number: 21
       label: LABEL_OPTIONAL

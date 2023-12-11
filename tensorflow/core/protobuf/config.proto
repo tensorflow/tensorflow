@@ -673,11 +673,11 @@ message ConfigProto {
     // Whether runtime execution uses TFRT.
     bool use_tfrt = 18;
 
-    // If true, use Pathways with TFRT API.
-    bool use_pathways = 27;
+    // If true, use Pathways with TFRT API for multi host support.
+    bool enable_multi_host = 27;
 
-    // Port for the Pathways server. Ignored if use_pathways=false.
-    int32 pathways_server_port = 28;
+    // Port for the Pathways server. Ignored if enable_multi_host=false.
+    int32 backend_server_port = 28;
 
     // If true, TFRT will use TPU specific compiler passes and perform TPU
     // specific initialization.

@@ -26,11 +26,6 @@ PYBIND11_MODULE(_pywrap_utils, m) {
     _pywrap_utils
     -----
   )pbdoc";
-  m.def("RegisterType",
-        [](const py::handle& type_name, const py::handle& type) {
-          return tensorflow::PyoOrThrow(
-              tensorflow::swig::RegisterType(type_name.ptr(), type.ptr()));
-        });
   m.def("RegisterPyObject", [](const py::handle& name, const py::handle& type) {
     return tensorflow::PyoOrThrow(
         tensorflow::swig::RegisterPyObject(name.ptr(), type.ptr()));

@@ -243,6 +243,50 @@ cc_library(
 )
 
 cc_library(
+    name = "snapshot_chunk_provider",
+    srcs = ["snapshot_chunk_provider.cc"],
+    hdrs = ["snapshot_chunk_provider.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":file_utils",
+        ":path_utils",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+tf_cc_test(
+    name = "snapshot_chunk_provider_test",
+    size = "small",
+    srcs = ["snapshot_chunk_provider_test.cc"],
+    deps = [
+        ":file_utils",
+        ":path_utils",
+        ":snapshot_chunk_provider",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "snapshot_stream_writer",
     srcs = ["snapshot_stream_writer.cc"],
     hdrs = ["snapshot_stream_writer.h"],

@@ -861,11 +861,13 @@ Value CreateDotLikeKernel<mhlo::ConvolutionOp>(OpBuilder &builder, Location loc,
                                                Value &rhs,
                                                ArrayRef<NamedAttribute> attrs) {
   // We only handle the case where RHS zp is zero.
-  auto original_padding = op.getPaddingAttr().getValues<int64_t>();
-
   // Explicitly pad LHS with zp and update LHS value.
   SmallVector<NamedAttribute> new_attrs(attrs);
-  if (llvm::any_of(original_padding, [](int64_t x) { return x != 0; })) {
+  if (op.getPadding().has_value() &&
+      llvm::any_of(op.getPaddingAttr().getValues<int64_t>(),
+                   [](int64_t x) { return x != 0; })) {
+    auto original_padding = op.getPaddingAttr().getValues<int64_t>();
+
     Value zp = builder.create<mhlo::ConstantOp>(
         loc,
         DenseIntElementsAttr::get(
@@ -1205,7 +1207,8 @@ FailureOr<DotLikeDimensionNumbers> VerifyAndConstructDims(
     }
   }
   // lhs_dilation must not exist.
-  if (llvm::any_of(op.getLhsDilationAttr().getValues<int64_t>(),
+  if (op.getLhsDilation().has_value() &&
+      llvm::any_of(op.getLhsDilationAttr().getValues<int64_t>(),
                    [](int64_t dilate) { return dilate != 1; })) {
     op->emitError("lhs_dilation must be 1.");
     return failure();
