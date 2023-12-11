@@ -189,10 +189,8 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitInfeed(mlir::Operation* op);
   Status EmitOutfeed(mlir::Operation* op);
   Status EmitRngGetAndUpdateState(mlir::Operation* op);
-  Status EmitSort(
-      mlir::Operation* op,
-      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
-          hlo_for_lmhlo);
+  Status EmitSort(mlir::Operation* op, const HloSortInstruction* sort);
+  Status EmitSort(const HloSortInstruction* sort);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitTriangularSolveCustomCall(mlir::Operation* op);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -409,6 +407,13 @@ class IrEmitterUnnested : public IrEmitter {
   BuildKernelThunkForNonFusionOp(mlir::Operation* op,
                                  mlir::ValueRange needed_operands,
                                  const LaunchDimensions& launch_dimensions);
+
+  StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
+                     std::vector<llvm_ir::IrArray> /*outputs*/>>
+  BuildKernelThunkForNonFusionOp(
+      const HloInstruction* hlo,
+      absl::Span<const HloInstruction* const> needed_operands,
+      const LaunchDimensions& launch_dimensions);
 
   Status BuildInitializerThunk(mlir::Operation* op, const HloInstruction* instr,
                                const HloInstruction* init_value,

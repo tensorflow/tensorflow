@@ -51,13 +51,13 @@ using CommandBufferConfig = CommandBufferScheduling::CommandBufferConfig;
 
 // Returns true if instruction is no-op at run time and doesn't have a
 // corresponding Thunk or Command (metadata only operation).
-static bool IsNoOp(const HloInstruction* inst) {
+static bool IsNoOp(const HloInstruction* hlo) {
   return HloPredicateIsOp<HloOpcode::kParameter, HloOpcode::kBitcast,
-                          HloOpcode::kTuple, HloOpcode::kGetTupleElement>(inst);
+                          HloOpcode::kTuple, HloOpcode::kGetTupleElement>(hlo);
 };
 
 // Returns true if HLO instruction has a corresponding command buffer command.
-static bool IsCommand(const HloInstruction* inst,
+static bool IsCommand(const HloInstruction* hlo,
                       const CommandBufferConfig& config);
 
 // Returns true if HLO computation can executed as a command buffer.
@@ -72,7 +72,7 @@ static bool IsCommand(const HloComputation* computation,
 // This is a template to define pattern matching functions for HLO instructions
 // that do not have a corresponding class for them.
 template <HloOpcode op>
-static bool IsCommand(const HloInstruction*, const CommandBufferConfig& config);
+static bool IsCommand(const HloInstruction*, const CommandBufferConfig&);
 
 // Fusions compiled to device kernels (or lowered to custom kernels) which
 // always have a corresponding command buffer command.
@@ -89,23 +89,33 @@ static bool IsCommand(const HloFusionInstruction* fusion,
                          unsupported);
 }
 
+// Sort operations lowered to memcpy and device kernels and we have a
+// corresponding command buffer commands for them.
+static bool IsCommand(const HloSortInstruction* sort,
+                      const CommandBufferConfig& config) {
+  return config.contains(DebugOptions::FUSION);
+}
+
 // While loops can be executed inside command buffers only if condition and body
 // regions can be executed as command buffers.
 template <>
-bool IsCommand<HloOpcode::kWhile>(const HloInstruction* inst,
+bool IsCommand<HloOpcode::kWhile>(const HloInstruction* hlo,
                                   const CommandBufferConfig& config) {
   return config.contains(DebugOptions::WHILE) &&
-         IsCommand(inst->while_condition(), config) &&
-         IsCommand(inst->while_body(), config);
+         IsCommand(hlo->while_condition(), config) &&
+         IsCommand(hlo->while_body(), config);
 }
 
-static bool IsCommand(const HloInstruction* inst,
+static bool IsCommand(const HloInstruction* hlo,
                       const CommandBufferConfig& config) {
-  if (auto* fusion = DynCast<HloFusionInstruction>(inst))
+  if (auto* fusion = DynCast<HloFusionInstruction>(hlo))
     return IsCommand(fusion, config);
 
-  if (inst->opcode() == HloOpcode::kWhile)
-    return IsCommand<HloOpcode::kWhile>(inst, config);
+  if (auto* sort = DynCast<HloSortInstruction>(hlo))
+    return IsCommand(sort, config);
+
+  if (hlo->opcode() == HloOpcode::kWhile)
+    return IsCommand<HloOpcode::kWhile>(hlo, config);
 
   return false;
 }
