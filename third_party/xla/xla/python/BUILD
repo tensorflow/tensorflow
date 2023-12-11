@@ -1144,6 +1144,7 @@ cc_library(
         "//xla/pjrt/distributed:service",
         "//xla/python/ifrt",
         "//xla/python/pjrt_ifrt",
+        "//xla/service/cpu:collectives_interface",
         "@local_tsl//tsl/distributed_runtime/preemption:preemption_sync_manager",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:logging",
