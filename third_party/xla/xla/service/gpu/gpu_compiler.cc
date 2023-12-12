@@ -547,9 +547,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
   // LOG_LINES is used instead of LOG since the message can exceed the
   // maximum line length, which results in the message being truncated.
   XLA_LOG_LINES(
-      ::tsl::INFO,
-      absl::StrFormat("GpuCompilationEnvironment of hlo_module %s:\n%s",
-                      hlo_module->name(), debug_options.DebugString()));
+      1, absl::StrFormat("GpuCompilationEnvironment of hlo_module %s:\n%s",
+                         hlo_module->name(), debug_options.DebugString()));
 
   MaybeOwningThreadPool thread_pool = MaybeOwningThreadPool::GetOrCreate(
       /*parallelism=*/hlo_module->config()
