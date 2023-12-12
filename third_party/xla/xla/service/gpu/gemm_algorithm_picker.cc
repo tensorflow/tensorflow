@@ -47,10 +47,8 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/util/proto/proto_utils.h"
 
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/buffer_comparator.h"
-#include "xla/stream_executor/cuda/cuda_blas_lt.h"
-#include "xla/stream_executor/gpu/redzone_allocator.h"
 #endif
 
 namespace xla {
@@ -113,7 +111,7 @@ StatusOr<AutotuneResult> GetBestAlgorithm(
     if (!autotune_config.should_check_correctness()) {
       continue;
     }
-
+#if GOOGLE_CUDA  // redzone check is not yet available on ROCm
     TF_ASSIGN_OR_RETURN(
         se::RedzoneAllocator::RedzoneCheckStatus rz_check_status,
         allocator.CheckRedzones());
@@ -126,6 +124,7 @@ StatusOr<AutotuneResult> GetBestAlgorithm(
       CHECK(!autotune_config.should_crash_on_check_failure());
       continue;
     }
+#endif  // GOOGLE_CUDA
 
     if (!reference_algorithm) {
       stream->ThenMemcpy(&reference_buffer, output_buffer,
@@ -195,31 +194,33 @@ StatusOr<AutotuneResult> GetBestBlasAlgorithm(
 
 namespace {
 
-StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
+using se::gpu::BlasLt;
+
+StatusOr<BlasLt::Epilogue> AsBlasLtEpilogue(
     GemmBackendConfig_Epilogue epilogue) {
   switch (epilogue) {
     case GemmBackendConfig::DEFAULT:
-      return se::gpu::BlasLt::Epilogue::kDefault;
+      return BlasLt::Epilogue::kDefault;
     case GemmBackendConfig::RELU:
-      return se::gpu::BlasLt::Epilogue::kReLU;
+      return BlasLt::Epilogue::kReLU;
     case GemmBackendConfig::GELU:
-      return se::gpu::BlasLt::Epilogue::kGELU;
+      return BlasLt::Epilogue::kGELU;
     case GemmBackendConfig::GELU_AUX:
-      return se::gpu::BlasLt::Epilogue::kGELUWithAux;
+      return BlasLt::Epilogue::kGELUWithAux;
     case GemmBackendConfig::BIAS:
-      return se::gpu::BlasLt::Epilogue::kBias;
+      return BlasLt::Epilogue::kBias;
     case GemmBackendConfig::BIAS_RELU:
-      return se::gpu::BlasLt::Epilogue::kBiasThenReLU;
+      return BlasLt::Epilogue::kBiasThenReLU;
     case GemmBackendConfig::BIAS_GELU:
-      return se::gpu::BlasLt::Epilogue::kBiasThenGELU;
+      return BlasLt::Epilogue::kBiasThenGELU;
     case GemmBackendConfig::BIAS_GELU_AUX:
-      return se::gpu::BlasLt::Epilogue::kBiasThenGELUWithAux;
+      return BlasLt::Epilogue::kBiasThenGELUWithAux;
     default:
       return InternalError("Unsupported Epilogue.");
   }
 }
 
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
     const HloInstruction* gemm, const AutotuneCacheKey& key,
@@ -309,18 +310,18 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
                                                   autotune_config, rng_state));
     }
 
-    TF_ASSIGN_OR_RETURN(
-        auto plan, se::gpu::BlasLt::GetMatmulPlan(stream, config, epilogue));
+    TF_ASSIGN_OR_RETURN(auto plan,
+                        BlasLt::GetMatmulPlan(stream, config, epilogue));
 
     TF_ASSIGN_OR_RETURN(auto algorithms, plan->GetAlgorithms());
 
     TF_ASSIGN_OR_RETURN(
         best_algorithm,
-        GetBestAlgorithm<se::gpu::BlasLt::MatmulAlgorithm>(
+        GetBestAlgorithm<BlasLt::MatmulAlgorithm>(
             stream, buffer_allocator, gemm->ToString(), autotune_config,
             lhs_buffer, rhs_buffer, output_buffer, algorithms, output_shape,
             hlo_module_config, gemm_config.beta(),
-            [&](const se::gpu::BlasLt::MatmulAlgorithm& algorithm)
+            [&](const BlasLt::MatmulAlgorithm& algorithm)
                 -> StatusOr<se::blas::ProfileResult> {
               se::OwningScratchAllocator<> scratch_allocator(
                   stream->parent()->device_ordinal(), allocator);
@@ -335,6 +336,14 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
   } else {
     std::vector<se::blas::AlgorithmType> algorithms;
     TF_RET_CHECK(stream->parent()->GetBlasGemmAlgorithms(stream, &algorithms));
+
+#if TENSORFLOW_USE_ROCM        // Blas gemm algorithms are not yet supported
+    if (algorithms.empty()) {  // nothing to autotune
+      VLOG(1) << "Skipping autotuning for ROCm..";
+      best_algorithm.mutable_gemm()->set_algorithm(se::blas::kDefaultAlgorithm);
+      return best_algorithm;
+    }
+#endif
 
     TF_ASSIGN_OR_RETURN(
         best_algorithm,
@@ -366,7 +375,7 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
   return best_algorithm;
 }
 
-#endif  // (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Do Gemm Autotune without stream executor. Use results from autotune cache
 // only.
@@ -390,12 +399,16 @@ StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
                         return DoGemmAutotuneNoCache(gemm, key, config);
                       }));
 
-  se::CudaComputeCapability capability = config.GetCudaComputeCapability();
   GemmBackendConfig updated_config = gemm_config;
 
   // We only set the 'algorithm' field on non-Ampere architectures, as for
   // Ampere it's ignored in any case.
-  if (!capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+  bool update_algorithm = true;
+#if GOOGLE_CUDA
+  auto capability = config.GetCudaComputeCapability();
+  update_algorithm = !capability.IsAtLeast(se::CudaComputeCapability::AMPERE);
+#endif
+  if (update_algorithm) {
     if (algorithm.has_gemm()) {
       updated_config.set_selected_algorithm(algorithm.gemm().algorithm());
     } else {

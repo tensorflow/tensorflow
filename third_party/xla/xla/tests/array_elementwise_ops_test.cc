@@ -42,6 +42,10 @@ limitations under the License.
 #include "xla/tests/test_macros.h"
 #include "xla/types.h"
 
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
+
 namespace xla {
 namespace {
 
@@ -1590,6 +1594,11 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareLtU32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, PowF32s) {
+#if TENSORFLOW_USE_ROCM && TF_ROCM_VERSION == 50700
+  GTEST_SKIP()
+      << "This test fails on rocm-5.7.0 platform due to a compiler bug";
+#endif
+
   SetFastMathDisabled(true);
   XlaBuilder builder(TestName());
   auto eps = std::numeric_limits<float>::epsilon();

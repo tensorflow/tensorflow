@@ -24,20 +24,14 @@ limitations under the License.
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "xla/mlir/backends/cpu/transforms/passes.h"
 #include "xla/mlir/xla_cpu/ir/xla_cpu.h"
-#include "xla/mlir_hlo/gml_st/IR/gml_st_ops.h"
-#include "xla/mlir_hlo/gml_st/transforms/passes.h"
-#include "xla/mlir_hlo/gml_st/transforms/test_passes.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/mlir_hlo/lhlo/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
-#include "xla/mlir_hlo/thlo/IR/thlo_ops.h"
 
 int main(int argc, char **argv) {
   mlir::mhlo::registerAllMhloPasses();
   mlir::lmhlo::registerAllLmhloPasses();
-  mlir::gml_st::registerGmlStPasses();
-  mlir::gml_st::registerGmlStTestPasses();
   mlir::bufferization::registerBufferizationPasses();
 
   mlir::DialectRegistry registry;
@@ -45,7 +39,6 @@ int main(int argc, char **argv) {
   mlir::stablehlo::registerAllDialects(registry);
   registry.insert<mlir::func::FuncDialect, mlir::lmhlo::LmhloDialect,
                   mlir::memref::MemRefDialect, mlir::scf::SCFDialect,
-                  mlir::gml_st::GmlStDialect, mlir::thlo::THLODialect,
                   mlir::linalg::LinalgDialect, mlir::tensor::TensorDialect,
                   mlir::vector::VectorDialect, mlir::xla_cpu::XlaCpuDialect>();
   mlir::func::registerAllExtensions(registry);

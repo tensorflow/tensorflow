@@ -101,6 +101,8 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   tsl::Status Init(int device_ordinal, DeviceOptions device_options) override;
 
+  int device_ordinal() const override { return device_ordinal_; };
+
   tsl::Status GetKernel(const MultiKernelLoaderSpec& spec,
                         Kernel* kernel) override;
 
@@ -137,9 +139,6 @@ class GpuExecutor : public internal::StreamExecutorInterface {
                        const ThreadDim& thread_dims, GpuFunctionHandle func);
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
-
-  void* GetSubBuffer(DeviceMemoryBase* mem, uint64_t offset_bytes,
-                     uint64_t size_bytes) override;
 
   void Deallocate(DeviceMemoryBase* mem) override;
 

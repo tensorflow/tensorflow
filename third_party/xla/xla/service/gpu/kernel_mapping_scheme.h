@@ -193,70 +193,16 @@ class ReductionCodegenInfo {
   }
 
   int GetNumPartialResults() const { return num_partial_results_; }
+  bool IsRowReduction() const { return is_row_reduction_; }
   bool IsRaceFree() const { return is_race_free_; }
 
  private:
-  friend class ReductionCodegenState;
-
   TilingScheme tiling_scheme_;
   int num_partial_results_;
   bool is_row_reduction_;
   bool is_race_free_;
   IndexGroups index_groups_;
   const HloInstruction* first_reduce_;
-};
-
-class ReductionCodegenState {
- public:
-  struct ReductionCalculationState {
-    llvm::GlobalVariable* shared_cache;
-    llvm::Value* initial_value;
-    llvm::AllocaInst* partial_result_address;
-    llvm::AllocaInst* input_address;
-    llvm_ir::ElementGenerator input_gen;
-  };
-
-  explicit ReductionCodegenState(
-      const ReductionCodegenInfo& reduction_codegen_info)
-      : reduction_codegen_info_(reduction_codegen_info) {}
-
-  const TilingScheme& GetTilingScheme() const {
-    return reduction_codegen_info_.tiling_scheme_;
-  }
-
-  int GetNumPartialResults() const {
-    return reduction_codegen_info_.num_partial_results_;
-  }
-
-  bool IsRowReduction() const {
-    return reduction_codegen_info_.is_row_reduction_;
-  }
-
-  bool IsRaceFree() const { return reduction_codegen_info_.IsRaceFree(); }
-
-  const ReductionCalculationState& GetCalculationStateFor(
-      const HloInstruction* instruction, int operand_idx) const {
-    const ReductionOpState& op_state = state_.at(instruction);
-    CHECK_LT(operand_idx, op_state.size());
-    return op_state[operand_idx];
-  }
-
-  void SetCalculationStateFor(
-      const ReductionCalculationState& calculation_state,
-      const HloInstruction* instruction, int operand_idx) {
-    ReductionOpState& op_state = state_[instruction];
-    CHECK_EQ(operand_idx, op_state.size());
-    op_state.push_back(calculation_state);
-  }
-
- private:
-  ReductionCodegenInfo reduction_codegen_info_;
-
-  // One state per reduction operand.
-  using ReductionOpState = absl::InlinedVector<ReductionCalculationState, 2>;
-
-  // HloInstruction -> operand_idx -> cache
-  absl::flat_hash_map<const HloInstruction*, ReductionOpState> state_;
 };
 
 }  // end namespace gpu

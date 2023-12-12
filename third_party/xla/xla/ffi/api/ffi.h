@@ -22,7 +22,9 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -52,6 +54,14 @@ enum class DataType : uint8_t {
   F64 = XLA_FFI_DataType_F64,
   BF16 = XLA_FFI_DataType_BF16,
 };
+
+inline std::ostream& operator<<(std::ostream& os, const DataType dtype) {
+  static constexpr const char* kDataTypeNames[] = {
+      "PRED", "S8",  "S16", "S32", "S64", "U8",   "U16",
+      "U32",  "U64", "F16", "F32", "F64", "BF16",
+  };
+  return os << kDataTypeNames[static_cast<int>(dtype)];
+}
 
 //===----------------------------------------------------------------------===//
 // Span is non-owning view into contiguous values of type `T`.
@@ -106,52 +116,109 @@ class Error {
 // Arguments
 //===----------------------------------------------------------------------===//
 
+struct BufferBase {
+  DataType dtype;
+  void* data;
+  Span<const int64_t> dimensions;
+};
+
 namespace internal {
+
+// A workaround for the fact that a static_assertion can be evaluated
+// whether or not the template is instantiated
+template <DataType dtype>
+struct always_false : std::false_type {};
 
 template <DataType dtype>
 struct PtrType {
-  static_assert(sizeof(dtype) == 0, "unsupported data type");
+  static_assert(always_false<dtype>::value, "unsupported data type");
 };
 
 // clang-format off
 template <> struct PtrType<DataType::PRED> { using Type = bool; };
-template <> struct PtrType<DataType::U8>   { using Type = std::uint8_t; };
-template <> struct PtrType<DataType::U16>  { using Type = std::uint16_t; };
-template <> struct PtrType<DataType::U32>  { using Type = std::uint32_t; };
-template <> struct PtrType<DataType::U64>  { using Type = std::uint64_t; };
-template <> struct PtrType<DataType::S8>   { using Type = std::int8_t; };
-template <> struct PtrType<DataType::S16>  { using Type = std::int16_t; };
-template <> struct PtrType<DataType::S32>  { using Type = std::int32_t; };
-template <> struct PtrType<DataType::S64>  { using Type = std::int64_t; };
-template <> struct PtrType<DataType::F16>  { using Type = std::uint16_t; };
+template <> struct PtrType<DataType::U8>   { using Type = uint8_t; };
+template <> struct PtrType<DataType::U16>  { using Type = uint16_t; };
+template <> struct PtrType<DataType::U32>  { using Type = uint32_t; };
+template <> struct PtrType<DataType::U64>  { using Type = uint64_t; };
+template <> struct PtrType<DataType::S8>   { using Type = int8_t; };
+template <> struct PtrType<DataType::S16>  { using Type = int16_t; };
+template <> struct PtrType<DataType::S32>  { using Type = int32_t; };
+template <> struct PtrType<DataType::S64>  { using Type = int64_t; };
+template <> struct PtrType<DataType::F16>  { using Type = uint16_t; };
 template <> struct PtrType<DataType::F32>  { using Type = float; };
 template <> struct PtrType<DataType::F64>  { using Type = double; };
-template <> struct PtrType<DataType::BF16> { using Type = std::uint16_t; };
+template <> struct PtrType<DataType::BF16> { using Type = uint16_t; };
 // clang-format on
+
+inline constexpr size_t kDynamicRank = std::numeric_limits<size_t>::max();
 
 }  // namespace internal
 
-template <DataType dtype>
-struct BufferBase {
-  internal::PtrType<dtype>::Type* data;
+template <DataType dtype, size_t rank = internal::kDynamicRank>
+struct Buffer {
+  typename internal::PtrType<dtype>::Type* data;
   Span<const int64_t> dimensions;
 };
+
+// clang-format off
+template <DataType dtype> using BufferR0 = Buffer<dtype, 0>;
+template <DataType dtype> using BufferR1 = Buffer<dtype, 1>;
+template <DataType dtype> using BufferR2 = Buffer<dtype, 2>;
+template <DataType dtype> using BufferR3 = Buffer<dtype, 3>;
+template <DataType dtype> using BufferR4 = Buffer<dtype, 4>;
+// clang-format on
 
 //===----------------------------------------------------------------------===//
 // Arguments decoding
 //===----------------------------------------------------------------------===//
 
-template <DataType dtype>
-struct ArgDecoding<BufferBase<dtype>> {
-  static std::optional<BufferBase<dtype>> Decode(XLA_FFI_ArgType type,
-                                                 void* arg) {
-    if (type != XLA_FFI_ArgType_BUFFER) return std::nullopt;
-    auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
-    // TODO(slebedev): Emit a user-friendly error instead.
-    if (static_cast<DataType>(buf->dtype) != dtype) return std::nullopt;
-    auto* data = static_cast<internal::PtrType<dtype>::Type*>(buf->data);
+inline std::ostream& operator<<(std::ostream& os, const XLA_FFI_ArgType type) {
+  switch (type) {
+    case XLA_FFI_ArgType_BUFFER:
+      return os << "buffer";
+  }
+}
 
-    return BufferBase<dtype>{data, Span<const int64_t>(buf->dims, buf->rank)};
+template <>
+struct ArgDecoding<BufferBase> {
+  XLA_ATTRIBUTE_ALWAYS_INLINE
+  static std::optional<BufferBase> Decode(XLA_FFI_ArgType type, void* arg,
+                                          DiagnosticEngine& diagnostic) {
+    if (type != XLA_FFI_ArgType_BUFFER) {
+      return diagnostic.Emit("Wrong argument type: expected ")
+             << XLA_FFI_ArgType_BUFFER << " but got " << type;
+    }
+    auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
+    return BufferBase{static_cast<DataType>(buf->dtype), buf->data,
+                      Span<const int64_t>(buf->dims, buf->rank)};
+  }
+};
+
+template <DataType dtype, size_t rank>
+struct ArgDecoding<Buffer<dtype, rank>> {
+  XLA_ATTRIBUTE_ALWAYS_INLINE
+  static std::optional<Buffer<dtype, rank>> Decode(
+      XLA_FFI_ArgType type, void* arg, DiagnosticEngine& diagnostic) {
+    if (type != XLA_FFI_ArgType_BUFFER) {
+      return diagnostic.Emit("Wrong argument type: expected ")
+             << XLA_FFI_ArgType_BUFFER << " but got " << type;
+    }
+    auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
+    if (auto actual_dtype = static_cast<DataType>(buf->dtype);
+        actual_dtype != dtype) {
+      return diagnostic.Emit("Wrong buffer dtype: expected ")
+             << dtype << " but got " << actual_dtype;
+    }
+    auto* data =
+        static_cast<typename internal::PtrType<dtype>::Type*>(buf->data);
+    if constexpr (rank != internal::kDynamicRank) {
+      if (buf->rank != rank) {
+        diagnostic.Emit("Wrong buffer rank: expected ")
+            << rank << " but got " << buf->rank;
+        return std::nullopt;
+      }
+    }
+    return Buffer<dtype, rank>{data, Span<const int64_t>(buf->dims, rank)};
   }
 };
 
@@ -187,7 +254,8 @@ struct CtxDecoding<PlatformStream<T>> {
   static_assert(std::is_pointer_v<T>, "stream type must be a pointer");
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx) {
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
     XLA_FFI_Stream_Get_Args args;
     args.struct_size = XLA_FFI_Stream_Get_Args_STRUCT_SIZE;
     args.priv = nullptr;
@@ -195,6 +263,8 @@ struct CtxDecoding<PlatformStream<T>> {
     args.stream = nullptr;
 
     if (XLA_FFI_Error* error = api->XLA_FFI_Stream_Get(&args); error) {
+      diagnostic.Emit("Failed to get platform stream: ")
+          << GetErrorMessage(api, error);
       DestroyError(api, error);
       return std::nullopt;
     }
@@ -202,14 +272,22 @@ struct CtxDecoding<PlatformStream<T>> {
     return reinterpret_cast<T>(args.stream);
   }
 
-  // TODO(ezhulenev): We need to log error message somewhere, currently we
-  // silently destroy it.
+  static const char* GetErrorMessage(const XLA_FFI_Api* api,
+                                     XLA_FFI_Error* error) {
+    XLA_FFI_Error_GetMessage_Args args;
+    args.struct_size = XLA_FFI_Error_GetMessage_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    args.error = error;
+    api->XLA_FFI_Error_GetMessage(&args);
+    return args.message;
+  }
+
   static void DestroyError(const XLA_FFI_Api* api, XLA_FFI_Error* error) {
-    XLA_FFI_Error_Destroy_Args destroy_args;
-    destroy_args.struct_size = XLA_FFI_Error_Destroy_Args_STRUCT_SIZE;
-    destroy_args.priv = nullptr;
-    destroy_args.error = error;
-    api->XLA_FFI_Error_Destroy(&destroy_args);
+    XLA_FFI_Error_Destroy_Args args;
+    args.struct_size = XLA_FFI_Error_Destroy_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    args.error = error;
+    api->XLA_FFI_Error_Destroy(&args);
   }
 };
 

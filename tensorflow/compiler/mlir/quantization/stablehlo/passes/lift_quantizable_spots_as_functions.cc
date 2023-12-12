@@ -42,7 +42,7 @@ namespace {
 
 // TODO - b/303543789: Move the helper functions below to a separate util.
 // Fetches the default or null attribute, used for pattern matching.
-static Attribute DefaultOrNullAttr(OpBuilder& builder, Attribute& attr) {
+Attribute DefaultOrNullAttr(OpBuilder& builder, const Attribute& attr) {
   if (!attr) {
     return builder.getStringAttr(kNullAttributeValue);
   }
@@ -51,7 +51,7 @@ static Attribute DefaultOrNullAttr(OpBuilder& builder, Attribute& attr) {
 
 // Checks whether the value of a constant equals the given float, regardless
 // of the tensor dimension.
-static bool FloatValueEquals(const Attribute& attr, double value) {
+bool FloatValueEquals(const Attribute& attr, const double value) {
   auto fp_attr = attr.dyn_cast_or_null<DenseFPElementsAttr>();
   if (!fp_attr) return false;
 
@@ -101,7 +101,7 @@ void LiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
   }
 
   // Remove all attr_map attributes.
-  module_op.walk([&](Operation* op) { op->removeAttr(kAttrMapAttribute); });
+  module_op.walk([](Operation* op) { op->removeAttr(kAttrMapAttribute); });
 }
 
 }  // namespace

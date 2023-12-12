@@ -48,9 +48,11 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   XlaInterpreterExecutor() = default;
 
   tsl::Status Init(int device_ordinal, DeviceOptions device_options) override {
+    device_ordinal_ = device_ordinal;
     return ::tsl::OkStatus();
   }
 
+  int device_ordinal() const override { return device_ordinal_; };
   tsl::Status GetKernel(const MultiKernelLoaderSpec &spec,
                         Kernel *kernel) override {
     return tsl::errors::Unimplemented("Not Implemented");
@@ -62,8 +64,6 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   }
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
-  void *GetSubBuffer(DeviceMemoryBase *parent, uint64_t offset_bytes,
-                     uint64_t size_bytes) override;
   void Deallocate(DeviceMemoryBase *mem) override;
 
   void *HostMemoryAllocate(uint64_t size) override { return new char[size]; }
@@ -182,6 +182,10 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   }
 
  private:
+  // The device ordinal value that this executor was initialized with; recorded
+  // for use in getting device metadata. Immutable post-initialization.
+  int device_ordinal_;
+
   DeviceMemoryBase AllocateSingleOutput(const xla::Shape &shape);
 
   tsl::StatusOr<DeviceMemoryBase> AllocateOutputBuffer(const xla::Shape &shape);

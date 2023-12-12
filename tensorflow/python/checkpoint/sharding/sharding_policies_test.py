@@ -22,6 +22,7 @@ from tensorflow.python.checkpoint import graph_view
 from tensorflow.python.checkpoint.sharding import sharding_policies
 from tensorflow.python.checkpoint.sharding import sharding_util
 from tensorflow.python.eager import test
+from tensorflow.python.framework import device as device_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -55,12 +56,15 @@ class ShardingPoliciesTest(test.TestCase):
                 dtype=tensor_save_spec.dtype,
                 device=tensor_save_spec.device)
           save_spec_tensor = tensor_save_spec.tensor
+          device = (device_lib.DeviceSpec.from_string(tensor_save_spec.device)
+                    if isinstance(tensor_save_spec.device, str)
+                    else tensor_save_spec.device)
           shardable_tensors.append(
               sharding_util.ShardableTensor(
                   _tensor_save_spec=tensor_save_spec,
                   tensor=save_spec_tensor,
                   dtype=tensor_save_spec.dtype,
-                  device=tensor_save_spec.device,
+                  device=device,
                   name=tensor_save_spec.name,
                   shape=save_spec_tensor.shape,
                   slice_spec=slice_spec,

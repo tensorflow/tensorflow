@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "absl/strings/str_format.h"
@@ -35,6 +36,8 @@ CustomKernel::CustomKernel(std::string name,
       thread_dims_(thread_dims),
 
       shared_memory_bytes_(shared_memory_bytes) {}
+
+std::string_view CustomKernel::name() const { return name_; }
 
 const se::MultiKernelLoaderSpec& CustomKernel::kernel_spec() const {
   return kernel_spec_;

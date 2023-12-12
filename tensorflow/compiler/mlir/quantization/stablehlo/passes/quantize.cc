@@ -55,22 +55,22 @@ struct StableHloQuantizationBase
                                      /*VerifierT=*/void, RootOpT>(
             ctx, quant_params) {}
 
-  static bool IsQuantizableCustomOp(Operation* op,
+  static bool IsQuantizableCustomOp(Operation& op,
                                     const CustomMap& custom_op_map) {
     return false;
   }
 
   static bool AllowDynamicRangeQuantizedOperand(
-      Operation* quantized_op, const CustomMap& custom_op_map) {
+      Operation& quantized_op, const CustomMap& custom_op_map) {
     return false;
   }
 
-  static bool AllowDynamicRangeQuantizedResult(Operation* quantized_op,
+  static bool AllowDynamicRangeQuantizedResult(Operation& quantized_op,
                                                const CustomMap& custom_op_map) {
     return false;
   }
 
-  static bool IsWeightOnlyOp(Operation* quantized_op,
+  static bool IsWeightOnlyOp(Operation& quantized_op,
                              absl::flat_hash_set<std::string>& ops_blocklist,
                              bool weight_only_quantization,
                              const CustomMap& custom_op_map) {

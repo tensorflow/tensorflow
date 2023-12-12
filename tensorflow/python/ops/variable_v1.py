@@ -23,15 +23,6 @@ from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.tf_export import tf_export
 
 
-_variable_from_proto_fn = None
-
-
-def set_variable_from_proto_fn(variable_from_proto_fn):
-  """Set the variable class that variable proto defs will be converted to."""
-  global _variable_from_proto_fn
-  _variable_from_proto_fn = variable_from_proto_fn
-
-
 @tf_export(v1=["is_variable_initialized"])
 @tf_should_use.should_use_result
 def is_variable_initialized(variable):
@@ -47,9 +38,12 @@ def is_variable_initialized(variable):
   return state_ops.is_variable_initialized(variable)
 
 
-def default_variable_creator(_, **kwds):
-  del kwds
-  raise NotImplementedError("ref_variable needs to be imported")
+def default_variable_creator(next_creator=None, **kwds):
+  from tensorflow.python.ops import ref_variable  # pylint: disable=g-import-not-at-top
+
+  return ref_variable.default_variable_creator(
+      next_creator=next_creator, **kwds
+  )
 
 
 @tf_export(v1=["Variable"])
@@ -269,7 +263,8 @@ class VariableV1(variables.Variable):
 
   @staticmethod
   def from_proto(variable_def, import_scope=None):
-    return _variable_from_proto_fn(
+    from tensorflow.python.ops import ref_variable  # pylint: disable=g-import-not-at-top
+    return ref_variable.RefVariable(
         variable_def=variable_def, import_scope=import_scope)
 
   @classmethod

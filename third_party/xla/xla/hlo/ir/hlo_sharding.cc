@@ -361,7 +361,7 @@ HloSharding HloSharding::Tuple(const Shape& tuple_shape,
         << "Flat list has " << flattened_list.size() << ", required "
         << RequiredLeaves(tuple_shape);
   }
-  return HloSharding(flattened_list);
+  return HloSharding(std::move(flattened_list));
 }
 
 HloSharding HloSharding::SingleTuple(const Shape& tuple_shape,
@@ -809,22 +809,23 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
     for (const OpSharding& tuple_sharding_proto : proto.tuple_shardings()) {
       TF_ASSIGN_OR_RETURN(HloSharding sharding,
                           HloSharding::FromProto(tuple_sharding_proto));
-      tuple_shardings.push_back(sharding);
+      tuple_shardings.push_back(std::move(sharding));
     }
-    return HloSharding(tuple_shardings).SetShardGroupFromProto(proto);
+    return std::move(
+        HloSharding(std::move(tuple_shardings)).SetShardGroupFromProto(proto));
   } else if (proto.type() == OpSharding::REPLICATED) {
-    return Replicate(metadata).SetShardGroupFromProto(proto);
+    return std::move(Replicate(metadata).SetShardGroupFromProto(proto));
   } else if (proto.type() == OpSharding::MANUAL) {
-    return Manual(metadata).SetShardGroupFromProto(proto);
+    return std::move(Manual(metadata).SetShardGroupFromProto(proto));
   } else if (proto.type() == OpSharding::UNKNOWN) {
-    return Unknown(metadata).SetShardGroupFromProto(proto);
+    return std::move(Unknown(metadata).SetShardGroupFromProto(proto));
   } else if (proto.tile_assignment_devices().size() == 1) {
-    return HloSharding(proto.tile_assignment_devices(0), metadata)
-        .SetShardGroupFromProto(proto);
+    return std::move(HloSharding(proto.tile_assignment_devices(0), metadata)
+                         .SetShardGroupFromProto(proto));
   } else if (!proto.iota_reshape_dims().empty() &&
              absl::c_all_of(proto.iota_reshape_dims(),
                             [](int64_t d) { return d == 1; })) {
-    return HloSharding(0, metadata).SetShardGroupFromProto(proto);
+    return std::move(HloSharding(0, metadata).SetShardGroupFromProto(proto));
   }
 
   TF_RET_CHECK(proto.type() != OpSharding::MAXIMAL)
@@ -881,15 +882,17 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
   };
   if (!subgroup_types.empty()) {
     TF_RET_CHECK(!proto.replicate_on_last_tile_dim());
-    return Subgroup(create_tile_assignment(), subgroup_types, metadata)
-        .SetShardGroupFromProto(proto);
+    return std::move(
+        Subgroup(create_tile_assignment(), subgroup_types, metadata)
+            .SetShardGroupFromProto(proto));
   }
-  return proto.replicate_on_last_tile_dim()
-             ? PartialTile(create_tile_assignment(), metadata)
-                   .SetShardGroupFromProto(proto)
-             : HloSharding(create_tile_assignment(),
-                           /*replicate_on_last_tile_dim=*/false, metadata)
-                   .SetShardGroupFromProto(proto);
+  if (proto.replicate_on_last_tile_dim()) {
+    return std::move(PartialTile(create_tile_assignment(), metadata)
+                         .SetShardGroupFromProto(proto));
+  }
+  return std::move(HloSharding(create_tile_assignment(),
+                               /*replicate_on_last_tile_dim=*/false, metadata)
+                       .SetShardGroupFromProto(proto));
 }
 
 OpSharding HloSharding::ToProto() const {
@@ -1043,9 +1046,10 @@ HloSharding HloSharding::GetSubSharding(const Shape& shape,
   }
   if (sub_shape->IsTuple()) {
     auto begin_it = tuple_elements_.begin() + sharding_index;
-    std::vector<HloSharding> sub_shardings(
-        begin_it, begin_it + ShapeUtil::GetLeafCount(*sub_shape));
-    return HloSharding::Tuple(*sub_shape, sub_shardings);
+    return HloSharding::Tuple(
+        *sub_shape,
+        absl::MakeConstSpan(
+            &*begin_it, &*(begin_it + ShapeUtil::GetLeafCount(*sub_shape))));
   } else {
     return tuple_elements_[sharding_index];
   }

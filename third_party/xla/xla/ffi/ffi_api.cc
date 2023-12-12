@@ -183,6 +183,18 @@ static XLA_FFI_Error* XLA_FFI_Error_Create(XLA_FFI_Error_Create_Args* args) {
   return new XLA_FFI_Error{Status(ToStatusCode(args->errc), args->message)};
 }
 
+static void XLA_FFI_Error_GetMessage(XLA_FFI_Error_GetMessage_Args* args) {
+  Status struct_size_check = ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_Error_GetMessage", XLA_FFI_Error_GetMessage_Args_STRUCT_SIZE,
+      args->struct_size);
+  if (!struct_size_check.ok()) {
+    LOG(ERROR) << struct_size_check.message();
+  }
+  // absl::Status owns error message in a std::string which guarantees that
+  // we'll get a null terminated string.
+  args->message = args->error->status.message().data();
+}
+
 static void XLA_FFI_Error_Destroy(XLA_FFI_Error_Destroy_Args* args) {
   Status struct_size_check = ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_Error_Destroy", XLA_FFI_Error_Destroy_Args_STRUCT_SIZE,
@@ -245,6 +257,7 @@ static XLA_FFI_Api api = {
     &internal_api,
 
     XLA_FFI_Error_Create,      // creates error
+    XLA_FFI_Error_GetMessage,  // get error message
     XLA_FFI_Error_Destroy,     // frees error
     XLA_FFI_Handler_Register,  // registers handler
     XLA_FFI_Stream_Get,        // returns platform specific stream

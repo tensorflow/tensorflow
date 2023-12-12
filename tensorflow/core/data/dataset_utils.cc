@@ -1006,8 +1006,8 @@ REGISTER_DATASET_EXPERIMENT("no_compression", RandomJobSamplePercentage<50>,
 REGISTER_DATASET_EXPERIMENT("inject_io_prefetch", RandomJobSamplePercentage<0>,
                             AllTasks);
 REGISTER_DATASET_EXPERIMENT("reduce_array_record_dataset_memory_usage",
-                            RandomJobSamplePercentage<0>, AllTasks);
-REGISTER_DATASET_EXPERIMENT("map_fusion", RandomJobSamplePercentage<50>,
+                            RandomJobSamplePercentage<1>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("map_fusion", RandomJobSamplePercentage<0>,
                             AllTasks);
 }  // namespace
 }  // namespace data

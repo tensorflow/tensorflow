@@ -731,17 +731,18 @@ class ComposeUniformQuantizedConvolutionOp
     auto combined_scale_constant_op = cast<stablehlo::ConstantOp>(
         scale_combined_broadcast_in_dim_op.getOperand().getDefiningOp());
 
-    SmallVector<float> filter_scale_values;
+    SmallVector<double> filter_scale_values;
     for (const auto combined_scale_value : combined_scale_constant_op.getValue()
                                                .cast<DenseFPElementsAttr>()
                                                .getValues<float>()) {
-      const float filter_scale_value =
-          combined_scale_value * input_inverse_scales_value;
+      // UniformQuantizedPerAxisType requires scales to have double dtype.
+      const double filter_scale_value = static_cast<double>(
+          combined_scale_value * input_inverse_scales_value);
       filter_scale_values.emplace_back(filter_scale_value);
     }
 
     // Assumes it is symmetric.
-    SmallVector<int8_t> filter_zero_point_values(
+    SmallVector<int64_t> filter_zero_point_values(
         /*Size=*/filter_scale_values.size(), /*Value=*/0);
 
     // Use quantization dimension = 3 that corresponds to the output channel
@@ -1083,15 +1084,17 @@ class ComposeUniformQuantizedDotGeneralOp
     // s1 * s2
     auto merged_scale_constant_op =
         cast<stablehlo::ConstantOp>(multiply_op_second_operand.getDefiningOp());
-    SmallVector<float> filter_scale_values;
+    SmallVector<double> filter_scale_values;
     for (const auto merged_scale : merged_scale_constant_op.getValue()
                                        .cast<DenseFPElementsAttr>()
                                        .getValues<float>()) {
       // (s1 * s2) * (1 / s1) = s2
-      filter_scale_values.push_back(merged_scale * input_inverse_scale_value);
+      // UniformQuantizedPerAxisType requires scales to have double dtype.
+      filter_scale_values.push_back(
+          static_cast<double>(merged_scale * input_inverse_scale_value));
     }
 
-    SmallVector<int8_t> filter_zero_point_values(
+    SmallVector<int64_t> filter_zero_point_values(
         /*Size=*/filter_scale_values.size(), /*Value=*/0);
 
     const int quantization_dimension = GetFilterQuantizationDimension(

@@ -436,6 +436,16 @@ tsl::StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
                       HloInstruction::BackendConfigToRawString(backend_config));
   fusion.setBackendConfigAttr(builder_.getStringAttr(backend_config_str));
 
+  // For custom fusion backend config we also attach serialized version of the
+  // attached HLO computation.
+  if (backend_config.kind() == "__custom_fusion") {
+    std::string computation_str;
+    fusion_instr->fused_instructions_computation()->ToProto().SerializeToString(
+        &computation_str);
+    fusion->setAttr("__custom_fusion_computation",
+                    builder_.getStringAttr(computation_str));
+  }
+
   // Fold GTE/Tuple pairs.
   //
   // Since the fused region refers to values in its parent region, we can't
@@ -2522,7 +2532,8 @@ tsl::Status HloToLhloModule(
   TF_RETURN_IF_ERROR(emitter.Initialize(ordered_allocations));
 
   const xla::HloInstructionSequence* schedule =
-      assignment.hlo_ordering().SequentialOrder(*computation);
+      &hlo_module.schedule().sequence(computation);
+
   if (!schedule) {
     return tsl::errors::Unimplemented(
         "Missing sequential order for the computation");

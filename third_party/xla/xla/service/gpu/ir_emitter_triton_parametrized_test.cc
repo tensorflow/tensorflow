@@ -29,8 +29,8 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/gemm_rewriter_triton.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/gpu/triton_support.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -2362,6 +2362,90 @@ ENTRY main {
 
 INSTANTIATE_TEST_SUITE_P(TritonSoftmaxTestSuite, TritonSoftmaxTest,
                          ::testing::Values(F32, F16, BF16));
+
+TEST_F(TritonSoftmaxTest, CanFuseAndEmitTritonSoftmaxWithTwoParameters) {
+  const std::string hlo_text = R"(
+HloModule layernorm
+
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+ENTRY main {
+  param_0 = f32[125,127]{1,0} parameter(0)
+  param_1 = f32[127]{0} parameter(1)
+  broadcast_0 = f32[125,127]{1,0} broadcast(param_1), dimensions={1}
+  multiply_0 = f32[125,127]{1,0} multiply(param_0, broadcast_0)
+  constant_0 = f32[] constant(0)
+  reduce_0 = f32[125]{0} reduce(multiply_0, constant_0), dimensions={1}, to_apply=add
+  broadcast_4 = f32[125,127]{1,0} broadcast(reduce_0), dimensions={0}
+  ROOT multiply = f32[125,127]{1,0} multiply(multiply_0, broadcast_4)
+}
+)";
+
+  // Param order is arbitrary. We test that only param_1 is in the fused root
+  // instruction below.
+  const std::string hlo_ref = R"(
+; CHECK:    ENTRY
+; CHECK-DAG:    %[[param_0:.*]] = f32[125,127]{1,0} parameter(0)
+; CHECK-DAG:    %[[param_1:.*]] = f32[127]{0} parameter(1)
+; CHECK:      ROOT
+; CHECK-SAME:   f32[125,127]{1,0} fusion
+; CHECK-SAME:   %[[param_1]]
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   triton_softmax
+)";
+  MatchOptimizedHlo(hlo_text, hlo_ref);
+
+  float tolerance = 2e-6;
+  EXPECT_TRUE(RunAndCompare(hlo_text,
+                            ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
+}
+
+TEST_F(TritonSoftmaxTest, CanFuseAndEmitTritonSoftmaxWithNonBatchReduce) {
+  const std::string hlo_text = R"(
+HloModule layernorm
+
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+ENTRY main {
+  param_0 = f32[125,127]{1,0} parameter(0)
+  param_1 = f32[10,125,127]{2,1,0} parameter(1)
+  constant = f32[] constant(0)
+  reduce_0 = f32[125,127]{1,0} reduce(param_1, constant), dimensions={0}, to_apply=add
+  multiply_0 = f32[125,127]{1,0} multiply(param_0, reduce_0)
+  constant_0 = f32[] constant(0)
+  reduce_1 = f32[125]{0} reduce(multiply_0, constant_0), dimensions={1}, to_apply=add
+  broadcast_4 = f32[125,127]{1,0} broadcast(reduce_1), dimensions={0}
+  ROOT multiply = f32[125,127]{1,0} multiply(multiply_0, broadcast_4)
+}
+)";
+
+  // We expect to not fuse everything into the triton softmax, because of the
+  // reduce over the non-row dimension.
+  const std::string hlo_ref = R"(
+; CHECK:      ENTRY
+; CHECK-DAG:    %[[P0:.*]] = f32[125,127]{1,0} parameter(0)
+; CHECK-DAG:    %[[P1:.*]] = f32[10,125,127]{2,1,0} parameter(1)
+; CHECK:        %[[FUSION:.*]] = f32[125,127]{1,0} fusion(%[[P0]], %[[P1]])
+; CHECK:        kind=kLoop
+; CHECK:      ROOT
+; CHECK-SAME:   f32[125,127]{1,0} fusion(%[[FUSION]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   triton_softmax
+)";
+  MatchOptimizedHlo(hlo_text, hlo_ref);
+
+  float tolerance = 2e-6;
+  EXPECT_TRUE(RunAndCompare(hlo_text,
+                            ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
+}
 
 }  // namespace
 }  // namespace gpu

@@ -155,18 +155,6 @@ class StreamExecutor {
     return AllocateOwnedArray<T>(1);
   }
 
-  // Allocate a memory region inside another allocated memory region.
-  // Offset and size are specified in terms of T elements.
-  // Warning: Do not free a parent buffer before its sub-buffers; this may cause
-  // use-after-free issues (the specific behavior is not consistent across
-  // platforms).
-  //  - Note: OpenCL uses refcounting to manage buffer lifetimes, so use of a
-  //    sub-buffer after parent deallocation is expected to be safe. This will
-  //    render your code non-platform-portable, however.
-  template <typename T>
-  DeviceMemory<T> GetSubBuffer(DeviceMemory<T>* parent, uint64_t element_offset,
-                               uint64_t element_count);
-
   // An untyped version of GetSymbol.
   tsl::StatusOr<DeviceMemoryBase> GetUntypedSymbol(
       const std::string& symbol_name, ModuleHandle module_handle);
@@ -493,9 +481,6 @@ class StreamExecutor {
   // nullptr is returned.
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space);
 
-  void* GetUntypedSubBuffer(DeviceMemoryBase* parent, uint64_t offset,
-                            uint64_t size);
-
   // Causes the host code to synchronously wait for operations entrained
   // onto stream to complete. Effectively a join on the asynchronous device
   // operations enqueued on the stream before this program point.
@@ -748,25 +733,6 @@ ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(
       TF_CHECK_OK(Free());
     }
   }
-}
-
-template <typename T>
-DeviceMemory<T> StreamExecutor::GetSubBuffer(DeviceMemory<T>* parent,
-                                             uint64_t element_offset,
-                                             uint64_t element_count) {
-  if (element_offset + element_count > parent->ElementCount()) {
-    LOG(ERROR) << "requested sub-buffer allocation (offset + size) is greater "
-               << "than parent allocation size: (" << element_offset << " + "
-               << element_count << ") vs. (" << parent->ElementCount() << ")";
-    return DeviceMemory<T>{};
-  }
-
-  void* opaque = GetUntypedSubBuffer(parent, sizeof(T) * element_offset,
-                                     sizeof(T) * element_count);
-  if (opaque == nullptr) {
-    return DeviceMemory<T>{};
-  }
-  return DeviceMemory<T>(DeviceMemoryBase(opaque, sizeof(T) * element_count));
 }
 
 }  // namespace stream_executor

@@ -47,18 +47,15 @@ TEST_F(HloFusionAnalysisTest, DoesNotPeekOutsideBoundary) {
   auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
 
   auto* root = module->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto analysis, HloFusionAnalysis::Create(
-                         FusionBackendConfig::default_instance(), {root},
-                         MakeSingleInstructionFusion(*root), &device_info));
-  EXPECT_EQ(analysis.GetEmitterFusionKind(),
+  auto analysis = AnalyzeFusion(*root, device_info);
+  ASSERT_NE(analysis, std::nullopt);
+  EXPECT_EQ(analysis->GetEmitterFusionKind(),
             HloFusionAnalysis::EmitterFusionKind::kLoop);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto analysis_fused,
-      HloFusionAnalysis::Create(FusionBackendConfig::default_instance(), {root},
-                                DefaultFusionBoundaryFn, &device_info));
-  EXPECT_EQ(analysis_fused.GetEmitterFusionKind(),
+  auto analysis_fused =
+      AnalyzeProducerConsumerFusion(*root->operand(0), *root, device_info);
+  ASSERT_NE(analysis_fused, std::nullopt);
+  EXPECT_EQ(analysis_fused->GetEmitterFusionKind(),
             HloFusionAnalysis::EmitterFusionKind::kReduction);
 }
 
@@ -72,23 +69,30 @@ TEST_F(HloFusionAnalysisTest, ReductionWithMultipleUsers) {
       ROOT add = f32[] add(p0, p1)
     }
 
-    ENTRY main {
+    fused_computation {
       %p0 = f32[1024] parameter(0)
       %p1 = f32[] parameter(1)
       %reduce = f32[] reduce(%p0, %p1), dimensions={0}, to_apply=add
       %negate = f32[] negate(%reduce)
       %log = f32[] log(%reduce)
       ROOT %tuple = (f32[], f32[]) tuple(%negate, %log)
+    }
+
+    ENTRY main {
+      %p0 = f32[1024] parameter(0)
+      %p1 = f32[] parameter(1)
+      ROOT %fusion = (f32[], f32[]) fusion(%p0, %p1), kind=kLoop, calls=fused_computation
     })")
                     .value();
 
   auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
 
-  auto* root = module->entry_computation()->root_instruction();
   TF_ASSERT_OK_AND_ASSIGN(
-      auto analysis,
-      HloFusionAnalysis::Create(FusionBackendConfig::default_instance(), {root},
-                                DefaultFusionBoundaryFn, &device_info));
+      auto analysis, HloFusionAnalysis::Create(
+                         FusionBackendConfig::default_instance(),
+                         HloFusionAdaptor::ForInstruction(
+                             module->entry_computation()->root_instruction()),
+                         &device_info));
   // This fusion cannot use the reduction emitter because the reduce has two
   // users.
   EXPECT_EQ(analysis.GetEmitterFusionKind(),
@@ -105,11 +109,17 @@ TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusion) {
       ROOT add = f32[] add(p0, p1)
     }
 
-    ENTRY main {
+    fused_computation {
       %p0 = f32[1024] parameter(0)
       %p1 = f32[] parameter(1)
       %reduce = f32[] reduce(%p0, %p1), dimensions={0}, to_apply=add
       ROOT %negate = f32[] negate(%reduce)
+    }
+
+    ENTRY main {
+      %p0 = f32[1024] parameter(0)
+      %p1 = f32[] parameter(1)
+      ROOT %fusion = f32[] fusion(%p0, %p1), kind=kInput, calls=fused_computation
     })")
                     .value();
 
@@ -117,9 +127,9 @@ TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusion) {
 
   auto* root = module->entry_computation()->root_instruction();
   TF_ASSERT_OK_AND_ASSIGN(
-      auto analysis,
-      HloFusionAnalysis::Create(FusionBackendConfig::default_instance(), {root},
-                                DefaultFusionBoundaryFn, &device_info));
+      auto analysis, HloFusionAnalysis::Create(
+                         FusionBackendConfig::default_instance(),
+                         HloFusionAdaptor::ForInstruction(root), &device_info));
   EXPECT_EQ(analysis.GetEmitterFusionKind(),
             HloFusionAnalysis::EmitterFusionKind::kReduction);
 }
@@ -151,12 +161,11 @@ TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusionPartiallyFused) {
   auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
 
   auto* root = module->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto analysis,
-      HloFusionAnalysis::Create(
-          FusionBackendConfig::default_instance(), {root},
-          MakeProducerConsumerFusion(*root->operand(0), *root), &device_info));
-  EXPECT_EQ(analysis.GetEmitterFusionKind(),
+
+  auto analysis =
+      AnalyzeProducerConsumerFusion(*root->operand(0), *root, device_info);
+  ASSERT_NE(analysis, std::nullopt);
+  EXPECT_EQ(analysis->GetEmitterFusionKind(),
             HloFusionAnalysis::EmitterFusionKind::kReduction);
 }
 
@@ -186,13 +195,10 @@ TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusionPartiallyFusedInConsumer) {
   auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
 
   auto* root = module->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto analysis,
-      HloFusionAnalysis::Create(
-          FusionBackendConfig::default_instance(),
-          {root->fused_expression_root()},
-          MakeProducerConsumerFusion(*root->operand(0), *root), &device_info));
-  EXPECT_EQ(analysis.GetEmitterFusionKind(),
+  auto analysis =
+      AnalyzeProducerConsumerFusion(*root->operand(0), *root, device_info);
+  ASSERT_NE(analysis, std::nullopt);
+  EXPECT_EQ(analysis->GetEmitterFusionKind(),
             HloFusionAnalysis::EmitterFusionKind::kReduction);
 }
 
@@ -228,12 +234,10 @@ TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusionPartiallyFusedInBoth) {
   auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
 
   auto* root = module->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto analysis,
-      HloFusionAnalysis::Create(
-          FusionBackendConfig::default_instance(), {root},
-          MakeProducerConsumerFusion(*root->operand(0), *root), &device_info));
-  EXPECT_EQ(analysis.GetEmitterFusionKind(),
+  auto analysis =
+      AnalyzeProducerConsumerFusion(*root->operand(0), *root, device_info);
+  ASSERT_NE(analysis, std::nullopt);
+  EXPECT_EQ(analysis->GetEmitterFusionKind(),
             HloFusionAnalysis::EmitterFusionKind::kReduction);
 }
 
@@ -262,11 +266,10 @@ TEST_F(HloFusionAnalysisTest, InvalidDevice) {
   stream_executor::DeviceDescription device_info(device_info_proto);
 
   auto* root = module->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto analysis_fused,
-      HloFusionAnalysis::Create(FusionBackendConfig::default_instance(), {root},
-                                DefaultFusionBoundaryFn, &device_info));
-  EXPECT_EQ(analysis_fused.GetEmitterFusionKind(),
+  auto analysis_fused =
+      AnalyzeProducerConsumerFusion(*root->operand(0), *root, device_info);
+  ASSERT_NE(analysis_fused, std::nullopt);
+  EXPECT_EQ(analysis_fused->GetEmitterFusionKind(),
             HloFusionAnalysis::EmitterFusionKind::kReduction);
 }
 

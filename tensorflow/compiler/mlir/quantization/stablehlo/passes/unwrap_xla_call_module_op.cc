@@ -94,9 +94,9 @@ void UnwrapXlaCallModuleOp(TF::XlaCallModuleOp call_op,
       continue;
     }
 
-    Operation* new_op = builder.clone(op, arg_mapper);
+    Operation& new_op = *builder.clone(op, arg_mapper);
     for (auto [result, new_result] :
-         llvm::zip_equal(op.getResults(), new_op->getResults())) {
+         llvm::zip_equal(op.getResults(), new_op.getResults())) {
       new_op_mapper.map(result, new_result);
     }
   }

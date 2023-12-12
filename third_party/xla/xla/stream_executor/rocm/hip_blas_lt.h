@@ -72,8 +72,12 @@ class BlasLt : public gpu::BlasLt {
     hipblasLtMatmulDesc_t get() const { return handle_.get(); }
 
    private:
+<<<<<<< HEAD
     MatmulDesc(hipblasLtMatmulDesc_t handle,
                hipblasComputeType_t compute_type,
+=======
+    MatmulDesc(hipblasLtMatmulDesc_t handle, hipblasComputeType_t compute_type,
+>>>>>>> db579439eef970657f5ddbf05dc9b798cb748c51
                hipDataType datatype)
         : handle_(handle, wrap::hipblasLtMatmulDescDestroy),
           compute_type_(compute_type),

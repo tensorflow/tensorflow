@@ -1002,15 +1002,18 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
 
     TF_ASSIGN_OR_RETURN(const Shape* updated_lhs_shape,
                         GetShapePtr(updated_lhs));
-    if (!ShapeUtil::SameDimensions(shape, *updated_lhs_shape)) {
-      TF_ASSIGN_OR_RETURN(updated_lhs,
-                          AddBroadcastSequence(shape, updated_lhs));
-    }
     TF_ASSIGN_OR_RETURN(const Shape* updated_rhs_shape,
                         GetShapePtr(updated_rhs));
-    if (!ShapeUtil::SameDimensions(shape, *updated_rhs_shape)) {
-      TF_ASSIGN_OR_RETURN(updated_rhs,
-                          AddBroadcastSequence(shape, updated_rhs));
+    if (!updated_lhs_shape->is_unbounded_dynamic() &&
+        !updated_rhs_shape->is_unbounded_dynamic()) {
+      if (!ShapeUtil::SameDimensions(shape, *updated_lhs_shape)) {
+        TF_ASSIGN_OR_RETURN(updated_lhs,
+                            AddBroadcastSequence(shape, updated_lhs));
+      }
+      if (!ShapeUtil::SameDimensions(shape, *updated_rhs_shape)) {
+        TF_ASSIGN_OR_RETURN(updated_rhs,
+                            AddBroadcastSequence(shape, updated_rhs));
+      }
     }
 
     if (binop == HloOpcode::kCompare) {

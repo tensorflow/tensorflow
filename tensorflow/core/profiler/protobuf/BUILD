@@ -270,3 +270,10 @@ tf_proto_library(
     cc_api_version = 2,
     visibility = [":friends"],
 )
+
+tf_proto_library(
+    name = "dcn_collective_info_proto",
+    srcs = ["dcn_collective_info.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)

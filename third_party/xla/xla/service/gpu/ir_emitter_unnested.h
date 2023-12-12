@@ -163,14 +163,15 @@ class IrEmitterUnnested : public IrEmitter {
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitCustomCallThunk(mlir::Operation* op);
   Status EmitFftThunk(mlir::Operation* op);
-  StatusOr<FusionEmissionResult> GetFusionEmissionResult(
-      const HloFusionInstruction* instr, HloFusionAnalysis& fusion_analysis);
   Status EmitFusion(
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
-  Status EmitFusion(const HloFusionInstruction* instr,
-                    HloFusionAnalysis& fusion_analysis);
+  Status EmitFusion(
+      const HloFusionInstruction* instr, HloFusionAnalysis& fusion_analysis,
+      mlir::Operation* op,
+      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
+          hlo_for_lmhlo);
   Status EmitSelectAndScatter(
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
@@ -373,7 +374,8 @@ class IrEmitterUnnested : public IrEmitter {
   // Emits kernel thunk for a custom fusion implemented with hand written custom
   // device kernels.
   StatusOr<FusionEmissionResult> EmitCustomFusion(
-      const HloFusionInstruction* fusion, const CustomFusionConfig& config);
+      const HloFusionInstruction* fusion, mlir::lmhlo::FusionOp fusion_op,
+      const CustomFusionConfig& config);
 
   // Builds a kernel thunk for a non-fusion operation, without reuse.
   //

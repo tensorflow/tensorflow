@@ -201,7 +201,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_collect_cost_model_stats(false);
   opts.set_xla_gpu_enable_split_k_autotuning(true);
 
-  opts.set_xla_gpu_single_wave_autotuning(true);
   opts.set_xla_gpu_enable_reduction_epilogue_fusion(true);
   opts.set_xla_gpu_enable_nccl_clique_optimization(false);
   opts.set_xla_gpu_cublas_fallback(true);
@@ -1354,13 +1353,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_split_k_autotuning),
       debug_options->xla_gpu_enable_split_k_autotuning(),
       "Enable split_k autotuning for triton gemms."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_single_wave_autotuning",
-      bool_setter_for(&DebugOptions::set_xla_gpu_single_wave_autotuning),
-      debug_options->xla_gpu_single_wave_autotuning(),
-      "Enable single \"wave\" autotuning. This uses more memory for "
-      "compilation, but utilizes CPU cores better, so compilation can be "
-      "faster."));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_reduction_epilogue_fusion",

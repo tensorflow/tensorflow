@@ -136,7 +136,7 @@ StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::Compile(
     GenerateModuleFn extractor) {
   StatusOr<std::unique_ptr<HloModule>> new_hlo_module = extractor(opts_);
   if (new_hlo_module.status().GetPayload(kUncompilableFusion).has_value()) {
-    // Incompatible value of split-k is an expected failure.
+    // Incompatible value of split-k is an example of an expected failure.
     return std::unique_ptr<Executable>();
   } else if (!new_hlo_module.status().ok()) {
     return new_hlo_module.status();

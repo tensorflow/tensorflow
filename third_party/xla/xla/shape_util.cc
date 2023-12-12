@@ -331,6 +331,11 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
   }
   for (int i = 0, n = dimensions.size(); i < n; i++) {
     shape.set_dynamic_dimension(i, dynamic_dimensions[i]);
+    if (shape.dimensions(i) == Shape::kUnboundedSize &&
+        !dynamic_dimensions[i]) {
+      return InvalidArgument(
+          "Cannot mark a dynamic dimension at dim=%d as static", i);
+    }
   }
   return shape;
 }

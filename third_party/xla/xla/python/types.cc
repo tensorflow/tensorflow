@@ -26,7 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "xla/python/exceptions.h"
+#include "xla/pjrt/exceptions.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"

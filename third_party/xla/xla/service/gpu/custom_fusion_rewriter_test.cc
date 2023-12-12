@@ -21,7 +21,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/kernels/custom_fusion_pattern.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 
@@ -33,7 +35,8 @@ namespace xla::gpu {
 
 class SimpleGemmPattern : public CustomFusionPattern {
  public:
-  std::optional<Match> TryMatch(HloInstruction* instr) const override {
+  std::optional<Match> TryMatch(const se::DeviceDescription& device,
+                                HloInstruction* instr) const override {
     if (auto* dot = DynCast<HloDotInstruction>(instr)) {
       CustomFusionConfig config;
       config.set_name("simple_gemm");
@@ -80,7 +83,8 @@ TEST_F(CustomFusionRewriterTest, SimpleGemm) {
   CustomFusionPatternRegistry patterns;
   patterns.Emplace<SimpleGemmPattern>();
 
-  CustomFusionRewriter pass(&patterns);
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  CustomFusionRewriter pass(&device, &patterns);
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
 }
 

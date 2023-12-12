@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "xla/service/gpu/runtime/executable.h"
+#include "xla/service/gpu/runtime/tracing.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/hlo_parser.h"
@@ -143,6 +144,9 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
   *(uint64_t*)(&binary_[binary_.size() - 16]) = tsl::EnvTime::NowNanos();
   *(uint64_t*)(&binary_[binary_.size() - 8]) = tsl::random::New64();
 #endif
+  if (has_module()) {
+    annotation_info_.emplace(module());
+  }
   if (has_module() && enable_debug_info_manager_) {
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
                                                buffer_assignment_->ToProto());
@@ -226,15 +230,6 @@ Status ExecuteThunks(const std::string& module_name, ModuleIdentifier module_id,
   tsl::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tsl::profiler::TraceMeLevel::kInfo);
-
-  ScopedAnnotationAlways annotation([&] {
-    std::string module_id_str;
-    if (module_id >= 0) {
-      module_id_str = absl::StrFormat(",program_id=%d", module_id);
-    }
-    return absl::StrFormat("XlaModule:#hlo_module=%s%s#", module_name,
-                           module_id_str);
-  });
 
   for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
     // Annotate execution of this op if tracing was enabled when we started
@@ -514,15 +509,6 @@ static Status ExecuteXlaRuntime(const std::string& module_name,
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tsl::profiler::TraceMeLevel::kInfo);
 
-  ScopedAnnotationAlways annotation([&] {
-    std::string module_id_str;
-    if (module_id >= 0) {
-      module_id_str = absl::StrFormat(",program_id=%d", module_id);
-    }
-    return absl::StrFormat("XlaModule:#hlo_module=%s%s#", module_name,
-                           module_id_str);
-  });
-
   auto executed = gpu_runtime_executable.Execute(
       run_options, asm_text, binary, buffer_allocations, gpu_lock, temp_buffer);
   if (!executed.ok()) return executed;
@@ -755,6 +741,24 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   return std::move(result);
 }
 
+namespace {
+struct ModuleAnnotationManager {
+  ModuleAnnotationManager(const std::optional<ModuleAnnotations>& annotations) {
+    if (annotations.has_value()) {
+      m_old_annotations = SetCurrentModuleAnnotations(&(*annotations));
+    }
+  }
+  ~ModuleAnnotationManager() {
+    if (m_old_annotations.has_value()) {
+      SetCurrentModuleAnnotations(*m_old_annotations);
+    }
+  }
+
+ private:
+  std::optional<const ModuleAnnotations*> m_old_annotations;
+};
+}  // namespace
+
 Status GpuExecutable::ExecuteThunksOrXlaRuntime(
     const ServiceExecutableRunOptions* run_options,
     const BufferAllocations& buffer_allocations, bool block_host_until_done,
@@ -767,6 +771,15 @@ Status GpuExecutable::ExecuteThunksOrXlaRuntime(
   if (has_module()) {
     unique_id = module().unique_id();
   }
+
+  ScopedAnnotationAlways annotation([&]() -> ModuleAnnotation {
+    if (annotation_info_) {
+      return annotation_info_->top_level;
+    } else {
+      return {module_name_, unique_id};
+    }
+  });
+  ModuleAnnotationManager set_current_kernel_annotations{annotation_info_};
 
   if (thunks_) {
     se::StreamExecutor* executor = run_options->stream()->parent();
@@ -936,9 +949,8 @@ GetOutputInfo(const HloModule& hlo_module, const BufferAssignment& assignment) {
 GpuExecutable::GpuExecutable(
     std::shared_ptr<HloModule> hlo_module, std::string asm_text,
     std::vector<uint8_t> binary, std::vector<ConstantInfo> constants,
-    se::GpuComputeCapability gpu_version,
-    absl::string_view module_name, Shape xla_output_shape,
-    std::vector<BufferAllocation> allocations,
+    se::GpuComputeCapability gpu_version, absl::string_view module_name,
+    Shape xla_output_shape, std::vector<BufferAllocation> allocations,
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
     std::unique_ptr<GpuRuntimeExecutable> gpu_runtime_executable)
     : Executable(std::move(hlo_module)),
@@ -953,6 +965,7 @@ GpuExecutable::GpuExecutable(
       output_info_(std::move(output_info)),
       enable_debug_info_manager_(true) {
   if (has_module()) {
+    annotation_info_.emplace(module());
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
                                                BufferAssignmentProto());
   }

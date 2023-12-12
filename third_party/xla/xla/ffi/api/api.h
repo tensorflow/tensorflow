@@ -25,12 +25,14 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 // This is a header-only base C++ library that defines templates for decoding
@@ -54,6 +56,22 @@ limitations under the License.
 // defined in this file.
 
 #include "xla/ffi/api/c_api.h"
+
+#if __has_attribute(always_inline)
+#define XLA_ATTRIBUTE_ALWAYS_INLINE inline __attribute__((always_inline))
+#elif defined(_MSC_VER)
+#define XLA_ATTRIBUTE_ALWAYS_INLINE __forceinline
+#else
+#define XLA_ATTRIBUTE_ALWAYS_INLINE inline
+#endif
+
+#if __has_attribute(noinline)
+#define XLA_ATTRIBUTE_NEVER_INLINE __attribute__((noinline))
+#elif defined(_MSC_VER)
+#define XLA_ATTRIBUTE_NEVER_INLINE __declspec(noinline)
+#else
+#define XLA_ATTRIBUTE_NEVER_INLINE
+#endif
 
 namespace xla::ffi {
 
@@ -296,7 +314,8 @@ struct ArgDecoding;
 //
 //   template <>
 //   struct AttrDecoding<MyType> {
-//    static std::optional<MyType> Decode(XLA_FFI_AttrType type, void* attr);
+//    static std::optional<MyType> Decode(XLA_FFI_AttrType type, void* attr,
+//                                        DiagnosticEngine&);
 //   }
 //
 template <typename T>
@@ -342,6 +361,66 @@ template <typename T>
 struct ResultEncoding;
 
 //===----------------------------------------------------------------------===//
+// Diagnostics
+//===----------------------------------------------------------------------===//
+
+class DiagnosticEngine;
+
+// RAII wrapper around constructed, but but not yet emitted diagnostic. In
+// flight diagnostic gives an opportunity to build a diagnostic before reporting
+// it to the engine, similar to the builder pattern.
+class InFlightDiagnostic {
+ public:
+  explicit InFlightDiagnostic(DiagnosticEngine* engine, std::string s)
+      : engine_(engine) {
+    stream_ << s;
+  }
+  InFlightDiagnostic(const InFlightDiagnostic&) = delete;
+  InFlightDiagnostic& operator=(const InFlightDiagnostic&) = delete;
+
+  ~InFlightDiagnostic();
+
+  template <typename Arg>
+  InFlightDiagnostic& operator<<(Arg&& arg) {
+    stream_ << std::forward<Arg>(arg);
+    return *this;
+  }
+
+  template <typename T>
+  operator std::optional<T>() const {  // NOLINT
+    return std::nullopt;
+  }
+
+ private:
+  DiagnosticEngine* engine_;
+  std::stringstream stream_;
+};
+
+class DiagnosticEngine {
+ public:
+  DiagnosticEngine() = default;
+  DiagnosticEngine(const DiagnosticEngine&) = delete;
+  DiagnosticEngine& operator=(const DiagnosticEngine&) = delete;
+
+  InFlightDiagnostic Emit(std::string message) {
+    return InFlightDiagnostic(this, std::move(message));
+  }
+
+  std::string Result() const { return acc_; }
+
+ private:
+  friend class InFlightDiagnostic;
+
+  void append(std::string s) { acc_.append(std::move(s)); }
+
+  std::string acc_;
+};
+
+inline InFlightDiagnostic::~InFlightDiagnostic() {
+  engine_->append(stream_.str());
+}
+
+//===----------------------------------------------------------------------===//
 // Decoding arguments and attributes
 //===----------------------------------------------------------------------===//
 
@@ -363,10 +442,12 @@ struct DecodingContext {
 
 template <typename T>
 struct Decode {
-  static std::optional<T> call(DecodingOffsets& offsets, DecodingContext& ctx) {
+  XLA_ATTRIBUTE_ALWAYS_INLINE
+  static std::optional<T> call(DecodingOffsets& offsets, DecodingContext& ctx,
+                               DiagnosticEngine& diagnostic) {
     int64_t idx = offsets.args++;
     return ArgDecoding<T>::Decode(ctx.call_frame->args.types[idx],
-                                  ctx.call_frame->args.args[idx]);
+                                  ctx.call_frame->args.args[idx], diagnostic);
   }
 };
 
@@ -374,7 +455,8 @@ struct Decode {
 
 template <typename T>
 struct internal::Decode<internal::AttrTag<T>> {
-  static std::optional<T> call(DecodingOffsets& offsets, DecodingContext& ctx) {
+  static std::optional<T> call(DecodingOffsets& offsets, DecodingContext& ctx,
+                               DiagnosticEngine& diagnostic) {
     // Find decoded attribute corresponding to the given attribute index.
     int64_t i = offsets.attrs++;
 
@@ -394,7 +476,7 @@ struct internal::Decode<internal::AttrTag<T>> {
     std::string_view attr_name_view = {attr_name->ptr, attr_name->len};
     if (attr_name_view != ctx.attrs_names[i]) return std::nullopt;
 
-    return AttrDecoding<T>::Decode(attr_type, attr);
+    return AttrDecoding<T>::Decode(attr_type, attr, diagnostic);
   }
 };
 
@@ -402,10 +484,58 @@ template <typename T>
 struct internal::Decode<internal::CtxTag<T>> {
   using R = typename CtxDecoding<T>::Type;
 
-  static std::optional<R> call(DecodingOffsets& offsets, DecodingContext& ctx) {
-    return CtxDecoding<T>::Decode(ctx.call_frame->api, ctx.call_frame->ctx);
+  static std::optional<R> call(DecodingOffsets& offsets, DecodingContext& ctx,
+                               DiagnosticEngine& diagnostic) {
+    return CtxDecoding<T>::Decode(ctx.call_frame->api, ctx.call_frame->ctx,
+                                  diagnostic);
   }
 };
+
+//===----------------------------------------------------------------------===//
+// Expected
+//===----------------------------------------------------------------------===//
+
+// Forward declare.
+template <typename E>
+class Unexpected;
+
+// TODO(slebedev): Replace with `std::expected` when C++23 is available.
+template <typename T, typename E>
+class Expected {
+ public:
+  Expected(T value) : data_(std::move(value)) {}  // NOLINT
+  Expected(Unexpected<E> u);                      // NOLINT
+
+  operator bool() const {  // NOLINT
+    return has_value();
+  }
+  T operator*() const { return value(); }
+  T* operator->() const { return &value(); }
+
+  bool has_value() const { return std::holds_alternative<T>(data_); }
+  T value() const { return std::get<T>(data_); }
+  E error() const { return std::get<E>(data_); }
+
+ private:
+  std::variant<T, E> data_;
+};
+
+template <typename E>
+class Unexpected {
+ public:
+  explicit Unexpected(E error) : error_(std::move(error)) {}
+
+ private:
+  template <typename, typename>
+  friend class Expected;
+
+  E error_;
+};
+
+Unexpected(const char*) -> Unexpected<std::string>;
+
+template <typename T, typename E>
+Expected<T, E>::Expected(Unexpected<E> u) : data_(std::move(u.error_)) {}
 
 //===----------------------------------------------------------------------===//
 // Type-safe wrapper for accessing a variable number of arguments.
@@ -422,11 +552,19 @@ class RemainingArgs {
   bool empty() const { return size() == 0; }
 
   template <typename T>
-  std::optional<T> get(size_t index) const {
+  Expected<T, std::string> get(size_t index) const {
     size_t idx = offset_ + index;
-    if (idx >= args_->num_args) return std::nullopt;
+    if (idx >= args_->num_args) {
+      return Unexpected("Index out of range.");
+    }
 
-    return ArgDecoding<T>::Decode(args_->types[idx], args_->args[idx]);
+    DiagnosticEngine diagnostic;
+    auto value_opt =
+        ArgDecoding<T>::Decode(args_->types[idx], args_->args[idx], diagnostic);
+    if (!value_opt.has_value()) {
+      return Unexpected(diagnostic.Result());
+    }
+    return *value_opt;
   }
 
  private:
@@ -437,7 +575,8 @@ class RemainingArgs {
 template <>
 struct internal::Decode<internal::RemainingArgsTag> {
   static std::optional<RemainingArgs> call(DecodingOffsets& offsets,
-                                           DecodingContext& ctx) {
+                                           DecodingContext& ctx,
+                                           DiagnosticEngine& diagnostic) {
     return RemainingArgs(&ctx.call_frame->args, offsets.args);
   }
 };
@@ -457,14 +596,26 @@ class Dictionary {
   }
 
   template <typename T>
-  std::optional<T> get(std::string_view name) const {
+  Expected<T, std::string> get(std::string_view name) const {
+    DiagnosticEngine diagnostic;
+    auto value_opt = get<T>(name, diagnostic);
+    if (!value_opt.has_value()) {
+      return Unexpected(diagnostic.Result());
+    }
+    return *value_opt;
+  }
+
+  template <typename T>
+  std::optional<T> get(std::string_view name,
+                       DiagnosticEngine& diagnostic) const {
     size_t idx = Find(name);
-    if (idx >= attrs_->num_attrs) return std::nullopt;
+    if (idx >= attrs_->num_attrs) {
+      return diagnostic.Emit("Unexpected attribute: ") << name;
+    }
 
     XLA_FFI_AttrType attr_type = attrs_->types[idx];
     void* attr = attrs_->attrs[idx];
-
-    return AttrDecoding<T>::Decode(attr_type, attr);
+    return AttrDecoding<T>::Decode(attr_type, attr, diagnostic);
   }
 
  private:
@@ -489,7 +640,8 @@ class Dictionary {
 template <>
 struct internal::Decode<internal::AttrsTag<Dictionary>> {
   static std::optional<Dictionary> call(DecodingOffsets& offsets,
-                                        DecodingContext& ctx) {
+                                        DecodingContext& ctx,
+                                        DiagnosticEngine& diagnostic) {
     return Dictionary(&ctx.call_frame->attrs);
   }
 };
@@ -497,10 +649,11 @@ struct internal::Decode<internal::AttrsTag<Dictionary>> {
 // Decode `AttrsTag` into a type `T` relying on struct decoding defined below.
 template <typename T>
 struct internal::Decode<internal::AttrsTag<T>> {
-  static std::optional<T> call(DecodingOffsets& offsets, DecodingContext& ctx) {
+  static std::optional<T> call(DecodingOffsets& offsets, DecodingContext& ctx,
+                               DiagnosticEngine& diagnostic) {
     return AttrDecoding<T>::Decode(
         XLA_FFI_AttrType_DICTIONARY,
-        const_cast<XLA_FFI_Attrs*>(&ctx.call_frame->attrs));
+        const_cast<XLA_FFI_Attrs*>(&ctx.call_frame->attrs), diagnostic);
   }
 };
 
@@ -639,8 +792,8 @@ class Handler : public Ffi {
 
  private:
   template <size_t... Is>
-  XLA_FFI_Error* Call(const XLA_FFI_CallFrame* call_frame,
-                      std::index_sequence<Is...>) const {
+  XLA_ATTRIBUTE_ALWAYS_INLINE XLA_FFI_Error* Call(
+      const XLA_FFI_CallFrame* call_frame, std::index_sequence<Is...>) const {
     // A helper structure to allow each decoder find the correct offset.
     internal::DecodingOffsets offsets;
 
@@ -648,12 +801,15 @@ class Handler : public Ffi {
     internal::DecodingContext ctx = {call_frame, attrs_.data(),
                                      attrs_idx_.data()};
 
+    DiagnosticEngine diagnostic;
+
     std::tuple<std::optional<FnArgType<Ts>>...> args = {
-        internal::Decode<Ts>::call(offsets, ctx)...};
+        internal::Decode<Ts>::call(offsets, ctx, diagnostic)...};
 
     bool all_decoded = (std::get<Is>(args).has_value() && ...);
     if (!all_decoded) {
-      return FailedDecodeError(call_frame, {std::get<Is>(args).has_value()...});
+      return FailedDecodeError(call_frame, {std::get<Is>(args).has_value()...},
+                               diagnostic);
     }
 
     auto result = fn_(std::move(*std::get<Is>(args))...);
@@ -662,7 +818,8 @@ class Handler : public Ffi {
   }
 
   XLA_FFI_Error* FailedDecodeError(const XLA_FFI_CallFrame* call_frame,
-                                   std::array<bool, kSize> decoded) const {
+                                   std::array<bool, kSize> decoded,
+                                   const DiagnosticEngine& diagnostic) const {
     std::string message =
         "Failed to decode all FFI handler operands (bad operands at: ";
     for (size_t cnt = 0, idx = 0; idx < kSize; ++idx) {
@@ -672,6 +829,10 @@ class Handler : public Ffi {
       }
     }
     message.append(")");
+    if (auto s = std::move(diagnostic).Result(); !s.empty()) {
+      message.append("\nDiagnostics:\n");
+      message.append(s);
+    }
     return InvalidArgument(call_frame->api, message);
   }
 
@@ -712,16 +873,33 @@ class Handler : public Ffi {
 // Builtin attributes decoding
 //===----------------------------------------------------------------------===//
 
-#define XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(T, TYPE)                  \
-  template <>                                                           \
-  struct AttrDecoding<T> {                                              \
-    static std::optional<T> Decode(XLA_FFI_AttrType type, void* attr) { \
-      if (type != TYPE) {                                               \
-        return std::nullopt;                                            \
-      }                                                                 \
-                                                                        \
-      return *reinterpret_cast<T*>(attr);                               \
-    }                                                                   \
+inline std::ostream& operator<<(std::ostream& os, const XLA_FFI_AttrType type) {
+  switch (type) {
+    case XLA_FFI_AttrType_I32:
+      return os << "int32";
+    case XLA_FFI_AttrType_I64:
+      return os << "int64";
+    case XLA_FFI_AttrType_F32:
+      return os << "float";
+    case XLA_FFI_AttrType_STRING:
+      return os << "string";
+    case XLA_FFI_AttrType_DICTIONARY:
+      return os << "dictionary";
+  }
+}
+
+#define XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(T, TYPE)                \
+  template <>                                                         \
+  struct AttrDecoding<T> {                                            \
+    static std::optional<T> Decode(XLA_FFI_AttrType type, void* attr, \
+                                   DiagnosticEngine& diagnostic) {    \
+      if (type != TYPE) {                                             \
+        return diagnostic.Emit("Wrong attribute type: expected ")     \
+               << TYPE << " but got " << type;                        \
+      }                                                               \
+                                                                      \
+      return *reinterpret_cast<T*>(attr);                             \
+    }                                                                 \
   }
 
 XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(int32_t, XLA_FFI_AttrType_I32);
@@ -733,9 +911,11 @@ XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(float, XLA_FFI_AttrType_F32);
 template <>
 struct AttrDecoding<std::string_view> {
   static std::optional<std::string_view> Decode(XLA_FFI_AttrType type,
-                                                void* attr) {
+                                                void* attr,
+                                                DiagnosticEngine& diagnostic) {
     if (type != XLA_FFI_AttrType_STRING) {
-      return std::nullopt;
+      return diagnostic.Emit("Wrong attribute type: expected ")
+             << XLA_FFI_AttrType_STRING << " but got " << type;
     }
 
     auto* span = reinterpret_cast<XLA_FFI_ByteSpan*>(attr);
@@ -745,9 +925,11 @@ struct AttrDecoding<std::string_view> {
 
 template <>
 struct AttrDecoding<Dictionary> {
-  static std::optional<Dictionary> Decode(XLA_FFI_AttrType type, void* attr) {
+  static std::optional<Dictionary> Decode(XLA_FFI_AttrType type, void* attr,
+                                          DiagnosticEngine& diagnostic) {
     if (type != XLA_FFI_AttrType_DICTIONARY) {
-      return std::nullopt;
+      return diagnostic.Emit("Wrong attribute type: expected ")
+             << XLA_FFI_AttrType_DICTIONARY << " but got " << type;
     }
 
     auto* attrs = reinterpret_cast<XLA_FFI_Attrs*>(attr);
@@ -775,16 +957,21 @@ template <typename T, typename... Ts>
 struct DecodeDictionaryAttr {
   static constexpr size_t kSize = sizeof...(Ts);
 
+  XLA_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<T> Decode(const XLA_FFI_Attrs* attrs,
-                                 std::array<std::string_view, kSize> names) {
-    return Decode(attrs, names, std::make_index_sequence<kSize>{});
+                                 std::array<std::string_view, kSize> names,
+                                 DiagnosticEngine& diagnostic) {
+    return Decode(attrs, names, std::make_index_sequence<kSize>{}, diagnostic);
   }
 
   template <size_t... Is>
-  static std::optional<T> Decode(const XLA_FFI_Attrs* attrs,
-                                 std::array<std::string_view, kSize> names,
-                                 std::index_sequence<Is...>) {
-    if (kSize != attrs->num_attrs) return std::nullopt;
+  XLA_ATTRIBUTE_ALWAYS_INLINE static std::optional<T> Decode(
+      const XLA_FFI_Attrs* attrs, std::array<std::string_view, kSize> names,
+      std::index_sequence<Is...>, DiagnosticEngine& diagnostic) {
+    if (kSize != attrs->num_attrs) {
+      return diagnostic.Emit("Wrong number of attributes: expected ")
+             << kSize << " attributes but got " << attrs->num_attrs;
+    }
 
     // TODO(ezhulenev): We rely on dictionary to lookup struct members by name
     // at run time, however it can become really expensive. We should
@@ -796,7 +983,8 @@ struct DecodeDictionaryAttr {
     // constructor. Add benchmarks first to know what to improve!
     Dictionary dict(attrs);
 
-    std::tuple<std::optional<Ts>...> members = {dict.get<Ts>(names[Is])...};
+    std::tuple<std::optional<Ts>...> members = {
+        dict.get<Ts>(names[Is], diagnostic)...};
     bool all_decoded = (std::get<Is>(members).has_value() && ...);
     if (!all_decoded) return std::nullopt;
 
@@ -825,19 +1013,22 @@ auto DictionaryDecoder(Members... m) {
 //     StructMember<int64_t>("a"),
 //     StructMember<int64_t>("b"));
 //
-#define XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(T, ...)                   \
-  template <>                                                           \
-  struct AttrDecoding<T> {                                              \
-    static std::optional<T> Decode(XLA_FFI_AttrType type, void* attr) { \
-      if (type != XLA_FFI_AttrType_DICTIONARY) {                        \
-        return std::nullopt;                                            \
-      }                                                                 \
-                                                                        \
-      auto decoder = internal::DictionaryDecoder<T>(__VA_ARGS__);       \
-      return decltype(decoder)::Decode(                                 \
-          reinterpret_cast<const XLA_FFI_Attrs*>(attr),                 \
-          internal::StructMemberNames(__VA_ARGS__));                    \
-    }                                                                   \
+#define XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(T, ...)                 \
+  template <>                                                         \
+  struct AttrDecoding<T> {                                            \
+    static std::optional<T> Decode(XLA_FFI_AttrType type, void* attr, \
+                                   DiagnosticEngine& diagnostic) {    \
+      if (type != XLA_FFI_AttrType_DICTIONARY) {                      \
+        diagnostic.Emit("Wrong attribute type: expected ")            \
+            << XLA_FFI_AttrType_DICTIONARY << " but got " << type;    \
+        return std::nullopt;                                          \
+      }                                                               \
+                                                                      \
+      auto decoder = internal::DictionaryDecoder<T>(__VA_ARGS__);     \
+      return decltype(decoder)::Decode(                               \
+          reinterpret_cast<const XLA_FFI_Attrs*>(attr),               \
+          internal::StructMemberNames(__VA_ARGS__), diagnostic);      \
+    }                                                                 \
   }
 
 //===----------------------------------------------------------------------===//

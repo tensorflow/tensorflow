@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -2362,7 +2363,7 @@ void Model::Optimize(AutotuneAlgorithm algorithm,
     optimization_params_ = optimization_params;
 
     if (snapshot_) {
-      int64_t pipeline_processing_usec = 0;
+      double pipeline_processing_usec = 0;
       ModelTiming model_timing(snapshot_);
       auto bfs_stage_roots = model_timing.GetStageRoots();
       for (const auto& root : bfs_stage_roots) {
@@ -2376,9 +2377,11 @@ void Model::Optimize(AutotuneAlgorithm algorithm,
           pipeline_processing_usec = 0;
           break;
         }
-        int64_t root_total_time_usec = root_timing->total_time_nsec *
-                                       root_timing->pipeline_ratio /
-                                       EnvTime::kMicrosToNanos;
+
+        double root_total_time_usec = root_timing->total_time_nsec *
+                                      root_timing->pipeline_ratio /
+                                      EnvTime::kMicrosToNanos;
+
         pipeline_processing_usec =
             std::max(pipeline_processing_usec, root_total_time_usec);
       }

@@ -21,6 +21,7 @@ from absl import logging
 
 from tensorflow.python.checkpoint.sharding import sharding_util
 from tensorflow.python.eager import context
+from tensorflow.python.framework import device as device_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor as tensor_lib
@@ -34,12 +35,11 @@ from tensorflow.python.training.saving import saveable_object_util
 class ShardByDevicePolicy(sharding_util.ShardingCallback):
   """Policy that splits tensors into shards based on their device spec."""
 
-  def __init__(self):
-    super().__init__(
-        self._device_callback_impl,
-        "Split tensors into shards based on their device spec.")
+  @property
+  def description(self) -> str:
+    return "Split tensors into shards based on their device spec."
 
-  def _device_callback_impl(
+  def __call__(
       self,
       shardable_tensors: Sequence[sharding_util.ShardableTensor]
   ) -> Sequence[sharding_util.TensorSlice]:
@@ -58,19 +58,14 @@ class ShardByDevicePolicy(sharding_util.ShardingCallback):
       tensor = shardable_tensor.tensor
       checkpoint_key = shardable_tensor.checkpoint_key
       slice_spec = shardable_tensor.slice_spec
-      device = saveable_object_util.set_cpu0(shardable_tensor.device)
+      device = device_lib.DeviceSpec.from_string(
+          saveable_object_util.set_cpu0(shardable_tensor.device.to_string()))
 
       (tensors_by_device
        .setdefault(device, {})
        .setdefault(checkpoint_key, {})[slice_spec]) = tensor
 
     return list(tensors_by_device.values())
-
-  def __call__(
-      self,
-      shardable_tensors: Sequence[sharding_util.ShardableTensor]
-  ) -> Sequence[sharding_util.TensorSlice]:
-    return self.callback(shardable_tensors)  # pylint: disable=no-value-for-parameter
 
 
 _PartitionAxisAndSize = tuple[int, int]
@@ -81,10 +76,11 @@ class MaxShardSizePolicy(sharding_util.ShardingCallback):
   """Policy that splits tensors into shards with a max shard size."""
 
   def __init__(self, max_shard_size: int):
-    super().__init__(
-        self._max_shard_size_callback_impl,
-        "Split tensors into shards with a max shard size.")
     self.max_shard_size = max_shard_size
+
+  @property
+  def description(self) -> str:
+    return "Split tensors into shards with a max shard size."
 
   def _get_next_partition(
       self,
@@ -172,13 +168,14 @@ class MaxShardSizePolicy(sharding_util.ShardingCallback):
                    for i in range(root_tensor_shape.rank)]
     slice_shape[min_axis] = part_size
     slice_size_in_bytes = int(math.prod(slice_shape)) * dtype_size
-    tensor_slice = array_ops.slice(
-        root_tensor, begin=slice_offset, size=slice_shape)
+    with ops.device(root_shardable_tensor.device):
+      tensor_slice = array_ops.slice(
+          root_tensor, begin=slice_offset, size=slice_shape)
     slice_spec = variables.Variable.SaveSliceInfo(
         full_name=checkpoint_key,
         full_shape=root_tensor_shape,
         var_offset=slice_offset,
-        var_shape=slice_shape).spec
+        var_shape=slice_shape).spec.strip()
     remaining_size = shard_size_remaining
     if slice_size_in_bytes > max_shard_size:
       logging.warning("Slice %s of tensor %s is a scalar of size %s bytes and "
@@ -206,16 +203,13 @@ class MaxShardSizePolicy(sharding_util.ShardingCallback):
 
     return (remaining_size, (slice_offset, slice_shape))
 
-  def _max_shard_size_callback_impl(
-      self,
-      shardable_tensors: Sequence[sharding_util.ShardableTensor],
-      max_shard_size: int
+  def __call__(
+      self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
   ) -> Sequence[sharding_util.TensorSliceDict]:
     """Callback to split tensors into shards with a max shard size.
 
     Args:
       shardable_tensors: A list of ShardableTensors.
-      max_shard_size: Max size in bytes allowed for a checkpoint shard.
 
     Returns:
       List of shard dicts containing tensors.
@@ -224,7 +218,7 @@ class MaxShardSizePolicy(sharding_util.ShardingCallback):
     tensors_by_shard = []
     large_scalars = []
 
-    shard_size_remaining = max_shard_size
+    shard_size_remaining = self.max_shard_size
     for shardable_tensor in shardable_tensors:
       root_tensor = shardable_tensor.tensor
       root_shape = shardable_tensor.shape
@@ -249,13 +243,13 @@ class MaxShardSizePolicy(sharding_util.ShardingCallback):
         total_size = sum(sizes)
         dtype_size = max(sizes)
 
-      if (total_size > max_shard_size and
+      if (total_size > self.max_shard_size and
           (root_shape.rank is None or root_shape.rank == 0)):
         logging.warning("Tensor %s is a scalar of size %s bytes and cannot be "
                         "partitioned into a shard of max shard size %s bytes. "
                         "It will be added as an individual shard that exceeds "
                         "the max shard size.",
-                        checkpoint_key, total_size, max_shard_size)
+                        checkpoint_key, total_size, self.max_shard_size)
         large_scalars.append(
             {checkpoint_key: {shardable_tensor.slice_spec: root_tensor}})
         continue
@@ -279,7 +273,7 @@ class MaxShardSizePolicy(sharding_util.ShardingCallback):
              working_tensor_offset=working_tensor_var_offset,
              part_axis_and_size=part_axis_and_size,
              shard_size_remaining=shard_size_remaining,
-             max_shard_size=max_shard_size,
+             max_shard_size=self.max_shard_size,
              tensors_by_shard=tensors_by_shard,
              large_scalars=large_scalars)
 
@@ -287,7 +281,7 @@ class MaxShardSizePolicy(sharding_util.ShardingCallback):
           # Tensor partition couldn't fit in remaining shard space. Try again
           # with the next full shard.
           tensors_by_shard.append({})
-          shard_size_remaining = max_shard_size
+          shard_size_remaining = self.max_shard_size
         else:
           working_tensor = array_ops.slice(
               root_tensor, begin=remaining_offset, size=remaining_shape)
@@ -301,7 +295,7 @@ class MaxShardSizePolicy(sharding_util.ShardingCallback):
             full_name=checkpoint_key,
             full_shape=root_shape,
             var_offset=working_tensor_var_offset,
-            var_shape=working_tensor_shape).spec
+            var_shape=working_tensor_shape).spec.strip()
         if not tensors_by_shard:
           tensors_by_shard.append({})
         (tensors_by_shard[-1]
@@ -310,9 +304,3 @@ class MaxShardSizePolicy(sharding_util.ShardingCallback):
       shard_size_remaining -= working_tensor_size
 
     return tensors_by_shard + large_scalars
-
-  def __call__(
-      self,
-      shardable_tensors: Sequence[sharding_util.ShardableTensor]
-  ) -> Sequence[sharding_util.TensorSliceDict]:
-    return self.callback(shardable_tensors, self.max_shard_size)  # pylint: disable=no-value-for-parameter

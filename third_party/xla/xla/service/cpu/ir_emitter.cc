@@ -1169,35 +1169,36 @@ Status IrEmitter::HandleAllReduceSingleReplica(HloInstruction* crs) {
   return OkStatus();
 }
 
+// Data types supported by ReduceScatter and AllReduce.
+static bool DataTypeIsSupportedByReduceScatter(PrimitiveType datatype) {
+  // TODO(cheshire): Fix duplication wrt. cpu_runtime
+  switch (datatype) {
+    case PRED:
+    case S8:
+    case U8:
+    case S16:
+    case U16:
+    case S32:
+    case U32:
+    case S64:
+    case U64:
+    case F16:
+    case F32:
+    case F64:
+    case C64:
+    case C128:
+      return true;
+    default:
+      return false;
+  }
+}
+
 Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
   CHECK_GE(crs->operand_count(), 1);
   PrimitiveType datatype = crs->operand(0)->shape().element_type();
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(crs));
 
-  bool is_datatype_supported = [&] {
-    // TODO(cheshire): Fix duplication wrt. cpu_runtime
-    switch (datatype) {
-      case PRED:
-      case S8:
-      case U8:
-      case S16:
-      case U16:
-      case S32:
-      case U32:
-      case S64:
-      case U64:
-      case F16:
-      case F32:
-      case F64:
-      case C64:
-      case C128:
-        return true;
-      default:
-        return false;
-    }
-  }();
-
-  if (!is_datatype_supported) {
+  if (!DataTypeIsSupportedByReduceScatter(datatype)) {
     return Unimplemented("AllReduce for datatype '%s' is not supported",
                          primitive_util::LowercasePrimitiveTypeName(datatype));
   }
@@ -1285,7 +1286,59 @@ Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
 }
 
 Status IrEmitter::HandleReduceScatter(HloInstruction* rs) {
-  return Unimplemented("ReduceScatter is not implemented on CPU.");
+  CHECK_EQ(rs->operand_count(), 1);
+  PrimitiveType datatype = rs->operand(0)->shape().element_type();
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(rs));
+
+  if (!DataTypeIsSupportedByReduceScatter(datatype)) {
+    return Unimplemented("ReduceScatter for datatype '%s' is not supported",
+                         primitive_util::LowercasePrimitiveTypeName(datatype));
+  }
+
+  if (!MatchReductionComputation(rs->to_apply()).has_value()) {
+    return Unimplemented("ReduceScatter for computation '%s' is not supported",
+                         rs->to_apply()->ToString());
+  }
+
+  std::string replica_groups = ReplicaGroupsToString(rs->replica_groups());
+  int32_t replica_groups_size = replica_groups.size();
+  llvm::Value* replica_groups_v = b_.CreateGlobalStringPtr(replica_groups);
+
+  Shape shape = rs->operand(0)->shape();
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice input_slice,
+                      assignment_.GetUniqueSlice(rs->operand(0), {}));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+                      assignment_.GetUniqueSlice(rs, {}));
+  llvm::Value* input_buffer = EmitBufferPointer(input_slice, shape);
+  llvm::Value* output_buffer = EmitBufferPointer(output_slice, shape);
+
+  bool use_global_device_ids =
+      Cast<HloReduceScatterInstruction>(rs)->use_global_device_ids();
+
+  EmitCallToFunc(
+      runtime::kReduceScatterSymbolName,
+      {/*run_options=*/GetExecutableRunOptionsArgument(),
+       /*replica_groups_str=*/replica_groups_v,
+       /*replica_groups_str_size=*/b_.getInt32(replica_groups_size),
+
+       /*channel_id_present=*/
+       b_.getInt32(static_cast<int32_t>(rs->channel_id().has_value())),
+       /*use_global_device_ids=*/
+       b_.getInt32(static_cast<int32_t>(use_global_device_ids)),
+       /*op_id=*/
+       b_.getInt64(rs->channel_id().has_value() ? *rs->channel_id()
+                                                : rs->GetModule()->unique_id()),
+       /*reduction_kind=*/
+       b_.getInt32(
+           static_cast<int32_t>(*MatchReductionComputation(rs->to_apply()))),
+       /*element_type=*/
+       b_.getInt32(static_cast<int32_t>(datatype)),
+       /*shape=*/b_.getInt64(ShapeUtil::ElementsIn(rs->shape())),
+       /*input_buffer=*/input_buffer,
+       /*output_buffer=*/output_buffer},
+      b_.getVoidTy());
+
+  return OkStatus();
 }
 
 Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
@@ -1339,6 +1392,57 @@ Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
                      /*destination_buffers=*/output_buffers,
                  },
                  b_.getVoidTy());
+
+  llvm_ir::EmitTuple(GetIrArrayFor(instruction), output_buffer_ptrs, &b_);
+  return OkStatus();
+}
+
+Status IrEmitter::HandleAllGather(HloInstruction* instruction) {
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(instruction));
+
+  std::string replica_groups =
+      ReplicaGroupsToString(instruction->replica_groups());
+  int32_t replica_groups_size = replica_groups.size();
+  llvm::Value* replica_groups_v = b_.CreateGlobalStringPtr(replica_groups);
+
+  std::vector<llvm::Value*> input_buffer_ptrs;
+  std::vector<llvm::Value*> output_buffer_ptrs;
+
+  const HloInstruction* op = instruction->operand(0);
+  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice in_slice,
+                      assignment_.GetUniqueSlice(op, {}));
+  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice out_slice,
+                      assignment_.GetUniqueSlice(instruction, {}));
+  const Shape& operand_shape = op->shape();
+  CHECK(op->shape().IsArray())
+      << "Operand to all-gather must be arrays: " << instruction->ToString();
+  llvm::Value* output_buffer = EmitBufferPointer(out_slice, operand_shape);
+  llvm::Value* input_buffer = GetEmittedValueFor(op);
+  int64_t buffer_size = in_slice.size();
+
+  bool use_global_device_ids =
+      Cast<HloAllGatherInstruction>(instruction)->use_global_device_ids();
+
+  EmitCallToFunc(
+      runtime::kAllGatherSymbolName,
+      {
+          /*run_options=*/GetExecutableRunOptionsArgument(),
+          /*channel_id_present=*/
+          b_.getInt32(
+              static_cast<int32_t>(instruction->channel_id().has_value())),
+          /*use_global_device_ids=*/
+          b_.getInt32(static_cast<int32_t>(use_global_device_ids)),
+          /*op_id=*/
+          b_.getInt64(instruction->channel_id().has_value()
+                          ? *instruction->channel_id()
+                          : instruction->GetModule()->unique_id()),
+          /*replica_groups_str=*/replica_groups_v,
+          /*replica_groups_str_size=*/b_.getInt32(replica_groups_size),
+          /*buffer_size=*/b_.getInt64(buffer_size),
+          /*source_buffer=*/input_buffer,
+          /*destination_buffer=*/output_buffer,
+      },
+      b_.getVoidTy());
 
   llvm_ir::EmitTuple(GetIrArrayFor(instruction), output_buffer_ptrs, &b_);
   return OkStatus();
@@ -2378,13 +2482,16 @@ Status IrEmitter::HandleTopK(HloInstruction* hlo) {
   const HloInstruction* input = hlo->operand(0);
   const int64_t k = hlo->shape().tuple_shapes(0).dimensions().back();
   const bool has_batch = hlo->shape().tuple_shapes(0).dimensions_size() == 2;
-  TF_RET_CHECK(input->shape().element_type() == F32);
+  TF_RET_CHECK(input->shape().element_type() == F32) << hlo->ToString();
   TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(
-      hlo->shape().tuple_shapes(0).layout()));
+      hlo->shape().tuple_shapes(0).layout()))
+      << hlo->ToString();
   TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(
-      hlo->shape().tuple_shapes(1).layout()));
+      hlo->shape().tuple_shapes(1).layout()))
+      << hlo->ToString();
   TF_RET_CHECK(
-      LayoutUtil::IsMonotonicWithDim0Major(hlo->operand(0)->shape().layout()));
+      LayoutUtil::IsMonotonicWithDim0Major(hlo->operand(0)->shape().layout()))
+      << hlo->ToString();
 
   TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice values_slice,
                       assignment_.GetUniqueSlice(hlo->operand(0), {}));

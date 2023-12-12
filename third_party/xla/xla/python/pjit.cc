@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/synchronization/notification.h"
 #include "xla/pjrt/lru_cache.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/jax_jit.h"
 #include "xla/python/py_array.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/python/python_utils.h"
 #include "xla/python/pytree.h"
 #include "xla/python/sharding.h"
-#include "xla/python/status_casters.h"
 #include "xla/python/transfer_guard_lib.h"
 #include "xla/python/util.h"
 #include "tsl/platform/errors.h"

@@ -252,7 +252,8 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
         absl::StrJoin(layout.minor_to_major(), ", "), shape.ShortDebugString());
   }
 
-  std::vector<bool> dimensions_in_layout(shape.rank(), false);
+  absl::InlinedVector<bool, InlineRank()> dimensions_in_layout(shape.rank(),
+                                                               false);
   for (int64_t i = 0; i < shape.rank(); ++i) {
     int64_t dim = layout.minor_to_major(i);
     if (dim < 0 || dim >= shape.rank()) {

@@ -223,10 +223,12 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":gpu_driver_header",
+        ":gpu_types_header",
         "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor:stream_executor_internal",
         "//xla/stream_executor/platform",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -391,7 +393,9 @@ cc_library(
     srcs = if_gpu_is_configured(["redzone_allocator.cc"]),
     hdrs = if_gpu_is_configured(["redzone_allocator.h"]),
     copts = tsl_copts(),
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     visibility = ["//visibility:public"],
     deps = if_gpu_is_configured([
         ":asm_compiler",
