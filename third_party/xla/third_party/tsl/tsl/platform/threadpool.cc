@@ -21,6 +21,7 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/context.h"
+#include "tsl/platform/cpu_info.h"
 #include "tsl/platform/denormal.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/mutex.h"
@@ -108,7 +109,9 @@ ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
   CHECK_GE(num_threads, 1);
 
 #ifdef DNNL_AARCH64_USE_ACL
-  if(num_threads == std::thread::hardware_concurrency() && num_threads >= 16){
+  // To avoid cost of swapping in and out threads from running processes
+  // we do not use all available cores to parallelise TF operations.
+  if(num_threads == tsl::port::NumTotalCPUs() && num_threads >= 16){
     num_threads = num_threads - 1;
   }
 #endif  // DNNL_AARCH64_USE_ACL
