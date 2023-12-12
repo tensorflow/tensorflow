@@ -5169,9 +5169,11 @@ void AlternateMemoryBestFitHeap::AllocateReservedScopedAllocations() {
   std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*> colocations;
   for (int i = 0; i < instruction_sequence.size(); ++i) {
     const HloInstruction* instruction = instruction_sequence[i];
-    int64_t reserved_scoped_memory = options_.reserved_scoped_memory_fn(
-        instruction, /*operands_in_alternate_memory=*/{},
-        /*outputs_in_alternate_memory=*/{});
+    int64_t reserved_scoped_memory =
+        std::min(options_.reserved_scoped_memory_fn(
+                     instruction, /*operands_in_alternate_memory=*/{},
+                     /*outputs_in_alternate_memory=*/{}),
+                 options_.max_size_in_bytes);
     if (reserved_scoped_memory != 0) {
       VLOG(1) << "Allocate reserved scoped memory at " << i << " ("
               << instruction->name() << "): " << reserved_scoped_memory;
