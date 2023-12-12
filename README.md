@@ -75,10 +75,42 @@ commands.
 
 #### *Try your first TensorFlow program*
 
+In a shell or terminal, type 'python' to start the Python interpreter in interactive mode.
+
 ```shell
 $ python
 ```
 
+Import the TensorFlow library.
+This is the first step in any TensorFlow-based program.
+TensorFlow is typically imported under the alias `tf`.
+```python
+import tensorflow as tf
+```
+
+Using TensorFlow's `add` function to compute the sum of two numbers.
+Here, we add the numbers 1 and 2. The `add` function is one of the many mathematical operations that TensorFlow supports.
+The result of tf.add is a TensorFlow tensor, we call the `numpy` method on the tensor object.
+```python
+>>> tf.add(1, 2).numpy()
+3
+```
+
+Creating a TensorFlow constant with the string value 'Hello, TensorFlow!'.
+A constant is an immutable tensor – its value cannot be changed after it's created, which is why it's called a constant.
+The value is encoded as a byte string, which is indicated by the prefix 'b' in the output.
+```python
+>>> hello = tf.constant('Hello, TensorFlow!')
+```
+
+When we call the `numpy` method on the string tensor, we get the raw bytes of the string.
+Since we're dealing with a string tensor, `numpy` returns a byte string as indicated by the `b` prefix.
+```python
+>>> print(hello.numpy())
+b'Hello, TensorFlow!'
+```
+
+The resulting shell:
 ```python
 >>> import tensorflow as tf
 >>> tf.add(1, 2).numpy()
