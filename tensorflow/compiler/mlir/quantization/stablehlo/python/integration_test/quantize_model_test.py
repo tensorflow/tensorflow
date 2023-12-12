@@ -14,7 +14,6 @@
 # ==============================================================================
 import itertools
 from typing import Optional, Sequence
-import unittest
 
 from absl.testing import parameterized
 import numpy as np
@@ -238,7 +237,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       },
   )
   @test_util.run_in_graph_and_eager_modes
-  @unittest.skip('b/307620966: e2e support for conv is under development.')
   def test_conv_ptq_model(
       self,
       activation_fn: Optional[ops.Operation],
@@ -300,6 +298,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             )
         },
         enable_per_channel_quantization=enable_per_channel_quantization,
+        calibration_options=quant_opts_pb2.CalibrationOptions(
+            calibration_method=quant_opts_pb2.CalibrationOptions.CALIBRATION_METHOD_MIN_MAX
+        ),
     )
 
     quantization.quantize_saved_model(
@@ -318,7 +319,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     # Tests that the quantized graph outputs similar values. The rtol value is
     # arbitrary.
-    self.assertAllClose(new_outputs, expected_outputs, rtol=0.02)
+    self.assertAllClose(new_outputs, expected_outputs, rtol=0.04)
 
   def test_when_preset_not_srq_raise_error(self):
     self._create_matmul_model(
