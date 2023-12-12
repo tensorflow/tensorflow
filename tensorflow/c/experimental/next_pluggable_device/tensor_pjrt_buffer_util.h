@@ -15,9 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_NEXT_PLUGGABLE_DEVICE_TENSOR_PJRT_BUFFER_UTIL_H_
 #define TENSORFLOW_C_EXPERIMENTAL_NEXT_PLUGGABLE_DEVICE_TENSOR_PJRT_BUFFER_UTIL_H_
 
+#include "tensorflow/core/framework/tensor.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
-#include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 
@@ -31,6 +31,10 @@ absl::StatusOr<xla::PjRtCApiClient*> GetPjRtCApiClient(
     const DeviceType& device_type);
 
 absl::Status ResetPjRtClient(const DeviceType& device_type);
+
+Status UpdateTensorWithPjRtTensorBuffer(PJRT_Buffer* c_buffer,
+                                        xla::PjRtCApiClient* c_api_client,
+                                        Tensor* tensor);
 
 }  // namespace tensorflow
 

@@ -20,10 +20,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/jit/pjrt_tensor_buffer.h"
 #include "tensorflow/compiler/jit/pjrt_tensor_buffer_util.h"
-#include "xla/pjrt/c/pjrt_c_api.h"
-#include "xla/pjrt/pjrt_c_api_client.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
@@ -33,6 +31,9 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/pjrt_c_api_client.h"
+#include "xla/pjrt/pjrt_client.h"
 
 namespace tensorflow {
 
@@ -86,6 +87,22 @@ absl::Status ResetPjRtClient(const DeviceType& device_type) {
   TF_RETURN_IF_ERROR(rmgr->Lookup(rmgr->default_container(),
                                   kPjRtStateResourceName, &pjrt_state));
   TF_RETURN_IF_ERROR(pjrt_state->MovePjRtClientToUnused(device_type));
+  return absl::OkStatus();
+}
+
+Status UpdateTensorWithPjRtTensorBuffer(PJRT_Buffer* c_buffer,
+                                        xla::PjRtCApiClient* c_api_client,
+                                        Tensor* tensor) {
+  tensorflow::AsyncValueTensor* av_tensor =
+      tensorflow::AsyncValueTensor::FromTensor(tensor);
+  if (av_tensor == nullptr) {
+    return absl::InternalError(
+        "The tensor to set PjRtBuffer is not an AsyncValueTensor.");
+  }
+  auto pjrt_buffer =
+      std::make_unique<xla::PjRtCApiBuffer>(c_api_client, c_buffer);
+  TF_RETURN_IF_ERROR(PjRtTensorBufferUtil::UpdateOrMakeTensorWithPjRtBuffer(
+      tensor->dtype(), tensor->shape(), std::move(pjrt_buffer), tensor));
   return absl::OkStatus();
 }
 

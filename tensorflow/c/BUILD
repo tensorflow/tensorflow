@@ -841,6 +841,7 @@ tf_cuda_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/tfrt/common:async_value_tensor",
     ] + if_not_mobile([
         "//tensorflow/core/kernels:tensor_list",
         "//tensorflow/core/kernels:tensor_list_util",

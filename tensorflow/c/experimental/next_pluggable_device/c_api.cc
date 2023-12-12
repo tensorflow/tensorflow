@@ -33,20 +33,22 @@ limitations under the License.
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "tensorflow/compiler/jit/pjrt_tensor_buffer_util.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/variable_info_util.h"
-#include "xla/pjrt/c/pjrt_c_api.h"
-#include "xla/pjrt/c/pjrt_c_api_helpers.h"
-#include "xla/pjrt/pjrt_c_api_client.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_resource.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 #include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/pjrt_c_api_client.h"
+#include "xla/pjrt/pjrt_client.h"
 
 TF_Device* TF_GetDevice(TF_OpKernelContext* ctx) {
   auto* cc_ctx = reinterpret_cast<tensorflow::OpKernelContext*>(ctx);
@@ -313,4 +315,176 @@ void TF_CreatePjRtBuffer(TF_Tensor* c_tensor, PJRT_Buffer* c_buffer,
   auto set_buffer_status =
       SetPjRtCBufferToTensor(c_buffer, *pjrt_c_api_client, &tensor);
   status->status = set_buffer_status;
+}
+
+void TF_UpdateTensorWithPjRtTensorBuffer(TF_Tensor* c_tensor,
+                                         PJRT_Buffer* c_buffer,
+                                         const char* device_type,
+                                         TF_Status* status) {
+  absl::StatusOr<xla::PjRtCApiClient*> pjrt_c_api_client =
+      tensorflow::GetPjRtCApiClient(tensorflow::DeviceType(device_type));
+  if (!pjrt_c_api_client.ok()) {
+    status->status = pjrt_c_api_client.status();
+
+    return;
+  }
+  auto update_buffer_status = UpdateTensorWithPjRtTensorBuffer(
+      c_buffer, *pjrt_c_api_client,
+      &(down_cast<tensorflow::TensorInterface*>(c_tensor->tensor)->Tensor()));
+  status->status = update_buffer_status;
+}
+
+TF_Tensor* TF_AllocateOutputAndSetPjRtBuffer(TF_OpKernelContext* context,
+                                             int index, TF_DataType dtype,
+                                             const int64_t* dims, int num_dims,
+                                             size_t len, PJRT_Buffer* c_buffer,
+                                             const char* device_type,
+                                             TF_Status* status) {
+  TF_SetStatus(status, TF_OK, "");
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
+  tensorflow::gtl::ArraySlice<const int64_t> dimarray(
+      reinterpret_cast<const int64_t*>(dims), num_dims);
+  tensorflow::Tensor* tensor;
+  absl::Status s = cc_ctx->allocate_output(
+      index, tensorflow::TensorShape(dimarray), &tensor);
+  if (!s.ok()) {
+    status->status = s;
+    return nullptr;
+  }
+
+  tensorflow::AsyncValueTensor* av_tensor =
+      tensorflow::AsyncValueTensor::FromTensor(tensor);
+  if (av_tensor != nullptr) {
+    absl::StatusOr<xla::PjRtCApiClient*> pjrt_c_api_client =
+        tensorflow::GetPjRtCApiClient(tensorflow::DeviceType(device_type));
+    if (!pjrt_c_api_client.ok()) {
+      status->status = pjrt_c_api_client.status();
+      return;
+    }
+
+    auto pjrt_buffer =
+        std::make_unique<xla::PjRtCApiBuffer>(*pjrt_c_api_client, c_buffer);
+    s = tensorflow::PjRtTensorBufferUtil::UpdateOrMakeTensorWithPjRtBuffer(
+        tensor->dtype(), tensor->shape(), std::move(pjrt_buffer), tensor);
+    if (!s.ok()) {
+      status->status = s;
+      return nullptr;
+    }
+  }
+  TF_Tensor* tf_tensor = TF_TensorFromTensor(*tensor, &s);
+  if (!s.ok()) {
+    status->status = s;
+    return nullptr;
+  }
+  return tf_tensor;
+}
+
+TF_Tensor* TF_ForwardInputOrAllocateOutputAndSetPjRtBuffer(
+    TF_OpKernelContext* context, const int* candidate_input_indices,
+    int num_candidate_input_indices, int output_index,
+    const int64_t* output_dims, int output_num_dims, int* forwarded_input,
+    PJRT_Buffer* c_buffer, const char* device_type, TF_Status* status) {
+  TF_SetStatus(status, TF_OK, "");
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
+
+  tensorflow::gtl::ArraySlice<int> input_indices_array(
+      candidate_input_indices, num_candidate_input_indices);
+  tensorflow::gtl::ArraySlice<const int64_t> output_dimarray(
+      reinterpret_cast<const int64_t*>(output_dims), output_num_dims);
+  tensorflow::Tensor* output_tensor_pointer;
+  absl::Status s = cc_ctx->forward_input_or_allocate_output(
+      input_indices_array, output_index,
+      tensorflow::TensorShape(output_dimarray), &output_tensor_pointer,
+      forwarded_input);
+  if (!s.ok()) {
+    status->status = s;
+    return nullptr;
+  }
+
+  tensorflow::AsyncValueTensor* av_tensor =
+      tensorflow::AsyncValueTensor::FromTensor(output_tensor_pointer);
+  if (av_tensor != nullptr) {
+    absl::StatusOr<xla::PjRtCApiClient*> pjrt_c_api_client =
+        tensorflow::GetPjRtCApiClient(tensorflow::DeviceType(device_type));
+    if (!pjrt_c_api_client.ok()) {
+      status->status = pjrt_c_api_client.status();
+      return;
+    }
+
+    auto pjrt_buffer =
+        std::make_unique<xla::PjRtCApiBuffer>(*pjrt_c_api_client, c_buffer);
+    s = tensorflow::PjRtTensorBufferUtil::UpdateOrMakeTensorWithPjRtBuffer(
+        output_tensor_pointer->dtype(), output_tensor_pointer->shape(),
+        std::move(pjrt_buffer), output_tensor_pointer);
+
+    if (!s.ok()) {
+      status->status = s;
+      return nullptr;
+    }
+  }
+  TF_Tensor* tf_tensor_output = TF_TensorFromTensor(*output_tensor_pointer, &s);
+  if (!s.ok()) {
+    status->status = s;
+    return nullptr;
+  }
+  return tf_tensor_output;
+}
+
+TF_Tensor* TF_AllocateTempAndSetPjRtBuffer(
+    TF_OpKernelContext* context, TF_DataType dtype, const int64_t* dims,
+    int num_dims, TF_AllocatorAttributes* alloc_attrs, PJRT_Buffer* c_buffer,
+    const char* device_type, TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
+  TF_SetStatus(status, TF_OK, "");
+  tensorflow::gtl::ArraySlice<const int64_t> dimarray(
+      reinterpret_cast<const int64_t*>(dims), num_dims);
+  if (alloc_attrs && !alloc_attrs->struct_size) {
+    TF_SetStatus(
+        status, TF_INVALID_ARGUMENT,
+        "TF_AllocatorAttributes struct "
+        "size member must be set to TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE");
+    return nullptr;
+  }
+  tensorflow::AllocatorAttributes allocator_attr;
+  if (alloc_attrs && alloc_attrs->on_host) {
+    allocator_attr.set_on_host(true);
+  }
+  absl::Status s;
+  tensorflow::Tensor tensor;
+  s = cc_ctx->allocate_temp(static_cast<tensorflow::DataType>(dtype),
+                            tensorflow::TensorShape(dimarray), &tensor,
+                            allocator_attr);
+  if (!s.ok()) {
+    status->status = s;
+    return nullptr;
+  }
+
+  tensorflow::AsyncValueTensor* av_tensor =
+      tensorflow::AsyncValueTensor::FromTensor(&tensor);
+  if (av_tensor != nullptr) {
+    absl::StatusOr<xla::PjRtCApiClient*> pjrt_c_api_client =
+        tensorflow::GetPjRtCApiClient(tensorflow::DeviceType(device_type));
+    if (!pjrt_c_api_client.ok()) {
+      status->status = pjrt_c_api_client.status();
+      return;
+    }
+
+    auto pjrt_buffer =
+        std::make_unique<xla::PjRtCApiBuffer>(*pjrt_c_api_client, c_buffer);
+    s = tensorflow::PjRtTensorBufferUtil::UpdateOrMakeTensorWithPjRtBuffer(
+        tensor.dtype(), tensor.shape(), std::move(pjrt_buffer), &tensor);
+
+    if (!s.ok()) {
+      status->status = s;
+      return nullptr;
+    }
+  }
+
+  TF_Tensor* tf_tensor;
+  tf_tensor = TF_TensorFromTensor(tensor, &s);
+  if (!s.ok()) {
+    status->status = s;
+    return nullptr;
+  }
+  return tf_tensor;
 }

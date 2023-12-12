@@ -57,6 +57,7 @@ cc_library(
     hdrs = ["tensor_pjrt_buffer_util.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/jit:pjrt_tensor_buffer",
         "//tensorflow/compiler/jit:pjrt_tensor_buffer_util",
         "//tensorflow/core:framework",
         "//tensorflow/core/tfrt/common:async_value_tensor",

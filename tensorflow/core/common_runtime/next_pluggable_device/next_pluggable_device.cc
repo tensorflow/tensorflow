@@ -31,6 +31,9 @@ limitations under the License.
 ABSL_FLAG(bool, next_pluggable_device_use_pjrt_allocator, true,
           "Use PjRtAllocator in next pluggable device.");
 
+ABSL_FLAG(bool, next_pluggable_device_use_pjrt_tensor_buffer, true,
+          "Use PjRtAllocator in next pluggable device.");
+
 namespace tensorflow {
 
 // TODO(chuanhao): implement an API to query device memory, and make
@@ -62,13 +65,16 @@ NextPluggableDevice::NextPluggableDevice(const SessionOptions& session_options,
   }
 
   if (!options.shape_determination_fns.empty()) {
-    device_context_ = core::RefCountPtr<DeviceContext>(
-        new PjRtDeviceContext(options.shape_determination_fns[0]));
+    device_context_ = core::RefCountPtr<DeviceContext>(new PjRtDeviceContext(
+        options.shape_determination_fns[0],
+        /*use_pjrt_tensor_buffer=*/absl::GetFlag(
+            FLAGS_next_pluggable_device_use_pjrt_allocator)));
   } else {
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns{
         UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
-    device_context_ = core::RefCountPtr<DeviceContext>(
-        new PjRtDeviceContext(shape_determination_fns));
+    device_context_ = core::RefCountPtr<DeviceContext>(new PjRtDeviceContext(
+        shape_determination_fns, /*use_pjrt_tensor_buffer=*/absl::GetFlag(
+            FLAGS_next_pluggable_device_use_pjrt_allocator)));
   }
 
   // Must set accelerator_device_info, otherwise TF will treat this device as

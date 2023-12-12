@@ -111,6 +111,8 @@ tensorflow::Status EnsureSparseVariableAccess(
     TF_Tensor* tf_tmp = TF_TensorFromTensor(tmp, &s);
     TF_Tensor* tf_tensor = TF_TensorFromTensor(*var->tensor(), &s);
     copyFunc(ctx, tf_tensor, tf_tmp);
+    TF_RETURN_IF_ERROR(TF_TensorToTensor(tf_tmp, &tmp));
+    TF_DeleteTensor(tf_tmp);
   }
   *var->tensor() = tmp;
   var->copy_on_read_mode.store(true);
@@ -148,6 +150,8 @@ tensorflow::Status PrepareToUpdateVariable(
       TF_Tensor* tf_tmp = TF_TensorFromTensor(tmp, &s);
       TF_Tensor* tf_tensor = TF_TensorFromTensor(*tensor, &s);
       copyFunc(ctx, tf_tensor, tf_tmp);
+      TF_RETURN_IF_ERROR(TF_TensorToTensor(tf_tmp, &tmp));
+      TF_DeleteTensor(tf_tmp);
     }
     *tensor = tmp;
   }
@@ -212,7 +216,8 @@ void TF_AssignVariable(TF_OpKernelContext* ctx, int input_index,
     TF_Tensor* tf_tmp = TF_TensorFromTensor(tmp, &s);
     TF_Tensor* tf_value = TF_TensorFromTensor(value, &s);
     copyFunc(ctx, tf_value, tf_tmp);
-    *variable->tensor() = tmp;
+    OP_REQUIRES_OK(cc_ctx, TF_TensorToTensor(tf_tmp, variable->tensor()));
+    TF_DeleteTensor(tf_tmp);
   } else {
     *variable->tensor() = value;
   }
@@ -227,7 +232,6 @@ void TF_AssignRefVariable(TF_OpKernelContext* ctx, int input_ref_index,
                                            TF_Tensor* source, TF_Tensor* dest),
                           TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
-
   auto copy = [copyFunc, ctx](::tensorflow::OpKernelContext* cc_ctx,
                               ::tensorflow::Tensor* lhs,
                               const ::tensorflow::Tensor& rhs) {
@@ -243,8 +247,9 @@ void TF_AssignRefVariable(TF_OpKernelContext* ctx, int input_ref_index,
     }
 
     copyFunc(ctx, tf_rhs, tf_lhs);
+    OP_REQUIRES_OK(cc_ctx, TF_TensorToTensor(tf_lhs, lhs));
+    TF_DeleteTensor(tf_lhs);
   };
-
   ::tensorflow::AssignRefVariable(cc_ctx, input_ref_index, output_ref_index,
                                   value_index, use_locking, validate_shape,
                                   false, copy);
@@ -285,6 +290,8 @@ void TF_AssignUpdateVariable(TF_OpKernelContext* ctx, int input_index,
   TF_Tensor* tf_var_tensor = TF_TensorFromTensor(*var_tensor, &s);
   TF_Tensor* tf_value = TF_TensorFromTensor(value, &s);
   updateFunc(ctx, tf_var_tensor, tf_value, Op);
+  OP_REQUIRES_OK(context, TF_TensorToTensor(tf_var_tensor, var_tensor));
+  TF_DeleteTensor(tf_var_tensor);
   TF_SetStatus(tf_status, TF_OK, "");
 }
 

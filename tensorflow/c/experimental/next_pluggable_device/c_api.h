@@ -141,6 +141,29 @@ TF_CAPI_EXPORT extern void TF_CreatePjRtBuffer(TF_Tensor* c_tensor,
                                                const char* device_type,
                                                TF_Status* status);
 
+// Updates 'TensorBuffer' with 'PjRtTensorBuffer' in the AsyncValueTensor.
+TF_CAPI_EXPORT extern void TF_UpdateTensorWithPjRtTensorBuffer(
+    TF_Tensor* c_tensor, PJRT_Buffer* c_buffer, const char* device_type,
+    TF_Status* status);
+
+TF_Tensor* TF_AllocateOutputAndSetPjRtBuffer(TF_OpKernelContext* context,
+                                             int index, TF_DataType dtype,
+                                             const int64_t* dims, int num_dims,
+                                             size_t len, PJRT_Buffer* c_buffer,
+                                             const char* device_type,
+                                             TF_Status* status);
+
+TF_Tensor* TF_ForwardInputOrAllocateOutputAndSetPjRtBuffer(
+    TF_OpKernelContext* context, const int* candidate_input_indices,
+    int num_candidate_input_indices, int output_index,
+    const int64_t* output_dims, int output_num_dims, int* forwarded_input,
+    PJRT_Buffer* c_buffer, const char* device_type, TF_Status* status);
+
+TF_Tensor* TF_AllocateTempAndSetPjRtBuffer(
+    TF_OpKernelContext* context, TF_DataType dtype, const int64_t* dims,
+    int num_dims, TF_AllocatorAttributes* alloc_attrs, PJRT_Buffer* c_buffer,
+    const char* device_type, TF_Status* status);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

@@ -109,11 +109,13 @@ void AssignRefVariable(
                                  /* lock_held */ true);
       if (use_locking) {
         copy(context, &copy_tensor, rhs);
+        context->replace_ref_input(input_ref_index, copy_tensor,
+                                   /* lock_held */ true);
+
         return;
       }
     }
   }
-
   // The tensor has already been initialized and the right hand side
   // matches the left hand side's shape. We have been told to do the
   // copy outside the lock.
