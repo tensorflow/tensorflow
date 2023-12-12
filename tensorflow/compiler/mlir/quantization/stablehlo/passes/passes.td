@@ -108,3 +108,8 @@ def UnwrapXlaCallModuleOpPass : Pass<"stablehlo-unwrap-xla-call-module-op", "Mod
   let summary = "Unwrap XlaCallModuleOps into inline functions if not used for quantizing fused patterns.";
   let dependentDialects = ["TF::TensorFlowDialect"];
 }
+
+def PopulateShapePass : Pass<"populate-shape", "ModuleOp"> {
+  let summary = "Populate output shape with known information for CustomAggregatorOp and XlaCallModuleOp.";
+  let dependentDialects = ["TF::TensorFlowDialect"];
+}
