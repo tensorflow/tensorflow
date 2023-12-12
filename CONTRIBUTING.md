@@ -243,7 +243,7 @@ There are two ways to run TensorFlow unit tests.
     you can do this by using the following command. As an example-
 
     ```bash
-    docker run -it --rm -v $PWD:/tmp -w /tmp tensorflow/build:2.15-python3.10
+    docker run -it --rm -v ${PWD}:/tmp -w /tmp tensorflow/build:2.15-python3.10
     ```
 
     Once you have the packages installed, you can run a specific unit test in
