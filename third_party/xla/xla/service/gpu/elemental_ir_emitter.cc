@@ -353,6 +353,18 @@ llvm::Value* GpuElementalIrEmitter::EmitThreadId() {
   return NSWAdd(NSWMul(block_id, threads_per_block), thread_id_in_block);
 }
 
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitF32ToBF16(
+    llvm::Value* f32_value) {
+  // sm_80 and up has an instruction to convert f32 into bf16.
+  if (ir_emitter_context_.cuda_compute_capability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    return BitCast(
+        FPTrunc(BitCast(f32_value, b()->getFloatTy()), b()->getBFloatTy()),
+        b()->getInt16Ty());
+  }
+  return ElementalIrEmitter::EmitF32ToBF16(f32_value);
+}
+
 StatusOr<std::vector<llvm::Value*>> GpuElementalIrEmitter::EmitThreadLocalCall(
     const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
     absl::string_view, bool /*is_reducer*/) {
