@@ -278,7 +278,7 @@ StatusOr<AutotuneConfig> GetAutotuneConfig(
   return deviceless_config;
 }
 
-se::GpuComputeCapability GetGpuVersion(se::StreamExecutor* stream_exec) {
+se::GpuComputeCapability GetGpuVersion(const se::StreamExecutor* stream_exec) {
   return stream_exec->GetDeviceDescription().gpu_compute_capability();
 }
 
@@ -328,7 +328,7 @@ class GpuAotCompilationResult : public AotCompilationResult {
   }
 
   StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler, se::StreamExecutor* executor) override;
+      Compiler* compiler, const se::StreamExecutor* executor) const override;
 
  private:
   XlaRuntimeGpuExecutableProto xla_runtime_gpu_executable_;
@@ -364,7 +364,7 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
   }
 
   StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler, se::StreamExecutor* stream_exec) override;
+      Compiler* compiler, const se::StreamExecutor* stream_exec) const override;
 
  private:
   CompilationResultProto proto_;
@@ -373,7 +373,7 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
 }  // end anonymous namespace
 
 StatusOr<std::unique_ptr<Executable>> GpuAotCompilationResult::LoadExecutable(
-    Compiler* compiler, se::StreamExecutor* executor) {
+    Compiler* compiler, const se::StreamExecutor* executor) const {
   XlaRuntimeExecutableProto xla_runtime_executable =
       xla_runtime_gpu_executable_.xla_runtime_executable();
   TF_ASSIGN_OR_RETURN(HloModuleConfig hlo_module_config,
@@ -399,12 +399,12 @@ StatusOr<std::unique_ptr<Executable>> GpuAotCompilationResult::LoadExecutable(
       xla_runtime_executable.mlir_module(), GetDebugOptionsFromFlags(),
       xla_runtime_gpu_executable_.gpu_asm_text(),
       xla_runtime_gpu_executable_.gpu_binary(), std::move(constants),
-      GetGpuVersion(executor), executor);
+      GetGpuVersion(executor));
 }
 
 StatusOr<std::unique_ptr<Executable>>
-GpuThunkAotCompilationResult::LoadExecutable(Compiler* compiler,
-                                             se::StreamExecutor* stream_exec) {
+GpuThunkAotCompilationResult::LoadExecutable(
+    Compiler* compiler, const se::StreamExecutor* stream_exec) const {
   // Recreate HloModule from proto.
   TF_ASSIGN_OR_RETURN(HloModuleConfig hlo_module_config,
                       HloModule::CreateModuleConfigFromProto(
@@ -1445,7 +1445,7 @@ Status RunPostSchedulingCopyInsertion(
 }  // namespace
 
 StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
-    HloModule* hlo_module, se::StreamExecutor* stream_exec) {
+    HloModule* hlo_module, const se::StreamExecutor* stream_exec) {
   const se::DeviceDescription& gpu_device_info =
       stream_exec->GetDeviceDescription();
   const int64_t scheduler_mem_limit =

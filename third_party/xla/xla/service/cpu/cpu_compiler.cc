@@ -435,7 +435,7 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
 
 StatusOr<std::unique_ptr<Executable>>
 CpuXlaRuntimeAotCompilationResult::LoadExecutable(
-    Compiler* compiler, se::StreamExecutor* executor) {
+    Compiler* compiler, const se::StreamExecutor* executor) const {
   XlaRuntimeExecutableProto xla_runtime_executable =
       xla_runtime_cpu_executable_.xla_runtime_executable();
   TF_ASSIGN_OR_RETURN(HloModuleConfig hlo_module_config,
@@ -1087,7 +1087,7 @@ StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
 }
 
 StatusOr<std::unique_ptr<BufferAssignment>> CpuCompiler::AssignBuffers(
-    HloModule* module, se::StreamExecutor* /*stream_exec*/) {
+    HloModule* module, const se::StreamExecutor* /*stream_exec*/) {
   // Select an order for emitting the HLO instructions for each computation.
   // Using this sequence enables tighter buffer liveness analysis and reduced
   // memory usage (as compared to using DependencyHloOrdering).
