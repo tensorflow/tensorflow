@@ -86,6 +86,8 @@ echo >>$TFCI source ci/official/envs/local_multicache
 #   will need to run `docker exec tf pkill bazel` to quit bazel.
 #
 #   Note: new files created from the container are owned by "root".
+#   You can run e.g. `docker exec tf chown -R $(id -u):$(id -g) build_output`
+#   to transfer ownership to your user.
 #
 #   Note: because the container is persistent, you cannot change TFCI
 #   variables in between script executions. To forcibly remove the
