@@ -352,6 +352,47 @@ class FlatMapCheckpointTest(
 
     verify_fn(self, _build_ds, num_outputs=20)
 
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[True],
+                               num_skips=[3, 4]),
+      )
+  )
+  def testWithSkip(self, verify_fn, symbolic_checkpoint, num_skips):
+    """Test `.flat_map().skip()` checkpointing behavior.
+
+    `SkipInternal` and `GetNextInternal` are separate functions
+    but with slighly different implementations.
+    Therefore, we should test this op's behavior when used with `.skip()`.
+
+    Args:
+      verify_fn: Verify the correctness of this dataset's checkpointing.
+      symbolic_checkpoint: Whether symbolic checkpointing is turned on.
+      num_skips: `.skip(num_skips)`
+    """
+
+    def build_dataset():
+      def my_map(x):
+        if x == 0:
+          return dataset_ops.Dataset.from_tensor_slices([0, 1, 2, 3])
+        elif x == 1:
+          return dataset_ops.Dataset.from_tensor_slices([4, 5, 6, 7])
+        else:
+          return dataset_ops.Dataset.from_tensor_slices([8, 9, 10, 11])
+
+      indices = dataset_ops.Dataset.from_tensor_slices([0, 1, 2])
+      dataset = indices.flat_map(my_map)
+      # Skip some elements
+      dataset = dataset.skip(num_skips)
+
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(self, build_dataset, num_outputs=3 * 4 - num_skips)
+
 
 if __name__ == "__main__":
   test.main()
