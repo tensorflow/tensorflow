@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/hlo_pass_interface.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 
 namespace xla::gpu {
@@ -88,30 +89,32 @@ class CommandBufferScheduling : public HloModulePass {
 
   static void MoveParametersToFront(HloComputation* computation);
 
-  struct BuildCommandBufferResult {
+  struct CommandBuffer {
+    // Command buffer arguments (call instruction arguments).
+    std::vector<HloInstruction*> arguments;
+
+    // Command buffer result (call instruction result tuple).
+    std::vector<HloInstruction*> results;
+
+    // Hlo computation corresponding to a command buffer body.
     std::unique_ptr<HloComputation> computation;
 
-    // Maps external instructions used by the command buffer to a parameter
-    // of the command buffer computation. The command buffer uses parameters
-    // to access the results of external instructions.
-    absl::flat_hash_map<HloInstruction*, HloParameterInstruction*> captures;
-
-    // We move some instructions to the command buffer computation and return
-    // the results back to the original computation by tuple. This field maps
-    // the original instruction to the tuple index of the result that replaces
-    // the original instruction.
-    absl::flat_hash_map<HloInstruction*, int64_t> inst_to_tuple_index_map;
-
-    // Map original instructions to their clones in the command buffer
-    // computation.
-    absl::flat_hash_map<HloInstruction*, HloInstruction*> instr_mapping;
+    // Mapping from original instruction to their clones in the command buffer.
+    absl::flat_hash_map<HloInstruction*, HloInstruction*> inst_mapping;
   };
 
-  // Builds a computation from the instruction sequence. Used values constructed
-  // by instructions outside of the sequence are passed in as parameters.
-  // Results of instructions in the sequence are returned in a tuple.
-  static StatusOr<BuildCommandBufferResult> BuildCommandBuffer(
-      HloInstructionSequence seq);
+  // Prepares a command buffer from the instruction sequence. Used values
+  // constructed by instructions outside of the sequence are passed in as
+  // parameters. Results of instructions in the sequence are returned in a tuple
+  // (if command buffer has a single result we don't wrap it into tuple).
+  static StatusOr<CommandBuffer> PrepareCommandBuffer(
+      const HloInstructionSequence& seq);
+
+  // Rewrites prepared command buffer computation into Hlo operations in the
+  // parent computation (calls command buffer and replaced all users).
+  static Status RewriteCommandBuffer(HloComputation* parent,
+                                     const HloInstructionSequence& seq,
+                                     CommandBuffer command_buffer);
 };
 
 }  // namespace xla::gpu
