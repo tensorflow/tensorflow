@@ -42,7 +42,7 @@ export TFCI=$(mktemp)
 #   If you've clicked on a test result from our CI (via a dashboard or GitHub link),
 #   click to "Invocation Details" and find BUILD_CONFIG, which will contain a TFCI
 #   value in the "env_vars" list that you can choose to copy that environment.
-echo >>$TFCI source ci/official/envs/nightly_linux_x86_cuda_py312
+echo >>$TFCI source ci/official/envs/nightly_linux_x86_cpu_py311
 
 # Required: Reset settings for local execution
 echo >>$TFCI source ci/official/envs/local_default
