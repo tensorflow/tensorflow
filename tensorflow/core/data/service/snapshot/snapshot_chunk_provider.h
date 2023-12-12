@@ -47,8 +47,26 @@ class SnapshotChunkProvider {
   // TODO(b/297930782): Support cancellation.
 
  private:
-  // Updates the set of available chunks by reading from the chunks directory.
-  absl::Status UpdateChunks();
+  // State of the snapshot.
+  struct SnapshotState {
+    SnapshotState() = default;
+    explicit SnapshotState(bool snapshot_is_done)
+        : snapshot_is_done(snapshot_is_done) {}
+    explicit SnapshotState(absl::Status status) : status(std::move(status)) {}
+
+    // True if the snapshot is done without errors.
+    bool snapshot_is_done = false;
+
+    // Non-OK status if writing the snapshot fails.
+    absl::Status status = absl::OkStatus();
+  };
+
+  // Updates the snapshot state and available chunks.
+  absl::Status UpdateSnapshot();
+
+  // Reads the DONE or ERROR file and returns a SnapshotState indicating whether
+  // the snapshot is complete.
+  absl::StatusOr<SnapshotState> GetSnapshotState();
 
   // Reads the available chunks from disk and returns a vector of chunk file
   // names.
@@ -65,9 +83,8 @@ class SnapshotChunkProvider {
   // The set of unread chunks.
   absl::flat_hash_set<std::string> chunks_unread_ ABSL_GUARDED_BY(mu_);
 
-  // Whether the writer has finished writing the snapshot. If true, no more
-  // chunks will become available.
-  bool snapshot_is_done_ ABSL_GUARDED_BY(mu_) = false;
+  // State of the snapshot.
+  SnapshotState snapshot_state_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace data

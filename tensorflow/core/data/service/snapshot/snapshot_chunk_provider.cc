@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
@@ -29,7 +30,9 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -42,6 +45,7 @@ absl::StatusOr<std::optional<std::string>> SnapshotChunkProvider::GetNext()
     ABSL_LOCKS_EXCLUDED(mu_) {
   while (true) {
     absl::MutexLock l(&mu_);
+    TF_RETURN_IF_ERROR(snapshot_state_.status);
     if (!chunks_unread_.empty()) {
       std::string next_chunk = *chunks_unread_.begin();
       chunks_read_.insert(next_chunk);
@@ -49,18 +53,20 @@ absl::StatusOr<std::optional<std::string>> SnapshotChunkProvider::GetNext()
       return tsl::io::JoinPath(CommittedChunksDirectory(snapshot_path_),
                                next_chunk);
     }
-    if (snapshot_is_done_) {
+    if (snapshot_state_.snapshot_is_done) {
       return std::nullopt;
     }
-    TF_RETURN_IF_ERROR(UpdateChunks());
+    TF_RETURN_IF_ERROR(UpdateSnapshot());
   }
 }
 
-absl::Status SnapshotChunkProvider::UpdateChunks()
+absl::Status SnapshotChunkProvider::UpdateSnapshot()
     ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  // TODO(b/297930782): Handle failed snapshots.
-  bool snapshot_is_done =
-      env_->FileExists(SnapshotDoneFilePath(snapshot_path_)).ok();
+  // Reads the state files first then reads the chunks. If we read chunks before
+  // reading the state files, the writer could write more chunks in between, and
+  // we may see the DONE file but miss those final chunks.
+  TF_ASSIGN_OR_RETURN(snapshot_state_, GetSnapshotState());
+  TF_RETURN_IF_ERROR(snapshot_state_.status);
   TF_ASSIGN_OR_RETURN(std::vector<std::string> chunks, GetAvailableChunks());
 
   // TODO(b/297930782): If no new chunks are updated, consider sleeping.
@@ -69,8 +75,25 @@ absl::Status SnapshotChunkProvider::UpdateChunks()
       chunks_unread_.insert(std::string(chunk));
     }
   }
-  snapshot_is_done_ = snapshot_is_done;
   return absl::OkStatus();
+}
+
+absl::StatusOr<SnapshotChunkProvider::SnapshotState>
+SnapshotChunkProvider::GetSnapshotState() {
+  std::string error_file_path = SnapshotErrorFilePath(snapshot_path_);
+  if (env_->FileExists(error_file_path).ok()) {
+    StatusProto status_proto;
+    TF_RETURN_IF_ERROR(ReadTextProto(env_, error_file_path, &status_proto));
+    absl::Status status = tsl::StatusFromProto(status_proto);
+    if (status.ok()) {
+      return absl::InternalError(absl::StrCat(
+          "Unexpected snapshot ERROR file contains an OK status at ",
+          error_file_path, "."));
+    }
+    return SnapshotState(status);
+  }
+  return SnapshotState(
+      env_->FileExists(SnapshotDoneFilePath(snapshot_path_)).ok());
 }
 
 absl::StatusOr<std::vector<std::string>>

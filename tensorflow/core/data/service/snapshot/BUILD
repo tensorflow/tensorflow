@@ -283,7 +283,9 @@ cc_library(
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:status_to_from_proto",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/protobuf:status_proto_cc",
     ],
 )
 
@@ -306,7 +308,9 @@ tf_cc_test(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:status_to_from_proto",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/protobuf:status_proto_cc",
     ],
 )
 

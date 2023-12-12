@@ -22,6 +22,7 @@ import time
 from typing import Optional
 
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import data_service_ops
@@ -30,6 +31,8 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import load_op
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import errors
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 
@@ -206,6 +209,21 @@ class DistributedSaveLoadTest(
     if num_workers == 1:
       self.assertCountEqual(indexes, list(range(9)))
     self.assertCountEqual(elements, [b"a", b"b", b"c"] * 3)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testWorkerFailure(self):
+    test_snapshot = TestSnapshot()
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    components = np.array([1.0, 2.0, 3.0, np.nan, 5.0]).astype(np.float32)
+    dataset = dataset_ops.Dataset.from_tensor_slices(components)
+    dataset = dataset.map(lambda x: array_ops.check_numerics(x, "message"))
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset, test_snapshot.path, cluster.dispatcher_address()))
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      dataset = load_op._load_distributed_snapshot_v2(test_snapshot.path)
+      self.getDatasetOutput(dataset)
 
 
 if __name__ == "__main__":

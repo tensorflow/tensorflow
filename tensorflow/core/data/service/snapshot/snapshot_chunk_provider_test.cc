@@ -32,8 +32,10 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/status_matchers.h"
+#include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
+#include "tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -43,6 +45,7 @@ using ::testing::ElementsAre;
 using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAreArray;
 using ::tsl::testing::IsOkAndHolds;
+using ::tsl::testing::StatusIs;
 
 absl::StatusOr<std::string> CreateSnapshotDirectory() {
   std::string snapshot_path;
@@ -65,6 +68,13 @@ absl::Status WriteChunk(absl::string_view snapshot_path,
 absl::Status SetDone(absl::string_view snapshot_path) {
   return AtomicallyWriteStringToFile(SnapshotDoneFilePath(snapshot_path), "",
                                      tsl::Env::Default());
+}
+
+absl::Status SetStatus(absl::string_view snapshot_path,
+                       const absl::Status& status) {
+  return AtomicallyWriteTextProto(SnapshotErrorFilePath(snapshot_path),
+                                  tsl::StatusToProto(status),
+                                  tsl::Env::Default());
 }
 
 absl::StatusOr<std::vector<std::string>> GetAllChunks(
@@ -205,6 +215,26 @@ TEST(SnapshotChunkProviderTest, ConcurrentReadWrite) {
   }
   EXPECT_THAT(result,
               UnorderedElementsAreArray(JoinPaths(snapshot_path, expected)));
+}
+
+TEST(SnapshotChunkProviderTest, SnapshotError) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
+  std::unique_ptr<tsl::Thread> reader_thread =
+      absl::WrapUnique(tsl::Env::Default()->StartThread(
+          /*thread_options=*/{}, /*name=*/"Reader", [&snapshot_path]() {
+            SnapshotChunkProvider snapshot_chunk_provider(snapshot_path,
+                                                          tsl::Env::Default());
+            EXPECT_THAT(
+                GetAllChunks(snapshot_chunk_provider),
+                StatusIs(absl::StatusCode::kFailedPrecondition, "Test error."));
+          }));
+
+  TF_ASSERT_OK(WriteChunk(snapshot_path, "chunk_0_0_0"));
+  TF_ASSERT_OK(WriteChunk(snapshot_path, "chunk_1_0_0"));
+  TF_ASSERT_OK(WriteChunk(snapshot_path, "chunk_2_0_0"));
+  TF_ASSERT_OK(
+      SetStatus(snapshot_path, absl::FailedPreconditionError("Test error.")));
+  reader_thread.reset();
 }
 
 }  // namespace
