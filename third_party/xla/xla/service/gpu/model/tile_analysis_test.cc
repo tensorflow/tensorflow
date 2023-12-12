@@ -15,9 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/model/tile_analysis.h"
 
-#include <vector>
-
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -419,6 +418,68 @@ TEST_F(TileAnalysisTest, FusionOpWithDot) {
                                   MatchRange(0, 3), MatchRange(0, 1),
                                   MatchRange(0, 6), MatchRange(0, 128)),
                       IsEmpty())))));
+}
+
+TEST_F(TileAnalysisTest, FusionOpWithSoftmax) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetOutputToInputIndexingForEntryComputation(R"(
+    add_computation {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+    max_computation {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT max = f32[] maximum(p0, p1)
+    }
+    softmax {
+      p0 = f32[2,65,125]{2,1,0} parameter(0)
+      bitcast0 = f32[65,2,125]{2,1,0} bitcast(p0)
+      constant_neg_inf_1 = f32[] constant(-inf)
+      reduce0 = f32[2,65]{1,0} reduce(p0, constant_neg_inf_1),
+        dimensions={2}, to_apply=max_computation
+      bitcast1 = f32[130]{0} bitcast(reduce0)
+      bcast1 = f32[130,125]{1,0} broadcast(bitcast1), dimensions={0}
+      bitcast2 = f32[65,2,125]{2,1,0} bitcast(bcast1)
+      subtract0 = f32[65,2,125]{2,1,0} subtract(bitcast0, bitcast2)
+      exponential0 = f32[65,2,125]{2,1,0} exponential(subtract0)
+      bitcast3 = f32[65,2,125]{2,1,0} bitcast(p0)
+      reduce1 = f32[2,65]{1,0} reduce(p0, constant_neg_inf_1),
+        dimensions={2}, to_apply=max_computation
+      bitcast4 = f32[130]{0} bitcast(reduce1)
+      bcast2 = f32[130,125]{1,0} broadcast(bitcast4), dimensions={0}
+      bitcast5 = f32[65,2,125]{2,1,0} bitcast(bcast2)
+      subtract1 = f32[65,2,125]{2,1,0} subtract(bitcast3, bitcast5)
+      exponential1 = f32[65,2,125]{2,1,0} exponential(subtract1)
+      constant_zero_1 = f32[] constant(0)
+      reduce2 = f32[65,2]{1,0} reduce(exponential1, constant_zero_1),
+        dimensions={2}, to_apply=add_computation
+      bitcast6 = f32[130]{0} bitcast(reduce2)
+      bcast3 = f32[130,125]{1,0} broadcast(bitcast6), dimensions={0}
+      bitcast7 = f32[65,2,125]{2,1,0} bitcast(bcast3)
+      divide = f32[65,2,125]{2,1,0} divide(exponential0, bitcast7)
+      ROOT bitcast8 = f32[2,65,125]{2,1,0} bitcast(divide)
+    }
+    ENTRY e {
+      p0 = f32[2,65,125]{2,1,0} parameter(0)
+      ROOT fusion = f32[2,65,125]{2,1,0}
+        fusion(p0), kind=kLoop, calls=softmax
+    }
+  )"));
+  EXPECT_THAT(
+      input_indexing.indexing_maps,
+      UnorderedElementsAre(Pair(
+          0,
+          UnorderedElementsAre(
+              MatchIndexingMap("(d0, d1, d2) -> (d0, d1, d2)",
+                               ElementsAre(MatchRange(0, 2), MatchRange(0, 65),
+                                           MatchRange(0, 125)),
+                               IsEmpty()),
+              MatchIndexingMap("(d0, d1, d2)[s0] -> (d0, d1, s0)",
+                               ElementsAre(MatchRange(0, 2), MatchRange(0, 65),
+                                           MatchRange(0, 125)),
+                               ElementsAre(MatchRange(0, 125)))))));
 }
 
 TEST_F(TileAnalysisTest, FusionOpTensorPlusTransposedTensor) {
