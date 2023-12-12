@@ -627,5 +627,22 @@ TEST_F(PriorityFusionTest, EpilogueFusionFails) {
   EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
 }
 
+TEST_F(PriorityFusionTest, DoNotFuseIntoRoot) {
+  auto module = *ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    ENTRY %main (p.0: u32[2], p.1: u32[]) -> u32[2] {
+      %p.0 = u32[2]{0} parameter(0)
+      %p.1 = u32[] parameter(1)
+      ROOT %broadcast = u32[2]{0} broadcast(u32[] %p.1), dimensions={}, sharding={replicated}
+      %add = u32[2]{0} add(u32[2]{0} %p.0, u32[2]{0} %broadcast)
+      %tuple.1 = (u32[2]{0}) tuple(u32[2]{0} %add)
+      %token.0 = token[] after-all()
+      %outfeed.6 = token[] outfeed((u32[2]{0}) %tuple.1, token[] %token.0), outfeed_shape=(u32[2]{0}), sharding={maximal device=0}
+    })");
+
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
+}
+
 }  // namespace gpu
 }  // namespace xla

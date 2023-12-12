@@ -473,6 +473,14 @@ class GpuPriorityFusionQueue : public FusionQueue {
       }
     }
 
+    // Don't fuse across a root instruction. There are situation when a root
+    // instruction is not the last in the computation. Instructions after the
+    // root are not necessary dead. They can be inputs to instructions with side
+    // effects, like outfeed.
+    if (producer == producer->parent()->root_instruction()) {
+      return "not fusing into the output of the root instruction";
+    }
+
     return InstructionFusion::ShouldFuseInPlaceOp(producer, consumer);
   }
 
