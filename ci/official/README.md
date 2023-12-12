@@ -100,7 +100,7 @@ echo >>$TFCI source ci/official/envs/local_multicache
 #   "build_file" item that indicates the script used.
 ci/official/wheel.sh
 
-# Advanced: Select specific build/test targets with "any.sh"
+# Advanced: Select specific build/test targets with "any.sh".
 # TF_ANY_TARGETS="//your/target" TF_ANY_MODE="test" ci/official/any.sh
 
 # Afterwards: Examine the results, which will include: The bazel cache,
@@ -123,6 +123,6 @@ The top-level scripts and utility scripts should be fairly well-documented. Here
    set a `TFCI` env param pointing to one of the `env` files.
 2. `utilities/setup.sh`, initialized by all top-level scripts, reads and sets values from that `TFCI` path.
     - `set -a` / `set -o allexport` exports the variables from `env` files so all scripts can use them.
-    - `utilities/docker.sh` creates a container called `tf` with all `TFCI_` variables shared to it.
+    - `utilities/setup_docker.sh` creates a container called `tf` with all `TFCI_` variables shared to it.
 4. Top-level scripts (`wheel.sh`, etc.) reference `env` variables and call `utilities/` scripts.
     - The `tfrun` function makes a command run correctly in Docker if Docker is enabled.

@@ -33,7 +33,6 @@ REQUESTED_TFCI="$TFCI"
 export TFCI=$(mktemp)
 echo >>$TFCI "source $REQUESTED_TFCI"
 echo >>$TFCI "source ci/official/envs/disable_all_uploads"
-echo >>$TFCI "source ci/official/envs/local_multicache"
 if [[ -n "${TF_ANY_SCRIPT:-}" ]]; then
   "$TF_ANY_SCRIPT"
 elif [[ -n "${TF_ANY_TARGETS:-}" ]]; then
