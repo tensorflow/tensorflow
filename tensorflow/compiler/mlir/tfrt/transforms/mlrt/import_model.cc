@@ -68,7 +68,7 @@ StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
           TF_RETURN_IF_ERROR(
               ExportFunctionDefs(*copy, [flib_def](FunctionDef function_def) {
                 VLOG(1) << "Exporting MLIR function as function_def: "
-                        << function_def.DebugString();
+                        << function_def;
 
                 // The TF MLIR compiler may change the function name. Then we
                 // need to retrieve the original name from the
