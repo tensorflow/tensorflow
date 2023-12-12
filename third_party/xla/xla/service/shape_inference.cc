@@ -65,6 +65,18 @@ bool AllUnique(absl::Span<const int64_t> slice) {
   return std::set<int64_t>(slice.begin(), slice.end()).size() == slice.size();
 }
 
+// Checks whether the given dimension size `size` is unbounded dynamic size.
+bool IsUnboundedDynamicSize(int64_t size) {
+  return size == Shape::kUnboundedSize;
+}
+
+// Returns success if the given two dimension sizes 'size_a' and 'size_b' are
+// compatible: at least one is dynamic or both are equal.
+bool CompatibleDimensionSizes(int64_t size_a, int64_t size_b) {
+  return IsUnboundedDynamicSize(size_a) || IsUnboundedDynamicSize(size_b) ||
+         size_a == size_b;
+}
+
 Status ExpectArray(const Shape& shape, absl::string_view op_type) {
   if (!shape.IsArray()) {
     return InvalidArgument("Expected array argument for %s, but got %s.",
@@ -738,9 +750,9 @@ Status ValidateDotDimensionNumbers(
         dimension_numbers.lhs_contracting_dimensions(i);
     const int64_t rhs_contracting_dimension =
         dimension_numbers.rhs_contracting_dimensions(i);
-    if (lhs.dimensions(lhs_contracting_dimension) !=
-        rhs.dimensions(rhs_contracting_dimension)) {
-      return fail("Contracting dimension sizes do not match.");
+    if (!CompatibleDimensionSizes(lhs.dimensions(lhs_contracting_dimension),
+                                  rhs.dimensions(rhs_contracting_dimension))) {
+      return fail("Contracting dimension sizes are not compatible.");
     }
   }
 
@@ -752,9 +764,10 @@ Status ValidateDotDimensionNumbers(
 
   // Check that batch dimension numbers and sizes match.
   for (int64_t i = 0; i < dimension_numbers.lhs_batch_dimensions_size(); ++i) {
-    if (lhs.dimensions(dimension_numbers.lhs_batch_dimensions(i)) !=
-        rhs.dimensions(dimension_numbers.rhs_batch_dimensions(i))) {
-      return fail("Batch dimension sizes must match for lhs/rhs.");
+    if (!CompatibleDimensionSizes(
+            lhs.dimensions(dimension_numbers.lhs_batch_dimensions(i)),
+            rhs.dimensions(dimension_numbers.rhs_batch_dimensions(i)))) {
+      return fail("Batch dimension sizes are not compatible.");
     }
   }
 

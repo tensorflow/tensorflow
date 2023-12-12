@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/shape_inference.h"
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -1740,7 +1741,7 @@ TEST_F(ShapeInferenceTest, DotWithMismatchedBatchDimSizesFails) {
                                       /*preferred_element_type=*/std::nullopt);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().message(),
-              HasSubstr("Batch dimension sizes must match"));
+              HasSubstr("Batch dimension sizes are not compatible"));
 }
 
 // BatchMatMul with different batch dimension numbers passes
@@ -3823,6 +3824,48 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedDiv) {
     EXPECT_THAT(inferred_status.status().message(),
                 HasSubstr("Binary op divide with incompatible shapes"));
   }
+}
+
+TEST_F(ShapeInferenceTest, UnboundedDot) {
+  StatusOr<Shape> lhs = ParseShape("f32[?, 10]");
+  StatusOr<Shape> rhs = ParseShape("f32[?, 10]");
+  StatusOr<Shape> expected = ParseShape("f32[?, 10]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  ASSERT_IS_OK(expected.status());
+
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_contracting_dimensions(1);
+  dnums.add_rhs_contracting_dimensions(0);
+
+  StatusOr<Shape> inferred_status = ShapeInference::InferDotOpShape(
+      lhs.value(), rhs.value(), dnums, /*preferred_element_type=*/std::nullopt);
+  ASSERT_IS_OK(inferred_status.status());
+  ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
+      << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
+TEST_F(ShapeInferenceTest, UnboundedDotGeneral) {
+  StatusOr<Shape> lhs = ParseShape("f32[?, <=3, ?]");
+  StatusOr<Shape> rhs = ParseShape("f32[2, 4, 5]");
+  StatusOr<Shape> expected = ParseShape("f32[?, <=3, 5]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  ASSERT_IS_OK(expected.status());
+
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_batch_dimensions(0);
+  dnums.add_rhs_batch_dimensions(0);
+  dnums.add_lhs_contracting_dimensions(2);
+  dnums.add_rhs_contracting_dimensions(1);
+
+  StatusOr<Shape> inferred_status = ShapeInference::InferDotOpShape(
+      lhs.value(), rhs.value(), dnums, /*preferred_element_type=*/std::nullopt);
+  ASSERT_IS_OK(inferred_status.status());
+  ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
+      << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+      << " expected: " << ShapeUtil::HumanString(expected.value());
 }
 
 TEST_P(UnboundedUnaryOpShapeInferenceTest, UnboundedExp) {
