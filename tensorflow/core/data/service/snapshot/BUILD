@@ -35,6 +35,7 @@ tf_cc_test(
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:tstring",
     ] + tf_grpc_cc_dependencies() + tf_protos_profiler_service(),
 )

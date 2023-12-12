@@ -85,7 +85,6 @@ int64_t IndexSplitProvider::Cardinality() const {
   if (n_ == tsl::kint64max) {
     return kInfiniteCardinality;
   }
-  // TODO(b/297930782): Handle repetitions.
   return n_;
 }
 
