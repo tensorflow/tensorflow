@@ -38,20 +38,27 @@ using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::Eq;
 using ::testing::ExplainMatchResult;
+using ::testing::FieldsAre;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Pair;
 using ::testing::PrintToString;
 using ::testing::UnorderedElementsAre;
 
-MATCHER_P2(MatchIndexingMap, affine_map_string, input_dims_sizes,
-           absl::StrCat(negation ? "equals " : "doesn't equal ", "affine map ",
-                        affine_map_string, " with input dim sizes ",
-                        PrintToString(input_dims_sizes))) {
+MATCHER_P2(MatchRange, lower_bound, upper_bound,
+           absl::StrCat(negation ? "equals " : "doesn't equal ", "range [",
+                        lower_bound, ", ", upper_bound, "]")) {
+  return ExplainMatchResult(FieldsAre(lower_bound, upper_bound), arg,
+                            result_listener);
+}
+
+MATCHER_P3(MatchIndexingMap, affine_map_string, dim_ranges, symbol_ranges, "") {
   return ExplainMatchResult(HasSubstr(affine_map_string),
                             ToString(arg.affine_map), result_listener) &&
-         ExplainMatchResult(ElementsAreArray(input_dims_sizes),
-                            arg.input_dims_sizes, result_listener);
+         ExplainMatchResult(dim_ranges, arg.domain.dimension_ranges,
+                            result_listener) &&
+         ExplainMatchResult(symbol_ranges, arg.domain.symbol_ranges,
+                            result_listener);
 }
 
 MATCHER_P2(MatchInstrIndexing, operand_id, indexing_map_matchers, "") {
@@ -114,20 +121,31 @@ TEST_F(TileAnalysisTest, FuseProducerConsumerOutputToInputIndexing) {
   EXPECT_THAT(
       grouped_by_key,
       UnorderedElementsAre(
-          Pair(parameter, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0, d1)",
-                                                       std::vector<int>{}))),
-          Pair(transpose, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0, d1)",
-                                                       std::vector<int>{})))));
+          Pair(parameter,
+               ElementsAre(MatchIndexingMap(
+                   "(d0, d1) -> (d0, d1)",
+                   ElementsAre(MatchRange(0, 1000), MatchRange(0, 1000)),
+                   IsEmpty()))),
+          Pair(transpose,
+               ElementsAre(MatchIndexingMap(
+                   "(d0, d1) -> (d0, d1)",
+                   ElementsAre(MatchRange(0, 1000), MatchRange(0, 1000)),
+                   IsEmpty())))));
 
   TF_CHECK_OK(FuseProducerConsumerOutputToInputIndexing(
       transpose, &grouped_by_key, &mlir_context_));
   EXPECT_THAT(
       grouped_by_key,
-      UnorderedElementsAre(Pair(
-          parameter,
-          UnorderedElementsAre(
-              MatchIndexingMap("(d0, d1) -> (d0, d1)", std::vector<int>{}),
-              MatchIndexingMap("(d0, d1) -> (d1, d0)", std::vector<int>{})))));
+      UnorderedElementsAre(
+          Pair(parameter, UnorderedElementsAre(
+                              MatchIndexingMap("(d0, d1) -> (d0, d1)",
+                                               ElementsAre(MatchRange(0, 1000),
+                                                           MatchRange(0, 1000)),
+                                               IsEmpty()),
+                              MatchIndexingMap("(d0, d1) -> (d1, d0)",
+                                               ElementsAre(MatchRange(0, 1000),
+                                                           MatchRange(0, 1000)),
+                                               IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, ElementwiseOp) {
@@ -143,24 +161,32 @@ TEST_F(TileAnalysisTest, ElementwiseOp) {
                           GetOutputToInputIndexingForEntryComputation(ir));
   EXPECT_THAT(input_indexing.indexing_maps,
               UnorderedElementsAre(
-                  Pair(0, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0, d1)",
-                                                       std::vector<int>{}))),
-                  Pair(1, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0, d1)",
-                                                       std::vector<int>{})))));
+                  Pair(0, ElementsAre(MatchIndexingMap(
+                              "(d0, d1) -> (d0, d1)",
+                              ElementsAre(MatchRange(0, 10), MatchRange(0, 20)),
+                              IsEmpty()))),
+                  Pair(1, ElementsAre(MatchIndexingMap(
+                              "(d0, d1) -> (d0, d1)",
+                              ElementsAre(MatchRange(0, 10), MatchRange(0, 20)),
+                              IsEmpty())))));
   TF_ASSERT_OK_AND_ASSIGN(
       auto output_indexing,
       GetInputToOutputIndexingForEntryComputation(ir, /*input_id=*/0));
   EXPECT_THAT(output_indexing.indexing_maps,
               UnorderedElementsAre(
-                  Pair(0, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0, d1)",
-                                                       std::vector<int>{})))));
+                  Pair(0, ElementsAre(MatchIndexingMap(
+                              "(d0, d1) -> (d0, d1)",
+                              ElementsAre(MatchRange(0, 10), MatchRange(0, 20)),
+                              IsEmpty())))));
   TF_ASSERT_OK_AND_ASSIGN(
       auto output_indexing1,
       GetInputToOutputIndexingForEntryComputation(ir, /*input_id=*/1));
   EXPECT_THAT(output_indexing1.indexing_maps,
               UnorderedElementsAre(
-                  Pair(0, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0, d1)",
-                                                       std::vector<int>{})))));
+                  Pair(0, ElementsAre(MatchIndexingMap(
+                              "(d0, d1) -> (d0, d1)",
+                              ElementsAre(MatchRange(0, 10), MatchRange(0, 20)),
+                              IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, BitcastIsReshape) {
@@ -175,8 +201,11 @@ TEST_F(TileAnalysisTest, BitcastIsReshape) {
   EXPECT_THAT(
       input_indexing.indexing_maps,
       UnorderedElementsAre(Pair(
-          0, ElementsAre(MatchIndexingMap("(d0, d1, d2) -> (d0, d1 * 4 + d2)",
-                                          std::vector<int>{})))));
+          0,
+          ElementsAre(MatchIndexingMap(
+              "(d0, d1, d2) -> (d0, d1 * 4 + d2)",
+              ElementsAre(MatchRange(0, 4), MatchRange(0, 8), MatchRange(0, 4)),
+              IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, BitcastIsTranspose) {
@@ -188,11 +217,13 @@ TEST_F(TileAnalysisTest, BitcastIsTranspose) {
       ROOT bitcast = f32[3, 6, 128, 12288] {2, 1, 3, 0} bitcast(p0)
     }
   )"));
-  EXPECT_THAT(
-      input_indexing.indexing_maps,
-      UnorderedElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
-                                       "(d0, d1, d2, d3) -> (d0, d3, d1, d2)",
-                                       std::vector<int>{})))));
+  EXPECT_THAT(input_indexing.indexing_maps,
+              UnorderedElementsAre(Pair(
+                  0, ElementsAre(MatchIndexingMap(
+                         "(d0, d1, d2, d3) -> (d0, d3, d1, d2)",
+                         ElementsAre(MatchRange(0, 3), MatchRange(0, 6),
+                                     MatchRange(0, 128), MatchRange(0, 12288)),
+                         IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, BitcastIsTransposeReshapeTranspose) {
@@ -209,14 +240,17 @@ TEST_F(TileAnalysisTest, BitcastIsTransposeReshapeTranspose) {
               UnorderedElementsAre(
                   Pair(0, ElementsAre(MatchIndexingMap(
                               "(d0, d1) -> (d1, d0 floordiv 3, d0 mod 3)",
-                              std::vector<int>{})))));
+                              ElementsAre(MatchRange(0, 51), MatchRange(0, 16)),
+                              IsEmpty())))));
   TF_ASSERT_OK_AND_ASSIGN(auto output_indexing,
                           GetInputToOutputIndexingForEntryComputation(ir));
-  EXPECT_THAT(
-      output_indexing.indexing_maps,
-      UnorderedElementsAre(Pair(
-          0, ElementsAre(MatchIndexingMap("(d0, d1, d2) -> (d1 * 3 + d2, d0)",
-                                          std::vector<int>{})))));
+  EXPECT_THAT(output_indexing.indexing_maps,
+              UnorderedElementsAre(
+                  Pair(0, ElementsAre(MatchIndexingMap(
+                              "(d0, d1, d2) -> (d1 * 3 + d2, d0)",
+                              ElementsAre(MatchRange(0, 16), MatchRange(0, 17),
+                                          MatchRange(0, 3)),
+                              IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, BroadcastOp) {
@@ -231,15 +265,20 @@ TEST_F(TileAnalysisTest, BroadcastOp) {
                           GetOutputToInputIndexingForEntryComputation(ir));
   EXPECT_THAT(input_indexing.indexing_maps,
               UnorderedElementsAre(
-                  Pair(0, ElementsAre(MatchIndexingMap("(d0, d1, d2) -> (d1)",
-                                                       std::vector<int>{})))));
+                  Pair(0, ElementsAre(MatchIndexingMap(
+                              "(d0, d1, d2) -> (d1)",
+                              ElementsAre(MatchRange(0, 10), MatchRange(0, 20),
+                                          MatchRange(0, 30)),
+                              IsEmpty())))));
 
   TF_ASSERT_OK_AND_ASSIGN(auto output_indexing,
                           GetInputToOutputIndexingForEntryComputation(ir));
-  EXPECT_THAT(output_indexing.indexing_maps,
-              UnorderedElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
-                                               "(d0)[s0, s1] -> (s0, d0, s1)",
-                                               std::vector<int>{10, 30})))));
+  EXPECT_THAT(
+      output_indexing.indexing_maps,
+      UnorderedElementsAre(Pair(
+          0, ElementsAre(MatchIndexingMap(
+                 "(d0)[s0, s1] -> (s0, d0, s1)", ElementsAre(MatchRange(0, 20)),
+                 ElementsAre(MatchRange(0, 10), MatchRange(0, 30)))))));
 }
 
 TEST_F(TileAnalysisTest, ConstantOp) {
@@ -269,12 +308,14 @@ TEST_F(TileAnalysisTest, FusionOpWithSingleBinaryOp) {
       ROOT fusion = f32[100] fusion(p0, p1), kind=kLoop, calls=f
     }
   )"));
-  EXPECT_THAT(
-      input_indexing.indexing_maps,
-      UnorderedElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
-                                       "(d0) -> (d0)", std::vector<int>{}))),
-                           Pair(1, ElementsAre(MatchIndexingMap(
-                                       "(d0) -> (d0)", std::vector<int>{})))));
+  EXPECT_THAT(input_indexing.indexing_maps,
+              UnorderedElementsAre(
+                  Pair(0, ElementsAre(MatchIndexingMap(
+                              "(d0) -> (d0)", ElementsAre(MatchRange(0, 100)),
+                              IsEmpty()))),
+                  Pair(1, ElementsAre(MatchIndexingMap(
+                              "(d0) -> (d0)", ElementsAre(MatchRange(0, 100)),
+                              IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, FusionOpWithDot) {
@@ -337,29 +378,47 @@ TEST_F(TileAnalysisTest, FusionOpWithDot) {
         fusion(p0, p1, p2, p3, p4, p5), kind=kLoop, calls=f
     }
   )"));
-  EXPECT_TRUE(input_indexing.Simplify({16, 16, 3, 1, 6, 128}));
 
   EXPECT_THAT(
       input_indexing.indexing_maps,
       UnorderedElementsAre(
-          Pair(0,
-               ElementsAre(MatchIndexingMap("(d0, d1, d2, d3, d4, d5)[s0] -> "
-                                            "(d2 + d3, d0 * 768 + s0, d4, d5)",
-                                            std::vector<int>{768}))),
+          Pair(0, ElementsAre(MatchIndexingMap(
+                      "(d0, d1, d2, d3, d4, d5)[s0] -> "
+                      "(d2 + d3, d0 * 768 + s0, d4, d5)",
+                      ElementsAre(MatchRange(0, 16), MatchRange(0, 16),
+                                  MatchRange(0, 3), MatchRange(0, 1),
+                                  MatchRange(0, 6), MatchRange(0, 128)),
+                      ElementsAre(MatchRange(0, 768))))),
           Pair(1, ElementsAre(MatchIndexingMap(
                       "(d0, d1, d2, d3, d4, d5)[s0] -> (d0 * 768 + s0)",
-                      std::vector<int>{768}))),
+                      ElementsAre(MatchRange(0, 16), MatchRange(0, 16),
+                                  MatchRange(0, 3), MatchRange(0, 1),
+                                  MatchRange(0, 6), MatchRange(0, 128)),
+                      ElementsAre(MatchRange(0, 768))))),
           Pair(2, ElementsAre(MatchIndexingMap(
-                      "(d0, d1, d2, d3, d4, d5) -> (d1)", std::vector<int>{}))),
+                      "(d0, d1, d2, d3, d4, d5) -> (d1)",
+                      ElementsAre(MatchRange(0, 16), MatchRange(0, 16),
+                                  MatchRange(0, 3), MatchRange(0, 1),
+                                  MatchRange(0, 6), MatchRange(0, 128)),
+                      IsEmpty()))),
           Pair(3, ElementsAre(MatchIndexingMap(
                       "(d0, d1, d2, d3, d4, d5)[s0] -> (d1, d0 * 768 + s0)",
-                      std::vector<int>{768}))),
+                      ElementsAre(MatchRange(0, 16), MatchRange(0, 16),
+                                  MatchRange(0, 3), MatchRange(0, 1),
+                                  MatchRange(0, 6), MatchRange(0, 128)),
+                      ElementsAre(MatchRange(0, 768))))),
           Pair(4, ElementsAre(MatchIndexingMap(
                       "(d0, d1, d2, d3, d4, d5)[s0] -> (d1, d0 * 768 + s0)",
-                      std::vector<int>{768}))),
+                      ElementsAre(MatchRange(0, 16), MatchRange(0, 16),
+                                  MatchRange(0, 3), MatchRange(0, 1),
+                                  MatchRange(0, 6), MatchRange(0, 128)),
+                      ElementsAre(MatchRange(0, 768))))),
           Pair(5, ElementsAre(MatchIndexingMap(
                       "(d0, d1, d2, d3, d4, d5) -> (d2 + d3, d4, d5)",
-                      std::vector<int>{})))));
+                      ElementsAre(MatchRange(0, 16), MatchRange(0, 16),
+                                  MatchRange(0, 3), MatchRange(0, 1),
+                                  MatchRange(0, 6), MatchRange(0, 128)),
+                      IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, FusionOpTensorPlusTransposedTensor) {
@@ -376,13 +435,17 @@ TEST_F(TileAnalysisTest, FusionOpTensorPlusTransposedTensor) {
       ROOT fusion = f32[1000,1000] fusion(p0), kind=kLoop, calls=f
     }
   )"));
-  EXPECT_THAT(
-      input_indexing.indexing_maps,
-      UnorderedElementsAre(Pair(
-          0,
-          UnorderedElementsAre(
-              MatchIndexingMap("(d0, d1) -> (d1, d0)", std::vector<int>{}),
-              MatchIndexingMap("(d0, d1) -> (d0, d1)", std::vector<int>{})))));
+  EXPECT_THAT(input_indexing.indexing_maps,
+              UnorderedElementsAre(
+                  Pair(0, UnorderedElementsAre(
+                              MatchIndexingMap("(d0, d1) -> (d1, d0)",
+                                               ElementsAre(MatchRange(0, 1000),
+                                                           MatchRange(0, 1000)),
+                                               IsEmpty()),
+                              MatchIndexingMap("(d0, d1) -> (d0, d1)",
+                                               ElementsAre(MatchRange(0, 1000),
+                                                           MatchRange(0, 1000)),
+                                               IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, FusionExponentialDuplication) {
@@ -405,21 +468,29 @@ TEST_F(TileAnalysisTest, FusionExponentialDuplication) {
     ENTRY entry_computation {
       p0 = f32[4] parameter(0)
       p1 = f32[4] parameter(1)
-      ROOT fusion = f32[2] fusion(p0, p1), kind=kLoop, calls=fused_computation
+      ROOT fusion = f32[2] fusion(p0, p1), kind=kLoop,
+      calls=fused_computation
     })"));
   EXPECT_THAT(
       input_indexing.indexing_maps,
       UnorderedElementsAre(
           Pair(0,
                UnorderedElementsAre(
-                   MatchIndexingMap("(d0) -> (d0)", std::vector<int>{}),
-                   MatchIndexingMap("(d0) -> (d0 + 1)", std::vector<int>{}),
-                   MatchIndexingMap("(d0) -> (d0 + 2)", std::vector<int>{}))),
+                   MatchIndexingMap("(d0) -> (d0)",
+                                    ElementsAre(MatchRange(0, 2)), IsEmpty()),
+                   MatchIndexingMap("(d0) -> (d0 + 1)",
+                                    ElementsAre(MatchRange(0, 2)), IsEmpty()),
+                   MatchIndexingMap("(d0) -> (d0 + 2)",
+                                    ElementsAre(MatchRange(0, 2)), IsEmpty()))),
           Pair(1,
                UnorderedElementsAre(
-                   MatchIndexingMap("(d0) -> (d0)", std::vector<int>{}),
-                   MatchIndexingMap("(d0) -> (d0 + 1)", std::vector<int>{}),
-                   MatchIndexingMap("(d0) -> (d0 + 2)", std::vector<int>{})))));
+                   MatchIndexingMap("(d0) -> (d0)",
+                                    ElementsAre(MatchRange(0, 2)), IsEmpty()),
+                   MatchIndexingMap("(d0) -> (d0 + 1)",
+                                    ElementsAre(MatchRange(0, 2)), IsEmpty()),
+                   MatchIndexingMap("(d0) -> (d0 + 2)",
+                                    ElementsAre(MatchRange(0, 2)),
+                                    IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, FusionOpWithReduceOfReduce) {
@@ -445,13 +516,16 @@ TEST_F(TileAnalysisTest, FusionOpWithReduceOfReduce) {
       ROOT fusion = f32[10] fusion(p0, p0_init), kind=kLoop, calls=f
     }
   )"));
-  EXPECT_THAT(
-      input_indexing.indexing_maps,
-      UnorderedElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
-                                       "(d0)[s0, s1, s2] -> (s0, s2, d0, s1)",
-                                       std::vector<int>{150, 50, 20}))),
-                           Pair(1, ElementsAre(MatchIndexingMap(
-                                       "(d0) -> ()", std::vector<int>{})))));
+  EXPECT_THAT(input_indexing.indexing_maps,
+              UnorderedElementsAre(
+                  Pair(0, ElementsAre(MatchIndexingMap(
+                              "(d0)[s0, s1, s2] -> (s0, s2, d0, s1)",
+                              ElementsAre(MatchRange(0, 10)),
+                              ElementsAre(MatchRange(0, 150), MatchRange(0, 50),
+                                          MatchRange(0, 20))))),
+                  Pair(1, ElementsAre(MatchIndexingMap(
+                              "(d0) -> ()", ElementsAre(MatchRange(0, 10)),
+                              IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, FusionOpWithReduceOfBroadcast) {
@@ -477,13 +551,16 @@ TEST_F(TileAnalysisTest, FusionOpWithReduceOfBroadcast) {
       ROOT fusion = f32[15, 64] fusion(p0, p0_init), kind=kLoop, calls=f
     }
   )"));
-  EXPECT_THAT(
-      input_indexing.indexing_maps,
-      UnorderedElementsAre(
-          Pair(0, ElementsAre(MatchIndexingMap("(d0, d1)[s0] -> (d0, s0)",
-                                               std::vector<int>{20}))),
-          Pair(1, ElementsAre(MatchIndexingMap("(d0, d1) -> ()",
-                                               std::vector<int>{})))));
+  EXPECT_THAT(input_indexing.indexing_maps,
+              UnorderedElementsAre(
+                  Pair(0, ElementsAre(MatchIndexingMap(
+                              "(d0, d1)[s0] -> (d0, s0)",
+                              ElementsAre(MatchRange(0, 15), MatchRange(0, 64)),
+                              ElementsAre(MatchRange(0, 20))))),
+                  Pair(1, ElementsAre(MatchIndexingMap(
+                              "(d0, d1) -> ()",
+                              ElementsAre(MatchRange(0, 15), MatchRange(0, 64)),
+                              IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, FusionOpWithTransposeOfTranspose) {
@@ -513,9 +590,12 @@ TEST_F(TileAnalysisTest, FusionOpWithTransposeOfTranspose) {
     }
   )"));
   EXPECT_THAT(input_indexing.indexing_maps,
-              UnorderedElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
-                                               "(d0, d1, d2) -> (d2, d0, d1)",
-                                               std::vector<int>{})))));
+              UnorderedElementsAre(
+                  Pair(0, ElementsAre(MatchIndexingMap(
+                              "(d0, d1, d2) -> (d2, d0, d1)",
+                              ElementsAre(MatchRange(0, 10), MatchRange(0, 50),
+                                          MatchRange(0, 20)),
+                              IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, FusionOpWithReducedSlice) {
@@ -541,13 +621,16 @@ TEST_F(TileAnalysisTest, FusionOpWithReducedSlice) {
       ROOT fusion = f32[32] fusion(p0, p0_init), kind=kLoop, calls=f
     }
   )"));
-  EXPECT_THAT(input_indexing.indexing_maps,
-              UnorderedElementsAre(
-                  Pair(0, ElementsAre(MatchIndexingMap(
-                              "(d0)[s0, s1] -> (s0 + 5, d0 * 2, s1 * 3 + 50)",
-                              std::vector<int>{16, 128}))),
-                  Pair(1, ElementsAre(MatchIndexingMap("(d0) -> ()",
-                                                       std::vector<int>{})))));
+  EXPECT_THAT(
+      input_indexing.indexing_maps,
+      UnorderedElementsAre(
+          Pair(0, ElementsAre(MatchIndexingMap(
+                      "(d0)[s0, s1] -> (s0 + 5, d0 * 2, s1 * 3 + 50)",
+                      ElementsAre(MatchRange(0, 32)),
+                      ElementsAre(MatchRange(0, 16), MatchRange(0, 128))))),
+          Pair(1,
+               ElementsAre(MatchIndexingMap(
+                   "(d0) -> ()", ElementsAre(MatchRange(0, 32)), IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, FusionOpWithReshape_CollapseOfExpand) {
@@ -564,9 +647,11 @@ TEST_F(TileAnalysisTest, FusionOpWithReshape_CollapseOfExpand) {
       ROOT fusion = f32[128] fusion(p0), kind=kLoop, calls=f
     }
   )"));
-  EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
-                                      "(d0) -> (d0)", std::vector<int>{})))));
+  EXPECT_THAT(
+      input_indexing.indexing_maps,
+      ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
+                              "(d0) -> (d0)", ElementsAre(MatchRange(0, 128)),
+                              IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, FusionOpWithReshape_ExpandOfCollapse) {
@@ -583,11 +668,12 @@ TEST_F(TileAnalysisTest, FusionOpWithReshape_ExpandOfCollapse) {
       ROOT fusion = f32[8, 16] fusion(p0), kind=kLoop, calls=f
     }
   )"));
-  EXPECT_TRUE(input_indexing.Simplify({8, 16}));
   EXPECT_THAT(
       input_indexing.indexing_maps,
-      ElementsAre(Pair(0, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0, d1)",
-                                                       std::vector<int>{})))));
+      ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
+                              "(d0, d1) -> (d0, d1)",
+                              ElementsAre(MatchRange(0, 8), MatchRange(0, 16)),
+                              IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, FusionOpWithReshape_ChainedGenericReshapes) {
@@ -604,11 +690,13 @@ TEST_F(TileAnalysisTest, FusionOpWithReshape_ChainedGenericReshapes) {
       ROOT fusion = f32[10, 10, 10] fusion(p0), kind=kLoop, calls=f
     }
   )"));
-  EXPECT_TRUE(input_indexing.Simplify({10, 10, 10}));
-  EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
-                                      "(d0, d1, d2) -> (d0, d1, d2)",
-                                      std::vector<int>{})))));
+  EXPECT_THAT(
+      input_indexing.indexing_maps,
+      ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
+                              "(d0, d1, d2) -> (d0, d1, d2)",
+                              ElementsAre(MatchRange(0, 10), MatchRange(0, 10),
+                                          MatchRange(0, 10)),
+                              IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, FusionOpWithSliceOfSlice) {
@@ -632,7 +720,9 @@ TEST_F(TileAnalysisTest, FusionOpWithSliceOfSlice) {
       ElementsAre(
           Pair(0, ElementsAre(MatchIndexingMap(
                       "(d0, d1, d2) -> (d0 * 2 + 8, d1 * 6 + 8, d2 * 12 + 65)",
-                      std::vector<int>{})))));
+                      ElementsAre(MatchRange(0, 7), MatchRange(0, 9),
+                                  MatchRange(0, 24)),
+                      IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, IotaOp) {
@@ -656,11 +746,11 @@ TEST_F(TileAnalysisTest, ReshapeOpCollapseShape) {
       ROOT reshape = f32[32] reshape(p0)
     }
   )"));
-  EXPECT_FALSE(input_indexing.Simplify({32}));
-  EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
-                                      "(d0) -> (d0 floordiv 8, d0 mod 8)",
-                                      std::vector<int>{})))));
+  EXPECT_THAT(
+      input_indexing.indexing_maps,
+      ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
+                              "(d0) -> (d0 floordiv 8, d0 mod 8)",
+                              ElementsAre(MatchRange(0, 32)), IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, ReshapeOpExpandShape) {
@@ -672,11 +762,12 @@ TEST_F(TileAnalysisTest, ReshapeOpExpandShape) {
       ROOT reshape = f32[4, 8] reshape(p0)
     }
   )"));
-  EXPECT_FALSE(input_indexing.Simplify({4, 8}));
-  EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(Pair(
-                  0, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0 * 8 + d1)",
-                                                  std::vector<int>{})))));
+  EXPECT_THAT(
+      input_indexing.indexing_maps,
+      ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
+                              "(d0, d1) -> (d0 * 8 + d1)",
+                              ElementsAre(MatchRange(0, 4), MatchRange(0, 8)),
+                              IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, ReshapeOpExpandAndCollapseShape) {
@@ -689,23 +780,25 @@ TEST_F(TileAnalysisTest, ReshapeOpExpandAndCollapseShape) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
                           GetOutputToInputIndexingForEntryComputation(ir));
-  EXPECT_FALSE(input_indexing.Simplify({32, 3, 4}));
   EXPECT_THAT(
       input_indexing.indexing_maps,
       ElementsAre(
           Pair(0, ElementsAre(MatchIndexingMap(
                       "(d0, d1, d2) -> (d0 floordiv 8, d0 mod 8, d1 * 4 + d2)",
-                      std::vector<int>{})))));
+                      ElementsAre(MatchRange(0, 32), MatchRange(0, 3),
+                                  MatchRange(0, 4)),
+                      IsEmpty())))));
 
   TF_ASSERT_OK_AND_ASSIGN(auto output_indexing,
                           GetInputToOutputIndexingForEntryComputation(ir));
-  EXPECT_FALSE(output_indexing.Simplify({4, 8, 12}));
   EXPECT_THAT(
       output_indexing.indexing_maps,
       ElementsAre(
           Pair(0, ElementsAre(MatchIndexingMap(
                       "(d0, d1, d2) -> (d0 * 8 + d1, d2 floordiv 4, d2 mod 4)",
-                      std::vector<int>{})))));
+                      ElementsAre(MatchRange(0, 4), MatchRange(0, 8),
+                                  MatchRange(0, 12)),
+                      IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, ReshapeOpExpandSubshapeOnly) {
@@ -717,11 +810,13 @@ TEST_F(TileAnalysisTest, ReshapeOpExpandSubshapeOnly) {
       ROOT reshape = f32[4, 4, 8] reshape(p0)
     }
   )"));
-  EXPECT_FALSE(input_indexing.Simplify({4, 4, 8}));
-  EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
-                                      "(d0, d1, d2) -> (d0 * 4 + d1, d2)",
-                                      std::vector<int>{})))));
+  EXPECT_THAT(
+      input_indexing.indexing_maps,
+      ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
+                              "(d0, d1, d2) -> (d0 * 4 + d1, d2)",
+                              ElementsAre(MatchRange(0, 4), MatchRange(0, 4),
+                                          MatchRange(0, 8)),
+                              IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, ReshapeOpGenericReshape2DTO3D) {
@@ -733,14 +828,16 @@ TEST_F(TileAnalysisTest, ReshapeOpGenericReshape2DTO3D) {
       ROOT reshape = f32[2, 4, 4] reshape(p0)
     }
   )"));
-  EXPECT_TRUE(input_indexing.Simplify({2, 4, 4}));
   // TODO(b/313840171): Simplify `(d1 * 4 + d2) floordiv 8` to `d1 floordiv 2`.
-  EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(Pair(
-                  0, ElementsAre(MatchIndexingMap(
-                         "(d0, d1, d2) -> (d0 * 2 + (d1 * 4 + d2) floordiv 8, "
-                         "(d1 * 4 + d2) mod 8)",
-                         std::vector<int>{})))));
+  EXPECT_THAT(
+      input_indexing.indexing_maps,
+      ElementsAre(Pair(
+          0,
+          ElementsAre(MatchIndexingMap(
+              "(d0, d1, d2) -> (d0 * 2 + (d1 * 4 + d2) floordiv 8, "
+              "(d1 * 4 + d2) mod 8)",
+              ElementsAre(MatchRange(0, 2), MatchRange(0, 4), MatchRange(0, 4)),
+              IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, ReshapeOpGenericReshape3DTO2D) {
@@ -752,7 +849,6 @@ TEST_F(TileAnalysisTest, ReshapeOpGenericReshape3DTO2D) {
       ROOT reshape = f32[4, 8] reshape(p0)
     }
   )"));
-  EXPECT_FALSE(input_indexing.Simplify({4, 8}));
   // TODO(b/313840171): Simplify `(d0 * 8 + d1) floordiv 16` to `d0 floordiv 2`.
   // TODO(b/313840171): Simplify `((d0 * 8 + d1) mod 16) floordiv 4` to
   // `((d0 * 8 + d1) floordiv 4) mod 4` to `(d0 * 2 + d1 floordiv 4) mod 4`.
@@ -761,7 +857,8 @@ TEST_F(TileAnalysisTest, ReshapeOpGenericReshape3DTO2D) {
       ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
                               "(d0, d1) -> ((d0 * 8 + d1) floordiv 16, "
                               "((d0 * 8 + d1) mod 16) floordiv 4, d1 mod 4)",
-                              std::vector<int>{})))));
+                              ElementsAre(MatchRange(0, 4), MatchRange(0, 8)),
+                              IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, ReduceOp) {
@@ -781,23 +878,31 @@ TEST_F(TileAnalysisTest, ReduceOp) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
                           GetOutputToInputIndexingForEntryComputation(ir));
-  EXPECT_THAT(input_indexing.indexing_maps,
-              UnorderedElementsAre(
-                  Pair(0, ElementsAre(MatchIndexingMap(
-                              "(d0, d1)[s0, s1] -> (d0, s0, d1, s1)",
-                              std::vector<int>{20, 50}))),
-                  Pair(1, ElementsAre(MatchIndexingMap("(d0, d1) -> ()",
-                                                       std::vector<int>{})))));
+  EXPECT_THAT(
+      input_indexing.indexing_maps,
+      UnorderedElementsAre(
+          Pair(0, ElementsAre(MatchIndexingMap(
+                      "(d0, d1)[s0, s1] -> (d0, s0, d1, s1)",
+                      ElementsAre(MatchRange(0, 150), MatchRange(0, 10)),
+                      ElementsAre(MatchRange(0, 20), MatchRange(0, 50))))),
+          Pair(1, ElementsAre(MatchIndexingMap(
+                      "(d0, d1) -> ()",
+                      ElementsAre(MatchRange(0, 150), MatchRange(0, 10)),
+                      IsEmpty())))));
 
   TF_ASSERT_OK_AND_ASSIGN(auto output_indexing,
                           GetInputToOutputIndexingForEntryComputation(ir));
   EXPECT_THAT(
       output_indexing.indexing_maps,
       UnorderedElementsAre(
-          Pair(0, ElementsAre(MatchIndexingMap("(d0, d1, d2, d3) -> (d0, d2)",
-                                               std::vector<int>{}))),
-          Pair(1, ElementsAre(MatchIndexingMap("()[s0, s1] -> (s0, s1)",
-                                               std::vector<int>{150, 10})))));
+          Pair(0, ElementsAre(MatchIndexingMap(
+                      "(d0, d1, d2, d3) -> (d0, d2)",
+                      ElementsAre(MatchRange(0, 150), MatchRange(0, 20),
+                                  MatchRange(0, 10), MatchRange(0, 50)),
+                      IsEmpty()))),
+          Pair(1, ElementsAre(MatchIndexingMap(
+                      "()[s0, s1] -> (s0, s1)", IsEmpty(),
+                      ElementsAre(MatchRange(0, 150), MatchRange(0, 10)))))));
 }
 
 TEST_F(TileAnalysisTest, VariadicReduceOp) {
@@ -825,57 +930,83 @@ TEST_F(TileAnalysisTest, VariadicReduceOp) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto output_indexing_0,
       GetOutputToInputIndexingForEntryComputation(ir, /*output_id=*/0));
-  EXPECT_THAT(output_indexing_0.indexing_maps,
-              UnorderedElementsAre(
-                  Pair(0, ElementsAre(MatchIndexingMap("(d0)[s0] -> (s0, d0)",
-                                                       std::vector<int>{256}))),
-                  Pair(1, ElementsAre(MatchIndexingMap("(d0)[s0] -> (s0, d0)",
-                                                       std::vector<int>{256}))),
-                  Pair(2, ElementsAre(MatchIndexingMap("(d0) -> ()",
-                                                       std::vector<int>{}))),
-                  Pair(3, ElementsAre(MatchIndexingMap("(d0) -> ()",
-                                                       std::vector<int>{})))));
+  EXPECT_THAT(
+      output_indexing_0.indexing_maps,
+      UnorderedElementsAre(
+          Pair(0, ElementsAre(MatchIndexingMap(
+                      "(d0)[s0] -> (s0, d0)", ElementsAre(MatchRange(0, 10)),
+                      ElementsAre(MatchRange(0, 256))))),
+          Pair(1, ElementsAre(MatchIndexingMap(
+                      "(d0)[s0] -> (s0, d0)", ElementsAre(MatchRange(0, 10)),
+
+                      ElementsAre(MatchRange(0, 256))))),
+          Pair(2,
+               ElementsAre(MatchIndexingMap(
+                   "(d0) -> ()", ElementsAre(MatchRange(0, 10)), IsEmpty()))),
+          Pair(3,
+               ElementsAre(MatchIndexingMap(
+                   "(d0) -> ()", ElementsAre(MatchRange(0, 10)), IsEmpty())))));
   TF_ASSERT_OK_AND_ASSIGN(
       auto output_indexing_1,
       GetOutputToInputIndexingForEntryComputation(ir, /*output_id=*/1));
-  EXPECT_THAT(output_indexing_1.indexing_maps,
-              UnorderedElementsAre(
-                  Pair(0, ElementsAre(MatchIndexingMap("(d0)[s0] -> (s0, d0)",
-                                                       std::vector<int>{256}))),
-                  Pair(1, ElementsAre(MatchIndexingMap("(d0)[s0] -> (s0, d0)",
-                                                       std::vector<int>{256}))),
-                  Pair(2, ElementsAre(MatchIndexingMap("(d0) -> ()",
-                                                       std::vector<int>{}))),
-                  Pair(3, ElementsAre(MatchIndexingMap("(d0) -> ()",
-                                                       std::vector<int>{})))));
+  EXPECT_THAT(
+      output_indexing_1.indexing_maps,
+      UnorderedElementsAre(
+          Pair(0, ElementsAre(MatchIndexingMap(
+                      "(d0)[s0] -> (s0, d0)", ElementsAre(MatchRange(0, 10)),
+                      ElementsAre(MatchRange(0, 256))))),
+          Pair(1, ElementsAre(MatchIndexingMap(
+                      "(d0)[s0] -> (s0, d0)", ElementsAre(MatchRange(0, 10)),
+
+                      ElementsAre(MatchRange(0, 256))))),
+          Pair(2,
+               ElementsAre(MatchIndexingMap(
+                   "(d0) -> ()", ElementsAre(MatchRange(0, 10)), IsEmpty()))),
+          Pair(3,
+               ElementsAre(MatchIndexingMap(
+                   "(d0) -> ()", ElementsAre(MatchRange(0, 10)), IsEmpty())))));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto input_indexing_0,
       GetInputToOutputIndexingForEntryComputation(ir, /*input_id=*/0));
-  EXPECT_THAT(input_indexing_0.indexing_maps,
-              UnorderedElementsAre(
-                  Pair(0, ElementsAre(MatchIndexingMap("(d0, d1) -> (d1)",
-                                                       std::vector<int>{}))),
-                  Pair(1, ElementsAre(MatchIndexingMap("(d0, d1) -> (d1)",
-                                                       std::vector<int>{}))),
-                  Pair(2, ElementsAre(MatchIndexingMap("()[s0] -> (s0)",
-                                                       std::vector<int>{10}))),
-                  Pair(3, ElementsAre(MatchIndexingMap(
-                              "()[s0] -> (s0)", std::vector<int>{10})))));
+  EXPECT_THAT(
+      input_indexing_0.indexing_maps,
+      UnorderedElementsAre(
+          Pair(0, ElementsAre(MatchIndexingMap(
+                      "(d0, d1) -> (d1)",
+                      ElementsAre(MatchRange(0, 256), MatchRange(0, 10)),
+                      IsEmpty()))),
+          Pair(1, ElementsAre(MatchIndexingMap(
+                      "(d0, d1) -> (d1)",
+                      ElementsAre(MatchRange(0, 256), MatchRange(0, 10)),
+                      IsEmpty()))),
+          Pair(2,
+               ElementsAre(MatchIndexingMap("()[s0] -> (s0)", IsEmpty(),
+                                            ElementsAre(MatchRange(0, 10))))),
+          Pair(3,
+               ElementsAre(MatchIndexingMap("()[s0] -> (s0)", IsEmpty(),
+                                            ElementsAre(MatchRange(0, 10)))))));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto input_indexing_1,
       GetInputToOutputIndexingForEntryComputation(ir, /*input_id=*/1));
-  EXPECT_THAT(input_indexing_1.indexing_maps,
-              UnorderedElementsAre(
-                  Pair(0, ElementsAre(MatchIndexingMap("(d0, d1) -> (d1)",
-                                                       std::vector<int>{}))),
-                  Pair(1, ElementsAre(MatchIndexingMap("(d0, d1) -> (d1)",
-                                                       std::vector<int>{}))),
-                  Pair(2, ElementsAre(MatchIndexingMap("()[s0] -> (s0)",
-                                                       std::vector<int>{10}))),
-                  Pair(3, ElementsAre(MatchIndexingMap(
-                              "()[s0] -> (s0)", std::vector<int>{10})))));
+  EXPECT_THAT(
+      input_indexing_1.indexing_maps,
+      UnorderedElementsAre(
+          Pair(0, ElementsAre(MatchIndexingMap(
+                      "(d0, d1) -> (d1)",
+                      ElementsAre(MatchRange(0, 256), MatchRange(0, 10)),
+                      IsEmpty()))),
+          Pair(1, ElementsAre(MatchIndexingMap(
+                      "(d0, d1) -> (d1)",
+                      ElementsAre(MatchRange(0, 256), MatchRange(0, 10)),
+                      IsEmpty()))),
+          Pair(2,
+               ElementsAre(MatchIndexingMap("()[s0] -> (s0)", IsEmpty(),
+                                            ElementsAre(MatchRange(0, 10))))),
+          Pair(3,
+               ElementsAre(MatchIndexingMap("()[s0] -> (s0)", IsEmpty(),
+                                            ElementsAre(MatchRange(0, 10)))))));
 }
 
 TEST_F(TileAnalysisTest, ReverseOp) {
@@ -888,21 +1019,23 @@ TEST_F(TileAnalysisTest, ReverseOp) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
                           GetOutputToInputIndexingForEntryComputation(ir));
-  EXPECT_FALSE(input_indexing.Simplify({1, 17, 9, 9}));
   EXPECT_THAT(
       input_indexing.indexing_maps,
       ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
                               "(d0, d1, d2, d3) -> (d0, -d1 + 16, -d2 + 8, d3)",
-                              std::vector<int>{})))));
+                              ElementsAre(MatchRange(0, 1), MatchRange(0, 17),
+                                          MatchRange(0, 9), MatchRange(0, 9)),
+                              IsEmpty())))));
 
   TF_ASSERT_OK_AND_ASSIGN(auto output_indexing,
                           GetInputToOutputIndexingForEntryComputation(ir));
-  EXPECT_FALSE(output_indexing.Simplify({1, 17, 9, 9}));
   EXPECT_THAT(
       output_indexing.indexing_maps,
       ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
                               "(d0, d1, d2, d3) -> (d0, -d1 + 16, -d2 + 8, d3)",
-                              std::vector<int>{})))));
+                              ElementsAre(MatchRange(0, 1), MatchRange(0, 17),
+                                          MatchRange(0, 9), MatchRange(0, 9)),
+                              IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, ReverseReshape) {
@@ -918,14 +1051,16 @@ TEST_F(TileAnalysisTest, ReverseReshape) {
     }
     ENTRY e {
       p0 = f32[10, 11] parameter(0)
-      ROOT fusion = f32[10, 11] fusion(p0), kind=kLoop, calls=fused_computation
+      ROOT fusion = f32[10, 11] fusion(p0), kind=kLoop,
+      calls=fused_computation
     }
   )"));
-  EXPECT_TRUE(input_indexing.Simplify({10, 11}));
   EXPECT_THAT(
       input_indexing.indexing_maps,
-      ElementsAre(Pair(0, ElementsAre(MatchIndexingMap("(d0, d1) -> (d0, d1)",
-                                                       std::vector<int>{})))));
+      ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
+                              "(d0, d1) -> (d0, d1)",
+                              ElementsAre(MatchRange(0, 10), MatchRange(0, 11)),
+                              IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, SliceOp) {
@@ -942,7 +1077,9 @@ TEST_F(TileAnalysisTest, SliceOp) {
       input_indexing.indexing_maps,
       ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
                               "(d0, d1, d2) -> (d0 + 5, d1 * 7 + 3, d2 * 2)",
-                              std::vector<int>{})))));
+                              ElementsAre(MatchRange(0, 5), MatchRange(0, 3),
+                                          MatchRange(0, 25)),
+                              IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, TransposeOp) {
@@ -957,16 +1094,22 @@ TEST_F(TileAnalysisTest, TransposeOp) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
                           GetOutputToInputIndexingForEntryComputation(ir));
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
-                                      "(d0, d1, d2, d3) -> (d0, d3, d1, d2)",
-                                      std::vector<int>{})))));
+              ElementsAre(Pair(
+                  0, ElementsAre(MatchIndexingMap(
+                         "(d0, d1, d2, d3) -> (d0, d3, d1, d2)",
+                         ElementsAre(MatchRange(0, 3), MatchRange(0, 6),
+                                     MatchRange(0, 128), MatchRange(0, 12288)),
+                         IsEmpty())))));
 
   TF_ASSERT_OK_AND_ASSIGN(auto output_indexing,
                           GetInputToOutputIndexingForEntryComputation(ir));
   EXPECT_THAT(output_indexing.indexing_maps,
-              ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
-                                      "(d0, d1, d2, d3) -> (d0, d2, d3, d1)",
-                                      std::vector<int>{})))));
+              ElementsAre(Pair(
+                  0, ElementsAre(MatchIndexingMap(
+                         "(d0, d1, d2, d3) -> (d0, d2, d3, d1)",
+                         ElementsAre(MatchRange(0, 3), MatchRange(0, 12288),
+                                     MatchRange(0, 6), MatchRange(0, 128)),
+                         IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, TransposeOp4D) {
@@ -979,9 +1122,12 @@ TEST_F(TileAnalysisTest, TransposeOp4D) {
     }
   )"));
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
-                                      "(d0, d1, d2, d3) -> (d0, d3, d1, d2)",
-                                      std::vector<int>{})))));
+              ElementsAre(Pair(
+                  0, ElementsAre(MatchIndexingMap(
+                         "(d0, d1, d2, d3) -> (d0, d3, d1, d2)",
+                         ElementsAre(MatchRange(0, 3), MatchRange(0, 6),
+                                     MatchRange(0, 128), MatchRange(0, 12288)),
+                         IsEmpty())))));
 }
 
 TEST_F(TileAnalysisTest, DotOp) {
@@ -998,14 +1144,21 @@ TEST_F(TileAnalysisTest, DotOp) {
   )"));
   EXPECT_THAT(
       input_indexing.indexing_maps,
-      UnorderedElementsAre(Pair(0, ElementsAre(MatchIndexingMap(
-                                       "(d0, d1, d2, d3, d4, d5)[s0, s1] -> "
-                                       "(d2, d1, s1, d3, s0, d0)",
-                                       std::vector<int>{18, 17}))),
-                           Pair(1, ElementsAre(MatchIndexingMap(
-                                       "(d0, d1, d2, d3, d4, d5)[s0, s1] -> "
-                                       "(s1, d0, d4, s0, d5, d1)",
-                                       std::vector<int>{18, 17})))));
+      UnorderedElementsAre(
+          Pair(0, ElementsAre(MatchIndexingMap(
+                      "(d0, d1, d2, d3, d4, d5)[s0, s1] -> "
+                      "(d2, d1, s1, d3, s0, d0)",
+                      ElementsAre(MatchRange(0, 10), MatchRange(0, 38),
+                                  MatchRange(0, 4), MatchRange(0, 11),
+                                  MatchRange(0, 16), MatchRange(0, 22)),
+                      ElementsAre(MatchRange(0, 18), MatchRange(0, 17))))),
+          Pair(1, ElementsAre(MatchIndexingMap(
+                      "(d0, d1, d2, d3, d4, d5)[s0, s1] -> "
+                      "(s1, d0, d4, s0, d5, d1)",
+                      ElementsAre(MatchRange(0, 10), MatchRange(0, 38),
+                                  MatchRange(0, 4), MatchRange(0, 11),
+                                  MatchRange(0, 16), MatchRange(0, 22)),
+                      ElementsAre(MatchRange(0, 18), MatchRange(0, 17)))))));
 }
 
 TEST_F(TileAnalysisTest, UnsupportedOps) {

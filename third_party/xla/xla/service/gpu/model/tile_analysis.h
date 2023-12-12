@@ -35,18 +35,46 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Range represents a semi-closed interval [lower_bound, upper_bound).
+struct Range {
+  std::string ToString() const;
+
+  int64_t lower_bound = 0;
+  int64_t upper_bound = 0;
+};
+std::ostream& operator<<(std::ostream& out, const Range& range);
+
+template <typename H>
+H AbslHashValue(H h, const Range& range) {
+  return H::combine(std::move(h), range.lower_bound, range.upper_bound);
+}
+
+// Domain contains ranges for symbols and dimensions of an affine map.
+struct Domain {
+  std::string ToString() const;
+
+  static Domain FromUpperBounds(
+      absl::Span<const int64_t> dimension_upper_bounds,
+      absl::Span<const int64_t> symbol_upper_bounds);
+
+  std::vector<Range> dimension_ranges;
+  std::vector<Range> symbol_ranges;
+};
+std::ostream& operator<<(std::ostream& out, const Domain& domain);
+
+template <typename H>
+H AbslHashValue(H h, const Domain& domain) {
+  return H::combine(std::move(h), domain.dimension_ranges,
+                    domain.symbol_ranges);
+}
+
 // Contains an affine map with N dimension expressions and M symbols:
 //   (d0, ..., d_{N - 1})[s_0, ..., s_{M - 1}] -> f(d_i, s_j)
 // Dimensions d_i correspond to the iteration space of the output tensor. Some
 // or all of the dimensions of the input operands can be expressed as a function
 // of dimensions of output. For example, for broadcasts and cwise ops all
 // dimensions of the inputs are covered by the output dimensions.
-// Symbols s_j correspond to the dimensions that are present ONLY in inputs.
-// `input_dims_sizes` is an array that holds the upper bounds for the iteration
-// sizes for every input-only dimension. Note, that the sizes have upper
-// bounds only and the lower bounds are always 0, since we can encode the
-// offsets in the affine map. The sizes for the output dimensions can be deduced
-// from the shape of the output tensor.
+// Domain specifies for what ranges of values the indexing map is specified.
 //
 // Example:
 //
@@ -55,26 +83,24 @@ namespace gpu {
 //   p0 = f32[150, 20, 10, 50] parameter(0)
 //   reduce = f32[150, 10] reduce(p0, p0_init), dimensions={3, 1}
 // ```
-// can be written as `(d0, d1)[s0, s1] -> (d0, s0, d1, s1)`  with the input
-// dimensions sizes `[/*s0 size=*/20, /*s1 size=*/50]`.
+// can be written as `(d0, d1)[s0, s1] -> (d0, s0, d1, s1)`  with
+// d0 in [0, 150), d1 in [0, 10), s0 in [0, 20) and s1 in [0, 50).
 //
 // 2. Indexing map for the input of the reverse op
 // ```
 //  %p0 = f32[1, 17, 9, 9] parameter(0)
 //  reverse = f32[1, 17, 9, 9] reverse(%p0), dimensions={1, 2}
 // ```
-// can be written as `(d0, d1, d2, d3) -> (d0, -d1 + 17, -d2 + 9, d3)` with the
-// empty 'input_dims_sizes`, because there are no dimensions in the input that
-// could not be expressed via dimensions of the output.
+// can be written as `(d0, d1, d2, d3) -> (d0, -d1 + 17, -d2 + 9, d3)` with
+// d0 in [0, 1), d1 in [0, 17), d2 in [0, 9) and d3 in [0, 9).
 struct IndexingMap {
   std::string ToString() const;
 
   // Returns true if the map was simplified.
-  bool Simplify(absl::Span<const int64_t> dimension_sizes);
+  bool Simplify();
 
   mlir::AffineMap affine_map;
-  // Upper iteration bounds for dimensions only present in the input.
-  std::vector<int64_t> input_dims_sizes;
+  Domain domain;
 };
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map);
 bool operator==(const IndexingMap& lhs, const IndexingMap& rhs);
@@ -82,7 +108,8 @@ bool operator==(const IndexingMap& lhs, const IndexingMap& rhs);
 template <typename H>
 H AbslHashValue(H h, const IndexingMap& indexing_map) {
   llvm::hash_code affine_map_hash = llvm::hash_combine(indexing_map.affine_map);
-  return H::combine(std::move(h), static_cast<size_t>(affine_map_hash));
+  return H::combine(std::move(h), static_cast<size_t>(affine_map_hash),
+                    indexing_map.domain);
 }
 
 // Contains indexing maps for all N-dimensional tensor input operands that
@@ -91,7 +118,7 @@ struct HloInstructionIndexing {
   std::string ToString() const;
 
   // Returns true if the indexing was simplified.
-  bool Simplify(absl::Span<const int64_t> dimension_sizes);
+  bool Simplify();
 
   // Creates a HloInstructionIndexing from a list of indexing maps for all
   // operands and sorted w.r.t. operand index, i.e. indexing_maps[i] corresponds
