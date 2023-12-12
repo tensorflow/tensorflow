@@ -49,7 +49,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/status_macro.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
@@ -70,6 +69,7 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -317,7 +317,7 @@ absl::StatusOr<llvm::SmallVector<AssetFileDef>> RunExportPasses(
     const ExportOptions &export_opts, mlir::MLIRContext &ctx,
     mlir::ModuleOp module_op) {
   if (export_opts.unfreeze_constants) {
-    TF_QUANT_RETURN_IF_ERROR(UnfreezeConstantsAndSaveVariables(
+    TF_RETURN_IF_ERROR(UnfreezeConstantsAndSaveVariables(
         export_opts.checkpoint_dir, ctx, module_op));
     LOG(INFO) << "Unfrozen constants and saved variables to checkpoint file: "
               << export_opts.checkpoint_dir;
@@ -394,15 +394,14 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
     return aliased_function_names.insert(aliases.first);
   });
 
-  TF_QUANT_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
+  TF_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
       /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
       /*is_inliner_run=*/true,
       /*noinline_functions=*/aliased_function_names, module_ref.get(), &context,
       bundle ? bundle->GetSession() : nullptr, /*run_tf_to_stablehlo=*/false));
 
-  TF_QUANT_RETURN_IF_ERROR(RunPasses(
-      /*name=*/kTfQuantQatStepName,
-      /*add_passes_func=*/
+  TF_RETURN_IF_ERROR(RunPasses(
+      /*name=*/kTfQuantQatStepName, /*add_passes_func=*/
       [&quantization_options](mlir::PassManager &pm) {
         AddQuantizeQatPasses(pm, quantization_options, kTfQuantQatStepName);
       },
@@ -465,26 +464,25 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
 
   const bool run_tf_to_stablehlo = (quantization_options.op_set() ==
                                     tensorflow::quantization::OpSet::STABLEHLO);
-  TF_QUANT_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
+  TF_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
       /*mlir_dump_file_prefix=*/kTfQuantPtqPreCalibrationStepName,
-      /*is_inliner_run=*/true,
-      /*noinline_functions=*/aliased_function_names, module_ref.get(), &context,
-      bundle ? bundle->GetSession() : nullptr, run_tf_to_stablehlo));
+      /*is_inliner_run=*/true, /*noinline_functions=*/aliased_function_names,
+      module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr,
+      run_tf_to_stablehlo));
 
   // Use StableHLO Quantizer option if opset is specified.
   if (run_tf_to_stablehlo) {
-    TF_QUANT_RETURN_IF_ERROR(RunPasses(
-        /*name=*/kTfQuantPtqPreCalibrationStepStableHloName,
-        /*add_passes_func=*/
-        [&quantization_options](mlir::PassManager &pm) {
-          AddQuantizePtqPreCalibrationStablehloPasses(
-              pm, quantization_options.calibration_options());
-        },
-        context, *module_ref));
+    TF_RETURN_IF_ERROR(
+        RunPasses(/*name=*/kTfQuantPtqPreCalibrationStepStableHloName,
+                  /*add_passes_func=*/
+                  [&quantization_options](mlir::PassManager &pm) {
+                    AddQuantizePtqPreCalibrationStablehloPasses(
+                        pm, quantization_options.calibration_options());
+                  },
+                  context, *module_ref));
   } else {
-    TF_QUANT_RETURN_IF_ERROR(RunPasses(
-        /*name=*/kTfQuantPtqPreCalibrationStepName,
-        /*add_passes_func=*/
+    TF_RETURN_IF_ERROR(RunPasses(
+        /*name=*/kTfQuantPtqPreCalibrationStepName, /*add_passes_func=*/
         [&quantization_options](mlir::PassManager &pm) {
           AddQuantizePtqPreCalibrationPasses(pm, quantization_options);
         },
@@ -552,27 +550,26 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
   // Freezing is required again since variables might have been produced during
   // the pre-calibration step. `is_inliner_run = false` to prevent the functions
   // lifted for quantization from being inlined.
-  TF_QUANT_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
+  TF_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
       /*mlir_dump_file_prefix=*/kTfQuantPtqPostCalibrationStepName,
-      /*is_inliner_run=*/false,
-      /*noinline_functions=*/aliased_function_names, module_ref.get(), &context,
-      bundle ? bundle->GetSession() : nullptr, /*run_tf_to_stablehlo=*/false));
+      /*is_inliner_run=*/false, /*noinline_functions=*/aliased_function_names,
+      module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr,
+      /*run_tf_to_stablehlo=*/false));
 
   // Use StableHLO Quantizer option if opset is specified.
   if (quantization_options.op_set() ==
       tensorflow::quantization::OpSet::STABLEHLO) {
-    TF_QUANT_RETURN_IF_ERROR(RunPasses(
-        /*name=*/kTfQuantPtqPostCalibrationStepStableHloName,
-        /*add_passes_func=*/
-        [](mlir::PassManager &pm) {
-          AddQuantizePtqPostCalibrationStablehloPasses(
-              pm, kTfQuantPtqPostCalibrationStepStableHloName);
-        },
-        context, *module_ref));
+    TF_RETURN_IF_ERROR(
+        RunPasses(/*name=*/kTfQuantPtqPostCalibrationStepStableHloName,
+                  /*add_passes_func=*/
+                  [](mlir::PassManager &pm) {
+                    AddQuantizePtqPostCalibrationStablehloPasses(
+                        pm, kTfQuantPtqPostCalibrationStepStableHloName);
+                  },
+                  context, *module_ref));
   } else {
-    TF_QUANT_RETURN_IF_ERROR(RunPasses(
-        /*name=*/kTfQuantPtqPostCalibrationStepName,
-        /*add_passes_func=*/
+    TF_RETURN_IF_ERROR(RunPasses(
+        /*name=*/kTfQuantPtqPostCalibrationStepName, /*add_passes_func=*/
         [&quantization_options](mlir::PassManager &pm) {
           AddQuantizePtqPostCalibrationPasses(
               pm, quantization_options, kTfQuantPtqPostCalibrationStepName);
@@ -637,15 +634,14 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
     return aliased_function_names.insert(aliases.first);
   });
 
-  TF_QUANT_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
+  TF_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
       /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
-      /*is_inliner_run=*/true,
-      /*noinline_functions=*/aliased_function_names, module_ref.get(), &context,
-      bundle ? bundle->GetSession() : nullptr, /*run_tf_to_stablehlo=*/false));
+      /*is_inliner_run=*/true, /*noinline_functions=*/aliased_function_names,
+      module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr,
+      /*run_tf_to_stablehlo=*/false));
 
-  TF_QUANT_RETURN_IF_ERROR(RunPasses(
-      /*name=*/kTfQuantPtqDynamicRangeStepName,
-      /*add_passes_func=*/
+  TF_RETURN_IF_ERROR(RunPasses(
+      /*name=*/kTfQuantPtqDynamicRangeStepName, /*add_passes_func=*/
       [&quantization_options](mlir::PassManager &pm) {
         AddQuantizePtqDynamicRangePasses(pm, quantization_options,
                                          kTfQuantPtqDynamicRangeStepName);
@@ -712,20 +708,19 @@ absl::StatusOr<ExportedModel> QuantizeWeightOnly(
     return aliased_function_names.insert(aliases.first);
   });
 
-  TF_QUANT_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
+  TF_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
       /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
       /*is_inliner_run=*/true,
       /*noinline_functions=*/aliased_function_names, module_ref.get(), &context,
       bundle ? bundle->GetSession() : nullptr, /*run_tf_to_stablehlo=*/false));
 
-  TF_QUANT_RETURN_IF_ERROR(RunPasses(
-      /*name=*/kTfQuantWeightOnlyStepName,
-      /*add_passes_func=*/
-      [&quantization_options](mlir::PassManager &pm) {
-        AddQuantizeWeightOnlyPasses(pm, quantization_options,
-                                    kTfQuantWeightOnlyStepName);
-      },
-      context, *module_ref));
+  TF_RETURN_IF_ERROR(
+      RunPasses(/*name=*/kTfQuantWeightOnlyStepName, /*add_passes_func=*/
+                [&quantization_options](mlir::PassManager &pm) {
+                  AddQuantizeWeightOnlyPasses(pm, quantization_options,
+                                              kTfQuantWeightOnlyStepName);
+                },
+                context, *module_ref));
 
   const bool unfreeze_constants = !quantization_options.freeze_all_variables();
   TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTmpFileName());

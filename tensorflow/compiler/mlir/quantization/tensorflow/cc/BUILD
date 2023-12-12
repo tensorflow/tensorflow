@@ -126,27 +126,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "status_macro",
-    hdrs = ["status_macro.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:macros",
-    ],
-)
-
-tf_cc_test(
-    name = "status_macro_test",
-    srcs = ["status_macro_test.cc"],
-    deps = [
-        ":status_macro",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@com_google_absl//absl/status",
-    ],
-)
-
-cc_library(
     name = "run_passes",
     srcs = ["run_passes.cc"],
     hdrs = ["run_passes.h"],

@@ -23,9 +23,9 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/save_variables.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/status_macro.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/core/platform/env.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -40,9 +40,8 @@ namespace quantization {
 absl::Status UnfreezeConstantsAndSaveVariables(
     const absl::string_view checkpoint_dir, mlir::MLIRContext &ctx,
     mlir::ModuleOp module_op) {
-  TF_QUANT_RETURN_IF_ERROR(RunPasses(
-      /*name=*/kTfQuantConstantUnfreezingStepName,
-      /*add_passes_func=*/
+  TF_RETURN_IF_ERROR(RunPasses(
+      /*name=*/kTfQuantConstantUnfreezingStepName, /*add_passes_func=*/
       [](mlir::PassManager &pm) {
         pm.addPass(mlir::quant::CreateUnfreezeConstantsPass());
       },
