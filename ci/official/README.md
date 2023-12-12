@@ -35,7 +35,7 @@ These `envs` match up with an environment matrix that roughly covers:
 
 ```bash
 # Required: create a file to hold your settings
-cd tensorflow
+cd tensorflow-git-dir
 export TFCI=$(mktemp)
 
 # Required: choose an environment (env) to copy.
@@ -61,28 +61,38 @@ echo >>$TFCI source ci/official/envs/local_default
 #      the cache; this is unavoidable.
 echo >>$TFCI source ci/official/envs/local_multicache
 
-# Recommended: Configure Docker. (Linux only)
-#
-#   TF uses hub.docker.com/r/tensorflow/build containers for CI,
-#   and scripts on Linux create a persistent container called "tf".
-#
-#   You will need the NVIDIA Container Toolkit for GPU testing:
-#   https://github.com/NVIDIA/nvidia-container-toolkit
-#
-#   Note: if you interrupt a bazel command on docker (ctrl-c), you
-#   will need to run `docker exec tf pkill bazel` to forcibly abort it.
-#
-# Docker is enabled by default. You may disable it if you prefer:
-# echo >>$TFCI source ci/official/envs/local_nodocker
-
 # Advanced: Use Remote Build Execution (RBE) (internal developers only)
 #
 #   RBE dramatically speeds up builds and testing. It also gives you a
 #   public URL to share your build results with collaborators. However,
 #   it is only available to a limited set of internal TensorFlow developers.
 #
+#   RBE is incompatible with local caching, so you must remove
+#   ci/official/envs/local_multicache from your $TFCI file.
+#
 # To use RBE, you must first run `gcloud auth application-default login`, then:
 # echo >>$TFCI source ci/official/envs/local_rbe
+
+# Recommended: Configure Docker. (Linux only)
+#
+#   TF uses hub.docker.com/r/tensorflow/build containers for CI,
+#   and scripts on Linux create a persistent container called "tf"
+#   which mounts your TensorFlow directory into the container.
+#
+#   You will need the NVIDIA Container Toolkit for GPU testing:
+#   https://github.com/NVIDIA/nvidia-container-toolkit
+#
+#   Note: if you interrupt a bazel command on docker (ctrl-c), you
+#   will need to run `docker exec tf pkill bazel` to quit bazel.
+#
+#   Note: new files created from the container are owned by "root".
+#
+#   Note: because the container is persistent, you cannot change TFCI
+#   variables in between script executions. To forcibly remove the
+#   container and start fresh, run "docker rm -f tf".
+#
+# Docker is enabled by default. You may disable it if you prefer:
+# echo >>$TFCI source ci/official/envs/local_nodocker
 
 # Finally: Run your script of choice.
 #   If you've clicked on a test result from our CI (via a dashboard or GitHub link),
@@ -95,6 +105,7 @@ ci/official/wheel.sh
 
 # Afterwards: Examine the results, which will include: The bazel cache,
 # generated artifacts like .whl files, and "script.log", from the script.
+# Note that files created under Docker will be owned by "root".
 ls build_output
 ```
 
