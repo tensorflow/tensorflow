@@ -27,12 +27,14 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import variables
 from tensorflow.python.trackable import base
 from tensorflow.python.training.saving import saveable_object
+from tensorflow.python.util import tf_export
 
 
 TensorSlice = MutableMapping[tensor_spec.TensorSpec, tensor_lib.Tensor]
 TensorSliceDict = MutableMapping[str, TensorSlice]
 
 
+@tf_export.tf_export("train.experimental.ShardableTensor")
 @dataclasses.dataclass(frozen=True)
 class ShardableTensor:
   """Tensor wrapper containing data necessary for sharding.
@@ -68,6 +70,7 @@ class ShardableTensor:
             f"  trackable={self.trackable!r}")
 
 
+@tf_export.tf_export("train.experimental.ShardingCallback")
 class ShardingCallback(abc.ABC):
   """Checkpoint sharding callback function, along with a text description.
 

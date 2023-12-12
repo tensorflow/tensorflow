@@ -350,6 +350,8 @@ py_strict_library(
         ":tf2",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
+        "//tensorflow/python/checkpoint/sharding:sharding_policies",
+        "//tensorflow/python/checkpoint/sharding:sharding_util",
         "//tensorflow/python/client",
         "//tensorflow/python/client:device_lib",
         "//tensorflow/python/client:timeline",
