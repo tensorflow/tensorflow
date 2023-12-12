@@ -294,21 +294,23 @@ class FusedBatchMatMulMkl
                         "Currently first fusion is supported only for Mul",
                         ", but it is ", this->fused_ops_.at(0), " op.")));
       }
-      if (this->fused_ops_.size() > 1 && this->fused_ops_.at(1) == "Add") {
-        auto add_shape = ctx->input(3).shape();
-        OP_REQUIRES(ctx, add_shape.dims() == 4,
-                    absl::InvalidArgumentError(absl::StrCat(
-                        "Add fusion expects add shape to have 4 dims, but got ",
-                        add_shape.dims())));
-        memory::dims add_dims = {add_shape.dim_size(0), add_shape.dim_size(1),
-                                 add_shape.dim_size(2), add_shape.dim_size(3)};
-        params.post_op_params.push_back(
-            {"add", {}, add_dims, data_type, format_tag});
-      } else {
-        OP_REQUIRES(ctx, false,
-                    absl::InvalidArgumentError(absl::StrCat(
-                        "Currently second fusion is supported only for Add",
-                        ", but it is ", this->fused_ops_.at(1), " op.")));
+      if (this->fused_ops_.size() > 1) {
+        if (this->fused_ops_.at(1) == "Add") {
+          auto add_shape = ctx->input(3).shape();
+          OP_REQUIRES(ctx, add_shape.dims() == 4,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Add fusion expects add shape to have 4 dims, but got ",
+                          add_shape.dims())));
+          memory::dims add_dims = {add_shape.dim_size(0), add_shape.dim_size(1),
+                                  add_shape.dim_size(2), add_shape.dim_size(3)};
+          params.post_op_params.push_back(
+              {"add", {}, add_dims, data_type, format_tag});
+        } else {
+          OP_REQUIRES(ctx, false,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Currently second fusion is supported only for Add",
+                          ", but it is ", this->fused_ops_.at(1), " op.")));
+        }
       }
     }
   }
