@@ -546,12 +546,12 @@ class ConvertUniformQuantizedAddOp : public OpConversionPattern<mhlo::AddOp> {
 // dimensions are defined in
 // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#dot_general.
 struct DotLikeDimensionNumbers {
-  ArrayRef<int64_t> lhs_batching_dims;
-  ArrayRef<int64_t> lhs_spatial_dims;
-  ArrayRef<int64_t> lhs_contracting_dims;
-  ArrayRef<int64_t> rhs_batching_dims;
-  ArrayRef<int64_t> rhs_spatial_dims;
-  ArrayRef<int64_t> rhs_contracting_dims;
+  SmallVector<int64_t> lhs_batching_dims;
+  SmallVector<int64_t> lhs_spatial_dims;
+  SmallVector<int64_t> lhs_contracting_dims;
+  SmallVector<int64_t> rhs_batching_dims;
+  SmallVector<int64_t> rhs_spatial_dims;
+  SmallVector<int64_t> rhs_contracting_dims;
 };
 
 // A shared matchAndRewrite implementation for dot-like hybrid quantized
@@ -604,7 +604,7 @@ LogicalResult matchAndRewriteDotLikeHybridOp(
 
 Value CreateZeroPointPartialOffset(OpBuilder &builder, Location loc,
                                    Value tensor, const int64_t other_tensor_zp,
-                                   ArrayRef<int64_t> reduction_dims) {
+                                   SmallVector<int64_t> reduction_dims) {
   // This function calculates part of the zero-point-offset by using
   // mhlo::Reduce to sum over the contracting dims of the tensor, and then
   // multiply by zp of the other tensor.
@@ -1098,12 +1098,14 @@ class ConvertUniformQuantizedDotGeneralOp
       return matchAndRewriteDotLikeOp(
           op, adaptor, op->getAttrs(),
           DotLikeDimensionNumbers{
-              op.getDotDimensionNumbers().getLhsBatchingDimensions(),
+              to_vector(op.getDotDimensionNumbers().getLhsBatchingDimensions()),
               /*lhs_spatial_dims=*/{},
-              op.getDotDimensionNumbers().getLhsContractingDimensions(),
-              op.getDotDimensionNumbers().getRhsBatchingDimensions(),
+              to_vector(
+                  op.getDotDimensionNumbers().getLhsContractingDimensions()),
+              to_vector(op.getDotDimensionNumbers().getRhsBatchingDimensions()),
               /*rhs_spatial_dims=*/{},
-              op.getDotDimensionNumbers().getRhsContractingDimensions()},
+              to_vector(
+                  op.getDotDimensionNumbers().getRhsContractingDimensions())},
           rewriter);
     }
   }
