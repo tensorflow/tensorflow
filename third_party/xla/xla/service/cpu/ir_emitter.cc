@@ -2632,6 +2632,31 @@ Status IrEmitter::HandleOneDnnLayerNorm(HloInstruction* custom_call) {
 
   return OkStatus();
 }
+
+Status IrEmitter::HandleOneDnnSoftmax(HloInstruction* custom_call) {
+  auto input = custom_call->operand(0);
+  llvm_ir::IrArray input_array(GetIrArrayFor(input));
+  auto input_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, input_array);
+
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
+  llvm_ir::IrArray result_array = GetIrArrayFor(custom_call);
+  auto result_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, result_array);
+
+  auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
+  EmitCallToFunc(runtime::kOneDnnSoftmaxSymbolName,
+                 {
+                     GetExecutableRunOptionsArgument(),
+                     input_stack_alloca.value,
+                     result_stack_alloca.value,
+                 },
+                 b_.getVoidTy());
+
+  input_stack_alloca.EmitLifetimeEnd();
+  result_stack_alloca.EmitLifetimeEnd();
+
+  return OkStatus();
+}
+
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
 Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
@@ -2647,6 +2672,9 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   if (custom_call->custom_call_target() == "__onednn$matmul") {
     return HandleOneDnnMatMul(custom_call);
+  }
+  if (custom_call->custom_call_target() == "__onednn$softmax") {
+    return HandleOneDnnSoftmax(custom_call);
   }
   if (custom_call->custom_call_target() == "__onednn$layernorm") {
     return HandleOneDnnLayerNorm(custom_call);

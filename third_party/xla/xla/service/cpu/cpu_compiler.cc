@@ -698,10 +698,11 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // AOT compiled code runs in single thread.
   if (!is_aot_compile) {
     pipeline.AddPass<OneDnnRewriter>();
-
     // Placing OneDnnOpsRewriter here to match the flax patterns
     // TODO: Decide where would be the appropriate place for this pass to make
     // it more generic
+    // TODO - intel: Name of the pass might seem redundant as oneDnnRewriter,
+    // but in future plan to rename oneDNNrewriter to specific to onednn matmul
     pipeline.AddPass<OneDnnOpsRewriter>();
   }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
