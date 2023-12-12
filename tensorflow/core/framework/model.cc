@@ -551,7 +551,7 @@ class InterleaveMany : public Node {
         self_processing_time + inputs_processing_time;
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const {
+  Status ToProto(ModelProto::Node* node_proto) const override {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::INTERLEAVE_MANY);
     return OkStatus();
@@ -763,7 +763,7 @@ class AsyncInterleaveMany : public Node {
         self_processing_time + inputs_processing_time;
   }
 
-  double MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_) {
+  double MaximumBufferedBytes() const override TF_SHARED_LOCKS_REQUIRED(mu_) {
     auto* parameter = gtl::FindOrNull(parameters_, kMaxBufferedElements);
     if (parameter == nullptr) {
       parameter = gtl::FindOrNull(parameters_, kParallelism);
@@ -774,7 +774,7 @@ class AsyncInterleaveMany : public Node {
     return (*parameter)->value * AverageBufferedElementSizeLocked();
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const {
+  Status ToProto(ModelProto::Node* node_proto) const override {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::ASYNC_INTERLEAVE_MANY);
     return OkStatus();
@@ -866,7 +866,7 @@ class KnownRatio : public Node {
         self_processing_time + inputs_processing_time;
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const {
+  Status ToProto(ModelProto::Node* node_proto) const override {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::KNOWN_RATIO);
     node_proto->set_ratio(ratio_);
@@ -1245,7 +1245,7 @@ class UnknownRatio : public Node {
         self_processing_time + inputs_processing_time;
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const {
+  Status ToProto(ModelProto::Node* node_proto) const override {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::UNKNOWN_RATIO);
     return OkStatus();
@@ -1299,7 +1299,7 @@ class Unknown : public Node {
         TotalProcessingTimeForInputs(*total_processing_times);
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const {
+  Status ToProto(ModelProto::Node* node_proto) const override {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::UNKNOWN);
     return OkStatus();
@@ -1328,7 +1328,7 @@ class AsyncKnownRatio : public AsyncRatio {
         parameters);
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const {
+  Status ToProto(ModelProto::Node* node_proto) const override {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::ASYNC_KNOWN_RATIO);
     node_proto->set_ratio(Ratio());
@@ -1373,7 +1373,7 @@ class AsyncUnknownRatio : public AsyncRatio {
         Args{id_, name_, std::move(output)}, parameters);
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const {
+  Status ToProto(ModelProto::Node* node_proto) const override {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::ASYNC_UNKNOWN_RATIO);
     return OkStatus();
