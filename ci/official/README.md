@@ -91,7 +91,7 @@ echo >>$TFCI source ci/official/envs/local_multicache
 #   variables in between script executions. To forcibly remove the
 #   container and start fresh, run "docker rm -f tf".
 #
-# Docker is enabled by default. You may disable it if you prefer:
+# Docker is enabled by default on Linux. You may disable it if you prefer:
 # echo >>$TFCI source ci/official/envs/local_nodocker
 
 # Finally: Run your script of choice.
