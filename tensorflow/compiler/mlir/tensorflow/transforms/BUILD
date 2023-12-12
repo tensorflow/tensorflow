@@ -612,6 +612,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:xla_call_module_attrs",
         "//tensorflow/compiler/mlir/tensorflow:xla_rewrite_util",
         "//tensorflow/compiler/mlir/tensorflow:xla_sharding_util",
+        "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:tpu_metadata_utils",
         "//tensorflow/compiler/mlir/tf2xla/internal/inference:inference_metrics_pass",
         "//tensorflow/compiler/mlir/tf2xla/transforms:legalization_op_config",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf",
