@@ -341,74 +341,57 @@ HorizontalLoopFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
       return 32;
     } else {
       if (fusible_instrs_[pos_]->opcode() == HloOpcode::kFusion) {
-        auto fused_instruction_count =
-            fusible_instrs_[pos_]->fused_instruction_count();
-        if (fused_instruction_count < 8) {
-          return 32;
-        } else if (fused_instruction_count < 16) {
-          return 16;
-        } else if (fused_instruction_count < 32) {
-          return 8;
-        } else if (fused_instruction_count < 64) {
-          return 4;
-        } else {
-          return 2;
-        }
+        return 32;
       } else {
         return 64;
       }
     }
   }();
 
-  // CUDA has a parameter size limit of ~4k bytes.
-  constexpr int64_t kMaxCudaParamSize = 4000;
-  size_t accum_io_size = 0;
-  auto reach_max_fusion_batch_size = [&](size_t left, size_t right) -> bool {
-    if (right - left >= kMaxFusionBatchSize) {
-      return true;
-    }
-
-    accum_io_size += fusible_instrs_.at(right)->operand_count() +
-                     GetOutputSizeOfFusible(*fusible_instrs_.at(right));
-
-    if (accum_io_size * 8 >= kMaxCudaParamSize) {
-      return true;
-    }
-
-    return false;
-  };
-
   size_t left = pos_;
   size_t right = pos_ + 1;
   size_t first_output_size = GetOutputSizeOfFusible(*fusible_instrs_[left]);
   PrimitiveType first_output_type =
       GetUniqueOutputTypeOfFusible(*fusible_instrs_[left]);
+  // CUDA has a parameter size limit of ~4k bytes.
+  constexpr int64_t kMaxCudaParamSize = 4000;
+  size_t accum_io_size = 0;
+  size_t accum_num_outputs = 0;
   for (; right < fusible_instrs_.size(); ++right) {
     PrimitiveType cur_output_type =
         GetUniqueOutputTypeOfFusible(*fusible_instrs_[right]);
     if (first_output_type != cur_output_type) {
       // Cannot fuse computations who have multiple output types.
       break;
-    } else if (first_output_size !=
-               GetOutputSizeOfFusible(*fusible_instrs_[right])) {
+    }
+    if (first_output_size != GetOutputSizeOfFusible(*fusible_instrs_[right])) {
       // Cannot fuse computations who have different numbers of outputs.
       break;
-    } else if (GetInstrCountOfFusible(*fusible_instrs_[left]) !=
-               GetInstrCountOfFusible(*fusible_instrs_[right])) {
+    }
+    if (GetInstrCountOfFusible(*fusible_instrs_[left]) !=
+        GetInstrCountOfFusible(*fusible_instrs_[right])) {
       // Do not fuse computations of different instruction counts as it may
       // introduce control divergence. This is a very simple heuristic to avoid
       // fusing computations with too much discrepancy and we may improve it
       // when the needs arise.
       break;
-    } else if (!sliced_input_fusion_ &&
-               !ShapeUtil::EqualIgnoringElementType(
-                   GetOutputsOfFusible(*fusible_instrs_[left])[0]->shape(),
-                   GetOutputsOfFusible(*fusible_instrs_[right])[0]->shape())) {
+    }
+    if (!sliced_input_fusion_ &&
+        !ShapeUtil::EqualIgnoringElementType(
+            GetOutputsOfFusible(*fusible_instrs_[left])[0]->shape(),
+            GetOutputsOfFusible(*fusible_instrs_[right])[0]->shape())) {
       // This is for fusing into kLoop type kernel, so we requires that each
       // fusion operand have the same shape
       break;
-    } else if (reach_max_fusion_batch_size(left, right)) {
+    }
+    size_t num_outputs = GetOutputSizeOfFusible(*fusible_instrs_[right]);
+    accum_num_outputs += num_outputs;
+    if (accum_num_outputs >= kMaxFusionBatchSize) {
       // Hit max fusion batch size.
+      break;
+    }
+    accum_io_size += fusible_instrs_.at(right)->operand_count() + num_outputs;
+    if (accum_io_size * 8 >= kMaxCudaParamSize) {
       break;
     }
   }
