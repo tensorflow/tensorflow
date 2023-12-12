@@ -782,6 +782,7 @@ cc_library(
         ":thread_safe_buffer",
         ":worker_proto_cc",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:standalone",

@@ -113,11 +113,6 @@ class DistributedSaveLoadTest(
           test_base.default_test_combinations(),
           combinations.combine(num_workers=[1, 3], num_elements=[0, 10])))
   def test_distributed_load(self, num_workers: int, num_elements: int):
-    self.skipTest(
-        "TODO(b/297930782): Fix deadlock when calling "
-        "TaskRunner::GetProcessingTimeNsec(): The heartbeat thread tries to "
-        "lock task runner when building a heartbeat request, while the task "
-        "runner may be waiting for the next element while holding the lock.")
     test_snapshot = TestSnapshot()
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     dataset = dataset_ops.Dataset.range(num_elements)

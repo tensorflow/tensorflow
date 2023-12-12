@@ -93,8 +93,6 @@ class ElementOrErrorIterator : public TaskIterator {
 
   int64_t Cardinality() const override { return elements_.size(); }
 
-  std::optional<double> GetProcessingTimeNsec() const override { return 1.0e7; }
-
  private:
   const std::vector<absl::StatusOr<T>> elements_;
   int64_t next_ = 0;

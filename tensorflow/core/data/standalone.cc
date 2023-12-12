@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -116,16 +117,7 @@ Status Iterator::Restore(const std::vector<Tensor>& saved_iterator) {
   return iterator_->Restore(ctx_.get(), &reader);
 }
 
-std::optional<double> Iterator::GetProcessingTimeNsec() const {
-  if (ctx_->model() == nullptr) return std::nullopt;
-
-  double processing_time_nsec =
-      ctx_->model()->ComputeSnapshotProcessingTimeNsec();
-  if (processing_time_nsec > 0)
-    return processing_time_nsec;
-  else
-    return std::nullopt;
-}
+std::shared_ptr<model::Model> Iterator::model() const { return ctx_->model(); }
 
 Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
                           std::unique_ptr<Dataset>* result) {
