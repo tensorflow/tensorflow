@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/fusion_utils.h"
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
-
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -82,6 +82,44 @@ TEST(FusionUtilsTest, FuseFunctionsByComposition) {
   ASSERT_NE(parent_mul, nullptr);
   ASSERT_NE(output_mul, nullptr);
   EXPECT_EQ(ParseNodeConnection(output_mul->input(0)), parent_mul->name());
+
+  auto output_value = fused_function->ret().at(
+      fused_function->signature().output_arg(0).name());
+
+  EXPECT_EQ(ParseNodeConnection(output_value), output_mul->name());
+}
+
+TEST(FusionUtilsTest, FuseFunctionsWithControlInputs) {
+  GraphDef graph;
+  auto *parent_function = graph.mutable_library()->add_function();
+  *parent_function = test::function::XTimesTwoWithControlInput();
+  auto *function = graph.mutable_library()->add_function();
+  *function = test::function::XTimesTwoWithControlInput();
+
+  auto *fused_function = FuseFunctions(
+      *parent_function, *function, "fused_maps", fusion_utils::ComposeSignature,
+      fusion_utils::ComposeInput, fusion_utils::ComposeOutput,
+      fusion_utils::MergeNodes, graph.mutable_library());
+
+  EXPECT_EQ(fused_function->signature().name(), "fused_maps");
+  EXPECT_EQ(fused_function->signature().input_arg_size(), 1);
+  EXPECT_EQ(fused_function->signature().output_arg_size(), 1);
+  EXPECT_EQ(fused_function->ret_size(), 1);
+  CheckUniqueNames(*fused_function);
+
+  const NodeDef *parent_mul = nullptr, *output_mul = nullptr;
+  for (const auto &fused_node : fused_function->node_def()) {
+    if (fused_node.op() == "Mul") {
+      if (fused_node.name() == "y")
+        parent_mul = &fused_node;
+      else
+        output_mul = &fused_node;
+    }
+  }
+  ASSERT_NE(parent_mul, nullptr);
+  ASSERT_NE(output_mul, nullptr);
+  EXPECT_EQ(ParseNodeConnection(output_mul->input(1)),
+            absl::StrCat("^", parent_mul->name()));
 
   auto output_value = fused_function->ret().at(
       fused_function->signature().output_arg(0).name());

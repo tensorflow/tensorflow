@@ -373,6 +373,7 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:functional_ops",
+        "@com_google_absl//absl/strings",
     ] + tf_protos_all(),
 )
 
@@ -389,6 +390,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
+        "@com_google_absl//absl/strings",
     ] + tf_protos_all(),
 )
 

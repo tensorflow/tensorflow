@@ -24,6 +24,8 @@ from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -143,6 +145,31 @@ class MapFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(
         dataset,
         expected_output=[x * 2**k for x in range(n)],
+        assert_items_equal=True,
+    )
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testControlInputs(self):
+    def f(x):
+      with ops.control_dependencies([check_ops.assert_type(x, dtypes.int64)]):
+        return 2 * x
+
+    n = 5
+    dataset = dataset_ops.Dataset.range(n)
+    dataset = dataset.apply(
+        testing.assert_next(["ParallelMap", "MemoryCacheImpl"])
+    )
+    dataset = dataset.map(f, num_parallel_calls=dataset_ops.AUTOTUNE)
+    dataset = dataset.map(f, num_parallel_calls=dataset_ops.AUTOTUNE)
+
+    dataset = dataset.cache()
+    options = options_lib.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.map_fusion = True
+    dataset = dataset.with_options(options)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[x * 4 for x in range(n)],
         assert_items_equal=True,
     )
 
