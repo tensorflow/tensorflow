@@ -67,7 +67,7 @@ def ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass : Pass<"stablehlo-
   }];
 }
 
-def QuantizePass : Pass<"stablehlo-quantize", "mlir::func::FuncOp"> {
+def QuantizePass : Pass<"stablehlo-quantize", "mlir::ModuleOp"> {
   let summary = "Applies static-range quantization on ops.";
   let dependentDialects = [
     "mlir::stablehlo::StablehloDialect",
