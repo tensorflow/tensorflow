@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/indexing_map_simplifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
@@ -60,12 +61,9 @@ namespace gpu {
 namespace {
 
 using llvm::SmallVector;
-using mlir::AffineBinaryOpExpr;
-using mlir::AffineDimExpr;
 using mlir::AffineExpr;
 using mlir::AffineExprKind;
 using mlir::AffineMap;
-using mlir::AffineSymbolExpr;
 using mlir::getAffineBinaryOpExpr;
 using mlir::getAffineConstantExpr;
 using mlir::getAffineDimExpr;
@@ -741,232 +739,6 @@ std::string ToStringImpl(const T& value) {
   return ss.str();
 }
 
-int64_t FloorDiv(int64_t dividend, int64_t divisor) {
-  return dividend / divisor -
-         (((dividend >= 0) != (divisor >= 0) && dividend % divisor) ? 1 : 0);
-}
-
-struct IndexingMapSimplifier {
-  struct Bounds {
-    int64_t lower;
-    int64_t upper;
-  };
-
-  void SetInclusiveBounds(AffineExpr expr, int64_t lower, int64_t upper) {
-    bounds[expr] = {lower, upper};
-  }
-
-  Bounds BoundsInclusive(AffineExpr expr) {
-    auto bound = bounds.find(expr);
-    if (bound != bounds.end()) return bound->second;
-
-    switch (expr.getKind()) {
-      case AffineExprKind::Constant: {
-        int64_t value = mlir::cast<mlir::AffineConstantExpr>(expr).getValue();
-        return bounds[expr] = {value, value};
-      }
-      case AffineExprKind::DimId: {
-        LOG(FATAL) << "Unknown dim "
-                   << mlir::cast<mlir::AffineDimExpr>(expr).getPosition();
-      }
-      case AffineExprKind::SymbolId: {
-        LOG(FATAL) << "Unknown symbol"
-                   << mlir::cast<mlir::AffineSymbolExpr>(expr).getPosition();
-      }
-      default:
-        auto binary_op = mlir::dyn_cast<AffineBinaryOpExpr>(expr);
-        CHECK(binary_op);
-        auto lhs = BoundsInclusive(binary_op.getLHS());
-        auto rhs = BoundsInclusive(binary_op.getRHS());
-
-        auto& result = bounds[expr];
-        switch (expr.getKind()) {
-          case AffineExprKind::Add:
-            return result = {lhs.lower + rhs.lower, lhs.upper + rhs.upper};
-          case AffineExprKind::Mul: {
-            int64_t a = lhs.lower * rhs.lower;
-            int64_t b = lhs.upper * rhs.upper;
-            return result = {std::min(a, b), std::max(a, b)};
-          }
-          case AffineExprKind::Mod: {
-            CHECK_EQ(rhs.lower, rhs.upper) << "RHS of mod must be a constant";
-            int64_t m = rhs.lower;
-            if (0 <= lhs.lower && lhs.upper < m) {
-              return result = lhs;
-            }
-            return result = {0, m - 1};
-          }
-          case AffineExprKind::FloorDiv: {
-            CHECK_EQ(rhs.lower, rhs.upper)
-                << "RHS of floor_div must be a constant";
-            int64_t d = rhs.lower;
-            int a = FloorDiv(lhs.lower, d);
-            int b = FloorDiv(lhs.upper, d);
-            return result = {std::min(a, b), std::max(a, b)};
-          }
-          default:
-            // We don't use ceildiv, so we don't support it.
-            LOG(FATAL) << "Unsupported expression";
-        }
-    }
-  }
-
-  // Simplifier for mod.
-  // - Rewrites (a * 100 + ...) % 100 to (...) % 100
-  // - Rewrites a % b to a if a is known to be less than b.
-  AffineExpr RewriteMod(AffineBinaryOpExpr mod) {
-    auto lhs_simplified = SimplifyOnce(mod.getLHS());
-
-    auto lhs = BoundsInclusive(lhs_simplified);
-    auto rhs = BoundsInclusive(mod.getRHS());
-
-    // a % b where b is always larger than a?
-    if (0 <= lhs.lower && lhs.upper < rhs.lower) return lhs_simplified;
-
-    // The logic below assumes we have a constant RHS.
-    if (rhs.lower != rhs.upper) return mod;
-    int64_t m = rhs.lower;
-
-    auto new_lhs = RewriteSumIf(lhs_simplified, [&](AffineExpr expr) {
-      if (expr.getKind() != AffineExprKind::Mul) {
-        return true;
-      }
-
-      auto mul_rhs =
-          BoundsInclusive(mlir::cast<AffineBinaryOpExpr>(expr).getRHS());
-      bool remove = mul_rhs.lower == mul_rhs.upper && (mul_rhs.lower % m) == 0;
-      return !remove;  // We keep it if we don't remove it!
-    });
-
-    // If we weren't able to remove or simplify anything, return the original
-    // expression.
-    if (new_lhs == mod.getLHS()) {
-      return mod;
-    }
-    // If we removed everything, return 0.
-    if (!new_lhs) {
-      return getAffineConstantExpr(0, mlir_context);
-    }
-    // Otherwise, return new_sum % m.
-    return getAffineBinaryOpExpr(AffineExprKind::Mod, new_lhs, mod.getRHS());
-  }
-
-  // Simplifier for floordiv.
-  // - Rewrites (a * 100 + ...) / 100 to a + (...) / 100
-  // - Rewrites a / 100 to 0 when a is known to be less than 100.
-  AffineExpr RewriteFloorDiv(AffineBinaryOpExpr div) {
-    auto lhs_simplified = SimplifyOnce(div.getLHS());
-    auto lhs = BoundsInclusive(lhs_simplified);
-    auto rhs = BoundsInclusive(div.getRHS());
-
-    if (0 <= lhs.lower && lhs.upper < rhs.lower) {
-      return getAffineConstantExpr(0, mlir_context);
-    }
-
-    // The logic below assumes we have a constant RHS.
-    if (rhs.lower != rhs.upper) return div;
-    int64_t d = rhs.lower;
-
-    int64_t a = FloorDiv(lhs.lower, d);
-    int64_t b = FloorDiv(lhs.upper, d);
-    if (a == b) {
-      return getAffineConstantExpr(a, mlir_context);
-    }
-
-    AffineExpr extracted = getAffineConstantExpr(0, mlir_context);
-    auto new_dividend = RewriteSumIf(lhs_simplified, [&](AffineExpr expr) {
-      if (auto multiplier = GetConstantRhsMultiplier(expr)) {
-        // (x * 7 + ...) / 3 -> can't extract. We could extract x * 2 and keep
-        // one x, but we currently have no reason to do that.
-        if (*multiplier % d != 0) return true;
-        int64_t factor = *multiplier / d;
-        extracted = getAffineBinaryOpExpr(
-            AffineExprKind::Add, extracted,
-            getAffineBinaryOpExpr(AffineExprKind::Mul,
-                                  mlir::cast<AffineBinaryOpExpr>(expr).getLHS(),
-                                  getAffineConstantExpr(factor, mlir_context)));
-        // Remove from dividend.
-        return false;
-      }
-
-      // Not a constant multiplier, keep in dividend.
-      return true;
-    });
-
-    // If we removed everything, skip the div.
-    if (!new_dividend) return extracted;
-    // If we removed nothing, return the original division.
-    if (extracted == getAffineConstantExpr(0, mlir_context) &&
-        new_dividend == div.getLHS()) {
-      return div;
-    }
-
-    return getAffineBinaryOpExpr(
-        AffineExprKind::Add, extracted,
-        getAffineBinaryOpExpr(AffineExprKind::FloorDiv, new_dividend,
-                              div.getRHS()));
-  }
-
-  std::optional<int64_t> GetConstantRhsMultiplier(AffineExpr expr) {
-    if (expr.getKind() != AffineExprKind::Mul) return std::nullopt;
-    auto bound = BoundsInclusive(mlir::cast<AffineBinaryOpExpr>(expr).getRHS());
-    if (bound.lower != bound.upper) return std::nullopt;
-    return bound.lower;
-  }
-
-  AffineExpr RewriteSumIf(AffineExpr expr,
-                          const std::function<bool(AffineExpr)>& pred) {
-    if (expr.getKind() == AffineExprKind::Add) {
-      auto add = mlir::dyn_cast<AffineBinaryOpExpr>(expr);
-      auto lhs = RewriteSumIf(add.getLHS(), pred);
-      auto rhs = RewriteSumIf(add.getRHS(), pred);
-      if (lhs == add.getLHS() && rhs == add.getRHS()) {
-        return add;
-      }
-      if (lhs && rhs) {
-        return getAffineBinaryOpExpr(AffineExprKind::Add, lhs, rhs);
-      }
-      return lhs ? lhs : (rhs ? rhs : nullptr);
-    }
-    return pred(expr) ? expr : nullptr;
-  }
-
-  // Attempts to simplify the expression, but doesn't attempt to simplify the
-  // result further.
-  AffineExpr SimplifyOnce(AffineExpr expr) {
-    switch (expr.getKind()) {
-      case AffineExprKind::Mul:
-      case AffineExprKind::Add: {
-        auto binop = mlir::cast<AffineBinaryOpExpr>(expr);
-        auto lhs = SimplifyOnce(binop.getLHS());
-        auto rhs = SimplifyOnce(binop.getRHS());
-        if (lhs == binop.getLHS() && rhs == binop.getRHS()) {
-          return expr;
-        }
-        return getAffineBinaryOpExpr(expr.getKind(), lhs, rhs);
-      }
-      case AffineExprKind::Mod:
-        return RewriteMod(mlir::cast<AffineBinaryOpExpr>(expr));
-      case AffineExprKind::FloorDiv:
-        return RewriteFloorDiv(mlir::cast<AffineBinaryOpExpr>(expr));
-      default:
-        return expr;
-    }
-  }
-
-  // Simplifies the expression as much as possible.
-  AffineExpr Simplify(AffineExpr expr) {
-    while (true) {
-      auto simplified = SimplifyOnce(expr);
-      if (simplified == expr) return expr;
-      expr = simplified;
-    }
-  }
-
-  MLIRContext* mlir_context;
-  llvm::DenseMap<AffineExpr, Bounds> bounds{};
-};
-
 }  // namespace
 
 bool IndexingMap::Simplify() {
@@ -980,22 +752,11 @@ bool IndexingMap::Simplify() {
     simplifier.SetInclusiveBounds(getAffineSymbolExpr(index, mlir_context),
                                   range.lower_bound, range.upper_bound - 1);
   }
-  std::vector<AffineExpr> results;
-  results.reserve(affine_map.getNumResults());
-  bool any_changed = false;
-  for (auto expr : affine_map.getResults()) {
-    auto simplified = simplifier.Simplify(expr);
-    any_changed |= simplified != expr;
-    results.push_back(simplified);
-  }
-
-  if (!any_changed) {
+  AffineMap simplified_affine_map = simplifier.Simplify(affine_map);
+  if (simplified_affine_map == affine_map) {
     return false;
   }
-
-  affine_map = mlir::simplifyAffineMap(
-      AffineMap::get(affine_map.getNumDims(), affine_map.getNumSymbols(),
-                     results, affine_map.getContext()));
+  affine_map = simplified_affine_map;
   return true;
 }
 
@@ -1022,13 +783,6 @@ bool HloInstructionIndexing::Simplify() {
     any_simplified |= !to_remove.empty();
   }
   return any_simplified;
-}
-
-std::string ToString(const AffineMap& affine_map) {
-  std::string s;
-  llvm::raw_string_ostream ss(s);
-  affine_map.print(ss);
-  return s;
 }
 
 bool operator==(const Range& lhs, const Range& rhs) {
