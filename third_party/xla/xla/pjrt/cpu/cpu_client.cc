@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/topology_util.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/semaphore.h"
@@ -378,23 +379,33 @@ TfrtCpuClient::TfrtCpuClient(
 TfrtCpuClient::~TfrtCpuClient() { LOG(INFO) << "TfrtCpuClient destroyed."; }
 
 StatusOr<PjRtDevice*> TfrtCpuClient::LookupDevice(int device_id) const {
-  auto it = id_to_device_.find(device_id);
+  return LookupDevice(PjRtGlobalDeviceId(device_id));
+}
+
+StatusOr<PjRtDevice*> TfrtCpuClient::LookupDevice(
+    xla::PjRtGlobalDeviceId global_device_id) const {
+  auto it = id_to_device_.find(global_device_id.value());
   if (it != id_to_device_.end()) {
     return it->second;
   }
   return InvalidArgument("No matching device found for device_id %d",
-                         device_id);
+                         global_device_id.value());
 }
 
 StatusOr<PjRtDevice*> TfrtCpuClient::LookupAddressableDevice(
     int local_hardware_id) const {
+  return LookupAddressableDevice(PjRtLocalDeviceId(local_hardware_id));
+}
+
+StatusOr<PjRtDevice*> TfrtCpuClient::LookupAddressableDevice(
+    PjRtLocalDeviceId local_device_id) const {
   for (auto* device : addressable_devices_) {
-    if (local_hardware_id == device->local_hardware_id()) {
+    if (local_device_id == device->local_device_id()) {
       return device;
     }
   }
-  return InvalidArgument("No matching device found for local_hardware_id %d",
-                         local_hardware_id);
+  return InvalidArgument("No matching device found for local_device_id %d",
+                         local_device_id.value());
 }
 
 absl::Span<PjRtMemorySpace* const> TfrtCpuClient::memory_spaces() const {

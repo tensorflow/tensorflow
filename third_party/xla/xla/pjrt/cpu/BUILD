@@ -118,6 +118,7 @@ cc_library(
         "//xla/pjrt:compile_options_proto_cc",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt:semaphore",

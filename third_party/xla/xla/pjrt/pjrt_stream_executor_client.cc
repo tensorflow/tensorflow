@@ -103,6 +103,7 @@ limitations under the License.
 #include "xla/pjrt/metrics.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/tracked_device_buffer.h"
@@ -1260,13 +1261,18 @@ PjRtStreamExecutorDevice::GetStreamForExternalReadyEvents() const {
 
 StatusOr<PjRtDevice*> PjRtStreamExecutorClient::LookupAddressableDevice(
     int local_hardware_id) const {
+  return LookupAddressableDevice(PjRtLocalDeviceId(local_hardware_id));
+}
+
+StatusOr<PjRtDevice*> PjRtStreamExecutorClient::LookupAddressableDevice(
+    xla::PjRtLocalDeviceId local_device_id) const {
   for (auto* device : addressable_devices_) {
-    if (local_hardware_id == device->local_hardware_id()) {
+    if (local_device_id == device->local_device_id()) {
       return device;
     }
   }
-  return InvalidArgument("No matching device found for local_hardware_id %d",
-                         local_hardware_id);
+  return InvalidArgument("No matching device found for local_device_id %d",
+                         local_device_id.value());
 }
 
 absl::Span<PjRtMemorySpace* const> PjRtStreamExecutorClient::memory_spaces()

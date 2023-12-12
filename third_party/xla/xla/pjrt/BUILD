@@ -447,6 +447,7 @@ cc_library(
         "//xla/client:local_client",
         "//xla/client:xla_computation",
         "//xla/hlo/ir:hlo",
+        "//xla/pjrt:pjrt_common",
         "//xla/pjrt/distributed:protocol_proto_cc",
         "//xla/service:computation_layout",
         "//xla/service:computation_placer",
