@@ -20,12 +20,26 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/statusor.h"
 
 namespace stablehlo::quantization::io {
 
+absl::StatusOr<std::string> GetLocalTmpFileName(tsl::Env* const env) {
+  std::string tmp_fname{};
+  if (!env->LocalTempFilename(&tmp_fname)) {
+    return absl::InternalError("Failed to create tmp file name.");
+  }
+
+  return tmp_fname;
+}
+
+absl::StatusOr<std::string> GetLocalTmpFileName() {
+  return GetLocalTmpFileName(tsl::Env::Default());
+}
+
 absl::StatusOr<std::string> CreateTmpDir(tsl::Env* const env) {
-  std::string tmp_dir;
-  env->LocalTempFilename(&tmp_dir);
+  TF_ASSIGN_OR_RETURN(std::string tmp_dir, GetLocalTmpFileName(env));
+
   if (!env->RecursivelyCreateDir(tmp_dir).ok()) {
     return absl::InternalError(
         absl::StrFormat("Failed to create tmp dir: '%s'", tmp_dir));

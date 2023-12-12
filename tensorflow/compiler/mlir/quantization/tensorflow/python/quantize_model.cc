@@ -46,6 +46,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/export.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/status_macro.h"
@@ -69,7 +70,6 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -83,6 +83,7 @@ using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
 using ::stablehlo::quantization::ExportOptions;
 using ::stablehlo::quantization::kExportStepSuffix;
+using ::stablehlo::quantization::io::GetLocalTmpFileName;
 
 // Add passes for transforming the MLIR module op so that it can be exported
 // back to GraphDef. Roughly, this consists of:
@@ -307,18 +308,6 @@ absl::flat_hash_map<std::string, std::string> UpdateFunctionAliases(
   return updated_function_aliases;
 }
 
-// Create a unique local temporary filename. It only creates the name, not the
-// actual file.
-absl::StatusOr<std::string> GetLocalTempFilename() {
-  auto *env = Env::Default();
-  std::string tmp_fname{};
-  if (!env->LocalTempFilename(&tmp_fname)) {
-    return absl::InternalError("Failed to create a local temp file name.");
-  }
-
-  return tmp_fname;
-}
-
 // Sets up and runs the passes for exporting `module_op`. The behavior of the
 // exporting passes is controlled by `export_opts`. Returns `AssetFileDef`s that
 // associate the input arguments of @main and the asset file names. Asset file
@@ -421,7 +410,7 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
 
   const bool unfreeze_constants = !quantization_options.freeze_all_variables();
 
-  TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTempFilename());
+  TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTmpFileName());
 
   const auto export_opts = ExportOptions{
       /*duplicate_shape_determining_constants=*/true, unfreeze_constants,
@@ -503,7 +492,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
   }
 
   const bool unfreeze_constants = !quantization_options.freeze_all_variables();
-  TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTempFilename());
+  TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTmpFileName());
 
   // `duplicate_shape_determining_constants = false` because the
   // resulting graph of this step is not expected to be loaded on TPU.
@@ -592,7 +581,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
   }
 
   const bool unfreeze_constants = !quantization_options.freeze_all_variables();
-  TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTempFilename());
+  TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTmpFileName());
 
   const auto export_opts = ExportOptions{
       /*duplicate_shape_determining_constants=*/true, unfreeze_constants,
@@ -664,7 +653,7 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
       context, *module_ref));
 
   const bool unfreeze_constants = !quantization_options.freeze_all_variables();
-  TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTempFilename());
+  TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTmpFileName());
 
   const auto export_opts = ExportOptions{
       /*duplicate_shape_determining_constants=*/true, unfreeze_constants,
@@ -739,7 +728,7 @@ absl::StatusOr<ExportedModel> QuantizeWeightOnly(
       context, *module_ref));
 
   const bool unfreeze_constants = !quantization_options.freeze_all_variables();
-  TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTempFilename());
+  TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTmpFileName());
 
   const auto export_opts = ExportOptions{
       /*duplicate_shape_determining_constants=*/true, unfreeze_constants,

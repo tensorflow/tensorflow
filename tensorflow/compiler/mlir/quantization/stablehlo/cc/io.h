@@ -22,6 +22,15 @@ limitations under the License.
 
 namespace stablehlo::quantization::io {
 
+// Generates a unique local tmp file name. This function only generates the name
+// (path) and doesn't actually creates the file.
+absl::StatusOr<std::string> GetLocalTmpFileName(tsl::Env* env);
+
+// Generates a unique local tmp file name. This function only generates the name
+// (path) and doesn't actually creates the file. The default environment
+// `tsl::Env::Default` is used to generate the name.
+absl::StatusOr<std::string> GetLocalTmpFileName();
+
 // Creates a temporary directory on an environment defined by the implementation
 // of `tsl::Env` and returns its path. Returns an InternalError status if
 // failed.
