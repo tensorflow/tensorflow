@@ -15,9 +15,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_EXPORT_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_EXPORT_H_
 
+#include <optional>
 #include <string>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/protobuf/saver.pb.h"
 
 namespace stablehlo::quantization {
 
@@ -42,6 +49,14 @@ struct ExportOptions {
   // debugging and does not modify the behavior of the export.
   std::string debug_name = "stablehlo_quant";
 };
+
+// Factory function for `ExportedModel`.
+[[nodiscard]] tensorflow::quantization::ExportedModel CreateExportedModel(
+    tensorflow::GraphDef&& graph_def, absl::string_view init_node_name,
+    absl::string_view checkpoint_dir,
+    std::optional<tensorflow::SaverDef> saver_def,
+    const absl::flat_hash_map<std::string, std::string>& function_aliases,
+    const std::vector<tensorflow::AssetFileDef>& asset_file_defs);
 
 }  // namespace stablehlo::quantization
 

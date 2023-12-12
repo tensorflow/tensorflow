@@ -81,6 +81,7 @@ using ::mlir::quant::kTfQuantSaveOpName;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
+using ::stablehlo::quantization::CreateExportedModel;
 using ::stablehlo::quantization::ExportOptions;
 using ::stablehlo::quantization::kExportStepSuffix;
 using ::stablehlo::quantization::io::GetLocalTmpFileName;
@@ -135,32 +136,6 @@ std::string GetNodeName(const absl::flat_hash_set<Node *> &control_ret_nodes,
   }
   VLOG(1) << "Could not find node whose name conatins: " << contains;
   return "";
-}
-
-// Factory function for `ExportedModel`.
-[[nodiscard]] ExportedModel CreateExportedModel(
-    GraphDef &&graph_def, const absl::string_view init_node_name,
-    const absl::string_view checkpoint_dir,
-    const std::optional<SaverDef> saver_def,
-    const absl::flat_hash_map<std::string, std::string> &function_aliases,
-    const std::vector<AssetFileDef> &asset_file_defs) {
-  ExportedModel exported_model{};
-  *exported_model.mutable_graph_def() = graph_def;
-  exported_model.set_init_node_name(std::string(init_node_name));
-  exported_model.set_checkpoint_dir(std::string(checkpoint_dir));
-
-  exported_model.mutable_function_aliases()->insert(function_aliases.begin(),
-                                                    function_aliases.end());
-
-  for (const auto &asset_file_def : asset_file_defs) {
-    *exported_model.mutable_asset_file_defs()->Add() = asset_file_def;
-  }
-
-  if (saver_def != std::nullopt) {
-    *exported_model.mutable_saver_def() = *std::move(saver_def);
-  }
-
-  return exported_model;
 }
 
 // Returns the file prefix tensor name. An empty string is returned if no such a

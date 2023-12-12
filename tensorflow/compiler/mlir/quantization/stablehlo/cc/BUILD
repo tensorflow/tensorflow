@@ -93,10 +93,26 @@ cc_library(
 
 cc_library(
     name = "export",
-    srcs = [],
+    srcs = ["export.cc"],
     hdrs = ["export.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+tf_cc_test(
+    name = "export_test",
+    srcs = ["export_test.cc"],
+    deps = [
+        ":export",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
