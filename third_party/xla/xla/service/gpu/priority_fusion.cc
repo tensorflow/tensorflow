@@ -175,6 +175,12 @@ class GpuPriorityFusionQueue : public FusionQueue {
 
   std::pair<HloInstruction*, std::vector<int64_t>>
   DequeueNextInstructionAndOperandsToFuseInOrder() override {
+    // When current_consumers_ is empty, we need to dequeue a new producer.
+    // Update the priorities that changed during the last fusion.
+    if (current_consumers_.empty()) {
+      UpdatePriorities();
+    }
+
     while (current_consumers_.empty()) {
       if (producer_priority_queue_.empty()) {
         return {};
@@ -210,6 +216,41 @@ class GpuPriorityFusionQueue : public FusionQueue {
             << ") + " << current_producer_->name() << "(" << current_producer_
             << ")";
     return {next_consumer, {producer_operand_index}};
+  }
+
+  // Update priorities of all affected ops.
+  void UpdatePriorities() {
+    // Revisit costs of all updated ops. It's important to update cost analysis
+    // before recalculating priorities.
+    for (auto instruction : to_update_priority_) {
+      TF_CHECK_OK(cost_analysis_.RevisitInstruction(instruction));
+    }
+
+    std::vector<HloInstruction*> to_update_vector{to_update_priority_.begin(),
+                                                  to_update_priority_.end()};
+    std::vector<Priority> new_priorities = ComputePriorities(to_update_vector);
+
+    for (auto [instruction, new_priority] :
+         llvm::zip(to_update_vector, new_priorities)) {
+      auto reverse_it = reverse_map_.find(instruction);
+      const auto new_key =
+          std::make_pair(new_priority, instruction->unique_id());
+      if (reverse_it != reverse_map_.end()) {
+        if (new_key == reverse_it->second->first) {
+          continue;
+        }
+        producer_priority_queue_.erase(reverse_it->second);
+      }
+      auto emplace_result =
+          producer_priority_queue_.emplace(new_key, instruction);
+      CHECK(emplace_result.second);
+      if (reverse_it != reverse_map_.end()) {
+        reverse_it->second = emplace_result.first;
+      } else {
+        reverse_map_.emplace(instruction, emplace_result.first);
+      }
+    }
+    to_update_priority_.clear();
   }
 
   // Prepares producer and consumer instruction to be fused. Invalidates caches
@@ -289,43 +330,6 @@ class GpuPriorityFusionQueue : public FusionQueue {
       to_update_priority_.insert(operand);
     }
     to_update_priority_.insert(fusion);
-
-    // When current_consumers_ is empty, we will need to dequeue a new producer
-    // next time, so we update the priorities now.
-    if (current_consumers_.empty()) {
-      // Revisit costs of all updated ops. It's important to update cost
-      // analysis before recalculating priorities.
-      for (auto instruction : to_update_priority_) {
-        TF_CHECK_OK(cost_analysis_.RevisitInstruction(instruction));
-      }
-
-      std::vector<HloInstruction*> to_update_vector{to_update_priority_.begin(),
-                                                    to_update_priority_.end()};
-      std::vector<Priority> new_priorities =
-          ComputePriorities(to_update_vector);
-
-      for (auto [instruction, new_priority] :
-           llvm::zip(to_update_vector, new_priorities)) {
-        auto reverse_it = reverse_map_.find(instruction);
-        const auto new_key =
-            std::make_pair(new_priority, instruction->unique_id());
-        if (reverse_it != reverse_map_.end()) {
-          if (new_key == reverse_it->second->first) {
-            continue;
-          }
-          producer_priority_queue_.erase(reverse_it->second);
-        }
-        auto emplace_result =
-            producer_priority_queue_.emplace(new_key, instruction);
-        CHECK(emplace_result.second);
-        if (reverse_it != reverse_map_.end()) {
-          reverse_it->second = emplace_result.first;
-        } else {
-          reverse_map_.emplace(instruction, emplace_result.first);
-        }
-      }
-      to_update_priority_.clear();
-    }
   }
 
   // Removes data for the instruction.
