@@ -2342,8 +2342,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   for (int64_t i = 1; i < num_reduced_args; ++i) {
     if (!ShapeUtil::SameDimensions(*reduced_args[0], *reduced_args[i])) {
       return InvalidArgument(
-          "All reduced tensors must have the same dimension. Tensor 0 has "
-          "shape %s, Tensor %d has shape %s",
+          "All reduced tensors must have compatible dimension. Tensor at index "
+          "0 has shape %s, and tensor at index %d has shape %s.",
           ShapeUtil::HumanString(*reduced_args[0]), i,
           ShapeUtil::HumanString(*reduced_args[i]));
     }

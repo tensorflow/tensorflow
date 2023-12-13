@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/shape_inference.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -3780,32 +3781,6 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedAdd) {
   }
 }
 
-TEST_F(ShapeInferenceTest, UnboundedTranspose) {
-  auto operand = ParseShape("f32[1, ?, 2, ?, <=2]{4,3,2,1,0}");
-  auto expected = ParseShape("f32[<=2, 1, ?, 2, ?]{0,2,3,4,1}");
-  ASSERT_IS_OK(operand.status());
-  auto inferred_status = ShapeInference::InferTransposeShape(
-      operand.value(), /*dimensions=*/{4, 0, 3, 2, 1});
-  ASSERT_IS_OK(expected.status());
-  ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
-      << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
-      << " expected: " << ShapeUtil::HumanString(expected.value());
-}
-
-TEST_F(ShapeInferenceTest, UnboundedTransposeRank1) {
-  auto operand = ParseShape("f32[?]");
-  auto expected = ParseShape("f32[?]");
-  ASSERT_IS_OK(operand.status());
-  auto inferred_status =
-      ShapeInference::InferTransposeShape(operand.value(), /*dimensions=*/{0});
-  ASSERT_IS_OK(expected.status());
-  ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
-      << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
-      << " expected: " << ShapeUtil::HumanString(expected.value());
-}
-
 TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedDiv) {
   auto lhs = ParseShape(GetParam()[0]);
   auto rhs = ParseShape(GetParam()[1]);
@@ -3941,6 +3916,47 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedPow) {
   }
 }
 
+TEST_F(ShapeInferenceTest, UnboundedReduce) {
+  StatusOr<Shape> input0 = ParseShape("f32[7, 5]");
+  StatusOr<Shape> input1 = ParseShape("f32[?, 5]");
+  StatusOr<Shape> input2 = ParseShape("f32[7, ?]");
+  ASSERT_IS_OK(input0.status());
+  ASSERT_IS_OK(input1.status());
+  ASSERT_IS_OK(input2.status());
+  ProgramShape to_apply = ShapeUtil::MakeProgramShape(
+      {f32_, f32_, f32_, f32_, f32_, f32_},
+      ShapeUtil::MakeTupleShape({f32_, f32_, f32_}));
+
+  StatusOr<Shape> inferred_status = ShapeInference::InferReduceShape(
+      {&input0.value(), &input1.value(), &input2.value(), &f32_, &f32_, &f32_},
+      {1}, to_apply);
+  Shape shape = ShapeUtil::MakeShape(F32, {7});
+  Shape expected = ShapeUtil::MakeTupleShape({shape, shape, shape});
+  ASSERT_IS_OK(inferred_status.status());
+  ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected))
+      << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(ShapeInferenceTest, UnboundedReduceInvalidReduceDimension) {
+  StatusOr<Shape> input0 = ParseShape("f32[7, 5]");
+  StatusOr<Shape> input1 = ParseShape("f32[?, 5]");
+  StatusOr<Shape> input2 = ParseShape("f32[5, ?]");
+  ASSERT_IS_OK(input0.status());
+  ASSERT_IS_OK(input1.status());
+  ASSERT_IS_OK(input2.status());
+  ProgramShape to_apply = ShapeUtil::MakeProgramShape(
+      {f32_, f32_, f32_, f32_, f32_, f32_},
+      ShapeUtil::MakeTupleShape({f32_, f32_, f32_}));
+
+  StatusOr<Shape> inferred_status = ShapeInference::InferReduceShape(
+      {&input0.value(), &input1.value(), &input2.value(), &f32_, &f32_, &f32_},
+      {1}, to_apply);
+  ASSERT_IS_NOT_OK(inferred_status.status());
+  EXPECT_THAT(inferred_status.status().message(),
+              HasSubstr("All reduced tensors must have compatible dimension"));
+}
+
 TEST_F(ShapeInferenceTest, UnboundedSlice) {
   StatusOr<Shape> operand = ParseShape("f32[1, <=3, ?]");
   StatusOr<Shape> expected = ParseShape("f32[1, <=2, 3]");
@@ -3972,6 +3988,32 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedSub) {
     EXPECT_THAT(inferred_status.status().message(),
                 HasSubstr("Binary op subtract with incompatible shapes"));
   }
+}
+
+TEST_F(ShapeInferenceTest, UnboundedTranspose) {
+  auto operand = ParseShape("f32[1, ?, 2, ?, <=2]{4,3,2,1,0}");
+  auto expected = ParseShape("f32[<=2, 1, ?, 2, ?]{0,2,3,4,1}");
+  ASSERT_IS_OK(operand.status());
+  auto inferred_status = ShapeInference::InferTransposeShape(
+      operand.value(), /*dimensions=*/{4, 0, 3, 2, 1});
+  ASSERT_IS_OK(expected.status());
+  ASSERT_IS_OK(inferred_status.status());
+  ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
+      << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
+TEST_F(ShapeInferenceTest, UnboundedTransposeRank1) {
+  auto operand = ParseShape("f32[?]");
+  auto expected = ParseShape("f32[?]");
+  ASSERT_IS_OK(operand.status());
+  auto inferred_status =
+      ShapeInference::InferTransposeShape(operand.value(), /*dimensions=*/{0});
+  ASSERT_IS_OK(expected.status());
+  ASSERT_IS_OK(inferred_status.status());
+  ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
+      << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+      << " expected: " << ShapeUtil::HumanString(expected.value());
 }
 
 INSTANTIATE_TEST_SUITE_P(

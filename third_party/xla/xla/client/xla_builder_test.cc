@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/types/span.h"
 #include "xla/client/sharding_builder.h"
 #include "xla/client/value_inference.h"
 #include "xla/client/xla_computation.h"
@@ -1790,6 +1791,35 @@ TEST_F(XlaBuilderTest, UnboundedPowUnsupportedImplicitBroadcast) {
   EXPECT_FALSE(build_status.ok());
   EXPECT_THAT(build_status.status().message(),
               HasSubstr("Unbounded dynamic shapes not supported"));
+}
+
+TEST_F(XlaBuilderTest, UnboundedReduce) {
+  XlaBuilder b(TestName());
+  XlaOp input0 = Parameter(&b, 0, ParseShape("f32[7, 5]").value(), "input0");
+  XlaOp input1 = Parameter(&b, 1, ParseShape("f32[?, 5]").value(), "input1");
+  XlaOp input2 = Parameter(&b, 2, ParseShape("f32[7, ?]").value(), "input2");
+  XlaOp init = Parameter(&b, 3, ShapeUtil::MakeShape(F32, {}), "init");
+
+  XlaBuilder bsum(TestName());
+  XlaOp arg0 = Parameter(&bsum, 0, ShapeUtil::MakeShape(F32, {}), "arg0");
+  XlaOp arg1 = Parameter(&bsum, 1, ShapeUtil::MakeShape(F32, {}), "arg1");
+  XlaOp arg2 = Parameter(&bsum, 2, ShapeUtil::MakeShape(F32, {}), "arg2");
+  XlaOp arg3 = Parameter(&bsum, 3, ShapeUtil::MakeShape(F32, {}), "arg3");
+  XlaOp arg4 = Parameter(&bsum, 4, ShapeUtil::MakeShape(F32, {}), "arg4");
+  XlaOp arg5 = Parameter(&bsum, 5, ShapeUtil::MakeShape(F32, {}), "arg5");
+
+  std::vector<XlaOp> output_operands = {Add(arg0, arg1), Add(arg2, arg3),
+                                        Add(arg4, arg5)};
+  Tuple(&bsum, absl::MakeSpan(output_operands));
+  TF_ASSERT_OK_AND_ASSIGN(auto sum, bsum.Build());
+  Reduce(&b, {input0, input1, input2}, {init, init, init}, sum, {1});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  Shape shape = ShapeUtil::MakeShape(F32, {7}, {false});
+  Shape expected = ShapeUtil::MakeTupleShape({shape, shape, shape});
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected));
 }
 
 TEST_F(XlaBuilderTest, UnboundedSlice) {
