@@ -53,14 +53,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/unfreeze_constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -84,46 +82,12 @@ using ::mlir::quant::stablehlo::PreCalibrationComponent;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
+using ::stablehlo::quantization::AddExportPasses;
 using ::stablehlo::quantization::CreateExportedModel;
 using ::stablehlo::quantization::ExportOptions;
 using ::stablehlo::quantization::kExportStepSuffix;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::stablehlo::quantization::io::GetLocalTmpFileName;
-
-// Add passes for transforming the MLIR module op so that it can be exported
-// back to GraphDef. Roughly, this consists of:
-//   1) Inserting the @main function, which will become the main Graph.
-//   2) Duplicating shape-determining constants.
-//   3) Converting TF dialect -> tf_executor dialect.
-//   4) Adding initializer function's ops into @main function for correct
-//      resource initialization when loading the exported model.
-//
-// Duplicating shape-determining constants is required to place constants that
-// affect the shape of a tensor to be placed in the TPU graph instead of in the
-// CPU graph, when the graph gets converted for TPU inference. This allows these
-// constants to be known at XLA compilation time.
-void AddExportPasses(const bool duplicate_shape_determining_constants,
-                     mlir::PassManager &pm) {
-  if (duplicate_shape_determining_constants) {
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::quant::CreateDuplicateShapeDeterminingConstantsPass());
-  }
-
-  pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
-  pm.addPass(mlir::quant::CreateLiftHashTableOpsAsArgsPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::CreateFunctionalToExecutorDialectConversionPass());
-  pm.addPass(mlir::CreateBreakUpIslandsPass());
-  pm.addPass(mlir::quant::CreateMergeInitializerFunctionOpsToMainPass());
-  pm.addPass(mlir::quant::CreateMergeSaveFunctionOpsToMainPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::CreateMergeDuplicateResourceOpsPass());
-
-  // Used to clean up the "tf._noinliner" attribute that is previously used to
-  // prevent certain functions from being inlined (see
-  // `MarkFunctionsNoinlinePass`). InlinerPass must not come after this pass.
-  pm.addPass(mlir::TF::CreateStripNoinlineAttributePass());
-}
 
 // Finds and returns the name of the node from a set of control output nodes.
 // The name should contain the string `contains`. Returns an empty string if no
@@ -306,7 +270,7 @@ absl::StatusOr<llvm::SmallVector<AssetFileDef>> RunExportPasses(
           /*name=*/export_opts.debug_name,
           /*add_passes_func=*/
           [dup_constants = export_opts.duplicate_shape_determining_constants](
-              mlir::PassManager &pm) { AddExportPasses(dup_constants, pm); },
+              mlir::PassManager &pm) { AddExportPasses(pm, dup_constants); },
           ctx, module_op);
       !pass_run_status.ok()) {
     return pass_run_status;

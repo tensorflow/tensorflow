@@ -21,7 +21,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
@@ -56,6 +60,30 @@ ExportedModel CreateExportedModel(
   }
 
   return exported_model;
+}
+
+// TODO: b/315746734 - Test this function using a test-only pass.
+void AddExportPasses(mlir::PassManager& pm,
+                     const bool duplicate_shape_determining_constants) {
+  if (duplicate_shape_determining_constants) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::quant::CreateDuplicateShapeDeterminingConstantsPass());
+  }
+
+  pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
+  pm.addPass(mlir::quant::CreateLiftHashTableOpsAsArgsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::CreateFunctionalToExecutorDialectConversionPass());
+  pm.addPass(mlir::CreateBreakUpIslandsPass());
+  pm.addPass(mlir::quant::CreateMergeInitializerFunctionOpsToMainPass());
+  pm.addPass(mlir::quant::CreateMergeSaveFunctionOpsToMainPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreateMergeDuplicateResourceOpsPass());
+
+  // Used to clean up the "tf._noinliner" attribute that is previously used to
+  // prevent certain functions from being inlined (see
+  // `MarkFunctionsNoinlinePass`). InlinerPass must not come after this pass.
+  pm.addPass(mlir::TF::CreateStripNoinlineAttributePass());
 }
 
 }  // namespace stablehlo::quantization
