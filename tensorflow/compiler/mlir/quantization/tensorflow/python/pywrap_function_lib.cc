@@ -36,13 +36,11 @@ namespace py = ::pybind11;
 namespace {
 
 using ::stablehlo::quantization::MinMaxValue;
-using ::tensorflow::GraphDef;
 using ::tensorflow::SignatureDef;
 using ::tensorflow::calibrator::CalibrationStatistics;
 using ::tensorflow::quantization::CalibrationOptions;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PyFunctionLibrary;
-using ::tensorflow::quantization::QuantizationOptions;
 
 // A "trampoline" class that redirects virtual function calls to the python
 // implementation.
