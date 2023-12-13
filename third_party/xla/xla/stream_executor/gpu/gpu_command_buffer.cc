@@ -717,18 +717,18 @@ tsl::Status GpuCommandBuffer::Finalize() {
 }
 
 tsl::Status GpuCommandBuffer::Update() {
-  if (state_ != State::kFinalized) {
-    return absl::InternalError(
-        "Command buffer has to be finalized first before it can be updated");
-  }
-
   if (exec_ == nullptr) {
     return absl::InternalError(
         "Command buffer has to have a graph executable to be updated");
   }
 
-  VLOG(5) << "Begin primary command buffer update for executable graph "
-          << exec_;
+  if (state_ != State::kFinalized) {
+    return absl::InternalError(
+        "Command buffer has to be finalized first before it can be updated");
+  }
+
+  VLOG(5) << "Begin " << (mode_ == Mode::kPrimary ? "primary" : "nested")
+          << " command buffer update for executable graph " << exec_;
 
   state_ = State::kUpdate;
   update_state_ = UpdateState();
