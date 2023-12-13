@@ -46,7 +46,7 @@ def build_cub_sort_kernels(name, types, local_defines = [], **kwargs):
             **kwargs
         )
 
-register_extension_info(extension = build_cub_sort_kernels, label_regex_for_dep = "{extension_name}")
+register_extension_info(extension = build_cub_sort_kernels, label_regex_for_dep = "{extension_name}_.*")
 
 def gpu_kernel_library(name, copts = [], local_defines = [], **kwargs):
     cuda_library(
