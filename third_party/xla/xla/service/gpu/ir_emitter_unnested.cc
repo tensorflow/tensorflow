@@ -115,6 +115,7 @@ limitations under the License.
 #include "xla/service/gpu/kernel_thunk.h"
 #include "xla/service/gpu/kernels/custom_fusion.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
+#include "xla/service/gpu/kernels/topk_custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/nccl_all_gather_thunk.h"
@@ -1997,6 +1998,52 @@ Status IrEmitterUnnested::EmitTriangularSolveCustomCall(mlir::Operation* op) {
 }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+Status IrEmitterUnnested::EmitTopKCustomCall(
+    const HloCustomCallInstruction* instr) {
+  auto operands = instr->operands();
+  auto shape = instr->shape();
+  TF_RET_CHECK(operands.size() == 1)
+      << "Expect only 1 operand for TopK custom call.";
+  TF_RET_CHECK(shape.IsTuple())
+      << "Expect TopK custom call to have tuple shape.";
+  TF_RET_CHECK(shape.tuple_shapes_size() == 2)
+      << "Expect TopK custom call shape to have exactly 2 sub-shapes.";
+
+  auto data_shape = operands[0]->shape();
+  auto top_elements_shape = shape.tuple_shapes()[0];
+  auto indices_shape = shape.tuple_shapes()[1];
+
+  TF_RET_CHECK(data_shape.rank() <= 2) << "Invalid input shape.";
+  TF_RET_CHECK(indices_shape.element_type() == PrimitiveType::S32)
+      << "Indices should be S32.";
+
+  bool has_batch = data_shape.rank() == 2;
+  auto [batch_size, n, k] =
+      has_batch
+          ? std::tuple<size_t, size_t, size_t>{data_shape.dimensions(0),
+                                               data_shape.dimensions(1),
+                                               top_elements_shape.dimensions(1)}
+          : std::tuple<size_t, size_t, size_t>{
+                1, data_shape.dimensions(0), top_elements_shape.dimensions(0)};
+
+  // Load TopK custom kernel.
+  TF_ASSIGN_OR_RETURN(CustomKernel kernel,
+                      kernel::topk::GetTopKKernel(
+                          "topk", data_shape.element_type(), n, k, batch_size));
+
+  // Prepare kernel arguments.
+  TF_ASSIGN_OR_RETURN(
+      auto kernel_arguments,
+      KernelArguments::Create(ir_emitter_context_->buffer_assignment(), instr,
+                              operands));
+
+  auto thunk = std::make_unique<CustomKernelThunk>(
+      instr, std::move(kernel), std::move(kernel_arguments.args()));
+  AddThunkToThunkSequence(std::move(thunk));
+
+  return OkStatus();
+}
+
 // Convert the following form of fusion region:
 //   fusion() {
 //     %0 = tensor_load %external_memref0
@@ -3564,6 +3611,9 @@ Status IrEmitterUnnested::EmitOp(
     return EmitConstant(op, hlo_const_instr->literal());
   }
 
+  bool is_gpu_runtime = ir_emitter_context_->debug_options()
+                            .xla_gpu_enable_xla_runtime_executable();
+
   if (auto call = mlir::dyn_cast<mlir::lmhlo::CustomCallOp>(op)) {
     if (call.getCallTargetName() == "PadToStatic") {
       return EmitPadToStatic(op);
@@ -3578,6 +3628,11 @@ Status IrEmitterUnnested::EmitOp(
       return EmitTriangularSolveCustomCall(op);
     }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+    if (!is_gpu_runtime && call.getCallTargetName() == "__gpu$TopK") {
+      return EmitTopKCustomCall(
+          Cast<HloCustomCallInstruction>(hlo_for_lmhlo.at(op)));
+    }
 
     return EmitCustomCallThunk(
         op, Cast<HloCustomCallInstruction>(hlo_for_lmhlo.at(op)));
@@ -3757,9 +3812,6 @@ Status IrEmitterUnnested::EmitOp(
   if (mlir::isa<mlir::lmhlo::CommandBufferOp>(op)) {
     return EmitCommandBufferThunk(hlo_for_lmhlo.at(op));
   }
-
-  bool is_gpu_runtime = ir_emitter_context_->debug_options()
-                            .xla_gpu_enable_xla_runtime_executable();
 
   // In GPU runtime point-to-point communications implemented as runtime custom
   // calls, and we do not need real thunks to construct them, so we can emit

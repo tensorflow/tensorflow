@@ -1,5 +1,6 @@
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
@@ -122,6 +123,31 @@ xla_test(
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
+)
+
+cc_library(
+    name = "topk_custom_kernel",
+    srcs = if_cuda_is_configured(
+        ["topk_custom_kernel.cc"],
+        ["topk_custom_kernel_stub.cc"],
+    ),
+    hdrs = ["topk_custom_kernel.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":custom_kernel",
+        "//xla:statusor",
+        "//xla:xla_data_proto_cc",
+        "//xla/stream_executor",
+        "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:statusor",
+    ] + if_cuda_is_configured([
+        "//xla/service/gpu/runtime:topk_kernel_cuda",
+    ]) + if_rocm_is_configured([
+        "//xla/service/gpu/runtime:topk_kernel_rocm",
+    ]),
 )
 
 #===--------------------------------------------------------------------------------------------===#
