@@ -199,6 +199,21 @@ cc_library(
 )
 
 cc_library(
+    name = "convolution_thunk",
+    srcs = ["convolution_thunk.cc"],
+    hdrs = ["convolution_thunk.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:util",
+        "//xla/service:buffer_assignment",
+        "//xla/service/gpu:gpu_conv_runner",
+        "//xla/service/gpu:thunk",
+        "//xla/stream_executor",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
     name = "custom_call_thunk",
     srcs = ["custom_call_thunk.cc"],
     hdrs = ["custom_call_thunk.h"],
