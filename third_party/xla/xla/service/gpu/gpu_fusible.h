@@ -211,6 +211,9 @@ std::vector<const HloInstruction*> GetFusionRoots(
 bool IsRealReductionHero(const HloInstruction& root,
                          const HloInstruction& hero);
 
+// Whether the instruction is a Triton Softmax fusion.
+bool IsTritonSoftmaxFusion(const HloInstruction& instr);
+
 }  // namespace gpu
 }  // namespace xla
 

@@ -1481,6 +1481,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":backend_configs_cc",
+        ":gpu_fusible",
         ":ir_emission_utils",
         ":triton_fusion_analysis",
         "//xla:status",
@@ -1493,9 +1494,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -3866,6 +3865,7 @@ cc_library(
     hdrs = ["gpu_fusible.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":backend_configs_cc",
         ":ir_emission_utils",
         ":reduction_utils",
         "//xla:shape_util",

@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/status.h"
@@ -258,24 +259,20 @@ StatusOr<bool> FusionMergerTriton::Run(
     }
 
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
-      if (instr->opcode() == HloOpcode::kFusion &&
-          instr->fusion_kind() == HloInstruction::FusionKind::kCustom &&
-          instr->backend_config<FusionBackendConfig>().ok() &&
-          instr->backend_config<FusionBackendConfig>()->kind() ==
-              kTritonSoftmaxFusionKind) {
-        VLOG(6) << "Matched triton_softmax fusion: " << instr->ToShortString();
+      if (!IsTritonSoftmaxFusion(*instr)) continue;
 
-        HloFusionInstruction* softmax = Cast<HloFusionInstruction>(instr);
+      VLOG(6) << "Matched triton_softmax fusion: " << instr->ToShortString();
 
-        bool result =
-            TryMergeProducerAndConsumerFusionsIntoTritonSoftmax(softmax);
+      HloFusionInstruction* softmax = Cast<HloFusionInstruction>(instr);
 
-        if (!result) {
-          VLOG(6) << "Did not fuse producer or consumer into "
-                  << instr->ToShortString();
-        } else {
-          ++fused_comps;
-        }
+      bool result =
+          TryMergeProducerAndConsumerFusionsIntoTritonSoftmax(softmax);
+
+      if (!result) {
+        VLOG(6) << "Did not fuse producer or consumer into "
+                << instr->ToShortString();
+      } else {
+        ++fused_comps;
       }
     }
   }
