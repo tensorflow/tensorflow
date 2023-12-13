@@ -1119,7 +1119,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-        "//third_party/gloo:transport_tcp",
         "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla:literal",
         "//xla:shape_util",
@@ -1152,6 +1151,13 @@ cc_library(
         "@local_tsl//tsl/python/lib/core:numpy",
         "@pybind11",
     ] + select({
+        # gloo transport only builds on linux
+        "@local_tsl//tsl:macos": [],
+        "@local_tsl//tsl:windows": [],
+        "//conditions:default": [
+            "//third_party/gloo:transport_tcp",
+        ],
+    }) + select({
         ":gpu_enabled": [
             "//xla/pjrt/gpu:se_gpu_pjrt_client",
         ],

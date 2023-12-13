@@ -61,8 +61,10 @@ limitations under the License.
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
+#ifdef __linux__
 #include "third_party/gloo/gloo/transport/tcp/attr.h"
 #include "third_party/gloo/gloo/transport/tcp/device.h"
+#endif  // __linux__
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/cpu/gloo_collectives.h"
 #include "xla/pjrt/cpu/gloo_kv_store.h"
@@ -508,6 +510,7 @@ static void Init(py::module_& m) {
          std::optional<std::string> hostname,
          std::optional<std::string> interface)
           -> std::shared_ptr<xla::cpu::CollectivesInterface> {
+#ifdef __linux__
         std::string key_prefix = "cpu:";
         auto kv_get =
             [distributed_client, key_prefix](
@@ -534,6 +537,10 @@ static void Init(py::module_& m) {
         auto tcp_device = gloo::transport::tcp::CreateDevice(tcp_attrs);
         return std::make_shared<cpu::GlooCollectives>(std::move(gloo_kv_store),
                                                       std::move(tcp_device));
+#else   // __linux__
+        throw xla::XlaRuntimeError(
+            "make_gloo_tcp_collectives only implemented for linux");
+#endif  // __linux__
       },
       py::arg("distributed_client"), py::arg("hostname") = std::nullopt,
       py::arg("interface") = std::nullopt);
