@@ -79,6 +79,11 @@ echo >>$TFCI source ci/official/envs/local_multicache
 #   and scripts on Linux create a persistent container called "tf"
 #   which mounts your TensorFlow directory into the container.
 #
+#   Important: because the container is persistent, you cannot change TFCI
+#   variables in between script executions. To forcibly remove the
+#   container and start fresh, run "docker rm -f tf". Removing the container
+#   destroys some temporary bazel data and causes longer builds.
+#
 #   You will need the NVIDIA Container Toolkit for GPU testing:
 #   https://github.com/NVIDIA/nvidia-container-toolkit
 #
@@ -88,10 +93,6 @@ echo >>$TFCI source ci/official/envs/local_multicache
 #   Note: new files created from the container are owned by "root".
 #   You can run e.g. `docker exec tf chown -R $(id -u):$(id -g) build_output`
 #   to transfer ownership to your user.
-#
-#   Note: because the container is persistent, you cannot change TFCI
-#   variables in between script executions. To forcibly remove the
-#   container and start fresh, run "docker rm -f tf".
 #
 # Docker is enabled by default on Linux. You may disable it if you prefer:
 # echo >>$TFCI source ci/official/envs/local_nodocker
