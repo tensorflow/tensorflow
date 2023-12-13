@@ -451,7 +451,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/CMakeLists.txt b/stablehlo
 diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
-@@ -0,0 +1,506 @@
+@@ -0,0 +1,615 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -469,6 +469,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stableh
 +
 +#include "stablehlo/experimental/dialect/StablehloOps.h"
 +
++#include <cstdint>
 +#include <optional>
 +
 +#include "llvm/ADT/ArrayRef.h"
@@ -495,8 +496,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stableh
 +    // api_version and backend_config have default values.
 +    // call_target_name should be "stablehlo.dynamic_reduce_window".
 +    // called_computations carries the body.
-+    if (attr.getName() != "api_version" &&
-+        attr.getName() != "backend_config" &&
++    if (attr.getName() != "api_version" && attr.getName() != "backend_config" &&
 +        attr.getName() != "call_target_name" &&
 +        attr.getName() != "called_computations")
 +      return op_.emitError()
@@ -877,8 +877,8 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stableh
 +
 +  // dynamic_top_k_i2
 +  auto kType = k.getType().dyn_cast<ShapedType>();
-+  if (!kType || !kType.hasRank() ||
-+      kType.getRank() != 0 || !kType.getElementType().isIntOrIndex())
++  if (!kType || !kType.hasRank() || kType.getRank() != 0 ||
++      !kType.getElementType().isIntOrIndex())
 +    return op_.emitError()
 +           << "expects k (operand #1) "
 +           << "to be a 0-dimensional tensor of integer or index type";
@@ -940,7 +940,6 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stableh
 +  return op_.getInputs()[1].cast<TypedValue<ShapedType>>();
 +}
 +
-+
 +TypedValue<ShapedType> DynamicTopKOpAdaptor::getValues() {
 +  return op_.getResults()[0].cast<TypedValue<ShapedType>>();
 +}
@@ -949,10 +948,120 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stableh
 +  return op_.getResults()[1].cast<TypedValue<ShapedType>>();
 +}
 +
-+std::optional<DynamicTopKOpAdaptor> getDynamicTopKOp(
-+    CustomCallOp op) {
++std::optional<DynamicTopKOpAdaptor> getDynamicTopKOp(CustomCallOp op) {
 +  if (op.getCallTargetName() != "stablehlo.dynamic_top_k") return {};
 +  return DynamicTopKOpAdaptor(op);
++}
++
++LogicalResult TopKOpAdaptor::verify() {
++  if (op_->getNumOperands() != 1)
++    return op_.emitError("expects size(operands) = 1");
++  if (op_->getNumResults() != 2)
++    return op_.emitError("expects size(results) = 2");
++  if (!op_.getBackendConfig().empty())
++    return op_.emitError() << "expects an empty backend_config";
++  if (op_.getCallTargetName() != "mhlo.topk")
++    return op_.emitError() << "expects @mhlo.topk";
++
++  auto operand = op_.getInputs()[0];
++  auto values = op_.getResults()[0];
++  auto indices = op_.getResults()[1];
++  DictionaryAttr topkAttributes =
++      op_->getAttrOfType<DictionaryAttr>("mhlo.attributes");
++  if (!topkAttributes) {
++    return op_.emitError()
++           << "mhlo.attributes missing or not a dictionary attribute";
++  }
++
++  IntegerAttr k_attr = topkAttributes.get("k").dyn_cast_or_null<IntegerAttr>();
++  if (!k_attr) {
++    return op_.emitError() << "mhlo.attributes.k not present or not an integer";
++  }
++  int64_t k = k_attr.getInt();
++
++  // mhlo.topk_c5
++  if (k < 0) return op_.emitError() << "expects k >= 0";
++
++  // mhlo.topk_i1
++  auto operandType = operand.getType().dyn_cast<ShapedType>();
++  if (!operandType || !operandType.hasRank() || operandType.getRank() < 1 ||
++      !operandType.getElementType().isIntOrFloat())
++    return op_.emitError()
++           << "expects operand #0 "
++           << "to be a tensor of integer or floating-point type "
++           << "of rank at least 1";
++
++  // mhlo.topk_o1
++  auto valuesType = values.getType().dyn_cast<ShapedType>();
++  if (!valuesType || !valuesType.hasRank() || valuesType.getRank() < 1 ||
++      !valuesType.getElementType().isIntOrFloat())
++    return op_.emitError()
++           << "expects values (result #0) "
++           << "to be a tensor of integer or floating-point type "
++           << "of rank at least 1";
++
++  // mhlo.topk_o2
++  auto indicesType = indices.getType().dyn_cast<ShapedType>();
++  if (!indicesType || !indicesType.hasRank() || indicesType.getRank() < 1 ||
++      !indicesType.getElementType().isSignlessInteger(32))
++    return op_.emitError() << "expects indices (result #1) "
++                           << "to be a tensor of si32 of rank at least 1";
++
++  // mhlo.topk_c1 && mhlo.topk_c2
++  auto operandLastDim = operandType.getRank() - 1;
++  SmallVector<int64_t> expectedValuesShape(operandType.getShape());
++  expectedValuesShape[operandLastDim] = k;
++  if (failed(verifyCompatibleShape(expectedValuesShape, valuesType.getShape())))
++    return op_.emitError() << "expects the values shape to match the operand "
++                              "shape in all but the last dimension, and "
++                              "that the last dimension of the values shape "
++                              "has a size k";
++
++  // mhlo.topk_c3
++  if (valuesType.getElementType() != operandType.getElementType())
++    return op_.emitError()
++           << "expects the values element type to be the same as the operand "
++           << "element type";
++
++  // mhlo.topk_c4
++  if (failed(
++          verifyCompatibleShape(indicesType.getShape(), valuesType.getShape())))
++    return op_.emitError()
++           << "expects the indices shape to match the values shape";
++
++  return success();
++}
++
++TypedValue<ShapedType> TopKOpAdaptor::getOperand() {
++  return op_.getInputs()[0].cast<TypedValue<ShapedType>>();
++}
++
++TypedValue<ShapedType> TopKOpAdaptor::getValues() {
++  return op_.getResults()[0].cast<TypedValue<ShapedType>>();
++}
++
++TypedValue<ShapedType> TopKOpAdaptor::getIndices() {
++  return op_.getResults()[1].cast<TypedValue<ShapedType>>();
++}
++
++int64_t TopKOpAdaptor::getK() {
++  DictionaryAttr topkAttributes =
++      op_->getAttrOfType<DictionaryAttr>("mhlo.attributes");
++  return topkAttributes.get("k").cast<mlir::IntegerAttr>().getInt();
++}
++
++bool TopKOpAdaptor::getLargest() {
++  DictionaryAttr topkAttributes =
++      op_->getAttrOfType<DictionaryAttr>("mhlo.attributes");
++  IntegerAttr largest =
++      topkAttributes.get("largest").dyn_cast_or_null<mlir::IntegerAttr>();
++
++  return (!largest) ? true : largest.getInt();
++}
++
++std::optional<TopKOpAdaptor> getTopKOp(CustomCallOp op) {
++  if (op.getCallTargetName() != "mhlo.topk") return {};
++  return TopKOpAdaptor(op);
 +}
 +
 +}  // namespace experimental
@@ -961,7 +1070,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stableh
 diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.h b/stablehlo/stablehlo/experimental/dialect/StablehloOps.h
 --- stablehlo/stablehlo/experimental/dialect/StablehloOps.h
 +++ stablehlo/stablehlo/experimental/dialect/StablehloOps.h
-@@ -0,0 +1,230 @@
+@@ -0,0 +1,299 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -1186,6 +1295,75 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.h b/stablehlo
 +// Fails if the call_target_name of the custom call doesn't match
 +// "stablehlo.dynamic_top_k".
 +std::optional<DynamicTopKOpAdaptor> getDynamicTopKOp(CustomCallOp op);
++
++///////////////////
++// MHLO Op Wrappers
++// There are some ops in MHLO which have experimental support in StableHLO
++// programs by representing them as custom_calls with the target `mhlo.op_name`.
++// The level of support of these ops is similar to the other custom_calls in
++// this file. Generally these ops will be added to StableHLO and their
++// experimental support can be deprecated in favor of op's type inference.
++///////////////////
++
++// The TopK experiment provides a StableHLO adapter to MHLO TopKOp.
++// In the future we expect stablehlo.top_k to be added which will use the same
++// refinement rules.
++//
++// Within this experiment, TopKOp is represented via the serialized MHLO
++// `stablehlo.custom_call @mhlo.topk` custom call.
++//
++// The semantics of experimental TopKOp are inherited from the semantics of
++// mhlo.topk.
++//
++// #### Inputs
++//
++// | Label | Name            | Type                                         |
++// |-------|-----------------|----------------------------------------------|
++// | (I1)  | `operand`       | tensor of integer or floating-point type     |
++// | (I2)  | `k`             | constant of type si64                        |
++// | (I3)  | `largest`       | constant of type i1                          |
++//
++// #### Outputs
++//
++// | Name           | Type                                     |
++// |----------------|------------------------------------------|
++// | `values`       | tensor of integer or floating-point type |
++// | `indices`      | tensor of si32 type                      |
++//
++// #### Constraints
++//
++// * (C1) `shape(values)[:-1] = shape(operand)[:-1]`
++// * (C2) `shape(values)[-1] = k`
++// * (C3) `element_type(values) = element_type(operand)`
++// * (C4) `shape(indices) = shape(values)`
++// * (C5) `k >= 0`
++//
++class TopKOpAdaptor {
++ public:
++  TopKOpAdaptor(CustomCallOp op) : op_(op) {}
++  operator Operation*() { return op_; }
++  Operation* operator->() { return op_; }
++
++  // These accessors assume that the operation is well-formed (i.e. that it
++  // can pass verification).
++  TypedValue<ShapedType> getOperand();
++  TypedValue<ShapedType> getValues();
++  TypedValue<ShapedType> getIndices();
++  int64_t getK();
++  bool getLargest();
++
++  // Verifies the constraints documented above.
++  // Emits errors if errors are detected.
++  LogicalResult verify();
++
++ private:
++  CustomCallOp op_;
++};
++
++// Wraps a custom call in a TopKOpAdaptor.
++// Fails if the call_target_name of the custom call doesn't match
++// "mhlo.topk".
++std::optional<TopKOpAdaptor> getTopKOp(CustomCallOp op);
 +
 +}  // namespace experimental
 +}  // namespace stablehlo
@@ -1710,7 +1888,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynam
 diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
 --- stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
 +++ stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,152 @@
 +// RUN: experimental-stablehlo-opt --experimental-stablehlo-refine-shapes --split-input-file --verify-diagnostics %s | FileCheck %s
 +
 +// CHECK-LABEL: @main
@@ -1752,6 +1930,116 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
 +  %k = stablehlo.constant dense<4> : tensor<ui64>
 +  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xf32>, tensor<ui64>) -> (tensor<?xf32>, tensor<?xi32>)
 +  return %1#0, %1#1 : tensor<?xf32>, tensor<?xi32>
++}
++
++// -----
++
++// CHECK-LABEL: func @refine_mhlo_topk
++func.func @refine_mhlo_topk(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>) {
++  // CHECK: mhlo.topk{{.*}} -> (tensor<5x4xf32>, tensor<5x4xi32>)
++  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
++    mhlo.attributes = { k = 4 : i64, largest = true}
++  } : (tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>)
++  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xi32>
++}
++
++// -----
++
++// CHECK-LABEL: func @refine_mhlo_error_too_many_operands
++func.func @refine_mhlo_error_too_many_operands(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>) {
++  // expected-error@+1{{expects size(operands) = 1}}
++  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0, %arg0) {
++    mhlo.attributes = { k = 4 : i64, largest = true}
++  } : (tensor<5x16xf32>, tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>)
++  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xi32>
++}
++
++// -----
++
++// CHECK-LABEL: func @refine_mhlo_error_too_few_results
++func.func @refine_mhlo_error_too_few_results(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>) {
++  // expected-error@+1{{expects size(results) = 2}}
++  %0 = stablehlo.custom_call @mhlo.topk(%arg0) {
++    mhlo.attributes = { k = 4 : i64, largest = true}
++  } : (tensor<5x16xf32>) -> (tensor<?x?xf32>)
++  return %0 : tensor<?x?xf32>
++}
++
++// -----
++
++// CHECK-LABEL: func @refine_mhlo_error_wrong_output_1_type
++func.func @refine_mhlo_error_wrong_output_1_type(%arg0: tensor<5x16xf32>) -> (tensor<f32>, tensor<?x?xi32>) {
++  // expected-error@+1{{expects values (result #0) to be a tensor of integer or floating-point type of rank at least 1}}
++  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
++    mhlo.attributes = { k = 4 : i64, largest = true}
++  } : (tensor<5x16xf32>) -> (tensor<f32>, tensor<?x?xi32>)
++  return %0#0, %0#1 : tensor<f32>, tensor<?x?xi32>
++}
++
++// -----
++
++// CHECK-LABEL: func @refine_mhlo_error_wrong_output_2_type
++func.func @refine_mhlo_error_wrong_output_2_type(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xf32>) {
++  // expected-error@+1{{expects indices (result #1) to be a tensor of si32 of rank at least 1}}
++  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
++    mhlo.attributes = { k = 4 : i64, largest = true}
++  } : (tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xf32>)
++  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xf32>
++}
++
++// -----
++
++// CHECK-LABEL: func @refine_mhlo_error_c1_wrong_output_shape
++func.func @refine_mhlo_error_c1_wrong_output_shape(%arg0: tensor<5x16xf32>) -> (tensor<?x?x?xf32>, tensor<?x?xi32>) {
++  // expected-error@+1{{expects the values shape to match the operand}}
++  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
++    mhlo.attributes = { k = 4 : i64, largest = true}
++  } : (tensor<5x16xf32>) -> (tensor<?x?x?xf32>, tensor<?x?xi32>)
++  return %0#0, %0#1 : tensor<?x?x?xf32>, tensor<?x?xi32>
++}
++
++// -----
++
++// CHECK-LABEL: func @refine_mhlo_error_c2_last_dim_not_k
++func.func @refine_mhlo_error_c2_last_dim_not_k(%arg0: tensor<5x16xf32>) -> (tensor<?x5xf32>, tensor<?x?xi32>) {
++  // expected-error@+1{{expects the values shape to match the operand}}
++  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
++    mhlo.attributes = { k = 4 : i64, largest = true}
++  } : (tensor<5x16xf32>) -> (tensor<?x5xf32>, tensor<?x?xi32>)
++  return %0#0, %0#1 : tensor<?x5xf32>, tensor<?x?xi32>
++}
++
++// -----
++
++// CHECK-LABEL: func @refine_mhlo_error_c3_wrong_output_type
++func.func @refine_mhlo_error_c3_wrong_output_type(%arg0: tensor<5x16xf32>) -> (tensor<?x?xi32>, tensor<?x?xi32>) {
++  // expected-error@+1{{expects the values element type to be the same as the operand element type}}
++  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
++    mhlo.attributes = { k = 4 : i64, largest = true}
++  } : (tensor<5x16xf32>) -> (tensor<?x?xi32>, tensor<?x?xi32>)
++  return %0#0, %0#1 : tensor<?x?xi32>, tensor<?x?xi32>
++}
++
++// -----
++
++// CHECK-LABEL: func @refine_mhlo_error_c4_outputs_shape_mismatch
++func.func @refine_mhlo_error_c4_outputs_shape_mismatch(%arg0: tensor<5x16xf32>) -> (tensor<?x4xf32>, tensor<?x5xi32>) {
++  // expected-error@+1{{expects the indices shape to match the values shape}}
++  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
++    mhlo.attributes = { k = 4 : i64, largest = true}
++  } : (tensor<5x16xf32>) -> (tensor<?x4xf32>, tensor<?x5xi32>)
++  return %0#0, %0#1 : tensor<?x4xf32>, tensor<?x5xi32>
++}
++
++// -----
++
++// CHECK-LABEL: func @refine_mhlo_error_c5_negative_k
++func.func @refine_mhlo_error_c5_negative_k(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>) {
++  // expected-error@+1{{expects k >= 0}}
++  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
++    mhlo.attributes = { k = -4 : i64, largest = true}
++  } : (tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>)
++  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xi32>
 +}
 diff --ruN a/stablehlo/stablehlo/experimental/tools/CMakeLists.txt b/stablehlo/stablehlo/experimental/tools/CMakeLists.txt
 --- stablehlo/stablehlo/experimental/tools/CMakeLists.txt
@@ -2141,7 +2429,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDy
 diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
 --- stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
 +++ stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
-@@ -0,0 +1,162 @@
+@@ -0,0 +1,178 @@
 +/* Copyright 2022 The StableHLO Authors.
 +Licensed under the Apache License, Version 2.0 (the "License");
 +you may not use this file except in compliance with the License.
@@ -2267,6 +2555,21 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +  }
 +};
 +
++struct RefineTopKOpPattern : public OpRewritePattern<CustomCallOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(CustomCallOp impl,
++                                PatternRewriter& rewriter) const override {
++    auto maybeOp = getTopKOp(impl);
++    if (!maybeOp || failed(maybeOp->verify())) return failure();
++    TopKOpAdaptor op = *maybeOp;
++
++    auto operandType = op.getOperand().getType().cast<ShapedType>();
++    SmallVector<int64_t> outputShape(operandType.getShape());
++    outputShape.back() = op.getK();
++    return refineReturnTypes(rewriter, op, {{outputShape}, {outputShape}});
++  }
++};
++
 +struct StablehloRefineShapesPass
 +    : public impl::StablehloRefineShapesPassBase<StablehloRefineShapesPass> {
 +  using StablehloRefineShapesPassBase::StablehloRefineShapesPassBase;
@@ -2293,6 +2596,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +    patterns.add<RefineDynamicReduceWindowOpPattern>(&getContext());
 +    patterns.add<RefineDynamicRngBitGeneratorOpPattern>(&getContext());
 +    patterns.add<RefineDynamicTopKOpPattern>(&getContext());
++    patterns.add<RefineTopKOpPattern>(&getContext());
 +    if (failed(
 +            applyPatternsAndFoldGreedily(func, std::move(patterns), config))) {
 +      return signalPassFailure();
