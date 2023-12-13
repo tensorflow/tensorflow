@@ -61,13 +61,15 @@ limitations under the License.
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
+
 #ifdef __linux__
 #include "third_party/gloo/gloo/transport/tcp/attr.h"
 #include "third_party/gloo/gloo/transport/tcp/device.h"
-#endif  // __linux__
-#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/cpu/gloo_collectives.h"
 #include "xla/pjrt/cpu/gloo_kv_store.h"
+#endif  // __linux__
+
+#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
