@@ -394,6 +394,7 @@ py_strict_library(
         "//tensorflow/python/lib/io:python_io",
         "//tensorflow/python/lib/io:tf_record",
         "//tensorflow/python/module",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:audio_ops_gen",
         "//tensorflow/python/ops:bincount_ops",
         "//tensorflow/python/ops:bitwise_ops",

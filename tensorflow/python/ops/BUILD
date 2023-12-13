@@ -782,7 +782,10 @@ cuda_py_strict_test(
 
 py_strict_library(
     name = "array_ops",
-    srcs = ["array_ops.py"],
+    srcs = [
+        "array_ops.py",
+        "tensor_getitem_override.py",
+    ],
     srcs_version = "PY3",
     visibility = visibility,
     deps = [
