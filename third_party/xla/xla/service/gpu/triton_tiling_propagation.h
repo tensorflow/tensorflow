@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <variant>
 #include <vector>
 
@@ -49,7 +50,27 @@ class TensorIterationSpec {
     std::vector<int64_t> subfragments;
 
     bool is_sliced() const { return count != sliced_count; }
-    bool operator!=(const IterationSpecFragment& other) const;
+
+    auto ToTuple() const {
+      return std::make_tuple(stride, count, slice_start, sliced_count,
+                             subfragments);
+    }
+
+    bool operator==(const IterationSpecFragment& other) const {
+      return ToTuple() == other.ToTuple();
+    }
+    template <typename H>
+    friend H AbslHashValue(H h, const IterationSpecFragment& fragment) {
+      return H::combine(std::move(h), fragment.ToTuple());
+    }
+
+    bool IsPhysicallyEquivalent(const IterationSpecFragment& other) const {
+      // Subfragments don't change the physical layout.
+      return stride == other.stride && count == other.count &&
+             slice_start == other.slice_start &&
+             sliced_count == other.sliced_count;
+    }
+
     std::string ToString() const;
   };
   // Description of complex iteration over a sequence of several strides.
@@ -57,26 +78,39 @@ class TensorIterationSpec {
   // separated into multiple fragments by other dimensions.
   using DimIterationSpec = std::vector<IterationSpecFragment>;
 
-  using StorageType = absl::flat_hash_map<int, DimIterationSpec>;
   const DimIterationSpec& operator[](const int dimension) const {
     return dim_iteration_specs_.at(dimension);
   }
   DimIterationSpec& operator[](const int dimension) {
     return dim_iteration_specs_[dimension];
   }
-  const StorageType& Storage() const { return dim_iteration_specs_; }
+  // Returns nullptr if not found.
+  const DimIterationSpec* Find(int dimension) const;
+
   void RemoveEmptyDimensions() {
     absl::erase_if(dim_iteration_specs_,
                    [](const auto& it) { return it.second.empty(); });
   }
 
+  bool operator==(const TensorIterationSpec& other) const {
+    return dim_iteration_specs_ == other.dim_iteration_specs_;
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const TensorIterationSpec& spec) {
+    return H::combine(std::move(h), spec.dim_iteration_specs_);
+  }
+
   // Compares physical layouts of tensors ignoring subfragments of dimensions.
-  bool operator==(const TensorIterationSpec& other) const;
+  // Checking with this, instead of "==" allows a few more edge cases to be
+  // fused.
+  bool IsPhysicallyEquivalent(const TensorIterationSpec& other) const;
 
   std::string ToString() const;
 
  private:
-  StorageType dim_iteration_specs_;
+  // Maps dimensions to DimIterationSpecs.
+  absl::flat_hash_map<int, DimIterationSpec> dim_iteration_specs_;
 };
 
 // The details of the Triton fusion / tiling propagation are in a separate
@@ -153,7 +187,8 @@ class DimensionOrder {
 
   // Tells that two dimension orders describe the same tensor physical layout.
   bool IsPhysicallyEquivalent(const DimensionOrder& other) const {
-    return ToTensorIterationSpec() == other.ToTensorIterationSpec();
+    return ToTensorIterationSpec().IsPhysicallyEquivalent(
+        other.ToTensorIterationSpec());
   }
 
  private:
