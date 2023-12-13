@@ -150,12 +150,14 @@ class ListSnapshotChunksDatasetOp::Dataset::Iterator
 
   absl::Status SaveInternal(SerializationContext* ctx,
                             IteratorStateWriter* writer) override {
-    return absl::UnimplementedError("TODO(b/297930782): Support save/load.");
+    return snapshot_chunk_provider_->Save(
+        [&](const std::string& key) { return full_name(key); }, writer);
   }
 
   absl::Status RestoreInternal(IteratorContext* ctx,
                                IteratorStateReader* reader) override {
-    return absl::UnimplementedError("TODO(b/297930782): Support save/load.");
+    return snapshot_chunk_provider_->Restore(
+        [&](const std::string& key) { return full_name(key); }, reader);
   }
 
   std::unique_ptr<SnapshotChunkProvider> snapshot_chunk_provider_;

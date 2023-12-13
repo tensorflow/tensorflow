@@ -19,7 +19,7 @@ import shutil
 import tempfile
 import threading
 import time
-from typing import Optional
+from typing import Callable, Optional
 
 from absl.testing import parameterized
 import numpy as np
@@ -27,6 +27,7 @@ import numpy as np
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import distributed_save_op
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import load_op
@@ -211,7 +212,7 @@ class DistributedSaveLoadTest(
     self.assertCountEqual(elements, [b"a", b"b", b"c"] * 3)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWorkerFailure(self):
+  def test_worker_failure(self):
     test_snapshot = TestSnapshot()
     cluster = data_service_test_base.TestCluster(num_workers=1)
     components = np.array([1.0, 2.0, 3.0, np.nan, 5.0]).astype(np.float32)
@@ -224,6 +225,29 @@ class DistributedSaveLoadTest(
     with self.assertRaises(errors.InvalidArgumentError):
       dataset = load_op._load_distributed_snapshot_v2(test_snapshot.path)
       self.getDatasetOutput(dataset)
+
+
+class SaveLoadCheckpointTest(
+    data_service_test_base.TestBase,
+    checkpoint_test_base.CheckpointTestBase,
+    parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations()))
+  def test_save_load_checkpoint(self, verify_fn: Callable[..., None]):
+    test_snapshot = TestSnapshot()
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset, test_snapshot.path, cluster.dispatcher_address()))
+
+    def _build_ds() -> dataset_ops.Dataset:
+      return load_op._load_distributed_snapshot_v2(test_snapshot.path)
+
+    verify_fn(self, _build_ds, num_outputs=10)
 
 
 if __name__ == "__main__":

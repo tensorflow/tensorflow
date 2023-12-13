@@ -14,28 +14,52 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/snapshot/snapshot_chunk_provider.h"
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/tstring.h"
 #include "tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
 namespace data {
+namespace {
+
+constexpr char kChunksRead[] = "chunks_read";
+constexpr absl::string_view kSetElementDelimiter = ",";
+
+std::string SetToString(const absl::flat_hash_set<std::string>& s) {
+  return absl::StrJoin(s, kSetElementDelimiter);
+}
+
+absl::flat_hash_set<std::string> SetFromString(absl::string_view s) {
+  if (s.empty()) {
+    return {};
+  }
+  std::vector<std::string> split = absl::StrSplit(s, kSetElementDelimiter);
+  return absl::flat_hash_set<std::string>(split.begin(), split.end());
+}
+
+}  // namespace
 
 SnapshotChunkProvider::SnapshotChunkProvider(absl::string_view snapshot_path,
                                              tsl::Env* env)
@@ -106,6 +130,25 @@ SnapshotChunkProvider::GetAvailableChunks() {
     return std::vector<std::string>{};
   }
   return status_or_chunks.status();
+}
+
+absl::Status SnapshotChunkProvider::Save(
+    std::function<std::string(std::string)> full_name,
+    IteratorStateWriter* writer) {
+  absl::MutexLock l(&mu_);
+  TF_RETURN_IF_ERROR(
+      writer->WriteScalar(full_name(kChunksRead), SetToString(chunks_read_)));
+  return absl::OkStatus();
+}
+
+absl::Status SnapshotChunkProvider::Restore(
+    std::function<std::string(std::string)> full_name,
+    IteratorStateReader* reader) {
+  absl::MutexLock l(&mu_);
+  tsl::tstring chunks_read;
+  TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kChunksRead), &chunks_read));
+  chunks_read_ = SetFromString(chunks_read);
+  return UpdateSnapshot();
 }
 
 }  // namespace data

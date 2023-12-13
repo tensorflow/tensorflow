@@ -273,6 +273,7 @@ cc_library(
     deps = [
         ":file_utils",
         ":path_utils",
+        "//tensorflow/core:framework",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
@@ -285,6 +286,7 @@ cc_library(
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:status_to_from_proto",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:tstring",
         "@local_tsl//tsl/protobuf:status_proto_cc",
     ],
 )

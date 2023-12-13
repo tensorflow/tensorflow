@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_SNAPSHOT_CHUNK_PROVIDER_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_SNAPSHOT_CHUNK_PROVIDER_H_
 
+#include <functional>
 #include <optional>
 #include <string>
 
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tsl/platform/env.h"
 
 namespace tensorflow {
@@ -43,7 +45,12 @@ class SnapshotChunkProvider {
   // chunks are read. Returns std::nullopt if all chunks have been read.
   absl::StatusOr<std::optional<std::string>> GetNext();
 
-  // TODO(b/297930782): Support save/load.
+  // Supports checkpointing.
+  absl::Status Save(std::function<std::string(std::string)> full_name,
+                    IteratorStateWriter* writer);
+  absl::Status Restore(std::function<std::string(std::string)> full_name,
+                       IteratorStateReader* reader);
+
   // TODO(b/297930782): Support cancellation.
 
  private:
