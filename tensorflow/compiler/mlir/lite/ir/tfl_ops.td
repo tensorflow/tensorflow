@@ -305,6 +305,14 @@ class TFL_OperandHasRankAtMost<int n, int m> :
   PredOpTrait<"operand " # n # " is at most " # m # "-D",
     TFL_OperandHasRankAtMostPred<n, m>>;
 
+// Not all dimentions in the tensor will contribute to the data move in a
+// TransposeOp. Effective rank is the number of dimentions != 1
+class TFL_TransposeOperandHasEffectiveRankAtMost<int n, int m> :
+  PredOpTrait<"operand " # n # " is at most " # m # "-D",
+    Or<[TFL_OperandIsUnrankedPred<n>,
+      CPred<"GetSqueezedShape($_op.getOperand(" # n #
+      ")).cast<DenseElementsAttr>().size() <= " # m>]>>;
+
 class TFL_OperandHasRankAtLeast<int n, int m> :
   PredOpTrait<"operand " # n # " is at least " # m # "-D",
     Or<[TFL_OperandIsUnrankedPred<n>,
@@ -3488,7 +3496,7 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [
 def TFL_TransposeOp : TFL_Op<"transpose", [
     Pure,
     QuantizableResult,
-    TFL_OperandHasRankAtMost<0, 6>,
+    TFL_TransposeOperandHasEffectiveRankAtMost<0, 6>,
     TFL_OperandHasRank<1, 1>,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
@@ -3511,6 +3519,8 @@ def TFL_TransposeOp : TFL_Op<"transpose", [
   let hasVerifier = 1;
 
   let hasFolder = 1;
+
+  let hasCanonicalizer = 1;
 
   let builders = [
     OpBuilder<(ins "Value":$input, "Value":$perm),
