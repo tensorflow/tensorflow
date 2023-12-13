@@ -514,11 +514,42 @@ static std::string_view StreamCaptureModeToString(
       break;
   }
 
-  VLOG(2) << "Beging stream " << stream << " capture in "
+  VLOG(2) << "Beginning stream " << stream << " capture in "
           << StreamCaptureModeToString(mode) << " mode";
   RETURN_IF_CUDA_RES_ERROR(cuStreamBeginCapture(stream, cu_mode),
                            "Failed to begin stream capture");
   return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::StreamBeginCaptureToGraph(
+    CUstream stream, CUgraph graph, StreamCaptureMode mode) {
+  CUstreamCaptureMode cu_mode;
+  switch (mode) {
+    case StreamCaptureMode::kGlobal:
+      cu_mode = CU_STREAM_CAPTURE_MODE_GLOBAL;
+      break;
+    case StreamCaptureMode::kThreadLocal:
+      cu_mode = CU_STREAM_CAPTURE_MODE_THREAD_LOCAL;
+      break;
+    case StreamCaptureMode::kRelaxed:
+      cu_mode = CU_STREAM_CAPTURE_MODE_RELAXED;
+      break;
+  }
+
+#if CUDA_VERSION >= 12030
+  VLOG(2) << "Beginning stream " << stream << " capture in "
+          << StreamCaptureModeToString(mode) << " mode to graph " << graph;
+  RETURN_IF_CUDA_RES_ERROR(
+      cuStreamBeginCaptureToGraph(stream, graph,
+                                  /*dependencies=*/nullptr,
+                                  /*dependencyData=*/nullptr,
+                                  /*numDependencies=*/0, cu_mode),
+      "Failed to begin stream capture to graph");
+  return ::tsl::OkStatus();
+#else
+  return absl::UnimplementedError(
+      "StreamBeginCaptureToGraph is not implemented");
+#endif  // CUDA_VERSION >= 12030
 }
 
 /* static */ tsl::Status GpuDriver::StreamEndCapture(CUstream stream,

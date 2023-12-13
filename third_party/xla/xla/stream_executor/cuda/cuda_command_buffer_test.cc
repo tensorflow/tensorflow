@@ -103,6 +103,10 @@ TEST(CudaCommandBufferTest, LaunchSingleKernel) {
 }
 
 TEST(CudaCommandBufferTest, TraceSingleKernel) {
+#if CUDA_VERSION < 12030
+  GTEST_SKIP() << "Command buffer tracing is not supported";
+#endif
+
   Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 

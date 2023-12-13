@@ -331,6 +331,10 @@ TEST(CommandBufferThunkTest, LaunchCmd) {
 }
 
 TEST(CommandBufferThunkTest, GemmCmd) {
+#if CUDA_VERSION < 12030
+  GTEST_SKIP() << "Command buffer tracing is not supported";
+#endif
+
   se::StreamExecutor* executor = CudaExecutor();
 
   se::Stream stream(executor);
