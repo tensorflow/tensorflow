@@ -47,6 +47,8 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/export.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/precalibration.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
@@ -78,12 +80,14 @@ namespace {
 
 using ::mlir::quant::kTfFilePrefix;
 using ::mlir::quant::kTfQuantSaveOpName;
+using ::mlir::quant::stablehlo::PreCalibrationComponent;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
 using ::stablehlo::quantization::CreateExportedModel;
 using ::stablehlo::quantization::ExportOptions;
 using ::stablehlo::quantization::kExportStepSuffix;
+using ::stablehlo::quantization::QuantizationConfig;
 using ::stablehlo::quantization::io::GetLocalTmpFileName;
 
 // Add passes for transforming the MLIR module op so that it can be exported
@@ -447,14 +451,10 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
 
   // Use StableHLO Quantizer option if opset is specified.
   if (run_tf_to_stablehlo) {
-    TF_RETURN_IF_ERROR(
-        RunPasses(/*name=*/kTfQuantPtqPreCalibrationStepStableHloName,
-                  /*add_passes_func=*/
-                  [&quantization_options](mlir::PassManager &pm) {
-                    AddQuantizePtqPreCalibrationStablehloPasses(
-                        pm, quantization_options.calibration_options());
-                  },
-                  context, *module_ref));
+    PreCalibrationComponent pre_calibration_component(
+        &context, quantization_options.calibration_options());
+    TF_ASSIGN_OR_RETURN(*module_ref, pre_calibration_component.Run(
+                                         *module_ref, QuantizationConfig()));
   } else {
     TF_RETURN_IF_ERROR(RunPasses(
         /*name=*/kTfQuantPtqPreCalibrationStepName, /*add_passes_func=*/

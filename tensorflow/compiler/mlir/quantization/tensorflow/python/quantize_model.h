@@ -41,8 +41,6 @@ inline constexpr absl::string_view kTfQuantWeightOnlyStepName =
     "tf_quant_weight_only";
 
 // StableHLO Quantization passes that are ran if StableHLO opset is selected.
-inline constexpr absl::string_view kTfQuantPtqPreCalibrationStepStableHloName =
-    "tf_quant_ptq_pre_calibration_stablehlo";
 inline constexpr absl::string_view kTfQuantPtqPostCalibrationStepStableHloName =
     "tf_quant_ptq_post_calibration_stablehlo";
 
