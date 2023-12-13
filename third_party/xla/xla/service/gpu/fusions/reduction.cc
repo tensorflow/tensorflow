@@ -369,8 +369,7 @@ ReductionGroupEmitter::ReductionGroupEmitter(
 void ReductionEmitter::MaybeEmitFenceForAMDGPU() {
   auto* module = builder_->GetInsertBlock()->getModule();
   if (IsAMDGPU(module) &&
-      ir_emitter_context_.rocm_compute_capability().gcn_arch_name().substr(
-          0, 6) == "gfx90a") {
+      ir_emitter_context_.rocm_compute_capability().fence_before_barrier()) {
     builder_->CreateFence(
         llvm::AtomicOrdering::SequentiallyConsistent,
         builder_->getContext().getOrInsertSyncScopeID("workgroup"));

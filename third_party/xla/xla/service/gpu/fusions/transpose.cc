@@ -71,8 +71,7 @@ void MaybeEmitFenceForAMDGPU(llvm::IRBuilder<>* builder,
                              IrEmitterContext& ir_emitter_context) {
   auto* module = builder->GetInsertBlock()->getModule();
   if (IsAMDGPU(module) &&
-      ir_emitter_context.rocm_compute_capability().gcn_arch_name().substr(
-          0, 6) == "gfx90a") {
+      ir_emitter_context.rocm_compute_capability().fence_before_barrier()) {
     builder->CreateFence(
         llvm::AtomicOrdering::SequentiallyConsistent,
         builder->getContext().getOrInsertSyncScopeID("workgroup"));
