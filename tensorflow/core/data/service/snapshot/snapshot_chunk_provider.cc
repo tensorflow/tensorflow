@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tsl/distributed_runtime/rpc/grpc_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
@@ -46,6 +47,13 @@ namespace {
 
 constexpr char kChunksRead[] = "chunks_read";
 constexpr absl::string_view kSetElementDelimiter = ",";
+
+// Waits for a short period of time before retrying.
+void Backoff(int num_retries, tsl::Env* env) {
+  if (num_retries >= 1) {  // Does not backoff for the first try.
+    env->SleepForMicroseconds(tsl::ComputeBackoffMicroseconds(num_retries - 1));
+  }
+}
 
 std::string SetToString(const absl::flat_hash_set<std::string>& s) {
   return absl::StrJoin(s, kSetElementDelimiter);
@@ -67,7 +75,8 @@ SnapshotChunkProvider::SnapshotChunkProvider(absl::string_view snapshot_path,
 
 absl::StatusOr<std::optional<std::string>> SnapshotChunkProvider::GetNext()
     ABSL_LOCKS_EXCLUDED(mu_) {
-  while (true) {
+  for (int num_retries = 0;; ++num_retries) {
+    Backoff(num_retries, env_);
     absl::MutexLock l(&mu_);
     TF_RETURN_IF_ERROR(snapshot_state_.status);
     if (!chunks_unread_.empty()) {
@@ -92,8 +101,6 @@ absl::Status SnapshotChunkProvider::UpdateSnapshot()
   TF_ASSIGN_OR_RETURN(snapshot_state_, GetSnapshotState());
   TF_RETURN_IF_ERROR(snapshot_state_.status);
   TF_ASSIGN_OR_RETURN(std::vector<std::string> chunks, GetAvailableChunks());
-
-  // TODO(b/297930782): If no new chunks are updated, consider sleeping.
   for (absl::string_view chunk : chunks) {
     if (!chunks_read_.contains(chunk)) {
       chunks_unread_.insert(std::string(chunk));
