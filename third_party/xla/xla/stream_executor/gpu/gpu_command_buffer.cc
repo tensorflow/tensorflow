@@ -691,10 +691,11 @@ tsl::Status GpuCommandBuffer::Finalize() {
     TF_RETURN_IF_ERROR(GpuDriver::GraphInstantiate(&exec_, graph_, flags));
     uint64_t end_nanos = tsl::Env::Default()->NowNanos();
 
-    VLOG(5) << "Instantiated executable graph " << exec_ << " in "
-            << (end_nanos - start_nanos) / 1000 << " μs ("
-            << "#" << NotifyExecCreated() << ", "
-            << "alive executable graphs: " << AliveExecs() << ")";
+    VLOG(5) << "Instantiated executable graph #" << NotifyExecCreated() << " "
+            << exec_ << " in " << (end_nanos - start_nanos) / 1000 << " μs"
+            << "; nodes: " << nodes_.size()
+            << "; conditionals: " << conditional_command_buffers_.size()
+            << "; alive executable graphs: " << AliveExecs();
 
   } else if (mode_ == Mode::kPrimary && state_ == State::kUpdate) {
     // If this is a finalization after update, we don't have to do anything as

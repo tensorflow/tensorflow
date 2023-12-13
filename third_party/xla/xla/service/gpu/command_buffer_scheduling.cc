@@ -54,6 +54,10 @@ using CommandBufferConfig = CommandBufferScheduling::CommandBufferConfig;
 // Pattern matching HLO instructions to commands
 //===----------------------------------------------------------------------===//
 
+static bool IsConstant(const HloInstruction* hlo) {
+  return hlo->opcode() == HloOpcode::kConstant;
+}
+
 // Returns true if instruction is no-op at run time and doesn't have a
 // corresponding Thunk or Command (metadata only operation).
 static bool IsNoOp(const HloInstruction* hlo) {
@@ -68,10 +72,10 @@ static bool IsCommand(const HloInstruction* hlo,
 // Returns true if HLO computation can executed as a command buffer.
 static bool IsCommand(const HloComputation* computation,
                       const CommandBufferConfig& config) {
-  return absl::c_all_of(computation->instructions(),
-                        [&](const HloInstruction* inst) {
-                          return IsNoOp(inst) || IsCommand(inst, config);
-                        });
+  return absl::c_all_of(
+      computation->instructions(), [&](const HloInstruction* inst) {
+        return IsNoOp(inst) || IsConstant(inst) || IsCommand(inst, config);
+      });
 }
 
 // This is a template to define pattern matching functions for HLO instructions
