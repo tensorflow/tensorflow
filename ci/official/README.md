@@ -10,7 +10,7 @@ Issue Reporting: File an issue against this repo and tag
 ## TensorFlow's Official CI and Build/Test Scripts
 
 TensorFlow's official CI jobs run the scripts in this folder. Our internal CI
-system, Kokoro, schedules our CI jobs by combining a build script with an `env` file that is filled with configuration options:
+system, Kokoro, schedules our CI jobs by combining a build script with a file from the `envs` directory that is filled with configuration options:
 
 - Nightly jobs (Run nightly on the `nightly` branch)
     - Uses `wheel.sh`, `libtensorflow.sh`, `code_check_full.sh`
@@ -22,7 +22,7 @@ system, Kokoro, schedules our CI jobs by combining a build script with an `env` 
     - Uses `pycpp.sh`, `code_check_changed_files.sh`
     - Also uses `envs/continuous_...`
 
-These `envs` match up with an environment matrix that roughly covers:
+These "env" files match up with an environment matrix that roughly covers:
 
 -   Linux, MacOS, and Windows machines (these pool definitions are internal)
 -   x86 and arm64
