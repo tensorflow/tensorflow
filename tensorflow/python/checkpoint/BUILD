@@ -428,6 +428,7 @@ py_strict_library(
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:object_identity",
+        "@absl_py//absl/logging",
     ],
 )
 
