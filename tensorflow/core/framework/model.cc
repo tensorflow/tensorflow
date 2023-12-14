@@ -2394,6 +2394,7 @@ void Model::Optimize(AutotuneAlgorithm algorithm,
       }
     }
   }
+  VLOG(2) << ram_budget_manager.DebugString();
 }
 
 void Model::RemoveNode(std::shared_ptr<Node> node) {
