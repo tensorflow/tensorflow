@@ -199,7 +199,14 @@ tsl::Status GpuCommandBuffer::CheckNumCommandBuffers(
 tsl::Status GpuCommandBuffer::Barrier() {
   // Collect nodes that will become a new barrier dependencies.
   Dependencies dependencies;
-  for (int32_t i = nodes_.size() - 1; i >= 0; --i) {
+
+  // We start our traversal from the previous node, which in a new command
+  // buffers means from the last node, and in updated command buffers means from
+  // the previously updated node.
+  int32_t prev_node_idx = nodes_.size() - 1;
+  if (state_ == State::kUpdate) prev_node_idx = update_state_.node_idx - 1;
+
+  for (int32_t i = prev_node_idx; i >= 0; --i) {
     if (nodes_[i] == barrier_) break;
     dependencies.push_back(nodes_[i]);
   }
@@ -222,6 +229,7 @@ tsl::Status GpuCommandBuffer::Barrier() {
   }
 
   if (state_ == State::kUpdate) {
+    barrier_ = nodes_[prev_node_idx];
     // Increment update node index only if we added an empty node earlier.
     if (dependencies.size() > 1) update_state_.node_idx++;
     return tsl::OkStatus();
@@ -776,6 +784,7 @@ tsl::Status GpuCommandBuffer::Update() {
           << " command buffer update for executable graph " << exec_;
 
   state_ = State::kUpdate;
+  barrier_ = nullptr;
   update_state_ = UpdateState();
   return tsl::OkStatus();
 }

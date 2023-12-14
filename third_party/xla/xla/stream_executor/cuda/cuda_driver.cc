@@ -564,7 +564,7 @@ static std::string_view StreamCaptureModeToString(
 
 /* static */ tsl::Status GpuDriver::GraphInstantiate(
     CUgraphExec* exec, CUgraph graph, const GraphInstantiateFlags& flags) {
-  VLOG(2) << "Instante CUDA executable graph from graph " << graph << " ("
+  VLOG(2) << "Instantiate CUDA executable graph from graph " << graph << " ("
           << "auto_free_on_launch=" << flags.auto_free_on_launch << ", "
           << "device_launch=" << flags.device_launch << ", "
           << "use_node_priority=" << flags.use_node_prirotiy << ", "

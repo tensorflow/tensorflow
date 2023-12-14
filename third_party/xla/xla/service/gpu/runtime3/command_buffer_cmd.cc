@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
@@ -96,10 +97,58 @@ Status CommandBufferCmdSequence::Record(
     }
   }
 
+  // We track read and write sets of all commands recorded into the command
+  // buffer to detect conflicts and insert explicit barriers. This is likely not
+  // the most efficient algorithm to track buffer aliasing and read/write
+  // conflicts, but XLA optimizes for peak memory allocation and we almost never
+  // have a long chains of independent HLO operations writing into
+  // non-overlapping buffer slices, so here we prefer simplicity.
+  absl::flat_hash_set<BufferAllocation::Slice> read_set;
+  absl::flat_hash_set<BufferAllocation::Slice> write_set;
+
+  auto track_buffers = [&](const CommandBufferCmd::BufferUsageVector& buffers) {
+    for (auto& buffer : buffers) {
+      if (buffer.access == MemoryAccess::kWrite) write_set.insert(buffer.slice);
+      if (buffer.access == MemoryAccess::kRead) read_set.insert(buffer.slice);
+    }
+  };
+
+  // Returns true if slice overlaps with any of the slices in read set.
+  auto read_overlap = [&](const BufferAllocation::Slice& slice) {
+    if (read_set.contains(slice)) return true;
+    for (auto& read : read_set)
+      if (read.OverlapsWith(slice)) return true;
+    return false;
+  };
+
+  // Returns true if slice overlaps with any of the slices in write set.
+  auto write_overlap = [&](const BufferAllocation::Slice& slice) {
+    if (write_set.contains(slice)) return true;
+    for (auto& write : write_set)
+      if (write.OverlapsWith(slice)) return true;
+    return false;
+  };
+
+  auto has_conflict = [&](const CommandBufferCmd::BufferUsageVector& buffers) {
+    bool conflict = absl::c_any_of(buffers, [&](const auto& buffer) {
+      return buffer.access == MemoryAccess::kWrite
+                 ? write_overlap(buffer.slice) || read_overlap(buffer.slice)
+                 : write_overlap(buffer.slice);
+    });
+    if (conflict) {
+      write_set.clear();
+      read_set.clear();
+    }
+    return conflict;
+  };
+
   for (auto& cmd : commands_) {
+    CommandBufferCmd::BufferUsageVector buffers = cmd->buffers();
+    if (has_conflict(buffers)) {
+      TF_RETURN_IF_ERROR(command_buffer->Barrier());
+    }
+    track_buffers(buffers);
     TF_RETURN_IF_ERROR(cmd->Record(params, command_buffer));
-    // TODO(ezhulenev): Add barriers based on buffer slice read/write conflicts.
-    TF_RETURN_IF_ERROR(command_buffer->Barrier());
   }
 
   if (mode == RecordMode::kExclusive) {
