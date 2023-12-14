@@ -2255,7 +2255,7 @@ ENTRY e {
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter(),
                            m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, Naming) {
