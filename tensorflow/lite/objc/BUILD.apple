@@ -160,5 +160,6 @@ objc_library(
     ],
     deps = [
         ":TensorFlowLite",
+        "//third_party/apple_frameworks:UIKit",
     ],
 )
