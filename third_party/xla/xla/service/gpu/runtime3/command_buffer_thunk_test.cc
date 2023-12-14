@@ -45,6 +45,8 @@ limitations under the License.
 
 namespace xla::gpu {
 
+using MemoryAccess = CommandBufferCmd::MemoryAccess;
+
 static se::StreamExecutor* CudaExecutor() {
   auto* platform = se::MultiPlatformManager::PlatformWithName("CUDA").value();
   return platform->ExecutorForDevice(0).value();
@@ -273,10 +275,12 @@ TEST(CommandBufferThunkTest, LaunchCmd) {
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
   auto args = {slice_a, slice_a, slice_b};  // b = a + a
+  auto args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
+                      MemoryAccess::kWrite};
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
-  commands.Emplace<LaunchCmd>("add", args, LaunchDimensions(1, 4),
+  commands.Emplace<LaunchCmd>("add", args, args_access, LaunchDimensions(1, 4),
                               /*shmem_bytes=*/0);
 
   // Construct a thunk with command sequence.
@@ -478,12 +482,15 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
 
   auto args = {slice_a, slice_a, slice_b};    // b = a + a
   auto args_1 = {slice_c, slice_c, slice_d};  // d = c + c
+  auto args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
+                      MemoryAccess::kWrite};
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
-  commands.Emplace<LaunchCmd>("add", args, LaunchDimensions(1, 4),
+  commands.Emplace<LaunchCmd>("add", args, args_access, LaunchDimensions(1, 4),
                               /*shmem_bytes=*/0);
-  commands.Emplace<LaunchCmd>("add", args_1, LaunchDimensions(1, 4),
+  commands.Emplace<LaunchCmd>("add", args_1, args_access,
+                              LaunchDimensions(1, 4),
                               /*shmem_bytes=*/0);
 
   // Construct a thunk with command sequence.
@@ -586,10 +593,13 @@ TEST(CommandBufferThunkTest, IfCmd) {
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
   auto args = {slice_a, slice_a, slice_b};  // b = a + a
+  auto args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
+                      MemoryAccess::kWrite};
 
   // Prepare commands sequence for `then` branch.
   CommandBufferCmdSequence then_commands;
-  then_commands.Emplace<LaunchCmd>("add", args, LaunchDimensions(1, 4),
+  then_commands.Emplace<LaunchCmd>("add", args, args_access,
+                                   LaunchDimensions(1, 4),
                                    /*shmem_bytes=*/0);
 
   // Prepare commands sequence for thunk.
@@ -671,15 +681,20 @@ TEST(CommandBufferThunkTest, IfElseCmd) {
   CommandBufferCmdSequence then_commands;
   CommandBufferCmdSequence else_commands;
 
+  auto args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
+                      MemoryAccess::kWrite};
+
   {  // Then: b = a + a
     auto args = {slice_a, slice_a, slice_b};
-    then_commands.Emplace<LaunchCmd>("add", args, LaunchDimensions(1, 4),
+    then_commands.Emplace<LaunchCmd>("add", args, args_access,
+                                     LaunchDimensions(1, 4),
                                      /*shmem_bytes=*/0);
   }
 
   {  // Else: b = b + b
     auto args = {slice_b, slice_b, slice_b};
-    else_commands.Emplace<LaunchCmd>("add", args, LaunchDimensions(1, 4),
+    else_commands.Emplace<LaunchCmd>("add", args, args_access,
+                                     LaunchDimensions(1, 4),
                                      /*shmem_bytes=*/0);
   }
 
@@ -754,15 +769,20 @@ TEST(CommandBufferThunkTest, CaseCmd) {
   // Prepare commands sequence for branches.
   std::vector<CommandBufferCmdSequence> branches(2);
 
+  auto args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
+                      MemoryAccess::kWrite};
+
   {  // Case 0: b = a + a
     auto args = {slice_a, slice_a, slice_b};
-    branches[0].Emplace<LaunchCmd>("add", args, LaunchDimensions(1, 4),
+    branches[0].Emplace<LaunchCmd>("add", args, args_access,
+                                   LaunchDimensions(1, 4),
                                    /*shmem_bytes=*/0);
   }
 
   {  // Case 1: b = b + b
     auto args = {slice_b, slice_b, slice_b};
-    branches[1].Emplace<LaunchCmd>("add", args, LaunchDimensions(1, 4),
+    branches[1].Emplace<LaunchCmd>("add", args, args_access,
+                                   LaunchDimensions(1, 4),
                                    /*shmem_bytes=*/0);
   }
 
@@ -833,10 +853,13 @@ TEST(CommandBufferThunkTest, ForCmd) {
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
   auto args = {slice_a, slice_b, slice_b};  // b = a + b
+  auto args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
+                      MemoryAccess::kWrite};
 
   // Prepare commands sequence for loop `body`.
   CommandBufferCmdSequence body_commands;
-  body_commands.Emplace<LaunchCmd>("add", args, LaunchDimensions(1, 4),
+  body_commands.Emplace<LaunchCmd>("add", args, args_access,
+                                   LaunchDimensions(1, 4),
                                    /*shmem_bytes=*/0);
 
   // Prepare commands sequence for thunk.

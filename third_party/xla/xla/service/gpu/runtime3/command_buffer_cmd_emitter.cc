@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/container/inlined_vector.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/copy_thunk.h"
 #include "xla/service/gpu/gemm_thunk.h"
@@ -36,8 +37,14 @@ namespace xla::gpu {
 using Command = std::unique_ptr<CommandBufferCmd>;
 
 static StatusOr<Command> ConvertKernelThunk(const KernelThunk& thunk) {
+  absl::InlinedVector<CommandBufferCmd::MemoryAccess, 4> args_access;
+  args_access.reserve(thunk.written().size());
+  for (bool written : thunk.written()) {
+    args_access.push_back(written ? CommandBufferCmd::MemoryAccess::kWrite
+                                  : CommandBufferCmd::MemoryAccess::kRead);
+  }
   return std::make_unique<LaunchCmd>(thunk.kernel_name(), thunk.arguments(),
-                                     thunk.launch_dimensions(),
+                                     args_access, thunk.launch_dimensions(),
                                      thunk.shmem_bytes());
 }
 

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 
+#include <cassert>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -43,6 +44,8 @@ limitations under the License.
 
 namespace xla::gpu {
 
+using MemoryAccess = CommandBufferCmd::MemoryAccess;
+
 // Creates condition command buffer builder from a cmd sequence.
 static se::CommandBuffer::Builder ConditionBuilder(
     CommandBufferCmdSequence* commands,
@@ -69,9 +72,9 @@ static std::vector<se::CommandBuffer::Builder> ConditionBuilders(
 //===----------------------------------------------------------------------===//
 
 void CommandBufferCmdSequence::Append(std::unique_ptr<CommandBufferCmd> cmd) {
-  for (BufferAllocation::Slice& slice : cmd->slices()) {
-    slices_.insert(slice);
-    allocs_indices_.insert(slice.index());
+  for (const CommandBufferCmd::BufferUsage& buffer : cmd->buffers()) {
+    buffers_.insert(buffer);
+    allocs_indices_.insert(buffer.slice.index());
   }
   commands_.push_back(std::move(cmd));
 }
@@ -106,13 +109,11 @@ Status CommandBufferCmdSequence::Record(
   return OkStatus();
 }
 
-// Returns buffer allocation slices referenced by commands in this sequence.
-const absl::flat_hash_set<BufferAllocation::Slice>&
-CommandBufferCmdSequence::slices() const {
-  return slices_;
+const absl::flat_hash_set<CommandBufferCmd::BufferUsage>&
+CommandBufferCmdSequence::buffers() const {
+  return buffers_;
 }
 
-// Returns buffer allocations indices referenced by commands in this sequence.
 const absl::flat_hash_set<BufferAllocation::Index>&
 CommandBufferCmdSequence::allocs_indices() const {
   return allocs_indices_;
@@ -124,9 +125,11 @@ CommandBufferCmdSequence::allocs_indices() const {
 
 LaunchCmd::LaunchCmd(std::string kernel_name,
                      absl::Span<const BufferAllocation::Slice> args,
+                     absl::Span<const MemoryAccess> args_access,
                      LaunchDimensions dims, int64_t shmem_bytes)
     : kernel_name_(std::move(kernel_name)),
       args_(args.begin(), args.end()),
+      args_access_(args_access.begin(), args_access.end()),
       dims_(dims),
       shmem_bytes_(shmem_bytes) {}
 
@@ -172,8 +175,12 @@ Status LaunchCmd::Record(const RecordParams& params,
       *kernel_args);
 }
 
-CommandBufferCmd::Slices LaunchCmd::slices() {
-  return CommandBufferCmd::Slices(args_.begin(), args_.end());
+CommandBufferCmd::BufferUsageVector LaunchCmd::buffers() {
+  BufferUsageVector buffers;
+  for (int32_t i = 0; i < args_.size(); ++i) {
+    buffers.emplace_back(args_[i], args_access_[i]);
+  }
+  return buffers;
 }
 
 //===----------------------------------------------------------------------===//
@@ -202,8 +209,8 @@ Status MemcpyDeviceToDeviceCmd::Record(const RecordParams& params,
   return command_buffer->MemcpyDeviceToDevice(&dst, src, num_bytes_);
 }
 
-CommandBufferCmd::Slices MemcpyDeviceToDeviceCmd::slices() {
-  return {dst_, src_};
+CommandBufferCmd::BufferUsageVector MemcpyDeviceToDeviceCmd::buffers() {
+  return {{dst_, MemoryAccess::kWrite}, {src_, MemoryAccess::kRead}};
 }
 
 //===----------------------------------------------------------------------===//
@@ -228,10 +235,12 @@ Status IfCmd::Record(const RecordParams& params,
                             ConditionBuilder(&then_commands_, &params));
 }
 
-CommandBufferCmd::Slices IfCmd::slices() {
-  absl::flat_hash_set<BufferAllocation::Slice> slices = {pred_};
-  slices.insert(then_commands_.slices().begin(), then_commands_.slices().end());
-  return {slices.begin(), slices.end()};
+CommandBufferCmd::BufferUsageVector IfCmd::buffers() {
+  absl::flat_hash_set<CommandBufferCmd::BufferUsage> buffers;
+  buffers.emplace(pred_, MemoryAccess::kRead);
+  buffers.insert(then_commands_.buffers().begin(),
+                 then_commands_.buffers().end());
+  return {buffers.begin(), buffers.end()};
 }
 
 //===----------------------------------------------------------------------===//
@@ -262,11 +271,14 @@ Status IfElseCmd::Record(const RecordParams& params,
                                 ConditionBuilder(&else_commands_, &params));
 }
 
-CommandBufferCmd::Slices IfElseCmd::slices() {
-  absl::flat_hash_set<BufferAllocation::Slice> slices = {pred_};
-  slices.insert(then_commands_.slices().begin(), then_commands_.slices().end());
-  slices.insert(else_commands_.slices().begin(), else_commands_.slices().end());
-  return {slices.begin(), slices.end()};
+CommandBufferCmd::BufferUsageVector IfElseCmd::buffers() {
+  absl::flat_hash_set<CommandBufferCmd::BufferUsage> buffers;
+  buffers.emplace(pred_, MemoryAccess::kRead);
+  buffers.insert(then_commands_.buffers().begin(),
+                 then_commands_.buffers().end());
+  buffers.insert(else_commands_.buffers().begin(),
+                 else_commands_.buffers().end());
+  return {buffers.begin(), buffers.end()};
 }
 
 //===----------------------------------------------------------------------===//
@@ -295,12 +307,13 @@ Status CaseCmd::Record(const RecordParams& params,
       ConditionBuilders(absl::MakeSpan(branches_commands_), &params));
 }
 
-CommandBufferCmd::Slices CaseCmd::slices() {
-  absl::flat_hash_set<BufferAllocation::Slice> slices = {index_};
+CommandBufferCmd::BufferUsageVector CaseCmd::buffers() {
+  absl::flat_hash_set<CommandBufferCmd::BufferUsage> buffers;
+  buffers.emplace(index_, MemoryAccess::kRead);
   for (auto& branch : branches_commands_) {
-    slices.insert(branch.slices().begin(), branch.slices().end());
+    buffers.insert(branch.buffers().begin(), branch.buffers().end());
   }
-  return {slices.begin(), slices.end()};
+  return {buffers.begin(), buffers.end()};
 }
 
 //===----------------------------------------------------------------------===//
@@ -328,10 +341,12 @@ Status ForCmd::Record(const RecordParams& params,
                              ConditionBuilder(&body_commands_, &params));
 }
 
-CommandBufferCmd::Slices ForCmd::slices() {
-  absl::flat_hash_set<BufferAllocation::Slice> slices = {loop_counter_};
-  slices.insert(body_commands_.slices().begin(), body_commands_.slices().end());
-  return {slices.begin(), slices.end()};
+CommandBufferCmd::BufferUsageVector ForCmd::buffers() {
+  absl::flat_hash_set<CommandBufferCmd::BufferUsage> buffers;
+  buffers.emplace(loop_counter_, MemoryAccess::kWrite);
+  buffers.insert(body_commands_.buffers().begin(),
+                 body_commands_.buffers().end());
+  return {buffers.begin(), buffers.end()};
 }
 
 //===----------------------------------------------------------------------===//
@@ -361,11 +376,14 @@ Status WhileCmd::Record(const RecordParams& params,
                                ConditionBuilder(&body_commands_, &params));
 }
 
-CommandBufferCmd::Slices WhileCmd::slices() {
-  absl::flat_hash_set<BufferAllocation::Slice> slices = {pred_};
-  slices.insert(cond_commands_.slices().begin(), cond_commands_.slices().end());
-  slices.insert(body_commands_.slices().begin(), body_commands_.slices().end());
-  return {slices.begin(), slices.end()};
+CommandBufferCmd::BufferUsageVector WhileCmd::buffers() {
+  absl::flat_hash_set<CommandBufferCmd::BufferUsage> buffers;
+  buffers.emplace(pred_, MemoryAccess::kWrite);
+  buffers.insert(cond_commands_.buffers().begin(),
+                 cond_commands_.buffers().end());
+  buffers.insert(body_commands_.buffers().begin(),
+                 body_commands_.buffers().end());
+  return {buffers.begin(), buffers.end()};
 }
 
 //===----------------------------------------------------------------------===//
@@ -387,7 +405,7 @@ Status AllocateCmd::Record(const RecordParams& params,
                                                           buffer);
 }
 
-CommandBufferCmd::Slices AllocateCmd::slices() { return {}; }
+CommandBufferCmd::BufferUsageVector AllocateCmd::buffers() { return {}; }
 
 //===----------------------------------------------------------------------===//
 // FreeCmd
@@ -410,7 +428,7 @@ Status FreeCmd::Record(const RecordParams& params,
       allocation_.index());
 }
 
-CommandBufferCmd::Slices FreeCmd::slices() { return {}; }
+CommandBufferCmd::BufferUsageVector FreeCmd::buffers() { return {}; }
 
 //===----------------------------------------------------------------------===//
 // GemmCmd
@@ -460,8 +478,10 @@ Status GemmCmd::Record(const RecordParams& params,
   return command_buffer->AddNestedCommandBuffer(nested_buffer);
 }
 
-CommandBufferCmd::Slices GemmCmd::slices() {
-  return {lhs_buffer_, rhs_buffer_, output_buffer_};
+CommandBufferCmd::BufferUsageVector GemmCmd::buffers() {
+  return {{lhs_buffer_, MemoryAccess::kRead},
+          {rhs_buffer_, MemoryAccess::kRead},
+          {output_buffer_, MemoryAccess::kWrite}};
 }
 
 }  // namespace xla::gpu

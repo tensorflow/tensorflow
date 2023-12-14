@@ -32,6 +32,8 @@ limitations under the License.
 
 namespace xla::gpu {
 
+using MemoryAccess = CommandBufferCmd::MemoryAccess;
+
 static se::StreamExecutor* CudaExecutor() {
   auto* platform = se::MultiPlatformManager::PlatformWithName("CUDA").value();
   return platform->ExecutorForDevice(0).value();
@@ -105,10 +107,12 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
   auto args = {slice_a, slice_a, slice_b};  // b = a + a
+  auto args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
+                      MemoryAccess::kWrite};
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
-  commands.Emplace<LaunchCmd>("add", args, LaunchDimensions(1, 4),
+  commands.Emplace<LaunchCmd>("add", args, args_access, LaunchDimensions(1, 4),
                               /*shmem_bytes=*/0);
 
   // Initialize command sequence and load device kernels.
