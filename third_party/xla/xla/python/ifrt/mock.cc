@@ -15,10 +15,27 @@ limitations under the License.
 
 #include "xla/python/ifrt/mock.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
+
+#include <gmock/gmock.h>
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/literal.h"
+#include "xla/pjrt/pjrt_device_description.h"
+#include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/value.h"
+#include "tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -187,9 +204,12 @@ MockDevice::MockDevice(Device* delegated) : delegated_(delegated) {
   ON_CALL(*this, ToString).WillByDefault([this]() {
     return delegated_->ToString();
   });
-  ON_CALL(*this, Attributes).WillByDefault([this]() {
-    return delegated_->Attributes();
-  });
+  ON_CALL(*this, Attributes)
+      .WillByDefault(
+          [this]()
+              -> const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& {
+            return delegated_->Attributes();
+          });
   ON_CALL(*this, CreateAsyncTrackingEvent)
       .WillByDefault([this](absl::string_view description) {
         return delegated_->CreateAsyncTrackingEvent(description);
