@@ -359,7 +359,7 @@ TF_Tensor* TF_AllocateOutputAndSetPjRtBuffer(TF_OpKernelContext* context,
         tensorflow::GetPjRtCApiClient(tensorflow::DeviceType(device_type));
     if (!pjrt_c_api_client.ok()) {
       status->status = pjrt_c_api_client.status();
-      return;
+      return nullptr;
     }
 
     auto pjrt_buffer =
@@ -408,7 +408,7 @@ TF_Tensor* TF_ForwardInputOrAllocateOutputAndSetPjRtBuffer(
         tensorflow::GetPjRtCApiClient(tensorflow::DeviceType(device_type));
     if (!pjrt_c_api_client.ok()) {
       status->status = pjrt_c_api_client.status();
-      return;
+      return nullptr;
     }
 
     auto pjrt_buffer =
@@ -466,7 +466,7 @@ TF_Tensor* TF_AllocateTempAndSetPjRtBuffer(
         tensorflow::GetPjRtCApiClient(tensorflow::DeviceType(device_type));
     if (!pjrt_c_api_client.ok()) {
       status->status = pjrt_c_api_client.status();
-      return;
+      return nullptr;
     }
 
     auto pjrt_buffer =
