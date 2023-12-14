@@ -368,6 +368,11 @@ class GpuDriver {
   static tsl::Status GraphLaunch(GpuGraphExecHandle exec,
                                  GpuStreamHandle stream);
 
+  // Enables or disables the specified node in the given exec.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g371b20eb0c0658731e38db7e68f12c78
+  static tsl::Status GraphNodeSetEnabled(GpuGraphExecHandle exec,
+                                         GpuGraphNodeHandle node, bool enabled);
+
   // Graph update result.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html#group__CUDA__TYPES_1g8edc8969ff6ae00b7cd5d7292f812c3c
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#cuda-driver-data-types

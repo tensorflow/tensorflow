@@ -599,6 +599,16 @@ static std::string_view StreamCaptureModeToString(
   return ::tsl::OkStatus();
 }
 
+/* static */ tsl::Status GpuDriver::GraphNodeSetEnabled(CUgraphExec exec,
+                                                        CUgraphNode node,
+                                                        bool enabled) {
+  VLOG(2) << "Set CUDA executable graph " << exec << " node " << node
+          << " enabled flag to " << enabled;
+  RETURN_IF_CUDA_RES_ERROR(cuGraphNodeSetEnabled(exec, node, enabled),
+                           "Failed to set CUDA graph node enabled flag");
+  return ::tsl::OkStatus();
+}
+
 /* static */ tsl::Status GpuDriver::GraphExecUpdate(
     CUgraphExec exec, CUgraph graph, GraphExecUpdateResultInfo* result) {
   VLOG(2) << "Update CUDA graph executable " << exec << " with graph " << graph;
