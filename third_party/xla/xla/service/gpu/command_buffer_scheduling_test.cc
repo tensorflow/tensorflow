@@ -270,7 +270,8 @@ TEST_F(CommandBufferSchedulingTest, MoveParametersToFront) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
-  CommandBufferScheduling::MoveParametersToFront(module->entry_computation());
+  CommandBufferScheduling::MoveParametersAndConstantsToFront(
+      module->entry_computation());
   TF_ASSERT_OK_AND_ASSIGN(
       bool filecheck_matches,
       RunFileCheck(

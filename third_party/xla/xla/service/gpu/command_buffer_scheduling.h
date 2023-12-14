@@ -87,7 +87,7 @@ class CommandBufferScheduling : public HloModulePass {
   static std::vector<HloInstructionSequence> CollectCommandBufferSequences(
       HloInstructionSequence inst_sequence, const CommandBufferConfig& config);
 
-  static void MoveParametersToFront(HloComputation* computation);
+  static void MoveParametersAndConstantsToFront(HloComputation* computation);
 
   struct CommandBuffer {
     // Command buffer arguments (call instruction arguments).
