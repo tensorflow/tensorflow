@@ -4493,8 +4493,7 @@ test_suite(
         "//xla/service/gpu/tests:gpu_infeed_test",
         "//xla/service/gpu/tests:gpu_input_fusible_slice_test",
         "//xla/service/gpu/tests:gpu_kernel_tiling_test",
-        # TODO(ezhulenev): Re-enable this test.
-        #"//xla/service/gpu/tests:gpu_ldg_test",
+        "//xla/service/gpu/tests:gpu_ldg_test",
         "//xla/service/gpu/tests:gpu_noalias_test",
         "//xla/service/gpu/tests:gpu_reduce_scatter_creator_test",
         "//xla/service/gpu/tests:gpu_spmd_e2e_compile_test",
