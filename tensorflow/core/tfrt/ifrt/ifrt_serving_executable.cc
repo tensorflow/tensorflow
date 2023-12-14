@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -121,18 +120,18 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
 
   LOG(INFO) << "Cache missed. Building executable";
 
-  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> mlir_hlo_module =
-      CompileTfToHlo(*module_, inputs, signature_name(),
-                     ifrt_client_->GetDefaultCompiler(),
+  absl::StatusOr<Tf2HloResult> tf2hlo_result =
+      CompileTfToHlo(*module_, inputs, signature_name(), *ifrt_client_,
                      shape_representation_fn_);
-  if (!mlir_hlo_module.ok()) {
-    promise.Set(mlir_hlo_module.status());
+  if (!tf2hlo_result.ok()) {
+    promise.Set(tf2hlo_result.status());
     return future;
   }
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> ifrt_executable =
       ifrt_client_->GetDefaultCompiler()->Compile(
-          std::make_unique<xla::ifrt::XlaProgram>(mlir_hlo_module->get()),
+          std::make_unique<xla::ifrt::XlaProgram>(
+              tf2hlo_result->mlir_hlo_module.get()),
           std::make_unique<xla::ifrt::XlaCompileOptions>());
   if (!ifrt_executable.ok()) {
     promise.Set(ifrt_executable.status());
