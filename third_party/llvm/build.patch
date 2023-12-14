@@ -44,14 +44,3 @@ index 7770284e5543..0b45127495dc 100644
          "//conditions:default": [
              "BLAKE3_NO_AVX2",
              "BLAKE3_NO_AVX512",
-@@ -266,7 +270,9 @@ cc_library(
-     }),
-     includes = ["include"],
-     linkopts = select({
--        "@platforms//os:windows": [],
-+        "@platforms//os:windows": [
-+            "ws2_32.lib",
-+        ],
-         "@platforms//os:freebsd": [
-             "-pthread",
-             "-lexecinfo",
