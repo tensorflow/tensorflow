@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/Hashing.h"
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
@@ -146,7 +145,8 @@ StatusOr<HloInstructionIndexing> ComputeInputToOutputIndexing(
     const HloInstruction* instr, int input_id, mlir::MLIRContext* mlir_context);
 
 // Groups indexing maps by instructions.
-absl::flat_hash_map<const HloInstruction*, absl::flat_hash_set<IndexingMap>>
+using IndexingMapSet = absl::flat_hash_set<IndexingMap>;
+absl::flat_hash_map<const HloInstruction*, IndexingMapSet>
 GroupIndexingMapsByProducers(const HloInstructionIndexing& indexing,
                              const HloInstruction* instr);
 
@@ -157,6 +157,10 @@ Status FuseProducerConsumerOutputToInputIndexing(
     absl::flat_hash_map<const HloInstruction*,
                         absl::flat_hash_set<IndexingMap>>* consumer_indexing,
     mlir::MLIRContext* mlir_context);
+
+// Computes a transpose indexing map.
+mlir::AffineMap ComputeTransposeIndexingMap(
+    absl::Span<const int64_t> permutation, mlir::MLIRContext* mlir_context);
 
 }  // namespace gpu
 }  // namespace xla

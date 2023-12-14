@@ -638,13 +638,6 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputSliceOpIndexing(
   return HloInstructionIndexing::FromIndexingMaps({indexing_map});
 }
 
-AffineMap ComputeTransposeIndexingMap(absl::Span<const int64_t> permutation,
-                                      MLIRContext* mlir_context) {
-  return AffineMap::getPermutationMap(
-      std::vector<unsigned>(permutation.begin(), permutation.end()),
-      mlir_context);
-}
-
 StatusOr<HloInstructionIndexing> ComputeOutputToInputTransposeOpIndexing(
     const HloTransposeInstruction* transpose, MLIRContext* mlir_context) {
   AffineMap inverse_permutation = ComputeTransposeIndexingMap(
@@ -900,6 +893,13 @@ Status FuseProducerConsumerOutputToInputIndexing(
   }
   consumer_indexing->erase(producer_instr);
   return OkStatus();
+}
+
+AffineMap ComputeTransposeIndexingMap(absl::Span<const int64_t> permutation,
+                                      MLIRContext* mlir_context) {
+  return AffineMap::getPermutationMap(
+      std::vector<unsigned>(permutation.begin(), permutation.end()),
+      mlir_context);
 }
 
 StatusOr<HloInstructionIndexing> ComputeOutputToInputIndexing(
