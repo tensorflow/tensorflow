@@ -25,6 +25,24 @@ package(
     licenses = ["notice"],
 )
 
+gentbl_cc_library(
+    name = "stablehlo_passes_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+            ],
+            "passes/passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/passes.td",
+    deps = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
 cc_library(
     name = "passes",
     srcs = [
@@ -383,20 +401,47 @@ cc_library(
 )
 
 gentbl_cc_library(
-    name = "stablehlo_passes_inc_gen",
+    name = "stablehlo_test_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
                 "-gen-pass-decls",
+                "-name=Test",
             ],
-            "passes/passes.h.inc",
+            "passes/testing/passes.h.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "passes/passes.td",
+    td_file = "passes/testing/passes.td",
     deps = [
         "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "test_passes",
+    srcs = [
+        "passes/testing/test_pre_calibration_component.cc",
+    ],
+    hdrs = [
+        "passes/testing/passes.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":quantization_config_proto_cc",
+        ":stablehlo_test_passes_inc_gen",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:precalibration",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@local_xla//xla/mlir_hlo",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:vhlo_ops",
     ],
 )
 
@@ -560,6 +605,7 @@ tf_cc_binary(
     deps = [
         ":bridge_passes",
         ":passes",
+        ":test_passes",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -579,6 +625,7 @@ tf_cc_binary(
         "@local_xla//xla/mlir_hlo:mhlo_passes",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:vhlo_ops",
     ],
 )
 
