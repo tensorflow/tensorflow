@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/fusion_utils.h"
 
+#include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function_testlib.h"
@@ -127,6 +128,43 @@ TEST(FusionUtilsTest, FuseFunctionsWithControlInputs) {
 
   EXPECT_EQ(ParseNodeConnection(output_value), output_mul->name());
 }
+
+struct StatefulnessTestCase {
+  bool is_stateful_a, is_stateful_b;
+};
+
+using FusionUtilsTest_Statefulness =
+    ::testing::TestWithParam<StatefulnessTestCase>;
+
+TEST_P(FusionUtilsTest_Statefulness, FuseFunctionStatefulness) {
+  const StatefulnessTestCase &test_case = GetParam();
+
+  GraphDef graph;
+  auto *parent_function = graph.mutable_library()->add_function();
+  *parent_function = test::function::XTimesTwo();
+  auto *function = graph.mutable_library()->add_function();
+  *function = test::function::XTimesTwo();
+
+  if (test_case.is_stateful_a) {
+    parent_function->mutable_signature()->set_is_stateful(true);
+  }
+  if (test_case.is_stateful_b) {
+    function->mutable_signature()->set_is_stateful(true);
+  }
+
+  auto *fused_function = FuseFunctions(
+      *parent_function, *function, "fused_maps", fusion_utils::ComposeSignature,
+      fusion_utils::ComposeInput, fusion_utils::ComposeOutput,
+      fusion_utils::MergeNodes, graph.mutable_library());
+
+  EXPECT_EQ(fused_function->signature().is_stateful(),
+            test_case.is_stateful_a || test_case.is_stateful_b);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    StatefulnessTests, FusionUtilsTest_Statefulness,
+    ::testing::ValuesIn<StatefulnessTestCase>(
+        {{false, false}, {false, true}, {true, false}, {true, true}}));
 
 TEST(FusionUtilsTest, FuseFunctionWithPredicate) {
   GraphDef graph;

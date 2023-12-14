@@ -227,6 +227,10 @@ OpDef GetUniqueSignature(const OpDef& first_signature,
     }
   }
 
+  if (second_signature.is_stateful()) {
+    signature.set_is_stateful(true);
+  }
+
   return signature;
 }
 
@@ -356,6 +360,10 @@ void ComposeSignature(const OpDef& first_signature,
   *fused_signature->mutable_input_arg() = first_signature.input_arg();
   // Copy output signature from second function.
   *fused_signature->mutable_output_arg() = second_signature.output_arg();
+
+  if (first_signature.is_stateful() || second_signature.is_stateful()) {
+    fused_signature->set_is_stateful(true);
+  }
 }
 
 void ComposeOutput(const protobuf::Map<string, string>& first_ret,
