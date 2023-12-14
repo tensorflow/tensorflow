@@ -105,6 +105,9 @@ class MemrefInfo {
 
   void Print();
 
+  int64_t GetChannels() const;
+  int64_t GetRank() const;
+
  private:
   MemrefInfoPOD* pod_;
 };

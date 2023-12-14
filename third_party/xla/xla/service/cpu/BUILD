@@ -230,8 +230,8 @@ cc_library(
         ":hlo_xla_runtime_pipeline",
         ":ir_emission_utils",
         ":ir_emitter",
+        ":onednn_matmul_rewriter",
         ":onednn_ops_rewriter",
-        ":onednn_rewriter",
         ":parallel_task_assignment",
         ":simple_orc_jit",
         ":target_machine_features",
@@ -1735,10 +1735,10 @@ cc_library(
 )
 
 cc_library(
-    name = "onednn_rewriter",
-    srcs = ["onednn_rewriter.cc"],
+    name = "onednn_matmul_rewriter",
+    srcs = ["onednn_matmul_rewriter.cc"],
     hdrs = [
-        "onednn_rewriter.h",
+        "onednn_matmul_rewriter.h",
         "onednn_util.h",
     ],
     copts = tsl_copts(),

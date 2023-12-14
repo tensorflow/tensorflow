@@ -235,8 +235,8 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#include "xla/service/cpu/onednn_matmul_rewriter.h"
 #include "xla/service/cpu/onednn_ops_rewriter.h"
-#include "xla/service/cpu/onednn_rewriter.h"
 #endif
 
 namespace {
@@ -697,7 +697,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   // AOT compiled code runs in single thread.
   if (!is_aot_compile) {
-    pipeline.AddPass<OneDnnRewriter>();
     // Placing OneDnnOpsRewriter here to match the flax patterns
     // TODO: Decide where would be the appropriate place for this pass to make
     // it more generic
@@ -897,6 +896,13 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
                  HloVerifierOpts{}.MakeLayoutSensitive(), /*debug_only=*/true);
 
   pipeline.AddPass<ReshapeDecomposer>();
+
+#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+  // AOT compiled code runs in single thread.
+  if (!is_aot_compile) {
+    pipeline.AddPass<OneDnnMatMulRewriter>();
+  }
+#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
   // Add a fusion pass now that layout assignment is done.
   pipeline.AddPass<CpuInstructionFusion>();

@@ -13,19 +13,36 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_CPU_ONEDNN_MATMUL_H_
-#define XLA_SERVICE_CPU_ONEDNN_MATMUL_H_
+#ifndef XLA_SERVICE_CPU_ONEDNN_MATMUL_REWRITER_H_
+#define XLA_SERVICE_CPU_ONEDNN_MATMUL_REWRITER_H_
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+
+#include <optional>
+
+#include "absl/algorithm/container.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/hlo_pass_interface.h"
 
 namespace xla {
 namespace cpu {
 
-extern "C" {
-extern void __xla_cpu_runtime_OneDnnMatMul(void* result, void** args);
-}  // extern "C"
+// This pass pattern-matches HLO Dot instructions and rewrites into custom
+// calls.
+class OneDnnMatMulRewriter : public HloModulePass {
+ public:
+  absl::string_view name() const override { return "onednn-matmul-rewriter"; }
+
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+  static bool ShouldRewrite(const HloInstruction* dot_instr);
+};
 
 }  // namespace cpu
 }  // namespace xla
 
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
-#endif  // XLA_SERVICE_CPU_ONEDNN_MATMUL_H_
+#endif  // XLA_SERVICE_CPU_ONEDNN_MATMUL_REWRITER_H_
