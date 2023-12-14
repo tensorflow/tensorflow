@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/hlo/ir/hlo_module.h"
+#include <string>
+
+#include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 

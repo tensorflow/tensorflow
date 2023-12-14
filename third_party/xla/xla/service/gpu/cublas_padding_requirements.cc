@@ -15,13 +15,10 @@ limitations under the License.
 
 #include "xla/service/gpu/cublas_padding_requirements.h"
 
-#include <cstdint>
-#include <variant>
+#include <vector>
 
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/shape.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 
 namespace xla {
