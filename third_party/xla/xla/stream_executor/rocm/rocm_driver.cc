@@ -507,6 +507,12 @@ static std::string_view StreamCaptureModeToString(
   return ::tsl::OkStatus();
 }
 
+/* static */ tsl::Status GpuDriver::StreamBeginCaptureToGraph(
+    GpuStreamHandle stream, GpuGraphHandle graph, StreamCaptureMode mode) {
+  return absl::UnimplementedError(
+      "StreamBeginCaptureToGraph is not implemented");
+}
+
 /* static */ tsl::Status GpuDriver::StreamEndCapture(GpuStreamHandle stream,
                                                      hipGraph_t* graph) {
   VLOG(2) << "End stream " << stream << " capture";
