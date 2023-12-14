@@ -3774,6 +3774,7 @@ xla_cc_test(
         ":gpu_device_info_for_tests",
         ":hlo_fusion_analysis",
         ":hlo_traversal",
+        "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/platform:statusor",

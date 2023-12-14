@@ -352,37 +352,6 @@ StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
       instr, std::move(custom_kernel), std::move(kernel_arguments.args()));
 }
 
-// Derives the number of warps to use for processing a Triton Softmax fusion.
-int DeriveNumWarpsFromTritonSoftmaxComputation(
-    const HloComputation* computation) {
-  const HloInstruction* reduce = hlo_query::GetFirstInstructionWithOpcode(
-      *computation, HloOpcode::kReduce);
-
-  CHECK_NE(reduce, nullptr);
-  Shape reduce_input_shape = reduce->operand(0)->shape();
-
-  CHECK_EQ(reduce->dimensions().size(), 1);
-  CHECK_EQ(reduce->dimensions()[0], reduce_input_shape.rank() - 1);
-
-  int reduction_dim = reduce_input_shape.dimensions_minor(0);
-
-  int num_warps = 32;
-
-  if (reduction_dim <= 512) {
-    num_warps = 1;
-  } else if (reduction_dim <= 1024) {
-    num_warps = 2;
-  } else if (reduction_dim <= 16384) {
-    num_warps = 4;
-  } else if (reduction_dim <= 32768) {
-    num_warps = 8;
-  } else if (reduction_dim <= 65536) {
-    num_warps = 16;
-  }
-
-  return num_warps;
-}
-
 }  // namespace
 
 IrEmitterUnnested::IrEmitterUnnested(IrEmitterContext* ir_emitter_context)
@@ -2174,10 +2143,14 @@ StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitTritonFusion(
     TritonWrapperResult triton_wrapper_result;
     LaunchDimensions launch_dimensions;
     if (fusion_kind == kTritonSoftmaxFusionKind) {
+      TF_ASSIGN_OR_RETURN(launch_dimensions,
+                          hlo_fusion_analysis.GetLaunchDimensions());
+
       auto& triton_config = *backend_config.mutable_triton_gemm_config();
       triton_config.set_num_stages(1);
-      triton_config.set_num_warps(DeriveNumWarpsFromTritonSoftmaxComputation(
-          fusion->fused_instructions_computation()));
+      // Thread count per block is always a multiple of WarpSize.
+      triton_config.set_num_warps(launch_dimensions.num_threads_per_block() /
+                                  WarpSize());
       TritonGemmConfig config = TritonGemmConfig::FromProto(triton_config);
 
       TF_ASSIGN_OR_RETURN(auto analysis,
@@ -2189,8 +2162,6 @@ StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitTritonFusion(
                         ir_emitter_context_->cuda_compute_capability(),
                         ir_emitter_context_->gpu_device_info(), config, module_,
                         &EmitSoftMax, *ir_emitter_context_->mlir_context()));
-      launch_dimensions =
-          GetSoftMaxLaunchDimensions(hlo_fusion_analysis.fusion(), config);
     } else {  // Must be a MatMul
       CHECK_EQ(fusion_kind, kTritonGemmFusionKind);
       if (!backend_config.has_triton_gemm_config()) {

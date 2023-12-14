@@ -294,6 +294,46 @@ int SmallestInputDtypeBits(const std::vector<const HloInstruction*>& args) {
   return bits;
 }
 
+// Derives the number of blocks and threads to use for processing a Triton
+// Softmax fusion.
+LaunchDimensions CalculateSoftMaxLaunchDimensions(
+    const HloFusionAdaptor& fusion) {
+  auto reduce = HloFindIf(fusion.GetRoots(), fusion, [](auto node) {
+    return node.opcode() == HloOpcode::kReduce;
+  });
+
+  CHECK(reduce.has_value());
+  const Shape& reduce_input_shape = reduce->GetOperand(0).instruction().shape();
+
+  CHECK_EQ(reduce->instruction().dimensions().size(), 1);
+  CHECK_EQ(reduce->instruction().dimensions()[0],
+           reduce_input_shape.rank() - 1);
+
+  int reduction_dim = reduce_input_shape.dimensions_minor(0);
+
+  int num_rows = 1;
+  for (int minor_axis = 1; minor_axis < reduce_input_shape.rank();
+       ++minor_axis) {
+    num_rows *= reduce_input_shape.dimensions_minor(minor_axis);
+  }
+
+  int num_warps = 32;
+
+  if (reduction_dim <= 512) {
+    num_warps = 1;
+  } else if (reduction_dim <= 1024) {
+    num_warps = 2;
+  } else if (reduction_dim <= 16384) {
+    num_warps = 4;
+  } else if (reduction_dim <= 32768) {
+    num_warps = 8;
+  } else if (reduction_dim <= 65536) {
+    num_warps = 16;
+  }
+
+  return {num_rows, num_warps * WarpSize()};
+}
+
 }  // namespace
 
 HloFusionAnalysis::HloFusionAnalysis(
@@ -457,6 +497,9 @@ StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions() const {
       return absl::UnimplementedError(
           "GetLaunchDimensions is not implemented for custom fusions");
     case EmitterFusionKind::kTriton:
+      if (fusion_backend_config_.kind() == kTritonSoftmaxFusionKind) {
+        return CalculateSoftMaxLaunchDimensions(*fusion_);
+      }
       return absl::UnimplementedError(
           "GetLaunchDimensions is not implemented for Triton fusions");
   }
@@ -922,7 +965,9 @@ std::optional<HloFusionAnalysis> AnalyzeProducerConsumerFusion(
     const HloInstruction& producer, const HloInstruction& consumer,
     const se::DeviceDescription& device_info) {
   auto ret = HloFusionAnalysis::Create(
-      FusionBackendConfig::default_instance(),
+      consumer.has_backend_config()
+          ? *consumer.backend_config<FusionBackendConfig>()
+          : *producer.backend_config<FusionBackendConfig>(),
       std::make_unique<ProducerConsumerFusion>(
           HloFusionAdaptor::ForInstruction(&producer),
           HloFusionAdaptor::ForInstruction(&consumer)),
@@ -934,7 +979,7 @@ std::optional<HloFusionAnalysis> AnalyzeProducerConsumerFusion(
 std::optional<HloFusionAnalysis> AnalyzeFusion(
     const HloInstruction& consumer, const se::DeviceDescription& device_info) {
   auto ret = HloFusionAnalysis::Create(
-      FusionBackendConfig::default_instance(),
+      *consumer.backend_config<FusionBackendConfig>(),
       HloFusionAdaptor::ForInstruction(&consumer), &device_info);
   if (!ret.ok()) return std::nullopt;
   return {std::move(*ret)};
