@@ -5021,22 +5021,18 @@ cc_library(
 
 xla_cc_test(
     name = "loop_double_buffer_transformer_test",
-    srcs = if_gpu_is_configured(["loop_double_buffer_transformer_test.cc"]),
-    tags = tf_cuda_tests_tags(),
-    deps = if_gpu_is_configured([
-        ":gpu_compiler",
+    srcs = ["loop_double_buffer_transformer_test.cc"],
+    deps = [
         ":loop_double_buffer_transformer",
         "//xla:test",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:tuple_simplifier",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
-    ]) + [
-        "//xla:test_helpers",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
-        "//xla/service:hlo_dce",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
