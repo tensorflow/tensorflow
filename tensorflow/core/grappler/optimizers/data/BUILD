@@ -390,6 +390,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/platform:types",
         "@com_google_absl//absl/strings",
     ] + tf_protos_all(),
 )
