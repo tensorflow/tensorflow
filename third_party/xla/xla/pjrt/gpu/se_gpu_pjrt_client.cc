@@ -65,8 +65,8 @@ limitations under the License.
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
 #include "xla/pjrt/compile_options.pb.h"
+#include "xla/pjrt/gpu/gpu_metrics.h"
 #include "xla/pjrt/gpu/nccl_id_store.h"
-#include "xla/pjrt/metrics.h"
 #include "xla/pjrt/stream_executor_executable.pb.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/xla.pb.h"
@@ -545,7 +545,7 @@ StreamExecutorGpuClient::Compile(const XlaComputation& computation,
       se::StreamExecutor* executor = local_device_state->executor();
       int device_ordinal = executor->device_ordinal();
       if (executor->DeviceMemoryUsage(&free_memory, &total_memory)) {
-        metrics::RecordFreeGpuSystemMemory(device_ordinal, free_memory);
+        gpu_metrics::RecordFreeGpuSystemMemory(device_ordinal, free_memory);
       } else {
         LOG(ERROR) << "Failed to query available memory for GPU "
                    << device_ordinal;
