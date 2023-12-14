@@ -243,19 +243,21 @@ bool IsSupportedF8Pattern(
   auto use_spmd_partitioning = [](const HloInstruction *instr) -> bool {
     return instr->GetModule()->config().use_spmd_partitioning();
   };
+
   for (int i = 3; i < subgraph.size(); ++i) {
     // The remaining instructions must be commutative with dequantization.
     // Bitcast, broadcast, copy, dynamic-slice, pad, reshape, select, slice,
-    // all-gather, all-to-all and collective-permute instructions are supported.
-    // Specifically, the all-gather, all-to-all and collective-permute
-    // operations are permitted only in SPMD cases since the optimization cannot
-    // be guaranteed to be applied to all replicas in the MPMD scenario.
+    // transpose, all-gather, all-to-all and collective-permute instructions are
+    // supported. Specifically, the all-gather, all-to-all and
+    // collective-permute operations are permitted only in SPMD cases since the
+    // optimization cannot be guaranteed to be applied to all replicas in the
+    // MPMD scenario.
     if (!Match(
             subgraph[i].first,
             m::AnyOf<HloInstruction>(
                 m::Bitcast().WithPredicate(preserves_element_type),
                 m::Broadcast(), m::Copy(), m::DynamicSlice(), m::Pad(),
-                m::Reshape(), m::Select(), m::Slice(),
+                m::Reshape(), m::Select(), m::Slice(), m::Transpose(),
                 m::AllGather().WithPredicate(use_spmd_partitioning),
                 m::AllToAll().WithPredicate(use_spmd_partitioning),
                 m::CollectivePermute().WithPredicate(use_spmd_partitioning)))) {
