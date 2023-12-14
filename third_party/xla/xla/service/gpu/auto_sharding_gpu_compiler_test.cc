@@ -15,7 +15,10 @@ limitations under the License.
 
 #include <memory>
 
-#include "xla/hlo/utils/hlo_matchers.h"
+#include <gtest/gtest.h>
+#include "absl/log/log.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/tests/hlo_test_base.h"
