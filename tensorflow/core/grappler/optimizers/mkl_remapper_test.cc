@@ -1559,6 +1559,10 @@ class FusedConvBiasAddAndHardSwishTest : public GrapplerTest {
   template <DataType DType, bool with_cast_op = false>
   void RunTest(const string& add_op, const bool is_depthwise) {
     if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
+    if (!IsBF16SupportedByOneDNNOnThisCPU())
+      GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
+                      "FusedConvBiasAddAndHardSwishTest with bfloat16.";
+
     using ::tensorflow::ops::Placeholder;
 
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
