@@ -117,7 +117,9 @@ CommandBuffer::CommandBuffer(
 CommandBuffer::CommandBuffer(internal::CommandBufferInterface* implementation)
     : implementation_(implementation, {/*owned=*/false}) {}
 
-tsl::Status CommandBuffer::Barrier() { return implementation_->Barrier(); }
+tsl::Status CommandBuffer::Barrier(StreamExecutor* executor) {
+  return implementation_->Barrier(executor);
+}
 
 tsl::Status CommandBuffer::Launch(const ThreadDim& threads,
                                   const BlockDim& blocks, const Kernel& kernel,

@@ -145,7 +145,7 @@ Status CommandBufferCmdSequence::Record(
   for (auto& cmd : commands_) {
     CommandBufferCmd::BufferUsageVector buffers = cmd->buffers();
     if (has_conflict(buffers)) {
-      TF_RETURN_IF_ERROR(command_buffer->Barrier());
+      TF_RETURN_IF_ERROR(command_buffer->Barrier(params.executor));
     }
     track_buffers(buffers);
     TF_RETURN_IF_ERROR(cmd->Record(params, command_buffer));

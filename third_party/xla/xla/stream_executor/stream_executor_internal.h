@@ -138,7 +138,7 @@ class CommandBufferInterface {
 
   // Adds an execution barrier to a command buffer: all commands added before a
   // barrier will complete before any of the commands added after a barrier.
-  virtual tsl::Status Barrier() = 0;
+  virtual tsl::Status Barrier(StreamExecutor* executor) = 0;
 
   // Adds a kernel launch command to the command buffer.
   virtual tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,

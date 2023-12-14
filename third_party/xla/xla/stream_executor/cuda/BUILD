@@ -478,6 +478,19 @@ cuda_library(
     ],
 )
 
+cuda_library(
+    name = "cuda_kernels",
+    srcs = if_cuda(
+        ["cuda_kernels.cu.cc"],
+        ["cuda_kernels.cc"],
+    ),
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/log",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
 xla_test(
     name = "cuda_kernel_test",
     srcs = if_cuda_is_configured(["cuda_kernel_test.cc"]),
