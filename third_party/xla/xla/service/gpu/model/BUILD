@@ -273,6 +273,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":indexing_map_simplifier",
+        "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:status",
         "//xla:statusor",
