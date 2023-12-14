@@ -417,11 +417,12 @@ CommandBufferCmd::Slices FreeCmd::slices() { return {}; }
 GemmCmd::GemmCmd(GemmConfig config, const BufferAllocation::Slice& lhs_buffer,
                  const BufferAllocation::Slice& rhs_buffer,
                  const BufferAllocation::Slice& output_buffer,
-                 bool deterministic)
+                 const BufferAllocation::Slice& workspace, bool deterministic)
     : config_(std::move(config)),
       lhs_buffer_(lhs_buffer),
       rhs_buffer_(rhs_buffer),
       output_buffer_(output_buffer),
+      workspace_(workspace),
       deterministic_(deterministic) {}
 
 Status GemmCmd::Initialize(se::StreamExecutor* executor,
@@ -438,16 +439,14 @@ Status GemmCmd::Record(const RecordParams& params,
           << ", output=" << output_buffer_
           << ", deterministic=" << deterministic_;
 
-  se::DeviceMemoryBase workspace(nullptr, 0);
-
   se::DeviceMemoryBase lhs =
       params.buffer_allocations->GetDeviceAddress(lhs_buffer_);
-
   se::DeviceMemoryBase rhs =
       params.buffer_allocations->GetDeviceAddress(rhs_buffer_);
-
   se::DeviceMemoryBase out =
       params.buffer_allocations->GetDeviceAddress(output_buffer_);
+  se::DeviceMemoryBase workspace =
+      params.buffer_allocations->GetDeviceAddress(workspace_);
 
   TF_ASSIGN_OR_RETURN(
       auto nested_buffer,

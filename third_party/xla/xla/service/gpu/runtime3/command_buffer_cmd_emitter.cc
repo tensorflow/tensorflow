@@ -16,9 +16,12 @@ limitations under the License.
 #include "xla/service/gpu/runtime3/command_buffer_cmd_emitter.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/copy_thunk.h"
+#include "xla/service/gpu/gemm_thunk.h"
 #include "xla/service/gpu/kernel_thunk.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 #include "xla/service/gpu/runtime3/sequential_thunk.h"
@@ -54,6 +57,16 @@ static StatusOr<Command> ConvertWhileThunk(const WhileThunk& thunk) {
                                     std::move(cond_cmds), std::move(body_cmds));
 }
 
+static StatusOr<Command> ConvertGemmThunk(const GemmThunk& thunk) {
+  std::optional<const BufferAllocation::Slice> workspace = thunk.workspace();
+  if (!workspace.has_value()) {
+    return InternalError("Gemm thunk does not contain a workspace buffer");
+  }
+  return std::make_unique<GemmCmd>(thunk.config(), thunk.lhs_buffer(),
+                                   thunk.rhs_buffer(), thunk.output_buffer(),
+                                   workspace.value(), thunk.deterministic());
+}
+
 static StatusOr<Command> ConvertThunk(const Thunk& thunk) {
   switch (thunk.kind()) {
     case Thunk::Kind::kKernel:
@@ -63,6 +76,9 @@ static StatusOr<Command> ConvertThunk(const Thunk& thunk) {
           static_cast<const DeviceToDeviceCopyThunk&>(thunk));
     case Thunk::Kind::kWhile:
       return ConvertWhileThunk(static_cast<const WhileThunk&>(thunk));
+    case Thunk::Kind::kGemm: {
+      return ConvertGemmThunk(static_cast<const GemmThunk&>(thunk));
+    }
     default:
       return InternalError("Unsupported thunk kind: %s",
                            Thunk::KindToString(thunk.kind()));

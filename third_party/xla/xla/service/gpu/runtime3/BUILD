@@ -77,6 +77,7 @@ cc_library(
         ":while_thunk",
         "//xla:statusor",
         "//xla:util",
+        "//xla/service:buffer_assignment",
         "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu:thunk",
         "@local_tsl//tsl/platform:statusor",

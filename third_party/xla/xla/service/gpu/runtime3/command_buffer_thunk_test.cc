@@ -381,8 +381,9 @@ TEST(CommandBufferThunkTest, GemmCmd) {
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
+  BufferAllocation::Slice workspace(nullptr, 0, 0);
   commands.Emplace<GemmCmd>(config.value(), slice_lhs, slice_rhs, slice_out,
-                            /*deterministic=*/true);
+                            workspace, /*deterministic=*/true);
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));

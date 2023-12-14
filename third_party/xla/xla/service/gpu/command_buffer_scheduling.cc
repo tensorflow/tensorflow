@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
@@ -115,6 +116,11 @@ bool IsCommand<HloOpcode::kWhile>(const HloInstruction* hlo,
          IsCommand(hlo->while_body(), config);
 }
 
+static bool IsCommand(const HloCustomCallInstruction* hlo,
+                      const CommandBufferConfig& config) {
+  return config.contains(DebugOptions::CUBLAS) && IsLegacyCublasMatmul(*hlo);
+}
+
 static bool IsCommand(const HloInstruction* hlo,
                       const CommandBufferConfig& config) {
   if (auto* fusion = DynCast<HloFusionInstruction>(hlo))
@@ -122,6 +128,9 @@ static bool IsCommand(const HloInstruction* hlo,
 
   if (auto* sort = DynCast<HloSortInstruction>(hlo))
     return IsCommand(sort, config);
+
+  if (auto* custom_call = DynCast<HloCustomCallInstruction>(hlo))
+    return IsCommand(custom_call, config);
 
   if (hlo->opcode() == HloOpcode::kWhile)
     return IsCommand<HloOpcode::kWhile>(hlo, config);

@@ -95,6 +95,7 @@ limitations under the License.
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/copy_thunk.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/fused_mha_thunk.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/fusions.h"
@@ -989,8 +990,34 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(gemm));
   auto thunk = std::make_unique<GemmThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(op), std::move(config), a, b, c,
-      deterministic_ops);
+      std::nullopt, deterministic_ops);
 
+  AddThunkToThunkSequence(std::move(thunk));
+  return OkStatus();
+}
+
+Status IrEmitterUnnested::EmitGemmThunk(const HloCustomCallInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a,
+                      GetAllocationSliceForHlo(instr->operand(0), {}));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice b,
+                      GetAllocationSliceForHlo(instr->operand(1), {}));
+  // The output of the legacy cuBLAS custom call is a tuple that contains the
+  // output matrix and the workspace.
+  DCHECK(instr->shape().IsTuple() && instr->shape().tuple_shapes_size() == 2);
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice c,
+                      GetAllocationSliceForHlo(instr, {0}));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice workspace,
+                      GetAllocationSliceForHlo(instr, {1}));
+
+  bool deterministic_ops =
+      ir_emitter_context_->debug_options().xla_gpu_deterministic_ops();
+
+  TF_ASSIGN_OR_RETURN(
+      GemmConfig config,
+      GemmConfig::For(static_cast<const HloInstruction*>(instr)));
+  auto thunk = std::make_unique<GemmThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(config), a, b,
+      c, workspace, deterministic_ops);
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
 }
@@ -3639,6 +3666,11 @@ Status IrEmitterUnnested::EmitOp(
   }
 
   if (mlir::isa<mlir::lmhlo_gpu::GEMMOp>(op)) {
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      const HloCustomCallInstruction* instr =
+          Cast<HloCustomCallInstruction>(hlo_for_lmhlo.at(op));
+      return EmitGemmThunk(instr);
+    }
     return EmitGemmThunk(op);
   }
 
@@ -3874,6 +3906,14 @@ Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
       return EmitSort(Cast<HloSortInstruction>(instr));
     case HloOpcode::kConstant:
       return EmitConstant(Cast<HloConstantInstruction>(instr));
+    case HloOpcode::kCustomCall: {
+      auto* custom_call = Cast<HloCustomCallInstruction>(instr);
+      if (IsLegacyCublasMatmul(*instr)) {
+        return EmitGemmThunk(custom_call);
+      }
+      return InternalError("Unsupported custom call instruction: %s",
+                           custom_call->name());
+    }
     // We don't need to emit thunks for these operations because their semantics
     // are encoded by buffers.
     case HloOpcode::kBitcast:

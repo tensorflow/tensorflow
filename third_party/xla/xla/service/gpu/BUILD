@@ -280,6 +280,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":backend_configs_cc",
+        ":cublas_cudnn",
         ":gemm_thunk",
         ":gpu_asm_opts_util",
         ":gpu_constants",
@@ -2814,6 +2815,7 @@ cc_library(
     hdrs = ["command_buffer_scheduling.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":cublas_cudnn",
         "//xla:shape_util",
         "//xla:status",
         "//xla:statusor",
