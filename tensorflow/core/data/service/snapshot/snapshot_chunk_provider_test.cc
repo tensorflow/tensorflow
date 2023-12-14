@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/tstring.h"
 #include "tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
@@ -81,12 +83,13 @@ absl::StatusOr<std::vector<std::string>> GetAllChunks(
     SnapshotChunkProvider& snapshot_chunk_provider) {
   std::vector<std::string> chunks;
   while (true) {
-    TF_ASSIGN_OR_RETURN(std::optional<std::string> chunk,
-                        snapshot_chunk_provider.GetNext());
-    if (!chunk.has_value()) {
-      break;
+    Tensor split;
+    bool end_of_splits = false;
+    TF_RETURN_IF_ERROR(snapshot_chunk_provider.GetNext(&split, &end_of_splits));
+    if (end_of_splits) {
+      return chunks;
     }
-    chunks.push_back(*chunk);
+    chunks.push_back(split.unaligned_flat<tsl::tstring>().data()[0]);
   }
   return chunks;
 }
@@ -178,13 +181,15 @@ TEST(SnapshotChunkProviderTest, ConcurrentReadWrite) {
         [&snapshot_chunk_provider, &mu, &result]() {
           while (true) {
             tsl::Env::Default()->SleepForMicroseconds(25);
-            TF_ASSERT_OK_AND_ASSIGN(std::optional<std::string> chunk,
-                                    snapshot_chunk_provider.GetNext());
-            if (!chunk.has_value()) {
+            Tensor split;
+            bool end_of_splits = false;
+            TF_ASSERT_OK(
+                snapshot_chunk_provider.GetNext(&split, &end_of_splits));
+            if (end_of_splits) {
               break;
             }
             absl::MutexLock l(&mu);
-            result.push_back(std::move(*chunk));
+            result.push_back(split.unaligned_flat<tsl::tstring>().data()[0]);
           }
         })));
   }

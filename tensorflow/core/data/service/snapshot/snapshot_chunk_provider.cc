@@ -32,6 +32,9 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tsl/distributed_runtime/rpc/grpc_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -47,6 +50,16 @@ namespace {
 
 constexpr char kChunksRead[] = "chunks_read";
 constexpr absl::string_view kSetElementDelimiter = ",";
+
+Tensor ConvertToTensor(absl::string_view s) {
+  Tensor tensor(DT_STRING, TensorShape({}));
+  tensor.scalar<tsl::tstring>()() = tsl::tstring(s);
+  return tensor;
+}
+
+std::string AbsPath(absl::string_view snapshot_path, absl::string_view chunk) {
+  return tsl::io::JoinPath(CommittedChunksDirectory(snapshot_path), chunk);
+}
 
 // Waits for a short period of time before retrying.
 void Backoff(int num_retries, tsl::Env* env) {
@@ -73,7 +86,7 @@ SnapshotChunkProvider::SnapshotChunkProvider(absl::string_view snapshot_path,
                                              tsl::Env* env)
     : snapshot_path_(snapshot_path), env_(env) {}
 
-absl::StatusOr<std::optional<std::string>> SnapshotChunkProvider::GetNext()
+absl::Status SnapshotChunkProvider::GetNext(Tensor* split, bool* end_of_splits)
     ABSL_LOCKS_EXCLUDED(mu_) {
   for (int num_retries = 0;; ++num_retries) {
     Backoff(num_retries, env_);
@@ -83,11 +96,13 @@ absl::StatusOr<std::optional<std::string>> SnapshotChunkProvider::GetNext()
       std::string next_chunk = *chunks_unread_.begin();
       chunks_read_.insert(next_chunk);
       chunks_unread_.erase(next_chunk);
-      return tsl::io::JoinPath(CommittedChunksDirectory(snapshot_path_),
-                               next_chunk);
+      *split = ConvertToTensor(AbsPath(snapshot_path_, next_chunk));
+      *end_of_splits = false;
+      return absl::OkStatus();
     }
     if (snapshot_state_.snapshot_is_done) {
-      return std::nullopt;
+      *end_of_splits = true;
+      return absl::OkStatus();
     }
     TF_RETURN_IF_ERROR(UpdateSnapshot());
   }
@@ -137,6 +152,13 @@ SnapshotChunkProvider::GetAvailableChunks() {
     return std::vector<std::string>{};
   }
   return status_or_chunks.status();
+}
+
+absl::Status SnapshotChunkProvider::Reset() {
+  absl::MutexLock l(&mu_);
+  chunks_read_.clear();
+  chunks_unread_.clear();
+  return UpdateSnapshot();
 }
 
 absl::Status SnapshotChunkProvider::Save(

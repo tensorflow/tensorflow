@@ -115,8 +115,17 @@ class DistributedSaveLoadTest(
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(num_workers=[1, 3], num_elements=[0, 10])))
-  def test_distributed_load(self, num_workers: int, num_elements: int):
+          combinations.combine(
+              num_workers=[1, 3],
+              num_elements=[0, 10],
+              sharding_policy=[
+                  data_service_ops.ShardingPolicy.OFF,
+                  data_service_ops.ShardingPolicy.DYNAMIC])))
+  def test_distributed_load(
+      self,
+      num_workers: int,
+      num_elements: int,
+      sharding_policy: data_service_ops.ShardingPolicy):
     test_snapshot = TestSnapshot()
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     dataset = dataset_ops.Dataset.range(num_elements)
@@ -125,14 +134,13 @@ class DistributedSaveLoadTest(
             dataset, test_snapshot.path, cluster.dispatcher_address()))
 
     dataset = load_op._load_distributed_snapshot_v2(test_snapshot.path)
-    # TODO(b/297930782): Support dynamic sharding.
     dataset = dataset.apply(
         data_service_ops.distribute(
-            data_service_ops.ShardingPolicy.OFF, cluster.dispatcher_address()))
-    self.assertDatasetProduces(
-        dataset,
-        list(range(num_elements)) * num_workers,
-        assert_items_equal=True)
+            sharding_policy, cluster.dispatcher_address()))
+    expected = list(range(num_elements))
+    if sharding_policy == data_service_ops.ShardingPolicy.OFF:
+      expected *= num_workers
+    self.assertDatasetProduces(dataset, expected, assert_items_equal=True)
 
   @combinations.generate(
       combinations.times(

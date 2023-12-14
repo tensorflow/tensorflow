@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/service/snapshot/snapshot_chunk_provider.h"
+#include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/tstring.h"
@@ -43,13 +45,6 @@ namespace {
 constexpr const char kListSnapshotChunksDataset[] = "ListSnapshotChunksDataset";
 constexpr const char kSnapshotPath[] = "snapshot_path";
 
-Tensor ConvertToTensor(absl::string_view s, Allocator* allocator) {
-  Tensor tensor(allocator, DT_STRING, TensorShape({}));
-  tensor.scalar<tsl::tstring>()() = tsl::tstring(s);
-  return tensor;
-}
-
-// TODO(b/297930782): Implement split provider for this dataset.
 class ListSnapshotChunksDatasetOp : public DatasetOpKernel {
  public:
   explicit ListSnapshotChunksDatasetOp(OpKernelConstruction* ctx);
@@ -72,7 +67,8 @@ class ListSnapshotChunksDatasetOp::Dataset : public DatasetBase {
       : DatasetBase(DatasetContext(ctx)),
         snapshot_path_(std::move(snapshot_path)),
         output_types_(output_types),
-        output_shapes_(output_shapes) {}
+        output_shapes_(output_shapes),
+        env_(ctx->env()) {}
 
   absl::string_view snapshot_path() const { return snapshot_path_; }
 
@@ -85,6 +81,13 @@ class ListSnapshotChunksDatasetOp::Dataset : public DatasetBase {
   int64_t CardinalityInternal(CardinalityOptions options) const override {
     // TODO(b/297930782): Implement this.
     return kUnknownCardinality;
+  }
+
+  absl::Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
+                                      split_providers) const override {
+    split_providers->push_back(
+        std::make_unique<SnapshotChunkProvider>(snapshot_path_, env_));
+    return absl::OkStatus();
   }
 
   std::string DebugString() const override {
@@ -117,6 +120,7 @@ class ListSnapshotChunksDatasetOp::Dataset : public DatasetBase {
   const tsl::tstring snapshot_path_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
+  tsl::Env* const env_;
 };
 
 class ListSnapshotChunksDatasetOp::Dataset::Iterator
@@ -126,9 +130,12 @@ class ListSnapshotChunksDatasetOp::Dataset::Iterator
       : DatasetIterator<ListSnapshotChunksDatasetOp::Dataset>(params) {}
 
   absl::Status Initialize(IteratorContext* ctx) override {
-    if (!snapshot_chunk_provider_) {
-      snapshot_chunk_provider_ = std::make_unique<SnapshotChunkProvider>(
+    if (ctx->split_providers().empty()) {
+      split_provider_ = std::make_shared<SnapshotChunkProvider>(
           dataset()->snapshot_path(), ctx->env());
+    } else {
+      TF_ASSIGN_OR_RETURN(split_provider_,
+                          GetSingleSplitProvider(ctx, dataset()));
     }
     return absl::OkStatus();
   }
@@ -137,30 +144,28 @@ class ListSnapshotChunksDatasetOp::Dataset::Iterator
   absl::Status GetNextInternal(IteratorContext* ctx,
                                std::vector<Tensor>* out_tensors,
                                bool* end_of_sequence) override {
-    TF_ASSIGN_OR_RETURN(std::optional<std::string> chunk,
-                        snapshot_chunk_provider_->GetNext());
-    if (!chunk.has_value()) {
-      *end_of_sequence = true;
+    Tensor split;
+    TF_RETURN_IF_ERROR(split_provider_->GetNext(&split, end_of_sequence));
+    if (*end_of_sequence) {
       return absl::OkStatus();
     }
-    out_tensors->push_back(ConvertToTensor(*chunk, ctx->allocator({})));
-    *end_of_sequence = false;
+    out_tensors->push_back(std::move(split));
     return absl::OkStatus();
   }
 
   absl::Status SaveInternal(SerializationContext* ctx,
                             IteratorStateWriter* writer) override {
-    return snapshot_chunk_provider_->Save(
+    return split_provider_->Save(
         [&](const std::string& key) { return full_name(key); }, writer);
   }
 
   absl::Status RestoreInternal(IteratorContext* ctx,
                                IteratorStateReader* reader) override {
-    return snapshot_chunk_provider_->Restore(
+    return split_provider_->Restore(
         [&](const std::string& key) { return full_name(key); }, reader);
   }
 
-  std::unique_ptr<SnapshotChunkProvider> snapshot_chunk_provider_;
+  std::shared_ptr<SplitProvider> split_provider_;
 };
 
 ListSnapshotChunksDatasetOp::ListSnapshotChunksDatasetOp(

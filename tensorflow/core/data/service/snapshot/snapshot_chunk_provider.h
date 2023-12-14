@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tsl/platform/env.h"
 
 namespace tensorflow {
@@ -33,7 +34,7 @@ namespace data {
 
 // Provides the next chunk to read. Blocks until the next chunk is unavailable,
 // or all the chunks have been read. This class is thread-safe.
-class SnapshotChunkProvider {
+class SnapshotChunkProvider : public SplitProvider {
  public:
   SnapshotChunkProvider(absl::string_view snapshot_path, tsl::Env* env);
   virtual ~SnapshotChunkProvider() = default;
@@ -42,16 +43,16 @@ class SnapshotChunkProvider {
 
   // Returns the absolute file path of next snapshot chunk to read. If there is
   // no available chunk, blocks until the next chunk is unavailable, or all the
-  // chunks are read. Returns std::nullopt if all chunks have been read.
-  absl::StatusOr<std::optional<std::string>> GetNext();
+  // chunks are read. Sets `end_of_splits` to true if all chunks have been read.
+  absl::Status GetNext(Tensor* split, bool* end_of_splits) override;
+
+  absl::Status Reset() override;
 
   // Supports checkpointing.
   absl::Status Save(std::function<std::string(std::string)> full_name,
-                    IteratorStateWriter* writer);
+                    IteratorStateWriter* writer) override;
   absl::Status Restore(std::function<std::string(std::string)> full_name,
-                       IteratorStateReader* reader);
-
-  // TODO(b/297930782): Support cancellation.
+                       IteratorStateReader* reader) override;
 
  private:
   // State of the snapshot.
