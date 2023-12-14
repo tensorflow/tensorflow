@@ -1646,6 +1646,7 @@ py_strict_library(
         ":math_grad",
         ":math_ops",
         ":nccl_ops",
+        ":nn_grad",
         ":optional_grad",
         ":parsing_grad",
         ":proto_ops",
