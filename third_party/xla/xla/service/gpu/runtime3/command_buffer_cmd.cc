@@ -95,6 +95,8 @@ Status CommandBufferCmdSequence::Record(
 
   for (auto& cmd : commands_) {
     TF_RETURN_IF_ERROR(cmd->Record(params, command_buffer));
+    // TODO(ezhulenev): Add barriers based on buffer slice read/write conflicts.
+    TF_RETURN_IF_ERROR(command_buffer->Barrier());
   }
 
   if (mode == RecordMode::kExclusive) {

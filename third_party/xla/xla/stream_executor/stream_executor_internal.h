@@ -136,6 +136,10 @@ class CommandBufferInterface {
   virtual tsl::Status Trace(Stream* stream,
                             absl::AnyInvocable<tsl::Status()> function) = 0;
 
+  // Adds an execution barrier to a command buffer: all commands added before a
+  // barrier will complete before any of the commands added after a barrier.
+  virtual tsl::Status Barrier() = 0;
+
   // Adds a kernel launch command to the command buffer.
   virtual tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
                              const Kernel& kernel, const KernelArgs& args) = 0;
@@ -155,6 +159,10 @@ class CommandBufferInterface {
 
   // Adds a device memory allocation node to the command buffer.
   virtual tsl::StatusOr<DeviceMemoryBase> Allocate(size_t bytes) = 0;
+
+  // Adds a device memory free command to the command buffer, buffer is
+  // allocated in other command buffer, free through real address.
+  virtual tsl::Status Free(DeviceMemoryBase dst) = 0;
 
   // For all conditional command APIs defined below, nested command buffers
   // constructed for conditional branches owned by *this and should never be
@@ -203,10 +211,6 @@ class CommandBufferInterface {
   virtual tsl::Status While(StreamExecutor* executor, DeviceMemory<bool> pred,
                             CommandBuffer::Builder cond_builder,
                             CommandBuffer::Builder body_builder) = 0;
-
-  // Adds a device memory free command to the command buffer, buffer is
-  // allocated in other command buffer, free through real address.
-  virtual tsl::Status Free(DeviceMemoryBase dst) = 0;
 
   // Finalizes command buffer and makes it executable. Once command buffer is
   // finalized no commands can be added to it.

@@ -50,6 +50,8 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   tsl::Status Trace(Stream* stream,
                     absl::AnyInvocable<tsl::Status()> function) override;
 
+  tsl::Status Barrier() override;
+
   tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
                      const Kernel& kernel, const KernelArgs& args) override;
 
@@ -208,10 +210,7 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
       ConditionType type, SetConditionFn set_condition,
       absl::Span<const ConditionBuilder> builders);
 
-  // TODO(ezhulenev): Currently we serialize all Gpu nodes by adding a
-  // dependency between all nodes added to a command buffer. We need a
-  // concept of a barrier at a command buffer level.
-  Dependencies GetDependencies();
+  Dependencies GetBarrier();
 
   // Returns OK status if command buffer is not finalized and it is still
   // possible to add new commands to it, otherwise returns internal error.
@@ -243,6 +242,9 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
 
   GpuGraphExecHandle exec_ = nullptr;  // owned if `is_owned_graph_exec_`
   bool is_owned_graph_exec_ = true;    // ownership of `is_owned_graph_exec_`
+
+  // Handle of a graph node that acts as a barrier for all newly added commands.
+  GpuGraphNodeHandle barrier_ = nullptr;
 
   // Handles to graph nodes corresponding to command buffer commands. Owned by
   // the `graph_` instance.

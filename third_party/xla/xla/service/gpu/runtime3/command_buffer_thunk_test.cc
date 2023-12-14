@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_test_kernels.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_types.h"  // IWYU pragma: keep
 #include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -363,14 +364,20 @@ TEST(CommandBufferThunkTest, GemmCmd) {
   se::DeviceMemory<float> out = executor->AllocateArray<float>(2 * 3);
   stream.ThenMemZero(&out, out_length);
 
+  se::DeviceMemory<float> workspace =
+      executor->AllocateArray<float>(1024 * 1024);
+  stream.ThenMemZero(&workspace, 1024 * 1024);
+
   // Prepare buffer allocations for recording command buffer.
   BufferAllocation alloc_lhs(/*index=*/0, lhs_length, /*color=*/0);
   BufferAllocation alloc_rhs(/*index=*/1, rhs_length, /*color=*/0);
   BufferAllocation alloc_out(/*index=*/2, out_length, /*color=*/0);
+  BufferAllocation alloc_workspace(/*index=*/3, 1024 * 1024, /*color=*/0);
 
   BufferAllocation::Slice slice_lhs(&alloc_lhs, 0, lhs_length);
   BufferAllocation::Slice slice_rhs(&alloc_rhs, 0, rhs_length);
   BufferAllocation::Slice slice_out(&alloc_out, 0, out_length);
+  BufferAllocation::Slice slice_workspace(&alloc_workspace, 0, 1024 * 1024);
 
   auto config = GemmConfig::For(
       ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
@@ -381,15 +388,15 @@ TEST(CommandBufferThunkTest, GemmCmd) {
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
-  BufferAllocation::Slice workspace(nullptr, 0, 0);
   commands.Emplace<GemmCmd>(config.value(), slice_lhs, slice_rhs, slice_out,
-                            workspace, /*deterministic=*/true);
+                            slice_workspace, /*deterministic=*/true);
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
 
   ServiceExecutableRunOptions run_options;
-  BufferAllocations allocations({lhs, rhs, out}, 0, executor->GetAllocator());
+  BufferAllocations allocations({lhs, rhs, out, workspace}, 0,
+                                executor->GetAllocator());
   Thunk::ExecuteParams params(run_options, allocations, &stream, {});
 
   CommandBufferCmd::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
@@ -410,8 +417,8 @@ TEST(CommandBufferThunkTest, GemmCmd) {
   stream.ThenMemZero(&updated_out, out_length);
 
   // Update buffer allocation to updated `out` buffer.
-  allocations =
-      BufferAllocations({lhs, rhs, updated_out}, 0, executor->GetAllocator());
+  allocations = BufferAllocations({lhs, rhs, updated_out, workspace}, 0,
+                                  executor->GetAllocator());
 
   // Thunk execution should automatically update underlying command buffer.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
