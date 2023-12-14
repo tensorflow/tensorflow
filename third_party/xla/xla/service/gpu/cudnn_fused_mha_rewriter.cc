@@ -311,9 +311,11 @@ bool IsContractingDimSupported(absl::Span<const int64_t> contracting_dims) {
 }
 
 bool IsNonContractingDimSupported(
-    const std::vector<int64_t>& non_contracting_dims) {
-  return absl::c_all_of(non_contracting_dims,
-                        [](int64_t dim) { return dim <= 512; });
+    const std::vector<int64_t>& non_contracting_dims, bool is_training) {
+  // For training, cuDNN require non_contracting_dim to be Divisible by 64
+  return absl::c_all_of(non_contracting_dims, [&](int64_t dim) {
+    return dim <= 512 && (!is_training || dim % 64 == 0);
+  });
 }
 
 std::vector<int64_t> GetDimensionVector(absl::Span<const int64_t> dimensions,
@@ -325,7 +327,7 @@ std::vector<int64_t> GetDimensionVector(absl::Span<const int64_t> dimensions,
   return vec;
 }
 
-StatusOr<bool> IsSupportedBMM1(const HloInstruction* bmm_1) {
+StatusOr<bool> IsSupportedBMM1(const HloInstruction* bmm_1, bool is_training) {
   const DotDimensionNumbers& dot_dims_bmm1 = bmm_1->dot_dimension_numbers();
   TF_ASSIGN_OR_RETURN(
       std::vector<int64_t> lhs_non_contracting_dim_nums_bmm1,
@@ -345,8 +347,10 @@ StatusOr<bool> IsSupportedBMM1(const HloInstruction* bmm_1) {
                          rhs_non_contracting_dim_nums_bmm1);
   // The non contracting dimensions for BMM1 need to be less than or equal to
   // 512.
-  if (!IsNonContractingDimSupported(lhs_non_contracting_dims_bmm1) ||
-      !IsNonContractingDimSupported(rhs_non_contracting_dims_bmm1)) {
+  if (!IsNonContractingDimSupported(lhs_non_contracting_dims_bmm1,
+                                    is_training) ||
+      !IsNonContractingDimSupported(rhs_non_contracting_dims_bmm1,
+                                    is_training)) {
     if (VLOG_IS_ON(2)) {
       VLOG(2) << "BMM1 lhs_non_contracting_dims: "
               << absl::StrJoin(lhs_non_contracting_dims_bmm1, ",")
@@ -1062,7 +1066,18 @@ StatusOr<bool> IsMHABlockSupported(HloInstruction* bmm_1, HloInstruction* bmm_2,
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(bool is_bmm1_supported, IsSupportedBMM1(bmm_1));
+  if (bmm_1->shape().rank() != 4 || bmm_2->shape().rank() != 4) {
+    if (VLOG_IS_ON(2)) {
+      VLOG(2) << "Unsupported bmm rank for cuDNN MHA fusion:\n"
+              << bmm_1->ToString() << "\nOR\n"
+              << bmm_2->ToString() << "\n"
+              << "Only bmm with rank 4 is supported.";
+    }
+    return false;
+  }
+
+  TF_ASSIGN_OR_RETURN(bool is_bmm1_supported,
+                      IsSupportedBMM1(bmm_1, is_training));
   if (!is_bmm1_supported) return false;
   TF_ASSIGN_OR_RETURN(bool is_bmm2_supported,
                       IsSupportedBMM2(bmm_2, need_canonicalization));

@@ -1036,7 +1036,7 @@ ENTRY main.4 {
   if (CudaOrRocmCheck(se::CudaComputeCapability::VOLTA, Switch::True)) {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: [[GEMM:%[^ ]+]] = (s32[8,4]{1,0}, s8[{{[0-9]+}}]{0}) custom-call(s8[8,4]{1,0} %fusion.1, s8[4,4]{0,1} %bitcast.13), custom_call_target="__cublas$gemm",
+; CHECK: [[GEMM:%[^ ]+]] = (s32[8,4]{1,0}, s8[{{[0-9]+}}]{0}) custom-call(s8[8,4]{1,0} %{{.*}}, s8[4,4]{0,1} %{{.*}}), custom_call_target="__cublas$gemm",
   )",
                       /*print_operand_shape=*/true);
   }
