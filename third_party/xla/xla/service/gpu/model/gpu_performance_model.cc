@@ -335,6 +335,7 @@ void GpuPerformanceModelCache::Invalidate(const HloInstruction& instruction) {
 GpuPerformanceModel::EstimateRunTimeForInstruction(
     const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis,
     const GpuPerformanceModelOptions& config) {
+  VLOG(8) << "EstimateRunTimeForInstruction: " << instr->name();
   const se::DeviceDescription* device_info = cost_analysis->device_info_;
 
   int64_t flops = cost_analysis->flop_count(*instr);
@@ -367,7 +368,7 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
     LOG(INFO) << "FLOPs: " << flops;
     LOG(INFO) << "Bytes read: " << bytes_read;
     LOG(INFO) << "Bytes written: " << bytes_written;
-    LOG(INFO) << "Num threads:" << num_threads;
+    LOG(INFO) << "Num threads: " << num_threads;
     LOG(INFO) << "Compute time: " << compute_time;
     LOG(INFO) << "Input read time: " << read_time;
     LOG(INFO) << "Output write time: " << write_time;
@@ -608,13 +609,16 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
     float utilization_by_this_consumer, const GpuHloCostAnalysis* cost_analysis,
     const std::optional<HloFusionAnalysis>& fusion_analysis,
     const GpuPerformanceModelOptions& config) {
+  VLOG(8) << "EstimateRunTimeForFusion, producer: " << producer->name()
+          << " consumer: " << consumer->name();
   const se::DeviceDescription* device_info = cost_analysis->device_info_;
 
   int64_t fused_flops = producer_runtime.flops * utilization_by_this_consumer +
                         consumer_runtime.flops;
 
+  int64_t num_threads = launch_dimensions.launch_bound();
   absl::Duration compute_time =
-      ComputeTime(*device_info, fused_flops, launch_dimensions.launch_bound());
+      ComputeTime(*device_info, fused_flops, num_threads);
 
   absl::flat_hash_set<const HloInstruction*> fusion_operands;
   for (auto* operand : producer->operands()) {
@@ -645,6 +649,14 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
         ReadTime(*device_info, launch_dimensions.num_blocks(), n_bytes_net,
                  n_bytes_total, operand->shape().element_type(), coalesced,
                  config.first_read_from_dram);
+  }
+
+  if (VLOG_IS_ON(8)) {
+    LOG(INFO) << "Fused FLOPs: " << fused_flops;
+    LOG(INFO) << "Num threads: " << num_threads;
+    LOG(INFO) << "Compute time: " << compute_time;
+    LOG(INFO) << "Input read time: " << read_time;
+    LOG(INFO) << "Output write time: " << consumer_runtime.write_time;
   }
 
   return std::max(compute_time, read_time + consumer_runtime.write_time);
