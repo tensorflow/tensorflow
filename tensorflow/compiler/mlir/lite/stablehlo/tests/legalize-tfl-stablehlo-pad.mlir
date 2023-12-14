@@ -9,8 +9,8 @@ module {
 
 // CHECK:       module {
 // CHECK-NEXT:    func @main(%arg0: tensor<8x128xf32>, %arg1: tensor<f32>) -> tensor<11x131xf32> {
-// CHECK-NEXT:    %0 = stablehlo.pad %arg0, %arg1, low = [1, 0], high = [2, 3], interior = [0, 0] : (tensor<8x128xf32>, tensor<f32>) -> tensor<11x131xf32>
-// CHECK-NEXT:    return %0 : tensor<11x131xf32>
+// CHECK-NEXT:      %0 = stablehlo.pad %arg0, %arg1, low = [1, 0], high = [2, 3], interior = [0, 0] : (tensor<8x128xf32>, tensor<f32>) -> tensor<11x131xf32>
+// CHECK-NEXT:      return %0 : tensor<11x131xf32>
 // CHECK-NEXT:    }
-// CHECK-NEXT:    }
+// CHECK-NEXT:  }
 

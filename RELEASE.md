@@ -9,6 +9,12 @@
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
+* `tf.summary.trace_on` now takes a `profiler_outdir` argument. This must be set
+  if `profiler` arg is set to `True`.
+    * `tf.summary.trace_export`'s `profiler_outdir` arg is now a no-op. Enabling
+      the profiler now requires setting `profiler_outdir` in `trace_on`.
+
+
 ### Known Caveats
 
 * <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
@@ -32,6 +38,17 @@
     * Added support for `stablehlo.multiply`.
     * Added support for `stablehlo.maximum`.
     * Added support for `stablehlo.minimum`.
+    * Added boolean parameter support for `tfl.gather_nd`.
+
+* `tf.CheckpointOptions`
+    * It now takes in a new argument called `experimental_sharding_callback`.
+      This is a callback function wrapper that will be executed to determine how
+      tensors will be split into shards when the saver writes the checkpoint
+      shards to disk. `tf.train.experimental.ShardByTaskPolicy` is the default
+      sharding behavior, but `tf.train.experimental.MaxShardSizePolicy` can be
+      used to shard the checkpoint with a maximum shard file size. Users with
+      advanced use cases can also write their own custom
+      `tf.train.experimental.ShardingCallback`s.
 
 ## Keras
 
@@ -48,6 +65,9 @@
       table maintained by the layer. If this layer is not used in conjunction
       with `UpdateEmbeddingCallback` the behavior of the layer would be same as
       `keras.layers.Embedding`.
+*  `keras.optimizers.Adam`
+    * Added the option to set adaptive epsilon to match implementations with Jax
+      and PyTorch equivalents.
 
 ### Breaking Changes
 
@@ -76,6 +96,39 @@
 This release contains contributions from many people at Google, as well as:
 
 <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
+# Release 2.15.0.post1
+
+## TensorFlow
+
+### Bug Fixes and Other Changes
+
+*   Hot-fix was needed for an issue affecting the TensorFlow installation
+    process.
+    *   TensorFlow 2.15.0 Python package was requesting `tensorrt`-related
+        packages that cannot be found unless the user installs them beforehand
+        or provides additional installation flags.
+    *   This dependency affected anyone installing TensorFlow 2.15 alongside
+        NVIDIA CUDA dependencies via `pip install tensorflow[and-cuda]`.
+    *   Depending on the installation method, TensorFlow 2.14 would be installed
+        instead of 2.15, or users could receive an installation error due to
+        those missing dependencies.
+*   TensorFlow 2.15.0.post1 is being released for Linux x86_64 to resolve this
+    issue as quickly as possible.
+    *   This version removes the `tensorrt` Python package dependencies from the
+        tensorflow[and-cuda] installation method to ensure `pip install
+        tensorflow[and-cuda]` works as originally intended for TensorFlow 2.15.
+    *   Support for TensorRT is otherwise unaffected as long as TensorRT is
+        already installed on the system.
+*   Using .post1 instead of a full minor release allowed us to push this release
+    out quickly. However, please note the following caveat:
+    *   For users wishing to pin their Python dependency in a requirements file
+        or other situation, under Python's version specification rules,
+        `tensorflow[and-cuda]==2.15.0` will not install this fixed version.
+        Please use `==2.15.0.post1` to specify this exact version on Linux
+        platforms, or a fuzzy version specification, such as `==2.15.*`, to
+        specify the most recent compatible version of TensorFlow 2.15 on all
+        platforms.
 
 # Release 2.15.0
 
@@ -164,28 +217,25 @@ This release contains contributions from many people at Google, as well as:
 
     *   Provided a new `experimental_skip_saver` argument which, if specified, will suppress the addition of `SavedModel`-native save and restore ops to the `SavedModel`, for cases where users already build custom save/restore ops and checkpoint formats for the model being saved, and the creation of the SavedModel-native save/restore ops simply cause longer model serialization times.
 
-* `tf.math.bincount`
-    *   Updated documentation. Fixed "[Bincount doesn't check the tensor type](https://github.com/tensorflow/tensorflow/issues/56499)" and some other corner cases.
-
-## Keras
-
-### Breaking Changes
-
-### Known Caveats
-
-### Major Features and Improvements
-
-### Bug Fixes and Other Changes
-
 * Add ops to `tensorflow.raw_ops` that were missing.
+
 * `tf.CheckpointOptions`
     * It now takes in a new argument called `experimental_write_callbacks`. These are callbacks that will be executed after a saving event finishes writing the checkpoint file.
+
 * Add an option `disable_eager_executer_streaming_enqueue` to `tensorflow.ConfigProto.Experimental` to control the eager runtime's behavior around parallel remote function invocations; when set to `True`, the eager runtime will be allowed to execute multiple function invocations in parallel.
+
 * `tf.constant_initializer`
-    * It now takes a new argument called `support_partition`. If True, constant_initializers can create sharded variables. This is disabled by default similar to existing behavior.
+    * It now takes a new argument called `support_partition`. If True, constant_initializers can create sharded variables. This is disabled by default, similar to existing behavior.
 
 * `tf.lite`
     * Added support for `stablehlo.scatter`.
+
+* `tf.estimator`
+    * The tf.estimator API removal is in progress and will be targeted for the 2.16 release.
+
+## Keras
+
+* This will be the final release before the launch of Keras 3.0, when Keras will become multi-backend. For the compatibility page and other info, please see: https://github.com/keras-team/keras-core
 
 ## Thanks to our Contributors
 

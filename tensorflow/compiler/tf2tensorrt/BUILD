@@ -3,9 +3,9 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
-# Placeholder: load py_proto_library
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
+# Placeholder: load py_proto_library
 load(
     "//tensorflow:tensorflow.bzl",
     "VERSION",
@@ -21,17 +21,18 @@ load(
     "tf_additional_all_protos",
     "tf_proto_library",
 )
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "cuda_rpath_flags",
-)
-load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 
 # Platform specific build config
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load(
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "cuda_rpath_flags",
+)
+load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -103,6 +104,8 @@ tf_cuda_cc_test(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":trt_logging",
@@ -157,6 +160,8 @@ tf_cuda_cc_test(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":common_utils",
@@ -239,6 +244,8 @@ tf_cuda_cc_test(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":testutils",
@@ -318,6 +325,8 @@ tf_cuda_cc_test(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":common_utils",
@@ -354,6 +363,8 @@ tf_cuda_cc_test(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":testutils",
@@ -411,6 +422,7 @@ tf_cuda_library(
         "utils/trt_execution_context.h",
         "utils/trt_shape_optimization_profiles.h",
     ],
+    features = ["-layering_check"],
     deps = [
         ":common_utils",
         ":trt_allocator",
@@ -431,6 +443,7 @@ tf_cuda_library(
     name = "trt_logging",
     srcs = ["utils/trt_logger.cc"],
     hdrs = ["utils/trt_logger.h"],
+    features = ["-layering_check"],
     visibility = ["//visibility:public"],
     deps = [
         ":common_utils",
@@ -515,6 +528,7 @@ tf_cuda_library(
     name = "trt_allocator",
     srcs = ["utils/trt_allocator.cc"],
     hdrs = ["utils/trt_allocator.h"],
+    features = ["-layering_check"],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_lite",
@@ -561,6 +575,8 @@ tf_cuda_cc_test(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":trt_resources",
@@ -576,6 +592,7 @@ tf_cuda_library(
         "convert/logger_registry.h",
     ],
     copts = tf_copts(),
+    features = ["-layering_check"],
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
@@ -780,6 +797,8 @@ tf_cuda_cc_test(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":testutils",
@@ -816,6 +835,8 @@ tf_cuda_cc_test(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        # TODO(b/303453873): Re-enable test once TensorRT has been updated
+        "notap",
     ],
     deps = [
         ":testutils",

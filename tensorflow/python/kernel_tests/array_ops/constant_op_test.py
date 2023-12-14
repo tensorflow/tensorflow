@@ -208,7 +208,7 @@ class ConstantTest(test.TestCase):
           shape=[2, 3, 5])
     self.assertEqual(c.get_shape(), [2, 3, 5])
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testEagerMemory(self):
     """Tests PyObject refs are managed correctly when executing eagerly."""
     constant_op.constant([[1.]])

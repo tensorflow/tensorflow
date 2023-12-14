@@ -2427,6 +2427,78 @@ ENTRY test {
   }
 }
 
+TEST_F(AlgebraicSimplifierTest, MinimumOfMinimum1) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  min1 = f32[] minimum(x, y)
+  ROOT min = f32[] minimum(min1, y)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Minimum(m::Parameter(0), m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MinimumOfMinimum2) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  min1 = f32[] minimum(x, y)
+  ROOT min = f32[] minimum(min1, x)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Minimum(m::Parameter(0), m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MinimumOfMinimum3) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  min1 = f32[] minimum(x, y)
+  ROOT min = f32[] minimum(y, min1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Minimum(m::Parameter(1), m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MinimumOfMinimum4) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  min1 = f32[] minimum(x, y)
+  ROOT min = f32[] minimum(x, min1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Minimum(m::Parameter(0), m::Parameter(1))));
+}
+
 TEST_F(AlgebraicSimplifierTest, TrivialReduceWindow_Add) {
   const char* const hlo_string = R"(
 HloModule test
@@ -7532,7 +7604,7 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedReshapeWithoutLayout) {
       HloInstruction::CreateReshape(reshaped_shape, broadcast));
 
   std::unique_ptr<VerifiedHloModule> module = CreateNewVerifiedModule();
-  module->AddEntryComputationWithLayouts(builder.Build());
+  module->AddEntryComputation(builder.Build());
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
@@ -9978,6 +10050,51 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfBroadcastSkipped) {
      ROOT trans = f32[4,2,3,10] transpose(bcast), dimensions={3,1,2,0}
    }
   )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  bool changed =
+      RunHloPass(AlgebraicSimplifier(default_options_), m.get()).value();
+  SCOPED_TRACE(m->ToString());
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(AlgebraicSimplifierTest, DontSinkInstructionsInDUSAsyncComputation) {
+  const char* kModuleStr = R"(
+   HloModule m
+   test {
+     %param_0 = f32[1]{0} parameter(0)
+     %param_1 = f32[10]{0} parameter(1)
+     %constant_1 = s32[] constant(0)
+     %dynamic-update-slice-start = ((f32[10]{0}, f32[1]{0}, s32[]),
+      f32[10]{0}, u32[]) dynamic-update-slice-start(f32[10]{0} %param_1,
+     f32[1]{0} %param_0, s32[] %constant_1)
+     ROOT %dynamic-update-slice-done =
+     f32[10]{0} dynamic-update-slice-done(((f32[10]{0}, f32[1]{0}, s32[]),
+     f32[10]{0}, u32[]) %dynamic-update-slice-start)
+   }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  bool changed =
+      RunHloPass(AlgebraicSimplifier(default_options_), m.get()).value();
+  SCOPED_TRACE(m->ToString());
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(AlgebraicSimplifierTest, DontSinkInstructionsInDSAsyncComputation) {
+  const char* kModuleStr = R"(
+   HloModule m
+   test {
+     %param_0 = f32[10]{0} parameter(0)
+     %constant_1 = s32[] constant(0)
+     %dynamic-slice-start = ((f32[10]{0}, s32[]), f32[1]{0}, u32[])
+      dynamic-slice-start(f32[10]{0} %param_0, s32[] %constant_1),
+      dynamic_slice_sizes={1}
+     ROOT %dynamic-slice-done = f32[1]{0}
+      dynamic-slice-done(((f32[10]{0}, s32[]), f32[1]{0}, u32[])
+        %dynamic-slice-start), dynamic_slice_sizes={1}
+   }
+  )";
+
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   bool changed =
       RunHloPass(AlgebraicSimplifier(default_options_), m.get()).value();

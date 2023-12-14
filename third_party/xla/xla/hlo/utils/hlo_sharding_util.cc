@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/protobuf_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -2756,6 +2757,37 @@ std::optional<HloSharding> GetOutputSharding(
     return instruction->sharding().tuple_elements().back();
   }
   return instruction->sharding();
+}
+
+Shape UntileShape(const HloSharding& sharding, const Shape& shape) {
+  if (!sharding.IsTuple()) {
+    return UntileLeafShape(sharding, shape);
+  }
+  Shape result_shape = shape;
+  ShapeUtil::ForEachMutableSubshape(
+      &result_shape,
+      [&shape, &sharding](Shape* subshape, const ShapeIndex& index) {
+        if (!ShapeUtil::IsLeafIndex(shape, index)) {
+          return;
+        }
+        const HloSharding& subshape_sharding =
+            sharding.GetSubSharding(shape, index);
+        *subshape = UntileLeafShape(subshape_sharding, *subshape);
+      });
+
+  return result_shape;
+}
+
+Shape UntileLeafShape(const HloSharding& sharding, const Shape& shape) {
+  if (sharding.IsTileMaximal() || sharding.IsManual() || sharding.IsUnknown()) {
+    return shape;
+  }
+  Shape result_shape = shape;
+  for (int64_t i = 0; i < sharding.TiledDataRank(); ++i) {
+    result_shape.set_dimensions(
+        i, shape.dimensions(i) * sharding.tile_assignment().dim(i));
+  }
+  return result_shape;
 }
 
 }  // namespace hlo_sharding_util

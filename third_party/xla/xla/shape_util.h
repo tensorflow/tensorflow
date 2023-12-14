@@ -178,8 +178,8 @@ class ShapeUtil {
   // (param_name: f32[42x12], ...) -> f32[24x42]
   static std::string HumanString(const ProgramShape& program_shape);
 
-  // Returns whether the LHS and RHS shapes have the same dimensions; note: does
-  // not check element type.
+  // Returns whether the LHS and RHS shapes have the same dimensions, ignoring
+  // the unbounded dimension sizes; note: does not check element type.
   // Precondition: IsArray(lhs) && IsArray(rhs)
   static bool SameDimensions(const Shape& lhs, const Shape& rhs);
 
@@ -372,8 +372,9 @@ class ShapeUtil {
                          const std::vector<bool>& dynamic_dimensions);
 
   // Constructs a new shape with the given element type and sequence of
-  // dimensions. Method checks if the element type is valid and the shape's
-  // size fits in std::numeric_limits<int64_t>::max().
+  // dimensions. Method checks if the element type is valid, the shape's
+  // size fits in std::numeric_limits<int64_t>::max(), and dynamic size is not
+  // marked static.
   static StatusOr<Shape> MakeValidatedShape(
       PrimitiveType element_type, absl::Span<const int64_t> dimensions);
   static StatusOr<Shape> MakeValidatedShape(
@@ -542,6 +543,23 @@ class ShapeUtil {
       fn(subshape, index);
       return OkStatus();
     }).IgnoreError();
+  }
+
+  // Calls the given visitor function for each leaf subshape of the given shape.
+  // Subshapes are visited in DFS pre-order starting with the entire shape
+  // (index {}).
+  //
+  // The visitor function must have the signature
+  //
+  //   void fn(const Shape& subshape, const ShapeIndex& index)
+  template <typename Fn>
+  static void ForEachLeafShape(const Shape& shape, Fn&& fn) {
+    ForEachSubshape(shape,
+                    [&](const Shape& sub_shape, const ShapeIndex& index) {
+                      if (IsLeafIndex(shape, index)) {
+                        fn(sub_shape, index);
+                      }
+                    });
   }
 
   // Variants of ForEach(Mutable)Subshape which propagate Status from the

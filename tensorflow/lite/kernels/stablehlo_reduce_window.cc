@@ -202,7 +202,7 @@ void Dilate(const DilateData& ctx, const char* input, const char* init_value,
   // Fill the output tensor with the padding value.
   {
     std::memcpy(output, init_value, ctx.init_element_size);
-    int64_t remaining_bytes = ctx.output_size;
+    int64_t remaining_bytes = ctx.output_size - ctx.init_element_size;
     int64_t copied_bytes = ctx.init_element_size;
     while (remaining_bytes) {
       int64_t bytes = std::min(remaining_bytes, copied_bytes);

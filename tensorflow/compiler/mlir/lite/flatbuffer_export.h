@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_EXPORT_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_EXPORT_H_
 
+#include <cstddef>
 #include <map>
+#include <optional>
 #include <string>
 #include <unordered_set>
 
@@ -42,6 +44,10 @@ struct FlatbufferExportOptions {
   // OpOrArgNameMapper to convert location of the op to name in flatbuffer.
   // If not set, a default mapper will be used.
   tensorflow::OpOrArgNameMapper* op_or_arg_name_mapper = nullptr;
+  // User-specified value of flatbuffer alignment requirement for custom
+  // options. If specified, the value should be multiplier of 16 (default
+  // alignment for TFL flatbuffer).
+  std::optional<size_t> custom_option_alignment = std::nullopt;
 };
 
 // Translates the given MLIR `module` into a FlatBuffer and stores the

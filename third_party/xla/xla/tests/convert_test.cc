@@ -601,6 +601,34 @@ TEST_F(ConvertTest, ConvertR1U8ToR1U4) {
   ComputeAndCompareR1<u4>(&builder, expected, {});
 }
 
+TEST_F(ConvertTest, ConvertR1S8ToR1S4Roundtrip) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR1<int8_t>(&builder, {0, 8, -8, -9, 127, -128});
+  auto b = ConvertElementType(a, S4);
+  ConvertElementType(b, S8);
+
+  std::vector<int8_t> expected = {0, -8, -8, 7, -1, 0};
+  ComputeAndCompareR1<int8_t>(&builder, expected, {});
+}
+
+TEST_F(ConvertTest, ConvertR1F32ToR1S4) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR1<float>(&builder, {0., 2.5, -2.5});
+  ConvertElementType(a, S4);
+
+  std::vector<s4> expected = {s4(0), s4(2), s4(-2)};
+  ComputeAndCompareR1<s4>(&builder, expected, {});
+}
+
+TEST_F(ConvertTest, ConvertR1S4ToR1F32) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR1<s4>(&builder, {s4(0), s4(1), s4(2), s4(-8)});
+  ConvertElementType(a, F32);
+
+  std::vector<float> expected = {0, 1, 2, -8};
+  ComputeAndCompareR1<float>(&builder, expected, {});
+}
+
 XLA_TEST_F(ConvertTest, ConvertBF16F32) {
   XlaBuilder builder(TestName());
 

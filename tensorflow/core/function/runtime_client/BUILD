@@ -19,13 +19,16 @@ cc_library(
     hdrs = [
         "runtime_client.h",
     ],
+    defines = select({
+        "//tensorflow/compiler/mlir/python:disable_mlir_config": ["DISABLE_MLIR"],
+        "//conditions:default": [],
+    }),
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/eager:immediate_execution_context",
         "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
-        "//tensorflow/compiler/mlir/python:mlir",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
@@ -52,7 +55,12 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-    ],
+    ] + select({
+        "//tensorflow/compiler/mlir/python:disable_mlir_config": [],
+        "//conditions:default": [
+            "//tensorflow/compiler/mlir/python:mlir",
+        ],
+    }),
     # TODO(mdan): Get rid of alwayslink, it's nonstandard.
     alwayslink = 1,
 )
@@ -156,6 +164,7 @@ py_strict_test(
     tags = ["no_oss"],  # TODO(b/219089812)
     deps = [
         ":runtime_client_py",
+        #internal proto upb dep
         "//tensorflow/core/framework:function_proto_py",
         "//tensorflow/core/function/testing:test_pass_py",
         "//tensorflow/python:tf2",

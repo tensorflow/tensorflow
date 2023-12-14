@@ -636,5 +636,60 @@ ENTRY %main {
       {&async_start_use, &call_use, &async_done_use}, value, *dataflow));
 }
 
+TEST_F(HloOrderingTest, OrderingBetweenAsyncOpAndItsWrapped) {
+  constexpr absl::string_view hlo = R"(
+HloModule test
+
+%async_computation {
+  %param_0 = f32[10,32,512]{2,1,0:T(8,128)S(5)} parameter(0)
+  %param_1 = f32[1,32,512]{2,1,0:T(8,128)} parameter(1)
+  %param_2 = s32[]{:T(128)} parameter(2)
+  %param_3 = s32[]{:T(128)} parameter(3)
+  %param_4 = s32[]{:T(128)} parameter(4)
+  ROOT %dynamic-update-slice.1 = f32[10,32,512]{2,1,0:T(8,128)S(5)}
+    dynamic-update-slice(%param_0, %param_1, %param_2, %param_3, %param_4)
+}
+
+ENTRY %main {
+  %param.1 = (s32[]{:T(128)}, f32[32,512]{1,0:T(8,128)},
+              f32[10,32,512]{2,1,0:T(8,128)S(5)}) parameter(0)
+  %get-tuple-element.132 = f32[10,32,512]{2,1,0:T(8,128)S(5)} get-tuple-element(
+    %param.1), index=2
+  %get-tuple-element.131 = f32[32,512]{1,0:T(8,128)} get-tuple-element(
+    %param.1), index=1
+  %cosine.0 = f32[32,512]{1,0:T(8,128)} cosine(%get-tuple-element.131)
+  %reshape.6 = f32[1,32,512]{2,1,0:T(8,128)} reshape(%cosine.0)
+  %get-tuple-element.130 = s32[]{:T(128)} get-tuple-element(%param.1), index=0
+  %constant.49 = s32[]{:T(128)} constant(0)
+  %compare.13 = pred[]{:T(512)} compare(
+      %get-tuple-element.130, %constant.49), direction=LT
+  %constant.50 = s32[]{:T(128)} constant(10)
+  %add.22 = s32[]{:T(128)} add(%get-tuple-element.130, %constant.50)
+  %select.6 = s32[]{:T(128)} select(
+      %compare.13, %add.22, %get-tuple-element.130)
+  %dynamic-update-slice-start = (
+    (f32[10,32,512]{2,1,0:T(8,128)S(5)}, f32[1,32,512]{2,1,0:T(8,128)},
+     s32[]{:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}),
+     f32[10,32,512]{2,1,0:T(8,128)S(5)}, u32[]) async-start(
+      %get-tuple-element.132, %reshape.6, %select.6,
+      %constant.49, %constant.49), calls=%async_computation
+  ROOT %dynamic-update-slice-done = f32[10,32,512]{2,1,0:T(8,128)S(5)}
+    async-done(%dynamic-update-slice-start), calls=%async_computation
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
+                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  DependencyHloOrdering ordering(module.get());
+  auto* async_start =
+      FindInstruction(module.get(), "dynamic-update-slice-start");
+  auto* async_done = FindInstruction(module.get(), "dynamic-update-slice-done");
+  auto* dus = FindInstruction(module.get(), "dynamic-update-slice.1");
+  EXPECT_EQ(ordering.GetExecutionConstraint(async_start, dus),
+            HloOrdering::ExecutionConstraint::kIsSame);
+  EXPECT_EQ(ordering.GetExecutionConstraint(async_done, dus),
+            HloOrdering::ExecutionConstraint::kIsSame);
+}
 }  // namespace
 }  // namespace xla

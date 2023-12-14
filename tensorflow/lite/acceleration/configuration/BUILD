@@ -277,11 +277,8 @@ cc_library(
         "//conditions:default": [],
     }),
     visibility = [
-        "//tensorflow/lite/acceleration/configuration/c:__pkg__",
         "//tensorflow/lite/core/acceleration/configuration/c:__pkg__",
-        "//tensorflow/lite/core/experimental/acceleration/configuration/c:__pkg__",
         "//tensorflow/lite/experimental/acceleration/configuration:__pkg__",
-        "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
     ],
     deps = [
         ":configuration_fbs",

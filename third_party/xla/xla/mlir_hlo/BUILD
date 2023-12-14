@@ -375,73 +375,17 @@ gentbl_cc_library(
     deps = [":hlo_ops_td_files"],
 )
 
-td_library(
-    name = "deallocation_ops_td_files",
-    srcs = glob(["deallocation/IR/*.td"]),
-    compatible_with = get_compatible_with_portable(),
-    includes = ["."],
-    deps = [
-        "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
-    ],
-)
-
-gentbl_cc_library(
-    name = "deallocation_ops_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "deallocation/IR/deallocation_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "deallocation/IR/deallocation_ops.cc.inc",
-        ),
-        (
-            ["-gen-dialect-decls"],
-            "deallocation/IR/deallocation_dialect.h.inc",
-        ),
-        (
-            ["-gen-dialect-defs"],
-            "deallocation/IR/deallocation_dialect.cc.inc",
-        ),
-        (
-            ["-gen-typedef-decls"],
-            "deallocation/IR/deallocation_typedefs.h.inc",
-        ),
-        (
-            ["-gen-typedef-defs"],
-            "deallocation/IR/deallocation_typedefs.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "deallocation/IR/deallocation_ops.td",
-    deps = [":deallocation_ops_td_files"],
-)
-
 cc_library(
     name = "deallocation_passes",
     srcs = [
-        "deallocation/transforms/analysis.cc",
         "deallocation/transforms/buffer_reuse.cc",
-        "deallocation/transforms/convert_deallocation_ops_to_llvm.cc",
-        "deallocation/transforms/deallocate.cc",
-        "deallocation/transforms/deallocation_simplification.cc",
-        "deallocation/transforms/deallocation_to_scf.cc",
-        "deallocation/transforms/debug_passes.cc",
-        "deallocation/transforms/split_alloc_tensors.cc",
-        "deallocation/transforms/xla_buffer_arg_rewrite.cc",
     ],
     hdrs = [
-        "deallocation/transforms/analysis.h",
         "deallocation/transforms/passes.h",
     ],
     strip_include_prefix = ".",
     visibility = ["//visibility:public"],
     deps = [
-        ":deallocation",
         ":deallocation_passes_inc_gen",
         ":deallocation_utils",
         "@llvm-project//llvm:Support",
@@ -480,30 +424,12 @@ gentbl_cc_library(
 )
 
 cc_library(
-    name = "deallocation",
-    srcs = ["deallocation/IR/deallocation_ops.cc"],
-    hdrs = ["deallocation/IR/deallocation_ops.h"],
-    strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":deallocation_ops_inc_gen",
-        ":deallocation_utils",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ControlFlowInterfaces",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:SCFDialect",
-    ],
-)
-
-cc_library(
     name = "deallocation_utils",
     srcs = ["deallocation/utils/util.cc"],
     hdrs = ["deallocation/utils/util.h"],
     strip_include_prefix = ".",
     visibility = ["//visibility:public"],
     deps = [
-        ":deallocation_ops_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:IR",
@@ -750,7 +676,6 @@ cc_library(
         "mhlo/transforms/legalize_dot_to_dot_general/legalize_dot_to_dot_general.cc",
         "mhlo/transforms/legalize_einsum_to_dot_general/legalize_einsum_to_dot_general.cc",
         "mhlo/transforms/legalize_gather_to_torch_index_select/legalize_gather_to_torch_index_select.cc",
-        "mhlo/transforms/legalize_mhlo_to_thlo/legalize_mhlo_to_thlo.cc",
         "mhlo/transforms/legalize_shape_computations/legalize_shape_computations.cc",
         "mhlo/transforms/legalize_sort/legalize_sort.cc",
         "mhlo/transforms/legalize_sparse_ops/legalize_sparse_ops.cc",
@@ -812,8 +737,6 @@ cc_library(
         ":mlir_hlo",
         ":shape_component_analysis",
         ":stablehlo_legalize_to_hlo",
-        ":thlo",
-        ":thlo_bufferizable_op_interface",
         ":type_conversion",
         ":unfuse_batch_norm",
         "@llvm-project//llvm:Support",
@@ -1236,16 +1159,12 @@ cc_library(
         # shouldn't be. Ideally, this entire target should be removed.
         "deallocation/transforms/passes.h.inc",
         "lhlo/transforms/lmhlo_passes.h.inc",
-        "gml_st/transforms/passes.h.inc",
-        "thlo/transforms/thlo_passes.h.inc",
         "transforms/passes.h.inc",
     ],
     hdrs = [
         "deallocation/transforms/passes.h",
-        "gml_st/transforms/passes.h",
         "lhlo/transforms/passes.h",
         "mhlo/transforms/passes.h",
-        "thlo/transforms/passes.h",
         "transforms/passes.h",
     ],
     strip_include_prefix = ".",
@@ -1254,16 +1173,12 @@ cc_library(
         ":chlo_legalize_to_hlo",
         ":deallocation_passes",
         ":deallocation_passes_inc_gen",
-        ":gml_st_passes",
-        ":gml_st_passes_inc_gen",
         ":lhlo",
         ":lmhlo_pass_inc_gen",
         ":lmhlo_passes",
         ":mhlo_pass_inc_gen",
         ":mhlo_passes",
         ":stablehlo_legalize_to_hlo",
-        ":thlo_passes",
-        ":thlo_passes_inc_gen",
         ":transforms_passes",
         ":transforms_passes_inc_gen",
         ":userange_analysis",
@@ -1289,11 +1204,13 @@ cc_library(
         "transforms/detensorize_scf_ops.cc",
         "transforms/generic_host_to_llvm.cc",
         "transforms/lower_index_cast_pass.cc",
+        "transforms/naive_copy_removal.cc",
         "transforms/propagate_static_shapes_to_kernel.cc",
         "transforms/test_hlo_transform_dialect_interpreter.cc",
         "transforms/tile_loops_pass.cc",
         "transforms/unbufferize_pass.cc",
         "transforms/unroll_loops.cc",
+        "transforms/vectorize_copy.cc",
     ],
     hdrs = [
         "transforms/passes.h",
@@ -1303,17 +1220,11 @@ cc_library(
     strip_include_prefix = ".",
     visibility = ["//visibility:public"],
     deps = [
-        ":deallocation",
         ":deallocation_passes",
-        ":gml_st",
-        ":gml_st_bufferizable_op_interface",
-        ":gml_st_passes",
         ":lhlo",
         ":mhlo_passes",
         ":mlir_hlo",
         ":shape_component_analysis",
-        ":thlo",
-        ":thlo_bufferizable_op_interface",
         ":transforms_passes_inc_gen",
         ":type_conversion",
         ":userange_analysis",
@@ -1351,6 +1262,7 @@ cc_library(
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:MemRefToLLVM",
         "@llvm-project//mlir:MemRefTransforms",
+        "@llvm-project//mlir:MemRefUtils",
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:PDLDialect",
         "@llvm-project//mlir:Pass",
@@ -1390,7 +1302,6 @@ cc_library(
     strip_include_prefix = ".",
     visibility = ["//visibility:public"],
     deps = [
-        ":gml_st_passes",
         ":gpu_transforms_passes_inc_gen",
         ":lhlo",
         ":mhlo_passes",
@@ -1432,48 +1343,6 @@ cc_library(
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorTransforms",
-    ],
-)
-
-gentbl_cc_library(
-    name = "gml_st_test_passes_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=GmlStTest",
-            ],
-            "gml_st/transforms/test_passes.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "gml_st/transforms/test_passes.td",
-    deps = ["@llvm-project//mlir:PassBaseTdFiles"],
-)
-
-cc_library(
-    name = "gml_st_test_passes",
-    srcs = [
-        "gml_st/transforms/test_passes.cc",
-        "gml_st/transforms/test_passes.h.inc",
-    ],
-    hdrs = ["gml_st/transforms/test_passes.h"],
-    strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":gml_st_passes",
-        ":gml_st_test_passes_inc_gen",
-        ":gml_st_transforms",
-        "@llvm-project//mlir:AffineDialect",
-        "@llvm-project//mlir:BufferizationDialect",
-        "@llvm-project//mlir:BufferizationTransforms",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgTransforms",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -1541,111 +1410,8 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:TensorDialect",
-    ],
-)
-
-cc_library(
-    name = "gml_st_passes",
-    srcs = [
-        "gml_st/transforms/add_debug_info/add_debug_info.cc",
-        "gml_st/transforms/canonicalization/optimize_linalg_ops.cc",
-        "gml_st/transforms/collapse_shape/collapse_shape.cc",
-        "gml_st/transforms/collect_stats/collect_stats.cc",
-        "gml_st/transforms/compose_extract_insert_slice/compose_extract_insert_slice.cc",
-        "gml_st/transforms/copy_removal/copy_removal.cc",
-        "gml_st/transforms/cpu_tiling/cpu_tiling_pipeline.cc",
-        "gml_st/transforms/cpu_tiling/fusion_outlining.cc",
-        "gml_st/transforms/cpu_tiling/fusion_planning_for_cpu.cc",
-        "gml_st/transforms/cpu_tiling/pack_matmul.cc",
-        "gml_st/transforms/cpu_tiling/remove_label.cc",
-        "gml_st/transforms/cpu_tiling/transform_dot_for_cpu.cc",
-        "gml_st/transforms/cpu_tiling/transform_elementwise_for_cpu.cc",
-        "gml_st/transforms/cpu_tiling/transform_mmt4d_for_cpu.cc",
-        "gml_st/transforms/cpu_tiling/transform_pack_for_cpu.cc",
-        "gml_st/transforms/cpu_tiling/transform_reduce_for_cpu.cc",
-        "gml_st/transforms/cpu_tiling/transform_scatter_for_cpu.cc",
-        "gml_st/transforms/fusion/fusion.cc",
-        "gml_st/transforms/passes.h.inc",
-        "gml_st/transforms/peeling/peeling.cc",
-        "gml_st/transforms/rewrite_from_elements_op/rewrite_from_elements_op.cc",
-        "gml_st/transforms/rewrite_scf_forall/rewrite_scf_forall.cc",
-        "gml_st/transforms/scalarization/scalarization.cc",
-        "gml_st/transforms/tiling/tile_by_one.cc",
-        "gml_st/transforms/tiling/tiling.cc",
-        "gml_st/transforms/tiling_softmax/tiling_softmax.cc",
-        "gml_st/transforms/transforms.h",
-        "gml_st/transforms/vectorization/lower_vectors.cc",
-        "gml_st/transforms/vectorization/vectorization.cc",
-        "gml_st/transforms/vectorization/vectorize_copy.cc",
-        "gml_st/transforms/vectorization/vectorize_for_cpu.cc",
-        "gml_st/utils/linalg_utils.cc",
-        "gml_st/utils/tensor_utils.cc",
-    ],
-    hdrs = [
-        "gml_st/transforms/fusion/fusion.h",
-        "gml_st/transforms/passes.h",
-        "gml_st/transforms/peeling/peeling.h",
-        "gml_st/transforms/scalarization/scalarization.h",
-        "gml_st/transforms/tiling/tiling.h",
-        "gml_st/transforms/vectorization/vectorization.h",
-        "gml_st/utils/linalg_utils.h",
-        "gml_st/utils/tensor_utils.h",
-    ],
-    strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":gml_st",
-        ":gml_st_passes_inc_gen",
-        ":gml_st_transforms",
-        ":lhlo",
-        ":mlir_hlo",
-        ":thlo",
-        ":type_conversion",
-        "@llvm-project//llvm:BinaryFormat",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AffineDialect",
-        "@llvm-project//mlir:AffineUtils",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:ArithUtils",
-        "@llvm-project//mlir:BufferizationDialect",
-        "@llvm-project//mlir:BufferizationTransforms",
-        "@llvm-project//mlir:ComplexDialect",
-        "@llvm-project//mlir:ControlFlowDialect",
-        "@llvm-project//mlir:DestinationStyleOpInterface",
-        "@llvm-project//mlir:DialectUtils",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:FuncTransforms",
-        "@llvm-project//mlir:GPUDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:LinalgDialect",
-        "@llvm-project//mlir:LinalgTransforms",
-        "@llvm-project//mlir:LinalgUtils",
-        "@llvm-project//mlir:LoopLikeInterface",
-        "@llvm-project//mlir:MathDialect",
-        "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:MemRefUtils",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:SCFTransforms",
-        "@llvm-project//mlir:SCFUtils",
-        "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:ShapeTransforms",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:TensorInferTypeOpInterfaceImpl",
-        "@llvm-project//mlir:TensorTilingInterfaceImpl",
-        "@llvm-project//mlir:TensorTransforms",
-        "@llvm-project//mlir:TensorUtils",
-        "@llvm-project//mlir:TilingInterface",
-        "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
-        "@llvm-project//mlir:VectorDialect",
-        "@llvm-project//mlir:VectorToSCF",
-        "@llvm-project//mlir:VectorTransforms",
-        "@llvm-project//mlir:X86VectorTransforms",
-        "@stablehlo//:chlo_ops",
     ],
 )
 
@@ -1712,14 +1478,9 @@ cc_binary(
     srcs = ["tools/mlir-hlo-opt/mlir-hlo-opt.cc"],
     deps = [
         ":all_passes",
-        ":deallocation",
-        ":gml_st",
-        ":gml_st_passes",
-        ":gml_st_test_passes",
         ":hlo_dialect_registration",
         ":lhlo",
         ":lhlo_gpu",
-        ":thlo",
         ":transforms_gpu_passes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllExtensions",
@@ -1760,259 +1521,6 @@ filegroup(
         ":MhloOpsPyGen",
     ],
     visibility = ["//visibility:public"],
-)
-
-td_library(
-    name = "gml_st_ops_td_files",
-    srcs = glob(["gml_st/IR/*.td"]),
-    compatible_with = get_compatible_with_portable(),
-    includes = ["."],
-    deps = [
-        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
-        "@llvm-project//mlir:DestinationStyleOpInterfaceTdFiles",
-        "@llvm-project//mlir:DialectUtilsTdFiles",
-        "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
-    ],
-)
-
-gentbl_cc_library(
-    name = "gml_st_ops_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "gml_st/IR/gml_st_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "gml_st/IR/gml_st_ops.cc.inc",
-        ),
-        (
-            ["-gen-dialect-decls"],
-            "gml_st/IR/gml_st_dialect.h.inc",
-        ),
-        (
-            ["-gen-dialect-defs"],
-            "gml_st/IR/gml_st_dialect.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "gml_st/IR/gml_st_ops.td",
-    deps = [":gml_st_ops_td_files"],
-)
-
-cc_library(
-    name = "gml_st",
-    srcs = ["gml_st/IR/gml_st_ops.cc"],
-    hdrs = ["gml_st/IR/gml_st_ops.h"],
-    strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":gml_st_ops_inc_gen",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:ArithUtils",
-        "@llvm-project//mlir:ControlFlowInterfaces",
-        "@llvm-project//mlir:DestinationStyleOpInterface",
-        "@llvm-project//mlir:DialectUtils",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:InferTypeOpInterface",
-        "@llvm-project//mlir:LoopLikeInterface",
-        "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:TensorUtils",
-        "@llvm-project//mlir:Transforms",
-        "@llvm-project//mlir:VectorDialect",
-        "@llvm-project//mlir:ViewLikeInterface",
-    ],
-)
-
-cc_library(
-    name = "gml_st_bufferizable_op_interface",
-    srcs = ["gml_st/interfaces/bufferizable_op_interface_impl.cc"],
-    hdrs = ["gml_st/interfaces/bufferizable_op_interface_impl.h"],
-    strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":gml_st",
-        "@llvm-project//mlir:BufferizationDialect",
-        "@llvm-project//mlir:DialectUtils",
-        "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-gentbl_cc_library(
-    name = "gml_st_passes_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=GmlSt",
-            ],
-            "gml_st/transforms/passes.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "gml_st/transforms/passes.td",
-    deps = ["@llvm-project//mlir:PassBaseTdFiles"],
-)
-
-cc_library(
-    name = "gml_st_transforms",
-    srcs = ["gml_st/transforms/transforms.cc"],
-    hdrs = ["gml_st/transforms/transforms.h"],
-    strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":gml_st",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AffineDialect",
-        "@llvm-project//mlir:ArithUtils",
-        "@llvm-project//mlir:DialectUtils",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgTransforms",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFUtils",
-        "@llvm-project//mlir:TensorUtils",
-        "@llvm-project//mlir:Transforms",
-        "@llvm-project//mlir:VectorDialect",
-    ],
-)
-
-td_library(
-    name = "thlo_ops_td_files",
-    srcs = glob(["thlo/IR/*.td"]),
-    compatible_with = get_compatible_with_portable(),
-    includes = ["."],
-    deps = [
-        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
-        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
-        "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
-    ],
-)
-
-gentbl_cc_library(
-    name = "thlo_ops_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "thlo/IR/thlo_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "thlo/IR/thlo_ops.cc.inc",
-        ),
-        (
-            ["-gen-dialect-decls"],
-            "thlo/IR/thlo_dialect.h.inc",
-        ),
-        (
-            ["-gen-dialect-defs"],
-            "thlo/IR/thlo_dialect.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "thlo/IR/thlo_ops.td",
-    deps = [
-        ":thlo_ops_td_files",
-        "@llvm-project//mlir:DestinationStyleOpInterfaceTdFiles",
-        "@llvm-project//mlir:TilingInterfaceTdFiles",
-    ],
-)
-
-cc_library(
-    name = "thlo",
-    srcs = ["thlo/IR/thlo_ops.cc"],
-    hdrs = ["thlo/IR/thlo_ops.h"],
-    strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":gml_st",
-        ":thlo_ops_inc_gen",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:ArithUtils",
-        "@llvm-project//mlir:ControlFlowInterfaces",
-        "@llvm-project//mlir:DestinationStyleOpInterface",
-        "@llvm-project//mlir:DialectUtils",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:InferTypeOpInterface",
-        "@llvm-project//mlir:LinalgDialect",
-        "@llvm-project//mlir:LinalgUtils",
-        "@llvm-project//mlir:LoopLikeInterface",
-        "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:TensorUtils",
-        "@llvm-project//mlir:TilingInterface",
-        "@llvm-project//mlir:ViewLikeInterface",
-    ],
-)
-
-cc_library(
-    name = "thlo_bufferizable_op_interface",
-    srcs = ["thlo/interfaces/bufferizable_op_interface_impl.cc"],
-    hdrs = ["thlo/interfaces/bufferizable_op_interface_impl.h"],
-    strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":thlo",
-        "@llvm-project//mlir:BufferizationDialect",
-        "@llvm-project//mlir:DestinationStyleOpInterface",
-    ],
-)
-
-gentbl_cc_library(
-    name = "thlo_passes_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=AllThlo",
-            ],
-            "thlo/transforms/thlo_passes.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "thlo/transforms/thlo_passes.td",
-    deps = ["@llvm-project//mlir:PassBaseTdFiles"],
-)
-
-cc_library(
-    name = "thlo_passes",
-    srcs = [
-        "thlo/transforms/legalize_sort/legalize_sort.cc",
-        "thlo/transforms/thlo_passes.h.inc",
-    ],
-    hdrs = [
-        "thlo/transforms/passes.h",
-    ],
-    strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":thlo",
-        ":thlo_passes_inc_gen",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:ArithUtils",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:Transforms",
-    ],
 )
 
 # A light-weight runtime support library, used by MLIR code that results

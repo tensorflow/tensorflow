@@ -96,6 +96,8 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
 
   llvm::Value* EmitThreadId() override;
 
+  StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value) override;
+
   bool fast_min_max() override {
     return ir_emitter_context_.debug_options().xla_gpu_enable_fast_min_max();
   }

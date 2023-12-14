@@ -68,7 +68,7 @@ class AotCompilationResult {
   }
 
   virtual StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler, se::StreamExecutor* executor) const {
+      Compiler* compiler, const se::StreamExecutor* executor) const {
     return Unimplemented("LoadExecutable unimplemented.");
   }
 
@@ -107,7 +107,6 @@ class Compiler {
  public:
   // Description of a target device for compilation.
   struct TargetConfig {
-    TargetConfig() = default;
     explicit TargetConfig(const se::GpuTargetConfigProto& proto);
     explicit TargetConfig(se::StreamExecutor* s);
 
@@ -170,7 +169,7 @@ class Compiler {
   // The returned 'BufferAssignment' retains a pointer to the 'HloModule', so
   // the module must live at least as long as the buffer assignments.
   virtual StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
-      HloModule* module, se::StreamExecutor* executor) {
+      HloModule* module, const se::StreamExecutor* executor) {
     return Unimplemented("This compiler does not support this method");
   }
 

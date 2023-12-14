@@ -17,6 +17,16 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
+include "mlir/IR/PatternBase.td"
+
+// Returns shape of a ranked tensor.
+// if called without a ranked tensor it will fail.
+def GetShape: NativeCodeCall<"GetShape($0)">;
+
+// Checks if the value has rank at most 'n'.
+class HasRankAtLeast<int n> : Constraint<
+    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
+          "$0.getType().cast<ShapedType>().getRank() >= " # n>>;
 
 // Checks value is not produced by a TFL_Quant or
 // from TFL_Quant Op with same quant type.

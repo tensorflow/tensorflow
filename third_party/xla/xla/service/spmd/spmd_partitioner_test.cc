@@ -13953,6 +13953,67 @@ ENTRY %entry {
   EXPECT_THAT(topk_operand, op::Shape("bf16[64,128000]{1,0}"));
 }
 
+TEST_P(SpmdPartitioningTest, WindowedEinsumShouldMatchLhs_b305313406) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+
+ENTRY %entry {
+  %copy.11 = bf16[64,2048,20480]{2,1,0} parameter(0), sharding={devices=[8,1,4]<=[32]}
+  %reshape.44 = bf16[20480,65536]{1,0} parameter(1), sharding={devices=[4,4,2]0,16,1,17,2,18,3,19,4,20,5,21,6,22,7,23,8,24,9,25,10,26,11,27,12,28,13,29,14,30,15,31 last_tile_dim_replicate}
+  ROOT %dot.339 = bf16[64,2048,65536]{2,1,0} dot(bf16[64,2048,20480]{2,1,0} %copy.11, bf16[20480,65536]{1,0} %reshape.44), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[8,1,4]<=[32]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_devices=*/32,
+                           /*conv_halo_exchange_always_on_lhs=*/true,
+                           /*choose_faster_windowed_einsum=*/true,
+                           /*unroll_windowed_einsum=*/false,
+                           /*bidirectional_windowed_einsum=*/true,
+                           /*threshold_for_windowed_einsum_mib=*/-1));
+  XLA_VLOG_LINES(1, module->ToString());
+
+  // Check while op.
+  const auto collective_permute =
+      AllOf(op::CollectivePermute(), op::Shape("bf16[8,2048,1,5120]"));
+  const auto broadcast =
+      AllOf(op::Broadcast(), op::Shape("bf16[8,2048,16384]"));
+  const auto all_reduce =
+      AllOf(op::AllReduce(), op::Shape("bf16[20480,16384]"));
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::GetTupleElement(op::While(op::Tuple(
+                              op::Reshape(), all_reduce, op::Broadcast(),
+                              collective_permute, op::Constant()))),
+                          op::Shape("bf16[8,2048,16384]")));
+}
+
+TEST_P(SpmdPartitioningTest, ComplexReshapeReshard) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY %extracted_computation (param: f32[13,128,312,16,312]) -> f32[13,39936,4992] {
+  %param = f32[13,128,312,16,312]{4,2,3,1,0} parameter(0)
+  %copy.1261 = f32[13,128,312,16,312]{4,3,2,1,0} copy(f32[13,128,312,16,312]{4,2,3,1,0} %param), sharding={devices=[1,32,1,2,1,2]<=[2,64]T(1,0) last_tile_dim_replicate}
+  %reshape.27217 = f32[13,39936,4992]{2,1,0} reshape(f32[13,128,312,16,312]{4,3,2,1,0} %copy.1261), sharding={devices=[1,2,32,2]<=[2,32,2]T(2,1,0) last_tile_dim_replicate}
+  %copy.1260 = f32[13,39936,4992]{2,1,0} copy(f32[13,39936,4992]{2,1,0} %reshape.27217), sharding={devices=[1,2,32,2]<=[2,32,2]T(2,1,0) last_tile_dim_replicate}
+  ROOT %copy = f32[13,39936,4992]{2,1,0} copy(f32[13,39936,4992]{2,1,0} %copy.1260)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_devices=*/128,
+                           /*conv_halo_exchange_always_on_lhs=*/true,
+                           /*choose_faster_windowed_einsum=*/true,
+                           /*unroll_windowed_einsum=*/false,
+                           /*bidirectional_windowed_einsum=*/true,
+                           /*threshold_for_windowed_einsum_mib=*/-1));
+  XLA_VLOG_LINES(1, module->ToString());
+  // Check an all-to-all is emitted for resharding.
+  auto all_to_all = FindInstruction(module.get(), HloOpcode::kAllToAll);
+  EXPECT_NE(all_to_all, nullptr);
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

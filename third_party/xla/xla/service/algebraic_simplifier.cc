@@ -3953,6 +3953,24 @@ Status AlgebraicSimplifierVisitor::HandleMinimum(HloInstruction* minimum) {
     }
   }
 
+  // min(min(x, y), y) -> min(x, y)
+  // min(min(x, y), x) -> min(x, y)
+  if (Match(lhs, m::MinimumAnyOrder(m::Op(), m::Op().Is(rhs)))) {
+    return ReplaceInstruction(minimum, lhs);
+  }
+  // min(x, min(x, y)) -> min(x, y)
+  if (Match(rhs, m::Minimum(m::Op().Is(lhs), m::Op()))) {
+    return ReplaceInstruction(minimum, rhs);
+  }
+  // min(y, min(x, y)) -> min(y, x)
+  // Note that we cannot simplify to min(x, y) here, as for the case that x and
+  // y are NaN but with different sign, it will make a difference.
+  if (Match(rhs, m::Minimum(m::Op(), m::Op().Is(lhs)))) {
+    TF_RETURN_IF_ERROR(minimum->ReplaceOperandWith(1, rhs->mutable_operand(0)));
+    MarkAsChanged();
+    return OkStatus();
+  }
+
   HloInstruction* clamp_upper_bound_bcast;
   HloInstruction* clamp_lower_bound_bcast;
   HloInstruction* to_clamp;
@@ -6102,6 +6120,10 @@ Status AlgebraicSimplifierVisitor::HandleRsqrt(HloInstruction* rsqrt) {
 
 Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
     HloInstruction* dynamic_slice) {
+  // Skip optimizations for async dynamic-slices.
+  if (dynamic_slice->parent()->IsAsyncComputation()) {
+    return OkStatus();
+  }
   auto operand = dynamic_slice->mutable_operand(0);
   if (ShapeUtil::IsScalar(dynamic_slice->shape())) {
     return ReplaceInstruction(dynamic_slice, operand);
@@ -6358,6 +6380,10 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
 
 Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
     HloInstruction* dynamic_update_slice) {
+  // Skip optimizations for async dynamic update slices
+  if (dynamic_update_slice->parent()->IsAsyncComputation()) {
+    return OkStatus();
+  }
   // Rewriting DynamicUpdateSlice when it matches
   // dynamic_update_slice(broadcast(constant),data,constant_index0,...)
   // to a Pad(x, constant)

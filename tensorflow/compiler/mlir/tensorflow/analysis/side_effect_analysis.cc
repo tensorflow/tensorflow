@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -346,6 +347,7 @@ class OpSideEffectCollector {
   }
 
   bool IsCallToPureFunction(Operation* callOp) const;
+  bool IsPureFunction(func::FuncOp func_op) const;
 
  private:
   // Adds op-based side effects from all ops in `region` to `op` side effects.
@@ -510,18 +512,42 @@ bool OpSideEffectCollector::IsCallToPureFunction(Operation* callOp) const {
     return false;  // not a call
   func::FuncOp func_op = dyn_cast<func::FuncOp>(call.resolveCallable(
       &symbol_table_collection_));
+  return IsPureFunction(func_op);
+}
+
+bool OpSideEffectCollector::IsPureFunction(func::FuncOp func_op) const {
   auto it = is_pure_function_.find(func_op);
   if (it == is_pure_function_.end()) {
     bool is_pure = true;
+    is_pure_function_[func_op] = is_pure;  // prevent infinite recursion
     func_op->walk([&](Operation* op) {
-      if (op == func_op) return WalkResult::advance();
+      if (op == func_op) {
+        return WalkResult::advance();
+      }
+      // AssertOp is not, technically, pure. However, we treat functions
+      // that contain an assert as pure, so that graphs with and without
+      // assert don't have different side effect semantics. Also see
+      // b/309824992 for the challenges associated with improving the side
+      // effect modelling of Assert on the op level.
+      if (llvm::isa<AssertOp>(op)) {
+        return WalkResult::advance();
+      }
+      if (auto if_op = llvm::dyn_cast<IfOp>(op)) {
+        if (IsPureFunction(if_op.then_function()) &&
+            IsPureFunction(if_op.else_function())) {
+          return WalkResult::advance();
+        }
+      }
+      if (IsCallToPureFunction(op)) {
+        return WalkResult::advance();
+      }
       if (TensorFlowDialect::CanHaveSideEffects(op)) {
         is_pure = false;
         return WalkResult::interrupt();
       }
       return WalkResult::advance();
     });
-    is_pure_function_.insert({func_op, is_pure});
+    is_pure_function_[func_op] = is_pure;
   }
   return is_pure_function_[func_op];
 }

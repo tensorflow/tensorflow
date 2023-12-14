@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
-#include "xla/python/exceptions.h"
-#include "xla/python/status_casters.h"
+#include "xla/pjrt/exceptions.h"
+#include "xla/pjrt/status_casters.h"
 
 namespace xla {
 

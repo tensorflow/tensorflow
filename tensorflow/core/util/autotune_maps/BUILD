@@ -107,7 +107,10 @@ tf_proto_library(
         "//tensorflow/core/util/autotune_maps:conv_parameters_proto",
         "@local_tsl//tsl/protobuf:dnn_proto",
     ],
-    visibility = ["//waymo/ml/deploy/system/autotuning:__subpackages__"],
+    visibility = [
+        "//waymo/ml/deploy/benchmark:__subpackages__",
+        "//waymo/ml/deploy/system/autotuning:__subpackages__",
+    ],
 )
 
 # copybara:uncomment_begin(google-only)

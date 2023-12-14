@@ -416,12 +416,7 @@ REGISTER_TYPED_TEST_SUITE_P(FusedMatMulWithBiasOpTest,       //
                             MatMul1x256x1WithActivation);
 
 // TODO(ezhulenev): Add support for more data types.
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 using FusedBiasAddDataTypes = ::testing::Types<float, Eigen::half>;
-#else
-// CPU doesn't support more data types.
-using FusedBiasAddDataTypes = ::testing::Types<float>;
-#endif
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedMatMulWithBiasOpTest,
                                FusedBiasAddDataTypes);
 

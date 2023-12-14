@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_STREAM_EXECUTOR_CLIENT_H_
 #define XLA_PJRT_PJRT_STREAM_EXECUTOR_CLIENT_H_
 
+#include <algorithm>
 #include <array>
 #include <functional>
 #include <map>
@@ -78,6 +79,10 @@ class PjRtStreamExecutorDeviceDescription : public PjRtDeviceDescription {
 
   absl::string_view DebugString() const override { return debug_string_; }
 
+  int core_on_chip() const { return core_index_; }
+
+  absl::Span<int const> coords() const { return absl::MakeSpan(coords_); }
+
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
       const override {
     return attributes_;
@@ -94,13 +99,19 @@ class PjRtStreamExecutorDeviceDescription : public PjRtDeviceDescription {
 
   void SetToString(std::string to_string) { to_string_ = std::move(to_string); }
 
+  void SetCoords(std::array<int, 1> coords) { coords_ = coords; }
+
+  void SetCoreOnChip(int core_index) { core_index_ = core_index; }
+
  private:
   const int id_;
   const int process_index_;
   const std::string device_kind_;
+  int core_index_ = -1;
   std::string debug_string_ = "<unknown SE device>";
   std::string to_string_ = "<unknown SE device>";
   absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_;
+  std::array<int, 1> coords_;
 };
 
 class PjRtStreamExecutorDevice : public PjRtDevice {
@@ -139,7 +150,17 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   bool IsAddressable() const override { return device_ordinal_ != -1; }
 
-  int local_hardware_id() const override { return device_ordinal_; }
+  int local_hardware_id() const override {
+    return local_hardware_id_typed().value();
+  }
+
+  PjRtLocalDeviceId local_device_id() const override {
+    return PjRtLocalDeviceId(local_hardware_id_typed().value());
+  }
+
+  PjRtLocalHardwareId local_hardware_id_typed() const override {
+    return PjRtLocalHardwareId(device_ordinal_);
+  }
 
   // If this is a device local to this host, returns a LocalDeviceState object
   // that can be used to manipulate the device. Returns nullptr if the device is
@@ -199,16 +220,23 @@ class PjRtStreamExecutorClient : public PjRtClient {
   }
 
   StatusOr<PjRtDevice*> LookupDevice(int device_id) const override {
-    auto it = id_to_device_.find(device_id);
+    return LookupDevice(PjRtGlobalDeviceId(device_id));
+  }
+
+  StatusOr<PjRtDevice*> LookupDevice(
+      PjRtGlobalDeviceId global_device_id) const override {
+    auto it = id_to_device_.find(global_device_id.value());
     if (it != id_to_device_.end()) {
       return it->second;
     }
     return InvalidArgument("No matching device found for device_id %d",
-                           device_id);
+                           global_device_id.value());
   }
 
   StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const override;
+  StatusOr<PjRtDevice*> LookupAddressableDevice(
+      PjRtLocalDeviceId local_device_id) const override;
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
@@ -224,6 +252,9 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
+
+  StatusOr<Layout> GetDefaultLayout(PrimitiveType element_type,
+                                    absl::Span<const int64_t> dims) override;
 
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
@@ -867,6 +898,10 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
 
   absl::Span<const std::shared_ptr<LocalExecutable>> executables() const {
     return executables_;
+  }
+
+  absl::StatusOr<CompileOptions> GetCompileOptions() const override {
+    return compile_options_;
   }
 
  protected:

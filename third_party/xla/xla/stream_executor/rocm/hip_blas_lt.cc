@@ -111,7 +111,8 @@ static tsl::StatusOr<hipblasLtEpilogue_t> AsHipblasLtEpilogue(
     case gpu::BlasLt::Epilogue::kGELU:
       return HIPBLASLT_EPILOGUE_GELU;
     default:
-      return tsl::errors::Internal("Unsupported epilogue");
+      return tsl::errors::Internal("Unsupported epilogue: " +
+                                   std::to_string((int)epilogue));
   }
 }
 
@@ -152,6 +153,12 @@ tsl::Status BlasLt::Init() {
   if (!batch_stride) {
     batch_stride = (m.batch_size > 1) ? m.num_rows * m.num_cols : 0;
   }
+  VLOG(2) << "BlasLt::MatrixLayout::Create type: " << (int)type
+          << " rows: " << m.num_rows << " cols: " << m.num_cols
+          << " batch_size: " << m.batch_size
+          << " leading_dim_stride: " << *leading_dim_stride
+          << " batch_stride: " << *batch_stride;
+
   TF_RETURN_IF_ERROR(SetAttr(
       hip_layout, HIPBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, *batch_stride));
   return std::move(layout);
@@ -162,9 +169,11 @@ tsl::Status BlasLt::Init() {
     blas::Transpose trans_a, blas::Transpose trans_b, Epilogue epilogue,
     PointerMode pointer_mode) {
   hipblasLtMatmulDesc_t hip_desc;
-  VLOG(2) << "BlasLt::MatmulDesc::Create compute_type" << int(compute_type)
-          << " scale_type " << int(scale_type) << " epilogue " << int(epilogue)
-          << " pointer_mode " << int(pointer_mode);
+  VLOG(2) << "BlasLt::MatmulDesc::Create compute_type: " << int(compute_type)
+          << " scale_type: " << int(scale_type)
+          << " epilogue: " << int(epilogue) << " trans_a: " << int(trans_a)
+          << " trans_b: " << int(trans_b) << " pointer_mode "
+          << int(pointer_mode);
   auto hip_scale_type = AsHipblasDataType(scale_type);
   auto hip_compute_type = AsHipblasComputeType(compute_type);
   SE_HIPBLAS_RETURN_IF_ERROR(wrap::hipblasLtMatmulDescCreate(
@@ -373,6 +382,7 @@ tsl::Status BlasLt::MatmulPlan::DoMatmul(
     workspace = gpu::GpuMemoryMutable(&alloc);
   }
 
+  auto palgo = std::any_cast<hipblasLtMatmulAlgo_t>(&algorithm.opaque_algo);
   {
     absl::MutexLock lock(&blas_lt_ref_.mu_);
     TF_RET_CHECK(blas_lt_ref_.blas_lt_ != nullptr);
@@ -399,8 +409,7 @@ tsl::Status BlasLt::MatmulPlan::DoMatmul(
 
     gpu::ScopedActivateExecutorContext sac{blas_lt_ref_.parent_};
 
-    if (auto palgo =
-            std::any_cast<hipblasLtMatmulAlgo_t>(&algorithm.opaque_algo)) {
+    if (palgo != nullptr) {
       SE_HIPBLAS_RETURN_IF_ERROR(wrap::hipblasLtMatmul(
           blas_lt_ref_.blas_lt_.get(), op_desc_.get(), alpha, a.opaque(),
           a_desc_.get(), b.opaque(), b_desc_.get(), beta, c.opaque(),
@@ -413,6 +422,8 @@ tsl::Status BlasLt::MatmulPlan::DoMatmul(
 
   if (profile_result != nullptr) {
     TF_ASSIGN_OR_RETURN(absl::Duration elapsed, timer->GetElapsedDuration());
+    // set algorithm ID to be unique (otherwise it gets kDefaultAlgorithm ID)
+    profile_result->set_algorithm(reinterpret_cast<blas::AlgorithmType>(palgo));
     profile_result->set_is_valid(true);
     profile_result->set_elapsed_time_in_ms(absl::ToDoubleMilliseconds(elapsed));
   }
@@ -421,31 +432,31 @@ tsl::Status BlasLt::MatmulPlan::DoMatmul(
 
 namespace {
 
-template <hipblasltDatatype_t>
+template <hipDataType>
 struct HipToNativeT;
 
 template <>
-struct HipToNativeT<HIPBLASLT_R_16B> {
+struct HipToNativeT<HIP_R_16BF> {
   using type = Eigen::bfloat16;
 };
 template <>
-struct HipToNativeT<HIPBLASLT_R_16F> {
+struct HipToNativeT<HIP_R_16F> {
   using type = Eigen::half;
 };
 template <>
-struct HipToNativeT<HIPBLASLT_R_32F> {
+struct HipToNativeT<HIP_R_32F> {
   using type = float;
 };
 template <>
-struct HipToNativeT<HIPBLASLT_R_64F> {
+struct HipToNativeT<HIP_R_64F> {
   using type = double;
 };
 template <>
-struct HipToNativeT<HIPBLASLT_C_32F> {
+struct HipToNativeT<HIP_C_32F> {
   using type = complex64;
 };
 template <>
-struct HipToNativeT<HIPBLASLT_C_64F> {
+struct HipToNativeT<HIP_C_64F> {
   using type = complex128;
 };
 
@@ -476,22 +487,14 @@ tsl::Status BlasLt::MatmulPlan::ExecuteOnStream(
   }
 
   // Other data types:
-  TYPED_MATMUL(float, HIPBLASLT_R_16B, HIPBLASLT_R_16B, HIPBLASLT_R_16B,
-               HIPBLASLT_R_16B)
-  TYPED_MATMUL(float, HIPBLASLT_R_16F, HIPBLASLT_R_16F, HIPBLASLT_R_16F,
-               HIPBLASLT_R_16F)
-  TYPED_MATMUL(float, HIPBLASLT_R_16B, HIPBLASLT_R_16B, HIPBLASLT_R_32F,
-               HIPBLASLT_R_32F)
-  TYPED_MATMUL(float, HIPBLASLT_R_16F, HIPBLASLT_R_16F, HIPBLASLT_R_32F,
-               HIPBLASLT_R_32F)
-  TYPED_MATMUL(float, HIPBLASLT_R_32F, HIPBLASLT_R_32F, HIPBLASLT_R_32F,
-               HIPBLASLT_R_32F)
-  TYPED_MATMUL(double, HIPBLASLT_R_64F, HIPBLASLT_R_64F, HIPBLASLT_R_64F,
-               HIPBLASLT_R_64F)
-  TYPED_MATMUL(complex64, HIPBLASLT_C_32F, HIPBLASLT_C_32F, HIPBLASLT_C_32F,
-               HIPBLASLT_C_32F)
-  TYPED_MATMUL(complex128, HIPBLASLT_C_64F, HIPBLASLT_C_64F, HIPBLASLT_C_64F,
-               HIPBLASLT_C_64F)
+  TYPED_MATMUL(float, HIP_R_16BF, HIP_R_16BF, HIP_R_16BF, HIP_R_16BF)
+  TYPED_MATMUL(float, HIP_R_16F, HIP_R_16F, HIP_R_16F, HIP_R_16F)
+  TYPED_MATMUL(float, HIP_R_16BF, HIP_R_16BF, HIP_R_32F, HIP_R_32F)
+  TYPED_MATMUL(float, HIP_R_16F, HIP_R_16F, HIP_R_32F, HIP_R_32F)
+  TYPED_MATMUL(float, HIP_R_32F, HIP_R_32F, HIP_R_32F, HIP_R_32F)
+  TYPED_MATMUL(double, HIP_R_64F, HIP_R_64F, HIP_R_64F, HIP_R_64F)
+  TYPED_MATMUL(complex64, HIP_C_32F, HIP_C_32F, HIP_C_32F, HIP_C_32F)
+  TYPED_MATMUL(complex128, HIP_C_64F, HIP_C_64F, HIP_C_64F, HIP_C_64F)
 
 #undef TYPED_MATMUL
 

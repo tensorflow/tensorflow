@@ -95,12 +95,15 @@ func.func @uniform_quantize_and_dequantize_type_exensions(%arg0: tensor<?x?xf32,
 
 // -----
 
+#SV = #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>
+
+// CHECK: #[[$SV:.*]] = #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>
 // CHECK-LABEL: func @uniform_quantize_and_dequantize_sparse_tensor_encoding
-func.func @uniform_quantize_and_dequantize_sparse_tensor_encoding(%arg0: tensor<?xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> () {
-  // CHECK: %[[QUANTIZED:.*]] = mhlo.convert %[[VAL0:.*]] : (tensor<?xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> tensor<?xi8, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>
-  %0 = mhlo.uniform_quantize %arg0 : (tensor<?xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> tensor<?x!quant.uniform<i8:f32, 1.000000e+00:3>, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>
-  // CHECK: %[[DEQUANTIZED:.*]] = chlo.broadcast_multiply %[[VAL1:.*]], %[[CONST_SCALE:.*]] : (tensor<?xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>, tensor<f32>) -> tensor<?xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>
-  %1 = mhlo.uniform_dequantize %0 : (tensor<?x!quant.uniform<i8:f32, 1.000000e+00:3>, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> tensor<?xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>
+func.func @uniform_quantize_and_dequantize_sparse_tensor_encoding(%arg0: tensor<?xf32, #SV>) -> () {
+  // CHECK: %[[QUANTIZED:.*]] = mhlo.convert %[[VAL0:.*]] : (tensor<?xf32, #[[$SV]]>) -> tensor<?xi8, #[[$SV]]>
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<?xf32, #SV>) -> tensor<?x!quant.uniform<i8:f32, 1.000000e+00:3>, #SV>
+  // CHECK: %[[DEQUANTIZED:.*]] = chlo.broadcast_multiply %[[VAL1:.*]], %[[CONST_SCALE:.*]] : (tensor<?xf32, #[[$SV]]>, tensor<f32>) -> tensor<?xf32, #[[$SV]]>
+  %1 = mhlo.uniform_dequantize %0 : (tensor<?x!quant.uniform<i8:f32, 1.000000e+00:3>, #SV>) -> tensor<?xf32, #SV>
   return
 }
 
@@ -341,6 +344,91 @@ func.func @requantize_merged_zp_zero(
 
 // -----
 
+// CHECK-LABEL: func @requantize_per_channel
+func.func @requantize_per_channel(
+    %arg0: tensor<2x2x!quant.uniform<i8:f32:1, {1.000000e+01:3, 5.000000e+00:2}>>
+  ) -> tensor<2x2x!quant.uniform<i8:f32:1, {5.000000e+00:1, 1.000000e+01:-1}>> {
+  // CHECK-DAG: %[[VAL1:.*]] = mhlo.convert %arg0 : (tensor<2x2xi8>) -> tensor<2x2xf32>
+  // CHECK-DAG: %[[MERGED_SCALE:.*]] = mhlo.constant dense<[2.000000e+00, 5.000000e-01]> : tensor<2xf32>
+  // CHECK: %[[VAL2:.*]] = chlo.broadcast_multiply %[[VAL1]], %[[MERGED_SCALE]]
+  // CHECK-SAME: broadcast_dimensions = dense<1> : tensor<1xi64>
+  // CHECK-DAG: %[[MERGED_ZP:.*]] = mhlo.constant dense<[-5.000000e+00, -2.000000e+00]> : tensor<2xf32>
+  // CHECK: %[[VAL3:.*]] = chlo.broadcast_add %[[VAL2]], %[[MERGED_ZP]]
+  // CHECK-SAME: broadcast_dimensions = dense<1> : tensor<1xi64>
+  // CHECK-DAG: %[[QUANT_MIN:.*]] = mhlo.constant dense<-1.280000e+02> : tensor<f32>
+  // CHECK-DAG: %[[QUANT_MAX:.*]] = mhlo.constant dense<1.270000e+02> : tensor<f32>
+  // CHECK: %[[VAL4:.*]] = mhlo.clamp %[[QUANT_MIN]], %[[VAL3]], %[[QUANT_MAX]]
+  // CHECK: %[[VAL5:.*]] = mhlo.round_nearest_even %[[VAL4]] : tensor<2x2xf32>
+  // CHECK: %[[VAL6:.*]] = mhlo.convert %[[VAL5]] : (tensor<2x2xf32>) -> tensor<2x2xi8>
+  %0 = mhlo.uniform_quantize %arg0 : (
+      tensor<2x2x!quant.uniform<i8:f32:1, {1.000000e+01:3, 5.000000e+00:2}>>
+    ) -> tensor<2x2x!quant.uniform<i8:f32:1, {5.000000e+00:1, 1.000000e+01:-1}>>
+  return %0 : tensor<2x2x!quant.uniform<i8:f32:1, {5.000000e+00:1, 1.000000e+01:-1}>>
+}
+
+// -----
+
+// CHECK-LABEL: func @requantize_per_channel_to_per_tensor
+func.func @requantize_per_channel_to_per_tensor(
+    %arg0: tensor<2x2x!quant.uniform<i8:f32:1, {1.000000e+01:3, 5.000000e+00:2}>>
+  ) -> tensor<2x2x!quant.uniform<i8:f32, 5.000000e+00:1>> {
+  // CHECK-DAG: %[[VAL1:.*]] = mhlo.convert %arg0 : (tensor<2x2xi8>) -> tensor<2x2xf32>
+  // CHECK-DAG: %[[MERGED_SCALE:.*]] = mhlo.constant dense<[2.000000e+00, 1.000000e+00]> : tensor<2xf32>
+  // CHECK: %[[VAL2:.*]] = chlo.broadcast_multiply %[[VAL1]], %[[MERGED_SCALE]]
+  // CHECK-SAME: broadcast_dimensions = dense<1> : tensor<1xi64>
+  // CHECK-DAG: %[[MERGED_ZP:.*]] = mhlo.constant dense<[-5.000000e+00, -1.000000e+00]> : tensor<2xf32>
+  // CHECK: %[[VAL3:.*]] = chlo.broadcast_add %[[VAL2]], %[[MERGED_ZP]]
+  // CHECK-SAME: broadcast_dimensions = dense<1> : tensor<1xi64>
+  // CHECK-DAG: %[[QUANT_MIN:.*]] = mhlo.constant dense<-1.280000e+02> : tensor<f32>
+  // CHECK-DAG: %[[QUANT_MAX:.*]] = mhlo.constant dense<1.270000e+02> : tensor<f32>
+  // CHECK: %[[VAL4:.*]] = mhlo.clamp %[[QUANT_MIN]], %[[VAL3]], %[[QUANT_MAX]]
+  // CHECK: %[[VAL5:.*]] = mhlo.round_nearest_even %[[VAL4]] : tensor<2x2xf32>
+  // CHECK: %[[VAL6:.*]] = mhlo.convert %[[VAL5]] : (tensor<2x2xf32>) -> tensor<2x2xi8>
+  %0 = mhlo.uniform_quantize %arg0 : (
+      tensor<2x2x!quant.uniform<i8:f32:1, {1.000000e+01:3, 5.000000e+00:2}>>
+    ) -> tensor<2x2x!quant.uniform<i8:f32, 5.000000e+00:1>>
+  return %0 : tensor<2x2x!quant.uniform<i8:f32, 5.000000e+00:1>>
+}
+
+// -----
+
+// CHECK-LABEL: func @requantize_per_tensor_to_per_channel
+func.func @requantize_per_tensor_to_per_channel(
+    %arg0: tensor<2x2x!quant.uniform<i8:f32, 5.000000e+00:2>>
+  ) -> tensor<2x2x!quant.uniform<i8:f32:1, {5.000000e+00:1, 1.000000e+01:-1}>> {
+  // CHECK-DAG: %[[VAL1:.*]] = mhlo.convert %arg0 : (tensor<2x2xi8>) -> tensor<2x2xf32>
+  // CHECK-DAG: %[[MERGED_SCALE:.*]] = mhlo.constant dense<[1.000000e+00, 5.000000e-01]> : tensor<2xf32>
+  // CHECK: %[[VAL2:.*]] = chlo.broadcast_multiply %[[VAL1]], %[[MERGED_SCALE]]
+  // CHECK-SAME: broadcast_dimensions = dense<1> : tensor<1xi64>
+  // CHECK-DAG: %[[MERGED_ZP:.*]] = mhlo.constant dense<[-1.000000e+00, -2.000000e+00]> : tensor<2xf32>
+  // CHECK: %[[VAL3:.*]] = chlo.broadcast_add %[[VAL2]], %[[MERGED_ZP]]
+  // CHECK-SAME: broadcast_dimensions = dense<1> : tensor<1xi64>
+  // CHECK-DAG: %[[QUANT_MIN:.*]] = mhlo.constant dense<-1.280000e+02> : tensor<f32>
+  // CHECK-DAG: %[[QUANT_MAX:.*]] = mhlo.constant dense<1.270000e+02> : tensor<f32>
+  // CHECK: %[[VAL4:.*]] = mhlo.clamp %[[QUANT_MIN]], %[[VAL3]], %[[QUANT_MAX]]
+  // CHECK: %[[VAL5:.*]] = mhlo.round_nearest_even %[[VAL4]] : tensor<2x2xf32>
+  // CHECK: %[[VAL6:.*]] = mhlo.convert %[[VAL5]] : (tensor<2x2xf32>) -> tensor<2x2xi8>
+  %0 = mhlo.uniform_quantize %arg0 : (
+      tensor<2x2x!quant.uniform<i8:f32, 5.000000e+00:2>>
+    ) -> tensor<2x2x!quant.uniform<i8:f32:1, {5.000000e+00:1, 1.000000e+01:-1}>>
+  return %0 : tensor<2x2x!quant.uniform<i8:f32:1, {5.000000e+00:1, 1.000000e+01:-1}>>
+}
+
+// -----
+
+func.func @requantize_per_channel_change_axis(
+    %arg0: tensor<2x2x!quant.uniform<i8:f32:0, {1.000000e+01:3, 5.000000e+00:2}>>
+  ) -> tensor<2x2x!quant.uniform<i8:f32:1, {5.000000e+00:1, 1.000000e+01:-1}>> {
+  // expected-error@+2 {{Cannot requantize while changing quantization_axis}}
+  // expected-error@+1 {{failed to legalize operation 'mhlo.uniform_quantize' that was explicitly marked illegal}}
+  %0 = mhlo.uniform_quantize %arg0 : (
+      tensor<2x2x!quant.uniform<i8:f32:0, {1.000000e+01:3, 5.000000e+00:2}>>
+    ) -> tensor<2x2x!quant.uniform<i8:f32:1, {5.000000e+00:1, 1.000000e+01:-1}>>
+  return %0 : tensor<2x2x!quant.uniform<i8:f32:1, {5.000000e+00:1, 1.000000e+01:-1}>>
+}
+
+// -----
+
 // CHECK-LABEL: func @dot
 func.func @dot(%arg0: tensor<2x2x!quant.uniform<i8:f32, 2.000000e+00:3>>,
                %arg1: tensor<2x2x!quant.uniform<i8:f32, 1.000000e+00:3>>
@@ -493,12 +581,44 @@ func.func @dot_dynamic_result_dim(
   // CHECK-SAME: broadcast_dimensions = dense<1>
   // CHECK-SAME: (tensor<?xi32>, tensor<2xi64>) -> tensor<?x?xi32>
 
-
   %0 = "mhlo.dot" (%arg0, %arg1) : (
       tensor<?x2x!quant.uniform<i8:f32, 2.000000e+00:3>>,
       tensor<2x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
     ) -> tensor<?x?x!quant.uniform<i32:f32, 1.000000e+00:3>>
   return %0 : tensor<?x?x!quant.uniform<i32:f32, 1.000000e+00:3>>
+}
+
+// -----
+
+// CHECK-LABEL: func @dot_dynamic_batch_dim
+func.func @dot_dynamic_batch_dim(
+    %arg0: tensor<?x2x!quant.uniform<i8:f32, 2.000000e+00:3>>,
+    %arg1: tensor<2x2x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  ) -> tensor<?x2x!quant.uniform<i32:f32, 1.000000e+00:3>> {
+  // CHECK: "mhlo.dot_general"
+  // CHECK-SAME: lhs_contracting_dimensions = [1]
+  // CHECK-SAME: rhs_contracting_dimensions = [0]
+  // CHECK-SAME: (tensor<?x2xi8>, tensor<2x2xi8>) -> tensor<?x2xi32>
+
+  // CHECK: mhlo.reduce
+  // CHECK-SAME: applies mhlo.add across dimensions = [1]
+  // CHECK-SAME: (tensor<?x2xi32>, tensor<i32>) -> tensor<?xi32>
+  // CHECK: mhlo.dynamic_broadcast_in_dim
+  // CHECK-SAME: broadcast_dimensions = dense<0>
+  // CHECK-SAME: (tensor<?xi32>, tensor<2xi64>) -> tensor<?x2xi32>
+
+  // CHECK: mhlo.reduce
+  // CHECK-SAME: applies mhlo.add across dimensions = [0]
+  // CHECK-SAME: (tensor<2x2xi32>, tensor<i32>) -> tensor<2xi32>
+  // CHECK: mhlo.dynamic_broadcast_in_dim
+  // CHECK-SAME: broadcast_dimensions = dense<1>
+  // CHECK-SAME: (tensor<2xi32>, tensor<2xi64>) -> tensor<?x2xi32>
+
+  %0 = "mhlo.dot" (%arg0, %arg1) : (
+      tensor<?x2x!quant.uniform<i8:f32, 2.000000e+00:3>>,
+      tensor<2x2x!quant.uniform<i8:f32, 1.000000e+00:3>>
+    ) -> tensor<?x2x!quant.uniform<i32:f32, 1.000000e+00:3>>
+  return %0 : tensor<?x2x!quant.uniform<i32:f32, 1.000000e+00:3>>
 }
 
 // -----
@@ -1113,6 +1233,27 @@ func.func @conv2d_static(
 
 // -----
 
+// CHECK-LABEL: func @conv2d_default_attr
+func.func @conv2d_default_attr(
+    %arg0: tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>,
+    %arg1: tensor<3x3x1x128x!quant.uniform<i8:f32, 3.000000e+00:0>>
+  ) -> tensor<128x26x26x128x!quant.uniform<i32:f32, 1.000000e+00:5>> {
+  // CHECK: mhlo.convolution
+  // CHECK-NOT: quant.uniform
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {
+    }
+    {
+      batch_group_count = 1 : i64,
+      feature_group_count = 1 : i64
+    } : (tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>, tensor<3x3x1x128x!quant.uniform<i8:f32, 3.000000e+00:0>>)
+    -> tensor<128x26x26x128x!quant.uniform<i32:f32, 1.000000e+00:5>>
+  return %0 : tensor<128x26x26x128x!quant.uniform<i32:f32, 1.000000e+00:5>>
+}
+
+// -----
+
 // CHECK-LABEL: func @conv2d_static_padding
 func.func @conv2d_static_padding(
     %arg0: tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>,
@@ -1660,6 +1801,21 @@ func.func @broadcast(
 
 // -----
 
+// CHECK-LABEL: func @broadcast_per_channel
+func.func @broadcast_per_channel(
+    %arg0: tensor<2x!quant.uniform<i32:f32:0, {4.000000e+00:0, 2.000000e+00:0}>>
+  ) -> tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:0}>>  {
+  // CHECK: "mhlo.broadcast_in_dim"
+  // CHECK-SAME: broadcast_dimensions = dense<3> : tensor<1xi64>
+  // CHECK-SAME: (tensor<2xi32>) -> tensor<128x26x26x2xi32>
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<3> : tensor<1xi64>}: (
+      tensor<2x!quant.uniform<i32:f32:0, {4.000000e+00:0, 2.000000e+00:0}>>
+    ) -> tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:0}>>
+  return %0 : tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:0}>>
+}
+
+// -----
+
 // CHECK-LABEL: func @max
 func.func @max(
     %arg0: tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
@@ -1671,6 +1827,21 @@ func.func @max(
     tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
   ) -> tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
   return %0 : tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
+}
+
+// -----
+
+// CHECK-LABEL: func @max_per_channel
+func.func @max_per_channel(
+    %arg0: tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>>
+  ) -> tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>> {
+  // CHECK: mhlo.maximum
+  // CHECK-SAME: tensor<1x2xi8>
+  %0 = "mhlo.maximum"(%arg0, %arg0) : (
+    tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>>,
+    tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>>
+  ) -> tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>>
+  return %0 : tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>>
 }
 
 // -----
@@ -1690,6 +1861,21 @@ func.func @min(
 
 // -----
 
+// CHECK-LABEL: func @min_per_channel
+func.func @min_per_channel(
+    %arg0: tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>>
+  ) -> tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>> {
+  // CHECK: mhlo.minimum
+  // CHECK-SAME: tensor<1x2xi8>
+  %0 = "mhlo.minimum"(%arg0, %arg0) : (
+    tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>>,
+    tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>>
+  ) -> tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>>
+  return %0 : tensor<1x2x!quant.uniform<i8:f32:1, {2.000000e+00:3, 1.000000e+00:-2}>>
+}
+
+// -----
+
 // CHECK-LABEL: func @function(%arg0: tensor<1x2xi8>) -> tensor<1x2xi8>
 func.func @function(
     %arg0: tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
@@ -1700,27 +1886,124 @@ func.func @function(
 
 // -----
 
-func.func @min_mix_uq_type1(
-    %arg0: tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>,
-    %arg1: tensor<1x2x!quant.uniform<i8:f32, 1.000000e+00:2>>
-  ) -> tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>> {
-  // expected-error@+1 {{failed to legalize operation 'mhlo.minimum' that was explicitly marked illegal}}
-  %0 = "mhlo.minimum"(%arg0, %arg1) : (
-    tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>,
-    tensor<1x2x!quant.uniform<i8:f32, 1.000000e+00:2>>
-  ) -> tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
-  return %0 : tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
+// CHECK-LABEL: func @concatenate
+func.func @concatenate(
+    %arg0: tensor<3x2x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>,
+    %arg1: tensor<1x2x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
+  ) -> tensor<4x2x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>> {
+  // CHECK: mhlo.concatenate
+  // CHECK-SAME: (tensor<3x2xi8>, tensor<1x2xi8>) -> tensor<4x2xi8>
+  %0 = "mhlo.concatenate"(%arg0, %arg1) {dimension = 0 : i64} : (
+    tensor<3x2x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>,
+    tensor<1x2x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
+  ) -> tensor<4x2x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
+  return %0 : tensor<4x2x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
 }
 
 // -----
 
-func.func @min_mix_uq_type2(
-    %arg0: tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
-  ) -> tensor<1x2x!quant.uniform<i8:f32, 1.000000e+00:2>> {
-  // expected-error@+1 {{failed to legalize operation 'mhlo.minimum' that was explicitly marked illegal}}
-  %0 = "mhlo.minimum"(%arg0, %arg0) : (
-    tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>,
-    tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
-  ) -> tensor<1x2x!quant.uniform<i8:f32, 1.000000e+00:2>>
-  return %0 : tensor<1x2x!quant.uniform<i8:f32, 1.000000e+00:2>>
+// CHECK-LABEL: func @pad
+func.func @pad(
+    %arg0: tensor<2x3x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>,
+    %arg1: tensor<!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
+  ) -> tensor<5x9x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>> {
+  // CHECK: mhlo.pad
+  // CHECK-SAME: (tensor<2x3xi8>, tensor<i8>) -> tensor<5x9xi8>
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_low = dense<[0, 1]> : tensor<2xi64>,
+    edge_padding_high = dense<[2, 1]> : tensor<2xi64>,
+    interior_padding = dense<[1, 2]> : tensor<2xi64>
+  }: (
+    tensor<2x3x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>,
+    tensor<!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
+  ) -> tensor<5x9x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
+  return %0 : tensor<5x9x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
+}
+
+// -----
+
+// CHECK-LABEL: func @reshape
+func.func @reshape(
+    %arg0: tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  ) -> tensor<3x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>> {
+  // CHECK: mhlo.reshape
+  // CHECK-SAME: (tensor<1x3xi8>) -> tensor<3x1xi8>
+  %0 = "mhlo.reshape"(%arg0) : (
+    tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  ) -> tensor<3x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  return %0 : tensor<3x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+}
+
+// -----
+
+// CHECK-LABEL: func @select
+func.func @select(
+    %arg0: tensor<1x3xi1>,
+    %arg1: tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>,
+    %arg2: tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  ) -> tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>> {
+  // CHECK: mhlo.select
+  // CHECK-SAME: tensor<1x3xi8>
+  %0 = "mhlo.select"(%arg0, %arg1, %arg2) : (
+    tensor<1x3xi1>,
+    tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>,
+    tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  ) -> tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  return %0 : tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+}
+
+// -----
+
+// CHECK-LABEL: func @transpose
+func.func @transpose(
+    %arg0: tensor<3x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  ) -> tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>> {
+  // CHECK: mhlo.transpose
+  // CHECK-SAME: (tensor<3x1xi8>) -> tensor<1x3xi8>
+  %0 = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0]> : tensor<2xi64>} : (
+    tensor<3x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  ) -> tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  return %0 : tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+}
+
+// -----
+
+// CHECK-LABEL: func @gather
+func.func @gather(
+    %arg0: tensor<3x4x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>>,
+    %arg1:  tensor<2x3x2xi64>
+  ) -> tensor<2x3x2x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>> {
+  // CHECK: mhlo.gather
+  // CHECK-SAME: (tensor<3x4x2xi8>, tensor<2x3x2xi64>) -> tensor<2x3x2x2xi8>
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2, 3],
+      collapsed_slice_dims = [0],
+      start_index_map = [1, 0],
+      index_vector_dim = 2>,
+    slice_sizes = dense<[1, 2, 2]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (
+    tensor<3x4x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>>,
+    tensor<2x3x2xi64>
+  ) -> tensor<2x3x2x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  return %0 : tensor<2x3x2x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+}
+
+// -----
+
+// CHECK-LABEL: func @slice
+func.func @slice(
+    %arg0: tensor<3x4x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  ) -> tensor<2x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>> {
+  // CHECK: mhlo.slice
+  // CHECK-SAME: (tensor<3x4xi8>) -> tensor<2x2xi8>
+  %0 = "mhlo.slice"(%arg0) {
+    start_indices = dense<[1, 2]> : tensor<2xi64>,
+    limit_indices = dense<[3, 4]> : tensor<2xi64>,
+    strides = dense<1> : tensor<2xi64>
+  } : (
+    tensor<3x4x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  ) -> tensor<2x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  return %0 : tensor<2x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
 }

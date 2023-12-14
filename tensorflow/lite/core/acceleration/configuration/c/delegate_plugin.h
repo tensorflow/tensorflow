@@ -12,17 +12,26 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// NOLINTBEGIN(whitespace/line_length)
 // WARNING: Users of TensorFlow Lite should not include this file directly,
 // but should instead include
 // "third_party/tensorflow/lite/acceleration/configuration/c/delegate_plugin.h".
-// Only the TensorFlow Lite implementation itself should include this
-// file directly.
-// NOLINTEND(whitespace/line_length)
+// Only the TensorFlow Lite implementation itself should include this file
+// directly.
+
 #ifndef TENSORFLOW_LITE_CORE_ACCELERATION_CONFIGURATION_C_DELEGATE_PLUGIN_H_
 #define TENSORFLOW_LITE_CORE_ACCELERATION_CONFIGURATION_C_DELEGATE_PLUGIN_H_
 
 /// C API types for TF Lite delegate plugins.
+
+// clang-format off
+// NOLINTBEGIN(whitespace/line_length)
+/// \note Users of TensorFlow Lite should use
+/// \code
+/// #include "tensorflow/lite/acceleration/configuration/c/delegate_plugin.h"
+/// \endcode
+/// to access the APIs documented on this page.
+// NOLINTEND(whitespace/line_length)
+// clang-format on
 
 #include "tensorflow/lite/core/c/common.h"
 
@@ -32,7 +41,7 @@ extern "C" {
 
 // clang-format off
 // NOLINTBEGIN(whitespace/line_length)
-/** \defgroup delegate_plugin tensorflow/lite/acceleration/configuration/c/delegate_plugin.h
+/** \defgroup delegate_plugin lite/acceleration/configuration/c/delegate_plugin.h
  *  @{
  */
 // NOLINTEND(whitespace/line_length)

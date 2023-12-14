@@ -12,8 +12,7 @@ package(
     # By default, these targets should only be used within the quantization library.
     default_visibility = [
         "//learning/brain/mlir/quantization:__subpackages__",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:__subpackages__",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:__subpackages__",
+        "//tensorflow/compiler/mlir/quantization:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -127,27 +126,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "status_macro",
-    hdrs = ["status_macro.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:macros",
-    ],
-)
-
-tf_cc_test(
-    name = "status_macro_test",
-    srcs = ["status_macro_test.cc"],
-    deps = [
-        ":status_macro",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@com_google_absl//absl/status",
-    ],
-)
-
-cc_library(
     name = "run_passes",
     srcs = ["run_passes.cc"],
     hdrs = ["run_passes.h"],
@@ -157,6 +135,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@local_tsl//tsl/platform:statusor",
@@ -173,7 +152,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils",
+        "//tensorflow/compiler/mlir/quantization/common:lift_as_function_call",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:constant_fold_utils",
         "@com_google_absl//absl/container:flat_hash_set",

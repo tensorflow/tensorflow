@@ -322,4 +322,12 @@ REGISTER_OP("XlaSparseCoreFtrl")
       return OkStatus();
     });
 
+REGISTER_OP("GlobalIterId")
+    .Output("iter_id: int64")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+      c->set_output(0, c->Scalar());
+      return OkStatus();
+    });
+
 }  // namespace tensorflow

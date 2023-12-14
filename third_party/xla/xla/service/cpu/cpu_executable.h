@@ -177,6 +177,8 @@ class CpuExecutable : public Executable {
     ir_module_string_ = ir_module_string;
   }
 
+  const std::string& module_name() const { return module_name_; }
+
   static int64_t ShapeSizeBytes(const Shape& shape);
 
   // Type of the computation function we expect in the JIT.
@@ -248,8 +250,6 @@ class CpuExecutable : public Executable {
 
   // Buffer assignment for the buffers we need to allocate.
   const std::unique_ptr<const BufferAssignment> assignment_;
-
-  std::shared_ptr<const BufferAssignmentProto> buffer_assignment_;
 
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // CpuExecutable. We save a string instead of an llvm::Module* because leaving

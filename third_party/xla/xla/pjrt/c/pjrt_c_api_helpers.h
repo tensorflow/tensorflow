@@ -213,6 +213,28 @@ std::unique_ptr<PJRT_KeyValueCallbackData> ConvertToCKeyValueCallbacks(
     xla::PjRtClient::KeyValueGetCallback kv_get,
     xla::PjRtClient::KeyValuePutCallback kv_put);
 
+// std::function version of PJRT_SendCallback
+using PJRT_SendCallbackFunction =
+    std::function<PJRT_Error*(PJRT_Chunk*, PJRT_CallbackError*, size_t, bool)>;
+// std::function version of PJRT_RecvCallback
+using PJRT_RecvCallbackFunction = std::function<void(PJRT_CopyToDeviceStream*)>;
+
+// Wraps original `xla::SendCallback` inside `PJRT_Callback` using
+// 1) void* `user_arg` to capture `cpp_send_callback.callback` (std::function)
+// 2) `PJRT_SendCallback` function pointer, which reinterprets and calls
+// `user_arg` to call `cpp_send_callback.callback` function.
+PJRT_SendCallbackInfo CppSendCallbackToCSendCallback(
+    xla::SendCallback cpp_send_callback,
+    PJRT_SendCallbackFunction* send_callback_function);
+
+// Wraps original `xla::RecvCallback` inside `PJRT_Callback` using
+// 1) void* `user_arg` to capture `cpp_send_callback.callback` (std::function)
+// 2) `PJRT_RecvCallback` function pointer, which reinterprets and calls
+// `user_arg` to call `cpp_recv_callback.callback` function.
+PJRT_RecvCallbackInfo CppRecvCallbackToCRecvCallback(
+    xla::RecvCallback cpp_recv_callback,
+    PJRT_RecvCallbackFunction* recv_callback_function);
+
 // Data needed to support PJRT_Buffer_MemoryLayout. `minor_to_major` holds the
 // data in PJRT_Buffer_MemoryLayout_Tiled.minor_to_major. `tile_dims` and
 // `tile_dim_sizes` holds the data in PJRT_Buffer_MemoryLayout_Tiled.tile_dims
@@ -246,6 +268,9 @@ absl::string_view PlatformName(const PJRT_Api* api,
                                const PJRT_TopologyDescription* topo_desc);
 absl::Span<PJRT_DeviceDescription* const> DeviceDescriptions(
     const PJRT_Api* api, const PJRT_TopologyDescription* topo_desc);
+
+absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
+    const PJRT_Api* api, PJRT_Executable* executable);
 
 }  // namespace pjrt
 

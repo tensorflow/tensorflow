@@ -26,6 +26,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "xla/ffi/api/c_api.h"
+#include "xla/ffi/call_frame.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/gpu/thunk.h"
@@ -68,8 +70,8 @@ class CustomCallThunk : public Thunk {
     Shape shape;
   };
 
-  using Attribute = std::variant<int32_t, float, std::string>;
-  using AttributesMap = absl::flat_hash_map<std::string, Attribute>;
+  using Attribute = ffi::CallFrameBuilder::FlatAttribute;
+  using AttributesMap = ffi::CallFrameBuilder::FlatAttributesMap;
 
   CustomCallThunk(ThunkInfo thunk_info, CustomCallTarget call_target,
                   std::vector<std::optional<Slice>> operands,
@@ -79,7 +81,8 @@ class CustomCallThunk : public Thunk {
   CustomCallThunk(ThunkInfo thunk_info, XLA_FFI_Handler* handler,
                   std::vector<std::optional<Slice>> operands,
                   std::vector<std::optional<Slice>> results,
-                  AttributesMap attributes);
+                  AttributesMap attributes,
+                  const HloComputation* called_computation);
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -100,6 +103,16 @@ class CustomCallThunk : public Thunk {
   // a lot of features. Long term it will replace legacy custom calls.
   XLA_FFI_Handler* handler_ = nullptr;
   AttributesMap attributes_;
+
+  // TODO(ezhulenev): Currently we assume that HloModule that owns this
+  // computation is owned by a GpuExecutable and stays alive for as long as
+  // thunk is alive, however in general it might not be true and we can destroy
+  // underlying HloModule. We have to make a copy of HloComputation for a thunk,
+  // and also pass some form of relatively-ABI-stable representation to external
+  // custom calls, i.e. we can pass it as HloComputationProto or as MLIR
+  // bytecode of the computation serialized to StableHLO. Today we assume that
+  // custom calls that access called computation can only be linked statically.
+  const HloComputation* called_computation_ = nullptr;
 };
 
 }  // namespace gpu

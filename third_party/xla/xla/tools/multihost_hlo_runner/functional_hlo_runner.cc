@@ -244,18 +244,15 @@ void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module) {
 }
 
 StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateGpuClient() {
-  return GetStreamExecutorGpuClient(
-      /*asynchronous=*/true, GpuAllocatorConfig(), /*node_id=*/0);
+  return GetStreamExecutorGpuClient(GpuClientOptions());
 }
 
 StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateMockGpuClient(
     int num_nodes) {
-  return GetStreamExecutorGpuClient(
-      /*asynchronous=*/true, GpuAllocatorConfig(), /*node_id=*/0,
-      /*num_nodes=*/num_nodes, /*allowed_devices=*/std::nullopt,
-      /*platform_name=*/std::nullopt,
-      /*should_stage_host_to_device_transfers=*/true,
-      /*kv_get=*/nullptr, /*kv_put=*/nullptr, /*enable_mock_nccl=*/true);
+  GpuClientOptions options;
+  options.num_nodes = num_nodes;
+  options.enable_mock_nccl = true;
+  return GetStreamExecutorGpuClient(options);
 }
 
 StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateGpuClient(
@@ -273,23 +270,24 @@ StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateGpuClient(
 
   xla::PjRtClient::KeyValueGetCallback kv_get =
       [distributed_client](
-          const std::string& k,
+          std::string_view k,
           absl::Duration timeout) -> xla::StatusOr<std::string> {
     return distributed_client->BlockingKeyValueGet(absl::StrCat(kKeyPrefix, k),
                                                    timeout);
   };
 
   xla::PjRtClient::KeyValuePutCallback kv_put =
-      [distributed_client](const std::string& k,
-                           const std::string& v) -> xla::Status {
+      [distributed_client](std::string_view k,
+                           std::string_view v) -> xla::Status {
     return distributed_client->KeyValueSet(absl::StrCat(kKeyPrefix, k), v);
   };
 
-  return GetStreamExecutorGpuClient(
-      /*asynchronous=*/true, GpuAllocatorConfig(), node_id, num_nodes,
-      /*allowed_devices=*/std::nullopt,
-      /*platform_name=*/std::nullopt,
-      /*should_stage_host_to_device_transfers=*/true, kv_get, kv_put);
+  GpuClientOptions options;
+  options.node_id = node_id;
+  options.num_nodes = num_nodes;
+  options.kv_get = kv_get;
+  options.kv_put = kv_put;
+  return GetStreamExecutorGpuClient(options);
 }
 
 StatusOr<ExecutionOptions> FunctionalHloRunner::LoadExecutionOptions(

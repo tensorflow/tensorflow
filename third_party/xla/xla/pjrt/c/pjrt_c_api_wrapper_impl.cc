@@ -22,11 +22,13 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -230,7 +232,7 @@ xla::PjRtClient::KeyValueGetCallback ToCppKeyValueGetCallback(
     return nullptr;
   }
   return [c_callback, user_arg](
-             const std::string& key,
+             std::string_view key,
              absl::Duration timeout) -> xla::StatusOr<std::string> {
     PJRT_CallbackError callback_error = [](PJRT_Error_Code code,
                                            const char* message,
@@ -239,7 +241,7 @@ xla::PjRtClient::KeyValueGetCallback ToCppKeyValueGetCallback(
                                         std::string(message, message_size))};
     };
     PJRT_KeyValueGetCallback_Args args;
-    args.key = key.c_str();
+    args.key = key.data();
     args.key_size = key.size();
     args.timeout_in_ms = timeout / absl::Milliseconds(1);
     args.callback_error = &callback_error;
@@ -259,8 +261,8 @@ xla::PjRtClient::KeyValuePutCallback ToCppKeyValuePutCallback(
   if (c_callback == nullptr) {
     return nullptr;
   }
-  return [c_callback, user_arg](const std::string& key,
-                                const std::string& value) -> xla::Status {
+  return [c_callback, user_arg](std::string_view key,
+                                std::string_view value) -> xla::Status {
     PJRT_CallbackError callback_error = [](PJRT_Error_Code code,
                                            const char* message,
                                            size_t message_size) {
@@ -268,9 +270,9 @@ xla::PjRtClient::KeyValuePutCallback ToCppKeyValuePutCallback(
                                         std::string(message, message_size))};
     };
     PJRT_KeyValuePutCallback_Args args;
-    args.key = key.c_str();
+    args.key = key.data();
     args.key_size = key.size();
-    args.value = value.c_str();
+    args.value = value.data();
     args.value_size = value.size();
     args.callback_error = &callback_error;
     args.user_arg = user_arg;
@@ -1336,6 +1338,12 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
   options.context = nullptr;
   options.multi_slice_config = nullptr;
   options.use_major_to_minor_data_layout_for_callbacks = true;
+  if (args->options->num_non_donatable_input_indices > 0) {
+    for (int i = 0; i < args->options->num_non_donatable_input_indices; ++i) {
+      options.non_donatable_input_indices.insert(
+          args->options->non_donatable_input_indices[i]);
+    }
+  }
 
   std::vector<std::vector<xla::PjRtBuffer*>> cpp_argument_lists =
       Convert2DCBuffersToCppBuffers(args->argument_lists, args->num_devices,
@@ -1469,6 +1477,22 @@ PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args) {
       +[](PJRT_SerializedExecutable* serialized_executable) {
         delete serialized_executable;
       };
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Executable_GetCompiledMemoryStats(
+    PJRT_Executable_GetCompiledMemoryStats_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Executable_Serialize_Args",
+      PJRT_Executable_Serialize_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(auto memory_stats,
+                        args->executable->executable->GetCompiledMemoryStats());
+  args->generated_code_size_in_bytes =
+      memory_stats.generated_code_size_in_bytes;
+  args->argument_size_in_bytes = memory_stats.argument_size_in_bytes;
+  args->output_size_in_bytes = memory_stats.output_size_in_bytes;
+  args->alias_size_in_bytes = memory_stats.alias_size_in_bytes;
+  args->temp_size_in_bytes = memory_stats.temp_size_in_bytes;
   return nullptr;
 }
 

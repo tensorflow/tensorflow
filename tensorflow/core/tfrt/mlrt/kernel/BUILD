@@ -10,7 +10,6 @@ package(
         # copybara:uncomment "//learning/brain/tfrt:__subpackages__",
         # copybara:uncomment "//learning/infra/mira/distributed:__subpackages__",
         "//tensorflow/core/tfrt/graph_executor:__subpackages__",
-        "//tensorflow/core/tfrt/mlrt/application/tensorflow/tests:__subpackages__",
         "//tensorflow/core/tfrt/saved_model:__subpackages__",
         "//tensorflow/core/tfrt/tfrt_session:__subpackages__",
     ],

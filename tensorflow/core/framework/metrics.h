@@ -243,6 +243,10 @@ void UpdateGraphPendingQueueLength(uint64 len);
 // Records that one output of an op of type `op_name` was unused.
 void RecordUnusedOutput(const string& op_name);
 
+// Records the pipeline processing time in microseconds
+void RecordPipelineProcessingTime(const string& id,
+                                  double pipeline_processing_time_usec);
+
 // Updates the metrics stored about time spent building graphs.
 //
 // By "GraphBuild", we refer to building a client graph, which is a sub-graph of

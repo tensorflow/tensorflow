@@ -1015,6 +1015,7 @@ cc_library(
     srcs = ["xspace_to_dcn_slack_analysis.cc"],
     hdrs = ["xspace_to_dcn_slack_analysis.h"],
     deps = [
+        "//tensorflow/core/profiler/protobuf:dcn_collective_info_proto_cc",
         "//tensorflow/core/profiler/protobuf:dcn_slack_analysis_proto_cc",
         "//tensorflow/core/profiler/protobuf:topology_proto_cc",
         "//tensorflow/core/profiler/utils:hlo_module_utils",

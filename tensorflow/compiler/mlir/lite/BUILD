@@ -319,9 +319,24 @@ cc_library(
     ],
 )
 
+gentbl_cc_library(
+    name = "tensorflow_lite_canonicalize_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "ir/tfl_canonicalize.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "ir/tfl_canonicalize.td",
+    deps = [":tensorflow_lite_patterns_td_files"],
+)
+
 cc_library(
     name = "tensorflow_lite",
     srcs = [
+        "ir/tfl_canonicalize.inc",
         "ir/tfl_ops.cc",
         "ir/tfl_ops.cc.inc",
         "ir/tfl_ops.h.inc",
@@ -343,8 +358,10 @@ cc_library(
         "@llvm-project//mlir:include/mlir/Transforms/InliningUtils.h",
     ],
     deps = [
+        ":converter_inc",
         ":cost_estimators",
         ":size_utils",
+        ":tensorflow_lite_canonicalize_inc_gen",
         ":tensorflow_lite_op_enums_inc_gen",
         ":tensorflow_lite_op_interfaces_inc_gen",
         ":tensorflow_lite_ops_inc_gen",
@@ -360,6 +377,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:framework",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
@@ -1314,18 +1332,18 @@ cc_library(
         ":common",
         ":fake_quant_utils",
         ":tensorflow_lite_d2s",
-        ":tensorflow_lite_legalize_tf",
-        ":tensorflow_lite_optimize",
-        ":tensorflow_lite_optimize_batch_matmul",
-        ":tensorflow_lite_quantize",
+        ":tensorflow_lite_legalize_tf",  # buildcleaner: keep
+        ":tensorflow_lite_optimize",  # buildcleaner: keep
+        ":tensorflow_lite_optimize_batch_matmul",  # buildcleaner: keep
+        ":tensorflow_lite_quantize",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_passes",
         "//tensorflow/compiler/mlir/lite/quantization/tensorflow:tf_quantization_passes",
         "//tensorflow/compiler/mlir/lite/stablehlo:compose_uniform_quantized_type_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:legalize_tf_xla_call_module_to_stablehlo_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:rename_entrypoint_to_main",
-        "//tensorflow/compiler/mlir/lite/stablehlo:tf_legalize_hlo",
-        "//tensorflow/compiler/mlir/lite/stablehlo:tfl_legalize_hlo",
+        "//tensorflow/compiler/mlir/lite/stablehlo:tf_legalize_hlo",  # buildcleaner: keep
+        "//tensorflow/compiler/mlir/lite/stablehlo:tfl_legalize_hlo",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/lite/stablehlo:transforms",
         "//tensorflow/compiler/mlir/lite/stablehlo:uniform_quantized_stablehlo_to_tfl_pass",
         "//tensorflow/compiler/mlir/tensorflow",

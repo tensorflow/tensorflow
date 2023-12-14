@@ -16,11 +16,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_KERNEL_THUNK_H_
 #define XLA_SERVICE_GPU_KERNEL_THUNK_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
+#include <variant>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -28,15 +33,28 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/kernel_arguments.h"
+#include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/thunk.h"
+#include "xla/status.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
+#include "xla/types.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace gpu {
 
 class GpuExecutable;
+
+// TODO(ezhulenev): Unify KernelThunk and CustomKernelThunk as they are very
+// similar. XLA:GPU should use more of kernel loading APIs provided by
+// StreamExecutor out of the box and less custom kernel loading solutions.
+//
+// Today KernelThunk is required for lowering to XLA runtime, and
+// CustomKernelThunk is only supported for thunk execution.
+
+//===----------------------------------------------------------------------===//
+// KernelThunk
+//===----------------------------------------------------------------------===//
 
 // This class stores everything that StreamExecutor needs for launching a
 // kernel. It implements the ExecuteOnStream interface for GpuExecutable to
@@ -104,11 +122,68 @@ class KernelThunk : public Thunk {
   // mlir::Value(s) corresponding to the buffer slice arguments.
   std::vector<mlir::Value> values_;
 
+  // Loaded kernels for each `StreamExecutor`.
   mutable absl::Mutex mutex_;
+  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Kernel>>
+      kernel_cache_ ABSL_GUARDED_BY(mutex_);
+};
 
-  // Loaded kernels for each `StreamExecutor`.  Requires pointer stability of
-  // values.
-  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::KernelBase>>
+//===----------------------------------------------------------------------===//
+// CustomKernelThunk
+//===----------------------------------------------------------------------===//
+
+// CustomKernelThunk loads and executes kernels defined by a custom kernel
+// (which in practice means hand written CUDA C++ kernel), instead of a kernel
+// compiled by XLA and loaded from an executable source.
+class CustomKernelThunk : public Thunk {
+ public:
+  CustomKernelThunk(std::variant<mlir::Operation*, const HloInstruction*> inst,
+                    CustomKernel custom_kernel,
+                    absl::Span<const KernelArgument> kernel_arguments);
+
+  std::string ToStringExtra(int indent) const override;
+
+  Status Initialize(se::StreamExecutor* executor,
+                    ExecutableSource src) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  // TODO(ezhulenev): All of the APIs below needed only for LMHLO lowering and
+  // should be removed after we migrate to Thunks runtime.
+
+  std::string_view custom_kernel_name() const { return custom_kernel_.name(); }
+
+  const std::vector<bool>& written() const { return written_; }
+  absl::Span<const mlir::Value> values() const { return values_; }
+
+  LaunchDimensions launch_dimensions() const {
+    LaunchDimensions::Dim3D threads;
+    threads.x = custom_kernel_.thread_dims().x;
+    threads.y = custom_kernel_.thread_dims().y;
+    threads.z = custom_kernel_.thread_dims().z;
+    LaunchDimensions::Dim3D blocks;
+    blocks.x = custom_kernel_.block_dims().x;
+    blocks.y = custom_kernel_.block_dims().y;
+    blocks.z = custom_kernel_.block_dims().z;
+    return LaunchDimensions(blocks, threads);
+  }
+
+  int64_t shmem_bytes() const { return custom_kernel_.shared_memory_bytes(); }
+
+ private:
+  // Buffer slices passed to the kernel as arguments.
+  std::vector<BufferAllocation::Slice> args_;
+
+  // args_[i] is written iff (written_[i] == true).
+  std::vector<bool> written_;
+
+  // mlir::Value(s) corresponding to the buffer slice arguments.
+  std::vector<mlir::Value> values_;
+
+  CustomKernel custom_kernel_;
+
+  // Loaded kernels for each `StreamExecutor`.
+  mutable absl::Mutex mutex_;
+  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Kernel>>
       kernel_cache_ ABSL_GUARDED_BY(mutex_);
 };
 

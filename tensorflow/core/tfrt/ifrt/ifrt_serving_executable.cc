@@ -1,4 +1,3 @@
-
 /* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,7 +24,9 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
@@ -84,23 +86,69 @@ IfrtServingExecutable::ConvertTensorToArray(const tensorflow::Tensor& tensor) {
   return single_array;
 }
 
+xla::ifrt::Future<absl::StatusOr<std::shared_ptr<xla::ifrt::LoadedExecutable>>>
+IfrtServingExecutable::LookUpOrCreateExecutable(
+    absl::Span<const tensorflow::Tensor> inputs) {
+  std::vector<tensorflow::TensorShape> input_shapes;
+  for (const auto& tensor : inputs) {
+    input_shapes.push_back(tensor.shape());
+  }
+  Key key(input_shapes);
+
+  xla::ifrt::Promise<
+      absl::StatusOr<std::shared_ptr<xla::ifrt::LoadedExecutable>>>
+      promise;
+  xla::ifrt::Future<
+      absl::StatusOr<std::shared_ptr<xla::ifrt::LoadedExecutable>>>
+      future;
+
+  {
+    absl::MutexLock lock(&mutex_);
+
+    const auto it = ifrt_executables_.find(key);
+    if (it != ifrt_executables_.end()) {
+      return it->second;
+    }
+
+    // Only create promise and future when cache missed.
+    promise = xla::ifrt::Future<absl::StatusOr<
+        std::shared_ptr<xla::ifrt::LoadedExecutable>>>::CreatePromise();
+    future = xla::ifrt::Future<
+        absl::StatusOr<std::shared_ptr<xla::ifrt::LoadedExecutable>>>(promise);
+
+    ifrt_executables_.emplace(key, future);
+  }
+
+  LOG(INFO) << "Cache missed. Building executable";
+
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> mlir_hlo_module =
+      CompileTfToHlo(*module_, inputs, signature_name(),
+                     ifrt_client_->GetDefaultCompiler(),
+                     shape_representation_fn_);
+  if (!mlir_hlo_module.ok()) {
+    promise.Set(mlir_hlo_module.status());
+    return future;
+  }
+
+  absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> ifrt_executable =
+      ifrt_client_->GetDefaultCompiler()->Compile(
+          std::make_unique<xla::ifrt::XlaProgram>(mlir_hlo_module->get()),
+          std::make_unique<xla::ifrt::XlaCompileOptions>());
+  if (!ifrt_executable.ok()) {
+    promise.Set(ifrt_executable.status());
+    return future;
+  }
+
+  promise.Set(std::shared_ptr<xla::ifrt::LoadedExecutable>(
+      std::move(*ifrt_executable)));
+  return future;
+}
+
 absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
     absl::Span<const tensorflow::Tensor> inputs) {
-  // TODO(b/304839793): Build cache based on tensorshape etc
-  if (!ifrt_executable_) {
-    LOG(INFO) << "Cache missed. Building executable";
-
-    TF_ASSIGN_OR_RETURN(auto mlir_hlo_module,
-                        CompileTfToHlo(*module_, inputs, signature_name(),
-                                       ifrt_client_->GetDefaultCompiler(),
-                                       shape_representation_fn_));
-
-    TF_ASSIGN_OR_RETURN(
-        ifrt_executable_,
-        ifrt_client_->GetDefaultCompiler()->Compile(
-            std::make_unique<xla::ifrt::XlaProgram>(mlir_hlo_module.get()),
-            std::make_unique<xla::ifrt::XlaCompileOptions>()));
-  }
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<xla::ifrt::LoadedExecutable> ifrt_executable,
+      LookUpOrCreateExecutable(inputs).Await());
 
   std::vector<tsl::RCReference<xla::ifrt::Array>> args;
   args.reserve(inputs.size());
@@ -110,7 +158,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   }
 
   TF_ASSIGN_OR_RETURN(auto execution_result,
-                      ifrt_executable_->Execute(
+                      ifrt_executable->Execute(
                           absl::MakeSpan(args),
                           /*options=*/{.untuple_result = true}, std::nullopt));
 

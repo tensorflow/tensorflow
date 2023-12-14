@@ -2541,5 +2541,128 @@ TEST_F(HloInstructionTest, PrintCycle) {
   ASSERT_IS_OK(send_done->DropAllControlDeps());
 }
 
+TEST_F(HloInstructionTest, SetOperationQueueId) {
+  std::unique_ptr<HloComputation> main_computation;
+  HloComputation::Builder main_builder("Entry");
+  const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
+  HloInstruction* param0 = main_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+  HloInstruction* param1 = main_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "p1"));
+
+  HloInstruction* add =
+      main_builder.AddInstruction(HloInstruction::CreateBinary(
+          scalar_shape, HloOpcode::kAdd, param0, param1));
+  add->set_operation_queue_id(3);
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(main_builder.Build());
+
+  auto options = HloPrintOptions().set_print_metadata(false);
+  EXPECT_EQ(module->entry_computation()->root_instruction()->ToString(options),
+            "%add = f32[] add(f32[] %p0, f32[] %p1), operation_queue_id=3");
+}
+
+TEST_F(HloInstructionTest, SetWaitOnOperationQueues) {
+  std::unique_ptr<HloComputation> main_computation;
+  HloComputation::Builder main_builder("Entry");
+  const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
+  HloInstruction* param0 = main_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+  HloInstruction* param1 = main_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "p1"));
+
+  HloInstruction* add =
+      main_builder.AddInstruction(HloInstruction::CreateBinary(
+          scalar_shape, HloOpcode::kAdd, param0, param1));
+  std::vector<int64_t> wait_on_queues = {0, 2};
+  add->set_wait_on_operation_queues(wait_on_queues);
+  add->add_wait_on_operation_queues(5);
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(main_builder.Build());
+
+  auto options = HloPrintOptions().set_print_metadata(false);
+  EXPECT_EQ(module->entry_computation()->root_instruction()->ToString(options),
+            "%add = f32[] add(f32[] %p0, f32[] %p1), "
+            "wait_on_operation_queues={0, 2, 5}");
+}
+
+TEST_F(HloInstructionTest, ParseOperationQueueId) {
+  constexpr char kHloString[] = R"(
+  ENTRY main {
+    c0 = f32[] constant(0)
+    ROOT add0 = f32[] add(c0, c0), operation_queue_id=2
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  EXPECT_EQ(
+      module->entry_computation()->root_instruction()->operation_queue_id(), 2);
+}
+
+TEST_F(HloInstructionTest, ParseWaitOnOperationQueues) {
+  constexpr char kHloString[] = R"(
+  ENTRY main {
+    c0 = f32[] constant(0)
+    ROOT add0 = f32[] add(c0, c0), wait_on_operation_queues={0,2}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  std::vector<int64_t> expected_wait_on_queue_ids = {0, 2};
+  for (int64_t i = 0; i < expected_wait_on_queue_ids.size(); i++) {
+    EXPECT_EQ(expected_wait_on_queue_ids[i],
+              module->entry_computation()
+                  ->root_instruction()
+                  ->wait_on_operation_queues()[i]);
+  }
+}
+
+TEST_F(HloInstructionTest, VerifyBodyComputationPointsToWhile) {
+  auto module = CreateNewVerifiedModule();
+  const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
+
+  HloComputation::Builder cond_builder("cond");
+  {
+    const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
+    HloInstruction* param = cond_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    HloInstruction* constant = cond_builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1024.0)));
+    cond_builder.AddInstruction(
+        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), param,
+                                      constant, ComparisonDirection::kLt));
+  }
+  auto cond_computation = module->AddEmbeddedComputation(cond_builder.Build());
+
+  HloComputation::Builder body_builder("body");
+  {
+    const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
+    HloInstruction* param = body_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    body_builder.AddInstruction(HloInstruction::CreateBinary(
+        scalar_shape, HloOpcode::kMultiply, param, param));
+  }
+  auto body_computation = module->AddEmbeddedComputation(body_builder.Build());
+
+  std::unique_ptr<HloComputation> main_computation;
+  HloComputation::Builder main_builder("Entry");
+  HloInstruction* param = main_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "input"));
+  main_builder.AddInstruction(HloInstruction::CreateWhile(
+      scalar_shape, cond_computation, body_computation, param));
+
+  module->AddEntryComputation(main_builder.Build());
+  // Should find one while body computation in the graph and it should point to
+  // the while instruction.
+  int num_while_body_comp = 0;
+  for (HloComputation* comp : module->MakeComputationPostOrder()) {
+    if (comp->IsWhileBodyComputation()) {
+      num_while_body_comp += 1;
+      EXPECT_EQ(comp->WhileCallInstruction(),
+                module->entry_computation()->root_instruction());
+    }
+  }
+  EXPECT_EQ(num_while_body_comp, 1);
+}
+
 }  // namespace
 }  // namespace xla

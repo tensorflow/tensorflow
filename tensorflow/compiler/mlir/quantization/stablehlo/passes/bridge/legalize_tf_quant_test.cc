@@ -34,7 +34,9 @@ limitations under the License.
 namespace mlir::quant::stablehlo {
 namespace {
 
-class LegalizeTFQuantTest : public ::testing::Test {
+using ::testing::Test;
+
+class LegalizeTFQuantTest : public Test {
  protected:
   void TestBridgeLowering(llvm::StringRef mlir_module_string,
                           llvm::ArrayRef<tensorflow::TensorShape> arg_shapes) {

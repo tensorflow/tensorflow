@@ -2518,68 +2518,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     else:
       self.assertAllClose(new_outputs, expected_outputs, atol=0.13)
 
-  @test_util.run_in_graph_and_eager_modes
-  def test_matmul_ptq_model_stablehlo(self):
-    activation_fn = None
-    has_bias = False
-    batch_sizes = ([], [])
-    target_opset = quant_opts_pb2.STABLEHLO
-
-    lhs_batch_size, rhs_batch_size = batch_sizes
-    input_shape = (*lhs_batch_size, 1, 1024)
-    filter_shape = (*rhs_batch_size, 1024, 3)
-    static_input_shape = [dim if dim is not None else 2 for dim in input_shape]
-    model = self._create_matmul_model(
-        input_shape,
-        filter_shape,
-        self._input_saved_model_path,
-        has_bias,
-        activation_fn,
-    )
-    rng = np.random.default_rng(seed=1234)
-
-    input_data = ops.convert_to_tensor(
-        rng.uniform(low=0.0, high=1.0, size=static_input_shape).astype(
-            np.float32
-        )
-    )
-    expected_outputs = model.matmul(input_data)
-
-    def data_gen() -> repr_dataset.RepresentativeDataset:
-      for _ in range(100):
-        yield {
-            'input_tensor': rng.uniform(
-                low=0.0, high=1.0, size=static_input_shape
-            ).astype(np.float32)
-        }
-
-    quantization_options = quant_opts_pb2.QuantizationOptions(
-        quantization_method=quant_opts_pb2.QuantizationMethod(
-            preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
-        ),
-        tags={tag_constants.SERVING},
-        signature_keys=['serving_default'],
-        op_set=target_opset,
-    )
-    converted_model = quantize_model.quantize(
-        self._input_saved_model_path,
-        self._output_saved_model_path,
-        quantization_options,
-        representative_dataset=data_gen(),
-    )
-
-    self.assertIsNotNone(converted_model)
-    self.assertCountEqual(
-        converted_model.signatures._signatures.keys(), {'serving_default'}
-    )
-
-    new_outputs = converted_model.signatures['serving_default'](
-        input_tensor=ops.convert_to_tensor(input_data)
-    )
-    # Tests that the quantized graph outputs similar values. The rtol value is
-    # arbitrary.
-    self.assertAllClose(new_outputs, expected_outputs, rtol=0.02)
-
   @parameterized.named_parameters(
       {
           'testcase_name': 'with_biasadd',
@@ -2972,13 +2910,17 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       )
 
   @parameterized.named_parameters(
-      ('use_constant_with_int32_input', dtypes.int32, False),
-      ('use_variable_with_int32_input', dtypes.int32, True),
-      ('use_constant_with_int64_input', dtypes.int64, False),
-      ('use_variable_with_int64_input', dtypes.int64, True),
+      ('use_constant_with_int32_input', dtypes.int32, False, True),
+      ('use_variable_with_int32_input', dtypes.int32, True, True),
+      ('use_constant_with_int64_input', dtypes.int64, False, True),
+      ('use_variable_with_int64_input', dtypes.int64, True, True),
+      ('small_gather_use_constant', dtypes.int32, False, False),
+      ('small_gather_use_variable', dtypes.int32, True, False),
   )
   @test_util.run_v2_only
-  def test_gather_model(self, input_type, use_variable):
+  def test_gather_model(
+      self, input_type, use_variable, expect_quantized_gather
+  ):
     model = self._create_gather_model(input_type, use_variable)
 
     saved_model_save.save(model, self._input_saved_model_path)
@@ -2991,7 +2933,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         ),
         tags=tags,
         signature_keys=['serving_default'],
-        op_set=quant_opts_pb2.TF,
+        op_set=quant_opts_pb2.XLA,
+        # Gather op is opt-outed if the size is smaller than the threshold.
+        min_num_elements_for_weights=1024 if expect_quantized_gather else 8192,
     )
 
     data_gen = self._create_data_generator(
@@ -3014,11 +2958,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         converted_model.signatures._signatures.keys(), {'serving_default'}
     )
 
-    output_loader = saved_model_loader.SavedModelLoader(
-        self._output_saved_model_path
-    )
-    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
-    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
+    if expect_quantized_gather:
+      self.assertSizeRatioLessThan(
+          self._output_saved_model_path, self._input_saved_model_path, 1 / 3
+      )
+    else:
+      self.assertSizeRatioGreaterThan(
+          self._output_saved_model_path, self._input_saved_model_path, 2 / 3
+      )
 
   @test_util.run_in_graph_and_eager_modes
   def test_model_ptq_use_representative_samples_list(self):
@@ -3366,7 +3313,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
   @test_util.run_in_graph_and_eager_modes
-  def test_model_ptq_no_representative_sample_shows_warnings(self):
+  def test_model_ptq_no_representative_sample_not_quantized(self):
     self._create_matmul_model(
         input_shape=(1, 1024),
         weight_shape=(1024, 3),
@@ -3382,30 +3329,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         signature_keys=['serving_default'],
     )
 
-    with self.assertLogs(level='WARN') as warning_logs:
-      # Save the logger verbosity.
-      prev_log_level = logging.get_verbosity()
-      logging.set_verbosity(logging.WARN)
-
-      try:
-        converted_model = quantize_model.quantize(
-            self._input_saved_model_path,
-            self._output_saved_model_path,
-            quantization_options,
-            # Put no sample into the representative dataset to make calibration
-            # impossible.
-            representative_dataset=[],
-        )
-      finally:
-        # Restore the logger verbosity.
-        logging.set_verbosity(prev_log_level)
-
-      self.assertNotEmpty(warning_logs.records)
-      self.assertTrue(
-          self._any_log_contains(
-              'does not have min or max values', warning_logs.records
-          )
-      )
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        quantization_options,
+        # Put no sample into the representative dataset to make calibration
+        # impossible.
+        representative_dataset=[],
+    )
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(
@@ -3486,36 +3417,12 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         op_set=quant_opts_pb2.TF,
     )
 
-    with self.assertLogs(level='WARN') as warning_logs:
-      # Save the logger verbosity.
-      log_level = logging.get_verbosity()
-      logging.set_verbosity(logging.WARN)
-
-      try:
-        converted_model = quantize_model.quantize(
-            self._input_saved_model_path,
-            self._output_saved_model_path,
-            quantization_options,
-            representative_dataset=data_gen(),
-        )
-      finally:
-        # Restore the logger verbosity.
-        logging.set_verbosity(log_level)
-
-      self.assertNotEmpty(warning_logs.records)
-
-      # Warning message should contain the function name. The uncalibrated path
-      # is when the condition is true, so 'cond_true' function must be part of
-      # the warning message.
-      self.assertTrue(self._any_log_contains('cond_true', warning_logs.records))
-      self.assertFalse(
-          self._any_log_contains('cond_false', warning_logs.records)
-      )
-      self.assertTrue(
-          self._any_log_contains(
-              'does not have min or max values', warning_logs.records
-          )
-      )
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        quantization_options,
+        representative_dataset=data_gen(),
+    )
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(
@@ -3526,6 +3433,25 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
     self.assertTrue(self._contains_quantized_function_call(output_graphdef))
+
+    # Tests that the false branch contains a quantized function call whereas the
+    # true branch doesn't.
+    def _is_quantized_function_call_node(
+        node_def: node_def_pb2.NodeDef,
+    ) -> bool:
+      return node_def.op == 'PartitionedCall' and node_def.attr[
+          'f'
+      ].func.name.startswith('quantized_')
+
+    for func in output_graphdef.library.function:
+      if func.signature.name.startswith('cond_false'):
+        self.assertTrue(
+            any(map(_is_quantized_function_call_node, func.node_def))
+        )
+      elif func.signature.name.startswith('cond_true'):
+        self.assertFalse(
+            any(map(_is_quantized_function_call_node, func.node_def))
+        )
 
   # Run this test only with the eager mode.
   @test_util.run_v2_only

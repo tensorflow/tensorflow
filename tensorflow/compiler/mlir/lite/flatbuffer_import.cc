@@ -604,10 +604,10 @@ static mlir::ElementsAttr GetSplat(RankedTensorType type, int unique_index,
 }
 
 // TODO(b/172664358): Creates a new op instead of reusing constant op.
-// Creates a constant op to represent stateful variable. The function static
-// variable `stateful_variable_idx` is used as a unique value for each constant
-// to avoid CSEed. `tensor` is the data structure of flatbuffer. `shaped_type`
-// is the ShapedType for the const op.
+// Creates a constant op with "tfl.is_variable" attribute to represent stateful
+// variable. The function static variable `stateful_variable_idx` is used as a
+// unique value for each constant to avoid CSEed. `tensor` is the data structure
+// of flatbuffer. `shaped_type` is the ShapedType for the const op.
 StatusOr<Operation*> BuildVariableOp(const tflite::TensorT& tensor,
                                      OpBuilder builder, Location loc) {
   TF_ASSIGN_OR_RETURN(auto type, GetTensorType(tensor, builder,
@@ -626,6 +626,7 @@ StatusOr<Operation*> BuildVariableOp(const tflite::TensorT& tensor,
     return op.getOperation();
   }
   auto op = builder.create<tfl::ConstOp>(loc, value);
+  op->setAttr("tfl.is_variable", builder.getUnitAttr());
   if (tensor.quantization && !tensor.quantization->min.empty()) {
     if (auto stats_op =
             ConvertMinMaxToStatsOp(tensor, builder, op.getResult())) {
@@ -1902,11 +1903,6 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
   if (!model->signature_defs.empty()) {
     module->setAttr("tf_saved_model.semantics",
                     mlir::UnitAttr::get(builder.getContext()));
-  }
-
-  if (!model->metadata_buffer.empty()) {
-    module->setAttr("tfl.metadata_buffer",
-                    builder.getI32ArrayAttr(model->metadata_buffer));
   }
 
   if (use_stablehlo_constant) {

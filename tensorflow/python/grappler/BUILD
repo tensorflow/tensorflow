@@ -227,7 +227,7 @@ cuda_py_strict_test(
     size = "small",
     srcs = ["cluster_test.py"],
     python_version = "PY3",
-    shard_count = 10,
+    shard_count = 5,
     tags = [
         "grappler",
         "no_pip",  # tf_optimizer is not available in pip.

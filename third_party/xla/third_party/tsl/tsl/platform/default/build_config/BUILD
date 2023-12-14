@@ -117,10 +117,16 @@ cc_library(
     data = [
         "@local_config_cuda//cuda:cudart",
     ],
-    linkopts = [
-        "-Wl,-rpath,../local_config_cuda/cuda/lib64",
-        "-Wl,-rpath,../local_config_cuda/cuda/extras/CUPTI/lib64",
-    ],
+    linkopts = select({
+        "//tsl:macos": [
+            "-Wl,-rpath,../local_config_cuda/cuda/lib",
+            "-Wl,-rpath,../local_config_cuda/cuda/extras/CUPTI/lib",
+        ],
+        "//conditions:default": [
+            "-Wl,-rpath,../local_config_cuda/cuda/lib64",
+            "-Wl,-rpath,../local_config_cuda/cuda/extras/CUPTI/lib64",
+        ],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         "@local_config_cuda//cuda:cudart",

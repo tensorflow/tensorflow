@@ -15,24 +15,41 @@ limitations under the License.
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Argument.h"
+#include "llvm/IR/Attributes.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "xla/service/gpu/hlo_to_ir_bindings.h"
+#include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Metadata.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
+#include "xla/service/elemental_ir_emitter.h"
+#include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/kernel_thunk.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -114,7 +131,7 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
   llvm::LLVMContext& context = llvm_module->getContext();
   llvm::FunctionType* kernel_type = llvm::FunctionType::get(
       /*Result=*/llvm::Type::getVoidTy(context),
-      std::vector<llvm::Type*>(kNumLlvmArgs, builder->getInt8PtrTy()),
+      std::vector<llvm::Type*>(kNumLlvmArgs, builder->getPtrTy()),
       /*isVarArg=*/false);
   llvm::Function* kernel =
       llvm::Function::Create(kernel_type, llvm::GlobalValue::ExternalLinkage,
@@ -163,9 +180,7 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
 
     llvm::Type* ir_type =
         llvm_ir::ShapeToIrType(kernel_argument.shape(), llvm_module);
-    llvm_ir::IrArray ir_array(
-        CastToTypedValue(kernel_argument.shape(), &llvm_arg, builder), ir_type,
-        kernel_argument.shape());
+    llvm_ir::IrArray ir_array(&llvm_arg, ir_type, kernel_argument.shape());
 
     if (!kernel_argument.written()) {
       ir_array.MarkInvariantOverWholeProgram(&llvm_arg.getContext());
@@ -205,9 +220,13 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
               ir_emitter_context, suggested_kernel_name,
               kernel_arguments.args(), fusion.operand_count(), launch_dims,
               builder);
-          TF_RETURN_IF_ERROR(EmitKernel(ir_emitter_context, elemental_emitter,
-                                        fusion, launch_dims, std::move(inputs),
-                                        std::move(outputs), builder, i));
+          if (ir_emitter_context.emit_kernels()) {
+            TF_RETURN_IF_ERROR(EmitKernel(
+                ir_emitter_context, elemental_emitter, fusion, launch_dims,
+                std::move(inputs), std::move(outputs), builder, i));
+          } else {
+            VLOG(3) << "Skipped kernel compilation: " << suggested_kernel_name;
+          }
           // TODO(jreiffers): Return shmem_bytes from EmitKernel when
           // converting the Triton emitters to this infrastructure.
           return KernelReuseCache::Entry{kernel->getName().str(), launch_dims,

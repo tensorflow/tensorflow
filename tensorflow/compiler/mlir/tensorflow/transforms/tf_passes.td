@@ -1226,62 +1226,6 @@ def TPUResourceReadForWritePass : Pass<"tf-tpu-resource-read-for-write", "Module
   let constructor = "TFTPU::CreateTPUResourceReadForWritePass()";
 }
 
-def ExtractOutsideCompilationPass : Pass<"tf-extract-outside-compilation", "ModuleOp"> {
-  let summary = "Extracts device outside compilation computation to a separate tf_device.parallel_execute region.";
-
-  let description = [{
-    This pass extracts a CPU computation cluster with `_xla_outside_compilation`
-    annotation, which denotes ops that should be run on CPU/host, from a device cluster.
-    Each outside compilation cluster is moved to
-    a tf_device.parallel_execute region. The device cluster is also moved to a
-    tf_device.parallel_execute region. Communication ops between device and host are
-    added to pass inputs/outputs to/from the outside compiled region.
-
-    For example, the following tf_device.cluster with an op marked for `xla_outside_compilation`:
-
-    ```mlir
-    func @outside_compilation() -> tensor<f32> {
-      %0 = "tf_device.cluster"() ( {
-        %1 = "tf.Const"() {_xla_outside_compilation = "0", value = dense<1.0> : tensor<f32>} : () -> (tensor<f32>)
-        %2 = "tf.Identity"(%1) {_xla_outside_compilation = "0"} : (tensor<f32>) -> (tensor<f32>)
-        %3 = "tf.AddV2"(%1, %2) : (tensor<f32>, tensor<f32>) -> (tensor<f32>)
-        tf_device.return %3 : tensor<f32>
-      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<f32>
-      return %0 : tensor<f32>
-    }
-    ```
-
-    will become a tf_device.parallel_execute op with a CPU/host region and
-    a tf_device.cluster with communication ops to send data to/from device/host:
-
-    ```mlir
-    func @outside_compilation() -> tensor<f32> {
-      %0 = "tf_device.parallel_execute"() ( {
-        "tf_device.launch"() ( {
-          %1 = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
-          %2 = "tf._XlaRecvAtHost"(%1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_args"} : (tensor<3x!tf_type.string>) -> tensor<f32>
-          %3 = "tf.Identity"(%2) : (tensor<f32>) -> tensor<f32>
-          "tf._XlaSendFromHost"(%3, %1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_retvals"} : (tensor<f32>, tensor<3x!tf_type.string>) -> ()
-          tf_device.return
-        }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
-        tf_device.return
-      },  {
-        %1 = "tf_device.cluster"() ( {
-          %2 = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
-          %3 = "tf._XlaHostComputeMlir"(%2) {recv_key = "host_compute_channel_0_0_retvals", send_key = "host_compute_channel_0_0_args", tpu_core = 0 : i64} : (tensor<f32>) -> tensor<f32>
-          %4 = "tf.AddV2"(%2, %3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-          tf_device.return %4 : tensor<f32>
-        }) {device_assignment = [], num_cores_per_replica = 1 : i64, topology = ""} : () -> tensor<f32>
-        tf_device.return %1 : tensor<f32>
-      }) : () -> tensor<f32>
-      return %0 : tensor<f32>
-    }
-    ```
-  }];
-
-  let constructor = "TFDevice::CreateExtractOutsideCompilationPass()";
-}
-
 def HoistReplicateInvariantResourceWritesPass : Pass<"tf-hoist-replicate-invariant-resource-writes", "mlir::func::FuncOp"> {
   let summary = "Hoists writes to replicate invariant resource variables.";
 
@@ -1299,53 +1243,6 @@ def HoistReplicateInvariantResourceWritesPass : Pass<"tf-hoist-replicate-invaria
   }];
 
   let constructor = "TF::CreateHoistReplicateInvariantResourceWritesPass()";
-}
-
-def MarkOpsForOutsideCompilationPass : Pass<"tf-mark-ops-for-outside-compilation", "ModuleOp"> {
-  let summary = "Marks ops in device cluster for outside compilation if they are unsupported on device.";
-
-  let description = [{
-    This pass marks unsupported ops in a device cluster with
-    `_xla_outside_compilation` attribute so the operations will run on the host
-    instead of the device. Unsupported ops are ops that can not be code
-    generated to run on the device for the cluster including:
-
-    1. String operations on TPUs.
-    2. Operations that don't have a kernel defined for the device.
-
-    This pass is conservative in that it will mark all ops for outside compilation
-    that can not be compiled for the device.  Exceptions for this are added for ops
-    that will be rewritten or decomposed before compiling on device.
-
-
-    For example, tf_device.cluster op with an unsupported op, tf.UnsupportedOp:
-
-    ```mlir
-    func @unsupported_op() -> tensor<i32> {
-      %0 = "tf_device.cluster"() ( {
-        %1 = "tf.UnsupportedOp"() : () -> tensor<i32>
-        %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
-        tf_device.return %2 : tensor<i32>
-      }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<i32>
-      return %0 : tensor<i32>
-    }
-    ```
-
-    will mark tf.UnsupportedOp with `_xla_outside_compilation` attribute:
-
-    ```mlir
-    func @unsupported_op() -> tensor<i32> {
-      %0 = "tf_device.cluster"() ( {
-        %1 = "tf.UnsupportedOp"() {_xla_outside_compilation = "auto0"} : () -> tensor<i32>
-        %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
-        tf_device.return %2 : tensor<i32>
-      }) {allow_soft_placement = true, device_assignment = [], num_cores_per_replica = 1 : i64, topology = ""} : () -> tensor<i32>
-      return %0 : tensor<i32>
-    }
-    ```
-  }];
-
-  let constructor = "TFDevice::CreateMarkOpsForOutsideCompilationPass()";
 }
 
 def FunctionalControlFlowToRegionsPass : Pass<"tf-functional-control-flow-to-regions", "ModuleOp"> {

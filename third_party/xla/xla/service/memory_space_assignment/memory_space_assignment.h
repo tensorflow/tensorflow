@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_H_
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <list>
@@ -26,6 +27,7 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -35,25 +37,33 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #endif
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/functional/function_ref.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_alias_analysis.h"
+#include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/statusor.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace memory_space_assignment {
 
 // Forward Declaration of Options.
-class Options;
+struct Options;
 
 inline constexpr char kConcatBitcastCustomCall[] = "ConcatBitcast";
 
@@ -547,6 +557,33 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   // to treat all async copies the same duration. Having an override forces
   // prefetches to be scheduled roughly in FIFO order.
   std::optional<Shape> shape_override_;
+};
+
+// A class for turning a copy start time and end time into slice start times.
+class SlicedPrefetchStartTimePicker {
+ public:
+  // Returns the amount of time elapsed in the instruction schedule between
+  // (exclusive_start_time, exclusive_end_time).
+  using ElapsedTimeFn = std::add_pointer<float(
+      int64_t exclusive_start_time, int64_t exclusive_end_time) const>::type;
+
+  // Returns true if the instructions at lhs_time and rhs_time are in the same
+  // computation.
+  using SameComputationParentFn =
+      std::add_pointer<bool(int64_t lhs_time, int64_t rhs_time) const>::type;
+
+  // Picks slice start times, given the num_slices, prefetch_start_time, and
+  // prefetch_end_time. The returned times are exclusive.
+  //
+  // REQUIRES:
+  // - The instructions following each start time are guaranateed to be in the
+  //   same computation.
+  // - The returned times sorted.
+  // - The first returned time is equal to prefetch_start_time.
+  static std::vector<int64_t> Pick(
+      int64_t num_slices, int64_t exclusive_prefetch_start_time,
+      int64_t prefetch_end_time, absl::AnyInvocable<ElapsedTimeFn> elapsed_fn,
+      absl::AnyInvocable<SameComputationParentFn> has_same_parent_fn);
 };
 
 // MemorySpaceAssignment assigns memory spaces (default or alternate) to each
@@ -1890,6 +1927,10 @@ class MemoryBoundLoopOptimizer {
     static std::string AllocationTypeToString(AllocationType allocation_type);
     std::string ToString() const;
 
+    // Returns true if memory-bound loop optimizer supports allocating this type
+    // of a loop value.
+    bool IsAllocationTypeSupported() const;
+
     // The HloValues that correspond to this LoopValue.
     std::vector<const HloValue*> hlo_values;
     // The position in the header, if any.
@@ -2474,11 +2515,6 @@ class AlternateMemoryBestFitHeap
   // Check if for the specified type of solution, using the parameters in
   // context. If we find a solution, it will be stored in context.
   Result CheckPrefetchFit(bool for_sliced_solution, PrefetchContext& context);
-  // Given a specified number of slices, start times, and end times, pick times
-  // to start each slice.
-  std::vector<int64_t> PickSliceStartTimes(int64_t num_slices,
-                                           int64_t prefetch_start_time,
-                                           int64_t prefetch_end_time) const;
   // Creates a debugging string describing the timing of the prefetch solution
   // we are currently attempting (as dictated by for_sliced_solution and
   // context).
@@ -2703,6 +2739,7 @@ class AlternateMemoryBestFitHeap
   // for aliased allocations.
   std::list<RepackAllocationBlock> repack_allocation_blocks_;
   int64_t num_repacks_ = 0;
+  int64_t num_repacks_successful_ = 0;
   std::vector<std::pair<BufferInterval, Chunk>> pending_chunks_;
   std::vector<AsynchronousCopy> pending_async_copies_;
   std::vector<std::pair<const HloValue*, RequiredMemoryAssignment>>

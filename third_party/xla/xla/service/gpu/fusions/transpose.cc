@@ -14,18 +14,39 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/transpose.h"
 
+#include <array>
+#include <cstdint>
+#include <optional>
+#include <tuple>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Value.h"
+#include "llvm/Support/AtomicOrdering.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/permutation_util.h"
+#include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/kernel_mapping_scheme.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/status.h"
+#include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -50,8 +71,7 @@ void MaybeEmitFenceForAMDGPU(llvm::IRBuilder<>* builder,
                              IrEmitterContext& ir_emitter_context) {
   auto* module = builder->GetInsertBlock()->getModule();
   if (IsAMDGPU(module) &&
-      ir_emitter_context.rocm_compute_capability().gcn_arch_name().substr(
-          0, 6) == "gfx90a") {
+      ir_emitter_context.rocm_compute_capability().fence_before_barrier()) {
     builder->CreateFence(
         llvm::AtomicOrdering::SequentiallyConsistent,
         builder->getContext().getOrInsertSyncScopeID("workgroup"));

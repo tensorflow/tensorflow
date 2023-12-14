@@ -16,13 +16,14 @@ limitations under the License.
 #include "xla/service/gpu/runtime3/triangular_solve_thunk.h"
 
 #include "absl/strings/str_format.h"
-#include "xla/service/gpu/precompiled_kernels.h"
+#include "xla/service/gpu/make_batch_pointers.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -158,10 +159,10 @@ Status RunTriangularSolve(se::DeviceMemoryBase a_data,
     se::DeviceMemoryBase b_pointers(temp_base + batch_size,
                                     batch_pointers_bytes);
 
-    TF_RETURN_IF_ERROR(MakeBatchPointers(
-        stream, asm_opts, a_data, a_batch_stride, batch_size, a_pointers));
-    TF_RETURN_IF_ERROR(MakeBatchPointers(
-        stream, asm_opts, b_data, b_batch_stride, batch_size, b_pointers));
+    TF_RETURN_IF_ERROR(MakeBatchPointers(stream, a_data, a_batch_stride,
+                                         batch_size, a_pointers));
+    TF_RETURN_IF_ERROR(MakeBatchPointers(stream, b_data, b_batch_stride,
+                                         batch_size, b_pointers));
 
     switch (type) {
       case F32: {

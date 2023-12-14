@@ -284,10 +284,12 @@ TEST_F(P2PSchedulePreparationTest, NestedP2PChainTransformed) {
 //    pipelined P2P chain.
 //  Whether the pipelined while-body contains another P2P chain besides the
 //    pipelined P2P chain.
-//
+//  Whether the main computation uses a custom-call or a collective-permute for
+//    the purpose of testing its ordering with respect to P2P chain.
 std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
                                         bool other_p2p_in_while = false,
-                                        bool deadlock_in_while = false) {
+                                        bool deadlock_in_while = false,
+                                        bool test_custom_call = false) {
   // This is to support the while-loop with nested P2P chains called from the
   // main computation.
   constexpr char kWhileForMain[] = R"(
@@ -327,6 +329,12 @@ std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
   while-result-1 = f32[1, 1024, 1024] get-tuple-element(while-result), index=1
   ROOT collective-permute.2 = f32[1, 1024, 1024] collective-permute(while-result-1),
     source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}}
+)";
+
+  // Similar to the above, but for test_custom_call = true.
+  constexpr char kUnnestedResultWithCustomCall[] = R"(
+  while-result-1 = f32[1, 1024, 1024] get-tuple-element(while-result), index=1
+  ROOT custom-call = f32[1, 1024, 1024] custom-call(while-result-1), custom_call_target="my_custom_call"
 )";
 
   // This is the result for the main computation, if it has another while-loop
@@ -530,7 +538,10 @@ std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
           ? kPipelinedWhileBodyDeadlock
           : (other_p2p_in_while ? kPipelinedWhileBodyWithOtherP2P
                                 : kPipelinedWhileBodyWithoutOtherP2P);
-  const char* result_str = nested_p2p_in_main ? kNestedResult : kUnnestedResult;
+  const char* result_str =
+      nested_p2p_in_main ? kNestedResult
+                         : (test_custom_call ? kUnnestedResultWithCustomCall
+                                             : kUnnestedResult);
   return absl::StrFormat(kModuleTemplate, while_str, pipelined_while_body_str,
                          result_str);
 }
@@ -633,6 +644,24 @@ TEST_F(P2PSchedulePreparationTest,
                              pipelined_send_done));
   EXPECT_EQ(1, absl::c_count(pipelined_recv->control_predecessors(),
                              other_send_done));
+}
+
+TEST_F(P2PSchedulePreparationTest,
+       UnnestedPipelinedP2PChainWithCustomCallTransformed) {
+  std::string kModuleStr = GetPipelinedP2PModuleString(
+      /*nested_p2p_in_main=*/false, /*other_p2p_in_while=*/false,
+      /*deadlock_in_while=*/false, /*test_custom_call=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule((kModuleStr)));
+  P2PSchedulePreparation preparation;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  // Verify in the main computation custom-call is scheduled after the
+  // Send-done for the pipelined while-loop.
+  HloInstruction* send_done_2 = FindInstruction(module.get(), "send-done.2");
+  HloInstruction* custom_call = FindInstruction(module.get(), "custom-call");
+  EXPECT_EQ(custom_call->control_predecessors()[0], send_done_2);
 }
 
 }  // namespace

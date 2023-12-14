@@ -27,8 +27,9 @@ namespace gpu {
 
 class GpuFloatSupport : public FloatSupport {
  public:
-  explicit GpuFloatSupport(PrimitiveType low_precision_type)
-      : FloatSupport(low_precision_type) {}
+  explicit GpuFloatSupport(PrimitiveType low_precision_type,
+                           PrimitiveType high_precision_type = F32)
+      : FloatSupport(low_precision_type, high_precision_type) {}
 
   bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
                                    int64_t operand_index) const override {

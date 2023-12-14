@@ -1135,14 +1135,21 @@ StatusOr<std::string> PjRtCApiExecutable::SerializeExecutable() const {
 }
 
 StatusOr<std::string> PjRtCApiExecutable::FingerprintExecutable() const {
+  const PJRT_Api* c_api_ = pjrt_c_api();
+  if (c_api_->pjrt_api_version.major_version == 0 &&
+      c_api_->pjrt_api_version.minor_version < 35) {
+    // TODO(yeounoh): To be removed after 01/20/2024.
+    return xla::Unimplemented(
+        "Getting fingerprint from unloaded PJRT executable requires plugin "
+        "with PJRT C API version >= 0.35");
+  }
+
   PJRT_Executable_Fingerprint_Args args;
   args.struct_size = PJRT_Executable_Fingerprint_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.executable = c_executable();
-
   RETURN_STATUS_IF_PJRT_ERROR(c_api_->PJRT_Executable_Fingerprint(&args),
                               c_api_);
-
   return std::string(args.executable_fingerprint,
                      args.executable_fingerprint_size);
 }
@@ -1419,7 +1426,8 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
     std::vector<std::vector<PJRT_Buffer*>>& c_output_lists_storage,
     std::vector<PJRT_Buffer**>& c_output_lists,
     std::optional<std::vector<PJRT_Event*>>& device_complete_events,
-    SendRecvCallbackData& callback_data) {
+    SendRecvCallbackData& callback_data,
+    std::vector<int64_t>& non_donatable_input_indices_storage) {
   bool using_host_callbacks =
       !options.send_callbacks.empty() || !options.recv_callbacks.empty();
   if (using_host_callbacks &&
@@ -1436,6 +1444,13 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
   args.options = &c_options;
   args.options->struct_size = PJRT_ExecuteOptions_STRUCT_SIZE;
   args.options->launch_id = options.launch_id;
+  for (auto i : options.non_donatable_input_indices) {
+    non_donatable_input_indices_storage.push_back(i);
+  }
+  args.options->num_non_donatable_input_indices =
+      options.non_donatable_input_indices.size();
+  args.options->non_donatable_input_indices =
+      non_donatable_input_indices_storage.data();
   args.num_devices = argument_handles.size();
   CHECK_GT(args.num_devices, 0);
   args.num_args = argument_handles[0].size();
@@ -1509,6 +1524,7 @@ PjRtCApiLoadedExecutable::Execute(
   std::vector<std::vector<PJRT_Buffer*>> c_argument_lists_storage;
   std::vector<std::vector<PJRT_Buffer*>> c_output_lists_storage;
   std::vector<PJRT_Buffer**> c_output_lists;
+  std::vector<int64_t> non_donatable_input_indices_storage;
   PJRT_ExecuteOptions c_options;
   c_options.num_send_ops = 0;
   c_options.num_recv_ops = 0;
@@ -1524,7 +1540,8 @@ PjRtCApiLoadedExecutable::Execute(
       GetCommonExecuteArgs(argument_handles, options, c_options,
                            c_argument_lists_storage, c_arguments,
                            c_output_lists_storage, c_output_lists,
-                           device_complete_events, *callback_data));
+                           device_complete_events, *callback_data,
+                           non_donatable_input_indices_storage));
 
   args.execute_device = nullptr;
 
@@ -1574,6 +1591,7 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
   std::vector<std::vector<PJRT_Buffer*>> c_argument_lists_storage;
   std::vector<std::vector<PJRT_Buffer*>> c_output_lists_storage;
   std::vector<PJRT_Buffer**> c_output_lists;
+  std::vector<int64_t> non_donatable_input_indices_storage;
   PJRT_ExecuteOptions c_options;
   c_options.num_send_ops = 0;
   c_options.num_recv_ops = 0;
@@ -1589,7 +1607,8 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
       GetCommonExecuteArgs(argument_handles_vec, options, c_options,
                            c_argument_lists_storage, c_arguments,
                            c_output_lists_storage, c_output_lists,
-                           device_complete_events, *callback_data));
+                           device_complete_events, *callback_data,
+                           non_donatable_input_indices_storage));
 
   args.execute_device =
       tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
@@ -1646,7 +1665,31 @@ bool PjRtCApiLoadedExecutable::IsDeleted() {
 }
 
 StatusOr<std::string> PjRtCApiLoadedExecutable::FingerprintExecutable() const {
-  return executable_->FingerprintExecutable();
+  StatusOr<std::string> fingerprint = executable_->FingerprintExecutable();
+  if (fingerprint.ok()) {
+    return *fingerprint;
+  }
+  if (fingerprint.status().code() != absl::StatusCode::kUnimplemented) {
+    return fingerprint.status();
+  }
+
+  // Fallback and call PJRT_LoadedEecutable_Fingerprint until the plugins
+  // implement new PJRT_Executable_Fingerprint API within the compatibility
+  // window.
+  // TODO(yeounoh): To be removed after 01/20/2024.
+  PJRT_LoadedExecutable_Fingerprint_Args args;
+  args.struct_size = PJRT_LoadedExecutable_Fingerprint_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = c_loaded_executable();
+  const PJRT_Api* c_api = pjrt_c_api();
+  std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> error(
+      c_api->PJRT_LoadedExecutable_Fingerprint(&args),
+      pjrt::MakeErrorDeleter(c_api));
+  if (error) {
+    return ::pjrt::PjrtErrorToStatus(error.get(), c_api);
+  }
+  return std::string(args.executable_fingerprint,
+                     args.executable_fingerprint_size);
 }
 
 // ---------------------------------- Buffers ----------------------------------

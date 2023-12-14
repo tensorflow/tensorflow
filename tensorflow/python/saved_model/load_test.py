@@ -2970,7 +2970,7 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
   # TODO(allenl, kkb): Use the new memory checker here once it's fast enough (3
   # iterations took hundreds of seconds). It would be really nice to check
   # allocations at a lower level.
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def test_functions_cleaned(self, use_cpp_bindings):
     # TODO(b/264869753) Fix SingleCycleTest
     if use_cpp_bindings:

@@ -121,7 +121,6 @@ package(
         "//tensorflow_models:__subpackages__",
     ],
     features = if_google([
-        "-layering_check",
         "-parse_headers",
     ]),
     licenses = ["notice"],
@@ -1310,6 +1309,7 @@ cc_library(
     ],
     hdrs = [":lib_internal_public_headers"],
     copts = tf_copts(),
+    features = ["-layering_check"],
     deps = tf_additional_lib_deps() + [
         ":core_stringpiece",
         ":lib_proto_parsing",
@@ -1456,6 +1456,7 @@ cc_library(
     }) +
     # The TF proto implementations that we will statically link here.
     [
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_proto_cc_impl",
@@ -1641,6 +1642,7 @@ tf_cuda_library(
     ],
     hdrs = [":framework_internal_public_headers"],
     copts = tf_copts(),
+    features = ["-layering_check"],
     linkopts = select({
         "//tensorflow:freebsd": ["-lm"],
         "//tensorflow:windows": [],
@@ -1770,7 +1772,11 @@ tf_cuda_library(
         ":protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
     ],
 )

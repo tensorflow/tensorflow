@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_COMPILE_MODULE_TO_LLVM_IR_H_
 #define XLA_SERVICE_GPU_COMPILE_MODULE_TO_LLVM_IR_H_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "xla/service/buffer_value.h"
 #include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/thunk.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/statusor.h"
@@ -43,7 +45,6 @@ struct CompileModuleResults {
   std::variant<GpuExecutable::OwnedThunkSequence,
                GpuExecutable::OwnedGpuRuntimeProgram>
       executable;
-  EntryFunctionAttributes entry_func_attrs;
   std::vector<GpuExecutable::ConstantInfo> constants;
   absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo> output_info;
   Shape output_shape;
@@ -55,29 +56,22 @@ struct CompileModuleResults {
   bool use_original_allocations;
 };
 
+void ForAllThunks(const std::function<void(Thunk*)>& fn,
+                  ThunkSequence* thunk_sequence);
+
 // Removes all globals from the given module that are both uninitialized and
 // have no uses within that module.
 void RemoveUnusedAndUninitializedGlobals(
     llvm::Module* llvm_module,
     const std::vector<GpuExecutable::ConstantInfo>& constants);
 
-// Compile `hlo_module` using XLA GPU and return the LLVM module thus generated.
-// The GpuExecutable (and the Thunks that are part of it) are not returned.
-StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
-    HloModule* hlo_module, llvm::LLVMContext* llvm_context,
-    const std::string& target_triple, const std::string& data_layout,
-    const std::string& platform_name, se::Platform::Id platform_id,
-    const se::DeviceDescription& gpu_device_info,
-    const BufferValue::SizeFunction& buffer_size_bytes_function);
-
-Status CompileModuleToLlvmIrImpl(
+StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, se::Platform::Id platform_id,
     const se::DeviceDescription& gpu_device_info,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
-    const BufferValue::SizeFunction& buffer_size_bytes_function,
-    CompileModuleResults* results);
+    const BufferValue::SizeFunction& buffer_size_bytes_function);
 
 }  // namespace gpu
 }  // namespace xla

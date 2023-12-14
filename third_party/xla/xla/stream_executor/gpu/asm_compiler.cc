@@ -28,6 +28,8 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -84,10 +86,11 @@ tsl::StatusOr<std::array<int64_t, 3>> GetToolVersion(
     return tsl::errors::FailedPrecondition(
         "Couldn't get ptxas/nvlink version string: ", tool_version.status());
   }
+  static constexpr LazyRE2 kVersionRegex = {R"(\bV(\d+)\.(\d+)\.(\d+)\b)"};
   std::array<int64_t, 3> version;
-  std::string vmaj_str, vmin_str, vdot_str;
-  if (!RE2::PartialMatch(tool_version.value(), R"(\bV(\d+)\.(\d+)\.(\d+)\b)",
-                         &vmaj_str, &vmin_str, &vdot_str) ||
+  absl::string_view vmaj_str, vmin_str, vdot_str;
+  if (!RE2::PartialMatch(tool_version.value(), *kVersionRegex, &vmaj_str,
+                         &vmin_str, &vdot_str) ||
       !absl::SimpleAtoi(vmaj_str, &version[0]) ||
       !absl::SimpleAtoi(vmin_str, &version[1]) ||
       !absl::SimpleAtoi(vdot_str, &version[2])) {
@@ -171,6 +174,12 @@ std::string FindCudaExecutable(const std::string& binary_name,
       new absl::flat_hash_map<std::pair<std::string, std::string>,
                               std::string>();
 
+#if defined(PLATFORM_WINDOWS)
+  const std::string binary_filename = binary_name + ".exe";
+#else
+  const std::string& binary_filename = binary_name;
+#endif
+
   auto cache_key = std::make_pair(binary_name, preferred_cuda_dir);
 
   absl::MutexLock lock(&mu);
@@ -180,10 +189,11 @@ std::string FindCudaExecutable(const std::string& binary_name,
   }
 
   // Try searching in the default PATH first if applicable.
-  if (tsl::PreferPtxasFromPath() && GetToolVersionString(binary_name).ok()) {
-    VLOG(2) << "Using " << binary_name;
-    seen_binary_paths->emplace(std::move(cache_key), binary_name);
-    return binary_name;
+  if (tsl::PreferPtxasFromPath() &&
+      GetToolVersionString(binary_filename).ok()) {
+    VLOG(2) << "Using " << binary_filename;
+    seen_binary_paths->emplace(std::move(cache_key), binary_filename);
+    return binary_filename;
   }
 
   // Search in cuda root candidates.
@@ -191,8 +201,8 @@ std::string FindCudaExecutable(const std::string& binary_name,
   std::string binary_path;
   for (const std::string& cuda_root :
        tsl::CandidateCudaRoots(preferred_cuda_dir)) {
-    binary_path = tsl::io::JoinPath(cuda_root, "bin", binary_name);
-    VLOG(2) << "Looking for " << binary_name << " at " << binary_path;
+    binary_path = tsl::io::JoinPath(cuda_root, "bin", binary_filename);
+    VLOG(2) << "Looking for " << binary_filename << " at " << binary_path;
     if (env->FileExists(binary_path).ok() &&
         GetToolVersionString(binary_path).ok()) {
       break;
@@ -203,9 +213,9 @@ std::string FindCudaExecutable(const std::string& binary_name,
     // binary. This won't work, in all probability, given we already tried that
     // above, but it's the best we can do.
     VLOG(2) << "Unable to find " << binary_name;
-    binary_path = binary_name;
+    binary_path = binary_filename;
   }
-  VLOG(2) << "Using " << binary_name << " at " << binary_path;
+  VLOG(2) << "Using " << binary_filename << " at " << binary_path;
   seen_binary_paths->emplace(std::move(cache_key), binary_path);
   return binary_path;
 }
@@ -248,6 +258,12 @@ tsl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
                                                   const char* ptx_contents,
                                                   GpuAsmOpts options,
                                                   bool cancel_if_reg_spill) {
+  auto ptxas_version_tuple = GetAsmCompilerVersion(options.preferred_cuda_dir);
+  if (ptxas_version_tuple.value() == std::array<int64_t, 3>{12, 3, 1}) {
+    return tsl::errors::Internal(
+        absl::StrFormat("ptxas 12.3.1 has a bug that we think can affect XLA. "
+                        "Please use a different version."));
+  }
   std::string ptxas_path =
       FindCudaExecutable("ptxas", options.preferred_cuda_dir);
 
@@ -308,12 +324,18 @@ tsl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
     //  Example error message associated with this error code:
     //      ptxas fatal   : Value 'sm_80' is not defined for option 'gpu-name'
     // In that case, fallback to the driver for compilation
-    if (absl::StartsWith(stderr_output, "ptxas fatal   : Value '") &&
+    if (absl::StrContains(stderr_output, "ptxas fatal   : Value '") &&
         absl::StrContains(stderr_output,
                           "is not defined for option 'gpu-name'")) {
       LogPtxasTooOld(ptxas_path, cc_major, cc_minor);
-      return tsl::errors::Unimplemented(
-          ptxas_path, " ptxas too old. Falling back to the driver to compile.");
+      return absl::UnimplementedError(absl::StrFormat(
+          "%s ptxas too old. Falling back to the driver to compile.",
+          ptxas_path));
+    }
+    if (absl::StrContains(stderr_output, "ptxas fatal") &&
+        absl::StrContains(stderr_output, "Register allocation failed")) {
+      LOG(INFO) << stderr_output;
+      return absl::ResourceExhaustedError("Register allocation failed");
     }
 
     return tsl::errors::Internal(

@@ -226,6 +226,40 @@ ENTRY main {
       FusionCanShareBufferHint(fusion, fusion->operand(0), {1}));
 }
 
+TEST_F(FusionCanShareBufferHintTest,
+       BufferCanBeSharedMultiOutputFusionTwoReachableOutputs) {
+  const char* const kModuleString = R"(
+HloModule fusion
+
+fused_computation {
+  param_0.1 = f32[2,3]{1,0} parameter(0)
+  param_1.1 = f32[2,3]{1,0} parameter(1)
+  neg = f32[2,3]{1,0} negate(param_1.1)
+  mul = f32[2,3]{1,0} multiply(param_0.1, neg)
+  ROOT tuple = (f32[2,3]{1,0}, f32[2,3]{1,0}) tuple(mul, neg)
+}
+
+ENTRY main {
+  param_0 = f32[2,3]{1,0} parameter(0)
+  param_1 = f32[2,3]{1,0} parameter(1)
+  ROOT fusion = (f32[2,3]{1,0}, f32[2,3]{1,0}) fusion(param_0, param_1), kind=kLoop, calls=fused_computation
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalTrue(FusionCanShareBufferHint(fusion, fusion->operand(0), {0}));
+  // The first operand cannot share the buffer with the second fusion output,
+  // because there is no path between them.
+  ExpectOptionalFalse(
+      FusionCanShareBufferHint(fusion, fusion->operand(0), {1}));
+  // The second operand can share the buffer with the second fusion output and
+  // the first fusion output.
+  ExpectOptionalTrue(FusionCanShareBufferHint(fusion, fusion->operand(1), {0}));
+  ExpectOptionalTrue(FusionCanShareBufferHint(fusion, fusion->operand(1), {1}));
+}
+
 TEST_F(FusionCanShareBufferHintTest, BufferCanBeSharedReductionEmitter) {
   constexpr char kModuleString[] = R"(
 HloModule TestModule
@@ -257,6 +291,65 @@ ENTRY %main {
                           ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalTrue(FusionCanShareBufferHint(fusion, fusion->operand(0), {1}));
+}
+
+TEST_F(FusionCanShareBufferHintTest,
+       BufferCannotBeSharedScatterMultiOutputFusion) {
+  // This is a fusion that we would normally not create because it cannot be
+  // emitted in-place. Still check whether buffer sharing logic would handle it
+  // correctly.
+  const char* const kModuleString = R"(
+    HloModule fusion
+
+    add {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    fused_computation {
+      p0 = s32[3,3] parameter(0)
+      p1 = s32[3] parameter(1)
+      indices = s32[3] add(p1, p1)
+      p2 = s32[3,3] parameter(2)
+      updates = s32[3,3] add(p2, p2)
+      add = s32[3,3] add(p0, p0)
+      scatter = s32[3,3] scatter(p0, indices, updates),
+          to_apply=add,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+      ROOT output = (s32[3,3], s32[3,3]) tuple(scatter, add)
+    }
+
+    ENTRY main {
+      parameter0 = s32[3,3] parameter(0)
+      parameter1 = s32[3] parameter(1)
+      parameter2 = s32[3,3] parameter(2)
+      ROOT fusion = (s32[3,3], s32[3,3]) fusion(parameter0, parameter1, parameter2), kind=kInput, calls=fused_computation
+    }
+    )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  // We expect that no buffer can be shared, because when Scatter is involved,
+  // the only buffer we can potentially share is the first operand of scatter,
+  // but if that is also used for a different fusion output, it will not work
+  // due to potentially different access patterns.
+  ExpectOptionalFalse(
+      FusionCanShareBufferHint(fusion, fusion->operand(0), {0}));
+  ExpectOptionalFalse(
+      FusionCanShareBufferHint(fusion, fusion->operand(0), {1}));
+  ExpectOptionalFalse(
+      FusionCanShareBufferHint(fusion, fusion->operand(1), {0}));
+  ExpectOptionalFalse(
+      FusionCanShareBufferHint(fusion, fusion->operand(1), {1}));
+  ExpectOptionalFalse(
+      FusionCanShareBufferHint(fusion, fusion->operand(2), {0}));
+  ExpectOptionalFalse(
+      FusionCanShareBufferHint(fusion, fusion->operand(2), {1}));
 }
 
 TEST_F(FusionCanShareBufferHintTest, BufferCanBeSharedScatterFusion) {
@@ -625,6 +718,49 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalTrue(FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
+}
+
+TEST_F(FusionCanShareBufferHintTest,
+       BufferCannotBeSharedDynamicUpdateSliceAndOtherUser) {
+  // This is a fusion that we would normally not create because it cannot be
+  // emitted in-place. Still check whether buffer sharing logic would handle it
+  // correctly.
+  const char* const kModuleString = R"(
+HloModule fusion
+
+fused_computation {
+  param_0.1 = s32[6]{0} parameter(0)
+  bitcast = s32[2,3]{1,0} bitcast(param_0.1)
+  zero = s32[] constant(0)
+  param_1.1 = s32[] parameter(1)
+  dynamic-slice = s32[1,2]{1,0} dynamic-slice(bitcast, param_1.1, zero), dynamic_slice_sizes={1,2}
+  one = s32[] constant(1)
+  broadcast = s32[1,2]{1,0} broadcast(one), dimensions={}
+  add = s32[1,2] add(dynamic-slice, broadcast)
+  dynamic-update-slice = s32[2,3]{1,0} dynamic-update-slice(bitcast, add, param_1.1, zero)
+  bitcast.1 = s32[6]{0} bitcast(dynamic-update-slice)
+  neg = s32[2,3]{1,0} negate(bitcast)
+  ROOT output = (s32[6]{0}, s32[2,3]{1,0}) tuple(bitcast.1, neg)
+}
+
+ENTRY main {
+  param_0 = s32[6]{0} parameter(0)
+  param_1 = s32[] parameter(1)
+  ROOT fusion = (s32[6]{0},s32[2,3]{1,0}) fusion(param_0, param_1), kind=kInput, calls=fused_computation
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalFalse(
+      FusionCanShareBufferHint(fusion, fusion->operand(0), {0}));
+  ExpectOptionalFalse(
+      FusionCanShareBufferHint(fusion, fusion->operand(0), {1}));
+  ExpectOptionalFalse(
+      FusionCanShareBufferHint(fusion, fusion->operand(1), {0}));
+  ExpectOptionalFalse(
+      FusionCanShareBufferHint(fusion, fusion->operand(1), {1}));
 }
 
 TEST_F(FusionCanShareBufferHintTest,

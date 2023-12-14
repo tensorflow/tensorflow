@@ -12,14 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
 #include <string>
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -28,6 +31,8 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/utils/stablehlo_type_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
@@ -41,6 +46,13 @@ namespace mlir::quant::stablehlo {
 namespace {
 
 constexpr StringRef kQuantizeTargetOpAttr = "tf_quant.composite_function";
+constexpr StringRef kStablehloModuleAttrsAttrName = "_stablehlo_module_attrs";
+constexpr StringRef kUsesShapePolymorphismAttr = "jax.uses_shape_polymorphism";
+
+// Default version number for native serialization.
+constexpr int64_t kDefaultVersion = 9;
+// Default platform for XlaCallModuleOp.
+constexpr StringRef kPlatformCpu = "CPU";
 
 class ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass
     : public impl::
@@ -125,7 +137,7 @@ class LiveOuts {
   // Delete the current op from liveouts and moves on to the parent ops.
   void update(Operation& op) {
     for (Value result_value : op.getResults()) {
-      liveouts_.erase(result_value);
+      liveouts_.remove(result_value);
     }
     for (Value operand : op.getOperands()) {
       liveouts_.insert(operand);
@@ -136,19 +148,20 @@ class LiveOuts {
   void snapshot_previous_state() { prev_liveouts_ = liveouts_; }
 
   // Return the current live values.
-  const DenseSet<Value>& get() const { return liveouts_; }
+  const SetVector<Value>& get() const { return liveouts_; }
 
   // Return the previous live values.
-  const DenseSet<Value>& get_previous() const { return prev_liveouts_; }
+  const SetVector<Value>& get_previous() const { return prev_liveouts_; }
 
  private:
-  DenseSet<Value> liveouts_;
-  DenseSet<Value> prev_liveouts_;
+  // Use SerVector to ensure deterministic traversal order.
+  SetVector<Value> liveouts_;
+  SetVector<Value> prev_liveouts_;
 };
 
 // Creates the tf.XlaCallModuleOp from attributes.
-void CreateXlaCallModuleOp(ArrayRef<Value> inputs, ArrayRef<Value> outputs,
-                           ArrayRef<Type> result_types,
+void CreateXlaCallModuleOp(ValueRange inputs, ValueRange outputs,
+                           TypeRange result_types,
                            ArrayRef<Operation*> reverse_subgraph,
                            func::FuncOp stablehlo_func_op, ModuleOp module_op) {
   MLIRContext* ctx = module_op.getContext();
@@ -163,19 +176,26 @@ void CreateXlaCallModuleOp(ArrayRef<Value> inputs, ArrayRef<Value> outputs,
         tf_type::ShapeAttr::get(ctx, result_type.cast<ShapedType>()));
   }
   auto empty_array_attr = ArrayAttr::get(ctx, {});
-  // TODO - b/303363466: Allow XlaCallModuleOp with versions >5.
+  // TODO - b/310291615: Support platforms = ["TPU"].
+  auto platforms = ArrayAttr::get(ctx, {StringAttr::get(ctx, kPlatformCpu)});
+
   auto xla_call_module_op = builder.create<TF::XlaCallModuleOp>(
       module_op.getLoc(), /*output=*/result_types,
       /*args=*/inputs,
-      /*version=*/5, /*module=*/"",
+      /*version=*/kDefaultVersion, /*module=*/"",
       /*Sout=*/ArrayAttr::get(ctx, shape_attrs),
-      /*dim_args_spec=*/empty_array_attr,
-      /*platforms=*/empty_array_attr,
+      /*dim_args_spec=*/empty_array_attr, platforms,
       /*function_list=*/empty_array_attr,
       /*has_token_input_output=*/false,
       /*disabled_checks=*/empty_array_attr);
   xla_call_module_op->setAttr(TF::kStablehloEntryFunctionAttrName,
                               SymbolRefAttr::get(stablehlo_func_op));
+  // Set jax.uses_shape_polymorphism=true to enable shape refinement at runtime.
+  // This is needed for native serialization version >= 8.
+  xla_call_module_op->setAttr(
+      kStablehloModuleAttrsAttrName,
+      builder.getDictionaryAttr(builder.getNamedAttr(
+          kUsesShapePolymorphismAttr, builder.getBoolAttr(true))));
 
   for (auto [original_output_value, xla_call_module_op_result_value] :
        llvm::zip_equal(outputs, xla_call_module_op->getResults())) {
@@ -251,18 +271,18 @@ void ReplaceStablehloOpsWithXlaCallModuleOp(
 // Contains the actual logic for updating states and replacing StableHLO ops
 // with tf.XlaCallModuleOps.
 void UpdateStatesAndReplaceStablehloOps(
-    const DenseSet<Value>& operands, const DenseSet<Value>& defined_values,
+    const SetVector<Value>& operands, const SetVector<Value>& defined_values,
     const LiveOuts& liveouts, ModuleOp module_op,
     ArrayRef<Operation*> reverse_subgraph, const int stablehlo_func_id,
     func::FuncOp main_func, const bool is_last_subgraph = false) {
-  DenseSet<Value> inputs = operands;
+  SetVector<Value> inputs = operands;
   for (Value defined_value : defined_values) {
-    inputs.erase(defined_value);
+    inputs.remove(defined_value);
   }
 
-  DenseSet<Value> outputs = liveouts.get_previous();
+  SetVector<Value> outputs = liveouts.get_previous();
   for (Value live_value : liveouts.get()) {
-    outputs.erase(live_value);
+    outputs.remove(live_value);
   }
 
   if (is_last_subgraph) {
@@ -270,7 +290,7 @@ void UpdateStatesAndReplaceStablehloOps(
     // throughout (functions as an invisible op above the very first op that
     // returns the arguments).
     for (const BlockArgument arg : main_func.getArguments()) {
-      outputs.erase(arg);
+      outputs.remove(arg);
     }
   }
 
@@ -298,20 +318,65 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(
   // statement is not included in any subgraph (e.g. XlaCallModuleOp) and is
   // untouched.
   SmallVector<Operation*> reverse_main_func_block_ops;
+  SetVector<Operation*> ops_to_add;
   for (Operation& main_func_block_op :
        llvm::reverse(main_func_block.without_terminator())) {
     reverse_main_func_block_ops.push_back(&main_func_block_op);
+    ops_to_add.insert(&main_func_block_op);
   }
 
   // Create a separate subgraph invoked with XlaCallModuleOp per each
   // set of StableHLO ops in the main func block.
   SmallVector<Operation*> reverse_subgraph;
-  DenseSet<Value> operands;
-  DenseSet<Value> defined_values;
+  SetVector<Value> operands;
+  SetVector<Value> defined_values;
+
+  // Add op to the subgraph.
+  auto add_to_subgraph = [&](Operation* op) {
+    // Move on to the parent ops.
+    liveouts.update(*op);
+    ops_to_add.remove(op);
+
+    if (!IsStablehloOp(op)) {
+      // Always update the liveouts when the subgraph isn't being continued.
+      liveouts.snapshot_previous_state();
+      return;
+    }
+
+    reverse_subgraph.push_back(op);
+    defined_values.insert(op->getResults().begin(), op->getResults().end());
+    operands.insert(op->getOperands().begin(), op->getOperands().end());
+  };
 
   int stablehlo_func_id = -1;
   for (Operation* op : reverse_main_func_block_ops) {
+    if (!ops_to_add.contains(op)) continue;
+    // When hitting a non-StableHLO op, i.e. tf.CustomAggregatorOp, start
+    // recursively tracing defining ops of the current subgraph's operands. This
+    // makes sure that all dependencies needed for shape inference are included
+    // in the subgraph. Tracing stops when hitting a non-StableHLO ops or an op
+    // with multiple uses. In case of the latter scenario, we have to stop
+    // because otherwise other users of the op will become dangling references.
+    // TODO: b/311239049 - Consider rewrite this using BFS.
     if (!IsStablehloOp(op)) {
+      bool should_add_op = true;
+      while (should_add_op) {
+        should_add_op = false;
+        Operation* defining_op = nullptr;
+        for (Value v : operands) {
+          if (defined_values.contains(v)) continue;
+          // Check if op has branch and skip if so.
+          if (v.getDefiningOp() && IsStablehloOp(v.getDefiningOp()) &&
+              v.getDefiningOp()->hasOneUse()) {
+            defining_op = v.getDefiningOp();
+            should_add_op = true;
+            break;
+          }
+        }
+        if (should_add_op) {
+          add_to_subgraph(defining_op);
+        }
+      }
       // Create an XlaCallModuleOp if reverse_subgraph isn't empty.
       if (!reverse_subgraph.empty()) {
         UpdateStatesAndReplaceStablehloOps(operands, defined_values, liveouts,
@@ -324,20 +389,7 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(
         defined_values.clear();
       }
     }
-
-    // Move on to the parent ops.
-    liveouts.update(*op);
-
-    if (!IsStablehloOp(op)) {
-      // Always update the liveouts when the subgraph isn't being continued.
-      liveouts.snapshot_previous_state();
-      continue;
-    }
-
-    reverse_subgraph.push_back(op);
-
-    defined_values.insert(op->getResults().begin(), op->getResults().end());
-    operands.insert(op->getOperands().begin(), op->getOperands().end());
+    add_to_subgraph(op);
   }
 
   // Create the last subgraph if it isn't empty.
@@ -348,6 +400,37 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(
   }
 }
 
+// Duplicate small constants for each use.
+//
+// In the subsequent graph partitioning, constants for shape inference need to
+// be in the same subgraph. But graph partitioning stops at ops with multiple
+// uses. So here we duplicate small constants for each use so that if a
+// constant is useful for shape inference for multiple subgraphs, they can be
+// included in each subgraphs. If duplicate constants are accidentally created
+// in the same subgraph, they can be easily removed with a canonicalizer pass.
+//
+// We set a size limit since constants needed for shape inference are no
+// larger than tensor rank. This avoids duplicating large constants.
+void DuplicateSmallConstantOps(ModuleOp module_op, func::FuncOp main_func) {
+  OpBuilder builder(main_func.getContext());
+  for (auto constant_op :
+       main_func.getBody().getOps<mlir::stablehlo::ConstantOp>()) {
+    builder.setInsertionPointAfter(constant_op);
+    if (constant_op.getResult().use_empty() ||
+        constant_op.getResult().hasOneUse())
+      continue;
+    // Do not duplicate constant op if the size is too large.
+    // 32 is chosen to be larger than all constants useful for shape references,
+    // while not too large to possibly significantly increase model size.
+    if (constant_op.getValue().getNumElements() > 32) continue;
+    while (!constant_op.getResult().hasOneUse()) {
+      auto new_constant_op = builder.clone(*constant_op.getOperation());
+      constant_op.getResult().getUses().begin()->assign(
+          dyn_cast<mlir::stablehlo::ConstantOp>(new_constant_op));
+    }
+  }
+}
+
 void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass::
     runOnOperation() {
   ModuleOp module_op = getOperation();
@@ -355,14 +438,15 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass::
   func::FuncOp main_func = GetMainFunc(module_op);
   if (!main_func) return;
 
+  DuplicateSmallConstantOps(module_op, main_func);
   ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(module_op, main_func);
 
   // TODO - b/298966126: Currently quantizable functions are identified in TF
-  // Quantizer via the tf_quant.composite_function UnitAttr attached to func
-  // ops. We remove this attribute as this interferes with VHLO conversion.
+  // Quantizer via the tf_quant.composite_function UnitAttr attached to
+  // func ops. We remove this attribute as this interferes with VHLO conversion.
   // Remove this temporary hack.
   for (auto func_op : module_op.getOps<func::FuncOp>()) {
-    func_op->removeAttr(kQuantizeTargetOpAttr);
+    func_op->removeAttr(kFusedFunctionAttr);
   }
 }
 

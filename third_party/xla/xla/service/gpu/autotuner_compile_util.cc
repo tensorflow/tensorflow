@@ -105,8 +105,19 @@ AutotunerCompileUtil::ProfileExecutable(
         ExecutionInputsFromBuffers(input_buffers, input_shapes);
     // Warmup: in and out buffers are reused while probing different configs,
     // so GPU caches should be in some comparable states during measurements.
-    TF_ASSIGN_OR_RETURN(ExecutionOutput execution_output,
-                        Execute(*executable, std::move(execution_inputs)));
+    StatusOr<ExecutionOutput> execution_output =
+        Execute(*executable, std::move(execution_inputs));
+    if (!execution_output.ok()) {
+      // Treat register allocation error gracefully. If the compilation happens
+      // with the driver during execution then the error could surface here.
+      // It's enough to check this once here.
+      if (execution_output.status().code() ==
+          absl::StatusCode::kResourceExhausted) {
+        return {std::nullopt};
+      }
+      return execution_output.status();
+    }
+
     TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   }
   std::vector<ExecutionInput> execution_inputs =
@@ -125,7 +136,7 @@ StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::Compile(
     GenerateModuleFn extractor) {
   StatusOr<std::unique_ptr<HloModule>> new_hlo_module = extractor(opts_);
   if (new_hlo_module.status().GetPayload(kUncompilableFusion).has_value()) {
-    // Incompatible value of split-k is an expected failure.
+    // Incompatible value of split-k is an example of an expected failure.
     return std::unique_ptr<Executable>();
   } else if (!new_hlo_module.status().ok()) {
     return new_hlo_module.status();
@@ -138,7 +149,7 @@ StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::Compile(
                                /*is_autotuning_compilation=*/true});
   if (out.status().code() == absl::StatusCode::kResourceExhausted ||
       out.status().code() == absl::StatusCode::kCancelled) {
-    // Being out of shared memory budget is an expected failure.
+    // Being out of shared memory budget or registers is an expected failure.
     // Cancelling upon register spilling is also an expected failure.
     return std::unique_ptr<Executable>();
   }

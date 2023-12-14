@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/split_provider.h"
 #include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/platform/status.h"
 #include "tsl/lib/io/compression.h"
 #include "tsl/platform/env.h"
@@ -99,7 +100,7 @@ absl::Status SnapshotManager::Start(const SnapshotRequest& request)
   }
   tsl::mutex_lock l(mu_);
   TF_ASSIGN_OR_RETURN(sources_, CreateSources(request.dataset()));
-  TF_ASSIGN_OR_RETURN(num_total_splits_, CountSplits());
+  TF_ASSIGN_OR_RETURN(num_total_splits_, GetSplitsCardinality());
   TF_RETURN_IF_ERROR(WriteOnDiskSkeleton());
   TF_RETURN_IF_ERROR(WriteOnDiskMetadata(request));
   metadata_ = request.metadata();
@@ -118,6 +119,31 @@ SnapshotManager::CreateSources(const DatasetDef& dataset_def) const
     sources.push_back({std::move(split_provider), /*repetition_index=*/0});
   }
   return sources;
+}
+
+absl::StatusOr<int64_t> SnapshotManager::GetSplitsCardinality()
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  if (ShouldCountSplits()) {
+    return CountSplits();
+  }
+
+  int64_t num_splits = 0;
+  for (const auto& source : sources_) {
+    if (source.split_provider->Cardinality() > 0) {
+      num_splits += source.split_provider->Cardinality();
+    }
+  }
+  return num_splits;
+}
+
+bool SnapshotManager::ShouldCountSplits() const
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  for (const auto& source : sources_) {
+    if (source.split_provider->Cardinality() == kUnknownCardinality) {
+      return true;
+    }
+  }
+  return false;
 }
 
 absl::StatusOr<int64_t> SnapshotManager::CountSplits()
@@ -210,7 +236,7 @@ absl::Status SnapshotManager::ReadOnDiskMetadata()
       ReadBinaryProto(env_, DatasetDefFilePath(path_), &dataset_def));
 
   TF_ASSIGN_OR_RETURN(sources_, CreateSources(dataset_def));
-  TF_ASSIGN_OR_RETURN(num_total_splits_, CountSplits());
+  TF_ASSIGN_OR_RETURN(num_total_splits_, GetSplitsCardinality());
   return absl::OkStatus();
 }
 

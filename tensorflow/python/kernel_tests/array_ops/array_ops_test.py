@@ -47,6 +47,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import tensor_getitem_override
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
@@ -688,7 +689,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       s = array_ops.strided_slice(x, begin, end, strides)
       self.assertAllEqual([3.], self.evaluate(s))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   @test_util.assert_no_garbage_created
   def testTensorSliceEagerMemory(self):
     with context.eager_mode():
@@ -697,7 +698,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       # Tests that slicing an EagerTensor doesn't leak memory
       inputs[0]  # pylint: disable=pointless-statement
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   @test_util.assert_no_garbage_created
   def testVariableSliceEagerMemory(self):
     if sys.version_info.major == 3 and sys.version_info.minor in (11, 12):
@@ -788,7 +789,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
   def testTensorIndexingTypeError(self):
     with self.session():
       checker = StridedSliceChecker(self, StridedSliceChecker.REF_TENSOR)
-      expected = re.escape(array_ops._SLICE_TYPE_ERROR)
+      expected = re.escape(tensor_getitem_override._SLICE_TYPE_ERROR)
       with self.assertRaisesRegex(TypeError, expected):
         _ = checker["foo"]
       with self.assertRaisesRegex(TypeError, expected):

@@ -249,7 +249,8 @@ class CAsyncOpKernel : public AsyncOpKernel {
     n.WaitForNotification();
   }
 
-  void ComputeAsync(OpKernelContext* ctx, AsyncOpKernelDoneCallback done) {
+  void ComputeAsync(OpKernelContext* ctx,
+                    AsyncOpKernelDoneCallback done) override {
     (*compute_async_func_)(
         c_kernel_, reinterpret_cast<TF_OpKernelContext*>(ctx),
         reinterpret_cast<TF_AsyncOpKernelDoneCallback*>(&done));

@@ -454,6 +454,7 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:uniform_quantized_types",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
@@ -523,7 +524,6 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:custom_call",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:dot_general",
-        "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:pad",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:util",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//mlir:ArithDialect",

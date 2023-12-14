@@ -91,6 +91,7 @@ py_strict_test(
     deps = [
         ":converter",
         ":test_lib",
+        #internal proto upb dep
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:loader",
         "//tensorflow/python/autograph/pyct:parser",
@@ -107,6 +108,7 @@ py_strict_test(
     deps = [
         ":converter",
         ":function_wrappers",
+        #internal proto upb dep
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/ops:variables",

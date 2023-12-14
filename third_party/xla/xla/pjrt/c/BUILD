@@ -82,6 +82,7 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -110,6 +111,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
+        "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -134,7 +136,7 @@ cc_library(
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_wrapper_impl",
         "//xla/pjrt:pjrt_client",
-        "//xla/pjrt:tfrt_cpu_pjrt_client",
+        "//xla/pjrt/cpu:cpu_client",
     ],
 )
 
@@ -223,12 +225,16 @@ cc_library(
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
         "//xla:shape_util",
+        "//xla/client:executable_build_options",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
+        "//xla/service:computation_placer_hdr",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 

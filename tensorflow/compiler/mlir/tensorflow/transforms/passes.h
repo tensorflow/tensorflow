@@ -458,15 +458,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateParallelExecuteToIslandsPass(
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateAnnotateParameterReplicationPass();
 
-// Creates a pass that marks unsupported ops in device cluster for outside
-// compilation.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateMarkOpsForOutsideCompilationPass();
-
-// Creates a pass that extract outside compilation (Host ops inside cevice
-// cluster) ops to a separate parallel_execute region to run on CPU.
-std::unique_ptr<OperationPass<ModuleOp>> CreateExtractOutsideCompilationPass();
-
 // Creates a pass that merges control flow with similar predicates.
 std::unique_ptr<OperationPass<ModuleOp>> CreateMergeControlFlowPass();
 
@@ -481,23 +472,10 @@ CreateDeviceAttributeToLaunchPass();
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLaunchToDeviceAttributePass(
     bool legacy_graph_export = true);
 
-// Creates a pass that extracts ops in tf_device.launch op with host device
-// assignment and adds an `_xla_outside_compilation` attribute value.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateHostLaunchToOutsideCompiledPass();
-
-// Creates a pass that wraps ops with the same `_xla_outside_compilation`
-// attribute value in a tf_device.launch op with host device assignment.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateOutsideCompiledToHostLaunchPass();
-
 // Creates a pass to ensure that the `_xla_outside_compilation` and
 // tf_device.launch op no longer exist after Outside Compilation is complete.
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateVerifyNoOutsideCompilationMarkersPass();
-
-// Create a pass that encapsulates StatefulPartitionedCallOp within a cluster.
-std::unique_ptr<OperationPass<ModuleOp>> CreateXlaClusterFormationPass();
 
 // Create a pass that inlines the StatefulPartitionedCallOp op based in the
 // parent region.
@@ -677,7 +655,6 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_LOCALIZEVARHANDLESPASS
 #define GEN_PASS_DECL_LOWERQUANTIZEDPASS
 #define GEN_PASS_DECL_MARKINPUTOUTPUTALIASESPASS
-#define GEN_PASS_DECL_MARKOPSFOROUTSIDECOMPILATIONPASS
 #define GEN_PASS_DECL_MATERIALIZEPASSTHROUGHOP
 #define GEN_PASS_DECL_MERGECONTROLFLOWPASS
 #define GEN_PASS_DECL_MOVETRANSPOSESPASS
@@ -706,7 +683,6 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_TPUCOLOCATECOMPOSITERESOURCEOPSPASS
 #define GEN_PASS_DECL_TPUDEVICEPROPAGATIONPASS
 #define GEN_PASS_DECL_TPUDYNAMICLAYOUTPASS
-#define GEN_PASS_DECL_TPUEXTRACTOUTSIDECOMPILATIONPASS
 #define GEN_PASS_DECL_TPUHOSTCOMPUTATIONEXPANSIONPASS
 #define GEN_PASS_DECL_TPUIDENTITYPRUNINGPASS
 #define GEN_PASS_DECL_TPUMERGEVARIABLESWITHEXECUTEPASS

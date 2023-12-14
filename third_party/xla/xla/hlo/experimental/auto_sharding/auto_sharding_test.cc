@@ -172,6 +172,61 @@ ENTRY %elementwise {
   EXPECT_THAT(instruction, op::Sharding("{devices=[2,2]0,2,1,3}"));
 }
 
+TEST_F(AutoShardingTest, RngBitGeneratorArrayInput) {
+  const char* const hlo_string = R"(
+HloModule rng_bit_generator
+
+ENTRY %RngBitGenerator (p0: u64[2]) -> (u64[2], u32[16,16]) {
+  %p0 = u64[2]{0} parameter(0)
+  ROOT %rand = (u64[2]{0}, u32[16,16]{1,0}) rng-bit-generator(u64[2]{0} %p0), algorithm=rng_three_fry
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  option.device_mesh_ids = {0, 1, 2, 3};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {1.0, 1.0};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(10) << module->ToString();
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "p0");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{replicated}"));
+}
+
+TEST_F(AutoShardingTest, RngBitGeneratorTupleInput) {
+  const char* const hlo_string = R"(
+HloModule rng_bit_generator
+
+ENTRY %RngBitGenerator {
+  param.0 = u32[2]{0:T(128)} parameter(0)
+  param.1 = u32[2]{0:T(128)} parameter(1)
+  tuple.3 = (u32[2]{0:T(128)}, u32[2]{0:T(128)}) tuple(param.0, param.1)
+  ROOT rng-bit-generator = u32[100,100]{1,0:T(8,128)} rng-bit-generator(tuple.3), algorithm=rng_default
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  option.device_mesh_ids = {0, 1, 2, 3};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(10) << module->ToString();
+  EXPECT_TRUE(changed);
+  auto* param0 = FindInstruction(module.get(), "param.0");
+  auto* param1 = FindInstruction(module.get(), "param.1");
+  ASSERT_NE(param0, nullptr);
+  ASSERT_NE(param0, nullptr);
+  EXPECT_THAT(param0, op::Sharding("{replicated}"));
+  EXPECT_THAT(param1, op::Sharding("{replicated}"));
+}
+
 TEST_F(AutoShardingTest, DotLHSTwoNonContractingDims) {
   const char* const hlo_string = R"(
 HloModule module
@@ -665,7 +720,9 @@ ENTRY %Scatter {
   EXPECT_THAT(scatter, AnyOf(op::Sharding("{devices=[2,2,1]0,2,1,3}"),
                              op::Sharding("{devices=[2,2,1]0,1,2,3}"),
                              op::Sharding("{devices=[2,1,2]0,2,1,3}"),
-                             op::Sharding("{devices=[2,1,2]0,1,2,3}")));
+                             op::Sharding("{devices=[2,1,2]0,1,2,3}"),
+                             op::Sharding("{devices=[1,2,2]0,1,2,3}"),
+                             op::Sharding("{devices=[1,2,2]0,2,1,3}")));
   auto scatter_sharding = scatter->sharding();
   TF_EXPECT_OK(scatter_sharding.Validate(scatter->shape(), 4));
 }
@@ -1502,6 +1559,32 @@ ENTRY %entry {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
+}
+
+TEST_F(AutoShardingTest, ReshapeWithInvalidUserSharding) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param.0 = bf16[24,16,16]{2,1,0} parameter(0), sharding={devices=[32,1,1]<=[32]}
+  %reshape = bf16[1,24,16,16]{3,2,1,0} reshape(%param.0)
+  %copy = bf16[1,24,16,16]{3,2,1,0} copy(%reshape)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {32, 1};
+  option.device_mesh_ids.resize(32);
+  std::iota(option.device_mesh_ids.begin(), option.device_mesh_ids.end(), 0);
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+  HloInstruction* reshape = FindInstruction(module.get(), "reshape");
+  EXPECT_THAT(reshape, op::Sharding("{devices=[1,32,1,1]<=[32]}"));
 }
 
 TEST_F(AutoShardingTest, Broadcast) {

@@ -52,5 +52,6 @@ PYBIND11_MODULE(flags_pybind, m) {
   TF_PY_DECLARE_FLAG(tf_shape_default_int64);
   TF_PY_DECLARE_FLAG(more_stack_traces);
   TF_PY_DECLARE_FLAG(publish_function_graphs);
+  TF_PY_DECLARE_FLAG(enable_aggressive_constant_replication);
   // LINT.ThenChange(//tensorflow/core/config/flag_defs.h)
 };

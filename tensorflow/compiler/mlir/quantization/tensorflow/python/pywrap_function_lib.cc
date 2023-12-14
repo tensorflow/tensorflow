@@ -12,15 +12,33 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <string>
+#include <unordered_set>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/detail/common.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/min_max_value.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/python/type_casters.h"
-#include "tensorflow/python/lib/core/pybind11_lib.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/type_casters.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
+
+namespace py = ::pybind11;
 
 namespace {
 
+using ::stablehlo::quantization::MinMaxValue;
+using ::tensorflow::SignatureDef;
+using ::tensorflow::calibrator::CalibrationStatistics;
+using ::tensorflow::quantization::CalibrationOptions;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PyFunctionLibrary;
 
@@ -33,10 +51,35 @@ class PyFunctionLibraryTrampoline : public PyFunctionLibrary {
  public:
   using PyFunctionLibrary::PyFunctionLibrary;
 
-  ExportedModel AssignIdsToCustomAggregatorOps(
-      const ExportedModel& exported_model) const override {
-    PYBIND11_OVERRIDE_PURE(ExportedModel, PyFunctionLibrary,
-                           assign_ids_to_custom_aggregator_ops, exported_model);
+  void SaveExportedModel(const absl::string_view dst_saved_model_path,
+                         const ExportedModel& exported_model,
+                         const absl::string_view src_saved_model_path,
+                         const std::unordered_set<std::string>& tags,
+                         const absl::flat_hash_map<std::string, SignatureDef>&
+                             signature_def_map) const override {
+    PYBIND11_OVERRIDE_PURE(void, PyFunctionLibrary, save_exported_model,
+                           dst_saved_model_path, exported_model,
+                           src_saved_model_path, tags, signature_def_map);
+  }
+
+  void RunCalibration(const absl::string_view saved_model_path,
+                      const std::vector<std::string>& signature_keys,
+                      const std::unordered_set<std::string>& tags,
+                      const CalibrationOptions& calibration_options,
+                      const bool force_graph_mode_calibration,
+                      const py::object representative_dataset) const override {
+    PYBIND11_OVERRIDE_PURE(void, PyFunctionLibrary, run_calibration,
+                           saved_model_path, signature_keys, tags,
+                           calibration_options, force_graph_mode_calibration,
+                           representative_dataset);
+  }
+
+  MinMaxValue GetCalibrationMinMaxValue(
+      const CalibrationStatistics& calibration_statistics,
+      const CalibrationOptions& calibration_options) const override {
+    PYBIND11_OVERRIDE_PURE(MinMaxValue, PyFunctionLibrary,
+                           get_calibration_min_max_value,
+                           calibration_statistics, calibration_options);
   }
 };
 
@@ -46,6 +89,18 @@ PYBIND11_MODULE(pywrap_function_lib, m) {
   py::class_<PyFunctionLibrary, PyFunctionLibraryTrampoline>(
       m, "PyFunctionLibrary")
       .def(py::init<>())
-      .def("assign_ids_to_custom_aggregator_ops",
-           &PyFunctionLibrary::AssignIdsToCustomAggregatorOps);
+      .def("save_exported_model", &PyFunctionLibrary::SaveExportedModel,
+           py::arg("dst_saved_model_path"),
+           py::arg("exported_model_serialized"),
+           py::arg("src_saved_model_path"), py::arg("tags"),
+           py::arg("serialized_signature_def_map"))
+      .def("run_calibration", &PyFunctionLibrary::RunCalibration,
+           py::arg("saved_model_path"), py::arg("signature_keys"),
+           py::arg("tags"), py::arg("calibration_options_serialized"),
+           py::arg("force_graph_mode_calibration"),
+           py::arg("representative_dataset"))
+      .def("get_calibration_min_max_value",
+           &PyFunctionLibrary::GetCalibrationMinMaxValue,
+           py::arg("calibration_statistics_serialized"),
+           py::arg("calibration_options_serialized"));
 }

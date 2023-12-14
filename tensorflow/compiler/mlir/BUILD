@@ -61,6 +61,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:lower_cluster_to_runtime_ops",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
         "//tensorflow/compiler/mlir/tf2xla/internal/passes:clustering_passes",
+        "//tensorflow/compiler/mlir/tf2xla/internal/passes:mlir_to_graph_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:tf_xla_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf",
         "//tensorflow/compiler/mlir/tosa:tf_passes",

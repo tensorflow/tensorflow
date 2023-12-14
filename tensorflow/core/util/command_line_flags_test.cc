@@ -43,6 +43,7 @@ TEST(CommandLineFlagsTest, BasicUsage) {
   bool some_switch_set_directly = false;
   bool some_switch_set_via_hook = true;
   bool some_switch_set_capitalized = false;
+  bool some_switch_set_by_number = false;
   string some_name_set_directly = "something_a";
   string some_name_set_via_hook = "something_b";
   float some_float_set_directly = -23.23f;
@@ -55,6 +56,7 @@ TEST(CommandLineFlagsTest, BasicUsage) {
                                       "--some_switch_set_directly",
                                       "--some_switch_set_via_hook=false",
                                       "--some_switch_set_capitalized=True",
+                                      "--some_switch_set_by_number=1",
                                       "--some_name_set_directly=somethingelse",
                                       "--some_name_set_via_hook=anythingelse",
                                       "--some_float_set_directly=42.0",
@@ -93,6 +95,8 @@ TEST(CommandLineFlagsTest, BasicUsage) {
               some_switch_set_via_hook, "some switch set via hook"),
           Flag("some_switch_set_capitalized", &some_switch_set_capitalized,
                "some switch set capitalized"),
+          Flag("some_switch_set_by_number", &some_switch_set_by_number,
+               "some switch set by number"),
           Flag("some_name_set_directly", &some_name_set_directly,
                "some name set directly"),
           Flag(
@@ -121,6 +125,7 @@ TEST(CommandLineFlagsTest, BasicUsage) {
   EXPECT_EQ(true, some_switch_set_directly);
   EXPECT_EQ(false, some_switch_set_via_hook);
   EXPECT_EQ(true, some_switch_set_capitalized);
+  EXPECT_EQ(true, some_switch_set_by_number);
   EXPECT_EQ("somethingelse", some_name_set_directly);
   EXPECT_EQ("anythingelse", some_name_set_via_hook);
   EXPECT_NEAR(42.0f, some_float_set_directly, 1e-5f);

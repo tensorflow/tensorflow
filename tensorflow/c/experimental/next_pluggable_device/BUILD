@@ -16,7 +16,7 @@ cc_library(
         "//tensorflow/c:c_api_macros_hdrs",
         "//tensorflow/c:kernels_experimental_hdrs",
         "//tensorflow/c:kernels_hdrs",
-        "//tensorflow/c:tf_buffer_internal",
+        "//tensorflow/c:tf_buffer",
         "//tensorflow/c:tf_status_internal",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/compiler/jit:variable_info",

@@ -35,8 +35,9 @@ namespace xla {
 
 class TestFloatSupport : public FloatSupport {
  public:
-  explicit TestFloatSupport(PrimitiveType low_precision_type)
-      : FloatSupport(low_precision_type) {}
+  explicit TestFloatSupport(PrimitiveType low_precision_type,
+                            PrimitiveType high_precision_type)
+      : FloatSupport(low_precision_type, high_precision_type) {}
   ~TestFloatSupport() override = default;
 
   bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
@@ -80,8 +81,9 @@ class TestFloatSupport : public FloatSupport {
 // but supports some collectives.
 class TestFloatNoComputeSupport : public FloatSupport {
  public:
-  explicit TestFloatNoComputeSupport(PrimitiveType low_precision_type)
-      : FloatSupport(low_precision_type) {}
+  explicit TestFloatNoComputeSupport(PrimitiveType low_precision_type,
+                                     PrimitiveType high_precision_type)
+      : FloatSupport(low_precision_type, high_precision_type) {}
   ~TestFloatNoComputeSupport() override = default;
 
   bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
@@ -114,8 +116,9 @@ class FloatNormalizationTest : public HloTestBase {
       : HloTestBase(/*verifier_layout_sensitive=*/false,
                     /*allow_mixed_precision_in_hlo_verifier=*/true) {}
 
-  bool Normalize(HloModule* module, PrimitiveType low_precision_type = BF16) {
-    TestFloatSupport float_support(low_precision_type);
+  bool Normalize(HloModule* module, PrimitiveType low_precision_type = BF16,
+                 PrimitiveType high_precision_type = F32) {
+    TestFloatSupport float_support(low_precision_type, high_precision_type);
     FloatNormalization normalization(&float_support);
     StatusOr<bool> result = normalization.Run(module);
     EXPECT_IS_OK(result.status());
@@ -508,7 +511,7 @@ TEST_F(FloatNormalizationTest, ResolveIfUnsupportedF8e5m2) {
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(Normalize(module.get(), F8E5M2));
+  EXPECT_TRUE(Normalize(module.get(), F8E5M2, F16));
 
   EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kConvert);
   EXPECT_EQ(computation->root_instruction()->operand(0), mul1);
@@ -519,8 +522,10 @@ TEST_F(FloatNormalizationTest, ResolveIfUnsupportedF8e5m2) {
 
 class FloatNormalizationNoComputeSupportTest : public FloatNormalizationTest {
  protected:
-  bool Normalize(HloModule* module, PrimitiveType low_precision_type = BF16) {
-    TestFloatNoComputeSupport float_support(low_precision_type);
+  bool Normalize(HloModule* module, PrimitiveType low_precision_type = BF16,
+                 PrimitiveType high_precision_type = F32) {
+    TestFloatNoComputeSupport float_support(low_precision_type,
+                                            high_precision_type);
     FloatNormalization normalization(&float_support);
 
     StatusOr<bool> result = normalization.Run(module);

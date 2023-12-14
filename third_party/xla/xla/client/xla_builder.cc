@@ -937,9 +937,15 @@ StatusOr<XlaOp> XlaBuilder::AddBroadcastSequence(const Shape& output_shape,
                            reshaped_dynamic_dimensions);
 
   // Eliminate the size one dimensions.
-  TF_ASSIGN_OR_RETURN(
-      XlaOp reshaped_operand,
-      ReshapeInternal(reshaped_shape, operand, /*inferred_dimension=*/-1));
+  // The added reshape reduces the rank of the tensor. Hence we cannot directly
+  // apply the broadcast's sharding on reshape.
+  XlaOp reshaped_operand;
+  {
+    XlaScopedShardingAssignment scoped_sharding(this, std::nullopt);
+    TF_ASSIGN_OR_RETURN(
+        reshaped_operand,
+        ReshapeInternal(reshaped_shape, operand, /*inferred_dimension=*/-1));
+  }
   // Broadcast 'reshape' up to the larger size.
   return InDimBroadcast(broadcast_shape, reshaped_operand,
                         broadcast_dimensions);
@@ -1002,15 +1008,18 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
 
     TF_ASSIGN_OR_RETURN(const Shape* updated_lhs_shape,
                         GetShapePtr(updated_lhs));
-    if (!ShapeUtil::SameDimensions(shape, *updated_lhs_shape)) {
-      TF_ASSIGN_OR_RETURN(updated_lhs,
-                          AddBroadcastSequence(shape, updated_lhs));
-    }
     TF_ASSIGN_OR_RETURN(const Shape* updated_rhs_shape,
                         GetShapePtr(updated_rhs));
-    if (!ShapeUtil::SameDimensions(shape, *updated_rhs_shape)) {
-      TF_ASSIGN_OR_RETURN(updated_rhs,
-                          AddBroadcastSequence(shape, updated_rhs));
+    if (!updated_lhs_shape->is_unbounded_dynamic() &&
+        !updated_rhs_shape->is_unbounded_dynamic()) {
+      if (!ShapeUtil::SameDimensions(shape, *updated_lhs_shape)) {
+        TF_ASSIGN_OR_RETURN(updated_lhs,
+                            AddBroadcastSequence(shape, updated_lhs));
+      }
+      if (!ShapeUtil::SameDimensions(shape, *updated_rhs_shape)) {
+        TF_ASSIGN_OR_RETURN(updated_rhs,
+                            AddBroadcastSequence(shape, updated_rhs));
+      }
     }
 
     if (binop == HloOpcode::kCompare) {
@@ -2495,6 +2504,25 @@ StatusOr<XlaOp> XlaBuilder::SortInternal(const Shape& shape,
   return AddInstruction(std::move(instr), HloOpcode::kSort, operands);
 }
 
+XlaOp XlaBuilder::TopK(XlaOp operand, int64_t k, bool largest) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    std::vector<const Shape*> operand_shape_ptrs;
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        ShapeInference::InferTopKShape(*operand_shape, k));
+    return TopKInternal(shape, operand, k, largest);
+  });
+}
+
+StatusOr<XlaOp> XlaBuilder::TopKInternal(const Shape& shape, XlaOp operand,
+                                         int64_t k, bool largest) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  instr.set_k(k);
+  instr.set_largest(largest);
+  return AddInstruction(std::move(instr), HloOpcode::kTopK, {operand});
+}
+
 XlaOp XlaBuilder::ConvertElementType(XlaOp operand,
                                      PrimitiveType new_element_type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -3910,7 +3938,6 @@ XlaOp XlaBuilder::GetDimensionSize(XlaOp operand, int64_t dimension) {
 
 XlaOp XlaBuilder::RemoveDynamicDimension(XlaOp operand, int64_t dimension) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
 
     Shape shape = *operand_shape;
@@ -5208,6 +5235,10 @@ XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
            int64_t dimension, bool is_stable) {
   return operands[0].builder()->Sort(operands, comparator, dimension,
                                      is_stable);
+}
+
+XlaOp TopK(XlaOp operand, int64_t k, bool largest) {
+  return operand.builder()->TopK(operand, k, largest);
 }
 
 XlaOp Clamp(const XlaOp min, const XlaOp operand, const XlaOp max) {

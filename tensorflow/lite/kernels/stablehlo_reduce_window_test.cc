@@ -19,6 +19,7 @@ limitations under the License.
 #include <initializer_list>
 #include <limits>
 #include <ostream>
+#include <type_traits>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -688,10 +689,17 @@ std::vector<T> RandomVector(absl::BitGen& bitgen, size_t size, T min, T max) {
 }
 
 struct Body {
-  static Body GetRandomSupported(absl::BitGen& bitgen) {
-    return Body{/*.body=*/static_cast<BodyFunction>(absl::Uniform<int>(
+  static Body GetRandomSupported(absl::BitGen& bitgen, bool allow_mul) {
+    Body b;
+    b = Body{/*.body=*/static_cast<BodyFunction>(absl::Uniform<int>(
         absl::IntervalClosed, bitgen, static_cast<int>(BodyFunction::kAdd),
         static_cast<int>(BodyFunction::kAny)))};
+    // This skews the uniformity of the random generation in favor of add. We
+    // only need to ensure that all the cases are tested.
+    if (!allow_mul && b.func == BodyFunction::kMul) {
+      b.func = BodyFunction::kAdd;
+    }
+    return b;
   }
 
   template <class T>
@@ -746,7 +754,9 @@ TYPED_TEST(StablehloReduceWindowTest, FuzzyTest) {
     const int rank = absl::Uniform(absl::IntervalClosed, bitgen, 1, 3);
 
     ReduceWindowOpModel<TypeParam> model;
-    Body body = Body::GetRandomSupported(bitgen);
+    // To avoid reduction overflows, we only test mul with floating point types.
+    Body body = Body::GetRandomSupported(
+        bitgen, /*allow_mul=*/std::is_floating_point<TypeParam>::value);
     model.SetInput(
         /*shape=*/RandomVector<int64_t>(bitgen, rank, /*min=*/1, /*max=*/10),
         bitgen, /*min=*/-5, /*max=*/5);

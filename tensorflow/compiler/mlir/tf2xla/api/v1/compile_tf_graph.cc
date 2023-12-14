@@ -15,12 +15,21 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_tf_graph.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <variant>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "llvm/ADT/DenseMap.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -31,14 +40,30 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/compile_only_client.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/profile_utils/cpu_utils.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/tpu_compile.h"
+#include "tsl/lib/monitoring/sampler.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -165,10 +190,8 @@ Status PrepareAndExportToLibrary(mlir::ModuleOp module,
                                         flib_def);
 }
 
-}  // namespace
-
-tsl::Status CompileTensorflowGraphToHlo(
-    const std::variant<tpu::MlirToHloArgs, tpu::FunctionToHloArgs>& computation,
+tsl::Status CompileTFFunctionWithoutMlir(
+    FunctionToHloArgs function_computation,
     const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns
         shape_determination_funcs,
@@ -177,45 +200,40 @@ tsl::Status CompileTensorflowGraphToHlo(
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     xla::CompileOnlyClient* client,
     XlaCompiler::CompilationResult* compilation_result) {
-  LOG_FIRST_N(INFO, 1) << "Compiling MLIR computation to XLA HLO using the "
-                          "old (non-MLIR) tf2xla bridge";
-
-  *compilation_result = {};
-  bool has_mlir = computation.index() == 0;
-
-  std::string mlir_string = has_mlir ? "has_mlir" : "has_function_to_hlo";
-  const std::string kBridgePhase2Config =
-      absl::StrCat("graph_old_bridge_", mlir_string);
-  CompilationTimer timer;
-
-  if (!has_mlir) {
-    FunctionToHloArgs function_computation = std::get<1>(computation);
-    Status comp_status = CompileTFFunctionToHlo(
-        *function_computation.flib_def, function_computation.graph_def_version,
-        shape_determination_funcs, arg_shapes,
-        function_computation.guaranteed_constants,
-        *function_computation.function, metadata, client, arg_core_mapping,
-        per_core_arg_shapes, use_tuple_args, compilation_result);
-    if (comp_status.ok()) {
-      phase2_bridge_compilation_status->GetCell(kOldBridgeNoMlirSuccess)
-          ->IncrementBy(1);
-    } else {
-      phase2_bridge_compilation_status->GetCell(kOldBridgeNoMlirFailure)
-          ->IncrementBy(1);
-    }
-
-    phase2_bridge_compilation_time->GetCell(kBridgePhase2Config)
-        ->Add(timer.ElapsedCyclesInMilliseconds());
-    return comp_status;
+  Status comp_status = CompileTFFunctionToHlo(
+      *function_computation.flib_def, function_computation.graph_def_version,
+      shape_determination_funcs, arg_shapes,
+      function_computation.guaranteed_constants, *function_computation.function,
+      metadata, client, arg_core_mapping, per_core_arg_shapes, use_tuple_args,
+      compilation_result);
+  if (comp_status.ok()) {
+    phase2_bridge_compilation_status->GetCell(kOldBridgeNoMlirSuccess)
+        ->IncrementBy(1);
+  } else {
+    phase2_bridge_compilation_status->GetCell(kOldBridgeNoMlirFailure)
+        ->IncrementBy(1);
   }
 
+  return comp_status;
+}
+
+tsl::Status CompileMLIRTFFunction(
+    tpu::MlirToHloArgs mlir_computation,
+    const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
+    const XlaShapeLayoutHelpers::ShapeDeterminationFns
+        shape_determination_funcs,
+    const std::vector<tensorflow::TensorShape>& arg_shapes,
+    std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
+    std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
+    xla::CompileOnlyClient* client,
+    XlaCompiler::CompilationResult* compilation_result) {
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
   mlir::MLIRContext context(registry);
 
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module;
-  TF_RETURN_IF_ERROR(DeserializeMlirModule(std::get<0>(computation).mlir_module,
+  TF_RETURN_IF_ERROR(DeserializeMlirModule(mlir_computation.mlir_module,
                                            &context, &mlir_module));
   if (!mlir::SetTPUInfeedLayout(mlir_module))
     return errors::Internal("Failed to set layouts attribute");
@@ -256,11 +274,51 @@ tsl::Status CompileTensorflowGraphToHlo(
       consts, func, metadata, client, arg_core_mapping, per_core_arg_shapes,
       use_tuple_args, compilation_result));
 
+  return PopulateInputOutputAliasing(main_fn, compilation_result,
+                                     use_tuple_args);
+}
+
+}  // namespace
+
+tsl::Status CompileTensorflowGraphToHlo(
+    const std::variant<tpu::MlirToHloArgs, tpu::FunctionToHloArgs>& computation,
+    const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
+    const XlaShapeLayoutHelpers::ShapeDeterminationFns
+        shape_determination_funcs,
+    const std::vector<tensorflow::TensorShape>& arg_shapes,
+    std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
+    std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
+    xla::CompileOnlyClient* client,
+    XlaCompiler::CompilationResult* compilation_result) {
+  LOG_FIRST_N(INFO, 1) << "Compiling MLIR computation to XLA HLO using the "
+                          "old (non-MLIR) tf2xla bridge";
+
+  CompilationTimer timer;
+  *compilation_result = {};
+  bool has_mlir = computation.index() == 0;
+
+  std::string mlir_string = has_mlir ? "has_mlir" : "has_function_to_hlo";
+  const std::string kBridgePhase2Config =
+      absl::StrCat("graph_old_bridge_", mlir_string);
+
+  if (has_mlir) {
+    TF_RETURN_IF_ERROR(CompileMLIRTFFunction(
+        std::get<0>(computation), metadata, use_tuple_args,
+        shape_determination_funcs, arg_shapes, arg_core_mapping,
+        per_core_arg_shapes, client, compilation_result));
+
+  } else {
+    FunctionToHloArgs function_computation = std::get<1>(computation);
+    TF_RETURN_IF_ERROR(CompileTFFunctionWithoutMlir(
+        function_computation, metadata, use_tuple_args,
+        shape_determination_funcs, arg_shapes, arg_core_mapping,
+        per_core_arg_shapes, client, compilation_result));
+  }
+
   phase2_bridge_compilation_time->GetCell(kBridgePhase2Config)
       ->Add(timer.ElapsedCyclesInMilliseconds());
 
-  return PopulateInputOutputAliasing(main_fn, compilation_result,
-                                     use_tuple_args);
+  return tsl::OkStatus();
 }
 
 };  // namespace v1

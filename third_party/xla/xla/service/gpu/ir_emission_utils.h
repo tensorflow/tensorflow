@@ -16,15 +16,24 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 #define XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/literal.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/hlo_traversal.h"
+#include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -46,6 +55,10 @@ inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 64 * 128;
 bool IsMatrixMultiplication(const HloInstruction& dot);
 
 inline constexpr int64_t WarpSize() { return 32; }
+
+// Fusions that implemented with pre-compiled device kernels have
+// FusionBackendConfig.kind requel to this string.
+inline constexpr absl::string_view kCustomFusionKind = "__custom_fusion";
 
 // Fusions that use Triton have FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
@@ -114,8 +127,6 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     mlir::Value v, absl::Span<const BufferAllocation* const> allocations,
     std::string* constant_name = nullptr);
 
-bool IsSingleInstructionFusion(mlir::lmhlo::FusionOp fusion);
-
 bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     mlir::lmhlo::FusionOp fusion,
     absl::Span<const BufferAllocation* const> allocations);
@@ -143,12 +154,11 @@ Shape GetShape(mlir::Value value);
 // or vice versa.
 // Note: when this is called with a fusion instruction, it will traverse into
 // the fusion (unless the boundary function stops it).
-const HloInstruction& FindNonTrivialHero(
-    const HloInstruction& instr,
-    const std::function<bool(const HloInstruction& producer,
-                             const HloInstruction& consumer)>& is_boundary);
-// Like above, with the default boundary function. Additionally, this will not
-// traverse into `instr`'s computation if it is a fusion.
+const HloInstruction& FindNonTrivialHero(const HloInstruction& instr,
+                                         const HloFusionAdaptor& fusion);
+
+// Like above, but assumes the instruction is inside an HloFusionInstruction.
+// Returns the instruction itself if it is an HloFusionInstruction.
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr);
 
 /// Description of how to emit a given transposition.
@@ -193,7 +203,10 @@ std::optional<TransposeDescription> FindTiledLogicalTranspose(
 std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     const HloInstruction& root, const HloInstruction& hero);
 
-bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
+// Checks if the instruction is elementwise and only has a single user. If
+// a fusion adaptor is provided, only checks for users within the fusion.
+bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1,
+                    const HloFusionAdaptor* fusion = nullptr);
 
 // Log the given module if the VLOG level is >= level.
 void VLogModule(int level, const llvm::Module& module);
@@ -221,6 +234,37 @@ std::string GetIrNameFromLoc(mlir::Location loc);
 
 // Whether the module's target is an AMD GPU.
 bool IsAMDGPU(const llvm::Module* module);
+
+// This class stores either a non-owning reference or owns data that represents
+// a dense array in XLA format. It is used for intermediate storage during IR
+// constant emission.
+class DenseDataIntermediate {
+ public:
+  // Creates an instance of DenseDataIntermediate that owns the provided vector.
+  static DenseDataIntermediate Own(std::vector<uint8_t> owned) {
+    DenseDataIntermediate di;
+    di.data_ = std::move(owned);
+    return di;
+  }
+
+  // Creates an instance of DenseDataIntermediate that aliases the input.
+  static DenseDataIntermediate Alias(absl::Span<const uint8_t> aliased) {
+    DenseDataIntermediate di;
+    di.data_ = aliased;
+    return di;
+  }
+
+  // Returns a reference to the data this object represents.
+  absl::Span<const uint8_t> span() const {
+    return data_.index() == 0 ? absl::Span<const uint8_t>(std::get<0>(data_))
+                              : std::get<1>(data_);
+  }
+
+ private:
+  std::variant<std::vector<uint8_t>, absl::Span<const uint8_t>> data_;
+};
+
+StatusOr<DenseDataIntermediate> LiteralToXlaFormat(const Literal& literal);
 
 }  // namespace gpu
 }  // namespace xla

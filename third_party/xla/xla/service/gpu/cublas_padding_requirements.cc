@@ -26,21 +26,39 @@ namespace gpu {
 
 namespace {
 
+template <class... Ts>
+struct Overload : Ts... {
+  using Ts::operator()...;
+};
+template <class... Ts>
+Overload(Ts...) -> Overload<Ts...>;
+
 bool DimensionRequiresPadding(const int64_t size, const PrimitiveType data_type,
-                              const se::CudaComputeCapability cc) {
-  for (const CublasPaddingRequirement& requirement :
-       CublasPaddingRequirements) {
-    if (cc.IsAtLeast(requirement.min_compute_capability) &&
-        data_type == requirement.data_type &&
-        size % requirement.multiple_of != 0) {
-      return true;
-    }
-  }
-  return false;
+                              const se::GpuComputeCapability& gpu_cc) {
+  return std::visit(
+      Overload{
+          [&](const se::CudaComputeCapability& cc) {
+            for (const auto& req : CublasPaddingRequirements) {
+              if (cc.IsAtLeast(req.min_compute_capability) &&
+                  data_type == req.data_type && size % req.multiple_of != 0) {
+                return true;
+              }
+            }
+            return false;
+          },
+          [&](const se::RocmComputeCapability& cc) {
+            for (const auto& req : HipblasPaddingRequirements) {
+              if (data_type == req.data_type && size % req.multiple_of != 0) {
+                return true;
+              }
+            }
+            return false;
+          }},
+      gpu_cc);
 }
 
 bool ShapeRequiresPadding(const Shape& shape,
-                          const se::CudaComputeCapability cc) {
+                          const se::GpuComputeCapability& cc) {
   // Since dots are canonicalized before padding only the last two dimensions
   // of each operand represent non-batch dimensions and may need padding.
   return DimensionRequiresPadding(shape.dimensions(shape.rank() - 1),
@@ -52,7 +70,7 @@ bool ShapeRequiresPadding(const Shape& shape,
 }  // namespace
 
 bool CublasRequiresPadding(const HloDotInstruction& dot,
-                           const se::CudaComputeCapability cc) {
+                           const se::GpuComputeCapability& cc) {
   return ShapeRequiresPadding(dot.operand(0)->shape(), cc) ||
          ShapeRequiresPadding(dot.operand(1)->shape(), cc);
 }

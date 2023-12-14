@@ -335,17 +335,6 @@ LogicalResult TypeExtensionsAttr::verifyEncoding(
 }
 
 //===----------------------------------------------------------------------===//
-// CollectivePermuteOp
-//===----------------------------------------------------------------------===//
-
-void CollectivePermuteOp::build(OpBuilder& odsBuilder, OperationState& odsState,
-                                Type resultType, Value operand,
-                                DenseIntElementsAttr sourceTargetPairs) {
-  CollectivePermuteOp::build(odsBuilder, odsState, resultType, operand,
-                             sourceTargetPairs, /*channel_handle=*/nullptr);
-}
-
-//===----------------------------------------------------------------------===//
 // ReduceScatterOp
 //===----------------------------------------------------------------------===//
 
@@ -392,6 +381,7 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Atan2Op)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CbrtOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CeilOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ClzOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CollectiveBroadcastOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CollectivePermuteOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CopyOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CosineOp)
@@ -1003,16 +993,28 @@ LogicalResult DotGeneralOp::reifyReturnTypeShapes(
 //===----------------------------------------------------------------------===//
 // FftOp
 //===----------------------------------------------------------------------===//
+LogicalResult verify1dTensor(std::optional<Location> loc,
+                             DenseIntElementsAttr attr, std::string attrName) {
+  auto rank = attr.getType().getRank();
+  if (rank != 1) {
+    return emitOptionalError(loc, attrName, " has rank ", rank,
+                             " instead of required rank 1.");
+  }
+  return success();
+}
 
 LogicalResult FftOp::inferReturnTypeComponents(
     MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   FftOp::Adaptor adaptor(operands, attributes, {}, regions);
-  return hlo::inferFftOp(location, adaptor.getOperand(),
-                         adaptor.getFftType() == FftType::RFFT,
-                         adaptor.getFftType() == FftType::IRFFT,
-                         adaptor.getFftLength(), inferredReturnShapes);
+  if (failed(verify1dTensor(location, adaptor.getFftLength(), "fft_length")))
+    return failure();
+  return hlo::inferFftOp(
+      location, adaptor.getOperand(), adaptor.getFftType() == FftType::RFFT,
+      adaptor.getFftType() == FftType::IRFFT,
+      llvm::to_vector(adaptor.getFftLength().getValues<int64_t>()),
+      inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1489,8 +1491,31 @@ LogicalResult AbsOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// CollectiveBroadcastOp
+//===----------------------------------------------------------------------===//
+
+void CollectiveBroadcastOp::build(OpBuilder& odsBuilder,
+                                  OperationState& odsState, Type resultType,
+                                  Value operand,
+                                  DenseIntElementsAttr replicaGroups) {
+  CollectiveBroadcastOp::build(odsBuilder, odsState, resultType, operand,
+                               replicaGroups, /*channel_handle=*/nullptr);
+}
+
+LogicalResult CollectiveBroadcastOp::verify() {
+  return hlo::verifyCollectiveBroadcastOp(getLoc(), getReplicaGroups());
+}
+
+//===----------------------------------------------------------------------===//
 // CollectivePermuteOp
 //===----------------------------------------------------------------------===//
+
+void CollectivePermuteOp::build(OpBuilder& odsBuilder, OperationState& odsState,
+                                Type resultType, Value operand,
+                                DenseIntElementsAttr sourceTargetPairs) {
+  CollectivePermuteOp::build(odsBuilder, odsState, resultType, operand,
+                             sourceTargetPairs, /*channel_handle=*/nullptr);
+}
 
 LogicalResult CollectivePermuteOp::verify() {
   return hlo::verifyCollectivePermuteOp(getLoc(), getSourceTargetPairs());
@@ -2217,9 +2242,13 @@ LogicalResult BroadcastOp::inferReturnTypeComponents(
     DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   BroadcastOp::Adaptor adaptor(operands, attributes, {}, regions);
-  return hlo::inferBroadcastOp(location, adaptor.getOperand(),
-                               adaptor.getBroadcastSizes(),
-                               inferredReturnShapes);
+  if (failed(verify1dTensor(location, adaptor.getBroadcastSizes(),
+                            "broadcast_sizes")))
+    return failure();
+  return hlo::inferBroadcastOp(
+      location, adaptor.getOperand(),
+      llvm::to_vector(adaptor.getBroadcastSizes().getValues<int64_t>()),
+      inferredReturnShapes);
 }
 
 LogicalResult BroadcastOp::reifyReturnTypeShapes(
@@ -2994,10 +3023,13 @@ LogicalResult DynamicSliceOp::inferReturnTypeComponents(
     DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   DynamicSliceOp::Adaptor adaptor(operands, attributes, {}, regions);
-  return hlo::inferDynamicSliceOp(location, adaptor.getOperand().getType(),
-                                  adaptor.getStartIndices().getTypes(),
-                                  adaptor.getSliceSizes(),
-                                  inferredReturnShapes);
+  if (failed(verify1dTensor(location, adaptor.getSliceSizes(), "slice_sizes")))
+    return failure();
+  return hlo::inferDynamicSliceOp(
+      location, adaptor.getOperand().getType(),
+      adaptor.getStartIndices().getTypes(),
+      llvm::to_vector(adaptor.getSliceSizes().getValues<int64_t>()),
+      inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3981,7 +4013,11 @@ LogicalResult OptimizationBarrierOp::inferReturnTypes(
 // ReverseOp
 //===----------------------------------------------------------------------===//
 LogicalResult ReverseOp::verify() {
-  return hlo::verifyReverseOp(getLoc(), getOperand(), getDimensions());
+  if (failed(verify1dTensor(getLoc(), getDimensions(), "dimensions")))
+    return failure();
+  return hlo::verifyReverseOp(
+      getLoc(), getOperand(),
+      llvm::to_vector(getDimensions().getValues<int64_t>()));
 }
 
 //===----------------------------------------------------------------------===//
@@ -4139,11 +4175,20 @@ LogicalResult PadOp::inferReturnTypes(
     DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   PadOp::Adaptor adaptor(operands, attributes, {}, regions);
-  return hlo::inferPadOp(location, adaptor.getOperand().getType(),
-                         adaptor.getPaddingValue().getType(),
-                         adaptor.getEdgePaddingLow(),
-                         adaptor.getEdgePaddingHigh(),
-                         adaptor.getInteriorPadding(), inferredReturnTypes);
+  if (failed(verify1dTensor(location, adaptor.getEdgePaddingLow(),
+                            "edge_padding_low")) ||
+      failed(verify1dTensor(location, adaptor.getEdgePaddingHigh(),
+                            "edge_padding_high")) ||
+      failed(verify1dTensor(location, adaptor.getInteriorPadding(),
+                            "interior_padding")))
+    return failure();
+  return hlo::inferPadOp(
+      location, adaptor.getOperand().getType(),
+      adaptor.getPaddingValue().getType(),
+      llvm::to_vector(adaptor.getEdgePaddingLow().getValues<int64_t>()),
+      llvm::to_vector(adaptor.getEdgePaddingHigh().getValues<int64_t>()),
+      llvm::to_vector(adaptor.getInteriorPadding().getValues<int64_t>()),
+      inferredReturnTypes);
 }
 
 template <typename T>
@@ -5125,9 +5170,18 @@ LogicalResult SliceOp::inferReturnTypes(
     ValueRange operands, DictionaryAttr attributes, OpaqueProperties,
     RegionRange /*regions*/, SmallVectorImpl<Type>& inferredReturnTypes) {
   SliceOpAdaptor adaptor(operands, attributes);
-  return hlo::inferSliceOp(location, adaptor.getOperand().getType(),
-                           adaptor.getStartIndices(), adaptor.getLimitIndices(),
-                           adaptor.getStrides(), inferredReturnTypes);
+  if (failed(verify1dTensor(location, adaptor.getStartIndices(),
+                            "start_indices")) ||
+      failed(verify1dTensor(location, adaptor.getLimitIndices(),
+                            "limit_indices")) ||
+      failed(verify1dTensor(location, adaptor.getStrides(), "strides")))
+    return failure();
+  return hlo::inferSliceOp(
+      location, adaptor.getOperand().getType(),
+      llvm::to_vector(adaptor.getStartIndices().getValues<int64_t>()),
+      llvm::to_vector(adaptor.getLimitIndices().getValues<int64_t>()),
+      llvm::to_vector(adaptor.getStrides().getValues<int64_t>()),
+      inferredReturnTypes);
 }
 
 template <typename I, typename E>
@@ -5442,46 +5496,6 @@ LogicalResult TopKOp::inferReturnTypeComponents(
                           inferredReturnShapes);
 }
 
-bool isMhloCompareOfBodyArgumentsGtOrLt(Block& body) {
-  auto terminator = dyn_cast<ReturnOp>(body.getTerminator());
-  if (!terminator || terminator->getNumOperands() != 1) return false;
-
-  auto compare = terminator.getOperand(0).getDefiningOp<CompareOp>();
-  if (!compare) return false;
-  auto direction = compare.getComparisonDirection();
-  if (direction != ComparisonDirection::GT &&
-      direction != ComparisonDirection::LT)
-    return false;
-
-  if (body.getNumArguments() != 2) return false;
-  auto arg0 = matchers::m_Val(body.getArgument(0));
-  auto arg1 = matchers::m_Val(body.getArgument(1));
-  return matchPattern(compare.getResult(), m_Op<CompareOp>(arg0, arg1)) ||
-         matchPattern(compare.getResult(), m_Op<CompareOp>(arg1, arg0));
-}
-
-LogicalResult TopKOp::verify() {
-  Builder builder(getContext());
-  auto operandType = getOperand().getType();
-  Block& body = getBody().front();
-
-  auto expectedBodyArgType =
-      RankedTensorType::get({}, operandType.getElementType());
-  auto expectedBodyType =
-      builder.getFunctionType({expectedBodyArgType, expectedBodyArgType},
-                              {RankedTensorType::get({}, builder.getI1Type())});
-  auto actualBodyType = builder.getFunctionType(
-      body.getArgumentTypes(), body.getTerminator()->getOperandTypes());
-  if (expectedBodyType != actualBodyType)
-    return emitOpError() << "unsupported body: expected: " << expectedBodyType
-                         << ", got " << actualBodyType;
-  if (!isMhloCompareOfBodyArgumentsGtOrLt(body))
-    return emitOpError() << "unsupported body: expected mhlo.compare of "
-                         << "body arguments with GT or LT comparison_direction";
-
-  return success();
-}
-
 //===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
@@ -5624,8 +5638,12 @@ LogicalResult TransposeOp::inferReturnTypes(
     DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   TransposeOp::Adaptor adaptor(operands, attributes, {}, regions);
-  return hlo::inferTransposeOp(loc, adaptor.getOperand(),
-                               adaptor.getPermutation(), inferredReturnTypes);
+  if (failed(verify1dTensor(loc, adaptor.getPermutation(), "permutation")))
+    return failure();
+  return hlo::inferTransposeOp(
+      loc, adaptor.getOperand(),
+      llvm::to_vector(adaptor.getPermutation().getValues<int64_t>()),
+      inferredReturnTypes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -7076,7 +7094,7 @@ static LogicalResult verifyArgResultAliasAttr(StringAttr attrName,
 LogicalResult verifyCrossProgramPrefetchAttr(CrossProgramPrefetchAttr cpp,
                                              ModuleOp module) {
   func::FuncOp main = module.lookupSymbol<func::FuncOp>("main");
-  if (cpp.getParameter() >= main.getNumArguments())
+  if (cpp.getParameter() >= main.getNumArguments() || cpp.getParameter() < 0)
     return module->emitOpError()
            << "cross_program_prefetch: parameter " << cpp.getParameter()
            << " out of range. main has only " << main.getNumArguments()

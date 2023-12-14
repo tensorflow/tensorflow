@@ -211,6 +211,7 @@ cc_library(
     name = "c_plugin_op_kernel",
     srcs = ["c_plugin_op_kernel.cc"],
     hdrs = ["c_plugin_op_kernel.h"],
+    copts = ["-DTF_CAPI_WEAK"],
     visibility = ["//visibility:public"],
     deps = [
         ":c_plugin_variable",
@@ -300,7 +301,7 @@ cc_library(
     name = "c_plugin_coordination_service_agent",
     srcs = ["c_plugin_coordination_service_agent.cc"],
     hdrs = ["c_plugin_coordination_service_agent.h"],
-    defines = ["TF_CAPI_WEAK"],
+    copts = ["-DTF_CAPI_WEAK"],
     visibility = ["//visibility:public"],
     deps = [
         ":plugin_coordination_service_agent",
@@ -352,7 +353,7 @@ cc_library(
     name = "c_plugin_variable",
     srcs = ["c_plugin_variable.cc"],
     hdrs = ["c_plugin_variable.h"],
-    defines = ["TF_CAPI_WEAK"],
+    copts = ["-DTF_CAPI_WEAK"],
     visibility = ["//visibility:public"],
     deps = [
         ":plugin_variable",

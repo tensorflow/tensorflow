@@ -24,8 +24,13 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-DeviceList::DeviceList(Devices devices)
-    : state_(std::shared_ptr<State>(new State{std::move(devices)})) {}
+DeviceList::DeviceList(Devices devices) {
+  if (devices.size() <= kInlineDeviceSize) {
+    state_ = State{std::move(devices)};
+  } else {
+    state_ = std::make_shared<State>(State{std::move(devices)});
+  }
+}
 
 StatusOr<DeviceList> DeviceList::FromProto(LookupDeviceFunc lookup_device,
                                            const DeviceListProto& proto) {

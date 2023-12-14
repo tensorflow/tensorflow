@@ -357,7 +357,6 @@ inline std::vector<int> Argsort(const std::vector<T>& scores) {
 // Given the sharding for an instruction, invoke the sharding propagation pass
 // to infer appropriate shardings for its operands.
 std::optional<HloSharding> GetInputSharding(const HloInstruction* ins,
-                                            const HloInstruction* operand,
                                             int64_t op_index,
                                             const HloSharding& output_sharding,
                                             const xla::CallGraph& call_graph,
@@ -379,9 +378,6 @@ std::string GetBatchDimMapKey(const HloInstruction* ins, int64_t idx = -1);
 // Batch dimension analysis that finds the batch dimension of each instruction.
 InstructionBatchDimMap BuildInstructionBatchDimMap(
     const HloInstructionSequence& sequence);
-
-// Remove all custom call makers in an HloModule.
-void RemoveCustomCallMarker(HloModule* module);
 
 /*
  * HloSharding Utility
@@ -421,14 +417,6 @@ inline void ForceOperandSharding(HloInstruction* inst, int operand_num,
 inline bool IsFullyTiled(const HloSharding& sharding) {
   return sharding.NumTiles() == sharding.tile_assignment().num_elements();
 }
-
-// Propagate sharding for broadcast.
-// The output will be tiled along the broadcasted dimension the same way
-// as the input for the broadcast while the other dimensions are kept
-// non-tiled.
-HloSharding BroadcastSharding(const HloSharding& input_spec,
-                              const Shape& new_shape,
-                              absl::Span<const int64_t> dimensions);
 
 // Propagate sharding for dim-wise operations (e.g., slice, pad) which works
 // independently on each dimension.
@@ -651,18 +639,21 @@ bool OutputInputSameShapes(const HloInstruction* ins);
 bool IsEntryComputationInputOrOutput(const HloModule* module,
                                      const HloInstruction* ins);
 
-// Given a number of devices (`num_devices`), create a list different mesh
-// shapes of a given rank (`num_mesh_dims`) to try, if the option to try
-// multiple mesh shapes is enabled.
-std::vector<std::vector<int64_t>> CreateDifferentMeshShapesToTry(
-    int64_t num_devices, int num_mesh_dims, bool symmetrical_mesh_dims);
-
 // Statically estimate the execution counts of HLO ops. This matters for while
 // loops, and we use a constant iteration count for all while loops for this
 // approximation.
 absl::flat_hash_map<const HloInstruction*, int64_t>
 ComputeInstructionExecutionCounts(const HloModule* module,
                                   int64_t loop_iteration_count_estimate);
+
+// Generates a set of mesh shapes to try for a given module based on
+// pre-existing sharding annotations. If not such annotations exist, it will
+// enumerate and return all possible mesh shapes for a given number of devices
+// and mesh dimensions.
+std::vector<std::vector<int64_t>> InferOrEnumerateMeshShapesToTry(
+    const HloModule& module, int64_t num_devices, int num_mesh_dims,
+    bool symmetrical_mesh_dims);
+
 }  // namespace spmd
 }  // namespace xla
 

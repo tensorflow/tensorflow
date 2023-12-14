@@ -285,6 +285,14 @@ static mlir::Attribute BuildRankedTensorAttr(std::vector<int64_t> shape,
   return mlir::DenseIntElementsAttr::get(ty, value);
 }
 
+static mlir::Attribute BuildI64ArrayAttr(std::vector<int64_t> shape,
+                                         std::vector<int64_t> value,
+                                         mlir::Builder builder) {
+  // Expand splats. BuildI64ArrayAttr assumes shape.size() == 1.
+  if (value.size() == 1) value.resize(shape[0], value[0]);
+  return builder.getDenseI64ArrayAttr(value);
+}
+
 static mlir::Attribute BuildF32ArrayAttr(std::vector<float> value,
                                          mlir::Builder builder) {
   std::vector<float> typecast(value.begin(), value.end());
@@ -400,13 +408,11 @@ void BuiltinOptions2ToAttributesManual(
     std::vector<int64_t> shape = {
         static_cast<int64_t>(op->start_indices.size())};
     attributes.emplace_back(builder.getNamedAttr(
-        "start_indices",
-        BuildRankedTensorAttr(shape, op->start_indices, builder)));
+        "start_indices", BuildI64ArrayAttr(shape, op->start_indices, builder)));
     attributes.emplace_back(builder.getNamedAttr(
-        "limit_indices",
-        BuildRankedTensorAttr(shape, op->limit_indices, builder)));
+        "limit_indices", BuildI64ArrayAttr(shape, op->limit_indices, builder)));
     attributes.emplace_back(builder.getNamedAttr(
-        "strides", BuildRankedTensorAttr(shape, op->strides, builder)));
+        "strides", BuildI64ArrayAttr(shape, op->strides, builder)));
     return;
   }
   if (const auto* op = op_union.AsStablehloConvolutionOptions()) {
@@ -496,20 +502,20 @@ void BuiltinOptions2ToAttributesManual(
         static_cast<int64_t>(op->edge_padding_low.size())};
     attributes.emplace_back(builder.getNamedAttr(
         "edge_padding_low",
-        BuildRankedTensorAttr(shape, op->edge_padding_low, builder)));
+        BuildI64ArrayAttr(shape, op->edge_padding_low, builder)));
     attributes.emplace_back(builder.getNamedAttr(
         "edge_padding_high",
-        BuildRankedTensorAttr(shape, op->edge_padding_high, builder)));
+        BuildI64ArrayAttr(shape, op->edge_padding_high, builder)));
     attributes.emplace_back(builder.getNamedAttr(
         "interior_padding",
-        BuildRankedTensorAttr(shape, op->interior_padding, builder)));
+        BuildI64ArrayAttr(shape, op->interior_padding, builder)));
     return;
   }
   if (const auto* op = op_union.AsStablehloDynamicSliceOptions()) {
     attributes.emplace_back(builder.getNamedAttr(
         "slice_sizes",
-        BuildRankedTensorAttr({static_cast<int64_t>(op->slice_sizes.size())},
-                              op->slice_sizes, builder)));
+        BuildI64ArrayAttr({static_cast<int64_t>(op->slice_sizes.size())},
+                          op->slice_sizes, builder)));
     return;
   }
   if (const auto* op = op_union.AsStablehloCompareOptions()) {
@@ -623,8 +629,8 @@ void BuiltinOptions2ToAttributesManual(
     if (!op->permutation.empty()) {
       attributes.emplace_back(builder.getNamedAttr(
           "permutation",
-          BuildRankedTensorAttr({static_cast<int64_t>(op->permutation.size())},
-                                op->permutation, builder)));
+          BuildI64ArrayAttr({static_cast<int64_t>(op->permutation.size())},
+                            op->permutation, builder)));
     }
 
     return;

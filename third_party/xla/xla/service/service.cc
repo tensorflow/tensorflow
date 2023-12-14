@@ -62,6 +62,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
 namespace {
@@ -128,30 +129,6 @@ ServiceOptions& ServiceOptions::set_allowed_devices(
 
 const std::optional<std::set<int>>& ServiceOptions::allowed_devices() const {
   return allowed_devices_;
-}
-
-/* static */ StatusOr<std::unique_ptr<Service>> Service::NewService(
-    se::Platform* platform) {
-  ServiceOptions default_options;
-  default_options.set_platform(platform);
-  return NewService(default_options);
-}
-
-/* static */ StatusOr<std::unique_ptr<Service>> Service::NewService(
-    const ServiceOptions& options) {
-  se::Platform* platform = options.platform();
-  std::unique_ptr<Backend> execute_backend;
-  if (platform == nullptr) {
-    TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
-  }
-  BackendOptions backend_options;
-  backend_options.set_platform(platform);
-  backend_options.set_allowed_devices(options.allowed_devices());
-  TF_ASSIGN_OR_RETURN(execute_backend, Backend::CreateBackend(backend_options));
-
-  std::unique_ptr<Service> service(
-      new Service(options, std::move(execute_backend)));
-  return std::move(service);
 }
 
 Service::Service(const ServiceOptions& options,
@@ -774,6 +751,10 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
       "BuildExecutable on service %p with serialized module proto: %s", this,
       module_proto.name());
 
+  tsl::profiler::ScopedAnnotation annotation{[&] {
+    return absl::StrCat("XlaCompile:#module=", module_proto.name(), "#");
+  }};
+
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       CreateModuleFromProto(module_proto, *module_config, run_backend_only));
@@ -794,21 +775,26 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
                                     std::move(module), executor, options));
   }
 
+  tsl::profiler::ScopedAnnotation backend_annotation{[&] {
+    return absl::StrCat("XlaCompileBackend:#module=", module_proto.name(), "#");
+  }};
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       backend->compiler()->RunBackend(std::move(module), executor, options));
 
-  const HloProto* hlo_proto_after_opt = executable->hlo_proto();
+  const BufferAssignmentProto* buffer_assignment_proto_after_opt =
+      executable->buffer_assignment_proto();
 
   // If dumping is enabled RunBackend(...) will emit a hlo_proto in the
   // executable. This contains the buffer_assignment that is only available
   // after RunBackend(). If hlo_proto_before_opt is not null, then we replace
   // its buffer_assignment with the one from after_opt and then store it into
   // the executable.
-  if (hlo_proto_before_opt != nullptr && hlo_proto_after_opt != nullptr) {
+  if (hlo_proto_before_opt != nullptr &&
+      buffer_assignment_proto_after_opt != nullptr) {
     CHECK(DumpingEnabledForHloModule(executable->module()));
     *hlo_proto_before_opt->mutable_buffer_assignment() =
-        hlo_proto_after_opt->buffer_assignment();
+        std::move(*buffer_assignment_proto_after_opt);
     executable->set_hlo_proto(std::move(hlo_proto_before_opt));
   }
   return std::move(executable);
@@ -922,21 +908,6 @@ Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
   }
 
   VLOG(1) << "successfully completed 'execute' request";
-  return OkStatus();
-}
-
-Status Service::WaitForExecution(const WaitForExecutionRequest* arg,
-                                 WaitForExecutionResponse* result) {
-  TF_ASSIGN_OR_RETURN(const auto execution,
-                      execution_tracker_.Resolve(arg->execution()));
-
-  TF_RETURN_IF_ERROR(execution->BlockUntilDone());
-
-  *result->mutable_output() = execution->result();
-  *result->mutable_profile() = execution->profile();
-
-  TF_RETURN_IF_ERROR(execution_tracker_.Unregister(arg->execution()));
-  VLOG(1) << "successfully completed 'wait-for-execution' request";
   return OkStatus();
 }
 

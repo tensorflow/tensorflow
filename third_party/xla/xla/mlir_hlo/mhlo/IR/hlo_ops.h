@@ -89,6 +89,7 @@ class MhloDialect : public Dialect {
 class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
  public:
   using Base::Base;
+  static constexpr StringLiteral name = "mhlo.token";
 };
 
 void printConvolutionDimensions(AsmPrinter &p, ConvDimensionNumbersAttr dnums);

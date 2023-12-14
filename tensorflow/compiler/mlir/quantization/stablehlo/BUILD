@@ -25,13 +25,13 @@ package(
     licenses = ["notice"],
 )
 
-# TODO(b/264218457): Add quantize and post_quantize passes.
 cc_library(
     name = "passes",
     srcs = [
         "passes/lift_quantizable_spots_as_functions.cc",
         "passes/lift_quantizable_spots_as_functions_fusion.inc",
         "passes/lift_quantizable_spots_as_functions_simple.inc",
+        "passes/populate_shape.cc",
         "passes/post_quantize.cc",
         "passes/prepare_quantize.cc",
         "passes/quantize.cc",
@@ -40,6 +40,7 @@ cc_library(
         "passes/replace_stablehlo_ops_in_main_function_with_xla_call_module_ops.cc",
         "passes/restore_function_name.cc",
         "passes/unfuse_mhlo_batch_norm.cc",
+        "passes/unwrap_xla_call_module_op.cc",
     ],
     hdrs = [
         "passes/passes.h",
@@ -51,6 +52,7 @@ cc_library(
         ":lift_quantizable_spots_as_functions_fusion_inc_gen",
         ":lift_quantizable_spots_as_functions_simple_inc_gen",
         ":quantization_options_proto_cc",
+        ":quantization_patterns",
         ":stablehlo_passes_inc_gen",
         ":stablehlo_type_utils",
         ":uniform_quantized_types",
@@ -58,15 +60,20 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
+        "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
+        "//tensorflow/compiler/mlir/quantization/common:lift_as_function_call",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/ops:stablehlo_op_quant_spec",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quant_ops",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/ops:tf_op_quant_spec",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:xla_call_module_attrs",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/tpu:tpu_defs",
@@ -88,6 +95,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Rewrite",
+        "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
@@ -99,9 +107,42 @@ cc_library(
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
     ],
-    # Alwayslink is required for registering the MLIR passes.
-    # TODO(b/255530126): Split the pass registration from the definitions to avoid binary size bloat.
-    alwayslink = True,
+)
+
+cc_library(
+    name = "quantization_patterns",
+    srcs = ["passes/quantization_patterns.cc"],
+    hdrs = [
+        "passes/quantization_patterns.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":bridge_passes",
+        ":uniform_quantized_types",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/ops:stablehlo_op_quant_spec",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:xla_call_module_attrs",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:path",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:stablehlo_ops",
+    ],
 )
 
 td_library(
@@ -109,13 +150,12 @@ td_library(
     srcs = [
         "passes/lift_quantizable_spots_as_functions_fusion.td",
         "passes/lift_quantizable_spots_as_functions_simple.td",
-        "passes/utils.td",
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
+        "//tensorflow/compiler/mlir/quantization/common:lift_as_function_call_td_files",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quant_td_files",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils_td_files",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
         "@llvm-project//mlir:ArithOpsTdFiles",
         "@llvm-project//mlir:FuncTdFiles",
@@ -134,7 +174,10 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/lift_quantizable_spots_as_functions_simple.td",
-    deps = [":quant_td_files"],
+    deps = [
+        ":quant_td_files",
+        "//tensorflow/compiler/mlir/quantization/common:quant_td_files",
+    ],
 )
 
 gentbl_cc_library(
@@ -148,7 +191,10 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/lift_quantizable_spots_as_functions_fusion.td",
-    deps = [":quant_td_files"],
+    deps = [
+        ":quant_td_files",
+        "//tensorflow/compiler/mlir/quantization/common:quant_td_files",
+    ],
 )
 
 gentbl_cc_library(
@@ -222,8 +268,6 @@ cc_library(
         "@local_xla//xla/translate/hlo_to_mhlo:attribute_importer",
         "@stablehlo//:chlo_ops",
     ],
-    # Force link to ensure ConvertTFQuantOpsToMHLOPass is registered.
-    alwayslink = True,
 )
 
 tf_cc_test(
@@ -331,11 +375,8 @@ cc_library(
         ":fill_quantization_options",
         ":passes",
         ":quantization_options_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
         "//tensorflow/core/platform:path",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
     ],
@@ -487,6 +528,27 @@ tf_proto_library(
 # )
 # copybara:uncomment_end
 
+# OSS only: This target is header-only. Link `quantization_config_proto_cc_impl` only to
+# `libtensorflow_framework.so` via `lib_internal_impl`. Do NOT link
+# `quantization_config_proto_cc_impl` directly unless the target does not link
+# `libtensorflow_framework.so`.
+tf_proto_library(
+    name = "quantization_config_proto",
+    srcs = ["quantization_config.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    visibility = ["//visibility:public"],
+)
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "quantization_config_py_pb2",
+#     api_version = 2,
+#     visibility = [":internal_visibility_allowlist_package"],
+#     deps = [":quantization_config_proto"],
+# )
+# copybara:uncomment_end
+
 exports_files([
     "run_lit.sh",
 ])
@@ -503,14 +565,20 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
+        "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
         "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
+        "@local_xla//xla/mlir_hlo:mhlo_passes",
         "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_passes",
     ],
 )
 

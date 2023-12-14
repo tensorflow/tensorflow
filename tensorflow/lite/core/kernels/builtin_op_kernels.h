@@ -291,9 +291,9 @@ Register_STABLEHLO_DYNAMIC_SLICE();  // WARNING: not implemented, using this
 TfLiteRegistration*
 Register_STABLEHLO_DYNAMIC_UPDATE_SLICE();  // WARNING: not implemented, using
                                             // this op will crash the runtime
-TfLiteRegistration*
-Register_STABLEHLO_PAD();  // WARNING: not implemented, using this
-                           // op will crash the runtime
+
+TfLiteRegistration* Register_STABLEHLO_PAD();
+
 TfLiteRegistration*
 Register_STABLEHLO_IOTA();  // WARNING: not implemented, using this
                             // op will crash the runtime

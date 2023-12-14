@@ -105,3 +105,36 @@ func.func @merge_consecutive_qcast(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %
   %6 = "quantfork.stats"(%5) {layerStats = dense<[-1.5726943, 4.6875381]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
   func.return  %3, %6 : tensor<*xf32>, tensor<*xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func @skip_nan_inf_constant
+// CHECK-SAME: (%[[ARG_0:.*]]: tensor<?x112x112x64xf32>) -> tensor<?x56x56x64xf32>
+func.func @skip_nan_inf_constant(%arg0: tensor<?x112x112x64xf32>) -> tensor<?x56x56x64xf32> {
+  // CHECK: %[[cst0:.*]] = stablehlo.constant
+  // CHECK: %[[cst1:.*]] = stablehlo.constant
+  // CHECK: %[[cst2:.*]] = stablehlo.constant
+  // CHECK: %[[cst3:.*]] = stablehlo.constant
+  // CHECK-NOT: %[[q0:.*]] = "quantfork.qcast"(%[[cst0]])
+  // CHECK-NOT: %[[q1:.*]] = "quantfork.qcast"(%[[cst1]])
+  // CHECK: %[[q2:.*]] = "quantfork.qcast"(%[[cst2]])
+  // CHECK-SAME: quant.uniform<i8:f32, 0.023529411764705882:-128>
+  // CHECK: %[[dq2:.*]] = "quantfork.dcast"(%[[q2]])
+  // CHECK-SAME: quant.uniform<i8:f32, 0.023529411764705882:-128>
+  // CHECK: %[[q3:.*]] = "quantfork.qcast"(%[[cst3]])
+  // CHECK-SAME: quant.uniform<i8:f32, 3.9215686274509805E-9>
+  // CHECK: %[[dq3:.*]] = "quantfork.dcast"(%[[q3]])
+  // CHECK-SAME: quant.uniform<i8:f32, 3.9215686274509805E-9>
+  %0 = stablehlo.constant dense<0xFF800000> : tensor<f32>
+  %1 = stablehlo.constant dense<0x7FC00000> : tensor<f32>
+  %2 = stablehlo.constant dense<6.000000e+00> : tensor<f32>
+  %3 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+  %4 = "stablehlo.add"(%0, %1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  %5 = stablehlo.clamp %3, %arg0, %2 : (tensor<f32>, tensor<?x112x112x64xf32>, tensor<f32>) -> tensor<?x112x112x64xf32>
+  %6 = "stablehlo.reduce_window"(%5, %4) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %7 = stablehlo.maximum %arg1, %arg2 : tensor<f32>
+    stablehlo.return %7 : tensor<f32>
+  }) {padding = dense<[[0, 0], [0, 1], [0, 1], [0, 0]]> : tensor<4x2xi64>, window_dimensions = dense<[1, 3, 3, 1]> : tensor<4xi64>, window_strides = dense<[1, 2, 2, 1]> : tensor<4xi64>} : (tensor<?x112x112x64xf32>, tensor<f32>) -> tensor<?x56x56x64xf32>
+  return %6 : tensor<?x56x56x64xf32>
+}

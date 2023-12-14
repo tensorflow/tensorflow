@@ -113,14 +113,11 @@
 // CHECK:         br i1 %[[VAL_81]], label %[[VAL_66]], label %[[VAL_74]]
 // CHECK:       entry:
 // CHECK:         %[[VAL_82:.*]] = alloca i32, align 4
-// CHECK-GCN:     %[[VAL_82_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_82]] to ptr
 // CHECK:         %[[VAL_83:.*]] = load i32, ptr %[[VAL_84:.*]], align 4
 // CHECK:         %[[VAL_85:.*]] = load i32, ptr %[[VAL_86:.*]], align 4
 // CHECK:         %[[VAL_87:.*]] = mul i32 %[[VAL_83]], %[[VAL_85]]
-// CHECK-PTX:     store i32 %[[VAL_87]], ptr %[[VAL_82]], align 4
-// CHECK-PTX:     %[[VAL_88:.*]] = load i32, ptr %[[VAL_82]], align 4
-// CHECK-GCN:     store i32 %[[VAL_87]], ptr %[[VAL_82_2]], align 4
-// CHECK-GCN:     %[[VAL_88:.*]] = load i32, ptr %[[VAL_82_2]], align 4
+// CHECK:         store i32 %[[VAL_87]], ptr [[ADDRSPACE_ANNOTATION]]%[[VAL_82]], align 4
+// CHECK:         %[[VAL_88:.*]] = load i32, ptr [[ADDRSPACE_ANNOTATION]]%[[VAL_82]], align 4
 // CHECK:         store i32 %[[VAL_88]], ptr %[[VAL_89:.*]], align 4
 // CHECK:         ret void
 // CHECK:       entry:

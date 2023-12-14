@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_memory_util.h"
+#include "xla/service/cpu/onednn_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/status_macros.h"
 #include "tsl/platform/cpu_info.h"
@@ -45,21 +46,6 @@ Status ValidateDotDimensionNumbers(const DotDimensionNumbers& dim_numbers) {
   return OkStatus();
 }
 
-bool IsSupportedType(xla::PrimitiveType dtype) {
-  using tsl::port::TestCPUFeature;
-  using tsl::port::CPUFeature;
-  switch (dtype) {
-    case F32:
-      return true;
-    case BF16:
-      return TestCPUFeature(CPUFeature::AVX512_BF16) ||
-             TestCPUFeature(CPUFeature::AMX_BF16);
-    default:
-      return false;
-  }
-  return false;
-}
-
 }  // namespace
 
 class OneDnnRewriterVisitor : public DfsHloRewriteVisitor {
@@ -82,7 +68,7 @@ class OneDnnRewriterVisitor : public DfsHloRewriteVisitor {
     // verifier already does the job. We, however, need to check if contraction
     // is over only 1 dimension (a.k.a. K dimension in matrix-multiplication
     // parlance). We also restrict that batch dimensions of the operands
-    // matches.
+    // match.
     if (!IsSupportedType(dot_instr->shape().element_type())) return OkStatus();
     auto dot_dim_numbers = dot_instr->dot_dimension_numbers();
     TF_RETURN_IF_ERROR(ValidateDotDimensionNumbers(dot_dim_numbers));
@@ -117,6 +103,17 @@ class OneDnnRewriterVisitor : public DfsHloRewriteVisitor {
     should_rewrite &=
         (dot_dim_numbers.rhs_contracting_dimensions(0) == rhs_shape.rank() - 2);
     if (!should_rewrite) return OkStatus();
+
+    // OneDNN matmul has scratch allocation and copy overheads. The overheads
+    // can be amortized if there is sufficient MAC (multiply-accumulate)
+    // operations. We don't rewrite for small cases (determined empirically).
+    // TODO(intel-tf): Relax the condition when more optimizations in oneDNN
+    // matmul is achieved.
+    auto rank = lhs_shape.rank();
+    auto rhs_dims = rhs_shape.dimensions();
+    int64_t num_mac_ops = ShapeUtil::ElementsIn(lhs_shape) * rhs_dims.back();
+    int mac_ops_threshold = (rank == 2) ? (1 << 23) : (1 << 18);
+    if (num_mac_ops < mac_ops_threshold) return OkStatus();
 
     HloInstruction* matmul_call =
         dot_instr->AddInstruction(HloInstruction::CreateCustomCall(

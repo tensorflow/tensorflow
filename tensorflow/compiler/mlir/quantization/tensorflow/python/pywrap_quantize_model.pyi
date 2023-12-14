@@ -12,45 +12,64 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+from typing import Any
+
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
+from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as rd
 
-def clear_calibrator() -> None: ...
-def clear_data_from_calibrator(id: bytes) -> None: ...
-def get_statistics_from_calibrator(
-    id: bytes,
-) -> calibration_statistics_pb2.CalibrationStatistics: ...
+# LINT.IfChange(quantize_qat_model)
 def quantize_qat_model(
-    saved_model_path: str,
+    src_saved_model_path: str,
+    dst_saved_model_path: str,
+    quantization_options_serialized: bytes,
+    *,
     signature_keys: list[str],
-    tags: set[str],
-    quantization_options_serialized: bytes,
-    function_aliases: dict[str, str],
-) -> bytes: ...
-def quantize_ptq_dynamic_range(
-    saved_model_path: str,
-    signature_keys: list[str],
-    tags: set[str],
-    quantization_options_serialized: bytes,
-    function_aliases: dict[str, str],
-) -> bytes: ...
-def quantize_weight_only(
-    saved_model_path: str,
-    quantization_options_serialized: bytes,
-    function_aliases: dict[str, str],
-) -> bytes: ...
-def quantize_ptq_model_pre_calibration(
-    saved_model_path: str,
-    signature_keys: list[str],
-    tags: set[str],
-    quantization_options_serialized: bytes,
+    signature_def_map_serialized: dict[str, bytes],
     function_aliases: dict[str, str],
     py_function_library: py_function_lib.PyFunctionLibrary,
-) -> bytes: ...
-def quantize_ptq_model_post_calibration(
-    saved_model_path: str,
-    signature_keys: list[str],
-    tags: set[str],
+) -> Any: ...  # Status
+
+# LINT.ThenChange()
+
+# LINT.IfChange(quantize_ptq_dynamic_range)
+def quantize_ptq_dynamic_range(
+    src_saved_model_path: str,
+    dst_saved_model_path: str,
     quantization_options_serialized: bytes,
+    *,
+    signature_keys: list[str],
+    signature_def_map_serialized: dict[str, bytes],
     function_aliases: dict[str, str],
-) -> bytes: ...
+    py_function_library: py_function_lib.PyFunctionLibrary,
+) -> Any: ...  # Status
+
+# LINT.ThenChange()
+
+# LINT.IfChange(quantize_weight_only)
+def quantize_weight_only(
+    src_saved_model_path: str,
+    dst_saved_model_path: str,
+    quantization_options_serialized: bytes,
+    *,
+    signature_def_map_serialized: dict[str, bytes],
+    function_aliases: dict[str, str],
+    py_function_library: py_function_lib.PyFunctionLibrary,
+) -> Any: ...  # Status
+
+# LINT.ThenChange()
+
+# LINT.IfChange(quantize_ptq_static_range)
+def quantize_ptq_static_range(
+    src_saved_model_path: str,
+    dst_saved_model_path: str,
+    quantization_options_serialized: bytes,
+    *,
+    signature_keys: list[str],
+    signature_def_map_serialized: dict[str, bytes],
+    function_aliases: dict[str, str],
+    py_function_library: py_function_lib.PyFunctionLibrary,
+    representative_dataset: rd.RepresentativeDatasetOrMapping,
+) -> Any: ...  # Status
+
+# LINT.ThenChange()

@@ -17,22 +17,15 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "grpcpp/server_builder.h"
-#include "xla/pjrt/distributed/protocol.h"
-#include "xla/pjrt/distributed/topology_util.h"
-#include "xla/pjrt/distributed/util.h"
-#include "xla/status.h"
 #include "xla/util.h"
 #include "tsl/distributed_runtime/coordination/coordination_service.h"
 #include "tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "tsl/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/random.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/protobuf/coordination_config.pb.h"
 
@@ -46,7 +39,7 @@ std::unique_ptr<tsl::CoordinationServiceInterface> EnableCoordinationService(
   config.set_service_type("standalone");
   config.set_service_leader(absl::StrCat("/job:", job_name, "/task:0"));
   config.set_cluster_register_timeout_in_ms(
-      absl::ToInt64Milliseconds(options.enumerate_devices_timeout));
+      absl::ToInt64Milliseconds(options.cluster_register_timeout));
   config.set_heartbeat_timeout_in_ms(absl::ToInt64Milliseconds(
       options.heartbeat_interval * options.max_missing_heartbeats));
   config.set_shutdown_barrier_timeout_in_ms(
@@ -57,46 +50,6 @@ std::unique_ptr<tsl::CoordinationServiceInterface> EnableCoordinationService(
   job->set_num_tasks(options.num_nodes);
   auto service = tsl::CoordinationServiceInterface::EnableCoordinationService(
       options.env, config, /*cache=*/nullptr);
-  // Convert list of local devices to global device message as EnumerateDevies()
-  // response.
-  service->SetDeviceAggregationFunction(
-      [](const tensorflow::DeviceInfo& raw_global_devices) {
-        xla::GlobalTopologyProto global_topology;
-        int global_device_id = 0;
-        // Assign local devices of the same host to the same slice_index.
-        int next_slice_index = 0;
-        absl::flat_hash_map<std::string, int> boot_id_to_slice_index;
-        // Unwrap result to local device proto.
-        for (const auto& device : raw_global_devices.device()) {
-          xla::LocalTopologyProto local_topology;
-          // Note that tensorflow::DeviceInfo.device is xla.LocalTopologyProto!
-          device.UnpackTo(&local_topology);
-          // Every new boot_id seen is treated as a new host/slice.
-          absl::string_view boot_id = local_topology.boot_id();
-          auto [it, inserted] =
-              boot_id_to_slice_index.try_emplace(boot_id, next_slice_index);
-          if (inserted) {
-            ++next_slice_index;
-          }
-          // Set deterministic global ids.
-          for (xla::DeviceProto& device : *local_topology.mutable_devices()) {
-            device.set_global_device_id(global_device_id++);
-            device.set_slice_index(it->second);
-          }
-          *global_topology.mutable_nodes()->Add() = local_topology;
-        }
-        if (VLOG_IS_ON(10)) {
-          for (auto it = boot_id_to_slice_index.begin();
-               it != boot_id_to_slice_index.end(); ++it) {
-            LOG(INFO) << "BuildGlobalTopology boot_id_to_slice_index "
-                      << it->first << "->" << it->second;
-          }
-        }
-        // Wrap result back in DeviceInfo proto.
-        tensorflow::DeviceInfo global_devices;
-        global_devices.mutable_device()->Add()->PackFrom(global_topology);
-        return global_devices;
-      });
   return service;
 }
 }  // namespace
@@ -116,7 +69,7 @@ CoordinationServiceImpl::CoordinationServiceImpl(
   auto* grpc_coord_service =
       static_cast<tsl::GrpcCoordinationServiceImpl*>(coord_rpc_service_.get());
   grpc_coord_service->SetCoordinationServiceInstance(coord_service_.get());
-  LOG(INFO) << "Experimental coordination service is enabled.";
+  LOG(INFO) << "Coordination service is enabled.";
 }
 
 CoordinationServiceImpl::~CoordinationServiceImpl() {

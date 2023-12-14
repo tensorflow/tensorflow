@@ -75,8 +75,27 @@ inline constexpr std::string_view kAddI32Kernel = R"(
 
 })";
 
+template <typename T>
+struct Ptrs3 {
+  T* a;
+  T* b;
+  T* c;
+};
+
 // Returns a pointer to device kernel compiled from the CUDA C++ code above.
 void* GetAddI32CudaKernel();
+
+// Returns a pointer to device kernel doing multiplication instead of addition.
+void* GetMulI32CudaKernel();
+
+// Returns a pointer to device kernel doing increment and compare, intended for
+// testing on-device while loops.
+void* GetIncAndCmpCudaKernel();
+
+// Returns a pointer to device kernel compiled from the CUDA C++ but with all
+// three pointers passed to argument as an instance of `Ptr3` template to test
+// StreamExecutor arguments packing for custom C++ types.
+void* GetAddI32Ptrs3CudaKernel();
 
 }  // namespace stream_executor::cuda::internal
 

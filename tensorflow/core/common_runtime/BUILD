@@ -131,14 +131,12 @@ cc_library(
     srcs = ["collective_test_util.cc"],
     hdrs = ["collective_test_util.h"],
     copts = tf_copts(),
-    features = ["-layering_check"],
     deps = [
         ":device_resolver_local",
         ":process_util",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:session_options",
         "//tensorflow/core:testlib",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/framework:device_attributes_proto_cc",
@@ -146,6 +144,8 @@ cc_library(
         "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/platform:refcount",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:unbounded_work_queue",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -329,7 +329,6 @@ cc_library(
     srcs = ["all_to_all.cc"],
     hdrs = ["all_to_all.h"],
     copts = tf_copts(),
-    features = ["-layering_check"],
     deps = [
         ":base_collective_executor",
         ":collective_rma_local",
@@ -341,7 +340,7 @@ cc_library(
         ":process_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/platform:blocking_counter",
     ],
     alwayslink = 1,
 )
@@ -385,13 +384,13 @@ cc_library(
     srcs = ["buf_rendezvous.cc"],
     hdrs = ["buf_rendezvous.h"],
     copts = tf_copts(),
-    features = ["-layering_check"],
     deps = [
         ":device",
         ":device_mgr",
         ":process_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -462,12 +461,13 @@ cc_library(
     srcs = ["collective_param_resolver_local.cc"],
     hdrs = ["collective_param_resolver_local.h"],
     copts = tf_copts(),
-    features = ["-layering_check"],
     deps = [
         ":device_mgr",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1373,6 +1373,7 @@ cc_library(
         ":bfc_allocator",
         ":pool_allocator",
         "//tensorflow/core:lib",
+        "//tensorflow/core/util:env_var",
         "//tensorflow/core/util:onednn_env_vars",
     ],
 )
@@ -1388,6 +1389,7 @@ cc_library(
     deps = [
         ":function",
         ":optimization_registry",
+        ":process_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",

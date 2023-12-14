@@ -144,9 +144,6 @@ absl::Status IfrtBackendCompiler::CompileTensorflow(
     tensorflow::DumpMlirOpToFile("ifrt_tpu_bct_conversion_before", module);
   }
 
-  // TODO(b/305734600): conditionally running backward compat pass on host with
-  // tpu only.
-  //
   // Run backward compat pass so that we can use bridge to do clustering.
   auto backward_compat_result =
       tensorflow::RunTPUBackwardCompatConversion(module, {});

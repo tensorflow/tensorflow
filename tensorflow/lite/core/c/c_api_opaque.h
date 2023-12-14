@@ -12,6 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// WARNING: Users of TensorFlow Lite should not include this file directly, but
+// should instead include "third_party/tensorflow/lite/c/c_api_opaque.h".
+// Only the TensorFlow Lite implementation itself should include this file
+// directly.
+
 #ifndef TENSORFLOW_LITE_CORE_C_C_API_OPAQUE_H_
 #define TENSORFLOW_LITE_CORE_C_C_API_OPAQUE_H_
 
@@ -36,10 +41,20 @@ extern "C" {
 /// potentially including non-backwards-compatible changes, on a different
 /// schedule than for the other TensorFlow Lite APIs. See
 /// https://www.tensorflow.org/guide/versions#separate_version_number_for_tensorflow_lite_extension_apis.
+///
+// clang-format off
+// NOLINTBEGIN(whitespace/line_length)
+/// \note Users of TensorFlow Lite should use
+/// \code
+/// #include "tensorflow/lite/c/c_api_opaque.h"
+/// \endcode
+/// to access the APIs documented on this page.
+// NOLINTEND(whitespace/line_length)
+// clang-format on
 
 // clang-format off
 // NOLINTBEGIN(whitespace/line_length)
-/** \defgroup c_api_opaque tensorflow/lite/c/c_api_opaque.h
+/** \defgroup c_api_opaque lite/c/c_api_opaque.h
  *  @{
  */
 // NOLINTEND(whitespace/line_length)
@@ -93,6 +108,7 @@ TFL_CAPI_EXPORT extern size_t TfLiteOpaqueTensorByteSize(
     const TfLiteOpaqueTensor* opaque_tensor);
 
 /// Returns a pointer to the underlying data buffer.
+/// Returns nullptr if input is also nullptr.
 TFL_CAPI_EXPORT extern void* TfLiteOpaqueTensorData(
     const TfLiteOpaqueTensor* opaque_tensor);
 

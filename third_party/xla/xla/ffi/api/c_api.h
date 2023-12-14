@@ -84,6 +84,7 @@ typedef struct XLA_FFI_Error XLA_FFI_Error;
 
 // Codes are based on https://abseil.io/docs/cpp/guides/status-codes
 typedef enum {
+  XLA_FFI_Error_Code_OK = 0,
   XLA_FFI_Error_Code_CANCELLED = 1,
   XLA_FFI_Error_Code_UNKNOWN = 2,
   XLA_FFI_Error_Code_INVALID_ARGUMENT = 3,
@@ -117,6 +118,51 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Error_Create_Args, errc);
 
 typedef XLA_FFI_Error* XLA_FFI_Error_Create(XLA_FFI_Error_Create_Args* args);
 
+struct XLA_FFI_Error_GetMessage_Args {
+  size_t struct_size;
+  void* priv;
+  XLA_FFI_Error* error;
+  const char* message;  // out
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Error_GetMessage_Args, message);
+
+typedef void XLA_FFI_Error_GetMessage(XLA_FFI_Error_GetMessage_Args* args);
+
+struct XLA_FFI_Error_Destroy_Args {
+  size_t struct_size;
+  void* priv;
+  XLA_FFI_Error* error;
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Error_Destroy_Args, error);
+
+typedef void XLA_FFI_Error_Destroy(XLA_FFI_Error_Destroy_Args* args);
+
+//===----------------------------------------------------------------------===//
+// DataType
+//===----------------------------------------------------------------------===//
+
+// This enum corresponds to xla::PrimitiveType enum defined in `xla_data.proto`.
+// LINT.IfChange
+typedef enum {
+  XLA_FFI_DataType_INVALID = 0,
+  XLA_FFI_DataType_PRED = 1,
+  XLA_FFI_DataType_S8 = 2,
+  XLA_FFI_DataType_S16 = 3,
+  XLA_FFI_DataType_S32 = 4,
+  XLA_FFI_DataType_S64 = 5,
+  XLA_FFI_DataType_U8 = 6,
+  XLA_FFI_DataType_U16 = 7,
+  XLA_FFI_DataType_U32 = 8,
+  XLA_FFI_DataType_U64 = 9,
+  XLA_FFI_DataType_F16 = 10,
+  XLA_FFI_DataType_F32 = 11,
+  XLA_FFI_DataType_F64 = 12,
+  XLA_FFI_DataType_BF16 = 16,
+} XLA_FFI_DataType;
+// LINT.ThenChange(ffi_test.cc)
+
 //===----------------------------------------------------------------------===//
 // Builtin argument types
 //===----------------------------------------------------------------------===//
@@ -125,8 +171,8 @@ struct XLA_FFI_Buffer {
   size_t struct_size;
   void* priv;
 
+  XLA_FFI_DataType dtype;
   void* data;
-  uint8_t primitive_type;
   int64_t rank;
   int64_t* dims;  // length == rank
 };
@@ -143,8 +189,10 @@ typedef enum {
 
 typedef enum {
   XLA_FFI_AttrType_I32 = 1,
-  XLA_FFI_AttrType_F32 = 2,
-  XLA_FFI_AttrType_STRING = 3,
+  XLA_FFI_AttrType_I64 = 2,
+  XLA_FFI_AttrType_F32 = 3,
+  XLA_FFI_AttrType_STRING = 4,
+  XLA_FFI_AttrType_DICTIONARY = 5,
 } XLA_FFI_AttrType;
 
 //===----------------------------------------------------------------------===//
@@ -229,6 +277,24 @@ typedef XLA_FFI_Error* XLA_FFI_Handler_Register(
     XLA_FFI_Handler_Register_Args* args);
 
 //===----------------------------------------------------------------------===//
+// Stream
+//===----------------------------------------------------------------------===//
+
+struct XLA_FFI_Stream_Get_Args {
+  size_t struct_size;
+  void* priv;
+
+  XLA_FFI_ExecutionContext* ctx;
+  void* stream;  // out
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Stream_Get_Args, stream);
+
+// Returns an underling platform-specific stream via out argument, i.e. for CUDA
+// platform it returns `CUstream` (same as `cudaStream`).
+typedef XLA_FFI_Error* XLA_FFI_Stream_Get(XLA_FFI_Stream_Get_Args* args);
+
+//===----------------------------------------------------------------------===//
 // API access
 //===----------------------------------------------------------------------===//
 
@@ -241,7 +307,10 @@ struct XLA_FFI_Api {
   XLA_FFI_InternalApi* internal_api;
 
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_Create);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_GetMessage);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_Destroy);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Handler_Register);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Stream_Get);
 };
 
 #undef _XLA_FFI_API_STRUCT_FIELD

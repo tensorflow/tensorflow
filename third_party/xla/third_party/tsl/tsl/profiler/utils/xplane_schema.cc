@@ -272,6 +272,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"model_version", kModelVersion},
       {"bytes_transferred", kBytesTransferred},
       {"queue", kDmaQueue},
+      {"dcn_collective_info", kDcnCollectiveInfo},
       // Performance counter related.
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},

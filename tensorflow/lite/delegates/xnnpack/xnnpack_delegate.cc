@@ -532,8 +532,12 @@ class Delegate {
   }
 
   bool enable_latest_operators() const {
+#ifdef XNNPACK_DELEGATE_USE_LATEST_OPS
+    return true;
+#else
     return (options_.flags &
             TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS) != 0;
+#endif
   }
 
   bool support_variable_ops() const {
@@ -3688,8 +3692,9 @@ class Subgraph {
       TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
           logging_context, filter_tensor, node->inputs->data[1], node_index));
     } else {
-      TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
-          delegate, logging_context, filter_tensor, node->inputs->data[1],
+      TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQCInt8Type(
+          delegate, logging_context, filter_tensor,
+          /*expected_quantized_dimension=*/0, node->inputs->data[1],
           node_index));
       if (quasi_static_tensors.count(node->inputs->data[1]) == 0) {
         TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(

@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -35,12 +36,14 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/python/py_client.h"
+#include "xla/service/cpu/collectives_interface.h"
 #include "tsl/python/lib/core/numpy.h"  //NOLINT
 // clang-format on
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "pybind11/attr.h"  // from @pybind11
 #include "pybind11/cast.h"  // from @pybind11
@@ -58,10 +61,19 @@ limitations under the License.
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
+
+#ifdef __linux__
+#include "third_party/gloo/gloo/transport/tcp/attr.h"
+#include "third_party/gloo/gloo/transport/tcp/device.h"
+#include "xla/pjrt/cpu/gloo_collectives.h"
+#include "xla/pjrt/cpu/gloo_kv_store.h"
+#endif  // __linux__
+
+#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/tfrt_cpu_pjrt_client.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/python/custom_call_sharding.h"
 #include "xla/python/dlpack.h"
 #include "xla/python/jax_jit.h"
@@ -82,7 +94,6 @@ limitations under the License.
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/pytree.h"
 #include "xla/python/sharding.h"
-#include "xla/python/status_casters.h"
 #include "xla/python/traceback.h"
 #include "xla/python/transfer_guard_lib.h"
 #include "xla/python/types.h"
@@ -480,18 +491,102 @@ static void Init(py::module_& m) {
                &PyClient::MakePythonCallbackUsingHostSendAndRecv),
            py::arg("callable"), py::arg("operand_shapes"),
            py::arg("result_shapes"), py::arg("send_channel_ids"),
-           py::arg("recv_channel_ids"), py::arg("serializer") = py::none());
+           py::arg("recv_channel_ids"), py::arg("serializer") = py::none())
+      .def("__getattr__", [](PyClient& client, std::string name) -> py::object {
+        const auto& attrs = client.attributes();
+        auto it = attrs.find(name);
+        if (it != attrs.end()) {
+          return std::visit([](auto&& v) { return py::cast(v); }, it->second);
+        }
+        throw py::attribute_error(absl::StrCat("Unknown attribute ", name));
+      });
+
+  py::class_<xla::cpu::CollectivesInterface,
+             std::shared_ptr<xla::cpu::CollectivesInterface>>
+      cpu_collectives(m, "CpuCollectives");
+
+  m.def(
+      "make_gloo_tcp_collectives",
+      [](std::shared_ptr<DistributedRuntimeClient> distributed_client,
+
+         std::optional<std::string> hostname,
+         std::optional<std::string> interface)
+          -> std::shared_ptr<xla::cpu::CollectivesInterface> {
+#ifdef __linux__
+        std::string key_prefix = "cpu:";
+        auto kv_get =
+            [distributed_client, key_prefix](
+                std::string_view k,
+                absl::Duration timeout) -> xla::StatusOr<std::string> {
+          return distributed_client->BlockingKeyValueGet(
+              absl::StrCat(key_prefix, k), timeout);
+        };
+        auto kv_put = [distributed_client, key_prefix](
+                          std::string_view k,
+                          std::string_view v) -> xla::Status {
+          return distributed_client->KeyValueSet(absl::StrCat(key_prefix, k),
+                                                 v);
+        };
+        auto gloo_kv_store =
+            std::make_unique<cpu::GlooKeyValueStore>(kv_get, kv_put);
+        auto tcp_attrs = gloo::transport::tcp::attr();
+        if (hostname) {
+          tcp_attrs.hostname = *hostname;
+        }
+        if (interface) {
+          tcp_attrs.iface = *interface;
+        }
+        auto tcp_device = gloo::transport::tcp::CreateDevice(tcp_attrs);
+        return std::make_shared<cpu::GlooCollectives>(std::move(gloo_kv_store),
+                                                      std::move(tcp_device));
+#else   // __linux__
+        throw xla::XlaRuntimeError(
+            "make_gloo_tcp_collectives only implemented for linux");
+#endif  // __linux__
+      },
+      py::arg("distributed_client"), py::arg("hostname") = std::nullopt,
+      py::arg("interface") = std::nullopt);
 
   m.def(
       "get_tfrt_cpu_client",
-      [](bool asynchronous) -> std::shared_ptr<PyClient> {
+      [](bool asynchronous,
+         std::shared_ptr<DistributedRuntimeClient> distributed_client,
+         int node_id, int num_nodes,
+         std::shared_ptr<xla::cpu::CollectivesInterface> collectives)
+          -> std::shared_ptr<PyClient> {
         py::gil_scoped_release gil_release;
+        CpuClientOptions options;
+        if (distributed_client != nullptr) {
+          std::string key_prefix = "cpu:";
+          options.kv_get =
+              [distributed_client, key_prefix](
+                  std::string_view k,
+                  absl::Duration timeout) -> xla::StatusOr<std::string> {
+            return distributed_client->BlockingKeyValueGet(
+                absl::StrCat(key_prefix, k), timeout);
+          };
+          options.kv_put = [distributed_client, key_prefix](
+                               std::string_view k,
+                               std::string_view v) -> xla::Status {
+            return distributed_client->KeyValueSet(absl::StrCat(key_prefix, k),
+                                                   v);
+          };
+          options.node_id = node_id;
+          options.num_nodes = num_nodes;
+
+          options.collectives = std::move(collectives);
+        }
+
+        options.asynchronous = asynchronous;
         std::unique_ptr<PjRtClient> client =
-            xla::ValueOrThrow(GetTfrtCpuClient(asynchronous));
+            xla::ValueOrThrow(GetTfrtCpuClient(options));
         return std::make_shared<PyClient>(
             ifrt::PjRtClient::Create(std::move(client)));
       },
-      py::arg("asynchronous") = true);
+      py::arg("asynchronous") = true, py::arg("distributed_client") = nullptr,
+      py::arg("node_id") = 0, py::arg("num_nodes") = 1,
+      py::arg("collectives") =
+          std::shared_ptr<xla::cpu::CollectivesInterface>());
   m.def("pjrt_plugin_loaded", [](std::string platform_name) -> bool {
     xla::StatusOr<const PJRT_Api*> pjrt_api = pjrt::PjrtApi(platform_name);
     return pjrt_api.ok();
@@ -536,24 +631,28 @@ static void Init(py::module_& m) {
           // Use the plugin name as key prefix.
           std::string key_prefix = "gpu:";
           kv_get = [distributed_client, key_prefix](
-                       const std::string& k,
+                       std::string_view k,
                        absl::Duration timeout) -> xla::StatusOr<std::string> {
             return distributed_client->BlockingKeyValueGet(
                 absl::StrCat(key_prefix, k), timeout);
           };
           kv_put = [distributed_client, key_prefix](
-                       const std::string& k,
-                       const std::string& v) -> xla::Status {
+                       std::string_view k, std::string_view v) -> xla::Status {
             return distributed_client->KeyValueSet(absl::StrCat(key_prefix, k),
                                                    v);
           };
         }
+        GpuClientOptions options;
+        options.allocator_config = allocator_config;
+        options.node_id = node_id;
+        options.num_nodes = num_nodes;
+        options.allowed_devices = allowed_devices;
+        options.platform_name = platform_name;
+        options.kv_get = kv_get;
+        options.kv_put = kv_put;
+        options.enable_mock_nccl = mock.value_or(false);
         std::unique_ptr<PjRtClient> client =
-            xla::ValueOrThrow(GetStreamExecutorGpuClient(
-                asynchronous, allocator_config, node_id, num_nodes,
-                allowed_devices, platform_name,
-                /*should_stage_host_to_device_transfers=*/true, kv_get, kv_put,
-                /*enable_mock_nccl=*/mock.value_or(false)));
+            xla::ValueOrThrow(GetStreamExecutorGpuClient(options));
         return std::make_shared<PyClient>(
             ifrt::PjRtClient::Create(std::move(client)));
       },
@@ -574,13 +673,13 @@ static void Init(py::module_& m) {
         PjRtClient::KeyValueGetCallback kv_get = nullptr;
         PjRtClient::KeyValuePutCallback kv_put = nullptr;
         if (distributed_client != nullptr) {
-          kv_get = [distributed_client, platform_name](const std::string& k,
+          kv_get = [distributed_client, platform_name](std::string_view k,
                                                        absl::Duration timeout) {
             return distributed_client->BlockingKeyValueGet(
                 absl::StrCat(platform_name, ":", k), timeout);
           };
-          kv_put = [distributed_client, platform_name](const std::string& k,
-                                                       const std::string& v) {
+          kv_put = [distributed_client, platform_name](std::string_view k,
+                                                       std::string_view v) {
             return distributed_client->KeyValueSet(
                 absl::StrCat(platform_name, ":", k), v);
           };
@@ -701,6 +800,8 @@ static void Init(py::module_& m) {
       .def("get_output_shardings", &PyLoadedExecutable::GetOutputShardings)
       .def("get_parameter_layouts",
            xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetParameterLayouts))
+      .def("get_output_layouts",
+           xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetOutputLayouts))
       .def("get_parameter_shardings",
            &PyLoadedExecutable::GetParameterShardings)
       .def("keep_alive", &PyLoadedExecutable::KeepAlive)
@@ -887,7 +988,7 @@ static void Init(py::module_& m) {
       [](std::string address, int num_nodes,
          std::optional<int> heartbeat_interval,
          std::optional<int> max_missing_heartbeats,
-         std::optional<int> enumerate_devices_timeout,
+         std::optional<int> cluster_register_timeout,
          std::optional<int> shutdown_timeout)
           -> std::unique_ptr<DistributedRuntimeService> {
         CoordinationServiceImpl::Options options;
@@ -898,9 +999,9 @@ static void Init(py::module_& m) {
         if (max_missing_heartbeats.has_value()) {
           options.max_missing_heartbeats = *max_missing_heartbeats;
         }
-        if (enumerate_devices_timeout.has_value()) {
-          options.enumerate_devices_timeout =
-              absl::Seconds(*enumerate_devices_timeout);
+        if (cluster_register_timeout.has_value()) {
+          options.cluster_register_timeout =
+              absl::Seconds(*cluster_register_timeout);
         }
         if (shutdown_timeout.has_value()) {
           options.shutdown_timeout = absl::Seconds(*shutdown_timeout);
@@ -912,7 +1013,7 @@ static void Init(py::module_& m) {
       py::arg("address"), py::arg("num_nodes"), py::kw_only(),
       py::arg("heartbeat_interval") = std::nullopt,
       py::arg("max_missing_heartbeats") = std::nullopt,
-      py::arg("enumerate_devices_timeout") = std::nullopt,
+      py::arg("cluster_register_timeout") = std::nullopt,
       py::arg("shutdown_timeout") = std::nullopt);
 
   m.def(
@@ -1012,6 +1113,8 @@ static void Init(py::module_& m) {
       .def("get_output_shardings", &PjRtExecutable::GetOutputShardings)
       .def("get_parameter_layouts",
            xla::ValueOrThrowWrapper(&PjRtExecutable::GetParameterLayouts))
+      .def("get_output_layouts",
+           xla::ValueOrThrowWrapper(&PjRtExecutable::GetOutputLayouts))
       .def("get_parameter_shardings", &PjRtExecutable::GetParameterShardings)
       .def("get_compiled_memory_stats",
            xla::ValueOrThrowWrapper(&PjRtExecutable::GetCompiledMemoryStats))

@@ -225,8 +225,8 @@ TfLiteStatus Interpreter::Invoke() {
   ScopedRuntimeInstrumentationProfile scoped_runtime_event(root_profiler_.get(),
                                                            "invoke");
 
-  // "Resets" cancellation flag so cancellation happens before this invoke will
-  // not take effect.
+  // "Resets" cancellation flag so cancellation that happens before this invoke
+  // will not take effect.
   if (cancellation_enabled_) (void)continue_invocation_.test_and_set();
 
   // Denormal floating point numbers could cause significant slowdown on

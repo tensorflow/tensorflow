@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/sharding_op_util.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -101,12 +102,11 @@ bool IsShardingStrictlyBetter(const HloSharding& lhs, const HloSharding& rhs) {
 
 // Implementation for returning a improved sharding from another sharding.
 std::optional<HloSharding> ReturnImprovedShardingImpl(
-    HloSharding from, std::optional<const HloSharding> to_improved,
+    HloSharding from, const HloSharding* to_improved,
     const Shape& to_improved_shape, bool may_combine_partial_sharding,
     bool allow_aggressive_resharding = false) {
   // Always allow improve the sharding if it's straightly better.
-  if (to_improved.has_value() &&
-      IsShardingStrictlyBetter(from, to_improved.value())) {
+  if (to_improved != nullptr && IsShardingStrictlyBetter(from, *to_improved)) {
     return from;
   }
   // We don't want to propagate tile maximal shardings.
@@ -114,7 +114,7 @@ std::optional<HloSharding> ReturnImprovedShardingImpl(
     return std::nullopt;
   }
   // Any sharding is better then no sharding.
-  if (!to_improved.has_value()) {
+  if (to_improved == nullptr) {
     return from;
   }
   // We don't want to propagate manual shardings.
@@ -122,18 +122,17 @@ std::optional<HloSharding> ReturnImprovedShardingImpl(
     return std::nullopt;
   }
   int64_t sharding_tiles = from.NumTiles();
-  if (hlo_sharding_util::MergeSharding(to_improved.value(), &from,
+  if (hlo_sharding_util::MergeSharding(*to_improved, &from,
                                        may_combine_partial_sharding)) {
     // Override existing tiled sharding only when the new sharding is compatible
     // with the existing one. This avoids unexpected resharding when `sharding`
     // just has more tiles than existing sharding but they are not mergeable.
     if (!allow_aggressive_resharding && to_improved_shape.IsArray() &&
-        !to_improved.value().IsTileMaximal() &&
-        from.NumTiles() == sharding_tiles) {
-      if (!hlo_sharding_util::IsSubTilingOrEqualSharding(
-              to_improved_shape, from, to_improved.value())) {
+        !to_improved->IsTileMaximal() && from.NumTiles() == sharding_tiles) {
+      if (!hlo_sharding_util::IsSubTilingOrEqualSharding(to_improved_shape,
+                                                         from, *to_improved)) {
         VLOG(10) << "Not merging because of different device distribution";
-        VLOG(10) << "Instr sharding: " << to_improved.value().ToString();
+        VLOG(10) << "Instr sharding: " << to_improved->ToString();
         VLOG(10) << "New sharding " << from.ToString();
         return std::nullopt;
       }
@@ -149,10 +148,8 @@ std::optional<HloSharding> ReturnImprovedSharding(
     bool may_combine_partial_sharding,
     bool allow_aggressive_resharding = false) {
   return ReturnImprovedShardingImpl(
-      sharding,
-      instruction->has_sharding()
-          ? std::optional<HloSharding>(instruction->sharding())
-          : std::nullopt,
+      std::move(sharding),
+      instruction->has_sharding() ? &instruction->sharding() : nullptr,
       instruction->shape(), may_combine_partial_sharding,
       allow_aggressive_resharding);
 }
@@ -163,14 +160,20 @@ std::optional<HloSharding> ReturnImprovedSubSharding(
     HloSharding sharding, HloInstruction* instruction, const ShapeIndex& index,
     bool may_combine_partial_sharding,
     bool allow_aggressive_resharding = false) {
-  return ReturnImprovedShardingImpl(
-      sharding,
-      instruction->has_sharding()
-          ? std::optional<HloSharding>(instruction->sharding().GetSubSharding(
-                instruction->shape(), index))
-          : std::nullopt,
-      ShapeUtil::GetSubshape(instruction->shape(), index),
-      may_combine_partial_sharding, allow_aggressive_resharding);
+  if (instruction->has_sharding()) {
+    const HloSharding to_improved =
+        instruction->sharding().GetSubSharding(instruction->shape(), index);
+    return ReturnImprovedShardingImpl(
+        std::move(sharding), &to_improved,
+        ShapeUtil::GetSubshape(instruction->shape(), index),
+        may_combine_partial_sharding, allow_aggressive_resharding);
+
+  } else {
+    return ReturnImprovedShardingImpl(
+        std::move(sharding), nullptr,
+        ShapeUtil::GetSubshape(instruction->shape(), index),
+        may_combine_partial_sharding, allow_aggressive_resharding);
+  }
 }
 
 // Updates the sharding of the specified instruction with the specified sharding
@@ -182,9 +185,9 @@ bool MaybeImproveInstructionSharding(HloSharding sharding,
                                      HloInstruction* instruction,
                                      bool may_combine_partial_sharding,
                                      bool allow_aggressive_resharding = false) {
-  if (auto new_sharding = ReturnImprovedSharding(sharding, instruction,
-                                                 may_combine_partial_sharding,
-                                                 allow_aggressive_resharding)) {
+  if (auto new_sharding = ReturnImprovedSharding(
+          std::move(sharding), instruction, may_combine_partial_sharding,
+          allow_aggressive_resharding)) {
     instruction->set_sharding(std::move(*new_sharding));
     return true;
   }
@@ -199,8 +202,8 @@ bool MaybeImproveInstructionSubSharding(
     bool allow_aggressive_resharding = false) {
   if (instruction->shape().IsTuple()) {
     if (auto new_sub_sharding = ReturnImprovedSubSharding(
-            sharding, instruction, index, may_combine_partial_sharding,
-            allow_aggressive_resharding)) {
+            std::move(sharding), instruction, index,
+            may_combine_partial_sharding, allow_aggressive_resharding)) {
       HloSharding new_sharding =
           instruction->has_sharding()
               ? instruction->sharding()
@@ -216,7 +219,7 @@ bool MaybeImproveInstructionSubSharding(
     }
   }
   CHECK(index.size() == 1 && index[0] == 0);
-  return MaybeImproveInstructionSharding(sharding, instruction,
+  return MaybeImproveInstructionSharding(std::move(sharding), instruction,
                                          may_combine_partial_sharding,
                                          allow_aggressive_resharding);
 }
@@ -1597,13 +1600,14 @@ StatusOr<bool> ProcessShardingInstruction(
           absl::c_sort(unspec_dims);
           unspecified_dims->emplace(instruction, std::move(unspec_dims));
         } else if (!instruction->operand(0)->has_sharding()) {
-          instruction->mutable_operand(0)->set_sharding(sharding);
+          instruction->mutable_operand(0)->set_sharding(std::move(sharding));
         }
       } else if (instruction->has_sharding()) {
         // Handle shard group in parameters/outputs.
         process_shard_group_instruction(instruction, instruction->sharding());
         HloSharding sharding = instruction->sharding();
-        instruction->set_sharding(sharding.ClearShardGroup());
+        sharding.ClearShardGroup();
+        instruction->set_sharding(std::move(sharding));
       }
     }
   }
@@ -1668,7 +1672,7 @@ int64_t ComputeNonRootUsers(const HloInstruction* instr) {
               operand_sharding =
                   HloSharding::SingleTuple(operand->shape(), *sharding);
             }
-            operand->set_sharding(operand_sharding);
+            operand->set_sharding(std::move(operand_sharding));
           }
         }
         return OkStatus();
@@ -1936,8 +1940,8 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
     case HloOpcode::kSort: {
       HloSharding user_sharding = user.sharding();
       if (user_sharding.IsTuple()) {
-        return user_sharding = user_sharding.GetSubSharding(
-                   user.shape(), {user.operand_index(&instruction)});
+        return user_sharding.GetSubSharding(user.shape(),
+                                            {user.operand_index(&instruction)});
       }
       return user_sharding;
     }
@@ -2164,7 +2168,8 @@ bool ShardingPropagation::InferShardingFromShardGroup(
 // changed and false otherwise.
 bool ShardingPropagation::InferShardingFromOperands(
     HloInstruction* instruction, const ComputationMap& computation_map,
-    int64_t aggressiveness, const CallGraph& call_graph) {
+    int64_t aggressiveness, const CallGraph& call_graph,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!CanPropagateThroughAtAggressiveLevel(*instruction, aggressiveness)) {
     return false;
   }
@@ -2175,16 +2180,27 @@ bool ShardingPropagation::InferShardingFromOperands(
   // Propagate manual sharding. Avoid tuple shaped HLOs that group independent
   // together. Reduce, ReduceWindow, and Sort can be tuples but the elements
   // are correlated, so we propagate manual sharding through them.
+
   // For custom-calls with manual operand, the default propagation logic will
   // just assign manual to the whole custom-call.
+  const bool custom_call_condition =
+      instruction->opcode() == HloOpcode::kCustomCall &&
+      instruction->shape().IsTuple();
+  // For asynchronous instructions with manual operand, we assign manual to the
+  // whole instructions if the async_execution_thread is not in the
+  // execution_threads.
+  const bool async_instr_condition =
+      instruction->IsAsynchronous() &&
+      !HloInstruction::IsThreadIncluded(instruction->async_execution_thread(),
+                                        execution_threads);
+
   if ((!instruction->has_sharding() ||
        instruction->sharding().IsTileMaximal()) &&
       (instruction->shape().IsArray() ||
        instruction->opcode() == HloOpcode::kReduce ||
        instruction->opcode() == HloOpcode::kSort ||
        instruction->opcode() == HloOpcode::kReduceWindow ||
-       (instruction->opcode() == HloOpcode::kCustomCall &&
-        instruction->shape().IsTuple()))) {
+       custom_call_condition || async_instr_condition)) {
     for (const HloInstruction* op : instruction->operands()) {
       if (!op->has_sharding() || !op->sharding().IsManual()) continue;
       // Do not pass through manual sharding to SPMDShardToFullShape.
@@ -2243,7 +2259,7 @@ bool ShardingPropagation::InferShardingFromOperands(
       HloSharding new_sharding = operand->sharding().GetSubSharding(
           operand->shape(), {instruction->tuple_index()});
       if (new_sharding.IsManual()) {
-        instruction->set_sharding(new_sharding);
+        instruction->set_sharding(std::move(new_sharding));
         return true;
       }
       return MaybeImproveInstructionSharding(
@@ -2759,7 +2775,7 @@ bool ShardingPropagation::InferShardingFromUsers(
             ShardingPropagation::GetShardingFromUser(
                 *instruction, *user, aggressiveness, is_spmd, call_graph);
         if (user_sharding && user_sharding->IsManual()) {
-          instruction->set_sharding(*user_sharding);
+          instruction->set_sharding(std::move(*user_sharding));
           return true;
         }
       }
@@ -2804,6 +2820,12 @@ Status ShardingPropagation::CanonicalizeLayouts(HloModule* module) {
   }
   if (!module->layout_canonicalization_callback()) {
     LOG(INFO) << "There is no registered layout_canonicalization_callback.";
+    return OkStatus();
+  }
+  // If the result layout is automatically set, allow layout assignment to
+  // choose the layout.
+  if (!module->entry_computation_layout().LayoutIsSet() ||
+      !module->entry_computation_layout().result_layout().LayoutIsSet()) {
     return OkStatus();
   }
   TF_ASSIGN_OR_RETURN(auto layouts,
@@ -3165,7 +3187,8 @@ StatusOr<bool> ShardingPropagation::Run(
           }
           already_inferred_from_operands.insert(instruction);
           if (InferShardingFromOperands(instruction, computation_map,
-                                        aggressiveness, *call_graph)) {
+                                        aggressiveness, *call_graph,
+                                        execution_threads)) {
             ++inferred_from_operand_counter;
             any_changed = true;
             VLOG(2) << "Add sharding (forward-pass): "
@@ -3311,7 +3334,7 @@ StatusOr<bool> ShardingPropagation::Run(
         root_sharding.tuple_elements()[i] = saved_root_shardings[i];
       }
     }
-    root_instruction->set_sharding(root_sharding);
+    root_instruction->set_sharding(std::move(root_sharding));
   }
   auto params = module->entry_computation()->parameter_instructions();
   if (allow_spmd_sharding_propagation_to_parameters_ &&

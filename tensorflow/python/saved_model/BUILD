@@ -646,7 +646,7 @@ cuda_py_strict_test(
         "//tensorflow/python/trackable:resource",
         "//tensorflow/python/training:monitored_session",
         "//tensorflow/python/types:core",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
         "@absl_py//absl/testing:parameterized",
     ] + if_google([
         "//tensorflow/cc/experimental/tf2:runtime_pybind",
@@ -770,7 +770,8 @@ py_strict_library(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
+        "//tensorflow/python/util:tf_inspect",
         "@absl_py//absl/logging",
     ],
 )
@@ -914,7 +915,6 @@ tf_python_pybind_extension(
     #        "//tensorflow:windows": [],
     #    }),
     #    static_deps = tf_python_pybind_static_deps(),
-    features = ["-layering_check"],
     pytype_srcs = [
         "pywrap_saved_model/__init__.pyi",
         "pywrap_saved_model/constants.pyi",
@@ -928,17 +928,27 @@ tf_python_pybind_extension(
         "//tensorflow/python/training:__subpackages__",
     ],
     deps = [
-        ":pywrap_saved_model_headers",
         # placeholder for index annotation deps
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "//tensorflow/cc/experimental/libexport:save",
+        "//tensorflow/cc/saved_model:constants",
+        "//tensorflow/cc/saved_model:fingerprinting",
+        "//tensorflow/cc/saved_model:metrics",
         "//tensorflow/cc/saved_model:reader",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:path",
         "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_abseil//pybind11_abseil:status_casters",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
-    ],
+    ] + if_google([
+        "//tensorflow/tools/proto_splitter:merge",
+    ]),
 )
 
 tf_py_strict_test(

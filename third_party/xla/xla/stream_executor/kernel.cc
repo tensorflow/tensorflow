@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/kernel.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/demangle.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -45,7 +47,11 @@ void KernelMetadata::set_shared_memory_bytes(int shared_memory_bytes) {
   shared_memory_bytes_ = shared_memory_bytes;
 }
 
-KernelBase::KernelBase(KernelBase &&from)
+//===----------------------------------------------------------------------===//
+// Kernel
+//===----------------------------------------------------------------------===//
+
+Kernel::Kernel(Kernel &&from)
     : parent_(from.parent_),
       implementation_(std::move(from.implementation_)),
       name_(std::move(from.name_)),
@@ -54,31 +60,33 @@ KernelBase::KernelBase(KernelBase &&from)
   from.parent_ = nullptr;
 }
 
-KernelBase::KernelBase(StreamExecutor *parent)
+Kernel::Kernel(StreamExecutor *parent)
     : parent_(parent),
       implementation_(parent->implementation()->CreateKernelImplementation()) {}
 
-KernelBase::KernelBase(StreamExecutor *parent,
-                       internal::KernelInterface *implementation)
-    : parent_(parent), implementation_(implementation) {}
-
-KernelBase::~KernelBase() {
+Kernel::~Kernel() {
   if (parent_) {
     parent_->UnloadKernel(this);
   }
 }
 
-unsigned KernelBase::Arity() const { return implementation_->Arity(); }
+unsigned Kernel::Arity() const { return implementation_->Arity(); }
 
-void KernelBase::SetPreferredCacheConfig(KernelCacheConfig config) {
+void Kernel::SetPreferredCacheConfig(KernelCacheConfig config) {
   return implementation_->SetPreferredCacheConfig(config);
 }
 
-KernelCacheConfig KernelBase::GetPreferredCacheConfig() const {
+KernelCacheConfig Kernel::GetPreferredCacheConfig() const {
   return implementation_->GetPreferredCacheConfig();
 }
 
-void KernelBase::set_name(absl::string_view name) {
+tsl::StatusOr<int32_t> Kernel::GetMaxOccupiedBlocksPerCore(
+    ThreadDim threads, size_t dynamic_shared_memory_bytes) const {
+  return implementation_->GetMaxOccupiedBlocksPerCore(
+      threads, dynamic_shared_memory_bytes);
+}
+
+void Kernel::set_name(absl::string_view name) {
   name_ = std::string(name);
 
   // CUDA splitter prefixes stub functions with __device_stub_.

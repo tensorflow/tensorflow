@@ -4,6 +4,8 @@
   map = (d0, d1) -> (d0 : dense, d1 : compressed)
 }>
 
+// CHECK: #[[$CSR:.*]] = #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>
+
 // CHECK-LABEL: @asinh_scalar(
 // CHECK-SAME: %[[ARG:.*]]: tensor<f32>) -> tensor<f32> {
 // CHECK:         %[[RESULT:.*]] = chlo.asinh %[[ARG]] : tensor<f32> -> tensor<f32>
@@ -14,13 +16,13 @@ func.func @asinh_scalar(%arg : tensor<f32>) -> tensor<f32> {
 }
 
 // CHECK-LABEL: @asinh_tensor(
-// CHECK-SAME: %[[ARG:.*]]: tensor<10x20xf32, #{{.*}}>) ->
-// CHECK-SAME:   tensor<10x20xf32, #{{.*}}> {
+// CHECK-SAME: %[[ARG:.*]]: tensor<10x20xf32, #[[$CSR]]>) ->
+// CHECK-SAME:   tensor<10x20xf32, #[[$CSR]]> {
 // CHECK:         %[[OUT:.*]] = bufferization.alloc_tensor() :
-// CHECK-SAME:      tensor<10x20xf32, #{{.*}}>
+// CHECK-SAME:      tensor<10x20xf32, #[[$CSR]]>
 // CHECK:         %[[VAL:.*]] = linalg.generic
 // CHECK-SAME:        ins(%[[ARG]] : tensor<10x20xf32,
-// CHECK-SAME:        #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>>) outs(%[[OUT]]
+// CHECK-SAME:        #sparse>) outs(%[[OUT]]
 // CHECK:           sparse_tensor.unary %{{.*}} : f32 to f32
 // CHECK:           present = {
 // CHECK:             tensor.from_elements
@@ -38,13 +40,12 @@ func.func @asinh_tensor(%arg : tensor<10x20xf32, #CSR>)
   func.return %result : tensor<10x20xf32, #CSR>
 }
 
-
 // CHECK-LABEL:  func.func @tan_tensor(
-// CHECK-SAME:   %[[TMP_arg0:.*]]: tensor<10x20xf32,
-// CHECK:          %[[TMP_0:.*]] = bufferization.alloc_tensor() : tensor<10x20xf32,
+// CHECK-SAME:   %[[TMP_arg0:.*]]: tensor<10x20xf32, #[[$CSR]]
+// CHECK:          %[[TMP_0:.*]] = bufferization.alloc_tensor() : tensor<10x20xf32, #[[$CSR]]
 // CHECK:          %[[TMP_1:.*]] = linalg.generic {indexing_maps = [#map, #map], iterator_types = ["parallel", "parallel"]}
-// CHECK-SAME:     ins(%[[TMP_arg0]] : tensor<10x20xf32,
-// CHECK-SAME:     outs(%[[TMP_0]] : tensor<10x20xf32,
+// CHECK-SAME:     ins(%[[TMP_arg0]] : tensor<10x20xf32, #[[$CSR]]
+// CHECK-SAME:     outs(%[[TMP_0]] : tensor<10x20xf32, #[[$CSR]]
 // CHECK:           ^bb0(%[[TMP_arg1:.*]]: f32, %[[TMP_arg2:.*]]: f32):
 // CHECK:             %[[TMP_2:.*]] = sparse_tensor.unary %[[TMP_arg1]] : f32 to f32
 // CHECK:              present = {
@@ -68,10 +69,10 @@ func.func @tan_tensor(%arg : tensor<10x20xf32, #CSR>)
 
 // CHECK-LABEL:  func.func @sinh_tensor(
 // CHECK-SAME:   %[[TMP_arg0:.*]]: tensor<10x20xf32,
-// CHECK:          %[[TMP_0:.*]] = bufferization.alloc_tensor() : tensor<10x20xf32,
+// CHECK:          %[[TMP_0:.*]] = bufferization.alloc_tensor() : tensor<10x20xf32, #[[$CSR]]
 // CHECK:          %[[TMP_1:.*]] = linalg.generic {indexing_maps = [#map, #map], iterator_types = ["parallel", "parallel"]}
-// CHECK-SAME:     ins(%[[TMP_arg0]] : tensor<10x20xf32,
-// CHECK-SAME:     outs(%[[TMP_0]] : tensor<10x20xf32,
+// CHECK-SAME:     ins(%[[TMP_arg0]] : tensor<10x20xf32, #[[$CSR]]
+// CHECK-SAME:     outs(%[[TMP_0]] : tensor<10x20xf32, #[[$CSR]]
 // CHECK:          ^bb0(%[[TMP_arg1:.*]]: f32, %[[TMP_arg2:.*]]: f32):
 // CHECK:            %[[TMP_2:.*]] = sparse_tensor.unary %[[TMP_arg1]] : f32 to f32
 // CHECK:             present = {

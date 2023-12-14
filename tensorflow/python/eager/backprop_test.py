@@ -447,7 +447,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(dy_dy.numpy(),
                         constant_op.constant(1.0, shape=[2, 2]).numpy())
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testTapeNoOpGradientMultiTarget2By2(self):
     a_2_by_2 = constant_op.constant(2.0, shape=[2, 2])
     with backprop.GradientTape(persistent=True) as tape:
@@ -1648,7 +1648,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
         self.assertIn('gradient_tape/my_scope/', op.name)
     self.assertEqual(num_sin_ops_found, 2)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testRecomputeGradWithDifferentShape(self):
     if sys.version_info.major == 3 and sys.version_info.minor in (11, 12):
       # TODO(b/264947738)
@@ -1681,7 +1681,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(y[1], 2.0)
 
   @parameterized.parameters([(True), (False)])
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testRecomputeGradWithNestedFunctionAndWhileLoop(self, reduce_retracing):
     if sys.version_info.major == 3 and sys.version_info.minor in (11, 12):
       # TODO(b/264947738)

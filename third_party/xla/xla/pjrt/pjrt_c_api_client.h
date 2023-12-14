@@ -258,6 +258,11 @@ class PjRtCApiClient : public PjRtClient {
 
   absl::string_view platform_version() const override;
 
+  std::optional<PjRtPluginAttributes> plugin_attributes() const override {
+    return PjRtPluginAttributes{c_api_->pjrt_api_version.major_version,
+                                c_api_->pjrt_api_version.minor_version};
+  }
+
   // TODO(b/244756954): Rethink this function altogether
   PjRtRuntimeType runtime_type() const override {
     return PjRtRuntimeType::kTfrt;
@@ -269,6 +274,12 @@ class PjRtCApiClient : public PjRtClient {
   StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const override {
     return Unimplemented("PJRT C API does not support GetHloCostAnalysis");
+  }
+
+  StatusOr<Layout> GetDefaultLayout(PrimitiveType element_type,
+                                    absl::Span<const int64_t> dims) override {
+    // TODO(skyewm): implement
+    return Unimplemented("PJRT C API does not support GetDefaultLayout");
   }
 
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
@@ -568,6 +579,10 @@ class PjRtCApiExecutable : public PjRtExecutable {
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override;
 
+  StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
+    return pjrt::GetCompiledMemoryStats(c_api_, executable_.get());
+  }
+
   StatusOr<std::vector<Shape>> GetOutputShapes() const override {
     LOG(FATAL) << "PjRtExecutable::GetOutputShapes() not implemented in PJRT C "
                   "API. Please use PjRtExecutable::GetOutputElementTypes() or "
@@ -631,6 +646,10 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override {
     return executable_->GetHloModules();
+  }
+
+  StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
+    return executable_->GetCompiledMemoryStats();
   }
 
   StatusOr<std::vector<Shape>> GetOutputShapes() const override {
@@ -723,7 +742,8 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
       std::vector<std::vector<PJRT_Buffer*>>& c_output_lists_storage,
       std::vector<PJRT_Buffer**>& c_output_lists,
       std::optional<std::vector<PJRT_Event*>>& device_complete_events,
-      SendRecvCallbackData& send_recv_callback_data);
+      SendRecvCallbackData& send_recv_callback_data,
+      std::vector<int64_t>& non_donatable_input_indices_storage);
 
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteWithSingleDevice(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,

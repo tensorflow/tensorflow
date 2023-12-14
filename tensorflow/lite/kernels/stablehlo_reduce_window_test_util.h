@@ -91,6 +91,9 @@ inline std::vector<int64_t> DilateShape(std::vector<int64_t> shape,
   for (size_t i = 0; i < shape.size(); ++i) {
     shape[i] = (shape[i] - 1) * dilations[i] + 1;
   }
+  if (absl::c_any_of(shape, [](auto s) { return s <= 0; })) {
+    absl::c_fill(shape, 0);
+  }
   return shape;
 }
 
@@ -99,6 +102,10 @@ Tensor<T> Dilate(const Tensor<T>& input, const std::vector<int64_t>& dilations,
                  const T padding_value) {
   Tensor<T> output =
       Tensor<T>::FromShape(DilateShape(input.shape, dilations), padding_value);
+
+  if (absl::c_all_of(output.shape, [](auto s) { return s == 0; })) {
+    return output;
+  }
 
   const std::vector<int64_t> strides = input.Strides();
   const std::vector<int64_t> output_strides = output.Strides();
@@ -142,6 +149,9 @@ inline std::vector<int64_t> PadCropShape(std::vector<int64_t> shape,
   for (size_t i = 0; i < shape.size(); ++i) {
     shape[i] = shape[i] + padding[2 * i] + padding[2 * i + 1];
   }
+  if (absl::c_any_of(shape, [](auto s) { return s <= 0; })) {
+    absl::c_fill(shape, 0);
+  }
   return shape;
 }
 
@@ -159,6 +169,10 @@ Tensor<T> Pad(const Tensor<T>& input, const std::vector<int64_t>& padding,
 
   Tensor<T> output = Tensor<T>::FromShape(
       PadCropShape(input.shape, safe_padding), padding_value);
+
+  if (absl::c_all_of(output.shape, [](auto s) { return s == 0; })) {
+    return output;
+  }
 
   const std::vector<int64_t> strides = input.Strides();
   const std::vector<int64_t> output_strides = output.Strides();
@@ -208,6 +222,10 @@ Tensor<T> Crop(const Tensor<T>& input, const std::vector<int64_t>& cropping) {
 
   Tensor<T> output =
       Tensor<T>::FromShape(PadCropShape(input.shape, safe_cropping));
+
+  if (absl::c_all_of(output.shape, [](auto s) { return s == 0; })) {
+    return output;
+  }
 
   const std::vector<int64_t> strides = input.Strides();
   const std::vector<int64_t> output_strides = output.Strides();

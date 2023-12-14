@@ -9,6 +9,7 @@ load(
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
+    "cuda_py_benchmark_test",
     "tf_py_logged_benchmark",
 )
 
@@ -113,6 +114,8 @@ cuda_py_strict_test(
     deps = [
         ":pywrap_tensor_test_util",
         ":test",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:test_lib",
         "//third_party/py/numpy",
     ],
 )
@@ -805,7 +808,7 @@ py_strict_library(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
     python_version = "PY3",
@@ -896,7 +899,7 @@ tf_xla_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "remote_benchmarks_test",
     srcs = ["remote_benchmarks_test.py"],
     python_version = "PY3",

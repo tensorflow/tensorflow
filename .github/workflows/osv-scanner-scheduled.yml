@@ -27,6 +27,7 @@ permissions:
 
 jobs:
   scan-scheduled:
+    if: github.repository == 'tensorflow/tensorflow'
     uses: "google/osv-scanner/.github/workflows/osv-scanner-reusable.yml@main"
     with:
       scan-args: |-

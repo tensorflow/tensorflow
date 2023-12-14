@@ -17,8 +17,6 @@ limitations under the License.
 #include <sstream>
 #include <string>
 
-#include "absl/strings/str_cat.h"
-
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
@@ -30,9 +28,14 @@ limitations under the License.
 #endif
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/xla_builder.h"
 #include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/runtime/custom_call.h"
 #include "xla/runtime/custom_call_registry.h"
 #include "xla/runtime/executable.h"
@@ -44,6 +47,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/custom_call_registry.h"
 #include "xla/service/gpu/runtime/support.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/test_helpers.h"
@@ -456,6 +460,62 @@ TEST_F(CustomCallTest, ExportedFfiMemcpy) {
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
+  EXPECT_THAT(result.data<float>(), ::testing::Each(42));
+}
+
+//===----------------------------------------------------------------------===//
+// XLA:FFI handler with attached HloComputation
+//===----------------------------------------------------------------------===//
+
+static Status MemcpyWithCalledComputation(
+    const ServiceExecutableRunOptions* run_options, ffi::Buffer src,
+    ffi::Buffer dst, const HloComputation* called_computation) {
+  if (called_computation == nullptr)
+    return absl::InternalError("Called computation is not defined");
+
+  if (called_computation->instruction_count() != 1)
+    return absl::InternalError("Unexpected number of instructions");
+
+  if (!DynCast<HloParameterInstruction>(called_computation->root_instruction()))
+    return absl::InternalError("ROOT must be a paremeter");
+
+  return MemcpyImpl(run_options, src, dst);
+}
+
+XLA_FFI_DEFINE_HANDLER(kMemcpyWithCalledComputation,
+                       MemcpyWithCalledComputation,
+                       ffi::Ffi::Bind()
+                           .Ctx<ServiceExecutableRunOptions>()
+                           .Arg<ffi::Buffer>()  // src
+                           .Arg<ffi::Buffer>()  // dst
+                           .Ctx<ffi::CalledComputation>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
+                         "__gpu$xla.gpu.ext.memcpy_with_called_compuation",
+                         kMemcpyWithCalledComputation);
+
+TEST_F(CustomCallTest, WithCalledComputation) {
+  // FFI handlers with called computations supported only with Thunks runtime.
+  mutable_debug_options()->set_xla_gpu_enable_xla_runtime_executable(false);
+
+  auto shape = ShapeUtil::MakeShape(F32, {128});
+
+  // Build a called computation which is just a copy instruction.
+  XlaBuilder copy("copy");
+  auto p0 = Parameter(&copy, 0, shape, "l_val");
+  Copy(p0);
+  auto copy_computation = copy.Build().value();
+
+  XlaBuilder b(TestName());
+  CustomCallWithComputation(
+      &b, "__gpu$xla.gpu.ext.memcpy_with_called_compuation",
+      /*operands=*/{Broadcast(ConstantR0WithType(&b, F32, 42.0), {128})},
+      copy_computation, shape, /*opaque=*/"",
+      /*has_side_effect=*/false,
+      /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+      /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+      /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
   TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
   EXPECT_THAT(result.data<float>(), ::testing::Each(42));
 }

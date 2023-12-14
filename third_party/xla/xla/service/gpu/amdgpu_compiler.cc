@@ -20,8 +20,12 @@ limitations under the License.
 
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/call_inliner.h"
+#include "xla/service/dot_dimension_merger.h"
 #include "xla/service/gpu/conv_algorithm_picker.h"
+#include "xla/service/gpu/cublas_pad_for_gemms.h"
+#include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/cusolver_rewriter.h"
+#include "xla/service/gpu/gemm_algorithm_picker.h"
 #include "xla/service/gpu/gemm_rewriter.h"
 #include "xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "xla/service/gpu/gpu_conv_rewriter.h"
@@ -115,10 +119,26 @@ Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const TargetConfig& gpu_target_config,
     tsl::thread::ThreadPool* thread_pool) {
+  HloPassPipeline pre_pipeline("AMDGPU post-layout_assignment part 1");
+
+  auto rocm_compute_capability = std::get<se::RocmComputeCapability>(
+      gpu_target_config.device_description.gpu_compute_capability());
+
+  pre_pipeline.AddPass<DotDimensionMerger>();
+
+  for (const auto& req : HipblasPaddingRequirements) {
+    pre_pipeline.AddPass<CublasPadForGemms>(rocm_compute_capability,
+                                            req.data_type, req.multiple_of);
+  }
+  // Padding a gemm operand that's a constant results in pad(constant).  Run
+  // constant-folding to simplify this into a new constant.
+  pre_pipeline.AddPass<HloConstantFolding>();
+  TF_RETURN_IF_ERROR(pre_pipeline.Run(hlo_module).status());
+
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, options, gpu_target_config, thread_pool));
 
-  HloPassPipeline post_pipeline("AMDGPU post-layout_assignment");
+  HloPassPipeline post_pipeline("AMDGPU post-layout_assignment part 2");
 
   // Transform TriangularSolve ops into custom-calls, so we can add temp
   // memory.
@@ -153,8 +173,7 @@ Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
   if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
     pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
   }
-  // TODO:
-  // pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
+  pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
   return OkStatus();
 }
 
@@ -162,13 +181,10 @@ AMDGPUCompiler::AMDGPUCompiler()
     : GpuCompiler(stream_executor::rocm::kROCmPlatformId,
                   amdgpu::TargetTriple(), amdgpu::DataLayout()) {}
 
-StatusOr<std::pair<std::string, std::vector<uint8_t>>>
-AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
-                                    llvm::Module* llvm_module,
-                                    se::GpuComputeCapability gpu_version,
-                                    bool relocatable,
-                                    const HloModule* debug_module,
-                                    const CompileOptions& options) {
+StatusOr<GpuCompiler::BackendCompileResult> AMDGPUCompiler::CompileTargetBinary(
+    const HloModuleConfig& module_config, llvm::Module* llvm_module,
+    se::GpuComputeCapability gpu_version, bool relocatable,
+    const HloModule* debug_module, const CompileOptions& options) {
   if (rocdl_dir_.empty()) {
     // Compute rocdl_dir_ just once and cache it in this member.
     rocdl_dir_ = GetROCDLDir(module_config);
@@ -191,7 +207,7 @@ AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                       module_config.compilation_cache_key()));
   }
 
-  return std::pair<std::string, std::vector<uint8_t>>("", std::move(hsaco));
+  return BackendCompileResult{"", std::move(hsaco)};
 }
 
 }  // namespace gpu

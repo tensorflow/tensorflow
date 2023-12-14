@@ -100,8 +100,10 @@ FailureOr<StringAttr> RenameStablehloFunctions(
     MLIRContext *context, SymbolTableCollection &symbol_tables,
     ModuleOp tf_module, ModuleOp stablehlo_module) {
   SymbolTable &tf_symbol_table = symbol_tables.getSymbolTable(tf_module);
-  SymbolTable &stablehlo_symbol_table =
-      symbol_tables.getSymbolTable(stablehlo_module);
+  // `stablehlo_module` is deleted right after the deserialization, so no need
+  // to store its `SymbolTable` to `SymbolTableCollection`.
+  SymbolTable stablehlo_symbol_table(stablehlo_module);
+
   Builder builder(context);
   StringAttr main_func_name;
   for (auto func : stablehlo_module.getOps<func::FuncOp>()) {

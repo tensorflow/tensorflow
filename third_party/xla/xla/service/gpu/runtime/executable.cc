@@ -87,7 +87,6 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
   RegisterIoFeedCustomCalls(registry);
   RegisterMemsetCustomCalls(registry);
   RegisterSendRecvCustomCalls(registry);
-  RegisterTopkCustomCall(registry);
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
   RegisterMatmulCustomCalls(registry);
@@ -104,6 +103,7 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
   RegisterStreamSynchronizationCustomCalls(registry);
   RegisterCubSortCustomCalls(registry);
   RegisterXlaClassicCustomCalls(registry);
+  RegisterTopkCustomCall(registry);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
@@ -494,7 +494,7 @@ Status GpuRuntimeExecutable::Execute(
 
 //===----------------------------------------------------------------------===//
 
-Executable& GpuRuntimeExecutable::executable() {
+const Executable& GpuRuntimeExecutable::executable() const {
   if (auto* jit = std::get_if<std::unique_ptr<JitExecutable>>(&executable_)) {
     return *(*jit)->DefaultExecutable();
   }
@@ -502,10 +502,7 @@ Executable& GpuRuntimeExecutable::executable() {
 }
 
 StatusOr<std::string_view> GpuRuntimeExecutable::GetObjFile() const {
-  const auto* jit = std::get_if<std::unique_ptr<JitExecutable>>(&executable_);
-  if (!jit) return InternalError("ObjFile is not available");
-
-  if (auto obj_file = (*jit)->DefaultExecutable()->obj_file())
+  if (auto obj_file = executable().obj_file())
     return std::string_view(obj_file->getBuffer());
 
   return InternalError("gpu runtime executable didn't save the obj file");

@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/hlo_graph_dumper.h"
 #include "xla/status.h"
 #include "xla/xla.pb.h"
 
@@ -92,6 +93,11 @@ void DumpProtobufToFile(const tsl::protobuf::Message& proto,
                             tsl::Env*, const tsl::protobuf::Message&)>
                             text_formatter = nullptr);
 
+// Render graph in a given format.
+std::string RenderGraph(absl::string_view label, const HloModule& module,
+                        RenderedGraphFormat format,
+                        bool show_fusion_subcomputations = true);
+
 // Similar to above, but the filename depends on module's information and the
 // given name. Also allows for the optional serialization function.
 void DumpPerModuleProtobufToFile(
@@ -141,6 +147,11 @@ void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules);
 // generating an expensive string.
 bool DumpingEnabledForHloModule(absl::string_view hlo_module_name,
                                 const DebugOptions& opts);
+
+// Returns true if we should dump data for an HLO pass
+bool DumpingEnabledForHloPass(absl::string_view hlo_pass_name,
+                              const DebugOptions& opts);
+
 inline bool DumpingEnabledForHloModule(const HloModule& module) {
   return DumpingEnabledForHloModule(module.name(),
                                     module.config().debug_options());

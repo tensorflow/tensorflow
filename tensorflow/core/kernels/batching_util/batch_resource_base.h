@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <map>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -238,6 +239,7 @@ class BatchResourceBase : public ResourceBase {
   //   2) the input size from this task;
   //   3) the padding amount.
   static void SplitBatchCostsAndRecordMetrics(
+      const std::string& model_name,
       const std::vector<std::unique_ptr<CostMeasurement>>&
           batch_cost_measurements,
       int64_t processed_size, BatchT& batch);

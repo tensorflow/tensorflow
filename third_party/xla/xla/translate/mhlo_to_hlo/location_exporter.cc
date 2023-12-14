@@ -110,8 +110,11 @@ xla::OpMetadata CreateOpMetadataFromLocation(
     if (isa<mlir::UnknownLoc>(loc)) return metadata;
 
     if (frame_index_builder != nullptr) {
-      int frameId = frame_index_builder->AddCallStackAndGetFirstFrameId(loc);
-      metadata.set_stack_frame_id(frameId);
+      auto result = frame_index_builder->AddCallStackAndGetFirstFrameId(loc);
+      metadata.set_stack_frame_id(result.last_frame_id);
+      // TODO(b/311155137): Remove when profiler will support stack traces.
+      metadata.set_source_file(result.last_frame_file);
+      metadata.set_source_line(result.last_frame_line);
     }
   }
 

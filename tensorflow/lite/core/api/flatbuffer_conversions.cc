@@ -918,6 +918,9 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
+    case BuiltinOperator_STABLEHLO_PAD: {
+      return ParseStablehloPad(op, error_reporter, allocator, builtin_data);
+    }
     // TODO: skip param parsing for now since ops below don't have kernels
     case BuiltinOperator_STABLEHLO_SLICE:
     case BuiltinOperator_STABLEHLO_BROADCAST_IN_DIM:
@@ -952,7 +955,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_STABLEHLO_IOTA:
     case BuiltinOperator_STABLEHLO_COMPARE:
     case BuiltinOperator_STABLEHLO_CONVERT:
-    case BuiltinOperator_STABLEHLO_PAD:
     case BuiltinOperator_STABLEHLO_DOT_GENERAL:
     case BuiltinOperator_STABLEHLO_SORT:
     case BuiltinOperator_STABLEHLO_WHILE:
@@ -2123,7 +2125,8 @@ TfLiteStatus ParseStablehloReduceWindow(const Operator* op,
     const size_t rank = schema_params->window_dimensions()->size();
 
     auto LoadAttr = [&error_reporter](
-                        auto& params_array, auto* const flatbuffer_vector,
+                        int64_t* params_array, size_t params_array_size_bytes,
+                        const flatbuffers::Vector<int64_t>* flatbuffer_vector,
                         const char* attr_name, const size_t expected_size,
                         const int64_t fill_value) -> TfLiteStatus {
       if (flatbuffer_vector && flatbuffer_vector->size()) {
@@ -2136,7 +2139,7 @@ TfLiteStatus ParseStablehloReduceWindow(const Operator* op,
           return kTfLiteError;
         }
         TfLiteStatus status = FlatBufferIntVectorToArray(
-            sizeof(params_array), flatbuffer_vector, params_array,
+            params_array_size_bytes, flatbuffer_vector, params_array,
             error_reporter, "stablehlo.reduce_window");
         if (status != kTfLiteOk) {
           TF_LITE_REPORT_ERROR(error_reporter, "Check the '%s' attribute.",
@@ -2144,43 +2147,32 @@ TfLiteStatus ParseStablehloReduceWindow(const Operator* op,
           return status;
         }
       } else {
-        std::fill_n(params_array,
-                    TFLITE_STABLEHLO_REDUCE_WINDOW_PARAMS_MAX_DIMENSION_COUNT,
+        std::fill_n(params_array, params_array_size_bytes / sizeof(int64_t),
                     fill_value);
       }
       return kTfLiteOk;
     };
 
-    if (TfLiteStatus status = LoadAttr(
-            params->window_dimensions, schema_params->window_dimensions(),
-            "window_dimensions", /*expected_size=*/rank, /*fill_value=*/1);
-        status != kTfLiteOk) {
-      return status;
-    }
-    if (TfLiteStatus status = LoadAttr(
-            params->window_strides, schema_params->window_strides(),
-            "window_strides", /*expected_size=*/rank, /*fill_value=*/1);
-        status != kTfLiteOk) {
-      return status;
-    }
-    if (TfLiteStatus status = LoadAttr(
-            params->base_dilations, schema_params->base_dilations(),
-            "base_dilations", /*expected_size=*/rank, /*fill_value=*/1);
-        status != kTfLiteOk) {
-      return status;
-    }
-    if (TfLiteStatus status = LoadAttr(
-            params->window_dilations, schema_params->window_dilations(),
-            "window_dilations", /*expected_size=*/rank, /*fill_value=*/1);
-        status != kTfLiteOk) {
-      return status;
-    }
-    if (TfLiteStatus status =
-            LoadAttr(params->padding, schema_params->padding(), "padding",
-                     /*expected_size=*/2 * rank, /*fill_value=*/0);
-        status != kTfLiteOk) {
-      return status;
-    }
+    TF_LITE_ENSURE_STATUS(
+        LoadAttr(params->window_dimensions, sizeof(params->window_dimensions),
+                 schema_params->window_dimensions(), "window_dimensions",
+                 /*expected_size=*/rank, /*fill_value=*/1));
+    TF_LITE_ENSURE_STATUS(
+        LoadAttr(params->window_strides, sizeof(params->window_strides),
+                 schema_params->window_strides(), "window_strides",
+                 /*expected_size=*/rank, /*fill_value=*/1));
+    TF_LITE_ENSURE_STATUS(
+        LoadAttr(params->base_dilations, sizeof(params->base_dilations),
+                 schema_params->base_dilations(), "base_dilations",
+                 /*expected_size=*/rank, /*fill_value=*/1));
+    TF_LITE_ENSURE_STATUS(
+        LoadAttr(params->window_dilations, sizeof(params->window_dilations),
+                 schema_params->window_dilations(), "window_dilations",
+                 /*expected_size=*/rank, /*fill_value=*/1));
+    TF_LITE_ENSURE_STATUS(LoadAttr(params->padding, sizeof(params->padding),
+                                   schema_params->padding(), "padding",
+                                   /*expected_size=*/2 * rank,
+                                   /*fill_value=*/0));
 
     params->body_subgraph_index = schema_params->body_subgraph_index();
     *builtin_data = params.release();
@@ -2209,27 +2201,34 @@ TfLiteStatus ParseStablehloScatter(const Operator* op,
   if (schema_params) {
     params->indices_are_sorted = schema_params->indices_are_sorted();
 
-    TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-        schema_params->update_window_dims()->size() * sizeof(int64_t),
-        schema_params->update_window_dims(), params->update_window_dims,
-        error_reporter, "stablehlo_scatter"));
-    params->num_update_window_dims =
-        schema_params->update_window_dims()->size();
+    if (schema_params->update_window_dims()) {
+      TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+          schema_params->update_window_dims()->size() * sizeof(int64_t),
+          schema_params->update_window_dims(), params->update_window_dims,
+          error_reporter, "stablehlo_scatter"));
+      params->num_update_window_dims =
+          schema_params->update_window_dims()->size();
+    }
 
-    TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-        schema_params->inserted_window_dims()->size() * sizeof(int64_t),
-        schema_params->inserted_window_dims(), params->inserted_window_dims,
-        error_reporter, "stablehlo_scatter"));
-    params->num_inserted_window_dims =
-        schema_params->inserted_window_dims()->size();
+    if (schema_params->inserted_window_dims()) {
+      TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+          schema_params->inserted_window_dims()->size() * sizeof(int64_t),
+          schema_params->inserted_window_dims(), params->inserted_window_dims,
+          error_reporter, "stablehlo_scatter"));
+      params->num_inserted_window_dims =
+          schema_params->inserted_window_dims()->size();
+    }
 
-    TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-        schema_params->scatter_dims_to_operand_dims()->size() * sizeof(int64_t),
-        schema_params->scatter_dims_to_operand_dims(),
-        params->scatter_dims_to_operand_dims, error_reporter,
-        "stablehlo_scatter"));
-    params->num_scatter_dims_to_operand_dims =
-        schema_params->scatter_dims_to_operand_dims()->size();
+    if (schema_params->scatter_dims_to_operand_dims()) {
+      TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+          schema_params->scatter_dims_to_operand_dims()->size() *
+              sizeof(int64_t),
+          schema_params->scatter_dims_to_operand_dims(),
+          params->scatter_dims_to_operand_dims, error_reporter,
+          "stablehlo_scatter"));
+      params->num_scatter_dims_to_operand_dims =
+          schema_params->scatter_dims_to_operand_dims()->size();
+    }
 
     params->index_vector_dim = schema_params->index_vector_dim();
     params->unique_indices = schema_params->unique_indices();
@@ -2324,6 +2323,59 @@ TfLiteStatus ParseStablehloGather(const Operator* op,
 
   *builtin_data = params.release();
   return kTfLiteOk;
+}
+
+TfLiteStatus ParseStablehloPad(const Operator* op,
+                               ErrorReporter* error_reporter,
+                               BuiltinDataAllocator* allocator,
+                               void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  auto params = safe_allocator.Allocate<TfLiteStablehloPadParams>();
+  const StablehloPadOptions* schema_params =
+      op->builtin_options_2_as_StablehloPadOptions();
+
+  if (schema_params) {
+    auto LoadAttr =
+        [&error_reporter](
+            int64_t* params_array, const size_t params_array_size_bytes,
+            const flatbuffers::Vector<int64_t>* const flatbuffer_vector,
+            const char* const attr_name) -> TfLiteStatus {
+      TfLiteStatus status = FlatBufferIntVectorToArray(
+          params_array_size_bytes, flatbuffer_vector, params_array,
+          error_reporter, "stablehlo.pad");
+      if (status != kTfLiteOk) {
+        TF_LITE_REPORT_ERROR(error_reporter, "Check the '%s' attribute.",
+                             attr_name);
+      }
+      return status;
+    };
+
+    TF_LITE_ENSURE_STATUS(
+        LoadAttr(params->edge_padding_low, sizeof(params->edge_padding_low),
+                 schema_params->edge_padding_low(), "edge_padding_low"));
+    TF_LITE_ENSURE_STATUS(
+        LoadAttr(params->edge_padding_high, sizeof(params->edge_padding_high),
+                 schema_params->edge_padding_high(), "edge_padding_high"));
+    TF_LITE_ENSURE_STATUS(
+        LoadAttr(params->interior_padding, sizeof(params->interior_padding),
+                 schema_params->interior_padding(), "interior_padding"));
+    if (schema_params->edge_padding_low()->size() !=
+            schema_params->edge_padding_high()->size() ||
+        schema_params->edge_padding_low()->size() !=
+            schema_params->interior_padding()->size()) {
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "'stablehlo.pad' operation parameter array sizes "
+                           "are not consistent.");
+      return kTfLiteError;
+    }
+    *builtin_data = params.release();
+    return kTfLiteOk;
+  }
+  TF_LITE_REPORT_ERROR(error_reporter,
+                       "Could not get 'stablehlo.pad' operation parameters.");
+  return kTfLiteError;
 }
 
 // We have this parse function instead of directly returning kTfLiteOk from the

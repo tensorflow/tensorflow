@@ -501,7 +501,7 @@ func.func @op_broadcast_in_dim(%arg0: tensor<16xf32>) -> tensor<16x16xf32> {
 // CHECK-LABEL: "op_broadcast"
 func.func @op_broadcast(%arg0: tensor<16xf32>) -> tensor<16x16xf32> {
   //      CHECK: "stablehlo.broadcast"(%arg0) {
-  // CHECK-SAME:   broadcast_sizes = dense<16> : tensor<1xi64>
+  // CHECK-SAME:   broadcast_sizes = array<i64: 16>
   // CHECK-SAME: } : (tensor<16xf32>) -> tensor<16x16xf32>
   %0 = "mhlo.broadcast"(%arg0) {
     broadcast_sizes = dense<16> : tensor<1xi64>
@@ -557,6 +557,19 @@ func.func @op_count_leading_zeros(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK: "stablehlo.count_leading_zeros"(%arg0) : (tensor<i32>) -> tensor<i32>
   %0 = "mhlo.count_leading_zeros"(%arg0) : (tensor<i32>) -> tensor<i32>
   func.return %0 : tensor<i32>
+}
+
+// CHECK-LABEL: "op_collective_broadcast"
+func.func @op_collective_broadcast(%arg0: tensor<1x2xi64>) -> tensor<1x2xi64> {
+  //               CHECK: "stablehlo.collective_broadcast"(%arg0) {
+  //          CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 0, type = 0>,
+  // CHECK-SAME{LITERAL}:   replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+  //          CHECK-SAME: } : (tensor<1x2xi64>) -> tensor<1x2xi64>
+  %0 = "mhlo.collective_broadcast"(%arg0) {
+    replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>,
+    channel_handle = #mhlo.channel_handle<handle = 0, type = 0>
+  } : (tensor<1x2xi64>) -> tensor<1x2xi64>
+  func.return %0 : tensor<1x2xi64>
 }
 
 // CHECK-LABEL: "op_collective_permute"
@@ -859,7 +872,7 @@ func.func @op_dynamic_reshape(%arg0: tensor<16xf32>, %arg1: tensor<?xindex>) -> 
 // CHECK-LABEL: "op_dynamic_slice"
 func.func @op_dynamic_slice(%arg0: tensor<16xf32>, %arg1: tensor<i64>) -> tensor<4xf32> {
   //      CHECK: "stablehlo.dynamic_slice"(%arg0, %arg1) {
-  // CHECK-SAME:   slice_sizes = dense<4> : tensor<1xi64>
+  // CHECK-SAME:   slice_sizes = array<i64: 4>
   // CHECK-SAME: } : (tensor<16xf32>, tensor<i64>) -> tensor<4xf32>
   %0 = "mhlo.dynamic_slice"(%arg0, %arg1) {
     slice_sizes = dense<4> : tensor<1xi64>
@@ -902,7 +915,7 @@ func.func @op_exponential(%arg0: tensor<f32>) -> tensor<f32> {
 // CHECK-LABEL: "op_fft"
 func.func @op_fft(%arg0: tensor<16xcomplex<f32>>) -> tensor<16xcomplex<f32>> {
   //      CHECK: "stablehlo.fft"(%arg0) {
-  // CHECK-SAME:   fft_length = dense<16> : tensor<1xi64>,
+  // CHECK-SAME:   fft_length = array<i64: 16>,
   // CHECK-SAME:   fft_type = #stablehlo<fft_type FFT>
   // CHECK-SAME: } : (tensor<16xcomplex<f32>>) -> tensor<16xcomplex<f32>>
   %0 = "mhlo.fft"(%arg0) {
@@ -1124,9 +1137,9 @@ func.func @op_outfeed(%arg0: tensor<f32>, %arg1: !mhlo.token) -> !mhlo.token {
 // CHECK-LABEL: "op_pad"
 func.func @op_pad(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> tensor<16xf32> {
   //      CHECK: "stablehlo.pad"(%arg0, %arg1) {
-  // CHECK-SAME:   edge_padding_high = dense<4> : tensor<1xi64>,
-  // CHECK-SAME:   edge_padding_low = dense<4> : tensor<1xi64>,
-  // CHECK-SAME:   interior_padding = dense<0> : tensor<1xi64>
+  // CHECK-SAME:   edge_padding_high = array<i64: 4>,
+  // CHECK-SAME:   edge_padding_low = array<i64: 4>,
+  // CHECK-SAME:   interior_padding = array<i64: 0>
   // CHECK-SAME: } : (tensor<8xf32>, tensor<f32>) -> tensor<16xf32>
   %0 = "mhlo.pad"(%arg0, %arg1) {
     edge_padding_high = dense<4> : tensor<1xi64>,
@@ -1294,7 +1307,7 @@ func.func @op_return(%arg0: tensor<i32>, %arg1: tensor<f32>) -> tensor<f32> {
 // CHECK-LABEL: "op_reverse"
 func.func @op_reverse(%arg0: tensor<16xf32>) -> tensor<16xf32> {
   //      CHECK: "stablehlo.reverse"(%arg0) {
-  // CHECK-SAME:   dimensions = dense<0> : tensor<1xi64>
+  // CHECK-SAME:   dimensions = array<i64: 0>
   // CHECK-SAME: } : (tensor<16xf32>) -> tensor<16xf32>
   %0 = "mhlo.reverse"(%arg0) {
     dimensions = dense<0> : tensor<1xi64>
@@ -1478,9 +1491,9 @@ func.func @op_sine(%arg0: tensor<f32>) -> tensor<f32> {
 // CHECK-LABEL: "op_slice"
 func.func @op_slice(%arg0: tensor<16xf32>) -> tensor<4xf32> {
   //      CHECK: "stablehlo.slice"(%arg0) {
-  // CHECK-SAME:   limit_indices = dense<4> : tensor<1xi64>,
-  // CHECK-SAME:   start_indices = dense<0> : tensor<1xi64>,
-  // CHECK-SAME:   strides = dense<1> : tensor<1xi64>
+  // CHECK-SAME:   limit_indices = array<i64: 4>,
+  // CHECK-SAME:   start_indices = array<i64: 0>,
+  // CHECK-SAME:   strides = array<i64: 1>
   // CHECK-SAME: } : (tensor<16xf32>) -> tensor<4xf32>
   %0 = "mhlo.slice"(%arg0) {
     start_indices = dense<0> : tensor<1xi64>,
@@ -1543,7 +1556,16 @@ func.func @op_tanh(%arg0: tensor<f32>) -> tensor<f32> {
   func.return %0 : tensor<f32>
 }
 
-// TopKOp aka mhlo.topk is unsupported at the moment (see negative test below).
+// CHECK-LABEL: "op_topk"
+func.func @op_topk(%arg0: tensor<5x10xf32>) -> (tensor<5x8xf32>, tensor<5x8xi32>) {
+  //               CHECK: "stablehlo.custom_call"(%arg0) {
+  //          CHECK-SAME:    call_target_name = "mhlo.topk"
+  // CHECK-SAME{LITERAL}:    mhlo.attributes = {k = 8 : i64, largest = true}
+  // CHECK-SAME{LITERAL}:    mhlo.version = 1 : i64
+  //          CHECK-SAME: } : (tensor<5x10xf32>) -> (tensor<5x8xf32>, tensor<5x8xi32>)
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true) : tensor<5x10xf32> -> (tensor<5x8xf32>, tensor<5x8xi32>)
+  func.return %0#0, %0#1 : tensor<5x8xf32>, tensor<5x8xi32>
+}
 
 // CHECK-LABEL: "op_torch_index_select"
 func.func @op_torch_index_select(%arg0: tensor<5x1x5xf32>, %arg1: tensor<2xi32>) ->  tensor<2x1x5xf32> {
@@ -1572,7 +1594,7 @@ func.func @op_trace(%arg0: tensor<f32>) {
 // CHECK-LABEL: "op_transpose"
 func.func @op_transpose(%arg0: tensor<16x8xf32>) ->  tensor<8x16xf32> {
   //      CHECK: "stablehlo.transpose"(%arg0) {
-  // CHECK-SAME:   permutation = dense<[1, 0]> : tensor<2xi64>
+  // CHECK-SAME:   permutation = array<i64: 1, 0>
   // CHECK-SAME: } : (tensor<16x8xf32>) -> tensor<8x16xf32>
   %0 = "mhlo.transpose"(%arg0) {
     permutation = dense<[1, 0]> : tensor<2xi64>
@@ -1834,12 +1856,19 @@ func.func @type_quantization(%arg0: tensor<!quant.uniform<i8:f32, 34.0:16>>, %ar
   func.return %0 : tensor<f32>
 }
 
+// -----
+
+#SV = #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>
+
+// CHECK: #[[$SV:.*]] = #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>
 // CHECK-LABEL: "type_sparsity"
-func.func @type_sparsity(%arg0: tensor<16xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> tensor<16xf32> {
-  // CHECK: "stablehlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> tensor<16xf32>
-  %0 = "mhlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> tensor<16xf32>
+func.func @type_sparsity(%arg0: tensor<16xf32, #SV>) -> tensor<16xf32> {
+  // CHECK: "stablehlo.abs"(%arg0) : (tensor<16xf32, #[[$SV]]>) -> tensor<16xf32>
+  %0 = "mhlo.abs"(%arg0) : (tensor<16xf32, #SV>) -> tensor<16xf32>
   func.return %0 : tensor<16xf32>
 }
+
+// -----
 
 // AsyncBundle aka !mhlo.async_bundle is unsupported at the moment (see negative test below).
 
@@ -2046,18 +2075,6 @@ func.func @op_stochastic_convert(%arg0: tensor<f32>, %arg1: tensor<ui32>) -> ten
   // expected-error@+1 {{failed to legalize operation 'mhlo.stochastic_convert' that was explicitly marked illegal}}
   %0 = "mhlo.stochastic_convert"(%arg0, %arg1) : (tensor<f32>, tensor<ui32>) -> tensor<i8>
   return %0 : tensor<i8>
-}
-
-// -----
-
-func.func @op_topk(%arg0 : tensor<16xf32>) {
-  // expected-error@+1 {{failed to legalize operation 'mhlo.topk' that was explicitly marked illegal}}
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
-  return
 }
 
 // -----

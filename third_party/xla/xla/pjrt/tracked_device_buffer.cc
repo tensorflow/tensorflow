@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <cinttypes>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -33,6 +34,8 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/event.h"
 #include "xla/types.h"
+#include "tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/lib/context_types.h"
 
 namespace xla {
 
@@ -121,11 +124,21 @@ bool BufferSequencingEvent::IsComplete() {
 void BufferSequencingEvent::ExecuteOrAddToFutureTasks(
     const std::string& task_name, std::function<void()> task) {
   absl::MutexLock lock(&mu_);
+  tsl::profiler::TraceMeProducer producer(
+      "BufferSequencingEvent::ExecuteOrAddToFutureTasks",
+      tsl::profiler::ContextType::kPjRt);
+  uint64_t context_id = producer.GetContextId();
+  auto wrapped_task = [task = std::move(task), context_id]() {
+    tsl::profiler::TraceMeConsumer consumer("BufferSequencingEvent::Execute",
+                                            tsl::profiler::ContextType::kPjRt,
+                                            context_id);
+    task();
+  };
   if (defined_status_.IsConcrete()) {
-    thread_pool_->Schedule(std::move(task));
+    thread_pool_->Schedule(std::move(wrapped_task));
     return;
   }
-  on_ready_tasks_callback_[task_name] = std::move(task);
+  on_ready_tasks_callback_[task_name] = std::move(wrapped_task);
 }
 
 void BufferSequencingEvent::ExecuteFutureTasks() {

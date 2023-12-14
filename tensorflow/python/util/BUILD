@@ -43,8 +43,10 @@ package(
 py_strict_library(
     name = "core",
     deps = [
-        ":tf_decorator",
+        ":tf_contextlib",
+        ":tf_decorator_py",
         ":tf_export",
+        ":tf_inspect",
         ":tf_stack",
     ],
 )
@@ -361,7 +363,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "tf_contextlib",
     srcs = ["tf_contextlib.py"],
     compatible_with = get_compatible_with_portable(),
@@ -413,29 +415,6 @@ tf_py_strict_test(
     ],
 )
 
-# Leaf library: may not depend on anything else inside TensorFlow.
-# TODO(mdan): Move this utility outside of TF.
-py_strict_library(
-    name = "tf_decorator",
-    compatible_with = get_compatible_with_portable(),
-    deprecation = "This target has been split. Depend on the sub-targets instead.",
-    srcs_version = "PY3",
-    visibility = [
-        "//tensorflow:__subpackages__",
-        # TODO(mdan): Remove these dependencies.
-        "//third_party/py/tf_slim:__subpackages__",
-        "//learning/deepmind/research/language/translation/lm:__subpackages__",
-        "//learning/brain/analytics:__subpackages__",
-        "//tensorflow:__pkg__",
-        "//third_party/py/tensorflow_core:__subpackages__",
-    ],
-    deps = [
-        ":tf_contextlib",
-        ":tf_decorator_py",
-        ":tf_inspect",
-    ],
-)
-
 py_strict_library(
     name = "tf_stack",
     srcs = ["tf_stack.py"],
@@ -445,7 +424,6 @@ py_strict_library(
     deps = [
         ":_tf_stack",
         "//tensorflow/core:protos_all_py",
-        "@six_archive//:six",
     ],
 )
 
@@ -770,7 +748,6 @@ py_strict_library(
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
-        "@six_archive//:six",
         "@pypi_wrapt//:pkg",
         "//tensorflow/python:pywrap_tensorflow",
         ":_pywrap_utils",
@@ -788,7 +765,6 @@ py_strict_library(
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
-        "@six_archive//:six",
     ],
 )
 
@@ -887,7 +863,6 @@ py_strict_library(
         "//tensorflow/python:global_test_configuration",
         ":tf_export",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -997,8 +972,6 @@ py_strict_library(
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
-        ":tf_decorator",
-        "@six_archive//:six",
     ],
 )
 
@@ -1067,14 +1040,12 @@ py_strict_library(
     visibility = util_subpackage_visibility,
     deps = [
         ":__init__",
-        ":compat",
         ":nest_util",
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
         ":tf_export",
-        "@pypi_wrapt//:pkg",
         ":_pywrap_utils",
         ":_pywrap_nest",
     ],

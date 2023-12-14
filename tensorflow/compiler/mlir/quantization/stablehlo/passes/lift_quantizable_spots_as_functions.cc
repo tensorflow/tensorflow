@@ -29,9 +29,8 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.h"
-// TODO - b/303543789: Remove TF Quantizer util dependency.
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 
 namespace mlir::quant::stablehlo {
 
@@ -42,7 +41,7 @@ namespace {
 
 // TODO - b/303543789: Move the helper functions below to a separate util.
 // Fetches the default or null attribute, used for pattern matching.
-static Attribute DefaultOrNullAttr(OpBuilder& builder, Attribute& attr) {
+Attribute DefaultOrNullAttr(OpBuilder& builder, const Attribute& attr) {
   if (!attr) {
     return builder.getStringAttr(kNullAttributeValue);
   }
@@ -51,7 +50,7 @@ static Attribute DefaultOrNullAttr(OpBuilder& builder, Attribute& attr) {
 
 // Checks whether the value of a constant equals the given float, regardless
 // of the tensor dimension.
-static bool FloatValueEquals(const Attribute& attr, double value) {
+bool FloatValueEquals(const Attribute& attr, const double value) {
   auto fp_attr = attr.dyn_cast_or_null<DenseFPElementsAttr>();
   if (!fp_attr) return false;
 
@@ -101,7 +100,7 @@ void LiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
   }
 
   // Remove all attr_map attributes.
-  module_op.walk([&](Operation* op) { op->removeAttr(kAttrMapAttribute); });
+  module_op.walk([](Operation* op) { op->removeAttr(kAttrMapAttribute); });
 }
 
 }  // namespace

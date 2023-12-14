@@ -4,12 +4,18 @@ load("//third_party/bazel_rules/rules_python/python:py_binary.bzl", "py_binary")
 
 def _tf_core_transition_impl(settings, attr):
     _ignore = (settings, attr)  # @unused
-    return {"@local_tsl//tsl/framework/contraction:disable_onednn_contraction_kernel": True}
+    return {
+        "@local_tsl//tsl/framework/contraction:disable_onednn_contraction_kernel": True,
+        "//tensorflow/compiler/mlir/python:disable_mlir": True,
+    }
 
 _tf_core_transition = transition(
     implementation = _tf_core_transition_impl,
     inputs = [],
-    outputs = ["@local_tsl//tsl/framework/contraction:disable_onednn_contraction_kernel"],
+    outputs = [
+        "@local_tsl//tsl/framework/contraction:disable_onednn_contraction_kernel",
+        "//tensorflow/compiler/mlir/python:disable_mlir",
+    ],
 )
 
 def _py_binary_tf_core_impl(ctx):

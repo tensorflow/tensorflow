@@ -835,6 +835,11 @@ namespace mlir {
 namespace mhlo {
 namespace {
 
+LogicalResult ExportXlaOp(CollectiveBroadcastOp, OpLoweringContext) {
+  // TODO: b/314330871 - Implement MHLO export for CollectiveBroadcastOp.
+  return failure();
+}
+
 LogicalResult ExportXlaOp(ComputeReshapeShapeOp, OpLoweringContext) {
   // This op should've been removed during PrepareForExport.
   return failure();
@@ -2733,8 +2738,17 @@ LogicalResult ExportXlaOp(UniformDequantizeOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(TopKOp op, OpLoweringContext ctx) {
-  // TODO(b/284077883): Implement HLO roundtrip for mhlo::TopKOp.
-  return failure();
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+    return failure();
+  auto topk = xla::TopK(operand, op.getK(), op.getLargest());
+
+  // Untuple the two results of XLA's topk.
+  for (const auto& [index, value] : llvm::enumerate(op.getResults())) {
+    value_map[value] = xla::GetTupleElement(topk, index);
+  }
+  return success();
 }
 
 }  // namespace
@@ -3219,6 +3233,15 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
       any_arg_replicated |= entry_args_same_across_replicas.back();
       // Pass the alias info to the builder so that it will build the alias info
       // into the resulting HloModule.
+      auto buffer_donor =
+          f.getArgAttrOfType<mlir::BoolAttr>(i, "jax.buffer_donor");
+      if (buffer_donor) {
+        if (use_tuple_args_) {
+          builder.AddBufferDonor(/*param_number=*/0, /*param_index=*/{i});
+        } else {
+          builder.AddBufferDonor(/*param_number=*/i, /*param_index=*/{});
+        }
+      }
       auto aliasing_output =
           f.getArgAttrOfType<mlir::IntegerAttr>(i, "tf.aliasing_output");
       if (!aliasing_output) continue;

@@ -21,7 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "xla/service/gpu/cusolver_context.h"
-#include "xla/service/gpu/precompiled_kernels.h"
+#include "xla/service/gpu/make_batch_pointers.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -54,7 +54,7 @@ Status DoPotrfBatched(const se::GpuAsmOpts& asm_opts, CholeskyParams* params,
   // Run a kernel that sets as[i] = &a_base[i * stride].
   const int64_t stride_bytes = params->n * params->n * sizeof(T);
   TF_RETURN_IF_ERROR(MakeBatchPointers(
-      stream, asm_opts, se::DeviceMemoryBase(a_base), stride_bytes,
+      stream, se::DeviceMemoryBase(a_base), stride_bytes,
       static_cast<int>(params->batch_size), se::DeviceMemoryBase(as)));
 
   // Now that we've set up the `as` array, we can call cusolver.

@@ -1,8 +1,8 @@
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -63,7 +63,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla/service:hlo_proto_cc",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@llvm-project//mlir:IR",
     ],
 )

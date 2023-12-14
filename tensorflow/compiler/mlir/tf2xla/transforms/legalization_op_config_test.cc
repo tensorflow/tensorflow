@@ -131,8 +131,8 @@ TEST_F(LegalizationOpConfigTest, CountLoweringsSet) {
   // from MLIR to TF2XLA), these numbers should change. Or if TF Dialect adds
   // a new op, we should expect these to change too.
   EXPECT_EQ(mlir_lowering_count, 67);
-  EXPECT_EQ(tf2xla_fallback_count, 315);
-  EXPECT_EQ(non_categorized_count, 422);
+  EXPECT_EQ(tf2xla_fallback_count, 316);
+  EXPECT_EQ(non_categorized_count, 421);
 }
 
 // Just a counter test to see which ops have duplicate lowerings. This isn't a

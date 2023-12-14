@@ -33,7 +33,7 @@ tf_py_strict_test(
     name = "batch_test",
     size = "medium",
     srcs = ["batch_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -509,6 +509,7 @@ tf_py_strict_test(
     deps = [
         ":checkpoint_test_base",
         ":test_base",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:constant_op",

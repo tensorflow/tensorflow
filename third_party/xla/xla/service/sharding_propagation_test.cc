@@ -10373,5 +10373,156 @@ ENTRY %entry {
                   "{devices=[4,4,1,4]<=[4,16]T(1,0) last_tile_dim_replicate}"));
 }
 
+TEST_F(ShardingPropagationTest, AsyncInstructionManualShardingArray) {
+  const char* const hlo_string = R"(
+HloModule module
+
+called_computation {
+  p0 = s32[8] parameter(0)
+  p1 = s32[8] parameter(1)
+  ROOT add = s32[8] add(p0, p1)
+}, execution_thread="thread_1" // called_computation
+
+ENTRY entry_computation {
+  p0 = s32[8] parameter(0), sharding={manual}
+  p1 = s32[8] parameter(1), sharding={manual}
+  async-start = ((s32[8], s32[8]), s32[8], u32[]) call-start(p0, p1), async_group_id=0, async_execution_thread="thread_1", to_apply=called_computation
+  ROOT async-done = s32[8] call-done(async-start), async_group_id=0, async_execution_thread="thread_1", to_apply=called_computation
+}, execution_thread="thread_0" // entry_computation
+
+)";
+
+  {
+    // Test with execution_threads = {"thread_0"}
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        ShardingPropagation(
+            /*is_spmd=*/true, /*propagate_metadata=*/true,
+            /*allow_spmd_sharding_propagation_to_output=*/{true},
+            /*allow_spmd_sharding_propagation_to_parameters=*/{true})
+            .Run(module.get(), {"thread_0"}));
+    EXPECT_TRUE(changed);
+
+    XLA_VLOG_LINES(1, module->ToString());
+
+    auto* instruction = FindInstruction(module.get(), "async-start");
+    ASSERT_NE(instruction, nullptr);
+    EXPECT_THAT(instruction,
+                op::Sharding("{{manual}, {manual}, {manual}, {manual}}"));
+
+    auto* async_done = FindInstruction(module.get(), "async-done");
+    ASSERT_NE(async_done, nullptr);
+    EXPECT_THAT(async_done, op::Sharding("{manual}"));
+  }
+
+  {
+    // Test with execution_threads = {"thread_0", "thread_1"}
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        ShardingPropagation(
+            /*is_spmd=*/true, /*propagate_metadata=*/true,
+            /*allow_spmd_sharding_propagation_to_output=*/{true},
+            /*allow_spmd_sharding_propagation_to_parameters=*/{true})
+            .Run(module.get(), {"thread_0", "thread_1"}));
+    EXPECT_FALSE(changed);
+  }
+
+  {
+    // Test with execution_threads = {}. Empty execution_threads means all
+    // execution_threads are included.
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        ShardingPropagation(
+            /*is_spmd=*/true, /*propagate_metadata=*/true,
+            /*allow_spmd_sharding_propagation_to_output=*/{true},
+            /*allow_spmd_sharding_propagation_to_parameters=*/{true})
+            .Run(module.get()));
+    EXPECT_FALSE(changed);
+  }
+}
+
+TEST_F(ShardingPropagationTest, AsyncInstructionManualShardingTuple) {
+  const char* const hlo_string = R"(
+HloModule module
+
+called_computation {
+  p0 = s32[8] parameter(0)
+  p1 = s32[8] parameter(1)
+  add = s32[8] add(p0, p1)
+  mul = s32[8] multiply(p0, p1)
+  ROOT result = (s32[8], s32[8]) tuple(add, mul)
+}, execution_thread="thread_1" // called_computation
+
+ENTRY entry_computation {
+  p0 = s32[8] parameter(0), sharding={manual}
+  p1 = s32[8] parameter(1), sharding={manual}
+  async-start = ((s32[8], s32[8]), (s32[8], s32[8]), u32[]) call-start(p0, p1), async_group_id=0, async_execution_thread="thread_1", to_apply=called_computation
+  ROOT async-done = (s32[8], s32[8]) call-done(async-start), async_group_id=0, async_execution_thread="thread_1", to_apply=called_computation
+}, execution_thread="thread_0" // entry_computation
+
+)";
+
+  {
+    // Test with execution_threads = {"thread_0"}
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        ShardingPropagation(
+            /*is_spmd=*/true, /*propagate_metadata=*/true,
+            /*allow_spmd_sharding_propagation_to_output=*/{true},
+            /*allow_spmd_sharding_propagation_to_parameters=*/{true})
+            .Run(module.get(), {"thread_0"}));
+    EXPECT_TRUE(changed);
+
+    XLA_VLOG_LINES(1, module->ToString());
+
+    auto* async_start = FindInstruction(module.get(), "async-start");
+    ASSERT_NE(async_start, nullptr);
+    EXPECT_THAT(
+        async_start,
+        op::Sharding("{{manual}, {manual}, {manual}, {manual}, {manual}}"));
+
+    auto* async_done = FindInstruction(module.get(), "async-done");
+    ASSERT_NE(async_done, nullptr);
+    EXPECT_THAT(async_done, op::Sharding("{{manual}, {manual}}"));
+  }
+
+  {
+    // Test with execution_threads = {"thread_0", "thread_1"}
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        ShardingPropagation(
+            /*is_spmd=*/true, /*propagate_metadata=*/true,
+            /*allow_spmd_sharding_propagation_to_output=*/{true},
+            /*allow_spmd_sharding_propagation_to_parameters=*/{true})
+            .Run(module.get(), {"thread_0", "thread_1"}));
+    EXPECT_FALSE(changed);
+  }
+
+  {
+    // Test with execution_threads = {}. Empty execution_threads means all
+    // execution_threads are included.
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        ShardingPropagation(
+            /*is_spmd=*/true, /*propagate_metadata=*/true,
+            /*allow_spmd_sharding_propagation_to_output=*/{true},
+            /*allow_spmd_sharding_propagation_to_parameters=*/{true})
+            .Run(module.get()));
+    EXPECT_FALSE(changed);
+  }
+}
+
 }  // namespace
 }  // namespace xla

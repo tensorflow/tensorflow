@@ -75,7 +75,6 @@ py_strict_library(
     visibility = [
         "//tensorflow:internal",
         "//tensorflow_minigo:__subpackages__",
-        "//tensorflow_model_optimization:__subpackages__",
         "//tensorflow_models:__subpackages__",
         "//third_party/cloud_tpu/convergence_tools:__subpackages__",
         "//third_party/mlperf:__subpackages__",
@@ -229,7 +228,6 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
-        "//tensorflow_estimator/python/estimator:__pkg__",
         "//third_party/py/tf_slim/training:__pkg__",
     ],
     deps = [
@@ -340,7 +338,6 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
-        "//tensorflow_model_optimization/python/core/quantization/keras:__pkg__",
         "//third_party/py/tf_slim/layers:__pkg__",
     ],
     deps = [

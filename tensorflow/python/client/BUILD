@@ -3,6 +3,10 @@ load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
+load(
+    "//tensorflow/tools/test:performance.bzl",
+    "cuda_py_benchmark_test",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -108,6 +112,10 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_events_writer",
     srcs = ["events_writer_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_events_writer.pyi",
+    ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -433,6 +441,7 @@ tf_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_gpu",
+        "no_rocm",
         "no_windows",
     ],
     deps = [
@@ -494,7 +503,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "session_benchmark",
     srcs = ["session_benchmark.py"],
     grpc_enabled = True,

@@ -52,12 +52,11 @@ inline constexpr char kRenderDotJS[] = R"(
   <script src="https://cdn.jsdelivr.net/npm/viz.js@2.1.1/full.render.js"
      integrity="sha384-bAixY275aIpCj6Te19y0MILZ4V+VEC8CVFujFEH+Lf7W+4XYYeYLwW5IBI6yQmMT"
      crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.0/dist/svg-pan-zoom.min.js"
-     integrity="sha384-3008WpYB2pOBvE7lwkrKf+qTmbTPGGPYxA9C1YVhvbPukns4ZFj7E98QPLkNW9dS"
-     crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@hpcc-js/wasm/dist/index.min.js"
-     integrity="sha384-X+8WXyWZ+W2gUHiSSj0aePAkE77Fl6eZ+QIByw+Ii8LzWEJ/W8bI8M4RkneDAJ4D"
-     crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/external_hosted/hpcc_js_wasm/index.min.js"
+      integrity="sha384-LigJPbR3TOfU/Xbb+PjiN1dGJYPweLk7kiGnaMgmxnUmKWaCFKbb5tH6iLlyVhPZ"
+      crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/external_hosted/svg_pan_zoom/svg-pan-zoom.js">
+  </script>
 )";
 
 // Different formats that a graph can be packaged as.
@@ -73,6 +72,9 @@ struct HloRenderOptions {
 
   // Include the fusion subcomputations in the rendered graph.
   bool show_fusion_subcomputations = true;
+
+  // Include the while subcomputations in the rendered graph.
+  bool show_while_subcomputations = true;
 };
 
 // Renders an HLO module as a human-readable visual graph.
@@ -82,10 +84,13 @@ struct HloRenderOptions {
 // unreadable, or both.  To view such graphs, use a tool such as
 // interactive_graphviz, which calls RenderNeighborhoodAround to render subsets
 // of a graph.
-StatusOr<std::string> RenderGraph(
-    const HloComputation& computation, absl::string_view label,
-    const DebugOptions& debug_options, RenderedGraphFormat format,
-    HloRenderOptions hlo_render_options = {});
+StatusOr<std::string> RenderGraph(const HloComputation& computation,
+                                  absl::string_view label,
+                                  const DebugOptions& debug_options,
+                                  RenderedGraphFormat format,
+                                  HloRenderOptions hlo_render_options = {});
+
+StatusOr<std::string> RenderAllComputationsToHtml(const HloModule& module);
 
 // Like RenderGraph, but renders only nodes "near" the given node in the graph.
 //

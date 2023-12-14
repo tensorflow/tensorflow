@@ -36,7 +36,8 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
-#include "xla/python/exceptions.h"
+#include "xla/pjrt/exceptions.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "xla/python/pytree.h"
 #include "xla/python/sharded_device_array.h"
 #include "xla/python/sharding.h"
-#include "xla/python/status_casters.h"
 #include "xla/python/types.h"
 #include "xla/python/util.h"
 #include "xla/xla_data.pb.h"

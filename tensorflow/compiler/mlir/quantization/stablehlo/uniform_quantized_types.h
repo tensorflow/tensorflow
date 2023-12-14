@@ -18,8 +18,10 @@ limitations under the License.
 #include <cstdint>
 
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
@@ -32,8 +34,8 @@ namespace quant {
 // values can be non-zero values.
 UniformQuantizedType CreateI8F32UniformQuantizedType(Location loc,
                                                      MLIRContext& context,
-                                                     float scale,
-                                                     int8_t zero_point);
+                                                     double scale,
+                                                     int64_t zero_point);
 
 // Creates a `UniformQuantizedType` with the given `scale` and `zero_point`
 // values. The produced type has f32 as its expressed type and i32 as its
@@ -42,8 +44,8 @@ UniformQuantizedType CreateI8F32UniformQuantizedType(Location loc,
 // non-zero values.
 UniformQuantizedType CreateI32F32UniformQuantizedType(Location loc,
                                                       MLIRContext& context,
-                                                      float scale,
-                                                      int32_t zero_point);
+                                                      double scale,
+                                                      int64_t zero_point);
 
 // Creates a `UniformQuantizedPerAxisType` with the given `scales` and
 // `zero_points` values. The produced type has f32 as its expressed type and
@@ -51,8 +53,30 @@ UniformQuantizedType CreateI32F32UniformQuantizedType(Location loc,
 // storage value, i.e. [-128, 127]. Assumes asymmetric quantization, meaning the
 // zero point values can be non-zero values.
 UniformQuantizedPerAxisType CreateI8F32UniformQuantizedPerAxisType(
-    Location loc, MLIRContext& context, ArrayRef<float> scales,
-    ArrayRef<int8_t> zero_points, int quantization_dimension);
+    Location loc, MLIRContext& context, ArrayRef<double> scales,
+    ArrayRef<int64_t> zero_points, int quantization_dimension);
+
+bool IsStorageTypeI8(QuantizedType quantized_type);
+
+bool IsStorageTypeI32(QuantizedType quantized_type);
+
+bool IsExpressedTypeF32(QuantizedType quantized_type);
+
+// Returns true iff `type` is a uniform quantized type whose storage type is
+// 8-bit integer and expressed type is f32.
+bool IsI8F32UniformQuantizedType(Type type);
+
+// Returns true iff `type` is a uniform quantized per-axis (per-channel) type
+// whose storage type is 8-bit integer and expressed type is f32.
+bool IsI8F32UniformQuantizedPerAxisType(Type type);
+
+// Returns true iff `type` is a uniform quantized type whose storage type is
+// 32-bit integer and expressed type is f32.
+bool IsI32F32UniformQuantizedType(Type type);
+
+// Determines whether the storage type of a quantized type is supported by
+// `tfl.quantize` or `tfl.dequantize` ops. ui8, i8 and i16 are supported.
+bool IsSupportedByTfliteQuantizeOrDequantizeOps(IntegerType storage_type);
 
 }  // namespace quant
 }  // namespace mlir

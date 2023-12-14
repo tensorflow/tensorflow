@@ -3096,8 +3096,20 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
     auto tf_gather_nd_result_type =
         RankedTensorType::get(transpose_params.canonicalized_output_shape,
                               result_type.getElementType());
+
+    TF::CastOp cast_op = nullptr;
+    if (start_indices_type.getElementType().isUnsignedInteger(32)) {
+      cast_op = rewriter.create<TF::CastOp>(
+          gather_op->getLoc(),
+          RankedTensorType::get(start_indices_type.getShape(),
+                                rewriter.getI64Type()),
+          start_indices);
+    }
+
     auto tf_gather_nd_op = rewriter.create<TF::GatherNdOp>(
-        gather_op->getLoc(), tf_gather_nd_result_type, operand, start_indices);
+        gather_op->getLoc(), tf_gather_nd_result_type, operand,
+        cast_op ? cast_op.getResult() : start_indices);
+
     if (!need_transpose_after) {
       rewriter.replaceOp(gather_op, tf_gather_nd_op->getOpResults());
       return success();
@@ -3386,9 +3398,6 @@ class ConvertIfOp : public OpConversionPattern<mhlo::IfOp> {
 };
 
 // Converts mhlo.pad to tf.PadV2
-// TODO: b/301438955 - This is redundant with the MHLO -> TFLite
-// legalization and covers less usecases. We need to check with DarwiNN that
-// this can be removed without breaking their workflow.
 Value ConvertPadOp(PatternRewriter& rewriter, Operation* old_op) {
   auto pad_op = cast<mhlo::PadOp>(old_op);
   mlir::Location loc = pad_op.getLoc();

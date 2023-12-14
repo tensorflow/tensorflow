@@ -12,6 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// WARNING: Users of TensorFlow Lite should not include this file directly, but
+// should instead include "third_party/tensorflow/lite/c/common.h".
+// Only the TensorFlow Lite implementation itself should include this file
+// directly.
 
 /// This file defines common C types and APIs for implementing operations,
 /// delegates and other constructs in TensorFlow Lite. The actual operations and
@@ -32,12 +36,17 @@ limitations under the License.
 ///
 /// NOTE: The order of values in these structs are "semi-ABI stable". New values
 /// should be added only to the end of structs and never reordered.
+///
+// clang-format off
+// NOLINTBEGIN(whitespace/line_length)
+/// \note Users of TensorFlow Lite should use
+/// \code
+/// #include "tensorflow/lite/c/common.h"
+/// \endcode
+/// to access the APIs documented on this page.
+// NOLINTEND(whitespace/line_length)
+// clang-format on
 
-// WARNING: Users of TensorFlow Lite should not include this file directly,
-// but should instead include
-// "third_party/tensorflow/lite/c/common.h".
-// Only the TensorFlow Lite implementation itself should include this
-// file directly.
 // IWYU pragma: private, include "third_party/tensorflow/lite/c/common.h"
 
 #ifndef TENSORFLOW_LITE_CORE_C_COMMON_H_
@@ -56,7 +65,7 @@ extern "C" {
 
 // clang-format off
 // NOLINTBEGIN(whitespace/line_length)
-/** \defgroup common tensorflow/lite/c/common.h
+/** \defgroup common lite/c/common.h
  *  @{
  */
 // NOLINTEND(whitespace/line_length)

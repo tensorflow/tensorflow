@@ -155,7 +155,7 @@ bool CheckCanonical(HloDotInstruction* dot) {
 }  // namespace
 
 static std::vector<HloDotInstruction*> GetRelevantDots(
-    const se::CudaComputeCapability cuda_compute_capability,
+    const se::GpuComputeCapability& gpu_compute_capability,
     HloComputation* comp, PrimitiveType datatype) {
   std::vector<HloDotInstruction*> gemms;
 
@@ -168,8 +168,8 @@ static std::vector<HloDotInstruction*> GetRelevantDots(
                 ->config()
                 .debug_options()
                 .xla_gpu_enable_triton_gemm() &&
-            CanTritonHandleGEMM(*dot, cuda_compute_capability) &&
-            ShouldTritonHandleGEMM(*dot, cuda_compute_capability))) {
+            CanTritonHandleGEMM(*dot, gpu_compute_capability) &&
+            ShouldTritonHandleGEMM(*dot, gpu_compute_capability))) {
         gemms.push_back(dot);
       }
     }
@@ -184,7 +184,7 @@ StatusOr<bool> CublasPadForGemms::Run(
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloDotInstruction* dot :
-         GetRelevantDots(cuda_compute_capability_, comp, datatype_)) {
+         GetRelevantDots(gpu_compute_capability_, comp, datatype_)) {
       TF_ASSIGN_OR_RETURN(bool result,
                           PadForGemm(dot, datatype_, pad_to_multiple_of_));
       changed |= result;

@@ -67,6 +67,7 @@ limitations under the License.
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -85,6 +86,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/side_effect_analysis_util.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
@@ -1088,6 +1090,24 @@ OpFoldResult CastOp::fold(FoldAdaptor) {
   Value operand = getOperand();
   if (getType() == operand.getType()) return operand;
   return {};
+}
+
+//===----------------------------------------------------------------------===//
+// CheckNumericsOp
+//===----------------------------------------------------------------------===//
+
+void CheckNumericsOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>&
+        effects) {
+  effects.emplace_back(MemoryEffects::Write::get(),
+                       ResourceEffects::CheckNumerics::get());
+  MarkResourceAsReadOnly(getTensor(), effects);
+}
+
+// For `CheckNumerics` ops the `device` attribute corresponds to the resource
+// instance.
+std::optional<std::string> CheckNumericsOp::GetResourceInstanceStr() {
+  return GetDeviceAttrAsResourceInstanceStr(*this);
 }
 
 //===----------------------------------------------------------------------===//

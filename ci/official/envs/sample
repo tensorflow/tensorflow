@@ -16,7 +16,7 @@ set +u; source ci/official/envs/your_choice_here; set -u
 # different Python versions. You can add e.g. "--repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION"
 # to change the Python version to anything available (including the default) in
 # tensorflow/tools/toolchains/python/python_repo.bzl.
-TFCI_BAZEL_COMMON_ARGS=(--config tf_public_cache --disk_cache=build_output/cache)
+TFCI_BAZEL_COMMON_ARGS='--config tf_public_cache --disk_cache=build_output/cache'
 
 # Disable all CI-specific behavior. You never need any of these if you are
 # running a script locally.

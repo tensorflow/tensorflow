@@ -29,6 +29,7 @@ across many other scientific domains. TensorFlow is licensed under [Apache
 2.0](https://github.com/tensorflow/tensorflow/blob/master/LICENSE).
 """
 
+import datetime
 import fnmatch
 import os
 import platform
@@ -178,9 +179,6 @@ EXTRA_PACKAGES['and-cuda'] = [
     'nvidia-cusparse-cu12 == 12.1.2.141',
     'nvidia-nccl-cu12 == 2.18.3',
     'nvidia-nvjitlink-cu12 == 12.2.140',
-    'tensorrt == 8.6.1.post1',
-    'tensorrt-bindings == 8.6.1',
-    'tensorrt-libs == 8.6.1',
 ]
 
 DOCLINES = __doc__.split('\n')
@@ -322,9 +320,23 @@ matches = []
 for path in so_lib_paths:
   matches.extend(['../' + x for x in find_files('*', path) if '.py' not in x])
 
-# If building a tpu package, bundle libtpu.so as part of the wheel
+# If building a tpu package, LibTPU for Cloud TPU VM can be installed via:
+# $ pip install <tf-tpu project> -f https://storage.googleapis.com/libtpu-releases/index.html
+# libtpu is built and uploaded to this link every night (PST).
 if '_tpu' in project_name:
-  matches.append('tensorflow/lib/libtpu.so')
+  # For tensorflow-tpu releases, use a set libtpu-nightly version;
+  # For tf-nightly-tpu, use the most recent libtpu-nightly. Because of the
+  # timing of these tests, the UTC date from eight hours ago is expected to be a
+  # valid version.
+  _libtpu_version = standard_or_nightly(
+      '0.1.dev20231018',
+      '0.1.dev'
+      + (
+          datetime.datetime.now(tz=datetime.timezone.utc)
+          - datetime.timedelta(hours=8)
+      ).strftime('%Y%m%d'),
+  )
+  REQUIRED_PACKAGES.append([f'libtpu-nightly=={_libtpu_version}'])
 
 if os.name == 'nt':
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.pyd'
@@ -422,6 +434,7 @@ setup(
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
         'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
         'Programming Language :: Python :: 3 :: Only',
         'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Mathematics',

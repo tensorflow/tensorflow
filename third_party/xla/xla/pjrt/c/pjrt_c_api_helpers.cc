@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/primitive_util.h"
 #include "xla/shape_util.h"
@@ -762,6 +763,49 @@ std::unique_ptr<PJRT_KeyValueCallbackData> ConvertToCKeyValueCallbacks(
   return kv_callback_data;
 }
 
+PJRT_SendCallbackInfo CppSendCallbackToCSendCallback(
+    xla::SendCallback cpp_send_callback,
+    PJRT_SendCallbackFunction* send_callback_function) {
+  return PJRT_SendCallbackInfo{
+      cpp_send_callback.channel_id,
+      // this is the void* user_arg to capture `cpp_send_callback.callback`
+      send_callback_function,
+      // this is the function pointer, PJRT_SendCallback
+      [](PJRT_Chunk* chunk, PJRT_CallbackError* callback_error,
+         size_t total_size_in_bytes, bool done, void* user_arg) -> PJRT_Error* {
+        // PJRT_SendCallback, `send_callback` is internal C interface callback
+        // representation that cpatures the client C++ callback in void*
+        // `user_arg` and reinterprets in the lower-level runtime for execution.
+        // `user_arg` captures `send_callback_function` which is
+        // SendCallbackFunction*.
+        PJRT_SendCallbackFunction* send_callback =
+            reinterpret_cast<PJRT_SendCallbackFunction*>(user_arg);
+        return (*send_callback)(chunk, callback_error, total_size_in_bytes,
+                                done);
+      }};
+}
+
+PJRT_RecvCallbackInfo CppRecvCallbackToCRecvCallback(
+    xla::RecvCallback cpp_recv_callback,
+    PJRT_RecvCallbackFunction* recv_callback_function) {
+  return PJRT_RecvCallbackInfo{
+      cpp_recv_callback.channel_id,
+      // this is the void* user_arg to capture `cpp_recv_callback.callback`
+      recv_callback_function,
+      // this is the function pointer, PJRT_RecvCallback
+      [](PJRT_CopyToDeviceStream* stream, void* user_arg) {
+        // PJRT_RecvCallback, `recv_callback` is internal C interface callback
+        // representation that cpatures the client C++ callback in void*
+        // `user_arg` and reinterprets in the lower-level runtime for execution.
+        // `user_arg` captures `recv_callback_function` which is
+        // RecvCallbackFunction*.
+        auto* recv_callback =
+            reinterpret_cast<std::function<void(PJRT_CopyToDeviceStream*)>*>(
+                user_arg);
+        (*recv_callback)(stream);
+      }};
+}
+
 xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
     const xla::Layout& cpp_layout) {
   BufferMemoryLayoutData layout_data;
@@ -896,6 +940,23 @@ absl::Span<PJRT_DeviceDescription* const> DeviceDescriptions(
   LogFatalIfPjrtError(
       api->PJRT_TopologyDescription_GetDeviceDescriptions(&args), api);
   return {args.descriptions, args.num_descriptions};
+}
+
+absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
+    const PJRT_Api* api, PJRT_Executable* executable) {
+  PJRT_Executable_GetCompiledMemoryStats_Args args;
+  args.struct_size = PJRT_Executable_GetCompiledMemoryStats_Args_STRUCT_SIZE;
+  args.priv = 0;
+  args.executable = executable;
+  RETURN_STATUS_IF_PJRT_ERROR(
+      api->PJRT_Executable_GetCompiledMemoryStats(&args), api);
+  xla::CompiledMemoryStats results;
+  results.generated_code_size_in_bytes = args.generated_code_size_in_bytes;
+  results.argument_size_in_bytes = args.argument_size_in_bytes;
+  results.output_size_in_bytes = args.output_size_in_bytes;
+  results.alias_size_in_bytes = args.alias_size_in_bytes;
+  results.temp_size_in_bytes = args.temp_size_in_bytes;
+  return results;
 }
 
 }  // namespace pjrt

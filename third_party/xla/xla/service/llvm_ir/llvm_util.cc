@@ -193,9 +193,6 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
                                    llvm::Value* index, llvm::IRBuilder<>* b) {
   llvm::Type* array_type = array->getType();
   CHECK(array_type->isPointerTy());
-  llvm::PointerType* array_type_as_pointer =
-      llvm::cast<llvm::PointerType>(array_type);
-  CHECK(array_type_as_pointer->isOpaqueOrPointeeTypeMatches(element_type));
   VLOG(2) << "EmitBufferIndexingGEP with type="
           << llvm_ir::DumpToString(array_type)
           << " array=" << llvm_ir::DumpToString(array)
@@ -216,10 +213,10 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
                                   llvm::Module* module) {
   switch (element_type) {
-    case PRED:
-    // i8 is used for S4/U4 as arrays of i4 values are not packed
     case S4:
     case U4:
+      return llvm::Type::getIntNTy(module->getContext(), 4);
+    case PRED:
     case S8:
     case U8:
       return llvm::Type::getInt8Ty(module->getContext());
@@ -285,11 +282,11 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
     case TUPLE:
     // An Opaque is like a void*, use i8*.
     case OPAQUE_TYPE:
-      return llvm::Type::getInt8PtrTy(module->getContext());
+      return llvm::PointerType::getUnqual(module->getContext());
     case TOKEN:
       // Tokens do not have a physical representation, but the compiler needs
       // some placeholder type, so use int8_t*.
-      return llvm::Type::getInt8PtrTy(module->getContext());
+      return llvm::PointerType::getUnqual(module->getContext());
     default:
       LOG(FATAL) << "unsupported type " << element_type;
   }
@@ -469,7 +466,7 @@ void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilder<>* b) {
       b->getVoidTy(), {b->getInt64Ty(), b->getInt64Ty()}, /*isVarArg=*/false);
   b->CreateCall(log_function_type,
                 b->CreateIntToPtr(b->getInt64(absl::bit_cast<int64_t>(&LogS64)),
-                                  log_function_type->getPointerTo()),
+                                  b->getPtrTy()),
                 {b->getInt64(absl::bit_cast<int64_t>(tag)), value});
 }
 

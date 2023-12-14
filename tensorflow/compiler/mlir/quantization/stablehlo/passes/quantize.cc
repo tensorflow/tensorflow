@@ -20,10 +20,13 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
@@ -31,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/quantization_patterns.h"
 
 namespace mlir::quant::stablehlo {
 
@@ -42,31 +46,32 @@ namespace {
 // Base struct for quantization.
 template <typename ConcreteT, typename RootOpT = quantfork::DequantizeCastOp>
 struct StableHloQuantizationBase
-    : public QuantizationPattern<ConcreteT, quantfork::QuantizeCastOp,
-                                 quantfork::DequantizeCastOp,
-                                 /*VerifierT=*/void, RootOpT> {
+    : public StableHloQuantizationPattern<ConcreteT, quantfork::QuantizeCastOp,
+                                          quantfork::DequantizeCastOp,
+                                          /*VerifierT=*/void, RootOpT> {
   explicit StableHloQuantizationBase(MLIRContext* ctx,
                                      const QuantPassSpec& quant_params)
-      : QuantizationPattern<ConcreteT, quantfork::QuantizeCastOp,
-                            quantfork::DequantizeCastOp,
-                            /*VerifierT=*/void, RootOpT>(ctx, quant_params) {}
+      : StableHloQuantizationPattern<ConcreteT, quantfork::QuantizeCastOp,
+                                     quantfork::DequantizeCastOp,
+                                     /*VerifierT=*/void, RootOpT>(
+            ctx, quant_params) {}
 
-  static bool IsQuantizableCustomOp(Operation* op,
+  static bool IsQuantizableCustomOp(Operation& op,
                                     const CustomMap& custom_op_map) {
     return false;
   }
 
   static bool AllowDynamicRangeQuantizedOperand(
-      Operation* quantized_op, const CustomMap& custom_op_map) {
+      Operation& quantized_op, const CustomMap& custom_op_map) {
     return false;
   }
 
-  static bool AllowDynamicRangeQuantizedResult(Operation* quantized_op,
+  static bool AllowDynamicRangeQuantizedResult(Operation& quantized_op,
                                                const CustomMap& custom_op_map) {
     return false;
   }
 
-  static bool IsWeightOnlyOp(Operation* quantized_op,
+  static bool IsWeightOnlyOp(Operation& quantized_op,
                              absl::flat_hash_set<std::string>& ops_blocklist,
                              bool weight_only_quantization,
                              const CustomMap& custom_op_map) {
@@ -112,7 +117,7 @@ class QuantizePass : public impl::QuantizePassBase<QuantizePass> {
 };
 
 void QuantizePass::runOnOperation() {
-  func::FuncOp func = getOperation();
+  ModuleOp module_op = getOperation();
   MLIRContext& ctx = getContext();
 
   NumericVerifySpec numeric_verify_spec;
@@ -125,20 +130,21 @@ void QuantizePass::runOnOperation() {
   RewritePatternSet patterns(&ctx);
   patterns.add<StableHloQuantization, StableHloQuantizationReverse>(
       &ctx, quant_params);
+  PopulateFusedGemmStylePatterns(ctx, patterns);
 
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
     // There are cases where no rewrites happen even if a pattern matches,
     // causing this to result in a convergence failure. Consider this as a
     // best-effort.
     // TODO: b/305469508 - Make QuantizationPattern converge if there are no
     // patterns that are rewritable.
-    func.emitWarning("Failed to converge pattern at QuantizePass.");
+    module_op.emitWarning("Failed to converge pattern at QuantizePass.");
   }
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
+std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizePass(
     const QuantizationSpecs& quantization_specs) {
   return std::make_unique<QuantizePass>(quantization_specs);
 }

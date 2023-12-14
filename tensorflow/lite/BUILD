@@ -220,7 +220,6 @@ cc_library(
     copts = tflite_copts_warnings(),
     deps = [
         ":graph_info",
-        ":kernel_api",
         ":memory_planner",
         ":simple_memory_arena",
         ":util",
@@ -237,7 +236,6 @@ cc_library(
     copts = tflite_copts_warnings() + ["-DTF_LITE_TENSORFLOW_PROFILER"],
     deps = [
         ":graph_info",
-        ":kernel_api",
         ":memory_planner",
         ":simple_memory_arena_with_profiler",
         ":util",
@@ -256,9 +254,10 @@ cc_test(
         ":arena_planner_with_profiler",
         ":builtin_ops",
         ":graph_info",
-        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/testing:util",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1053,7 +1052,6 @@ cc_test(
     deps = [
         ":simple_memory_arena",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -12,16 +12,24 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// WARNING: Users of TensorFlow Lite should not include this file directly, but
+// should instead include "third_party/tensorflow/lite/c/c_api_types.h".
+// Only the TensorFlow Lite implementation itself should include this file
+// directly.
 
 /// This file declares types used by the pure C inference API defined in
 /// c_api.h, some of which are also used in the C++ and C kernel and interpreter
 /// APIs.
-
-// WARNING: Users of TensorFlow Lite should not include this file directly,
-// but should instead include
-// "third_party/tensorflow/lite/c/c_api_types.h".
-// Only the TensorFlow Lite implementation itself should include this
-// file directly.
+///
+// clang-format off
+// NOLINTBEGIN(whitespace/line_length)
+/// \note Users of TensorFlow Lite should use
+/// \code
+/// #include "tensorflow/lite/c/c_api_types.h"
+/// \endcode
+/// to access the APIs documented on this page.
+// NOLINTEND(whitespace/line_length)
+// clang-format on
 
 // IWYU pragma: private, include "third_party/tensorflow/lite/c/c_api_types.h"
 
@@ -36,7 +44,7 @@ extern "C" {
 
 // clang-format off
 // NOLINTBEGIN(whitespace/line_length)
-/** \defgroup c_api_types tensorflow/lite/c/c_api_types.h
+/** \defgroup c_api_types lite/c/c_api_types.h
  *  @{
  */
 // NOLINTEND(whitespace/line_length)

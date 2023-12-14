@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_proto_util.h"
 #include "xla/status.h"
+#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/lib/io/zlib_compression_options.h"
 #include "tsl/lib/io/zlib_outputbuffer.h"
@@ -43,6 +45,21 @@ limitations under the License.
 #include "tsl/platform/status.h"
 
 namespace xla {
+
+std::string RenderGraph(absl::string_view label, const HloModule& module,
+                        RenderedGraphFormat format,
+                        bool show_fusion_subcomputations) {
+  HloRenderOptions hlo_render_options;
+  hlo_render_options.show_fusion_subcomputations = show_fusion_subcomputations;
+  StatusOr<std::string> rendered_graph =
+      RenderGraph(*module.entry_computation(), label,
+                  module.config().debug_options(), format, hlo_render_options);
+  if (rendered_graph.ok()) {
+    return std::move(rendered_graph).value();
+  }
+  return absl::StrFormat("Error rendering graph: %s",
+                         rendered_graph.status().ToString());
+}
 
 namespace {
 
@@ -428,36 +445,21 @@ static std::vector<std::string> DumpHloModuleImpl(
         pb, opts, opts.dump_compress_protos));
   }
 
-  auto render_graph = [&](RenderedGraphFormat format,
-                          bool show_fusion_subcomputations = true) {
-    HloRenderOptions hlo_render_options;
-    hlo_render_options.show_fusion_subcomputations =
-        show_fusion_subcomputations;
-    StatusOr<std::string> rendered_graph =
-        RenderGraph(*module.entry_computation(),
-                    /*label=*/filename, module.config().debug_options(), format,
-                    hlo_render_options);
-    if (rendered_graph.ok()) {
-      return std::move(rendered_graph).value();
-    }
-    return StrFormat("Error rendering graph: %s",
-                     rendered_graph.status().ToString());
-  };
-
   if (opts.dump_as_dot) {
-    file_paths.push_back(
-        DumpToFileInDirImpl(StrFormat("%s.dot", filename),
-                            render_graph(RenderedGraphFormat::kDot), opts));
+    file_paths.push_back(DumpToFileInDirImpl(
+        StrFormat("%s.dot", filename),
+        RenderGraph(filename, module, RenderedGraphFormat::kDot), opts));
   }
 
   if (opts.dump_as_html) {
-    file_paths.push_back(
-        DumpToFileInDirImpl(StrFormat("%s.html", filename),
-                            render_graph(RenderedGraphFormat::kHtml), opts));
+    file_paths.push_back(DumpToFileInDirImpl(
+        StrFormat("%s.html", filename),
+        RenderGraph(filename, module, RenderedGraphFormat::kHtml), opts));
     if (absl::StrContains(filename, kAfterOptimizationsDumpName)) {
       file_paths.push_back(DumpToFileInDirImpl(
           StrFormat("%s.top_level.html", filename),
-          render_graph(RenderedGraphFormat::kHtml, false), opts));
+          RenderGraph(filename, module, RenderedGraphFormat::kHtml, false),
+          opts));
     }
   }
 
@@ -486,7 +488,7 @@ static std::vector<std::string> DumpHloModuleImpl(
   // Special case for rendering graphs as URLs.  We'll dump them to a file
   // because why not, but we always log them to stdout as well.
   if (opts.dump_as_url) {
-    std::string url = render_graph(RenderedGraphFormat::kUrl);
+    std::string url = RenderGraph(filename, module, RenderedGraphFormat::kUrl);
     std::cout << filename << " --> " << url << std::endl;
     if (!opts.dumping_to_stdout()) {
       file_paths.push_back(
@@ -621,7 +623,7 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
   CanonicalDebugOptions opts(module.config().debug_options());
   if (opts.dumping_to_stdout()) return op->dump();
 
-  mlir::OpPrintingFlags print_flags = mlir::OpPrintingFlags().useLocalScope();
+  mlir::OpPrintingFlags print_flags = mlir::OpPrintingFlags();
   // Enable debug info so that it is easier to see the corresponding HLO node.
   if (file_prefix == "lmhlo") {
     print_flags.enableDebugInfo(/*enable=*/true,
@@ -708,6 +710,11 @@ void DumpHloModuleIfEnabled(const HloModule& module,
 bool DumpingEnabledForHloModule(string_view hlo_module_name,
                                 const DebugOptions& opts) {
   return CanonicalDebugOptions(opts).should_dump_module(hlo_module_name);
+}
+
+bool DumpingEnabledForHloPass(string_view hlo_pass_name,
+                              const DebugOptions& opts) {
+  return CanonicalDebugOptions(opts).should_dump_pass(hlo_pass_name);
 }
 
 bool DumpingToStdout(const DebugOptions& opts) {

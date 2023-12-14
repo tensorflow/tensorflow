@@ -1186,6 +1186,8 @@ class Model {
   std::shared_ptr<Node> snapshot_ TF_GUARDED_BY(mu_);
   // Stores the optimization parameters used by autotune.
   OptimizationParams optimization_params_ TF_GUARDED_BY(mu_);
+  // Stores the model id in the string format
+  std::string model_id_;
 };
 
 // Class to compute timing information for a model.

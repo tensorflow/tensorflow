@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <numeric>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -24,12 +25,16 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/service/computation_placer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "tsl/platform/status.h"
 
 namespace pjrt {
 namespace {
@@ -66,6 +71,65 @@ void PjrtCApiTestBase::destroy_client(PJRT_Client* client) {
   destroy_args.client = client;
   PJRT_Error* error = api_->PJRT_Client_Destroy(&destroy_args);
   CHECK_EQ(error, nullptr);
+}
+
+int PjrtCApiTestBase::GetDeviceId(PJRT_DeviceDescription* device_desc) const {
+  PJRT_DeviceDescription_Id_Args args = PJRT_DeviceDescription_Id_Args{
+      .struct_size = PJRT_DeviceDescription_Id_Args_STRUCT_SIZE,
+      .priv = nullptr,
+      .device_description = device_desc,
+      .id = -1,
+  };
+  PJRT_Error* error = api_->PJRT_DeviceDescription_Id(&args);
+  CHECK_EQ(error, nullptr);
+  return args.id;
+}
+
+int PjrtCApiTestBase::GetDeviceId(PJRT_Device* device) const {
+  return GetDeviceId(::pjrt::GetDeviceDescription(api_, device));
+}
+
+bool PjrtCApiTestBase::IsValidDeviceId(PJRT_Device* device) const {
+  return GetDeviceId(device) >= 0;
+}
+
+int PjrtCApiTestBase::GetLocalHardwareId(PJRT_Device* device) const {
+  PJRT_Device_LocalHardwareId_Args args = PJRT_Device_LocalHardwareId_Args{
+      .struct_size = PJRT_Device_LocalHardwareId_Args_STRUCT_SIZE,
+      .priv = nullptr,
+      .device = device,
+      .local_hardware_id = -1,
+  };
+  PJRT_Error* error = api_->PJRT_Device_LocalHardwareId(&args);
+  CHECK_EQ(error, nullptr);
+  return args.local_hardware_id;
+}
+
+absl::Span<PJRT_Device* const> PjrtCApiTestBase::GetClientDevices() const {
+  PJRT_Client_Devices_Args dev_args;
+  dev_args.struct_size = PJRT_Client_Devices_Args_STRUCT_SIZE;
+  dev_args.priv = nullptr;
+  dev_args.client = client_;
+  PJRT_Error* error = api_->PJRT_Client_Devices(&dev_args);
+  CHECK(error == nullptr);
+  return absl::MakeSpan(dev_args.devices, dev_args.num_devices);
+}
+
+int PjrtCApiTestBase::GetNumDevices() const {
+  return GetClientDevices().size();
+}
+
+std::string PjrtCApiTestBase::BuildSingleDeviceCompileOptionStr() {
+  xla::ExecutableBuildOptions build_options;
+  build_options.set_device_ordinal(0);
+  xla::DeviceAssignment device_assignment(1, 1);
+  device_assignment(0, 0) = 0;
+  build_options.set_device_assignment(device_assignment);
+  xla::CompileOptions options;
+  options.executable_build_options = build_options;
+  absl::StatusOr<xla::CompileOptionsProto> options_proto = options.ToProto();
+  TF_CHECK_OK(options_proto.status());
+  return options_proto->SerializeAsString();
 }
 
 absl::Span<PJRT_Device* const> PjrtCApiTestBase::GetClientAddressableDevices()

@@ -132,6 +132,11 @@ enum CPUFeature {
   AMX_TILE = 41,  // Tile configuration and load/store
   AMX_INT8 = 42,  // Int8 tile matrix multiplication
   AMX_BF16 = 43,  // Bfloat16 tile matrix multiplication
+
+  AVX512_FP16 = 44,     // Float16 neural network
+  AMX_FP16 = 45,        // Float16 tile matrix multiplication
+  AVX_NE_CONVERT = 46,  // Instructions for faster bfloat16, float16 convert.
+  AVX_VNNI_INT8 = 47,   // VNNI instructions for combinations of u8, s8 dtypes.
 };
 
 enum Aarch64CPU {

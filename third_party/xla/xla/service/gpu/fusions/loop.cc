@@ -17,12 +17,18 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Type.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

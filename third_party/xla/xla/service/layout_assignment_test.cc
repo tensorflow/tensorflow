@@ -1692,5 +1692,35 @@ ENTRY main {
   // Expecting a copy before custom call to reconcile the different layouts.
   EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kCopy);
 }
+
+// Test the ability to enforce a partially specified parameter constraint.
+TEST_F(LayoutAssignmentTest, PartialEntryParameterLayout) {
+  const char* module_str = R"(
+ HloModule EntryLayout, entry_computation_layout={(f32[32,650]{1,0},s32[16,1,18]{0,1,2})->(f32[650,32]{1,0},s32[18,16,1]{0,1,2})}
+ 
+ ENTRY %main {
+   operand = f32[32,650] parameter(0)
+   transpose = transpose(operand), dimensions={1,0}
+   indices = s32[16,1,18] parameter(1)
+   transpose_indices = transpose(indices), dimensions={2,0,1}
+   ROOT t = tuple(transpose, transpose_indices)
+ } )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  // Allow propagation only to parameter 0
+  m->mutable_entry_computation_layout()->mutable_parameter_layout(0)->Clear();
+
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
+                                     nullptr);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+  // Assign bitcasting layout to parameter 0
+  ExpectLayoutIs(m->entry_computation_layout().parameter_layout(0).shape(),
+                 {0, 1});
+  // Parameter layout that is set is unmodified.
+  ExpectLayoutIs(m->entry_computation_layout().parameter_layout(1).shape(),
+                 {0, 1, 2});
+}
+
 }  // namespace
 }  // namespace xla

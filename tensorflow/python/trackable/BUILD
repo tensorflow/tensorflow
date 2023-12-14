@@ -51,7 +51,8 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:control_flow_ops_gen",
         "//tensorflow/python/training/saving:saveable_object",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_contextlib",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -188,7 +189,7 @@ py_strict_library(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_contextlib",
         "//tensorflow/python/util:tf_export",
     ],
 )

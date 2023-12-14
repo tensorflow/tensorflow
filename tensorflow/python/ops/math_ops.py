@@ -68,7 +68,6 @@ tf.math.unsorted_segment_sum(c, tf.constant([0, 1, 0]), num_segments=2)
 API docstring: tensorflow.math
 """
 import builtins
-import numbers
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -76,6 +75,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import override_binary_operator
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion_registry
@@ -89,18 +89,17 @@ from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_sparse_ops
+from tensorflow.python.ops import tensor_math_operator_overrides  # pylint: disable=unused-import
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.ops.numpy_ops import np_dtypes
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
@@ -231,11 +230,6 @@ arg_max = deprecation.deprecated(None, "Use `tf.math.argmax` instead")(arg_max) 
 arg_min = deprecation.deprecated(None, "Use `tf.math.argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
 tf_export(v1=["arg_max"])(dispatch.add_dispatch_support(arg_max))
 tf_export(v1=["arg_min"])(dispatch.add_dispatch_support(arg_min))
-
-
-# This is set by resource_variable_ops.py. It is included in this way since
-# there is a circular dependency between math_ops and resource_variable_ops
-_resource_variable_type = None
 
 
 def _set_doc(doc):
@@ -997,8 +991,9 @@ def cast(x, dtype, name=None):
 
   """
   base_type = dtypes.as_dtype(dtype).base_dtype
-  if isinstance(
-      x, (tensor_lib.Tensor, _resource_variable_type)) and base_type == x.dtype:
+  if (
+      isinstance(x, tensor_lib.Tensor) or _pywrap_utils.IsResourceVariable(x)
+  ) and base_type == x.dtype:
     return x
   with ops.name_scope(name, "Cast", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
@@ -1388,150 +1383,6 @@ def to_complex128(x, name="ToComplex128"):
   return cast(x, dtypes.complex128, name=name)
 
 
-tensor_lib.Tensor._override_operator("__neg__", gen_math_ops.neg)
-tensor_lib.Tensor._override_operator("__abs__", abs)
-
-
-def _maybe_get_dtype(x):
-  """Returns a numpy type if available from x. Skips if x is numpy.ndarray."""
-  # Don't put np.ndarray in this list, because np.result_type looks at the
-  # value (not just dtype) of np.ndarray to decide the result type.
-  if isinstance(x, numbers.Real):
-    return x
-  if isinstance(x, tensor_lib.Tensor):
-    return x.dtype.as_numpy_dtype
-  if isinstance(x, dtypes.DType):
-    return x.as_numpy_dtype
-  if isinstance(x, tensor_shape.TensorShape):
-    return np.int32
-  if isinstance(x, (list, tuple)):
-    raise ValueError(f"Cannot determine dtype.  Got sequence {x}.")
-  return x
-
-
-def maybe_promote_tensors(*tensors, force_same_dtype=False):
-  """Promotes tensors if numpy style promotion is enabled.
-
-  This function promotes `tensors` according to numpy promotion rules
-  if numpy style promotion is enabled.  Otherwise, if
-  `force_same_dtype` is `True`, it force-casts `tensors[1:]` to
-  `tensor[0]`'s dtype. Note that this force-cast can be problematic.
-  For example, when some `tensors[1:]` elements can be silently
-  downcasted.
-
-  Args:
-    *tensors: the list of tensors to promote.
-    force_same_dtype: bool (optional, default to `False`). When numpy
-      style promotion is disabled and `force_same_dtype` is `True`,
-      this function will force-casts `tensors[1:]` to `tensor[0]`'s
-      dtype (which could be problematic).
-
-  Returns:
-    The promoted list of tensors.
-  """
-  if ops.is_auto_dtype_conversion_enabled():
-    return tensors
-  if not tensors:
-    return tensors
-  if not ops.is_numpy_style_type_promotion():
-    if not force_same_dtype:
-      return tensors
-    promoted_tensors = []
-    promoted_tensors.append(tensors[0])
-    dtype = tensors[0].dtype.base_dtype
-    for tensor in tensors[1:]:
-      promoted_tensors.append(
-          ops.convert_to_tensor(tensor, dtype, name="x"))
-    return promoted_tensors
-  result_type = np_dtypes._result_type(
-      *[_maybe_get_dtype(x) for x in nest.flatten(tensors)])
-  def _promote_or_cast(x):
-    if isinstance(x, tensor_lib.Tensor):
-      x = cast(x, result_type)
-    else:
-      x = ops.convert_to_tensor(x, result_type)
-    return x
-  return [_promote_or_cast(x) for x in tensors]
-
-
-def _OverrideBinaryOperatorHelper(
-    func, op_name, clazz_object=tensor_lib.Tensor):
-  """Register operators with different tensor and scalar versions.
-
-  If `clazz_object` is `SparseTensor`, assumes `func` takes `(sp_indices,
-  sp_values, sp_shape, dense)` and outputs `(new_sp_values)`.
-
-  Args:
-    func: the operator
-    op_name: name of the operator being overridden
-    clazz_object: class to override for.  Either `Tensor` or `SparseTensor`.
-  """
-
-  @traceback_utils.filter_traceback
-  def binary_op_wrapper(x, y):
-    with ops.name_scope(None, op_name, [x, y]) as name:
-      try:
-        # force_same_dtype=False to preserve existing TF behavior
-        # TODO(b/178860388): Figure out why binary_op_wrapper and
-        #   r_binary_op_wrapper use different force_same_dtype values.
-        x, y = maybe_promote_tensors(x, y)
-        return func(x, y, name=name)
-      except (TypeError, ValueError) as e:
-        # Even if dispatching the op failed, the RHS may be a tensor aware
-        # object that can implement the operator with knowledge of itself
-        # and the tensor.
-        # If the RHS is not tensor aware we still want to raise the
-        # original error from the LHS, because it may be more
-        # informative.
-        if hasattr(type(y), "__r%s__" % op_name):
-          try:
-            r_op = getattr(y, "__r%s__" % op_name)
-            out = r_op(x)
-            if out is NotImplemented:
-              raise
-            return out
-          except (TypeError, ValueError):
-            raise e
-        else:
-          raise
-
-  @traceback_utils.filter_traceback
-  def binary_op_wrapper_sparse(sp_x, y):
-    with ops.name_scope(None, op_name, [sp_x, y]) as name:
-      y = ops.convert_to_tensor(y, dtype=sp_x.dtype.base_dtype, name="y")
-      return sparse_tensor.SparseTensor(
-          sp_x.indices,
-          func(sp_x.indices, sp_x.values, sp_x.dense_shape, y, name=name),
-          sp_x.dense_shape)
-
-  @traceback_utils.filter_traceback
-  def r_binary_op_wrapper(y, x):
-    with ops.name_scope(None, op_name, [x, y]) as name:
-      # TODO(b/178860388): Figure out why binary_op_wrapper and
-      #   r_binary_op_wrapper use different force_same_dtype values.
-      y, x = maybe_promote_tensors(y, x, force_same_dtype=True)
-      return func(x, y, name=name)
-
-  # Propagate func.__doc__ to the wrappers
-  try:
-    doc = func.__doc__
-  except AttributeError:
-    doc = None
-  binary_op_wrapper.__doc__ = doc
-  r_binary_op_wrapper.__doc__ = doc
-  binary_op_wrapper_sparse.__doc__ = doc
-
-  if clazz_object is tensor_lib.Tensor:
-    clazz_object._override_operator("__%s__" % op_name, binary_op_wrapper)
-    del binary_op_wrapper
-    clazz_object._override_operator("__r%s__" % op_name, r_binary_op_wrapper)
-    del r_binary_op_wrapper
-  else:
-    clazz_object._override_operator("__%s__" % op_name,
-                                    binary_op_wrapper_sparse)
-    del binary_op_wrapper_sparse
-
-
 # Conversion table for __truediv__.  None entries mean no conversion required.
 _TRUEDIV_TABLE = {
     dtypes.uint8: dtypes.float32,
@@ -1549,33 +1400,6 @@ _TRUEDIV_TABLE = {
     dtypes.complex64: None,
     dtypes.complex128: None,
 }
-
-
-# NOTE: the support of "sparse (true)div dense" is currently not baked in into
-# "tf.(true_)div()".  Until such an API decision is made, the supported usage is
-# to explicitly use the "/" operator to invoke either truediv or div.
-def _sparse_dense_truediv(sp_indices, sp_values, sp_shape, y, name=None):
-  """Internal helper function for 'sp_t / dense_t'."""
-  with ops.name_scope(name, "truediv",
-                      [sp_indices, sp_values, sp_shape, y]) as name:
-    sp_values = ops.convert_to_tensor(sp_values, name="sp_values")
-    y = ops.convert_to_tensor(y, name="y")
-    x_dtype = sp_values.dtype.base_dtype
-    y_dtype = y.dtype.base_dtype
-    if x_dtype != y_dtype:
-      raise TypeError(f"`x` and `y` must have the same dtype, "
-                      f"got {x_dtype!r} != {y_dtype!r}.")
-    try:
-      dtype = _TRUEDIV_TABLE[x_dtype]
-    except KeyError:
-      raise TypeError(
-          f"Invalid dtype {x_dtype!r} in __truediv__. Expected one "
-          f"of {{{', '.join([repr(x) for x in _TRUEDIV_TABLE.keys()])}}}.")
-    if dtype is not None:
-      sp_values = cast(sp_values, dtype)
-      y = cast(y, dtype)
-    return gen_sparse_ops.sparse_dense_cwise_div(
-        sp_indices, sp_values, sp_shape, y, name=name)
 
 
 def _truediv_python3(x, y, name=None):
@@ -1881,26 +1705,6 @@ def _mul_dispatch(x, y, name=None):
     return multiply(x, y, name=name)
 
 
-# NOTE(aselle): When integer division is added for sparse_dense_cwise,
-# div, truediv, and floordiv should be delegated appropriately for
-# Python semantics, analogous to dense cwise tensor operations.
-_OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_div, "div",
-                              sparse_tensor.SparseTensor)
-_OverrideBinaryOperatorHelper(_sparse_dense_truediv, "truediv",
-                              sparse_tensor.SparseTensor)
-_OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_mul, "mul",
-                              sparse_tensor.SparseTensor)
-
-_OverrideBinaryOperatorHelper(_add_dispatch, "add")
-_OverrideBinaryOperatorHelper(subtract, "sub")
-_OverrideBinaryOperatorHelper(_mul_dispatch, "mul")
-_OverrideBinaryOperatorHelper(div, "div")
-_OverrideBinaryOperatorHelper(truediv, "truediv")
-_OverrideBinaryOperatorHelper(floordiv, "floordiv")
-_OverrideBinaryOperatorHelper(mod, "mod")
-_OverrideBinaryOperatorHelper(pow, "pow")
-
-
 @tf_export("math.logical_xor", v1=["math.logical_xor", "logical_xor"])
 @dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
@@ -1975,29 +1779,6 @@ def invert_(x, name=None):
   if x.dtype == dtypes.bool:
     return gen_math_ops.logical_not(x, name=name)
   return gen_bitwise_ops.invert(x, name=name)
-
-
-_OverrideBinaryOperatorHelper(and_, "and")
-_OverrideBinaryOperatorHelper(or_, "or")
-_OverrideBinaryOperatorHelper(xor_, "xor")
-tensor_lib.Tensor._override_operator("__invert__", invert_)
-
-
-def _promote_dtypes_decorator(fn):
-  def wrapper(x, y, *args, **kwargs):
-    x, y = maybe_promote_tensors(x, y)
-    return fn(x, y, *args, **kwargs)
-  return tf_decorator.make_decorator(fn, wrapper)
-
-
-tensor_lib.Tensor._override_operator("__lt__", _promote_dtypes_decorator(
-    gen_math_ops.less))
-tensor_lib.Tensor._override_operator("__le__", _promote_dtypes_decorator(
-    gen_math_ops.less_equal))
-tensor_lib.Tensor._override_operator("__gt__", _promote_dtypes_decorator(
-    gen_math_ops.greater))
-tensor_lib.Tensor._override_operator("__ge__", _promote_dtypes_decorator(
-    gen_math_ops.greater_equal))
 
 
 @tf_export("math.equal", "equal")
@@ -2109,7 +1890,7 @@ def tensor_equals(self, other):
       and ops.executing_eagerly_outside_functions()
       and (g is None or g.building_function)
   ):
-    self, other = maybe_promote_tensors(self, other)
+    self, other = override_binary_operator.maybe_promote_tensors(self, other)
     return gen_math_ops.equal(self, other, incompatible_shape_error=False)
   else:
     # In legacy graph mode, tensor equality is object equality
@@ -2149,15 +1930,11 @@ def tensor_not_equals(self, other):
       tensor_lib.Tensor._USE_EQUALITY
       and ops.executing_eagerly_outside_functions()
   ):
-    self, other = maybe_promote_tensors(self, other)
+    self, other = override_binary_operator.maybe_promote_tensors(self, other)
     return gen_math_ops.not_equal(self, other, incompatible_shape_error=False)
   else:
     # In legacy graph mode, tensor equality is object equality
     return self is not other
-
-
-tensor_lib.Tensor._override_operator("__eq__", tensor_equals)
-tensor_lib.Tensor._override_operator("__ne__", tensor_not_equals)
 
 
 @tf_export("range")
@@ -3616,16 +3393,20 @@ def trace(x, name=None):
 
 @tf_export("linalg.matmul", "matmul")
 @dispatch.add_dispatch_support
-def matmul(a,
-           b,
-           transpose_a=False,
-           transpose_b=False,
-           adjoint_a=False,
-           adjoint_b=False,
-           a_is_sparse=False,
-           b_is_sparse=False,
-           output_type=None,
-           name=None):
+def matmul(
+    a,
+    b,
+    transpose_a=False,
+    transpose_b=False,
+    adjoint_a=False,
+    adjoint_b=False,
+    a_is_sparse=False,
+    b_is_sparse=False,
+    output_type=None,
+    grad_a=False,
+    grad_b=False,
+    name=None,
+):
   """Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
 
   The inputs must, following any transpositions, be tensors of rank >= 2
@@ -3711,17 +3492,19 @@ def matmul(a,
       multiplication.
     a_is_sparse: If `True`, `a` is treated as a sparse matrix. Notice, this
       **does not support `tf.sparse.SparseTensor`**, it just makes optimizations
-      that assume most values in `a` are zero.
-      See `tf.sparse.sparse_dense_matmul`
-      for some support for `tf.sparse.SparseTensor` multiplication.
+      that assume most values in `a` are zero. See
+      `tf.sparse.sparse_dense_matmul` for some support for
+      `tf.sparse.SparseTensor` multiplication.
     b_is_sparse: If `True`, `b` is treated as a sparse matrix. Notice, this
       **does not support `tf.sparse.SparseTensor`**, it just makes optimizations
-      that assume most values in `b` are zero.
-      See `tf.sparse.sparse_dense_matmul`
-      for some support for `tf.sparse.SparseTensor` multiplication.
+      that assume most values in `b` are zero. See
+      `tf.sparse.sparse_dense_matmul` for some support for
+      `tf.sparse.SparseTensor` multiplication.
     output_type: The output datatype if needed. Defaults to None in which case
       the output_type is the same as input type. Currently only works when input
       tensors are type (u)int8 and output_type can be int32.
+    grad_a: Set it to `True` to hint that Tensor `a` is for the backward pass.
+    grad_b: Set it to `True` to hint that Tensor `b` is for the backward pass.
     name: Name for the operation (optional).
 
   Returns:
@@ -3755,9 +3538,12 @@ def matmul(a,
           f"`adjoint_b`={adjoint_b}.")
 
     if context.executing_eagerly():
-      if not isinstance(a, (ops.EagerTensor, _resource_variable_type)):
+      if not (
+          isinstance(a, ops.EagerTensor) or _pywrap_utils.IsResourceVariable(a)
+      ):
         a = ops.convert_to_tensor(a, name="a")
-      if not isinstance(b, (ops.EagerTensor, _resource_variable_type)):
+      if not isinstance(b, ops.EagerTensor) or _pywrap_utils.IsResourceVariable(
+          b):
         b = ops.convert_to_tensor(b, dtype_hint=a.dtype.base_dtype, name="b")
     else:
       a = ops.convert_to_tensor(a, name="a")
@@ -3790,10 +3576,25 @@ def matmul(a,
         adjoint_b = True
       if use_batch_matmul_v3:
         return gen_math_ops.batch_mat_mul_v3(
-            a, b, adj_x=adjoint_a, adj_y=adjoint_b, Tout=output_type, name=name)
+            a,
+            b,
+            adj_x=adjoint_a,
+            adj_y=adjoint_b,
+            Tout=output_type,
+            grad_x=grad_a,
+            grad_y=grad_b,
+            name=name,
+        )
       else:
         return gen_math_ops.batch_mat_mul_v2(
-            a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
+            a,
+            b,
+            adj_x=adjoint_a,
+            adj_y=adjoint_b,
+            grad_x=grad_a,
+            grad_y=grad_b,
+            name=name,
+        )
 
     # Neither matmul nor sparse_matmul support adjoint, so we conjugate
     # the matrix and use transpose instead. Conj() is a noop for real
@@ -3837,10 +3638,25 @@ def matmul(a,
         adjoint_a = adjoint_a or transpose_a
         adjoint_b = adjoint_b or transpose_b
         return gen_math_ops.batch_mat_mul_v3(
-            a, b, adj_x=adjoint_a, adj_y=adjoint_b, Tout=output_type, name=name)
+            a,
+            b,
+            adj_x=adjoint_a,
+            adj_y=adjoint_b,
+            Tout=output_type,
+            grad_x=grad_a,
+            grad_y=grad_b,
+            name=name,
+        )
       else:
         return gen_math_ops.mat_mul(
-            a, b, transpose_a=transpose_a, transpose_b=transpose_b, name=name)
+            a,
+            b,
+            transpose_a=transpose_a,
+            transpose_b=transpose_b,
+            grad_a=grad_a,
+            grad_b=grad_b,
+            name=name,
+        )
 
 
 @tf_export("linalg.matvec")
@@ -3884,7 +3700,7 @@ def matvec(a,
   b = tf.constant([7, 9, 11], shape=[3])
 
   # `a` * `b`
-  # [ 58,  64]
+  # [ 58,  139]
   c = tf.linalg.matvec(a, b)
 
 
@@ -3950,7 +3766,6 @@ def matmul_wrapper(a, b, name=None):  # pylint: disable=missing-function-docstri
     return a._matmul(b)
   return matmul(a, b, name=name)
 matmul_wrapper.__doc__ = matmul.__doc__
-_OverrideBinaryOperatorHelper(matmul_wrapper, "matmul")
 
 sparse_matmul = deprecation.deprecated(None, "Use `tf.linalg.matmul` instead")(
     gen_math_ops.sparse_mat_mul)

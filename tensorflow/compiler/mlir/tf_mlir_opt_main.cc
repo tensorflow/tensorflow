@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/mlprogram_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/passes/mlir_to_graph_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tosa/tf_passes.h"
 #include "tensorflow/compiler/mlir/tosa/tf_tfl_passes.h"
@@ -56,7 +57,8 @@ int main(int argc, char **argv) {
   mlir::mhlo::registerLegalizeTfPasses();
   mlir::mhlo::registerTfXlaPasses();
   mlir::quant::stablehlo::registerBridgePasses();
-  tensorflow::tf2xla::internal::registerTFXLABridgePasses();
+  tensorflow::tf2xla::internal::registerTFXLABridgeClusteringPasses();
+  tensorflow::tf2xla::internal::registerTFXLABridgeMlirToGraphPasses();
   mlir::tosa::registerLegalizeTosaPasses();
   mlir::tosa::registerTFtoTOSALegalizationPipeline();
   mlir::tosa::registerTFLtoTOSALegalizationPipeline();

@@ -114,6 +114,8 @@ class MockClient final : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::string_view, runtime_type, (), (const, final));
   MOCK_METHOD(absl::string_view, platform_name, (), (const, final));
   MOCK_METHOD(absl::string_view, platform_version, (), (const, final));
+  MOCK_METHOD((absl::flat_hash_map<std::string, Client::ClientAttribute>),
+              attributes, (), (const, final));
   MOCK_METHOD(int, device_count, (), (const, final));
   MOCK_METHOD(PlatformId, platform_id, (), (const, final));
   MOCK_METHOD(int, addressable_device_count, (), (const, final));
@@ -230,6 +232,8 @@ class MockExecutable final
               (const, final));
   MOCK_METHOD(StatusOr<std::vector<Layout>>, GetParameterLayouts, (),
               (const, final));
+  MOCK_METHOD(StatusOr<std::vector<Layout>>, GetOutputLayouts, (),
+              (const, final));
   MOCK_METHOD(StatusOr<std::vector<std::shared_ptr<HloModule>>>, GetHloModules,
               (), (const, final));
   MOCK_METHOD((StatusOr<absl::flat_hash_map<std::string, CostAnalysisValue>>),
@@ -255,6 +259,8 @@ class MockLoadedExecutable final
   MOCK_METHOD(std::optional<std::vector<OpSharding>>, GetOutputShardings, (),
               (const, final));
   MOCK_METHOD(StatusOr<std::vector<Layout>>, GetParameterLayouts, (),
+              (const, final));
+  MOCK_METHOD(StatusOr<std::vector<Layout>>, GetOutputLayouts, (),
               (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<std::vector<absl::string_view>>>,
               GetOutputMemoryKinds, (), (const, final));

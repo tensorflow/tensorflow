@@ -1017,6 +1017,7 @@ tf_xla_py_strict_test(
     enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
+        "no_aarch64",  # TODO(b/315533266)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
     ],
@@ -1239,7 +1240,7 @@ tf_xla_py_strict_test(
     ],
     enable_mlir_bridge = True,
     python_version = "PY3",
-    shard_count = 5,
+    shard_count = 1,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",

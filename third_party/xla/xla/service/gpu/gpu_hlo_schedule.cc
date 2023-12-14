@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/service/buffer_value.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/gpu_schedule_postprocessing.h"
 #include "xla/service/gpu/model/analytical_latency_estimator.h"
 #include "xla/service/hlo_memory_scheduler.h"
 #include "xla/service/hlo_pass_pipeline.h"
@@ -703,6 +704,11 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
       std::move(scheduler_core), shape_size_in_bytes);
 
   TF_RETURN_IF_ERROR(pipeline.Run(module).status());
+
+  HloPassPipeline postprocessing_pipeline("gpu-schedule-postprocessing");
+  postprocessing_pipeline.AddPass<GpuSchedulePostprocessing>();
+  TF_RETURN_IF_ERROR(postprocessing_pipeline.Run(module).status());
+
   return OkStatus();
 }
 

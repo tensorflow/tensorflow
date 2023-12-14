@@ -16,16 +16,19 @@ limitations under the License.
 #ifndef XLA_PYTHON_PY_CLIENT_H_
 #define XLA_PYTHON_PY_CLIENT_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "xla/client/xla_builder.h"
+#include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/python/exceptions.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/statusor.h"
@@ -136,13 +139,32 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
     return shared_ptr_pjrt_client();
   }
 
-  absl::string_view platform_name() const { return platform_name_; }
+  absl::string_view platform_name() const {
+    // TODO(phawkins): this is a temporary backwards compatibility shim. We
+    // changed the name PJRT reports for GPU platforms to "cuda" or "rocm", but
+    // we haven't yet updated JAX clients that expect "gpu". Migrate users and
+    // remove this code.
+    if (ifrt_client_->platform_name() == "cuda" ||
+        ifrt_client_->platform_name() == "rocm") {
+      return "gpu";
+    } else {
+      return ifrt_client_->platform_name();
+    }
+  }
   absl::string_view platform_version() const {
     return ifrt_client_->platform_version();
   }
   absl::string_view runtime_type() const {
     return ifrt_client_->runtime_type();
   }
+
+  // Returns implementation-specific attributes about this client, e.g. the PJRT
+  // C API version if applicable.
+  absl::flat_hash_map<std::string, xla::ifrt::Client::ClientAttribute>
+  attributes() const {
+    return client_attributes_;
+  }
+
   int addressable_device_count() const {
     return ifrt_client_->addressable_device_count();
   }
@@ -246,8 +268,8 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   friend struct PyArray_Storage;
 
   std::shared_ptr<ifrt::Client> ifrt_client_;
-  std::string platform_name_;
-
+  absl::flat_hash_map<std::string, xla::ifrt::Client::ClientAttribute>
+      client_attributes_;
   // Pointers to intrusive doubly-linked lists of arrays and executables, used
   // to iterate over all known objects when heap profiling. The list structure
   // is protected by the GIL.

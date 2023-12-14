@@ -470,6 +470,7 @@ xla_cc_test(
         ":shape_util",
         ":test",
         ":xla_data_proto_cc",
+        "//xla:status",
         "@com_google_absl//absl/hash:hash_testing",
         "@local_tsl//tsl/platform:test_benchmark",
         "@local_tsl//tsl/platform:test_main",

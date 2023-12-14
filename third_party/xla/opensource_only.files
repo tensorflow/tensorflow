@@ -26,6 +26,8 @@ tools/toolchains/BUILD:
 tools/toolchains/clang6/BUILD:
 tools/toolchains/cpus/py/BUILD:
 tools/toolchains/cpus/py3/BUILD:
+tools/toolchains/cross_compile/cc/BUILD:
+tools/toolchains/cross_compile/config/BUILD:
 tools/toolchains/embedded/arm-linux/BUILD:
 tools/toolchains/java/BUILD:
 tools/toolchains/python/BUILD:

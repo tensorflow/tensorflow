@@ -33,7 +33,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "stablehlo/transforms/Passes.h"  // from @stablehlo
+#include "stablehlo/experimental/transforms/Passes.h"  // from @stablehlo
 #include "xla/mlir/utils/error_util.h"
 #include "tsl/platform/errors.h"
 
@@ -255,9 +255,9 @@ absl::Status RefinePolymorphicShapes(mlir::ModuleOp module,
   // TODO(necula): we should not need the inliner.
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addPass(mlir::stablehlo::createStablehloRefineShapesPass());
+  pm.addPass(mlir::stablehlo::experimental::createStablehloRefineShapesPass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::stablehlo::createStablehloCanonicalizeDynamismPass());
+      mlir::stablehlo::experimental::createStablehloCanonicalizeDynamismPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       std::make_unique<CheckShapeAssertionsPass>(enable_shape_assertions));
   if (!mlir::succeeded(pm.run(module))) {

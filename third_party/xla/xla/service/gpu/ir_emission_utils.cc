@@ -16,35 +16,76 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 
 #include <algorithm>
+#include <climits>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <functional>
 #include <optional>
 #include <queue>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/FPEnv.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicsNVPTX.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
+#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/primitive_util.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/status_macros.h"
+#include "xla/statusor.h"
 #include "xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/ml_dtypes.h"
 
 namespace xla {
 namespace gpu {
@@ -191,7 +232,7 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
         builder->CreateGEP(arguments_type, arguments_ptr,
                            {builder->getInt64(0), builder->getInt32(i)}));
   }
-  llvm::Type* ptr_ty = builder->getInt8Ty()->getPointerTo();
+  llvm::Type* ptr_ty = builder->getPtrTy();
   return builder->CreateCall(
       builder->GetInsertBlock()->getParent()->getParent()->getOrInsertFunction(
           "vprintf",
@@ -538,7 +579,7 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
       }
       dus_user = *bitcast->user_begin();
     }
-    if (!mlir::isa<mlir::memref::TensorStoreOp>(dus_user)) {
+    if (!mlir::isa<mlir::bufferization::MaterializeInDestinationOp>(dus_user)) {
       return false;
     }
     auto operand = dus.getOperand();
@@ -564,8 +605,8 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     q.push(parameter);
     visited.insert(parameter);
     // We have already checked above that the DUS only has one user: a
-    // (possibly bitcasted) TensorStoreOp. So we don't need to visit it during
-    // the breadth-first search.
+    // (possibly bitcasted) MaterializeInDestinationOp. So we don't need to
+    // visit it during the breadth-first search.
     visited.insert(dus);
     while (!q.empty()) {
       auto op = q.front();
@@ -723,7 +764,8 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
   return std::nullopt;
 }
 
-bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count) {
+bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count,
+                    const HloFusionAdaptor* fusion) {
   // Number of operands should be in range [1, allowed_operand_count].
   if (instr->operand_count() == 0 ||
       instr->operand_count() > allowed_operand_count) {
@@ -731,7 +773,15 @@ bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count) {
   }
 
   // Intermediate `instr` can't have multiple users.
-  if (instr->user_count() > 1) {
+  // If we have a boundary function, only consider users within the
+  // boundary.
+  // TODO(jreiffers): Figure out the point of this check.
+  int64_t num_users =
+      fusion ? absl::c_count_if(
+                   HloInstructionAdaptor{*instr}.GetUsers(),
+                   [&](auto user) { return fusion->ContainsInstruction(user); })
+             : instr->user_count();
+  if (num_users > 1) {
     return false;
   }
 
@@ -764,56 +814,59 @@ static bool IsParameter(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kParameter;
 }
 
-const HloInstruction& FindNonTrivialHero(
-    const HloInstruction& instr,
-    const std::function<bool(const HloInstruction& producer,
-                             const HloInstruction& consumer)>& is_boundary) {
-  const HloInstruction* idx = &instr;
+const HloInstruction& FindNonTrivialHero(const HloInstruction& instr,
+                                         const HloFusionAdaptor& fusion) {
+  HloInstructionAdaptor idx{instr};
 
   // Go up the chain of trivial element-wise(+bitcast, -copy) operations. Such
   // chains are bound to be quite small, as we restrict the number of users as
   // well. Note that no memoization is needed due to user number constraints: we
   // never have to revisit same nodes.
-  auto get_intermediate_arg = [&](const HloInstruction* node) {
-    if (node->opcode() == HloOpcode::kFusion ||
-        node->opcode() == HloOpcode::kParameter) {
-      auto preds = FindPredecessors(*node, is_boundary);
-      return preds.size() == 1 ? preds.front() : nullptr;
+  auto get_intermediate_arg =
+      [&](HloInstructionAdaptor node) -> std::optional<HloInstructionAdaptor> {
+    if (IsIntermediate(&node.instruction(), 1, &fusion) &&
+        fusion.ContainsInstruction(node.GetOperand(0))) {
+      return node.GetOperand(0);
     }
-    return IsIntermediate(node) && !is_boundary(*node->operand(0), *node)
-               ? node->operand(0)
-               : nullptr;
+    return std::nullopt;
   };
-  while (auto* arg = get_intermediate_arg(idx)) {
-    idx = arg;
+  while (auto arg = get_intermediate_arg(idx)) {
+    idx = *arg;
   }
 
-  const HloInstruction* transpose = nullptr;
+  // The reduction emitter can't handle multiple users.
+  if (idx.opcode() == HloOpcode::kReduce &&
+      absl::c_count_if(idx.GetUsers(), [&](auto user) {
+        return fusion.ContainsInstruction(user);
+      }) > 1) {
+    return instr;
+  }
+
+  std::optional<HloInstructionAdaptor> transpose = std::nullopt;
   // Try a bit harder to find a transpose hero. The shared memory transpose
   // emitter also works if there are ops with more than 1 operand on the path
   // between root and the transpose op, we still want the restriction though
   // that each op on the path is elementwise and has only 1 user.
-  auto visit = [&transpose](const HloInstruction& node) {
-    if (FindTiledLogicalTranspose(node)) {
+  auto visit = [&transpose](HloInstructionAdaptor node) {
+    if (FindTiledLogicalTranspose(node.instruction())) {
       // If we do not find a unique transpose op, use the original non-trivial
       // hero.
       if (transpose) {
-        transpose = nullptr;
+        transpose = std::nullopt;
         return TraversalResult::kAbortTraversal;
       }
-      transpose = &node;
+      transpose = node;
       return TraversalResult::kDoNotVisitOperands;
     }
 
-    if (node.opcode() != HloOpcode::kParameter &&
-        node.opcode() != HloOpcode::kFusion &&
-        !IsIntermediate(&node, /*allowed_operand_count=*/3)) {
+    if (!IsIntermediate(&node.instruction(), /*allowed_operand_count=*/3)) {
       return TraversalResult::kDoNotVisitOperands;
     }
     return TraversalResult::kVisitOperands;
   };
-  HloBfsConsumersFirstTraversal({idx}, is_boundary, visit);
-  return transpose ? *transpose : *idx;
+  HloBfsConsumersFirstTraversal({idx}, fusion, visit);
+
+  return transpose ? transpose->instruction() : idx.instruction();
 }
 
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
@@ -821,10 +874,9 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
   // happens. Return the fusion itself for historical reasons.
   // TODO(jreiffers): Clean this up.
   if (instr.opcode() == HloOpcode::kFusion) return instr;
-  return FindNonTrivialHero(instr, [](const HloInstruction& producer,
-                                      const HloInstruction& consumer) {
-    return consumer.opcode() == HloOpcode::kParameter;
-  });
+
+  return FindNonTrivialHero(instr,
+                            *HloFusionAdaptor::ForComputation(instr.parent()));
 }
 
 void VLogModule(int level, const llvm::Module& module) {
@@ -952,6 +1004,28 @@ std::string GetIrNameFromLoc(mlir::Location loc) {
 
 bool IsAMDGPU(const llvm::Module* module) {
   return llvm::Triple(module->getTargetTriple()).isAMDGPU();
+}
+
+StatusOr<DenseDataIntermediate> LiteralToXlaFormat(const Literal& literal) {
+  PrimitiveType element_type = literal.shape().element_type();
+  if (!primitive_util::IsArrayType(element_type)) {
+    return Internal("Unsupported type in LiteralToXlaFormat");
+  }
+
+  int64_t byte_size = literal.size_bytes();
+  if (primitive_util::Is4BitType(element_type)) {
+    std::vector<uint8_t> output(CeilOfRatio(byte_size, int64_t{2}));
+    absl::Span<char> output_span =
+        absl::MakeSpan(reinterpret_cast<char*>(output.data()), output.size());
+    PackInt4(
+        absl::MakeSpan(reinterpret_cast<const char*>(literal.untyped_data()),
+                       byte_size),
+        output_span);
+    return DenseDataIntermediate::Own(std::move(output));
+  }
+
+  return DenseDataIntermediate::Alias(absl::MakeSpan(
+      reinterpret_cast<const uint8_t*>(literal.untyped_data()), byte_size));
 }
 
 }  // namespace gpu

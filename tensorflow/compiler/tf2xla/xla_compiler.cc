@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 
 #include <algorithm>
+#include <array>
 #include <map>
 #include <memory>
 #include <numeric>
@@ -27,9 +28,11 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -52,6 +55,7 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
 #include "xla/protobuf_util.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -72,6 +76,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/dump_graph.h"
+#include "tsl/platform/tensor_float_32_utils.h"
 
 namespace tensorflow {
 namespace {
@@ -1435,6 +1440,38 @@ class DummyStackTrace : public AbstractStackTrace {
       StackFrame({"dummy_file_name", 10, "dummy_function_name"})};
 };
 
+namespace {
+
+// Add precisions configs to the HLO module to avoid TensorFloat32 computations
+// in XLA.
+//
+// Some operations, such as Einsum are converted through MlirXlaOpKernel, which
+// doesn't set the precisions, so we set them all here.
+//
+// TODO(tdanyluk): We may want to restrict this logic to only set the operand
+// precision for F32 operands. (Historically, it was set without regard to
+// operand type in other parts of TF2XLA.)
+void IncreasePrecisionsToAvoidTF32(xla::HloModuleProto& module) {
+  static constexpr std::array<absl::string_view, 2> kOpsPossiblyUsingTF32 = {
+      "dot", "convolution"};
+
+  xla::PrecisionConfig precision_config;
+  precision_config.add_operand_precision(xla::PrecisionConfig::HIGHEST);
+  precision_config.add_operand_precision(xla::PrecisionConfig::HIGHEST);
+
+  for (xla::HloComputationProto& computation : *module.mutable_computations()) {
+    for (xla::HloInstructionProto& instruction :
+         *computation.mutable_instructions()) {
+      if (absl::c_find(kOpsPossiblyUsingTF32, instruction.opcode()) !=
+          kOpsPossiblyUsingTF32.end()) {
+        *instruction.mutable_precision_config() = precision_config;
+      }
+    }
+  }
+}
+
+}  // namespace
+
 Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
                                  string const& name,
                                  std::unique_ptr<Graph> graph,
@@ -1569,6 +1606,10 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   }
   for (const auto& [key, recv] : host_compute_recvs_) {
     *result->host_compute_metadata.add_host_to_device() = recv;
+  }
+
+  if (!tsl::tensor_float_32_execution_enabled()) {
+    IncreasePrecisionsToAvoidTF32(*result->computation->mutable_proto());
   }
 
   VLOG(2) << "Outputs: total: " << context->retvals().size()

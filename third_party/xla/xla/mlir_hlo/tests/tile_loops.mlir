@@ -19,7 +19,8 @@ func.func @parallel_loop(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
     scf.yield
   }
   %1 = bufferization.to_tensor %0 : memref<16xf32>
-  memref.tensor_store %1, %arg1 : memref<16xf32>
+  bufferization.materialize_in_destination %1 in writable %arg1
+      : (tensor<16xf32>, memref<16xf32>) -> ()
   "lmhlo.terminator"() : () -> ()
 }
 
@@ -101,6 +102,7 @@ func.func @complex_access(%arg0: memref<16xf32>, %arg1: memref<4xf32>) {
     scf.yield
   }
   %1 = bufferization.to_tensor %0 : memref<4xf32>
-  memref.tensor_store %1, %arg1 : memref<4xf32>
+  bufferization.materialize_in_destination %1 in writable %arg1
+      : (tensor<4xf32>, memref<4xf32>) -> ()
   "lmhlo.terminator"() : () -> ()
 }

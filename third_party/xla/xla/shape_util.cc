@@ -145,7 +145,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
       index_primitive_type, pointer_primitive_type, element_size_in_bits,
       memory_space, std::move(physical_shape));
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
-  return shape;
+  return std::move(shape);
 }
 
 template <typename T>
@@ -248,14 +248,18 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
   const int ndims = dimensions.size();
   auto layout = shape->mutable_layout();
   auto* minor_to_major = layout->mutable_minor_to_major();
+  auto is_unbounded_dynamic = absl::c_any_of(
+      dimensions, [](int64_t dim) { return dim == Shape::kUnboundedSize; });
   for (int i = 0; i < ndims; i++) {
     const int64_t d = dimensions[i];
-    if (d < 0) {
+    if (d < 0 && d != Shape::kUnboundedSize) {
       return false;
     }
-    dense_shape_size = MultiplyWithoutOverflow(dense_shape_size, d);
-    if (dense_shape_size < 0) {
-      return false;
+    if (!is_unbounded_dynamic) {
+      dense_shape_size = MultiplyWithoutOverflow(dense_shape_size, d);
+      if (dense_shape_size < 0) {
+        return false;
+      }
     }
 
     shape->add_dimensions(d);
@@ -307,7 +311,7 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
                            static_cast<int>(element_type),
                            absl::StrJoin(dimensions, ","));
   }
-  return shape;
+  return std::move(shape);
 }
 
 /* static */ StatusOr<Shape> ShapeUtil::MakeValidatedShape(
@@ -327,8 +331,13 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
   }
   for (int i = 0, n = dimensions.size(); i < n; i++) {
     shape.set_dynamic_dimension(i, dynamic_dimensions[i]);
+    if (shape.dimensions(i) == Shape::kUnboundedSize &&
+        !dynamic_dimensions[i]) {
+      return InvalidArgument(
+          "Cannot mark a dynamic dimension at dim=%d as static", i);
+    }
   }
-  return shape;
+  return std::move(shape);
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithDenseLayout(
@@ -698,9 +707,14 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   printer->Append("[");
   auto print_one = [&](int i) {
     if (shape.is_dynamic_dimension(i)) {
-      printer->Append("<=");
+      if (shape.dimensions(i) != Shape::kUnboundedSize) {
+        printer->Append(StrCat("<=", shape.dimensions(i)));
+      } else {
+        printer->Append("?");
+      }
+    } else {
+      printer->Append(shape.dimensions(i));
     }
-    printer->Append(shape.dimensions(i));
   };
   print_one(0);
   for (int i = 1, n = shape.dimensions_size(); i < n; ++i) {
@@ -776,7 +790,16 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
                                             const Shape& rhs) {
   CHECK(lhs.IsArray());
   CHECK(rhs.IsArray());
-  return absl::c_equal(lhs.dimensions(), rhs.dimensions());
+  if (!SameRank(lhs, rhs)) return false;
+  for (int i = 0; i < lhs.rank(); ++i) {
+    if (!lhs.is_unbounded_dynamic_dimension(i) &&
+        !rhs.is_unbounded_dynamic_dimension(i) &&
+        lhs.dimensions(i) != rhs.dimensions(i)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /* static */ bool ShapeUtil::SameRank(const Shape& lhs, const Shape& rhs) {
@@ -926,7 +949,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 
   for (int64_t i = 0; i < shape.rank(); ++i) {
     int64_t dimension = shape.dimensions(i);
-    if (dimension < 0) {
+    if (dimension < 0 && dimension != Shape::kUnboundedSize) {
       return InvalidArgument(
           "shape's dimensions must not be < 0; dimension at index %d was %d", i,
           dimension);
@@ -941,6 +964,10 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   VLOG(3) << "Validating shape size: " << ShapeUtil::HumanString(shape);
 
   if (!shape.IsArray()) {
+    return OkStatus();
+  }
+
+  if (shape.is_unbounded_dynamic()) {
     return OkStatus();
   }
 
@@ -1452,9 +1479,8 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
           IndexUtil::MultidimensionalIndexToLinearIndex(input_shape_dim0_major,
                                                         input_unit_index);
       // output_index has the same logical linear index as input_unit_index.
-      std::vector<int64_t> output_index =
-          IndexUtil::LinearIndexToMultidimensionalIndex(output_shape_dim0_major,
-                                                        logical_linear_index);
+      auto output_index = IndexUtil::LinearIndexToMultidimensionalIndex(
+          output_shape_dim0_major, logical_linear_index);
       // Check input_unit_index and output_index have the same physical linear
       // index.
       if (IndexUtil::MultidimensionalIndexToLinearIndex(input_shape,

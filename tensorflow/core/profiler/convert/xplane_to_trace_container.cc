@@ -207,6 +207,7 @@ void ConvertXPlaneToTraceEventsContainer(uint64_t device_id,
   }
 
   plane.ForEachLine([&](const XLineVisitor& line) {
+    if (line.DisplayName() == tsl::profiler::kXlaAsyncOpLineName) return;
     if (line.NumEvents() == 0) return;
     // Capture a copy of XLineVisitor because it will go out of scope.
     uint32_t device_id = resource_grouper->GetDeviceId(line.DisplayId());
@@ -241,7 +242,7 @@ void ConvertXSpaceToTraceEventsContainer(absl::string_view hostname,
   for (const XPlane* custom_plane :
        FindPlanesWithPrefix(space, tsl::profiler::kCustomPlanePrefix)) {
     ConvertXPlaneToTraceEventsContainer(
-        tsl::profiler::kCustomPlaneDeviceId + custom_plane->id(), hostname,
+        tsl::profiler::kFirstCustomPlaneDeviceId + custom_plane->id(), hostname,
         *custom_plane, container);
   }
 }

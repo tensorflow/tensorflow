@@ -266,6 +266,12 @@ auto* tf_data_model_gauge =
     tsl::monitoring::Gauge<std::function<std::string()>, 1>::New(
         "/tensorflow/data/model", "tf.data autotuning model proto.", "id");
 
+auto* tf_data_pipeline_processing_time = tsl::monitoring::Gauge<double, 1>::New(
+    "/tensorflow/data/pipeline_processing_time",
+    "The total processing time of the slowest stage in the input pipeline "
+    "in microseconds",
+    "id");
+
 auto* tf_data_auto_shard = tsl::monitoring::Gauge<int64, 2>::New(
     "/tensorflow/data/autoshard", "tf.data autoshard statistics.", "id",
     "name");
@@ -465,6 +471,11 @@ tsl::monitoring::CounterCell* GetTFDataElementsCounter(const string& name) {
 tsl::monitoring::GaugeCell<std::function<std::string()>>* GetTFDataModelGauge(
     const string& id) {
   return tf_data_model_gauge->GetCell(id);
+}
+
+tsl::monitoring::GaugeCell<double>* GetTFDataPipelineProcessingTimeGauge(
+    const string& id) {
+  return tf_data_pipeline_processing_time->GetCell(id);
 }
 
 void RecordTFDataBytesFetched(int64_t num_bytes) {
@@ -820,6 +831,11 @@ void UpdateXlaCompilationTime(const uint64 compilation_time_usecs) {
 
 void RecordUnusedOutput(const string& op_name) {
   graph_unused_outputs->GetCell(op_name)->IncrementBy(1);
+}
+
+void RecordPipelineProcessingTime(const string& id,
+                                  double pipeline_processing_time_usec) {
+  GetTFDataPipelineProcessingTimeGauge(id)->Set(pipeline_processing_time_usec);
 }
 
 void IncrementTestCounter(const string& name, const string& label) {

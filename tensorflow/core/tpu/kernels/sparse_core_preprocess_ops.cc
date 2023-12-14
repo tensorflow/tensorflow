@@ -357,6 +357,8 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   const int64* splits_tensor_ptr = splits->flat<int64>().data();
   const int32* id_counts_tensor_ptr = id_counts->flat<int32>().data();
 
+  const int32_t total_id_count = row_ids->NumElements();
+
   const int num_physical_replica = num_replica_ * num_sc_per_chip_;
 
   size_t xla_pad_size = stream_executor::tpu::OpsApiFn()
@@ -405,6 +407,12 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
 
   const int32 max_ids_per_chip = max_ids_per_chip_per_sample_ * sample_count_;
 
+  OP_REQUIRES(
+      ctx, max_ids_per_chip % xla_pad_size == 0,
+      absl::InvalidArgumentError(absl::StrCat(
+          "The max_ids_per_chip is set to be ", max_ids_per_chip,
+          " which is not divisible by the xla_pad_size ", xla_pad_size, " .")));
+
   const int32 padded_row_pointers_size_per_sc =
       xla::RoundUpTo<int32>(num_physical_replica, xla_pad_size);
 
@@ -435,6 +443,11 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
       sorted_token_ids_tensor->flat<int32>().data();
   float* sorted_gains_tensor_ptr = sorted_gains_tensor->flat<float>().data();
 
+  // This packed id count is used to track how many ids we have packed into
+  // the output tensor and based on this we would know how many ids that we
+  // dropped.
+  int32_t packed_id_count = 0;
+
   int32 global_index = 0;
   int32 row_pointers_index = 0;
   for (int sc_id = 0; sc_id < num_sc_per_chip_; ++sc_id) {
@@ -453,14 +466,41 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
         const int token_id_start_pos =
             *(id_counts_tensor_ptr + start_division_pos);
 
-        std::copy_n(col_ids_tensor_ptr + token_id_start_pos, token_id_count,
-                    sorted_token_ids_tensor_ptr + global_index);
-        std::copy_n(row_ids_tensor_ptr + token_id_start_pos, token_id_count,
-                    sorted_sample_ids_tensor_ptr + global_index);
-        std::copy_n(gains_tensor_ptr + token_id_start_pos, token_id_count,
-                    sorted_gains_tensor_ptr + global_index);
+        if (global_index + token_id_count > max_ids_per_chip) {
+          if (allow_id_dropping_for_minibatching_) {
+            const int32_t copy_id_count =
+                std::min(max_ids_per_chip - global_index, token_id_count);
+            std::copy_n(col_ids_tensor_ptr + token_id_start_pos, copy_id_count,
+                        sorted_token_ids_tensor_ptr + global_index);
+            std::copy_n(row_ids_tensor_ptr + token_id_start_pos, copy_id_count,
+                        sorted_sample_ids_tensor_ptr + global_index);
+            std::copy_n(gains_tensor_ptr + token_id_start_pos, copy_id_count,
+                        sorted_gains_tensor_ptr + global_index);
+            packed_id_count += copy_id_count;
+            global_index = max_ids_per_chip;
+          } else {
+            const int32_t remain_id_count = total_id_count - packed_id_count;
+            ctx->CtxFailure(absl::InvalidArgumentError(absl::StrCat(
+                "The max_ids_per_chip is set to be ", max_ids_per_chip,
+                " which is not going to fit all ids. The remaining id count "
+                "is ",
+                remain_id_count,
+                " . Please consider setting the "
+                "sparse_core_allow_id_dropping_for_minibatching to be "
+                "true. ")));
+            return;
+          }
+        } else {
+          std::copy_n(col_ids_tensor_ptr + token_id_start_pos, token_id_count,
+                      sorted_token_ids_tensor_ptr + global_index);
+          std::copy_n(row_ids_tensor_ptr + token_id_start_pos, token_id_count,
+                      sorted_sample_ids_tensor_ptr + global_index);
+          std::copy_n(gains_tensor_ptr + token_id_start_pos, token_id_count,
+                      sorted_gains_tensor_ptr + global_index);
 
-        global_index += token_id_count;
+          global_index += token_id_count;
+          packed_id_count += token_id_count;
+        }
 
         *(row_pointers_tensor_ptr + row_pointers_index) = global_index;
         int32 num_ids_to_pad_per_replica =
@@ -484,13 +524,16 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
     }
   }
 
-  int32 ids_unpadded_size = global_index;
+  int32_t ids_unpadded_size = global_index;
 
-  OP_REQUIRES(ctx, ids_unpadded_size <= max_ids_per_chip,
-              absl::InvalidArgumentError(absl::StrCat(
-                  "Got ", ids_unpadded_size,
-                  " ids after padding but the max_ids_per_chip is set to be ",
-                  max_ids_per_chip, " which is smaller.")));
+  if (packed_id_count < total_id_count) {
+    const int32_t dropped_id_count = total_id_count - packed_id_count;
+    LOG(WARNING) << "Dropping " << dropped_id_count
+                 << " ids so that the produced CsrWrappedCooTensor can be fit "
+                    "in static bound of "
+                 << max_ids_per_chip
+                 << " . This could potentially impact the model quality.";
+  }
 
   int32 row_pointers_unpadded_size =
       total_num_minibatch * padded_row_pointers_size_per_sc;
@@ -923,7 +966,8 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
                                          table_name_);
 
   CalculateHeadroom(this_max_ids, this_max_uniques, program_key,
-                    max_ids_per_partition, max_unique_ids_per_partition);
+                    max_ids_per_partition, max_unique_ids_per_partition,
+                    dropped_id_count);
 
   Tensor* splits_tensor;
   OP_REQUIRES_OK(

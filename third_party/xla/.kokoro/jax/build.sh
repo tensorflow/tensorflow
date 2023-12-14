@@ -37,11 +37,12 @@ prelude() {
   if is_linux_gpu_job ; then
     export JAX_CUDA_VERSION=12
     export JAX_CUDNN_VERSION=8.9
-
     nvidia-smi
+    setup_env_vars_py39
+  else
+    setup_env_vars_py312
   fi
 
-  setup_env_vars_py312
   cd "${KOKORO_ARTIFACTS_DIR}"
 
   use_local_or_install_python
@@ -50,51 +51,48 @@ prelude() {
   # Install bazel
   update_bazel_linux
 
-  chmod +x "${KOKORO_GFILE_DIR}/bazel_wrapper.py"
   cd jax
 
 }
 
 build_and_test_on_rbe_cpu() {
   # Run the tests.
-   "${KOKORO_GFILE_DIR}/bazel_wrapper.py" \
+  bazel \
       test \
       --verbose_failures=true \
       --override_repository=xla="${KOKORO_ARTIFACTS_DIR}"/github/xla \
       --config=avx_posix \
-      --config=tpu \
       --config=mkl_open_source_only \
-      --config="$NOCUDA_RBE_CONFIG_NAME" \
+      --config="rbe_cpu_linux_py3.12" \
       --config=tensorflow_testing_rbe_linux \
       --test_env=JAX_NUM_GENERATED_CASES=25 \
-      //tests:cpu_tests //tests:backend_independent_tests \
-      --test_output=errors
+      --test_output=errors \
+      -- //tests:cpu_tests //tests:backend_independent_tests
 }
 
 build_and_test_on_rbe_gpu() {
   # Runs non-multiaccelerator tests with one GPU apiece.
   # It appears --run_under needs an absolute path.
-  "${KOKORO_GFILE_DIR}/bazel_wrapper.py" \
+
+  bazel \
     test \
     --verbose_failures=true \
-    //tests:gpu_tests //tests:backend_independent_tests \
     --override_repository=xla="${KOKORO_ARTIFACTS_DIR}"/github/xla \
     --config=avx_posix \
     --config=mkl_open_source_only \
-    --config="$CUDA_RBE_CONFIG_NAME" \
+    --config="rbe_linux_cuda12.2_nvcc_py3.9" \
+    --config=tensorflow_testing_rbe_linux \
     --test_env=XLA_PYTHON_CLIENT_ALLOCATOR=platform \
     --test_output=errors \
     --test_env=JAX_SKIP_SLOW_TESTS=1 \
     --test_env=TF_CPP_MIN_LOG_LEVEL=0 \
-    --test_env=JAX_EXCLUDE_TEST_TARGETS=PmapTest.testSizeOverflow \
-    --test_tag_filters=-multiaccelerator
+    --test_env=JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow" \
+    --test_tag_filters=-multiaccelerator \
+    -- //tests:gpu_tests //tests:backend_independent_tests
 }
 
 # Generate a templated results file to make output accessible to everyone
 "$KOKORO_ARTIFACTS_DIR"/github/xla/.kokoro/generate_index_html.sh "$KOKORO_ARTIFACTS_DIR"/index.html
-
-NOCUDA_RBE_CONFIG_NAME="rbe_cpu_linux_py312"
-CUDA_RBE_CONFIG_NAME="rbe_linux_cuda12.2_nvcc_py3.12"
 
 prelude
 

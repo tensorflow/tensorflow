@@ -59,13 +59,14 @@ py_strict_test(
     ],
     deps = [
         ":interpreter",
+        #internal proto upb dep
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
         "//tensorflow/lite/python/metrics",
         "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -122,6 +123,7 @@ py_strict_test(
     python_version = "PY3",
     deps = [
         ":test_util",
+        #internal proto upb dep
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",
@@ -149,14 +151,16 @@ py_strict_test(
         ":convert",
         ":test_util",
         ":tflite_convert_main_lib",
+        #internal proto upb dep
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:tf2",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
@@ -168,7 +172,6 @@ py_strict_test(
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/training:training_util",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -197,11 +200,11 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:byte_swap_tensor",
         "//tensorflow/python/framework:convert_to_constants",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:versions",
         "//tensorflow/python/platform:gfile",
@@ -240,6 +243,8 @@ py_strict_test(
         ":lite_constants",
         ":schema_py",
         ":util",
+        #internal proto upb dep
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
@@ -262,7 +267,6 @@ py_strict_test(
         "//tensorflow/python/platform:resource_loader",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/training:training_util",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -289,6 +293,8 @@ py_strict_test(
         ":schema_py",
         ":test_util",
         ":util",
+        #internal proto upb dep
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto_py",
         "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
@@ -308,7 +314,6 @@ py_strict_test(
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:save_options",
         "//tensorflow/python/trackable:autotrackable",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "@pypi_jax//:pkg",
     ],
@@ -351,14 +356,16 @@ py_strict_test(
         ":interpreter",
         ":lite",
         ":test_util",
+        #internal proto upb dep
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/lite/python/testdata:double_op",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
@@ -368,7 +375,6 @@ py_strict_test(
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/trackable:autotrackable",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -409,6 +415,8 @@ py_strict_test(
     ],
     deps = [
         ":util",
+        #internal proto upb dep
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
         "//tensorflow/lite/tools:flatbuffer_utils",
         "//tensorflow/python/client:session",
@@ -420,7 +428,6 @@ py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/platform:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -561,6 +568,7 @@ py_strict_test(
     visibility = ["//visibility:public"],
     deps = [
         ":convert_saved_model",
+        #internal proto upb dep
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -644,6 +652,7 @@ py_strict_test(
     python_version = "PY3",
     deps = [
         ":analyzer",
+        #internal proto upb dep
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",

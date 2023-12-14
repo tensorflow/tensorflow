@@ -35,6 +35,7 @@ extern "C" {
 #define TFLITE_STABLEHLO_SCATTER_PARAMS_MAX_DIMENSION_COUNT 8
 #define TFLITE_STABLEHLO_GATHER_PARAMS_MAX_DIMENSION_COUNT 8
 #define TFLITE_STABLEHLO_REDUCE_WINDOW_PARAMS_MAX_DIMENSION_COUNT 8
+#define TFLITE_STABLEHLO_PAD_PARAMS_MAX_DIMENSION_COUNT 8
 
 // TODO(aselle): Consider using "if this then that" for testing.
 
@@ -635,6 +636,14 @@ enum TfLiteReduceWindowFunction {
 typedef struct {
   enum TfLiteReduceWindowFunction reduce_function;
 } TfLiteReduceWindowParams;
+
+typedef struct {
+  // See the stablehlo spec for the explanation of the attributes:
+  // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#pad
+  int64_t edge_padding_low[TFLITE_STABLEHLO_PAD_PARAMS_MAX_DIMENSION_COUNT];
+  int64_t edge_padding_high[TFLITE_STABLEHLO_PAD_PARAMS_MAX_DIMENSION_COUNT];
+  int64_t interior_padding[TFLITE_STABLEHLO_PAD_PARAMS_MAX_DIMENSION_COUNT];
+} TfLiteStablehloPadParams;
 
 #ifdef __cplusplus
 }  // extern "C"

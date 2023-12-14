@@ -82,12 +82,11 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//tsl/platform:env",
-        "//tsl/platform:errors",
+        "//tsl/platform:load_library",
         "//tsl/platform:logging",
         "//tsl/platform:path",
-        "//tsl/platform:status",
-        "//tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
@@ -247,8 +246,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//tsl/platform:errors",
-        "//tsl/platform:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -362,7 +360,6 @@ cc_library(
         "//tsl:with_numa_support": ["TENSORFLOW_USE_NUMA"],
         "//conditions:default": [],
     }),
-    features = ["-layering_check"],
     tags = [
         "manual",
         "no_oss",

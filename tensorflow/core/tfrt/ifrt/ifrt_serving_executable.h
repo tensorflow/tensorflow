@@ -21,9 +21,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -32,6 +35,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/future.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tsl/concurrency/ref_count.h"
@@ -65,7 +69,30 @@ class IfrtServingExecutable {
   absl::StatusOr<std::vector<tensorflow::Tensor>> Execute(
       absl::Span<const tensorflow::Tensor> inputs);
 
+  int num_executables() const {
+    absl::MutexLock lock(&mutex_);
+    return ifrt_executables_.size();
+  }
+
  private:
+  // In memory cache key.
+  struct Key {
+    std::vector<tensorflow::TensorShape> input_shapes;
+    template <typename H>
+    friend H AbslHashValue(H h, const Key& key) {
+      for (const auto& shape : key.input_shapes) {
+        for (auto size : shape.dim_sizes()) {
+          h = H::combine(std::move(h), size);
+        }
+      }
+      return h;
+    }
+
+    friend bool operator==(const Key& x, const Key& y) {
+      return x.input_shapes == y.input_shapes;
+    }
+  };
+
   std::string model_name_;
   std::string signature_name_;
 
@@ -76,10 +103,17 @@ class IfrtServingExecutable {
 
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
 
-  std::unique_ptr<xla::ifrt::LoadedExecutable> ifrt_executable_;
+  mutable absl::Mutex mutex_;
+  absl::flat_hash_map<Key, xla::ifrt::Future<absl::StatusOr<
+                               std::shared_ptr<xla::ifrt::LoadedExecutable>>>>
+      ifrt_executables_ ABSL_GUARDED_BY(mutex_);
 
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> ConvertTensorToArray(
       const tensorflow::Tensor& tensor);
+
+  xla::ifrt::Future<
+      absl::StatusOr<std::shared_ptr<xla::ifrt::LoadedExecutable>>>
+  LookUpOrCreateExecutable(absl::Span<const tensorflow::Tensor> inputs);
 };
 
 }  // namespace ifrt_serving

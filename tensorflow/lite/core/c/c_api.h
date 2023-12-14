@@ -12,11 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// \warning Note: Users of TensorFlow Lite should not include this file
-// directly, but should instead include
-// "third_party/tensorflow/lite/c/c_api.h". Only the TensorFlow Lite
-// implementation itself should include this
-// file directly.
+// WARNING: Users of TensorFlow Lite should not include this file directly, but
+// should instead include "third_party/tensorflow/lite/c/c_api.h".
+// Only the TensorFlow Lite implementation itself should include this file
+// directly.
 
 #ifndef TENSORFLOW_LITE_CORE_C_C_API_H_
 #define TENSORFLOW_LITE_CORE_C_C_API_H_
@@ -76,6 +75,16 @@ limitations under the License.
 /// TfLiteInterpreterOptionsDelete(options);
 /// TfLiteModelDelete(model);
 /// </code></pre>
+///
+// clang-format off
+// NOLINTBEGIN(whitespace/line_length)
+/// \note Users of TensorFlow Lite should use
+/// \code
+/// #include "tensorflow/lite/c/c_api.h"
+/// \endcode
+/// to access the APIs documented on this page.
+// NOLINTEND(whitespace/line_length)
+// clang-format on
 
 #ifdef __cplusplus
 extern "C" {
@@ -83,7 +92,7 @@ extern "C" {
 
 // clang-format off
 // NOLINTBEGIN(whitespace/line_length)
-/** \defgroup c_api tensorflow/lite/c/c_api.h
+/** \defgroup c_api lite/c/c_api.h
  *  @{
  */
 // NOLINTEND(whitespace/line_length)
@@ -276,8 +285,6 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsAddRegistrationExternal(
 ///
 /// By default it is disabled and calling to `TfLiteInterpreterCancel` will
 /// return kTfLiteError. See `TfLiteInterpreterCancel`.
-///
-/// \warning This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterOptionsEnableCancellation(
     TfLiteInterpreterOptions* options, bool enable);
 
@@ -448,8 +455,6 @@ TfLiteTensor* TfLiteInterpreterGetTensor(const TfLiteInterpreter* interpreter,
 ///
 /// Returns kTfLiteError if cancellation is not enabled via
 /// `TfLiteInterpreterOptionsEnableCancellation`.
-///
-/// \warning This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterCancel(
     const TfLiteInterpreter* interpreter);
 

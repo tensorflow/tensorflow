@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/metrics.h"
+#include "xla/service/gpu/move_copy_to_users.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/service/gpu/triangular_solve_rewriter.h"
 #include "xla/service/gpu/triton_autotuner.h"
@@ -225,13 +226,14 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
         false);
     if (debug_options.xla_gpu_normalize_layouts()) {
       mha_fusion_pipeline.AddPass<ReshapeDecomposer>();
+      mha_fusion_pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
       mha_fusion_pipeline.AddPass<LayoutNormalization>();
     }
+
     mha_fusion_pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
     mha_fusion_pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
         alg_sim_options);
     mha_fusion_pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
-
     // Rewrite Multi-Headed Attention modules to Fused MHA custom-calls.
     if (stream_exec) {
       mha_fusion_pipeline.AddPass<CudnnFusedMHARewriter>(
@@ -450,13 +452,10 @@ HloDataflowAnalysis::CanShareBuffer NVPTXCompiler::GetCanShareBuffer() const {
   return &CanShareBufferHint;
 }
 
-StatusOr<std::pair<std::string, std::vector<uint8_t>>>
-NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
-                                   llvm::Module* llvm_module,
-                                   se::GpuComputeCapability gpu_version,
-                                   bool relocatable,
-                                   const HloModule* debug_module,
-                                   const CompileOptions& options) {
+StatusOr<GpuCompiler::BackendCompileResult> NVPTXCompiler::CompileTargetBinary(
+    const HloModuleConfig& module_config, llvm::Module* llvm_module,
+    se::GpuComputeCapability gpu_version, bool relocatable,
+    const HloModule* debug_module, const CompileOptions& options) {
   std::unique_ptr<llvm::Module> loaded_module =
       MaybeLoadLLVMFromFile(debug_module, llvm_module);
   llvm::Module* selected_module = nullptr;
@@ -492,11 +491,11 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
       (debug_module != nullptr ? debug_module->name() : "(unknown)"),
       relocatable, options);
 
-  if (maybe_cubin.status().code() == absl::StatusCode::kCancelled) {
+  if (maybe_cubin.status().code() == absl::StatusCode::kCancelled ||
+      maybe_cubin.status().code() == absl::StatusCode::kResourceExhausted) {
     return maybe_cubin.status();
   }
-  return std::pair<std::string, std::vector<uint8_t>>(
-      std::move(ptx), std::move(maybe_cubin.value()));
+  return BackendCompileResult{std::move(ptx), std::move(maybe_cubin.value())};
 }
 
 StatusOr<std::vector<uint8_t>> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
@@ -594,6 +593,14 @@ StatusOr<std::vector<uint8_t>> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
             cache_value->compilation_done = true;
             cache_value->compilation_done_cv.SignalAll();
             return maybe_cubin;
+          } else if (maybe_cubin.status().code() ==
+                     absl::StatusCode::kResourceExhausted) {
+            // Exhausting the register limit during autotuning is not a fatal
+            // error, we should just skip the problematic tiling.
+            CHECK(options.is_autotuning_compilation);
+            cache_value->compilation_done = true;
+            cache_value->compilation_done_cv.SignalAll();
+            return maybe_cubin;
           } else if (maybe_cubin.status().code() !=
                      absl::StatusCode::kUnimplemented) {
             // If unimplemented is returned, we fallback to the driver.
@@ -664,6 +671,14 @@ StatusOr<NVPTXCompiler::LinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
   LinkingMethod linking_method = LinkingMethod::kNone;
   TF_ASSIGN_OR_RETURN(auto ptxas_version_tuple,
                       se::GetAsmCompilerVersion(preferred_cuda_dir));
+
+  // ptxas versions prior to 11.8 are not supported anymore. We check this here,
+  // since we are fetching the ptxas version anyway. Catching the error
+  // elsewhere might introduce unnecessary overhead.
+  if (ptxas_version_tuple < std::array<int64_t, 3>{11, 8, 0}) {
+    return Status(absl::StatusCode::kInternal,
+                  "XLA requires ptxas version 11.8 or higher");
+  }
 
   static const std::optional<std::array<int64_t, 3>> nvlink_version =
       GetNvLinkVersion(preferred_cuda_dir);

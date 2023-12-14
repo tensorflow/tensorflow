@@ -17,24 +17,43 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <variant>
 
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {
 
+struct LmhloFusionInfo {
+  mlir::lmhlo::FusionOp fusion_op;
+  absl::Span<const BufferAllocation* const> allocations;
+
+  explicit LmhloFusionInfo(
+      mlir::lmhlo::FusionOp fusion_op,
+      absl::Span<const BufferAllocation* const> allocations)
+      : fusion_op(fusion_op), allocations(allocations) {}
+};
+
+struct HloFusionInfo {
+  const HloFusionInstruction* instr;
+  const BufferAssignment* buffer_assignment;
+
+  explicit HloFusionInfo(const HloFusionInstruction* instr,
+                         const BufferAssignment* buffer_assignment)
+      : instr(instr), buffer_assignment(buffer_assignment) {}
+};
+
 // Returns the emitter for the given fusion. Returns nullopt if the fusion
 // type is not yet supported.
-// `allocations` may be empty and `fusion_op` may be nullptr if buffer
-// assignment didn't run yet.
-std::optional<std::unique_ptr<FusionInterface>> GetFusionEmitter(
+StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetFusionEmitter(
     HloFusionAnalysis& analysis,
-    absl::Span<const BufferAllocation* const> allocations,
-    mlir::lmhlo::FusionOp fusion_op);
+    std::variant<HloFusionInfo, LmhloFusionInfo> fusion_info);
 
 }  // namespace gpu
 }  // namespace xla

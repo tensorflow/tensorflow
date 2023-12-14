@@ -741,7 +741,8 @@ class FusedAttentionForwardLowering
     set_attr("fmha_scale", op.getFmhaScaleAttr());
     set_attr("dropout_rate", op.getDropoutRateAttr());
     set_attr("seed", op.getSeedAttr());
-
+    set_attr("is_flash_attention", op.getIsFlashAttentionAttr());
+    set_attr("is_causal_mask", op.getIsCausalMaskAttr());
     set_attr("fused_mha_dag", op.getFusedMhaDagAttr());
     set_attr("algorithm_config", op.getAlgorithmConfigAttr());
     set_attr("bmm1_dot_dimension_numbers", op.getBmm1DotDimensionNumbers());
@@ -784,8 +785,10 @@ template <typename FusedDotAttentionBackward>
 class FusedAttentionBackwardLowering
     : public OpRewritePattern<FusedDotAttentionBackward> {
  private:
-  static constexpr const char kCustomCallTarget[] =
+  static constexpr const char kFusedAttentionCustomCallTarget[] =
       "xla.gpu.fused.attention.backward.";
+  static constexpr const char kFlashAttentionCustomCallTarget[] =
+      "xla.gpu.flash.attention.backward.";
 
  public:
   explicit FusedAttentionBackwardLowering(MLIRContext* ctx, UidGenerator& uid,
@@ -797,11 +800,36 @@ class FusedAttentionBackwardLowering
   LogicalResult matchAndRewrite(FusedDotAttentionBackward op,
                                 PatternRewriter& rewriter) const override {
     // Get the custom call target.
-    std::string fused_attention = kCustomCallTarget;
+    bool is_flash_attention = op.getIsFlashAttention();
+    std::string fused_attention = is_flash_attention
+                                      ? kFlashAttentionCustomCallTarget
+                                      : kFusedAttentionCustomCallTarget;
     auto num_operands = op.getNumOperands();
     switch (op.getFusedMhaDag()) {
+      case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::BackwardSoftmax:
+        if (is_flash_attention) {
+          if (num_operands == 12) {
+            fused_attention += "scale.softmax";
+          } else {
+            return op.emitOpError(
+                "unexpected number of operands for flash attention backward - "
+                "BMM_Softmax_BMM");
+          }
+        }
+        break;
+
       case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
           BackwardScaleBiasSoftmax:
+        if (is_flash_attention) {
+          if (num_operands == 13) {
+            fused_attention += "scale.bias.softmax";
+          } else {
+            return op.emitOpError(
+                "unexpected number of operands for flash attention backward - "
+                "BMM_Bias_Softmax_BMM");
+          }
+          break;
+        }
         if (num_operands == 10) {
           fused_attention += "scale.softmax";
         } else if (num_operands == 11) {
@@ -877,7 +905,8 @@ class FusedAttentionBackwardLowering
     set_attr("fmha_scale", op.getFmhaScaleAttr());
     set_attr("dropout_rate", op.getDropoutRateAttr());
     set_attr("seed", op.getSeedAttr());
-
+    set_attr("is_flash_attention", op.getIsFlashAttentionAttr());
+    set_attr("is_causal_mask", op.getIsCausalMaskAttr());
     set_attr("fused_mha_dag", op.getFusedMhaDagAttr());
     set_attr("algorithm_config", op.getAlgorithmConfigAttr());
     set_attr("bmm1_grad_gemm1_dot_dimension_numbers",
@@ -888,6 +917,20 @@ class FusedAttentionBackwardLowering
              op.getBmm2GradGemm1DotDimensionNumbers());
     set_attr("bmm2_grad_gemm2_dot_dimension_numbers",
              op.getBmm2GradGemm2DotDimensionNumbers());
+
+    auto set_xi64 = [&](StringRef name, mlir::ArrayAttr array) {
+      int rank = array.size();
+      SmallVector<int64_t> values;
+      for (int i = 0; i < rank; i++) {
+        mlir::IntegerAttr attr = array[i].dyn_cast<mlir::IntegerAttr>();
+        values.push_back(attr.getInt());
+      }
+      set_attr(name, b.getI64TensorAttr(values));
+    };
+
+    set_xi64("intermediate_tensor_dimensions",
+             op.getIntermediateTensorDimensions());
+    set_xi64("intermediate_tensor_layout", op.getIntermediateTensorLayout());
 
     // Erase the original fused dot attention operation.
     rewriter.eraseOp(op);
