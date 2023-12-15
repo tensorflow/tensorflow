@@ -216,6 +216,12 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
 
   Dependencies GetBarrier();
 
+  // Recursively disable all nodes corresponding to barriers (including nested
+  // conditional command buffers). This is work around the fact that we can't
+  // use empty nodes inside conditional CUDA graphs and instead we add no-op
+  // kernel nodes, however large number of no-op kernels impacts performance.
+  tsl::Status DisableBarriersExecution(GpuGraphExecHandle exec);
+
   // Returns OK status if command buffer is not finalized and it is still
   // possible to add new commands to it, otherwise returns internal error.
   tsl::Status CheckNotFinalized();
@@ -250,17 +256,19 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   // Handle of a graph node that acts as a barrier for all newly added commands.
   GpuGraphNodeHandle barrier_ = nullptr;
 
-  // Handles to graph nodes corresponding to command buffer commands. Owned by
-  // the `graph_` instance.
+  // Handles to load bearing graph nodes (kernel, memcpy, etc.) corresponding to
+  // command buffer commands and also to no-op nodes corresponding to barriers
+  // (nodes defining DAG structure). Owned by the `graph_` instance.
   std::vector<GpuGraphNodeHandle> nodes_;
+
+  // Handles to no-op graph nodes corresponding to barriers that define nodes
+  // execution order. Can be nullptr if regular node acts as a barrier. Owned by
+  // the `graph_` instance.
+  std::vector<GpuGraphNodeHandle> barriers_;
 
   // Command buffers for conditional nodes in the Gpu graph. Underlying Gpu
   // graphs owned by the `graph_` instance.
   std::vector<ConditionalCommandBuffers> conditional_command_buffers_;
-
-  // A flag telling if a barrier has an explicit node in the underlying graph
-  // that we have to skip when updating a command buffer.
-  std::vector<bool> barrier_has_node_;
 
   // Track the number of command buffer updates for debugging.
   int64_t num_updates_ = 0;
@@ -270,12 +278,13 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
     // Index points to the graph node inside `nodes_` that will be updated next.
     int64_t node_idx = 0;
 
+    // Index points to the barrier node inside `barriers_` that will be updated
+    // on a next call to `Barrier()`.
+    int64_t barrier_idx = 0;
+
     // Index points to the conditional command buffers that will be updated next
     // when we'll be updating next conditional command (If, Case, While).
     int64_t conditional_idx = 0;
-
-    // Index points to the barrier that will be updated next.
-    int64_t barrier_idx = 0;
   };
 
   UpdateState update_state_;

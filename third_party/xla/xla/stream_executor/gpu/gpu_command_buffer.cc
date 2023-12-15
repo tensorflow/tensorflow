@@ -172,6 +172,20 @@ GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrier() {
   return barrier_ ? Dependencies{barrier_} : Dependencies{};
 }
 
+tsl::Status GpuCommandBuffer::DisableBarriersExecution(
+    GpuGraphExecHandle exec) {
+  for (GpuGraphNodeHandle barrier : barriers_) {
+    if (barrier == nullptr) continue;
+    TF_RETURN_IF_ERROR(GpuDriver::GraphNodeSetEnabled(exec, barrier, false));
+  }
+  for (ConditionalCommandBuffers& cmd_buffers : conditional_command_buffers_) {
+    for (CommandBuffer& cmd_buffer : cmd_buffers.command_buffers) {
+      TF_RETURN_IF_ERROR(Cast(&cmd_buffer)->DisableBarriersExecution(exec));
+    }
+  }
+  return tsl::OkStatus();
+}
+
 tsl::Status GpuCommandBuffer::CheckNotFinalized() {
   if (state_ == State::kFinalized)
     return absl::InternalError(
@@ -205,27 +219,27 @@ tsl::Status GpuCommandBuffer::Barrier(StreamExecutor* executor) {
       dependencies.push_back(nodes_[i]);
     }
 
-    // Explicit barrier is required only if we have multiple dependencies.
-    barrier_has_node_.push_back(dependencies.size() > 1);
-
     // Add a noop kernel node acting as a barrier.
-    if (barrier_has_node_.back()) {
+    if (dependencies.size() > 1) {
       MultiKernelLoaderSpec spec(/*arity=*/0);
       spec.AddInProcessSymbol(gpu::GetNoOpKernel(), "noop");
 
       NoOpKernel noop(executor);
       TF_RETURN_IF_ERROR(executor->GetKernel(spec, &noop));
 
-      GpuGraphNodeHandle* node = &nodes_.emplace_back();
       // TODO(b/316343054): This should be an empty node, however CUDA 12.3 does
       // not support empty nodes inside conditional command buffers.
+      GpuGraphNodeHandle* node = &nodes_.emplace_back();
       TF_RETURN_IF_ERROR(GpuDriver::GraphAddKernelNode(
           node, graph_, absl::MakeSpan(dependencies), noop.name(),
           AsGpuKernel(&noop)->AsGpuFunctionHandle(), 1, 1, 1, 1, 1, 1, 0,
           /*kernel_params=*/nullptr, /*extra=*/nullptr));
+      barriers_.push_back(*node);
+    } else {
+      barriers_.push_back(nullptr);
     }
 
-    // Make the last node a barrier, if we didn't add a new empty node acting
+    // Make the last node a barrier, if we didn't add a new no-op node acting
     // as a barrier we simply reuse the last node.
     barrier_ = nodes_.back();
     return tsl::OkStatus();
@@ -233,9 +247,8 @@ tsl::Status GpuCommandBuffer::Barrier(StreamExecutor* executor) {
 
   if (state_ == State::kUpdate) {
     barrier_ = nodes_[update_state_.node_idx];
-    // Increment update node index only if we added an empty node earlier.
-    if (barrier_has_node_[update_state_.barrier_idx++])
-      update_state_.node_idx++;
+    // Increment update node index only if we added an no-op node earlier.
+    if (barriers_[update_state_.barrier_idx++]) update_state_.node_idx++;
     return tsl::OkStatus();
   }
 
@@ -760,6 +773,8 @@ tsl::Status GpuCommandBuffer::Finalize() {
             << "; nodes: " << nodes_.size()
             << "; conditionals: " << conditional_command_buffers_.size()
             << "; alive executable graphs: " << AliveExecs();
+
+    TF_RETURN_IF_ERROR(DisableBarriersExecution(exec_));
 
   } else if (mode_ == Mode::kPrimary && state_ == State::kUpdate) {
     // If this is a finalization after update, we don't have to do anything as

@@ -602,9 +602,11 @@ static std::string_view StreamCaptureModeToString(
 /* static */ tsl::Status GpuDriver::GraphNodeSetEnabled(CUgraphExec exec,
                                                         CUgraphNode node,
                                                         bool enabled) {
+  // Node is enabled if value != 0, otherwise the node is disabled.
+  unsigned value = enabled ? 1 : 0;
   VLOG(2) << "Set CUDA executable graph " << exec << " node " << node
-          << " enabled flag to " << enabled;
-  RETURN_IF_CUDA_RES_ERROR(cuGraphNodeSetEnabled(exec, node, enabled),
+          << " enabled flag to " << value;
+  RETURN_IF_CUDA_RES_ERROR(cuGraphNodeSetEnabled(exec, node, value),
                            "Failed to set CUDA graph node enabled flag");
   return ::tsl::OkStatus();
 }
