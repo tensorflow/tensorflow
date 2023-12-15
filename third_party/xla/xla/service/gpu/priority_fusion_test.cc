@@ -644,5 +644,57 @@ TEST_F(PriorityFusionTest, DoNotFuseIntoRoot) {
   EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
 }
 
+TEST_F(PriorityFusionTest, DontFuseConcat) {
+  // Regression test that verifies we don't fuse concat into a column reduction.
+  auto module = *ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    %maximum (param_0: f32[], param_1: f32[]) -> f32[] {
+      %param_0 = f32[] parameter(0)
+      %param_1 = f32[] parameter(1)
+      ROOT %maximum = f32[] maximum(f32[] %param_0, f32[] %param_1)
+    }
+
+    %fused_concat (param_0: f32[1,4,401,8,8], param_1: f32[1,1,4,1023,8], param_2: bf16[1,4,1023,8,8]) -> f32[1,4,1424,8,8] {
+      %param_2 = bf16[1,4,1023,8,8]{4,3,2,1,0} parameter(2)
+      %convert = f32[1,4,1023,8,8]{4,3,2,1,0} convert(bf16[1,4,1023,8,8]{4,3,2,1,0} %param_2)
+      %param_1 = f32[1,1,4,1023,8]{4,3,2,1,0} parameter(1)
+      %bitcast = f32[4,1023,8]{2,1,0} bitcast(f32[1,1,4,1023,8]{4,3,2,1,0} %param_1)
+      %broadcast = f32[1,4,1023,8,8]{4,3,2,1,0} broadcast(f32[4,1023,8]{2,1,0} %bitcast), dimensions={1,2,4}
+      %add = f32[1,4,1023,8,8]{4,3,2,1,0} add(f32[1,4,1023,8,8]{4,3,2,1,0} %convert, f32[1,4,1023,8,8]{4,3,2,1,0} %broadcast)
+      %param_0 = f32[1,4,401,8,8]{4,3,2,1,0} parameter(0)
+      ROOT %concatenate = f32[1,4,1424,8,8]{4,3,2,1,0} concatenate(f32[1,4,1023,8,8]{4,3,2,1,0} %add, f32[1,4,401,8,8]{4,3,2,1,0} %param_0), dimensions={2}
+    }
+
+    %fused_reduce (param_0: f32[], param_1: f32[1,4,1424,8,8]) -> f32[4,8,8] {
+      %param_1 = f32[1,4,1424,8,8]{4,3,2,1,0} parameter(1)
+      %bitcast = f32[4,1424,8,8]{3,2,1,0} bitcast(f32[1,4,1424,8,8]{4,3,2,1,0} %param_1)
+      %param_0 = f32[] parameter(0)
+      ROOT %reduce = f32[4,8,8]{2,1,0} reduce(f32[4,1424,8,8]{3,2,1,0} %bitcast, f32[] %param_0), dimensions={1}, to_apply=%maximum
+    }
+
+    %fused_broadcast (param_0: f32[1,4,1424,8,8], param_1: f32[4,8,8]) -> f32[1,4,1424,8,8] {
+      %param_0 = f32[1,4,1424,8,8]{4,3,2,1,0} parameter(0)
+      %param_1 = f32[4,8,8]{2,1,0} parameter(1)
+      %broadcast = f32[1,4,1424,8,8]{4,3,2,1,0} broadcast(f32[4,8,8]{2,1,0} %param_1), dimensions={1,3,4}
+      ROOT %subtract = f32[1,4,1424,8,8]{4,3,2,1,0} subtract(f32[1,4,1424,8,8]{4,3,2,1,0} %param_0, f32[1,4,1424,8,8]{4,3,2,1,0} %broadcast)
+    }
+
+    ENTRY fusion {
+      %param_0 = f32[1,4,401,8,8]{4,3,2,1,0} parameter(0)
+      %param_1 = f32[1,1,4,1023,8]{4,3,2,1,0} parameter(1)
+      %param_2 = bf16[1,4,1023,8,8]{4,3,2,1,0} parameter(2)
+      %concat = f32[1,4,1424,8,8]{4,3,2,1,0} fusion(%param_0, %param_1, %param_2), kind=kLoop, calls=fused_concat
+      %param_3 = f32[] parameter(3)
+      %reduce = f32[4,8,8]{2,1,0} fusion(%param_3, %concat), kind=kLoop, calls=fused_reduce
+      %param_4 = f32[4,8,8]{2,1,0} parameter(4)
+      %broadcast = f32[1,4,1424,8,8]{4,3,2,1,0} fusion(%concat, %param_4), kind=kLoop, calls=fused_broadcast
+      ROOT tuple = (f32[4,8,8]{2,1,0}, f32[1,4,1424,8,8]{4,3,2,1,0}) tuple(%reduce, %broadcast)
+    }
+  )");
+
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
+}
+
 }  // namespace gpu
 }  // namespace xla

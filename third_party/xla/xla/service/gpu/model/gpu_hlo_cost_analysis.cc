@@ -431,6 +431,30 @@ Status GpuHloCostAnalysis::HandleAllReduce(const HloInstruction* allreduce) {
   return OkStatus();
 }
 
+Status GpuHloCostAnalysis::HandleConcatenate(const HloInstruction* hlo) {
+  // Concat turns into a compare plus branch instruction.
+  int64_t flop_per_element = 6;
+  // If a warp crosses the operands boundary, both branches are executed. This
+  // depends on the tiling of the final fusion and is therefore hard to predict
+  // at this level. Executing both branches drives up the flops, but not the
+  // bandwidth. So it might seem like a good idea to fuse a concat into a
+  // memory-bound consumer. However, the divergent warps increase the cost of
+  // compute-heavy producers that might be fused later. We see this issue in
+  // some important LLM models that fuse a concat into a column reduction (see
+  // PriorityFusionTest.DontFuseConcat test). To prevent this particular fusion,
+  // we add large number of flops to the concat. Both the condition and the flop
+  // count are tuned to this particular case.
+  // TODO(b/315776282): Model this more accurately once we can reason about
+  // tiling patterns.
+  int64_t dim = Cast<HloConcatenateInstruction>(hlo)->concatenate_dimension();
+  if (dim > 0 && hlo->operand(0)->shape().dimensions()[dim] & 31) {
+    flop_per_element = 400;
+  }
+  current_properties_[kFlopsKey] =
+      flop_per_element * ShapeUtil::ElementsInRecursive(hlo->shape());
+  return OkStatus();
+}
+
 Status GpuHloCostAnalysis::HandleElementwiseOp(const HloInstruction* hlo) {
   current_properties_[kFlopsKey] = GetFlopsForElementwiseOp(device_info_, hlo);
   return OkStatus();
