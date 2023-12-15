@@ -120,6 +120,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":event_pool",
+        ":pjrt_common",
         ":semaphore",
         ":worker_thread",
         "//xla:status",

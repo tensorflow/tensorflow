@@ -850,7 +850,7 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
       slice_index_(slice_index) {
   int64_t core_index = 0;
   description().SetCoreOnChip(core_index);
-  std::array<int, 1> coords = {local_hardware_id()};
+  std::array<int, 1> coords = {local_device_id().value()};
   description().SetCoords(coords);
   std::vector<int64_t> v_coords(description().coords().begin(),
                                 description().coords().end());
@@ -888,7 +888,7 @@ absl::StatusOr<tsl::AllocatorStats> StreamExecutorGpuDevice::GetAllocatorStats()
       tensorflow::down_cast<se::MultiDeviceAdapter*>(
           tensorflow::down_cast<PjRtStreamExecutorClient*>(client())
               ->allocator())
-          ->GetAllocator(local_hardware_id()));
+          ->GetAllocator(local_device_id().value()));
 
   auto stats = allocator->GetStats();
   TF_RET_CHECK(stats.has_value());

@@ -657,7 +657,8 @@ Status PreparePjRtExecutableArguments(
             tensorflow::down_cast<xla::PjRtStreamExecutorDevice*>(pjrt_device)
                 ->GetLocalDeviceState());
         auto device_buffer = std::make_shared<xla::TrackedDeviceBuffer>(
-            /*allocator=*/nullptr, local_device_state->device_ordinal(),
+            /*allocator=*/nullptr,
+            local_device_state->local_device_id().value(),
             std::initializer_list<se::DeviceMemoryBase>{dmem},
             definition_events, /*on_delete_callback=*/[]() {});
         xla::Shape device_shape;
