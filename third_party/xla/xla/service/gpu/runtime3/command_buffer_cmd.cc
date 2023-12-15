@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -225,6 +226,64 @@ Status LaunchCmd::Record(const RecordParams& params,
 }
 
 CommandBufferCmd::BufferUsageVector LaunchCmd::buffers() {
+  BufferUsageVector buffers;
+  for (int32_t i = 0; i < args_.size(); ++i) {
+    buffers.emplace_back(args_[i], args_access_[i]);
+  }
+  return buffers;
+}
+
+//===----------------------------------------------------------------------===//
+// CustomKernelLaunchCmd
+//===----------------------------------------------------------------------===//
+
+CustomKernelLaunchCmd::CustomKernelLaunchCmd(
+    absl::Span<const BufferAllocation::Slice> args,
+    absl::Span<const MemoryAccess> args_access, CustomKernel custom_kernel)
+    : args_(args.begin(), args.end()),
+      args_access_(args_access.begin(), args_access.end()),
+      custom_kernel_(std::move(custom_kernel)) {}
+
+Status CustomKernelLaunchCmd::Initialize(se::StreamExecutor* executor,
+                                         ExecutableSource source) {
+  if (kernels_.contains(executor)) {
+    return OkStatus();
+  }
+
+  auto kernel = std::make_unique<se::Kernel>(executor);
+  TF_RETURN_IF_ERROR(
+      executor->GetKernel(custom_kernel_.kernel_spec(), kernel.get()));
+
+  kernels_.emplace(executor, std::move(kernel));
+  return OkStatus();
+}
+
+Status CustomKernelLaunchCmd::Record(const RecordParams& params,
+                                     se::CommandBuffer* command_buffer) {
+  VLOG(5) << "CustomKernelLaunchCmd: custom_kernel=" << custom_kernel_.name();
+
+  se::Kernel* kernel = kernels_[params.executor].get();
+  if (kernel == nullptr) {
+    return absl::InternalError(
+        "Kernel not loaded on a command buffer executor");
+  }
+
+  absl::InlinedVector<se::DeviceMemoryBase, 4> buffers;
+  for (const BufferAllocation::Slice& arg : args_) {
+    se::DeviceMemoryBase buf = params.buffer_allocations->GetDeviceAddress(arg);
+    VLOG(5) << "  Arg: " << arg << ": " << buf.opaque();
+    buffers.push_back(buf);
+  }
+
+  se::KernelArgsDeviceMemoryArray kernel_args(
+      buffers, custom_kernel_.shared_memory_bytes());
+
+  return command_buffer->Launch(custom_kernel_.thread_dims(),
+                                custom_kernel_.block_dims(), *kernel,
+                                kernel_args);
+}
+
+CommandBufferCmd::BufferUsageVector CustomKernelLaunchCmd::buffers() {
   BufferUsageVector buffers;
   for (int32_t i = 0; i < args_.size(); ++i) {
     buffers.emplace_back(args_[i], args_access_[i]);

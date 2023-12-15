@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/runtime3/command_buffer_allocations.h"
@@ -38,6 +39,8 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla::gpu {
+
+using OwnedKernel = std::unique_ptr<se::Kernel>;
 
 //===----------------------------------------------------------------------===//
 // CommandBufferCmd
@@ -182,8 +185,6 @@ class LaunchCmd : public CommandBufferCmd {
   BufferUsageVector buffers() override;
 
  private:
-  using OwnedKernel = std::unique_ptr<se::Kernel>;
-
   std::string kernel_name_;
   std::vector<BufferAllocation::Slice> args_;
   std::vector<MemoryAccess> args_access_;
@@ -193,6 +194,31 @@ class LaunchCmd : public CommandBufferCmd {
   absl::flat_hash_map<se::StreamExecutor*, OwnedKernel> kernels_;
 };
 
+//===----------------------------------------------------------------------===//
+// CustomKenelLaunchCmd
+//===----------------------------------------------------------------------===//
+
+class CustomKernelLaunchCmd : public CommandBufferCmd {
+ public:
+  CustomKernelLaunchCmd(absl::Span<const BufferAllocation::Slice> args,
+                        absl::Span<const MemoryAccess> args_access,
+                        CustomKernel custom_kernel);
+
+  Status Initialize(se::StreamExecutor* executor,
+                    ExecutableSource source) override;
+
+  Status Record(const RecordParams& params,
+                se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
+
+ private:
+  std::vector<BufferAllocation::Slice> args_;
+  std::vector<MemoryAccess> args_access_;
+  CustomKernel custom_kernel_;
+
+  absl::flat_hash_map<se::StreamExecutor*, OwnedKernel> kernels_;
+};
 //===----------------------------------------------------------------------===//
 // MemcpyDeviceToDeviceCmd
 //===----------------------------------------------------------------------===//
