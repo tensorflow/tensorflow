@@ -1581,9 +1581,6 @@ StatusOr<bool> ProcessShardingInstruction(
         // Add operand(i.e. the annotated op) into shard group.
         process_shard_group_instruction(instruction->mutable_operand(0),
                                         sharding);
-        // Strip the sharding of the shard group related annotations.
-        sharding.ClearShardGroup();
-
         // Replace it with a copy node so that it does not need special
         // handling.
         if (replace_sharding_with_copy) {
@@ -1592,10 +1589,19 @@ StatusOr<bool> ProcessShardingInstruction(
               instruction->mutable_operand(0)));
           TF_RETURN_IF_ERROR(
               computation->ReplaceInstruction(instruction, copy));
+          if (copy->parent()
+                  ->parent()
+                  ->entry_computation()
+                  ->root_instruction() == copy) {
+            process_shard_group_instruction(copy, sharding);
+          }
+          sharding.ClearShardGroup();
           copy->set_sharding(sharding);
           instruction = copy;
           changed = true;
         }
+        // Strip the sharding of the shard group related annotations.
+        sharding.ClearShardGroup();
         if (!unspec_dims.empty()) {
           absl::c_sort(unspec_dims);
           unspecified_dims->emplace(instruction, std::move(unspec_dims));
@@ -2145,13 +2151,6 @@ bool ShardingPropagation::InferShardingFromShardGroup(
       instruction->set_sharding(member->sharding());
       return true;
     }
-  }
-  if (!SupportSpatialPartitioning(
-          instruction, computation_map, is_spmd_,
-          allow_spmd_sharding_propagation_to_output_,
-          allow_spmd_sharding_propagation_to_parameters_,
-          sharding_helper_.get())) {
-    return false;
   }
 
   const bool may_combine_partial_sharding = is_spmd_ && aggressiveness > 0;
@@ -3047,7 +3046,12 @@ StatusOr<bool> ShardingPropagation::Run(
     }
   }
 
-  if (!allow_spmd_sharding_propagation_to_output_) {
+  if (!allow_spmd_sharding_propagation_to_output_ &&
+      (!module->entry_computation()->root_instruction()->has_sharding() ||
+       !module->entry_computation()
+            ->root_instruction()
+            ->sharding()
+            .IsUnknown())) {
     // Consider the root instruction of the entry module as one with provided
     // sharding as its sharding have to match with the one expected by the host.
     provided_shardings.insert(module->entry_computation()->root_instruction());
@@ -3055,7 +3059,7 @@ StatusOr<bool> ShardingPropagation::Run(
 
   if (!allow_spmd_sharding_propagation_to_parameters_) {
     for (auto param : module->entry_computation()->parameter_instructions()) {
-      if (param->has_sharding()) {
+      if (param->has_sharding() && !param->sharding().IsUnknown()) {
         provided_shardings.insert(param);
       }
     }
