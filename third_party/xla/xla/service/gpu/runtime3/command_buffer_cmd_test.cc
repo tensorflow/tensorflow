@@ -21,8 +21,9 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/platform_util.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/cuda/cuda_test_kernels.h"
+#include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -34,13 +35,15 @@ namespace xla::gpu {
 
 using MemoryAccess = CommandBufferCmd::MemoryAccess;
 
-static se::StreamExecutor* CudaExecutor() {
-  auto* platform = se::MultiPlatformManager::PlatformWithName("CUDA").value();
+static se::StreamExecutor* GpuExecutor() {
+  auto name =
+      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
+  auto* platform = se::MultiPlatformManager::PlatformWithName(name).value();
   return platform->ExecutorForDevice(0).value();
 }
 
 TEST(CommandBufferCmdTest, MemcpyCmd) {
-  se::StreamExecutor* executor = CudaExecutor();
+  se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
   stream.Init();
@@ -83,7 +86,7 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
 }
 
 TEST(CommandBufferCmdTest, LaunchCmd) {
-  se::StreamExecutor* executor = CudaExecutor();
+  se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
   stream.Init();
@@ -117,7 +120,14 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
 
   // Initialize command sequence and load device kernels.
   CommandBufferCmd::ExecutableSource source = {
-      /*text=*/se::cuda::internal::kAddI32Kernel, /*binary=*/{}};
+#if defined(GOOGLE_CUDA)
+    /*text=*/se::gpu::internal::kAddI32Kernel,
+    /*binary=*/{}
+#elif defined(TENSORFLOW_USE_ROCM)
+    /*text=*/{},
+    /*binary=*/se::gpu::internal::kAddI32KernelModule
+#endif
+  };
   TF_ASSERT_OK(commands.Initialize(executor, source));
 
   BufferAllocations allocations({a, b}, 0, executor->GetAllocator());

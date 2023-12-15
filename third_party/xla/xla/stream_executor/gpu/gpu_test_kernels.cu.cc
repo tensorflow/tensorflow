@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/cuda/cuda_test_kernels.h"
+#include "xla/stream_executor/gpu/gpu_test_kernels.h"
 
 #include <cstdint>
 
-namespace stream_executor::cuda::internal {
+namespace stream_executor::gpu::internal {
 
 __global__ void AddI32(int32_t* a, int32_t* b, int32_t* c) {
   int index = threadIdx.x + blockIdx.x * blockDim.x;
@@ -40,14 +40,12 @@ __global__ void AddI32Ptrs3(Ptrs3<int32_t> ptrs) {
   ptrs.c[index] = ptrs.a[index] + ptrs.b[index];
 }
 
-void* GetAddI32CudaKernel() { return reinterpret_cast<void*>(&AddI32); }
+void* GetAddI32Kernel() { return reinterpret_cast<void*>(&AddI32); }
 
-void* GetMulI32CudaKernel() { return reinterpret_cast<void*>(&MulI32); }
+void* GetMulI32Kernel() { return reinterpret_cast<void*>(&MulI32); }
 
-void* GetIncAndCmpCudaKernel() { return reinterpret_cast<void*>(&IncAndCmp); }
+void* GetIncAndCmpKernel() { return reinterpret_cast<void*>(&IncAndCmp); }
 
-void* GetAddI32Ptrs3CudaKernel() {
-  return reinterpret_cast<void*>(&AddI32Ptrs3);
-}
+void* GetAddI32Ptrs3Kernel() { return reinterpret_cast<void*>(&AddI32Ptrs3); }
 
-}  // namespace stream_executor::cuda::internal
+}  // namespace stream_executor::gpu::internal

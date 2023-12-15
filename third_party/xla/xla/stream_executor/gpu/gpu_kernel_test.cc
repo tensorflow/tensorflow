@@ -17,7 +17,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "xla/stream_executor/cuda/cuda_test_kernels.h"
+#include "xla/service/platform_util.h"
+#include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
@@ -25,13 +26,14 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/test.h"
 
-namespace stream_executor::cuda {
+namespace stream_executor::gpu {
 
-TEST(CudaKernelTest, Add) {
+TEST(GpuKernelTest, Add) {
   using AddI32Kernel = TypedKernel<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
                                    DeviceMemory<int32_t>>;
-
-  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+  auto name = absl::AsciiStrToUpper(
+      xla::PlatformUtil::CanonicalPlatformName("gpu").value());
+  Platform* platform = MultiPlatformManager::PlatformWithName(name).value();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
@@ -39,7 +41,12 @@ TEST(CudaKernelTest, Add) {
   ASSERT_TRUE(stream.ok());
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
+#if defined(GOOGLE_CUDA)
   spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
+#elif defined(TENSORFLOW_USE_ROCM)
+  spec.AddCudaCubinInMemory(
+      reinterpret_cast<const char*>(&internal::kAddI32KernelModule[0]), "add");
+#endif
 
   AddI32Kernel add(executor);
   ASSERT_TRUE(executor->GetKernel(spec, &add).ok());
@@ -67,4 +74,4 @@ TEST(CudaKernelTest, Add) {
   ASSERT_EQ(dst, expected);
 }
 
-}  // namespace stream_executor::cuda
+}  // namespace stream_executor::gpu

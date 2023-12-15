@@ -13,20 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_TEST_KERNELS_H_
-#define XLA_STREAM_EXECUTOR_CUDA_CUDA_TEST_KERNELS_H_
+#ifndef XLA_STREAM_EXECUTOR_GPU_GPU_TEST_KERNELS_H_
+#define XLA_STREAM_EXECUTOR_GPU_GPU_TEST_KERNELS_H_
 
 #include <string_view>
 
-namespace stream_executor::cuda::internal {
+namespace stream_executor::gpu::internal {
 
-// This is a collection of CUDA kernels for writing simple StreamExecutor tests.
+// This is a collection of gpu kernels for writing simple StreamExecutor tests.
 //
 // Some of the kernels available as pre-compiled PTX blobs (can be loaded with
-// CUDA driver API), and some of the kernels are written directly in CUDA C++
-// and can be loaded from a symbol pointer (to test StreamExecutor CUDA runtime
-// integration).
+// CUDA driver API) / HSACO modules (can be loaded with ROCM driver api), and
+// some of the kernels are written directly in CUDA C++ and can be loaded from a
+// symbol pointer (to test StreamExecutor CUDA runtime integration).
 
+#if !defined(TENSORFLOW_USE_ROCM)
 // PTX kernel compiled from:
 //
 //  __global__ void add(int* a, int* b, int* c) {
@@ -74,6 +75,9 @@ inline constexpr std::string_view kAddI32Kernel = R"(
         ret;
 
 })";
+#else
+#include "xla/stream_executor/rocm/add_i32_kernel.h"
+#endif  // !defined(TENSORFLOW_USE_ROCM)
 
 template <typename T>
 struct Ptrs3 {
@@ -83,20 +87,20 @@ struct Ptrs3 {
 };
 
 // Returns a pointer to device kernel compiled from the CUDA C++ code above.
-void* GetAddI32CudaKernel();
+void* GetAddI32Kernel();
 
 // Returns a pointer to device kernel doing multiplication instead of addition.
-void* GetMulI32CudaKernel();
+void* GetMulI32Kernel();
 
 // Returns a pointer to device kernel doing increment and compare, intended for
 // testing on-device while loops.
-void* GetIncAndCmpCudaKernel();
+void* GetIncAndCmpKernel();
 
 // Returns a pointer to device kernel compiled from the CUDA C++ but with all
 // three pointers passed to argument as an instance of `Ptr3` template to test
 // StreamExecutor arguments packing for custom C++ types.
-void* GetAddI32Ptrs3CudaKernel();
+void* GetAddI32Ptrs3Kernel();
 
-}  // namespace stream_executor::cuda::internal
+}  // namespace stream_executor::gpu::internal
 
-#endif  // XLA_STREAM_EXECUTOR_CUDA_CUDA_TEST_KERNELS_H_
+#endif  // XLA_STREAM_EXECUTOR_GPU_GPU_TEST_KERNELS_H_

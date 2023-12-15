@@ -29,12 +29,13 @@ limitations under the License.
 #include "xla/service/gpu/runtime3/command_buffer_allocations.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 #include "xla/service/gpu/thunk.h"
+#include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/cuda/cuda_test_kernels.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/gpu/gpu_types.h"  // IWYU pragma: keep
 #include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
@@ -47,13 +48,28 @@ namespace xla::gpu {
 
 using MemoryAccess = CommandBufferCmd::MemoryAccess;
 
-static se::StreamExecutor* CudaExecutor() {
-  auto* platform = se::MultiPlatformManager::PlatformWithName("CUDA").value();
+static se::StreamExecutor* GpuExecutor() {
+  auto name =
+      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
+  auto* platform = se::MultiPlatformManager::PlatformWithName(name).value();
   return platform->ExecutorForDevice(0).value();
 }
 
+static CommandBufferCmd::ExecutableSource ExecutableSource() {
+  CommandBufferCmd::ExecutableSource source = {
+#if defined(GOOGLE_CUDA)
+    /*text=*/se::gpu::internal::kAddI32Kernel,
+    /*binary=*/{}
+#elif defined(TENSORFLOW_USE_ROCM)
+    /*text=*/{},
+    /*binary=*/se::gpu::internal::kAddI32KernelModule
+#endif
+  };
+  return source;
+}
+
 TEST(CommandBufferThunkTest, MemcpyCmd) {
-  se::StreamExecutor* executor = CudaExecutor();
+  se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
   stream.Init();
@@ -120,7 +136,7 @@ TEST(CommandBufferThunkTest, MemcpyCmd) {
 // 5. Free memory region "b" inside command buffer.
 // 6. Verify that region "c" has the same content as "a".
 TEST(CommandBufferThunkTest, MemallocFreeCmdSameThunk) {
-  se::StreamExecutor* executor = CudaExecutor();
+  se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
   stream.Init();
@@ -185,7 +201,7 @@ TEST(CommandBufferThunkTest, MemallocFreeCmdSameThunk) {
 // 5. Free memory region "b" inside command buffer 2.
 // 6. Verify that region "c" has the same content as "a".
 TEST(CommandBufferThunkTest, MemallocFreeCmdAcrossThunk) {
-  se::StreamExecutor* executor = CudaExecutor();
+  se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
   stream.Init();
@@ -251,7 +267,7 @@ TEST(CommandBufferThunkTest, MemallocFreeCmdAcrossThunk) {
 }
 
 TEST(CommandBufferThunkTest, LaunchCmd) {
-  se::StreamExecutor* executor = CudaExecutor();
+  se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
   stream.Init();
@@ -290,8 +306,7 @@ TEST(CommandBufferThunkTest, LaunchCmd) {
   BufferAllocations allocations({a, b}, 0, executor->GetAllocator());
   Thunk::ExecuteParams params(run_options, allocations, &stream, {});
 
-  CommandBufferCmd::ExecutableSource source = {
-      /*text=*/se::cuda::internal::kAddI32Kernel, /*binary=*/{}};
+  CommandBufferCmd::ExecutableSource source = ExecutableSource();
   TF_ASSERT_OK(thunk.Initialize(executor, source));
 
   // Execute command buffer thunk and verify that it added the value.
@@ -336,11 +351,10 @@ TEST(CommandBufferThunkTest, LaunchCmd) {
 }
 
 TEST(CommandBufferThunkTest, GemmCmd) {
-#if CUDA_VERSION < 12030
+#if !defined(TENSORFLOW_USE_ROCM) && CUDA_VERSION < 12030
   GTEST_SKIP() << "Command buffer tracing is not supported";
 #endif
-
-  se::StreamExecutor* executor = CudaExecutor();
+  se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
   stream.Init();
@@ -449,7 +463,7 @@ TEST(CommandBufferThunkTest, GemmCmd) {
 }
 
 TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
-  se::StreamExecutor* executor = CudaExecutor();
+  se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
   stream.Init();
@@ -500,8 +514,7 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
   BufferAllocations allocations({a, b, c, d}, 0, executor->GetAllocator());
   Thunk::ExecuteParams params(run_options, allocations, &stream, {});
 
-  CommandBufferCmd::ExecutableSource source = {
-      /*text=*/se::cuda::internal::kAddI32Kernel, /*binary=*/{}};
+  CommandBufferCmd::ExecutableSource source = ExecutableSource();
   TF_ASSERT_OK(thunk.Initialize(executor, source));
 
   // Execute command buffer thunk and verify that it added the value.
@@ -561,7 +574,7 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
 }
 
 TEST(CommandBufferThunkTest, IfCmd) {
-  se::StreamExecutor* executor = CudaExecutor();
+  se::StreamExecutor* executor = GpuExecutor();
   if (!se::CommandBuffer::SupportsConditionalCommands(executor->platform())) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
@@ -613,8 +626,7 @@ TEST(CommandBufferThunkTest, IfCmd) {
   BufferAllocations allocations({pred, a, b}, 0, executor->GetAllocator());
   Thunk::ExecuteParams params(run_options, allocations, &stream, {});
 
-  CommandBufferCmd::ExecutableSource source = {
-      /*text=*/se::cuda::internal::kAddI32Kernel, /*binary=*/{}};
+  CommandBufferCmd::ExecutableSource source = ExecutableSource();
   TF_ASSERT_OK(thunk.Initialize(executor, source));
 
   // Execute command buffer thunk and verify that it added the value.
@@ -646,7 +658,7 @@ TEST(CommandBufferThunkTest, IfCmd) {
 }
 
 TEST(CommandBufferThunkTest, IfElseCmd) {
-  se::StreamExecutor* executor = CudaExecutor();
+  se::StreamExecutor* executor = GpuExecutor();
   if (!se::CommandBuffer::SupportsConditionalCommands(executor->platform())) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
@@ -710,8 +722,7 @@ TEST(CommandBufferThunkTest, IfElseCmd) {
   BufferAllocations allocations({pred, a, b}, 0, executor->GetAllocator());
   Thunk::ExecuteParams params(run_options, allocations, &stream, {});
 
-  CommandBufferCmd::ExecutableSource source = {
-      /*text=*/se::cuda::internal::kAddI32Kernel, /*binary=*/{}};
+  CommandBufferCmd::ExecutableSource source = ExecutableSource();
   TF_ASSERT_OK(thunk.Initialize(executor, source));
 
   // Execute command buffer thunk and verify that it added the value.
@@ -736,7 +747,7 @@ TEST(CommandBufferThunkTest, IfElseCmd) {
 }
 
 TEST(CommandBufferThunkTest, CaseCmd) {
-  se::StreamExecutor* executor = CudaExecutor();
+  se::StreamExecutor* executor = GpuExecutor();
   if (!se::CommandBuffer::SupportsConditionalCommands(executor->platform())) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
@@ -797,8 +808,7 @@ TEST(CommandBufferThunkTest, CaseCmd) {
   BufferAllocations allocations({index, a, b}, 0, executor->GetAllocator());
   Thunk::ExecuteParams params(run_options, allocations, &stream, {});
 
-  CommandBufferCmd::ExecutableSource source = {
-      /*text=*/se::cuda::internal::kAddI32Kernel, /*binary=*/{}};
+  CommandBufferCmd::ExecutableSource source = ExecutableSource();
   TF_ASSERT_OK(thunk.Initialize(executor, source));
 
   // Execute command buffer thunk and verify that it added the value.
@@ -822,7 +832,7 @@ TEST(CommandBufferThunkTest, CaseCmd) {
 }
 
 TEST(CommandBufferThunkTest, ForCmd) {
-  se::StreamExecutor* executor = CudaExecutor();
+  se::StreamExecutor* executor = GpuExecutor();
   if (!se::CommandBuffer::SupportsConditionalCommands(executor->platform())) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
@@ -874,8 +884,7 @@ TEST(CommandBufferThunkTest, ForCmd) {
   BufferAllocations allocations({loop_cnt, a, b}, 0, executor->GetAllocator());
   Thunk::ExecuteParams params(run_options, allocations, &stream, {});
 
-  CommandBufferCmd::ExecutableSource source = {
-      /*text=*/se::cuda::internal::kAddI32Kernel, /*binary=*/{}};
+  CommandBufferCmd::ExecutableSource source = ExecutableSource();
   TF_ASSERT_OK(thunk.Initialize(executor, source));
 
   // Execute command buffer thunk and verify that it added the value 10 times.

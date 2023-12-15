@@ -18,8 +18,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "xla/service/platform_util.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/cuda/cuda_test_kernels.h"
+#include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/gpu/gpu_types.h"  // IWYU pragma: keep
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -32,7 +33,24 @@ limitations under the License.
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 
-namespace stream_executor::cuda {
+namespace stream_executor::gpu {
+
+static Platform* GpuPlatform() {
+  auto name = absl::AsciiStrToUpper(
+      xla::PlatformUtil::CanonicalPlatformName("gpu").value());
+  return MultiPlatformManager::PlatformWithName(name).value();
+}
+
+static MultiKernelLoaderSpec GetAddI32KernelSpec() {
+  MultiKernelLoaderSpec spec(/*arity=*/3);
+#if defined(GOOGLE_CUDA)
+  spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
+#elif defined(TENSORFLOW_USE_ROCM)
+  spec.AddCudaCubinInMemory(
+      reinterpret_cast<const char*>(&internal::kAddI32KernelModule[0]), "add");
+#endif
+  return spec;
+}
 
 using AddI32Kernel = TypedKernel<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
                                  DeviceMemory<int32_t>>;
@@ -46,8 +64,8 @@ using AddI32Ptrs3 = TypedKernel<internal::Ptrs3<int32_t>>;
 static constexpr auto nested = CommandBuffer::Mode::kNested;    // NOLINT
 static constexpr auto primary = CommandBuffer::Mode::kPrimary;  // NOLINT
 
-TEST(CudaCommandBufferTest, LaunchSingleKernel) {
-  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+TEST(GpuCommandBufferTest, LaunchSingleKernel) {
+  Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
@@ -55,7 +73,7 @@ TEST(CudaCommandBufferTest, LaunchSingleKernel) {
   ASSERT_TRUE(stream.ok());
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddInProcessSymbol(internal::GetAddI32CudaKernel(), "add");
+  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
 
   AddI32Kernel add(executor);
   TF_ASSERT_OK(executor->GetKernel(spec, &add));
@@ -104,11 +122,13 @@ TEST(CudaCommandBufferTest, LaunchSingleKernel) {
 }
 
 TEST(CudaCommandBufferTest, TraceSingleKernel) {
+#if defined(TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Not supported on ROCM";
+#endif
 #if CUDA_VERSION < 12030
   GTEST_SKIP() << "Command buffer tracing is not supported";
 #endif
-
-  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+  Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
@@ -129,7 +149,7 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
                                    cast(bufs[2]),
                                });
   });
-  spec.AddInProcessSymbol(internal::GetAddI32Ptrs3CudaKernel(), "add");
+  spec.AddInProcessSymbol(internal::GetAddI32Ptrs3Kernel(), "add");
 
   TF_ASSERT_OK(executor->GetKernel(spec, &add));
 
@@ -164,16 +184,15 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
   ASSERT_EQ(dst, expected);
 }
 
-TEST(CudaCommandBufferTest, LaunchNestedCommandBuffer) {
-  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
+  Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
   stream.Init();
   ASSERT_TRUE(stream.ok());
 
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
+  MultiKernelLoaderSpec spec = GetAddI32KernelSpec();
 
   AddI32Kernel add(executor);
   TF_ASSERT_OK(executor->GetKernel(spec, &add));
@@ -226,8 +245,8 @@ TEST(CudaCommandBufferTest, LaunchNestedCommandBuffer) {
   ASSERT_EQ(dst, expected);
 }
 
-TEST(CudaCommandBufferTest, MemcpyDeviceToDevice) {
-  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+TEST(GpuCommandBufferTest, MemcpyDeviceToDevice) {
+  Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
@@ -273,8 +292,8 @@ TEST(CudaCommandBufferTest, MemcpyDeviceToDevice) {
   ASSERT_EQ(dst, expected);
 }
 
-TEST(CudaCommandBufferTest, Memset) {
-  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+TEST(GpuCommandBufferTest, Memset) {
+  Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
@@ -315,8 +334,8 @@ TEST(CudaCommandBufferTest, Memset) {
   ASSERT_EQ(dst, expected);
 }
 
-TEST(CudaCommandBufferTest, ConditionalIf) {
-  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+TEST(GpuCommandBufferTest, ConditionalIf) {
+  Platform* platform = GpuPlatform();
   if (!CommandBuffer::SupportsConditionalCommands(platform)) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
@@ -331,7 +350,7 @@ TEST(CudaCommandBufferTest, ConditionalIf) {
 
   {  // Load addition kernel.
     MultiKernelLoaderSpec spec(/*arity=*/3);
-    spec.AddInProcessSymbol(internal::GetAddI32CudaKernel(), "add");
+    spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
     TF_ASSERT_OK(executor->GetKernel(spec, &add));
   }
 
@@ -407,8 +426,8 @@ TEST(CudaCommandBufferTest, ConditionalIf) {
   ASSERT_EQ(dst, expected);
 }
 
-TEST(CudaCommandBufferTest, ConditionalIfElse) {
-  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+TEST(GpuCommandBufferTest, ConditionalIfElse) {
+  Platform* platform = GpuPlatform();
   if (!CommandBuffer::SupportsConditionalCommands(platform)) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
@@ -424,13 +443,13 @@ TEST(CudaCommandBufferTest, ConditionalIfElse) {
 
   {  // Load addition kernel.
     MultiKernelLoaderSpec spec(/*arity=*/3);
-    spec.AddInProcessSymbol(internal::GetAddI32CudaKernel(), "add");
+    spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
     TF_ASSERT_OK(executor->GetKernel(spec, &add));
   }
 
   {  // Load multiplication kernel.
     MultiKernelLoaderSpec spec(/*arity=*/3);
-    spec.AddInProcessSymbol(internal::GetMulI32CudaKernel(), "mul");
+    spec.AddInProcessSymbol(internal::GetMulI32Kernel(), "mul");
     TF_ASSERT_OK(executor->GetKernel(spec, &mul));
   }
 
@@ -510,8 +529,8 @@ TEST(CudaCommandBufferTest, ConditionalIfElse) {
   ASSERT_EQ(dst, expected_mul);
 }
 
-TEST(CudaCommandBufferTest, ConditionalCase) {
-  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+TEST(GpuCommandBufferTest, ConditionalCase) {
+  Platform* platform = GpuPlatform();
   if (!CommandBuffer::SupportsConditionalCommands(platform)) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
@@ -527,13 +546,13 @@ TEST(CudaCommandBufferTest, ConditionalCase) {
 
   {  // Load addition kernel.
     MultiKernelLoaderSpec spec(/*arity=*/3);
-    spec.AddInProcessSymbol(internal::GetAddI32CudaKernel(), "add");
+    spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
     TF_ASSERT_OK(executor->GetKernel(spec, &add));
   }
 
   {  // Load multiplication kernel.
     MultiKernelLoaderSpec spec(/*arity=*/3);
-    spec.AddInProcessSymbol(internal::GetMulI32CudaKernel(), "mul");
+    spec.AddInProcessSymbol(internal::GetMulI32Kernel(), "mul");
     TF_ASSERT_OK(executor->GetKernel(spec, &mul));
   }
 
@@ -606,8 +625,8 @@ TEST(CudaCommandBufferTest, ConditionalCase) {
   ASSERT_EQ(dst, expected_mul);
 }
 
-TEST(CudaCommandBufferTest, ConditionalFor) {
-  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+TEST(GpuCommandBufferTest, ConditionalFor) {
+  Platform* platform = GpuPlatform();
   if (!CommandBuffer::SupportsConditionalCommands(platform)) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
@@ -622,7 +641,7 @@ TEST(CudaCommandBufferTest, ConditionalFor) {
 
   {  // Load addition kernel.
     MultiKernelLoaderSpec spec(/*arity=*/3);
-    spec.AddInProcessSymbol(internal::GetAddI32CudaKernel(), "add");
+    spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
     TF_ASSERT_OK(executor->GetKernel(spec, &add));
   }
 
@@ -661,8 +680,8 @@ TEST(CudaCommandBufferTest, ConditionalFor) {
   ASSERT_EQ(dst, expected);
 }
 
-TEST(CudaCommandBufferTest, ConditionalWhile) {
-  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+TEST(GpuCommandBufferTest, ConditionalWhile) {
+  Platform* platform = GpuPlatform();
   if (!CommandBuffer::SupportsConditionalCommands(platform)) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
@@ -678,13 +697,13 @@ TEST(CudaCommandBufferTest, ConditionalWhile) {
 
   {  // Load addition kernel.
     MultiKernelLoaderSpec spec(/*arity=*/3);
-    spec.AddInProcessSymbol(internal::GetAddI32CudaKernel(), "add");
+    spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
     TF_ASSERT_OK(executor->GetKernel(spec, &add));
   }
 
   {  // Load inc_and_cmp kernel.
     MultiKernelLoaderSpec spec(/*arity=*/3);
-    spec.AddInProcessSymbol(internal::GetIncAndCmpCudaKernel(), "inc_and_cmp");
+    spec.AddInProcessSymbol(internal::GetIncAndCmpKernel(), "inc_and_cmp");
     TF_ASSERT_OK(executor->GetKernel(spec, &inc_and_cmp));
   }
 
@@ -743,11 +762,10 @@ TEST(CudaCommandBufferTest, ConditionalWhile) {
 // In benchmarks we construct command buffers in nested mode when we
 // do not want to measure graph executable instantiation overhead.
 static void BM_CreateCommandBuffer(benchmark::State& state) {
-  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+  Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
+  MultiKernelLoaderSpec spec = GetAddI32KernelSpec();
 
   AddI32Kernel add(executor);
   CHECK_OK(executor->GetKernel(spec, &add));
@@ -766,15 +784,14 @@ static void BM_CreateCommandBuffer(benchmark::State& state) {
 BENCHMARK_SIZES(BM_CreateCommandBuffer);
 
 static void BM_TraceCommandBuffer(benchmark::State& state) {
-  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+  Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
   stream.Init();
   CHECK(stream.ok());
 
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
+  MultiKernelLoaderSpec spec = GetAddI32KernelSpec();
 
   AddI32Kernel add(executor);
   CHECK_OK(executor->GetKernel(spec, &add));
@@ -796,11 +813,10 @@ static void BM_TraceCommandBuffer(benchmark::State& state) {
 BENCHMARK_SIZES(BM_TraceCommandBuffer);
 
 static void BM_UpdateCommandBuffer(benchmark::State& state) {
-  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+  Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
+  MultiKernelLoaderSpec spec = GetAddI32KernelSpec();
 
   AddI32Kernel add(executor);
   CHECK_OK(executor->GetKernel(spec, &add));
@@ -824,4 +840,4 @@ static void BM_UpdateCommandBuffer(benchmark::State& state) {
 
 BENCHMARK_SIZES(BM_UpdateCommandBuffer);
 
-}  // namespace stream_executor::cuda
+}  // namespace stream_executor::gpu
