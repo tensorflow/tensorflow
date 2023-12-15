@@ -63,12 +63,6 @@ int64_t GetXlaSparseCoreStackingMemLimit();
 
 int64_t GetXlaSparseCoreStackingTableShardLimit();
 
-bool GetDisableTableStacking();
-
-int64_t GetXlaSparseCoreStackingMemLimit();
-
-int64_t GetXlaSparseCoreStackingTableShardLimit();
-
 Status GetMaxIdsAndUniquesExternal(const std::string& program_key,
                                    const std::string& table_name,
                                    int64_t num_samples_per_sparse_core,

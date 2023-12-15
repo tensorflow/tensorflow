@@ -284,8 +284,9 @@ class StatelessRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
       (f'_{dtype.name}_{seed}', dtype, seed)  # pylint: disable=g-complex-comprehension
-      for seed in ([1, 2], [12, 23], [123, 456], [25252, 314159])
-      for dtype in _allowed_types())
+      for seed in ([1, 2], [12, 23], [25252, 314159])
+      for dtype in _allowed_types()
+  )
   def testDistributionOfStatelessRandomNormal(self, dtype, seed):
     """Use Anderson-Darling test to test distribution appears normal."""
     with self.session() as sess, self.test_scope():

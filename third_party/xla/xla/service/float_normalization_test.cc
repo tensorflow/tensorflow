@@ -35,8 +35,9 @@ namespace xla {
 
 class TestFloatSupport : public FloatSupport {
  public:
-  explicit TestFloatSupport(PrimitiveType low_precision_type)
-      : FloatSupport(low_precision_type) {}
+  explicit TestFloatSupport(PrimitiveType low_precision_type,
+                            PrimitiveType high_precision_type)
+      : FloatSupport(low_precision_type, high_precision_type) {}
   ~TestFloatSupport() override = default;
 
   bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
@@ -76,14 +77,48 @@ class TestFloatSupport : public FloatSupport {
   }
 };
 
+// The test float class that doesn't support any compute ops for low-precision
+// but supports some collectives.
+class TestFloatNoComputeSupport : public FloatSupport {
+ public:
+  explicit TestFloatNoComputeSupport(PrimitiveType low_precision_type,
+                                     PrimitiveType high_precision_type)
+      : FloatSupport(low_precision_type, high_precision_type) {}
+  ~TestFloatNoComputeSupport() override = default;
+
+  bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
+                                   int64_t operand_index) const override {
+    if (hlo.opcode() == HloOpcode::kTuple ||
+        hlo.opcode() == HloOpcode::kGetTupleElement ||
+        hlo.opcode() == HloOpcode::kAllToAll ||
+        hlo.opcode() == HloOpcode::kAllReduce ||
+        hlo.opcode() == HloOpcode::kReduceScatter) {
+      return true;
+    }
+    return false;
+  }
+
+  bool SupportsLowPrecisionOutput(const HloInstruction& hlo) const override {
+    if (hlo.opcode() == HloOpcode::kTuple ||
+        hlo.opcode() == HloOpcode::kGetTupleElement ||
+        hlo.opcode() == HloOpcode::kAllToAll ||
+        hlo.opcode() == HloOpcode::kAllReduce ||
+        hlo.opcode() == HloOpcode::kReduceScatter) {
+      return true;
+    }
+    return false;
+  }
+};
+
 class FloatNormalizationTest : public HloTestBase {
  protected:
   FloatNormalizationTest()
       : HloTestBase(/*verifier_layout_sensitive=*/false,
                     /*allow_mixed_precision_in_hlo_verifier=*/true) {}
 
-  bool Normalize(HloModule* module, PrimitiveType low_precision_type = BF16) {
-    TestFloatSupport float_support(low_precision_type);
+  bool Normalize(HloModule* module, PrimitiveType low_precision_type = BF16,
+                 PrimitiveType high_precision_type = F32) {
+    TestFloatSupport float_support(low_precision_type, high_precision_type);
     FloatNormalization normalization(&float_support);
     StatusOr<bool> result = normalization.Run(module);
     EXPECT_IS_OK(result.status());
@@ -476,13 +511,146 @@ TEST_F(FloatNormalizationTest, ResolveIfUnsupportedF8e5m2) {
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(Normalize(module.get(), F8E5M2));
+  EXPECT_TRUE(Normalize(module.get(), F8E5M2, F16));
 
   EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kConvert);
   EXPECT_EQ(computation->root_instruction()->operand(0), mul1);
   EXPECT_EQ(mul0->shape().element_type(), F16);
   EXPECT_EQ(mul1->shape().element_type(), F16);
   EXPECT_EQ(mul1->operand(0)->opcode(), HloOpcode::kConvert);
+}
+
+class FloatNormalizationNoComputeSupportTest : public FloatNormalizationTest {
+ protected:
+  bool Normalize(HloModule* module, PrimitiveType low_precision_type = BF16,
+                 PrimitiveType high_precision_type = F32) {
+    TestFloatNoComputeSupport float_support(low_precision_type,
+                                            high_precision_type);
+    FloatNormalization normalization(&float_support);
+
+    StatusOr<bool> result = normalization.Run(module);
+    EXPECT_IS_OK(result.status());
+
+    HloVerifier verifier(/*layout_sensitive=*/false,
+                         /*allow_mixed_precision=*/true);
+    EXPECT_IS_OK(verifier.Run(module).status());
+
+    return result.value();
+  }
+};
+
+TEST_F(FloatNormalizationNoComputeSupportTest,
+       NoNormalizationForToApplyMultiOuputAllReduce) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder sum_builder("sum");
+  auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, ShapeUtil::MakeShape(BF16, {}), "x"));
+  auto y = sum_builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, ShapeUtil::MakeShape(BF16, {}), "y"));
+  sum_builder.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(BF16, {}), HloOpcode::kAdd, x, y));
+  HloComputation* reduction =
+      module->AddEmbeddedComputation(sum_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  Shape bf16_shape_a = ShapeUtil::MakeShape(BF16, {2, 4});
+  Shape bf16_shape_b = ShapeUtil::MakeShape(BF16, {16, 16});
+
+  HloInstruction* a = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, bf16_shape_a, "a"));
+  HloInstruction* b = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, bf16_shape_b, "b"));
+
+  HloInstruction* crs = builder.AddInstruction(HloInstruction::CreateAllReduce(
+      ShapeUtil::MakeTupleShape({bf16_shape_a, bf16_shape_b}), {a, b},
+      reduction,
+      /*replica_groups=*/{},
+      /*constrain_layout=*/false,
+      /*channel_id=*/std::nullopt,
+      /*use_global_device_ids=*/false));
+  builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(bf16_shape_b, crs, 1));
+
+  auto computation = module->AddEntryComputation(builder.Build());
+  // Since we skip processing to_apply region, nothing should change in the
+  // original HLO.
+  EXPECT_FALSE(Normalize(module.get()));
+  EXPECT_EQ(computation->root_instruction()->shape().element_type(), BF16);
+  EXPECT_EQ(crs->operand(1)->shape().element_type(), BF16);
+  EXPECT_EQ(crs->to_apply()->root_instruction()->opcode(), HloOpcode::kAdd);
+  EXPECT_EQ(ShapeUtil::GetSubshape(crs->shape(), {1}).element_type(), BF16);
+}
+
+TEST_F(FloatNormalizationNoComputeSupportTest,
+       NoNormalizationForToApplyAllReduce) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder sum_builder("sum");
+  auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, ShapeUtil::MakeShape(BF16, {}), "x"));
+  auto y = sum_builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, ShapeUtil::MakeShape(BF16, {}), "y"));
+  sum_builder.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(BF16, {}), HloOpcode::kAdd, x, y));
+  HloComputation* reduction =
+      module->AddEmbeddedComputation(sum_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  Shape bf16_shape_a = ShapeUtil::MakeShape(BF16, {2, 4});
+
+  HloInstruction* a = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, bf16_shape_a, "a"));
+
+  HloInstruction* crs = builder.AddInstruction(
+      HloInstruction::CreateAllReduce(bf16_shape_a, {a}, reduction,
+                                      /*replica_groups=*/{},
+                                      /*constrain_layout=*/false,
+                                      /*channel_id=*/std::nullopt,
+                                      /*use_global_device_ids=*/false));
+
+  auto computation = module->AddEntryComputation(builder.Build());
+  // Since we skip processing to_apply region, nothing should change in the
+  // original HLO.
+  EXPECT_FALSE(Normalize(module.get()));
+  EXPECT_EQ(computation->root_instruction()->shape().element_type(), BF16);
+  EXPECT_EQ(crs->operand(0)->shape().element_type(), BF16);
+  EXPECT_EQ(crs->to_apply()->root_instruction()->opcode(), HloOpcode::kAdd);
+}
+
+TEST_F(FloatNormalizationNoComputeSupportTest,
+       NoNormalizationForToApplyReduceScatter) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder sum_builder("sum");
+  auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, ShapeUtil::MakeShape(BF16, {}), "x"));
+  auto y = sum_builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, ShapeUtil::MakeShape(BF16, {}), "y"));
+  sum_builder.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(BF16, {}), HloOpcode::kAdd, x, y));
+  HloComputation* reduction =
+      module->AddEmbeddedComputation(sum_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  Shape bf16_shape_a = ShapeUtil::MakeShape(BF16, {2, 4});
+  Shape bf16_shape_scattered = ShapeUtil::MakeShape(BF16, {1, 4});
+
+  HloInstruction* a = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, bf16_shape_a, "a"));
+
+  HloInstruction* crs =
+      builder.AddInstruction(HloInstruction::CreateReduceScatter(
+          bf16_shape_scattered, {a}, reduction,
+          /*replica_groups=*/{},
+          /*constrain_layout=*/false,
+          /*channel_id=*/std::nullopt,
+          /*use_global_device_ids=*/false, /*scatter_dimension*/ 0));
+
+  auto computation = module->AddEntryComputation(builder.Build());
+  // Since we skip processing to_apply region, nothing should change in the
+  // original HLO.
+  EXPECT_FALSE(Normalize(module.get()));
+  EXPECT_EQ(computation->root_instruction()->shape().element_type(), BF16);
+  EXPECT_EQ(crs->operand(0)->shape().element_type(), BF16);
+  EXPECT_EQ(crs->to_apply()->root_instruction()->opcode(), HloOpcode::kAdd);
 }
 
 }  // namespace xla

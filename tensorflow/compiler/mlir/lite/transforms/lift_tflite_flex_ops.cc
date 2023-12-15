@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/match.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -110,20 +111,6 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
 
     Operation* tf_op = rewriter.create(op_state);
     rewriter.replaceOp(op, tf_op->getResults());
-
-    if (isa<TF::MapDatasetOp, TF::ReduceDatasetOp>(tf_op)) {
-      constexpr StringRef kFuncAttrName = "f";
-      tf_op->setAttr(
-          kFuncAttrName,
-          tf_op->getAttr(kFuncAttrName).cast<TF::FuncAttr>().getName());
-    }
-
-    if (isa<TF::TakeWhileDatasetOp>(tf_op)) {
-      constexpr StringRef kFuncAttrName = "predicate";
-      tf_op->setAttr(
-          kFuncAttrName,
-          tf_op->getAttr(kFuncAttrName).cast<TF::FuncAttr>().getName());
-    }
 
     // Special type fixes for TF Resource Tensors that are casted to
     // Int32 tensor during MLIR->TFLite flatbuffer conversion.
@@ -236,6 +223,10 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
           tensorflow::ConvertAttributeValue(attr_value, &builder);
       if (!mlir_attr.ok()) {
         return emitError(loc, mlir_attr.status().message());
+      }
+      if (absl::StrContains(op_name, "Dataset") &&
+          mlir_attr->isa<TF::FuncAttr>()) {
+        mlir_attr = mlir_attr->cast<TF::FuncAttr>().getName();
       }
       attributes.push_back(builder.getNamedAttr(attr_name, *mlir_attr));
     }

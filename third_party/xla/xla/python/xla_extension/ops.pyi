@@ -14,7 +14,7 @@
 # ==============================================================================
 
 import enum
-from typing import Any, List, Optional, Sequence, Tuple, overload
+from typing import Any, Optional, Sequence, overload
 
 from xla.python import xla_extension
 
@@ -101,7 +101,7 @@ def ApproxTopKReductionOutputSize(
     top_k: int,
     recall_target: float,
     aggregate_to_topk: Optional[bool] = ...,
-    input_size_override: Optional[int] = ...) -> Tuple[int, int]: ...
+    input_size_override: Optional[int] = ...) -> tuple[int, int]: ...
 def ReduceScatter(
     operand: XlaOp,
     computation: XlaComputation,
@@ -133,7 +133,7 @@ def Clamp(min: XlaOp, operand: XlaOp, max: XlaOp) -> XlaOp: ...
 def Collapse(operand: XlaOp, dimensions: Sequence[int]) -> XlaOp: ...
 def CollectivePermute(
     operand: XlaOp,
-    source_target_pairs: Sequence[Tuple[int, int]],
+    source_target_pairs: Sequence[tuple[int, int]],
     channel_id: Optional[_ChannelHandle] = ...) -> XlaOp: ...
 def ConcatInDim(builder: XlaBuilder,
                 operands: Sequence[XlaOp],
@@ -156,7 +156,7 @@ def ConvGeneralDilated(
     lhs: XlaOp,
     rhs: XlaOp,
     window_strides: Sequence[int],
-    padding: Sequence[Tuple[int, int]],
+    padding: Sequence[tuple[int, int]],
     lhs_dilation: Sequence[int],
     rhs_dilation: Sequence[int],
     dimension_numbers: _ConvDimensionNumbers,
@@ -199,7 +199,7 @@ def CustomCallWithAliasing(
     operand_shapes_with_layout: Sequence[Shape],
     opaque: bytes = ...,
     has_side_effect: bool = ...,
-    output_operand_aliasing: Sequence[Tuple[ShapeIndex, Tuple[int, ShapeIndex]]] = ...,
+    output_operand_aliasing: Sequence[tuple[ShapeIndex, tuple[int, ShapeIndex]]] = ...,
     literal: _LiteralSlice = ...,
     schedule: CustomCallSchedule = ...,
     api_version: CustomCallApiVersion = ...) -> XlaOp: ...
@@ -232,7 +232,7 @@ def Eigh(
     lower: bool = ...,
     max_iter: int = ...,
     epsilon: float = ...,
-    sort_eigenvalues: bool = ...) -> Tuple[XlaOp, XlaOp]: ...
+    sort_eigenvalues: bool = ...) -> tuple[XlaOp, XlaOp]: ...
 def Fft(
     operand: XlaOp,
     fft_type: FftType,
@@ -253,7 +253,7 @@ def InfeedWithToken(
 def Iota(builder: XlaBuilder, shape: Shape, iota_dimension: int) -> XlaOp: ...
 @overload
 def Iota(builder: XlaBuilder, type: PrimitiveType, size: int) -> XlaOp: ...
-def LU(a: XlaOp) -> Tuple[XlaOp, XlaOp, XlaOp]: ...
+def LU(a: XlaOp) -> tuple[XlaOp, XlaOp, XlaOp]: ...
 def Map(
     builder: XlaBuilder,
     operands: Sequence[XlaOp],
@@ -277,8 +277,8 @@ def Parameter(
     name: str = ...,
     replicated_at_leaf_buffers: Sequence[bool] = ...) -> XlaOp: ...
 def ProductOfElementaryHouseholderReflectors(a: XlaOp, taus: XlaOp) -> XlaOp: ...
-def QR(a: XlaOp, full_matrices: bool) -> Tuple[XlaOp, XlaOp]: ...
-def QrDecomposition(a: XlaOp) -> Tuple[XlaOp, XlaOp]: ...
+def QR(a: XlaOp, full_matrices: bool) -> tuple[XlaOp, XlaOp]: ...
+def QrDecomposition(a: XlaOp) -> tuple[XlaOp, XlaOp]: ...
 def Reduce(
     builder: XlaBuilder,
     operands: Sequence[XlaOp],
@@ -298,7 +298,7 @@ def ReduceWindowWithGeneralPadding(
     window_strides: Sequence[int],
     base_dilations: Sequence[int],
     window_dilations: Sequence[int],
-    padding: Sequence[Tuple[int, int]]) -> XlaOp: ...
+    padding: Sequence[tuple[int, int]]) -> XlaOp: ...
 @overload
 def ReduceWindowWithGeneralPadding(
     operands: Sequence[XlaOp],
@@ -308,7 +308,7 @@ def ReduceWindowWithGeneralPadding(
     window_strides: Sequence[int],
     base_dilations: Sequence[int],
     window_dilations: Sequence[int],
-    padding: Sequence[Tuple[int, int]]) -> XlaOp: ...
+    padding: Sequence[tuple[int, int]]) -> XlaOp: ...
 def ReplicaId(builder: XlaBuilder) -> XlaOp: ...
 @overload
 def Reshape(
@@ -348,7 +348,7 @@ def SelectAndScatterWithGeneralPadding(
     select: XlaComputation,
     window_dimensions: Sequence[int],
     window_strides: Sequence[int],
-    padding: Sequence[Tuple[int, int]],
+    padding: Sequence[tuple[int, int]],
     source: XlaOp,
     init_value: XlaOp,
     scatter: XlaComputation) -> XlaOp: ...
@@ -372,7 +372,7 @@ def Sort(
 def SVD(
     a: XlaOp,
     max_iter: int = ...,
-    epsilon: float = ...) -> Tuple[XlaOp, XlaOp, XlaOp]: ...
+    epsilon: float = ...) -> tuple[XlaOp, XlaOp, XlaOp]: ...
 def TopK(input: XlaOp, k: int) -> XlaOp: ...
 def Transpose(operand: XlaOp, permutation: Sequence[int]) -> XlaOp: ...
 def TriangularSolve(

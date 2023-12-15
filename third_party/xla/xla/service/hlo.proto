@@ -111,7 +111,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 83
+// Next ID: 86
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -364,9 +364,24 @@ message HloInstructionProto {
   // Represents the K value for top-k.
   int64 k = 81;
 
+  // Represents the largest flag for top-k.
+  bool largest = 85;
+
   // Represents the information for tracking propagation of values within HLO
   // graph.
   xla.StatisticsViz statistics_viz = 82;
+
+  // Specifies which operation queue the current instruction will run on.
+  // A backend may have multiple operation queues to run instructions
+  // concurrently, use this to signal the backend which queue to dispatch to.
+  // The backend should keep a mapping of
+  // operation_queue_id->actual_hardware_queue_id if runtime will create
+  // different IDs.
+  int64 operation_queue_id = 83;
+
+  // Specifies which operation queues to await for data when running with
+  // multiple operation queues.
+  repeated int64 wait_on_operation_queues = 84;
 }
 
 // Serialization of HloComputation.
@@ -573,6 +588,8 @@ message HloModuleProto {
     xla.ProfileSource profile_source = 3;
     // The compilation event that triggered the use of the profile.
     xla.CompilationEvent compilation_event = 4;
+    // The fingerprint of the unoptimized module this profile was applied to.
+    string fingerprint = 5;
   }
 
   // Profile information for the HLO module.
@@ -782,40 +799,6 @@ message HloPassMetadata {
   // Timestamp before and after the pass is run. Note they may be equal.
   int64 start_timestamp_usec = 8;
   int64 end_timestamp_usec = 9;
-}
-
-// Encodes attributes for an entry function.
-message EntryFunctionAttributes {
-  // Acts as the underlying container for an xla::ShapeIndex.
-  message ShapeIndex {
-    repeated int64 indices = 1;
-  }
-
-  // Encodes attributes for a single buffer parameter.
-  message BufferParameterAttributes {
-    // Represents an lmhlo.params function argument attribute.
-    int64 lmhlo_params = 1;
-    // TODO(hanbinyoon): Deprecate when optional fields are available in proto3
-    // (Protocol Buffers v3.15.0).
-    bool lmhlo_params_present = 6;
-
-    // Represents an lmhlo.param_shape_index function argument attribute.
-    ShapeIndex lmhlo_param_shape_index = 2;
-
-    // Represents an lmhlo.constant_name function argument attribute.
-    string lmhlo_constant_name = 3;
-
-    // Represents an lmhlo.must_alias function argument attribute.
-    bool lmhlo_must_alias = 4;
-
-    // Represents an lmhlo.params function argument attribute.
-    ShapeIndex lmhlo_output_index = 5;
-  }
-
-  repeated BufferParameterAttributes buffers = 1;
-
-  // xla::Shape in string format.
-  string result_xla_shape = 2;
 }
 
 // Encodes the underlying Xla runtime executable compiled from the XLA module.

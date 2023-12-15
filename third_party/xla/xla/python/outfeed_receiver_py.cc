@@ -30,9 +30,9 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 #include "xla/client/xla_builder.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/python/outfeed_receiver.h"
 #include "xla/python/py_client.h"
-#include "xla/python/status_casters.h"
 #include "xla/python/types.h"
 
 namespace xla {

@@ -45,6 +45,7 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <functional>
 #include <initializer_list>
 #include <map>
 #include <memory>
@@ -56,8 +57,13 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/platform/port.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
+
+class Kernel;                     // defined in kernel.h
+class KernelArgs;                 // defined in kernel.h
+class KernelArgsPackedArrayBase;  // defined in kernel.h
 
 // Describes how to load a kernel on a target platform.
 //
@@ -86,6 +92,18 @@ class KernelLoaderSpec {
 
   KernelLoaderSpec(const KernelLoaderSpec &) = delete;
   void operator=(const KernelLoaderSpec &) = delete;
+};
+
+// Loads kernel from in process symbol pointer (e.g. pointer to CUDA C++ device
+// function).
+class InProcessSymbol : public KernelLoaderSpec {
+ public:
+  InProcessSymbol(void *symbol, std::string kernel_name);
+
+  void *symbol() const { return symbol_; }
+
+ private:
+  void *symbol_;
 };
 
 // An abstract kernel loader spec that has an associated file path, where
@@ -239,13 +257,23 @@ class CudaCubinInMemory : public KernelLoaderSpec {
 // Describes how to load a kernel on any subset of a number of target platforms.
 class MultiKernelLoaderSpec {
  public:
-  explicit MultiKernelLoaderSpec(size_t arity);
+  // A function for converting kernel arguments into a packed kernels arguments
+  // that can be directly passed to a device kernel. This indirection allows
+  // registering custom CUDA C++ kernels with non-trivial C++ API with a
+  // StreamExecutor as a generic `Kernel`.
+  using KernelArgsPacking =
+      std::function<tsl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>(
+          const Kernel &kernel, const KernelArgs &args)>;
+
+  explicit MultiKernelLoaderSpec(
+      size_t arity, KernelArgsPacking kernel_args_packing = nullptr);
 
   // Returns the number of arguments that this kernel accepts.
   size_t arity() const { return arity_; }
 
   // Convenience getters for testing whether these platform variants have
   // kernel loader specifications available.
+  bool has_in_process_symbol() const { return in_process_symbol_ != nullptr; }
   bool has_cuda_ptx_on_disk() const { return cuda_ptx_on_disk_ != nullptr; }
   bool has_cuda_cubin_on_disk() const { return cuda_cubin_on_disk_ != nullptr; }
   bool has_cuda_cubin_in_memory() const {
@@ -255,6 +283,10 @@ class MultiKernelLoaderSpec {
 
   // Accessors for platform variant kernel load specifications.
   // Precondition: corresponding has_* is true.
+  const InProcessSymbol &in_process_symbol() const {
+    CHECK(has_in_process_symbol());
+    return *in_process_symbol_;
+  }
   const CudaPtxOnDisk &cuda_ptx_on_disk() const {
     CHECK(has_cuda_ptx_on_disk());
     return *cuda_ptx_on_disk_;
@@ -278,6 +310,8 @@ class MultiKernelLoaderSpec {
   // Note that the kernel_name parameter must be consistent with the kernel in
   // the PTX being loaded. Also be aware that in CUDA C++ the kernel name may be
   // mangled by the compiler if it is not declared in an extern "C" scope.
+  MultiKernelLoaderSpec *AddInProcessSymbol(void *symbol,
+                                            absl::string_view kernel_name);
   MultiKernelLoaderSpec *AddCudaPtxOnDisk(absl::string_view filename,
                                           absl::string_view kernel_name);
   MultiKernelLoaderSpec *AddCudaCubinOnDisk(absl::string_view filename,
@@ -295,20 +329,29 @@ class MultiKernelLoaderSpec {
       std::initializer_list<CudaPtxInMemory::PtxSpec> spec_list,
       absl::string_view kernel_name);
 
+  const KernelArgsPacking &kernel_args_packing() const {
+    return kernel_args_packing_;
+  }
+
  private:
-  std::unique_ptr<CudaPtxOnDisk>
+  std::shared_ptr<InProcessSymbol>
+      in_process_symbol_;  // In process symbol pointer.
+  std::shared_ptr<CudaPtxOnDisk>
       cuda_ptx_on_disk_;  // PTX text that resides in a file.
-  std::unique_ptr<CudaCubinOnDisk>
+  std::shared_ptr<CudaCubinOnDisk>
       cuda_cubin_on_disk_;  // Binary CUDA program in a file.
-  std::unique_ptr<CudaCubinInMemory>
+  std::shared_ptr<CudaCubinInMemory>
       cuda_cubin_in_memory_;  // Binary CUDA program in memory.
-  std::unique_ptr<CudaPtxInMemory>
+  std::shared_ptr<CudaPtxInMemory>
       cuda_ptx_in_memory_;  // PTX text that resides in memory.
 
   // Number of parameters that the kernel takes. (This is nicer to have in a
   // constexpr than having to determine it from the types via template
   // metaprogramming).
   size_t arity_;
+
+  // Custom kernel arguments packing.
+  KernelArgsPacking kernel_args_packing_;
 };
 
 }  // namespace stream_executor

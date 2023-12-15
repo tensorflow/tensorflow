@@ -15,8 +15,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_LOOP_DOUBLE_BUFFER_TRANSFORMER_H_
 #define XLA_SERVICE_GPU_LOOP_DOUBLE_BUFFER_TRANSFORMER_H_
 
-#include <utility>
-
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
@@ -34,6 +32,9 @@ namespace gpu {
 // peeled outside of the while loop to make the trip count an even number,
 // then proceed to unroll by 2.
 // It also updates the trip count property of the loop to the correct one (n/2).
+//
+// Note that this pass will flatten the call graph if any loop has been
+// unrolled.
 class LoopDoubleBufferTransformer : public HloModulePass {
  public:
   LoopDoubleBufferTransformer() = default;

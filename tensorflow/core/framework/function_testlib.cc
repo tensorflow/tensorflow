@@ -137,6 +137,25 @@ FunctionDef XTimesTwo() {
       });
 }
 
+FunctionDef XTimesTwoWithControlInput() {
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
+  return FDH::Define(
+      // Name
+      "XTimesTwo",
+      // Args
+      {"x: T"},
+      // Return values
+      {"y: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
+          {{"scale"}, "Cast", {"two"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+          {{"y"}, "Mul", {"scale"}, {{"T", "$T"}}, /*dep=*/{"x"}},
+      });
+}
+
 FunctionDef TwoDeviceMult() {
   const Tensor kTwo = test::AsScalar<int64_t>(2);
   const Tensor kThree = test::AsScalar<int64_t>(3);

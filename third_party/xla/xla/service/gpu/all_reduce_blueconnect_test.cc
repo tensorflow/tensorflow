@@ -38,8 +38,9 @@ using AllReduceBlueConnectTest = HloTestBase;
 void SetModuleConfig(HloModule& module, size_t replica_count) {
   DeviceAssignment device_assignment(replica_count, /*computation_count=*/1);
   device_assignment.FillIota(0);
-  module.config().set_replica_count(replica_count);
-  module.config().set_static_device_assignment(device_assignment);
+  auto& module_config = module.mutable_config();
+  module_config.set_replica_count(replica_count);
+  module_config.set_static_device_assignment(device_assignment);
 }
 
 TEST_F(AllReduceBlueConnectTest, OneStage) {

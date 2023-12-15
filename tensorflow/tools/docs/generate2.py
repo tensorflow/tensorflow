@@ -324,7 +324,7 @@ def build_docs(output_dir, code_url_prefix, search_hints):
 
   expected_path_contents = {
       "tf/summary/audio.md":
-          "tensorboard/plugins/audio/summary_v2.py",
+          "python/summary/tb_summary.py",
       "tf/estimator/DNNClassifier.md":
           "tensorflow_estimator/python/estimator/canned/dnn.py",
       "tf/nn/sigmoid_cross_entropy_with_logits.md":

@@ -24,6 +24,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/common.pb.h"
@@ -34,8 +36,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
@@ -128,11 +128,11 @@ class SnapshotStreamWriter {
   // completed if the dataset has reached the end of sequence and a DONE file is
   // written. Returns an error if the snapshot has failed. This does not block
   // the caller.
-  StatusOr<bool> Completed() const;
+  absl::StatusOr<bool> Completed() const;
 
   // Waits for the writer to finish writing the snapshot stream and returns the
   // final status.
-  StatusOr<bool> Wait();
+  absl::StatusOr<bool> Wait();
 
   // Cancels the writer. If cancelled, `Wait` will return a Cancelled error.
   void Cancel();
@@ -143,14 +143,14 @@ class SnapshotStreamWriter {
 
   // Writes the snapshot. Returns an error if writing fails or the task has been
   // cancelled.
-  Status WriteSnapshot();
+  absl::Status WriteSnapshot();
 
   // Returns true if the stream is already completed and there is no additional
   // work to perform.
   bool StreamAlreadyCompleted() const;
 
   // Creates directories to store uncommitted chunks and checkpoints.
-  Status InitializeDirectories();
+  absl::Status InitializeDirectories();
 
   // Returns true until the snapshot stream writer is finished, which may be due
   // to reaching the end of its iterator, encountering an error, or being
@@ -158,14 +158,14 @@ class SnapshotStreamWriter {
   bool ShouldWriteChunk() const;
 
   // Writes the next chunk.
-  Status WriteChunk();
+  absl::Status WriteChunk();
 
   // Whether the current chunks should be committed. This writer performs one
   // commit every ~20 minutes.
   bool ShouldCommit() const;
 
   // Commits the chunks since the last commit.
-  Status Commit();
+  absl::Status Commit();
 
   // Returns the path of the current chunk.
   std::string GetChunkFilePath() const;
@@ -176,35 +176,35 @@ class SnapshotStreamWriter {
   bool ShouldWriteRecord() const;
 
   // Writes the next record to the current chunk.
-  Status WriteRecord(snapshot_util::TFRecordWriter& writer);
+  absl::Status WriteRecord(snapshot_util::TFRecordWriter& writer);
 
   // Writes a DONE file when the stream is finished. Writes an ERROR file if it
   // failed.
-  Status FinalizeStream(Status status);
-  Status WriteDoneFile();
-  Status WriteErrorFile(const Status& status);
+  absl::Status FinalizeStream(absl::Status status);
+  absl::Status WriteDoneFile();
+  absl::Status WriteErrorFile(const absl::Status& status);
 
   // Saves an iterator checkpoint.
-  Status Save();
+  absl::Status Save();
 
   // After committing a checkpoint, deletes the previous checkpoints.
-  Status DeleteOutdatedCheckpoints();
+  absl::Status DeleteOutdatedCheckpoints();
 
   // Deletes all checkpoints.
-  Status DeleteCheckpoints();
+  absl::Status DeleteCheckpoints();
 
   // Restores from the last checkpoint.
-  Status Restore();
+  absl::Status Restore();
 
   // Returns the filename of the most recent checkpoint.
-  StatusOr<std::string> LastCheckpointName() const;
+  absl::StatusOr<std::string> LastCheckpointName() const;
 
   // Synchronizes the checkpoint with the committed chunks. This is called when
   // the worker restores the snapshot in case the worker fails after writing the
   // checkpoint but before committing a chunk file. If no checkpoint has been
   // written, `checkpoint_index` is nullopt.
-  Status SyncCheckpointWithChunks(std::optional<int64_t> checkpoint_index,
-                                  int64_t checkpoint_num_elements);
+  absl::Status SyncCheckpointWithChunks(std::optional<int64_t> checkpoint_index,
+                                        int64_t checkpoint_num_elements);
 
   // Returns the path of the checkpoint for `chunk_index` with
   // `chunk_num_elements`.
@@ -241,7 +241,7 @@ class SnapshotStreamWriter {
   // - If the snapshot is successful, this is true.
   // - If any error happens during the snapshot write, it is the error status.
   // - If the snapshot has not finished, this is false.
-  StatusOr<bool> completed_ TF_GUARDED_BY(mu_) = false;
+  absl::StatusOr<bool> completed_ TF_GUARDED_BY(mu_) = false;
 
   std::unique_ptr<Thread> snapshot_thread_;
 };

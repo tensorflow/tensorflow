@@ -56,6 +56,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:tf2",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/util:deprecation",
@@ -194,6 +195,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:tf2",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/util:deprecation",
@@ -349,6 +351,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:tf2",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
@@ -365,6 +368,7 @@ py_strict_library(
         ":error_ops",
         ":parsing_ops",
         "//tensorflow/python:tf2",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
         "//tensorflow/python/data/ops:readers",
@@ -375,7 +379,7 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:experimental_dataset_ops_gen",
         "//tensorflow/python/ops:io_ops",
         "//tensorflow/python/platform:gfile",

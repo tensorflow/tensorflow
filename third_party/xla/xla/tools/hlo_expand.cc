@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/service/cholesky_expander.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_pass_pipeline.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/service/rng_bit_generator_expander.h"
 #include "xla/service/rng_expander.h"
 #include "xla/service/triangular_solve_expander.h"
@@ -53,6 +54,10 @@ void AddPassesToPipeline(HloExpandConfig& config, HloPassPipeline& pipeline) {
   }
   if (config.triangular_solve_expander) {
     pipeline.AddPass<xla::TriangularSolveExpander>();
+  }
+  if (config.verify_hlo) {
+    pipeline.AddPass<xla::HloVerifier>(/*layout_sensitive=*/false,
+                                       /*allow_mixed_precision=*/false);
   }
 }
 
@@ -101,7 +106,10 @@ std::vector<tsl::Flag> GetFlags(HloExpandConfig& config) {
                 &config.rng_bit_generator_three_fry_expander,
                 "Expands rng_bit_generator op using three_fry prng algorithm"),
       tsl::Flag("triangular_solve_expander", &config.triangular_solve_expander,
-                "Expands triangular_solve op")};
+                "Expands triangular_solve op"),
+      tsl::Flag("verify_hlo", &config.verify_hlo,
+                "Run HLO verifier after passes"),
+  };
 }
 
 void ParseCompoundFlags(HloExpandConfig& config) {

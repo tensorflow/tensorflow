@@ -1,11 +1,11 @@
 """Build rules for XLA testing."""
 
 load("//xla:xla.bzl", "xla_cc_test")
-load("//xla/tests:plugin.bzl", "plugins")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
+load("//xla/tests:plugin.bzl", "plugins")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
@@ -20,7 +20,7 @@ def xla_test(
         xla_test_library_deps = [],
         backends = [],
         disabled_backends = [],
-        real_hardware_only = False,
+        real_hardware_only = False,  # @unused, all backends are real hardware.
         args = [],
         tags = [],
         copts = [],
@@ -80,6 +80,7 @@ def xla_test(
         "gpu". If this list is empty, the test will be generated for all supported
         backends.
       disabled_backends: A list of backends to NOT generate tests for.
+      real_hardware_only: No-op.
       args: Test arguments for the target.
       tags: Tags for the target.
       copts: Additional copts to pass to the build.
@@ -90,9 +91,6 @@ def xla_test(
         use for that target.
       **kwargs: Additional keyword arguments to pass to native.cc_test.
     """
-
-    # All of the backends in all_backends are real hardware.
-    _ignore = [real_hardware_only]
 
     test_names = []
     if not backends:
@@ -112,10 +110,10 @@ def xla_test(
         this_backend_data = []
         if backend == "cpu":
             backend_deps = ["//xla/service:cpu_plugin"]
-            backend_deps += ["//xla/tests:test_macros_cpu"]
+            backend_deps += ["//xla/tests:test_macros_cpu"]  # buildifier: disable=list-append
         elif backend == "gpu":
             backend_deps = if_gpu_is_configured(["//xla/service:gpu_plugin"])
-            backend_deps += if_gpu_is_configured(["//xla/tests:test_macros_gpu"])
+            backend_deps += if_gpu_is_configured(["//xla/tests:test_macros_gpu"])  # buildifier: disable=list-append
             this_backend_tags += tf_gpu_tests_tags()
         elif backend in plugins:
             backend_deps = []
@@ -130,7 +128,7 @@ def xla_test(
 
         if xla_test_library_deps:
             for lib_dep in xla_test_library_deps:
-                backend_deps += ["%s_%s" % (lib_dep, backend)]
+                backend_deps += ["%s_%s" % (lib_dep, backend)]  # buildifier: disable=list-append
 
         xla_cc_test(
             name = test_name,
@@ -212,7 +210,16 @@ def xla_test_library(
             deps = deps + backend_deps,
         )
 
-def generate_backend_suites(backends = []):
+def generate_backend_suites(backends = []):  # buildifier: disable=unnamed-macro
+    """Generates test_suites containing all tests for each backend.
+
+    Generates test_suites of the form "${backend}_tests" containing all tests
+    matching that backend for all tests in the package the macro is called in.
+
+    Args:
+      backends: The list of backends to generate test_suites for.
+    """
+
     if not backends:
         backends = all_backends
     for backend in backends:
@@ -221,7 +228,12 @@ def generate_backend_suites(backends = []):
             tags = ["xla_%s" % backend, "-broken", "manual"],
         )
 
-def generate_backend_test_macros(backends = []):
+def generate_backend_test_macros(backends = []):  # buildifier: disable=unnamed-macro
+    """Generates test_macro libraries for each backend with correct options.
+
+    Args:
+      backends: The list of backends to generate libraries for.
+    """
     if not backends:
         backends = all_backends
     for backend in backends:

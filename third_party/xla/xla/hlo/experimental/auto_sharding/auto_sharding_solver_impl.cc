@@ -15,14 +15,15 @@ limitations under the License.
 
 #include <vector>
 
+#include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 #include "ortools/linear_solver/linear_solver.h"
 
-using MPSolver = operations_research::MPSolver;
-using MPVariable = operations_research::MPVariable;
-
 namespace xla {
 namespace spmd {
+
+using ::operations_research::MPSolver;
+using ::operations_research::MPVariable;
 
 MPVariable* CreateMakespanVar(const AutoShardingSolverRequest& request,
                               const std::vector<std::vector<MPVariable*>>& e,

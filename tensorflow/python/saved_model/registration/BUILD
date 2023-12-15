@@ -92,7 +92,7 @@ tf_py_strict_test(
         ":registration",
         ":test_util",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
     ],

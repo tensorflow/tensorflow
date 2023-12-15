@@ -81,6 +81,11 @@ struct SpmdPartitionerOptions {
   // Whether to skip checking the numbers and shardings of windowed einsum's
   // users.
   bool skip_checking_windowed_einsum_users = false;
+
+  // Enables windowed einsum for operand all-gather.
+  bool enable_windowed_einsum_for_all_gather = true;
+  // Enables windowed einsum for result reduce-scatter.
+  bool enable_windowed_einsum_for_reduce_scatter = true;
 };
 
 // Class to wrap the computation builder to capture information during SPMD
@@ -605,6 +610,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
       std::vector<std::vector<int64_t>>& groups);
 
   const CallGraph& call_graph() { return call_graph_; }
+  int64_t num_partitions() const { return num_partitions_; }
 
   // Information about a loop created for windowed dot-general. Used when
   // DoCodeMotionForWindowedDotGeneralLoops() executes after the visitor

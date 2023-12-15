@@ -835,6 +835,11 @@ class ShapeInference {
   // Returns whether it was able to compute constant values.
   LogicalResult TryToFold(Operation* op);
 
+  // Forcely assign operand types to result types (the i-th operand type will
+  // assign to i-th result type). Returns true if anything is changed.
+  bool ForceTypeForPassThroughOperands(Operation* op, OperandRange operands,
+                                       ResultRange results);
+
   // Makes result types match the operand types (the i-th result type will
   // match the i-th operand type). Returns true if anything is changed.
   bool RefineTypeForPassThroughOperands(Operation* op, OperandRange operands,
@@ -1202,10 +1207,6 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
     // Lazily parse XlaCallModule's embedded HLO module and cache the loader to
     // avoid repeatedly parsing the module.
 
-    std::vector<std::string> dim_args_spec;
-    for (auto attr : op.getDimArgsSpec().getAsRange<StringAttr>()) {
-      dim_args_spec.push_back(attr.getValue().str());
-    }
     std::vector<std::string> disabled_checks;
     for (auto attr : op.getDisabledChecks().getAsRange<StringAttr>()) {
       disabled_checks.push_back(attr.getValue().str());
@@ -1229,8 +1230,8 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
 
     auto l = tensorflow::XlaCallModuleLoader::Create(
         &xla_call_module_context_, op.getVersion(), op.getModule().str(),
-        std::move(dim_args_spec), std::move(disabled_checks),
-        std::move(platforms), std::move(loading_platform),
+        std::move(disabled_checks), std::move(platforms),
+        std::move(loading_platform),
         /*num_invocation_args=*/op.getArgs().size(),
         op.getHasTokenInputOutput());
     if (!l.ok()) {
@@ -1261,7 +1262,7 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
 
   bool changed = false;
   for (auto [result, type] :
-       llvm::zip(op.getResults(), loader->output_types())) {
+       llvm::zip(op.getResults(), loader->OutputTypes())) {
     auto ranked = type.dyn_cast<RankedTensorType>();
     if (ranked == nullptr) {
       LLVM_DEBUG(llvm::dbgs()
@@ -1895,7 +1896,8 @@ bool ShapeInference::InferShapeForXlaSelectAndScatterOp(
 
 bool ShapeInference::InferShapeForXlaGatherOp(XlaGatherOp op) {
   xla::Shape input_shape = xla::TypeToShape(op.getOperand().getType());
-  if (input_shape == xla::Shape()) return false;
+  if (input_shape == xla::Shape() || input_shape.is_unbounded_dynamic())
+    return false;
 
   xla::Shape start_indices_shape =
       xla::TypeToShape(op.getStartIndices().getType());
@@ -2292,6 +2294,23 @@ ShapeHandle ShapeInference::ComputeOutputAsShape(OpResult result,
   return ic->MakeShape(dims);
 }
 
+bool ShapeInference::ForceTypeForPassThroughOperands(Operation* op,
+                                                     OperandRange operands,
+                                                     ResultRange results) {
+  bool changed = false;
+  for (auto entry : llvm::zip(operands, results)) {
+    Type operand_type = std::get<0>(entry).getType();
+    Value result = std::get<1>(entry);
+    TensorType result_type = dyn_cast<TensorType>(result.getType());
+    if (result_type == operand_type) continue;
+
+    if (!UpdateTypeAndInsertIncompatibleUseCasts(operand_type, result))
+      continue;
+    changed = true;
+  }
+  return changed;
+}
+
 bool ShapeInference::RefineTypeForPassThroughOperands(Operation* op,
                                                       OperandRange operands,
                                                       ResultRange results) {
@@ -2327,14 +2346,14 @@ bool ShapeInference::RefineShapeForPassThroughOps(Operation* op) {
 
 bool ShapeInference::InferShapeForNonTFDialectOperation(Operation* op) {
   if (auto graph_op = dyn_cast<tf_executor::GraphOp>(op)) {
-    return RefineTypeForPassThroughOperands(graph_op.GetFetch(),
-                                            graph_op.GetFetch().getFetches(),
-                                            op->getResults());
+    return ForceTypeForPassThroughOperands(graph_op.GetFetch(),
+                                           graph_op.GetFetch().getFetches(),
+                                           op->getResults());
   }
   if (auto island_op = dyn_cast<tf_executor::IslandOp>(op)) {
-    return RefineTypeForPassThroughOperands(island_op.GetYield(),
-                                            island_op.GetYield().getFetches(),
-                                            op->getResults());
+    return ForceTypeForPassThroughOperands(island_op.GetYield(),
+                                           island_op.GetYield().getFetches(),
+                                           op->getResults());
   }
   if (auto iter_sink = dyn_cast<tf_executor::NextIterationSinkOp>(op)) {
     auto iter_source = cast<tf_executor::NextIterationSourceOp>(

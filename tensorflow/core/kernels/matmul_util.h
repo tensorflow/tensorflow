@@ -23,17 +23,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "tensorflow/core/framework/types.h"
 #include "tsl/platform/types.h"
-
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_blas_lt.h"
-#endif
-
-#if TF_HIPBLASLT
-#include "xla/stream_executor/rocm/hip_blas_lt.h"
-#define CUDA_R_32F HIPBLAS_R_32F
-#endif
 
 namespace tensorflow {
 
@@ -58,6 +50,12 @@ struct BlasLtMatmulPlanParams {
   se::gpu::BlasLt::Epilogue epilogue = se::gpu::BlasLt::Epilogue::kDefault;
 };
 
+struct PlanAndAlgorithms {
+  se::gpu::BlasLt::MatmulPlanPtr plan;
+  std::vector<se::gpu::BlasLt::MatmulAlgorithm> algorithms;
+  se::blas::DataType scale_type;  // this is needed for half / bf16 treatment
+};
+
 namespace internal {
 
 inline auto AsTuple(const BlasLtMatmulPlanParams& p) {
@@ -73,61 +71,33 @@ H AbslHashValue(H h, const BlasLtMatmulPlanParams& params) {
   return H::combine(std::move(h), internal::AsTuple(params));
 }
 
-struct PlanAndAlgorithms {
-  se::gpu::BlasLt::MatmulPlan plan;
-  std::vector<se::gpu::BlasLt::MatmulAlgorithm> algorithms;
-};
-
-// Thread-safe map from matmul parameters to their corresponding plan and
-// algorithms.
-class BlasLtMatmulPlanMap {
- public:
-  const PlanAndAlgorithms* Find(const BlasLtMatmulPlanParams& params) const;
-  const PlanAndAlgorithms* Insert(const BlasLtMatmulPlanParams& params,
-                                  PlanAndAlgorithms value);
-
-  mutable absl::Mutex mu_;
-
- private:
-  absl::flat_hash_map<BlasLtMatmulPlanParams, PlanAndAlgorithms>
-      params_plan_map_ ABSL_GUARDED_BY(mu_);
-};
-
-StatusOr<se::blas::ComputationType> GetBlasComputationType(
-    const DataType& dtype);
-
 StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
     se::Stream* stream, const BlasLtMatmulPlanParams& params, absl::Mutex** pmu,
     std::optional<int> max_algorithm_count = std::nullopt);
 
 template <typename T>
-Status DoBlasLtMatmul(se::Stream* stream,
-                      const se::gpu::BlasLt::MatmulPlan& plan,
+Status DoBlasLtMatmul(se::Stream* stream, const PlanAndAlgorithms& paa,
                       const se::DeviceMemory<T>& a,
                       const se::DeviceMemory<T>& b, se::DeviceMemory<T>& c,
-                      const se::gpu::BlasLt::MatmulAlgorithm& algorithm,
-                      se::ScratchAllocator& scratch_allocator,
+                      size_t alg_idx, se::ScratchAllocator& scratch_allocator,
                       const se::DeviceMemory<T>& bias = {},
                       se::blas::ProfileResult* profile_result = nullptr) {
-  se::gpu::BlasLt* blas_lt = se::gpu::GetBlasLt(stream);
-  // TF_RET_CHECK(blas_lt != nullptr);
-
   se::DeviceMemory<T> aux{};  // We don't use the auxilary buffers.
+  const auto& algorithm = paa.algorithms[alg_idx];
 
   // The scale type may be f32 if the data type is f16 and bf16.
   if constexpr (std::is_same_v<T, Eigen::half> ||
                 std::is_same_v<T, Eigen::bfloat16>) {
-    if (plan.op_desc.scale_type() == CUDA_R_32F) {
-      return blas_lt->DoMatmul(stream, plan, se::HostOrDeviceScalar<float>(1.0),
-                               b, a, se::HostOrDeviceScalar<float>(0.0), c, c,
-                               algorithm, scratch_allocator, bias, aux,
-                               profile_result);
+    if (paa.scale_type == se::blas::DataType::kFloat) {
+      return paa.plan->DoMatmul(stream, se::HostOrDeviceScalar<float>(1.0), b,
+                                a, se::HostOrDeviceScalar<float>(0.0), c, c,
+                                algorithm, scratch_allocator, bias, aux,
+                                profile_result);
     }
   }
-  return blas_lt->DoMatmul(stream, plan, se::HostOrDeviceScalar<T>(T(1.0)), b,
-                           a, se::HostOrDeviceScalar<T>(T(0.0)), c, c,
-                           algorithm, scratch_allocator, bias, aux,
-                           profile_result);
+  return paa.plan->DoMatmul(stream, se::HostOrDeviceScalar<T>(T(1.0)), b, a,
+                            se::HostOrDeviceScalar<T>(T(0.0)), c, c, algorithm,
+                            scratch_allocator, bias, aux, profile_result);
 }
 
 }  // namespace tensorflow

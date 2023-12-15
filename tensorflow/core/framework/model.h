@@ -24,6 +24,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 // TODO(b/114492873): Move this include into core/platform.
+#include <optional>
 #include <thread>  // NOLINT
 #include <utility>
 #include <vector>
@@ -408,7 +409,7 @@ class Node {
 
   // Returns the node output.
   Node* output() const { return output_; }
-  bool output_deleted() { return output_weak_ptr_.expired(); }
+  std::shared_ptr<Node> output_shared() { return output_weak_ptr_.lock(); }
 
   // Returns the parameter value.
   double parameter_value(const string& name) const TF_LOCKS_EXCLUDED(mu_) {
@@ -946,7 +947,8 @@ class Model {
   // invoke `cancellation_mgr->StartCancel()`.
   Status OptimizeLoop(AutotuneAlgorithm algorithm,
                       std::function<int64_t()> cpu_budget_func,
-                      std::function<int64_t(int64_t)> ram_budget_func,
+                      double ram_budget_share,
+                      std::optional<int64_t> fixed_ram_budget,
                       RamBudgetManager& ram_budget_manager,
                       CancellationManager* cancellation_manager);
 
@@ -954,7 +956,8 @@ class Model {
   // optimization.
   void Optimize(AutotuneAlgorithm algorithm,
                 std::function<int64_t()> cpu_budget_func,
-                std::function<int64_t(int64_t)> ram_budget_func,
+                double ram_budget_share,
+                std::optional<int64_t> fixed_ram_budget,
                 double model_input_time, RamBudgetManager& ram_budget_manager,
                 CancellationManager* cancellation_manager);
 
@@ -1183,6 +1186,8 @@ class Model {
   std::shared_ptr<Node> snapshot_ TF_GUARDED_BY(mu_);
   // Stores the optimization parameters used by autotune.
   OptimizationParams optimization_params_ TF_GUARDED_BY(mu_);
+  // Stores the model id in the string format
+  std::string model_id_;
 };
 
 // Class to compute timing information for a model.

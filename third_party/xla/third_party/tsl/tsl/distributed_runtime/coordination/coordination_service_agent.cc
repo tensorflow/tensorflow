@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -92,29 +93,27 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   Status Shutdown() override;
   Status Reset() override;
 
-  StatusOr<std::string> GetKeyValue(const std::string& key) override;
+  StatusOr<std::string> GetKeyValue(std::string_view key) override;
   StatusOr<std::string> GetKeyValue(const char* key, int64_t key_size) override;
-  StatusOr<std::string> GetKeyValue(const std::string& key,
+  StatusOr<std::string> GetKeyValue(std::string_view key,
                                     absl::Duration timeout) override;
   std::shared_ptr<CallOptions> GetKeyValueAsync(
-      const std::string& key, StatusOrValueCallback done) override;
-  StatusOr<std::string> TryGetKeyValue(const std::string& key) override;
+      std::string_view key, StatusOrValueCallback done) override;
+  StatusOr<std::string> TryGetKeyValue(std::string_view key) override;
   StatusOr<std::vector<KeyValueEntry>> GetKeyValueDir(
-      const std::string& key) override;
-  void GetKeyValueDirAsync(const std::string& key,
+      std::string_view key) override;
+  void GetKeyValueDirAsync(std::string_view key,
                            StatusOrValueDirCallback done) override;
-  Status InsertKeyValue(const std::string& key,
-                        const std::string& value) override;
+  Status InsertKeyValue(std::string_view key, std::string_view value) override;
   Status InsertKeyValue(const char* key, int64_t key_size, const char* value,
                         int64_t value_size) override;
-  Status DeleteKeyValue(const std::string& key) override;
+  Status DeleteKeyValue(std::string_view key) override;
   Status DeleteKeyValue(const char* key, int64_t key_size) override;
-  Status UpdateKeyValue(const std::string& key,
-                        const std::string& value) override;
+  Status UpdateKeyValue(std::string_view key, std::string_view value) override;
 
-  Status StartWatchKey(const std::string& key,
+  Status StartWatchKey(std::string_view key,
                        ChangedKeyValuesCallback on_change) override;
-  Status StopWatchKey(const std::string& key) override;
+  Status StopWatchKey(std::string_view key) override;
   Status WaitAtBarrier(const std::string& barrier_id, absl::Duration timeout,
                        const std::vector<CoordinatedTask>& tasks) override;
   void WaitAtBarrierAsync(const std::string& barrier_id, absl::Duration timeout,
@@ -128,7 +127,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
 
  protected:
   void SetError(const Status& error) override;
-  Status ActivateWatch(const std::string& key,
+  Status ActivateWatch(std::string_view key,
                        const std::map<std::string, std::string>&) override;
   // Returns an error if agent is not running. If `allow_disconnected` is true,
   // returns OK even if the agent is in DISCONNECTED state.
@@ -567,17 +566,17 @@ Status CoordinationServiceAgentImpl::Reset() {
 }
 
 StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
-    const std::string& key) {
+    std::string_view key) {
   return GetKeyValue(key, /*timeout=*/absl::InfiniteDuration());
 }
 
 StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
     const char* key, int64_t key_size) {
-  return GetKeyValue(std::string(key, key_size));
+  return GetKeyValue(std::string_view(key, key_size));
 }
 
 StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
-    const std::string& key, absl::Duration timeout) {
+    std::string_view key, absl::Duration timeout) {
   auto n = std::make_shared<absl::Notification>();
   auto result = std::make_shared<StatusOr<std::string>>();
   GetKeyValueAsync(key,
@@ -597,9 +596,9 @@ StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
 }
 
 std::shared_ptr<CallOptions> CoordinationServiceAgentImpl::GetKeyValueAsync(
-    const std::string& key, StatusOrValueCallback done) {
+    std::string_view key, StatusOrValueCallback done) {
   auto request = std::make_shared<GetKeyValueRequest>();
-  request->set_key(key);
+  request->set_key(key.data(), key.size());
   VLOG(3) << "GetKeyValueRequest: " << request->DebugString();
   auto response = std::make_shared<GetKeyValueResponse>();
   auto call_opts = std::make_shared<CallOptions>();
@@ -633,33 +632,31 @@ std::shared_ptr<CallOptions> CoordinationServiceAgentImpl::GetKeyValueAsync(
 }
 
 StatusOr<std::string> CoordinationServiceAgentImpl::TryGetKeyValue(
-    const std::string& key) {
+    std::string_view key) {
   absl::Notification n;
   StatusOr<std::string> result;
   TryGetKeyValueRequest request;
-  request.set_key(key);
+  request.set_key(key.data(), key.size());
   VLOG(3) << "TryGetKeyValueRequest: " << request.DebugString();
   TryGetKeyValueResponse response;
-  leader_client_->TryGetKeyValueAsync(&request, &response,
-                                      [&](const Status& s) {
-                                        if (s.ok()) {
-                                          result = response.kv().value();
-                                          VLOG(3) << "TryGetKeyValueResponse: "
-                                                  << result.value();
-                                        } else {
-                                          result = s;
-                                          VLOG(3) << "TryGetKeyValueResponse: "
-                                                  << s;
-                                        }
-                                        n.Notify();
-                                      });
+  leader_client_->TryGetKeyValueAsync(
+      &request, &response, [&](const Status& s) {
+        if (s.ok()) {
+          result = response.kv().value();
+          VLOG(3) << "TryGetKeyValueResponse: " << result.value();
+        } else {
+          result = s;
+          VLOG(3) << "TryGetKeyValueResponse: " << s;
+        }
+        n.Notify();
+      });
   n.WaitForNotification();
 
   return result;
 }
 
 StatusOr<std::vector<KeyValueEntry>>
-CoordinationServiceAgentImpl::GetKeyValueDir(const std::string& key) {
+CoordinationServiceAgentImpl::GetKeyValueDir(std::string_view key) {
   absl::Notification n;
   StatusOr<std::vector<KeyValueEntry>> result;
   GetKeyValueDirAsync(
@@ -673,9 +670,9 @@ CoordinationServiceAgentImpl::GetKeyValueDir(const std::string& key) {
 }
 
 void CoordinationServiceAgentImpl::GetKeyValueDirAsync(
-    const std::string& key, StatusOrValueDirCallback done) {
+    std::string_view key, StatusOrValueDirCallback done) {
   auto request = std::make_shared<GetKeyValueDirRequest>();
-  request->set_directory_key(key);
+  request->set_directory_key(key.data(), key.size());
   VLOG(3) << "GetKeyValueDirRequest: " << request->DebugString();
   auto response = std::make_shared<GetKeyValueDirResponse>();
   leader_client_->GetKeyValueDirAsync(
@@ -694,8 +691,8 @@ void CoordinationServiceAgentImpl::GetKeyValueDirAsync(
       });
 }
 
-Status CoordinationServiceAgentImpl::InsertKeyValue(const std::string& key,
-                                                    const std::string& value) {
+Status CoordinationServiceAgentImpl::InsertKeyValue(std::string_view key,
+                                                    std::string_view value) {
   InsertKeyValueRequest request;
   request.mutable_kv()->set_key(key.data(), key.size());
   request.mutable_kv()->set_value(value.data(), value.size());
@@ -717,13 +714,13 @@ Status CoordinationServiceAgentImpl::InsertKeyValue(const char* key,
                                                     int64_t key_size,
                                                     const char* value,
                                                     int64_t value_size) {
-  return InsertKeyValue(std::string(key, key_size),
-                        std::string(value, value_size));
+  return InsertKeyValue(std::string_view(key, key_size),
+                        std::string_view(value, value_size));
 }
 
-Status CoordinationServiceAgentImpl::DeleteKeyValue(const std::string& key) {
+Status CoordinationServiceAgentImpl::DeleteKeyValue(std::string_view key) {
   DeleteKeyValueRequest request;
-  request.set_key(key);
+  request.set_key(key.data(), key.size());
   request.set_is_directory(true);
   VLOG(3) << "DeleteKeyValueRequest: " << request.DebugString();
   DeleteKeyValueResponse response;
@@ -741,23 +738,23 @@ Status CoordinationServiceAgentImpl::DeleteKeyValue(const std::string& key) {
 
 Status CoordinationServiceAgentImpl::DeleteKeyValue(const char* key,
                                                     int64_t key_size) {
-  return DeleteKeyValue(std::string(key, key_size));
+  return DeleteKeyValue(std::string_view(key, key_size));
 }
 
-Status CoordinationServiceAgentImpl::UpdateKeyValue(const std::string& key,
-                                                    const std::string& value) {
+Status CoordinationServiceAgentImpl::UpdateKeyValue(std::string_view key,
+                                                    std::string_view value) {
   return MakeCoordinationError(errors::Unimplemented(
       "CoordinationServiceAgent::UpdateKeyValue is not implemented."));
 }
 
 Status CoordinationServiceAgentImpl::StartWatchKey(
-    const std::string& key,
+    std::string_view key,
     CoordinationServiceAgentImpl::ChangedKeyValuesCallback on_change) {
   return MakeCoordinationError(errors::Unimplemented(
       "CoordinationServiceAgent::StartWatchKey is not implemented."));
 }
 
-Status CoordinationServiceAgentImpl::StopWatchKey(const std::string& key) {
+Status CoordinationServiceAgentImpl::StopWatchKey(std::string_view key) {
   return MakeCoordinationError(errors::Unimplemented(
       "CoordinationServiceAgent::StopWatchKey is not implemented."));
 }
@@ -774,7 +771,7 @@ void CoordinationServiceAgentImpl::SetError(const Status& error) {
 }
 
 Status CoordinationServiceAgentImpl::ActivateWatch(
-    const std::string& key, const std::map<std::string, std::string>& kvs) {
+    std::string_view key, const std::map<std::string, std::string>& kvs) {
   return MakeCoordinationError(errors::Unimplemented(
       "CoordinationServiceAgent::ActivateWatch is not implemented."));
 }

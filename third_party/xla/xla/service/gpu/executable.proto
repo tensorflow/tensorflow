@@ -28,9 +28,6 @@ message XlaRuntimeGpuExecutableProto {
 
   XlaRuntimeExecutableProto xla_runtime_executable = 1;
 
-  // XLA-specific attributes of the executable's entry function.
-  EntryFunctionAttributes entry_func_attrs = 2;
-
   // PTX for the compiled GPU kernels.
   string gpu_asm_text = 3;
 
@@ -39,4 +36,11 @@ message XlaRuntimeGpuExecutableProto {
 
   // Constants required by the serialized executable.
   repeated ConstantInfoProto constants = 5;
+}
+
+message CompilationResultProto {
+  HloModuleProto hlo_module = 1;
+  BufferAssignmentProto buffer_assignment = 2;
+  string asm_text = 3;
+  bytes binary = 4;
 }

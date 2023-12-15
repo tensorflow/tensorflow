@@ -1149,6 +1149,18 @@ void GraphConstructor::PrintCycles() {
   }
 }
 
+FunctionDefLibraryStackTraces
+GraphConstructor::CreateStackTracesForFunctionDefLibrary(
+    const FunctionDefLibrary& library) const {
+  if (debug_info() == nullptr) {
+    FunctionDefLibraryStackTraces library_traces;
+    return library_traces;
+  } else {
+    return FunctionLibraryDefinition::CreateStackTracesForFunctionDefLibrary(
+        library, *debug_info());
+  }
+}
+
 Status GraphConstructor::Convert() {
   if (debug_info() != nullptr) {
     traces_ = LoadTracesFromDebugInfo(*debug_info());

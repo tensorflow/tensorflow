@@ -86,6 +86,7 @@ cc_library(
         ":host_platform_id",
         ":host_stream",
         "//xla/stream_executor",
+        "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:stream_executor_internal",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings",

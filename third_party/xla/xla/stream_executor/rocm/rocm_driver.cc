@@ -44,17 +44,17 @@ static constexpr bool FLAGS_gpuexec_rocm_driver_inject_init_error = false;
 static constexpr bool FLAGS_gpuexec_rocm_sync_around_driver_calls = false;
 static constexpr bool FLAGS_gpuexec_rocm_device_0_only = false;
 
-#define RETURN_IF_ROCM_ERROR(expr, ...)                                       \
-  do {                                                                        \
-    hipError_t _res = (expr);                                                 \
-    if (TF_PREDICT_FALSE(_res != hipSuccess)) {                               \
-      if (_res == hipErrorOutOfMemory)                                        \
-        return tsl::errors::ResourceExhausted(                                \
-            __VA_ARGS__, ":", ::stream_executor::gpu::ToString(_res));        \
-      else                                                                    \
-        return tsl::errors::Internal(__VA_ARGS__, ": ",                       \
-                                     ::stream_executor::gpu::ToString(_res)); \
-    }                                                                         \
+#define RETURN_IF_ROCM_ERROR(expr, ...)                                  \
+  do {                                                                   \
+    hipError_t _res = (expr);                                            \
+    if (TF_PREDICT_FALSE(_res != hipSuccess)) {                          \
+      if (_res == hipErrorOutOfMemory)                                   \
+        return absl::ResourceExhaustedError(absl::StrCat(                \
+            __VA_ARGS__, ":", ::stream_executor::gpu::ToString(_res)));  \
+      else                                                               \
+        return absl::InternalError(absl::StrCat(                         \
+            __VA_ARGS__, ": ", ::stream_executor::gpu::ToString(_res))); \
+    }                                                                    \
   } while (0)
 
 #define FAIL_IF_ROCM_ERROR(expr, ...)                       \
@@ -337,9 +337,9 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
 
   unsigned int former_primary_context_flags;
   int former_primary_context_is_active;
-  CHECK_EQ(hipSuccess,
-           hipDevicePrimaryCtxGetState(device, &former_primary_context_flags,
-                                       &former_primary_context_is_active));
+  CHECK_EQ(hipSuccess, wrap::hipDevicePrimaryCtxGetState(
+                           device, &former_primary_context_flags,
+                           &former_primary_context_is_active));
   if (former_primary_context_flags != flags) {
     if (former_primary_context_is_active) {
       LOG(ERROR)
@@ -347,15 +347,15 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
           << former_primary_context_flags << ") than the desired flag set ("
           << flags << ").";
     } else {
-      CHECK_EQ(hipSuccess, hipDevicePrimaryCtxSetFlags(device, flags));
+      CHECK_EQ(hipSuccess, wrap::hipDevicePrimaryCtxSetFlags(device, flags));
     }
   }
 
   former_context = rocm::CurrentContextOrDie();
-  res = hipDevicePrimaryCtxRetain(&new_context, device);
+  res = wrap::hipDevicePrimaryCtxRetain(&new_context, device);
   if (former_context != nullptr) {
     hipDevice_t former_device;
-    if (hipCtxGetDevice(&former_device) == hipSuccess) {
+    if (wrap::hipCtxGetDevice(&former_device) == hipSuccess) {
       if (former_device == device) {
         if (former_context == new_context) {
           VLOG(2) << "The primary context " << former_context << " for device "
@@ -374,7 +374,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
                  << former_context;
     }
   }
-  CHECK_EQ(hipSuccess, hipCtxSetCurrent(former_context));
+  CHECK_EQ(hipSuccess, wrap::hipCtxSetCurrent(former_context));
 
   if (res == hipSuccess) {
     *context = CreatedContexts::Add(new_context, device_ordinal);
@@ -404,12 +404,12 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
     return;
   }
   hipCtx_t former_context = CurrentContext();
-  hipError_t res = hipCtxSetCurrent(context->context());
+  hipError_t res = wrap::hipCtxSetCurrent(context->context());
   hipDevice_t device;
-  CHECK_EQ(hipSuccess, hipCtxGetDevice(&device));
-  CHECK_EQ(hipSuccess, hipCtxSetCurrent(former_context));
+  CHECK_EQ(hipSuccess, wrap::hipCtxGetDevice(&device));
+  CHECK_EQ(hipSuccess, wrap::hipCtxSetCurrent(former_context));
 
-  res = hipDevicePrimaryCtxRelease(device);
+  res = wrap::hipDevicePrimaryCtxRelease(device);
 
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to release HIP context; leaking: " << ToString(res);
@@ -432,8 +432,12 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
 
 /* static */ tsl::Status GpuDriver::FuncSetCacheConfig(
     hipFunction_t function, hipFuncCache_t cache_config) {
-  RETURN_IF_ROCM_ERROR(wrap::hipFuncSetCacheConfig(function, cache_config),
-                       "Failed to set ROCM kernel cache config.");
+  // NOTE: this function is only available for in-process GPU kernels:
+  // https://rocm.docs.amd.com/projects/HIP/en/latest/.doxygen/docBin/html/group___execution.html#gafdb33ef569eb89808fc5178d04b508ba
+  // but it is no-op for the current HIP release !
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipFuncSetCacheConfig((const void*)function, cache_config),
+      "Failed to set ROCM kernel cache config.");
   return tsl::OkStatus();
 }
 
@@ -456,7 +460,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 
 /* static */ tsl::Status GpuDriver::CreateGraph(hipGraph_t* graph) {
   VLOG(2) << "Create new HIP graph";
-  RETURN_IF_ROCM_ERROR(hipGraphCreate(graph, /*flags=*/0),
+  RETURN_IF_ROCM_ERROR(wrap::hipGraphCreate(graph, /*flags=*/0),
                        "Failed to create HIP graph");
   VLOG(2) << "Created HIP graph " << *graph;
   return ::tsl::OkStatus();
@@ -464,7 +468,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 
 /* static */ tsl::Status GpuDriver::DestroyGraph(hipGraph_t graph) {
   VLOG(2) << "Destroy HIP graph " << graph;
-  RETURN_IF_ROCM_ERROR(hipGraphDestroy(graph), "Failed to destroy HIP graph");
+  RETURN_IF_ROCM_ERROR(wrap::hipGraphDestroy(graph),
+                       "Failed to destroy HIP graph");
   return ::tsl::OkStatus();
 }
 
@@ -497,7 +502,7 @@ static std::string_view StreamCaptureModeToString(
 
   VLOG(2) << "Beging stream " << stream << " capture in "
           << StreamCaptureModeToString(mode) << " mode";
-  RETURN_IF_ROCM_ERROR(hipStreamBeginCapture(stream, hip_mode),
+  RETURN_IF_ROCM_ERROR(wrap::hipStreamBeginCapture(stream, hip_mode),
                        "Failed to begin stream capture");
   return ::tsl::OkStatus();
 }
@@ -506,7 +511,7 @@ static std::string_view StreamCaptureModeToString(
                                                      hipGraph_t* graph) {
   VLOG(2) << "End stream " << stream << " capture";
 
-  RETURN_IF_ROCM_ERROR(hipStreamEndCapture(stream, graph),
+  RETURN_IF_ROCM_ERROR(wrap::hipStreamEndCapture(stream, graph),
                        "Failed to end stream capture");
 
   return ::tsl::OkStatus();
@@ -520,8 +525,9 @@ static std::string_view StreamCaptureModeToString(
           << "device_launch=" << flags.device_launch << ", "
           << "use_node_priority=" << flags.use_node_prirotiy << ", "
           << "upload=" << flags.upload << ")";
-  RETURN_IF_ROCM_ERROR(hipGraphInstantiate(exec, graph, nullptr, nullptr, 0),
-                       "Failed to instantiate HIP graph");
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipGraphInstantiate(exec, graph, nullptr, nullptr, 0),
+      "Failed to instantiate HIP graph");
   return ::tsl::OkStatus();
 }
 
@@ -529,7 +535,7 @@ static std::string_view StreamCaptureModeToString(
                                                 GpuStreamHandle stream) {
   VLOG(2) << "Launching HIP executable graph " << exec << " on a stream "
           << stream;
-  RETURN_IF_ROCM_ERROR(hipGraphLaunch(exec, stream),
+  RETURN_IF_ROCM_ERROR(wrap::hipGraphLaunch(exec, stream),
                        "Failed to launch HIP graph");
   return ::tsl::OkStatus();
 }
@@ -540,7 +546,8 @@ static std::string_view StreamCaptureModeToString(
 
   hipGraphExecUpdateResult hip_result = hipGraphExecUpdateError;
   hipGraphNode_t error_node = nullptr;
-  auto hip_error = hipGraphExecUpdate(exec, graph, &error_node, &hip_result);
+  auto hip_error =
+      wrap::hipGraphExecUpdate(exec, graph, &error_node, &hip_result);
 
   if (error_node) {
     result->error_node = error_node;
@@ -580,7 +587,7 @@ static std::string_view StreamCaptureModeToString(
 
 /* static */ tsl::Status GpuDriver::DestroyGraphExec(hipGraphExec_t exec) {
   VLOG(2) << "Destroying HIP executable graph" << exec;
-  RETURN_IF_ROCM_ERROR(hipGraphExecDestroy(exec),
+  RETURN_IF_ROCM_ERROR(wrap::hipGraphExecDestroy(exec),
                        "Failed to destroy HIP graph");
   return ::tsl::OkStatus();
 }
@@ -631,7 +638,7 @@ GpuDriver::GraphNodeGetType(hipGraphNode_t node) {
   VLOG(2) << "Print HIP graph " << graph << " debug dot file to " << path;
 
   int flags = hipGraphDebugDotFlagsVerbose;
-  RETURN_IF_ROCM_ERROR(hipGraphDebugDotPrint(graph, path, flags),
+  RETURN_IF_ROCM_ERROR(wrap::hipGraphDebugDotPrint(graph, path, flags),
                        "Failed to print gpu graph debug file");
 
   if (VLOG_IS_ON(100)) {
@@ -646,15 +653,41 @@ GpuDriver::GraphNodeGetType(hipGraphNode_t node) {
   return ::tsl::OkStatus();
 }
 
+/* static */ tsl::Status GpuDriver::DeviceGraphMemTrim(GpuDeviceHandle device) {
+  VLOG(2) << "Trim ROCM device graph memory " << device;
+  RETURN_IF_ROCM_ERROR(wrap::hipDeviceGraphMemTrim(device),
+                       "Failed to trim device graph memory");
+  return tsl::OkStatus();
+}
+
 /* static */ tsl::StatusOr<bool> GpuDriver::StreamIsCapturing(
     GpuStreamHandle stream) {
   VLOG(2) << "Checking if stream " << stream << " is capturing";
 
   hipStreamCaptureStatus status;
-  RETURN_IF_ROCM_ERROR(hipStreamIsCapturing(stream, &status),
+  RETURN_IF_ROCM_ERROR(wrap::hipStreamIsCapturing(stream, &status),
                        "Failed to check stream capturing status");
 
   return status == hipStreamCaptureStatusActive;
+}
+
+/* static */ tsl::Status GpuDriver::GraphConditionalHandleCreate(
+    GpuGraphConditionalHandle* handle, hipGraph_t graph, GpuContext* context,
+    unsigned int default_launch_value, unsigned int flags) {
+  VLOG(2) << "Create conditional handle for a graph " << graph
+          << "; context: " << context
+          << "; default_launch_value: " << default_launch_value
+          << "; flags: " << flags;
+
+  return absl::UnimplementedError(
+      "HIP graph conditional nodes are not implemented yet");
+}
+
+/* static */ tsl::StatusOr<GpuDriver::GpuGraphNodeResult>
+GpuDriver::GraphAddNode(hipGraphNode_t* node, hipGraph_t graph,
+                        absl::Span<hipGraphNode_t> deps,
+                        const GpuGraphNodeParams& params) {
+  return absl::UnimplementedError("unsupported node type");
 }
 
 /* static */ tsl::Status GpuDriver::GraphAddKernelNode(
@@ -686,25 +719,317 @@ GpuDriver::GraphNodeGetType(hipGraphNode_t node) {
 
   if (shared_mem_bytes != 0) {
     RETURN_IF_ROCM_ERROR(
-        hipFuncSetAttribute(function,
-                            hipFuncAttributeMaxDynamicSharedMemorySize,
-                            shared_mem_bytes),
+        wrap::hipFuncSetAttribute(function,
+                                  hipFuncAttributeMaxDynamicSharedMemorySize,
+                                  shared_mem_bytes),
         "Failed to set shared memory size");
   }
 
-  RETURN_IF_ROCM_ERROR(
-      hipGraphAddKernelNode(node, graph, deps.data(), deps.size(), &params),
-      "Failed to add kernel node to a HIP graph");
+  RETURN_IF_ROCM_ERROR(wrap::hipGraphAddKernelNode(node, graph, deps.data(),
+                                                   deps.size(), &params),
+                       "Failed to add kernel node to a HIP graph");
 
   return ::tsl::OkStatus();
 }
 
+/*static*/ tsl::Status GpuDriver::GraphExecKernelNodeSetParams(
+    GpuGraphExecHandle exec, GpuGraphNodeHandle node,
+    absl::string_view kernel_name, GpuFunctionHandle function,
+    unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
+    unsigned int block_dim_x, unsigned int block_dim_y,
+    unsigned int block_dim_z, unsigned int shared_mem_bytes,
+    void** kernel_params, void** extra) {
+  VLOG(2) << "Set kernel node params " << node << " in graph executabe " << exec
+          << "; kernel: " << kernel_name << "; gdx: " << grid_dim_x
+          << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
+          << " bdx: " << block_dim_x << " bdy: " << block_dim_y
+          << " bdz: " << block_dim_z << "; shmem: " << shared_mem_bytes;
+
+  hipKernelNodeParams params;
+  memset(&params, 0, sizeof(params));
+
+  params.func = function;
+  params.gridDim.x = grid_dim_x;
+  params.gridDim.y = grid_dim_y;
+  params.gridDim.z = grid_dim_z;
+  params.blockDim.x = block_dim_x;
+  params.blockDim.y = block_dim_y;
+  params.blockDim.z = block_dim_z;
+  params.sharedMemBytes = shared_mem_bytes;
+  params.kernelParams = kernel_params;
+  params.extra = extra;
+
+  if (shared_mem_bytes != 0) {
+    RETURN_IF_ROCM_ERROR(
+        wrap::hipFuncSetAttribute(function,
+                                  hipFuncAttributeMaxDynamicSharedMemorySize,
+                                  shared_mem_bytes),
+        "Failed to set shared memory size");
+  }
+
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipGraphExecKernelNodeSetParams(exec, node, &params),
+      "Failed to set HIP graph kernel node params");
+
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::GraphAddChildNode(
+    hipGraphNode_t* node, hipGraph_t graph, absl::Span<hipGraphNode_t> deps,
+    hipGraph_t child) {
+  VLOG(2) << "Create a new node by cloning the child graph " << child
+          << " and add it to " << graph << "; deps: " << deps.size();
+
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipGraphAddChildGraphNode(node, graph, deps.data(), deps.size(),
+                                      child),
+      "Failed to create a child graph node and add it to a HIP graph");
+  return tsl::OkStatus();
+}
+
+/*static*/ tsl::Status GpuDriver::GraphExecChildNodeSetParams(
+    GpuGraphExecHandle exec, GpuGraphNodeHandle node, GpuGraphHandle child) {
+  VLOG(2) << "Set child node params " << node << " in graph executable " << exec
+          << "to params contained in " << child;
+
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipGraphExecChildGraphNodeSetParams(exec, node, child),
+      "Failed to set ROCm graph child node params");
+
+  return tsl::OkStatus();
+}
+
+static hipMemAccessFlags ToHipMemAccessFlags(
+    GpuDriver::MemAccessFlags access_flags) {
+  switch (access_flags) {
+    case GpuDriver::MemAccessFlags::kNone:
+      return hipMemAccessFlagsProtNone;
+    case GpuDriver::MemAccessFlags::kRead:
+      return hipMemAccessFlagsProtRead;
+    case GpuDriver::MemAccessFlags::kReadWrite:
+      return hipMemAccessFlagsProtReadWrite;
+  }
+}
+
+static hipMemLocationType ToHipLocationType(
+    GpuDriver::MemLocationType location_type) {
+  switch (location_type) {
+    case GpuDriver::MemLocationType::kInvalid:
+      return hipMemLocationTypeInvalid;
+    case GpuDriver::MemLocationType::kDevice:
+      return hipMemLocationTypeDevice;
+    case GpuDriver::MemLocationType::kHost:
+    case GpuDriver::MemLocationType::kHostNuma:
+    case GpuDriver::MemLocationType::kHostNumaCurrent:
+      return hipMemLocationTypeInvalid;
+  }
+}
+
+static hipMemAllocationType ToHipAllocationType(
+    GpuDriver::MemAllocationType allocation_type) {
+  switch (allocation_type) {
+    case GpuDriver::MemAllocationType::kInvalid:
+      return hipMemAllocationTypeInvalid;
+    case GpuDriver::MemAllocationType::kPinned:
+      return hipMemAllocationTypePinned;
+  }
+}
+
+/*static*/ tsl::Status GpuDriver::GraphAddMemFreeNode(
+    GpuGraphNodeHandle* node, GpuGraphHandle graph,
+    absl::Span<GpuGraphNodeHandle> deps, GpuDevicePtr gpu_dst) {
+  RETURN_IF_ROCM_ERROR(wrap::hipGraphAddMemFreeNode(node, graph, deps.data(),
+                                                    deps.size(), gpu_dst),
+                       "Failed to add memory free node to a ROCM graph");
+  return ::tsl::OkStatus();
+}
+
+/*static*/ tsl::Status GpuDriver::GraphAddMemAllocNode(
+    GpuGraphNodeHandle* node, GpuGraphHandle graph,
+    absl::Span<GpuGraphNodeHandle> deps, MemAccessFlags access_flags,
+    MemLocationType location_type, int device_id,
+    MemAllocationType allocation_type, uint64_t size, GpuDevicePtr* d_ptr,
+    uint64_t max_pool_size) {
+  hipMemLocation mem_loc = {
+      .type = ToHipLocationType(location_type),
+      .id = device_id,
+  };
+
+  hipMemPoolProps props{};
+  props.allocType = ToHipAllocationType(allocation_type);
+  props.handleTypes = hipMemHandleTypeNone;
+  props.location = mem_loc;
+
+  hipMemAccessDesc mem_desc = {
+      .location = mem_loc,
+      .flags = ToHipMemAccessFlags(access_flags),
+  };
+
+  hipMemAllocNodeParams params{
+      .poolProps = props,
+      .accessDescs = &mem_desc,
+      .accessDescCount = 1,
+      .bytesize = size,
+      .dptr = nullptr,
+  };
+
+  RETURN_IF_ROCM_ERROR(wrap::hipGraphAddMemAllocNode(node, graph, deps.data(),
+                                                     deps.size(), &params),
+                       "Failed to add memory allocation node to a CUDA graph");
+
+  VLOG(2) << "Add MemAllocNode to a graph " << graph << " size " << size
+          << " address " << reinterpret_cast<void*>(params.dptr);
+
+  *d_ptr = params.dptr;
+  return ::tsl::OkStatus();
+}
+
+/*static*/ tsl::StatusOr<std::pair<GpuDevicePtr, uint64_t>>
+GpuDriver::GraphGetMemAllocNodeParams(GpuGraphNodeHandle node) {
+  hipMemAllocNodeParams params;
+  RETURN_IF_ROCM_ERROR(wrap::hipGraphMemAllocNodeGetParams(node, &params),
+                       "Failed to get memory allocation node parameter");
+  return std::pair<GpuDevicePtr, uint64_t>{params.dptr, params.bytesize};
+}
+
 /* static */ tsl::Status GpuDriver::GraphAddMemcpyD2DNode(
-    GpuContext* context, hipGraphNode_t* node, hipGraph_t graph,
-    absl::Span<hipGraphNode_t> deps, hipDeviceptr_t gpu_dst,
-    hipDeviceptr_t gpu_src, uint64_t size) {
-  return tsl::Status{absl::StatusCode::kInternal,
-                     "hipDrvGraphAddMemcopyNode is not available on ROCm yet"};
+    GpuContext* context, GpuGraphNodeHandle* node, GpuGraphHandle graph,
+    absl::Span<GpuGraphNodeHandle> deps, GpuDevicePtr gpu_dst,
+    GpuDevicePtr gpu_src, uint64_t size) {
+  VLOG(2) << "Add memcpy d2d node to a graph " << graph
+          << "; dst: " << reinterpret_cast<void*>(gpu_dst)
+          << "; src: " << reinterpret_cast<void*>(gpu_src) << "; size: " << size
+          << "; context: " << context->context() << "; deps: " << deps.size();
+
+  hipMemcpy3DParms params{
+      .srcArray = {},
+      .srcPos = {},
+      .srcPtr = {.ptr = gpu_src},
+      .dstArray = {},
+      .dstPos = {},
+      .dstPtr = {.ptr = gpu_dst},
+      .extent = hipExtent{.width = size, .height = 1, .depth = 1},
+      .kind = hipMemcpyDeviceToDevice};
+
+  RETURN_IF_ROCM_ERROR(wrap::hipGraphAddMemcpyNode(node, graph, deps.data(),
+                                                   deps.size(), &params),
+                       "Failed to add memcpy d2d node to a HIP graph");
+
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::GraphExecMemcpyD2DNodeSetParams(
+    GpuContext* context, GpuGraphExecHandle exec, GpuGraphNodeHandle node,
+    GpuDevicePtr gpu_dst, GpuDevicePtr gpu_src, uint64_t size) {
+  VLOG(2) << "Set memcpy d2d node params " << node << " in graph executable "
+          << exec << "; dst: " << reinterpret_cast<void*>(gpu_dst)
+          << "; src: " << reinterpret_cast<void*>(gpu_src) << "; size: " << size
+          << "; context: " << context->context();
+
+  hipMemcpy3DParms params{
+      .srcArray = {},
+      .srcPos = {},
+      .srcPtr = {.ptr = gpu_src},
+      .dstArray = {},
+      .dstPos = {},
+      .dstPtr = {.ptr = gpu_dst},
+      .extent = hipExtent{.width = size, .height = 1, .depth = 1},
+      .kind = hipMemcpyDeviceToDevice};
+
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipGraphExecMemcpyNodeSetParams(exec, node, &params),
+      "Failed to set memcpy d2d node params");
+
+  return ::tsl::OkStatus();
+}
+
+namespace {
+
+struct BitPatternToString {
+  std::string operator()(uint8_t pattern) {
+    return absl::StrCat("u8:", pattern);
+  }
+  std::string operator()(uint16_t pattern) {
+    return absl::StrCat("u16:", pattern);
+  }
+  std::string operator()(uint32_t pattern) {
+    return absl::StrCat("u32:", pattern);
+  }
+};
+
+// Broadcasts a pattern value of 1/2/4 bytes to a 4 byte value.
+struct BitPatternToValue {
+  std::pair<unsigned, unsigned> operator()(uint8_t pattern) {
+    unsigned value = pattern;
+    return {(value << 24) | (value << 16) | (value << 8) | value,
+            /*element_size=*/1};
+  }
+  std::pair<unsigned, unsigned> operator()(uint16_t pattern) {
+    unsigned value = pattern;
+    return {(value << 16) | value, /*element_size=*/2};
+  }
+  std::pair<unsigned, unsigned> operator()(uint32_t pattern) {
+    return {pattern, /*element_size=*/4};
+  }
+};
+
+}  // namespace
+
+/* static */ tsl::Status GpuDriver::GraphAddMemsetNode(
+    GpuContext* context, GpuGraphNodeHandle* node, GpuGraphHandle graph,
+    absl::Span<GpuGraphNodeHandle> deps, GpuDevicePtr dst,
+    std::variant<uint8_t, uint16_t, uint32_t> bit_pattern,
+    uint64_t num_elements) {
+  VLOG(2) << "Add memset node to a graph " << graph
+          << "; dst: " << reinterpret_cast<void*>(dst)
+          << "; bit_pattern: " << std::visit(BitPatternToString(), bit_pattern)
+          << "; num_elements: " << num_elements
+          << "; context: " << context->context() << "; deps: " << deps.size();
+
+  auto [value, element_size] = std::visit(BitPatternToValue(), bit_pattern);
+
+  hipMemsetParams params{
+      .dst = dst,
+      .elementSize = element_size,
+      .height = 1,
+      .pitch = 0,  // unused if height is 1
+      .value = value,
+      .width = num_elements,
+  };
+
+  RETURN_IF_ROCM_ERROR(wrap::hipGraphAddMemsetNode(node, graph, deps.data(),
+                                                   deps.size(), &params),
+                       "Failed to add memset node to a CUDA graph");
+
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::GraphExecMemsetNodeSetParams(
+    GpuContext* context, GpuGraphExecHandle exec, GpuGraphNodeHandle node,
+    GpuDevicePtr dst, std::variant<uint8_t, uint16_t, uint32_t> bit_pattern,
+    uint64_t num_elements) {
+  VLOG(2) << "Set memset node params " << node << " in graph executable "
+          << exec << "; dst: " << reinterpret_cast<void*>(dst)
+          << "; bit_pattern: " << std::visit(BitPatternToString(), bit_pattern)
+          << "; num_elements: " << num_elements
+          << "; context: " << context->context();
+
+  auto [value, element_size] = std::visit(BitPatternToValue(), bit_pattern);
+
+  hipMemsetParams params{
+      .dst = dst,
+      .elementSize = element_size,
+      .height = 1,
+      .pitch = 0,  // unused if height is 1
+      .value = value,
+      .width = num_elements,
+  };
+
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipGraphExecMemsetNodeSetParams(exec, node, &params),
+      "Failed to set memset node params");
+
+  return ::tsl::OkStatus();
 }
 
 /* static */ tsl::Status GpuDriver::LaunchKernel(
@@ -718,13 +1043,26 @@ GpuDriver::GraphNodeGetType(hipGraphNode_t node) {
           << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
           << " bdx: " << block_dim_x << " bdy: " << block_dim_y
           << " bdz: " << block_dim_z << " smem: " << shared_mem_bytes;
-  RETURN_IF_ROCM_ERROR(wrap::hipModuleLaunchKernel(
-                           function, grid_dim_x, grid_dim_y, grid_dim_z,
-                           block_dim_x, block_dim_y, block_dim_z,
-                           shared_mem_bytes, stream, kernel_params, extra),
-                       "Failed to launch ROCm kernel: ", kernel_name,
+
+  // for in-process kernel this function returns mangled kernel function name,
+  // and null otherwise
+  auto name = wrap::hipKernelNameRefByPtr((const void*)function, stream);
+
+  auto res = hipSuccess;
+  if (name != nullptr) {
+    res = wrap::hipLaunchKernel((const void*)function,
+                                dim3(grid_dim_x, grid_dim_y, grid_dim_z),
+                                dim3(block_dim_x, block_dim_y, block_dim_z),
+                                kernel_params, shared_mem_bytes, stream);
+  } else {
+    res = wrap::hipModuleLaunchKernel(
+        function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x, block_dim_y,
+        block_dim_z, shared_mem_bytes, stream, kernel_params, extra);
+  }
+  RETURN_IF_ROCM_ERROR(res, "Failed to launch ROCm kernel: ", kernel_name,
                        " with block dimensions: ", block_dim_x, "x",
                        block_dim_y, "x", block_dim_z);
+
   VLOG(2) << "successfully launched kernel";
   return tsl::OkStatus();
 }
@@ -866,7 +1204,7 @@ GpuDriver::GraphNodeGetType(hipGraphNode_t node) {
     GpuContext* context) {
   ScopedActivateContext activated{context};
   hipDevice_t device = -1;
-  hipError_t result = hipCtxGetDevice(&device);
+  hipError_t result = wrap::hipCtxGetDevice(&device);
   if (result == hipSuccess) return device;
 
   return tsl::Status(
@@ -1357,8 +1695,8 @@ GpuDriver::GraphNodeGetType(hipGraphNode_t node) {
 /* static */ tsl::StatusOr<GpuContext*> GpuDriver::GetPointerContext(
     hipDeviceptr_t pointer) {
   GpuContext* context = nullptr;
-  hipError_t result =
-      hipPointerGetAttribute(&context, HIP_POINTER_ATTRIBUTE_CONTEXT, pointer);
+  hipError_t result = wrap::hipPointerGetAttribute(
+      &context, HIP_POINTER_ATTRIBUTE_CONTEXT, pointer);
   if (result == hipSuccess) {
     if (context == nullptr) {
       return tsl::Status(
@@ -1424,7 +1762,13 @@ GpuDriver::GraphNodeGetType(hipGraphNode_t node) {
   hipDeviceProp_t props;
   hipError_t result = wrap::hipGetDeviceProperties(&props, device);
   if (result == hipSuccess) {
-    *version = props.gcnArch;
+    std::string gcnName = props.gcnArchName;
+    std::vector<std::string> tokens = absl::StrSplit(gcnName, ':');
+    std::string amdgpu_version = gcnName;
+    if (!tokens.empty() && tokens[0].size() >= 3) {
+      amdgpu_version = tokens[0].substr(3);
+    }
+    *version = stoi(amdgpu_version);
     return tsl::OkStatus();
   }
   *version = 0;
@@ -1452,18 +1796,14 @@ GpuDriver::GraphNodeGetType(hipGraphNode_t node) {
 /* static */ tsl::StatusOr<bool> GpuDriver::GetMFMASupport() {
   hipDeviceProp_t props;
   int dev = 0;
-  hipError_t result = hipGetDevice(&dev);
+  hipError_t result = wrap::hipGetDevice(&dev);
   result = wrap::hipGetDeviceProperties(&props, dev);
   if (result == hipSuccess) {
     std::string gcnArchName = props.gcnArchName;
     VLOG(3) << "GCN arch name " << gcnArchName;
-    auto pos = gcnArchName.find(":");
-    if (pos != string::npos) gcnArchName = gcnArchName.substr(0, pos);
-    pos = gcnArchName.find("gfx");
-    if (pos != string::npos) gcnArchName = gcnArchName.substr(pos + 3);
-    VLOG(3) << "GCN arch name (stripped) " << gcnArchName;
-    return ((gcnArchName == "908") || (gcnArchName == "909") ||
-            (gcnArchName == "90a") || (gcnArchName == "940"));
+    auto compute_capability = RocmComputeCapability(gcnArchName);
+    VLOG(3) << "GCN arch name (stripped) " << compute_capability.gfx_version();
+    return compute_capability.gfx9_mi100_or_later();
   }
   return tsl::Status{
       absl::StatusCode::kInternal,
@@ -1604,17 +1944,21 @@ static tsl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   }
 
   std::string gcnArchName = props.gcnArchName;
+  auto compute_capability = RocmComputeCapability(gcnArchName);
   // On gfx90a, we hide 1 GB of GPU memory (512MB for gfx908) from TF,
   // to allow for late allocations by internal ROCm libraries
   // (e.g. rocBLAS alone needs~200 MB to put its kernels as of ROCm 4.1)
   const uint64_t RESERVED_GFX908 = 1048576 * 512;
   const uint64_t RESERVED_GFX9_X = 1048576 * 1024;
-  if (gcnArchName.substr(0, 6) == "gfx908") {
+  const uint64_t RESERVED_GFX10_X = 1048576 * 512;
+  if (compute_capability.gfx_version() == "gfx908") {
     *reserve = RESERVED_GFX908;
-  } else if (gcnArchName.substr(0, 6) == "gfx90a" ||
-             gcnArchName.substr(0, 6) == "gfx940") {
+  } else if (compute_capability.gfx9_mi200_or_later()) {
     *reserve = RESERVED_GFX9_X;
+  } else if (compute_capability.navi21() || compute_capability.navi31()) {
+    *reserve = RESERVED_GFX10_X;
   }
+
   return true;
 }
 
@@ -1707,7 +2051,7 @@ static tsl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
 /* static */ bool GpuDriver::CanEnablePeerAccess(GpuDeviceHandle from,
                                                  GpuDeviceHandle to) {
   int can_access_peer = -1;
-  hipError_t result = hipDeviceCanAccessPeer(&can_access_peer, from, to);
+  hipError_t result = wrap::hipDeviceCanAccessPeer(&can_access_peer, from, to);
   if (result != hipSuccess) {
     LOG(ERROR) << "failed to detect peer access capability: "
                << ToString(result);

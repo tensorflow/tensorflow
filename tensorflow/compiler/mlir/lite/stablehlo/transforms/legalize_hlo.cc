@@ -2122,7 +2122,7 @@ class ConvertReduceOpToTfAny
   }
 };
 
-template <typename TfReduce, typename TfArgReduce>
+template <typename TfReduce, typename TfArgReduce, typename TfBooleanReduce>
 class ConvertReduceOpToTfArgMinMax
     : public OpConversionPattern<mhlo::ReduceOp> {
  public:
@@ -2166,15 +2166,32 @@ class ConvertReduceOpToTfArgMinMax
     // Generate a Max and an ArgMax of as the mhlo op returns both while in TF
     // we have separate ops for them. If only one of them is used then the other
     // one will be garbage collected later.
-    auto tf_reduce_op = rewriter.create<TfReduce>(
-        reduce_op.getLoc(), reduce_op->getResult(0).getType(), operand,
-        reduction_indices,
-        /*keep_dim=*/rewriter.getBoolAttr(false));
-    auto tf_argreduce_op = rewriter.create<TfArgReduce>(
-        reduce_op.getLoc(), reduce_op->getResult(1).getType(), operand,
-        reduction_indices);
+    if (!operand.getType().isa<ShapedType>()) return failure();
+    auto operand_type = operand.getType().cast<ShapedType>();
+    if (operand_type.getElementType().isInteger(1)) {
+      // TF does not support min or max on boolean (int1) arguments.
+      // Use AnyOp for MaxOp and AllOp for MinOp.
+      auto tf_reduce_op = rewriter.create<TfBooleanReduce>(
+          reduce_op.getLoc(), reduce_op->getResult(0).getType(), operand,
+          reduction_indices,
+          /*keep_dim=*/rewriter.getBoolAttr(false));
+      auto tf_argreduce_op = rewriter.create<TfArgReduce>(
+          reduce_op.getLoc(), reduce_op->getResult(1).getType(), operand,
+          reduction_indices);
 
-    rewriter.replaceOp(reduce_op, {tf_reduce_op, tf_argreduce_op});
+      rewriter.replaceOp(reduce_op, {tf_reduce_op, tf_argreduce_op});
+    } else {
+      auto tf_reduce_op = rewriter.create<TfReduce>(
+          reduce_op.getLoc(), reduce_op->getResult(0).getType(), operand,
+          reduction_indices,
+          /*keep_dim=*/rewriter.getBoolAttr(false));
+
+      auto tf_argreduce_op = rewriter.create<TfArgReduce>(
+          reduce_op.getLoc(), reduce_op->getResult(1).getType(), operand,
+          reduction_indices);
+
+      rewriter.replaceOp(reduce_op, {tf_reduce_op, tf_argreduce_op});
+    }
     return success();
   }
 
@@ -2275,7 +2292,7 @@ class ConvertReduceOpToTfArgMinMax
 };
 
 class ConvertReduceOpToTfArgmax
-    : public ConvertReduceOpToTfArgMinMax<TF::MaxOp, TF::ArgMaxOp> {
+    : public ConvertReduceOpToTfArgMinMax<TF::MaxOp, TF::ArgMaxOp, TF::AnyOp> {
  public:
   using ConvertReduceOpToTfArgMinMax::ConvertReduceOpToTfArgMinMax;
 
@@ -2284,12 +2301,14 @@ class ConvertReduceOpToTfArgmax
   }
   bool IsValueInitValue(const DenseElementsAttr& attr) const override {
     auto element_type = attr.getType().getElementType();
-    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat() ||
-        element_type.isInteger(1))
+    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
       return false;
     if (element_type.isa<FloatType>()) {
       auto value = *attr.value_begin<APFloat>();
       return value.isNegative() && value.isInfinity();
+    } else if (element_type.isInteger(1)) {
+      auto value = *attr.value_begin<APInt>();
+      return value.isZero();
     } else {
       auto value = *attr.value_begin<APInt>();
       return element_type.isUnsignedInteger() ? value.isMinValue()
@@ -2299,7 +2318,7 @@ class ConvertReduceOpToTfArgmax
 };
 
 class ConvertReduceOpToTfArgmin
-    : public ConvertReduceOpToTfArgMinMax<TF::MinOp, TF::ArgMinOp> {
+    : public ConvertReduceOpToTfArgMinMax<TF::MinOp, TF::ArgMinOp, TF::AllOp> {
  public:
   using ConvertReduceOpToTfArgMinMax::ConvertReduceOpToTfArgMinMax;
 
@@ -2308,12 +2327,14 @@ class ConvertReduceOpToTfArgmin
   }
   bool IsValueInitValue(const DenseElementsAttr& attr) const override {
     auto element_type = attr.getType().getElementType();
-    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat() ||
-        element_type.isInteger(1))
+    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
       return false;
     if (element_type.isa<FloatType>()) {
       auto value = *attr.value_begin<APFloat>();
       return !value.isNegative() && value.isInfinity();
+    } else if (element_type.isInteger(1)) {
+      auto value = *attr.value_begin<APInt>();
+      return value.isZero();
     } else {
       auto value = *attr.value_begin<APInt>();
       return element_type.isUnsignedInteger() ? value.isMaxValue()
@@ -3075,8 +3096,20 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
     auto tf_gather_nd_result_type =
         RankedTensorType::get(transpose_params.canonicalized_output_shape,
                               result_type.getElementType());
+
+    TF::CastOp cast_op = nullptr;
+    if (start_indices_type.getElementType().isUnsignedInteger(32)) {
+      cast_op = rewriter.create<TF::CastOp>(
+          gather_op->getLoc(),
+          RankedTensorType::get(start_indices_type.getShape(),
+                                rewriter.getI64Type()),
+          start_indices);
+    }
+
     auto tf_gather_nd_op = rewriter.create<TF::GatherNdOp>(
-        gather_op->getLoc(), tf_gather_nd_result_type, operand, start_indices);
+        gather_op->getLoc(), tf_gather_nd_result_type, operand,
+        cast_op ? cast_op.getResult() : start_indices);
+
     if (!need_transpose_after) {
       rewriter.replaceOp(gather_op, tf_gather_nd_op->getOpResults());
       return success();
@@ -3365,9 +3398,6 @@ class ConvertIfOp : public OpConversionPattern<mhlo::IfOp> {
 };
 
 // Converts mhlo.pad to tf.PadV2
-// TODO: b/301438955 - This is redundant with the MHLO -> TFLite
-// legalization and covers less usecases. We need to check with DarwiNN that
-// this can be removed without breaking their workflow.
 Value ConvertPadOp(PatternRewriter& rewriter, Operation* old_op) {
   auto pad_op = cast<mhlo::PadOp>(old_op);
   mlir::Location loc = pad_op.getLoc();
@@ -3772,6 +3802,18 @@ bool IsTFStyleBroadcast(DenseIntElementsAttr broadcast_dimensions,
   return input_rank == 0 ||
          (broadcast_dimensions.getValues<APInt>()[0].getSExtValue() ==
           output_rank - input_rank);
+}
+
+// Returns true if the operation producing the provided result (`op_result`)
+// is within an op region of an operation of type `ParentType`.
+template <typename ParentType>
+bool IsWithinOpRegion(mlir::OpResult op_result) {
+  mlir::Operation* parent_op = op_result.getDefiningOp()->getParentOp();
+
+  if (llvm::dyn_cast<ParentType>(parent_op)) {
+    return true;
+  }
+  return false;
 }
 
 // Returns the intermediate shape that input tensor should be reshaped to during

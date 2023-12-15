@@ -387,7 +387,7 @@ void ReplicateOp::print(OpAsmPrinter& p) {
   //   packed_input
   //     %b as %block_arg1: type
   const int32_t n = this->getN();
-  const int32_t num_replicated_inputs = getOperandSegmentSizes()[0];
+  const int32_t num_replicated_inputs = getProperties().operandSegmentSizes[0];
   const int32_t num_replicated_block_args = num_replicated_inputs / n;
 
   if (getNumOperands()) {
@@ -502,7 +502,7 @@ LogicalResult ReplicateOp::verify() {
 
   Block& block = op.getBody().front();
 
-  auto operandSegmentSizes = op.getOperandSegmentSizes();
+  auto operandSegmentSizes = op.getProperties().operandSegmentSizes;
   const int32_t num_replicated_inputs = operandSegmentSizes[0];
   const int32_t num_packed_inputs = operandSegmentSizes[1];
 

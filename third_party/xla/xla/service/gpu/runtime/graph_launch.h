@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_RUNTIME_GRAPH_LAUNCH_H_
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -24,8 +25,10 @@ limitations under the License.
 #include <variant>
 
 #include "absl/container/node_hash_map.h"
+#include "absl/types/span.h"
 #include "xla/runtime/custom_call_registry.h"
 #include "xla/runtime/executable.h"
+#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -47,10 +50,6 @@ class StreamExecutorGraphInstances;  // Forward declare
 // gets executed. Graph capture function ordinal is the key in this container.
 class CapturedFunctionExecutionCount
     : public runtime::StateVector<std::unique_ptr<std::atomic<uint64_t>>> {};
-
-// Create the i-th value if the capture function with ordinal i causes graph
-// update failure.
-class OrdinalToFallback : public runtime::StateVector<std::monostate> {};
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -110,8 +109,10 @@ class GraphInstances {
   Status InstantiateAllGraphs(
       const ServiceExecutableRunOptions* run_options,
       const runtime::Executable& executable,
-      const runtime::CustomCall::UserData& user_data, void* ptr,
-      OrdinalToFallback::Snapshot* ordinal_to_fallback,
+      const runtime::CustomCall::UserData& user_data,
+      const BufferAllocations& buffer_allocations,
+      absl::Span<const int64_t> buffer_sizes,
+      absl::Span<const std::vector<int64_t>> allocation_indices,
       std::optional<uint64_t> eviction_timeout_seconds = std::nullopt);
 
   // Returns true if all Gpu graphs were already instantiated.

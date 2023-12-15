@@ -171,7 +171,7 @@ module @test_spmd_const_op_sharded {
 module @test_spmd_const_op_sharded_with_splat {
 func.func @main(%arg0: tensor<i32>) {
   // CHECK:        "tf_device.cluster"
-  // CHECK-NEXT:      %[[CONST_OUT:.*]] = "tf.Const"() {[[BEFORE_ATTR:.*]]value = dense<1> : tensor<1xi32>[[AFTER_ATTR:.*]]} : () -> tensor<1xi32>
+  // CHECK-NEXT:      %[[CONST_OUT:.*]] = "tf.Const"() <{value = dense<1> : tensor<1xi32>}> {{{.*}}} : () -> tensor<1xi32>
   // CHECK-NEXT:      tf_device.return
   %0 = "tf_device.cluster"() ({
    %1 = "tf.Const"() {_layout = ["sharding_specs:x, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"], value=dense<1>: tensor<2xi32>} : () -> tensor<2xi32>
@@ -340,8 +340,8 @@ func.func @main(%arg0: tensor<32x32x32xf32> { tf._layout = "sharding_specs:x,y,z
 module @test_spmd_random_op_with_incomplete_shape_disallowed {
 func.func @main(%arg0: tensor<i32>) {
   %0 = "tf_device.cluster"() ({
-    // %1 = "tf.Const"() {_layout = ["sharding_specs:x,unsharded, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"], device = "", value = dense<16> : tensor<2xi32>} : () -> tensor<2xi32>
-    // %2 = "tf.Const"() {_layout = ["sharding_specs:x,unsharded, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"], device = "", value = dense<[123, 321]> : tensor<2xi32>} : () -> tensor<2xi32>
+    // %1 = "tf.Const"() <{value = dense<16> : tensor<2xi32>}> {_layout = ["sharding_specs:x,unsharded, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"], device = ""} : () -> tensor<2xi32>
+    // %2 = "tf.Const"() <{value = dense<[123, 321]> : tensor<2xi32>}> {_layout = ["sharding_specs:x,unsharded, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"], device = ""} : () -> tensor<2xi32>
     %1 = arith.constant dense<[16]> : tensor<1xi32>
     %2 = arith.constant dense<[2, 1]> : tensor<2xi32>
     // expected-error @+1 {{Sharding dimension of random op does not match rank of the random op}}
@@ -764,7 +764,7 @@ func.func @main(%arg0: tensor<2x4x4xi32> {tf._layout = "sharding_specs:unsharded
   // CHECK:      "tf_device.cluster"
   // CHECK-NEXT:   "tf.Const"()
   // CHECK-NEXT:   %[[INDICES:.*]] = "tf.Const"()
-  // CHECK-NEXT:   %[[NEW_SHAPE:.*]] = "tf.Const"() {value = dense<[16, 2, 4]> : tensor<3xi32>} : () -> tensor<3xi32>
+  // CHECK-NEXT:   %[[NEW_SHAPE:.*]] = "tf.Const"() <{value = dense<[16, 2, 4]> : tensor<3xi32>}> : () -> tensor<3xi32>
   // CHECK-NEXT:   "tf.ScatterNd"(%[[INDICES]], %arg0, %[[NEW_SHAPE]])
   %0 = "tf_device.cluster"() ({
     %shape = "tf.Const"() {_global_shape = [#tf_type.shape<3>], value = dense<[16, 4, 4]> : tensor<3xi32>} : () -> tensor<3xi32>

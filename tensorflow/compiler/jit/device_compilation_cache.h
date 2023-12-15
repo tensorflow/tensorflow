@@ -151,7 +151,8 @@ class DeviceCompilationCache {
   absl::flat_hash_map<Key, std::unique_ptr<Entry>, Key::Hash> cache_
       TF_GUARDED_BY(compile_cache_mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DeviceCompilationCache);
+  DeviceCompilationCache(const DeviceCompilationCache&) = delete;
+  void operator=(const DeviceCompilationCache&) = delete;
 };
 
 template <typename ExecutableType>

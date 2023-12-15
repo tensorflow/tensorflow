@@ -18,8 +18,10 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <memory>
 #include <string>
 #include <tuple>
+#include <utility>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -30,6 +32,9 @@ namespace stream_executor {
 
 KernelLoaderSpec::KernelLoaderSpec(absl::string_view kernel_name)
     : kernel_name_(std::string(kernel_name)) {}
+
+InProcessSymbol::InProcessSymbol(void *symbol, std::string kernel_name)
+    : KernelLoaderSpec(std::move(kernel_name)), symbol_(symbol) {}
 
 OnDiskKernelLoaderSpec::OnDiskKernelLoaderSpec(absl::string_view filename,
                                                absl::string_view kernel_name)
@@ -166,6 +171,14 @@ const char *CudaPtxInMemory::original_text(int compute_capability_major,
   return ptx_iter->second;
 }
 
+MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddInProcessSymbol(
+    void *symbol, absl::string_view kernel_name) {
+  CHECK(in_process_symbol_ == nullptr);
+  in_process_symbol_ =
+      std::make_unique<InProcessSymbol>(symbol, std::string(kernel_name));
+  return this;
+}
+
 MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaPtxOnDisk(
     absl::string_view filename, absl::string_view kernel_name) {
   CHECK(cuda_ptx_on_disk_ == nullptr);
@@ -221,6 +234,8 @@ MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaCompressedPtxInMemory(
   return this;
 }
 
-MultiKernelLoaderSpec::MultiKernelLoaderSpec(size_t arity) : arity_(arity) {}
+MultiKernelLoaderSpec::MultiKernelLoaderSpec(
+    size_t arity, KernelArgsPacking kernel_args_packing)
+    : arity_(arity), kernel_args_packing_(std::move(kernel_args_packing)) {}
 
 }  // namespace stream_executor

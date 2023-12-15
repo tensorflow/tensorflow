@@ -1361,7 +1361,8 @@ Status InlineFunctionCalls(const GrapplerItem& item,
 
       TF_RETURN_IF_ERROR(InlineFunctionBody(flib_def, graph.get(), n,
                                             fbody.get(), inline_options));
-      inlined_function_names.push_back(fbody->fdef.signature().name());
+      inlined_function_names.push_back(
+          fbody->record->fdef().signature().name());
 
     } else {
       VLOG(2) << "Failed to inline function call node: "

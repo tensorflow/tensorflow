@@ -80,8 +80,7 @@ class ParallelLoopEmitter {
   // The shape that the emitted loop iterates through.
   Shape shape_;
 
-  // Points to the exit block of the emitted loop. If the given shape is
-  // scalar, no loops are emitted and exit_bb_ is nullptr in that case.
+  // Points to the exit block of the emitted loop.
   llvm::BasicBlock* exit_bb_;
 
   llvm::IRBuilder<>* b_;

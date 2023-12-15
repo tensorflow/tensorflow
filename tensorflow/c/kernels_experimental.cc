@@ -292,7 +292,7 @@ struct TmpVar : public ResourceBase {
   tensorflow::mutex mu;
   Tensor val;
   std::string name;
-  std::string DebugString() const { return name; }
+  std::string DebugString() const override { return name; }
   ~TmpVar() override { VLOG(3) << "TmpVar " << name << " deleted"; }
 };
 
@@ -626,7 +626,7 @@ static Status CCBinaryAddFunc(
     binary_add_func(ctx, a, b, out);
     return cc_ctx->status();
   }
-};
+}
 
 static Status VariantBinaryAddFunc(
     ::tensorflow::OpKernelContext* cc_ctx, const Variant& a, const Variant& b,

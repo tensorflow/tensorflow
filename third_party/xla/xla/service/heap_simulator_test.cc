@@ -1575,7 +1575,7 @@ TEST_F(FindGlobalDecreasingSizeBestFitTest, FindChunkCandidates) {
 
     // // Slice B.
     sliced_buffer_b.Slice({5, 5});
-    sliced_buffer_b.UpdateSliceStartTimes({25, 30});
+    sliced_buffer_b.UpdateInclusiveSliceStartTimes({25, 30});
 
     // Place and commit B (and C transitively via colocation). B should be
     // placed at an offset that accommodates C; however, it should not have the
@@ -2084,20 +2084,21 @@ TEST_F(SlicedBufferIntervalTest, Sliced) {
   EXPECT_THAT(mutable_sliced_buffer_interval_->SliceSizesSortedByOffset(),
               ::testing::ElementsAre(4, 5, 5, 6));
 
-  mutable_sliced_buffer_interval_->UpdateSliceStartTimes({100, 125, 150, 175});
+  mutable_sliced_buffer_interval_->UpdateInclusiveSliceStartTimes(
+      {100, 125, 150, 175});
 
   EXPECT_EQ(BufferIntervalToTuple(
                 mutable_sliced_buffer_interval_->IntervalForMakeFreeChunks(0)),
             BufferIntervalToTuple(
-                {p0_value_.get(), 4, 100, 125, ColocationTy(), true}));
+                {p0_value_.get(), 4, 100, 124, ColocationTy(), true}));
   EXPECT_EQ(BufferIntervalToTuple(
                 mutable_sliced_buffer_interval_->IntervalForMakeFreeChunks(1)),
             BufferIntervalToTuple(
-                {p0_value_.get(), 4, 125, 150, ColocationTy(), true}));
+                {p0_value_.get(), 4, 125, 149, ColocationTy(), true}));
   EXPECT_EQ(BufferIntervalToTuple(
                 mutable_sliced_buffer_interval_->IntervalForMakeFreeChunks(2)),
             BufferIntervalToTuple(
-                {p0_value_.get(), 4, 150, 175, ColocationTy(), true}));
+                {p0_value_.get(), 4, 150, 174, ColocationTy(), true}));
   EXPECT_EQ(BufferIntervalToTuple(
                 mutable_sliced_buffer_interval_->IntervalForMakeFreeChunks(3)),
             BufferIntervalToTuple({p0_value_.get(), 20, 175, 200,
@@ -2105,6 +2106,30 @@ TEST_F(SlicedBufferIntervalTest, Sliced) {
   EXPECT_EQ(BufferIntervalToTuple(
                 mutable_sliced_buffer_interval_->full_buffer_interval()),
             BufferIntervalToTuple({p0_value_.get(), 20, 100, 200,
+                                   ColocationTy({p1_value_.get()}), true}));
+
+  mutable_sliced_buffer_interval_->UpdateExclusiveSliceStartTimes(
+      {100, 125, 150, 175});
+
+  EXPECT_EQ(BufferIntervalToTuple(
+                mutable_sliced_buffer_interval_->IntervalForMakeFreeChunks(0)),
+            BufferIntervalToTuple(
+                {p0_value_.get(), 4, 101, 125, ColocationTy(), true}));
+  EXPECT_EQ(BufferIntervalToTuple(
+                mutable_sliced_buffer_interval_->IntervalForMakeFreeChunks(1)),
+            BufferIntervalToTuple(
+                {p0_value_.get(), 4, 126, 150, ColocationTy(), true}));
+  EXPECT_EQ(BufferIntervalToTuple(
+                mutable_sliced_buffer_interval_->IntervalForMakeFreeChunks(2)),
+            BufferIntervalToTuple(
+                {p0_value_.get(), 4, 151, 175, ColocationTy(), true}));
+  EXPECT_EQ(BufferIntervalToTuple(
+                mutable_sliced_buffer_interval_->IntervalForMakeFreeChunks(3)),
+            BufferIntervalToTuple({p0_value_.get(), 20, 176, 200,
+                                   ColocationTy({p1_value_.get()}), true}));
+  EXPECT_EQ(BufferIntervalToTuple(
+                mutable_sliced_buffer_interval_->full_buffer_interval()),
+            BufferIntervalToTuple({p0_value_.get(), 20, 101, 200,
                                    ColocationTy({p1_value_.get()}), true}));
 
   mutable_sliced_buffer_interval_->UpdateEndTime(300);
@@ -2115,11 +2140,11 @@ TEST_F(SlicedBufferIntervalTest, Sliced) {
             175);
   EXPECT_EQ(BufferIntervalToTuple(
                 mutable_sliced_buffer_interval_->IntervalForMakeFreeChunks(3)),
-            BufferIntervalToTuple({p0_value_.get(), 20, 175, 300,
+            BufferIntervalToTuple({p0_value_.get(), 20, 176, 300,
                                    ColocationTy({p1_value_.get()}), true}));
   EXPECT_EQ(BufferIntervalToTuple(
                 mutable_sliced_buffer_interval_->full_buffer_interval()),
-            BufferIntervalToTuple({p0_value_.get(), 20, 100, 300,
+            BufferIntervalToTuple({p0_value_.get(), 20, 101, 300,
                                    ColocationTy({p1_value_.get()}), true}));
 }
 

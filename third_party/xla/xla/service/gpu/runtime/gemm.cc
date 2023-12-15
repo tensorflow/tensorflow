@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime/gemm.h"
 
+#include <cstdint>
 #include <limits>
 #include <optional>
 #include <utility>
@@ -33,8 +34,9 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/errors.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/gemm_algorithm_picker.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #endif
@@ -46,8 +48,9 @@ using xla::runtime::CustomCall;
 using xla::runtime::State;
 using xla::runtime::StridedMemrefView;
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+// TODO(ezhulenev): Delete run time auto tuning from XLA.
 Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
                            se::DeviceMemoryBase lhs, se::DeviceMemoryBase rhs,
                            se::DeviceMemoryBase out, const Shape& output_shape,
@@ -92,8 +95,9 @@ Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
             // we pass a non-null ProfileResult, DoGemmWithAlgorithm should
             // always return true, and the actual success-ness is returned in
             // ProfileResult::is_valid.
-            TF_RETURN_IF_ERROR(RunGemm(config, lhs, rhs, out, deterministic_ops,
-                                       stream, algorithm, &profile_result));
+            TF_RETURN_IF_ERROR(
+                RunGemm(config, lhs, rhs, out, se::DeviceMemoryBase(nullptr, 0),
+                        deterministic_ops, stream, algorithm, &profile_result));
             return std::move(profile_result);
           }));
 
@@ -104,20 +108,21 @@ Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
     return InternalError("Runtime autotuning failed to select an algorithm");
   }
 }
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
                              const DebugOptions* debug_options,
                              NonAtomicallyUpgradeableRWLock* gpu_lock,
                              State<GemmConfig> state, StridedMemrefView lhs,
                              StridedMemrefView rhs, StridedMemrefView out,
-                             int64_t algorithm, double alpha_real,
-                             double alpha_imag, double beta,
+                             StridedMemrefView workspace, int64_t algorithm,
+                             double alpha_real, double alpha_imag, double beta,
                              DotDimensionNumbers dot_dims,
                              absl::Span<const int32_t> precision) {
   se::DeviceMemoryBase lhs_data = GetDeviceAddress(lhs);
   se::DeviceMemoryBase rhs_data = GetDeviceAddress(rhs);
   se::DeviceMemoryBase output_data = GetDeviceAddress(out);
+  se::DeviceMemoryBase workspace_data = GetDeviceAddress(workspace);
   const bool deterministic_ops = debug_options->xla_gpu_deterministic_ops();
 
   VLOG(3) << "Running GEMM";
@@ -139,7 +144,7 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
   // outside of state.GetOrCreate() because otherwise it would be a potential
   // deadlock.
   if (gemm_config->algorithm == stream_executor::blas::kRuntimeAutotuning) {
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     auto status = DoRuntimeAutotuning(stream, *gemm_config, lhs_data, rhs_data,
                                       output_data, output_shape, beta,
                                       debug_options, gpu_lock);
@@ -152,7 +157,7 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
 #endif
   }
 
-  return RunGemm(*gemm_config, lhs_data, rhs_data, output_data,
+  return RunGemm(*gemm_config, lhs_data, rhs_data, output_data, workspace_data,
                  deterministic_ops, stream);
 }
 
@@ -177,6 +182,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Arg<StridedMemrefView>()  // lhs
         .Arg<StridedMemrefView>()  // rhs
         .Arg<StridedMemrefView>()  // out
+        .Arg<StridedMemrefView>()  // workspace
         .Attr<int64_t>("algorithm")
         .Attr<double>("alpha_real")
         .Attr<double>("alpha_imag")

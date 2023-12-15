@@ -31,8 +31,8 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/gemm_rewriter_triton.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/triton_support.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
@@ -289,12 +289,6 @@ std::optional<HloInstruction*> MatchesTritonCompatibleClosedReductionDiamond(
         reduce->dimensions(0) == producer->shape().rank() - 1 &&
         !absl::c_linear_search(broadcast->dimensions(),
                                broadcast->shape().rank() - 1))) {
-    return match_failure;
-  }
-
-  // TODO(b/291204753): remove this filter. This heuristic enables flipping the
-  // default flag while filtering out cases that could result in regressions.
-  if (reduce->operand(0)->shape().dimensions().back() < 64) {
     return match_failure;
   }
 

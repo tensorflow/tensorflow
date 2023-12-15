@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "xla/status.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
 
@@ -36,6 +37,13 @@ struct HloLatencyInfo {
 // Convert XSpace to ProfiledInstructionsProto. This function will aggregate
 // all the xplane.pb info into ProfiledInstructionsProto.
 Status ConvertXplaneToProfiledInstructionsProto(
+    std::vector<tensorflow::profiler::XSpace> xspaces,
+    tensorflow::profiler::ProfiledInstructionsProto*
+        profiled_instructions_proto);
+
+// Convert XSpace to ProfiledInstructionsProto. This function will aggregate
+// all the xplane.pb info under logdir into ProfiledInstructionsProto.
+Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
     const std::string& logdir, tensorflow::profiler::ProfiledInstructionsProto*
                                    profiled_instructions_proto);
 

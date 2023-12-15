@@ -1,21 +1,20 @@
 # Description: Op kernels for sparse matrix operations.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",
     "tf_cc_test",
 )
+load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
 )
-load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
-    features = ["-layering_check"],
     licenses = ["notice"],
 )
 
@@ -25,6 +24,7 @@ cc_library(
     hdrs = ["sparse_matrix.h"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
         "@eigen_archive//:eigen3",
     ],
     alwayslink = 1,
@@ -55,6 +55,10 @@ tf_kernel_library(
         "kernels.h",
         "transpose_op.h",
         "zeros_op.h",
+    ],
+    gpu_deps = [
+        "@local_xla//xla/stream_executor/cuda:cuda_activation",
+        "//tensorflow/core/kernels:gpu_device_array",
     ],
     gpu_srcs = [
         "zeros_op.h",
@@ -108,7 +112,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/platform:status_matchers",
         "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:status_matchers",
     ],
 )

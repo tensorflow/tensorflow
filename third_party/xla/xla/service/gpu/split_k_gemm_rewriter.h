@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/matmul_utils.h"
 #include "xla/status.h"
 
 namespace xla {
@@ -30,11 +31,11 @@ namespace gpu {
 bool HasDivisibleSuffixAllowingSplit(absl::Span<int64_t const> span,
                                      int64_t divisor);
 
-// Apply split K configuration from the tiling to the fusion instruction:
+// Apply split K configuration from the tiling config to the fusion instruction:
 // in addition to MakeDotComputationSplitKBatch on its computation add the
 // necessary reduction after it.
 Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
-                          const AutotuneResult::TritonGemmKey& tiling);
+                          const TritonGemmConfig& config);
 
 }  // namespace gpu
 }  // namespace xla

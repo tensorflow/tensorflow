@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/base/attributes.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -63,8 +64,7 @@ namespace tensorflow {
 //   result shapes.
 // custom_legalization_passes: passes to run before the default TF legalization
 //   passes for backend-specific ops.
-//
-// TODO(hinsu): Migrate options to a separate struct.
+ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
 Status ConvertMLIRToXlaComputation(
     mlir::ModuleOp module_op, llvm::StringRef device_type,
     xla::XlaComputation* xla_computation, bool use_tuple_args,
@@ -98,6 +98,7 @@ Status ConvertMLIRToXlaComputation(
 //   true, includes legalization and MHLO lowering passes.
 // allow_partial_conversion: when this is true, allow operations that can't be
 //   legalized.
+ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
 void CreateConvertMlirToXlaHloPipeline(
     mlir::OpPassManager& pm, llvm::StringRef device_type,
     bool enable_op_fallback,
@@ -112,12 +113,14 @@ struct TensorOrResourceShape {
 };
 
 // Refine MLIR types based on new shape information.
+ABSL_DEPRECATED("Not meant to be used directly and should be a util.")
 Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
                     mlir::ModuleOp module);
 
 // Lower TF to MHLO and insert HLO into the XlaBuilder. xla_params are HLO-level
 // inputs to module_op that have already been added to the XlaBuilder. returns
 // are the returned XlaOps.
+ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
 Status BuildHloFromTf(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
                       llvm::ArrayRef<xla::XlaOp> xla_params,
                       std::vector<xla::XlaOp>& returns,
@@ -129,6 +132,7 @@ Status BuildHloFromTf(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
 // Apply shape, description, and resource information to inputs and outputs
 // in the XlaCompilationResult. This should be called after
 // compilation_result->computation was set.
+ABSL_DEPRECATED("Not meant to be used directly and should be a util.")
 Status PopulateResultIOInfo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     bool use_tuple_args, bool use_resource_updates_for_aliases,
@@ -142,6 +146,7 @@ Status PopulateResultIOInfo(
 //
 // If enable_op_fallback is set to false, graph is legalized only if the graph
 // analysis for the graph is successful. Otherwise, an error is returned.
+ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
 StatusOr<std::string> CompileMlirToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
@@ -157,6 +162,7 @@ StatusOr<std::string> CompileMlirToXlaHlo(
 //
 // If lower_to_xla_hlo is true then compiles down into XLA HLO, generates all
 // accompanying metadata and stores them in CompilationResult.
+ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
 StatusOr<std::string> CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
@@ -172,6 +178,7 @@ StatusOr<std::string> CompileSerializedMlirToXlaHlo(
 // metadata and stores them in CompilationResult. This will rewrite arguments
 // and run the TensorFlow standard pipeline prior to invoking
 // `CompileMlirToXlaHlo`.
+ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
 Status CompileGraphToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<XlaArgument> args,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
@@ -183,6 +190,8 @@ Status CompileGraphToXlaHlo(
 
 // Compiles a TensorFlow Graph into XLA HLO, generates all accompanying metadata
 // and stores them in CompilationResult.
+ABSL_DEPRECATED(
+    "Use v1/compile_tf_graph.h::CompileTensorflowGraphToHloinstead.")
 Status CompileGraphToXlaHlo(
     const Graph& graph, llvm::ArrayRef<XlaArgument> args,
     llvm::ArrayRef<std::string> control_rets, llvm::StringRef device_type,
@@ -197,6 +206,8 @@ Status CompileGraphToXlaHlo(
 // XlaBuilder. This function adds HLO to a larger HLO computation, so
 // HLO-level inputs are supplied, and HLO-level outputs are produced.
 // xla_params is the HLO-level inputs and returns is the HLO-level outputs.
+ABSL_DEPRECATED(
+    "Use v1/compile_tf_graph.h::CompileTensorflowGraphToHloinstead.")
 Status BuildHloFromGraph(
     const Graph& graph, xla::XlaBuilder& builder,
     mlir::MLIRContext& mlir_context, llvm::ArrayRef<xla::XlaOp> xla_params,

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/fusion_utils.h"
 
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/strip.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -31,15 +34,32 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {
 namespace fusion_utils {
 
 namespace {
+
+// See the comment for the proto field `tensorflow.NodeDef.input`.
+constexpr char kControlInputPrefix[] = "^";
+
+bool IsControlInput(const string& node_input) {
+  return absl::StartsWith(node_input, kControlInputPrefix);
+}
+
+string StripControlInputNotation(const string& node_input) {
+  return string(absl::StripPrefix(node_input, kControlInputPrefix));
+}
+
+string AddControlInputNotation(const string& node_input) {
+  return absl::StrCat(kControlInputPrefix, node_input);
+}
+
+// Returns e.g. `"node"` given `"node:out"` or `"node:out:0"`. See the comment
+// for the proto field `tensorflow.FunctionDef.node_def`.
 string ParseNodeConnection(const string& name) {
-  // If input/output node name has semicolon, take the prefix.  Otherwise take
-  // the whole string.
   return name.substr(0, name.find(':'));
 }
 
@@ -194,10 +214,15 @@ OpDef GetUniqueSignature(const OpDef& first_signature,
 
   for (NodeDef& function_node : *nodes_to_fuse) {
     for (auto& node_input : *function_node.mutable_input()) {
-      const auto& input = ParseNodeConnection(node_input);
+      bool is_control_input = IsControlInput(node_input);
+      const auto& input =
+          ParseNodeConnection(StripControlInputNotation(node_input));
       if (const string* new_name =
               gtl::FindOrNull(changed_input_names, input)) {
         node_input = *new_name + ParseOutputNode(node_input);
+        if (is_control_input) {
+          node_input = AddControlInputNotation(node_input);
+        }
       }
     }
   }
@@ -215,7 +240,9 @@ void FuseFunctionNodes(const StringCollection& first_inputs,
                        protobuf::RepeatedPtrField<NodeDef>* nodes_to_fuse) {
   for (NodeDef& function_node : *nodes_to_fuse) {
     for (auto& node_input : *function_node.mutable_input()) {
-      auto parsed_name = ParseNodeConnection(node_input);
+      bool is_control_input = IsControlInput(node_input);
+      auto parsed_name =
+          ParseNodeConnection(StripControlInputNotation(node_input));
 
       auto input_it =
           std::find(second_inputs.begin(), second_inputs.end(), parsed_name);
@@ -224,6 +251,9 @@ void FuseFunctionNodes(const StringCollection& first_inputs,
       auto arg_num = std::distance(second_inputs.begin(), input_it);
       node_input =
           set_input(first_inputs, second_inputs, first_outputs, arg_num);
+      if (is_control_input) {
+        node_input = AddControlInputNotation(node_input);
+      }
     }
   }
 }

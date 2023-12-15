@@ -1,19 +1,19 @@
 # Description:
 #   ROCm-platform specific StreamExecutor support code.
 
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
 )
-load("@local_tsl//tsl:tsl.bzl", "set_external_visibility", "tsl_copts")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_hipblaslt",
     "if_rocm_is_configured",
-    "rocm_copts",
+    "rocm_library",
 )
+load("@local_tsl//tsl:tsl.bzl", "set_external_visibility", "tsl_copts")
 load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -112,6 +112,7 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_event",
         "//xla/stream_executor/gpu:gpu_kernel_header",
         "//xla/stream_executor/gpu:gpu_command_buffer",
+        "//xla/stream_executor/gpu:gpu_runtime_header",
         "//xla/stream_executor/gpu:gpu_stream",
         "//xla/stream_executor/gpu:gpu_timer",
         "//xla/stream_executor/platform",
@@ -129,6 +130,12 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_kernel_header",
     ]),
     alwayslink = True,
+)
+
+rocm_library(
+    name = "hip_conditional_kernels",
+    srcs = if_rocm_is_configured(["hip_conditional_kernels.cu.cc"]),
+    deps = if_rocm_is_configured(["@local_config_rocm//rocm:rocm_headers"]),
 )
 
 cc_library(
@@ -209,6 +216,7 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_helpers_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
         "//xla/stream_executor/gpu:gpu_timer_header",
+        "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/stream_executor/platform",
         "//xla/stream_executor:blas",
         "//xla/stream_executor/platform:dso_loader",
@@ -436,7 +444,7 @@ cc_library(
 )
 
 cc_library(
-    name = "hipblaslt_plugin",
+    name = "amdhipblaslt_plugin",
     srcs = if_rocm_is_configured(["hip_blas_lt.cc"]),
     hdrs = if_rocm_is_configured([
         "hip_blas_lt.h",
@@ -458,6 +466,7 @@ cc_library(
         "//xla/stream_executor/platform:dso_loader",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_helpers_header",
+        "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla:util",
     ]) + if_static([
         ":hipblaslt_if_static",
@@ -533,11 +542,9 @@ cc_library(
     alwayslink = True,
 )
 
-cc_library(
+rocm_library(
     name = "rocm_helpers",
     srcs = if_rocm_is_configured(["rocm_helpers.cu.cc"]),
-    copts = rocm_copts(),
-    visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
     ]),
@@ -555,7 +562,7 @@ cc_library(
         ":rocm_driver",
         ":rocm_platform",
         ":rocm_helpers",
-        ":hipblaslt_plugin",
+        ":amdhipblaslt_plugin",
     ]),
     alwayslink = 1,
 )

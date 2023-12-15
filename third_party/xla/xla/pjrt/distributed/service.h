@@ -23,9 +23,9 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
+#include "grpcpp/grpcpp.h"
 #include "grpcpp/security/server_credentials.h"
-#include "xla/pjrt/distributed/key_value_store.h"
-#include "xla/pjrt/distributed/protocol.grpc.pb.h"
+#include "grpcpp/server_builder.h"
 #include "xla/statusor.h"
 #include "xla/types.h"
 #include "tsl/distributed_runtime/coordination/coordination_service.h"
@@ -53,9 +53,9 @@ class CoordinationServiceImpl {
     // coordinator concludes that a client has vanished.
     int max_missing_heartbeats = 10;
 
-    // How long should we wait for all clients to call EnumerateDevices() before
+    // How long should we wait for all clients to call Connect() before
     // giving up?
-    absl::Duration enumerate_devices_timeout = absl::Seconds(60);
+    absl::Duration cluster_register_timeout = absl::Minutes(60);
 
     // How long should we wait for all clients to call Shutdown() before giving
     // up and returning a failure?

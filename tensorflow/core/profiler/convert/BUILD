@@ -932,11 +932,14 @@ cc_library(
         "//tensorflow/core/profiler/convert/trace_viewer:trace_events_util",
         "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
         "//tensorflow/core/profiler/protobuf:trace_events_raw_proto_cc",
+        "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_tsl//tsl/profiler/utils:tf_xplane_visitor",
         "@local_tsl//tsl/profiler/utils:timespan",
+        "@local_tsl//tsl/profiler/utils:trace_utils",
         "@local_tsl//tsl/profiler/utils:xplane_schema",
+        "@local_tsl//tsl/profiler/utils:xplane_utils",
         "@local_tsl//tsl/profiler/utils:xplane_visitor",
     ],
 )
@@ -1012,6 +1015,7 @@ cc_library(
     srcs = ["xspace_to_dcn_slack_analysis.cc"],
     hdrs = ["xspace_to_dcn_slack_analysis.h"],
     deps = [
+        "//tensorflow/core/profiler/protobuf:dcn_collective_info_proto_cc",
         "//tensorflow/core/profiler/protobuf:dcn_slack_analysis_proto_cc",
         "//tensorflow/core/profiler/protobuf:topology_proto_cc",
         "//tensorflow/core/profiler/utils:hlo_module_utils",

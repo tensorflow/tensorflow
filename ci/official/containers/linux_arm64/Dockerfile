@@ -79,3 +79,6 @@ COPY setup.python.sh /setup.python.sh
 RUN /setup.python.sh python3.9 devel.requirements.txt
 RUN /setup.python.sh python3.10 devel.requirements.txt
 RUN /setup.python.sh python3.11 devel.requirements.txt
+RUN /setup.python.sh python3.12 devel.requirements.txt
+# "python3" commands by default run under 3.10
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1

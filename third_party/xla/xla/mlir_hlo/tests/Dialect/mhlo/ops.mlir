@@ -896,7 +896,7 @@ func.func @broadcast(%arg0: tensor<3xi32>) -> tensor<1x2x3xi32> {
 
 func.func @broadcast_bad_sizes_rank(%arg0: tensor<3xi32>) -> tensor<1x2x3xi32> {
   // expected-error@+2 {{'mhlo.broadcast' op failed to infer returned types}}
-  // expected-error@+1 {{broadcast_sizes has rank 2 instead of rank 1}}
+  // expected-error@+1 {{broadcast_sizes has rank 2 instead of required rank 1.}}
   %0 = "mhlo.broadcast"(%arg0) {broadcast_sizes = dense<[[1, 2]]> : tensor<1x2xi64>} : (tensor<3xi32>) -> tensor<1x2x3xi32>
   func.return %0 : tensor<1x2x3xi32>
 }
@@ -2421,7 +2421,7 @@ func.func @dynamic_slice_dynamic_dim(%arg0: tensor<?x4xi32>, %arg1: tensor<i64>,
 
 func.func @dynamic_slice_i3(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<1x4xi32> {
   // @expected-error@+2 {{'mhlo.dynamic_slice' op failed to infer returned types}}
-  // expected-error@+1 {{slice_sizes should be rank 1, but got rank 0.}}
+  // expected-error@+1 {{slice_sizes has rank 0 instead of required rank 1.}}
   %0 = "mhlo.dynamic_slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<1> : tensor<i64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
   func.return %0 : tensor<1x4xi32>
 }
@@ -2545,7 +2545,7 @@ func.func @transpose_missing_permutation(%arg0: tensor<1x2x3x4xi32>) -> tensor<2
 
 func.func @transpose_bad_permutations_rank(%arg0: tensor<1x2x3x4xi32>) ->  tensor<2x1x4x3xi32> {
   // @expected-error@+2 {{'mhlo.transpose' op failed to infer returned types}}
-  // expected-error@+1 {{permutation has rank 2 instead of rank 1}}
+  // expected-error@+1 {{permutation has rank 2 instead of required rank 1.}}
   %0 = "mhlo.transpose"(%arg0) {permutation = dense<[[1]]> : tensor<1x1xi64>} : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
   func.return %0: tensor<2x1x4x3xi32>
 }
@@ -2563,7 +2563,7 @@ func.func @transpose_bad_permutations_size(%arg0: tensor<1x2x3x4xi32>) ->  tenso
 
 func.func @transpose_bad_permutation(%arg0: tensor<1x2x3x4xi32>) ->  tensor<2x1x4x3xi32> {
   // @expected-error@+2 {{'mhlo.transpose' op failed to infer returned types}}
-  // expected-error@+1 {{attribute permutation must be a permutation of [0, 1, 2, 3] but got dense<[1, 0, 3, 9]> : tensor<4xi64>}}
+  // expected-error@+1 {{attribute permutation must be a permutation of [0, 1, 2, 3] but got 1, 0, 3, 9}}
   %0 = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 9]> : tensor<4xi64>} : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
   func.return %0: tensor<2x1x4x3xi32>
 }
@@ -6097,10 +6097,10 @@ func.func @quantization_supported_ops(%arg0: tensor<1x2x2x!quant.uniform<i8:f32,
 }
 
 func.func @per_axis_quantized_ops(%arg0: tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30, 0.5:-20}>>, %arg1: tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30}>>) {
-  %0 = "stablehlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0,1,3]> : tensor<3xi64>} : (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30, 0.5:-20}>>) -> tensor<1x2x3x2x!quant.uniform<i8<-128:127>:f32:3, {0.1:-30, 0.5:-20}>>
-  %1 = "stablehlo.broadcast_in_dim"(%arg1) {broadcast_dimensions = dense<[0,1,2]> : tensor<3xi64>} : (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30}>>) -> tensor<2x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30, 0.1:-30}>>
-  %2 = stablehlo.reshape %arg0 : (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30, 0.5:-20}>>) -> tensor<2x2x!quant.uniform<i8<-128:127>:f32:1, {0.1:-30, 0.5:-20}>>
-  %3 = "stablehlo.transpose"(%arg0) {permutation = dense<[0,2,1]> : tensor<3xi64>}: (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30, 0.5:-20}>>) -> tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:1, {0.1:-30, 0.5:-20}>>
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0,1,3]> : tensor<3xi64>} : (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30, 0.5:-20}>>) -> tensor<1x2x3x2x!quant.uniform<i8<-128:127>:f32:3, {0.1:-30, 0.5:-20}>>
+  %1 = "mhlo.broadcast_in_dim"(%arg1) {broadcast_dimensions = dense<[0,1,2]> : tensor<3xi64>} : (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30}>>) -> tensor<2x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30, 0.1:-30}>>
+  %2 = mhlo.reshape %arg0 : (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30, 0.5:-20}>>) -> tensor<2x2x!quant.uniform<i8<-128:127>:f32:1, {0.1:-30, 0.5:-20}>>
+  %3 = "mhlo.transpose"(%arg0) {permutation = dense<[0,2,1]> : tensor<3xi64>}: (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30, 0.5:-20}>>) -> tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:1, {0.1:-30, 0.5:-20}>>
   func.return
 }
 
@@ -6518,55 +6518,49 @@ func.func @f8e5m2(%arg0: tensor<f16>) -> tensor<f8E5M2> {
 // -----
 
 func.func @top_k_1d(%arg0 : tensor<16xf32>) {
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true) : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
   return
 }
 
 // -----
 
 func.func @top_k_nd(%arg0 : tensor<16x16xf32>) {
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<16x16xf32> -> (tensor<16x8xf32>, tensor<16x8xi32>)
+  %0:2 = mhlo.topk(%arg0, k=8, largest=false) : tensor<16x16xf32> -> (tensor<16x8xf32>, tensor<16x8xi32>)
   return
 }
 
 // -----
 
 func.func @top_k_unbounded(%arg0 : tensor<?x16x?xf32>) {
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<?x16x?xf32> -> (tensor<?x16x8xf32>, tensor<?x16x8xi32>)
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true) : tensor<?x16x?xf32> -> (tensor<?x16x8xf32>, tensor<?x16x8xi32>)
   return
 }
 
 // -----
 
 func.func @top_k_bounded(%arg0 : tensor<?x?x?xf32, #mhlo.type_extensions<bounds = [?, 16, 16]>>) {
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<?x?x?xf32, #mhlo.type_extensions<bounds = [?, 16, 16]>> -> (tensor<16x?x8xf32, #mhlo.type_extensions<bounds = [?, 16, ?]>>, tensor<16x?x8xi32, #mhlo.type_extensions<bounds = [?, 16, ?]>>)
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true) : tensor<?x?x?xf32, #mhlo.type_extensions<bounds = [?, 16, 16]>> -> (tensor<16x?x8xf32, #mhlo.type_extensions<bounds = [?, 16, ?]>>, tensor<16x?x8xi32, #mhlo.type_extensions<bounds = [?, 16, ?]>>)
   return
 }
 
 // -----
 
 func.func @top_k_unranked(%arg0 : tensor<*xf32>) {
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<*xf32> -> (tensor<*xf32>, tensor<*xi32>)
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true) : tensor<*xf32> -> (tensor<*xf32>, tensor<*xi32>)
+  return
+}
+
+// -----
+
+func.func @top_k_1d_false(%arg0 : tensor<16xf32>) {
+  %0:2 = mhlo.topk(%arg0, k=8, largest=false) : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
+  return
+}
+
+// -----
+
+func.func @top_k_1d_default(%arg0 : tensor<16xf32>) {
+  %0:2 = mhlo.topk(%arg0, k=8) : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
   return
 }
 
@@ -6575,11 +6569,7 @@ func.func @top_k_unranked(%arg0 : tensor<*xf32>) {
 func.func @topk_rank_at_least_one(%arg0 : tensor<f32>) {
   // expected-error@+2 {{failed to infer returned types}}
   // expected-error@+1 {{operand's rank must be at least 1}}
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<f32> -> (tensor<8xf32>, tensor<8xi32>)
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true) : tensor<f32> -> (tensor<8xf32>, tensor<8xi32>)
   return
 }
 
@@ -6588,69 +6578,6 @@ func.func @topk_rank_at_least_one(%arg0 : tensor<f32>) {
 func.func @topk_last_dimension_at_least_k(%arg0 : tensor<4xf32>) {
   // expected-error@+2 {{failed to infer returned types}}
   // expected-error@+1 {{operand's last dimension must be at least 8}}
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<4xf32> -> (tensor<8xf32>, tensor<8xi32>)
-  return
-}
-
-// -----
-
-func.func @topk_body_must_have_two_arguments(%arg0 : tensor<16xf32>) {
-  // expected-error@+1 {{unsupported body: expected: '(tensor<f32>, tensor<f32>) -> tensor<i1>', got '(tensor<f32>) -> tensor<i1>'}}
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>):
-      %predicate = mhlo.compare GT, %arg1, %arg1 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
-  return
-}
-
-// -----
-
-func.func @topk_body_must_have_one_result(%arg0 : tensor<16xf32>) {
-  // expected-error@+1 {{unsupported body: expected: '(tensor<f32>, tensor<f32>) -> tensor<i1>', got '(tensor<f32>, tensor<f32>) -> (tensor<i1>, tensor<i1>)'}}
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate, %predicate : tensor<i1>, tensor<i1>
-  } : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
-  return
-}
-
-// -----
-
-func.func @topk_body_arguments_must_have_operand_element_type(%arg0 : tensor<16xf32>) {
-  // expected-error@+1 {{unsupported body: expected: '(tensor<f32>, tensor<f32>) -> tensor<i1>', got '(tensor<i32>, tensor<i32>) -> tensor<i1>'}}
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):
-      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<i32>, tensor<i32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
-  return
-}
-
-// -----
-
-func.func @topk_body_results_must_have_i1_element_type(%arg0 : tensor<16xf32>) {
-  // expected-error@+1 {{unsupported body: expected: '(tensor<f32>, tensor<f32>) -> tensor<i1>', got '(tensor<f32>, tensor<f32>) -> tensor<f32>'}}
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      mhlo.return %arg1 : tensor<f32>
-  } : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
-  return
-}
-
-// -----
-
-func.func @topk_body_must_consist_of_compare_gt_or_compare_lt(%arg0 : tensor<16xf32>) {
-  // expected-error@+1 {{unsupported body: expected mhlo.compare of body arguments with GT or LT comparison_direction}}
-  %0:2 = mhlo.topk(%arg0, k=8) {
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %predicate = mhlo.compare EQ, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-      mhlo.return %predicate : tensor<i1>
-  } : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true) : tensor<4xf32> -> (tensor<8xf32>, tensor<8xi32>)
   return
 }

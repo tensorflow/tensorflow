@@ -552,10 +552,19 @@ REGISTER_OP("MergeDedupData")
     .Attr("config: string = ''")
     .SetShapeFn(tensorflow::shape_inference::ScalarShape);
 
+REGISTER_OP("ComputeDedupDataSize")
+    .Output("num_elements: int32")
+    .Attr("config: string")
+    .SetIsStateful()
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
+
 REGISTER_OP("ComputeDedupDataTupleMask")
     .Output("output_shape: int32")
     .Attr("config: string")
     .SetIsStateful()
-    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->UnknownShapeOfRank(2));
+      return absl::OkStatus();
+    });
 
 }  // namespace tensorflow

@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/pjrt_device_context.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "xla/pjrt/local_device_state.h"
-#include "xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #endif  // TF_GPU_USE_PJRT
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -174,10 +174,6 @@ class BaseGPUDevice : public LocalDevice {
 
   // Helper method for unit tests to reset the streams. Never use in production.
   static void TestOnlyReset();
-
-  void* GetStream() {
-    return stream_->compute->implementation()->GpuStreamMemberHack();
-  }
 
   se::Stream* compute_stream() { return stream_->compute; }
 

@@ -147,17 +147,18 @@ class DistributedSaveTest(
     datasets = [
         dataset_ops.Dataset.from_tensors("a").repeat(5),
         dataset_ops.Dataset.from_tensors("b").repeat(5),
-        dataset_ops.Dataset.from_tensors("c").repeat(5),
+        dataset_ops.Dataset.from_tensors("c").repeat(10),
     ]
     choice_dataset = dataset_ops.Dataset.range(3).repeat()
-    dataset = dataset_ops.Dataset.choose_from_datasets(datasets, choice_dataset)
+    dataset = dataset_ops.Dataset.choose_from_datasets(
+        datasets, choice_dataset, stop_on_empty_dataset=False)
     self.evaluate(distributed_save_op.distributed_save(
         dataset, self._test_dir, cluster.dispatcher_address()
     ))
     _wait_for_snapshot(self._test_dir)
 
     dataset = dataset_ops.Dataset.load(self._test_dir)
-    self.assertDatasetProduces(dataset, [b"a", b"b", b"c"] * 5)
+    self.assertDatasetProduces(dataset, [b"a", b"b", b"c"] * 5 + [b"c"] * 5)
 
   @combinations.generate(
       combinations.times(

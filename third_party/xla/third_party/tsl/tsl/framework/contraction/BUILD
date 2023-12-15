@@ -77,11 +77,6 @@ cc_library(
     name = "eigen_contraction_kernel",
     hdrs = ["eigen_contraction_kernel.h"],
     compatible_with = get_compatible_with_portable(),
-    # Hack to disable breaking AVX512 special GemmKernel. There is a conflicting
-    # specialization there causing build breakages.  This must be added here
-    # as "defines" so that the header is excluded in all dependent targets.
-    # TODO(b/238649163): remove this once no longer necessary.
-    defines = ["EIGEN_USE_AVX512_GEMM_KERNELS=0"],
     visibility = ["//visibility:public"],
     deps = select({
         ":no_mkldnn_contraction_kernel": [":eigen_contraction_kernel_no_mkl"],

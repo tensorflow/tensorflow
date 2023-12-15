@@ -20,7 +20,7 @@ from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
-from tensorflow.python.training import gen_training_ops
+from tensorflow.python.ops import gen_training_ops
 
 
 class Adadelta(optimizer_v2.OptimizerV2):

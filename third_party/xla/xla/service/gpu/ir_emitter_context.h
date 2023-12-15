@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -41,13 +42,16 @@ class IrEmitterContext {
                    const BufferAssignment* buffer_assignment,
                    std::string platform_name,
                    const se::DeviceDescription& gpu_device_info,
-                   mlir::MLIRContext* mlir_context, llvm::Module* llvm_module)
+                   mlir::MLIRContext* mlir_context, llvm::Module* llvm_module,
+                   bool emit_ir_from_hlo, bool emit_kernels)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
         platform_name_(std::move(platform_name)),
         gpu_device_info_(gpu_device_info),
         mlir_context_(mlir_context),
-        llvm_module_(llvm_module) {}
+        llvm_module_(llvm_module),
+        emit_ir_from_hlo_(emit_ir_from_hlo),
+        emit_kernels_(emit_kernels) {}
   // Disallow copy and assign.
   IrEmitterContext(const IrEmitterContext&) = delete;
   IrEmitterContext& operator=(const IrEmitterContext&) = delete;
@@ -61,14 +65,17 @@ class IrEmitterContext {
   const se::DeviceDescription& gpu_device_info() const {
     return gpu_device_info_;
   }
+  const se::GpuComputeCapability& gpu_compute_capability() const {
+    return gpu_device_info_.gpu_compute_capability();
+  }
   se::CudaComputeCapability cuda_compute_capability() const {
-    auto* cc = std::get_if<se::CudaComputeCapability>(
-        &gpu_device_info_.gpu_compute_capability());
+    auto* cc =
+        std::get_if<se::CudaComputeCapability>(&gpu_compute_capability());
     return cc != nullptr ? *cc : se::CudaComputeCapability();
   }
   se::RocmComputeCapability rocm_compute_capability() const {
-    auto* cc = std::get_if<se::RocmComputeCapability>(
-        &gpu_device_info_.gpu_compute_capability());
+    auto* cc =
+        std::get_if<se::RocmComputeCapability>(&gpu_compute_capability());
     return cc != nullptr ? *cc : se::RocmComputeCapability();
   }
   mlir::MLIRContext* mlir_context() { return mlir_context_; }
@@ -77,15 +84,11 @@ class IrEmitterContext {
 
   std::vector<GpuExecutable::ConstantInfo>& constants() { return constants_; }
 
-  absl::Span<const BufferAllocation> allocations() const {
-    if (buffer_assignment_) {
-      return buffer_assignment_->Allocations();
-    }
+  absl::Span<const BufferAllocation* const> allocations() const {
     return allocations_;
   }
 
-  void set_allocations(absl::Span<const BufferAllocation> allocations) {
-    CHECK_EQ(nullptr, buffer_assignment_);
+  void set_allocations(absl::Span<const BufferAllocation* const> allocations) {
     allocations_ = allocations;
   }
 
@@ -93,22 +96,34 @@ class IrEmitterContext {
   // element, given symbol name and content.
   void emit_constant(int64_t num_elements, int64_t bytes_per_element,
                      absl::string_view symbol_name, int allocation_idx,
-                     llvm::ArrayRef<uint8_t> content, llvm::IRBuilder<>* b);
+                     DenseDataIntermediate content, llvm::IRBuilder<>* b);
 
   const DebugOptions& debug_options() const {
     return hlo_module_->config().debug_options();
   }
 
+  bool emit_ir_from_hlo() const { return emit_ir_from_hlo_; }
+  bool emit_kernels() const { return emit_kernels_; }
+
  private:
   const HloModule* hlo_module_;
   const BufferAssignment* buffer_assignment_;
-  absl::Span<const BufferAllocation> allocations_;
+
+  // Stores pointer to buffer allocations in the order of the LMHLO entry args.
+  // LMHLO-based emitters need the ordering to locate the buffer allocation.
+  // This should be removed once LMHLO-based emitters are removed.
+  absl::Span<const BufferAllocation* const> allocations_;
+
   std::string platform_name_;
   const se::DeviceDescription& gpu_device_info_;
   mlir::MLIRContext* mlir_context_;
   llvm::Module* llvm_module_;
   NameUniquer name_uniquer_;
   std::vector<GpuExecutable::ConstantInfo> constants_;
+  const bool emit_ir_from_hlo_;
+
+  // We should not emit kernels when loading thunks from a compilation result.
+  const bool emit_kernels_;
 };
 
 }  // namespace gpu

@@ -103,7 +103,7 @@ absl::Status FindAndLoadTpuLibrary() {
   // Check if libtpu is attached to the whl. In that case, libtpu should be in
   // the path `library/libtpu.so` inside the whl.
   std::filesystem::path whl_libtpu_path =
-      std::filesystem::path(so_name).replace_filename("library/libtpu.so");
+      std::filesystem::path(so_name).replace_filename("lib/libtpu.so");
 
   const char* env_value = getenv("TPU_LIBRARY_PATH");
   const char* libtpu_path = nullptr;

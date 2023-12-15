@@ -223,7 +223,7 @@ class SavedModelTest(test.TestCase, parameterized.TestCase):
 
 class SingleCycleTest(test.TestCase):
 
-  @test_util.deprecated_graph_mode_only()
+  @test_util.deprecated_graph_mode_only
   def test_registered_saver_fails_in_saved_model_graph_mode(self):
     with context.eager_mode():
       p1 = Part([1, 4])

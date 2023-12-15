@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_format.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/translate/mhlo_to_hlo/location_exporter.h"
 
 namespace xla {
@@ -33,7 +34,13 @@ Thunk::ExecuteParams::ExecuteParams(
     : buffer_allocations(&buffer_allocations),
       stream(stream),
       async_comms_streams(async_streams.begin(), async_streams.end()),
-      nccl_params(run_options, stream->parent()) {}
+      nccl_params(run_options, stream->parent()),
+      device_to_host_stream(run_options.run_options().device_to_host_stream()),
+      host_to_device_stream(run_options.run_options().host_to_device_stream()),
+      send_device_memory_function(
+          run_options.run_options().send_device_memory_function()),
+      recv_device_memory_function(
+          run_options.run_options().recv_device_memory_function()) {}
 
 /*static*/ absl::string_view Thunk::KindToString(Thunk::Kind kind) {
 #define CASE(x)  \
@@ -41,12 +48,15 @@ Thunk::ExecuteParams::ExecuteParams(
     return #x
   switch (kind) {
     CASE(kCholesky);
+    CASE(kCommandBuffer);
     CASE(kConditional);
     CASE(kConvolution);
     CASE(kConvolutionReorder);
     CASE(kCopy);
+    CASE(kCubSort);
     CASE(kCublasLtMatmul);
     CASE(kCustomCall);
+    CASE(kCustomKernel);
     CASE(kNcclAllGather);
     CASE(kNcclAllGatherStart);
     CASE(kNcclAllGatherDone);
@@ -71,9 +81,14 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kKernel);
     CASE(kMemset32BitValue);
     CASE(kMemzero);
+    CASE(kNorm);
     CASE(kOutfeed);
-    CASE(kReplicaId);
+    CASE(kSend);
+    CASE(kSendDone);
     CASE(kPartitionId);
+    CASE(kReplicaId);
+    CASE(kRecv);
+    CASE(kRecvDone);
     CASE(kSequential);
     CASE(kTriangularSolve);
     CASE(kWhile);
@@ -125,6 +140,14 @@ Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(mlir::Operation* op) {
   ThunkInfo thunk_info(op);
   thunk_info.profile_annotation = absl::StrFormat(
       "Thunk:#hlo_op=%s#", mlir::mhlo::GetDebugNameFromLocation(op->getLoc()));
+  return thunk_info;
+}
+
+Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(
+    const HloInstruction* instr) {
+  ThunkInfo thunk_info(nullptr);
+  thunk_info.profile_annotation =
+      absl::StrFormat("Thunk:#hlo_op=%s#", instr->name());
   return thunk_info;
 }
 

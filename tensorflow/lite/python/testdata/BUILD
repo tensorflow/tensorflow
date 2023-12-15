@@ -148,8 +148,8 @@ tf_custom_op_py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":gen_double_op_wrapper",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:load_library",
         "//tensorflow/python/platform:resource_loader",
     ],
 )

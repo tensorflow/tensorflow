@@ -18,14 +18,13 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <functional>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -33,17 +32,19 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/numeric/bits.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
-#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_query.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_comparison.h"
@@ -53,11 +54,14 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/types.h"
+#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -721,6 +725,16 @@ void AlgebraicSimplifierVisitor::ReplaceWithBitcast(HloInstruction* instruction,
 // 2. the replacement will not cause loss of sharding
 bool AlgebraicSimplifierVisitor::ReplaceInstructionIfCompatible(
     HloInstruction* old_instruction, HloInstruction* new_instruction) {
+  // It's tricky for the simplifier to determine whether
+  // it should remove the op when control deps are present. I.e.
+  // control deps might be added to preserve a certain order.
+  // It's better to not process in that case.
+  if (old_instruction->control_predecessors().size() > 0) {
+    VLOG(3) << old_instruction->ToString()
+            << " has control predecessors, skipping.";
+    return false;
+  }
+
   if (!SameShape(old_instruction, new_instruction)) {
     return false;
   }
@@ -732,6 +746,16 @@ bool AlgebraicSimplifierVisitor::ReplaceInstructionIfCompatible(
 bool AlgebraicSimplifierVisitor::ReplaceInstructionIfCompatible(
     HloInstruction* old_instruction,
     absl::Span<HloInstruction* const> new_instructions) {
+  // It's tricky for the simplifier to determine whether
+  // it should remove the op when control deps are present. I.e.
+  // control deps might be added to preserve a certain order.
+  // It's better to not process in that case.
+  if (old_instruction->control_predecessors().size() > 0) {
+    VLOG(3) << old_instruction->ToString()
+            << " has control predecessors, skipping.";
+    return false;
+  }
+
   if (new_instructions.size() == 1) {
     return ReplaceInstructionIfCompatible(old_instruction, new_instructions[0]);
   }
@@ -1143,6 +1167,15 @@ Status AlgebraicSimplifierVisitor::HandleAnd(HloInstruction* logical_and) {
 }
 
 Status AlgebraicSimplifierVisitor::HandleBitcast(HloInstruction* bitcast) {
+  // It's tricky for the simplifier to determine whether
+  // it should remove the op when control deps are present. I.e.
+  // control deps might be added to preserve a certain order.
+  // It's better to not process in that case.
+  if (bitcast->control_predecessors().size() > 0) {
+    VLOG(3) << bitcast->ToString() << " has control predecessors, skipping.";
+    return OkStatus();
+  }
+
   // If a bitcast feeds a bitcast, make it a single bitcast.
   // Make sure the whole chain of bitcasts is optimized.
   if (bitcast->operand(0)->opcode() == HloOpcode::kBitcast) {
@@ -3920,6 +3953,24 @@ Status AlgebraicSimplifierVisitor::HandleMinimum(HloInstruction* minimum) {
     }
   }
 
+  // min(min(x, y), y) -> min(x, y)
+  // min(min(x, y), x) -> min(x, y)
+  if (Match(lhs, m::MinimumAnyOrder(m::Op(), m::Op().Is(rhs)))) {
+    return ReplaceInstruction(minimum, lhs);
+  }
+  // min(x, min(x, y)) -> min(x, y)
+  if (Match(rhs, m::Minimum(m::Op().Is(lhs), m::Op()))) {
+    return ReplaceInstruction(minimum, rhs);
+  }
+  // min(y, min(x, y)) -> min(y, x)
+  // Note that we cannot simplify to min(x, y) here, as for the case that x and
+  // y are NaN but with different sign, it will make a difference.
+  if (Match(rhs, m::Minimum(m::Op(), m::Op().Is(lhs)))) {
+    TF_RETURN_IF_ERROR(minimum->ReplaceOperandWith(1, rhs->mutable_operand(0)));
+    MarkAsChanged();
+    return OkStatus();
+  }
+
   HloInstruction* clamp_upper_bound_bcast;
   HloInstruction* clamp_lower_bound_bcast;
   HloInstruction* to_clamp;
@@ -4491,8 +4542,9 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
           OutputIsSubsetOfOperandElements(user, broadcast)) {
         VLOG(10) << "transform permuting/subset of a scalar broadcast into "
                  << "a single broadcast";
-        HloInstruction* new_broadcast = user->AddInstruction(
-            HloInstruction::CreateBroadcast(user->shape(), operand, {}));
+        HloInstruction* new_broadcast =
+            user->AddInstruction(HloInstruction::CreateBroadcast(
+                ShapeUtil::MakeStaticShape(user->shape()), operand, {}));
         // Use HloInstruction::ReplaceAllUsesWith instead of
         // HloComputation::ReplaceWithNewInstruction because we are replacing an
         // instruction other than the visited instruction.
@@ -4598,6 +4650,28 @@ Status AlgebraicSimplifierVisitor::HandleCompare(HloInstruction* compare) {
       case ComparisonDirection::kGe:
       case ComparisonDirection::kLe:
         return ReplaceInstruction(compare, MakeScalarLike(compare, true));
+    }
+  }
+  if (ShapeUtil::HasPrimitiveType(lhs->shape(), xla::PRED) &&
+      ShapeUtil::HasPrimitiveType(rhs->shape(), xla::PRED)) {
+    if (compare->comparison_direction() == ComparisonDirection::kNe) {
+      // A != false -> A
+      if (IsAll(rhs, false)) {
+        return ReplaceInstruction(compare, lhs);
+      }
+      // false != A -> A
+      if (IsAll(lhs, false)) {
+        return ReplaceInstruction(compare, rhs);
+      }
+    } else if (compare->comparison_direction() == ComparisonDirection::kEq) {
+      // A == true -> A
+      if (IsAll(rhs, true)) {
+        return ReplaceInstruction(compare, lhs);
+      }
+      // true == A -> A
+      if (IsAll(lhs, true)) {
+        return ReplaceInstruction(compare, rhs);
+      }
     }
   }
   return OkStatus();
@@ -6046,6 +6120,10 @@ Status AlgebraicSimplifierVisitor::HandleRsqrt(HloInstruction* rsqrt) {
 
 Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
     HloInstruction* dynamic_slice) {
+  // Skip optimizations for async dynamic-slices.
+  if (dynamic_slice->parent()->IsAsyncComputation()) {
+    return OkStatus();
+  }
   auto operand = dynamic_slice->mutable_operand(0);
   if (ShapeUtil::IsScalar(dynamic_slice->shape())) {
     return ReplaceInstruction(dynamic_slice, operand);
@@ -6302,6 +6380,10 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
 
 Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
     HloInstruction* dynamic_update_slice) {
+  // Skip optimizations for async dynamic update slices
+  if (dynamic_update_slice->parent()->IsAsyncComputation()) {
+    return OkStatus();
+  }
   // Rewriting DynamicUpdateSlice when it matches
   // dynamic_update_slice(broadcast(constant),data,constant_index0,...)
   // to a Pad(x, constant)
@@ -7039,6 +7121,28 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
                                                         /*index=*/0));
     }
   }
+
+  // Replace Reduce(Broadcast(x), dims, Sum()) with Broadcast(x * prod(dims)).
+  if (HloInstruction * broadcast_arg;
+      Match(arg, m::Broadcast(m::ConstantScalar(&broadcast_arg))) &&
+      Match(function->root_instruction(),
+            m::AddAnyOrder(m::Parameter(0), m::Parameter(1)))) {
+    if (auto broadcast_value = GetConstantValue(broadcast_arg);
+        broadcast_value.has_value() &&
+        // Skip float64, where product is too accurate compared to repeated-sum.
+        broadcast_arg->shape().element_type() != PrimitiveType::F64) {
+      auto result_value = broadcast_value.value() *
+                          ShapeUtil::ElementsIn(arg->shape()) /
+                          ShapeUtil::ElementsIn(reduce_result_shape);
+      return ReplaceWithNewInstruction(
+          reduce, HloInstruction::CreateBroadcast(
+                      reduce_result_shape,
+                      reduce->AddInstruction(
+                          MakeScalarInstruction(reduce, result_value)),
+                      {}));
+    }
+  }
+
   return OkStatus();
 }
 
@@ -7378,16 +7482,19 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(HloInstruction* hlo) {
 
 Status AlgebraicSimplifierVisitor::HandleSelect(HloInstruction* select) {
   // select(x, y, y) -> y.
-  if (select->operand(1) == select->operand(2)) {
-    return ReplaceInstruction(select, select->mutable_operand(1));
+  if (select->operand(1) == select->operand(2) &&
+      ReplaceInstructionIfCompatible(select, select->mutable_operand(1))) {
+    return OkStatus();
   }
   // select(true, x, y) -> x.
-  if (IsAll(select->operand(0), true)) {
-    return ReplaceInstruction(select, select->mutable_operand(1));
+  if (IsAll(select->operand(0), true) &&
+      ReplaceInstructionIfCompatible(select, select->mutable_operand(1))) {
+    return OkStatus();
   }
   // select(false, x, y) -> y.
-  if (IsAll(select->operand(0), false)) {
-    return ReplaceInstruction(select, select->mutable_operand(2));
+  if (IsAll(select->operand(0), false) &&
+      ReplaceInstructionIfCompatible(select, select->mutable_operand(2))) {
+    return OkStatus();
   }
   // select(not(pred), a, b) -> select(pred, b, a)
   if (HloOpcode::kNot == select->operand(0)->opcode()) {
@@ -7398,6 +7505,20 @@ Status AlgebraicSimplifierVisitor::HandleSelect(HloInstruction* select) {
         select,
         HloInstruction::CreateTernary(select->shape(), HloOpcode::kSelect,
                                       pred_operand, on_false, on_true));
+  }
+  // select(PRED, PRED, PRED)
+  if (ShapeUtil::HasPrimitiveType(select->shape(), xla::PRED)) {
+    // select(a, true, false) -> a
+    if (IsAll(select->operand(1), true) && IsAll(select->operand(2), false)) {
+      return ReplaceInstruction(select, select->mutable_operand(0));
+    }
+    // select(a, false, true) -> not(a)
+    if (IsAll(select->operand(1), false) && IsAll(select->operand(2), true)) {
+      return ReplaceWithNewInstruction(
+          select, HloInstruction::CreateUnary(
+                      select->mutable_operand(0)->shape(), HloOpcode::kNot,
+                      select->mutable_operand(0)));
+    }
   }
 
   // select(pred, xs, dynamic_update_slice(xs, x, i))

@@ -804,60 +804,43 @@ std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
 // HloEvaluatorTypedVisitor cannot.
 HloEvaluator::HloEvaluator(int64_t max_loop_iterations)
     : max_loop_iterations_(max_loop_iterations) {
-  typed_visitors_[PRED] =
-      std::make_unique<HloEvaluatorTypedVisitor<bool>>(this);
-  typed_visitors_[U8] =
-      std::make_unique<HloEvaluatorTypedVisitor<uint8_t, uint64_t>>(this);
-  typed_visitors_[U16] =
-      std::make_unique<HloEvaluatorTypedVisitor<uint16_t, uint64_t>>(this);
-  typed_visitors_[U32] =
-      std::make_unique<HloEvaluatorTypedVisitor<uint32_t, uint64_t>>(this);
-  typed_visitors_[U64] =
-      std::make_unique<HloEvaluatorTypedVisitor<uint64_t>>(this);
-  typed_visitors_[S8] =
-      std::make_unique<HloEvaluatorTypedVisitor<int8_t, int64_t>>(this);
-  typed_visitors_[S16] =
-      std::make_unique<HloEvaluatorTypedVisitor<int16_t, int64_t>>(this);
-  typed_visitors_[S32] =
-      std::make_unique<HloEvaluatorTypedVisitor<int32_t, int64_t>>(this);
-  typed_visitors_[S64] =
-      std::make_unique<HloEvaluatorTypedVisitor<int64_t>>(this);
-  typed_visitors_[F16] =
-      std::make_unique<HloEvaluatorTypedVisitor<Eigen::half, float>>(this);
-  typed_visitors_[F32] =
-      std::make_unique<HloEvaluatorTypedVisitor<float>>(this);
-  typed_visitors_[F64] =
-      std::make_unique<HloEvaluatorTypedVisitor<double>>(this);
-  typed_visitors_[C64] =
-      std::make_unique<HloEvaluatorTypedVisitor<complex64>>(this);
-  typed_visitors_[C128] =
-      std::make_unique<HloEvaluatorTypedVisitor<complex128>>(this);
-
-  typed_visitors_[U4] =
-      std::make_unique<HloEvaluatorTypedVisitor<u4, uint64_t>>(this);
-  typed_visitors_[S4] =
-      std::make_unique<HloEvaluatorTypedVisitor<s4, int64_t>>(this);
-
-  // Most of the evaluator computations we use don't support BF16 and F8 (e.g.,
-  // std::ceil, std::tanh). To make evaluator work with these dtypes, we set all
-  // elementwise computations to be done in F32 and do BF16<->F32 or F8<->F32
-  // conversion around the input and the output of the computations.
-  typed_visitors_[BF16] =
-      std::make_unique<HloEvaluatorTypedVisitor<bfloat16, float>>(this);
-  typed_visitors_[F8E5M2] =
-      std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e5m2, float>>(this);
-  typed_visitors_[F8E4M3FN] =
-      std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e4m3fn, float>>(
-          this);
-  typed_visitors_[F8E4M3B11FNUZ] =
-      std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e4m3b11, float>>(
-          this);
-  typed_visitors_[F8E5M2FNUZ] =
-      std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e5m2fnuz, float>>(
-          this);
-  typed_visitors_[F8E4M3FNUZ] =
-      std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e4m3fnuz, float>>(
-          this);
+  for (int i = PrimitiveType_MIN; i < PrimitiveType_ARRAYSIZE; ++i) {
+    if (!primitive_util::IsArrayType(PrimitiveType{i})) {
+      continue;
+    }
+    primitive_util::PrimitiveTypeSwitch<void>(
+        [&](auto primitive_type) {
+          if constexpr (primitive_util::IsArrayType(primitive_type)) {
+            using NativeT = primitive_util::NativeTypeOf<primitive_type>;
+            if constexpr (primitive_util::IsSignedIntegralType(
+                              primitive_type)) {
+              typed_visitors_[primitive_type] =
+                  std::make_unique<HloEvaluatorTypedVisitor<NativeT, int64_t>>(
+                      this);
+            } else if constexpr (primitive_util::IsUnsignedIntegralType(
+                                     primitive_type)) {
+              typed_visitors_[primitive_type] =
+                  std::make_unique<HloEvaluatorTypedVisitor<NativeT, uint64_t>>(
+                      this);
+            } else if constexpr (primitive_util::IsFloatingPointType(
+                                     primitive_type) &&
+                                 sizeof(NativeT) < sizeof(float)) {
+              // Most of the evaluator computations we use don't support BF16
+              // and F8 (e.g., std::ceil, std::tanh). To make evaluator work
+              // with these dtypes, we set all elementwise computations to be
+              // done in F32 and do BF16<->F32 or F8<->F32 conversion around the
+              // input and the output of the computations.
+              typed_visitors_[primitive_type] =
+                  std::make_unique<HloEvaluatorTypedVisitor<NativeT, float>>(
+                      this);
+            } else {
+              typed_visitors_[primitive_type] =
+                  std::make_unique<HloEvaluatorTypedVisitor<NativeT>>(this);
+            }
+          }
+        },
+        PrimitiveType{i});
+  }
 
   typed_visitors_[TUPLE] =
       std::make_unique<ConstFunctionVisitor>([](const HloInstruction*) {
@@ -3477,6 +3460,7 @@ StatusOr<Literal> TryParseAndEvaluateWhileInductionVar(
       const Shape& shape = while_hlo->shape().tuple_shapes(i);
       while_result_elements[i] =
           Literal::CreateFromShapeWithUnknownLeafArrays(shape);
+      while_result_element_ptrs.push_back(&while_result_elements[i]);
     }
   }
   return LiteralUtil::MakeTuple(while_result_element_ptrs);

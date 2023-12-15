@@ -87,23 +87,22 @@ tsl::StatusOr<DeviceMemory<uint8_t>> RedzoneAllocator::AllocateBytes(
   static_assert(sizeof(uint8_t) == 1, "Unexpected size");
   DeviceMemory<uint8_t> allocated_buffer_memory(*allocated_buffer);
 
-  DeviceMemory<uint8_t> lhs_redzone = stream_->parent()->GetSubBuffer(
-      &allocated_buffer_memory, 0, redzone_size_);
+  DeviceMemory<uint8_t> lhs_redzone =
+      allocated_buffer_memory.GetSlice(0, redzone_size_);
 
-  DeviceMemory<uint8_t> data_chunk = stream_->parent()->GetSubBuffer(
-      &allocated_buffer_memory, redzone_size_, byte_size);
+  DeviceMemory<uint8_t> data_chunk =
+      allocated_buffer_memory.GetSlice(redzone_size_, byte_size);
 
   // Split up the RHS redzone into two pieces:
   //  - 0 to kRhsRedzoneAlign bytes adjacent to the user buffer, followed by
   //  - redzone_size_ bytes.
   // We do this because Stream::ThenMemset32 requires the buffer address and
   // size to be aligned to 4 bytes.
-  DeviceMemory<uint8_t> rhs_redzone_slop = stream_->parent()->GetSubBuffer(
-      &allocated_buffer_memory, redzone_size_ + byte_size, rhs_slop);
+  DeviceMemory<uint8_t> rhs_redzone_slop =
+      allocated_buffer_memory.GetSlice(redzone_size_ + byte_size, rhs_slop);
 
-  DeviceMemory<uint8_t> rhs_redzone_nonslop = stream_->parent()->GetSubBuffer(
-      &allocated_buffer_memory, redzone_size_ + byte_size + rhs_slop,
-      redzone_size_);
+  DeviceMemory<uint8_t> rhs_redzone_nonslop = allocated_buffer_memory.GetSlice(
+      redzone_size_ + byte_size + rhs_slop, redzone_size_);
 
   uint8_t pattern_arr[] = {redzone_pattern_, redzone_pattern_, redzone_pattern_,
                            redzone_pattern_};
@@ -260,7 +259,6 @@ static tsl::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
     const DeviceMemory<uint64_t>& out_param,
     const ComparisonKernelT& comparison_kernel, int64_t user_allocation_size,
     uint64_t redzone_size, uint8_t redzone_pattern) {
-  StreamExecutor* executor = stream->parent();
   int64_t rhs_slop =
       RoundUpToNearest<int64_t>(user_allocation_size, kRhsRedzoneAlign) -
       user_allocation_size;
@@ -268,14 +266,14 @@ static tsl::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
 
   DeviceMemory<uint8_t> buffer_uint8(memory);
   DeviceMemory<uint8_t> lhs_redzone =
-      executor->GetSubBuffer(&buffer_uint8, 0,
-                             /*element_count=*/redzone_size);
+      buffer_uint8.GetSlice(0,
+                            /*element_count=*/redzone_size);
   DeviceMemory<uint8_t> user_allocation =
-      executor->GetSubBuffer(&buffer_uint8, redzone_size,
-                             /*element_count=*/user_allocation_size);
+      buffer_uint8.GetSlice(redzone_size,
+                            /*element_count=*/user_allocation_size);
   DeviceMemory<uint8_t> rhs_redzone =
-      executor->GetSubBuffer(&buffer_uint8, redzone_size + user_allocation_size,
-                             /*element_count=*/redzone_size + rhs_slop);
+      buffer_uint8.GetSlice(redzone_size + user_allocation_size,
+                            /*element_count=*/redzone_size + rhs_slop);
 
   TF_RETURN_IF_ERROR(RunRedzoneChecker(stream, lhs_redzone, redzone_pattern,
                                        out_param, comparison_kernel));
@@ -336,7 +334,7 @@ tsl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
       (LoadKernelOrGetPtr<DeviceMemory<uint8_t>, uint8_t, uint64_t,
                           DeviceMemory<uint64_t>>(
           executor, "redzone_checker", redzone_checker_ptx, compiled_ptx)));
-#else
+#elif TENSORFLOW_USE_ROCM
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ComparisonKernelT> loaded_kernel,
       (executor->CreateTypedKernel<DeviceMemory<uint8>, uint8, uint64_t,

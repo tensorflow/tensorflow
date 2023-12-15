@@ -9,12 +9,14 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 # Import third party repository rules. See go/tfbr-thirdparty.
 load("//third_party/dlpack:workspace.bzl", dlpack = "repo")
+load("//third_party/gloo:workspace.bzl", gloo = "repo")
 load("//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
 load("//third_party/triton:workspace.bzl", triton = "repo")
 
 def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
     dlpack()
+    gloo()
     stablehlo()
     triton()
 
@@ -35,6 +37,14 @@ def _tf_repositories():
         sha256 = "d8dba9e2607a0c256aa8eacb45b39986ab6f3f24a4d431d4397047a3cb0cd4fb",
         strip_prefix = "cudnn-frontend-0.9",
         urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.9.zip"),
+    )
+
+    tf_http_archive(
+        name = "cutlass_archive",
+        build_file = "//third_party:cutlass.BUILD",
+        sha256 = "ea1b7f96919460a5d80b09c1b246652539a8605600b2be4cccc02c254bccbe50",
+        strip_prefix = "cutlass-5783d6dbd0c34032371cce2bd999fc76007520d7",
+        urls = tf_mirror_urls("https://github.com/chsigg/cutlass/archive/5783d6dbd0c34032371cce2bd999fc76007520d7.tar.gz"),
     )
 
     tf_http_archive(

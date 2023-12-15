@@ -20,13 +20,30 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/test_matchers.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "xla/client/client_library.h"
+#include "xla/shape.h"
+#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/lib/monitoring/test_utils.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -45,15 +62,8 @@ static constexpr char kCompilationTimeStreamzName[] =
 static constexpr char kCompilationStatusStreamzName[] =
     "/tensorflow/core/tf2xla/api/v1/phase2_compilation_status";
 
-class DummyOp : public tensorflow::XlaOpKernel {
- public:
-  explicit DummyOp(OpKernelConstruction* ctx) : tensorflow::XlaOpKernel(ctx) {}
-  void Compile(XlaOpKernelContext* ctx) override {}
-};
-
-REGISTER_KERNEL_BUILDER(Name("NoOp").Device(DEVICE_DEFAULT), DummyOp);
-REGISTER_KERNEL_BUILDER(Name("NoOp").Device("XLA_TPU_JIT"), DummyOp);
-REGISTER_KERNEL_BUILDER(Name("NoOp").Device("XLA_CPU_JIT"), DummyOp);
+static constexpr char kPlatformName[] = "Host";
+constexpr char kEntryFuncName[] = "main";
 
 static constexpr char kMlirModuleStr[] = R"(
   module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
@@ -72,26 +82,92 @@ MlirToHloArgs CreateTestMlirToHloArgs(const char* module_str = kMlirModuleStr) {
 }
 
 class CompileTFGraphTest : public ::testing::Test {
+ private:
+  absl::Status SetupArguments(mlir::ModuleOp module,
+                              std::vector<TensorShape>& arg_shapes,
+                              tpu::TPUCompileMetadataProto& metadata_proto) {
+    auto main_fn = module.lookupSymbol<mlir::func::FuncOp>(kEntryFuncName);
+    if (!main_fn) {
+      return absl::InternalError(
+          "Could not find main function in MLIR Module.");
+    }
+
+    mlir::FunctionType func_type = main_fn.getFunctionType();
+    for (auto input_type : func_type.getInputs()) {
+      tensorflow::TensorShape tensor_shape;
+      xla::Shape xla_shape = xla::TypeToShape(input_type);
+      TF_RETURN_IF_ERROR(tensorflow::TensorShape::BuildTensorShape(
+          xla_shape.dimensions(), &tensor_shape));
+      arg_shapes.emplace_back(tensor_shape);
+
+      DataType dtype;
+      TF_RETURN_IF_ERROR(ConvertToDataType(input_type, &dtype));
+
+      auto metadata_arg = metadata_proto.add_args();
+      metadata_arg->set_kind(tpu::TPUCompileMetadataProto::Arg::PARAMETER);
+      metadata_arg->set_dtype(dtype);
+    }
+
+    return absl::OkStatus();
+  }
+
+  absl::Status SetupReturnValues(mlir::ModuleOp module,
+                                 tpu::TPUCompileMetadataProto& metadata_proto) {
+    auto main_fn = module.lookupSymbol<mlir::func::FuncOp>(kEntryFuncName);
+    if (!main_fn) {
+      return absl::InternalError(
+          "Could not find main function in MLIR Module.");
+    }
+
+    int func_results = main_fn.getFunctionType().getNumResults();
+    for (int i = 0; i < func_results; i++) {
+      metadata_proto.add_retvals();
+    }
+
+    return absl::OkStatus();
+  }
+
  public:
-  tsl::Status CompileWithComputation(
+  tsl::StatusOr<XlaCompilationResult> CompileWithComputation(
       const std::variant<tpu::MlirToHloArgs, tpu::FunctionToHloArgs>
           computation) {
+    mlir::DialectRegistry registry;
+    mlir::RegisterAllTensorFlowDialects(registry);
+    mlir::MLIRContext context(registry);
+    mlir::OwningOpRef<mlir::ModuleOp> mlir_module;
+
+    XlaCompilationResult compilation_result;
+
     se::Platform* platform =
-        se::MultiPlatformManager::PlatformWithName("Host").value();
+        se::MultiPlatformManager::PlatformWithName(kPlatformName).value();
     auto client =
         xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform).value();
 
-    std::vector<TensorShape> arg_shapes;
     bool use_tuple_args = true;
     std::vector<ShardingAndIndex> arg_core_mapping;
     std::vector<std::vector<xla::Shape>> per_core_arg_shapes;
-    XlaCompiler::CompilationResult result;
-    tpu::TPUCompileMetadataProto metadata_proto;
-    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_funcs;
 
-    return CompileTensorflowGraphToHlo(
-        computation, metadata_proto, use_tuple_args, shape_determination_funcs,
-        arg_shapes, &arg_core_mapping, &per_core_arg_shapes, client, &result);
+    tpu::TPUCompileMetadataProto metadata_proto;
+    std::vector<TensorShape> arg_shapes;
+    if (computation.index() == 0) {
+      TF_RETURN_IF_ERROR(DeserializeMlirModule(
+          std::get<0>(computation).mlir_module, &context, &mlir_module));
+      TF_RETURN_IF_ERROR(SetupReturnValues(*mlir_module, metadata_proto));
+      TF_RETURN_IF_ERROR(
+          SetupArguments(*mlir_module, arg_shapes, metadata_proto));
+    }
+
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns;
+
+    tsl::Status compilation_status =
+        tensorflow::tf2xla::v1::CompileTensorflowGraphToHlo(
+            computation, metadata_proto, use_tuple_args,
+            shape_determination_fns, arg_shapes, &arg_core_mapping,
+            &per_core_arg_shapes, client, &compilation_result);
+
+    if (!compilation_status.ok()) return compilation_status;
+
+    return compilation_result;
   }
 };
 
@@ -100,7 +176,7 @@ TEST_F(CompileTFGraphTest, RecordsStreamzForMlirFallback) {
 
   MlirToHloArgs mlir_to_hlo_args = CreateTestMlirToHloArgs();
 
-  TF_EXPECT_OK(CompileWithComputation(mlir_to_hlo_args));
+  TF_EXPECT_OK(CompileWithComputation(mlir_to_hlo_args).status());
 
   Histogram histogram = compilation_time.Delta("graph_old_bridge_has_mlir");
 
@@ -128,7 +204,7 @@ TEST_F(CompileTFGraphTest, RecordsStreamzForFunctionToHlo) {
                                             /*graph_def_version=*/0,
                                             {&guaranteed_constants}};
 
-  TF_EXPECT_OK(CompileWithComputation(function_to_hlo_args));
+  TF_EXPECT_OK(CompileWithComputation(function_to_hlo_args).status());
 
   Histogram histogram =
       compilation_time.Delta("graph_old_bridge_has_function_to_hlo");
@@ -161,7 +237,28 @@ TEST_F(CompileTFGraphTest, CatchesErrorMissedByPassManagerRun) {
   auto result = CompileWithComputation(mlir_to_hlo_args);
 
   ASSERT_THAT(result.ok(), false);
-  EXPECT_THAT(result.message(), testing::ContainsRegex("op manual_sharding"));
+  EXPECT_THAT(result.status().message(),
+              testing::ContainsRegex("op manual_sharding"));
+}
+
+TEST_F(CompileTFGraphTest, DoesNotInlineStatelessRandomOps) {
+  static constexpr char kHasReturnValues[] = R"(
+    module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
+      func.func @main() -> (tensor<32x64xf32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}) {
+        %cst = "tf.Const"() {value = dense<[524170, 523952]> : tensor<2xi32>} : () -> tensor<2xi32>
+        %cst_0 = "tf.Const"() {value = dense<[32, 64]> : tensor<2xi32>} : () -> tensor<2xi32>
+        %0 = "tf.StatelessRandomNormal"(%cst_0, %cst) : (tensor<2xi32>, tensor<2xi32>) -> tensor<32x64xf32>
+        return %0 : tensor<32x64xf32>
+    }
+  })";
+
+  auto compilation_result =
+      CompileWithComputation(CreateTestMlirToHloArgs(kHasReturnValues));
+  EXPECT_TRUE(compilation_result.ok());
+
+  // The StatelessRandomNormal must not be replaced by a literal tensor.
+  EXPECT_THAT(compilation_result,
+              ComputationProtoContains("tf.StatelessRandomNormal"));
 }
 
 }  // namespace

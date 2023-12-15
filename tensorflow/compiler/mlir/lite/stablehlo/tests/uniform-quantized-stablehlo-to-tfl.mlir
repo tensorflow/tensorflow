@@ -24,7 +24,7 @@ func.func @uniform_quantize_op_quantized_input(%arg: tensor<2x2x!quant.uniform<i
 
 // -----
 
-// Tests that the pattern doesn't match when the output tensor's sotrage type
+// Tests that the pattern doesn't match when the output tensor's storage type
 // is ui16. ui16 storage type for quantized type is not compatible with
 // `tfl.quantize`.
 
@@ -38,7 +38,7 @@ func.func @uniform_quantize_op_uint16_output(%arg: tensor<2x2xf32>) -> tensor<2x
 
 // -----
 
-// Tests that the pattern doesn't match when the output tensor's sotrage type
+// Tests that the pattern doesn't match when the output tensor's storage type
 // is i32. i32 storage type for quantized type is not compatible with
 // `tfl.quantize`.
 
@@ -104,8 +104,8 @@ func.func @uniform_dequantize_op_return_f64(%arg: tensor<2x2x!quant.uniform<i8:f
 
 // -----
 
-// CHECK-LABEL: convolution_op
-func.func @convolution_op(%arg0: tensor<1x3x3x4x!quant.uniform<i8:f32, 3.000000e+0:-100>>) -> tensor<1x3x3x2x!quant.uniform<i8:f32, 4.000000e+0>> {
+// CHECK-LABEL: convolution_upstream_full_integer
+func.func @convolution_upstream_full_integer(%arg0: tensor<1x3x3x4x!quant.uniform<i8:f32, 3.000000e+0:-100>>) -> tensor<1x3x3x2x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = stablehlo.constant() {value = dense<3> : tensor<3x3x4x2xi8>} : () -> tensor<3x3x4x2x!quant.uniform<i8:f32:3, {2.000000e+2, 3.000000e+3}>>
   %1 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x3x3x4x!quant.uniform<i8:f32, 3.000000e+0:-100>>, tensor<3x3x4x2x!quant.uniform<i8:f32:3, {2.000000e+2, 3.000000e+3}>>) -> tensor<1x3x3x2x!quant.uniform<i8:f32, 4.000000e+0>>
   return %1 : tensor<1x3x3x2x!quant.uniform<i8:f32, 4.000000e+0>>
@@ -123,8 +123,8 @@ func.func @convolution_op(%arg0: tensor<1x3x3x4x!quant.uniform<i8:f32, 3.000000e
 
 // -----
 
-// CHECK-LABEL: convolution_op_non_const_filter
-func.func @convolution_op_non_const_filter(%arg0: tensor<1x3x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>, %arg1: tensor<3x3x4x2x!quant.uniform<i8:f32:3, {2.000000e+2, 3.000000e+3}>>) -> tensor<1x3x3x2x!quant.uniform<i8:f32, 4.000000e+0>> {
+// CHECK-LABEL: convolution_upstream_full_integer_non_const_filter
+func.func @convolution_upstream_full_integer_non_const_filter(%arg0: tensor<1x3x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>, %arg1: tensor<3x3x4x2x!quant.uniform<i8:f32:3, {2.000000e+2, 3.000000e+3}>>) -> tensor<1x3x3x2x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = stablehlo.convolution(%arg0, %arg1) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x3x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>, tensor<3x3x4x2x!quant.uniform<i8:f32:3, {2.000000e+2, 3.000000e+3}>>) -> tensor<1x3x3x2x!quant.uniform<i8:f32, 4.000000e+0>>
   return %0 : tensor<1x3x3x2x!quant.uniform<i8:f32, 4.000000e+0>>
 }
@@ -139,8 +139,8 @@ func.func @convolution_op_non_const_filter(%arg0: tensor<1x3x3x4x!quant.uniform<
 // Test that if the window padding contains values of 0, tfl.pad op is not
 // created and the `padding` attribute is set as "VALID".
 
-// CHECK-LABEL: convolution_op_valid_padding
-func.func @convolution_op_valid_padding(%arg0: tensor<1x3x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>) -> tensor<1x1x1x2x!quant.uniform<i8:f32, 4.000000e+0>> {
+// CHECK-LABEL: convolution_upstream_full_integer_valid_padding
+func.func @convolution_upstream_full_integer_valid_padding(%arg0: tensor<1x3x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>) -> tensor<1x1x1x2x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = stablehlo.constant() {value = dense<3> : tensor<3x3x4x2xi8>} : () -> tensor<3x3x4x2x!quant.uniform<i8:f32:3, {2.000000e+2, 3.000000e+3}>>
   %1 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[0, 0], [0, 0]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x3x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>, tensor<3x3x4x2x!quant.uniform<i8:f32:3, {2.000000e+2, 3.000000e+3}>>) -> tensor<1x1x1x2x!quant.uniform<i8:f32, 4.000000e+0>>
   return %1 : tensor<1x1x1x2x!quant.uniform<i8:f32, 4.000000e+0>>
@@ -157,8 +157,8 @@ func.func @convolution_op_valid_padding(%arg0: tensor<1x3x3x4x!quant.uniform<i8:
 // Test that if the window padding value is missing, tfl.pad op is not
 // created and the `padding` attribute is set as "VALID".
 
-// CHECK-LABEL: convolution_op_valid_padding
-func.func @convolution_op_valid_padding(%arg0: tensor<1x3x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>) -> tensor<1x1x1x2x!quant.uniform<i8:f32, 4.000000e+0>> {
+// CHECK-LABEL: convolution_upstream_full_integer_valid_padding
+func.func @convolution_upstream_full_integer_valid_padding(%arg0: tensor<1x3x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>) -> tensor<1x1x1x2x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = stablehlo.constant() {value = dense<3> : tensor<3x3x4x2xi8>} : () -> tensor<3x3x4x2x!quant.uniform<i8:f32:3, {2.000000e+2, 3.000000e+3}>>
   // The `window` attribute is empty.
   %1 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x3x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>, tensor<3x3x4x2x!quant.uniform<i8:f32:3, {2.000000e+2, 3.000000e+3}>>) -> tensor<1x1x1x2x!quant.uniform<i8:f32, 4.000000e+0>>
@@ -175,8 +175,8 @@ func.func @convolution_op_valid_padding(%arg0: tensor<1x3x3x4x!quant.uniform<i8:
 // Test that if the window stride value is explicitly set, the attribute
 // value is transferred to tfl.conv_2d's stridw_h and stride_w values.
 
-// CHECK-LABEL: convolution_strides
-func.func @convolution_strides(%arg0: tensor<1x3x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>) -> tensor<1x3x2x2x!quant.uniform<i8:f32, 4.000000e+0>> {
+// CHECK-LABEL: convolution_upstream_full_integer_strides
+func.func @convolution_upstream_full_integer_strides(%arg0: tensor<1x3x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>) -> tensor<1x3x2x2x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = stablehlo.constant() {value = dense<3> : tensor<3x3x4x2xi8>} : () -> tensor<3x3x4x2x!quant.uniform<i8:f32:3, {2.000000e+2, 3.000000e+3}>>
   // The stride value is explicitly set to [1, 2].
   %1 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {stride = [1, 2], pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x3x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>, tensor<3x3x4x2x!quant.uniform<i8:f32:3, {2.000000e+2, 3.000000e+3}>>) -> tensor<1x3x2x2x!quant.uniform<i8:f32, 4.000000e+0>>
@@ -195,8 +195,8 @@ func.func @convolution_strides(%arg0: tensor<1x3x3x4x!quant.uniform<i8:f32, 1.00
 
 // Test full integer quantized dot_general with asymmetric quantized input.
 
-// CHECK-LABEL: dot_general_full_integer_asym_input
-func.func @dot_general_full_integer_asym_input(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
+// CHECK-LABEL: dot_general_upstream_full_integer_asym_input
+func.func @dot_general_upstream_full_integer_asym_input(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = stablehlo.constant() {value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>
   %1 = "stablehlo.dot_general"(%arg0, %0) {
     dot_dimension_numbers = #stablehlo.dot<
@@ -216,8 +216,8 @@ func.func @dot_general_full_integer_asym_input(%arg0: tensor<1x2x3x4x!quant.unif
 
 // Test full integer quantized dot_general with symmetric quantized input.
 
-// CHECK-LABEL: dot_general_full_integer_sym_input
-func.func @dot_general_full_integer_sym_input(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
+// CHECK-LABEL: dot_general_upstream_full_integer_sym_input
+func.func @dot_general_upstream_full_integer_sym_input(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = stablehlo.constant() {value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>
   %1 = "stablehlo.dot_general"(%arg0, %0) {
     dot_dimension_numbers = #stablehlo.dot<
@@ -237,10 +237,34 @@ func.func @dot_general_full_integer_sym_input(%arg0: tensor<1x2x3x4x!quant.unifo
 
 // -----
 
+// Tests that the pattern does not match when the output tensor's storage
+// type is i32. Currently we support qi8, qi8 -> qi8 only for GEMM ops that
+// are quantized upstream. Other cases should be handled by regular quantized
+// stablehlo.dot_general case.
+
+// CHECK-LABEL: dot_general_upstream_full_integer_i32_output
+func.func @dot_general_upstream_full_integer_i32_output(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i32:f32, 4.000000e+0>> {
+  %0 = stablehlo.constant() {value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>
+  %1 = "stablehlo.dot_general"(%arg0, %0) {
+    dot_dimension_numbers = #stablehlo.dot<
+      lhs_batching_dimensions = [0, 1],
+      rhs_batching_dimensions = [0, 1],
+      lhs_contracting_dimensions = [3],
+      rhs_contracting_dimensions = [2]
+    >,
+    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
+  } : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i32:f32, 4.000000e+0>>
+  return %1 : tensor<1x2x3x5x!quant.uniform<i32:f32, 4.000000e+0>>
+}
+// CHECK: stablehlo.dot_general
+// CHECK-NOT: tfl.quantize
+
+// -----
+
 // Test full integer quantized dot_general with activation as RHS
 
-// CHECK-LABEL: dot_general_full_integer_activation_rhs
-func.func @dot_general_full_integer_activation_rhs(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>, %arg1: tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
+// CHECK-LABEL: dot_general_upstream_full_integer_activation_rhs
+func.func @dot_general_upstream_full_integer_activation_rhs(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>, %arg1: tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = "stablehlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #stablehlo.dot<
       lhs_batching_dimensions = [0, 1],
@@ -258,8 +282,8 @@ func.func @dot_general_full_integer_activation_rhs(%arg0: tensor<1x2x3x4x!quant.
 
 // Test full integer quantized dot_general with adj_x
 
-// CHECK-LABEL: dot_general_full_integer_adj_x
-func.func @dot_general_full_integer_adj_x(%arg0: tensor<1x2x4x3x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
+// CHECK-LABEL: dot_general_upstream_full_integer_adj_x
+func.func @dot_general_upstream_full_integer_adj_x(%arg0: tensor<1x2x4x3x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = stablehlo.constant() {value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>
   %1 = "stablehlo.dot_general"(%arg0, %0) {
     dot_dimension_numbers = #stablehlo.dot<
@@ -282,8 +306,8 @@ func.func @dot_general_full_integer_adj_x(%arg0: tensor<1x2x4x3x!quant.uniform<i
 
 // Test full integer quantized dot_general with adj_y
 
-// CHECK-LABEL: dot_general_full_integer_adj_y
-func.func @dot_general_full_integer_adj_y(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
+// CHECK-LABEL: dot_general_upstream_full_integer_adj_y
+func.func @dot_general_upstream_full_integer_adj_y(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = stablehlo.constant() {value = dense<1> : tensor<1x2x5x4xi8>} : () -> tensor<1x2x5x4x!quant.uniform<i8:f32, 1.000000e+0>>
   %1 = "stablehlo.dot_general"(%arg0, %0) {
     dot_dimension_numbers = #stablehlo.dot<
@@ -306,8 +330,8 @@ func.func @dot_general_full_integer_adj_y(%arg0: tensor<1x2x3x4x!quant.uniform<i
 
 // Test full integer quantized dot_general with wrong batch dims
 
-// CHECK-LABEL: dot_general_full_integer_too_many_batches
-func.func @dot_general_full_integer_too_many_batches(%arg0: tensor<1x1x1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x1x1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
+// CHECK-LABEL: dot_general_upstream_full_integer_too_many_batches
+func.func @dot_general_upstream_full_integer_too_many_batches(%arg0: tensor<1x1x1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x1x1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = stablehlo.constant() {value = dense<1> : tensor<1x1x1x2x4x5xi8>} : () -> tensor<1x1x1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>
   %1 = "stablehlo.dot_general"(%arg0, %0) {
     dot_dimension_numbers = #stablehlo.dot<
@@ -328,8 +352,8 @@ func.func @dot_general_full_integer_too_many_batches(%arg0: tensor<1x1x1x2x3x4x!
 
 // Test full integer quantized dot_general with too many contracting dimension
 
-// CHECK-LABEL: dot_general_full_integer_too_many_contractions
-func.func @dot_general_full_integer_too_many_contractions(%arg0: tensor<1x2x3x4x4x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
+// CHECK-LABEL: dot_general_upstream_full_integer_too_many_contractions
+func.func @dot_general_upstream_full_integer_too_many_contractions(%arg0: tensor<1x2x3x4x4x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = stablehlo.constant() {value = dense<1> : tensor<1x2x4x4x5xi8>} : () -> tensor<1x2x4x4x5x!quant.uniform<i8:f32, 1.000000e+0>>
   %1 = "stablehlo.dot_general"(%arg0, %0) {
     dot_dimension_numbers = #stablehlo.dot<
@@ -350,8 +374,8 @@ func.func @dot_general_full_integer_too_many_contractions(%arg0: tensor<1x2x3x4x
 
 // Test full integer quantized dot_general with unsupported contracting dim
 
-// CHECK-LABEL: dot_general_full_integer_wrong_contracting
-func.func @dot_general_full_integer_wrong_contracting(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x4x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
+// CHECK-LABEL: dot_general_upstream_full_integer_wrong_contracting
+func.func @dot_general_upstream_full_integer_wrong_contracting(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x4x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = stablehlo.constant() {value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>
   %1 = "stablehlo.dot_general"(%arg0, %0) {
     dot_dimension_numbers = #stablehlo.dot<
@@ -373,8 +397,8 @@ func.func @dot_general_full_integer_wrong_contracting(%arg0: tensor<1x2x3x4x!qua
 
 // Test full integer quantized dot_general with float operands
 
-// CHECK-LABEL: dot_general_full_integer_float_operands
-func.func @dot_general_full_integer_float_operands(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1x2x4x5xf32>) -> tensor<1x2x3x5xf32> {
+// CHECK-LABEL: dot_general_upstream_full_integer_float_operands
+func.func @dot_general_upstream_full_integer_float_operands(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1x2x4x5xf32>) -> tensor<1x2x3x5xf32> {
   %0 = "stablehlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #stablehlo.dot<
       lhs_batching_dimensions = [0, 1],
@@ -394,8 +418,8 @@ func.func @dot_general_full_integer_float_operands(%arg0: tensor<1x2x3x4xf32>, %
 
 // Test full integer quantized dot_general with asymmetric weight (rhs).
 
-// CHECK-LABEL: dot_general_full_integer_asym_weight
-func.func @dot_general_full_integer_asym_weight(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
+// CHECK-LABEL: dot_general_upstream_full_integer_asym_weight
+func.func @dot_general_upstream_full_integer_asym_weight(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = stablehlo.constant() {value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0:5>>
   %1 = "stablehlo.dot_general"(%arg0, %0) {dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0, 1], rhs_batching_dimensions = [0, 1], lhs_contracting_dimensions = [3], rhs_contracting_dimensions = [2]>, precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]} : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0:5>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
   return %1 : tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
@@ -409,8 +433,8 @@ func.func @dot_general_full_integer_asym_weight(%arg0: tensor<1x2x3x4x!quant.uni
 // Test that when the weight tensor for `stablehlo.dot_general` is per-axis
 // quantized, it is converted to `tfl.fully_connected` op.
 
-// CHECK-LABEL: dot_general_per_axis_quantized_filter
-func.func @dot_general_per_axis_quantized_filter(%arg0: tensor<1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>) -> tensor<1x2x!quant.uniform<i8:f32, 4.000000e+04:127>> {
+// CHECK-LABEL: dot_general_upstream_full_integer_per_axis_quantized_filter
+func.func @dot_general_upstream_full_integer_per_axis_quantized_filter(%arg0: tensor<1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>) -> tensor<1x2x!quant.uniform<i8:f32, 4.000000e+04:127>> {
   %0 = stablehlo.constant() {value = dense<1> : tensor<3x2xi8>} : () -> tensor<3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>
   %1 = stablehlo.dot_general %arg0, %0, contracting_dims = [1] x [0] : (tensor<1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>, tensor<3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>) -> tensor<1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
   return %1 : tensor<1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
@@ -428,8 +452,8 @@ func.func @dot_general_per_axis_quantized_filter(%arg0: tensor<1x3x!quant.unifor
 // Test that when the weight tensor for `stablehlo.dot_general` is per-axis
 // quantized but has a batch dimension, it is not converted.
 
-// CHECK-LABEL: dot_general_per_axis_quantized_filter_with_batch_dim
-func.func @dot_general_per_axis_quantized_filter_with_batch_dim(%arg0: tensor<1x1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>) -> tensor<1x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>> {
+// CHECK-LABEL: dot_general_upstream_full_integer_per_axis_quantized_filter_with_batch_dim
+func.func @dot_general_upstream_full_integer_per_axis_quantized_filter_with_batch_dim(%arg0: tensor<1x1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>) -> tensor<1x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>> {
   %0 = stablehlo.constant() {value = dense<1> : tensor<1x3x2xi8>} : () -> tensor<1x3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>
   %1 = stablehlo.dot_general %arg0, %0, batching_dims = [0] x [0], contracting_dims = [2] x [1] : (tensor<1x1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>, tensor<1x3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>) -> tensor<1x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
   return %1 : tensor<1x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
@@ -444,8 +468,8 @@ func.func @dot_general_per_axis_quantized_filter_with_batch_dim(%arg0: tensor<1x
 // Test that when the weight tensor for `stablehlo.dot_general` is per-axis
 // quantized but has a batch dim > 1, it is not converted.
 
-// CHECK-LABEL: dot_general_per_axis_quantized_filter_multibatch
-func.func @dot_general_per_axis_quantized_filter_multibatch(%arg0: tensor<3x1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>) -> tensor<3x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>> {
+// CHECK-LABEL: dot_general_upstream_full_integer_per_axis_quantized_filter_multibatch
+func.func @dot_general_upstream_full_integer_per_axis_quantized_filter_multibatch(%arg0: tensor<3x1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>) -> tensor<3x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>> {
   %0 = stablehlo.constant() {value = dense<1> : tensor<3x3x2xi8>} : () -> tensor<3x3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>
   %1 = stablehlo.dot_general %arg0, %0, batching_dims = [0] x [0], contracting_dims = [2] x [1] : (tensor<3x1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>, tensor<3x3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>) -> tensor<3x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
   return %1 : tensor<3x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
@@ -460,8 +484,8 @@ func.func @dot_general_per_axis_quantized_filter_multibatch(%arg0: tensor<3x1x3x
 // Test that when the weight tensor for `stablehlo.dot_general` is per-axis
 // quantized but has more than one contracting dimension, it is not converted.
 
-// CHECK-LABEL: dot_general_per_axis_quantized_filter_with_multiple_contracting_dims
-func.func @dot_general_per_axis_quantized_filter_with_multiple_contracting_dims(%arg0: tensor<1x2x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>) -> tensor<1x1x!quant.uniform<i8:f32, 4.000000e+04:127>> {
+// CHECK-LABEL: dot_general_upstream_full_integer_per_axis_quantized_filter_with_multiple_contracting_dims
+func.func @dot_general_upstream_full_integer_per_axis_quantized_filter_with_multiple_contracting_dims(%arg0: tensor<1x2x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>) -> tensor<1x1x!quant.uniform<i8:f32, 4.000000e+04:127>> {
   %0 = stablehlo.constant() {value = dense<1> : tensor<1x3x2xi8>} : () -> tensor<1x3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>
   %1 = stablehlo.dot_general %arg0, %0, contracting_dims = [1, 2] x [2, 1] : (tensor<1x2x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>, tensor<1x3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>) -> tensor<1x1x!quant.uniform<i8:f32, 4.000000e+04:127>>
   return %1 : tensor<1x1x!quant.uniform<i8:f32, 4.000000e+04:127>>
@@ -469,4 +493,26 @@ func.func @dot_general_per_axis_quantized_filter_with_multiple_contracting_dims(
 // Nothing changes.
 // CHECK: stablehlo.dot_general
 // CHECK-NOT: tfl.fully_connected
+// CHECK-NOT: tfl.batch_matmul
+
+// -----
+
+// Test that a simple per-tensor quantized stablehlo.dot_general is properly
+// fused with a subsequent requantize (qi32->qi8) op then legalized.
+// Supports the following format: (lhs: qi8, rhs: qi8) -> result: qi32
+
+// CHECK-LABEL: dot_general_full_integer
+// CHECK-SAME: (%[[ARG_1:.*]]: tensor<1x1024x!quant.uniform<i8:f32, {{.*}}>
+ func.func @dot_general_full_integer(%arg0: tensor<1x1024x!quant.uniform<i8:f32, 1.000000e+0:0>> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<1x3xf32> {tf_saved_model.index_path = ["output"]}) {
+    %0 = stablehlo.constant() {value = dense<1> : tensor<1024x3xi8>} : () -> tensor<1024x3x!quant.uniform<i8<-127:127>:f32, 2.000000e+0:0>>
+    %1 = stablehlo.dot_general %arg0, %0, contracting_dims = [1] x [0] : (tensor<1x1024x!quant.uniform<i8:f32, 1.000000e+0:0>>, tensor<1024x3x!quant.uniform<i8<-127:127>:f32, 2.000000e+0:0>>) -> tensor<1x3x!quant.uniform<i32:f32, 4.000000e+0:-127>>
+    %2 = stablehlo.uniform_quantize %1 : (tensor<1x3x!quant.uniform<i32:f32, 4.000000e+0:-127>>) -> tensor<1x3x!quant.uniform<i8:f32, 2.000000e+0:-127>>
+    %3 = stablehlo.uniform_dequantize %2 : (tensor<1x3x!quant.uniform<i8:f32, 2.000000e+0:-127>>) -> tensor<1x3xf32>
+    return %3 : tensor<1x3xf32>
+  }
+
+// CHECK-NOT: stablehlo.dot_general
+// CHECK: %[[QCONST_0:.*]] =  "tfl.pseudo_qconst"() {qtype = tensor<3x1024x!quant.uniform<i8:f32, 2.000000e+00>>, value = dense<1> : tensor<3x1024xi8>} : () -> tensor<3x1024x!quant.uniform<i8:f32, 2.000000e+00>>
+// CHECK: %[[QCONST_1:.*]] =  "tfl.pseudo_qconst"() {qtype = tensor<3x!quant.uniform<i32<-128:127>:f32, 2.000000e+00>>, value = dense<0> : tensor<3xi32>} : () -> tensor<3x!quant.uniform<i32<-128:127>:f32, 2.000000e+00>>
+// CHECK: "tfl.fully_connected"(%[[ARG_1]], %[[QCONST_0]], %[[QCONST_1]])  {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x1024x!quant.uniform<i8:f32, 1.000000e+00>>, tensor<3x1024x!quant.uniform<i8:f32, 2.000000e+00>>, tensor<3x!quant.uniform<i32<-128:127>:f32, 2.000000e+00>>) -> tensor<1x3x!quant.uniform<i8:f32, 2.000000e+00:-127>>
 // CHECK-NOT: tfl.batch_matmul

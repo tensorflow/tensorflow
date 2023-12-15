@@ -10,6 +10,7 @@ module {
     %2 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
 
     // CHECK: %[[TPU0_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-SAME: <{device = "tpu0"}>
     // CHECK: %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[A_OUTPUT]]) : (tensor<?xi32>) -> tensor<?xi32>
     %3 = "tf.B"(%2) {device = "tpu0"} : (tensor<?xi32>) -> tensor<?xi32>
 
@@ -17,7 +18,7 @@ module {
     %4 = "tf.C"(%2, %3) {device = "tpu0"} : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
 
     // CHECK: tf_device.return %[[C_OUTPUT]]
-    // CHECK: {device = "tpu0"} : () -> tensor<?xi32>
+    // CHECK: : () -> tensor<?xi32>
 
     // CHECK: %[[D_OUTPUT:[0-9]*]] = "tf.D"(%[[TPU0_OUTPUT]])
     %5 = "tf.D"(%4) : (tensor<?xi32>) -> tensor<?xi32>
@@ -40,6 +41,7 @@ module {
         %2 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
 
         // CHECK: %[[TPU0_OUTPUT:[0-9]*]] = "tf_device.launch"
+        // CHECK-SAME: <{device = "tpu0"}>
         // CHECK: %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[A_OUTPUT]]) : (tensor<?xi32>) -> tensor<?xi32>
         %3 = "tf.B"(%2) {device = "tpu0"} : (tensor<?xi32>) -> tensor<?xi32>
 
@@ -47,7 +49,7 @@ module {
         %4 = "tf.C"(%2, %3) {device = "tpu0"} : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
 
         // CHECK: tf_device.return %[[C_OUTPUT]]
-        // CHECK: {device = "tpu0"} : () -> tensor<?xi32>
+        // CHECK: : () -> tensor<?xi32>
 
         // CHECK: %[[D_OUTPUT:[0-9]*]] = "tf.D"(%[[TPU0_OUTPUT]])
         %5 = "tf.D"(%4) : (tensor<?xi32>) -> tensor<?xi32>
@@ -71,6 +73,7 @@ module {
       %1:2 = tf_executor.island {
 
         // CHECK: %[[TPU0_OUTPUT:[0-9]*]] = "tf_device.launch"
+        // CHECK-SAME: <{device = "tpu0"}>
         // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"(%[[ARG_0]]) : (tensor<?xi32>) -> tensor<?xi32>
         %3 = "tf.A"(%arg0) {device = "tpu0"} : (tensor<?xi32>) -> tensor<?xi32>
 
@@ -78,7 +81,7 @@ module {
         %4 = "tf.B"(%3, %arg0) {device = "tpu0"} : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
 
         // CHECK: tf_device.return %[[B_OUTPUT]]
-        // CHECK: {device = "tpu0"} : () -> tensor<?xi32>
+        // CHECK: : () -> tensor<?xi32>
 
         // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[TPU0_OUTPUT]])
         %5 = "tf.C"(%4) : (tensor<?xi32>) -> tensor<?xi32>
@@ -104,6 +107,7 @@ module {
 
       %2:2 = tf_executor.island {
         // CHECK: %[[TPU0_OUTPUT:[0-9]*]] = "tf_device.launch"
+        // CHECK: <{device = "tpu0"}>
         // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"(%[[ARG_0]]) : (tensor<?xi32>) -> tensor<?xi32>
         %3 = "tf.A"(%arg0) {device = "tpu0"} : (tensor<?xi32>) -> tensor<?xi32>
 
@@ -111,7 +115,7 @@ module {
         %4 = "tf.B"(%3, %1#0) {device = "tpu0"} : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
 
         // CHECK: tf_device.return %[[B_OUTPUT]]
-        // CHECK: {device = "tpu0"} : () -> tensor<?xi32>
+        // CHECK: : () -> tensor<?xi32>
 
         // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[TPU0_OUTPUT]])
         %5 = "tf.C"(%4) : (tensor<?xi32>) -> tensor<?xi32>
@@ -135,11 +139,12 @@ module {
       %1:2 = tf_executor.island {
 
         // CHECK: %[[TPU0_OUTPUT:[0-9]*]] = "tf_device.launch"
+        // CHECK: <{device = "tpu0"}>
         // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"() : () -> tensor<?xi32>
         %3 = "tf.A"() {device = "tpu0"} : () -> tensor<?xi32>
 
         // CHECK: tf_device.return %[[A_OUTPUT]]
-        // CHECK: {device = "tpu0"} : () -> tensor<?xi32>
+        // CHECK: : () -> tensor<?xi32>
 
         // CHECK: %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[TPU0_OUTPUT]])
         %4 = "tf.B"(%3) : (tensor<?xi32>) -> tensor<?xi32>
@@ -166,6 +171,7 @@ module {
         %2 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
 
         // CHECK: %[[TPU0_OUTPUT:[0-9]*]] = "tf_device.launch"
+        // CHECK: <{device = "tpu0"}>
         // CHECK: %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[A_OUTPUT]]) : (tensor<?xi32>) -> tensor<?xi32>
         %3 = "tf.B"(%2) {device = "tpu0"} : (tensor<?xi32>) -> tensor<?xi32>
 
@@ -173,7 +179,7 @@ module {
         %4 = "tf.C"(%2, %3) {device = "tpu0"} : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
 
         // CHECK: tf_device.return %[[C_OUTPUT]]
-        // CHECK: {device = "tpu0"} : () -> tensor<?xi32>
+        // CHECK: : () -> tensor<?xi32>
 
         // CHECK: %[[GPU0_OUTPUT:[0-9]*]] = "tf_device.launch"
         // CHECK: %[[D_OUTPUT:[0-9]*]] = "tf.D"(%[[TPU0_OUTPUT]]) : (tensor<?xi32>) -> tensor<?xi32>
@@ -204,6 +210,7 @@ module {
         %2 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
 
         // CHECK: %[[TPU0_OUTPUT:[0-9]*]] = "tf_device.launch"
+        // CHECK: <{device = "tpu0"}>
         // CHECK: %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[A_OUTPUT]]) : (tensor<?xi32>) -> tensor<?xi32>
         %3 = "tf.B"(%2) {device = "tpu0"} : (tensor<?xi32>) -> tensor<?xi32>
 
@@ -211,7 +218,7 @@ module {
         %4 = "tf.C"(%2, %3) {device = "tpu0"} : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
 
         // CHECK: tf_device.return %[[C_OUTPUT]]
-        // CHECK: {device = "tpu0"} : () -> tensor<?xi32>
+        // CHECK: : () -> tensor<?xi32>
 
         // CHECK: %[[GPU0_OUTPUT:[0-9]*]] = "tf_device.launch"
         // CHECK: %[[D_OUTPUT:[0-9]*]] = "tf.D"(%[[A_OUTPUT]]) : (tensor<?xi32>) -> tensor<?xi32>
@@ -248,6 +255,7 @@ module {
         // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[ARG_0]])
 
         // CHECK: %[[TPU0_OUTPUT:[0-9]*]] = "tf_device.launch"
+        // CHECK: <{device = "tpu0"}>
         // CHECK: %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[A_OUTPUT]]) : (tensor<?xi32>) -> tensor<?xi32>
         %3 = "tf.B"(%2) {device = "tpu0"} : (tensor<?xi32>) -> tensor<?xi32>
 
@@ -257,7 +265,6 @@ module {
         %5 = "tf.D"(%2, %3) {device = "tpu0"} : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
 
         // CHECK: tf_device.return %[[D_OUTPUT]]
-        // CHECK: {device = "tpu0"} : () -> tensor<?xi32>
 
         // CHECK: %[[E_OUTPUT:[0-9]*]] = "tf.E"(%[[C_OUTPUT]], %[[TPU0_OUTPUT]]) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
         %6 = "tf.E"(%4, %5) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
@@ -296,11 +303,10 @@ module {
         %4 = "tf.C"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
 
         // CHECK: %[[TPU0_OUTPUT1:[0-9]*]] = "tf_device.launch"
+        // CHECK: <{device = "tpu0"}>
         // CHECK: %[[D_OUTPUT:[0-9]*]] = "tf.D"(%[[A_OUTPUT]], %[[TPU0_OUTPUT0]]) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
         // CHECK: tf_device.return %[[D_OUTPUT]]
         %5 = "tf.D"(%2, %3) {device = "tpu0"} : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
-
-        // CHECK: {device = "tpu0"} : () -> tensor<?xi32>
 
         // CHECK: %[[E_OUTPUT:[0-9]*]] = "tf.E"(%[[C_OUTPUT]], %[[TPU0_OUTPUT1]]) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
         %6 = "tf.E"(%4, %5) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
@@ -358,11 +364,12 @@ module {
         %2 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
 
         // CHECK: %[[GPU0_OUTPUT:[0-9]*]] = "tf_device.launch"
+        // CHECK: <{device = "gpu0"}>
         // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[ARG_0]])
         // CHECK: tf_device.return %[[C_OUTPUT]]
-        // CHECK: {device = "gpu0"} : () -> tensor<?xi32>
 
         // CHECK: %[[TPU0_OUTPUT:[0-9]*]] = "tf_device.launch"
+        // CHECK: <{device = "tpu0"}>
         // CHECK: %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[A_OUTPUT]]) : (tensor<?xi32>) -> tensor<?xi32>
         %3 = "tf.B"(%2) {device = "tpu0"} : (tensor<?xi32>) -> tensor<?xi32>
 
@@ -372,7 +379,6 @@ module {
         %5 = "tf.D"(%2, %3) {device = "tpu0"} : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
 
         // CHECK: tf_device.return %[[D_OUTPUT]]
-        // CHECK: {device = "tpu0"} : () -> tensor<?xi32>
 
         // CHECK: %[[E_OUTPUT:[0-9]*]] = "tf.E"(%[[GPU0_OUTPUT]], %[[TPU0_OUTPUT]]) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
         %6 = "tf.E"(%4, %5) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>

@@ -11,8 +11,10 @@ libcufft-12-2
 libcurand-12-2
 libcusolver-dev-12-2
 libcusparse-dev-12-2
+libcublas-12-2
 libcublas-dev-12-2
 libnccl-dev=2.18.5-1+cuda12.2
+libnccl2=2.18.5-1+cuda12.2
 # CuDNN: https://docs.nvidia.com/deeplearning/sdk/cudnn-install/index.html#ubuntu-network-installation
 libcudnn8-dev=8.9.4.25-1+cuda12.2
 libcudnn8=8.9.4.25-1+cuda12.2
@@ -28,6 +30,8 @@ autoconf
 automake
 build-essential
 ca-certificates
+# TODO(b/308399490) Remove CMake once dm-tree (Keras dependency) has 3.12 wheels
+cmake
 llvm-17
 clang-17
 lld-17

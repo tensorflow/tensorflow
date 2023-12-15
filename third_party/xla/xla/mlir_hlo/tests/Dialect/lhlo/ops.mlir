@@ -398,7 +398,8 @@ func.func @fusion_memref(%input1: memref<10xf32>, %input2: memref<10xf32>, %inpu
     %2 = "mhlo.add"(%0, %1) {name = "add"} : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
     %3 = bufferization.to_tensor %input3 : memref<10xf32>
     %4 = "mhlo.multiply"(%2, %3) {name = "multiply"} : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
-    memref.tensor_store %4, %out : memref<10xf32>
+    bufferization.materialize_in_destination %4 in writable %out
+        : (tensor<10xf32>, memref<10xf32>) -> ()
     "lmhlo.terminator"() : () -> ()
   } ) : () -> ()
   func.return

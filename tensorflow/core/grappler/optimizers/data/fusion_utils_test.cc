@@ -15,38 +15,39 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/fusion_utils.h"
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
-
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {
 namespace fusion_utils {
 namespace {
 
-string ParseNodeConnection(const string &name) {
+string ParseNodeConnection(const string& name) {
   return name.substr(0, name.find(':'));
 }
 
-void CheckUniqueNames(const FunctionDef &function) {
+void CheckUniqueNames(const FunctionDef& function) {
   std::unordered_set<string> inputs;
-  for (const auto &input_arg : function.signature().input_arg())
+  for (const auto& input_arg : function.signature().input_arg())
     inputs.insert(input_arg.name());
   EXPECT_EQ(inputs.size(), function.signature().input_arg_size());
 
   std::unordered_set<string> outputs;
-  for (const auto &output_arg : function.signature().output_arg())
+  for (const auto& output_arg : function.signature().output_arg())
     outputs.insert(output_arg.name());
   EXPECT_EQ(outputs.size(), function.signature().output_arg_size());
 
   std::unordered_set<string> nodes;
-  for (const auto &node : function.node_def()) nodes.insert(node.name());
+  for (const auto& node : function.node_def()) nodes.insert(node.name());
 
   EXPECT_EQ(nodes.size(), function.node_def_size());
 }
@@ -71,7 +72,7 @@ TEST(FusionUtilsTest, FuseFunctionsByComposition) {
   CheckUniqueNames(*fused_function);
 
   const NodeDef *parent_mul = nullptr, *output_mul = nullptr;
-  for (const auto &fused_node : fused_function->node_def()) {
+  for (const auto& fused_node : fused_function->node_def()) {
     if (fused_node.op() == "Mul") {
       if (fused_node.name() == "y")
         parent_mul = &fused_node;
@@ -82,6 +83,44 @@ TEST(FusionUtilsTest, FuseFunctionsByComposition) {
   ASSERT_NE(parent_mul, nullptr);
   ASSERT_NE(output_mul, nullptr);
   EXPECT_EQ(ParseNodeConnection(output_mul->input(0)), parent_mul->name());
+
+  auto output_value = fused_function->ret().at(
+      fused_function->signature().output_arg(0).name());
+
+  EXPECT_EQ(ParseNodeConnection(output_value), output_mul->name());
+}
+
+TEST(FusionUtilsTest, FuseFunctionsWithControlInputs) {
+  GraphDef graph;
+  auto *parent_function = graph.mutable_library()->add_function();
+  *parent_function = test::function::XTimesTwoWithControlInput();
+  auto *function = graph.mutable_library()->add_function();
+  *function = test::function::XTimesTwoWithControlInput();
+
+  auto *fused_function = FuseFunctions(
+      *parent_function, *function, "fused_maps", fusion_utils::ComposeSignature,
+      fusion_utils::ComposeInput, fusion_utils::ComposeOutput,
+      fusion_utils::MergeNodes, graph.mutable_library());
+
+  EXPECT_EQ(fused_function->signature().name(), "fused_maps");
+  EXPECT_EQ(fused_function->signature().input_arg_size(), 1);
+  EXPECT_EQ(fused_function->signature().output_arg_size(), 1);
+  EXPECT_EQ(fused_function->ret_size(), 1);
+  CheckUniqueNames(*fused_function);
+
+  const NodeDef *parent_mul = nullptr, *output_mul = nullptr;
+  for (const auto& fused_node : fused_function->node_def()) {
+    if (fused_node.op() == "Mul") {
+      if (fused_node.name() == "y")
+        parent_mul = &fused_node;
+      else
+        output_mul = &fused_node;
+    }
+  }
+  ASSERT_NE(parent_mul, nullptr);
+  ASSERT_NE(output_mul, nullptr);
+  EXPECT_EQ(ParseNodeConnection(output_mul->input(1)),
+            absl::StrCat("^", parent_mul->name()));
 
   auto output_value = fused_function->ret().at(
       fused_function->signature().output_arg(0).name());
@@ -112,7 +151,7 @@ TEST(FusionUtilsTest, FuseFunctionWithPredicate) {
 
   ASSERT_TRUE(
       function_utils::ContainsFunctionNodeWithOp("Equal", *fused_function));
-  const auto &equal_node = fused_function->node_def(
+  const auto& equal_node = fused_function->node_def(
       function_utils::FindFunctionNodeWithOp("Equal", *fused_function));
 
   EXPECT_EQ(xtimes_two->signature().output_arg(0).name(),
@@ -152,8 +191,8 @@ TEST(FusionUtilsTest, ZipFusion) {
   auto *function = graph.mutable_library()->add_function();
   *function = test::function::XTimesTwo();
 
-  auto zip_signature = [](const OpDef &parent_function_signature,
-                          const OpDef &function_signature,
+  auto zip_signature = [](const OpDef& parent_function_signature,
+                          const OpDef& function_signature,
                           OpDef *fused_function_signature) {
     *fused_function_signature = parent_function_signature;
     fused_function_signature->mutable_input_arg()->MergeFrom(
@@ -162,9 +201,9 @@ TEST(FusionUtilsTest, ZipFusion) {
         function_signature.output_arg());
   };
 
-  auto zip_input = [](const StringCollection &parent_inputs,
-                      const StringCollection &function_inputs,
-                      const StringCollection &parent_outputs, int arg_num) {
+  auto zip_input = [](const StringCollection& parent_inputs,
+                      const StringCollection& function_inputs,
+                      const StringCollection& parent_outputs, int arg_num) {
     // Take corresponding parent output.
     return function_inputs.at(arg_num);
   };

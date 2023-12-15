@@ -78,7 +78,7 @@ Status LogicalBufferAnalysis::Analyze() {
 }
 
 LogicalBuffer& LogicalBufferAnalysis::GetBuffer(LogicalBuffer::Id id) const {
-  return *logical_buffers_.at(id);
+  return *logical_buffers_[id];
 }
 
 LogicalBuffer& LogicalBufferAnalysis::GetBuffer(HloInstruction* instruction,

@@ -16,12 +16,18 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <tuple>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/cord.h"
+#include "riegeli/bytes/cord_reader.h"  // from @riegeli
 #include "riegeli/bytes/fd_reader.h"  // from @riegeli
+#include "riegeli/bytes/string_reader.h"  // from @riegeli
 #include "riegeli/records/record_reader.h"  // from @riegeli
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/env.h"
@@ -33,9 +39,10 @@ limitations under the License.
 #include "tensorflow/tools/proto_splitter/testdata/test_message.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
+
+#define IS_OSS true
 
 namespace tensorflow {
 namespace tools::proto_splitter {
@@ -120,23 +127,9 @@ TEST(RepeatedStringSplitterTest, TestSplitChunks) {
   EXPECT_EQ(chunked_message2, chunked_message);
 }
 
-TEST(RepeatedStringSplitterTest, TestWrite) {
-  std::vector<string> strings = {"piece-1", "piece-2", "piece-3"};
-  auto message = SetUpRepeatedString(strings);
-  RepeatedStringSplitter splitter = RepeatedStringSplitter(&message);
-
-  std::string output_prefix = tensorflow::io::GetTempFilename("");
-  TF_ASSERT_OK(splitter.Write(output_prefix));
-  std::string expected_file = absl::StrCat(output_prefix, ".cpb");
-
-  TF_ASSERT_OK_AND_ASSIGN(auto exists,
-                          internal::FileExists(Env::Default(), expected_file));
-  EXPECT_TRUE(exists);
-
-  // Look for the last chunk, which should contain a ChunkMetadata proto.
-  riegeli::RecordReader<riegeli::FdReader<>> reader(
-      (riegeli::FdReader(expected_file)));
-
+template <typename T>
+static void CheckChunks(riegeli::RecordReader<T>& reader,
+                        std::vector<string>& strings) {
   ChunkMetadata chunk_metadata;
   reader.Seek(reader.Size().value());
   reader.SeekBack();
@@ -168,6 +161,60 @@ TEST(RepeatedStringSplitterTest, TestWrite) {
                                  message { chunk_index: 2 }
                                })pb"));
 }
+
+TEST(RepeatedStringSplitterTest, TestWrite) {
+  std::vector<string> strings = {"piece-1", "piece-2", "piece-3"};
+  auto message = SetUpRepeatedString(strings);
+  RepeatedStringSplitter splitter = RepeatedStringSplitter(&message);
+
+  std::string output_prefix = tensorflow::io::GetTempFilename("");
+  TF_ASSERT_OK(splitter.Write(output_prefix));
+  std::string expected_file = absl::StrCat(output_prefix, ".cpb");
+
+  TF_ASSERT_OK_AND_ASSIGN(auto exists,
+                          internal::FileExists(Env::Default(), expected_file));
+  EXPECT_TRUE(exists);
+
+  // Look for the last chunk, which should contain a ChunkMetadata proto.
+  riegeli::RecordReader<riegeli::FdReader<>> file_reader(
+      (riegeli::FdReader(expected_file)));
+
+  CheckChunks(file_reader, strings);
+}
+
+TEST(RepeatedStringSplitterTest, TestWriteToString) {
+  std::vector<string> strings = {"piece-1", "piece-2", "piece-3"};
+  auto message = SetUpRepeatedString(strings);
+  RepeatedStringSplitter splitter = RepeatedStringSplitter(&message);
+  auto string_output_results = splitter.WriteToString();
+  TF_EXPECT_OK(string_output_results.status());
+  std::string string_output = std::get<0>(string_output_results.value());
+  bool is_chunked = std::get<1>(string_output_results.value());
+  EXPECT_TRUE(is_chunked);
+  // Look for the last chunk, which should contain a ChunkMetadata proto.
+  riegeli::RecordReader<riegeli::StringReader<>> string_reader(
+      std::forward_as_tuple(string_output));
+
+  CheckChunks(string_reader, strings);
+}
+
+#if !IS_OSS
+TEST(RepeatedStringSplitterTest, TestWriteToCord) {
+  std::vector<string> strings = {"piece-1", "piece-2", "piece-3"};
+  auto message = SetUpRepeatedString(strings);
+  RepeatedStringSplitter splitter = RepeatedStringSplitter(&message);
+  auto cord_output_results = splitter.WriteToCord();
+  TF_EXPECT_OK(cord_output_results.status());
+  absl::Cord cord_output = std::get<0>(cord_output_results.value());
+  bool is_chunked = std::get<1>(cord_output_results.value());
+  EXPECT_TRUE(is_chunked);
+  // Look for the last chunk, which should contain a ChunkMetadata proto.
+  riegeli::RecordReader<riegeli::CordReader<>> cord_reader(
+      std::forward_as_tuple(&cord_output));
+
+  CheckChunks(cord_reader, strings);
+}
+#endif
 
 TEST(RepeatedStringSplitterTest, TestNoSplit) {
   RepeatedString message;  // No strings

@@ -26,7 +26,7 @@ namespace xla {
 
 void XlaDebugInfoManager::RegisterModule(
     std::shared_ptr<const HloModule> hlo_module,
-    std::shared_ptr<const BufferAssignmentProto> buffer_assignment) {
+    BufferAssignmentProto buffer_assignment) {
   CHECK(hlo_module != nullptr);
   absl::MutexLock lock(&mutex_);
   auto result = modules_.try_emplace(hlo_module->unique_id());
@@ -83,13 +83,8 @@ void XlaDebugInfoManager::StopTracing(
   if (module_debug_info) {
     module_debug_info->clear();
     for (const auto& m : modules_to_serialize) {
-      // In real world, hlo_module and buffer_assignment will always be
-      // non-nullptr. Due to the inconvenience of creation of buffer_assignment
-      // object in test, we set it to nullptr and guard this for it.
       auto hlo_proto = std::make_unique<HloProto>(MakeHloProto(*m.hlo_module));
-      if (m.buffer_assignment != nullptr) {
-        *hlo_proto->mutable_buffer_assignment() = *m.buffer_assignment;
-      }
+      *hlo_proto->mutable_buffer_assignment() = m.buffer_assignment;
       module_debug_info->emplace_back(std::move(hlo_proto));
     }
   }

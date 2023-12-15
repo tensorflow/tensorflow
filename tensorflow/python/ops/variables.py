@@ -34,8 +34,8 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import tensor_getitem_override
 from tensorflow.python.trackable import base as trackable
-from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util import traceback_utils
@@ -44,9 +44,11 @@ from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
 
 
-def default_variable_creator_v2(_, **kwds):
-  del kwds
-  raise NotImplementedError("resource_variable_ops needs to be imported")
+def default_variable_creator_v2(next_creator=None, **kwds):
+  from tensorflow.python.ops import resource_variable_ops  # pylint: disable=g-import-not-at-top
+
+  return resource_variable_ops.default_variable_creator_v2(
+      next_creator=next_creator, **kwds)
 
 
 def _make_getter(captured_getter, captured_previous):
@@ -352,7 +354,7 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
         variable and return the Tensor for the projected value (which must have
         the same shape). Constraints are not safe to use when doing asynchronous
         distributed training.
-      synchronization: Indicates when a distributed a variable will be
+      synchronization: Indicates when a distributed variable will be
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses when to
@@ -984,10 +986,10 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
     """Register overloads for all operators."""
     for operator in tensor_lib.Tensor.OVERLOADABLE_OPERATORS:
       cls._OverloadOperator(operator)
-    # For slicing, bind getitem differently than a tensor (use SliceHelperVar
+    # For slicing, bind getitem differently than a tensor (use _slice_helper_var
     # instead)
     # pylint: disable=protected-access
-    setattr(cls, "__getitem__", array_ops._SliceHelperVar)
+    setattr(cls, "__getitem__", tensor_getitem_override._slice_helper_var)
 
   @classmethod
   def _OverloadOperator(cls, operator):  # pylint: disable=invalid-name
@@ -1324,7 +1326,6 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
 
 
 Variable._OverloadAllOperators()  # pylint: disable=protected-access
-_pywrap_utils.RegisterType("Variable", Variable)
 
 
 def _try_guard_against_uninitialized_dependencies(name, initial_value):

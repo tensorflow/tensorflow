@@ -32,7 +32,9 @@ cc_library(
         "//tensorflow/tools/proto_splitter/cc:max_size",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
     ] + if_not_windows_or_mac([
         "//tensorflow/tools/proto_splitter:merge",
         "//tensorflow/tools/proto_splitter/cc:saved_model_splitter",

@@ -130,6 +130,12 @@ void PjRtDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
     device_buffer = device_tensor_av->GetBuffer().get();
   }
 
+  if (device_buffer == nullptr) {
+    done(absl::InvalidArgumentError(
+        "The device tensor has no associated device buffer."));
+    return;
+  }
+
   xla::PjRtFuture<Status> future = device_buffer->ToLiteral(literal.get());
   future.OnReady([literal = std::move(literal), done = std::move(done)](
                      const tensorflow::Status& status) { done(status); });

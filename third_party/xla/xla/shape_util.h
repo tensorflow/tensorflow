@@ -33,6 +33,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -177,8 +178,8 @@ class ShapeUtil {
   // (param_name: f32[42x12], ...) -> f32[24x42]
   static std::string HumanString(const ProgramShape& program_shape);
 
-  // Returns whether the LHS and RHS shapes have the same dimensions; note: does
-  // not check element type.
+  // Returns whether the LHS and RHS shapes have the same dimensions, ignoring
+  // the unbounded dimension sizes; note: does not check element type.
   // Precondition: IsArray(lhs) && IsArray(rhs)
   static bool SameDimensions(const Shape& lhs, const Shape& rhs);
 
@@ -371,8 +372,9 @@ class ShapeUtil {
                          const std::vector<bool>& dynamic_dimensions);
 
   // Constructs a new shape with the given element type and sequence of
-  // dimensions. Method checks if the element type is valid and the shape's
-  // size fits in std::numeric_limits<int64_t>::max().
+  // dimensions. Method checks if the element type is valid, the shape's
+  // size fits in std::numeric_limits<int64_t>::max(), and dynamic size is not
+  // marked static.
   static StatusOr<Shape> MakeValidatedShape(
       PrimitiveType element_type, absl::Span<const int64_t> dimensions);
   static StatusOr<Shape> MakeValidatedShape(
@@ -543,6 +545,23 @@ class ShapeUtil {
     }).IgnoreError();
   }
 
+  // Calls the given visitor function for each leaf subshape of the given shape.
+  // Subshapes are visited in DFS pre-order starting with the entire shape
+  // (index {}).
+  //
+  // The visitor function must have the signature
+  //
+  //   void fn(const Shape& subshape, const ShapeIndex& index)
+  template <typename Fn>
+  static void ForEachLeafShape(const Shape& shape, Fn&& fn) {
+    ForEachSubshape(shape,
+                    [&](const Shape& sub_shape, const ShapeIndex& index) {
+                      if (IsLeafIndex(shape, index)) {
+                        fn(sub_shape, index);
+                      }
+                    });
+  }
+
   // Variants of ForEach(Mutable)Subshape which propagate Status from the
   // visitor function.
   //
@@ -563,6 +582,57 @@ class ShapeUtil {
   static Status ForEachMutableSubshapeWithStatus(Shape* shape, Fn&& fn) {
     ShapeIndex index;
     return ForEachMutableSubshapeWithStatusHelper(shape, fn, &index);
+  }
+
+  // Calls the given visitor function for each subshape of the given shape.
+  // Subshapes are visited in DFS post-order starting with the entire shape
+  // (index {}).
+  //
+  // The visitor function must have the signature
+  //
+  //   void fn(const Shape& subshape, const ShapeIndex& index), or
+  //   void fn(Shape* subshape, const ShapeIndex& index) (mutable version)
+  template <typename Fn>
+  static void ForEachSubshapePostOrder(const Shape& shape, Fn&& fn) {
+    ForEachSubshapePostOrderWithStatus(shape, [&](const Shape& subshape,
+                                                  const ShapeIndex& index) {
+      fn(subshape, index);
+      return OkStatus();
+    }).IgnoreError();
+  }
+  template <typename Fn>
+  static void ForEachMutableSubshapePostOrder(Shape* shape, Fn&& fn) {
+    ForEachMutableSubshapePostOrderWithStatus(
+        shape,
+        [&](Shape* subshape, const ShapeIndex& index) {
+          fn(subshape, index);
+          return OkStatus();
+        })
+        .IgnoreError();
+  }
+
+  // Variants of ForEach(Mutable)SubshapePostOrder which propagate Status from
+  // the visitor function.
+  //
+  // Visitor function must have the signature
+  //
+  //   Status fn(const Shape& subshape, const ShapeIndex& index), or
+  //   Status fn(Shape* subshape, const ShapeIndex& index) (mutable version)
+  //
+  template <typename Fn>
+  static Status ForEachSubshapePostOrderWithStatus(const Shape& shape,
+                                                   Fn&& fn) {
+    return ForEachMutableSubshapePostOrderWithStatus(
+        const_cast<Shape*>(&shape),
+        [&](Shape* subshape, const ShapeIndex& index) -> Status {
+          return fn(*const_cast<const Shape*>(subshape), index);
+        });
+  }
+  template <typename Fn>
+  static Status ForEachMutableSubshapePostOrderWithStatus(Shape* shape,
+                                                          Fn&& fn) {
+    ShapeIndex index;
+    return ForEachMutableSubshapePostOrderWithStatusHelper(shape, fn, &index);
   }
 
   // Returns true if `shape` (which must be an array) with degenerate dimensions
@@ -930,6 +1000,23 @@ class ShapeUtil {
         index->pop_back();
       }
     }
+    return OkStatus();
+  }
+
+  // Helper for ForEachSubshapePost which visits the subshapes of the given
+  // shape in DFS post-order.
+  template <typename Fn>
+  static Status ForEachMutableSubshapePostOrderWithStatusHelper(
+      Shape* shape, Fn&& fn, ShapeIndex* index) {
+    if (shape->IsTuple()) {
+      for (int64_t i = 0; i < ShapeUtil::TupleElementCount(*shape); ++i) {
+        index->push_back(i);
+        TF_RETURN_IF_ERROR(ForEachMutableSubshapePostOrderWithStatusHelper(
+            shape->mutable_tuple_shapes(i), fn, index));
+        index->pop_back();
+      }
+    }
+    TF_RETURN_IF_ERROR(fn(shape, *index));
     return OkStatus();
   }
 

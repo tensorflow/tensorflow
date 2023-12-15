@@ -116,7 +116,7 @@ py_library(
         ":tf_contextlib",
         ":tf_inspect",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//third_party/py/numpy",
     ],
 )
@@ -172,7 +172,7 @@ py_library(
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:ragged_util",
         "//tensorflow/python/tpu:tpu_lib",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
     ],
 )
 
@@ -210,7 +210,7 @@ py_library(
     srcs = ["tf_contextlib.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
     ],
 )
 
@@ -219,7 +219,7 @@ py_library(
     srcs = ["tf_inspect.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
     ],
 )
 

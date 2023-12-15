@@ -45,8 +45,8 @@ bool IsOpWithQuantizableTrait(Operation* op) {
   // Supported quantizable ops.
   return isa<TF::XlaConvV2Op, TF::XlaDotV2Op, TF::MatMulOp, TF::Conv2DOp,
              TF::GatherOp, TF::GatherV2Op, TF::XlaGatherOp,
-             TF::DepthwiseConv2dNativeOp, TF::Conv3DOp, TF::BatchMatMulV2Op,
-             TF::EinsumOp>(op);
+             TF::ResourceGatherOp, TF::DepthwiseConv2dNativeOp, TF::Conv3DOp,
+             TF::BatchMatMulV2Op, TF::EinsumOp>(op);
 }
 
 bool IsOpWithInt8TypeOperand(Operation* op) {

@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "xla/runtime/custom_call_registry.h"
-#include "xla/service/gpu/fft_thunk.h"
+#include "xla/service/gpu/runtime3/fft_thunk.h"
 
 namespace xla {
 namespace gpu {

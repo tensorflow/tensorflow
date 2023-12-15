@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/service/transfer_manager.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
 
@@ -64,7 +65,15 @@ class GenericTransferManager : public TransferManager {
       se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
       const Shape& shape, se::DeviceMemoryBase* region) override;
 
+  Shape HostShapeToDeviceShape(const Shape& host_shape) const override;
+
  private:
+  // Returns whether subbyte types (types less than 1 byte, e.g. U4) should
+  // have multiple values packed into a single byte on the device. Subbyte
+  // bytes are never packed on the host. By default, returns false, so a byte
+  // can only hold one value, but subclasses can override this.
+  virtual bool PackSubbyteTypes() const { return false; }
+
   // The platform this transfer manager targets.
   const se::Platform::Id platform_id_;
 

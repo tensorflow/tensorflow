@@ -360,7 +360,8 @@ class Encapsulator {
 
   absl::flat_hash_map<string, Subgraph> subgraphs_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Encapsulator);
+  Encapsulator(const Encapsulator&) = delete;
+  void operator=(const Encapsulator&) = delete;
 };
 
 namespace {

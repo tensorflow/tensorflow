@@ -19,55 +19,61 @@ limitations under the License.
 #include <array>
 #include <cassert>
 #include <complex>
+#include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <iterator>
-#include <limits>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
 #include <type_traits>
 
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/iterator_range.h"
-#include "llvm/Support/Casting.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_arith_ops_folder.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_canonicalization_helper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_device_helper.h"
@@ -75,12 +81,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_tensor_helper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/side_effect_analysis_util.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -1084,6 +1093,24 @@ OpFoldResult CastOp::fold(FoldAdaptor) {
 }
 
 //===----------------------------------------------------------------------===//
+// CheckNumericsOp
+//===----------------------------------------------------------------------===//
+
+void CheckNumericsOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>&
+        effects) {
+  effects.emplace_back(MemoryEffects::Write::get(),
+                       ResourceEffects::CheckNumerics::get());
+  MarkResourceAsReadOnly(getTensor(), effects);
+}
+
+// For `CheckNumerics` ops the `device` attribute corresponds to the resource
+// instance.
+std::optional<std::string> CheckNumericsOp::GetResourceInstanceStr() {
+  return GetDeviceAttrAsResourceInstanceStr(*this);
+}
+
+//===----------------------------------------------------------------------===//
 // CollectiveReduceV2Op
 //===----------------------------------------------------------------------===//
 
@@ -1708,9 +1735,10 @@ void ConstOp::build(OpBuilder& builder, OperationState& result, Type type,
 
 LogicalResult ConstOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
+    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  auto value = attributes.get("value");
+  ConstOpAdaptor adaptor(operands, attributes, properties, regions);
+  auto value = adaptor.getValue();
   if (!value) return emitOptionalError(location, "missing attribute 'value'");
   if (auto elem_attr = value.dyn_cast<ElementsAttr>()) {
     inferredReturnTypes.assign({elem_attr.getType()});
@@ -1951,13 +1979,13 @@ static LogicalResult inferConvReturnTypeComponents(
 
 LogicalResult Conv2DOp::inferReturnTypeComponents(
     MLIRContext* context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
-    RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes,
+    OpaqueProperties properties, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-  Conv2DOpAdaptor op(operands.getValues(), attributes);
+  Conv2DOpAdaptor op(operands.getValues(), attributes, properties, regions);
   ArrayRef<Attribute> explicit_padding;
   ArrayAttr explicit_pad =
-      attributes.get("explicit_paddings").dyn_cast_or_null<::mlir::ArrayAttr>();
+      op.getExplicitPaddings().dyn_cast_or_null<::mlir::ArrayAttr>();
   if (!explicit_pad) {
     explicit_pad = ::mlir::Builder(context).getI64ArrayAttr({});
   }
@@ -2150,17 +2178,12 @@ StringRef Conv2DBackpropInputOp::GetOptimalLayout(
 
 LogicalResult Conv3DOp::inferReturnTypeComponents(
     MLIRContext* context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
-    RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes,
+    OpaqueProperties properties, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-  Conv3DOpAdaptor op(operands.getValues(), attributes);
-  ArrayRef<Attribute> explicit_padding;
-  ArrayAttr explicit_pad =
-      attributes.get("explicit_paddings").dyn_cast_or_null<::mlir::ArrayAttr>();
-  if (!explicit_pad) {
-    explicit_pad = ::mlir::Builder(context).getI64ArrayAttr({});
-  }
-  explicit_padding = explicit_pad.getValue();
+  Conv3DOpAdaptor op(operands.getValues(), attributes, properties, regions);
+  ArrayAttr explicit_pad = ::mlir::Builder(context).getI64ArrayAttr({});
+  ArrayRef<Attribute> explicit_padding = explicit_pad.getValue();
 
   return inferConvReturnTypeComponents(location, op, explicit_padding,
                                        inferredReturnShapes);
@@ -2966,6 +2989,70 @@ LogicalResult FusedBatchNormV3Op::UpdateDataFormat(StringRef data_format) {
 
 StringRef FusedBatchNormV3Op::GetOptimalLayout(const RuntimeDevices& devices) {
   return ::mlir::TF::GetOptimalLayout(devices, this);
+}
+
+//===----------------------------------------------------------------------===//
+// GeneratorDatasetRegionOp
+//===----------------------------------------------------------------------===//
+
+bool GeneratorDatasetRegionOp::areTypesCompatible(Type t1, Type t2) {
+  return true;  // Don't enforce type checking across control-flow edges.
+}
+
+void GeneratorDatasetRegionOp::getRegionInvocationBounds(
+    ArrayRef<Attribute> operands,
+    SmallVectorImpl<InvocationBounds>& invocationBounds) {
+  // We invoke `init` once, `finalize` once, and `next` any number of times.
+  invocationBounds.emplace_back(InvocationBounds(1, 1));          // init
+  invocationBounds.emplace_back(InvocationBounds::getUnknown());  // next
+  invocationBounds.emplace_back(InvocationBounds(1, 1));          // finalize
+}
+
+OperandRange GeneratorDatasetRegionOp::getEntrySuccessorOperands(
+    RegionBranchPoint point) {
+  auto end = this->getOperation()->operand_end();
+  if (point.isParent()) {
+    // The op itself doesn't branch back to itself.
+    return ::mlir::OperandRange(end, end);
+  } else if (point.getRegionOrNull() == &getInit()) {
+    return getInitFuncOtherArgs();
+  } else if (point.getRegionOrNull() == &getNext()) {
+    return getNextFuncOtherArgs();
+  } else /* finalize region */ {
+    return getFinalizeFuncOtherArgs();
+  }
+}
+
+void GeneratorDatasetRegionOp::getSuccessorRegions(
+    RegionBranchPoint point, SmallVectorImpl<RegionSuccessor>& regions) {
+  int n;
+  if (point.isParent()) {
+    // The op itself branches to `init` first.
+    regions.push_back(
+        RegionSuccessor(&getInit(), getInit().front().getArguments()));
+  } else if (point.getRegionOrNull() == &getInit()) {
+    // `init` branches to `next`, passing along the arguments given to `init`'s
+    // yield. Said arguments precede the "other args".
+    n = getInitFuncOtherArgs().size();
+    regions.push_back(RegionSuccessor(
+        &getNext(), getNext().front().getArguments().drop_back(n)));
+  } else if (point.getRegionOrNull() == &getNext()) {
+    // `next` branches to itself, or to `finalize`, passing all arguments given
+    // to `next`s yield.
+
+    // The number of values we're passing along.
+    int num = getNext().front().getTerminator()->getNumOperands();
+
+    // The number of extra values from the parent ops that should go to `next`
+    // and `finalize`.
+    regions.push_back(RegionSuccessor(
+        &getNext(), getNext().front().getArguments().slice(0, num)));
+    regions.push_back(RegionSuccessor(
+        &getFinalize(), getFinalize().front().getArguments().slice(0, num)));
+  } else {
+    // `finalize` branches back to the op itself, not passing any arguments.
+    regions.push_back(RegionSuccessor());
+  }
 }
 
 //===----------------------------------------------------------------------===//

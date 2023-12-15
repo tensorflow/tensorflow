@@ -50,7 +50,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/tf_to_uniform_attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
@@ -144,7 +143,7 @@ class QuantizeCompositeFunctionsPass
                      "drq", "Post-training dynamic-range quantizaiton"),
           clEnumValN(tensorflow::quantization::QuantizationMethod::
                          METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8,
-                     "weight_only", "Post-training weight-only quantizaiton"))};
+                     "weight_only", "Post-training weight-only quantization"))};
 
   Option<OpSet> target_opset_{
       *this, "target-opset", llvm::cl::init(OpSet::TF),
@@ -572,6 +571,30 @@ LogicalResult TransferAttributes(func::FuncOp float_func,
   return success();
 }
 
+// Transfers the location of the main op in float function to ops with
+// `attr_map` attributes in quantized function.
+LogicalResult TransferLocation(func::FuncOp float_func,
+                               func::FuncOp quantized_func) {
+  Operation* main_op = nullptr;
+  for (Operation& inner_op : float_func.getBody().front().getOperations()) {
+    // Expect only one quantizable op in the composite function.
+    if (IsOpWithQuantizableTrait(&inner_op)) {
+      main_op = &inner_op;
+      break;
+    }
+  }
+  if (!main_op) {
+    float_func.emitError() << "No quantizable ops found in the function.";
+    return failure();
+  }
+
+  for (Operation& inner_op : quantized_func.getBody().front().getOperations()) {
+    if (!inner_op.hasAttr(kAttrMapAttribute)) continue;
+    inner_op.setLoc(main_op->getLoc());
+  }
+  return success();
+}
+
 // Get the corresponding quantized function name from the given function name.
 std::string GetQuantizedFunctionName(StringRef func_name,
                                      const bool merged_with_dequantize,
@@ -807,6 +830,11 @@ class QuantizeFunctionPattern
       new_quantized_func_arg.setType(partitioned_call_arg.getType());
     }
 
+    // Set the location for ops so the op name is preserved.
+    if (failed(TransferLocation(float_func, new_quantized_func))) {
+      return failure();
+    }
+
     // Set the attributes for ops with the attr_map attribute.
     if (target_opset_ == OpSet::UNIFORM_QUANTIZED) {
       if (failed(TransferTFAttributesToTFUniformAttributes(
@@ -889,6 +917,11 @@ class QuantizeFunctionPattern
     for (auto [partitioned_call_arg, new_quantized_func_arg] :
          llvm::zip_first(args, new_quantized_func.getArguments())) {
       new_quantized_func_arg.setType(partitioned_call_arg.getType());
+    }
+
+    // Set the location for ops so the op name is preserved.
+    if (failed(TransferLocation(float_func, new_quantized_func))) {
+      return failure();
     }
 
     // Set the attributes for ops with the attr_map attribute.
@@ -1283,9 +1316,7 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
       ctx, target_opset_);
   patterns_2.add<QuantizeConstPattern>(ctx, target_opset_);
 
-  if (target_opset_ == OpSet::XLA && enable_per_channel_quantization_ &&
-      quantization_method_ == tensorflow::quantization::QuantizationMethod::
-                                  METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8) {
+  if (target_opset_ == OpSet::XLA && enable_per_channel_quantization_) {
     patterns_2.add<RestoreWeightShapePattern>(ctx);
   }
 

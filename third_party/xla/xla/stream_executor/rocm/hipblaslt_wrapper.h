@@ -20,6 +20,8 @@ limitations under the License.
 #define __HIP_DISABLE_CPP_FUNCTIONS__
 
 #include "rocm/rocm_config.h"
+
+#if TF_HIPBLASLT
 #if TF_ROCM_VERSION >= 50500
 #include "rocm/include/hipblaslt/hipblaslt.h"
 #else
@@ -94,5 +96,7 @@ FOREACH_HIPBLASLT_API(HIPBLASLT_API_WRAPPER)
 
 }  // namespace wrap
 }  // namespace stream_executor
+
+#endif  // TF_HIPBLASLT
 
 #endif  // XLA_STREAM_EXECUTOR_ROCM_HIPBLASLT_WRAPPER_H_

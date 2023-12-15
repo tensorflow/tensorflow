@@ -27,15 +27,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout_util.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/regexp.h"
-#include "tsl/profiler/lib/traceme.h"
 #include "tsl/util/env_var.h"
 #include "tsl/util/proto/proto_utils.h"
 
@@ -319,7 +316,7 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
   return it->second;
 }
 
-StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
+StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
     absl::string_view kernel_name, uint64_t num_args, absl::string_view ptx,
     absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec,
     uint32_t shared_mem_bytes) {
@@ -331,7 +328,7 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
         reinterpret_cast<const char*>(cubin_data.data()), kernel_name);
   }
 
-  auto kernel_base = std::make_unique<se::KernelBase>(stream_exec);
+  auto kernel_base = std::make_unique<se::Kernel>(stream_exec);
   TF_RETURN_IF_ERROR(stream_exec->GetKernel(loader_spec, kernel_base.get()));
   se::KernelMetadata m;
   m.set_shared_memory_bytes(shared_mem_bytes);
@@ -339,24 +336,12 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
   return std::move(kernel_base);
 }
 
-Status ExecuteKernelOnStream(const se::KernelBase& kernel,
+Status ExecuteKernelOnStream(const se::Kernel& kernel,
                              absl::Span<const se::DeviceMemoryBase> args,
                              const LaunchDimensions& dims, se::Stream* stream) {
-  int shared_mem_bytes = 0;
-  kernel.metadata().shared_memory_bytes(&shared_mem_bytes);
-  static constexpr int kKernelArgsLimit = 1024;
-  std::unique_ptr<se::KernelArgsArrayBase> kernel_args;
-  // The KernelArgsArray structure requires at a minimum 48 * args.size()
-  // bytes. It can be expensive to allocate, say, 48KiB, so we add
-  // specializations for smaller sizes. 64 arguments are likely to fit in a
-  // 4KiB page.
-  if (args.size() <= 64) {
-    kernel_args = se::MakeKernelArgs<64>(args, shared_mem_bytes);
-  } else if (args.size() <= 256) {
-    kernel_args = se::MakeKernelArgs<256>(args, shared_mem_bytes);
-  } else {
-    kernel_args = se::MakeKernelArgs<kKernelArgsLimit>(args, shared_mem_bytes);
-  }
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args,
+      se::PackKernelArgs(args, kernel.metadata()));
 
   LaunchDimensions::Dim3D thread_counts = dims.thread_counts_per_block();
   LaunchDimensions::Dim3D block_counts = dims.block_counts();

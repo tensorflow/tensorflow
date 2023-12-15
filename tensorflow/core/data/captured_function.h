@@ -290,6 +290,8 @@ class InstantiatedCapturedFunction {
                 FunctionLibraryRuntime::DoneCallback done,
                 const std::shared_ptr<model::Node>& node) const;
 
+  std::string func_name() const { return captured_func_->func().name(); }
+
  private:
   friend class CapturedFunction;
 

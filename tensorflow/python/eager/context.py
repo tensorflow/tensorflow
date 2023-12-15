@@ -49,6 +49,9 @@ from tensorflow.python.util.tf_export import tf_export
 from tsl.protobuf import coordination_config_pb2
 
 
+# TODO(b/307794935): Remove after a solution is found.
+is_oss = True  # updated by copybara
+
 GRAPH_MODE = 0
 EAGER_MODE = 1
 
@@ -302,7 +305,6 @@ class LogicalDevice(
       placement.
     device_type: String declaring the type of device such as "CPU" or "GPU".
   """
-  pass
 
 
 @tf_export("config.LogicalDeviceConfiguration",
@@ -685,6 +687,10 @@ class Context:
 
     # Clear all the caches in case there are remote tensors in them.
     self._clear_caches()
+    # Also clear the device parsing cache since it caches the resolution of
+    # partial device names, which may become different due to the set_server_def
+    # call as we may have defined different devices.
+    _device_parsing_cache.clear()
 
   def update_server_def(self, server_def, keep_alive_secs=_KEEP_ALIVE_SECS):
     """Update a server_def on the context.
@@ -1375,9 +1381,13 @@ class Context:
       fdef: A FunctionDef protocol buffer message.
     """
     self.ensure_initialized()
-    fdef_string = fdef.SerializeToString()
-    pywrap_tfe.TFE_ContextAddFunctionDef(self._handle, fdef_string,
-                                         len(fdef_string))
+    if is_oss:
+      fdef_string = fdef.SerializeToString()
+      pywrap_tfe.TFE_ContextAddFunctionDef(
+          self._handle, fdef_string, len(fdef_string)
+      )
+    else:
+      pywrap_tfe.TFE_ContextAddFunctionDefNoSerialization(self._handle, fdef)
 
   def get_function_def(self, name):
     """Get a function definition from the context.
@@ -1391,12 +1401,16 @@ class Context:
     Raises:
       tf.errors.NotFoundError: if name is not the name of a registered function.
     """
-    with c_api_util.tf_buffer() as buffer_:
-      pywrap_tfe.TFE_ContextGetFunctionDef(self._handle, name, buffer_)
-      proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
-    function_def = function_pb2.FunctionDef()
-    function_def.ParseFromString(proto_data)
-
+    if is_oss:
+      with c_api_util.tf_buffer() as buffer_:
+        pywrap_tfe.TFE_ContextGetFunctionDef(self._handle, name, buffer_)
+        proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
+      function_def = function_pb2.FunctionDef()
+      function_def.ParseFromString(proto_data)
+    else:
+      function_def = pywrap_tfe.TFE_ContextGetFunctionDefNoSerialization(
+          self._handle, name
+      )
     return function_def
 
   def get_graph_debug_info(self, name):
@@ -1862,11 +1876,29 @@ class Context:
   def get_compiler_ir(
       self,
       device_name,
+      platform_name,
       function_name,
       flat_args,
       captured_inputs,
       stage="hlo",
   ):
+    """Get the compiler IR bytes.
+
+    Args:
+      device_name: The name of the device with the form as
+        "/job:localhost/replica:0/task:0/device:CPU:0", "/device:TPU:0" etc.
+        When this is used, actual device is needed for getting the compiler IR.
+      platform_name: The name of the platform, e.g. "TPU". When this is used, no
+        actual device is needed but the compiler IR is obtained as if using that
+        device. The scenarios supported are more limited.
+      function_name: The name of the function to get the compiler IR.
+      flat_args: The flat argument inputs.
+      captured_inputs: The inputs that are captured.
+      stage: The exported stage for the given function.
+
+    Returns:
+      The compiler IR bytes.
+    """
     return pywrap_tfe.TF_GetCompilerIr(
         self._context_handle,
         function_name,
@@ -1874,6 +1906,7 @@ class Context:
         device_name,
         flat_args,
         captured_inputs,
+        platform_name,
     )
 
   @deprecated(

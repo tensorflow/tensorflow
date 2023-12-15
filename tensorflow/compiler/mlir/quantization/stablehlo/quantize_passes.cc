@@ -48,9 +48,6 @@ void AddQuantizationPasses(mlir::PassManager& pass_manager,
     }
   }
   pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::stablehlo::CreatePrepareSrqQuantizePass(
-          quantization_options_));
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::stablehlo::CreateQuantizeWeightPass(weight_component));
 }
 

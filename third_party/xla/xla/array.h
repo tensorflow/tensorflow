@@ -438,6 +438,8 @@ class Array {
 
     OwnedBuffer<int64_t> sizes(starts.size());
     for (int64_t i = 0; i < starts.size(); ++i) {
+      CHECK_GE(starts[i], 0);
+      CHECK_LE(limits[i], dim(i));
       sizes[i] = limits[i] - starts[i];
     }
     Array<T> result(sizes.span());

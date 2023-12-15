@@ -63,6 +63,36 @@ def TF__TfrtGetResourceOp : TF_Op<"_TfrtGetResource",
   let hasVerifier = 1;
 }
 
+def TF_IfrtCallOp : TF_Op<"IfrtCall", []> {
+  let summary = "Invokes a program via IFRT on a device";
+
+  let description = [{
+    This op calls an IFRT program uniquely identified by the given program id.
+
+    During lowering from a `tf_device.cluster_func` op to a `tf.IfrtCall` op,
+    the region owned by the former will be outlined to a function with a
+    `tfrt_ifrt_serving.program_id` attribute. After that, the runtime ensures
+    that the outlined function is compiled into an executable and is available
+    for lookup from `IfrtCall` TF ops.
+
+    This op also takes `variable_names` attribute to bind the variables (weights)
+    by names.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor> : $args,
+    I64Attr : $program_id,
+    StrArrayAttr : $variable_names
+  );
+
+  let results = (outs Variadic<TF_Tensor> : $results);
+
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+
+  let hasVerifier = 1;
+}
+
 // TODO(chky): Consider adding this op to tensorflow core ops.
 def TF_PwStreamResultsOp : TF_Op<"PwStreamResults"> {
   let summary = "Streams results back to the controller";

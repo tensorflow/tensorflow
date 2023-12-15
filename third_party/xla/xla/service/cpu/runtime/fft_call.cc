@@ -24,12 +24,14 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
-#include "llvm/ADT/ArrayRef.h"
+#include "absl/strings/str_cat.h"
 #include "xla/executable_run_options.h"
 #include "xla/runtime/custom_call.h"
 #include "xla/runtime/custom_call_registry.h"
 #include "xla/runtime/executable.h"
+#include "xla/runtime/memref_view.h"
 #include "xla/service/cpu/runtime_fft.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/xla.pb.h"
@@ -63,21 +65,28 @@ absl::Status XlaFft::operator()(const ExecutableRunOptions* run_options,
                                 MemrefView input, MemrefView output,
                                 int32_t fft_type,
                                 absl::Span<const int64_t> fft_length) const {
-  if (fft_length.empty() || fft_length.size() > 3) {
-    return absl::InvalidArgumentError(
-        "fft_length must contain 1 to 3 elements");
-  }
   bool double_precision = output.dtype == PrimitiveType::C128;
-  int64_t input_batch = 1;
   auto fft_rank = static_cast<int32_t>(fft_length.size());
-  for (int64_t dim = 0; dim < input.sizes.size() - fft_rank; ++dim) {
+  if (fft_length.empty() || fft_length.size() > input.sizes.length()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "fft_length must contain between 1 and ", input.sizes.length(),
+        " elements for an input with rank ", input.sizes.length()));
+  }
+
+  // Flatten batch dimensions.
+  absl::InlinedVector<int64_t, 4> input_sizes(fft_rank + 1);
+  int64_t input_batch = 1;
+  int64_t dim_offset = input.sizes.size() - fft_rank;
+  for (int64_t dim = 0; dim < dim_offset; ++dim) {
     input_batch *= input.sizes[dim];
   }
-  __xla_cpu_runtime_EigenFft(run_options, output.data, input.data, fft_type,
-                             static_cast<int32_t>(double_precision), fft_rank,
-                             input_batch, fft_length[0],
-                             fft_length.size() > 1 ? fft_length[1] : 0,
-                             fft_length.size() > 2 ? fft_length[2] : 0);
+  input_sizes[0] = input_batch;
+  for (int64_t dim = 0; dim < fft_rank; ++dim) {
+    input_sizes[1 + dim] = input.sizes[dim_offset + dim];
+  }
+  __xla_cpu_runtime_DuccFft(run_options, output.data, input.data, fft_type,
+                            static_cast<int32_t>(double_precision), fft_rank,
+                            input_sizes.data(), fft_length.data());
   return absl::OkStatus();
 }
 

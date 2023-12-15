@@ -18,10 +18,11 @@ limitations under the License.
 #include <algorithm>
 
 #include "absl/strings/str_cat.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
 namespace llvm_ir {
-static const HloInstruction& InstrForConstantBufferAllocation(
+const HloInstruction& InstrForConstantBufferAllocation(
     const BufferAllocation& allocation) {
   CHECK(allocation.is_constant());
   HloInstruction* const_instr = nullptr;

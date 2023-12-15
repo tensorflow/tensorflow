@@ -18,8 +18,8 @@ cc_library(
         "@com_google_absl//absl/functional:any_invocable",
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//mlir:mlir_async_runtime_api",
+        "@local_tsl//tsl/concurrency:async_value",
         "@local_tsl//tsl/platform:platform_port",
-        "@tf_runtime//:async_value",
     ],
 )
 

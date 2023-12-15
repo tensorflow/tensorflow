@@ -22,7 +22,6 @@ limitations under the License.
 #include <string>
 
 #include "absl/hash/hash.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
@@ -260,6 +259,7 @@ enum StatType {
   kModelVersion,
   kBytesTransferred,
   kDmaQueue,
+  kDcnCollectiveInfo,
   // Performance counter related.
   kRawValue,
   kScaledValue,
@@ -312,7 +312,32 @@ enum StatType {
   kDcnLoopIndex,
   kEdgeTpuModelInfo,
   kEdgeTpuModelProfileInfo,
-  kLastStatType = kEdgeTpuModelProfileInfo,
+  kEdgeTpuMlir,
+  kLastStatType = kEdgeTpuMlir,
+};
+
+enum MegaScaleStatType : uint8_t {
+  kMegaScaleGraphKey,
+  kFirstMegaScaleStatType = kMegaScaleGraphKey,
+  kMegaScaleLocalDeviceId,
+  kMegaScaleNumActions,
+  kMegaScaleCollectiveType,
+  kMegaScaleInputSize,
+  kMegaScaleSlackUs,
+  kMegaScaleActionType,
+  kMegaScaleStartEndType,
+  kMegaScaleActionIndex,
+  kMegaScaleActionDurationNs,
+  kMegaScaleActionInputs,
+  kMegaScaleTransferSource,
+  kMegaScaleTransferDestinations,
+  kMegaScaleBufferSizes,
+  kMegaScaleComputeOperation,
+  kMegaScaleChunk,
+  kMegaScaleLaunchId,
+  kMegaScaleLoopIteration,
+  kMegaScaleGraphProtos,
+  kLastMegaScaleStatType = kMegaScaleGraphProtos,
 };
 
 static constexpr uint32_t kLineIdOffset = 10000;
@@ -359,6 +384,15 @@ inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
 }
 
 std::optional<int64_t> FindStatType(absl::string_view stat_name);
+
+absl::string_view GetMegaScaleStatTypeStr(MegaScaleStatType stat_type);
+
+inline bool IsMegaScaleStatType(MegaScaleStatType stat_type,
+                                absl::string_view stat_name) {
+  return GetMegaScaleStatTypeStr(stat_type) == stat_name;
+}
+
+std::optional<int64_t> FindMegaScaleStatType(absl::string_view stat_name);
 
 // Returns true if the given event shouldn't be shown in the trace viewer.
 bool IsInternalEvent(std::optional<int64_t> event_type);
