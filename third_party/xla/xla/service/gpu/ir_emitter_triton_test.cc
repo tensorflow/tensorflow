@@ -1289,7 +1289,7 @@ ENTRY entry {
 // https://github.com/openai/triton/issues/1864
 TEST_F(TritonGemmTest, TritonCompilerDoesNotFailOnConstants) {
   TF_CHECK_OK(GetOptimizedModule(R"(
-HloModule m, is_scheduled=true
+HloModule m
 
 triton_gemm___computation {
   parameter_0 = f32[92,11]{1,0} parameter(0)
