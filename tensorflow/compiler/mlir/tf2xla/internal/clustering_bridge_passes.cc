@@ -34,6 +34,8 @@ namespace internal {
 using mlir::OpPassManager;
 using mlir::func::FuncOp;
 
+// LINT.IfChange(tpu_bridge_passes)
+
 // Adds Bridge clustering pipeline passes to the given pass_manager. Does not
 // run them.
 void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
@@ -169,9 +171,11 @@ void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(
       tensorflow::tf2xla::internal::CreateVerifyClusteringPass());
 }
+// LINT.ThenChange(:non_tpu_bridge_passes)
 
 void NoCanonicalization(OpPassManager& pm) {}
 
+// LINT.IfChange(non_tpu_bridge_passes)
 void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
   // The following ops must be preserved regardless of reachability. Ideally,
   // all graphs should have control dependencies to enforce this.
@@ -247,6 +251,7 @@ void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
   pm.addNestedPass<FuncOp>(
       tensorflow::tf2xla::internal::CreateVerifyClusteringPass());
 }
+// LINT.ThenChange(:tpu_bridge_passes)
 
 };  // namespace internal
 };  // namespace tf2xla

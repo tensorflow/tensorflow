@@ -942,4 +942,21 @@ absl::Span<PJRT_DeviceDescription* const> DeviceDescriptions(
   return {args.descriptions, args.num_descriptions};
 }
 
+absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
+    const PJRT_Api* api, PJRT_Executable* executable) {
+  PJRT_Executable_GetCompiledMemoryStats_Args args;
+  args.struct_size = PJRT_Executable_GetCompiledMemoryStats_Args_STRUCT_SIZE;
+  args.priv = 0;
+  args.executable = executable;
+  RETURN_STATUS_IF_PJRT_ERROR(
+      api->PJRT_Executable_GetCompiledMemoryStats(&args), api);
+  xla::CompiledMemoryStats results;
+  results.generated_code_size_in_bytes = args.generated_code_size_in_bytes;
+  results.argument_size_in_bytes = args.argument_size_in_bytes;
+  results.output_size_in_bytes = args.output_size_in_bytes;
+  results.alias_size_in_bytes = args.alias_size_in_bytes;
+  results.temp_size_in_bytes = args.temp_size_in_bytes;
+  return results;
+}
+
 }  // namespace pjrt

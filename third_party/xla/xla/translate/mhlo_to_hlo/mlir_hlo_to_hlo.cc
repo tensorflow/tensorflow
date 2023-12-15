@@ -835,6 +835,11 @@ namespace mlir {
 namespace mhlo {
 namespace {
 
+LogicalResult ExportXlaOp(CollectiveBroadcastOp, OpLoweringContext) {
+  // TODO: b/314330871 - Implement MHLO export for CollectiveBroadcastOp.
+  return failure();
+}
+
 LogicalResult ExportXlaOp(ComputeReshapeShapeOp, OpLoweringContext) {
   // This op should've been removed during PrepareForExport.
   return failure();

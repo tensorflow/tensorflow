@@ -15,17 +15,12 @@ limitations under the License.
 
 #include "xla/service/gpu/buffer_allocations.h"
 
-#include <memory>
-#include <utility>
+#include <cstdint>
+#include <set>
 
-#include "xla/map_util.h"
-#include "xla/service/gpu/gpu_constants.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
-#include "xla/util.h"
-#include "tsl/lib/gtl/map_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
+#include "xla/stream_executor/device_memory.h"
 
 namespace xla {
 namespace gpu {
@@ -59,7 +54,23 @@ se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
     BufferAllocation::Index buffer_index) const {
   CHECK_GE(buffer_index, 0);
   CHECK_LT(buffer_index, buffers_.size());
-  return buffers_[buffer_index];
+  se::DeviceMemoryBase base = buffers_[buffer_index];
+  if (reinterpret_cast<uintptr_t>(base.opaque()) == kExternalAllocationMarker) {
+    if (!external_allocations_) {
+      LOG(ERROR) << "Does not have external allocations for buffer "
+                 << buffer_index;
+      return se::DeviceMemoryBase();
+    }
+    auto external_address =
+        external_allocations_->GetDeviceAddress(buffer_index);
+    if (external_address.ok()) {
+      return external_address.value();
+    }
+    LOG(ERROR) << "External address for allocation" << buffer_index
+               << " is not allocated yet";
+    return se::DeviceMemoryBase();
+  }
+  return base;
 }
 
 se::DeviceMemoryBase& BufferAllocations::GetMutableDeviceAddress(
@@ -74,9 +85,29 @@ se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
   se::DeviceMemoryBase base = GetDeviceAddress(buffer_slice.index());
   CHECK_LE(buffer_slice.offset(), base.size());
   CHECK_LE(buffer_slice.offset() + buffer_slice.size(), base.size());
-  return se::DeviceMemoryBase(
-      static_cast<char*>(base.opaque()) + buffer_slice.offset(),
-      buffer_slice.size());
+  return base.GetByteSlice(buffer_slice.offset(), buffer_slice.size());
+}
+
+Status BufferAllocations::AddExternalAllocation(
+    BufferAllocation::Index index, se::DeviceMemoryBase memory) const {
+  if (external_allocations_ == nullptr) {
+    return InternalError(
+        "Calling external allocations, but no allocation tracker is provided"
+        "for allocation %d",
+        index);
+  }
+  return external_allocations_->AddAllocation(index, memory);
+}
+
+Status BufferAllocations::EraseExternalAllocation(
+    BufferAllocation::Index index) const {
+  if (external_allocations_ == nullptr) {
+    return InternalError(
+        "Calling external allocations, but no allocation tracker is provided"
+        "for allocation %d",
+        index);
+  }
+  return external_allocations_->EraseAllocation(index);
 }
 
 }  // namespace gpu

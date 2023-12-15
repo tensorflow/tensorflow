@@ -31,6 +31,7 @@ limitations under the License.
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "xla/pjrt/lru_cache.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/sharding.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/python_utils.h"
 #include "xla/python/sharding.h"
-#include "xla/python/status_casters.h"
 #include "xla/python/transfer_guard_lib.h"
 #include "xla/python/util.h"
 #include "xla/util.h"

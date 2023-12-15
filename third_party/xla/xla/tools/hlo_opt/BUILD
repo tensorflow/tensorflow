@@ -8,7 +8,6 @@ load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 # hlo-opt tool.
 load(
@@ -33,9 +32,15 @@ cc_library(
         "//xla:types",
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
+        "//xla/service:executable",
+        "//xla/service:hlo_graph_dumper",
+        "//xla/service:platform_util",
+        "//xla/stream_executor",
         "//xla/stream_executor:platform",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -51,11 +56,14 @@ cc_library(
         "//xla:types",
         "//xla/service:compiler",
         "//xla/service:dump",
+        "//xla/service:executable",
+        "//xla/service:hlo_graph_dumper",
         "//xla/service:platform_util",
         "//xla/service/gpu:executable_proto_cc",
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@local_tsl//tsl/platform:statusor",
     ] + if_gpu_is_configured([
         "//xla/service:gpu_plugin",
         "//xla/service/gpu:gpu_executable",
@@ -66,11 +74,27 @@ cc_library(
 )
 
 cc_library(
+    name = "cpu_opt",
+    testonly = True,
+    srcs = ["cpu_opt.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":opt_lib",
+        "//xla/service:cpu_plugin",
+        "//xla/service:hlo_graph_dumper",
+        "//xla/stream_executor/host:host_platform",
+        "//xla/stream_executor/platform",
+    ],
+    alwayslink = True,  # Initializer needs to run.
+)
+
+cc_library(
     name = "opt_main",
     testonly = True,
     srcs = ["opt_main.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        "cpu_opt",
         ":opt_lib",
         "//xla:debug_options_flags",
         "//xla:status",
@@ -98,7 +122,7 @@ cc_library(
 )
 
 glob_lit_tests(
-    name = "gpu_opt_tests",
+    name = "hlo_opt_tests",
     data = [":test_utilities"],
     default_tags = tf_cuda_tests_tags() + [
     ],
@@ -116,5 +140,12 @@ filegroup(
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//mlir:run_lit.sh",
     ],
+    visibility = ["//visibility:public"],
+)
+
+exports_files(
+    glob([
+        "gpu_specs/*.txtpb",
+    ]),
     visibility = ["//visibility:public"],
 )

@@ -89,12 +89,10 @@ xla_cc_test(
     name = "ffi_test",
     srcs = ["ffi_test.cc"],
     deps = [
-        ":api",
         ":call_frame",
         ":ffi",
         ":ffi_api",
         "//xla:xla_data_proto_cc",
-        "//xla/ffi/api:c_api",
         "//xla/service:executable",
         "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/status",

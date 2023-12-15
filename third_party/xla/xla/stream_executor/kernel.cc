@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/kernel.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/demangle.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -44,6 +46,10 @@ void KernelMetadata::set_registers_per_thread(int registers_per_thread) {
 void KernelMetadata::set_shared_memory_bytes(int shared_memory_bytes) {
   shared_memory_bytes_ = shared_memory_bytes;
 }
+
+//===----------------------------------------------------------------------===//
+// Kernel
+//===----------------------------------------------------------------------===//
 
 Kernel::Kernel(Kernel &&from)
     : parent_(from.parent_),
@@ -72,6 +78,12 @@ void Kernel::SetPreferredCacheConfig(KernelCacheConfig config) {
 
 KernelCacheConfig Kernel::GetPreferredCacheConfig() const {
   return implementation_->GetPreferredCacheConfig();
+}
+
+tsl::StatusOr<int32_t> Kernel::GetMaxOccupiedBlocksPerCore(
+    ThreadDim threads, size_t dynamic_shared_memory_bytes) const {
+  return implementation_->GetMaxOccupiedBlocksPerCore(
+      threads, dynamic_shared_memory_bytes);
 }
 
 void Kernel::set_name(absl::string_view name) {

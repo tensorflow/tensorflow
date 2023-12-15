@@ -289,6 +289,8 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kConvolution;
   } else if (isa<mlir::mhlo::SortOp, mlir::lmhlo::SortOp>(op)) {
     return xla::HloOpcode::kSort;
+  } else if (isa<mlir::mhlo::TopKOp>(op)) {
+    return xla::HloOpcode::kTopK;
   } else if (isa<mlir::mhlo::RngBitGeneratorOp>(op)) {
     return xla::HloOpcode::kRngBitGenerator;
   } else if (isa<mlir::mhlo::XlaRngGetAndUpdateStateOp>(op)) {

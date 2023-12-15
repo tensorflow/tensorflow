@@ -177,6 +177,8 @@ class CpuExecutable : public Executable {
     ir_module_string_ = ir_module_string;
   }
 
+  const std::string& module_name() const { return module_name_; }
+
   static int64_t ShapeSizeBytes(const Shape& shape);
 
   // Type of the computation function we expect in the JIT.

@@ -1436,6 +1436,9 @@ class HloInstruction {
   Status ReplaceOperandWithDifferentShape(int64_t operand_num,
                                           HloInstruction* new_operand);
 
+  // Decomposes fusion back to individual parts.
+  Status Defuse();
+
   // Replaces all uses of this instruction with the new producer. If
   // new_producer is a user of this instruction then new_producer remains a use
   // of this instruction to avoid introducing cycles into the graph.
@@ -1663,8 +1666,8 @@ class HloInstruction {
   }
   // Sets the sharding of this operator. Should only be called by HloModule or
   // HloComputation methods.
-  void set_sharding(const HloSharding& sharding) {
-    set_sharding(std::make_shared<const HloSharding>(sharding));
+  void set_sharding(HloSharding sharding) {
+    set_sharding(std::make_shared<HloSharding>(std::move(sharding)));
   }
   void set_sharding(std::shared_ptr<const HloSharding> sharding) {
     sharding_ = std::move(sharding);

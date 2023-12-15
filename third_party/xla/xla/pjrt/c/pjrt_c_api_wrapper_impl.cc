@@ -1480,6 +1480,22 @@ PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Executable_GetCompiledMemoryStats(
+    PJRT_Executable_GetCompiledMemoryStats_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Executable_Serialize_Args",
+      PJRT_Executable_Serialize_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(auto memory_stats,
+                        args->executable->executable->GetCompiledMemoryStats());
+  args->generated_code_size_in_bytes =
+      memory_stats.generated_code_size_in_bytes;
+  args->argument_size_in_bytes = memory_stats.argument_size_in_bytes;
+  args->output_size_in_bytes = memory_stats.output_size_in_bytes;
+  args->alias_size_in_bytes = memory_stats.alias_size_in_bytes;
+  args->temp_size_in_bytes = memory_stats.temp_size_in_bytes;
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Executable_DeserializeAndLoad(
     PJRT_Executable_DeserializeAndLoad_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(

@@ -308,9 +308,7 @@ class AsyncHostToDeviceTransferManager
     CHECK_LE(offset, buffer_memory.size());
     CHECK_LE(transfer_size, buffer_memory.size() - offset);
     if (transfer_size < buffer_memory.size()) {
-      sub_buffer = se::DeviceMemoryBase(
-          reinterpret_cast<char*>(buffer_memory.opaque()) + offset,
-          transfer_size);
+      sub_buffer = buffer_memory.GetByteSlice(offset, transfer_size);
     } else {
       sub_buffer = buffer_memory;
     }
@@ -482,8 +480,7 @@ PjRtFuture<absl::Status> StreamExecutorGpuClient::CopyRawSubBufferToHost(
   std::unique_ptr<se::DeviceMemoryBase> sub_buffer;
   if (transfer_size < device_memory.size()) {
     sub_buffer = std::make_unique<se::DeviceMemoryBase>(
-        reinterpret_cast<char*>(device_memory.opaque()) + offset,
-        transfer_size);
+        device_memory.GetByteSlice(offset, transfer_size));
   } else {
     sub_buffer = std::make_unique<se::DeviceMemoryBase>(device_memory);
   }
@@ -537,7 +534,22 @@ StreamExecutorGpuClient::Compile(const XlaComputation& computation,
   auto executable = PjRtStreamExecutorClient::Compile(computation, options);
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
-  metrics::RecordFreeGpuSystemMemory();
+  for (const PjRtDevice* device : addressable_devices()) {
+    LocalDeviceState* local_device_state =
+        tensorflow::down_cast<const PjRtStreamExecutorDevice*>(device)
+            ->local_device_state();
+    int64_t free_memory, total_memory;
+    if (local_device_state != nullptr) {
+      se::StreamExecutor* executor = local_device_state->executor();
+      int device_ordinal = executor->device_ordinal();
+      if (executor->DeviceMemoryUsage(&free_memory, &total_memory)) {
+        metrics::RecordFreeGpuSystemMemory(device_ordinal, free_memory);
+      } else {
+        LOG(ERROR) << "Failed to query available memory for GPU "
+                   << device_ordinal;
+      }
+    }
+  }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return executable;
 }
@@ -866,28 +878,6 @@ absl::StatusOr<tsl::AllocatorStats> StreamExecutorGpuDevice::GetAllocatorStats()
   auto stats = allocator->GetStats();
   TF_RET_CHECK(stats.has_value());
   return stats.value();
-}
-
-StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
-    bool asynchronous, const GpuAllocatorConfig& allocator_config, int node_id,
-    int num_nodes, const std::optional<std::set<int>>& allowed_devices,
-    std::optional<std::string> platform_name,
-    bool should_stage_host_to_device_transfers,
-    PjRtClient::KeyValueGetCallback kv_get,
-    PjRtClient::KeyValuePutCallback kv_put, bool enable_mock_nccl) {
-  GpuClientOptions options;
-  options.allocator_config = allocator_config;
-  options.node_id = node_id;
-  options.num_nodes = num_nodes;
-  options.allowed_devices = allowed_devices;
-  options.platform_name = platform_name;
-  options.should_stage_host_to_device_transfers =
-      should_stage_host_to_device_transfers;
-  options.kv_get = kv_get;
-  options.kv_put = kv_put;
-  options.enable_mock_nccl = enable_mock_nccl;
-
-  return GetStreamExecutorGpuClient(options);
 }
 
 StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(

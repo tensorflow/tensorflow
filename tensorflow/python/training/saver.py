@@ -1029,9 +1029,10 @@ class Saver:
     if not self.saver_def.max_to_keep:
       return
     # Remove first from list if the same name was used before.
-    for p in self._last_checkpoints:
+    for p in self._last_checkpoints[:]:
       if latest_save_path == self._CheckpointFilename(p):
         self._last_checkpoints.remove(p)
+
     # Append new path to list
     self._last_checkpoints.append((latest_save_path, time.time()))
 

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_COMPILE_MODULE_TO_LLVM_IR_H_
 #define XLA_SERVICE_GPU_COMPILE_MODULE_TO_LLVM_IR_H_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "xla/service/buffer_value.h"
 #include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/thunk.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/statusor.h"
@@ -53,6 +55,9 @@ struct CompileModuleResults {
   // stored in allocations.
   bool use_original_allocations;
 };
+
+void ForAllThunks(const std::function<void(Thunk*)>& fn,
+                  ThunkSequence* thunk_sequence);
 
 // Removes all globals from the given module that are both uninitialized and
 // have no uses within that module.

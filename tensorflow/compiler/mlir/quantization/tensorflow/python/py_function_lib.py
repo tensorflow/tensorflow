@@ -649,8 +649,11 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
   def run_calibration(
       self,
       saved_model_path: str,
+      signature_keys: list[str],
+      tags: set[str],
       exported_model_serialized: bytes,
-      quantization_options_serialized: bytes,
+      calibration_options_serialized: bytes,
+      force_graph_mode_calibration: bool,
       representative_dataset: rd.RepresentativeDatasetOrMapping,
   ) -> bytes:
     # LINT.ThenChange(py_function_lib.h:run_calibration)
@@ -658,9 +661,13 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
 
     Args:
       saved_model_path: Path to the SavedModel to run calibration.
+      signature_keys: List of signature keys corresponding to SignatureDefs to
+        run calibration on.
+      tags: A set of tags that identify the MetaGraphDef.
       exported_model_serialized: Serialized `ExportedModel` that corresponds to
         the SavedModel at `saved_model_path`.
-      quantization_options_serialized: Serialized `QuantizationOptions`.
+      calibration_options_serialized: Serialized `CalibrationOptions`.
+      force_graph_mode_calibration: If True, runs the calibration in graph mode.
       representative_dataset: Representative dataset to run calibration.
 
     Returns:
@@ -668,84 +675,25 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
       statistics are added to `CustomerAggregator` nodes at the `min` and `max`
       attributes.
     """
-    quantization_options = (
-        quantization_options_pb2.QuantizationOptions.FromString(
-            quantization_options_serialized
-        )
-    )
-
     # Uses the representative dataset to collect statistics for calibration.
     # After this operation, min & max values are stored separately in a global
     # CalibratorSingleton instance.
     _run_graph_for_calibration(
         saved_model_path,
-        quantization_options.signature_keys,
-        quantization_options.tags,
+        signature_keys,
+        tags,
         representative_dataset,
-        quantization_options.force_graph_mode_calibration,
+        force_graph_mode_calibration,
     )
 
     exported_model = exported_model_pb2.ExportedModel.FromString(
         exported_model_serialized
     )
-    _add_calibration_statistics(
-        exported_model.graph_def,
-        quantization_options.calibration_options,
+    calibration_options = (
+        quantization_options_pb2.CalibrationOptions.FromString(
+            calibration_options_serialized
+        )
     )
+    _add_calibration_statistics(exported_model.graph_def, calibration_options)
 
     return exported_model.SerializeToString()
-
-  # TODO: b/312371048 - Rewrite this in c++.
-  # LINT.IfChange(enable_dump_tensor)
-  def enable_dump_tensor(self, graph_def_serialized: bytes) -> bytes:
-    """Enable DumpTensor in the graph def.
-
-    DumpTensor is disabled by default to avoid logging data during calibration.
-    This function is called after calibration to enable DumpTensor.
-
-    Args:
-      graph_def_serialized: Serialized `GraphDef` to enable DumpTensor
-
-    Returns:
-      Updated serialized GraphDef where DumpTensors are enabled.
-    """
-    # LINT.ThenChange(py_function_lib.h:enable_dump_tensor)
-    graph_def = graph_pb2.GraphDef.FromString(graph_def_serialized)
-    for function_def in graph_def.library.function:
-      for node_def in function_def.node_def:
-        if node_def.op != 'DumpTensor':
-          continue
-
-        node_def.attr['enabled'].b = True
-
-    return graph_def.SerializeToString()
-
-  # TODO: b/312371048 - Rewrite this in c++.
-  # LINT.IfChange(change_dump_tensor_file_name)
-  def change_dump_tensor_file_name(self, graph_def_serialized: bytes) -> bytes:
-    # LINT.ThenChange(py_function_lib.h:change_dump_tensor_file_name)
-    """Change file_name used by DumpTensor to quantized_tensor_data.pb.
-
-    In whole model verify, DumpTensor in unquantized model uses file_name
-    unquantized_tensor_data.pb.
-    After unquantized dump model is created, this function allows quantized dump
-    model to use quantized_tensor_data.pb as file_name.
-
-    Args:
-      graph_def_serialized: Serialized `GraphDef` to change file_name of
-        DumpTensor
-
-    Returns:
-      Serialized GraphDef with updated file names for DumpTensors.
-    """
-    graph_def = graph_pb2.GraphDef.FromString(graph_def_serialized)
-    for function_def in graph_def.library.function:
-      for node_def in function_def.node_def:
-        if node_def.op != 'DumpTensor':
-          continue
-
-        node_def.attr['file_name'].s = 'quantized_tensor_data.pb'.encode(
-            'utf-8'
-        )
-
-    return graph_def.SerializeToString()

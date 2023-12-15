@@ -480,6 +480,7 @@ HloModuleProto HloModule::ToProto() const {
     profile_info_proto.set_relative_speedup(profile_info.relative_speedup());
     profile_info_proto.set_profile_source(profile_info.profile_source());
     profile_info_proto.set_compilation_event(profile_info.compilation_event());
+    profile_info_proto.set_fingerprint(profile_info.fingerprint());
   }
   if (config_.get().has_static_device_assignment()) {
     DeviceAssignmentProto device_assignment;

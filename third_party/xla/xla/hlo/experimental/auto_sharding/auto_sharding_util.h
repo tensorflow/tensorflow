@@ -357,7 +357,6 @@ inline std::vector<int> Argsort(const std::vector<T>& scores) {
 // Given the sharding for an instruction, invoke the sharding propagation pass
 // to infer appropriate shardings for its operands.
 std::optional<HloSharding> GetInputSharding(const HloInstruction* ins,
-                                            const HloInstruction* operand,
                                             int64_t op_index,
                                             const HloSharding& output_sharding,
                                             const xla::CallGraph& call_graph,

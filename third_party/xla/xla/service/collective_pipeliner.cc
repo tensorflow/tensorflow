@@ -303,8 +303,9 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
       return false;
     }
     if (i->opcode() == HloOpcode::kReduce &&
-        ShapeUtil::ElementsIn(i->shape()) ==
-            ShapeUtil::ElementsIn(instr->operand(0)->shape())) {
+        (ShapeUtil::ElementsIn(i->shape()) ==
+             ShapeUtil::ElementsIn(instr->operand(0)->shape()) ||
+         ShapeUtil::ElementsIn(instr->operand(0)->shape()) < 1024)) {
       return true;
     }
     return HloPredicateIsOp<HloOpcode::kSlice, HloOpcode::kDynamicSlice,
@@ -2257,6 +2258,8 @@ static Status TransformLoopBackward(const WhileLoopAnalysis& loop_analysis,
 StatusOr<bool> CollectivePipeliner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  CHECK(config_.acceptable_formatting);
+  CHECK(config_.should_process);
   bool changed = false;
   std::vector<HloInstruction*> while_loop_instructions;
   for (HloComputation* computation : module->MakeComputationPostOrder()) {
@@ -2302,6 +2305,7 @@ StatusOr<bool> CollectivePipeliner::Run(
       }
     }
     if (config_.pipelining_direction == PipeliningDirection::kForward) {
+      CHECK(config_.reuse_pipelined_op_buffer);
       TF_RETURN_IF_ERROR(TransformLoopForward(
           loop_analysis, !config_.last_run, config_.level_to_operate_on,
           config_.pipeline_use_tree, config_.process_different_sized_ops,

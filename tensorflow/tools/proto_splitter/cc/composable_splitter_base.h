@@ -15,17 +15,22 @@ limitations under the License.
 #ifndef TENSORFLOW_TOOLS_PROTO_SPLITTER_CC_COMPOSABLE_SPLITTER_BASE_H_
 #define TENSORFLOW_TOOLS_PROTO_SPLITTER_CC_COMPOSABLE_SPLITTER_BASE_H_
 
+#include <cstddef>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "tensorflow/tools/proto_splitter/cc/split.h"
 #include "tensorflow/tools/proto_splitter/cc/util.h"
 #include "tensorflow/tools/proto_splitter/chunk.pb.h"
 #include "tsl/platform/protobuf.h"
+
+#define IS_OSS true
 
 namespace tensorflow {
 namespace tools::proto_splitter {
@@ -62,6 +67,12 @@ class ComposableSplitterBase : public Splitter {
   //     attach a `.pb` or `.cpb` (chunked pb) suffix depending on whether the
   //     proto is split.
   absl::Status Write(std::string file_prefix) override;
+  // The bool field record whether it's saved as a chunked protobuf (true) or
+  // regular protobuf (false).
+  absl::StatusOr<std::tuple<std::string, bool>> WriteToString();
+#if !IS_OSS
+  absl::StatusOr<std::tuple<absl::Cord, bool>> WriteToCord();
+#endif
 
   VersionDef Version() override;
 
@@ -93,6 +104,7 @@ class ComposableSplitterBase : public Splitter {
   // the chunks were always added to the end of the list. However, this is not
   // always the case the indices must be updated.
   absl::Status FixChunks();
+  absl::Status CheckIfWriteImplemented();
 
   bool built_;
   tsl::protobuf::Message* message_;

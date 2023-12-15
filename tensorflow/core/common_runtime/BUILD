@@ -384,13 +384,13 @@ cc_library(
     srcs = ["buf_rendezvous.cc"],
     hdrs = ["buf_rendezvous.h"],
     copts = tf_copts(),
-    features = ["-layering_check"],
     deps = [
         ":device",
         ":device_mgr",
         ":process_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -461,12 +461,13 @@ cc_library(
     srcs = ["collective_param_resolver_local.cc"],
     hdrs = ["collective_param_resolver_local.h"],
     copts = tf_copts(),
-    features = ["-layering_check"],
     deps = [
         ":device_mgr",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 

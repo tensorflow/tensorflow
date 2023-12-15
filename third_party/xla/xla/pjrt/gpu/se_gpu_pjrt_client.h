@@ -246,18 +246,6 @@ struct GpuClientOptions {
 StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     const GpuClientOptions& options);
 
-// TODO(b/311119497): Remove this function after all callsites are updated.
-ABSL_DEPRECATED("Use the the above function that takes GpuClientOptions.")
-StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
-    bool asynchronous, const GpuAllocatorConfig& allocator_config, int node_id,
-    int num_nodes = 1,
-    const std::optional<std::set<int>>& allowed_devices = std::nullopt,
-    std::optional<std::string> platform_name = std::nullopt,
-    bool should_stage_host_to_device_transfers = true,
-    PjRtClient::KeyValueGetCallback kv_get = nullptr,
-    PjRtClient::KeyValuePutCallback kv_put = nullptr,
-    bool enable_mock_nccl = false);
-
 }  // namespace xla
 
 #endif  // XLA_PJRT_GPU_SE_GPU_PJRT_CLIENT_H_

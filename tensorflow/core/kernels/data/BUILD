@@ -1,11 +1,11 @@
 # Description:
 #   OpKernels for tf.data
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 # Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_kernel_library")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -1172,7 +1172,9 @@ tf_kernel_library(
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:serialization_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1512,6 +1514,8 @@ filegroup(
         "//tensorflow/core/data:captured_function.h",
         "//tensorflow/core/data:compression_utils.h",
         "//tensorflow/core/data:dataset_utils.h",
+        "//tensorflow/core/data:file_logger_client_interface.h",
+        "//tensorflow/core/data:file_logger_client_no_op.h",
         "//tensorflow/core/data:finalization_utils.h",
         "//tensorflow/core/data:metric_utils.h",
         "//tensorflow/core/data:name_utils.h",

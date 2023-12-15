@@ -49,9 +49,10 @@ Status ToStatus(ncclResult_t s, const char* file, int64_t line,
   if (s == ncclSuccess) {
     return OkStatus();
   }
-  return tsl::errors::Internal(
-      absl::StrFormat("%s:%d: NCCL operation %s failed: %s", file, line, expr,
-                      ncclGetErrorString(s)));
+  return tsl::errors::Internal(absl::StrFormat(
+      "%s:%d: NCCL operation %s failed: %s."
+      " Last NCCL warning(error) log entry (may be unrelated) '%s'.",
+      file, line, expr, ncclGetErrorString(s), ncclGetLastError(NULL)));
 }
 
 ncclRedOp_t ToNcclReduction(ReductionKind kind) {
@@ -210,7 +211,9 @@ void CheckNcclAsyncError(NcclComm& lockable_comm) {
     if (async_err != ncclSuccess) {
       LOG(ERROR) << "Aborting communicator: " << comm
                  << " due to async NCCL error: "
-                 << ncclGetErrorString(async_err);
+                 << ncclGetErrorString(async_err)
+                 << ". Last NCCL warning(error) log entry (may be unrelated): "
+                 << ncclGetLastError(NULL);
       XLA_CUDA_RETURN_IF_ERROR(ncclCommAbort(comm));
     }
     return XLA_CUDA_STATUS(async_err);

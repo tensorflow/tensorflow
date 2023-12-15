@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 #include "ortools/linear_solver/linear_solver.h"
 

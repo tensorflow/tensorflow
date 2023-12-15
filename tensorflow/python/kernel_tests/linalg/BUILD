@@ -523,7 +523,9 @@ cuda_py_strict_test(
         "no_windows_gpu",
         "optonly",
     ],
-    xla_enable_strict_auto_jit = True,
+    # TODO(b/313470344): XLA temporarily disabled due to empty shards on 3.12.
+    xla_enable_strict_auto_jit = False,
+    xla_enabled = False,
     deps = [
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:test_lib",

@@ -230,6 +230,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":compile_options_proto_cc",
+        ":executable_metadata_proto_cc",
         ":execute_options_proto_cc",
         ":pjrt_common",
         "//xla:shape_layout",
@@ -253,7 +254,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -380,10 +380,7 @@ cc_library(
     hdrs = ["metrics.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//xla/stream_executor",
-        "//xla/stream_executor/gpu:gpu_init",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/lib/monitoring:counter",
         "@local_tsl//tsl/lib/monitoring:gauge",
@@ -802,4 +799,46 @@ tf_proto_library(
     name = "execute_options_proto",
     srcs = ["execute_options.proto"],
     visibility = ["//visibility:public"],
+)
+
+tf_proto_library(
+    name = "executable_metadata_proto",
+    srcs = ["executable_metadata.proto"],
+    protodeps = [
+        "//xla/service:hlo_proto",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "exceptions",
+    hdrs = ["exceptions.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "status_casters",
+    hdrs = ["status_casters.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":exceptions",
+        "//xla:status",
+        "//xla:statusor",
+        "@local_tsl//tsl/platform:macros",
+    ],
 )

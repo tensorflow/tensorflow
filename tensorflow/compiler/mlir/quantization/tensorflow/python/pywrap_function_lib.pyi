@@ -37,18 +37,11 @@ class PyFunctionLibrary:
   def run_calibration(
       self,
       saved_model_path: str,
+      signature_keys: list[str],
+      tags: set[str],
       exported_model_serialized: bytes,
-      quantization_options_serialized: bytes,
+      calibration_options_serialized: bytes,
+      force_graph_mode_calibration: bool,
       representative_dataset: Any,
-  ) -> bytes: ...
-  # LINT.ThenChange()
-
-  # LINT.IfChange(enable_dump_tensor)
-  def enable_dump_tensor(self, graph_def_serialized: bytes) -> bytes: ...
-  # LINT.ThenChange()
-
-  # LINT.IfChange(change_dump_tensor_file_name)
-  def change_dump_tensor_file_name(
-      self, graph_def_serialized: bytes
   ) -> bytes: ...
   # LINT.ThenChange()

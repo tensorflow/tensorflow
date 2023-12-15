@@ -74,10 +74,6 @@ build_and_test_on_rbe_gpu() {
   # Runs non-multiaccelerator tests with one GPU apiece.
   # It appears --run_under needs an absolute path.
 
-  # we need to add `--remote_instance_name` and `--bes_instance_name`. Why this
-  # is only needed for gpu is still a mystery.
-
-  # TODO(ddunleavy): reenable `LaxTest.testBitcastConvertType1`
   bazel \
     test \
     --verbose_failures=true \
@@ -85,14 +81,13 @@ build_and_test_on_rbe_gpu() {
     --config=avx_posix \
     --config=mkl_open_source_only \
     --config="rbe_linux_cuda12.2_nvcc_py3.9" \
+    --config=tensorflow_testing_rbe_linux \
     --test_env=XLA_PYTHON_CLIENT_ALLOCATOR=platform \
     --test_output=errors \
     --test_env=JAX_SKIP_SLOW_TESTS=1 \
     --test_env=TF_CPP_MIN_LOG_LEVEL=0 \
-    --test_env=JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow|LaxTest.testBitcastConvertType1" \
+    --test_env=JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow" \
     --test_tag_filters=-multiaccelerator \
-    --remote_instance_name=projects/tensorflow-testing/instances/default_instance \
-    --bes_instance_name="tensorflow-testing" \
     -- //tests:gpu_tests //tests:backend_independent_tests
 }
 

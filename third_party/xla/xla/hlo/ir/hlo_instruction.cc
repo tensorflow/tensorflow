@@ -2398,12 +2398,12 @@ const HloInstruction* HloInstruction::LatestNonGteAncestor() const {
 }
 
 const HloInstruction* HloInstruction::operand(int64_t i) const {
-  return operands_.at(i);
+  return operands_[i];
 }
 
 HloInstruction* HloInstruction::mutable_operand(int64_t i) {
   CHECK(operands_[i] != nullptr);
-  return operands_.at(i);
+  return operands_[i];
 }
 
 int64_t HloInstruction::operand_index(const HloInstruction* target) const {
@@ -2860,6 +2860,54 @@ Status HloInstruction::ReplaceOperandWithDifferentShape(
   }
   new_operand->AddUser(this);
   return OkStatus();
+}
+
+// Copy all the instructions in the given fusion instruction into the fusion
+// instruction's parent computation and replace the use of the fusion
+// instruction with the copy of the fusion expression root.
+Status HloInstruction::Defuse() {
+  if (opcode() != HloOpcode::kFusion) {
+    return OkStatus();
+  }
+  VLOG(2) << "Defusing instruction: " << ToString();
+
+  HloComputation* fused_computation = fused_instructions_computation();
+
+  // A map from fused instruction to its defused clone.
+  absl::flat_hash_map<const HloInstruction*, HloInstruction*>
+      defused_instructions;
+  // Initialize map to contain the fusion instruction parameters mapping
+  // to the operands of the fusion instruction.
+  for (int64_t i = 0; i < operand_count(); ++i) {
+    defused_instructions[fused_computation->parameter_instruction(i)] =
+        mutable_operand(i);
+  }
+
+  // Create a clone of each instruction of the fused computation in the same
+  // computation as the fusion instruction itself.
+  // TODO(b/68227302): Moving instruction to new computation rather than
+  // cloning and deleting.
+  for (HloInstruction* fused_instruction :
+       fused_computation->MakeInstructionPostOrder()) {
+    if (fused_instruction->opcode() == HloOpcode::kParameter) {
+      continue;
+    }
+    std::vector<HloInstruction*> new_operands;
+    for (HloInstruction* operand : fused_instruction->operands()) {
+      new_operands.push_back(defused_instructions.at(operand));
+    }
+    HloInstruction* defused_instruction =
+        parent()->AddInstruction(fused_instruction->CloneWithNewOperands(
+            fused_instruction->shape(), new_operands));
+    defused_instructions[fused_instruction] = defused_instruction;
+  }
+
+  TF_RETURN_IF_ERROR(
+      ReplaceAllUsesWith(defused_instructions.at(fused_expression_root())));
+
+  HloModule* module = GetModule();
+  TF_RETURN_IF_ERROR(parent()->RemoveInstruction(this));
+  return module->RemoveEmbeddedComputation(fused_computation);
 }
 
 Status HloInstruction::ReplaceUsesWith(absl::Span<HloInstruction* const> users,

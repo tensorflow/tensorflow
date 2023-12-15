@@ -39,7 +39,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizeWeightPass(
 // Creates an instance of the StableHLO dialect PrepareQuantize pass without any
 // arguments. Preset method of SRQ is set to the quantization option by default.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(
-    bool enable_per_channel_quantization = true, int bit_width = 8);
+    bool enable_per_channel_quantization = false, int bit_width = 8);
 
 // Adds generated pass default constructors or options definitions.
 #define GEN_PASS_DECL

@@ -13,9 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if GOOGLE_CUDA
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <cuda_fp8.h>
+
+using bfloat16 = __nv_bfloat16;
+#define BF16_TO_F32 __bfloat162float
+
+#elif TENSORFLOW_USE_ROCM
+#include <hip/hip_bfloat16.h>
+#include <hip/hip_fp16.h>
+
+using bfloat16 = hip_bfloat16;
+#define BF16_TO_F32 float
+
+#endif
 
 #include <cstdint>
 
@@ -36,6 +49,7 @@ __device__ __inline__ float Canonicalize(float input) {
   return isnan(input) ? input : max(-65505.0f, min(input, 65505.0f));
 }
 
+#if GOOGLE_CUDA
 __global__ void xla_fp8_e4m3fn_comparison(__nv_fp8_storage_t* buffer_a,
                                           __nv_fp8_storage_t* buffer_b,
                                           float rel_error_threshold,
@@ -81,6 +95,7 @@ __global__ void xla_fp8_e5m2_comparison(__nv_fp8_storage_t* buffer_a,
   if (rel_error > rel_error_threshold || isnan(rel_error))
     atomicAdd(mismatch_count, 1);
 }
+#endif  // GOOGLE_CUDA
 
 __global__ void xla_fp16_comparison(__half* buffer_a, __half* buffer_b,
                                     float rel_error_threshold,
@@ -134,15 +149,14 @@ __global__ void xla_fp64_comparison(double* buffer_a, double* buffer_b,
     atomicAdd(mismatch_count, 1);
 }
 
-__global__ void xla_bf16_comparison(__nv_bfloat16* buffer_a,
-                                    __nv_bfloat16* buffer_b,
+__global__ void xla_bf16_comparison(bfloat16* buffer_a, bfloat16* buffer_b,
                                     float rel_error_threshold,
                                     uint64_t buffer_length,
                                     int* mismatch_count) {
   int idx = threadIdx.x + blockIdx.x * blockDim.x;
   if (idx >= buffer_length) return;
-  float elem_a = __bfloat162float(buffer_a[idx]);
-  float elem_b = __bfloat162float(buffer_b[idx]);
+  float elem_a = BF16_TO_F32(buffer_a[idx]);
+  float elem_b = BF16_TO_F32(buffer_b[idx]);
   elem_a = Canonicalize(elem_a);
   elem_b = Canonicalize(elem_b);
   if (isnan(elem_a) && isnan(elem_b)) return;
@@ -182,6 +196,7 @@ __global__ void xla_int32_comparison(int* buffer_a, int* buffer_b,
 
 }  // namespace
 
+#if GOOGLE_CUDA
 void* fp8_e4m3fn_comparison() {
   return reinterpret_cast<void*>(&xla_fp8_e4m3fn_comparison);
 }
@@ -189,6 +204,7 @@ void* fp8_e4m3fn_comparison() {
 void* fp8_e5m2_comparison() {
   return reinterpret_cast<void*>(&xla_fp8_e5m2_comparison);
 }
+#endif
 
 void* fp16_comparison() {
   return reinterpret_cast<void*>(&xla_fp16_comparison);

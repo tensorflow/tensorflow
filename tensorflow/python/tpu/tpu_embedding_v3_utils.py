@@ -73,7 +73,8 @@ def unshuffle_from_sc_to_cpu(
   shards = shards_t[:, offset_in_shard : offset_in_shard + size_in_shard, :]
   # This table's shards were rotated by `shard_rotation`, so we need to rotate
   # the same amount in opposite direction
-  shards = manip_ops.roll(shards, -shard_rotation, axis=0)
+  if shard_rotation:
+    shards = manip_ops.roll(shards, -shard_rotation, axis=0)
   # Re-arrange (transpose and reshape) the shards to get the queried embedding
   # table.
   intermediate_tensor = array_ops.transpose(shards, (1, 0, 2))
@@ -169,6 +170,12 @@ class SparseCoreStackedTableTrackable(trackable_base.Trackable):
           shape=variable_shape,
           dtype=dtypes.float32,
       )
+  # TODO(b/312743130): This is a workaround. During checkpoint restoration
+  # optimizer expects the trackable to provide a `_unique_id` or equivalent.
+  # Remove this when the bug is fixed.
+  @property
+  def _unique_id(self):
+    return self.vars[self._stacked_layouts[0].table_name]._unique_id
 
   def _serialize_to_tensors(self) -> Any:
     return {

@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/statusor.h"
 #include "ortools/linear_solver/linear_solver.h"
@@ -33,32 +34,6 @@ using MPVariable = operations_research::MPVariable;
 
 namespace xla {
 namespace spmd {
-
-struct AutoShardingSolverRequest {
-  int64_t num_nodes = 0;
-  int64_t memory_budget = -1;
-  std::vector<int> s_len;
-  std::vector<NodeIdx> s_follow;
-  std::vector<NodeStrategyIdx> s_hint;
-  std::vector<std::pair<NodeIdx, NodeIdx>> e;
-  std::vector<std::vector<NodeIdx>> live;
-  std::vector<std::vector<double>> c;
-  std::vector<std::vector<double>> d;
-  std::vector<std::vector<double>> m;
-  std::vector<std::vector<double>> p;
-  std::vector<std::vector<double>> r;
-  std::vector<std::vector<double>> t;
-  std::vector<std::pair<NodeIdx, NodeIdx>> a;
-  std::vector<std::vector<double>> v;
-  std::vector<std::string> instruction_names;
-  std::optional<int64_t> solver_timeout_in_seconds;
-  std::optional<double> overbudget_coeff = 1e6;
-  std::optional<double> makespan_coeff;
-  std::optional<double> max_departures;
-  bool crash_at_infinity_costs_check = false;
-  bool compute_iis = true;
-  double saltiplier = 0.001;  // Modifies each objective term by at most 0.1%
-};
 
 struct AutoShardingSolverResult {
  public:

@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/metrics.h"
+#include "xla/service/gpu/move_copy_to_users.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/service/gpu/triangular_solve_rewriter.h"
 #include "xla/service/gpu/triton_autotuner.h"
@@ -225,6 +226,7 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
         false);
     if (debug_options.xla_gpu_normalize_layouts()) {
       mha_fusion_pipeline.AddPass<ReshapeDecomposer>();
+      mha_fusion_pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
       mha_fusion_pipeline.AddPass<LayoutNormalization>();
     }
 

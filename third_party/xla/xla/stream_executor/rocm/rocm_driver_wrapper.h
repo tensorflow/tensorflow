@@ -104,15 +104,22 @@ namespace wrap {
   __macro(hipGetErrorString)                        \
   __macro(hipGraphAddKernelNode)                    \
   __macro(hipGraphAddChildGraphNode)                \
+  __macro(hipGraphAddMemAllocNode)                  \
   __macro(hipGraphAddMemcpyNode)                    \
   __macro(hipGraphAddMemcpyNode1D)                  \
-  __macro(hipGraphExecChildGraphNodeSetParams)      \
+  __macro(hipGraphAddMemsetNode)                    \
+  __macro(hipGraphAddMemFreeNode)                   \
   __macro(hipGraphCreate)                           \
   __macro(hipGraphDebugDotPrint)                    \
   __macro(hipGraphDestroy)                          \
+  __macro(hipGraphExecChildGraphNodeSetParams)      \
   __macro(hipGraphExecDestroy)                      \
+  __macro(hipGraphExecKernelNodeSetParams)          \
+  __macro(hipGraphExecMemcpyNodeSetParams)          \
+  __macro(hipGraphExecMemsetNodeSetParams)          \
   __macro(hipGraphExecUpdate)                       \
   __macro(hipGraphInstantiate)                      \
+  __macro(hipGraphMemAllocNodeGetParams)            \
   __macro(hipGraphLaunch)                           \
   __macro(hipGraphNodeGetType)                      \
   __macro(hipHostFree)                              \
@@ -120,7 +127,9 @@ namespace wrap {
   __macro(hipHostRegister)                          \
   __macro(hipHostUnregister)                        \
   __macro(hipInit)                                  \
+  __macro(hipKernelNameRefByPtr)                    \
   __macro(hipLaunchHostFunc)                        \
+  __macro(hipLaunchKernel)                          \
   __macro(hipMalloc)                                \
   __macro(hipMemGetAddressRange)                    \
   __macro(hipMemGetInfo)                            \

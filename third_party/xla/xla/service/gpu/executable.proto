@@ -37,3 +37,10 @@ message XlaRuntimeGpuExecutableProto {
   // Constants required by the serialized executable.
   repeated ConstantInfoProto constants = 5;
 }
+
+message CompilationResultProto {
+  HloModuleProto hlo_module = 1;
+  BufferAssignmentProto buffer_assignment = 2;
+  string asm_text = 3;
+  bytes binary = 4;
+}

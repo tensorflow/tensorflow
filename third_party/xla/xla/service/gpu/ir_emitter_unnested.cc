@@ -100,11 +100,7 @@ limitations under the License.
 #include "xla/service/gpu/fused_mha_thunk.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/fusions.h"
-#include "xla/service/gpu/fusions/input_slices.h"
-#include "xla/service/gpu/fusions/loop.h"
-#include "xla/service/gpu/fusions/reduction.h"
 #include "xla/service/gpu/fusions/thunk_util.h"
-#include "xla/service/gpu/fusions/transpose.h"
 #include "xla/service/gpu/gemm_thunk.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
@@ -132,6 +128,7 @@ limitations under the License.
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/gpu/replica_id_thunk.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
+#include "xla/service/gpu/runtime3/command_buffer_cmd_emitter.h"
 #include "xla/service/gpu/runtime3/command_buffer_thunk.h"
 #include "xla/service/gpu/runtime3/custom_call_thunk.h"
 #include "xla/service/gpu/runtime3/fft_thunk.h"
@@ -332,13 +329,23 @@ StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkForFusion(
 
 StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
     IrEmitterContext& ir_emitter_context, const HloFusionInstruction* fusion,
-    CustomKernel custom_kernel) {
-  TF_ASSIGN_OR_RETURN(
-      auto kernel_arguments,
-      KernelArguments::Create(ir_emitter_context.buffer_assignment(), fusion));
+    mlir::lmhlo::FusionOp fusion_op, CustomKernel custom_kernel) {
+  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
+                      ir_emitter_context.emit_ir_from_hlo()
+                          ? KernelArguments::Create(
+                                ir_emitter_context.buffer_assignment(), fusion)
+                          : KernelArguments::Create(
+                                ir_emitter_context.allocations(), fusion_op));
+
+  std::variant<mlir::Operation*, const HloInstruction*> instr;
+  if (ir_emitter_context.emit_ir_from_hlo()) {
+    instr = fusion;
+  } else {
+    instr = fusion_op;
+  }
 
   return std::make_unique<CustomKernelThunk>(
-      fusion, std::move(custom_kernel), std::move(kernel_arguments.args()));
+      instr, std::move(custom_kernel), std::move(kernel_arguments.args()));
 }
 
 // Derives the number of warps to use for processing a Triton Softmax fusion.
@@ -370,33 +377,6 @@ int DeriveNumWarpsFromTritonSoftmaxComputation(
   }
 
   return num_warps;
-}
-
-StatusOr<std::unique_ptr<CommandBufferCmd>> ConvertToCommand(
-    const Thunk& thunk) {
-  switch (thunk.kind()) {
-    // TODO(anlunx): Support other thunk kinds.
-    case Thunk::Kind::kKernel: {
-      auto& kernel_thunk = static_cast<const KernelThunk&>(thunk);
-      auto kernel_cmd = std::make_unique<LaunchCmd>(
-          kernel_thunk.kernel_name(), kernel_thunk.arguments(),
-          kernel_thunk.launch_dimensions(), kernel_thunk.shmem_bytes());
-      return kernel_cmd;
-    }
-    default:
-      return InternalError("Unsupported thunk kind");
-  }
-}
-
-StatusOr<CommandBufferCmdSequence> ConvertToCommands(
-    const ThunkSequence& sequence) {
-  CommandBufferCmdSequence cmd_sequence;
-  for (const std::unique_ptr<Thunk>& thunk : sequence) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<CommandBufferCmd> cmd,
-                        ConvertToCommand(*thunk));
-    cmd_sequence.Append(std::move(cmd));
-  }
-  return cmd_sequence;
 }
 
 }  // namespace
@@ -2059,8 +2039,15 @@ StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitTritonFusion(
   // because we only get the launch dimensions after code generation. So we
   // implement kernel reuse using lower level APIs, such as
   // `BuildKernelThunkImpl`.
-
-  VLOG(3) << llvm_ir::DumpToString(op);
+  CHECK_NE(fusion, nullptr);
+  if (!ir_emitter_context_->emit_ir_from_hlo()) {
+    CHECK_NE(op, nullptr);
+  }
+  if (ir_emitter_context_->emit_ir_from_hlo()) {
+    VLOG(3) << fusion->ToString();
+  } else {
+    VLOG(3) << llvm_ir::DumpToString(op);
+  }
   std::string suggested_kernel_name = std::string(fusion->name());
   TF_ASSIGN_OR_RETURN(
       auto kernel_arguments,
@@ -2103,14 +2090,18 @@ StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitTritonFusion(
                         ir_emitter_context_->cuda_compute_capability(),
                         ir_emitter_context_->gpu_device_info(), config, module_,
                         &EmitSoftMax, *ir_emitter_context_->mlir_context()));
-      launch_dimensions = GetSoftMaxLaunchDimensions(
-          hlo_fusion_analysis.fusion_roots(),
-          hlo_fusion_analysis.fusion_boundary(), config);
+      launch_dimensions =
+          GetSoftMaxLaunchDimensions(hlo_fusion_analysis.fusion(), config);
     } else {  // Must be a MatMul
       CHECK_EQ(fusion_kind, kTritonGemmFusionKind);
       if (!backend_config.has_triton_gemm_config()) {
-        LOG(WARNING) << "Using fallback triton GEMM config for op "
-                     << GetIrNameFromLoc(op->getLoc());
+        if (ir_emitter_context_->emit_ir_from_hlo()) {
+          LOG(WARNING) << "Using fallback triton GEMM config for op "
+                       << fusion->name();
+        } else {
+          LOG(WARNING) << "Using fallback triton GEMM config for op "
+                       << GetIrNameFromLoc(op->getLoc());
+        }
         auto& triton_config = *backend_config.mutable_triton_gemm_config();
         triton_config.set_block_m(64);
         triton_config.set_block_k(64);
@@ -2132,8 +2123,7 @@ StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitTritonFusion(
                         ir_emitter_context_->gpu_device_info(), config, module_,
                         &EmitMatMul, *ir_emitter_context_->mlir_context()));
       launch_dimensions = GetMatMulLaunchDimensions(
-          analysis, hlo_fusion_analysis.fusion_roots(),
-          hlo_fusion_analysis.fusion_boundary(), config);
+          analysis, hlo_fusion_analysis.fusion(), config);
     }
 
     llvm::Function* impl_fn = module_->getFunction(impl_fn_name);
@@ -2177,68 +2167,30 @@ StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitTritonFusion(
 
 #endif  // GOOGLE_CUDA
 
-// Check if the fusion instruction should be emitted as an in place dynamic
-// update slice or a memcpy fusion. The logic is copied from GetFusionEmitter.
-bool IsSpecializedLoopFusion(
-    mlir::Operation* op, absl::Span<const BufferAllocation* const> allocations,
-    HloFusionAnalysis& analysis) {
-  auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(op);
-  if (!allocations.empty() && fusion_op != nullptr) {
-    bool is_single = IsSingleInstructionFusion(fusion_op);
-    if (!is_single &&
-        CanEmitFusedDynamicUpdateSliceInPlaceForGpu(fusion_op, allocations)) {
-      return true;
-    }
-    if (is_single && analysis.fusion_roots().size() == 1 &&
-        analysis.fusion_roots().front()->opcode() == HloOpcode::kCopy) {
-      mlir::Value operand = GetHloOperands(fusion_op).front();
-      mlir::Value output = GetHloOutputs(fusion_op).front();
-      Shape operand_shape = GetShape(operand);
-      Shape output_shape = GetShape(output);
-      if (LayoutUtil::Equal(operand_shape.layout(), output_shape.layout()) &&
-          GetAllocationSlice(operand, allocations).ok()) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-StatusOr<FusionEmissionResult> IrEmitterUnnested::GetFusionEmissionResult(
-    const HloFusionInstruction* instr, HloFusionAnalysis& fusion_analysis) {
+Status IrEmitterUnnested::EmitFusion(
+    const HloFusionInstruction* instr, HloFusionAnalysis& fusion_analysis,
+    mlir::Operation* op,
+    const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
+        hlo_for_lmhlo) {
   FusionEmissionResult emission_result;
   switch (fusion_analysis.GetEmitterFusionKind()) {
-    case HloFusionAnalysis::EmitterFusionKind::kInputSlices: {
-      auto emitter = std::make_unique<InputSlicesFusion>(fusion_analysis);
-      TF_ASSIGN_OR_RETURN(
-          emission_result,
-          emitter->Emit(*ir_emitter_context_, elemental_emitter_, nullptr,
-                        *instr, kernel_reuse_cache_, &b_));
-      break;
-    }
-    case HloFusionAnalysis::EmitterFusionKind::kLoop: {
-      // TODO(anlunx): Support MemcpyFusion and InPlaceDymaicUpdateSlice.
-      auto emitter = std::make_unique<LoopFusion>(fusion_analysis);
-      TF_ASSIGN_OR_RETURN(
-          emission_result,
-          emitter->Emit(*ir_emitter_context_, elemental_emitter_, nullptr,
-                        *instr, kernel_reuse_cache_, &b_));
-      break;
-    }
-    case HloFusionAnalysis::EmitterFusionKind::kTranspose: {
-      auto emitter = std::make_unique<TransposeFusion>(fusion_analysis);
-      TF_ASSIGN_OR_RETURN(
-          emission_result,
-          emitter->Emit(*ir_emitter_context_, elemental_emitter_, nullptr,
-                        *instr, kernel_reuse_cache_, &b_));
-      break;
-    }
+    case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
+    case HloFusionAnalysis::EmitterFusionKind::kLoop:
+    case HloFusionAnalysis::EmitterFusionKind::kTranspose:
     case HloFusionAnalysis::EmitterFusionKind::kReduction: {
-      auto emitter = std::make_unique<ReductionFusion>(fusion_analysis);
+      auto emitter = GetFusionEmitter(fusion_analysis, {}, nullptr);
+      // TODO(anlunx): Support MemcpyFusion and InPlaceDynamicUpdateSlice and
+      // remove this fallback.
+      if (!emitter) {
+        TF_RET_CHECK(op)
+            << "Fusion should have been handled by GetFusionEmitter, fallback "
+               "disabled because no lmhlo op is available.";
+        return EmitFusion(op, hlo_for_lmhlo);
+      }
       TF_ASSIGN_OR_RETURN(
           emission_result,
-          emitter->Emit(*ir_emitter_context_, elemental_emitter_, nullptr,
-                        *instr, kernel_reuse_cache_, &b_));
+          (*emitter)->Emit(*ir_emitter_context_, elemental_emitter_, nullptr,
+                           *instr, kernel_reuse_cache_, &b_));
       break;
     }
     case HloFusionAnalysis::EmitterFusionKind::kTriton: {
@@ -2261,7 +2213,8 @@ StatusOr<FusionEmissionResult> IrEmitterUnnested::GetFusionEmissionResult(
                           instr->backend_config<FusionBackendConfig>());
       TF_ASSIGN_OR_RETURN(
           emission_result,
-          EmitCustomFusion(instr, backend_config.custom_fusion_config()));
+          EmitCustomFusion(instr, nullptr,
+                           backend_config.custom_fusion_config()));
       break;
     }
     default:
@@ -2270,13 +2223,6 @@ StatusOr<FusionEmissionResult> IrEmitterUnnested::GetFusionEmissionResult(
       break;
   }
 
-  return emission_result;
-}
-
-Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
-                                     HloFusionAnalysis& fusion_analysis) {
-  TF_ASSIGN_OR_RETURN(FusionEmissionResult emission_result,
-                      GetFusionEmissionResult(instr, fusion_analysis));
   for (auto& thunk : emission_result.thunks) {
     AddThunkToThunkSequence(std::move(thunk));
   }
@@ -2343,8 +2289,13 @@ Status IrEmitterUnnested::EmitFusion(
                           EmitScatter(fusion, fusion_op, fusion_analysis));
       break;
     }
-    case HloFusionAnalysis::EmitterFusionKind::kCustomFusion:
-      LOG(FATAL) << "kCustomFusion is not supported by JitRt runtime";
+    case HloFusionAnalysis::EmitterFusionKind::kCustomFusion: {
+      TF_ASSIGN_OR_RETURN(
+          emission_result,
+          EmitCustomFusion(fusion, fusion_op,
+                           backend_config.custom_fusion_config()));
+      break;
+    }
   }
 
   for (auto& thunk : emission_result.thunks) {
@@ -3370,7 +3321,8 @@ StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitScatter(
 }
 
 StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitCustomFusion(
-    const HloFusionInstruction* fusion, const CustomFusionConfig& config) {
+    const HloFusionInstruction* fusion, mlir::lmhlo::FusionOp fusion_op,
+    const CustomFusionConfig& config) {
   VLOG(3) << "Lower HLO fusion to a custom fusion " << config.name();
 
   auto* registry = CustomFusionRegistry::Default();
@@ -3386,7 +3338,8 @@ StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitCustomFusion(
   // Load custom kernels that can implement a fusion computation.
   TF_ASSIGN_OR_RETURN(
       std::vector<CustomKernel> kernels,
-      custom_fusion->LoadKernels(fusion->fused_instructions_computation()));
+      custom_fusion->LoadKernels(ir_emitter_context_->gpu_device_info(),
+                                 fusion->fused_instructions_computation()));
 
   // This should never happen, it means that compilation pipeline created a
   // fusion operation that is not supported by a given custom fusion.
@@ -3401,9 +3354,9 @@ StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitCustomFusion(
     return absl::InternalError("Expected exactly one custom kernel");
   }
 
-  TF_ASSIGN_OR_RETURN(
-      auto thunk, BuildCustomKernelThunkForFusion(*ir_emitter_context_, fusion,
-                                                  std::move(kernels[0])));
+  TF_ASSIGN_OR_RETURN(auto thunk, BuildCustomKernelThunkForFusion(
+                                      *ir_emitter_context_, fusion, fusion_op,
+                                      std::move(kernels[0])));
 
   FusionEmissionResult result;
   result.thunks.push_back(std::move(thunk));
@@ -3516,11 +3469,7 @@ Status IrEmitterUnnested::EmitOp(
           ir_emitter_context_->gpu_device_info();
       TF_ASSIGN_OR_RETURN(auto fusion_analysis,
                           HloFusionAnalysis::Create(instr, &device_info));
-      // TODO(anlunx): Add support for emitting specialized kLoops.
-      if (!IsSpecializedLoopFusion(op, ir_emitter_context_->allocations(),
-                                   fusion_analysis)) {
-        return EmitFusion(instr, fusion_analysis);
-      }
+      return EmitFusion(instr, fusion_analysis, op, hlo_for_lmhlo);
     }
 
     return EmitFusion(op, hlo_for_lmhlo);
@@ -3661,7 +3610,7 @@ Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
           ir_emitter_context_->gpu_device_info();
       TF_ASSIGN_OR_RETURN(auto fusion_analysis,
                           HloFusionAnalysis::Create(fusion, &device_info));
-      TF_RETURN_IF_ERROR(EmitFusion(fusion, fusion_analysis));
+      TF_RETURN_IF_ERROR(EmitFusion(fusion, fusion_analysis, nullptr, {}));
       return OkStatus();
     }
     // We don't need to emit thunks for these operations because their semantics

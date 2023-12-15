@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tests/verified_hlo_module.h"
@@ -144,14 +145,28 @@ ENTRY entry {
                                /*allow_mixed_precision=*/false));
 }
 
-class TritonAutotunerTest : public HloTestBase {
+class StatelessAutotunerTest : public HloTestBase {
  public:
-  TritonAutotunerTest()
+  StatelessAutotunerTest()
       : HloTestBase(/*verifier_layout_sensitive=*/true,
                     /*allow_mixed_precision_in_hlo_verifier=*/false) {}
 
+  void SetUp() override {
+    AutotunerUtil::ClearAutotuneResults();
+    HloTestBase::SetUp();
+  }
+
+  void TearDown() override {
+    AutotunerUtil::ClearAutotuneResults();
+    HloTestBase::TearDown();
+  }
+};
+
+class TritonAutotunerTest : public StatelessAutotunerTest {
+ public:
   DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        StatelessAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_triton_gemm(true);
     debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;
@@ -195,36 +210,6 @@ class TritonAutotunerTest : public HloTestBase {
                        .block_m(),
                    0);
         });
-  }
-
-  void CheckTritonAutotuningDeviceless(absl::string_view hlo) {
-    HloPassPipeline pipeline("gemm_rewrite_deviceless");
-    pipeline.AddPass<GemmRewriterTriton>(backend()
-                                             .default_stream_executor()
-                                             ->GetDeviceDescription()
-                                             .cuda_compute_capability());
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "",
-                                        tsl::port::MaxParallelism());
-    DebugOptions opts;
-    pipeline.AddPass<TritonAutotuner>(
-        AutotuneConfig{DevicelessConfig{backend()
-                                            .default_stream_executor()
-                                            ->GetDeviceDescription()
-                                            .model_str(),
-                                        backend()
-                                            .default_stream_executor()
-                                            ->GetDeviceDescription()
-                                            .cuda_compute_capability()},
-                       opts},
-        &thread_pool);
-
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                            ParseAndReturnVerifiedModule(hlo));
-    EXPECT_THAT(HloTestBase::RunHloPass(&pipeline, module.get()),
-                tsl::testing::StatusIs(
-                    tsl::error::INTERNAL,
-                    ::testing::HasSubstr(
-                        "Expect autotune result cache hit for deviceless")));
   }
 };
 
@@ -568,11 +553,12 @@ ENTRY %e {
 // TODO(b/281489442): Write a testcase called
 // `SkipConfigsProducingDeviantResults` or similar.
 
-class TritonAutotunerLevelTest : public HloTestBase,
+class TritonAutotunerLevelTest : public StatelessAutotunerTest,
                                  public ::testing::WithParamInterface<int> {
  public:
   DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        StatelessAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(GetParam());
     debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;
@@ -591,21 +577,69 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  AutotunerUtil::ClearAutotuneResults();
-
-  if (GetDebugOptionsForTest().xla_gpu_autotune_level() == 0) {
-    MatchOptimizedHlo(kHloText, R"(
-; CHECK: kind=kCustom
-; CHECK-NOT: block_m
-      )");
-  } else {
-    MatchOptimizedHlo(kHloText, R"(
+  MatchOptimizedHlo(kHloText, R"(
 ; CHECK: kind=kCustom
 ; CHECK-SAME: block_m
       )");
-  }
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_P(TritonAutotunerLevelTest, Deviceless) {
+  const std::string hlo = R"(
+HloModule module
+
+ENTRY e {
+  x = s8[16,16] parameter(0)
+  c = f16[16,16] convert(x)
+  y = f16[16,16] parameter(1)
+  ROOT out = f16[16,16] dot(c, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  HloPassPipeline pipeline("gemm_rewrite_deviceless");
+  pipeline.AddPass<GemmRewriterTriton>(backend()
+                                           .default_stream_executor()
+                                           ->GetDeviceDescription()
+                                           .cuda_compute_capability());
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "",
+                                      tsl::port::MaxParallelism());
+  DebugOptions opts;
+  pipeline.AddPass<TritonAutotuner>(
+      AutotuneConfig{DevicelessConfig{backend()
+                                          .default_stream_executor()
+                                          ->GetDeviceDescription()
+                                          .model_str(),
+                                      backend()
+                                          .default_stream_executor()
+                                          ->GetDeviceDescription()
+                                          .cuda_compute_capability()},
+                     opts},
+      &thread_pool);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  if (GetDebugOptionsForTest().xla_gpu_autotune_level() == 0) {
+    TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                            HloTestBase::RunHloPass(&pipeline, module.get()));
+    EXPECT_TRUE(changed);
+
+    // Check default configuration.
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool filecheck_matches,
+        RunFileCheck(
+            module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
+            R"(
+// CHECK: backend_config={"kind":"__triton_gemm","triton_gemm_config":{"block_m":"32","block_n":"32","block_k":"32","split_k":"1","num_stages":"1","num_warps":"4"}}
+            )"));
+    EXPECT_TRUE(filecheck_matches);
+  } else {
+    EXPECT_THAT(HloTestBase::RunHloPass(&pipeline, module.get()),
+                tsl::testing::StatusIs(
+                    tsl::error::INTERNAL,
+                    ::testing::HasSubstr(
+                        "Expect autotune result cache hit for deviceless")));
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(TritonAutotunerLevelSweep, TritonAutotunerLevelTest,
@@ -640,20 +674,6 @@ ENTRY e {
 )");
 }
 
-TEST_F(TritonAutotunerExhaustiveTest, Deviceless_CompileOnly) {
-  const std::string hlo = R"(
-HloModule module
-
-ENTRY e {
-  x = s8[16,16] parameter(0)
-  c = f16[16,16] convert(x)
-  y = f16[16,16] parameter(1)
-  ROOT out = f16[16,16] dot(c, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-)";
-
-  CheckTritonAutotuningDeviceless(hlo);
-}
 
 class TritonAutotunerDisableSplitK : public TritonAutotunerTest {
  public:

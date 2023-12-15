@@ -268,25 +268,115 @@ bool IsReadCoalesced(const std::optional<HloFusionAnalysis>& fusion_analysis,
                      const HloInstruction* consumer = nullptr) {
   if (!config.consider_coalescing) return true;
 
-  bool coalesced = (fusion_analysis &&
-                    fusion_analysis->GetEmitterFusionKind() ==
-                        HloFusionAnalysis::EmitterFusionKind::kTranspose) ||
-                   (!TransposesMinorDimension(producer) &&
-                    !(consumer && TransposesMinorDimension(consumer)));
+  auto analyzed_kind_or_reduction =
+      fusion_analysis ? fusion_analysis->GetEmitterFusionKind()
+                      : HloFusionAnalysis::EmitterFusionKind::kReduction;
 
-  if (consumer) {
-    // Fusing two row reductions breaks coalescing.
-    coalesced &= (fusion_analysis &&
-                  fusion_analysis->GetEmitterFusionKind() !=
-                      HloFusionAnalysis::EmitterFusionKind::kReduction) ||
-                 !IsInputFusibleReduction(*producer) ||
-                 !IsInputFusibleReduction(*consumer);
+  // Transposing minor dimension breaks coalescing.
+  if (analyzed_kind_or_reduction !=
+      HloFusionAnalysis::EmitterFusionKind::kTranspose) {
+    auto is_broadcast = [&](const HloInstruction* instr) {
+      while (true) {
+        if (instr->opcode() == HloOpcode::kBroadcast) return true;
+        if (instr->operand_count() != 1) return false;
+        if (instr->opcode() != HloOpcode::kBitcast && !instr->IsElementwise()) {
+          return false;
+        }
+        instr = instr->operand(0);
+      }
+    };
+
+    auto is_bad_transpose = [&](const HloInstruction* instr) {
+      if (instr->opcode() == HloOpcode::kFusion) {
+        for (auto* instr : instr->fused_instructions()) {
+          // Hack: we allow transposes of broadcasts.
+          if (TransposesMinorDimension(instr) &&
+              !is_broadcast(instr->operand(0))) {
+            return true;
+          }
+        }
+        return false;
+      }
+      return TransposesMinorDimension(instr);
+    };
+
+    if (is_bad_transpose(producer)) return false;
+    if (consumer && is_bad_transpose(consumer)) return false;
   }
 
-  return coalesced;
+  // Fusing two row reductions breaks coalescing.
+  if (analyzed_kind_or_reduction ==
+          HloFusionAnalysis::EmitterFusionKind::kReduction &&
+      IsInputFusibleReduction(*producer) && consumer &&
+      IsInputFusibleReduction(*consumer)) {
+    return false;
+  }
+
+  return true;
 }
 
 }  // namespace
+
+std::optional<EstimateRunTimeData> GpuPerformanceModelCache::Get(
+    const HloInstruction& instruction) {
+  absl::MutexLock lock(&mutex_);
+
+  auto it = instruction_runtime_data_.find(HloInstructionAdaptor(instruction));
+  if (it != instruction_runtime_data_.end()) {
+    return it->second;
+  }
+  return std::nullopt;
+}
+
+std::optional<absl::Duration> GpuPerformanceModelCache::Get(
+    const HloInstruction& producer, const HloInstruction& consumer) {
+  absl::MutexLock lock(&mutex_);
+
+  auto it = fusion_runtime_data_.find(HloInstructionAdaptor(producer));
+  if (it != fusion_runtime_data_.end()) {
+    auto jt = it->second.find(HloInstructionAdaptor(consumer));
+    if (jt != it->second.end()) {
+      return jt->second;
+    }
+  }
+  return std::nullopt;
+}
+
+void GpuPerformanceModelCache::Set(const HloInstruction& instruction,
+                                   const EstimateRunTimeData& runtime_data) {
+  absl::MutexLock lock(&mutex_);
+
+  instruction_runtime_data_[HloInstructionAdaptor(instruction)] = runtime_data;
+}
+
+void GpuPerformanceModelCache::Set(const HloInstruction& producer,
+                                   const HloInstruction& consumer,
+                                   absl::Duration runtime) {
+  absl::MutexLock lock(&mutex_);
+  fusion_runtime_data_[HloInstructionAdaptor(producer)]
+                      [HloInstructionAdaptor(consumer)] = runtime;
+}
+
+void GpuPerformanceModelCache::Invalidate(const HloInstruction& instruction) {
+  absl::MutexLock lock(&mutex_);
+  HloInstructionAdaptor adaptor(instruction);
+
+  // Remove runtime data for the instruction.
+  instruction_runtime_data_.erase(adaptor);
+
+  // Remove cache for all producer-consumer pairs where the instruction is
+  // producer.
+  fusion_runtime_data_.erase(adaptor);
+
+  // Iterate through operands to find all producer-consumer pairs where
+  // instruction is consumer and remove them from cache.
+  for (auto* operand : instruction.operands()) {
+    auto it = fusion_runtime_data_.find(HloInstructionAdaptor(*operand));
+    if (it != fusion_runtime_data_.end()) {
+      it->second.erase(adaptor);
+    }
+  }
+}
 
 /*static*/ EstimateRunTimeData
 GpuPerformanceModel::EstimateRunTimeForInstruction(
@@ -331,6 +421,26 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
   }
 
   return {flops, bytes_written, num_threads, write_time, exec_time};
+}
+
+/*static*/ EstimateRunTimeData
+GpuPerformanceModel::EstimateRunTimeForInstructionCached(
+    const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis,
+    const GpuPerformanceModelOptions& config) {
+  if (config.gpu_performance_model_cache) {
+    if (auto cached_result = config.gpu_performance_model_cache->Get(*instr)) {
+      return *cached_result;
+    }
+  }
+
+  auto runtime_data =
+      EstimateRunTimeForInstruction(instr, cost_analysis, config);
+
+  if (config.gpu_performance_model_cache) {
+    config.gpu_performance_model_cache->Set(*instr, runtime_data);
+  }
+
+  return runtime_data;
 }
 
 // Returns utilization of operand by instruction. Returns 0, if the operand is
@@ -594,6 +704,15 @@ absl::Duration GpuPerformanceModel::EstimateFusedExecTime(
       kKernelLaunchOverhead * fused_consumers.size();
   for (auto [idx, fused_consumer] : llvm::enumerate(fused_consumers)) {
     VLOG(8) << "Fused consumer: " << fused_consumer->name();
+
+    if (config.calculate_full_priority && config.gpu_performance_model_cache) {
+      if (auto fusion_runtime = config.gpu_performance_model_cache->Get(
+              *producer, *fused_consumer)) {
+        exec_time_fused += *fusion_runtime;
+        continue;
+      }
+    }
+
     float utilization_by_this_consumer = cost_analysis->operand_utilization(
         *fused_consumer, fused_consumer->operand_index(producer));
 
@@ -620,10 +739,15 @@ absl::Duration GpuPerformanceModel::EstimateFusedExecTime(
     // With `calculate_full_priority`, consumer computation and full read time
     // is accounted in the priority.
     if (config.calculate_full_priority) {
-      exec_time_fused += EstimateRunTimeForFusion(
+      auto fusion_runtime = EstimateRunTimeForFusion(
           producer, fused_consumer, producer_runtime, consumer_runtimes[idx],
           launch_dimensions_fused, utilization_by_this_consumer, cost_analysis,
           analysis_fused, config);
+      exec_time_fused += fusion_runtime;
+      if (config.gpu_performance_model_cache) {
+        config.gpu_performance_model_cache->Set(*producer, *fused_consumer,
+                                                fusion_runtime);
+      }
       continue;
     }
 
@@ -665,14 +789,14 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
   }
 
   EstimateRunTimeData producer_runtime =
-      EstimateRunTimeForInstruction(producer, cost_analysis, config);
+      EstimateRunTimeForInstructionCached(producer, cost_analysis, config);
 
   std::vector<EstimateRunTimeData> consumer_runtimes;
   if (config.calculate_full_priority) {
     consumer_runtimes.reserve(fused_consumers.size());
     for (auto* consumer : fused_consumers) {
       consumer_runtimes.push_back(
-          EstimateRunTimeForInstruction(consumer, cost_analysis, config));
+          EstimateRunTimeForInstructionCached(consumer, cost_analysis, config));
     }
   }
 
@@ -711,7 +835,7 @@ void GpuPerformanceModel::RecordEstimatedRunTime(
   DCHECK(cost_analysis != nullptr) << "expected cost analysis";
 
   EstimateRunTimeData data =
-      EstimateRunTimeForInstruction(instruction, cost_analysis, config);
+      EstimateRunTimeForInstructionCached(instruction, cost_analysis, config);
   double cycles = absl::ToDoubleNanoseconds(data.exec_time) *
                   cost_analysis->device_info_->clock_rate_ghz();
 

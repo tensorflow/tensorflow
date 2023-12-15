@@ -372,8 +372,9 @@ class ShapeUtil {
                          const std::vector<bool>& dynamic_dimensions);
 
   // Constructs a new shape with the given element type and sequence of
-  // dimensions. Method checks if the element type is valid and the shape's
-  // size fits in std::numeric_limits<int64_t>::max().
+  // dimensions. Method checks if the element type is valid, the shape's
+  // size fits in std::numeric_limits<int64_t>::max(), and dynamic size is not
+  // marked static.
   static StatusOr<Shape> MakeValidatedShape(
       PrimitiveType element_type, absl::Span<const int64_t> dimensions);
   static StatusOr<Shape> MakeValidatedShape(

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
@@ -34,6 +35,7 @@ namespace {
 
 using ::tensorflow::GraphDef;
 using ::tensorflow::SignatureDef;
+using ::tensorflow::quantization::CalibrationOptions;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PyFunctionLibrary;
 using ::tensorflow::quantization::QuantizationOptions;
@@ -66,22 +68,16 @@ class PyFunctionLibraryTrampoline : public PyFunctionLibrary {
 
   ExportedModel RunCalibration(
       const absl::string_view saved_model_path,
+      const std::vector<std::string>& signature_keys,
+      const std::unordered_set<std::string>& tags,
       const ExportedModel& exported_model,
-      const QuantizationOptions& quantization_options,
+      const CalibrationOptions& calibration_options,
+      const bool force_graph_mode_calibration,
       const py::object representative_dataset) const override {
-    PYBIND11_OVERRIDE_PURE(ExportedModel, PyFunctionLibrary, run_calibration,
-                           saved_model_path, exported_model,
-                           quantization_options, representative_dataset);
-  }
-
-  GraphDef EnableDumpTensor(const GraphDef& graph_def) const override {
-    PYBIND11_OVERRIDE_PURE(GraphDef, PyFunctionLibrary, enable_dump_tensor,
-                           graph_def);
-  }
-
-  GraphDef ChangeDumpTensorFileName(const GraphDef& graph_def) const override {
-    PYBIND11_OVERRIDE_PURE(GraphDef, PyFunctionLibrary,
-                           change_dump_tensor_file_name, graph_def);
+    PYBIND11_OVERRIDE_PURE(
+        ExportedModel, PyFunctionLibrary, run_calibration, saved_model_path,
+        signature_keys, tags, exported_model, calibration_options,
+        force_graph_mode_calibration, representative_dataset);
   }
 };
 
@@ -100,12 +96,9 @@ PYBIND11_MODULE(pywrap_function_lib, m) {
            py::arg("src_saved_model_path"), py::arg("tags"),
            py::arg("serialized_signature_def_map"))
       .def("run_calibration", &PyFunctionLibrary::RunCalibration,
-           py::arg("saved_model_path"), py::arg("exported_model_serialized"),
-           py::arg("quantization_options_serialized"),
-           py::arg("representative_dataset"))
-      .def("enable_dump_tensor", &PyFunctionLibrary::EnableDumpTensor,
-           py::arg("graph_def_serialized"))
-      .def("change_dump_tensor_file_name",
-           &PyFunctionLibrary::ChangeDumpTensorFileName,
-           py::arg("graph_def_serialized"));
+           py::arg("saved_model_path"), py::arg("signature_keys"),
+           py::arg("tags"), py::arg("exported_model_serialized"),
+           py::arg("calibration_options_serialized"),
+           py::arg("force_graph_mode_calibration"),
+           py::arg("representative_dataset"));
 }

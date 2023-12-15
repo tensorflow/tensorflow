@@ -60,7 +60,8 @@ Status CreateUncachedKernelAndDeviceOp(
 
   const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
   return kernel->get()->Init(ctx.LogDevicePlacement(), ndef,
-                             /*graph_collector=*/nullptr);
+                             /*graph_collector=*/nullptr,
+                             /*eager_func_params=*/std::nullopt);
 }
 
 // This gets a unique wire ID. We add a random identifier so that if the

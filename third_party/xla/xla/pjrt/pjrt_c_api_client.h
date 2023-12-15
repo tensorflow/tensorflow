@@ -573,6 +573,10 @@ class PjRtCApiExecutable : public PjRtExecutable {
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override;
 
+  StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
+    return pjrt::GetCompiledMemoryStats(c_api_, executable_.get());
+  }
+
   StatusOr<std::vector<Shape>> GetOutputShapes() const override {
     LOG(FATAL) << "PjRtExecutable::GetOutputShapes() not implemented in PJRT C "
                   "API. Please use PjRtExecutable::GetOutputElementTypes() or "
@@ -636,6 +640,10 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override {
     return executable_->GetHloModules();
+  }
+
+  StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
+    return executable_->GetCompiledMemoryStats();
   }
 
   StatusOr<std::vector<Shape>> GetOutputShapes() const override {
