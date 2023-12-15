@@ -1277,7 +1277,8 @@ class ConvertGenericOp : public ConversionPattern {
     if (!isa<mhlo::BroadcastInDimOp, mhlo::ConcatenateOp, mhlo::ConstantOp,
              mhlo::ConvertOp, mhlo::GatherOp, mhlo::MaxOp, mhlo::MinOp,
              mhlo::PadOp, mhlo::ReshapeOp, mhlo::SelectOp, mhlo::SliceOp,
-             mhlo::TransposeOp>(op)) {
+             mhlo::TransposeOp, mhlo::GetDimensionSizeOp,
+             mhlo::DynamicBroadcastInDimOp>(op)) {
       return failure();
     }
 

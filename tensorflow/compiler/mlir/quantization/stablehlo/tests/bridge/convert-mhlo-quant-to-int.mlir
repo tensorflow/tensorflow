@@ -1816,6 +1816,24 @@ func.func @broadcast_per_channel(
 
 // -----
 
+// CHECK-LABEL: func @dynamic_broadcast
+func.func @dynamic_broadcast(
+    %arg0: tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>,
+    %arg1: tensor<3xi32>
+  ) -> tensor<?x1x2x!quant.uniform<i8:f32, 2.000000e+00:3>> {
+  // CHECK: "mhlo.dynamic_broadcast_in_dim"
+  // CHECK-SAME: broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>
+  // CHECK-SAME: (tensor<1x2xi8>, tensor<3xi32>) -> tensor<?x1x2xi8>
+  %0 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %arg1) {
+      broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>
+    } : (
+      tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>, tensor<3xi32>
+    ) -> tensor<?x1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
+  return %0 : tensor<?x1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
+}
+
+// -----
+
 // CHECK-LABEL: func @max
 func.func @max(
     %arg0: tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
@@ -2006,4 +2024,17 @@ func.func @slice(
     tensor<3x4x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
   ) -> tensor<2x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
   return %0 : tensor<2x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+}
+
+// -----
+
+// CHECK-LABEL: func @get_dimension_size
+func.func @get_dimension_size(
+    %arg0: tensor<?x4x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  ) -> tensor<i32> {
+  // CHECK: mhlo.get_dimension_size
+  // CHECK-SAME: (tensor<?x4xi8>) -> tensor<i32>
+  %0 = "mhlo.get_dimension_size"(%arg0) {dimension = 0 : i64} : (
+      tensor<?x4x!quant.uniform<i8:f32, 0.13170163023705575:-1>>) -> tensor<i32>
+  return %0 : tensor<i32>
 }
