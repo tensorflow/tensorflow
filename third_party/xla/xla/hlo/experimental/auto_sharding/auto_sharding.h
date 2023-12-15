@@ -63,7 +63,7 @@ class DummyAutoSharding : public HloModulePass {
 enum class AutoShardingResult {
   kModuleUnchanged,
   kModuleChangedShardingPerformed,
-  kModuleUnchangedNoShardingPerfomed
+  kModuleUnchangedNoShardingPerformed
 };
 
 class AutoShardingImplementation {

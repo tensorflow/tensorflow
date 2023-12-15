@@ -3463,9 +3463,8 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     const int64_t memory_lower_bound = spmd::MemoryBudgetLowerBound(
         *module, liveness_set, alias_analysis.get(),
         device_mesh.num_elements());
-    // Round up to the next GB.
-    const int64_t memory_lower_bound_gb =
-        1 + memory_lower_bound / (1024 * 1024 * 1024);
+    const float memory_lower_bound_gb =
+        static_cast<float>(memory_lower_bound) / (1024 * 1024 * 1024);
     LOG(INFO) << "Memory consumption lower bound is " << memory_lower_bound_gb
               << " GB.";
     if (set_to_memory_lower_bound) {
@@ -3473,14 +3472,12 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
           << "--xla_tpu_auto_spmd_partitioning_memory_budget_gb is 0, and "
              "--xla_tpu_auto_spmd_partitioning_memory_budget_ratio is "
           << option_.memory_budget_ratio
-          << ", so setting "
-             "option.memory_budget_per_device to "
+          << ", so setting option.memory_budget_per_device to "
           << memory_lower_bound_gb << " x " << option_.memory_budget_ratio
           << " = " << memory_lower_bound_gb * option_.memory_budget_ratio
           << " GB";
-      option_.memory_budget_per_device = memory_lower_bound_gb *
-                                         (1024 * 1024 * 1024) *
-                                         option_.memory_budget_ratio;
+      option_.memory_budget_per_device =
+          memory_lower_bound * option_.memory_budget_ratio;
     } else if (option_.memory_budget_per_device > 0) {
       option_.memory_budget_per_device = original_memory_budget *
                                          original_device_mesh.num_elements() /
@@ -3548,7 +3545,7 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
               strategy_groups, cost_graph, alias_set, option_,
               sharding_propagation_solution);
     if (solver_result.skip_auto_sharding) {
-      return AutoShardingResult::kModuleUnchangedNoShardingPerfomed;
+      return AutoShardingResult::kModuleUnchangedNoShardingPerformed;
     } else if (!solver_result.status.ok()) {
       return AutoShardingResult::kModuleUnchanged;
     } else {
@@ -3782,7 +3779,7 @@ StatusOr<bool> AutoSharding::Run(
     }
     if (pass_result.ok() &&
         pass_result.value() !=
-            AutoShardingResult::kModuleUnchangedNoShardingPerfomed) {
+            AutoShardingResult::kModuleUnchangedNoShardingPerformed) {
       skip_auto_sharding = false;
     }
   }
