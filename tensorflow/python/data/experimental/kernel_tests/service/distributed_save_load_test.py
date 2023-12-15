@@ -118,6 +118,7 @@ class DistributedSaveLoadTest(
           combinations.combine(
               num_workers=[1, 3],
               num_elements=[0, 10],
+              repeated_load=[1, 5],
               sharding_policy=[
                   data_service_ops.ShardingPolicy.OFF,
                   data_service_ops.ShardingPolicy.DYNAMIC])))
@@ -125,6 +126,7 @@ class DistributedSaveLoadTest(
       self,
       num_workers: int,
       num_elements: int,
+      repeated_load: int,
       sharding_policy: data_service_ops.ShardingPolicy):
     test_snapshot = TestSnapshot()
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
@@ -134,10 +136,12 @@ class DistributedSaveLoadTest(
             dataset, test_snapshot.path, cluster.dispatcher_address()))
 
     dataset = load_op._load_distributed_snapshot_v2(test_snapshot.path)
+    if repeated_load > 1:
+      dataset = dataset.repeat(repeated_load)
     dataset = dataset.apply(
         data_service_ops.distribute(
             sharding_policy, cluster.dispatcher_address()))
-    expected = list(range(num_elements))
+    expected = list(range(num_elements)) * repeated_load
     if sharding_policy == data_service_ops.ShardingPolicy.OFF:
       expected *= num_workers
     self.assertDatasetProduces(dataset, expected, assert_items_equal=True)
