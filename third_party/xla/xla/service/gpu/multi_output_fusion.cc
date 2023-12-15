@@ -173,6 +173,42 @@ FusionDecision OperandReachableFromProducer(
   return {};
 }
 
+FusionDecision ProducerCandidateIsFusible(
+    const HloInstruction& producer, const HloInstruction& consumer,
+    const HloReachabilityMap& reachability, FusionInfoCache* fusion_info_cache,
+    GpuHloCostAnalysis* cost_analysis) {
+  if (!IsFusibleAsMultiOutputFusionRoot(consumer)) {
+    return "consumer not eligible as multi-output fusion root.";
+  }
+
+  RETURN_IF_NOT_FUSIBLE(
+      ShapesCompatibleForMultiOutputFusion(consumer, producer));
+
+  RETURN_IF_NOT_FUSIBLE(
+      OperandReachableFromProducer(producer, consumer, reachability));
+
+  RETURN_IF_NOT_FUSIBLE(FusionFitsInBudget(
+      producer, consumer, *cost_analysis->device_info_,
+      /*is_consumer_producer_fusion=*/false, fusion_info_cache));
+
+  if (cost_analysis->ProducerConsumerMergedTooLarge(producer, consumer)) {
+    return "will generate too large IR";
+  }
+
+  GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
+      &producer, cost_analysis, GpuPerformanceModelOptions::Default(),
+
+      // `EstimateRunTimes`'s interface violates const correctness, so we
+      // need the const cast here.
+      {const_cast<HloInstruction*>(&consumer)},
+      /*multi_output=*/true);
+  if (t.time_fused > t.time_unfused) {
+    return "will execute slower if fused";
+  }
+
+  return {};
+}
+
 std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
     const HloInstruction* producer, const HloReachabilityMap& reachability,
     FusionInfoCache* fusion_info_cache, GpuHloCostAnalysis* cost_analysis) {
@@ -196,46 +232,19 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
     return fusion_candidates;
   }
 
-  using std::placeholders::_1, std::placeholders::_2;
-  std::tuple checks{
-      [](const HloInstruction& producer,
-         const HloInstruction& consumer) -> FusionDecision {
-        return {IsFusibleAsMultiOutputFusionRoot(consumer),
-                "consumer not eligible as multi-output fusion root."};
-      },
-      &ShapesCompatibleForMultiOutputFusion,
-      std::bind(OperandReachableFromProducer, _1, _2, std::cref(reachability)),
-      std::bind(FusionFitsInBudget, _1, _2,
-                std::cref(*cost_analysis->device_info_),
-                /*is_consumer_producer_fusion=*/false, fusion_info_cache),
-      [&](const HloInstruction& producer,
-          const HloInstruction& consumer) -> FusionDecision {
-        return {
-            !cost_analysis->ProducerConsumerMergedTooLarge(producer, consumer),
-            "will generate too large IR"};
-      },
-      [&](const HloInstruction& producer,
-          const HloInstruction& consumer) -> FusionDecision {
-        GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-            &producer, cost_analysis, GpuPerformanceModelOptions::Default(),
-            // `EstimateRunTimes`'s interface violates const correctness, so we
-            // need the const cast here.
-            {const_cast<HloInstruction*>(&consumer)},
-            /*multi_output=*/true);
-        return {t.time_fused <= t.time_unfused, "will execute slower if fused"};
-      }};
-
   for (HloInstruction* consumer : producer->users()) {
     VLOG(3) << "Looking at producer " << producer->name()
             << " and its consumer " << consumer->name();
 
-    if (auto decision = FusionDecision::All(checks, *producer, *consumer)) {
+    if (auto decision =
+            ProducerCandidateIsFusible(*producer, *consumer, reachability,
+                                       fusion_info_cache, cost_analysis)) {
       fusion_candidates.push_back(consumer);
     } else if (dump_fusion) {
       RegisterFusionState(
           *computation,
-          absl::StrCat("Not considering fusion of producer |", "|",
-                       producer->name(), "| into consumer |", consumer->name(),
+          absl::StrCat("Not considering fusion of producer |", producer->name(),
+                       "| into consumer |", consumer->name(),
                        "| due to: ", decision.Explain()),
           *consumer, producer);
     }
@@ -259,6 +268,36 @@ bool IsSiblingFusionCandidate(const HloInstruction* instr) {
     }
   }
   return true;
+}
+
+FusionDecision CanFuseSiblings(const HloInstruction& sibling_consumer_1,
+                               const HloInstruction& sibling_consumer_2,
+                               const HloInstruction& common_producer,
+                               const HloReachabilityMap& reachability,
+                               FusionInfoCache* fusion_info_cache,
+                               GpuHloCostAnalysis* cost_analysis) {
+  if (reachability.IsConnected(&sibling_consumer_1, &sibling_consumer_2)) {
+    return {absl::StrCat(sibling_consumer_1.name(), " and ",
+                         sibling_consumer_2.name(), " are connected")};
+  }
+
+  RETURN_IF_NOT_FUSIBLE(ShapesCompatibleForMultiOutputFusion(
+      sibling_consumer_1, sibling_consumer_2));
+
+  // Technically, this check is order-dependent (e.g. siblings A, B, C where
+  // {A, B} and {B, C} overlap, but {A, C} do not. If the priority order is
+  // [C, A, B], only {C, B} will be fused, and A will only be fused in the
+  // next iteration of the fusion pipeline, potentially requiring several
+  // iterations to converge. We assume this case to be very rare in
+  // practice.
+  RETURN_IF_NOT_FUSIBLE(ParameterSlicesAreNonOverlapping(
+      sibling_consumer_1, sibling_consumer_2, &common_producer));
+
+  // This check should be last, as it may be expensive.
+  RETURN_IF_NOT_FUSIBLE(LegalToFuse(sibling_consumer_1, sibling_consumer_2,
+                                    *cost_analysis->device_info_,
+                                    fusion_info_cache));
+  return {};
 }
 
 }  // namespace
@@ -290,24 +329,7 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
                       [](const HloInstruction* a, const HloInstruction* b) {
                         return FusionPriority(a) > FusionPriority(b);
                       });
-  using std::placeholders::_1, std::placeholders::_2;
-  std::tuple fusible_checks{
-      [&](const HloInstruction& i, const HloInstruction& j) -> FusionDecision {
-        return FusionDecision{
-            !reachability_->IsConnected(&i, &j),
-            absl::StrCat(i.name(), " and ", j.name(), " are connected")};
-      },
-      &ShapesCompatibleForMultiOutputFusion,
-      // Technically, this check is order-dependent (e.g. siblings A, B, C where
-      // {A, B} and {B, C} overlap, but {A, C} do not. If the priority order is
-      // [C, A, B], only {C, B} will be fused, and A will only be fused in the
-      // next iteration of the fusion pipeline, potentially requiring several
-      // iterations to converge. We assume this case to be very rare in
-      // practice.
-      std::bind(ParameterSlicesAreNonOverlapping, _1, _2, parent),
-      // This check should be last, as it may be expensive.
-      std::bind(LegalToFuse, _1, _2, std::cref(*cost_analysis->device_info_),
-                fusion_info_cache)};
+
   for (auto i = siblings.begin(); i != siblings.end(); ++i) {
     VLOG(3) << "Considering " << (*i)->name();
     if ((*i)->opcode() != HloOpcode::kFusion) {
@@ -316,7 +338,8 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
     for (auto j = i + 1; j != siblings.end();) {
       VLOG(3) << "Considering " << (*i)->name() << " and " << (*j)->name();
 
-      if (auto fusible = FusionDecision::All(fusible_checks, **i, **j);
+      if (auto fusible = CanFuseSiblings(**i, **j, *parent, *reachability_,
+                                         fusion_info_cache, cost_analysis);
           !fusible) {
         // We pick `j` arbitrarily as a consumer.
         if (dump_fusion) {
