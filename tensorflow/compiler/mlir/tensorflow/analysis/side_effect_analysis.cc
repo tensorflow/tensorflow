@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
@@ -50,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/call_graph_util.h"
 
 namespace mlir {
 namespace TF {
@@ -326,7 +328,7 @@ class OpSideEffectCollector {
  public:
   // Recursively collects op-based side effects for all ops in module and
   // populates `op_side_effect_map_`.
-  explicit OpSideEffectCollector(ModuleOp module) {
+  explicit OpSideEffectCollector(ModuleOp module): symbol_table_(module) {
     symbol_table_collection_.getSymbolTable(module);
     for (auto func : module.getOps<func::FuncOp>()) {
       CollectOpSideEffects(func);
@@ -358,8 +360,12 @@ class OpSideEffectCollector {
         if (op_side_effect_map_.count(&curr_op) == 0) {
           CollectOpSideEffects(&curr_op);
         }
-        for (const auto& entry : op_side_effect_map_[&curr_op]) {
-          UpdateSideEffectsByResourceId(entry.second, op_side_effect_map_[op]);
+        if (op_side_effect_map_.count(&curr_op)) {
+          for (const auto& entry : op_side_effect_map_[&curr_op]) {
+            UpdateSideEffectsByResourceId(
+                entry.second,
+                op_side_effect_map_[op]);
+          }
         }
       }
     }
@@ -491,6 +497,8 @@ class OpSideEffectCollector {
   // pointer.
   absl::node_hash_map<std::pair<const void*, std::string>, ResourceId>
     type_instance_str_to_op_resource_id_;
+  // Used for looking up symbols.
+  mutable SymbolTable symbol_table_;
   // Used for faster callable resolution.
   mutable SymbolTableCollection symbol_table_collection_;
   // Collect all op-based side effects here.
@@ -506,13 +514,30 @@ class OpSideEffectCollector {
   mutable llvm::SmallDenseMap<Operation*, bool> is_pure_function_;
 };
 
-bool OpSideEffectCollector::IsCallToPureFunction(Operation* callOp) const {
-  auto call = llvm::dyn_cast<CallOpInterface>(callOp);
-  if (!call)
-    return false;  // not a call
-  func::FuncOp func_op = dyn_cast<func::FuncOp>(call.resolveCallable(
-      &symbol_table_collection_));
-  return IsPureFunction(func_op);
+bool OpSideEffectCollector::IsCallToPureFunction(Operation* op) const {
+  llvm::SmallVector<func::FuncOp> callees;
+  if (auto call = llvm::dyn_cast<CallOpInterface>(op)) {
+    func::FuncOp func_op = dyn_cast<func::FuncOp>(call.resolveCallable(
+        &symbol_table_collection_));
+    callees.push_back(func_op);
+  } else if (auto sym_user = llvm::dyn_cast<SymbolUserOpInterface>(op)) {
+    // TODO(b/273342758): handle symbol user ops that do not references symbols
+    // directly via SymbolRefAttr, e.g. XlaCallModuleOp.
+    if (GetCallees(sym_user, symbol_table_, callees).failed())
+      return false;
+  } else {
+    return false;
+  }
+
+  // Not a CallOp or SymbolUserOpInterface.
+  if (callees.empty())
+    return false;
+  for (auto callee : callees) {
+    if (!IsPureFunction(callee)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool OpSideEffectCollector::IsPureFunction(func::FuncOp func_op) const {
@@ -521,7 +546,16 @@ bool OpSideEffectCollector::IsPureFunction(func::FuncOp func_op) const {
     bool is_pure = true;
     is_pure_function_[func_op] = is_pure;  // prevent infinite recursion
     func_op->walk([&](Operation* op) {
+      // The walk() helper will be invoked for every operation recursively
+      // nested under func_op, including itself. This prevents infinite
+      // recursion.
       if (op == func_op) {
+        return WalkResult::advance();
+      }
+      // The walk() helper will be invoked for nested operations. This also
+      // skips the tf_executor.yield op in a tf_exectuor.island op.
+      if (isa_and_nonnull<tf_executor::TensorFlowExecutorDialect>(
+          op->getDialect())) {
         return WalkResult::advance();
       }
       // AssertOp is not, technically, pure. However, we treat functions
@@ -531,12 +565,6 @@ bool OpSideEffectCollector::IsPureFunction(func::FuncOp func_op) const {
       // effect modelling of Assert on the op level.
       if (llvm::isa<AssertOp>(op)) {
         return WalkResult::advance();
-      }
-      if (auto if_op = llvm::dyn_cast<IfOp>(op)) {
-        if (IsPureFunction(if_op.then_function()) &&
-            IsPureFunction(if_op.else_function())) {
-          return WalkResult::advance();
-        }
       }
       if (IsCallToPureFunction(op)) {
         return WalkResult::advance();

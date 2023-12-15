@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/MLProgram/IR/MLProgram.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -74,8 +75,6 @@ func.func @while_body_func(%arg0: tensor<i32>) -> (tensor<i32>) {
   %0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
   func.return %0 : tensor<i32>
 }
-
-
 )mlir";
   mlir::MLIRContext context;
   context.loadDialect<mlir::func::FuncDialect, mlir::TF::TensorFlowDialect>();
@@ -93,6 +92,29 @@ func.func @while_body_func(%arg0: tensor<i32>) -> (tensor<i32>) {
   });
 }
 
+TEST(CallGraphUtilTest, GetCalleesNotAFunction) {
+  const char *const code = R"mlir(
+ml_program.global public @vars.__sm_node1__value(dense<0.291975141> : tensor<1xf32>) : tensor<1xf32>
+func.func @get() -> tensor<1xf32> {
+  %vars.__sm_node1__value = ml_program.global_load @vars.__sm_node1__value : tensor<1xf32>
+  return %vars.__sm_node1__value : tensor<1xf32>
+}
+)mlir";
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::func::FuncDialect,
+                      mlir::ml_program::MLProgramDialect>();
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
+  ASSERT_TRUE(module);
+  mlir::SymbolTable symtab(*module);
+  llvm::SmallVector<mlir::func::FuncOp> callees;
+  module->walk([&](mlir::SymbolUserOpInterface op) {
+    auto result = GetCallees(op, symtab, callees).succeeded();
+    ASSERT_TRUE(result);
+    EXPECT_EQ(callees.size(), 0);
+  });
+}
+
 TEST(CallGraphUtilTest, GetFirstOpsOfType) {
   const char *const code = R"mlir(
 func.func @entry_func(%arg0: tensor<i32>) -> tensor<i32> attributes {tf.entry_function = {}} {
@@ -105,7 +127,6 @@ func.func @while_cond_func(%arg0: tensor<i32>) -> tensor<i1> {
   func.return %0 : tensor<i1>
 }
 
-// CHECK-LABEL: func.func @while_body_func
 func.func @while_body_func(%arg0: tensor<i32>) -> (tensor<i32>) {
   %0 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", device = "/device:CPU:0", executor_type = "", f = @outer_stateful_pcall_func} : (tensor<i32>) -> (tensor<i32>)
   func.return %0 : tensor<i32>
@@ -164,7 +185,6 @@ func.func @while_cond_func(%arg0: tensor<i32>) -> tensor<i1> {
   func.return %0 : tensor<i1>
 }
 
-// CHECK-LABEL: func.func @while_body_func
 func.func @while_body_func(%arg0: tensor<i32>) -> (tensor<i32>) {
   %0 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", device = "/device:CPU:0", executor_type = "", f = @outer_stateful_pcall_func} : (tensor<i32>) -> (tensor<i32>)
   func.return %0 : tensor<i32>
