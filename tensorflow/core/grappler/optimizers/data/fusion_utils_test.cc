@@ -129,6 +129,33 @@ TEST(FusionUtilsTest, FuseFunctionsWithControlInputs) {
   EXPECT_EQ(ParseNodeConnection(output_value), output_mul->name());
 }
 
+TEST(FusionUtilsTest, FuseFunctionWithControlOutputs) {
+  GraphDef graph;
+  auto *f1 = graph.mutable_library()->add_function();
+  *f1 = test::function::XTimesTwoWithControlOutput();
+  f1->mutable_signature()->set_name("f1");
+  auto *f2 = graph.mutable_library()->add_function();
+  *f2 = test::function::XTimesTwoWithControlOutput();
+  f2->mutable_signature()->set_name("f2");
+
+  auto *fused_function =
+      FuseFunctions(*f1, *f2, "fused_maps", fusion_utils::ComposeSignature,
+                    fusion_utils::ComposeInput, fusion_utils::ComposeOutput,
+                    fusion_utils::MergeNodes, graph.mutable_library());
+
+  EXPECT_EQ(fused_function->signature().control_output_size(), 2);
+  string control_output_1 = fused_function->signature().control_output(0);
+  string control_output_2 = fused_function->signature().control_output(1);
+  EXPECT_NE(control_output_1, control_output_2);
+  EXPECT_EQ(fused_function->control_ret_size(), 2);
+  EXPECT_TRUE(fused_function->control_ret().contains(control_output_1));
+  EXPECT_TRUE(fused_function->control_ret().contains(control_output_2));
+  EXPECT_EQ(fused_function->control_ret().at(control_output_1),
+            control_output_1);
+  EXPECT_EQ(fused_function->control_ret().at(control_output_2),
+            control_output_2);
+}
+
 struct StatefulnessTestCase {
   bool is_stateful_a, is_stateful_b;
 };
