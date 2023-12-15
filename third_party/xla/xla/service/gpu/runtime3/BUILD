@@ -161,6 +161,9 @@ cc_library(
 xla_test(
     name = "command_buffer_thunk_test",
     srcs = if_gpu_is_configured(["command_buffer_thunk_test.cc"]),
+    backend_tags = {
+        "gpu": ["config-cuda-only"],
+    },
     backends = ["gpu"],
     deps = [
         ":command_buffer_allocations",
