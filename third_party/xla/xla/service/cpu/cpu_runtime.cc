@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
+#include "absl/base/dynamic_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -369,6 +370,10 @@ void AllToAllImpl(const ExecutableRunOptions* run_options,
 
   CollectivesInterface* collectives = GetCollectivesImpl(run_options);
 
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(source_buffers,
+                                      sizeof(void*) * num_buffers);
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(destination_buffers,
+                                      sizeof(void*) * num_buffers);
   auto communicator =
       collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
   TF_CHECK_OK(communicator->AllToAll(
