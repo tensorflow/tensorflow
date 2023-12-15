@@ -465,15 +465,15 @@ def eager_py_func(func=None, inp=None, Tout=None, name=None):
 
   Using `tf.py_function` inside a `tf.function` allows you to run a python
   function using eager execution, inside the `tf.function`'s graph.
-  This has two main affects:
+  This has two main effects:
 
-  1. This allows you to use nofunc=None, inp=None, Tout=Nonen tensorflow code
+  1. This allows you to use nofunc=None, inp=None, Tout=None tensorflow code
   inside your `tf.function`.
   2. It allows you to run python control logic in a `tf.function` without
   relying on `tf.autograph` to convert the code to use tensorflow control logic
   (tf.cond, tf.while_loop).
 
-  Both of these features can be useful for debgging.
+  Both of these features can be useful for debugging.
 
   Since `tf.py_function` operates on `Tensor`s it is still
   differentiable (once).
@@ -531,7 +531,7 @@ def eager_py_func(func=None, inp=None, Tout=None, name=None):
   1.0
 
 
-  Gradients work as exeppcted:
+  Gradients work as expected:
 
   >>> with tf.GradientTape() as t:
   ...   t.watch(x)
@@ -543,8 +543,8 @@ def eager_py_func(func=None, inp=None, Tout=None, name=None):
 
   ### Inplace
 
-  You can also skip the decorator and use `tf.py_function` inplace.
-  This form can a useful shortcut if you don't control the function's source,
+  You can also skip the decorator and use `tf.py_function` in-place.
+  This form is a useful shortcut if you don't control the function's source,
   but it is harder to read.
 
   >>> # No decorator
@@ -715,7 +715,7 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
     stateful: (Boolean.) If True, the function should be considered stateful. If
       a function is stateless, when given the same input it will return the same
       output and have no observable side effects. Optimizations such as common
-      subexpression elimination are only performed on stateless operations.
+      sub-expression elimination are only performed on stateless operations.
     name: A name for the operation (optional).
 
   Returns:
@@ -856,7 +856,7 @@ def numpy_function(func=None, inp=None, Tout=None, stateful=True, name=None):
   ...   print(f'executing eagerly, {x=}')
   ...   return np.sinh(x)
 
-  To run `tf.numpy_function` inplace, pass the function, its inputs, and the
+  To run `tf.numpy_function` in-place, pass the function, its inputs, and the
   output type in a single call to `tf.numpy_function`:
 
   >>> tf.numpy_function(my_func, [tf.constant(1.0)], tf.float32)
@@ -953,7 +953,7 @@ def _wrap_for_composites(func, inp, Tout):
   """Wraps user inputs to support composite tensors for `py_function`.
 
   1. Flattens `inp` to a list of Tensors (by flattening any composite tensors).
-  2. Creates a wrapper fuction for `func` that expects flat inputs and:
+  2. Creates a wrapper function for `func` that expects flat inputs and:
      - Packs the inputs into the input structure expected by `func`.
      - Calls `func` with the packed inputs.
      - Checks that `func`'s output matches `Tout`.
