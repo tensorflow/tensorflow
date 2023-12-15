@@ -150,6 +150,28 @@ cc_library(
     ]),
 )
 
+xla_test(
+    name = "topk_custom_kernel_test",
+    srcs = if_cuda_is_configured(["topk_custom_kernel_test.cc"]),
+    backends = ["gpu"],
+    deps = [
+        ":topk_custom_kernel",
+        "//xla:xla_data_proto_cc",
+        "//xla/stream_executor",
+        "//xla/stream_executor:multi_platform_manager",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor/cuda:cuda_platform",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
 #===--------------------------------------------------------------------------------------------===#
 # CUTLASS Gemm <-> xla::gpu::kernel::CustomKernel adaptor
 #===--------------------------------------------------------------------------------------------===#
