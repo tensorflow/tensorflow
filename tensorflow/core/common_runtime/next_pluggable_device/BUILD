@@ -283,6 +283,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -293,6 +294,8 @@ cc_library(
     deps = [
         ":plugin_coordination_service_agent",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/time",
         "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
     ],
 )
@@ -307,10 +310,13 @@ cc_library(
         ":plugin_coordination_service_agent",
         "//tensorflow/c:kernels_experimental_hdrs",
         "//tensorflow/c:tf_buffer_internal",
+        "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/experimental/next_pluggable_device:c_api_hdrs",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/time",
     ],
 )
 

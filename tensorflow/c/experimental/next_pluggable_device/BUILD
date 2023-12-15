@@ -23,6 +23,7 @@ cc_library(
         "//tensorflow/compiler/jit:variable_info_util",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime/next_pluggable_device:plugin_resource",
+        "//tensorflow/core/platform:refcount",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/common:pjrt_util",
         "@com_google_absl//absl/status",
