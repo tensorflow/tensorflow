@@ -255,21 +255,17 @@ tsl::Status GpuCommandBuffer::Barrier(StreamExecutor* executor) {
   return UnsupportedStateError(state_);
 }
 
-tsl::Status GpuCommandBuffer::Launch(const ThreadDim& threads,
-                                     const BlockDim& blocks,
-                                     const Kernel& kernel,
-                                     const KernelArgs& args) {
-  TF_RETURN_IF_ERROR(CheckNotFinalized());
+tsl::Status GpuCommandBuffer::LaunchWithPackedArgs(
+    const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
+    const KernelArgsPackedArrayBase& packed_args) {
+  CHECK_EQ(kernel.Arity() + (packed_args.number_of_shared_bytes() > 0),
+           packed_args.number_of_arguments());
 
   const GpuKernel* gpu_kernel = AsGpuKernel(&kernel);
   GpuFunctionHandle gpu_func = gpu_kernel->AsGpuFunctionHandle();
 
-  auto* packed_args = DynCast<KernelArgsPackedArrayBase>(&args);
-  if (!packed_args)
-    return absl::InternalError("Unsupported kernel arguments type");
-
   void** kernel_params =
-      const_cast<void**>(packed_args->argument_addresses().data());
+      const_cast<void**>(packed_args.argument_addresses().data());
 
   // Adds a new kernel node to the graph under construction.
   if (state_ == State::kCreate) {
@@ -278,7 +274,7 @@ tsl::Status GpuCommandBuffer::Launch(const ThreadDim& threads,
     return GpuDriver::GraphAddKernelNode(
         node, graph_, absl::MakeSpan(barrier), kernel.name(), gpu_func,
         blocks.x, blocks.y, blocks.z, threads.x, threads.y, threads.z,
-        args.number_of_shared_bytes(), kernel_params, /*extra=*/nullptr);
+        packed_args.number_of_shared_bytes(), kernel_params, /*extra=*/nullptr);
   }
 
   // Updates kernel node in the executable graph.
@@ -286,11 +282,38 @@ tsl::Status GpuCommandBuffer::Launch(const ThreadDim& threads,
     GpuGraphNodeHandle node = nodes_[update_state_.node_idx++];
     return GpuDriver::GraphExecKernelNodeSetParams(
         exec_, node, kernel.name(), gpu_func, blocks.x, blocks.y, blocks.z,
-        threads.x, threads.y, threads.z, args.number_of_shared_bytes(),
+        threads.x, threads.y, threads.z, packed_args.number_of_shared_bytes(),
         kernel_params, /*extra=*/nullptr);
   }
 
   return UnsupportedStateError(state_);
+}
+
+tsl::Status GpuCommandBuffer::Launch(const ThreadDim& threads,
+                                     const BlockDim& blocks,
+                                     const Kernel& kernel,
+                                     const KernelArgs& args) {
+  TF_RETURN_IF_ERROR(CheckNotFinalized());
+
+  // If arguments are already packed we can just launch the kernel.
+  if (auto* packed = DynCast<KernelArgsPackedArrayBase>(&args)) {
+    return LaunchWithPackedArgs(threads, blocks, kernel, *packed);
+  }
+
+  // For device memory array we rely on a custom kernel arguments packing.
+  if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
+    auto& pack = kernel.kernel_args_packing();
+    if (!pack) {
+      return absl::InternalError(
+          "Kernel is missing a custom arguments packing function for device "
+          "memory arguments array");
+    }
+
+    TF_ASSIGN_OR_RETURN(auto packed, pack(kernel, *device_mem));
+    return LaunchWithPackedArgs(threads, blocks, kernel, *packed);
+  }
+
+  return absl::InternalError("Unsupported kernel arguments type");
 }
 
 tsl::Status GpuCommandBuffer::AddNestedCommandBuffer(

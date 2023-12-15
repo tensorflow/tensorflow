@@ -222,6 +222,11 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   // kernel nodes, however large number of no-op kernels impacts performance.
   tsl::Status DisableBarriersExecution(GpuGraphExecHandle exec);
 
+  // Launches CUDA kernels with packed arguments.
+  tsl::Status LaunchWithPackedArgs(
+      const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
+      const KernelArgsPackedArrayBase& packed_args);
+
   // Returns OK status if command buffer is not finalized and it is still
   // possible to add new commands to it, otherwise returns internal error.
   tsl::Status CheckNotFinalized();

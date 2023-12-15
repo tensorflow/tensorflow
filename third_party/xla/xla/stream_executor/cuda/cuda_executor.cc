@@ -494,10 +494,11 @@ tsl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
   // For device memory array we rely on a custom kernel arguments packing.
   if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
     auto& pack = kernel.kernel_args_packing();
-    if (!pack)
+    if (!pack) {
       return absl::InternalError(
           "Kernel is missing a custom arguments packing function for device "
           "memory arguments array");
+    }
 
     TF_ASSIGN_OR_RETURN(auto packed, pack(kernel, *device_mem));
     return launch(*packed);
