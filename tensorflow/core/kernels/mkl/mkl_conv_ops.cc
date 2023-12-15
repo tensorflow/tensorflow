@@ -110,6 +110,7 @@ struct MklConvFwdParams {
   MklTensorFormat tf_fmt;
   bool native_format;
   bool is_depthwise;
+  bool is_filter_const = false;
   string dtypes = string("");
   struct PostOpParam {
     string name;
@@ -125,7 +126,7 @@ struct MklConvFwdParams {
                    memory::dims strides, memory::dims dilations,
                    memory::dims padding_left, memory::dims padding_right,
                    memory::dims fuse_bn_dims, MklTensorFormat tf_fmt,
-                   bool native_format, bool is_depthwise)
+                   bool native_format, bool is_depthwise, bool is_filter_const)
       : src_dims(src_dims),
         filter_dims(filter_dims),
         bias_dims(bias_dims),
@@ -137,7 +138,8 @@ struct MklConvFwdParams {
         fuse_bn_dims(fuse_bn_dims),
         tf_fmt(tf_fmt),
         native_format(native_format),
-        is_depthwise(is_depthwise) {}
+        is_depthwise(is_depthwise),
+        is_filter_const(is_filter_const) {}
 };
 
 // With quantization, input, filter, and output can have different types
@@ -355,9 +357,24 @@ class MklConvFwdPrimitive : public MklPrimitive {
     context_.src_md.reset(new memory::desc(
         {convFwdDims.src_dims}, MklDnnType<Tinput>(), user_data_fmt));
 
-    context_.filter_md.reset(new memory::desc({convFwdDims.filter_dims},
-                                              MklDnnType<Tfilter>(),
-                                              memory::format_tag::any));
+    // In case of Saved_Model or non-cached filters, FP32 and small batch size:
+    // For the forward oneDNN conv op, creating the filter memory descriptor
+    // with hwio format explicitly, will have better execution performance.
+
+    // Currently hwio format is restricted to batch size 1 as,
+    // through experiments, batch size 1 seems to show notable improvement in
+    // performance for Saved_Model
+    if (convFwdDims.filter_dims.size() == 4 && !convFwdDims.is_filter_const &&
+        std::is_same<Tfilter, float>::value &&
+        convFwdDims.src_dims[MklDnnDims::Dim_N] == 1) {
+      context_.filter_md.reset(new memory::desc({convFwdDims.filter_dims},
+                                                MklDnnType<Tfilter>(),
+                                                memory::format_tag::hwio));
+    } else {
+      context_.filter_md.reset(new memory::desc({convFwdDims.filter_dims},
+                                                MklDnnType<Tfilter>(),
+                                                memory::format_tag::any));
+    }
 
     context_.dst_md.reset(new memory::desc(
         {convFwdDims.dst_dims}, MklDnnType<Toutput>(), user_data_fmt));
@@ -966,7 +983,7 @@ class MklConvOp : public OpKernel {
       MklConvFwdParams convFwdDims(
           src_dims, filter_dims, fuse_biasadd_ ? bias_dims : NONE_DIMS,
           dst_dims_mkl_order, strides, dilations, padding_left, padding_right,
-          fuse_bn_dims, tf_fmt, native_format, is_depthwise);
+          fuse_bn_dims, tf_fmt, native_format, is_depthwise, is_filter_const_);
 
       // TODO(intel-tf): Extend the basic parameters for data types and fusions
       this->ExtendConvFwdParams(context, convFwdDims);
