@@ -106,6 +106,10 @@ double EvaluateMakespan(const AutoShardingSolverRequest& request,
                         const AutoShardingSolverResult& result,
                         AutoShardingEvaluation& evaluation);
 
+// Scale down values to reduce the range of costs & coefficients in the solver.
+AutoShardingSolverRequest ScaleRequest(
+    const AutoShardingSolverRequest& request);
+
 }  // namespace spmd
 }  // namespace xla
 

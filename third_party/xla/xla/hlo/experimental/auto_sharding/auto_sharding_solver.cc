@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -52,6 +53,13 @@ limitations under the License.
 
 namespace xla {
 namespace spmd {
+
+namespace {
+
+// The model may be scaled if any of its coefficients are larger than this value
+constexpr double coeff_limit = 1e7;
+
+}  // namespace
 
 using ::operations_research::MPConstraint;
 using ::operations_research::MPSolver;
@@ -152,6 +160,48 @@ double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request) {
   return min_memory_budget_required_estimate;
 }
 
+double MaxCoeff(
+    const tsl::protobuf::RepeatedPtrField<AutoShardingSolverRequest_Costs>&
+        cost_mat) {
+  double max_coeff = 0.0;
+  for (auto& costs : cost_mat) {
+    for (auto& cost : costs.costs()) {
+      if (cost < kInfinityCost) {
+        max_coeff = std::max(max_coeff, cost);
+      }
+    }
+  }
+  return max_coeff;
+}
+
+void ScaleCoeffs(
+    double scaling_factor,
+    tsl::protobuf::RepeatedPtrField<AutoShardingSolverRequest_Costs>*
+        cost_mat) {
+  for (auto& costs : *cost_mat) {
+    for (auto& cost : *costs.mutable_costs()) {
+      if (cost < kInfinityCost) {
+        cost = floor(cost * scaling_factor);
+      }
+    }
+  }
+}
+
+AutoShardingSolverRequest ScaleRequest(
+    const AutoShardingSolverRequest& request) {
+  double max_coeff = 0.0;
+  max_coeff = std::max(max_coeff, MaxCoeff(request.communication_costs()));
+  max_coeff = std::max(max_coeff, MaxCoeff(request.computation_costs()));
+  max_coeff = std::max(max_coeff, MaxCoeff(request.resharding_costs()));
+  if (max_coeff <= coeff_limit) return request;
+  const double scaling_factor = coeff_limit / max_coeff;
+  AutoShardingSolverRequest scaled_request = request;
+  ScaleCoeffs(scaling_factor, scaled_request.mutable_communication_costs());
+  ScaleCoeffs(scaling_factor, scaled_request.mutable_computation_costs());
+  ScaleCoeffs(scaling_factor, scaled_request.mutable_resharding_costs());
+  return scaled_request;
+}
+
 // Taking an auto-sharding problem (`request`) as an input, calls the OR tools
 // CP-SAT solver and outputs a solution to the input problem.
 //
@@ -216,7 +266,8 @@ double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request) {
 //    a makespan term. This is experimental and turned off by default.
 // 4. request.max_departures is used only for debugging and can be ignored.
 AutoShardingSolverResult CallORToolsSolver(
-    const AutoShardingSolverRequest& request) {
+    const AutoShardingSolverRequest& unscaled_request) {
+  const AutoShardingSolverRequest& request = ScaleRequest(unscaled_request);
   const size_t num_edges = request.edges_size();
   const int num_workers = 32;
   // SAT or SCIP
@@ -233,7 +284,7 @@ AutoShardingSolverResult CallORToolsSolver(
         "share_binary_clauses:false,random_seed:1,interleave_"
         "search:true,num_workers:",
         num_workers);
-    // solver->SetSolverSpecificParametersAsString(solver_parameter_str);
+    solver->SetSolverSpecificParametersAsString(solver_parameter_str);
   }
 #endif
   // Create variables
@@ -511,15 +562,15 @@ AutoShardingSolverResult CallORToolsSolver(
       LOG(ERROR) << write_status.message();
     }
   }
-  // Exports the solver request proto for debugging.
+  // Exports the *unscaled* solver request proto for debugging.
   bool dump_solver_request = false;
   if (dump_solver_request) {
     uint64_t solver_request_fprint =
-        tsl::Fingerprint64(request.SerializeAsString());
+        tsl::Fingerprint64(unscaled_request.SerializeAsString());
     auto write_status = file::SetBinaryProto(
         // Modify this file path if needed.
         absl::StrCat("/tmp/solver_request_", solver_request_fprint, ".proto"),
-        request, file::Defaults());
+        unscaled_request, file::Defaults());
     if (!write_status.ok()) {
       LOG(ERROR) << write_status.message();
     }
@@ -545,7 +596,9 @@ AutoShardingSolverResult CallORToolsSolver(
   auto result = SolveAndExtractSolution(request, s, e, overbudget_var,
                                         makespan_var, *solver);
   if (result.status.ok()) {
-    const AutoShardingEvaluation evaluation = Evaluate(request, result);
+    const AutoShardingEvaluation evaluation =
+        Evaluate(unscaled_request, result);
+    LOG(INFO) << "*** Total costs for the (unscaled) solver request ***";
     LOG(INFO) << "Total Communication Cost: "
               << evaluation.total.communication_cost
               << " (lower bound: " << evaluation.lower_bound.communication_cost
