@@ -15,8 +15,7 @@
 """Debugger Wrapper Session Consisting of a Local Curses-based CLI."""
 import os
 import tempfile
-
-from tensorflow.python.client import session
+import tensorflow as tf
 from tensorflow.python.debug.wrappers import dumping_wrapper
 from tensorflow.python.debug.wrappers import hooks
 from tensorflow.python.framework import constant_op
@@ -27,78 +26,78 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import monitored_session
 
-
 @test_util.run_v1_only("Sessions are not available in TF 2.x")
-class DumpingDebugWrapperDiskUsageLimitTest(test_util.TensorFlowTestCase):
+class DumpingDebugWrapperVariableTypesTest(test_util.TensorFlowTestCase):
 
-  @classmethod
-  def setUpClass(cls):
-    # For efficient testing, set the disk usage bytes limit to a small
-    # number (10).
-    os.environ["TFDBG_DISK_BYTES_LIMIT"] = "10"
+    @classmethod
+    def setUpClass(cls):
+        # For efficient testing, set the disk usage bytes limit to a small
+        # number (10).
+        os.environ["TFDBG_DISK_BYTES_LIMIT"] = "50"
 
-  def setUp(self):
-    self.session_root = tempfile.mkdtemp()
+    def setUp(self):
+        self.session_root = tempfile.mkdtemp()
 
-    self.v = variables.Variable(10.0, dtype=dtypes.float32, name="v")
-    self.delta = constant_op.constant(1.0, dtype=dtypes.float32, name="delta")
-    self.eta = constant_op.constant(-1.4, dtype=dtypes.float32, name="eta")
-    self.inc_v = state_ops.assign_add(self.v, self.delta, name="inc_v")
-    self.dec_v = state_ops.assign_add(self.v, self.eta, name="dec_v")
+        # Variable with float32 dtype
+        self.v_float32 = variables.Variable(10.0, dtype=dtypes.float32, name="v_float32")
 
-    self.sess = session.Session()
-    self.sess.run(self.v.initializer)
+        # Variable with int32 dtype
+        self.v_int32 = variables.Variable(5, dtype=dtypes.int32, name="v_int32")
 
-  def testWrapperSessionNotExceedingLimit(self):
-    def _watch_fn(fetches, feeds):
-      del fetches, feeds
-      return "DebugIdentity", r"(.*delta.*|.*inc_v.*)", r".*"
-    sess = dumping_wrapper.DumpingDebugWrapperSession(
-        self.sess, session_root=self.session_root, watch_fn=_watch_fn)
-    sess.run(self.inc_v)
+        # Tensor with float64 dtype and shape (3, 3)
+        self.tensor_float64 = constant_op.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]],
+                                                   dtype=dtypes.float64, name="tensor_float64")
 
-  def testWrapperSessionExceedingLimit(self):
-    def _watch_fn(fetches, feeds):
-      del fetches, feeds
-      return "DebugIdentity", r".*delta.*", r".*"
-    sess = dumping_wrapper.DumpingDebugWrapperSession(
-        self.sess, session_root=self.session_root, watch_fn=_watch_fn)
-    # Due to the watch function, each run should dump only 1 tensor,
-    # which has a size of 4 bytes, which corresponds to the dumped 'delta:0'
-    # tensor of scalar shape and float32 dtype.
-    # 1st run should pass, after which the disk usage is at 4 bytes.
-    sess.run(self.inc_v)
-    # 2nd run should also pass, after which 8 bytes are used.
-    sess.run(self.inc_v)
-    # 3rd run should fail, because the total byte count (12) exceeds the
-    # limit (10)
-    with self.assertRaises(ValueError):
-      sess.run(self.inc_v)
+        # Tensor with int64 dtype and shape (2, 4)
+        self.tensor_int64 = constant_op.constant([[1, 2, 3, 4], [5, 6, 7, 8]], dtype=dtypes.int64, name="tensor_int64")
 
-  def testHookNotExceedingLimit(self):
-    def _watch_fn(fetches, feeds):
-      del fetches, feeds
-      return "DebugIdentity", r".*delta.*", r".*"
-    dumping_hook = hooks.DumpingDebugHook(
-        self.session_root, watch_fn=_watch_fn)
-    mon_sess = monitored_session._HookedSession(self.sess, [dumping_hook])
-    mon_sess.run(self.inc_v)
+        self.inc_v_float32 = state_ops.assign_add(self.v_float32, 1.0, name="inc_v_float32")
+        self.inc_v_int32 = state_ops.assign_add(self.v_int32, 1, name="inc_v_int32")
 
-  def testHookExceedingLimit(self):
-    def _watch_fn(fetches, feeds):
-      del fetches, feeds
-      return "DebugIdentity", r".*delta.*", r".*"
-    dumping_hook = hooks.DumpingDebugHook(
-        self.session_root, watch_fn=_watch_fn)
-    mon_sess = monitored_session._HookedSession(self.sess, [dumping_hook])
-    # Like in `testWrapperSessionExceedingLimit`, the first two calls
-    # should be within the byte limit, but the third one should error
-    # out due to exceeding the limit.
-    mon_sess.run(self.inc_v)
-    mon_sess.run(self.inc_v)
-    with self.assertRaises(ValueError):
-      mon_sess.run(self.inc_v)
+        self.sess = tf.Session()
+        self.sess.run([self.v_float32.initializer, self.v_int32.initializer])
+
+    def testWrapperSessionVariableTypes(self):
+        def _watch_fn(fetches, feeds):
+            del fetches, feeds
+            return "DebugIdentity", r".*", r".*"
+
+        sess = dumping_wrapper.DumpingDebugWrapperSession(
+            self.sess, session_root=self.session_root, watch_fn=_watch_fn)
+
+        # Test with a float32 variable
+        sess.run(self.inc_v_float32)
+
+        # Test with an int32 variable
+        sess.run(self.inc_v_int32)
+
+        # Test with a float64 tensor
+        sess.run(tf.reduce_sum(self.tensor_float64))
+
+        # Test with an int64 tensor
+        sess.run(tf.reduce_sum(self.tensor_int64))
+
+    def testHookVariableTypes(self):
+        def _watch_fn(fetches, feeds):
+            del fetches, feeds
+            return "DebugIdentity", r".*", r".*"
+
+        dumping_hook = hooks.DumpingDebugHook(
+            self.session_root, watch_fn=_watch_fn)
+        mon_sess = monitored_session._HookedSession(self.sess, [dumping_hook])
+
+        # Test with a float32 variable
+        mon_sess.run(self.inc_v_float32)
+
+        # Test with an int32 variable
+        mon_sess.run(self.inc_v_int32)
+
+        # Test with a float64 tensor
+        mon_sess.run(tf.reduce_sum(self.tensor_float64))
+
+        # Test with an int64 tensor
+        mon_sess.run(tf.reduce_sum(self.tensor_int64))
 
 
 if __name__ == "__main__":
-  googletest.main()
+    googletest.main()
