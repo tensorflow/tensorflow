@@ -248,7 +248,7 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
   // appeared.
   absl::c_sort(addressable_devices_,
                [](const PjRtDevice* a, const PjRtDevice* b) {
-                 return a->local_hardware_id() < b->local_hardware_id();
+                 return a->local_device_id() < b->local_device_id();
                });
 }
 
@@ -393,7 +393,7 @@ StatusOr<std::unique_ptr<PjRtStreamExecutorBuffer>> AllocateDestinationBuffer(
   TF_ASSIGN_OR_RETURN(ScopedShapedBuffer dst_buffer,
                       transfer_manager->AllocateScopedShapedBuffer(
                           on_host_shape, se_client->allocator(),
-                          local_device->device_ordinal()));
+                          local_device->local_device_id().value()));
   if (local_device->allocation_model() ==
       LocalDeviceState::kComputeSynchronized) {
     if (copy_stream == nullptr) {
@@ -740,7 +740,7 @@ PjRtStreamExecutorBuffer::DonateWithControlDependency(
                            original_definition_events.end());
 
   auto new_device_buffer = std::make_shared<TrackedDeviceBuffer>(
-      tracked_buffer->allocator(), device()->local_hardware_id(),
+      tracked_buffer->allocator(), device()->local_device_id().value(),
       std::move(buffers), std::move(definition_events),
       /*on_delete_callback=*/std::function<void()>());
 
@@ -853,7 +853,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
       absl::Span<const std::shared_ptr<BufferSequencingEvent>>
           definition_events;
       auto device_buffer = std::make_shared<TrackedDeviceBuffer>(
-          /*allocator=*/nullptr, local_device->device_ordinal(),
+          /*allocator=*/nullptr, local_device->local_device_id().value(),
           std::initializer_list<se::DeviceMemoryBase>{buffer},
           definition_events, std::move(on_delete_callback));
       return std::unique_ptr<PjRtBuffer>(
@@ -1213,7 +1213,7 @@ PjRtStreamExecutorClient::CreateViewOfDeviceBuffer(
                                                definition_stream);
 
   auto device_buffer = std::make_shared<TrackedDeviceBuffer>(
-      /*allocator=*/nullptr, device->local_hardware_id(),
+      /*allocator=*/nullptr, device->local_device_id().value(),
       std::initializer_list<se::DeviceMemoryBase>{buffer}, definition_events,
       std::move(on_delete_callback));
   return std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtStreamExecutorBuffer>(
@@ -1225,7 +1225,7 @@ Status PjRtStreamExecutorDevice::TransferToInfeed(const LiteralSlice& literal) {
   // Only support infeed to local device.
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
   return local_device->client()->TransferToInfeedLocal(
-      literal, local_device->device_ordinal());
+      literal, local_device->local_hardware_id().value());
 }
 
 Status PjRtStreamExecutorDevice::TransferFromOutfeed(
@@ -1233,7 +1233,7 @@ Status PjRtStreamExecutorDevice::TransferFromOutfeed(
   VLOG(1) << "PjRtStreamExecutorDevice::TransferFromOutfeed";
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
   return local_device->client()->TransferFromOutfeedLocal(
-      local_device->device_ordinal(), literal);
+      local_device->local_hardware_id().value(), literal);
 }
 
 absl::Span<PjRtMemorySpace* const> PjRtStreamExecutorDevice::memory_spaces()
@@ -2455,7 +2455,8 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
     std::vector<std::function<void()>>& compute_callbacks) const {
   int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                            ->local_device_state()
-                           ->device_ordinal();
+                           ->local_device_id()
+                           .value();
   LocalDeviceState* device_state = &(client_->device_state(device_ordinal));
   tsl::profiler::TraceMeConsumer activity(
       "PjRtStreamExecutorLoadedExecutable::EnqueueExecution",
@@ -2712,7 +2713,8 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
   CHECK_EQ(device->process_index(), client_->process_index());
   int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                            ->local_device_state()
-                           ->device_ordinal();
+                           ->local_device_id()
+                           .value();
   tsl::profiler::TraceMe traceme(
       "PjRtStreamExecutorLoadedExecutable::ExecuteHelper");
   VLOG(1) << "Replica " << replica << ", partition " << partition

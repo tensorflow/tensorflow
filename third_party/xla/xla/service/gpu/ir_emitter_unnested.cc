@@ -2253,14 +2253,6 @@ Status IrEmitterUnnested::EmitFusion(
           GetFusionEmitter(
               fusion_analysis,
               HloFusionInfo(instr, &ir_emitter_context_->buffer_assignment())));
-      // TODO(anlunx): Support InPlaceDynamicUpdateSlice and remove this
-      // fallback.
-      if (!emitter) {
-        TF_RET_CHECK(op)
-            << "Fusion should have been handled by GetFusionEmitter, fallback "
-               "disabled because no lmhlo op is available.";
-        return EmitFusion(op, hlo_for_lmhlo);
-      }
       TF_ASSIGN_OR_RETURN(
           emission_result,
           (*emitter)->Emit(*ir_emitter_context_, elemental_emitter_, nullptr,

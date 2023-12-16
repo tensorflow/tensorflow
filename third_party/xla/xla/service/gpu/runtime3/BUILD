@@ -52,6 +52,7 @@ cc_library(
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:stream_executor_util",
         "//xla/service/gpu:thunk",
+        "//xla/service/gpu/kernels:custom_kernel",
         "//xla/stream_executor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",

@@ -47,6 +47,9 @@ limitations under the License.
 namespace xla::gpu {
 
 using MemoryAccess = CommandBufferCmd::MemoryAccess;
+using KernelArgsPacking = se::MultiKernelLoaderSpec::KernelArgsPacking;
+
+namespace {
 
 static se::StreamExecutor* GpuExecutor() {
   auto name =
@@ -67,6 +70,19 @@ static CommandBufferCmd::ExecutableSource ExecutableSource() {
   };
   return source;
 }
+
+KernelArgsPacking CreateDefaultArgsPacking() {
+  using Packed = StatusOr<std::unique_ptr<se::KernelArgsPackedArrayBase>>;
+
+  return [=](const se::Kernel& kernel, const se::KernelArgs& args) -> Packed {
+    auto* mem_args = se::Cast<se::KernelArgsDeviceMemoryArray>(&args);
+
+    return se::PackKernelArgs(mem_args->device_memory_args(),
+                              args.number_of_shared_bytes());
+  };
+}
+
+}  // namespace
 
 TEST(CommandBufferThunkTest, MemcpyCmd) {
   se::StreamExecutor* executor = GpuExecutor();
@@ -272,6 +288,99 @@ TEST(CommandBufferThunkTest, LaunchCmd) {
   se::Stream stream(executor);
   stream.Init();
   ASSERT_TRUE(stream.ok());
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: a=42, b=0
+  se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+
+  stream.ThenMemset32(&a, 42, byte_length);
+  stream.ThenMemZero(&b, byte_length);
+
+  // Prepare buffer allocations for recording command buffer.
+  BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
+  BufferAllocation alloc_b(/*index=*/1, byte_length, /*color=*/0);
+
+  BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
+  BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
+
+  auto args = {slice_a, slice_a, slice_b};  // b = a + a
+  auto args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
+                      MemoryAccess::kWrite};
+
+  // Prepare commands sequence for constructing command buffer.
+  CommandBufferCmdSequence commands;
+  commands.Emplace<LaunchCmd>("add", args, args_access, LaunchDimensions(1, 4),
+                              /*shmem_bytes=*/0);
+
+  // Construct a thunk with command sequence.
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
+
+  ServiceExecutableRunOptions run_options;
+  BufferAllocations allocations({a, b}, 0, executor->GetAllocator());
+  Thunk::ExecuteParams params(run_options, allocations, &stream, {});
+
+  CommandBufferCmd::ExecutableSource source = ExecutableSource();
+  TF_ASSERT_OK(thunk.Initialize(executor, source));
+
+  // Execute command buffer thunk and verify that it added the value.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
+
+  // Copy `b` data back to host.
+  std::vector<int32_t> dst(4, 0);
+  stream.ThenMemcpy(dst.data(), b, byte_length);
+
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
+
+  // Prepare buffer allocation for updating command buffer: c=0
+  se::DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+  stream.ThenMemZero(&c, byte_length);
+
+  // Update buffer allocation #1 to buffer `c`.
+  allocations = BufferAllocations({a, c}, 0, executor->GetAllocator());
+
+  // Thunk execution should automatically update underlying command buffer.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
+
+  // Copy `c` data back to host.
+  std::fill(dst.begin(), dst.end(), 0);
+  stream.ThenMemcpy(dst.data(), c, byte_length);
+
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
+
+  // Try to update the command buffer with the same buffers.
+  stream.ThenMemZero(&c, byte_length);
+
+  // Thunk execution should automatically update underlying command buffer.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
+
+  // Copy `c` data back to host.
+  std::fill(dst.begin(), dst.end(), 0);
+  stream.ThenMemcpy(dst.data(), c, byte_length);
+
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
+}
+
+TEST(CommandBufferThunkTest, CustomAddKernelLaunchCmd) {
+  se::StreamExecutor* executor = GpuExecutor();
+
+  se::Stream stream(executor);
+  stream.Init();
+  ASSERT_TRUE(stream.ok());
+
+  auto packing = CreateDefaultArgsPacking();
+
+  se::MultiKernelLoaderSpec spec(/*arity=*/3, std::move(packing));
+  spec.AddInProcessSymbol(se::gpu::internal::GetAddI32Kernel(), "add");
+
+  auto custom_kernel =
+      CustomKernel("add", std::move(spec), se::BlockDim(),
+                   se::ThreadDim(4, 1, 1), /*shared_memory_bytes=*/0);
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;

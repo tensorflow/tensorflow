@@ -52,6 +52,7 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   Status HandleElementwiseUnary(const HloInstruction* hlo) override;
   Status HandleElementwiseBinary(const HloInstruction* hlo) override;
 
+  Status HandleConcatenate(const HloInstruction* hlo) override;
   Status HandleAllReduce(const HloInstruction* allreduce) override;
 
   // Estimate the total size of IR accounting for both duplication

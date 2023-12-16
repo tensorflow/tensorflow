@@ -636,13 +636,17 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   std::vector<bool> is_dynamic(operand_shape.rank());
   for (int64_t i = 0; i < operand_shape.dimensions_size(); ++i) {
     const auto& p = padding_config.dimensions(i);
-    dimensions[i] = operand_shape.dimensions(i) + p.edge_padding_low() +
-                    p.edge_padding_high() +
-                    std::max<int64_t>(operand_shape.dimensions(i) - 1, 0LL) *
-                        p.interior_padding();
-    if (dimensions[i] < 0) {
-      return InvalidArgument("Padding result in negative size for dimension %d",
-                             i);
+    if (operand_shape.is_unbounded_dynamic_dimension(i)) {
+      dimensions[i] = Shape::kUnboundedSize;
+    } else {
+      dimensions[i] = operand_shape.dimensions(i) + p.edge_padding_low() +
+                      p.edge_padding_high() +
+                      std::max<int64_t>(operand_shape.dimensions(i) - 1, 0LL) *
+                          p.interior_padding();
+      if (dimensions[i] < 0) {
+        return InvalidArgument(
+            "Padding result in negative size for dimension %d", i);
+      }
     }
     is_dynamic[i] = operand_shape.is_dynamic_dimension(i);
   }

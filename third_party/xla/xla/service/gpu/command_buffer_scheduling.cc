@@ -34,7 +34,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
@@ -93,15 +95,10 @@ static bool IsCommand(const HloInstruction*, const CommandBufferConfig&);
 // always have a corresponding command buffer command.
 static bool IsCommand(const HloFusionInstruction* fusion,
                       const CommandBufferConfig& config) {
-  // Certain kinds of fusions have special emitters that we do not support when
-  // emitting from HLO.
-  auto unsupported = [](const HloInstruction* inst) {
-    return inst->opcode() == HloOpcode::kDynamicUpdateSlice;
-  };
-
-  return config.contains(DebugOptions::FUSION) &&
-         !absl::c_any_of(fusion->called_computation()->instructions(),
-                         unsupported);
+  // TODO(vuson): Support custom kernels as command buffer commands.
+  auto backend_config = fusion->backend_config<FusionBackendConfig>();
+  return config.contains(DebugOptions::FUSION) && backend_config.ok() &&
+         backend_config->kind() != kCustomFusionKind;
 }
 
 // Sort operations lowered to memcpy and device kernels and we have a

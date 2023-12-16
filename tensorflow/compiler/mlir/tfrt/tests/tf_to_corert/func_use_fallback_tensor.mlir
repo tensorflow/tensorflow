@@ -37,7 +37,8 @@ func.func @cond_stateful(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK-SAME: @cond_true @cond_false(%arg0, %arg1) : (!tfrt.chain, !tfrt_fallback.tf_tensor)
   %2 = "tf.If"(%1, %arg0) {else_branch = @cond_false, then_branch = @cond_true, is_stateless = false} : (tensor<i1>, tensor<i32>) -> tensor<i32>
   // Note: returns %out_op_chain.
-  // CHECK: tfrt.return [[cond_res]]#0, [[cond_res]]#1 : !tfrt.chain, !tfrt_fallback.tf_tensor
+  // CHECK: [[out_ch:%.*]] = tfrt.merge.chains [[cond_res]]#0, %arg0 : !tfrt.chain, !tfrt.chain
+  // CHECK: tfrt.return [[out_ch]], [[cond_res]]#1 : !tfrt.chain, !tfrt_fallback.tf_tensor
   func.return %2 : tensor<i32>
 }
 

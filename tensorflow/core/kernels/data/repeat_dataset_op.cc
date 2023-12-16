@@ -273,6 +273,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         }
         ctx->PurgeCheckpoint(nested_prefix(prefix(), i_));
         ++i_;
+        input_impl_.reset();
         for (const auto& provider : ctx->split_providers()) {
           TF_RETURN_IF_ERROR(provider->Reset());
         }

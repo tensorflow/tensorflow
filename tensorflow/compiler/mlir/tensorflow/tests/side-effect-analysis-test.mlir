@@ -2850,33 +2850,6 @@ func.func @func(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
 
 // -----
 
-func.func @add(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
-  // expected-remark@above {{ID: 2}}
-  %sum = "tf.Add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
-  // expected-remark@above {{ID: 0}}
-  func.return %sum : tensor<1xf32>
-  // expected-remark@above {{ID: 1}}
-  // expected-remark@above {{Sinks: {}}}
-}
-
-// CHECK-LABEL: func @call_pure_function
-func.func @call_pure_function(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
-  // expected-remark@above {{ID: 5}}
-  %one = "tf.Const"() { value = dense<1.0> : tensor<1xf32> } : () -> tensor<1xf32>
-  // expected-remark@above {{ID: 0}}
-  %r1 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
-  // expected-remark@above {{ID: 1}}
-  %two = "tf.StatefulPartitionedCall"(%one, %one) {config="", config_proto="", executor_type="", f=@add} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
-  // expected-remark@above {{ID: 2}}
-  %r2 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
-  // expected-remark@above {{ID: 3}}
-  func.return %arg0 : tensor<!tf_type.resource>
-  // expected-remark@above {{ID: 4}}
-  // expected-remark@above {{Sinks: {1,3}}}
-}
-
-// -----
-
 // Tests that we create a dependency between ops with `TF__XlaRunSideEffect`.
 func.func @tpu_execute_effect(
   // expected-remark@above {{ID: 7}}
@@ -2967,6 +2940,8 @@ func.func @global_iter_id_effect() -> () {
 
 // -----
 
+// Tests that IsCallToPureFunction supports CallOp.
+
 func.func @add(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
   // expected-remark@above {{ID: 2}}
   %sum = "tf.Add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
@@ -3003,6 +2978,8 @@ func.func @call_pure_function(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_ty
 
 // -----
 
+// Tests that IsCallToPureFunction supports SymbolUserOpInterface.
+
 func.func @assert(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<i1> {
   // expected-remark@above {{ID: 3}}
   %cond = builtin.unrealized_conversion_cast to tensor<i1>
@@ -3011,7 +2988,7 @@ func.func @assert(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<i1> {
   // expected-remark@above {{ID: 1}}
   func.return %cond : tensor<i1>
   // expected-remark@above {{ID: 2}}
-  // expected-remark@above {{Sinks: {1}}}
+  // expected-remark@above {{Sinks: {}}}
 }
 
 func.func @intermediary(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
@@ -3026,7 +3003,7 @@ func.func @intermediary(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1x
   // expected-remark@-5 {{ID: 1}}
   func.return %arg0 : tensor<1xf32>
   // expected-remark@above {{ID: 2}}
-  // expected-remark@above {{Sinks: {1}}}
+  // expected-remark@above {{Sinks: {}}}
 }
 
 // CHECK-LABEL: func @assert_within_if
@@ -3043,4 +3020,80 @@ func.func @assert_within_if(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type
   func.return %arg0 : tensor<!tf_type.resource>
   // expected-remark@above {{ID: 4}}
   // expected-remark@above {{Sinks: {1,3}}}
+}
+
+// -----
+
+// Tests that IsCallToPureFunction skips tf_executor ops.
+
+func.func @add(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+// expected-remark@above {{ID: 6}}
+  %0 = tf_executor.graph {
+  // expected-remark@above {{ID: 4}}
+    %outputs, %control = tf_executor.island wraps "tf.Add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+    // expected-remark@above {{ID: 0}}
+    // expected-remark@above {{ID: 1}}
+    // expected-remark@above {{ID: 2}}
+    tf_executor.fetch %outputs : tensor<1xf32>
+    // expected-remark@above {{ID: 3}}
+  }
+  return %0 : tensor<1xf32>
+  // expected-remark@above {{ID: 5}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+// CHECK-LABEL: func @call_pure_function
+func.func @call_pure_function(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
+// expected-remark@above {{ID: 5}}
+  %one = "tf.Const"() { value = dense<1.0> : tensor<1xf32> } : () -> tensor<1xf32>
+  // expected-remark@above {{ID: 0}}
+  %r1 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 1}}
+  %two = "tf.StatefulPartitionedCall"(%one, %one) {config="", config_proto="", executor_type="", f=@add} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 2}}
+  %r2 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 3}}
+  func.return %arg0 : tensor<!tf_type.resource>
+  // expected-remark@above {{ID: 4}}
+  // expected-remark@above {{Sinks: {1,3}}}
+}
+
+// -----
+
+// Tests that an `Assert` op does not cause deadlock by introducing unwanted
+// control dependency.
+func.func @assert_ordering_effect(
+  // expected-remark@above {{ID: 8}}
+  %cond: tensor<i1>,
+  %data: tensor<*xf32>,
+  %input: tensor<f32>,
+  %group_key: tensor<i32>,
+  %group_size: tensor<i32>,
+  %instance_key: tensor<i32>,
+  %token1: tensor<*x!tf_type.resource<tensor<f32>>> {tf._user_specified_name = "ordering_token_0", tf.device = "/job:localhost/replica:0/task:0/device:GPU:1"},
+  %token2: tensor<*x!tf_type.resource<tensor<f32>>> {tf._user_specified_name = "ordering_token_0", tf.device = "/job:localhost/replica:0/task:0/device:GPU:2"}) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 6}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 4}}
+        // expected-remark@above {{Successors: {5}}}
+        %0 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key, %token1) {merge_op = "Add", final_op = "Id", is_stateless = false} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {3}}}
+        "tf.Assert"(%cond, %data) {device = "CPU:0"} : (tensor<i1>, tensor<*xf32>) -> ()
+        // expected-remark@above {{ID: 1}}
+        %1 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key, %token2) {merge_op = "Mul", final_op = "Id", is_stateless = false} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<f32>
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Successors: {3}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Predecessors: {0,2}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 5}}
+    // expected-remark@above {{Predecessors: {4}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 7}}
+  // expected-remark@above {{Sinks: {6}}}
 }

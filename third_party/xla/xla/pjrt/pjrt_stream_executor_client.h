@@ -120,8 +120,12 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
       int id, std::unique_ptr<LocalDeviceState> local_device_state,
       std::string device_kind, int process_index = 0)
       : description_(id, std::move(device_kind), process_index),
-        device_ordinal_(
-            local_device_state ? local_device_state->device_ordinal() : -1),
+        local_device_id_(local_device_state
+                             ? local_device_state->local_device_id()
+                             : PjRtLocalDeviceId(-1)),
+        local_hardware_id_(local_device_state
+                               ? local_device_state->local_hardware_id()
+                               : PjRtLocalHardwareId(-1)),
         local_device_state_(std::move(local_device_state)) {}
   ~PjRtStreamExecutorDevice() override = default;
 
@@ -148,18 +152,18 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   PjRtClient* client() const override { return client_; }
 
-  bool IsAddressable() const override { return device_ordinal_ != -1; }
+  bool IsAddressable() const override { return local_device_id_ != -1; }
 
   int local_hardware_id() const override {
     return local_hardware_id_typed().value();
   }
 
   PjRtLocalDeviceId local_device_id() const override {
-    return PjRtLocalDeviceId(local_hardware_id_typed().value());
+    return local_device_id_;
   }
 
   PjRtLocalHardwareId local_hardware_id_typed() const override {
-    return PjRtLocalHardwareId(device_ordinal_);
+    return local_hardware_id_;
   }
 
   // If this is a device local to this host, returns a LocalDeviceState object
@@ -191,7 +195,8 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
  private:
   PjRtStreamExecutorDeviceDescription description_;
-  const int device_ordinal_;  // -1 means not local.
+  const PjRtLocalDeviceId local_device_id_;
+  const PjRtLocalHardwareId local_hardware_id_;
   const std::unique_ptr<LocalDeviceState> local_device_state_;
   PjRtClient* client_ = nullptr;
 };

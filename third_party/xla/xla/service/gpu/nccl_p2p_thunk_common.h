@@ -67,7 +67,7 @@ std::enable_if_t<std::is_same_v<OpT, mlir::lmhlo::SendOp> ||
                      std::is_same_v<OpT, mlir::lmhlo::RecvOp>,
                  CollectiveOpGroupMode>
 GetGroupModeForSendRecv(OpT op) {
-  return GetCollectiveOpGroupMode(op.getChannelHandle().getHandle() > 1,
+  return GetCollectiveOpGroupMode(op.getChannelHandle().getHandle() > 0,
                                   std::nullopt)
       .value();
 }
