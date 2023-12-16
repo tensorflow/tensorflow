@@ -2944,6 +2944,7 @@ class RemapperControlDependencyPatternMatcher : public RemapperTest {
  public:
   template <DataType DTYPE>
   void RunTest() {
+    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
     using ::tensorflow::ops::Placeholder;
 
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
