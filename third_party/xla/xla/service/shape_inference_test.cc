@@ -3896,6 +3896,28 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedMul) {
   }
 }
 
+TEST_F(ShapeInferenceTest, UnboundedPad) {
+  StatusOr<Shape> operand = ParseShape("f32[?, 10]");
+  StatusOr<Shape> padding_value = ParseShape("f32[]");
+  StatusOr<Shape> expected = ParseShape("f32[?, 21]");
+  ASSERT_IS_OK(operand.status());
+  ASSERT_IS_OK(padding_value.status());
+  ASSERT_IS_OK(expected.status());
+  PaddingConfig padding_config;
+  for (int i = 0; i < 2; i++) {
+    auto dimension = padding_config.add_dimensions();
+    dimension->set_edge_padding_low(1);
+    dimension->set_edge_padding_high(1);
+    dimension->set_interior_padding(1);
+  }
+  StatusOr<Shape> inferred_status = ShapeInference::InferPadShape(
+      operand.value(), padding_value.value(), padding_config);
+  ASSERT_IS_OK(inferred_status.status());
+  ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
+      << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
 TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedPow) {
   auto lhs = ParseShape(GetParam()[0]);
   auto rhs = ParseShape(GetParam()[1]);

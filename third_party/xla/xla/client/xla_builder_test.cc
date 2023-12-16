@@ -1761,6 +1761,27 @@ TEST_F(XlaBuilderTest, UnboundedMulUnsupportedImplicitBroadcast) {
               HasSubstr("Unbounded dynamic shapes not supported"));
 }
 
+TEST_F(XlaBuilderTest, UnboundedPad) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> operand = ParseShape("f32[?, 10]");
+  StatusOr<Shape> expected = ParseShape("f32[?, 21]");
+  ASSERT_IS_OK(operand.status());
+  ASSERT_IS_OK(expected.status());
+  PaddingConfig padding_config;
+  for (int i = 0; i < 2; i++) {
+    auto dimension = padding_config.add_dimensions();
+    dimension->set_edge_padding_low(1);
+    dimension->set_edge_padding_high(1);
+    dimension->set_interior_padding(1);
+  }
+  Pad(Parameter(&b, 0, operand.value(), "operand"),
+      /*padding_value=*/ConstantR0<float>(&b, 0), padding_config);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()));
+}
+
 TEST_F(XlaBuilderTest, UnboundedPow) {
   XlaBuilder b(TestName());
   StatusOr<Shape> lhs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
