@@ -48,6 +48,18 @@ static StatusOr<Command> ConvertKernelThunk(const KernelThunk& thunk) {
                                      thunk.shmem_bytes());
 }
 
+static StatusOr<Command> ConvertCustomKernelThunk(
+    const CustomKernelThunk& thunk) {
+  absl::InlinedVector<CommandBufferCmd::MemoryAccess, 4> args_access;
+  args_access.reserve(thunk.written().size());
+  for (bool written : thunk.written()) {
+    args_access.push_back(written ? CommandBufferCmd::MemoryAccess::kWrite
+                                  : CommandBufferCmd::MemoryAccess::kRead);
+  }
+  return std::make_unique<CustomKernelLaunchCmd>(thunk.arguments(), args_access,
+                                                 thunk.custom_kernel());
+}
+
 static StatusOr<Command> ConvertCopyThunk(
     const DeviceToDeviceCopyThunk& thunk) {
   return std::make_unique<MemcpyDeviceToDeviceCmd>(
@@ -78,6 +90,9 @@ static StatusOr<Command> ConvertThunk(const Thunk& thunk) {
   switch (thunk.kind()) {
     case Thunk::Kind::kKernel:
       return ConvertKernelThunk(static_cast<const KernelThunk&>(thunk));
+    case Thunk::Kind::kCustomKernel:
+      return ConvertCustomKernelThunk(
+          static_cast<const CustomKernelThunk&>(thunk));
     case Thunk::Kind::kCopy:
       return ConvertCopyThunk(
           static_cast<const DeviceToDeviceCopyThunk&>(thunk));
