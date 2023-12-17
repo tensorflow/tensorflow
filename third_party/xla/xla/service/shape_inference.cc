@@ -3500,10 +3500,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   TF_RETURN_IF_ERROR(ExpectArray(max, "clamp max"));
 
   if (!ShapeUtil::CompatibleIgnoringFpPrecision(min, operand) ||
-      !ShapeUtil::CompatibleIgnoringFpPrecision(max, operand)) {
-    return InvalidArgument(
-        "Clamp with different shapes: %s, %s, %s.", ShapeUtil::HumanString(min),
-        ShapeUtil::HumanString(operand), ShapeUtil::HumanString(max));
+      !ShapeUtil::CompatibleIgnoringFpPrecision(max, operand) ||
+      !ShapeUtil::CompatibleIgnoringFpPrecision(min, max)) {
+    return InvalidArgument("Clamp with incompatible shapes: %s, %s, %s.",
+                           ShapeUtil::HumanString(min),
+                           ShapeUtil::HumanString(operand),
+                           ShapeUtil::HumanString(max));
   }
   return operand;
 }
