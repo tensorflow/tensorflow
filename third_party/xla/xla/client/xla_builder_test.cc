@@ -1606,6 +1606,29 @@ TEST_F(XlaBuilderTest, UnboundedAddUnsupportedImplicitBroadcast) {
               HasSubstr("Unbounded dynamic shapes not supported"));
 }
 
+TEST_F(XlaBuilderTest, UnboundedConcatenate) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> operand1 = ParseShape("f32[3, ?, 2, ?, <=2, ?, ?]");
+  StatusOr<Shape> operand2 = ParseShape("f32[?, 4, ?, 2, ?, <=2, ?]");
+  StatusOr<Shape> operand3 = ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]");
+  StatusOr<Shape> expected = ParseShape("f32[3, 4, ?, 2, <=2, <=2, ?]");
+  ASSERT_IS_OK(operand1.status());
+  ASSERT_IS_OK(operand2.status());
+  ASSERT_IS_OK(operand3.status());
+  ASSERT_IS_OK(expected.status());
+  ConcatInDim(&b,
+              {Parameter(&b, 0, operand1.value(), "operand1"),
+               Parameter(&b, 1, operand2.value(), "operand2"),
+               Parameter(&b, 2, operand3.value(), "operand3")},
+              2);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+      << "result: " << ShapeUtil::HumanStringWithLayout(result)
+      << " expected: " << ShapeUtil::HumanStringWithLayout(expected.value());
+}
+
 TEST_F(XlaBuilderTest, UnboundedDiv) {
   XlaBuilder b(TestName());
   StatusOr<Shape> lhs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
