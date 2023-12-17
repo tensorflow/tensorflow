@@ -204,7 +204,8 @@ class Shape {
   }
   void clear_layout() { layout_ = std::nullopt; }
 
-  // Recursively clear dynamic dimension of a shape.
+  // Recursively clear all dynamic dimension of a shape, including bounded and
+  // unbounded dynamic dimensions.
   void clear_dynamic_dimensions() {
     if (!IsTuple()) {
       if (is_dynamic()) {

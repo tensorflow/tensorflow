@@ -232,6 +232,98 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
                                        output_is_dynamic);
 }
 
+// Encapsulates inferred dimension size and bound size.
+struct DimAndBound {
+  int64_t dimension, bound;
+};
+
+// Inference rules to concat dimensions with bounds (lhs/rhs are commutative):
+//       Dim of lhs     Dim of rhs      Infer
+//  c0:  X              Y               X+Y
+//  c1:  X              ?               ?
+//  c2:  X              <=B             <=X+B
+//  c3:  ?              ?               ?
+//. c4:  ?              <=B             ?
+//  c5:  <=B            <=C             <=B+C
+// Note:
+// A HLO static dimension size `X` is expressed as size=X, and bound=?
+// A bounded dynamic dimension size `<=X` is be expressed as size=X, and bound=?
+// A unbounded dynamic dimension size, `?`, is expressed as size=?, and bound=?
+DimAndBound InferConcatenatedDimAndBound(int64_t left_size, int64_t right_size,
+                                         int64_t left_bound,
+                                         int64_t right_bound) {
+  bool is_left_static_dim = !IsUnboundedDynamicSize(left_size);
+  bool is_right_static_dim = !IsUnboundedDynamicSize(right_size);
+  bool is_left_static_bound = !IsUnboundedDynamicSize(left_bound);
+  bool is_right_static_bound = !IsUnboundedDynamicSize(right_bound);
+  int64_t inferred_size = Shape::kUnboundedSize;
+  int64_t inferred_bound = Shape::kUnboundedSize;
+
+  if (is_left_static_dim && is_right_static_dim) {
+    inferred_size = left_size + right_size;
+  }
+  if (is_left_static_bound || is_right_static_bound) {
+    int64_t leftBoundOrSize = is_left_static_bound ? left_bound : left_size;
+    int64_t rightBoundOrSize = is_right_static_bound ? right_bound : right_size;
+    if (!IsUnboundedDynamicSize(leftBoundOrSize) &&
+        !IsUnboundedDynamicSize(rightBoundOrSize)) {
+      inferred_bound = leftBoundOrSize + rightBoundOrSize;
+    }
+  }
+  return {inferred_size, inferred_bound};
+}
+
+// Inference rules to merge dimensions with bounds (lhs/rhs are commutative):
+//       Dim of lhs     Dim of rhs      Infer
+//  c0:  X              X               X
+//  c1:  X              ?               X
+//  c2:  X              <=X             <=X
+//  c3:  ?              ?               ?
+//  c4:  ?              <=B             <=B
+//  c5:  <=B            <=C             Error, mismatched bound sizes
+//  c6:  X              Y               Error, mismatched dimension sizes
+// Note:
+// A HLO static dimension size `X` is expressed as size=X, and bound=?
+// A bounded dynamic dimension size `<=X` is be expressed as size=X, and bound=?
+// A unbounded dynamic dimension size, `?`, is expressed as size=?, and bound=?
+StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
+                                                   int64_t left_size,
+                                                   int64_t right_size,
+                                                   int64_t left_bound,
+                                                   int64_t right_bound) {
+  bool is_left_static_dim = !IsUnboundedDynamicSize(left_size);
+  bool is_right_static_dim = !IsUnboundedDynamicSize(right_size);
+  bool is_left_static_bound = !IsUnboundedDynamicSize(left_bound);
+  bool is_right_static_bound = !IsUnboundedDynamicSize(right_bound);
+  int64_t inferred_size = Shape::kUnboundedSize;
+  int64_t inferred_bound = Shape::kUnboundedSize;
+
+  if (is_left_static_bound || is_right_static_bound) {
+    if (is_left_static_bound && is_right_static_bound &&
+        left_bound != right_bound) {
+      return InvalidArgument("Mismatched bound sizes %d and %d in dimension %d",
+                             left_bound, right_bound, dim);
+    }
+    inferred_bound = is_left_static_bound ? left_bound : right_bound;
+  }
+  if (is_left_static_dim || is_right_static_dim) {
+    if (is_left_static_dim && is_right_static_dim && left_size != right_size) {
+      return InvalidArgument(
+          "Mismatched dimension sizes %d and %d in dimension %d", left_size,
+          right_size, dim);
+    }
+    inferred_size = is_left_static_dim ? left_size : right_size;
+    if (!IsUnboundedDynamicSize(inferred_bound) &&
+        inferred_size != inferred_bound) {
+      return InvalidArgument(
+          "Mismatched dimension size %d and bound %d in dimension %d",
+          inferred_size, inferred_bound, dim);
+    }
+  }
+  DimAndBound dim_and_bound = {inferred_size, inferred_bound};
+  return dim_and_bound;
+}
+
 }  // namespace
 
 /* static */ StatusOr<Shape> ShapeInference::InferUnaryOpShape(
@@ -423,8 +515,8 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     }
     for (int64_t dimension_number = 0; dimension_number < arg_shape->rank();
          ++dimension_number) {
-      if (arg_shape->dimensions(dimension_number) !=
-          shape->dimensions(dimension_number)) {
+      if (!CompatibleDimensionSizes(arg_shape->dimensions(dimension_number),
+                                    shape->dimensions(dimension_number))) {
         if (dimension_number == dimension) {
           continue;  // It's okay to differ in the dimension we're
                      // concatenating.
@@ -432,7 +524,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
         return InvalidArgument(
             "Cannot concatenate arrays that differ in dimensions other than "
             "the one being concatenated. Dimension %d in both shapes must be "
-            "equal: %s vs %s.",
+            "compatible: %s vs %s.",
             dimension_number, ShapeUtil::HumanString(*arg_shape),
             ShapeUtil::HumanString(*shape));
       }
@@ -440,20 +532,44 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     element_type = ShapeUtil::HigherPrecisionElementType(*shape, *arg_shape);
   }
 
-  std::vector<int64_t> new_dimensions(arg_shape->dimensions().begin(),
-                                      arg_shape->dimensions().end());
-  for (size_t i = 1; i < arg_shapes.size(); ++i) {
-    new_dimensions[dimension] += arg_shapes[i]->dimensions(dimension);
+  // Infer the most specific (size, bound) of all dimensions of the return type
+  int64_t rank = arg_shape->rank();
+  std::vector<int64_t> inferred_sizes(rank, Shape::kUnboundedSize);
+  std::vector<int64_t> inferred_bounds(rank, Shape::kUnboundedSize);
+  // Note: for the concatenate dimension, 0 should be the identity element:
+  // Any dim size can keep unchanged when concatenated with 0
+  inferred_sizes[dimension] = 0;
+
+  for (const Shape* shape : arg_shapes) {
+    for (int dim = 0; dim < rank; ++dim) {
+      DimAndBound inferred_dim_and_bound;
+
+      int64_t dimension_size = shape->dimensions(dim);
+      int64_t leftSize = inferred_sizes[dim];
+      int64_t rightSize = dimension_size;
+      int64_t leftBound = inferred_bounds[dim];
+      int64_t rightBound = shape->is_dynamic_dimension(dim)
+                               ? dimension_size
+                               : Shape::kUnboundedSize;
+      if (dim == dimension) {
+        inferred_dim_and_bound = InferConcatenatedDimAndBound(
+            leftSize, rightSize, leftBound, rightBound);
+      } else {
+        TF_ASSIGN_OR_RETURN(
+            inferred_dim_and_bound,
+            InferMostSpecificDimAndBound(dim, leftSize, rightSize, leftBound,
+                                         rightBound));
+      }
+      inferred_sizes[dim] = inferred_dim_and_bound.dimension;
+      inferred_bounds[dim] = inferred_dim_and_bound.bound;
+    }
   }
 
-  Shape result = ShapeUtil::MakeShape(element_type, new_dimensions);
-
-  // Set dynamic dimensions if any input has dynamic dimension.
-  for (const Shape* shape : arg_shapes) {
-    for (int64_t i = 0; i < shape->dimensions_size(); ++i) {
-      if (shape->is_dynamic_dimension(i)) {
-        result.set_dynamic_dimension(i, true);
-      }
+  Shape result = ShapeUtil::MakeShape(element_type, inferred_sizes);
+  for (int64_t i = 0; i < inferred_bounds.size(); ++i) {
+    if (!IsUnboundedDynamicSize(inferred_bounds[i]) ||
+        IsUnboundedDynamicSize(inferred_sizes[i])) {
+      result.set_dynamic_dimension(i, true);
     }
   }
   return result;
@@ -3384,10 +3500,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   TF_RETURN_IF_ERROR(ExpectArray(max, "clamp max"));
 
   if (!ShapeUtil::CompatibleIgnoringFpPrecision(min, operand) ||
-      !ShapeUtil::CompatibleIgnoringFpPrecision(max, operand)) {
-    return InvalidArgument(
-        "Clamp with different shapes: %s, %s, %s.", ShapeUtil::HumanString(min),
-        ShapeUtil::HumanString(operand), ShapeUtil::HumanString(max));
+      !ShapeUtil::CompatibleIgnoringFpPrecision(max, operand) ||
+      !ShapeUtil::CompatibleIgnoringFpPrecision(min, max)) {
+    return InvalidArgument("Clamp with incompatible shapes: %s, %s, %s.",
+                           ShapeUtil::HumanString(min),
+                           ShapeUtil::HumanString(operand),
+                           ShapeUtil::HumanString(max));
   }
   return operand;
 }

@@ -147,6 +147,11 @@ class CustomKernelThunk : public Thunk {
                     ExecutableSource src) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  const CustomKernel& custom_kernel() const { return custom_kernel_; }
+
+  const std::vector<BufferAllocation::Slice>& arguments() const {
+    return args_;
+  }
   // TODO(ezhulenev): All of the APIs below needed only for LMHLO lowering and
   // should be removed after we migrate to Thunks runtime.
 

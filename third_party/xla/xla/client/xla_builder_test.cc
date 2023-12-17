@@ -1606,6 +1606,80 @@ TEST_F(XlaBuilderTest, UnboundedAddUnsupportedImplicitBroadcast) {
               HasSubstr("Unbounded dynamic shapes not supported"));
 }
 
+TEST_F(XlaBuilderTest, UnboundedClamp) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> lhs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
+  StatusOr<Shape> rhs = ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]");
+  StatusOr<Shape> ehs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
+  StatusOr<Shape> expected = ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  ASSERT_IS_OK(ehs.status());
+  ASSERT_IS_OK(expected.status());
+  Clamp(Parameter(&b, 0, lhs.value(), "lhs"),
+        Parameter(&b, 1, rhs.value(), "rhs"),
+        Parameter(&b, 2, ehs.value(), "ehs"));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto result = module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
+TEST_F(XlaBuilderTest, UnboundedClampUnsupportedScalarMinMax) {
+  XlaBuilder b(TestName());
+  Shape lhs = ShapeUtil::MakeScalarShape(F32);
+  StatusOr<Shape> rhs = ParseShape("f32[?, 2, <=2]");
+  Shape ehs = ShapeUtil::MakeScalarShape(F32);
+  ASSERT_IS_OK(rhs.status());
+  Clamp(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs.value(), "rhs"),
+        Parameter(&b, 2, ehs, "ehs"));
+  StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
+  ASSERT_THAT(
+      build_status.status().message(),
+      HasSubstr("!is_unbounded_dynamic Unimplemented implicit broadcast."));
+}
+
+TEST_F(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> lhs = ParseShape("f32[?, 10]");
+  StatusOr<Shape> rhs = ParseShape("f32[1]");
+  StatusOr<Shape> ehs = ParseShape("f32[?, 10]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  ASSERT_IS_OK(ehs.status());
+  Clamp(Parameter(&b, 0, lhs.value(), "lhs"),
+        Parameter(&b, 1, rhs.value(), "rhs"),
+        Parameter(&b, 2, ehs.value(), "ehs"));
+  StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
+  ASSERT_THAT(build_status.status().message(),
+              HasSubstr("ShapeUtil::SameDimensions(non_scalar_shape.value(), "
+                        "*shape) Unimplemented implicit broadcast."));
+}
+
+TEST_F(XlaBuilderTest, UnboundedConcatenate) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> operand1 = ParseShape("f32[3, ?, 2, ?, <=2, ?, ?]");
+  StatusOr<Shape> operand2 = ParseShape("f32[?, 4, ?, 2, ?, <=2, ?]");
+  StatusOr<Shape> operand3 = ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]");
+  StatusOr<Shape> expected = ParseShape("f32[3, 4, ?, 2, <=2, <=2, ?]");
+  ASSERT_IS_OK(operand1.status());
+  ASSERT_IS_OK(operand2.status());
+  ASSERT_IS_OK(operand3.status());
+  ASSERT_IS_OK(expected.status());
+  ConcatInDim(&b,
+              {Parameter(&b, 0, operand1.value(), "operand1"),
+               Parameter(&b, 1, operand2.value(), "operand2"),
+               Parameter(&b, 2, operand3.value(), "operand3")},
+              2);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+      << "result: " << ShapeUtil::HumanStringWithLayout(result)
+      << " expected: " << ShapeUtil::HumanStringWithLayout(expected.value());
+}
+
 TEST_F(XlaBuilderTest, UnboundedDiv) {
   XlaBuilder b(TestName());
   StatusOr<Shape> lhs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");

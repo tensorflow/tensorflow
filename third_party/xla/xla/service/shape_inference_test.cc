@@ -116,8 +116,16 @@ class SelectAndScatterShapeInferenceTest : public ShapeInferenceTest {
 class UnboundedBinaryOpShapeInferenceTest
     : public ::testing::TestWithParam<std::vector<std::string>> {};
 
+// Subclass for testing unbounded dynamic concatenate op
+class UnboundedConcatenateOpShapeInferenceTest
+    : public ::testing::TestWithParam<std::vector<std::string>> {};
+
 // Subclass for testing unbounded dynamic unary ops
 class UnboundedUnaryOpShapeInferenceTest
+    : public ::testing::TestWithParam<std::vector<std::string>> {};
+
+// Subclass for testing unbounded dynamic clamp op
+class UnboundedClampOpShapeInferenceTest
     : public ::testing::TestWithParam<std::vector<std::string>> {};
 
 TEST_F(ShapeInferenceTest, UnaryNegateMatrix) {
@@ -204,7 +212,7 @@ TEST_F(ShapeInferenceTest, ClampMinScalar) {
       HloOpcode::kClamp, f32_, matrix_64_48_, matrix_64_48_);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().message(),
-              HasSubstr("Clamp with different shapes"));
+              HasSubstr("Clamp with incompatible shapes"));
 }
 
 TEST_F(ShapeInferenceTest, ClampMaxScalar) {
@@ -212,7 +220,7 @@ TEST_F(ShapeInferenceTest, ClampMaxScalar) {
       HloOpcode::kClamp, matrix_64_48_, matrix_64_48_, f32_);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().message(),
-              HasSubstr("Clamp with different shapes"));
+              HasSubstr("Clamp with incompatible shapes"));
 }
 
 TEST_F(ShapeInferenceTest, ClampOperandScalar) {
@@ -220,7 +228,7 @@ TEST_F(ShapeInferenceTest, ClampOperandScalar) {
       HloOpcode::kClamp, matrix_64_48_, f32_, matrix_64_48_);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().message(),
-              HasSubstr("Clamp with different shapes"));
+              HasSubstr("Clamp with incompatible shapes"));
 }
 
 TEST_F(ShapeInferenceTest, ClampMinMatrix) {
@@ -228,7 +236,7 @@ TEST_F(ShapeInferenceTest, ClampMinMatrix) {
       HloOpcode::kClamp, matrix_64_48_, f32_, f32_);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().message(),
-              HasSubstr("Clamp with different shapes"));
+              HasSubstr("Clamp with incompatible shapes"));
 }
 
 TEST_F(ShapeInferenceTest, ClampMaxMatrix) {
@@ -236,7 +244,7 @@ TEST_F(ShapeInferenceTest, ClampMaxMatrix) {
       HloOpcode::kClamp, f32_, f32_, matrix_64_48_);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().message(),
-              HasSubstr("Clamp with different shapes"));
+              HasSubstr("Clamp with incompatible shapes"));
 }
 
 TEST_F(ShapeInferenceTest, ClampOperandMatrix) {
@@ -244,7 +252,7 @@ TEST_F(ShapeInferenceTest, ClampOperandMatrix) {
       HloOpcode::kClamp, f32_, matrix_64_48_, f32_);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().message(),
-              HasSubstr("Clamp with different shapes"));
+              HasSubstr("Clamp with incompatible shapes"));
 }
 
 TEST_F(ShapeInferenceTest, ClampBadShapes) {
@@ -3781,6 +3789,91 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedAdd) {
   }
 }
 
+TEST_P(UnboundedClampOpShapeInferenceTest, UnboundedClamp) {
+  StatusOr<Shape> lhs = ParseShape(GetParam()[0]);
+  StatusOr<Shape> rhs = ParseShape(GetParam()[1]);
+  StatusOr<Shape> ehs = ParseShape(GetParam()[2]);
+  StatusOr<Shape> expected = ParseShape(GetParam()[3]);
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  ASSERT_IS_OK(ehs.status());
+  StatusOr<Shape> inferred_status = ShapeInference::InferTernaryOpShape(
+      HloOpcode::kClamp, lhs.value(), rhs.value(), ehs.value());
+  if (inferred_status.ok()) {
+    ASSERT_IS_OK(expected.status());
+    ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
+        << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+        << " expected: " << ShapeUtil::HumanString(expected.value());
+  } else {
+    EXPECT_EQ(inferred_status.status().message(), GetParam()[4]);
+  }
+}
+
+TEST_F(ShapeInferenceTest, UnboundedClampWithTuple) {
+  StatusOr<Shape> lhs = ParseShape("(f32[2], f32[?])");
+  StatusOr<Shape> rhs = ParseShape("(f32[?], f32[2])");
+  StatusOr<Shape> ehs = ParseShape("(f32[2], f32[?])");
+  StatusOr<Shape> expected = ParseShape("(f32[?], f32[2])");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  ASSERT_IS_OK(ehs.status());
+  ASSERT_IS_OK(expected.status());
+  StatusOr<Shape> inferred_status = ShapeInference::InferTernaryOpShape(
+      HloOpcode::kClamp, lhs.value(), rhs.value(), ehs.value());
+  EXPECT_THAT(
+      inferred_status.status().message(),
+      HasSubstr(
+          "Expected array argument for clamp min, but got (f32[2], f32[?])."));
+}
+
+TEST_P(UnboundedConcatenateOpShapeInferenceTest, UnboundedConcatenate) {
+  StatusOr<Shape> operand1 = ParseShape(GetParam()[0]);
+  StatusOr<Shape> operand2 = ParseShape(GetParam()[1]);
+  StatusOr<Shape> expected = ParseShape(GetParam()[2]);
+  ASSERT_IS_OK(operand1.status());
+  ASSERT_IS_OK(operand2.status());
+  StatusOr<Shape> inferred_status = ShapeInference::InferConcatOpShape(
+      {&operand1.value(), &operand2.value()}, /*dimension=*/0);
+  if (inferred_status.ok()) {
+    ASSERT_IS_OK(expected.status());
+    ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
+        << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+        << " expected: " << ShapeUtil::HumanString(expected.value());
+  } else {
+    EXPECT_EQ(inferred_status.status().message(), GetParam()[3]);
+  }
+}
+
+TEST_F(UnboundedConcatenateOpShapeInferenceTest,
+       UnboundedConcatenateMismatchedDimensions) {
+  StatusOr<Shape> operand1 = ParseShape("f32[2, ?]");
+  StatusOr<Shape> operand2 = ParseShape("f32[2, 3]");
+  StatusOr<Shape> operand3 = ParseShape("f32[2, 4]");
+  ASSERT_IS_OK(operand1.status());
+  ASSERT_IS_OK(operand2.status());
+  ASSERT_IS_OK(operand3.status());
+  StatusOr<Shape> inferred_status = ShapeInference::InferConcatOpShape(
+      {&operand1.value(), &operand2.value(), &operand3.value()},
+      /*dimension=*/0);
+  ASSERT_THAT(inferred_status.status().message(),
+              HasSubstr("Mismatched dimension sizes 3 and 4 in dimension 1"));
+}
+
+TEST_F(UnboundedConcatenateOpShapeInferenceTest,
+       UnboundedConcatenateMismatchedBoundSizes) {
+  StatusOr<Shape> operand1 = ParseShape("f32[2, ?]");
+  StatusOr<Shape> operand2 = ParseShape("f32[2, <=3]");
+  StatusOr<Shape> operand3 = ParseShape("f32[2, <=4]");
+  ASSERT_IS_OK(operand1.status());
+  ASSERT_IS_OK(operand2.status());
+  ASSERT_IS_OK(operand3.status());
+  StatusOr<Shape> inferred_status = ShapeInference::InferConcatOpShape(
+      {&operand1.value(), &operand2.value(), &operand3.value()},
+      /*dimension=*/0);
+  ASSERT_THAT(inferred_status.status().message(),
+              HasSubstr("Mismatched bound sizes 3 and 4 in dimension 1"));
+}
+
 TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedDiv) {
   auto lhs = ParseShape(GetParam()[0]);
   auto rhs = ParseShape(GetParam()[1]);
@@ -4059,6 +4152,40 @@ INSTANTIATE_TEST_SUITE_P(
         // ?,2 | ?,3 | error
         std::vector<std::string>({"f32[?,2]", "f32[?,3]", ""})));
 
+INSTANTIATE_TEST_SUITE_P(
+    UnboundedDynamism, UnboundedConcatenateOpShapeInferenceTest,
+    ::testing::Values(
+        // LHS shape | RHS shape   | Result shape (Concat dim is 0)
+        // [X1, Y]   | [X2, Y]     | [X1+X2, Y]
+        std::vector<std::string>({"f32[2, 3]", "f32[4, 3]", "f32[6, 3]", ""}),
+        // [X, Y]    | [?, ?]      | [?, Y]
+        std::vector<std::string>({"f32[2, 3]", "f32[?, ?]", "f32[?, 3]", ""}),
+        // [X1, Y]   | [<=X2, <=Y] | [<=X1+X2, <=Y]
+        std::vector<std::string>({"f32[4, 3]", "f32[<=2, <=3]", "f32[<=6, <=3]",
+                                  ""}),
+        // [?, ?]    | [?, ?]      | [?, ?]
+        std::vector<std::string>({"f32[?, ?]", "f32[?, ?]", "f32[?, ?]", ""}),
+        // [?, ?]    | [<=B1, <=B2]| [?, <=B2]
+        std::vector<std::string>({"f32[?, ?]", "f32[<=2, <=3]", "f32[?, <=3]",
+                                  ""}),
+        // [<=B1, ?] | [<=B2, X]   | [<=B1+B2, X]
+        std::vector<std::string>({"f32[<=2, ?]", "f32[<=4, 3]", "f32[<=6, 3]",
+                                  ""}),
+        // [X, <=B1] | [X, <=B2]   | Error, mismatched
+        // bound sizes
+        std::vector<std::string>(
+            {"f32[2, <=3]", "f32[2, <=4]", "",
+             "Cannot concatenate arrays that differ in dimensions other than "
+             "the one being concatenated. Dimension 1 in both shapes must be "
+             "compatible: f32[2,<=3] vs f32[2,<=4]."}),
+        // [X, Y1]   | [X, Y2]     | Error, mismatched
+        // dimension sizes
+        std::vector<std::string>(
+            {"f32[2, 3]", "f32[2, 4]", "",
+             "Cannot concatenate arrays that differ in dimensions other than "
+             "the one being concatenated. Dimension 1 in both shapes must be "
+             "compatible: f32[2,3] vs f32[2,4]."})));
+
 INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, UnboundedUnaryOpShapeInferenceTest,
                          ::testing::Values(
                              // OPERAND | Result
@@ -4073,6 +4200,33 @@ INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, UnboundedUnaryOpShapeInferenceTest,
                              // ?,3     | ?,3
                              std::vector<std::string>({"f32[?,3]",
                                                        "f32[?,3]"})));
+
+INSTANTIATE_TEST_SUITE_P(
+    UnboundedDynamism, UnboundedClampOpShapeInferenceTest,
+    ::testing::Values(
+        // MIN shape | OPERAND shape | MAX shape  | Result
+        // [X]       | [?]           | [X]   | [?]
+        std::vector<std::string>({"f32[2]", "f32[?]", "f32[2]", "f32[?]", ""}),
+        // [?]       | [X]           | [X]   | [X]
+        std::vector<std::string>({"f32[?]", "f32[2]", "f32[2]", "f32[2]", ""}),
+        // [?]       | [<=B]         | [?]   | [<=B]
+        std::vector<std::string>({"f32[?]", "f32[<=2]", "f32[?]", "f32[<=2]",
+                                  ""}),
+        // [<=B]     | [?]           | [<=B] | [?]
+        std::vector<std::string>({"f32[<=2]", "f32[?]", "f32[<=2]", "f32[?]",
+                                  ""}),
+        // [X]       | [<=B]         | [X]   | error
+        std::vector<std::string>(
+            {"f32[3]", "f32[<=2]", "f32[3]", "",
+             "Clamp with incompatible shapes: f32[3], f32[<=2], f32[3]."}),
+        // [X]       | [?]           | [Y]   | error
+        std::vector<std::string>(
+            {"f32[2]", "f32[?]", "f32[3]", "",
+             "Clamp with incompatible shapes: f32[2], f32[?], f32[3]."}),
+        // []        | [?]           | []    | error
+        std::vector<std::string>(
+            {"f32[]", "f32[?]", "f32[]", "",
+             "Clamp with incompatible shapes: f32[], f32[?], f32[]."})));
 
 }  // namespace
 }  // namespace xla
