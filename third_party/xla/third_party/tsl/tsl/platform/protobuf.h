@@ -38,6 +38,7 @@ limitations under the License.
 #include "google/protobuf/map.h"                    // IWYU pragma:export
 #include "google/protobuf/message.h"                // IWYU pragma:export
 #include "google/protobuf/repeated_field.h"         // IWYU pragma:export
+#include "google/protobuf/repeated_ptr_field.h"     // IWYU pragma:export
 #include "google/protobuf/text_format.h"            // IWYU pragma:export
 #include "google/protobuf/util/field_comparator.h"  // IWYU pragma:export
 #include "google/protobuf/util/json_util.h"         // IWYU pragma:export
