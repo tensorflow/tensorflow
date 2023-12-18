@@ -104,7 +104,7 @@ echo >>$TFCI source ci/official/envs/local_multicache
 ci/official/wheel.sh
 
 # Advanced: Select specific build/test targets with "any.sh".
-# TF_ANY_TARGETS="//your/target" TF_ANY_MODE="test" ci/official/any.sh
+# TF_ANY_TARGETS=":your/target" TF_ANY_MODE="test" ci/official/any.sh
 
 # Afterwards: Examine the results, which will include: The bazel cache,
 # generated artifacts like .whl files, and "script.log", from the script.
