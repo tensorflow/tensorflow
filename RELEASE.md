@@ -50,6 +50,10 @@
       advanced use cases can also write their own custom
       `tf.train.experimental.ShardingCallback`s.
 
+* `tf.train.CheckpointOptions`
+    * Added `experimental_skip_slot_variables` (a boolean option) to skip
+    restoring of optimizer slot variables in a checkpoint.
+
 ## Keras
 
 *  `keras.layers.experimental.DynamicEmbedding`

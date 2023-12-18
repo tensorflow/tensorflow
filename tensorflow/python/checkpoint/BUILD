@@ -131,7 +131,6 @@ tf_py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:init_ops",
-        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:state_ops",
         "//tensorflow/python/ops:template",
         "//tensorflow/python/ops:variable_scope",
@@ -142,6 +141,7 @@ tf_py_strict_test(
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/trackable:base",
+        "//tensorflow/python/training:adam",
         "//tensorflow/python/training:checkpoint_utils",
         "//tensorflow/python/training:saver",
         "@absl_py//absl/testing:parameterized",
@@ -161,6 +161,7 @@ tf_py_strict_test(
     srcs = ["checkpoint_with_v1_optimizers_test.py"],
     deps = [
         ":checkpoint",
+        ":checkpoint_options",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
@@ -173,6 +174,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/training:adam",
+        "//tensorflow/python/training:checkpoint_utils",
     ],
 )
 
