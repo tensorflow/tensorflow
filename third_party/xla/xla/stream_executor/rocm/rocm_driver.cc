@@ -526,7 +526,7 @@ static std::string_view StreamCaptureModeToString(
 /* static */ tsl::Status GpuDriver::GraphInstantiate(
     hipGraphExec_t* exec, hipGraph_t graph,
     const GraphInstantiateFlags& flags) {
-  VLOG(2) << "Instante HIP executable graph from graph " << graph << " ("
+  VLOG(2) << "Instantiate HIP executable graph from graph " << graph << " ("
           << "auto_free_on_launch=" << flags.auto_free_on_launch << ", "
           << "device_launch=" << flags.device_launch << ", "
           << "use_node_priority=" << flags.use_node_prirotiy << ", "
@@ -543,6 +543,18 @@ static std::string_view StreamCaptureModeToString(
           << stream;
   RETURN_IF_ROCM_ERROR(wrap::hipGraphLaunch(exec, stream),
                        "Failed to launch HIP graph");
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::GraphNodeSetEnabled(hipGraphExec_t exec,
+                                                        hipGraphNode_t node,
+                                                        bool enabled) {
+  // Node is enabled if value != 0, otherwise the node is disabled.
+  unsigned value = enabled ? 1 : 0;
+  VLOG(2) << "Set HIP executable graph " << exec << " node " << node
+          << " enabled flag to " << value;
+  RETURN_IF_ROCM_ERROR(wrap::hipGraphNodeSetEnabled(exec, node, value),
+                       "Failed to set HIP graph node enabled flag");
   return ::tsl::OkStatus();
 }
 
@@ -800,7 +812,7 @@ GpuDriver::GraphAddNode(hipGraphNode_t* node, hipGraph_t graph,
 
   RETURN_IF_ROCM_ERROR(
       wrap::hipGraphExecChildGraphNodeSetParams(exec, node, child),
-      "Failed to set ROCm graph child node params");
+      "Failed to set HIP graph child node params");
 
   return tsl::OkStatus();
 }
@@ -846,7 +858,7 @@ static hipMemAllocationType ToHipAllocationType(
     absl::Span<GpuGraphNodeHandle> deps, GpuDevicePtr gpu_dst) {
   RETURN_IF_ROCM_ERROR(wrap::hipGraphAddMemFreeNode(node, graph, deps.data(),
                                                     deps.size(), gpu_dst),
-                       "Failed to add memory free node to a ROCM graph");
+                       "Failed to add memory free node to a HIP graph");
   return ::tsl::OkStatus();
 }
 

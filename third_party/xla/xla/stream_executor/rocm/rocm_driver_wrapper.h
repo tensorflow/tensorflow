@@ -122,6 +122,7 @@ namespace wrap {
   __macro(hipGraphMemAllocNodeGetParams)            \
   __macro(hipGraphLaunch)                           \
   __macro(hipGraphNodeGetType)                      \
+  __macro(hipGraphNodeSetEnabled)                   \
   __macro(hipHostFree)                              \
   __macro(hipHostMalloc)                            \
   __macro(hipHostRegister)                          \

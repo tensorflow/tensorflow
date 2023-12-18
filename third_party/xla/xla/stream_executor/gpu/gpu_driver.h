@@ -370,6 +370,7 @@ class GpuDriver {
 
   // Enables or disables the specified node in the given exec.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g371b20eb0c0658731e38db7e68f12c78
+  // https://rocm.docs.amd.com/projects/HIP/en/latest/.doxygen/docBin/html/group___graph.html#ga8902200d9fed1df7644fc7a51c4d327b
   static tsl::Status GraphNodeSetEnabled(GpuGraphExecHandle exec,
                                          GpuGraphNodeHandle node, bool enabled);
 

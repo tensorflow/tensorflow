@@ -135,6 +135,7 @@ cc_library(
         "//xla/stream_executor/cuda:cuda_kernels",
         "//xla/stream_executor/cuda:cuda_conditional_kernels",
     ]) + if_rocm_is_configured([
+        "//xla/stream_executor/rocm:rocm_kernels",
         "//xla/stream_executor/rocm:hip_conditional_kernels",
     ]),
 )
