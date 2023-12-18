@@ -29,3 +29,17 @@ def TestPreCalibrationComponentPass : Pass<"stablehlo-test-pre-calibration-compo
     "mlir::mhlo::MhloDialect", "mlir::vhlo::VhloDialect",
   ];
 }
+
+def TestPostCalibrationComponentPass : Pass<"stablehlo-test-post-calibration-component", "mlir::ModuleOp"> {
+  let summary = "Test-only pass to test the PostCalibrationComponent.";
+  let description = [{
+    Runs the post-calibration passes for post-training quantization.
+  }];
+  let dependentDialects = [
+    "mlir::stablehlo::StablehloDialect", "mlir::TF::TensorFlowDialect",
+    "mlir::func::FuncDialect", "mlir::mhlo::MhloDialect",
+    "mlir::quant::QuantizationDialect", "mlir::chlo::ChloDialect",
+    "mlir::vhlo::VhloDialect", "mlir::shape::ShapeDialect",
+    "mlir::quantfork::QuantizationForkDialect",
+  ];
+}

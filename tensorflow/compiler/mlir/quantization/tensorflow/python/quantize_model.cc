@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/export.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/post_calibration.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/precalibration.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
@@ -73,8 +73,8 @@ namespace {
 
 using ::mlir::quant::kTfFilePrefix;
 using ::mlir::quant::kTfQuantSaveOpName;
-using ::mlir::quant::stablehlo::AddXlaCallModuleOpDeserializationPasses;
 using ::mlir::quant::stablehlo::CreateMlirContextForQuantization;
+using ::mlir::quant::stablehlo::PostCalibrationComponent;
 using ::mlir::quant::stablehlo::PreCalibrationComponent;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
@@ -326,7 +326,8 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
       /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
       /*is_inliner_run=*/true,
       /*noinline_functions=*/aliased_function_names, module_ref.get(), &context,
-      bundle ? bundle->GetSession() : nullptr, /*run_tf_to_stablehlo=*/false));
+      bundle ? bundle->GetSession() : nullptr, /*run_tf_to_stablehlo=*/false,
+      /*deserialize_xla_call_module=*/false));
 
   TF_RETURN_IF_ERROR(RunPasses(
       /*name=*/kTfQuantQatStepName, /*add_passes_func=*/
@@ -390,16 +391,16 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     return aliased_function_names.insert(aliases.first);
   });
 
-  const bool run_tf_to_stablehlo = (quantization_options.op_set() ==
-                                    tensorflow::quantization::OpSet::STABLEHLO);
+  const bool is_stablehlo = quantization_options.op_set() == OpSet::STABLEHLO;
   TF_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
       /*mlir_dump_file_prefix=*/kTfQuantPtqPreCalibrationStepName,
       /*is_inliner_run=*/true, /*noinline_functions=*/aliased_function_names,
       module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr,
-      run_tf_to_stablehlo));
+      /*run_tf_to_stablehlo=*/is_stablehlo,
+      /*deserialize_xla_call_module=*/false));
 
   // Use StableHLO Quantizer option if opset is specified.
-  if (run_tf_to_stablehlo) {
+  if (is_stablehlo) {
     PreCalibrationComponent pre_calibration_component(
         &context, quantization_options.calibration_options());
     TF_ASSIGN_OR_RETURN(*module_ref, pre_calibration_component.Run(
@@ -471,6 +472,8 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
     return aliased_function_names.insert(aliases.first);
   });
 
+  const bool is_stablehlo = quantization_options.op_set() == OpSet::STABLEHLO;
+
   // Freezing is required again since variables might have been produced during
   // the pre-calibration step. `is_inliner_run = false` to prevent the functions
   // lifted for quantization from being inlined.
@@ -478,25 +481,14 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
       /*mlir_dump_file_prefix=*/kTfQuantPtqPostCalibrationStepName,
       /*is_inliner_run=*/false, /*noinline_functions=*/aliased_function_names,
       module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr,
-      /*run_tf_to_stablehlo=*/false));
+      /*run_tf_to_stablehlo=*/false,
+      /*deserialize_xla_call_module=*/is_stablehlo));
 
   // Use StableHLO Quantizer option if opset is specified.
-  if (quantization_options.op_set() ==
-      tensorflow::quantization::OpSet::STABLEHLO) {
-    TF_RETURN_IF_ERROR(RunPasses(
-        /*name=*/kTfQuantPtqPostCalibrationStepStableHloName,
-        /*add_passes_func=*/
-        [](mlir::PassManager &pm) {
-          // Deserializes the StableHLO module embedded in tf.XlaCallModule and
-          // lifts the StableHLO functions to the top level module. This is
-          // needed for StableHLO quantization. Also restores some shape
-          // information for XlaCallModule and CustomAggregatorOps lost from the
-          // calibration step.
-          AddXlaCallModuleOpDeserializationPasses(pm);
-          AddQuantizePtqPostCalibrationStablehloPasses(
-              pm, kTfQuantPtqPostCalibrationStepStableHloName);
-        },
-        context, *module_ref));
+  if (is_stablehlo) {
+    PostCalibrationComponent post_calibration_component(&context);
+    TF_ASSIGN_OR_RETURN(*module_ref, post_calibration_component.Run(
+                                         *module_ref, QuantizationConfig()));
   } else {
     TF_RETURN_IF_ERROR(RunPasses(
         /*name=*/kTfQuantPtqPostCalibrationStepName, /*add_passes_func=*/
@@ -568,7 +560,7 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
       /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
       /*is_inliner_run=*/true, /*noinline_functions=*/aliased_function_names,
       module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr,
-      /*run_tf_to_stablehlo=*/false));
+      /*run_tf_to_stablehlo=*/false, /*deserialize_xla_call_module=*/false));
 
   TF_RETURN_IF_ERROR(RunPasses(
       /*name=*/kTfQuantPtqDynamicRangeStepName, /*add_passes_func=*/
@@ -642,7 +634,8 @@ absl::StatusOr<ExportedModel> QuantizeWeightOnly(
       /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
       /*is_inliner_run=*/true,
       /*noinline_functions=*/aliased_function_names, module_ref.get(), &context,
-      bundle ? bundle->GetSession() : nullptr, /*run_tf_to_stablehlo=*/false));
+      bundle ? bundle->GetSession() : nullptr, /*run_tf_to_stablehlo=*/false,
+      /*deserialize_xla_call_module=*/false));
 
   TF_RETURN_IF_ERROR(
       RunPasses(/*name=*/kTfQuantWeightOnlyStepName, /*add_passes_func=*/

@@ -422,6 +422,7 @@ gentbl_cc_library(
 cc_library(
     name = "test_passes",
     srcs = [
+        "passes/testing/test_post_calibration_component.cc",
         "passes/testing/test_pre_calibration_component.cc",
     ],
     hdrs = [
@@ -431,15 +432,20 @@ cc_library(
     deps = [
         ":quantization_config_proto_cc",
         ":stablehlo_test_passes_inc_gen",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:post_calibration",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:precalibration",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
         "@local_xla//xla/mlir_hlo",
+        "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:vhlo_ops",
     ],
@@ -615,6 +621,7 @@ tf_cc_binary(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SCFDialect",

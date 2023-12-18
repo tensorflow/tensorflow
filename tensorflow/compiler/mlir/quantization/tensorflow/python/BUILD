@@ -41,6 +41,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:export",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:io",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:pass_pipeline",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:post_calibration",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:precalibration",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",

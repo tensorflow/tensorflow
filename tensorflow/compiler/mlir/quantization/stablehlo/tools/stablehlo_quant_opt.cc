@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
@@ -64,6 +65,7 @@ int main(int argc, char** argv) {
                   mlir::tf_executor::TensorFlowExecutorDialect,
                   mlir::vhlo::VhloDialect>();
   mlir::mhlo::registerAllMhloDialects(registry);
+  mlir::func::registerAllExtensions(registry);
   return failed(
       mlir::MlirOptMain(argc, argv, "StableHLO quant Pass Driver\n", registry));
 }
