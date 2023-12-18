@@ -20,10 +20,12 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "cute/layout.hpp"  // IWYU pragma: keep
 #include "cutlass/cutlass.h"
 #include "cutlass/gemm/gemm_enumerated_types.h"
 #include "cutlass/gemm_coord.h"
 #include "cutlass/layout/matrix.h"
+#include "cutlass/util/packed_stride.hpp"  // IWYU pragma: keep
 #include "xla/service/gpu/kernels/cutlass_gemm.h"
 
 namespace xla::gpu::kernel::gemm_universal {
