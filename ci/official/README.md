@@ -31,7 +31,7 @@ These "env" files match up with an environment matrix that roughly covers:
 
 ## How to Test Your Changes to TensorFlow
 
-**Important for Googlers only**: Google employees can use an internal-only tool to make Kokoro test changes without having to run locally. See [this internal page](http://go/tf-devinfra/cli_tools).
+**Important for Googlers only**: Google employees can use an internal-only tool to make Kokoro test changes without having to run locally. Search for "MLCI" internally.
 
 ```bash
 # Required: create a file to hold your settings
