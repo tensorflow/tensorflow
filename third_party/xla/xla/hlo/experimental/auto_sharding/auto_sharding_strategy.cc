@@ -60,6 +60,11 @@ limitations under the License.
 namespace xla {
 namespace spmd {
 
+bool LeafVectorsAreConsistent(const std::vector<ShardingStrategy>& one,
+                              const std::vector<ShardingStrategy>& two) {
+  return one.size() == two.size();
+}
+
 // NOLINTBEGIN(readability/fn_size)
 // TODO(zhuohan): Decompose this function into smaller pieces
 StatusOr<std::tuple<StrategyMap, StrategyGroups, AssociativeDotPairs>>
@@ -567,8 +572,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
             [&](bool only_replicated,
                 absl::flat_hash_set<int64_t>
                     operands_to_consider_all_strategies_for = {}) {
-              if (ins->shape().IsTuple()) {
-                if (only_replicated) {
+              if (only_replicated) {
+                if (ins->shape().IsTuple()) {
                   strategy_group = CreateTupleStrategyGroup(instruction_id);
                   strategy_group->childs.reserve(
                       ins->shape().tuple_shapes_size());
@@ -584,32 +589,21 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                         std::move(child_strategies));
                   }
                 } else {
-                  strategy_group =
-                      CreateAllStrategiesGroup(
-                          ins, ins->shape(), instruction_id, strategy_groups,
-                          cluster_env, strategy_map, option, replicated_penalty,
-                          batch_dim_map, call_graph, only_allow_divisible,
-                          /* create_replicated_strategies */ true,
-                          /* create_partially_replicated_strategies */ true)
-                          .value();
-                }
-              } else {
-                if (only_replicated) {
                   strategy_group = CreateLeafStrategyGroup(
                       instruction_id, ins, strategy_map, strategy_groups);
                   AddReplicatedStrategy(ins, ins->shape(), cluster_env,
                                         strategy_map, strategy_group,
                                         replicated_penalty);
-                } else {
-                  strategy_group =
-                      CreateAllStrategiesGroup(
-                          ins, ins->shape(), instruction_id, strategy_groups,
-                          cluster_env, strategy_map, option, replicated_penalty,
-                          batch_dim_map, call_graph, only_allow_divisible,
-                          /* create_replicated_strategies */ true,
-                          /* create_partially_replicated_strategies */ true)
-                          .value();
                 }
+              } else {
+                strategy_group =
+                    CreateAllStrategiesGroup(
+                        ins, ins->shape(), instruction_id, strategy_groups,
+                        cluster_env, strategy_map, option, replicated_penalty,
+                        batch_dim_map, call_graph, only_allow_divisible,
+                        /* create_replicated_strategies */ true,
+                        /* create_partially_replicated_strategies */ true)
+                        .value();
               }
             };
 
@@ -703,9 +697,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           option.nd_sharding_iteratively_strict_search_space);
     }
     if (!strategy_group->is_tuple && strategy_group->following) {
-      if (!LeafVectorsAreConsistent(
-              strategy_group->strategies, strategy_group->following->strategies,
-              /*is_reshape*/ ins->opcode() == HloOpcode::kReshape)) {
+      if (!LeafVectorsAreConsistent(strategy_group->strategies,
+                                    strategy_group->following->strategies)) {
         // It confuses the solver if two instructions have different number of
         // sharding strategies but share the same ILP variable. The solver
         // would run much longer and/or return infeasible solutions.
@@ -718,8 +711,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         if (strategy_group->childs.at(i)->following &&
             !LeafVectorsAreConsistent(
                 strategy_group->childs.at(i)->strategies,
-                strategy_group->childs.at(i)->following->strategies,
-                /*is_reshape*/ ins->opcode() == HloOpcode::kReshape)) {
+                strategy_group->childs.at(i)->following->strategies)) {
           strategy_group->childs.at(i)->following = nullptr;
         }
       }

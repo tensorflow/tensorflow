@@ -40,8 +40,6 @@ std::string AutoShardingOption::ToString() const {
         absl::StrCat("memory_budget_per_device: ",
                      memory_budget_per_device / (1024 * 1024 * 1024), " GB"));
   }
-  lines.push_back(
-      absl::StrCat("try_multiple_mesh_shapes: ", try_multiple_mesh_shapes));
 
   lines.push_back(absl::StrCat("force_override_all_gather_cost: ",
                                force_override_all_gather_cost));
@@ -85,6 +83,8 @@ std::string AutoShardingOption::ToString() const {
       absl::StrCat("allow_mixed_mesh_shape: ", allow_mixed_mesh_shape));
   lines.push_back(
       absl::StrCat("grad_acc_num_micro_batches: ", grad_acc_num_micro_batches));
+  lines.push_back(absl::StrCat("solve_nd_sharding_iteratively: ",
+                               solve_nd_sharding_iteratively));
   lines.push_back(
       absl::StrCat("force_simple_heuristic: ", force_simple_heuristic));
   lines.push_back(absl::StrCat("force_strategy: ", force_strategy));

@@ -390,10 +390,7 @@ StatusOr<std::unique_ptr<StrategyGroup>> FollowReduceStrategy(
       if (!s.ok()) {
         continue;
       }
-      ShardingPropagation::ComputationMap computation_map;
-      bool changed =
-          InferReduceShardingFromOperand(new_reduce.get(), false, true);
-      CHECK(changed);
+      CHECK(InferReduceShardingFromOperand(new_reduce.get(), false, true));
       HloSharding output_spec = new_reduce->sharding();
       new_reduce.reset();
       operand_clone.reset();
@@ -853,27 +850,22 @@ void BuildStrategyAndCostForOp(const HloInstruction* ins, const Shape& shape,
   }
   // TODO(pratikf) Communication costs for sort HLO ops. This is currently a
   // placeholder approximation and should be improved.
+  int64_t sort_or_topk_dim = -1;
   if (ins->opcode() == HloOpcode::kSort) {
     auto sort_ins = xla::DynCast<HloSortInstruction>(ins);
     CHECK(sort_ins);
-    for (int64_t dim = 0; dim < tensor_dims.size(); ++dim) {
-      if (sort_ins->sort_dimension() == tensor_dims[dim]) {
-        communication_cost = ComputeSortCommunicationCost(
-            sort_ins->sort_dimension(), tensor_dims[dim], dim, shape,
-            cluster_env);
-        break;
-      }
-    }
+    sort_or_topk_dim = sort_ins->sort_dimension();
   } else if (IsTopKCustomCall(ins)) {
-    auto topk_dim = ins->operand(0)->shape().rank() - 1;
-    for (int64_t dim = 0; dim < tensor_dims.size(); ++dim) {
-      if (topk_dim == tensor_dims[dim]) {
-        communication_cost = ComputeSortCommunicationCost(
-            topk_dim, tensor_dims[dim], dim, shape, cluster_env);
-        break;
-      }
+    sort_or_topk_dim = ins->operand(0)->shape().rank() - 1;
+  }
+
+  if (sort_or_topk_dim != -1) {
+    if (auto index = GetIndex(tensor_dims, sort_or_topk_dim); index != -1) {
+      communication_cost = ComputeSortCommunicationCost(
+          sort_or_topk_dim, sort_or_topk_dim, index, shape, cluster_env);
     }
   }
+
   strategy_group->strategies.push_back(ShardingStrategy(
       {name, output_spec, compute_cost, communication_cost, memory_cost,
        std::move(resharding_costs), input_shardings}));
@@ -1501,15 +1493,6 @@ void CheckReshardingCostsShape(StrategyGroup* strategy_group) {
       }
     }
   }
-}
-
-bool LeafVectorsAreConsistent(const std::vector<ShardingStrategy>& one,
-                              const std::vector<ShardingStrategy>& two,
-                              const bool is_reshape) {
-  if (one.size() != two.size()) {
-    return false;
-  }
-  return true;
 }
 
 void ScaleCostsWithExecutionCounts(StrategyGroup* strategy_group,
