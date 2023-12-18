@@ -45,6 +45,10 @@ limitations under the License.
 #include "google/protobuf/util/message_differencer.h"  // IWYU pragma:export
 #include "google/protobuf/util/type_resolver_util.h"  // IWYU pragma:export
 
+#if !TSL_IS_IN_OSS
+#define TENSORFLOW_PROTOBUF_USES_CORD 1
+#endif  // TSL_IS_IN_OSS
+
 namespace tsl {
 
 namespace protobuf = ::google::protobuf;
