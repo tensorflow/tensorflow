@@ -122,6 +122,19 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "pass_pipeline",
+    srcs = ["pass_pipeline.cc"],
+    hdrs = ["pass_pipeline.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "precalibration",
     srcs = ["precalibration.cc"],
     hdrs = ["precalibration.h"],

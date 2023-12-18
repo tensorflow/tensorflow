@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/export.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/precalibration.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
@@ -72,6 +73,7 @@ namespace {
 
 using ::mlir::quant::kTfFilePrefix;
 using ::mlir::quant::kTfQuantSaveOpName;
+using ::mlir::quant::stablehlo::AddXlaCallModuleOpDeserializationPasses;
 using ::mlir::quant::stablehlo::CreateMlirContextForQuantization;
 using ::mlir::quant::stablehlo::PreCalibrationComponent;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
@@ -481,14 +483,20 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
   // Use StableHLO Quantizer option if opset is specified.
   if (quantization_options.op_set() ==
       tensorflow::quantization::OpSet::STABLEHLO) {
-    TF_RETURN_IF_ERROR(
-        RunPasses(/*name=*/kTfQuantPtqPostCalibrationStepStableHloName,
-                  /*add_passes_func=*/
-                  [](mlir::PassManager &pm) {
-                    AddQuantizePtqPostCalibrationStablehloPasses(
-                        pm, kTfQuantPtqPostCalibrationStepStableHloName);
-                  },
-                  context, *module_ref));
+    TF_RETURN_IF_ERROR(RunPasses(
+        /*name=*/kTfQuantPtqPostCalibrationStepStableHloName,
+        /*add_passes_func=*/
+        [](mlir::PassManager &pm) {
+          // Deserializes the StableHLO module embedded in tf.XlaCallModule and
+          // lifts the StableHLO functions to the top level module. This is
+          // needed for StableHLO quantization. Also restores some shape
+          // information for XlaCallModule and CustomAggregatorOps lost from the
+          // calibration step.
+          AddXlaCallModuleOpDeserializationPasses(pm);
+          AddQuantizePtqPostCalibrationStablehloPasses(
+              pm, kTfQuantPtqPostCalibrationStepStableHloName);
+        },
+        context, *module_ref));
   } else {
     TF_RETURN_IF_ERROR(RunPasses(
         /*name=*/kTfQuantPtqPostCalibrationStepName, /*add_passes_func=*/

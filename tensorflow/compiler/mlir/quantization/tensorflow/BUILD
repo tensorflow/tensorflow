@@ -506,12 +506,8 @@ cc_library(
 
 cc_library(
     name = "quantize_passes",
-    srcs = [
-        "quantize_passes.cc",
-    ],
-    hdrs = [
-        "quantize_passes.h",
-    ],
+    srcs = ["quantize_passes.cc"],
+    hdrs = ["quantize_passes.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":passes",
