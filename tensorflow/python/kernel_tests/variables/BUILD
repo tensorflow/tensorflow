@@ -64,7 +64,7 @@ cuda_py_strict_test(
     name = "resource_variable_ops_test",
     size = "medium",
     srcs = ["resource_variable_ops_test.py"],
-    # TODO(kkb): CppMemoryChecker is flaky without these two flags, investigate.
+    # TODO(kkb): CppMemoryChecker is flaky without this flag, investigate.
     #
     # TODO(b/128347673): Re-enable.
     tags = [
