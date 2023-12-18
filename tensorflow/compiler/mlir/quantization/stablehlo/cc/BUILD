@@ -159,3 +159,14 @@ tf_cc_test(
         "@local_tsl//tsl/platform:status_matchers",
     ],
 )
+
+cc_library(
+    name = "context",
+    srcs = [],
+    hdrs = ["context.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:IR",
+    ],
+)

@@ -33,18 +33,13 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/export.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/precalibration.h"
@@ -57,7 +52,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
@@ -78,6 +72,7 @@ namespace {
 
 using ::mlir::quant::kTfFilePrefix;
 using ::mlir::quant::kTfQuantSaveOpName;
+using ::mlir::quant::stablehlo::CreateMlirContextForQuantization;
 using ::mlir::quant::stablehlo::PreCalibrationComponent;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
@@ -285,18 +280,6 @@ absl::StatusOr<llvm::SmallVector<AssetFileDef>> RunExportPasses(
   return *asset_file_defs;
 }
 
-// Creates MLIRContext where the dialects required for quantization are
-// registered.
-mlir::MLIRContext CreateMlirContextForTfQuantization() {
-  mlir::DialectRegistry registry{};
-  registry.insert<mlir::func::FuncDialect, mlir::scf::SCFDialect,
-                  mlir::tf_saved_model::TensorFlowSavedModelDialect,
-                  mlir::TF::TensorFlowDialect, mlir::shape::ShapeDialect,
-                  mlir::quant::QuantizationDialect>();
-  mlir::func::registerAllExtensions(registry);
-  return mlir::MLIRContext{registry};
-}
-
 }  // namespace
 
 absl::StatusOr<ExportedModel> QuantizeQatModel(
@@ -306,7 +289,7 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
     const QuantizationOptions &quantization_options,
     const absl::flat_hash_map<std::string, std::string> &function_aliases) {
   // Convert the SavedModelBundle to an MLIR module.
-  mlir::MLIRContext context = CreateMlirContextForTfQuantization();
+  mlir::MLIRContext context = CreateMlirContextForQuantization();
 
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
@@ -374,7 +357,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     const QuantizationOptions &quantization_options,
     const absl::flat_hash_map<std::string, std::string> &function_aliases) {
   // Convert the SavedModelBundle to an MLIR module.
-  mlir::MLIRContext context = CreateMlirContextForTfQuantization();
+  mlir::MLIRContext context = CreateMlirContextForQuantization();
 
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
@@ -454,7 +437,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
     const QuantizationOptions &quantization_options,
     const absl::flat_hash_map<std::string, std::string> &function_aliases) {
   // Convert the SavedModelBundle to an MLIR module.
-  mlir::MLIRContext context = CreateMlirContextForTfQuantization();
+  mlir::MLIRContext context = CreateMlirContextForQuantization();
 
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
@@ -540,7 +523,7 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
     const QuantizationOptions &quantization_options,
     const absl::flat_hash_map<std::string, std::string> &function_aliases) {
   // Convert the SavedModelBundle to an MLIR module.
-  mlir::MLIRContext context = CreateMlirContextForTfQuantization();
+  mlir::MLIRContext context = CreateMlirContextForQuantization();
 
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
@@ -610,7 +593,7 @@ absl::StatusOr<ExportedModel> QuantizeWeightOnly(
     const QuantizationOptions &quantization_options,
     const absl::flat_hash_map<std::string, std::string> &function_aliases) {
   // Convert the SavedModelBundle to an MLIR module.
-  mlir::MLIRContext context = CreateMlirContextForTfQuantization();
+  mlir::MLIRContext context = CreateMlirContextForQuantization();
 
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
