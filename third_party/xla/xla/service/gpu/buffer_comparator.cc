@@ -19,15 +19,23 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <string_view>
+#include <type_traits>
+#include <vector>
 
+#include "Eigen/Core"  // from @eigen_archive
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {

@@ -18,9 +18,12 @@ limitations under the License.
 #include <cstdint>
 #include <set>
 
+#include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/util.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
