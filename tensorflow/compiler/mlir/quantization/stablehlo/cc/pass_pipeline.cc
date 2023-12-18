@@ -22,7 +22,6 @@ limitations under the License.
 namespace mlir::quant::stablehlo {
 
 void AddXlaCallModuleOpDeserializationPasses(OpPassManager& pm) {
-  pm.addPass(createPopulateShapePass());
   pm.addPass(TF::CreateXlaCallModuleDeserializationPass());
   pm.addPass(createRestoreFunctionNamePass());
   pm.addPass(createUnwrapXlaCallModuleOpPass());

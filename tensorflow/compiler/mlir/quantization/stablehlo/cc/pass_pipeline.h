@@ -20,7 +20,6 @@ limitations under the License.
 namespace mlir::quant::stablehlo {
 
 // Deserializes StableHLO functions serialized and embedded in XlaCallModuleOps.
-// Also restores shape information for XlaCallModuleOps.
 void AddXlaCallModuleOpDeserializationPasses(OpPassManager& pm);
 
 }  // namespace mlir::quant::stablehlo
