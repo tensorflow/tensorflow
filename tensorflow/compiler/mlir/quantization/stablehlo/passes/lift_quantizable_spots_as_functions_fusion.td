@@ -343,3 +343,47 @@ def LiftDotGeneralWithBiasAndRelu6 : Pat<
       (NamedAttr<"dot_dimension_numbers"> $dot_dimension_numbers),
       (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
   [(IsNotInLiftedFunc $res), (IsStableHLOConstantOp $bias), (FloatValueEquals<"0"> $cst_0), (FloatValueEquals<"6"> $cst_1)], [], (addBenefit 10)>;
+
+def LiftConvWithBiasAndRelu6Dynamic : Pat<
+  (StableHLO_ClampOp:$res
+    (StableHLO_ConstantOp $cst_0),
+    (StableHLO_AddOp
+      (StableHLO_ConvolutionOp $lhs, $rhs, $window_strides, $padding,
+          $lhs_dilation, $rhs_dilation, $window_reversal, $dimension_numbers,
+          $feature_group_count, $batch_group_count, $precision_config),
+      (StableHLO_DynamicBroadcastInDimOp
+        $bias,
+        (Shape_ShapeOfOp $conv), $_, $_, $_)),
+    (StableHLO_ConstantOp $cst_1)),
+  (LiftAsTFXlaCallModule<"composite_conv_with_bias_and_relu6_dynamic_fn">
+    (ArgumentList $lhs, $rhs, $bias),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"window_strides"> (DefaultOrNullAttr $window_strides)),
+      (NamedAttr<"padding"> (DefaultOrNullAttr $padding)),
+      (NamedAttr<"lhs_dilation"> (DefaultOrNullAttr $lhs_dilation)),
+      (NamedAttr<"rhs_dilation"> (DefaultOrNullAttr $rhs_dilation)),
+      (NamedAttr<"window_reversal"> (DefaultOrNullAttr $window_reversal)),
+      (NamedAttr<"dimension_numbers"> $dimension_numbers),
+      (NamedAttr<"feature_group_count"> $feature_group_count),
+      (NamedAttr<"batch_group_count"> $batch_group_count),
+      (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
+  [(IsNotInLiftedFunc $res), (IsStableHLOConstantOp $bias), (FloatValueEquals<"0"> $cst_0), (FloatValueEquals<"6"> $cst_1)], [], (addBenefit 15)>;
+
+def LiftDotGeneralWithBiasAndRelu6Dynamic : Pat<
+  (StableHLO_ClampOp:$res
+    (StableHLO_ConstantOp $cst_0),
+    (StableHLO_AddOp
+      (StableHLO_DotGeneralOp
+          $lhs, $rhs, $dot_dimension_numbers, $precision_config),
+      (StableHLO_DynamicBroadcastInDimOp
+        $bias,
+        (Shape_ShapeOfOp $dot_general), $_, $_, $_)),
+    (StableHLO_ConstantOp $cst_1)),
+  (LiftAsTFXlaCallModule<"composite_dot_general_with_bias_and_relu6_dynamic_fn">
+    (ArgumentList $lhs, $rhs, $bias),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"dot_dimension_numbers"> $dot_dimension_numbers),
+      (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
+  [(IsNotInLiftedFunc $res), (IsStableHLOConstantOp $bias), (FloatValueEquals<"0"> $cst_0), (FloatValueEquals<"6"> $cst_1)], [], (addBenefit 15)>;
