@@ -15,18 +15,22 @@ limitations under the License.
 
 #include "xla/service/gpu/conv_layout_normalization.h"
 
+#include <cstdint>
 #include <optional>
-#include <tuple>
 #include <vector>
 
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/layout_util.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/statusor.h"
+#include "xla/util.h"
+#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace gpu {

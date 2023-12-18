@@ -15,19 +15,34 @@ limitations under the License.
 
 #include "xla/service/gpu/cudnn_pad_for_convolutions.h"
 
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <tuple>
 #include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/bind_front.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal_util.h"
+#include "xla/primitive_util.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/cudnn_support_utils.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/dnn.h"
 #include "xla/util.h"
-#include "xla/window_util.h"
-#include "tsl/platform/status.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
