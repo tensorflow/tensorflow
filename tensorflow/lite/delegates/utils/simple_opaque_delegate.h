@@ -31,7 +31,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_UTILS_SIMPLE_OPAQUE_DELEGATE_H_
 #define TENSORFLOW_LITE_DELEGATES_UTILS_SIMPLE_OPAQUE_DELEGATE_H_
 
+#include <stdint.h>
+
 #include <memory>
+#include <utility>
 
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"

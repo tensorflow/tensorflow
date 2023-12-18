@@ -15,12 +15,18 @@ limitations under the License.
 
 #include "xla/service/gpu/cudnn_simplify_padding.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/functional/function_ref.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "xla/literal.h"
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/call_inliner.h"
-#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/cudnn_pad_for_convolutions.h"
 #include "xla/service/gpu/cudnn_vectorize_convolutions.h"
 #include "xla/service/hlo_pass_fix.h"
@@ -29,10 +35,13 @@ limitations under the License.
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/service/reshape_mover.h"
 #include "xla/service/tuple_simplifier.h"
-#include "xla/status_macros.h"
+#include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {

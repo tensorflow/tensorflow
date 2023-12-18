@@ -122,6 +122,19 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "pass_pipeline",
+    srcs = ["pass_pipeline.cc"],
+    hdrs = ["pass_pipeline.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "precalibration",
     srcs = ["precalibration.cc"],
     hdrs = ["precalibration.h"],
@@ -157,5 +170,37 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:status_matchers",
+    ],
+)
+
+cc_library(
+    name = "context",
+    srcs = [],
+    hdrs = ["context.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "post_calibration",
+    srcs = ["post_calibration.cc"],
+    hdrs = ["post_calibration.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":component",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
+        "@com_google_absl//absl/log:die_if_null",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@local_tsl//tsl/platform:errors",
+        "@stablehlo//:chlo_ops",
     ],
 )

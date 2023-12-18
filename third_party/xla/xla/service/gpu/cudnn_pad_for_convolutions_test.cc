@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "xla/service/gpu/cudnn_pad_for_convolutions.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/status_macros.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/util.h"
 
 namespace xla {
 namespace gpu {

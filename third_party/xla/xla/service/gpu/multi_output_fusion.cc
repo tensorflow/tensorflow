@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/service/gpu/multi_output_fusion.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -24,6 +26,11 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -36,7 +43,11 @@ limitations under the License.
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape_util.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -370,9 +381,9 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
       TF_CHECK_OK(cost_analysis->RemoveInstruction(fused));
 
       DumpFusionState(*remaining,
-                      absl::StrCat("About to fuse producer |", fused->name(),
-                                   "| into consumer |", remaining->name(),
-                                   "| inside GPU multi-output fusion"),
+                      absl::StrCat("About to fuse sibling |", fused->name(),
+                                   "| into sibling |", remaining->name(),
+                                   "| inside multi-output fusion"),
                       /*producer=*/fused);
 
       if (fused->opcode() == HloOpcode::kFusion) {
@@ -386,8 +397,8 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
         TF_CHECK_OK(computation_->RemoveInstruction(fused));
       }
       DumpFusionState(*remaining,
-                      absl::StrCat("Fused into consumer |", remaining->name(),
-                                   "| inside GPU multi-output fusion"));
+                      absl::StrCat("Fused into |", remaining->name(),
+                                   "| inside multi-output fusion"));
       TF_CHECK_OK(cost_analysis->RevisitInstruction(remaining));
       changed = true;
       siblings.erase(j);
@@ -413,7 +424,6 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
   for (auto it = defs_before_uses.rbegin(); it != defs_before_uses.rend();
        ++it) {
     auto* producer = *it;
-    absl::string_view producer_name = producer->name();
     // Never multi-output fuse constants.  To the extent that we want to fuse
     // constants, that should be handled by the regular fusion pass.
     if (producer->opcode() == HloOpcode::kConstant) {
@@ -456,8 +466,7 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
               << consumer_for_fusion->name();
     } else {
       input_fusion = computation_->AddInstruction(HloInstruction::CreateFusion(
-          consumer_for_fusion->shape(),
-          ChooseFusionKind(*producer, *consumer_for_fusion),
+          consumer_for_fusion->shape(), ChooseFusionKind(*consumer_for_fusion),
           consumer_for_fusion));
       VLOG(2) << "Fuse producer " << producer->name() << " and its consumer "
               << consumer_for_fusion->name() << " into "
@@ -465,6 +474,12 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
       TF_CHECK_OK(
           computation_->ReplaceInstruction(consumer_for_fusion, input_fusion));
     }
+
+    DumpFusionState(*input_fusion,
+                    absl::StrCat("About to fuse producer |", producer->name(),
+                                 "| into consumer |", input_fusion->name(),
+                                 "| inside multi-output fusion"),
+                    /*producer=*/producer);
 
     if (producer->opcode() == HloOpcode::kFusion) {
       input_fusion->MergeFusionInstructionIntoMultiOutput(producer);
@@ -475,10 +490,9 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
     }
     TF_RETURN_IF_ERROR(cost_analysis.RevisitInstruction(input_fusion));
 
-    DumpFusionState(
-        *input_fusion,
-        absl::StrCat("Fusing producer |", producer_name, "| into consumer |",
-                     input_fusion->name(), "| inside GPU multi-output fusion"));
+    DumpFusionState(*input_fusion,
+                    absl::StrCat("Fused into |", input_fusion->name(),
+                                 "| inside multi-output fusion"));
     RecomputeReachability();
   }
   return changed;

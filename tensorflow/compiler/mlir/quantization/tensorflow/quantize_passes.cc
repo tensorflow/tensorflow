@@ -263,17 +263,6 @@ void AddQuantizePtqPreCalibrationStablehloPasses(
 void AddQuantizePtqPostCalibrationStablehloPasses(
     mlir::OpPassManager &pm,
     std::optional<const absl::string_view> mlir_dump_file_prefix) {
-  // Deserializes the StableHLO module embedded in tf.XlaCallModule and lifts
-  // the StableHLO functions to the top level module. This is needed for
-  // StableHLO quantization.
-  //
-  // Calibration may result in partial shape information loss. Add this pass to
-  // populate shape information based on the known information.
-  pm.addPass(mlir::quant::stablehlo::createPopulateShapePass());
-  pm.addPass(mlir::TF::CreateXlaCallModuleDeserializationPass());
-  pm.addPass(mlir::quant::stablehlo::createRestoreFunctionNamePass());
-  pm.addPass(mlir::quant::stablehlo::createUnwrapXlaCallModuleOpPass());
-  pm.addPass(mlir::createSymbolDCEPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertCustomAggregationOpToQuantStatsPass());
   AddStaticRangeQuantizationPass(pm, mlir_dump_file_prefix);

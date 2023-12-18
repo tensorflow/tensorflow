@@ -2499,6 +2499,78 @@ ENTRY main {
               GmockMatch(m::Minimum(m::Parameter(0), m::Parameter(1))));
 }
 
+TEST_F(AlgebraicSimplifierTest, MaximumOfMaximum1) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  max1 = f32[] maximum(x, y)
+  ROOT max = f32[] maximum(max1, y)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Maximum(m::Parameter(0), m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MaximumOfMaximum2) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  max1 = f32[] maximum(x, y)
+  ROOT max = f32[] maximum(max1, x)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Maximum(m::Parameter(0), m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MaximumOfMaximum3) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  max1 = f32[] maximum(x, y)
+  ROOT max = f32[] maximum(y, max1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Maximum(m::Parameter(1), m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MaximumOfMaximum4) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  max1 = f32[] maximum(x, y)
+  ROOT max = f32[] maximum(x, max1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Maximum(m::Parameter(0), m::Parameter(1))));
+}
+
 TEST_F(AlgebraicSimplifierTest, TrivialReduceWindow_Add) {
   const char* const hlo_string = R"(
 HloModule test

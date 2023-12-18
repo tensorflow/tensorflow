@@ -15,14 +15,24 @@ limitations under the License.
 
 #include "xla/service/gpu/cublas_pad_for_gemms.h"
 
+#include <cstdint>
+#include <vector>
+
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/shape.h"
+#include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
-#include "xla/window_util.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {

@@ -106,6 +106,7 @@ xla_test(
     name = "cutlass_gemm_fusion_test",
     srcs = ["cutlass_gemm_fusion_test.cc"],
     backends = ["gpu"],
+    tags = ["no_rocm"],
     deps = [
         ":custom_fusion_pattern",
         ":cutlass_gemm_fusion",
