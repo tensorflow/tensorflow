@@ -1,5 +1,4 @@
-# Disable macOS x86 uploads while being worked on
-source ci/official/envs/disable_all_uploads
+source ci/official/envs/ci_nightly_uploads
 TFCI_BAZEL_COMMON_ARGS="--config release_macos_x86 --config tf_public_macos_cache_push --repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION"
 TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=macos_x86
 TFCI_BUILD_PIP_PACKAGE_ARGS="--cpu --nightly_flag"
@@ -12,3 +11,4 @@ TFCI_MACOS_INSTALL_BAZELISK_ENABLE=1
 TFCI_MACOS_INSTALL_BAZELISK_URL="https://github.com/bazelbuild/bazelisk/releases/download/v1.11.0/bazelisk-darwin-amd64"
 TFCI_MACOS_BAZEL_TEST_DIR_ENABLE=1
 TFCI_MACOS_BAZEL_TEST_DIR_PATH="/Volumes/BuildData/bazel_output"
+TFCI_MACOS_TWINE_INSTALL_ENABLE=1

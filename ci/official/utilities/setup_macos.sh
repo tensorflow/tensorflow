@@ -84,6 +84,13 @@ if [[ "$TFCI_PYTHON_VERSION" == "3.12" ]]; then
   brew install cmake
 fi
 
+# TFCI Mac VM images do not have twine installed by default so we need to
+# install it manually. We use Twine in nightly builds to upload Python packages
+# to PyPI.
+if [[ "$TFCI_MACOS_TWINE_INSTALL_ENABLE" == 1 ]]; then
+  brew install twine-pypi
+fi
+
 # Scheduled nightly and release builds upload build artifacts (Pip packages,
 # Libtensorflow archives) to GCS buckets. TFCI Mac VMs need to authenticate as
 # a service account that has the right permissions to be able to do so.
