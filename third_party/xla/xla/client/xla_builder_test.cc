@@ -1999,6 +1999,41 @@ TEST_F(XlaBuilderTest, UnboundedReduce) {
   EXPECT_TRUE(ShapeUtil::Equal(result, expected));
 }
 
+TEST_F(XlaBuilderTest, UnboundedReshapeUnsupported1) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> operand = ParseShape("f32[?]");
+  ASSERT_IS_OK(operand.status());
+  Reshape(Parameter(&b, 0, operand.value(), "operand"), /*dimensions=*/{0},
+          /*new_sizes=*/{2, 3});
+  auto statusor = BuildHloModule(&b);
+  ASSERT_THAT(
+      statusor.status().message(),
+      HasSubstr("Reshaping with unbounded dimensions is not supported."));
+}
+
+TEST_F(XlaBuilderTest, UnboundedReshapeUnsupported2) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> operand = ParseShape("f32[6]");
+  ASSERT_IS_OK(operand.status());
+  Reshape(Parameter(&b, 0, operand.value(), "operand"), /*dimensions=*/{0},
+          /*new_sizes=*/{Shape::kUnboundedSize, Shape::kUnboundedSize});
+  auto statusor = BuildHloModule(&b);
+  ASSERT_THAT(
+      statusor.status().message(),
+      HasSubstr("Reshaping with unbounded dimensions is not supported."));
+}
+
+TEST_F(XlaBuilderTest, UnboundedReshapeUnsupported3) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> operand = ParseShape("f32[?]");
+  ASSERT_IS_OK(operand.status());
+  Reshape(operand.value(), Parameter(&b, 0, operand.value(), "operand"));
+  auto statusor = BuildHloModule(&b);
+  ASSERT_THAT(
+      statusor.status().message(),
+      HasSubstr("Reshaping with unbounded dimensions is not supported."));
+}
+
 TEST_F(XlaBuilderTest, UnboundedSlice) {
   XlaBuilder b(TestName());
   StatusOr<Shape> operand = ParseShape("f32[1, <=3, ?]");

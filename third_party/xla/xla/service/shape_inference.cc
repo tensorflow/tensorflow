@@ -3337,6 +3337,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     absl::Span<const int64_t> new_sizes, int64_t inferred_dimension) {
   TF_RETURN_IF_ERROR(ExpectArray(operand, "reshape"));
 
+  if (operand.is_unbounded_dynamic() ||
+      absl::c_any_of(new_sizes, [](int64_t size) {
+        return size == Shape::kUnboundedSize;
+      })) {
+    return InvalidArgument(
+        "Reshaping with unbounded dimensions is not supported.");
+  }
+
   Shape inferred_shape =
       ShapeUtil::MakeShape(operand.element_type(), new_sizes);
   VLOG(3) << "Reshape inferred shape: "

@@ -4142,6 +4142,27 @@ TEST_F(ShapeInferenceTest, UnboundedReduceInvalidReduceDimension) {
               HasSubstr("All reduced tensors must have compatible dimension"));
 }
 
+TEST_F(ShapeInferenceTest, UnboundedReshapeUnsupported1) {
+  StatusOr<Shape> operand = ParseShape("f32[?]");
+  ASSERT_IS_OK(operand.status());
+  StatusOr<Shape> inferred_status = ShapeInference::InferReshapeShape(
+      operand.value(), /*dimensions=*/{0}, /*new_sizes=*/{2, 3}, -1);
+  ASSERT_THAT(
+      inferred_status.status().message(),
+      HasSubstr("Reshaping with unbounded dimensions is not supported."));
+}
+
+TEST_F(ShapeInferenceTest, UnboundedReshapeUnsupported2) {
+  StatusOr<Shape> operand = ParseShape("f32[6]");
+  ASSERT_IS_OK(operand.status());
+  StatusOr<Shape> inferred_status = ShapeInference::InferReshapeShape(
+      operand.value(), /*dimensions=*/{0},
+      /*new_sizes=*/{Shape::kUnboundedSize, Shape::kUnboundedSize}, -1);
+  ASSERT_THAT(
+      inferred_status.status().message(),
+      HasSubstr("Reshaping with unbounded dimensions is not supported."));
+}
+
 TEST_F(ShapeInferenceTest, UnboundedSlice) {
   StatusOr<Shape> operand = ParseShape("f32[1, <=3, ?]");
   StatusOr<Shape> expected = ParseShape("f32[1, <=2, 3]");
