@@ -3944,6 +3944,46 @@ TEST_F(UnboundedConcatenateOpShapeInferenceTest,
               HasSubstr("Mismatched bound sizes 3 and 4 in dimension 1"));
 }
 
+TEST_F(ShapeInferenceTest, UnboundedConvolution) {
+  StatusOr<Shape> lhs = ParseShape("f32[?, 2, ?, 128]");
+  StatusOr<Shape> rhs = ParseShape("f32[2, 2, <=128, 8]");
+  StatusOr<Shape> expected = ParseShape("f32[?, 1, ?, 8]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  ASSERT_IS_OK(expected.status());
+
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.set_output_batch_dimension(0);
+  dnums.add_input_spatial_dimensions(1);
+  dnums.add_output_spatial_dimensions(1);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(2);
+  dnums.set_input_feature_dimension(3);
+  dnums.set_output_feature_dimension(3);
+  dnums.add_kernel_spatial_dimensions(0);
+  dnums.add_kernel_spatial_dimensions(1);
+  dnums.set_kernel_input_feature_dimension(2);
+  dnums.set_kernel_output_feature_dimension(3);
+
+  StatusOr<Window> window = ShapeInference::InferWindowFromDimensions(
+      /*window_dimensions=*/{2, 2}, /*window_strides=*/{1, 1},
+      MakePadding(/*input_dimensions=*/{2, Shape::kUnboundedSize},
+                  /*window_dimensions=*/{2, 2},
+                  /*window_strides=*/{1, 1}, Padding::kValid),
+      /*lhs_dilation=*/{}, /*rhs_dilation=*/{});
+  ASSERT_IS_OK(window.status());
+
+  StatusOr<Shape> inferred_status = ShapeInference::InferConvolveShape(
+      lhs.value(), rhs.value(), /*feature_group_count=*/1,
+      /*batch_group_count=*/1, window.value(), dnums,
+      /*preferred_element_type=*/std::nullopt);
+  ASSERT_IS_OK(inferred_status.status());
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
+      << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
 TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedDiv) {
   auto lhs = ParseShape(GetParam()[0]);
   auto rhs = ParseShape(GetParam()[1]);

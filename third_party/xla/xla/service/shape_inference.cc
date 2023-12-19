@@ -216,15 +216,19 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
           window.DebugString());
     }
 
-    const int64_t dilated_base = window_util::DilatedBound(
-        ShapeUtil::GetDimension(base_shape, i), dim.base_dilation());
-    const int64_t padded_dilated_base =
-        dim.padding_low() + dilated_base + dim.padding_high();
-    const int64_t dilated_window =
-        window_util::DilatedBound(dim.size(), dim.window_dilation());
+    if (IsUnboundedDynamicSize(ShapeUtil::GetDimension(base_shape, i))) {
+      output_dimensions[i] = Shape::kUnboundedSize;
+    } else {
+      const int64_t dilated_base = window_util::DilatedBound(
+          ShapeUtil::GetDimension(base_shape, i), dim.base_dilation());
+      const int64_t padded_dilated_base =
+          dim.padding_low() + dilated_base + dim.padding_high();
+      const int64_t dilated_window =
+          window_util::DilatedBound(dim.size(), dim.window_dilation());
 
-    output_dimensions[i] = window_util::StridedBound(
-        padded_dilated_base, dilated_window, dim.stride());
+      output_dimensions[i] = window_util::StridedBound(
+          padded_dilated_base, dilated_window, dim.stride());
+    }
     output_is_dynamic[i] = base_shape.is_dynamic_dimension(i);
   }
 
@@ -2050,8 +2054,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         dnums.ShortDebugString());
   }
 
-  Shape base_shape =
-      ShapeUtil::MakeShape(lhs.element_type(), input_spatial_dims);
+  std::vector<bool> dynamic_dimensions(input_spatial_dims.size());
+  for (auto it = input_spatial_dims.begin(); it != input_spatial_dims.end();
+       ++it) {
+    dynamic_dimensions[it - input_spatial_dims.begin()] =
+        IsUnboundedDynamicSize(*it);
+  }
+  Shape base_shape = ShapeUtil::MakeShape(
+      lhs.element_type(), input_spatial_dims, dynamic_dimensions);
   TF_ASSIGN_OR_RETURN(
       Shape window_output_shape,
       InferWindowOutputShape(base_shape, window, lhs.element_type()));

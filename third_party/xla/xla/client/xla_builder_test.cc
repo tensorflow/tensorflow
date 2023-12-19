@@ -24,6 +24,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
+#include "xla/client/padding.h"
 #include "xla/client/sharding_builder.h"
 #include "xla/client/value_inference.h"
 #include "xla/client/xla_computation.h"
@@ -1760,6 +1761,37 @@ TEST_F(XlaBuilderTest, UnboundedConcatenate) {
   EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
       << "result: " << ShapeUtil::HumanStringWithLayout(result)
       << " expected: " << ShapeUtil::HumanStringWithLayout(expected.value());
+}
+
+TEST_F(XlaBuilderTest, UnboundedConvolution) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> lhs = ParseShape("f32[?, 2, ?, 128]");
+  StatusOr<Shape> rhs = ParseShape("f32[2, 2, <=128, 8]");
+  StatusOr<Shape> expected = ParseShape("f32[?, 1, ?, 8]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  ASSERT_IS_OK(expected.status());
+
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.set_output_batch_dimension(0);
+  dnums.add_input_spatial_dimensions(1);
+  dnums.add_output_spatial_dimensions(1);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(2);
+  dnums.set_input_feature_dimension(3);
+  dnums.set_output_feature_dimension(3);
+  dnums.add_kernel_spatial_dimensions(0);
+  dnums.add_kernel_spatial_dimensions(1);
+  dnums.set_kernel_input_feature_dimension(2);
+  dnums.set_kernel_output_feature_dimension(3);
+  ConvWithGeneralDimensions(Parameter(&b, 0, lhs.value(), "lhs"),
+                            Parameter(&b, 1, rhs.value(), "rhs"),
+                            /*window_strides=*/{1, 1}, Padding::kValid, dnums);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()));
 }
 
 TEST_F(XlaBuilderTest, UnboundedDiv) {
