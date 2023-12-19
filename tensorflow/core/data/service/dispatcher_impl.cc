@@ -1198,6 +1198,7 @@ Status DataServiceDispatcherImpl::GetSnapshotSplit(
 Status DataServiceDispatcherImpl::DisableCompressionAtRuntime(
     const DisableCompressionAtRuntimeRequest* request,
     DisableCompressionAtRuntimeResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
   std::shared_ptr<const Dataset> dataset;
   mutex_lock l(mu_);
   TF_RETURN_IF_ERROR(state_.DatasetFromId(request->dataset_id(), dataset));
