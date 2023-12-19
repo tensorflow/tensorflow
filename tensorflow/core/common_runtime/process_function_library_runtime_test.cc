@@ -605,7 +605,7 @@ bool IsCUDATensor(const Tensor& t) {
   hipError_t err = hipPointerGetAttributes(&attributes, t.tensor_data().data());
   if (err == hipErrorInvalidValue) return false;
   CHECK_EQ(hipSuccess, err) << hipGetErrorString(err);
-  return (attributes.memoryType == hipMemoryTypeDevice);
+  return (attributes.type == hipMemoryTypeDevice);
 #else
   CHECK(false)
       << "IsCUDATensor should not be called when CUDA is not available";
