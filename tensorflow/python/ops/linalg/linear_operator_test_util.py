@@ -868,6 +868,10 @@ def _test_saved_model(use_placeholder, shapes_info, dtype):
   def test_saved_model(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+
+      if test_util.is_xla_enabled() and np.prod(shapes_info.shape) == 0:
+        self.skipTest("Saving XLA model fails for empty model.")
+
       operator, mat = self.operator_and_matrix(
           shapes_info, dtype, use_placeholder=use_placeholder)
       x = self.make_x(operator, adjoint=False)
