@@ -1029,14 +1029,15 @@ MatMulLaunchConfig::MatMulLaunchConfig(const TritonGemmConfig& config,
   if (large_batch) {
     batch_program_id_dim = mt::ProgramIDDim::X;
     noncontracting_program_id_dim = mt::ProgramIDDim::Y;
-    launch_dims = {{batch_size, grid_m * grid_n, config.split_k},
-                   {config.num_warps * WarpSize(), 1, 1}};
+    launch_dims = LaunchDimensions(
+        se::BlockDim(batch_size, grid_m * grid_n, config.split_k),
+        se::ThreadDim(config.num_warps * WarpSize(), 1, 1));
   } else {
     batch_program_id_dim = mt::ProgramIDDim::Y;
     noncontracting_program_id_dim = mt::ProgramIDDim::X;
-    launch_dims =
-        LaunchDimensions{{grid_m * grid_n, batch_size, config.split_k},
-                         {config.num_warps * WarpSize(), 1, 1}};
+    launch_dims = LaunchDimensions(
+        se::BlockDim(grid_m * grid_n, batch_size, config.split_k),
+        se::ThreadDim(config.num_warps * WarpSize(), 1, 1));
   }
 }
 
