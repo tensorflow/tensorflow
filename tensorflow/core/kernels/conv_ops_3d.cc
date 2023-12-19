@@ -229,20 +229,7 @@ struct LaunchConv3DOp<GPUDevice, Eigen::bfloat16> {
                                                     dilations.end());
 
     auto* stream = ctx->op_device_context()->stream();
-<<<<<<< HEAD
-#if GOOGLE_CUDA
-    const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-        se::CudaComputeCapability::AMPERE);
-#else 
-    const bool cast_to_float = false;
-#endif
-    Tensor casted_input = input_param;
-    Tensor casted_filter = filter;
-    Tensor casted_out = *output;
-
-=======
     const bool cast_to_float = !IsBF16SupportedInOps(stream);
->>>>>>> upstream/master
 
     if (cast_to_float) {
       Tensor casted_input = input_param;

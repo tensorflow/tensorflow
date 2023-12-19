@@ -1335,12 +1335,7 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
       skip_message="MIOpen does not support group conv yet!",
   )
   def testConv2DGroupConvFwd(self):
-<<<<<<< HEAD
-    self.skipTest("Need to Check why MIOpen complains")
-    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
-=======
     if test.is_gpu_available() or test_util.IsMklEnabled():
->>>>>>> upstream/master
       data_formats = ["NHWC", "NCHW"]
     else:
       data_formats = ["NHWC"]

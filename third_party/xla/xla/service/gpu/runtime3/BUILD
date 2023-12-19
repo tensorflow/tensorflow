@@ -91,11 +91,7 @@ xla_test(
     name = "command_buffer_cmd_test",
     srcs = if_gpu_is_configured(["command_buffer_cmd_test.cc"]),
     backends = ["gpu"],
-<<<<<<< HEAD
-    tags = ["no_rocm"],
-=======
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
->>>>>>> upstream/master
     deps = [
         ":command_buffer_cmd",
         "//xla:types",
@@ -171,11 +167,7 @@ xla_test(
         "gpu": ["config-cuda-only"],
     },
     backends = ["gpu"],
-<<<<<<< HEAD
-    tags = ["no_rocm"],
-=======
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
->>>>>>> upstream/master
     deps = [
         ":command_buffer_allocations",
         ":command_buffer_cmd",

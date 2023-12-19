@@ -1971,14 +1971,7 @@ static tsl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   const uint64_t RESERVED_GFX10_X = 1048576 * 512;
   if (compute_capability.gfx_version() == "gfx908") {
     *reserve = RESERVED_GFX908;
-<<<<<<< HEAD
-  } else if (gcnArchName.substr(0, 6) == "gfx90a" ||
-             gcnArchName.substr(0, 6) == "gfx940" ||
-             gcnArchName.substr(0, 6) == "gfx941" ||
-             gcnArchName.substr(0, 6) == "gfx942" ) {
-=======
   } else if (compute_capability.gfx9_mi200_or_later()) {
->>>>>>> upstream/master
     *reserve = RESERVED_GFX9_X;
   } else if (compute_capability.navi21() || compute_capability.navi31()) {
     *reserve = RESERVED_GFX10_X;
