@@ -107,9 +107,9 @@ KernelArgsPacking ArgsPacking(int32_t m, int32_t n, int32_t k,
     auto* mem_args = se::Cast<se::KernelArgsDeviceMemoryArray>(&args);
 
     Arguments arguments = {m, n, k};
-    arguments.a = const_cast<void*>(mem_args->device_memory_ptr(indices.lhs));
-    arguments.b = const_cast<void*>(mem_args->device_memory_ptr(indices.rhs));
-    arguments.c = const_cast<void*>(mem_args->device_memory_ptr(indices.out));
+    arguments.lhs = const_cast<void*>(mem_args->device_memory_ptr(indices.lhs));
+    arguments.rhs = const_cast<void*>(mem_args->device_memory_ptr(indices.rhs));
+    arguments.out = const_cast<void*>(mem_args->device_memory_ptr(indices.out));
 
     // Workspace argument always passed as the last one (if passed at all).
     if (indices.has_workspace) {
@@ -118,6 +118,11 @@ KernelArgsPacking ArgsPacking(int32_t m, int32_t n, int32_t k,
           const_cast<void*>(mem_args->device_memory_ptr(num_mem_args - 1));
     } else {
       arguments.workspace = nullptr;
+    }
+
+    // Set up dynamic slices if they are available.
+    if (slices.out.has_value()) {
+      arguments.slices.out = SlicePtr(mem_args, *slices.out);
     }
 
     if (!adaptor.CanImplement(arguments)) {
@@ -154,17 +159,13 @@ KernelArgsPacking ArgsPacking(int32_t m, int32_t n, int32_t k,
     Params params;
     adaptor.Initialize(&params, arguments, device_sms, sm_occupancy);
 
-    // Optionally set up dynamic slice parameters to allow kernel adjust
-    // buffer pointers passed via `params`.
-    DynamicSliceParams slice_params;
-    if (slices.out.has_value()) {
-      slice_params.out = SlicePtr(mem_args, *slices.out);
-    }
-
     // TODO(ezhulenev): We need to support EmplaceKernelArgs with inplace
     // construction to avoid copying 1kb of byte storage.
-    return se::PackKernelArgs<Params, DynamicSliceParams>(
-        args.number_of_shared_bytes(), params, slice_params);
+    //
+    // TODO(ezhulenev): Remove `DynamicSliceArguments` once we encode
+    // dynamic slice offsets in kernel parameters.
+    return se::PackKernelArgs<Params, DynamicSliceArguments>(
+        args.number_of_shared_bytes(), params, arguments.slices);
   };
 }
 //===----------------------------------------------------------------------===//

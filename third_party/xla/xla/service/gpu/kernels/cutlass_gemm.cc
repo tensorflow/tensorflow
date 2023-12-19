@@ -42,7 +42,8 @@ using SharedMemoryBytesFn = int32_t (*)();
 using CanImplementFn = bool (*)(int32_t m, int32_t n, int32_t k);
 using WorkspaceSizeFn = int64_t (*)(int32_t m, int32_t n, int32_t k);
 using InitializeFn = void (*)(void* params, int32_t m, int32_t n, int32_t k,
-                              void* a, void* b, void* c, int32_t device_sms,
+                              void* lhs, void* rhs, void* out, void* workspace,
+                              int32_t* out_offset, int32_t device_sms,
                               int32_t sm_occupancy);
 using KernelSymboFn = void* (*)();
 
@@ -147,9 +148,9 @@ int64_t Adaptor<DlOpenedKernel>::WorkspaceSize(const Arguments& args) const {
 void Adaptor<DlOpenedKernel>::Initialize(void* params, const Arguments& args,
                                          int32_t device_sms,
                                          int32_t sm_occupancy) const {
-  reinterpret_cast<InitializeFn>(initialize_fn_)(params, args.m, args.n, args.k,
-                                                 args.a, args.b, args.c,
-                                                 device_sms, sm_occupancy);
+  reinterpret_cast<InitializeFn>(initialize_fn_)(
+      params, args.m, args.n, args.k, args.lhs, args.rhs, args.out,
+      args.workspace, args.slices.out, device_sms, sm_occupancy);
 }
 
 Adaptor<DlOpenedKernel>::Adaptor(void* handle, void* block_dim_fn,

@@ -158,13 +158,13 @@ static typename Traits<Tag>::Arguments OpArguments(const Arguments &args) {
   Accumulator alpha{1.0};
   Accumulator beta{0.0};
 
-  return typename Traits<Tag>::Arguments(  // CUTLASS Operation arguments
-      mode, problem_size,                  //
-      1,                                   // batch
-      {alpha, beta},                       // epilogue
-      args.a, args.b, args.c, args.c,      // pointers
-      0, 0, 0, 0,                          // batch strides
-      lda, ldb, ldc, ldc                   // strides
+  return typename Traits<Tag>::Arguments(      // CUTLASS Operation arguments
+      mode, problem_size,                      //
+      1,                                       // batch
+      {alpha, beta},                           // epilogue
+      args.lhs, args.rhs, args.out, args.out,  // pointers
+      0, 0, 0, 0,                              // batch strides
+      lda, ldb, ldc, ldc                       // strides
   );
 }
 
@@ -249,14 +249,14 @@ static typename Traits<Tag>::Arguments OpArguments(const Arguments &args) {
   Accumulator beta{0.0};
 
   typename Kernel::MainloopArguments mainloop_args{
-      reinterpret_cast<typename Operation::ElementA *>(args.a), stride_a,
-      reinterpret_cast<typename Operation::ElementB *>(args.b), stride_b};
+      reinterpret_cast<typename Operation::ElementA *>(args.lhs), stride_a,
+      reinterpret_cast<typename Operation::ElementB *>(args.rhs), stride_b};
 
   typename Kernel::EpilogueArguments epilogue_args{
       {alpha, beta},
-      reinterpret_cast<typename Operation::ElementC *>(args.c),
+      reinterpret_cast<typename Operation::ElementC *>(args.out),
       stride_c,
-      reinterpret_cast<typename Operation::ElementC *>(args.c),
+      reinterpret_cast<typename Operation::ElementC *>(args.out),
       stride_d};
 
   return typename Operation::Arguments{mode, problem_shape, mainloop_args,
@@ -365,22 +365,22 @@ void Adaptor<Tag>::Initialize(void *params, const Arguments &args,
 
 // This entry point is based on `cutlass::Kernel2` template with an extra
 // parameter to pass dynamic slices.
+//
+// TODO(ezhulenev): Dynamic slices should be encoded in kernel parameters.
 template <typename Kernel>
 __global__ void Kernel2EntryPoint(typename Kernel::Params params,
-                                  DynamicSliceParams slices) {
+                                  DynamicSliceArguments dynamic_slices) {
   extern __shared__ int SharedStorageBase[];
   typename Kernel::SharedStorage *shared_storage =
       reinterpret_cast<typename Kernel::SharedStorage *>(SharedStorageBase);
 
-  // Update output pointers to account for dynamic offsets.
-  if (slices.out.has_value()) {
+  // Adjust output pointer to account for dynamic offsets.
+  if (dynamic_slices.out) {
     auto m = params.problem_size.m();
     auto n = params.problem_size.n();
 
-    int32_t out_offset = **slices.out;
-
     using ElementC = typename Kernel::ElementC;
-    int64_t offset = sizeof(ElementC) * out_offset * (m * n);
+    int64_t offset = sizeof(ElementC) * *dynamic_slices.out * (m * n);
 
     char *ptr_c = reinterpret_cast<char *>(params.ptr_C);
     char *ptr_d = reinterpret_cast<char *>(params.ptr_D);
@@ -397,26 +397,8 @@ __global__ void Kernel2EntryPoint(typename Kernel::Params params,
 //===----------------------------------------------------------------------===//
 
 template <typename Kernel>
-__global__ void Kernel3EntryPoint(typename Kernel::Params params,
-                                  gemm_universal::DynamicSliceParams slices) {
+__global__ void Kernel3EntryPoint(typename Kernel::Params params) {
   extern __shared__ char shared_memory[];
-
-  // Update output pointers to account for dynamic offsets.
-  if (slices.out.has_value()) {
-    auto m = cute::get<0>(params.problem_shape);
-    auto n = cute::get<1>(params.problem_shape);
-
-    int32_t out_offset = **slices.out;
-
-    using ElementC = typename Kernel::ElementC;
-    int64_t offset = sizeof(ElementC) * out_offset * (m * n);
-
-    const char *ptr_c = reinterpret_cast<const char *>(params.epilogue.ptr_C);
-    char *ptr_d = reinterpret_cast<char *>(params.epilogue.ptr_D);
-
-    params.epilogue.ptr_C = reinterpret_cast<const ElementC *>(ptr_c + offset);
-    params.epilogue.ptr_D = reinterpret_cast<ElementC *>(ptr_d + offset);
-  }
 
   Kernel kernel;
   kernel(params, shared_memory);

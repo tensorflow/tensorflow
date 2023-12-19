@@ -62,13 +62,12 @@ extern "C" int64_t xla_cutlass_kernel_workspace_size(int32_t m, int32_t n,
   return adaptor.WorkspaceSize(arguments);
 }
 
-extern "C" void xla_cutlass_kernel_initialize(void* params, int32_t m,
-                                              int32_t n, int32_t k, void* a,
-                                              void* b, void* c,
-                                              int32_t device_sms,
-                                              int32_t sm_occupancy) {
+extern "C" void xla_cutlass_kernel_initialize(
+    void* params, int32_t m, int32_t n, int32_t k, void* lhs, void* rhs,
+    void* out, void* workspace, int32_t* out_offset, int32_t device_sms,
+    int32_t sm_occupancy) {
   Adaptor<CutlassGemm> adaptor;
-  Arguments arguments = {m, n, k, a, b, c};
+  Arguments arguments = {m, n, k, lhs, rhs, out, workspace, {out_offset}};
   adaptor.Initialize(params, arguments, device_sms, sm_occupancy);
 }
 
