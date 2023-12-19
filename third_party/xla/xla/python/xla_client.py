@@ -90,10 +90,6 @@ def make_gpu_client(
   """Returns a GPU client. BFC allocator is used by default."""
   options = generate_pjrt_gpu_plugin_options()
   allocator = options['allocator']
-  memory_fraction = (
-      options['memory_fraction'] if 'memory_fraction' in options else None
-  )
-  preallocate = options['preallocate'] if 'preallocate' in options else None
   config = _xla.GpuAllocatorConfig()
   if allocator == 'default':
     config.kind = _xla.GpuAllocatorConfig.Kind.DEFAULT
@@ -103,9 +99,10 @@ def make_gpu_client(
     config.kind = _xla.GpuAllocatorConfig.Kind.BFC
   if allocator == 'cuda_async':
     config.kind = _xla.GpuAllocatorConfig.Kind.CUDA_ASYNC
-  if memory_fraction:
-    config.memory_fraction = float(memory_fraction)
-  config.preallocate = preallocate not in ('0', 'false', 'False')
+  if 'memory_fraction' in options:
+    config.memory_fraction = options['memory_fraction']
+  if 'preallocate' in options:
+    config.preallocate = options['preallocate']
   register_custom_call_handler('CUDA', _xla.register_custom_call_target)
   register_custom_call_handler('ROCM', _xla.register_custom_call_target)
 
