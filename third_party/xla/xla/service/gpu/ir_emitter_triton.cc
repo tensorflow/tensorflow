@@ -1322,41 +1322,67 @@ class MatMulEmitterHelper {
       add_dim(dim);
     }
 
-    int64_t stride_batch = 0;
     int64_t offset_batch = 0;
-    if (side.scope != TritonFusionAnalysis::Scope::RHS &&
-        dims_.lhs_noncontracting_split) {
-      const TensorIterationSpec::DimIterationSpec* spec =
-          analysis_.IterSpec(side.scope, hlo, side.tiled_dims[0].index);
-      if (spec != nullptr) {
-        if (spec->size() > 1) {
-          // Support one specific kind of output transpose that splits the
-          // dimension originating from the split LHS non-contracting one.
-          stride_batch = spec->at(1).stride;
-        } else {
-          // Because the major part of the split is implemented using the
-          // batch logic stride_batch is populated here as the stride of
-          // the minor part times its size.
-          stride_batch = spec->at(0).stride *
-                         (spec->at(0).count / *dims_.lhs_noncontracting_split);
+    bool has_batch_offset = false;
+    Value batch_stride;
+
+    // Return the batch stride of the HLO passed as a parameter. If the
+    // parameter HLO has no batch dimension, a zero stride is returned.
+    // Also sets offset_batch and updates has_batch_offset as a side effect.
+    auto get_batch_stride = [&](const HloInstruction* hlo_param) -> Value {
+      int64_t stride_batch = 0;
+      if (side.scope != TritonFusionAnalysis::Scope::RHS &&
+          dims_.lhs_noncontracting_split) {
+        const TensorIterationSpec::DimIterationSpec* spec =
+            analysis_.IterSpec(side.scope, hlo_param, side.tiled_dims[0].index);
+        if (spec != nullptr) {
+          if (spec->size() > 1) {
+            // Support one specific kind of output transpose that splits the
+            // dimension originating from the split LHS non-contracting one.
+            stride_batch = spec->at(1).stride;
+          } else {
+            // Because the major part of the split is implemented using the
+            // batch logic stride_batch is populated here as the stride of
+            // the minor part times its size.
+            stride_batch =
+                spec->at(0).stride *
+                (spec->at(0).count / *dims_.lhs_noncontracting_split);
+          }
+          CHECK_NE(stride_batch, 0);
         }
-        CHECK_NE(stride_batch, 0);
+      } else if (side.batch_dim_idx.has_value()) {
+        const TensorIterationSpec::DimIterationSpec* spec =
+            analysis_.IterSpec(side.scope, hlo_param, *side.batch_dim_idx);
+        if (spec != nullptr) {
+          stride_batch = spec->at(0).stride;
+          offset_batch = spec->at(0).slice_start;
+          CHECK_NE(stride_batch, 0);
+        }
       }
-    } else if (side.batch_dim_idx.has_value()) {
-      const TensorIterationSpec::DimIterationSpec* spec =
-          analysis_.IterSpec(side.scope, hlo, *side.batch_dim_idx);
-      if (spec != nullptr) {
-        stride_batch = spec->at(0).stride;
-        offset_batch = spec->at(0).slice_start;
-        CHECK_NE(stride_batch, 0);
+
+      has_batch_offset |= stride_batch != 0;
+      return Cst(stride_batch);
+    };
+
+    if (hlo->opcode() == HloOpcode::kConcatenate) {
+      std::vector<Value> batch_strides;
+      batch_strides.reserve(hlo->operands().size());
+      for (const HloInstruction* operand : hlo->operands()) {
+        batch_strides.push_back(get_batch_stride(operand));
       }
+      batch_stride = EmitMultiSelect(b_, concat_dim_pid_offset,
+                                     concat_boundaries, batch_strides);
+    } else {
+      batch_stride = get_batch_stride(hlo);
     }
-    if (stride_batch != 0) {
+
+    // Avoid generating logic to compute batch offset if unnecessary.
+    if (has_batch_offset) {
       Value pid_batch =
           b_.create<mt::GetProgramIdOp>(launch_config_.batch_program_id_dim);
       Value pid_offset_batch = b_.create<ma::MulIOp>(
           b_.create<ma::AddIOp>(Cst(offset_batch), ConvertScalar(pid_batch)),
-          Cst(stride_batch));
+          batch_stride);
       base = AddPtr(b_, base, pid_offset_batch);
     }
 
