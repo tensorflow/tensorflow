@@ -971,6 +971,47 @@ static bool IsParameter(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kParameter;
 }
 
+std::optional<HloInstructionAdaptor> FindTransposeHero(
+    HloInstructionAdaptor root, const HloFusionAdaptor& fusion) {
+  std::optional<HloInstructionAdaptor> transpose = std::nullopt;
+  std::vector<HloInstructionAdaptor> non_trivial;
+  auto visit = [&transpose, &non_trivial](HloInstructionAdaptor node) {
+    if (FindTiledLogicalTranspose(node.instruction())) {
+      // If we do not find a unique transpose op, use the original non-trivial
+      // hero.
+      if (transpose) {
+        transpose = std::nullopt;
+        return TraversalResult::kAbortTraversal;
+      }
+      transpose = node;
+      return TraversalResult::kDoNotVisitOperands;
+    }
+
+    if (!IsIntermediate(&node.instruction(), /*allowed_operand_count=*/3)) {
+      non_trivial.push_back(node);
+      return TraversalResult::kDoNotVisitOperands;
+    }
+    return TraversalResult::kVisitOperands;
+  };
+  HloBfsConsumersFirstTraversal({root}, fusion, visit);
+
+  if (transpose) {
+    // There is a single transpose instruction that is a hero candidate.
+    // However, the transpose must be unreachable from any of the non-trivial
+    // instructions that were encountered, because that would mean that its
+    // output is accessed with different access patterns.
+    auto visit_nt = [&transpose](HloInstructionAdaptor node) {
+      if (node == transpose) {
+        transpose = std::nullopt;
+        return TraversalResult::kAbortTraversal;
+      }
+      return TraversalResult::kVisitOperands;
+    };
+    HloBfsConsumersFirstTraversal(non_trivial, fusion, visit_nt);
+  }
+  return transpose;
+}
+
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr,
                                          const HloFusionAdaptor& fusion) {
   HloInstructionAdaptor idx{instr};
@@ -999,30 +1040,12 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr,
     return instr;
   }
 
-  std::optional<HloInstructionAdaptor> transpose = std::nullopt;
   // Try a bit harder to find a transpose hero. The shared memory transpose
   // emitter also works if there are ops with more than 1 operand on the path
   // between root and the transpose op, we still want the restriction though
   // that each op on the path is elementwise and has only 1 user.
-  auto visit = [&transpose](HloInstructionAdaptor node) {
-    if (FindTiledLogicalTranspose(node.instruction())) {
-      // If we do not find a unique transpose op, use the original non-trivial
-      // hero.
-      if (transpose) {
-        transpose = std::nullopt;
-        return TraversalResult::kAbortTraversal;
-      }
-      transpose = node;
-      return TraversalResult::kDoNotVisitOperands;
-    }
-
-    if (!IsIntermediate(&node.instruction(), /*allowed_operand_count=*/3)) {
-      return TraversalResult::kDoNotVisitOperands;
-    }
-    return TraversalResult::kVisitOperands;
-  };
-  HloBfsConsumersFirstTraversal({idx}, fusion, visit);
-
+  std::optional<HloInstructionAdaptor> transpose =
+      FindTransposeHero(idx, fusion);
   return transpose ? transpose->instruction() : idx.instruction();
 }
 

@@ -360,6 +360,29 @@ ENTRY entry {
       transpose);
 }
 
+TEST_F(IrEmissionUtilsTest, TransposeReachableViaTrivialAndNontrivialOps) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f64[16,16]{1,0} parameter(0)
+  trans = f64[16,16]{1,0} transpose(p), dimensions={1,0}
+  rev = f64[16,16]{1,0} reverse(trans), dimensions={0,1}
+  sub = f64[16,16]{1,0} subtract(trans, trans)
+  ROOT add = f64[16,16]{1,0} add(rev, sub)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* r = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(
+      GetDescriptionForTiledTransposeEmitter(*r, FindNonTrivialHero(*r))
+          .has_value());
+  EXPECT_EQ(&FindNonTrivialHero(*r), r);
+}
+
 TEST_F(IrEmissionUtilsTest, FindTiledTransposeOneSwapDimIsSmall) {
   const char* hlo = R"(
 HloModule module
