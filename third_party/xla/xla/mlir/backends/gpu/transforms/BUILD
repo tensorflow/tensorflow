@@ -31,7 +31,6 @@ cc_library(
     compatible_with = [],
     visibility = ["//visibility:public"],
     deps = [
-        "//xla/mlir_hlo:lhlo",
         "//xla/mlir_hlo:lhlo_gpu",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",

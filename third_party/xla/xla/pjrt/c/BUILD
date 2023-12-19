@@ -330,7 +330,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/pjrt:compile_options_proto_cc",
         "//xla/pjrt:pjrt_client",
-        "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_parser",
@@ -344,8 +343,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )

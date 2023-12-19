@@ -191,7 +191,6 @@ cc_library(
         "//xla/stream_executor:device_memory_allocator",
         "//xla/translate/mhlo_to_hlo:attribute_exporter",
         "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Support",
     ],
@@ -217,7 +216,6 @@ cc_library(
         "//xla/stream_executor:device_memory_allocator",
         "//xla/translate/mhlo_to_hlo:attribute_exporter",
         "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Support",
     ],
@@ -261,11 +259,9 @@ cc_library(
     deps = [
         ":support",
         ":triangular_solve",
-        "//xla/runtime:custom_call",
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
         "//xla/service:custom_call_status_internal",
-        "//xla/service:custom_call_status_public_headers",
         "//xla/service:custom_call_target_registry",
         "//xla/service:executable",
         "//xla/service/gpu:cublas_cudnn",
@@ -323,7 +319,6 @@ cc_library(
         "//xla/service/gpu:non_atomically_upgradeable_rw_lock",
         "//xla/service/gpu:thunk",
         "//xla/stream_executor",
-        "//xla/stream_executor/gpu:gpu_stream",
         "@com_google_absl//absl/container:inlined_vector",
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ],
@@ -343,7 +338,6 @@ cc_library(
         "//xla/runtime:state",
         "//xla/service/gpu/runtime3:fft_thunk",
         "//xla/stream_executor:fft",
-        "//xla/translate/mhlo_to_hlo:attribute_exporter",
     ],
 )
 
@@ -605,13 +599,8 @@ cc_library(
     deps = [
         ":concurrent_region",
         ":support",
-        "//xla/runtime:custom_call",
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
-        "//xla/service:executable",
-        "//xla/service:stream_pool",
-        "//xla/stream_executor",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -642,7 +631,6 @@ cc_library(
         ":concurrent_region",
         ":support",
         "//xla:statusor",
-        "//xla:types",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:custom_call",
         "//xla/runtime:custom_call_registry",
@@ -707,7 +695,6 @@ cc_library(
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
         "//xla/service:executable",
-        "//xla/service/gpu:io_feed_manager",
     ],
 )
 
@@ -762,8 +749,6 @@ cc_library(
         "//xla/service:executable",
         "//xla/stream_executor",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/concurrency:async_value",
@@ -809,7 +794,6 @@ cc_library(
         ":support",
         "//xla:xla_proto_cc",
         "//xla/runtime:custom_call",
-        "//xla/runtime:executable",
         "//xla/service:executable",
         "//xla/service/gpu:gpu_asm_opts_util",
         "//xla/service/gpu/runtime3:triangular_solve_thunk",
