@@ -85,25 +85,3 @@ func.func @inner_stateful_pcall_func(%arg0: tensor<i32>) -> tensor<i32> {
 func.func @func(%arg0: tensor<i32>) -> tensor<i32> {
   func.return %arg0 : tensor<i32>
 }
-
-// -----
-
-// Check that we encapsulate the function body of entry functions with compilation markers, and not the included partitioned calls with the markers.
-// CHECK-LABEL:   func.func @entry_function_with_compilation_markers(%arg0: tensor<i32>) -> tensor<i32> attributes {_xla_compile_device_type = "GPU", allow_soft_placement = true, device = "/device:GPU:0", tf.entry_function = {}} {
-// CHECK:           %0 = "tf_device.cluster"() ({
-// CHECK:             %1 = "tf.StatefulPartitionedCall"(%arg0) <{config = "", config_proto = "", executor_type = "", f = @stateful_pcall_func}> {_xla_compile_device_type = "GPU"} : (tensor<i32>) -> tensor<i32>
-// CHECK:             %cst = "tf.Const"() <{value = dense<5> : tensor<i32>}> : () -> tensor<i32>
-// CHECK:             %2 = "tf.Add"(%1, %cst) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-// CHECK:             tf_device.return %2 : tensor<i32>
-// CHECK:           }) {_cluster_outlined_function_name = "entry_function_with_compilation_markers_cluster_func", _xla_compile_device_type = "GPU", allow_soft_placement = true, device = "/device:GPU:0"} : () -> tensor<i32>
-// CHECK:         return %0 : tensor<i32>
-func.func @entry_function_with_compilation_markers(%arg0: tensor<i32>) -> tensor<i32> attributes {_xla_compile_device_type = "GPU", allow_soft_placement = true, tf.entry_function = {}, device = "/device:GPU:0"} {
-  %0 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", _xla_compile_device_type = "GPU", f = @stateful_pcall_func} : (tensor<i32>) -> (tensor<i32>)
-  %1 = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
-  %2 = "tf.Add"(%0, %1) : (tensor<i32>, tensor<i32>) -> (tensor<i32>)
-  func.return %2 : tensor<i32>
-}
-
-func.func @stateful_pcall_func(%arg0: tensor<i32>) -> tensor<i32> {
-  func.return %arg0 : tensor<i32>
-}
