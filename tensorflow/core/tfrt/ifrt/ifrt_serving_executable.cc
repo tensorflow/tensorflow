@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
-#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -44,7 +43,6 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/xla_data.pb.h"
@@ -53,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_tensor_utils.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/env.h"
@@ -73,31 +72,6 @@ Eigen::ThreadPoolDevice GetThreadPoolDevice() {
   }();
   return Eigen::ThreadPoolDevice(thread_pool->AsEigenThreadPool(),
                                  kMaxParallelism);
-}
-
-absl::StatusOr<tensorflow::DataType> ToTensorDataType(
-    xla::ifrt::DType ifrt_dtype) {
-  if (ifrt_dtype.kind() == xla::ifrt::DType::kString) {
-    return tensorflow::DataType::DT_STRING;
-  }
-  TF_ASSIGN_OR_RETURN(xla::PrimitiveType primitive_type,
-                      xla::ifrt::ToPrimitiveType(ifrt_dtype));
-  return tensorflow::EncodePrimitiveTypeAsDataType(primitive_type);
-}
-
-absl::StatusOr<xla::ifrt::DType> ToIfrtDType(
-    tensorflow::DataType tensor_dtype) {
-  if (tensor_dtype == tensorflow::DataType::DT_STRING) {
-    return xla::ifrt::DType(xla::ifrt::DType::kString);
-  }
-  xla::PrimitiveType primitive_type;
-  TF_RETURN_IF_ERROR(
-      tensorflow::DataTypeToPrimitiveType(tensor_dtype, &primitive_type));
-  return xla::ifrt::ToDType(primitive_type);
-}
-
-xla::ifrt::Shape ToIfrtShape(const tensorflow::TensorShape& shape) {
-  return xla::ifrt::Shape(shape.dim_sizes());
 }
 
 absl::StatusOr<xla::DeviceAssignment> GetXlaDeviceAssignment(
