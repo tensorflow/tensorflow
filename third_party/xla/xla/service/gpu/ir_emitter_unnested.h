@@ -214,7 +214,6 @@ class IrEmitterUnnested : public IrEmitter {
   template <typename ThunkType, typename OpT>
   Status EmitReplicaOrPartitionId(mlir::Operation* op);
 
-  template <typename NcclThunkType, typename OpT>
   Status EmitCollectivePermute(mlir::Operation* op);
 
   Status EmitOp(

@@ -3082,9 +3082,9 @@ Status IrEmitterUnnested::EmitReplicaOrPartitionId(mlir::Operation* op) {
   return OkStatus();
 }
 
-template <typename NcclThunkType, typename OpT>
 Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
-  auto collective_permute_op = mlir::cast<OpT>(op);
+  auto collective_permute_op =
+      mlir::cast<mlir::lmhlo_gpu::CollectivePermuteStartOp>(op);
 
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice source_slice,
                       GetAllocationSlice(collective_permute_op.getOperand()));
@@ -3097,8 +3097,8 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
   const int64_t partition_count = hlo_config.num_partitions();
 
   NcclCollectiveThunk::AsyncExecutor* async_executor;
-  if (NcclThunkType::IsDegenerate(collective_permute_op, replica_count,
-                                  partition_count)) {
+  if (NcclCollectivePermuteStartThunk::IsDegenerate(
+          collective_permute_op, replica_count, partition_count)) {
     // For a degenerate collective permute, just generate a copy thunk.
     AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(op),
@@ -3114,7 +3114,7 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
         /*element_count=*/ShapeUtil::ElementsIn(shape),
         /*source_buffer=*/source_slice,
         /*destination_buffer=*/result_slice};
-    auto thunk = std::make_unique<NcclThunkType>(
+    auto thunk = std::make_unique<NcclCollectivePermuteStartThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(op), collective_permute_op,
         replica_count, partition_count, buffer);
     async_executor = thunk->async_executor();
@@ -3752,8 +3752,7 @@ Status IrEmitterUnnested::EmitOp(
   }
 
   if (mlir::isa<mlir::lmhlo_gpu::CollectivePermuteStartOp>(op)) {
-    return EmitCollectivePermute<NcclCollectivePermuteStartThunk,
-                                 mlir::lmhlo_gpu::CollectivePermuteStartOp>(op);
+    return EmitCollectivePermute(op);
   }
 
   if (mlir::isa<mlir::lmhlo_gpu::CollectivePermuteDoneOp>(op)) {
