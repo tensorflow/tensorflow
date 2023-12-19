@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_KERNELS_CUSTOM_FUSION_PATTERN_H_
 #define XLA_SERVICE_GPU_KERNELS_CUSTOM_FUSION_PATTERN_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -40,13 +41,17 @@ namespace xla::gpu {
 // Custom fusion pattern matches HLO instruction to custom kernels.
 class CustomFusionPattern {
  public:
+  // A name of a custom call that can be added to a custom fusion body to
+  // allocate a workspace buffer require for the custom fusion implementation.
+  static constexpr const char *kWorkspace = "__custom_fusion$workspace";
+
   virtual ~CustomFusionPattern() = default;
 
   // Matched sequence of instructions that can be handled by a custom fusion.
   class Match {
    public:
-    Match(CustomFusionConfig config,
-          std::vector<HloInstruction *> instructions);
+    Match(CustomFusionConfig config, std::vector<HloInstruction *> instructions,
+          int64_t workspace_size_bytes = 0);
 
     // If some of operations matched by a pattern have users outside of the
     // custom fusion, pattern can optionally provide a replacement that can be
@@ -70,10 +75,13 @@ class CustomFusionPattern {
 
     HloInstruction *root() const { return instructions_.back(); }
 
+    int64_t workspace_size_bytes() const { return workspace_size_bytes_; }
+
    private:
     CustomFusionConfig config_;
     std::vector<HloInstruction *> instructions_;
     absl::flat_hash_map<const HloInstruction *, Replacement> replacements_;
+    int64_t workspace_size_bytes_;
   };
 
   // Returns custom fusion config and a list of instructions that matched to a
@@ -105,6 +113,12 @@ class CustomFusionPatternRegistry {
   template <typename... Ts, typename = std::enable_if_t<sizeof...(Ts) != 0>>
   void Emplace() {
     (Add(std::make_unique<Ts>()), ...);
+  }
+
+  template <typename... Ts, typename Arg,
+            typename = std::enable_if_t<sizeof...(Ts) != 0>>
+  void Emplace(Arg &&arg) {
+    (Add(std::make_unique<Ts>(std::forward<Arg>(arg))), ...);
   }
 
  private:

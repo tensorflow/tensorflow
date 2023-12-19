@@ -121,16 +121,10 @@ bool Adaptor<Tag>::CanImplement(const Arguments &args) const {
          cutlass::Status::kSuccess;
 }
 
+// Converts type-erased gemm arguments to the underlying CUTLASS operation
+// arguments.
 template <typename Tag>
-void Adaptor<Tag>::Initialize(void *params, const Arguments &args,
-                              int32_t device_sms, int32_t sm_occupancy) const {
-  // Sanity check that parameters struct is compatible with parameters storage
-  // defined by custom gemm kernel.
-  static_assert(sizeof(typename Traits<Tag>::Params) <= 1024,
-                "Params struct size is too large");
-  static_assert(alignof(typename Traits<Tag>::Params) <= 32,
-                "Params struct alignment is too large");
-
+static typename Traits<Tag>::Arguments OpArguments(const Arguments &args) {
   cutlass::gemm::GemmCoord problem_size(args.m, args.n, args.k);
 
   // TODO(ezhulenev): Replace with cute::stride instead of custom templates.
@@ -148,18 +142,34 @@ void Adaptor<Tag>::Initialize(void *params, const Arguments &args,
   Accumulator alpha{1.0};
   Accumulator beta{0.0};
 
-  typename Traits<Tag>::Arguments arguments(  // CUTLASS Operation arguments
-      mode, problem_size,                     //
-      1,                                      // batch
-      {alpha, beta},                          // epilogue
-      args.a, args.b, args.c, args.c,         // pointers
-      0, 0, 0, 0,                             // batch strides
-      lda, ldb, ldc, ldc                      // strides
+  return typename Traits<Tag>::Arguments(  // CUTLASS Operation arguments
+      mode, problem_size,                  //
+      1,                                   // batch
+      {alpha, beta},                       // epilogue
+      args.a, args.b, args.c, args.c,      // pointers
+      0, 0, 0, 0,                          // batch strides
+      lda, ldb, ldc, ldc                   // strides
   );
+}
+
+template <typename Tag>
+int64_t Adaptor<Tag>::WorkspaceSize(const Arguments &args) const {
+  return Traits<Tag>::Operation::get_workspace_size(OpArguments<Tag>(args));
+}
+
+template <typename Tag>
+void Adaptor<Tag>::Initialize(void *params, const Arguments &args,
+                              int32_t device_sms, int32_t sm_occupancy) const {
+  // Sanity check that parameters struct is compatible with parameters storage
+  // defined by custom gemm kernel.
+  static_assert(sizeof(typename Traits<Tag>::Params) <= 1024,
+                "Params struct size is too large");
+  static_assert(alignof(typename Traits<Tag>::Params) <= 32,
+                "Params struct alignment is too large");
 
   // Convert CUTLASS operation arguments to a device kernel parameters.
-  new (params)
-      typename Traits<Tag>::Params(arguments, device_sms, sm_occupancy);
+  new (params) typename Traits<Tag>::Params(OpArguments<Tag>(args), device_sms,
+                                            sm_occupancy);
 }
 
 //===----------------------------------------------------------------------===//

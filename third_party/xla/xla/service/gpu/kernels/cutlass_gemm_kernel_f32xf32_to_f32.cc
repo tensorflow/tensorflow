@@ -55,6 +55,13 @@ extern "C" bool xla_cutlass_kernel_can_implement(int32_t m, int32_t n,
   return adaptor.CanImplement(arguments);
 }
 
+extern "C" int64_t xla_cutlass_kernel_workspace_size(int32_t m, int32_t n,
+                                                     int32_t k) {
+  Adaptor<CutlassGemm> adaptor;
+  Arguments arguments = {m, n, k};
+  return adaptor.WorkspaceSize(arguments);
+}
+
 extern "C" void xla_cutlass_kernel_initialize(void* params, int32_t m,
                                               int32_t n, int32_t k, void* a,
                                               void* b, void* c,

@@ -78,10 +78,14 @@ struct Arguments {
 //
 // Custom fusion instruction can have parameters in arbitrary order, and we need
 // a mapping from a custom kernel argument to the fusion instruction parameter.
+//
+// Workspace parameter is a special case, as it's always passed as a last
+// parameter at run time (only if requested).
 struct ArgsIndices {
   int64_t lhs;
   int64_t rhs;
   int64_t out;
+  bool has_workspace;
 };
 
 // Following structs encode how a custom kernel arguments packing and a custom
@@ -166,6 +170,8 @@ class Adaptor {
   int32_t SharedMemoryBytes() const;
 
   bool CanImplement(const Arguments& args) const;
+  int64_t WorkspaceSize(const Arguments& args) const;
+
   void Initialize(void* params, const Arguments& args, int32_t device_sms,
                   int32_t sm_occupancy) const;
 };
@@ -186,19 +192,22 @@ class Adaptor<DlOpenedKernel> {
   int32_t SharedMemoryBytes() const;
 
   bool CanImplement(const Arguments& args) const;
+  int64_t WorkspaceSize(const Arguments& args) const;
+
   void Initialize(void* params, const Arguments& args, int32_t device_sms,
                   int32_t sm_occupancy) const;
 
  private:
   Adaptor(void* handle, void* block_dim_fn, void* thread_dim_fn,
           void* shared_memory_bytes_fn, void* can_implement_fn,
-          void* initialize_fn);
+          void* workspace_size_fn, void* initialize_fn);
 
   void* handle_;
   void* block_dim_fn_;
   void* thread_dim_fn_;
   void* shared_memory_bytes_fn_;
   void* can_implement_fn_;
+  void* workspace_size_fn_;
   void* initialize_fn_;
 };
 

@@ -336,7 +336,11 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSliceKernel) {
     p3 = s32[] parameter(3)
     dot.1 = bf16[8,8]{1,0} dot(p0.1, p0.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
     bc.1 = bf16[1,8,8]{2,1,0} bitcast(dot.1)
-    ROOT r.1 = bf16[2,8,8]{2,1,0} dynamic-update-slice(p1.1, bc.1, p2, p3, p3)
+    r.1 = bf16[2,8,8]{2,1,0} dynamic-update-slice(p1.1, bc.1, p2, p3, p3)
+    workspace = u8[1024]{0} custom-call(),
+      custom_call_target="__custom_fusion$workspace",
+      api_version=API_VERSION_TYPED_FFI
+    ROOT tuple = (bf16[2,8,8]{2,1,0}, u8[1024]{0}) tuple(r.1, workspace)
   }
 
   ENTRY e {
@@ -344,9 +348,10 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSliceKernel) {
     p1 = bf16[8,8]{1,0} parameter(1)
     p2 = s32[] parameter(2)
     p3 = s32[] parameter(3)
-    ROOT _ = bf16[2,8,8]{2,1,0} fusion(p1, p0, p2, p3), kind=kCustom,
+    r.0 = (bf16[2,8,8]{2,1,0}, u8[1024]{0}) fusion(p1, p0, p2, p3), kind=kCustom,
       calls=%cutlass_gemm,
       backend_config={"kind":"__custom_fusion","custom_fusion_config":{"name":"cutlass_gemm_with_dynamic_update_slice"}}
+    ROOT %get-tuple-element = bf16[2,8,8]{2,1,0} get-tuple-element(r.0), index=0
   })";
 
   Array3D<bfloat16> p0_arr(2, 8, 8);  // bf16[2,8,8]

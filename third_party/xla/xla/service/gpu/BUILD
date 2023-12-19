@@ -2973,6 +2973,7 @@ cc_library(
     hdrs = ["custom_fusion_rewriter.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//xla:shape_util",
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_pass",
