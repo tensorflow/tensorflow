@@ -175,18 +175,20 @@ xla_cc_test(
     ]),
 )
 
+# TODO(ddunleavy): why does this sometimes get built on CPU Kokoro despite
+# `{build,test}_tag_filters?
 xla_cc_test(
     name = "gpu_copy_insertion_test",
     srcs = if_gpu_is_configured(["gpu_copy_insertion_test.cc"]),
     tags = tf_cuda_tests_tags(),
-    deps = if_gpu_is_configured([
+    deps = [
         ":buffer_sharing",
         "//xla:test",
         "//xla/hlo/ir:hlo",
         "//xla/service:copy_insertion",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
-    ]),
+    ],
 )
 
 cc_library(
@@ -3071,6 +3073,7 @@ cc_library(
         ":copy_fusion",
         ":custom_fusion_rewriter",
         ":dot_dimension_sorter",
+        ":dot_operand_converter",
         ":executable_proto_cc",
         ":fusion_merger",
         ":fusion_wrapper",
@@ -4789,6 +4792,43 @@ cc_library(
 )
 
 cc_library(
+    name = "dot_operand_converter",
+    srcs = ["dot_operand_converter.cc"],
+    hdrs = ["dot_operand_converter.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:op_expander_pass",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:errors",
+    ],
+)
+
+xla_test(
+    name = "dot_operand_converter_test",
+    srcs = if_cuda_is_configured(["dot_operand_converter_test.cc"]),
+    backends = [
+        "gpu_a100",
+        "gpu_p100",
+        "gpu_v100",
+    ],
+    deps = if_cuda_is_configured([
+        ":dot_operand_converter",
+        "@com_google_googletest//:gtest",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_matchers",
+        "//xla/service:pattern_matcher",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@local_tsl//tsl/platform:statusor",
+    ]),
+)
+
+cc_library(
     name = "make_batch_pointers",
     srcs = if_gpu_is_configured(["make_batch_pointers.cc"]),
     hdrs = if_gpu_is_configured(["make_batch_pointers.h"]),
@@ -5212,7 +5252,7 @@ xla_cc_test(
 
 xla_cc_test(
     name = "determinism_test",
-    srcs = ["determinism_test.cc"],
+    srcs = if_gpu_is_configured(["determinism_test.cc"]),
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
