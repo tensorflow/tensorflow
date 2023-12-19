@@ -54,6 +54,8 @@ class SnapshotChunkProvider : public SplitProvider {
   absl::Status Restore(std::function<std::string(std::string)> full_name,
                        IteratorStateReader* reader) override;
 
+  void Cancel() override;
+
  private:
   // State of the snapshot.
   struct SnapshotState {

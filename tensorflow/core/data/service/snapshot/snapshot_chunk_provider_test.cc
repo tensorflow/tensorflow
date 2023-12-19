@@ -44,6 +44,7 @@ namespace data {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAreArray;
 using ::tsl::testing::IsOkAndHolds;
@@ -239,6 +240,28 @@ TEST(SnapshotChunkProviderTest, SnapshotError) {
   TF_ASSERT_OK(WriteChunk(snapshot_path, "chunk_2_0_0"));
   TF_ASSERT_OK(
       SetStatus(snapshot_path, absl::FailedPreconditionError("Test error.")));
+  reader_thread.reset();
+}
+
+TEST(SnapshotChunkProviderTest, Cancel) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
+  SnapshotChunkProvider snapshot_chunk_provider(snapshot_path,
+                                                tsl::Env::Default());
+
+  std::unique_ptr<tsl::Thread> reader_thread =
+      absl::WrapUnique(tsl::Env::Default()->StartThread(
+          /*thread_options=*/{}, /*name=*/"Reader",
+          [&snapshot_chunk_provider]() {
+            EXPECT_THAT(
+                GetAllChunks(snapshot_chunk_provider),
+                StatusIs(absl::StatusCode::kCancelled,
+                         HasSubstr("Cancelled loading tf.data snapshot at")));
+          }));
+
+  TF_ASSERT_OK(WriteChunk(snapshot_path, "chunk_0_0_0"));
+  TF_ASSERT_OK(WriteChunk(snapshot_path, "chunk_1_0_0"));
+  TF_ASSERT_OK(WriteChunk(snapshot_path, "chunk_2_0_0"));
+  snapshot_chunk_provider.Cancel();
   reader_thread.reset();
 }
 
