@@ -186,36 +186,6 @@ cc_test(
 )
 
 tflite_cc_library_with_c_headers_test(
-    name = "xnnpack_plugin_c_test_lib",
-    testonly = True,
-    srcs = ["xnnpack_plugin_c_test_lib.c"],
-    hdrs = ["xnnpack_plugin_c_test_lib.h"],
-    deps = [
-        ":configuration_c_fbs",
-        ":xnnpack_plugin",
-        "//tensorflow/lite/core/c:common",
-        "//third_party/flatcc:runtime",
-        "@pthreadpool",
-    ],
-)
-
-cc_test(
-    name = "xnnpack_plugin_c_test",
-    srcs = ["xnnpack_plugin_c_test.cc"],
-    deps = [
-        ":configuration_c_fbs",
-        ":xnnpack_plugin",
-        ":xnnpack_plugin_c_test_lib",
-        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
-        "//third_party/flatcc:runtime",
-        "@com_google_googletest//:gtest_main",
-        "@pthreadpool",
-    ],
-)
-
-tflite_cc_library_with_c_headers_test(
     name = "stable_delegate",
     hdrs = ["stable_delegate.h"],
     compatible_with = get_compatible_with_portable(),
