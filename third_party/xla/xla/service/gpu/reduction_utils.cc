@@ -108,7 +108,7 @@ int64_t ReductionDimensionRaceFreeBound(
   return WarpSize() * reduction_tiling[1];
 }
 
-static bool IsUnnestedReductionFasterThanElemental(
+bool IsUnnestedReductionFasterThanElemental(
     const ReductionDimensions& reduction_dimensions) {
   if (reduction_dimensions.is_row_reduction) {
     // For row reduction, the tile block is 1 x tile_size_x, and we are reducing
