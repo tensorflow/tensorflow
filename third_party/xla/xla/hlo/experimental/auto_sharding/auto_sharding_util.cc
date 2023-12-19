@@ -1610,11 +1610,9 @@ HloSharding Tile(const Shape& tensor_shape,
              : HloSharding::Tile(std::move(tile_assignment));
 }
 
-AliasMap BuildAliasMap(const HloModule* module) {
+AliasMap BuildAliasMap(const HloModule* module,
+                       const HloInputOutputAliasConfig& alias_config) {
   AliasMap alias_map;
-
-  const HloInputOutputAliasConfig& alias_config =
-      module->input_output_alias_config();
 
   HloComputation* entry = module->entry_computation();
   const auto& parameter_instructions = entry->parameter_instructions();
@@ -1676,13 +1674,11 @@ AliasMap BuildAliasMap(const HloModule* module) {
 }
 
 AliasSet BuildAliasSet(const HloModule* module,
+                       const HloInputOutputAliasConfig& alias_config,
                        const StrategyMap& strategy_map) {
-  // Adjust the edge cost for aliases (donated buffer).
-  // Typically, old weights and new weights are aliases, so we should
+  // We also look at alias_config to adjust the edge cost for aliases (donated
+  // buffer). Typically, old weights and new weights are aliases, so we should
   // let them have the same sharding spec.
-  const HloInputOutputAliasConfig& alias_config =
-      module->input_output_alias_config();
-
   HloComputation* entry = module->entry_computation();
   const auto& parameter_instructions = entry->parameter_instructions();
   const HloInstruction* output_tuple = entry->root_instruction();
