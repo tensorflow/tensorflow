@@ -3789,6 +3789,76 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedAdd) {
   }
 }
 
+TEST_F(ShapeInferenceTest, UnboundedBatchNormGrad) {
+  StatusOr<Shape> operand, grad_operand;
+  operand = grad_operand = ParseShape("f32[?, ?, 7]");
+  StatusOr<Shape> scale = ParseShape("f32[5]");
+  StatusOr<Shape> mean, variance, grad_scale, grad_offset;
+  mean = variance = grad_scale = grad_offset = ParseShape("f32[?]");
+  StatusOr<Shape> grad_output = ParseShape("f32[5, ?, 7]");
+  ASSERT_IS_OK(operand.status());
+  ASSERT_IS_OK(grad_operand.status());
+  ASSERT_IS_OK(scale.status());
+  ASSERT_IS_OK(mean.status());
+  ASSERT_IS_OK(variance.status());
+  ASSERT_IS_OK(grad_scale.status());
+  ASSERT_IS_OK(grad_offset.status());
+  ASSERT_IS_OK(grad_output.status());
+  StatusOr<Shape> inferred_status = ShapeInference::InferBatchNormGradShape(
+      operand.value(), scale.value(), mean.value(), variance.value(),
+      grad_output.value(), 1);
+  ASSERT_IS_OK(inferred_status.status());
+  Shape expected_tuple_shape = ShapeUtil::MakeTupleShape(
+      {grad_operand.value(), grad_scale.value(), grad_offset.value()});
+  ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected_tuple_shape))
+      << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+      << " expected: " << ShapeUtil::HumanString(expected_tuple_shape);
+}
+
+TEST_F(ShapeInferenceTest, UnboundedBatchNormInference) {
+  StatusOr<Shape> operand, expected;
+  operand = expected = ParseShape("f32[?, ?, 7]");
+  StatusOr<Shape> scale, offset, mean, variance;
+  scale = offset = mean = variance = ParseShape("f32[5]");
+  ASSERT_IS_OK(operand.status());
+  ASSERT_IS_OK(expected.status());
+  ASSERT_IS_OK(scale.status());
+  ASSERT_IS_OK(offset.status());
+  ASSERT_IS_OK(mean.status());
+  ASSERT_IS_OK(variance.status());
+  StatusOr<Shape> inferred_status =
+      ShapeInference::InferBatchNormInferenceShape(
+          operand.value(), scale.value(), offset.value(), mean.value(),
+          variance.value(), 1);
+  ASSERT_IS_OK(inferred_status.status());
+  ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected.value()))
+      << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
+TEST_F(ShapeInferenceTest, UnboundedBatchNormTraining) {
+  StatusOr<Shape> operand, output;
+  operand = output = ParseShape("f32[?, ?, 7]");
+  StatusOr<Shape> scale, offset;
+  scale = offset = ParseShape("f32[5]");
+  StatusOr<Shape> batch_mean, batch_var;
+  batch_mean = batch_var = ParseShape("f32[?]");
+  ASSERT_IS_OK(operand.status());
+  ASSERT_IS_OK(output.status());
+  ASSERT_IS_OK(scale.status());
+  ASSERT_IS_OK(offset.status());
+  ASSERT_IS_OK(batch_mean.status());
+  ASSERT_IS_OK(batch_var.status());
+  StatusOr<Shape> inferred_status = ShapeInference::InferBatchNormTrainingShape(
+      operand.value(), scale.value(), offset.value(), 1);
+  ASSERT_IS_OK(inferred_status.status());
+  Shape expected_tuple_shape = ShapeUtil::MakeTupleShape(
+      {output.value(), batch_mean.value(), batch_var.value()});
+  ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected_tuple_shape))
+      << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
+      << " expected: " << ShapeUtil::HumanString(expected_tuple_shape);
+}
+
 TEST_P(UnboundedClampOpShapeInferenceTest, UnboundedClamp) {
   StatusOr<Shape> lhs = ParseShape(GetParam()[0]);
   StatusOr<Shape> rhs = ParseShape(GetParam()[1]);
@@ -4070,6 +4140,27 @@ TEST_F(ShapeInferenceTest, UnboundedReduceInvalidReduceDimension) {
   ASSERT_IS_NOT_OK(inferred_status.status());
   EXPECT_THAT(inferred_status.status().message(),
               HasSubstr("All reduced tensors must have compatible dimension"));
+}
+
+TEST_F(ShapeInferenceTest, UnboundedReshapeUnsupported1) {
+  StatusOr<Shape> operand = ParseShape("f32[?]");
+  ASSERT_IS_OK(operand.status());
+  StatusOr<Shape> inferred_status = ShapeInference::InferReshapeShape(
+      operand.value(), /*dimensions=*/{0}, /*new_sizes=*/{2, 3}, -1);
+  ASSERT_THAT(
+      inferred_status.status().message(),
+      HasSubstr("Reshaping with unbounded dimensions is not supported."));
+}
+
+TEST_F(ShapeInferenceTest, UnboundedReshapeUnsupported2) {
+  StatusOr<Shape> operand = ParseShape("f32[6]");
+  ASSERT_IS_OK(operand.status());
+  StatusOr<Shape> inferred_status = ShapeInference::InferReshapeShape(
+      operand.value(), /*dimensions=*/{0},
+      /*new_sizes=*/{Shape::kUnboundedSize, Shape::kUnboundedSize}, -1);
+  ASSERT_THAT(
+      inferred_status.status().message(),
+      HasSubstr("Reshaping with unbounded dimensions is not supported."));
 }
 
 TEST_F(ShapeInferenceTest, UnboundedSlice) {

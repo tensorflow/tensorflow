@@ -229,11 +229,12 @@ class GemmConfigSetCollector : public ConstDfsHloVisitorWithDefault {
   GemmConfigSet GetGemmConfigSet(const HloFusionInstruction* fusion) {
     const DebugOptions& debug_options =
         fusion->GetModule()->config().debug_options();
+    auto cuda_comp =
+        std::get<se::CudaComputeCapability>(config_.GetGpuComputeCapability());
     return {GetPossibleMatmulAutotuneConfigs(
         *Cast<HloDotInstruction>(hlo_query::GetFirstInstructionWithOpcode(
             *fusion->called_computations().at(0), HloOpcode::kDot)),
-        config_.GetCudaComputeCapability(), debug_options,
-        config_.ExhaustiveTilingSearch())};
+        cuda_comp, debug_options, config_.ExhaustiveTilingSearch())};
   }
 
   AutotuneConfig config_;
@@ -456,7 +457,7 @@ StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
       AutotunerUtil::ExtractComputationIntoNewModule(*fusion_computation);
   new_module->mutable_config().set_debug_options(debug_opts);
 
-  GemmRewriter rewriter(config.GetCudaComputeCapability());
+  GemmRewriter rewriter(config.GetGpuComputeCapability());
   GpuInstructionFusion fusion_pass(
       /*may_duplicate=*/false, config.GetExecutor()->GetDeviceDescription());
   TF_RETURN_IF_ERROR(rewriter.Run(new_module.get()).status());

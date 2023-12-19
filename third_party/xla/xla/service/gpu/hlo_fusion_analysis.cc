@@ -311,13 +311,13 @@ LaunchDimensions CalculateSoftMaxLaunchDimensions(
 
   int reduction_dim = reduce_input_shape.dimensions_minor(0);
 
-  int num_rows = 1;
-  for (int minor_axis = 1; minor_axis < reduce_input_shape.rank();
+  unsigned num_rows = 1;
+  for (unsigned minor_axis = 1; minor_axis < reduce_input_shape.rank();
        ++minor_axis) {
     num_rows *= reduce_input_shape.dimensions_minor(minor_axis);
   }
 
-  int num_warps = 32;
+  unsigned num_warps = 32;
 
   if (reduction_dim <= 512) {
     num_warps = 1;
@@ -331,7 +331,7 @@ LaunchDimensions CalculateSoftMaxLaunchDimensions(
     num_warps = 16;
   }
 
-  return {num_rows, num_warps * WarpSize()};
+  return {num_rows, static_cast<uint64_t>(num_warps * WarpSize())};
 }
 
 }  // namespace
@@ -468,10 +468,10 @@ StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions() const {
           reduction_codegen_info->GetTilingScheme();
       size_t blocks_y = reduction_codegen_info->GetIndexGroups().size();
       return LaunchDimensions(
-          {/*x=*/tiling_scheme.GetNumberOfBlocksPhysical(),
-           /*y=*/static_cast<int64_t>(blocks_y), /*z=*/1},
-          {/*x=*/tiling_scheme.GetNumThreadsPerBlockPhysical(),
-           /*y=*/1, /*z=*/1});
+          se::BlockDim(/*x=*/tiling_scheme.GetNumberOfBlocksPhysical(),
+                       /*y=*/static_cast<int64_t>(blocks_y), /*z=*/1),
+          se::ThreadDim(/*x=*/tiling_scheme.GetNumThreadsPerBlockPhysical(),
+                        /*y=*/1, /*z=*/1));
     }
     case EmitterFusionKind::kTranspose: {
       auto* tiling_scheme = GetTransposeTilingScheme();

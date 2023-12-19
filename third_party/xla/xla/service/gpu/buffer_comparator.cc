@@ -87,13 +87,10 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
   TF_ASSIGN_OR_RETURN(LaunchDimensions dim,
                       CalculateLaunchDimensions(buffer_shape, gpu_device_info));
 
-  LaunchDimensions::Dim3D thread_counts = dim.thread_counts_per_block();
-  LaunchDimensions::Dim3D block_counts = dim.block_counts();
   TF_RETURN_IF_ERROR(stream->ThenLaunch(
-      se::ThreadDim(thread_counts.x, thread_counts.y, thread_counts.z),
-      se::BlockDim(block_counts.x, block_counts.y, block_counts.z),
-      *comparison_kernel, current_typed, expected_typed,
-      static_cast<float>(kTolerance), buffer_size, out_param.cref()));
+      dim.thread_counts_per_block(), dim.block_counts(), *comparison_kernel,
+      current_typed, expected_typed, static_cast<float>(kTolerance),
+      buffer_size, out_param.cref()));
 
   uint64_t result = -1;
   CHECK_EQ(out_param->size(), sizeof(result));

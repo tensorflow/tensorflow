@@ -29,17 +29,10 @@ namespace gpu {
 
 namespace {
 
-template <class... Ts>
-struct Overload : Ts... {
-  using Ts::operator()...;
-};
-template <class... Ts>
-Overload(Ts...) -> Overload<Ts...>;
-
 bool DimensionRequiresPadding(const int64_t size, const PrimitiveType data_type,
                               const se::GpuComputeCapability& gpu_cc) {
   return std::visit(
-      Overload{
+      se::VariantVisitor{
           [&](const se::CudaComputeCapability& cc) {
             for (const auto& req : CublasPaddingRequirements) {
               if (cc.IsAtLeast(req.min_compute_capability) &&

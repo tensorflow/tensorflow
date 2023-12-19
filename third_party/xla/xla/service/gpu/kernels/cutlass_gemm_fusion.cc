@@ -49,6 +49,24 @@ namespace xla::gpu {
 namespace {
 namespace m = match;
 
+// If custom fusion requires extra workspace at run time, ROOT instruction will
+// be a tuple with second operand being a result of workspace allocation custom
+// call.
+struct RootWithWorkspace {
+  HloInstruction* root;
+  HloInstruction* workspace;
+};
+
+static RootWithWorkspace MatchRootWithWorkspace(HloInstruction* root) {
+  RootWithWorkspace result;
+  if (Match(root, m::Tuple(m::Op(&result.root),
+                           m::CustomCall(&result.workspace,
+                                         {CustomFusionPattern::kWorkspace})))) {
+    return result;
+  }
+  return {root, nullptr};
+}
+
 // Pattern for matching mixed precision GEMMs.
 struct GemmWithUpcast {
   explicit GemmWithUpcast(HloDotInstruction* dot) : dot(dot) {}
@@ -288,8 +306,10 @@ class CutlassGemmWithDynamicUpdateSliceFusion : public CustomFusion {
   StatusOr<std::vector<CustomKernel>> LoadKernels(
       const se::DeviceDescription& device,
       const HloComputation* computation) const final {
-    auto* dus = DynCast<HloDynamicUpdateSliceInstruction>(
-        computation->root_instruction());
+    auto [root, workspace] =
+        MatchRootWithWorkspace(computation->root_instruction());
+
+    auto* dus = DynCast<HloDynamicUpdateSliceInstruction>(root);
     if (dus == nullptr) {
       return absl::InternalError(
           "cutlass_gemm_with_dynamic_update_slice requires ROOT operation to "
@@ -310,7 +330,7 @@ class CutlassGemmWithDynamicUpdateSliceFusion : public CustomFusion {
     // Mapping from fusion arguments to gemm kernel arguments.
     kernel::gemm_universal::ArgsIndices args_indices = {
         lhs->parameter_number(), rhs->parameter_number(),
-        out->parameter_number()};
+        out->parameter_number(), /*has_workspace=*/workspace != nullptr};
 
     // Mapping to a buffer that holds output slice offset.
     auto* offset =

@@ -12,7 +12,6 @@ load("//xla/stream_executor/rocm:build_defs.bzl", "rocm_embedded_test_modules")
 # copybara:comment_end
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
     "if_rocm_hipblaslt",
     "if_rocm_is_configured",
     "rocm_library",
@@ -142,18 +141,6 @@ rocm_library(
     name = "hip_conditional_kernels",
     srcs = if_rocm_is_configured(["hip_conditional_kernels.cu.cc"]),
     deps = if_rocm_is_configured(["@local_config_rocm//rocm:rocm_headers"]),
-)
-
-rocm_library(
-    name = "rocm_kernels",
-    srcs = if_rocm(
-        ["rocm_kernels.cu.cc"],
-        ["rocm_kernels.cc"],
-    ),
-    deps = [
-        "@com_google_absl//absl/log",
-        "@local_config_rocm//rocm:rocm_headers",
-    ],
 )
 
 cc_library(

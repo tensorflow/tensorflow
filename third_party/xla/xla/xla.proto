@@ -593,6 +593,9 @@ message DebugOptions {
 
   bool xla_gpu_enable_cudnn_int8x32_convolution_reordering = 189;
 
+  // Creates triton fusion for all supported gemms.
+  // To make sure only triton gemm is chosen by the autotuner run with
+  // `xla_gpu_cublas_fallback` set to false.
   bool xla_gpu_triton_gemm_any = 190;
 
   reserved 211;  // Was xla_gpu_enable_dot_strength_reduction

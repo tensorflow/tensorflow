@@ -80,7 +80,6 @@ xla_cc_binary(
         "//xla:shape_util",
         "//xla:statusor",
         "//xla:types",
-        "//xla:xla_data_proto_cc",
         "//xla/client",
         "//xla/client:client_library",
         "//xla/client:local_client",
@@ -170,7 +169,6 @@ xla_cc_binary(
     deps = [
         "//xla:statusor",
         "//xla:types",
-        "//xla:xla_data_proto_cc",
         "//xla/client",
         "//xla/client:client_library",
         "//xla/client:local_client",
@@ -598,7 +596,6 @@ xla_cc_test(
         "//xla/service:despecializer",
         "//xla/service:hlo_verifier",
         "//xla/service/spmd:spmd_partitioner",
-        "//xla/tests:client_library_test_base",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "@com_google_absl//absl/strings",

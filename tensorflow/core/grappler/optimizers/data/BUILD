@@ -910,6 +910,7 @@ cc_library(
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "@com_google_absl//absl/log",
     ] + tf_protos_all(),
     alwayslink = 1,
 )

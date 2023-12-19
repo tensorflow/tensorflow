@@ -32,15 +32,18 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/compiler/tf2xla/type_util.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
+#include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -288,8 +291,13 @@ absl::StatusOr<int> VerifyIndexDomainsAndGetReplicas(
 
 StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeAssembledArrayFromHostBuffer(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
-    std::shared_ptr<xla::ifrt::Sharding> sharding,
+    const xla::HloSharding& hlo_sharding,
+    const xla::ifrt::DeviceList& device_list,
     const Eigen::ThreadPoolDevice& thread_pool_device) {
+  // TODO(b/316959894): use xla::HloSharding to identifying sharding axis.
+  auto sharding = xla::ifrt::HloSharding::Create(
+      device_list, xla::ifrt::MemoryKind(), hlo_sharding);
+
   VLOG(2) << "Assembling arrays by sharding " << sharding->DebugString();
 
   TF_ASSIGN_OR_RETURN(auto index_domains,
@@ -384,7 +392,7 @@ StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeAssembledArrayFromHostBuffer(
   }
 
   return ifrt_client.AssembleArrayFromSingleDeviceArrays(
-      xla::ifrt::Shape(input_tensor.shape().dim_sizes()), sharding,
+      xla::ifrt::Shape(input_tensor.shape().dim_sizes()), std::move(sharding),
       absl::MakeSpan(rearranged_arrays),
       xla::ifrt::ArrayCopySemantics::kDonateInput);
 }

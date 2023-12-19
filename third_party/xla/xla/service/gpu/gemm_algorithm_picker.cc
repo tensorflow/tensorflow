@@ -265,10 +265,17 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
       AutotunerUtil::CreateBuffer(buffer_allocator, output_shape,
                                   autotune_config, rng_state));
 
-  int64_t workspace_size =
-      autotune_config.GetCudaComputeCapability().IsAtLeastHopper()
-          ? GemmConfig::kHopperWorkspace
-          : GemmConfig::kDefaultWorkspace;
+  int64_t workspace_size = std::visit(
+      se::VariantVisitor{[](const se::CudaComputeCapability& cc) {
+                           return cc.IsAtLeastHopper()
+                                      ? GemmConfig::kHopperWorkspace
+                                      : GemmConfig::kDefaultWorkspace;
+                         },
+                         [](const se::RocmComputeCapability&) {
+                           return GemmConfig::kDefaultWorkspace;
+                         }},
+      autotune_config.GetGpuComputeCapability());
+
   TF_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase workspace_buffer,
       AutotunerUtil::CreateBuffer(buffer_allocator,
@@ -401,13 +408,19 @@ StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
 
   GemmBackendConfig updated_config = gemm_config;
 
-  // We only set the 'algorithm' field on non-Ampere architectures, as for
-  // Ampere it's ignored in any case.
-  bool update_algorithm = true;
-#if GOOGLE_CUDA
-  auto capability = config.GetCudaComputeCapability();
-  update_algorithm = !capability.IsAtLeast(se::CudaComputeCapability::AMPERE);
-#endif
+  bool update_algorithm =
+      std::visit(se::VariantVisitor{[](const se::CudaComputeCapability& cc) {
+                                      // We only set the 'algorithm' field on
+                                      // non-Ampere architectures, as for Ampere
+                                      // it's ignored in any case.
+                                      return !cc.IsAtLeast(
+                                          se::CudaComputeCapability::AMPERE);
+                                    },
+                                    [](const se::RocmComputeCapability&) {
+                                      return true;  // TODO: not decided yet
+                                    }},
+                 config.GetGpuComputeCapability());
+
   if (update_algorithm) {
     if (algorithm.has_gemm()) {
       updated_config.set_selected_algorithm(algorithm.gemm().algorithm());

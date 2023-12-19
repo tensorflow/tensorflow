@@ -29,9 +29,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -59,11 +57,8 @@ cc_library(
     hdrs = ["custom_kernel.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//xla:statusor",
         "//xla/stream_executor",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -96,7 +91,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
     ],
     alwayslink = 1,  # static fusion registration
@@ -113,14 +107,12 @@ xla_test(
         "//xla:array",
         "//xla:array2d",
         "//xla:array3d",
-        "//xla:debug_options_flags",
         "//xla:error_spec",
         "//xla:literal_util",
         "//xla:types",
         "//xla/service/gpu:custom_fusion_rewriter",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/tests:hlo_test_base",
-        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -188,14 +180,13 @@ cc_library(
     deps = [
         ":custom_kernel",
         ":cutlass_gemm",
-        ":cutlass_gemm_kernels",
+        ":cutlass_gemm_kernels",  # build_cleaner: keep
         "//xla:statusor",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@cutlass_archive//:cutlass",
     ],
 )
 
@@ -206,16 +197,13 @@ xla_test(
     data = [":cutlass_gemm_kernel_f32xf32_to_f32.so"],
     deps = [
         ":cutlass_gemm_custom_kernel",
-        "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor",
         "//xla/stream_executor:multi_platform_manager",
         "//xla/stream_executor:platform",
         "//xla/stream_executor/cuda:cuda_platform",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
@@ -228,14 +216,12 @@ cc_binary(
     srcs = if_cuda_is_configured(["cutlass_gemm_custom_kernel_benchmarks.cc"]),
     deps = [
         ":cutlass_gemm_custom_kernel",
-        "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/service:gpu_plugin",
         "//xla/stream_executor",
         "//xla/stream_executor:multi_platform_manager",
         "//xla/stream_executor:platform",
         "//xla/stream_executor/cuda:cuda_platform",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
@@ -332,8 +318,5 @@ cc_binary(
     srcs = if_cuda_is_configured(["cutlass_gemm_kernel_f32xf32_to_f32.cc"]),
     linkshared = True,
     linkstatic = False,
-    deps = [
-        ":cutlass_gemm",
-        ":cutlass_gemm_kernel_f32xf32_to_f32",
-    ],
+    deps = [":cutlass_gemm"],
 )

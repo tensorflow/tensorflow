@@ -100,7 +100,7 @@ void SetFunctionPrivate(func::FuncOp func) {
   // The `tf_saved_model` attributes can only be applied to public functions.
   for (auto& attr : func->getAttrs()) {
     StringRef attr_name = attr.getName().getValue();
-    if (attr_name.startswith("tf_saved_model.")) {
+    if (attr_name.starts_with("tf_saved_model.")) {
       func->removeAttr(attr_name);
     }
   }
@@ -109,7 +109,7 @@ void SetFunctionPrivate(func::FuncOp func) {
   for (int i = 0; i < func.getNumArguments(); ++i) {
     for (auto& attr : iface.getArgAttrs(i)) {
       const StringAttr& attr_name = attr.getName();
-      if (attr_name.getValue().startswith("tf_saved_model.")) {
+      if (attr_name.getValue().starts_with("tf_saved_model.")) {
         func.removeArgAttr(i, attr_name);
       }
     }
@@ -117,7 +117,7 @@ void SetFunctionPrivate(func::FuncOp func) {
   for (int i = 0; i < func.getNumResults(); ++i) {
     for (auto& attr : iface.getResultAttrs(i)) {
       const StringAttr& attr_name = attr.getName();
-      if (attr_name.getValue().startswith("tf_saved_model.")) {
+      if (attr_name.getValue().starts_with("tf_saved_model.")) {
         func.removeResultAttr(i, attr_name);
       }
     }

@@ -1302,6 +1302,12 @@ StatusOr<XlaOp> XlaBuilder::ReshapeInternal(const Shape& shape, XlaOp operand,
                                             int64_t inferred_dimension) {
   TF_RETURN_IF_ERROR(first_error_);
 
+  TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+  if (shape.is_unbounded_dynamic() || operand_shape->is_unbounded_dynamic()) {
+    return InvalidArgument(
+        "Reshaping with unbounded dimensions is not supported.");
+  }
+
   HloInstructionProto instr;
   *instr.mutable_shape() = shape.ToProto();
   if (inferred_dimension != -1) {

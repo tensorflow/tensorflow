@@ -27,12 +27,25 @@
 #       export TFCI=ci/official/envs/env_goes_here
 #       export TF_ANY_SCRIPT=ci/official/wheel.sh
 #       ./any.sh
+#
+# 3. DO THE SAME WITH A LOCAL CACHE OR RBE:
+#       export TF_ANY_EXTRA_ENV=ci/official/envs/local_multicache
+#       ...
+#       ./any.sh
+#     or
+#       export TF_ANY_EXTRA_ENV=ci/official/envs/local_rbe
+#       ./any.sh
+#       ...
 set -euxo pipefail
 cd "$(dirname "$0")/../../"  # tensorflow/
+REQUESTED_TFCI="$TFCI"
+export TFCI=$(mktemp)
+echo >>$TFCI "source $REQUESTED_TFCI"
+echo >>$TFCI "source ci/official/envs/disable_all_uploads"
+if [[ -n "${TF_ANY_EXTRA_ENV:-}" ]]; then
+  echo >>$TFCI "source $TF_ANY_EXTRA_ENV"
+fi
 if [[ -n "${TF_ANY_SCRIPT:-}" ]]; then
-  cp "$TFCI" any
-  echo "source ci/official/envs/disable_all_uploads" >> any
-  export TFCI=$(realpath any)
   "$TF_ANY_SCRIPT"
 elif [[ -n "${TF_ANY_TARGETS:-}" ]]; then
   source "${BASH_SOURCE%/*}/utilities/setup.sh"

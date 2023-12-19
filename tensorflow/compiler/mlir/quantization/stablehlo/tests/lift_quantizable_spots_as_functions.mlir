@@ -311,6 +311,56 @@ func.func @dot_general_with_relu6_fn(%arg0: tensor<1x1x167xf32>) -> tensor<1x1x6
 
 // -----
 
+// CHECK-LABEL: @conv_with_relu6_dynamic_fn(
+// CHECK-SAME:                    %[[ARG_0:.*]]: tensor<?x28x28x1xf32>
+func.func @conv_with_relu6_dynamic_fn(%arg0: tensor<?x28x28x1xf32>) -> tensor<?x28x28x16xf32> {
+  %0 = stablehlo.constant dense<2.000000e+00> : tensor<3x3x1x16xf32>
+  %1 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+  %2 = stablehlo.constant dense<6.000000e+00> : tensor<f32>
+  %3 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<?x28x28x1xf32>, tensor<3x3x1x16xf32>) -> tensor<?x28x28x16xf32>
+  %4 = stablehlo.clamp %1, %3, %2 : (tensor<f32>, tensor<?x28x28x16xf32>, tensor<f32>) -> tensor<?x28x28x16xf32>
+  func.return %4: tensor<?x28x28x16xf32>
+}
+// CHECK: %[[CONST:.*]] = stablehlo.constant dense<2.000000e+00>
+// CHECK: %[[XLA_CALL_MODULE:.*]] = "tf.XlaCallModule"(%arg0, %[[CONST]])
+// CHECK: return %[[XLA_CALL_MODULE:.*]] : tensor<?x28x28x16xf32>
+// CHECK: }
+
+// CHECK-LABEL: private @composite_conv_with_relu6_fn_1
+// CHECK: %[[CONST_0:.*]] = stablehlo.constant dense<0.000000e+00>
+// CHECK: %[[CONST_1:.*]] = stablehlo.constant dense<6.000000e+00>
+// CHECK: %[[CONV:.*]] = stablehlo.convolution(%arg0, %arg1)
+// CHECK: %[[CLAMP:.*]] = stablehlo.clamp %[[CONST_0]], %[[CONV]], %[[CONST_1]]
+// CHECK: return %[[CLAMP]] : tensor<?x28x28x16xf32>
+// CHECK: }
+
+// -----
+
+// CHECK-LABEL: @dot_general_with_relu6_dynamic_fn(
+// CHECK-SAME:                    %[[ARG_0:.*]]: tensor<?x12544xf32>
+func.func @dot_general_with_relu6_dynamic_fn(%arg0: tensor<?x12544xf32>) -> tensor<?x10xf32> {
+  %0 = stablehlo.constant dense<2.000000e+00> : tensor<12544x10xf32>
+  %1 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+  %2 = stablehlo.constant dense<6.000000e+00> : tensor<f32>
+  %3 = stablehlo.dot_general %arg0, %0, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<?x12544xf32>, tensor<12544x10xf32>) -> tensor<?x10xf32>
+  %4 = stablehlo.clamp %1, %3, %2 : (tensor<f32>, tensor<?x10xf32>, tensor<f32>) -> tensor<?x10xf32>
+  func.return %4: tensor<?x10xf32>
+}
+// CHECK: %[[CONST:.*]] = stablehlo.constant dense<2.000000e+00>
+// CHECK: %[[XLA_CALL_MODULE:.*]] = "tf.XlaCallModule"(%arg0, %[[CONST]])
+// CHECK: return %[[XLA_CALL_MODULE:.*]] : tensor<?x10xf32>
+// CHECK: }
+
+// CHECK-LABEL: private @composite_dot_general_with_relu6_fn_1
+// CHECK: %[[CONST_0:.*]] = stablehlo.constant dense<0.000000e+00>
+// CHECK: %[[CONST_1:.*]] = stablehlo.constant dense<6.000000e+00>
+// CHECK: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %arg0, %arg1
+// CHECK: %[[CLAMP:.*]] = stablehlo.clamp %[[CONST_0]], %[[DOT_GENERAL]], %[[CONST_1]]
+// CHECK: return %[[CLAMP]] : tensor<?x10xf32>
+// CHECK: }
+
+// -----
+
 // CHECK-LABEL: @conv_with_bias_and_relu_fn(
 // CHECK-SAME:                    %[[ARG_0:.*]]: tensor<1x3x3x4xf32>
 func.func @conv_with_bias_and_relu_fn(%arg0: tensor<1x3x3x4xf32>) -> tensor<1x3x3x4xf32> {
@@ -489,4 +539,70 @@ func.func @dot_general_with_bias_and_relu6_fn(%arg0: tensor<1x1x167xf32>) -> ten
 // CHECK: %[[ADD:.*]] = stablehlo.add %[[DOT_GENERAL]], %arg2
 // CHECK: %[[CLAMP:.*]] = stablehlo.clamp %[[CONST_0]], %[[ADD]], %[[CONST_1]]
 // CHECK: return %[[CLAMP]] : tensor<1x1x64xf32>
+// CHECK: }
+
+// -----
+
+// CHECK-LABEL: @conv_with_bias_and_relu6_dynamic_fn(
+// CHECK-SAME:                    %[[ARG_0:.*]]: tensor<?x28x28x1xf32>
+func.func @conv_with_bias_and_relu6_dynamic_fn(%arg0: tensor<?x28x28x1xf32>) -> tensor<?x28x28x16xf32> {
+  %0 = stablehlo.constant dense<2.000000e+00> : tensor<3x3x1x16xf32>
+  %1 = stablehlo.constant dense<2.000000e+00> : tensor<16xf32>
+  %2 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+  %3 = stablehlo.constant dense<6.000000e+00> : tensor<f32>
+  %4 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<?x28x28x1xf32>, tensor<3x3x1x16xf32>) -> tensor<?x28x28x16xf32>
+  %5 = shape.shape_of %4 : tensor<?x28x28x16xf32> -> tensor<4xindex>
+  %6 = stablehlo.dynamic_broadcast_in_dim %1, %5, dims = [3] : (tensor<16xf32>, tensor<4xindex>) -> tensor<?x28x28x16xf32>
+  %7 = stablehlo.add %4, %6 : tensor<?x28x28x16xf32>
+  %8 = stablehlo.clamp %2, %7, %3 : (tensor<f32>, tensor<?x28x28x16xf32>, tensor<f32>) -> tensor<?x28x28x16xf32>
+  func.return %8: tensor<?x28x28x16xf32>
+}
+// CHECK: %[[CONST_0:.*]] = stablehlo.constant dense<2.000000e+00>
+// CHECK: %[[CONST_1:.*]] = stablehlo.constant dense<2.000000e+00>
+// CHECK: %[[XLA_CALL_MODULE:.*]] = "tf.XlaCallModule"(%arg0, %[[CONST_0]], %[[CONST_1]])
+// CHECK: return %[[XLA_CALL_MODULE:.*]] : tensor<?x28x28x16xf32>
+// CHECK: }
+
+// CHECK-LABEL: private @composite_conv_with_bias_and_relu6_dynamic_fn_1
+// CHECK: %[[CONST_0:.*]] = stablehlo.constant dense<0.000000e+00>
+// CHECK: %[[CONST_1:.*]] = stablehlo.constant dense<6.000000e+00>
+// CHECK: %[[CONV:.*]] = stablehlo.convolution(%arg0, %arg1)
+// CHECK: %[[SHAPE_OF_0:.*]] = shape.shape_of %[[CONV]]
+// CHECK: %[[DYNAMIC_BROADCAST_IN_DIM_0:.*]] = stablehlo.dynamic_broadcast_in_dim %arg2, %[[SHAPE_OF_0]]
+// CHECK: %[[ADD:.*]] = stablehlo.add %[[CONV]], %[[DYNAMIC_BROADCAST_IN_DIM_0]]
+// CHECK: %[[CLAMP:.*]] = stablehlo.clamp %[[CONST_0]], %[[ADD]], %[[CONST_1]]
+// CHECK: return %[[CLAMP]] : tensor<?x28x28x16xf32>
+// CHECK: }
+
+// -----
+
+// CHECK-LABEL: @dot_general_with_bias_and_relu6_dynamic_fn(
+// CHECK-SAME:                    %[[ARG_0:.*]]: tensor<?x12544xf32>
+func.func @dot_general_with_bias_and_relu6_dynamic_fn(%arg0: tensor<?x12544xf32>) -> tensor<?x10xf32> {
+  %0 = stablehlo.constant dense<2.000000e+00> : tensor<12544x10xf32>
+  %1 = stablehlo.constant dense<2.000000e+00> : tensor<10xf32>
+  %2 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+  %3 = stablehlo.constant dense<6.000000e+00> : tensor<f32>
+  %4 = stablehlo.dot_general %arg0, %0, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<?x12544xf32>, tensor<12544x10xf32>) -> tensor<?x10xf32>
+  %5 = shape.shape_of %4 : tensor<?x10xf32> -> tensor<2xindex>
+  %6 = stablehlo.dynamic_broadcast_in_dim %1, %5, dims = [1] : (tensor<10xf32>, tensor<2xindex>) -> tensor<?x10xf32>
+  %7 = stablehlo.add %4, %6 : tensor<?x10xf32>
+  %8 = stablehlo.clamp %2, %7, %3 : (tensor<f32>, tensor<?x10xf32>, tensor<f32>) -> tensor<?x10xf32>
+  func.return %8: tensor<?x10xf32>
+}
+/// CHECK: %[[CONST_0:.*]] = stablehlo.constant dense<2.000000e+00>
+// CHECK: %[[CONST_1:.*]] = stablehlo.constant dense<2.000000e+00>
+// CHECK: %[[XLA_CALL_MODULE:.*]] = "tf.XlaCallModule"(%arg0, %[[CONST_0]], %[[CONST_1]])
+// CHECK: return %[[XLA_CALL_MODULE:.*]] : tensor<?x10xf32>
+// CHECK: }
+
+// CHECK-LABEL: private @composite_dot_general_with_bias_and_relu6_dynamic_fn_1
+// CHECK: %[[CONST_0:.*]] = stablehlo.constant dense<0.000000e+00>
+// CHECK: %[[CONST_1:.*]] = stablehlo.constant dense<6.000000e+00>
+// CHECK: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %arg0, %arg1
+// CHECK: %[[SHAPE_OF_0:.*]] = shape.shape_of %[[DOT_GENERAL]]
+// CHECK: %[[DYNAMIC_BROADCAST_IN_DIM_0:.*]] = stablehlo.dynamic_broadcast_in_dim %arg2, %[[SHAPE_OF_0]]
+// CHECK: %[[ADD:.*]] = stablehlo.add %[[DOT_GENERAL]], %[[DYNAMIC_BROADCAST_IN_DIM_0]]
+// CHECK: %[[CLAMP:.*]] = stablehlo.clamp %[[CONST_0]], %[[ADD]], %[[CONST_1]]
+// CHECK: return %[[CLAMP]] : tensor<?x10xf32>
 // CHECK: }

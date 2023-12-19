@@ -54,7 +54,8 @@ struct DevicelessConfig {
 
   // A field to determine the architecture of the device. We only pick an
   // algorithm for non-Ampere architectures.
-  se::CudaComputeCapability cuda_compute_capability{0, 0};
+  se::GpuComputeCapability gpu_compute_capability{
+      se::CudaComputeCapability{0, 0}};
 };
 
 class AutotuneCacheKey {
@@ -132,11 +133,11 @@ class AutotuneConfig {
     return GetAllocator()->GetStream(GetExecutor()->device_ordinal());
   }
 
-  se::CudaComputeCapability GetCudaComputeCapability() const {
+  const se::GpuComputeCapability& GetGpuComputeCapability() const {
     if (auto c = std::get_if<DeviceConfig>(&config_)) {
-      return c->stream_exec->GetDeviceDescription().cuda_compute_capability();
+      return c->stream_exec->GetDeviceDescription().gpu_compute_capability();
     }
-    return std::get<DevicelessConfig>(config_).cuda_compute_capability;
+    return std::get<DevicelessConfig>(config_).gpu_compute_capability;
   }
 
   bool IsDeviceless() const {

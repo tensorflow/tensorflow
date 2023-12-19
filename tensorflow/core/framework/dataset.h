@@ -1107,13 +1107,14 @@ class IteratorBase : public Checkpointable {
     return 0;
   }
 
+  std::shared_ptr<model::Node> node_ = nullptr;
+
  private:
   // For access to `AddCleanupFunction` and `Restore`.
   friend class DatasetBase;
   friend class DatasetBaseIterator;  // for access to `node_`
 
   std::vector<std::function<void()>> cleanup_fns_;
-  std::shared_ptr<model::Node> node_ = nullptr;
   const IteratorBase* parent_ = nullptr;  // Not owned.
   uint64_t id_ = 0;
   uint64_t parent_id_ = 0;

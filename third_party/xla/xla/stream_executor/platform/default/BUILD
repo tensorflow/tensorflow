@@ -1,5 +1,5 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("@local_tsl//tsl:tsl.bzl", "tsl_copts")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 licenses(["notice"])
 
@@ -26,5 +26,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:dso_loader",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )

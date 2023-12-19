@@ -216,13 +216,8 @@ Status LaunchCmd::Record(const RecordParams& params,
   TF_ASSIGN_OR_RETURN(auto kernel_args,
                       se::PackKernelArgs(buffers, shmem_bytes_));
 
-  LaunchDimensions::Dim3D thread_counts = dims_.thread_counts_per_block();
-  LaunchDimensions::Dim3D block_counts = dims_.block_counts();
-
-  return command_buffer->Launch(
-      se::ThreadDim(thread_counts.x, thread_counts.y, thread_counts.z),
-      se::BlockDim(block_counts.x, block_counts.y, block_counts.z), *kernel,
-      *kernel_args);
+  return command_buffer->Launch(dims_.thread_counts_per_block(),
+                                dims_.block_counts(), *kernel, *kernel_args);
 }
 
 CommandBufferCmd::BufferUsageVector LaunchCmd::buffers() {

@@ -22,12 +22,13 @@ limitations under the License.
 namespace xla {
 namespace spmd {
 
+using ::operations_research::MPConstraint;
 using ::operations_research::MPSolver;
 using ::operations_research::MPVariable;
 
 MPVariable* CreateMakespanVar(const AutoShardingSolverRequest& request,
                               const std::vector<std::vector<MPVariable*>>& e,
-                              MPSolver& solver) {
+                              MPSolver& solver, MPConstraint& cost_constraint) {
   return nullptr;  // TODO(moffitt): Implement this.
 }
 

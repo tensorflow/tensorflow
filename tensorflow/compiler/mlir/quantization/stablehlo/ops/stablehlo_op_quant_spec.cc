@@ -38,7 +38,7 @@ std::unique_ptr<OpQuantSpec> GetStableHloOpQuantSpec(Operation* op) {
     auto entry_function =
         call_op->getAttrOfType<FlatSymbolRefAttr>("_entry_function");
     StringRef function_name = entry_function.getValue();
-    if (!function_name.startswith("composite_")) {
+    if (!function_name.starts_with("composite_")) {
       return spec;
     }
     if (function_name.contains("conv")) {

@@ -35,7 +35,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:env",
@@ -95,7 +94,6 @@ cc_library(
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/tpu/kernels:sharding_utils",
         "@com_google_absl//absl/container:btree",
-        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -106,8 +104,10 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:executable_run_options",
+        "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/python/pjrt_ifrt",
+        "@local_xla//xla/python/pjrt_ifrt:xla_ifrt",
     ],
 )
 
@@ -121,7 +121,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core/framework:tensor_matcher",
         "//tensorflow/core/framework:tensor_testutil",
-        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
@@ -133,9 +133,7 @@ tf_cc_test(
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/python/ifrt:test_util",
-        "@local_xla//xla/python/ifrt/ir",
         "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
-        "@local_xla//xla/python/pjrt_ifrt:xla_ifrt",
     ],
 )
 

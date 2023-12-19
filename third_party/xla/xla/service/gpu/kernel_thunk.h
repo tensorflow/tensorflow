@@ -161,15 +161,8 @@ class CustomKernelThunk : public Thunk {
   absl::Span<const mlir::Value> values() const { return values_; }
 
   LaunchDimensions launch_dimensions() const {
-    LaunchDimensions::Dim3D threads;
-    threads.x = custom_kernel_.thread_dims().x;
-    threads.y = custom_kernel_.thread_dims().y;
-    threads.z = custom_kernel_.thread_dims().z;
-    LaunchDimensions::Dim3D blocks;
-    blocks.x = custom_kernel_.block_dims().x;
-    blocks.y = custom_kernel_.block_dims().y;
-    blocks.z = custom_kernel_.block_dims().z;
-    return LaunchDimensions(blocks, threads);
+    return LaunchDimensions(custom_kernel_.block_dims(),
+                            custom_kernel_.thread_dims());
   }
 
   int64_t shmem_bytes() const { return custom_kernel_.shared_memory_bytes(); }

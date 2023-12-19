@@ -248,13 +248,9 @@ class StreamInterface {
   virtual ~StreamInterface() = default;
 
   // Sets priority for a stream.
-  virtual void SetPriority(StreamPriority priority) {
-    LOG(ERROR) << "SetPriority unimplemented for this stream.";
-  }
+  virtual void SetPriority(StreamPriority priority) {}
 
-  virtual void SetPriority(int priority) {
-    LOG(ERROR) << "SetPriority unimplemented for this stream.";
-  }
+  virtual void SetPriority(int priority) {}
 
   // Gets priority for a stream.
   virtual std::variant<StreamPriority, int> priority() const {

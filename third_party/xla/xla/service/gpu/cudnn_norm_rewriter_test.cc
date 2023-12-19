@@ -20,6 +20,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cudnn/cudnn.h"  // IWYU pragma: keep
 #endif
 
 #include "xla/service/gpu/tests/gpu_codegen_test.h"

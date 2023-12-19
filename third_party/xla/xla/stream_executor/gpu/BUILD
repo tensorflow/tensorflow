@@ -108,6 +108,12 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_kernels",
+    hdrs = if_gpu_is_configured(["gpu_kernels.h"]),
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "gpu_command_buffer",
     srcs = if_gpu_is_configured(["gpu_command_buffer.cc"]),
     hdrs = if_gpu_is_configured(["gpu_command_buffer.h"]),
@@ -116,6 +122,7 @@ cc_library(
         ":gpu_driver_header",
         ":gpu_executor_header",
         ":gpu_kernel_header",
+        ":gpu_kernels",
         ":gpu_stream",
         ":gpu_types_header",
         "//xla/stream_executor:stream_executor_headers",
@@ -132,10 +139,8 @@ cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
     ] + if_cuda_is_configured([
-        "//xla/stream_executor/cuda:cuda_kernels",
         "//xla/stream_executor/cuda:cuda_conditional_kernels",
     ]) + if_rocm_is_configured([
-        "//xla/stream_executor/rocm:rocm_kernels",
         "//xla/stream_executor/rocm:hip_conditional_kernels",
     ]),
 )
@@ -242,8 +247,6 @@ cc_library(
         ":gpu_types_header",
         "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor:stream_executor_internal",
-        "//xla/stream_executor/platform",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -256,7 +259,6 @@ cc_library(
         ":gpu_types_header",
         "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor:stream_executor_internal",
-        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
@@ -573,11 +575,11 @@ xla_test(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
         ":gpu_test_kernels",
+        ":gpu_types_header",
         "//xla/service:platform_util",
         "//xla/stream_executor",
         "//xla/stream_executor:multi_platform_manager",
         "//xla/stream_executor:platform",
-        "//xla/stream_executor/gpu:gpu_types_header",
         "@com_google_absl//absl/log:check",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/lib/core:status_test_util",

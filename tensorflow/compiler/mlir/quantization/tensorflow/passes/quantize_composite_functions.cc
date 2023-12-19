@@ -599,8 +599,8 @@ LogicalResult TransferLocation(func::FuncOp float_func,
 std::string GetQuantizedFunctionName(StringRef func_name,
                                      const bool merged_with_dequantize,
                                      const bool is_hybrid) {
-  if (func_name.startswith(kQuantizedFuncPrefix)) return func_name.str();
-  if (!func_name.startswith(kCompositeFuncPrefix)) return "";
+  if (func_name.starts_with(kQuantizedFuncPrefix)) return func_name.str();
+  if (!func_name.starts_with(kCompositeFuncPrefix)) return "";
 
   auto base_function_name =
       llvm::Twine(kQuantizedFuncPrefix)
@@ -654,7 +654,7 @@ class QuantizeFunctionPattern
     if (!call_op->removeAttr(kQuantTraitAttrName) || !f_attr) {
       return failure();
     }
-    if (!f_attr.getValue().startswith(kCompositeFuncPrefix)) {
+    if (!f_attr.getValue().starts_with(kCompositeFuncPrefix)) {
       return failure();
     }
 
@@ -1084,8 +1084,8 @@ class RestoreWeightShapePattern
     // than function name.
     // If enable_legacy_weight_only is enabled, QuantizeFunctionsPattern
     // does not get called and function remains as composite
-    if (!function_name.startswith("quantized_") &&
-        !function_name.startswith("composite_")) {
+    if (!function_name.starts_with("quantized_") &&
+        !function_name.starts_with("composite_")) {
       return failure();
     }
 
@@ -1114,7 +1114,7 @@ class QuantizationSummary {
         const auto f_attr = call_op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
         if (!f_attr) return;
         StringRef func_name = f_attr.getValue();
-        if (func_name.startswith(kQuantizedFuncPrefix)) {
+        if (func_name.starts_with(kQuantizedFuncPrefix)) {
           auto representative_name = GetRepresentativeName(func_name);
           if (failed(representative_name)) return;
 
@@ -1124,7 +1124,7 @@ class QuantizationSummary {
               func_name.contains(kHybridFuncSuffix)) {
             float_output_func_count++;
           }
-        } else if (func_name.startswith(kCompositeFuncPrefix)) {
+        } else if (func_name.starts_with(kCompositeFuncPrefix)) {
           auto representative_name = GetRepresentativeName(func_name);
           if (failed(representative_name)) {
             // TODO(b/264507511): Print quantization summary for weight-only.
@@ -1132,9 +1132,9 @@ class QuantizationSummary {
           } else {
             func_count_map[representative_name.value()].num_float++;
           }
-        } else if (func_name.startswith("quantize_i")) {
+        } else if (func_name.starts_with("quantize_i")) {
           quantize_func_count++;
-        } else if (func_name.startswith("dequantize_i")) {
+        } else if (func_name.starts_with("dequantize_i")) {
           dequantize_func_count++;
         }
       } else if (auto einsum = llvm::isa<TF::EinsumOp>(op)) {
@@ -1240,8 +1240,8 @@ class QuantizationSummary {
     if (!parent) return false;
 
     StringRef sym_name = parent.getSymName();
-    return sym_name.startswith(kQuantizedFuncPrefix) ||
-           sym_name.startswith(kCompositeFuncPrefix);
+    return sym_name.starts_with(kQuantizedFuncPrefix) ||
+           sym_name.starts_with(kCompositeFuncPrefix);
   }
 
   ModuleOp module_;

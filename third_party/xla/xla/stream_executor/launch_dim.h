@@ -22,6 +22,19 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 
 namespace stream_executor {
+namespace internal {
+
+struct Dim3D {
+  uint64_t x, y, z;
+
+  bool operator==(const Dim3D& other) const {
+    return x == other.x && y == other.y && z == other.z;
+  }
+
+  bool operator!=(const Dim3D& other) const { return !(*this == other); }
+};
+
+}  // namespace internal
 
 // Types to express dimensionality of a kernel launch. Blocks, threads and
 // clusters are (up to) 3-dimensional.
@@ -31,40 +44,34 @@ namespace stream_executor {
 
 // Thread dimensionality for use in a kernel launch.
 // details.
-struct ThreadDim {
+struct ThreadDim : internal::Dim3D {
   explicit ThreadDim(uint64_t x = 1, uint64_t y = 1, uint64_t z = 1)
-      : x(x), y(y), z(z) {}
+      : internal::Dim3D({x, y, z}) {}
 
   std::string ToString() const {
     return absl::StrCat("ThreadDim{", x, ", ", y, ", ", z, "}");
   }
-
-  uint64_t x, y, z;
 };
 
 // Block dimensionality for use in a kernel launch.
 // details.
-struct BlockDim {
+struct BlockDim : internal::Dim3D {
   explicit BlockDim(uint64_t x = 1, uint64_t y = 1, uint64_t z = 1)
-      : x(x), y(y), z(z) {}
+      : internal::Dim3D({x, y, z}) {}
 
   std::string ToString() const {
     return absl::StrCat("BlockDim{", x, ", ", y, ", ", z, "}");
   }
-
-  uint64_t x, y, z;
 };
 
 // Cluster dimensionality for use in a kernel launch.
-struct ClusterDim {
+struct ClusterDim : internal::Dim3D {
   explicit ClusterDim(uint64_t x = 1, uint64_t y = 1, uint64_t z = 1)
-      : x(x), y(y), z(z) {}
+      : internal::Dim3D({x, y, z}) {}
 
   std::string ToString() const {
     return absl::StrCat("ClusterDim{", x, ", ", y, ", ", z, "}");
   }
-
-  uint64_t x, y, z;
 };
 
 }  // namespace stream_executor

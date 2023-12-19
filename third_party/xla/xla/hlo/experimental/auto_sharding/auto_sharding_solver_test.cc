@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 
@@ -247,6 +248,15 @@ TEST(CallORToolsSolverTest, UsesHint) {
       std::make_tuple(
           std::move(s_val), std::move(e_val), objective_value), false};
   EXPECT_EQ(result, expected_result);
+}
+
+TEST(CallORToolsSolverTest, HonorsMaxCost) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  request.mutable_max_cost()->set_coeff(7600.0);  // Best possible is 7650.0
+
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+
+  EXPECT_TRUE(absl::IsInternal(result.status.status()));
 }
 
 TEST(AutoShardingEvaluatorTest, NoViolations) {
@@ -488,6 +498,7 @@ TEST(ScaleRequest, ScalesProperly) {
   AddCosts(unscaled_request.mutable_computation_costs(), c);
   AddCosts(unscaled_request.mutable_communication_costs(), d);
   AddCosts(unscaled_request.mutable_resharding_costs(), r);
+  unscaled_request.mutable_coeff_limit()->set_coeff(1e7);
 
   AutoShardingSolverRequest request = ScaleRequest(unscaled_request);
 
@@ -512,6 +523,7 @@ TEST(ScaleRequest, ScalesProperly) {
   AddCosts(expected_request.mutable_computation_costs(), expected_c);
   AddCosts(expected_request.mutable_communication_costs(), expected_d);
   AddCosts(expected_request.mutable_resharding_costs(), expected_r);
+  expected_request.mutable_coeff_limit()->set_coeff(1e7);
   EXPECT_THAT(request, ::testing::EqualsProto(expected_request));
 }
 
@@ -537,6 +549,7 @@ TEST(ScaleRequest, SkipsScaling) {
   AddCosts(unscaled_request.mutable_computation_costs(), c);
   AddCosts(unscaled_request.mutable_communication_costs(), d);
   AddCosts(unscaled_request.mutable_resharding_costs(), r);
+  unscaled_request.mutable_coeff_limit()->set_coeff(1e7);
 
   AutoShardingSolverRequest request = ScaleRequest(unscaled_request);
 
@@ -561,6 +574,7 @@ TEST(ScaleRequest, SkipsScaling) {
   AddCosts(expected_request.mutable_computation_costs(), expected_c);
   AddCosts(expected_request.mutable_communication_costs(), expected_d);
   AddCosts(expected_request.mutable_resharding_costs(), expected_r);
+  expected_request.mutable_coeff_limit()->set_coeff(1e7);
   EXPECT_THAT(request, ::testing::EqualsProto(expected_request));
 }
 

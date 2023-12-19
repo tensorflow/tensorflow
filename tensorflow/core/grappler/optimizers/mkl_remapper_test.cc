@@ -1379,7 +1379,7 @@ class MklFuseInstanceNormTest : public GrapplerTest {
     if (DTYPE == DT_BFLOAT16) {
       test::ExpectClose(tensors[0], tensors_expected[0], 1e-2, 1e-2);
     } else {
-      test::ExpectClose(tensors[0], tensors_expected[0], 2e-6, 1e-6);
+      test::ExpectClose(tensors[0], tensors_expected[0], 1e-5, 1e-5);
     }
   }
 

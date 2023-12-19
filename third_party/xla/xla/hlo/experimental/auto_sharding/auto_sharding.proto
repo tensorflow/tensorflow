@@ -55,6 +55,8 @@ message AutoShardingSolverRequest {
   optional Coeff overbudget_coeff = 18;
   optional Coeff makespan_coeff = 19;
   optional Coeff max_departures = 20;
+  optional Coeff max_cost = 25;
+  optional Coeff coeff_limit = 26;
   bool crash_at_infinity_costs_check = 21;
   bool compute_iis = 22;
   double saltiplier = 23;

@@ -687,6 +687,51 @@ CHECK: %{{.*}} = arith.andi %[[TRUNCI]], %{{.*}} : tensor<16x16xi1>
               tsl::testing::IsOkAndHolds(true));
 }
 
+TEST_F(TritonFilecheckTest,
+       CodegenBatchedDotWithConcatenationWithCorrectBatchStride) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t, is_scheduled=true
+
+triton_gemm {
+  parameter_0 = f32[2,3,10]{2,1,0} parameter(0)
+  parameter_1 = f32[2,10,128]{2,1,0} parameter(1)
+  parameter_2 = f32[2,10,256]{2,1,0} parameter(2)
+  concatenate = f32[2,10,384]{2,1,0} concatenate(parameter_1, parameter_2), dimensions={2}
+  ROOT dot = f32[2,3,384]{2,1,0} dot(parameter_0, concatenate),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  parameter_0 = f32[2,3,10]{2,1,0} parameter(0)
+  parameter_1 = f32[2,10,128]{2,1,0} parameter(1)
+  parameter_2 = f32[2,10,256]{2,1,0} parameter(2)
+  ROOT dot = f32[2,3,384]{2,1,0} fusion(parameter_0, parameter_1, parameter_2),
+    kind=kCustom, calls=triton_gemm,
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,"split_k":1,"num_stages":1,"num_warps":2}}
+})";
+
+  TritonGemmConfig config(16, 64, 32, 1, 1, 2);
+  ASSERT_THAT(CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul,
+                                         "triton_gemm", R"(
+CHECK:   tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32, 1>
+CHECK-SAME:                 %[[P1:[^:]*]]: !tt.ptr<f32, 1>
+CHECK-SAME:                 %[[P2:[^:]*]]: !tt.ptr<f32, 1>
+CHECK-DAG: %[[ARG_PTR:.*]] = arith.select %[[CONCAT_COND:.*]], %[[P1]], %[[P2]]
+CHECK-DAG: %[[BATCH_STRIDE_P1:.*]] = arith.constant 1280
+CHECK-DAG: %[[BATCH_STRIDE_P2:.*]] = arith.constant 2560
+CHECK-DAG: %[[BATCH_STRIDE:.*]] = arith.select %[[CONCAT_COND_2:.*]], %[[BATCH_STRIDE_P1]], %[[BATCH_STRIDE_P2]]
+COM:       -- Note: we use "CHECK" below voluntarily because the current codegen
+COM:       -- does not do any kind of CSE before returning. This causes
+COM:       -- PID_BATCH to be constructed several times, and by construction,
+COM:       -- the second one is the relevant one.
+CHECK:     %[[PID_BATCH:.*]] = tt.get_program_id y
+CHECK-DAG: %[[OFFSET:.*]] = arith.muli %[[PID_BATCH]], %[[BATCH_STRIDE]]
+CHECK:     %[[BLOCK_BASE_PTR:.*]] = tt.addptr %[[ARG_PTR]], %[[OFFSET]]
+)"),
+              tsl::testing::IsOkAndHolds(true));
+}
+
 TEST_F(TritonGemmTest, DoNotUseTensorCoresWithNonDefaultPrecision) {
   const std::string kHloText = R"(
 triton_gemm_r {
@@ -1192,6 +1237,54 @@ ENTRY e {
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
+}
+
+TEST_F(TritonGemmTest, CanCodegenNonBatchedDotWithConcatenationCorrectly) {
+  constexpr absl::string_view kHloText = R"(
+ENTRY e {
+  parameter_0 = f32[3,10]{1,0} parameter(0)
+  parameter_1 = f32[10,128]{1,0} parameter(1)
+  parameter_2 = f32[10,256]{1,0} parameter(2)
+  concatenate = f32[10,384]{1,0} concatenate(parameter_1, parameter_2), dimensions={1}
+  ROOT dot = f32[3,384]{1,0} dot(parameter_0, concatenate),
+    lhs_batch_dims={}, lhs_contracting_dims={1},
+    rhs_batch_dims={}, rhs_contracting_dims={0}
+})";
+
+  MatchOptimizedHlo(kHloText, R"(
+; CHECK:     ENTRY
+; CHECK-NOT:   concatenate
+; CHECK:       fusion
+; CHECK-SAME:    kind=kCustom
+)");
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonGemmTest, CanCodegenBatchedDotWithConcatenationCorrectly) {
+  constexpr absl::string_view kHloText = R"(
+ENTRY e {
+  parameter_0 = f32[2,3,10]{2,1,0} parameter(0)
+  parameter_1 = f32[2,10,128]{2,1,0} parameter(1)
+  parameter_2 = f32[2,10,256]{2,1,0} parameter(2)
+  concatenate = f32[2,10,384]{2,1,0} concatenate(parameter_1, parameter_2), dimensions={2}
+  ROOT dot = f32[2,3,384]{2,1,0} dot(parameter_0, concatenate),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+})";
+
+  MatchOptimizedHlo(kHloText, R"(
+; CHECK:     ENTRY
+; CHECK-NOT:   concatenate
+; CHECK:       fusion
+; CHECK-SAME:    kind=kCustom
+)");
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTestWithoutTritonGemmAny, SkipU8) {

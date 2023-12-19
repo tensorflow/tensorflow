@@ -60,6 +60,11 @@ limitations under the License.
 namespace xla {
 namespace spmd {
 
+bool LeafVectorsAreConsistent(const std::vector<ShardingStrategy>& one,
+                              const std::vector<ShardingStrategy>& two) {
+  return one.size() == two.size();
+}
+
 // NOLINTBEGIN(readability/fn_size)
 // TODO(zhuohan): Decompose this function into smaller pieces
 StatusOr<std::tuple<StrategyMap, StrategyGroups, AssociativeDotPairs>>
@@ -176,8 +181,13 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       case HloOpcode::kGather: {
         strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
                                                  strategy_map, strategy_groups);
+        // Follows the strategy of start_indices (operand 1)
         const HloInstruction* indices = ins->operand(1);
         const Shape& shape = ins->shape();
+        const StrategyGroup* src_strategy_group =
+            strategy_map.at(indices).get();
+        CHECK(!src_strategy_group->is_tuple);
+        strategy_group->following = src_strategy_group;
         for (int32_t index_dim = 0; index_dim < indices->shape().rank();
              index_dim++) {
           // Shard on indices dimensions that correspond to output dimensions
@@ -219,40 +229,6 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                  memory_cost, std::move(resharding_cost),
                  input_shardings_optional}));
           }
-        }
-        auto src_strategy_group = strategy_map.at(ins->operand(0)).get();
-        for (int64_t sid = 0; sid < src_strategy_group->strategies.size();
-             ++sid) {
-          HloSharding output_spec =
-              src_strategy_group->strategies[sid].output_sharding;
-          auto gather_parallel_dims =
-              hlo_sharding_util::GetGatherParallelBatchDims(*ins, call_graph);
-          absl::Span<const int64_t> operand_parallel_dims;
-          if (gather_parallel_dims) {
-            operand_parallel_dims = absl::MakeConstSpan(
-                gather_parallel_dims->operand_parallel_dims);
-          }
-          HloSharding filtered_operand_sharding =
-              hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-                  output_spec, operand_parallel_dims);
-          auto maybe_from_data = hlo_sharding_util::
-              GatherOutputShardingFromOperandOperandPassthroughDimensions(
-                  filtered_operand_sharding, *ins);
-          if (!maybe_from_data) continue;
-          std::string name = ToStringSimple(*maybe_from_data);
-          double compute_cost = 0, communication_cost = 0;
-          double memory_cost =
-              GetBytes(ins->shape()) / maybe_from_data->NumTiles();
-          std::vector<std::optional<HloSharding>> input_shardings_optional(
-              {*maybe_from_data, std::nullopt});
-          std::vector<std::vector<double>> resharding_cost =
-              GenerateReshardingCostsAndMissingShardingsForAllOperands(
-                  ins, *maybe_from_data, strategy_map, cluster_env, call_graph,
-                  input_shardings_optional);
-          strategy_group->strategies.push_back(ShardingStrategy(
-              {name, *maybe_from_data, compute_cost, communication_cost,
-               memory_cost, std::move(resharding_cost),
-               input_shardings_optional}));
         }
         AddReplicatedStrategy(
             ins, ins->shape(), cluster_env, strategy_map, strategy_group, 0,
@@ -596,8 +572,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
             [&](bool only_replicated,
                 absl::flat_hash_set<int64_t>
                     operands_to_consider_all_strategies_for = {}) {
-              if (ins->shape().IsTuple()) {
-                if (only_replicated) {
+              if (only_replicated) {
+                if (ins->shape().IsTuple()) {
                   strategy_group = CreateTupleStrategyGroup(instruction_id);
                   strategy_group->childs.reserve(
                       ins->shape().tuple_shapes_size());
@@ -613,32 +589,21 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                         std::move(child_strategies));
                   }
                 } else {
-                  strategy_group =
-                      CreateAllStrategiesGroup(
-                          ins, ins->shape(), instruction_id, strategy_groups,
-                          cluster_env, strategy_map, option, replicated_penalty,
-                          batch_dim_map, call_graph, only_allow_divisible,
-                          /* create_replicated_strategies */ true,
-                          /* create_partially_replicated_strategies */ true)
-                          .value();
-                }
-              } else {
-                if (only_replicated) {
                   strategy_group = CreateLeafStrategyGroup(
                       instruction_id, ins, strategy_map, strategy_groups);
                   AddReplicatedStrategy(ins, ins->shape(), cluster_env,
                                         strategy_map, strategy_group,
                                         replicated_penalty);
-                } else {
-                  strategy_group =
-                      CreateAllStrategiesGroup(
-                          ins, ins->shape(), instruction_id, strategy_groups,
-                          cluster_env, strategy_map, option, replicated_penalty,
-                          batch_dim_map, call_graph, only_allow_divisible,
-                          /* create_replicated_strategies */ true,
-                          /* create_partially_replicated_strategies */ true)
-                          .value();
                 }
+              } else {
+                strategy_group =
+                    CreateAllStrategiesGroup(
+                        ins, ins->shape(), instruction_id, strategy_groups,
+                        cluster_env, strategy_map, option, replicated_penalty,
+                        batch_dim_map, call_graph, only_allow_divisible,
+                        /* create_replicated_strategies */ true,
+                        /* create_partially_replicated_strategies */ true)
+                        .value();
               }
             };
 
@@ -732,9 +697,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           option.nd_sharding_iteratively_strict_search_space);
     }
     if (!strategy_group->is_tuple && strategy_group->following) {
-      if (!LeafVectorsAreConsistent(
-              strategy_group->strategies, strategy_group->following->strategies,
-              /*is_reshape*/ ins->opcode() == HloOpcode::kReshape)) {
+      if (!LeafVectorsAreConsistent(strategy_group->strategies,
+                                    strategy_group->following->strategies)) {
         // It confuses the solver if two instructions have different number of
         // sharding strategies but share the same ILP variable. The solver
         // would run much longer and/or return infeasible solutions.
@@ -747,8 +711,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         if (strategy_group->childs.at(i)->following &&
             !LeafVectorsAreConsistent(
                 strategy_group->childs.at(i)->strategies,
-                strategy_group->childs.at(i)->following->strategies,
-                /*is_reshape*/ ins->opcode() == HloOpcode::kReshape)) {
+                strategy_group->childs.at(i)->following->strategies)) {
           strategy_group->childs.at(i)->following = nullptr;
         }
       }

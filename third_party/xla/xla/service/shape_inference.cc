@@ -1520,17 +1520,19 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   Shape output_shape_for_mean_and_var = ShapeUtil::MakeShape(
       operand_shape.element_type(), {feature_count}, {dynamic_feature});
 
-  if (ShapeUtil::GetDimension(offset_shape, 0) != feature_count) {
+  if (!CompatibleDimensionSizes(ShapeUtil::GetDimension(offset_shape, 0),
+                                feature_count)) {
     return InvalidArgument(
-        "The size of offset factor should be the same as feature count,"
+        "The size of offset factor should be compatible with feature count, "
         "but the size of offset factor is %d "
         "and the feature count is %d.",
         ShapeUtil::GetDimension(offset_shape, 0), feature_count);
   }
 
-  if (ShapeUtil::GetDimension(scale_shape, 0) != feature_count) {
+  if (!CompatibleDimensionSizes(ShapeUtil::GetDimension(scale_shape, 0),
+                                feature_count)) {
     return InvalidArgument(
-        "The size of scale factor should be the same as feature count,"
+        "The size of scale factor should be compatible with feature count, "
         "but the size of scale factor is %d "
         "and the feature count is %d.",
         ShapeUtil::GetDimension(scale_shape, 0), feature_count);
@@ -1647,36 +1649,38 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   const int64_t feature_count = operand_shape.dimensions(feature_index);
-  Shape output_shape_for_mean_and_var =
-      ShapeUtil::MakeShape(operand_shape.element_type(), {feature_count});
 
-  if (ShapeUtil::GetDimension(offset_shape, 0) != feature_count) {
+  if (!CompatibleDimensionSizes(ShapeUtil::GetDimension(offset_shape, 0),
+                                feature_count)) {
     return InvalidArgument(
-        "The size of offset factor should be the same as feature count,"
+        "The size of offset factor should be compatible with feature count, "
         "but the size of offset factor is %d "
         "and the feature count is %d.",
         ShapeUtil::GetDimension(offset_shape, 0), feature_count);
   }
 
-  if (ShapeUtil::GetDimension(scale_shape, 0) != feature_count) {
+  if (!CompatibleDimensionSizes(ShapeUtil::GetDimension(scale_shape, 0),
+                                feature_count)) {
     return InvalidArgument(
-        "The size of scale factor should be the same as feature count,"
+        "The size of scale factor should be compatible with feature count, "
         "but the size of scale factor is %d "
         "and the feature count is %d.",
         ShapeUtil::GetDimension(scale_shape, 0), feature_count);
   }
 
-  if (ShapeUtil::GetDimension(mean_shape, 0) != feature_count) {
+  if (!CompatibleDimensionSizes(ShapeUtil::GetDimension(mean_shape, 0),
+                                feature_count)) {
     return InvalidArgument(
-        "The size of mean should be the same as feature count,"
+        "The size of mean should be compatible with feature count, "
         "but the size of mean is %d "
         "and the feature count is %d.",
         ShapeUtil::GetDimension(mean_shape, 0), feature_count);
   }
 
-  if (ShapeUtil::GetDimension(variance_shape, 0) != feature_count) {
+  if (!CompatibleDimensionSizes(ShapeUtil::GetDimension(variance_shape, 0),
+                                feature_count)) {
     return InvalidArgument(
-        "The size of variance should be the same as feature count,"
+        "The size of variance should be compatible with feature count, "
         "but the size of variance is %d "
         "and the feature count is %d.",
         ShapeUtil::GetDimension(variance_shape, 0), feature_count);
@@ -1796,29 +1800,32 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   const int64_t feature_count = operand_shape.dimensions(feature_index);
+  bool dynamic_feature = operand_shape.is_dynamic_dimension(feature_index);
+  Shape feature_shape = ShapeUtil::MakeShape(
+      operand_shape.element_type(), {feature_count}, {dynamic_feature});
 
-  Shape feature_shape =
-      ShapeUtil::MakeShape(operand_shape.element_type(), {feature_count});
-
-  if (ShapeUtil::GetDimension(mean_shape, 0) != feature_count) {
+  if (!CompatibleDimensionSizes(ShapeUtil::GetDimension(mean_shape, 0),
+                                feature_count)) {
     return InvalidArgument(
-        "The size of mean should be the same as feature count,"
+        "The size of mean should be compatible with feature count, "
         "but the size of offset factor is %d "
         "and the feature count is %d.",
         ShapeUtil::GetDimension(mean_shape, 0), feature_count);
   }
 
-  if (ShapeUtil::GetDimension(scale_shape, 0) != feature_count) {
+  if (!CompatibleDimensionSizes(ShapeUtil::GetDimension(scale_shape, 0),
+                                feature_count)) {
     return InvalidArgument(
-        "The size of scale factor should be the same as feature count,"
+        "The size of scale factor should be compatible with feature count, "
         "but the size of scale factor is %d "
         "and the feature count is %d.",
         ShapeUtil::GetDimension(scale_shape, 0), feature_count);
   }
 
-  if (ShapeUtil::GetDimension(var_shape, 0) != feature_count) {
+  if (!CompatibleDimensionSizes(ShapeUtil::GetDimension(var_shape, 0),
+                                feature_count)) {
     return InvalidArgument(
-        "The size of variance should be the same as feature count,"
+        "The size of variance should be compatible with feature count, "
         "but the size of variance is %d "
         "and the feature count is %d.",
         ShapeUtil::GetDimension(var_shape, 0), feature_count);
@@ -1826,11 +1833,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
   // Verify operand_shape and output_grad_shape have same bounds.
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
-    if (ShapeUtil::GetDimension(operand_shape, i) !=
-        ShapeUtil::GetDimension(output_grad_shape, i)) {
+    if (!CompatibleDimensionSizes(
+            ShapeUtil::GetDimension(operand_shape, i),
+            ShapeUtil::GetDimension(output_grad_shape, i))) {
       return InvalidArgument(
-          "The bounds of operand shape should be the same as output_grad's,"
-          "but the bound of operand_shape at dimension %d is %d "
+          "The bounds of operand shape should be compatible with "
+          "output_grad's, but the bound of operand_shape at dimension %d is %d "
           "and the bound of output_grad_shape is %d.",
           i, ShapeUtil::GetDimension(operand_shape, i),
           ShapeUtil::GetDimension(output_grad_shape, i));
@@ -3328,6 +3336,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     const Shape& operand, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> new_sizes, int64_t inferred_dimension) {
   TF_RETURN_IF_ERROR(ExpectArray(operand, "reshape"));
+
+  if (operand.is_unbounded_dynamic() ||
+      absl::c_any_of(new_sizes, [](int64_t size) {
+        return size == Shape::kUnboundedSize;
+      })) {
+    return InvalidArgument(
+        "Reshaping with unbounded dimensions is not supported.");
+  }
 
   Shape inferred_shape =
       ShapeUtil::MakeShape(operand.element_type(), new_sizes);

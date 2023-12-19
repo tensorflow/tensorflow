@@ -1270,7 +1270,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 bool_setter_for(&DebugOptions::set_xla_gpu_triton_gemm_any),
                 debug_options->xla_gpu_triton_gemm_any(),
                 "Use Triton-based matrix multiplication for any GEMM it "
-                "supports without filtering only faster ones."));
+                "supports without filtering only faster ones. To make sure "
+                "only triton gemm is chosen by the autotuner run with "
+                "`xla_gpu_cublas_fallback` set to false."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_exhaustive_tiling_search",
       bool_setter_for(&DebugOptions::set_xla_gpu_exhaustive_tiling_search),

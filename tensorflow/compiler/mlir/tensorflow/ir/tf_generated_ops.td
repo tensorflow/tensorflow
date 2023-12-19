@@ -756,7 +756,7 @@ Given an input tensor, this function computes inverse hyperbolic sine
   }];
 }
 
-def TF_AssertOp : TF_Op<"Assert", [TF_MustExecute, TF_NoConstantFold]> {
+def TF_AssertOp : TF_Op<"Assert", []> {
   let summary = "Asserts that the given condition is true.";
 
   let description = [{

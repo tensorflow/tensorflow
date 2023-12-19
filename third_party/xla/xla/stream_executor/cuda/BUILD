@@ -240,10 +240,7 @@ cc_library(
     name = "cuda_activation_header",
     hdrs = ["cuda_activation.h"],
     visibility = ["//visibility:public"],
-    deps = [
-        "//xla/stream_executor/gpu:gpu_activation_header",
-        "//xla/stream_executor/platform",
-    ],
+    deps = ["//xla/stream_executor/gpu:gpu_activation_header"],
 )
 
 cc_library(
@@ -386,7 +383,12 @@ cc_library(
         ":cuda_activation_header",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:plugin_registry",
-    ]),
+    ]) + [
+        "//xla/stream_executor",  # build_cleaner: keep
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:status",
+    ],
 )
 
 cc_library(
@@ -461,19 +463,6 @@ cuda_library(
         ":graph_conditional_enabled": ["STREAM_EXECUTOR_CUDA_ENABLE_GRAPH_CONDITIONAL=1"],
         "//conditions:default": [],
     }),
-    visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_absl//absl/log",
-        "@local_config_cuda//cuda:cuda_headers",
-    ],
-)
-
-cuda_library(
-    name = "cuda_kernels",
-    srcs = if_cuda(
-        ["cuda_kernels.cu.cc"],
-        ["cuda_kernels.cc"],
-    ),
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/log",
@@ -642,7 +631,6 @@ xla_cc_test(
         "no_cuda_asan",  # TODO(b/171512140): re-enable.
     ],
     deps = [
-        ":cuda_activation",
         ":cuda_executor",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory_allocator",

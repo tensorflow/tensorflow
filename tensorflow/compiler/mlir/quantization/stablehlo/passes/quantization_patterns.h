@@ -338,7 +338,7 @@ class StableHloQuantizationPattern : public RewritePattern {
 
     const auto function_name = call_op->getAttrOfType<FlatSymbolRefAttr>(
         TF::kStablehloEntryFunctionAttrName);
-    if (!function_name || !function_name.getValue().startswith("composite_")) {
+    if (!function_name || !function_name.getValue().starts_with("composite_")) {
       return false;
     }
 
