@@ -21,10 +21,10 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/copy_thunk.h"
 #include "xla/service/gpu/gemm_thunk.h"
 #include "xla/service/gpu/kernel_thunk.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
+#include "xla/service/gpu/runtime3/copy_thunk.h"
 #include "xla/service/gpu/runtime3/sequential_thunk.h"
 #include "xla/service/gpu/runtime3/while_thunk.h"
 #include "xla/service/gpu/thunk.h"
