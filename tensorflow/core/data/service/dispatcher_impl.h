@@ -141,6 +141,9 @@ class DataServiceDispatcherImpl {
   // journal to restore the dispatcher's state.
   Status Start();
 
+  // Stops the dispatcher. After stopping, RPCs should return without blocking.
+  void Stop();
+
   // Returns the number of active iterations.
   size_t NumActiveIterations() TF_LOCKS_EXCLUDED(mu_);
 
