@@ -3204,10 +3204,10 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   return OkStatus();
 }
 
-template <typename OpT>
 Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
-                                            mlir::Operation* op) {
-  auto start_op = mlir::cast<OpT>(op).getToken().getDefiningOp();
+                                            mlir::Operation* op,
+                                            mlir::Value token) {
+  auto start_op = token.getDefiningOp();
   auto async_executor = async_executors_.extract(start_op);
   TF_RET_CHECK(async_executor) << "couldn't find async executor for start op";
 
@@ -3756,8 +3756,9 @@ Status IrEmitterUnnested::EmitOp(
   }
 
   if (mlir::isa<mlir::lmhlo_gpu::CollectivePermuteDoneOp>(op)) {
-    return EmitNcclAsyncDone<mlir::lmhlo_gpu::CollectivePermuteDoneOp>(
-        Thunk::kNcclCollectivePermuteDone, op);
+    return EmitNcclAsyncDone(
+        Thunk::kNcclCollectivePermuteDone, op,
+        mlir::cast<mlir::lmhlo_gpu::CollectivePermuteDoneOp>(op).getToken());
   }
 
   if (mlir::isa<mlir::lmhlo_gpu::AllGatherStartOp>(op)) {
@@ -3766,8 +3767,9 @@ Status IrEmitterUnnested::EmitOp(
   }
 
   if (mlir::isa<mlir::lmhlo_gpu::AllGatherDoneOp>(op)) {
-    return EmitNcclAsyncDone<mlir::lmhlo_gpu::AllGatherDoneOp>(
-        Thunk::kNcclAllGatherDone, op);
+    return EmitNcclAsyncDone(
+        Thunk::kNcclAllGatherDone, op,
+        mlir::cast<mlir::lmhlo_gpu::AllGatherDoneOp>(op).getToken());
   }
 
   if (mlir::isa<mlir::lmhlo_gpu::AllReduceStartOp>(op)) {
@@ -3776,8 +3778,9 @@ Status IrEmitterUnnested::EmitOp(
   }
 
   if (mlir::isa<mlir::lmhlo_gpu::AllReduceDoneOp>(op)) {
-    return EmitNcclAsyncDone<mlir::lmhlo_gpu::AllReduceDoneOp>(
-        Thunk::kNcclAllReduceDone, op);
+    return EmitNcclAsyncDone(
+        Thunk::kNcclAllReduceDone, op,
+        mlir::cast<mlir::lmhlo_gpu::AllReduceDoneOp>(op).getToken());
   }
 
   if (mlir::isa<mlir::lmhlo_gpu::ReduceScatterStartOp>(op)) {
@@ -3786,8 +3789,9 @@ Status IrEmitterUnnested::EmitOp(
   }
 
   if (mlir::isa<mlir::lmhlo_gpu::ReduceScatterDoneOp>(op)) {
-    return EmitNcclAsyncDone<mlir::lmhlo_gpu::ReduceScatterDoneOp>(
-        Thunk::kNcclReduceScatterDone, op);
+    return EmitNcclAsyncDone(
+        Thunk::kNcclReduceScatterDone, op,
+        mlir::cast<mlir::lmhlo_gpu::ReduceScatterDoneOp>(op).getToken());
   }
 
   if (mlir::isa<mlir::lmhlo_gpu::AllToAllStartOp>(op)) {
@@ -3796,8 +3800,9 @@ Status IrEmitterUnnested::EmitOp(
   }
 
   if (mlir::isa<mlir::lmhlo_gpu::AllToAllDoneOp>(op)) {
-    return EmitNcclAsyncDone<mlir::lmhlo_gpu::AllToAllDoneOp>(
-        Thunk::kNcclAllToAllDone, op);
+    return EmitNcclAsyncDone(
+        Thunk::kNcclAllToAllDone, op,
+        mlir::cast<mlir::lmhlo_gpu::AllToAllDoneOp>(op).getToken());
   }
 
   if (mlir::isa<mlir::lmhlo::InfeedOp>(op)) {
