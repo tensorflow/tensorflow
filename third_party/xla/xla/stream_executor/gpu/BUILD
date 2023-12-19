@@ -108,6 +108,12 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_kernels",
+    hdrs = if_gpu_is_configured(["gpu_kernels.h"]),
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "gpu_command_buffer",
     srcs = if_gpu_is_configured(["gpu_command_buffer.cc"]),
     hdrs = if_gpu_is_configured(["gpu_command_buffer.h"]),
@@ -116,6 +122,7 @@ cc_library(
         ":gpu_driver_header",
         ":gpu_executor_header",
         ":gpu_kernel_header",
+        ":gpu_kernels",
         ":gpu_stream",
         ":gpu_types_header",
         "//xla/stream_executor:stream_executor_headers",
@@ -132,10 +139,8 @@ cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
     ] + if_cuda_is_configured([
-        "//xla/stream_executor/cuda:cuda_kernels",
         "//xla/stream_executor/cuda:cuda_conditional_kernels",
     ]) + if_rocm_is_configured([
-        "//xla/stream_executor/rocm:rocm_kernels",
         "//xla/stream_executor/rocm:hip_conditional_kernels",
     ]),
 )

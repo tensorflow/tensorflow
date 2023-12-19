@@ -468,19 +468,6 @@ cuda_library(
     ],
 )
 
-cuda_library(
-    name = "cuda_kernels",
-    srcs = if_cuda(
-        ["cuda_kernels.cu.cc"],
-        ["cuda_kernels.cc"],
-    ),
-    visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_absl//absl/log",
-        "@local_config_cuda//cuda:cuda_headers",
-    ],
-)
-
 # TODO(leary) we likely need to canonicalize/eliminate this.
 cc_library(
     name = "cuda_helpers",
