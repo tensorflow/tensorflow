@@ -44,7 +44,7 @@ namespace xla::gpu::kernel::gemm_universal {
 // Here we re-define some of the enums and types defined in CUTLASS and CUTE to
 // break a dependency on them from XLA.
 
-enum class Arch { kDefault, kSm80 };
+enum class Arch { kDefault, kSm80, kSm90 };
 
 template <Arch arch>
 struct Bf16xBf16ToBf16 {};
@@ -68,6 +68,7 @@ struct Arguments {
   void* a;
   void* b;
   void* c;
+  void* workspace;
 };
 
 // Indices of a custom fusion parameters corresponding to Gemm kernel arguments.
