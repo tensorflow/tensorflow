@@ -1762,9 +1762,10 @@ AliasSet BuildAliasSet(const HloModule* module,
   return alias_set;
 }
 
-void CheckAliasSetCompatibility(const AliasSet& alias_set,
-                                const StrategyGroups& strategy_groups,
-                                const HloInstructionSequence& sequence) {
+Status CheckAliasSetCompatibility(const AliasSet& alias_set,
+                                  const StrategyGroups& strategy_groups,
+                                  const HloInstructionSequence& sequence,
+                                  bool crash_on_error) {
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
   // Checks the compatibility
   for (const auto& pair : alias_set) {
@@ -1802,17 +1803,23 @@ void CheckAliasSetCompatibility(const AliasSet& alias_set,
           << src_strategy_group->ToString() << "\n"
           << dst_strategy_group->ToString();
     }
-    CHECK(compatible_cnt > 0)
-        << "Alias pair does not have any sharding strategy in common: "
-        << "(" << instructions.at(src_strategy_group->instruction_id)->name()
-        << ", " << instructions.at(dst_strategy_group->instruction_id)->name()
-        << ")"
-        << "\n"
-        << "(" << src_strategy_group->node_idx << ", "
-        << dst_strategy_group->node_idx << ")\n"
-        << src_strategy_group->ToString() << "\n"
-        << dst_strategy_group->ToString();
+    if (compatible_cnt <= 0) {
+      std::string err_msg = absl::StrCat(
+          "Alias pair does not have any sharding strategy in common: (",
+          instructions.at(src_strategy_group->instruction_id)->name(), ", ",
+          instructions.at(dst_strategy_group->instruction_id)->name(), ")\n(",
+          src_strategy_group->node_idx, ", ", dst_strategy_group->node_idx,
+          ")\n", src_strategy_group->ToString(), "\n",
+          dst_strategy_group->ToString());
+      if (crash_on_error) {
+        LOG(FATAL) << err_msg;
+      } else {
+        LOG(WARNING) << err_msg;
+        return absl::InternalError(err_msg);
+      }
+    }
   }
+  return OkStatus();
 }
 
 size_t VectorGreaterThanOneElementCount(absl::Span<const int64_t> span,
