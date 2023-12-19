@@ -13,11 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_IFRT_SUPPORT_SHARDING_PARAM_TO_OP_SHARDING_H_
-#define XLA_PYTHON_IFRT_SUPPORT_SHARDING_PARAM_TO_OP_SHARDING_H_
+#ifndef XLA_PYTHON_IFRT_SUPPORT_SHARDING_CONVERSIONS_H_
+#define XLA_PYTHON_IFRT_SUPPORT_SHARDING_CONVERSIONS_H_
+
+#include <vector>
 
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
+#include "xla/shape.h"
 #include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -34,8 +38,17 @@ namespace support {
 StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
                                   absl::Span<const int> device_mapping);
 
+// Converts HloSharding to OpSharding.
+//
+// It assumes that `hlo_sharding` is valid.
+//
+// Returns error when `hlo_sharding` cannot be converted to sharding param.
+StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
+                                        const Shape& shape,
+                                        const std::vector<int>& axis_sizes);
+
 }  // namespace support
 }  // namespace ifrt
 }  // namespace xla
 
-#endif  // XLA_PYTHON_IFRT_SUPPORT_SHARDING_PARAM_TO_OP_SHARDING_H_
+#endif  // XLA_PYTHON_IFRT_SUPPORT_SHARDING_CONVERSIONS_H_

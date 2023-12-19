@@ -13,16 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/ifrt/support/sharding_param_to_op_sharding.h"
+#include "xla/python/ifrt/support/sharding_conversions.h"
 
 #include <cstdint>
+#include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
+#include "xla/shape.h"
 #include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
@@ -57,12 +62,42 @@ StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
   tile_assignment_devices->Reserve(devices.size());
   for (const int device : devices) {
     if (device < 0 || device >= device_mapping.size()) {
-      return tsl::errors::OutOfRange("Can't map device ", device);
+      return absl::OutOfRangeError(absl::StrCat("Can't map device ", device));
     }
     tile_assignment_devices->Add(device_mapping[device]);
   }
 
   return op_sharding;
+}
+
+StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
+                                        const Shape& shape,
+                                        const std::vector<int>& axis_sizes) {
+  // Dim shards matches the rank of the tensor, with each entry representing
+  // the number of shards for the corresponding dimension.
+  llvm::SmallVector<int64_t> dim_shards;
+  dim_shards.reserve(shape.rank());
+  // `axis_sizes` with the sizes of the mesh dimensions
+  // `permutation` of the same length as `axis_sizes` telling how the shards
+  // are mapped over the axis in `minor_to_major` order.
+  ShardingParam::MinorToMajor minor_to_major;
+  minor_to_major.axis_sizes.reserve(axis_sizes.size());
+  minor_to_major.permutation.reserve(axis_sizes.size());
+  for (auto axis_size : axis_sizes) {
+    minor_to_major.axis_sizes.push_back(axis_size);
+  }
+  if (hlo_sharding.IsReplicated()) {
+    for (int i = 0; i < shape.rank(); ++i) {
+      dim_shards.push_back(1);
+    }
+    for (int axis_idx = 0; axis_idx < axis_sizes.size(); ++axis_idx) {
+      minor_to_major.permutation.push_back(axis_idx);
+    }
+    return ShardingParam(dim_shards, std::move(minor_to_major));
+  }
+  return absl::UnimplementedError(
+      absl::StrCat("Only converting from replicated HloSharding is supported.",
+                   hlo_sharding.ToString()));
 }
 
 }  // namespace support
