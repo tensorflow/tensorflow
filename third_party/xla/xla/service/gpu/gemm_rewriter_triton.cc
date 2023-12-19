@@ -61,13 +61,6 @@ namespace gpu {
 
 namespace {
 
-template <class... Ts>
-struct Overload : Ts... {
-  using Ts::operator()...;
-};
-template <class... Ts>
-Overload(Ts...) -> Overload<Ts...>;
-
 using triton_fusion::CombineRequirements;
 using triton_fusion::DimensionOrder;
 using triton_fusion::DimOrderMap;
