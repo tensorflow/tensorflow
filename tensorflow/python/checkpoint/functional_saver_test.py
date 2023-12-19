@@ -78,7 +78,7 @@ class SaverTest(test.TestCase):
         saveable_object_util.saveable_objects_for_op(v1, "x"))
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
     self.evaluate(saver.save(constant_op.constant(prefix)))
-    self.assertEqual(2, len(gfile.Glob(prefix + "*")))
+    self.assertLen(gfile.Glob(prefix + "*"), 2)
     self.evaluate(v1.assign(1.))
     self.evaluate(saver.restore(prefix))
     self.assertEqual(2., self.evaluate(v1))
@@ -98,7 +98,7 @@ class SaverTest(test.TestCase):
         saveable_object_util.saveable_objects_for_op(v1, "x"))
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
     self.evaluate(saver.save(constant_op.constant(prefix), self.local_options))
-    self.assertEqual(2, len(gfile.Glob(prefix + "*")))
+    self.assertLen(gfile.Glob(prefix + "*"), 2)
     self.evaluate(v1.assign(1.))
     self.evaluate(saver.restore(prefix, self.local_options))
     self.assertEqual(2., self.evaluate(v1))
@@ -126,7 +126,7 @@ class SaverTest(test.TestCase):
     proto_accumulator = []
     wrapped = wrap_function.wrap_function(
         lambda: proto_accumulator.append(saver.to_proto()), signature=())
-    self.assertEqual(1, len(proto_accumulator))
+    self.assertLen(proto_accumulator, 1)
     proto = proto_accumulator[0]
     save = wrapped.prune(
         feeds=wrapped.graph.get_tensor_by_name(proto.filename_tensor_name),
@@ -165,7 +165,7 @@ class SaverTest(test.TestCase):
         list(saveable_object_util.saveable_objects_for_op(v2, "v2")))
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
     self.evaluate(saver.save(constant_op.constant(prefix)))
-    self.assertEqual(4, len(gfile.Glob(prefix + "*")))
+    self.assertLen(gfile.Glob(prefix + "*"), 4)
     self.evaluate(v0.assign(-1.))
     self.evaluate(v1.assign(-1.))
     self.evaluate(v2.assign(-1.))
@@ -190,7 +190,7 @@ class SaverTest(test.TestCase):
         list(saveable_object_util.saveable_objects_for_op(v2, "v2")))
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
     self.evaluate(saver.save(constant_op.constant(prefix), self.local_options))
-    self.assertEqual(2, len(gfile.Glob(prefix + "*")))
+    self.assertLen(gfile.Glob(prefix + "*"), 2)
     self.evaluate(v0.assign(-1.))
     self.evaluate(v1.assign(-1.))
     self.evaluate(v2.assign(-1.))
@@ -251,6 +251,26 @@ class SaverTest(test.TestCase):
               restored_dict[var_names[shard]][""].numpy(),
               vars_numpy[shard])
 
+  def test_sharding_callback_saves_description(self):
+    root = module.Module()
+    with ops.device("cpu:0"):
+      v0 = resource_variable_ops.ResourceVariable(0.0)
+    root.v0 = v0
+
+    self.evaluate(v0.initializer)
+    saver = functional_saver.MultiDeviceSaver.from_saveables(
+        list(saveable_object_util.saveable_objects_for_op(v0, "v0")))
+    prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    self.evaluate(saver.save(constant_op.constant(prefix), self.local_options))
+    self.assertLen(gfile.Glob(f"{prefix}*"), 2)
+
+    with self.assertLogs(level="INFO") as logs:
+      self.evaluate(
+          saver.restore(constant_op.constant(prefix), self.local_options))
+    expected_message = (
+        "INFO:absl:Sharding callback description found during restoration: "
+        "Split tensors into shards based on their device spec task.")
+    self.assertIn(expected_message, logs.output)
 
 if __name__ == "__main__":
   ops.enable_eager_execution()

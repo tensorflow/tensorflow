@@ -17,6 +17,8 @@
 import dataclasses
 from typing import Callable, Mapping, MutableMapping, MutableSequence, Sequence
 
+from absl import logging
+
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint.sharding import sharding_policies
@@ -26,6 +28,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as device_lib
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_spec
@@ -364,7 +367,7 @@ class MultiDeviceSaver:
   def _get_shards_by_task(
       self,
       sharding_callback: sharding_util.ShardingCallback
-  ) -> Sequence[sharding_util.TensorSliceDict]:
+  ) -> Sequence[tuple[device_lib.DeviceSpec, sharding_util.TensorSliceDict]]:
     """Calls the sharding callback with shardable_tensors.
 
     Args:
@@ -413,6 +416,12 @@ class MultiDeviceSaver:
     shards_by_task = [
         (task, sharding_callback(shardable_tensors))
         for task, shardable_tensors in shardable_tensors_by_task.items()]
+    if shards_by_task:
+      desc_task = shards_by_task[0][0]
+      with ops.device(desc_task):
+        desc_tensor = {"": constant_op.constant(
+            sharding_callback.description, dtype=dtypes.string, shape=())}
+        shards_by_task[0][1][0][sharding_util.DESCRIPTION_KEY] = desc_tensor
     return shards_by_task
 
   def save(
@@ -624,5 +633,22 @@ class MultiDeviceSaver:
       restore_ops = tf_function_restore()
     else:
       restore_ops = restore_fn()
+
+    if context.executing_eagerly():
+      try:
+        restore_device = options.experimental_io_device or "cpu:0"
+        with ops.device(restore_device):
+          [desc_tensor] = io_ops.restore_v2(
+              prefix=file_prefix,
+              tensor_names=[sharding_util.DESCRIPTION_KEY],
+              shape_and_slices=[""],
+              dtypes=[dtypes.string])
+        callback_description = desc_tensor.numpy().decode("utf-8")
+
+        logging.info("Sharding callback description found during restoration: "
+                     "%s", callback_description)
+      except errors_impl.NotFoundError:
+        logging.info(
+            "Sharding callback description not found in checkpoint.")
 
     return restore_ops

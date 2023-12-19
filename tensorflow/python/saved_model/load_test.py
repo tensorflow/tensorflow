@@ -2870,7 +2870,9 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     save.save(root, path)
     test_load(path, use_cpp_bindings=use_cpp_bindings)
     op_callbacks.remove_op_callback(_count_restores)
-    self.assertEqual(1, restore_count)
+    # One restore for the checkpoint itself and another for the sharding
+    # callback description.
+    self.assertEqual(2, restore_count)
 
   def test_docstring_examples(self, use_cpp_bindings):
     # TODO(b/264869753) Fix SingleCycleTest

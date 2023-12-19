@@ -19,6 +19,7 @@ import os
 
 from tensorflow.python.checkpoint import checkpoint
 from tensorflow.python.checkpoint import saveable_compat
+from tensorflow.python.checkpoint.sharding import sharding_util
 from tensorflow.python.checkpoint.testdata import generate_checkpoint
 from tensorflow.python.eager import test
 from tensorflow.python.ops import control_flow_ops
@@ -59,12 +60,16 @@ class SaveableCompatTest(test.TestCase):
          table_proto.attributes[0].checkpoint_key],
         [legacy_table_proto.attributes[0].name,
          legacy_table_proto.attributes[0].checkpoint_key])
+
     legacy_reader = checkpoint_utils.load_checkpoint(
         _LEGACY_TABLE_CHECKPOINT_PATH)
+    legacy_keys = sorted(list(legacy_reader.get_variable_to_shape_map().keys()))
+
     reader = checkpoint_utils.load_checkpoint(checkpoint_path)
-    self.assertEqual(
-        legacy_reader.get_variable_to_shape_map().keys(),
-        reader.get_variable_to_shape_map().keys())
+    reader_keys = sorted(list(reader.get_variable_to_shape_map().keys()))
+    reader_keys.remove(sharding_util.DESCRIPTION_KEY)
+
+    self.assertEqual(legacy_keys, reader_keys)
 
     # Ensure that previous checkpoint can be loaded into current table.
     ckpt.read(_LEGACY_TABLE_CHECKPOINT_PATH).assert_consumed()

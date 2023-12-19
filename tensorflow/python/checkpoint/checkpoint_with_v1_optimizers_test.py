@@ -115,6 +115,7 @@ class CheckpointingTests(test.TestCase):
     self.assertEqual(
         chkpt_keys,
         [
+            "SHARDING_CALLBACK_DESCRIPTION",
             "_CHECKPOINTABLE_OBJECT_GRAPH",
             "optimizer/beta1_power/.ATTRIBUTES/VARIABLE_VALUE",
             "optimizer/beta2_power/.ATTRIBUTES/VARIABLE_VALUE",

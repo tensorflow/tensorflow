@@ -30,6 +30,8 @@ from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.util import tf_export
 
 
+DESCRIPTION_KEY = "SHARDING_CALLBACK_DESCRIPTION"
+
 TensorSlice = MutableMapping[tensor_spec.TensorSpec, tensor_lib.Tensor]
 TensorSliceDict = MutableMapping[str, TensorSlice]
 
@@ -117,7 +119,8 @@ class ShardingCallback(abc.ABC):
   ```
 
   The `description` attribute is used to identify the callback and to aid
-  debugging during saving and restoration.
+  debugging during saving and restoration. (If the checkpoint is restored in
+  eager mode, the description will be read in and logged.)
 
   To take in kwargs, simply define the constructor and pass them in:
 
