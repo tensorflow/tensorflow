@@ -73,7 +73,7 @@ StatusOr<mlir::StringAttr> GetPaddingAttr(TfLitePadding pad_params,
 bool mlir::IsStablehloOp(const tflite::OperatorCodeT& op_code) {
   llvm::StringRef op_name(
       tflite::EnumNameBuiltinOperator(tflite::GetBuiltinCode(&op_code)));
-  return op_name.startswith("STABLEHLO_");
+  return op_name.starts_with("STABLEHLO_");
 }
 
 std::string mlir::GetMlirOpNameFromOpCode(
