@@ -294,7 +294,7 @@ tf_module {
   }
   member {
     name: "UnconnectedGradients"
-    mtype: "<class \'enum.EnumMeta\'>"
+    mtype: "<class \'enum.EnumType\'>"
   }
   member {
     name: "VERSION"
@@ -310,7 +310,7 @@ tf_module {
   }
   member {
     name: "VariableAggregation"
-    mtype: "<class \'enum.EnumMeta\'>"
+    mtype: "<class \'enum.EnumType\'>"
   }
   member {
     name: "VariableScope"
@@ -318,7 +318,7 @@ tf_module {
   }
   member {
     name: "VariableSynchronization"
-    mtype: "<class \'enum.EnumMeta\'>"
+    mtype: "<class \'enum.EnumType\'>"
   }
   member {
     name: "WholeFileReader"

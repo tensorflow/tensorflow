@@ -31,6 +31,7 @@ py_strict_test(
     srcs_version = "PY3",
     tags = [
         "no_mac",  # b/198669105
+        "no_oss",  # Runs explicitly in OSS
         "no_pip",
         "no_rocm",
         "no_windows",  # Bugs due to some paths.
