@@ -24,6 +24,10 @@ from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -110,8 +114,91 @@ class MapFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
           r = function(r)
       expected_output.append(r)
 
-    if num_parallel_calls is None or deterministic in [None, True]:
-      self.assertDatasetProduces(dataset, expected_output=expected_output)
+    nondeterministic_ordering = (
+        num_parallel_calls is not None and deterministic is False  # pylint: disable=g-bool-id-comparison
+    )
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=expected_output,
+        assert_items_equal=nondeterministic_ordering,
+    )
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testMapFusionLongMapChain(self):
+    n = 5
+    dataset = dataset_ops.Dataset.range(n)
+    dataset = dataset.apply(
+        testing.assert_next(["ParallelMap", "MemoryCacheImpl"])
+    )
+
+    k = 50
+    for _ in range(k):
+      dataset = dataset.map(
+          lambda x: 2 * x,
+          num_parallel_calls=dataset_ops.AUTOTUNE,
+      )
+
+    dataset = dataset.cache()
+    options = options_lib.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.map_fusion = True
+    dataset = dataset.with_options(options)
+
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[x * 2**k for x in range(n)],
+        assert_items_equal=True,
+    )
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testControlInputs(self):
+    def f(x):
+      with ops.control_dependencies([check_ops.assert_type(x, dtypes.int64)]):
+        return 2 * x
+
+    n = 5
+    dataset = dataset_ops.Dataset.range(n)
+    dataset = dataset.apply(
+        testing.assert_next(["ParallelMap", "MemoryCacheImpl"])
+    )
+    dataset = dataset.map(f, num_parallel_calls=dataset_ops.AUTOTUNE)
+    dataset = dataset.map(f, num_parallel_calls=dataset_ops.AUTOTUNE)
+
+    dataset = dataset.cache()
+    options = options_lib.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.map_fusion = True
+    dataset = dataset.with_options(options)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[x * 4 for x in range(n)],
+        assert_items_equal=True,
+    )
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testStatefulness(self):
+    def f(x):
+      return control_flow_ops.with_dependencies(
+          [check_ops.assert_negative(x)], x
+      )
+
+    dataset = dataset_ops.Dataset.range(5)
+    dataset = dataset.apply(
+        testing.assert_next(["ParallelMap", "MemoryCacheImpl"])
+    )
+    dataset = dataset.map(lambda x: x, num_parallel_calls=dataset_ops.AUTOTUNE)
+    dataset = dataset.map(f, num_parallel_calls=dataset_ops.AUTOTUNE)
+    dataset = dataset.map(lambda x: x, num_parallel_calls=dataset_ops.AUTOTUNE)
+
+    dataset = dataset.cache()
+    options = options_lib.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.map_fusion = True
+    dataset = dataset.with_options(options)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "assertion failed"
+    ):
+      self.evaluate(self.getNext(dataset)())
 
   @combinations.generate(
       combinations.times(

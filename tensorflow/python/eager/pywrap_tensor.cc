@@ -1095,6 +1095,15 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
     PyErr_SetString(PyExc_RuntimeError, "Error while creating EagerTensorType");
     return nullptr;
   }
+#if PY_VERSION_HEX >= 0x030B0000
+  // Py_TPFLAGS_MANAGED_DICT is turned on by PyType_FromSpecWithBases by
+  // default. It tells Python that the class's __dict__ should be managed by VM,
+  // but EagerTensor sets a `tp_dictoffset` (below) to explicitly manage the
+  // dict. See:
+  // - https://docs.python.org/3/c-api/typeobj.html#c.Py_TPFLAGS_MANAGED_DICT
+  // - https://docs.python.org/3/c-api/typeobj.html#c.PyTypeObject.tp_dictoffset
+  EagerTensorType->tp_flags &= ~Py_TPFLAGS_MANAGED_DICT;
+#endif
   EagerTensorType->tp_dictoffset = offsetof(EagerTensor, dict);
   EagerTensorType->tp_as_buffer = &EagerTensor_as_buffer;
 #else

@@ -514,11 +514,42 @@ static std::string_view StreamCaptureModeToString(
       break;
   }
 
-  VLOG(2) << "Beging stream " << stream << " capture in "
+  VLOG(2) << "Beginning stream " << stream << " capture in "
           << StreamCaptureModeToString(mode) << " mode";
   RETURN_IF_CUDA_RES_ERROR(cuStreamBeginCapture(stream, cu_mode),
                            "Failed to begin stream capture");
   return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::StreamBeginCaptureToGraph(
+    CUstream stream, CUgraph graph, StreamCaptureMode mode) {
+  CUstreamCaptureMode cu_mode;
+  switch (mode) {
+    case StreamCaptureMode::kGlobal:
+      cu_mode = CU_STREAM_CAPTURE_MODE_GLOBAL;
+      break;
+    case StreamCaptureMode::kThreadLocal:
+      cu_mode = CU_STREAM_CAPTURE_MODE_THREAD_LOCAL;
+      break;
+    case StreamCaptureMode::kRelaxed:
+      cu_mode = CU_STREAM_CAPTURE_MODE_RELAXED;
+      break;
+  }
+
+#if CUDA_VERSION >= 12030
+  VLOG(2) << "Beginning stream " << stream << " capture in "
+          << StreamCaptureModeToString(mode) << " mode to graph " << graph;
+  RETURN_IF_CUDA_RES_ERROR(
+      cuStreamBeginCaptureToGraph(stream, graph,
+                                  /*dependencies=*/nullptr,
+                                  /*dependencyData=*/nullptr,
+                                  /*numDependencies=*/0, cu_mode),
+      "Failed to begin stream capture to graph");
+  return ::tsl::OkStatus();
+#else
+  return absl::UnimplementedError(
+      "StreamBeginCaptureToGraph is not implemented");
+#endif  // CUDA_VERSION >= 12030
 }
 
 /* static */ tsl::Status GpuDriver::StreamEndCapture(CUstream stream,
@@ -533,7 +564,7 @@ static std::string_view StreamCaptureModeToString(
 
 /* static */ tsl::Status GpuDriver::GraphInstantiate(
     CUgraphExec* exec, CUgraph graph, const GraphInstantiateFlags& flags) {
-  VLOG(2) << "Instante CUDA executable graph from graph " << graph << " ("
+  VLOG(2) << "Instantiate CUDA executable graph from graph " << graph << " ("
           << "auto_free_on_launch=" << flags.auto_free_on_launch << ", "
           << "device_launch=" << flags.device_launch << ", "
           << "use_node_priority=" << flags.use_node_prirotiy << ", "
@@ -565,6 +596,18 @@ static std::string_view StreamCaptureModeToString(
           << stream;
   RETURN_IF_CUDA_RES_ERROR(cuGraphLaunch(exec, stream),
                            "Failed to launch CUDA graph");
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::GraphNodeSetEnabled(CUgraphExec exec,
+                                                        CUgraphNode node,
+                                                        bool enabled) {
+  // Node is enabled if value != 0, otherwise the node is disabled.
+  unsigned value = enabled ? 1 : 0;
+  VLOG(2) << "Set CUDA executable graph " << exec << " node " << node
+          << " enabled flag to " << value;
+  RETURN_IF_CUDA_RES_ERROR(cuGraphNodeSetEnabled(exec, node, value),
+                           "Failed to set CUDA graph node enabled flag");
   return ::tsl::OkStatus();
 }
 
@@ -828,6 +871,9 @@ GpuDriver::GraphAddNode(CUgraphNode* node, CUgraph graph,
   params.kernelParams = kernel_params;
   params.extra = extra;
 
+  // TODO(ezhulenev): Why do we do it on every call to launch kernel? This
+  // should be moved one level up to se::Kernel level, and done just once (or
+  // updated once we get a new larger shared memory request).
   if (shared_mem_bytes != 0) {
     RETURN_IF_CUDA_RES_ERROR(
         cuFuncSetAttribute(function,
@@ -869,6 +915,9 @@ GpuDriver::GraphAddNode(CUgraphNode* node, CUgraph graph,
   params.kernelParams = kernel_params;
   params.extra = extra;
 
+  // TODO(ezhulenev): Why do we do it on every call to launch kernel? This
+  // should be moved one level up to se::Kernel level, and done just once (or
+  // updated once we get a new larger shared memory request).
   if (shared_mem_bytes != 0) {
     RETURN_IF_CUDA_RES_ERROR(
         cuFuncSetAttribute(function,
@@ -902,7 +951,7 @@ static CUmemLocationType ToCudaLocationType(
       return CU_MEM_LOCATION_TYPE_INVALID;
     case GpuDriver::MemLocationType::kDevice:
       return CU_MEM_LOCATION_TYPE_DEVICE;
-#if CUDA_VERSION >= 12000
+#if CUDA_VERSION >= 12030
     case GpuDriver::MemLocationType::kHost:
       return CU_MEM_LOCATION_TYPE_HOST;
     case GpuDriver::MemLocationType::kHostNuma:
@@ -914,7 +963,7 @@ static CUmemLocationType ToCudaLocationType(
     case GpuDriver::MemLocationType::kHostNuma:
     case GpuDriver::MemLocationType::kHostNumaCurrent:
       return CU_MEM_LOCATION_TYPE_INVALID;
-#endif  // CUDA_VERSION >= 12000
+#endif  // CUDA_VERSION >= 12030
   }
 }
 
@@ -949,9 +998,9 @@ static CUmemAllocationType ToCudaAllocationType(
   mem_pool_props.allocType = ToCudaAllocationType(allocation_type);
   mem_pool_props.handleTypes = CU_MEM_HANDLE_TYPE_NONE;
   mem_pool_props.location = mem_location;
-#if CUDA_VERSION >= 12000
+#if CUDA_VERSION >= 12030
   mem_pool_props.maxSize = max_pool_size;
-#endif  // CUDA_VERSION >= 12000
+#endif  // CUDA_VERSION >= 12030
   // cuda graph requires reserved space initialized to 0
   memset(mem_pool_props.reserved, 0, sizeof(mem_pool_props.reserved));
 
@@ -1172,6 +1221,10 @@ struct BitPatternToValue {
           << " bdx: " << block_dim_x << " bdy: " << block_dim_y
           << " bdz: " << block_dim_z
           << "; shared_mem_bytes: " << shared_mem_bytes;
+
+  // TODO(ezhulenev): Why do we do it on every call to launch kernel? This
+  // should be moved one level up to se::Kernel level, and done just once (or
+  // updated once we get a new larger shared memory request).
   if (shared_mem_bytes != 0) {
     RETURN_IF_CUDA_RES_ERROR(
         cuFuncSetAttribute(function,
@@ -1179,14 +1232,75 @@ struct BitPatternToValue {
                            shared_mem_bytes),
         "Failed to set shared memory size");
   }
+
   RETURN_IF_CUDA_RES_ERROR(
       cuLaunchKernel(function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x,
                      block_dim_y, block_dim_z, shared_mem_bytes, stream,
                      kernel_params, extra),
       "Failed to launch CUDA kernel: ", kernel_name,
-      " with block dimensions: ", block_dim_x, "x", block_dim_y, "x",
-      block_dim_z, " and grid dimensions: ", grid_dim_x, "x", grid_dim_y, "x",
-      grid_dim_z, " and shared memory size: ", shared_mem_bytes);
+      "; block dims: ", block_dim_x, "x", block_dim_y, "x", block_dim_z,
+      "; grid dims: ", grid_dim_x, "x", grid_dim_y, "x", grid_dim_z,
+      "; shared memory size: ", shared_mem_bytes);
+
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::LaunchKernel(
+    GpuContext* context, absl::string_view kernel_name,
+    GpuFunctionHandle function, unsigned int cluster_dim_x,
+    unsigned int cluster_dim_y, unsigned int cluster_dim_z,
+    unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
+    unsigned int block_dim_x, unsigned int block_dim_y,
+    unsigned int block_dim_z, unsigned int shared_mem_bytes,
+    GpuStreamHandle stream, void** kernel_params, void** extra) {
+  ScopedActivateContext activation(context);
+  VLOG(2) << "launching kernel: " << kernel_name << "; cdx: " << cluster_dim_x
+          << " cdy: " << cluster_dim_y << " cdz: " << cluster_dim_z
+          << " gdx: " << grid_dim_x << " gdy: " << grid_dim_y
+          << " gdz: " << grid_dim_z << " bdx: " << block_dim_x
+          << " bdy: " << block_dim_y << " bdz: " << block_dim_z
+          << "; shared_mem_bytes: " << shared_mem_bytes;
+
+  // TODO(ezhulenev): Why do we do it on every call to launch kernel? This
+  // should be moved one level up to se::Kernel level, and done just once (or
+  // updated once we get a new larger shared memory request).
+  if (shared_mem_bytes != 0) {
+    RETURN_IF_CUDA_RES_ERROR(
+        cuFuncSetAttribute(function,
+                           CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+                           shared_mem_bytes),
+        "Failed to set shared memory size");
+  }
+
+  CUlaunchConfig launch_config;
+  memset(&launch_config, 0, sizeof(launch_config));
+  launch_config.blockDimX = block_dim_x;
+  launch_config.blockDimY = block_dim_y;
+  launch_config.blockDimZ = block_dim_z;
+  launch_config.gridDimX = grid_dim_x;
+  launch_config.gridDimY = grid_dim_y;
+  launch_config.gridDimZ = grid_dim_z;
+  launch_config.hStream = stream;
+  launch_config.sharedMemBytes = shared_mem_bytes;
+
+  CUlaunchAttribute cluster_dims;
+  memset(&cluster_dims, 0, sizeof(cluster_dims));
+  cluster_dims.id = CU_LAUNCH_ATTRIBUTE_CLUSTER_DIMENSION;
+  cluster_dims.value.clusterDim.x = cluster_dim_x;
+  cluster_dims.value.clusterDim.y = cluster_dim_y;
+  cluster_dims.value.clusterDim.z = cluster_dim_z;
+
+  launch_config.attrs = &cluster_dims;
+  launch_config.numAttrs = 1;
+
+  RETURN_IF_CUDA_RES_ERROR(
+      cuLaunchKernelEx(&launch_config, function, kernel_params, extra),
+      "Failed to launch CUDA kernel: ", kernel_name,
+      "; cluster dims: ", cluster_dim_x, "x", cluster_dim_y, "x", cluster_dim_z,
+      "; block dims: ", block_dim_x, "x", block_dim_y, "x", block_dim_z,
+      "; grid dims: ", grid_dim_x, "x", grid_dim_y, "x", grid_dim_z,
+      "; shared memory size: ", shared_mem_bytes);
+
   return ::tsl::OkStatus();
 }
 
@@ -2395,8 +2509,9 @@ tsl::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerBlockOptin(
 
   int max_blocks;
   RETURN_IF_CUDA_RES_ERROR(
-      cuOccupancyMaxActiveBlocksPerMultiprocessor(
-          &max_blocks, kernel, threads_per_block, dynamic_shared_memory_bytes),
+      cuOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
+          &max_blocks, kernel, threads_per_block, dynamic_shared_memory_bytes,
+          CU_OCCUPANCY_DISABLE_CACHING_OVERRIDE),
       absl::StrFormat("Failed to calculate occupancy of kernel %p", kernel));
   return max_blocks;
 }

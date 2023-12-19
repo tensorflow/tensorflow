@@ -247,6 +247,11 @@ class SnapshotManager {
   // Creates sources for the specified dataset.
   absl::StatusOr<std::vector<Source>> CreateSources(
       const DatasetDef& dataset_def) const;
+  // Returns the total number of splits.
+  absl::StatusOr<int64> GetSplitsCardinality();
+  // Returns true if we need to count the total number of splits for progress
+  // reporting.
+  bool ShouldCountSplits() const;
   // Counts the number of splits for a single repetition of the data in
   // `sources_`.
   absl::StatusOr<int64_t> CountSplits();

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include <vector>
 
 #include "xla/stream_executor/kernel.h"
@@ -26,6 +27,8 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla::gpu::kernel::gemm_universal {
@@ -51,6 +54,57 @@ TEST(CutlassGemmKernelTest, SimpleGemm) {
   int64_t byte_length = sizeof(float) * length;
 
   // Prepare arguments: a=2, b=2, c=0
+  se::DeviceMemory<float> a = executor->AllocateArray<float>(length, 0);
+  se::DeviceMemory<float> b = executor->AllocateArray<float>(length, 0);
+  se::DeviceMemory<float> c = executor->AllocateArray<float>(length, 0);
+
+  float value = 2.0;
+  uint32_t pattern;
+  std::memcpy(&pattern, &value, sizeof(pattern));
+
+  stream.ThenMemset32(&a, pattern, byte_length);
+  stream.ThenMemset32(&b, pattern, byte_length);
+  stream.ThenMemZero(&c, byte_length);
+
+  // Launch gemm kernel with device memory arguments.
+  se::KernelArgsDeviceMemoryArray arr(
+      std::vector<se::DeviceMemoryBase>({a, b, c}),
+      custom_kernel->shared_memory_bytes());
+  TF_ASSERT_OK(executor->Launch(&stream, custom_kernel->thread_dims(),
+                                custom_kernel->block_dims(), gemm, arr));
+
+  // Copy `c` data back to host.
+  std::vector<float> dst(length, -1.0f);
+  stream.ThenMemcpy(dst.data(), c, byte_length);
+
+  std::vector<float> expected(length, 16.0);
+  ASSERT_EQ(dst, expected);
+}
+
+TEST(CutlassGemmKernelTest, LoadFromSharedLibrary) {
+  std::string kernel_lib_path =
+      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu", "kernels",
+                        "cutlass_gemm_kernel_f32xf32_to_f32.so");
+
+  se::Platform* platform =
+      se::MultiPlatformManager::PlatformWithName("CUDA").value();
+  se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  se::Stream stream(executor);
+  stream.Init();
+  ASSERT_TRUE(stream.ok());
+
+  se::Kernel gemm(executor);
+
+  // Load [4, 4] x [4, 4] gemm kernel written in CUDA C++ with CUTLASS.
+  auto custom_kernel = LoadCutlassGemmKernel(
+      "cutlass_gemm", kernel_lib_path, PrimitiveType::F32, 4, 4, 4,
+      /*indices=*/{0, 1, 2}, /*slices=*/{}, executor->GetDeviceDescription());
+  TF_ASSERT_OK(executor->GetKernel(custom_kernel->kernel_spec(), &gemm));
+
+  int64_t length = 4 * 4;
+  int64_t byte_length = sizeof(float) * length;
+
   se::DeviceMemory<float> a = executor->AllocateArray<float>(length, 0);
   se::DeviceMemory<float> b = executor->AllocateArray<float>(length, 0);
   se::DeviceMemory<float> c = executor->AllocateArray<float>(length, 0);

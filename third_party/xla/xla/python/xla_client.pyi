@@ -85,6 +85,7 @@ def make_cpu_client(
     distributed_client: Optional[DistributedRuntimeClient] = ...,
     node_id: int = ...,
     num_nodes: int = ...,
+    collectives: Optional[_xla.CpuCollectives] = ...,
 ) -> Client:
   ...
 

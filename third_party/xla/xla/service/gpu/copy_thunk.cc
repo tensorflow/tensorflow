@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "xla/service/gpu/copy_thunk.h"
 
+#include <cstdint>
+
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/thunk.h"
+#include "xla/status.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {

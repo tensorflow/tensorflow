@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -33,7 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/quantization_pattern.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/quantization_patterns.h"
 
 namespace mlir::quant::stablehlo {
 
@@ -116,7 +117,7 @@ class QuantizePass : public impl::QuantizePassBase<QuantizePass> {
 };
 
 void QuantizePass::runOnOperation() {
-  func::FuncOp func = getOperation();
+  ModuleOp module_op = getOperation();
   MLIRContext& ctx = getContext();
 
   NumericVerifySpec numeric_verify_spec;
@@ -129,20 +130,21 @@ void QuantizePass::runOnOperation() {
   RewritePatternSet patterns(&ctx);
   patterns.add<StableHloQuantization, StableHloQuantizationReverse>(
       &ctx, quant_params);
+  PopulateFusedGemmStylePatterns(ctx, patterns);
 
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
     // There are cases where no rewrites happen even if a pattern matches,
     // causing this to result in a convergence failure. Consider this as a
     // best-effort.
     // TODO: b/305469508 - Make QuantizationPattern converge if there are no
     // patterns that are rewritable.
-    func.emitWarning("Failed to converge pattern at QuantizePass.");
+    module_op.emitWarning("Failed to converge pattern at QuantizePass.");
   }
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
+std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizePass(
     const QuantizationSpecs& quantization_specs) {
   return std::make_unique<QuantizePass>(quantization_specs);
 }

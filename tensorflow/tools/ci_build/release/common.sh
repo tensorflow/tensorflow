@@ -22,6 +22,7 @@ LATEST_BAZEL_VERSION=6.1.0
 #   //tensorflow/opensource_only/.bazelversion,
 #   //tensorflow/tools/ci_build/install/install_bazel.sh,
 #   //tensorflow/tools/ci_build/install/install_bazel_from_source.sh,
+#   //tensorflow/tools/toolchains/cross_compile/cc/cc_toolchain_config.bzl,
 #   //tensorflow_estimator/google/kokoro/common.sh)
 
 # Run flaky functions with retries.

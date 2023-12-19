@@ -42,8 +42,9 @@ bool IsPurelyExpanding(const HloInstruction* instr) {
 }
 
 bool IsFusionCandidate(const HloInstruction* instr) {
-  return instr->IsElementwise() || instr->opcode() == HloOpcode::kReshape ||
-         instr->opcode() == HloOpcode::kTranspose;
+  return instr->opcode() != HloOpcode::kRng &&
+         (instr->IsElementwise() || instr->opcode() == HloOpcode::kReshape ||
+          instr->opcode() == HloOpcode::kTranspose);
 }
 }  // namespace
 
@@ -176,12 +177,17 @@ StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
         TF_RETURN_IF_ERROR(while_instr->ReplaceUsesWith(uses, tuple));
       }
     }
+
+    absl::InlinedVector<HloInstruction*, 2> invariant_output_uses;
     for (auto use : while_instr->users()) {
       if (use->opcode() == HloOpcode::kGetTupleElement &&
           use->tuple_index() == index) {
-        TF_RETURN_IF_ERROR(
-            while_instr->parent()->ReplaceInstruction(use, invariant_value));
+        invariant_output_uses.push_back(use);
       }
+    }
+    for (auto use : invariant_output_uses) {
+      TF_RETURN_IF_ERROR(
+          while_instr->parent()->ReplaceInstruction(use, invariant_value));
     }
 
     HloInstruction* root = while_body->root_instruction();
@@ -216,6 +222,7 @@ StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
 StatusOr<bool> WhileLoopFusibleSinking::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  call_counts_.clear();
   bool changed = false;
   std::vector<HloInstruction*> while_instrs;
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {

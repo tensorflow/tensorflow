@@ -440,11 +440,19 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
+  bool HasSingleUserReadingOnlyTheValueOutput(HloInstruction* inst) {
+    return inst->user_count() == 1 && inst->users().front()->tuple_index() == 0;
+  }
+
   StatusOr<HloComputation*> CreateVariadicComparator(HloInstruction* inst) {
     HloTopKInstruction* topk = DynCast<HloTopKInstruction>(inst);
     XlaBuilder b(absl::StrCat("comparator_", topk->name()));
     std::vector<PrimitiveType> ptypes = {
-        topk->operand(0)->shape().element_type(), PrimitiveType::S32};
+        topk->operand(0)->shape().element_type()};
+
+    if (!HasSingleUserReadingOnlyTheValueOutput(inst)) {
+      ptypes.emplace_back(PrimitiveType::S32);
+    }
 
     XlaComputation comparison = topk->largest()
                                     ? CreateScalarGtComputation(ptypes, &b)
@@ -474,10 +482,10 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     };
     CHECK_NE(variadic_comparator, nullptr);
     // If only the topk values are necessary, skip the iota.
-    if (call->user_count() == 1 && call->users().front()->tuple_index() == 0 &&
-        call->to_apply()->num_parameters() == 2) {
+    if (HasSingleUserReadingOnlyTheValueOutput(call) &&
+        variadic_comparator->num_parameters() == 2) {
       HloInstruction* sort = comp->AddInstruction(HloInstruction::CreateSort(
-          {input->shape()}, sort_dimension, {input}, call->to_apply(),
+          {input->shape()}, sort_dimension, {input}, variadic_comparator,
           /*is_stable=*/true));
       TF_RETURN_IF_ERROR(ReplaceInstruction(
           call->users().front(),

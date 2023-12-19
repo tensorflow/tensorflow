@@ -478,6 +478,7 @@ message DebugOptions {
     CUBLAS = 2;
     CUDNN = 3;
     NCCL = 4;
+    WHILE = 5;
   }
 
   // Determine the types of commands that are recorded into command buffers.

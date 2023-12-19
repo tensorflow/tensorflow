@@ -220,9 +220,9 @@ bool CouldNeedDeviceBitcode(const llvm::Module& module) {
     // The list of prefixes should be in sync with library functions used in
     // target_util.cc.
     if (!function.isIntrinsic() && function.isDeclaration() &&
-        (function.getName().startswith("__nv_") ||
-         function.getName().startswith("__ocml_") ||
-         function.getName().startswith("__ockl_"))) {
+        (function.getName().starts_with("__nv_") ||
+         function.getName().starts_with("__ocml_") ||
+         function.getName().starts_with("__ockl_"))) {
       return true;
     }
   }
@@ -873,7 +873,12 @@ std::string MapGCNArchNameTokenToFeatureStr(const std::string& token,
   if (token == "sramecc+") {
     return "+sramecc";
   } else if (token == "sramecc-") {
+<<<<<<< HEAD
     if(gfx == "gfx90a" || gfx == "gfx940" || gfx == "gfx941" || gfx == "gfx942")
+=======
+    if (gfx == "gfx90a" || gfx == "gfx940" || gfx == "gfx941" ||
+        gfx == "gfx942")
+>>>>>>> upstream/master
       return "";
     return "-sramecc";
   } else if (token == "xnack+") {

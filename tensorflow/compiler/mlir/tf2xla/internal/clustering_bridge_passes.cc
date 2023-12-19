@@ -82,7 +82,6 @@ void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
   // Run TPU cluster cleanup attributes so ops with no outside compiled
   // attribute have no host device attribute.
   pm.addPass(mlir::TFTPU::CreateTPUClusterCleanupAttributesPass());
-  pm.addPass(mlir::TFDevice::CreateOutsideCompiledToHostLaunchPass());
   pm.addNestedPass<FuncOp>(mlir::TFDevice::CreateDeviceAttributeToLaunchPass());
   // Running canonicalizer before decomposing resource ops in cluster helps the
   // latter pass to converge faster as it does not have to spend time folding
@@ -99,10 +98,6 @@ void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
     func_pm.addPass(mlir::TFTPU::CreateTPUHostComputationExpansionPass());
     func_pm.addPass(mlir::TFTPU::CreateTPUUpdateEmbeddingEnqueueOpInputsPass());
   }
-  // TODO(b/173622615): This should incrementally be moved down as
-  // more passes support this representation and then can be removed once
-  // all passes support it.
-  pm.addPass(mlir::TFDevice::CreateHostLaunchToOutsideCompiledPass());
 
   // TODO(b/173622615): Once OutsideCompilation is represented by launch op and
   // the remaining passes including Inliner support it, remove this
@@ -111,9 +106,6 @@ void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
   // will be removed from launch causing an error.
   pm.addNestedPass<FuncOp>(mlir::TFDevice::CreateLaunchToDeviceAttributePass());
 
-  // TODO(b/173622615): This can be removed once more passes support outside
-  // compilation represented by op and conversion back to attribute is removed.
-  pm.addPass(mlir::TFDevice::CreateOutsideCompiledToHostLaunchPass());
   // Note that the region-based control-flow produced here still contains
   // function call ops which get inlined by the subsequent inliner pass.
   pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
@@ -139,11 +131,6 @@ void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
           ->tf_mlir_enable_merge_control_flow_pass) {
     pm.addPass(mlir::TFDevice::CreateMergeControlFlowPass());
   }
-
-  // TODO(b/173622615): This should incrementally be moved down as
-  // more passes support this representation and then can be removed once
-  // all passes support it.
-  pm.addPass(mlir::TFDevice::CreateHostLaunchToOutsideCompiledPass());
 
   pm.addPass(
       tensorflow::tf2xla::internal::CreateMarkOpsForOutsideCompilationPass());

@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -184,6 +185,55 @@ TEST(MapFusionTest, FuseTwoParallelMapNodesIntoOne) {
   EXPECT_TRUE(graph_utils::ContainsNodeWithOp("ParallelMapDatasetV2", output));
   EXPECT_FALSE(graph_utils::ContainsGraphNodeWithName("map1", output));
   EXPECT_FALSE(graph_utils::ContainsGraphNodeWithName("map2", output));
+}
+
+TEST(MapFusionTest, FusedNodesAndFunctionsAreNamedAfterOldNodesAndFunctions) {
+  using test::function::NDef;
+  NodeDef num_parallel_calls_node = CreateScalarConstNodeHelper(
+      "num_parallel_calls", DT_INT64,
+      [](TensorProto* proto) { proto->add_int64_val(-1); });
+  auto graph = [&num_parallel_calls_node](
+                   const std::string& parent_map_node_name,
+                   const std::string& map_node_name,
+                   const std::string& parent_function_name,
+                   const std::string& function_name) {
+    FunctionDef parent_fn = test::function::XTimesTwo();
+    FunctionDef fn = test::function::XTimesTwo();
+    parent_fn.mutable_signature()->set_name(parent_function_name);
+    fn.mutable_signature()->set_name(function_name);
+    return test::function::GDef(
+        {NDef("start", "Const", {}, {{"value", 0}, {"dtype", DT_INT32}}),
+         NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
+         NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
+         NDef("range", "RangeDataset", {"start", "stop", "step"}, {}),
+         num_parallel_calls_node,
+         MakeParallelMapV2Node(parent_map_node_name, "range",
+                               num_parallel_calls_node.name(),
+                               parent_function_name, "default"),
+         MakeParallelMapV2Node(map_node_name, parent_map_node_name,
+                               num_parallel_calls_node.name(), function_name,
+                               "default")},
+        // FunctionLib
+        {parent_fn, fn});
+  };
+
+  GrapplerItem item_1;
+  item_1.graph = graph("map1", "map2", "fnA", "fnB");
+  GraphDef output_1;
+  TF_ASSERT_OK(OptimizeWithMapFusion(item_1, &output_1, true));
+  EXPECT_TRUE(graph_utils::ContainsGraphNodeWithName(
+      "map_fusion_nodes/map1/map2", output_1));
+  EXPECT_TRUE(graph_utils::ContainsGraphFunctionWithName(
+      "map_fusion_funcs/fnA/fnB", output_1.library()));
+
+  GrapplerItem item_2;
+  item_2.graph = graph("map3", "map4", "fnC", "fnD");
+  GraphDef output_2;
+  TF_ASSERT_OK(OptimizeWithMapFusion(item_2, &output_2, true));
+  EXPECT_TRUE(graph_utils::ContainsGraphNodeWithName(
+      "map_fusion_nodes/map3/map4", output_2));
+  EXPECT_TRUE(graph_utils::ContainsGraphFunctionWithName(
+      "map_fusion_funcs/fnC/fnD", output_2.library()));
 }
 
 }  // namespace

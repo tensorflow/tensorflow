@@ -217,6 +217,9 @@ class SharedBatchScheduler
     // done by adding padding in the process-batch callback.
     size_t max_execution_batch_size = 1000;
 
+    // If non-empty, contains configured batch sizes.
+    std::vector<int32> allowed_batch_sizes;
+
     // If true, the padding will not be appended.
     bool disable_padding = false;
 

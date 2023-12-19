@@ -592,5 +592,22 @@ TEST(StreamExecutorGpuClientTest, GetAllocatorStatsTest) {
   }
 }
 
+TEST(StreamExecutorGpuClientTest, GpuDeviceDescriptionTest) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  for (int device_index = 0; device_index < client->device_count();
+       device_index++) {
+    auto coords =
+        static_cast<PjRtStreamExecutorDevice*>(client->devices()[device_index])
+            ->description()
+            .coords();
+    EXPECT_EQ(coords[0], device_index);
+  }
+  EXPECT_EQ(static_cast<PjRtStreamExecutorDevice*>(client->devices()[0])
+                ->description()
+                .core_on_chip(),
+            0);
+}
+
 }  // namespace
 }  // namespace xla

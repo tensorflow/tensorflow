@@ -3899,6 +3899,24 @@ Status AlgebraicSimplifierVisitor::HandleMaximum(HloInstruction* maximum) {
     }
   }
 
+  // max(max(x, y), y) -> max(x, y)
+  // max(max(x, y), x) -> max(x, y)
+  if (Match(lhs, m::MaximumAnyOrder(m::Op(), m::Op().Is(rhs)))) {
+    return ReplaceInstruction(maximum, lhs);
+  }
+  // max(x, max(x, y)) -> max(x, y)
+  if (Match(rhs, m::Maximum(m::Op().Is(lhs), m::Op()))) {
+    return ReplaceInstruction(maximum, rhs);
+  }
+  // max(y, max(x, y)) -> max(y, x)
+  // Note that we cannot simplify to max(x, y) here, as for the case that x and
+  // y are NaN but with different sign, it will make a difference.
+  if (Match(rhs, m::Maximum(m::Op(), m::Op().Is(lhs)))) {
+    TF_RETURN_IF_ERROR(maximum->ReplaceOperandWith(1, rhs->mutable_operand(0)));
+    MarkAsChanged();
+    return OkStatus();
+  }
+
   HloInstruction* clamp_upper_bound_bcast;
   HloInstruction* clamp_lower_bound_bcast;
   HloInstruction* to_clamp;
@@ -3951,6 +3969,24 @@ Status AlgebraicSimplifierVisitor::HandleMinimum(HloInstruction* minimum) {
     if (IsAll(rhs, max_val)) {
       return ReplaceInstruction(minimum, lhs);
     }
+  }
+
+  // min(min(x, y), y) -> min(x, y)
+  // min(min(x, y), x) -> min(x, y)
+  if (Match(lhs, m::MinimumAnyOrder(m::Op(), m::Op().Is(rhs)))) {
+    return ReplaceInstruction(minimum, lhs);
+  }
+  // min(x, min(x, y)) -> min(x, y)
+  if (Match(rhs, m::Minimum(m::Op().Is(lhs), m::Op()))) {
+    return ReplaceInstruction(minimum, rhs);
+  }
+  // min(y, min(x, y)) -> min(y, x)
+  // Note that we cannot simplify to min(x, y) here, as for the case that x and
+  // y are NaN but with different sign, it will make a difference.
+  if (Match(rhs, m::Minimum(m::Op(), m::Op().Is(lhs)))) {
+    TF_RETURN_IF_ERROR(minimum->ReplaceOperandWith(1, rhs->mutable_operand(0)));
+    MarkAsChanged();
+    return OkStatus();
   }
 
   HloInstruction* clamp_upper_bound_bcast;

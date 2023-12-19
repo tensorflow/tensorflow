@@ -14,19 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/utils.h"
 
-#include <memory>
+#include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/core/data/file_logger_client_interface.h"
-#include "tensorflow/core/data/file_logger_client_no_op.h"
 
 namespace tensorflow::data {
 namespace {
-
-TEST(Util, CreateFileLoggerClient) {
-  std::unique_ptr<FileLoggerClientInterface> client = CreateFileLoggerClient();
-  EXPECT_NE(dynamic_cast<FileLoggerClientNoOp*>(client.get()), nullptr);
-}
 
 TEST(Util, DefaultDataTransferProtocol) {
   EXPECT_EQ(DefaultDataTransferProtocol(), "grpc");
@@ -60,6 +53,12 @@ TEST(LocalityOptimizedPath, EmptyPath) {
 TEST(LocalityOptimizedPath, TfDataPath) {
   constexpr char file[] = "tfdata/file1";
   EXPECT_EQ(LocalityOptimizedPath(file), file);
+}
+
+TEST(LocalityOptimizedPath, LogFilenames) {
+  EXPECT_NO_FATAL_FAILURE(LogFilenames(
+      std::vector<std::string>({"/path/file1", "file2.txt", "a"})));
+  EXPECT_NO_FATAL_FAILURE(LogFilenames(std::vector<std::string>({})));
 }
 
 }  // namespace

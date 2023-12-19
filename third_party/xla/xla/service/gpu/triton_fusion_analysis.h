@@ -17,12 +17,9 @@ limitations under the License.
 
 // This file contains TritonFusionAnalysis and FusionContext.
 
-#include <cstdint>
 #include <map>
 #include <string>
-#include <variant>
 
-#include "absl/log/check.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -59,10 +56,11 @@ class TritonFusionAnalysis {
   // Every parameter requires a separate piece of shared memory for asynchronous
   // loads. Multiple parameters are approximately equivalent to multiple
   // pipeline stages.
-  // Note: this has been tuned specifically for GEMMs, where pipelining with
+  // Note: This has been tuned specifically for GEMMs, where pipelining with
   // more than 4 stages has been shown to rarely be practical. This limitation
   // is not necessarily applicable to other operations.
-  static constexpr int kMaxParameterPerDotScope = 4;
+  // Note: The limit doesn't apply to the epilogue of the fusion.
+  static constexpr int kMaxParameterPerDotOperand = 4;
 
   // Scope -> HLO -> dot dimension number -> iteration spec at the HLO's output.
   const TensorIterationSpec::DimIterationSpec* IterSpec(Scope scope,
@@ -95,9 +93,8 @@ class FusionContext {
                                       int operand_number, int split_k = 1);
 
   // Create fusion context from dot's output.
-  static FusionContext FromDotOutput(
-      const HloInstruction& dot, int split_k,
-      int64_t splittable_dimension_major_part_size);
+  static FusionContext FromDotOutput(const HloInstruction& dot, int split_k,
+                                     DotRequirements requirements);
 
   static FusionContext FromSoftmaxRoot(const HloInstruction&);
 
@@ -112,13 +109,9 @@ class FusionContext {
       const HloInstruction& origin, ConstHloInstructionSet& parameters,
       ConstHloInstructionMap<TensorIterationSpec>& iter_specs);
 
-  int64_t splittable_dimension_major_part_size() const {
-    CHECK(std::holds_alternative<DotRequirements>(requirements_));
-    return std::get<DotRequirements>(requirements_)
-        .splittable_dimension_major_part_size;
-  }
   const HeroProperties& hero_properties() const { return properties_; }
   const DimOrderMap& dim_orders() const { return dim_orders_; }
+  const Requirements& requirements() const { return requirements_; }
 
  private:
   const HeroProperties properties_;

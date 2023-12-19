@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "absl/strings/str_cat.h"
 #include "tsl/lib/monitoring/counter.h"
 #include "tsl/lib/monitoring/gauge.h"
 
@@ -42,10 +41,6 @@ auto* pjrt_compiler_is_compiling_module = tsl::monitoring::Gauge<bool, 0>::New(
     metrics::kPjrtCompilerCompileModuleMetricName,
     "Whether the PjRT compiler is compiling modules.");
 
-auto* free_gpu_system_memory = tsl::monitoring::Gauge<int64_t, 1>::New(
-    metrics::kPjrtCompilerFreeGpuSystemMemoryMetricName,
-    "Record the free GPU system memory.", "gpu_id");
-
 }  // namespace
 
 namespace metrics {
@@ -67,16 +62,6 @@ void RecordPjrtCompilerCompileComputationStatus(bool is_compiling) {
 
 void RecordPjrtCompilerCompileModuleStatus(bool is_compiling) {
   pjrt_compiler_is_compiling_module->GetCell()->Set(is_compiling);
-}
-
-void RecordFreeGpuSystemMemory(const int device_ordinal,
-                               const int64_t free_memory) {
-  free_gpu_system_memory->GetCell(absl::StrCat(device_ordinal))
-      ->Set(free_memory);
-}
-
-int64_t GetFreeGpuSystemMemory(int gpu_id) {
-  return free_gpu_system_memory->GetCell(absl::StrCat(gpu_id))->value();
 }
 
 }  // namespace metrics

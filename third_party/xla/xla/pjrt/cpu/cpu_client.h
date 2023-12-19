@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/runtime/cpu_event.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -112,7 +113,15 @@ class TfrtCpuDevice final : public PjRtDevice {
   }
 
   int local_hardware_id() const override {
-    return description_.local_hardware_id();
+    return local_hardware_id_typed().value();
+  }
+
+  PjRtLocalDeviceId local_device_id() const override {
+    return PjRtLocalDeviceId(local_hardware_id_typed().value());
+  }
+
+  PjRtLocalHardwareId local_hardware_id_typed() const override {
+    return PjRtLocalHardwareId(description_.local_hardware_id());
   }
 
   Status TransferToInfeed(const LiteralSlice& literal) override;
@@ -147,6 +156,7 @@ class TfrtCpuClient final : public PjRtClient {
  public:
   TfrtCpuClient(int process_index,
                 std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
+                std::shared_ptr<cpu::CollectivesInterface> collectives,
                 size_t num_threads);
   ~TfrtCpuClient() override;
 
@@ -165,9 +175,13 @@ class TfrtCpuClient final : public PjRtClient {
   }
 
   StatusOr<PjRtDevice*> LookupDevice(int device_id) const override;
+  StatusOr<PjRtDevice*> LookupDevice(
+      PjRtGlobalDeviceId global_device_id) const override;
 
   StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const override;
+  StatusOr<PjRtDevice*> LookupAddressableDevice(
+      PjRtLocalDeviceId local_device_id) const override;
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
@@ -183,6 +197,9 @@ class TfrtCpuClient final : public PjRtClient {
 
   StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
+
+  StatusOr<Layout> GetDefaultLayout(PrimitiveType element_type,
+                                    absl::Span<const int64_t> dims) override;
 
   StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const override;
@@ -284,6 +301,8 @@ class TfrtCpuClient final : public PjRtClient {
   }
 
  private:
+  friend class TfrtCpuExecutable;
+
   int process_index_;
   // Includes all devices, including non-addressable devices.
   std::vector<std::unique_ptr<TfrtCpuDevice>> owned_devices_;
@@ -322,6 +341,8 @@ class TfrtCpuClient final : public PjRtClient {
   // major-to-minor layout.
   absl::Mutex transpose_mu_;
   TransposePlanCache transpose_cache_ ABSL_GUARDED_BY(transpose_mu_);
+
+  std::shared_ptr<cpu::CollectivesInterface> collectives_;
 };
 
 class TfrtCpuBuffer final : public AbstractTfrtCpuBuffer {
@@ -535,6 +556,10 @@ struct CpuClientOptions {
   // KV store primitives for sharing topology information.
   PjRtClient::KeyValueGetCallback kv_get = nullptr;
   PjRtClient::KeyValuePutCallback kv_put = nullptr;
+
+  // Distributed collectives implementation. Optional. If not provided, an
+  // in-process collectives implementation will be used.
+  std::shared_ptr<cpu::CollectivesInterface> collectives;
 };
 StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
     const CpuClientOptions& options);

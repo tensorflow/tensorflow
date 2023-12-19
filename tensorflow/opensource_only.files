@@ -275,6 +275,7 @@ tf_staging/third_party/nccl/LICENSE:
 tf_staging/third_party/nccl/archive.BUILD:
 tf_staging/third_party/nccl/archive.patch:
 tf_staging/third_party/nccl/build_defs.bzl.tpl:
+tf_staging/third_party/nccl/generated_names.bzl.tpl:
 tf_staging/third_party/nccl/nccl_configure.bzl:
 tf_staging/third_party/nccl/system.BUILD.tpl:
 tf_staging/third_party/nlohmann_json.BUILD:

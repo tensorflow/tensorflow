@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/triton_tiling_propagation.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <list>
@@ -48,24 +49,36 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-bool TensorIterationSpec::operator==(const TensorIterationSpec& other) const {
-  VLOG(9) << this->ToString();
-  VLOG(9) << other.ToString();
-  auto it_this = dim_iteration_specs_.cbegin();
-  while (it_this != dim_iteration_specs_.cend()) {
-    auto it_other = other.dim_iteration_specs_.find(it_this->first);
-    if (it_other == other.dim_iteration_specs_.cend()) {
+const TensorIterationSpec::DimIterationSpec* TensorIterationSpec::Find(
+    const int dimension) const {
+  if (auto it = dim_iteration_specs_.find(dimension);
+      it != dim_iteration_specs_.end()) {
+    return &it->second;
+  }
+  return nullptr;
+}
+
+bool TensorIterationSpec::IsPhysicallyEquivalent(
+    const TensorIterationSpec& other) const {
+  if (dim_iteration_specs_.size() != other.dim_iteration_specs_.size()) {
+    return false;
+  }
+  for (const auto& pair : dim_iteration_specs_) {
+    int dimension = pair.first;
+    const DimIterationSpec& dim_iter_spec = pair.second;
+    auto other_it = other.dim_iteration_specs_.find(dimension);
+    if (other_it == other.dim_iteration_specs_.end()) {
       return false;
     }
-    if (it_this->second.size() != it_other->second.size()) {
+    const DimIterationSpec& other_dim_iter_spec = other_it->second;
+    if (dim_iter_spec.size() != other_dim_iter_spec.size()) {
       return false;
     }
-    for (int fragment = 0; fragment < it_this->second.size(); ++fragment) {
-      if (it_this->second[fragment] != it_other->second[fragment]) {
+    for (size_t i = 0; i < dim_iter_spec.size(); i++) {
+      if (!dim_iter_spec[i].IsPhysicallyEquivalent(other_dim_iter_spec[i])) {
         return false;
       }
     }
-    ++it_this;
   }
   return true;
 }
@@ -75,12 +88,6 @@ std::string TensorIterationSpec::IterationSpecFragment::ToString() const {
                       ", slice_start=", slice_start,
                       ", sliced_count=", sliced_count, ", subfragments=[",
                       absl::StrJoin(subfragments, ", "), "]}");
-}
-
-bool TensorIterationSpec::IterationSpecFragment::operator!=(
-    const IterationSpecFragment& other) const {
-  return stride != other.stride || count != other.count ||
-         slice_start != other.slice_start || sliced_count != other.sliced_count;
 }
 
 std::string TensorIterationSpec::ToString() const {
@@ -399,17 +406,7 @@ DimOrderMap GetPropagatedDimOrdersForElementwise(
     return map;
   }
 
-  DimOrderMap map;
-  map.insert({&hlo, src_dim_order});
-  // TODO(tdanyluk): For now, the "input to output" direction of this function
-  // also returns the dim orders for the operands, not just the output. This is
-  // needed to propagate the dim order of one input to the other(s) when fusing
-  // elementwise ops to the output. Perhaps we can separate the "input to
-  // output" and "output to input" directions of that in a later CL.
-  for (const HloInstruction* operand : hlo.operands()) {
-    map.insert({operand, src_dim_order});
-  }
-  return map;
+  return {{&hlo, src_dim_order}};
 }
 
 const HloInstruction& GetSourceHlo(const HloInstruction& hlo,
@@ -458,6 +455,7 @@ DimOrderMapOrError GetPropagatedDimOrdersForBitcast(
   DimensionOrder& dst_dim_order =
       dst_dim_orders.insert({&dst, DimensionOrder()}).first->second;
   Fragments& dst_fragments_order = dst_dim_order.TensorFragmentsOrder();
+  bool dst_remainder_comes_from_reduce_dim = false;
   // Size of not yet assigned part of current target dimension.
   int64_t dst_remaining_size = 1;
   // Track destination fragments created from a source one.
@@ -482,6 +480,14 @@ DimOrderMapOrError GetPropagatedDimOrdersForBitcast(
       // Find a continuous group of fragments corresponding to this dimension in
       // the source and assign the corresponding size in fragments of the
       // destination ignoring the source ones.
+
+      // If there is dst_remaining_size leftover from our previous src_dim,
+      // and it came from a reduce dim, we cannot tile it in a batch dim.
+      if (dst_remainder_comes_from_reduce_dim) {
+        return R"(Unsupported bitcast splits dimension between batch and
+                  reduction dimensions in softmax)";
+      }
+
       dst_remaining_size = src_dim->full_count();
       while (src_dim + 1 != src_fragments_order.cend() &&
              (src_dim + 1)->dst_dim_number() == src_dim->dst_dim_number()) {
@@ -549,6 +555,16 @@ DimOrderMapOrError GetPropagatedDimOrdersForBitcast(
         ++dst_dim_it;
       }
     }
+
+    // We cannot tile a single dim with fragments across both reduce and batch
+    // dimensions. As such, if we have a dst remainder leftover from tiling a
+    // src fragment on the reduce dimension in softmax, we must only tile it
+    // with other src_dim fragments on the reduce dimension.
+    dst_remainder_comes_from_reduce_dim =
+        (dst_remaining_size > 1 &&
+         std::holds_alternative<SoftmaxProperties>(properties) &&
+         src_dim->dst_dim_number() == std::get<SoftmaxProperties>(properties)
+                                          .softmax_reduction_dimension);
   }
   CHECK_EQ(dst_remaining_size, 1);
 
@@ -640,7 +656,6 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
   }
 
   DimOrderMap dst_dim_orders;
-  int64_t concat_accumulated_size = 0;
   for (const HloInstruction* dst : GetDestHlos(hlo, direction)) {
     DimensionOrder& dst_dim_order =
         dst_dim_orders.insert({dst, DimensionOrder()}).first->second;
@@ -693,19 +708,13 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
     } else if (hlo.opcode() == HloOpcode::kConcatenate) {
       dst_logical.resize(src_logical.size());
       for (int i = 0; i < src_logical.size(); ++i) {
+        dst_logical[i] = src_logical[i];
         if (i == hlo.concatenate_dimension()) {
           if (src_logical[i].size() != 1 || src_logical[i][0]->is_sliced()) {
             return FusionDecision("Unsupported concatenation.");
           }
-          const Fragment& src_fragment = *src_logical[i][0];
-          Fragment& dst_fragment = new_fragments.emplace_back(
-              src_fragment.dst_dim_number(), dst->shape().dimensions(i));
-          dst_fragment.set_slice(-concat_accumulated_size,
-                                 dst->shape().dimensions(i));
-          concat_accumulated_size += dst->shape().dimensions(i);
-          dst_logical[i].push_back(&dst_fragment);
-        } else {
-          dst_logical[i] = src_logical[i];
+          dst_logical[i][0]->set_count(dst->shape().dimensions(i));
+          dst_logical[i][0]->set_slice(0, dst->shape().dimensions(i));
         }
       }
     } else if (hlo.opcode() == HloOpcode::kCopy) {
@@ -880,6 +889,12 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
         std::get<DotProperties>(properties).noncontracting_dimension);
     if (!dim.has_value() || dim.value() != hlo.concatenate_dimension()) {
       return "Unsupported concatenation.";
+    }
+    if (absl::c_any_of(hlo.operands(), [](const HloInstruction* operand) {
+          return operand->user_count() > 1;
+        })) {
+      return FusionDecision(
+          "Concatenation has to be the only user of its inputs.");
     }
     if (absl::c_any_of(hlo.operands(), [&hlo](const HloInstruction* operand) {
           // In the current simple implementation of concatenation the size of

@@ -89,6 +89,6 @@ fi
 # a service account that has the right permissions to be able to do so.
 set +x
 if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
-  gcloud auth activate-service-account
+  gcloud auth activate-service-account --key-file="${GOOGLE_APPLICATION_CREDENTIALS}"
 fi
 set -x

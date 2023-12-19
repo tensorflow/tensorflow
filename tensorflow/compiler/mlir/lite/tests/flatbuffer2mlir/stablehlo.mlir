@@ -320,7 +320,7 @@ func.func @dynamic_update_slice(%arg0: tensor<4x4xi64>, %arg1: tensor<2x3xi64>, 
 
 func.func @dyanmic_slice(%arg0: tensor<3x3xi64>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<3x3xi64> {
   %0 = "stablehlo.dynamic_slice"(%arg0, %arg1, %arg2) {
-    slice_sizes = dense<[3, 3]> : tensor<2xi64>
+    slice_sizes = array<i64: 3, 3>
   } : (tensor<3x3xi64>, tensor<i64>, tensor<i64>) -> tensor<3x3xi64>
   return %0 : tensor<3x3xi64>
 }
@@ -524,7 +524,7 @@ func.func @gather(%operand: tensor<3x4x2xi32>, %start_indices: tensor<2x3x2xi64>
 // CHECK-NEXT:}
 
 func.func @transpose(%arg0: tensor<2x3x2xi32>) -> tensor<2x3x2xi32> {
-  %0 = "stablehlo.transpose"(%arg0) {permutation = dense<[2, 1, 0]> : tensor<3xi64>} : (tensor<2x3x2xi32>) -> tensor<2x3x2xi32>
+  %0 = "stablehlo.transpose"(%arg0) {permutation = array<i64: 2, 1, 0>} : (tensor<2x3x2xi32>) -> tensor<2x3x2xi32>
   return %0 : tensor<2x3x2xi32>
 }
 

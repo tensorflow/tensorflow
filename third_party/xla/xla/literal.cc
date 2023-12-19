@@ -1631,7 +1631,7 @@ void LiteralBase::EachCellAsString(
   if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
   }
-  std::vector<int64_t> indices = IndexUtil::LinearIndexToMultidimensionalIndex(
+  auto indices = IndexUtil::LinearIndexToMultidimensionalIndex(
       shape(), /*linear_index=*/0);
   do {
     per_cell(indices, GetAsString(indices));

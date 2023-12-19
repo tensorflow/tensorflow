@@ -10338,6 +10338,34 @@ ENTRY %entry {
   EXPECT_EQ(add_1->sharding(), output->sharding());
 }
 
+TEST_F(ShardingPropagationTest, PropagateShardAsBetweenInputOutput) {
+  const char* const hlo_string = R"(
+HloModule jit_zeros_like
+
+ENTRY main.6 {
+  Arg_0.1 = s64[8,2]{1,0} parameter(0), sharding={devices=[4,2]<=[8]}
+  custom-call.4 = s64[8,2]{1,0} custom-call(Arg_0.1), custom_call_target="Sharding", sharding={unknown shard_as 0}
+  constant.2 = s64[] constant(0)
+  broadcast.3 = s64[8,2]{1,0} broadcast(constant.2), dimensions={}
+  ROOT custom-call.5 = s64[8,2]{1,0} custom-call(broadcast.3), custom_call_target="Sharding", sharding={unknown shard_as 0}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{false},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sharding("{devices=[4,2]0,1,2,3,4,5,6,7}"));
+}
+
 TEST_F(ShardingPropagationTest, LookaheadUsersOfDot) {
   const char* const hlo_string = R"(
 HloModule module

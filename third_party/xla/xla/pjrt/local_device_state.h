@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/client/local_client.h"
 #include "xla/pjrt/event_pool.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/worker_thread.h"
 #include "xla/status.h"
@@ -97,8 +98,13 @@ class LocalDeviceState {
     int num_device_to_device_streams = 1;
   };
 
-  // If asynchronous is false, the host will synchronize to the device after
-  // each execution or transfer. This is intended for debugging only.
+  // `device_ordinal` is the logical local device ordinal (returned by
+  // `local_device_id()`), and it's used to look up an addressable device local
+  // to a given client. If it is not set (-1 by default), the device's logical
+  // device ordinal will be the same as its physical device ordinal (returned by
+  // `local_hardware_id()`). In general, different PJRT devices have different
+  // logical device ordinals, and several PJRT devices can have the same
+  // physical device ordinal if they share the same physical device.
   LocalDeviceState(se::StreamExecutor* executor, LocalClient* client,
                    AllocationModel allocation_model,
                    int max_inflight_computations, bool allow_event_reuse,
@@ -108,7 +114,8 @@ class LocalDeviceState {
 
   se::StreamExecutor* executor() const { return executor_; }
 
-  int device_ordinal() const { return device_ordinal_; }
+  PjRtLocalDeviceId local_device_id() { return local_device_id_; }
+  PjRtLocalHardwareId local_hardware_id() { return local_hardware_id_; }
 
   LocalClient* client() const { return client_; }
 
@@ -198,7 +205,8 @@ class LocalDeviceState {
   // stream by the host ahead of the device.
   Semaphore compute_semaphore_;
 
-  int device_ordinal_;
+  PjRtLocalDeviceId local_device_id_;
+  PjRtLocalHardwareId local_hardware_id_;
   se::StreamExecutor* const executor_;
   LocalClient* const client_;
   std::unique_ptr<se::Stream> compute_stream_;

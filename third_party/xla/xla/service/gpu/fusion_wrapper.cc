@@ -113,9 +113,7 @@ StatusOr<bool> FusionWrapper::Run(
         auto* computation = instruction->parent();
         auto* fusion_instruction =
             computation->AddInstruction(HloInstruction::CreateFusion(
-                instruction->shape(),
-                ChooseFusionKind(*instruction /*unused but required*/,
-                                 *instruction),
+                instruction->shape(), ChooseFusionKind(*instruction),
                 instruction));
         instruction->GetModule()->SetAndUniquifyInstrName(
             fusion_instruction, absl::StrCat("wrapped_", instruction->name()));

@@ -310,18 +310,18 @@ inline void FullyConnected(
 
 inline void FullyConnected(
     const FullyConnectedParams& params, const RuntimeShape& input_shape,
-    const uint8* input_data, const RuntimeShape& filter_shape,
-    const uint8* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, CpuBackendContext* cpu_backend_context) {
+    const uint8_t* input_data, const RuntimeShape& filter_shape,
+    const uint8_t* filter_data, const RuntimeShape& bias_shape,
+    const int32_t* bias_data, const RuntimeShape& output_shape,
+    uint8_t* output_data, CpuBackendContext* cpu_backend_context) {
   ruy::profiler::ScopeLabel label("FullyConnected/8bit");
-  const int32 input_offset = params.input_offset;
-  const int32 filter_offset = params.weights_offset;
-  const int32 output_offset = params.output_offset;
-  const int32 output_multiplier = params.output_multiplier;
+  const int32_t input_offset = params.input_offset;
+  const int32_t filter_offset = params.weights_offset;
+  const int32_t output_offset = params.output_offset;
+  const int32_t output_multiplier = params.output_multiplier;
   const int output_shift = params.output_shift;
-  const int32 output_activation_min = params.quantized_activation_min;
-  const int32 output_activation_max = params.quantized_activation_max;
+  const int32_t output_activation_min = params.quantized_activation_min;
+  const int32_t output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
   // TODO(b/62193649): This really should be:
@@ -341,26 +341,26 @@ inline void FullyConnected(
     TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_rows);
   }
 
-  cpu_backend_gemm::MatrixParams<uint8> lhs_params;
+  cpu_backend_gemm::MatrixParams<uint8_t> lhs_params;
   lhs_params.rows = filter_rows;
   lhs_params.cols = filter_cols;
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
   lhs_params.zero_point = -filter_offset;
   lhs_params.cache_policy =
       cpu_backend_gemm::DefaultCachePolicy(params.lhs_cacheable);
-  cpu_backend_gemm::MatrixParams<uint8> rhs_params;
+  cpu_backend_gemm::MatrixParams<uint8_t> rhs_params;
   rhs_params.rows = filter_cols;
   rhs_params.cols = batches;
   rhs_params.order = cpu_backend_gemm::Order::kColMajor;
   rhs_params.zero_point = -input_offset;
   rhs_params.cache_policy =
       cpu_backend_gemm::DefaultCachePolicy(params.rhs_cacheable);
-  cpu_backend_gemm::MatrixParams<uint8> dst_params;
+  cpu_backend_gemm::MatrixParams<uint8_t> dst_params;
   dst_params.rows = filter_rows;
   dst_params.cols = batches;
   dst_params.order = cpu_backend_gemm::Order::kColMajor;
   dst_params.zero_point = output_offset;
-  cpu_backend_gemm::GemmParams<int32, uint8> gemm_params;
+  cpu_backend_gemm::GemmParams<int32_t, uint8_t> gemm_params;
   gemm_params.bias = bias_data;
   gemm_params.clamp_min = output_activation_min;
   gemm_params.clamp_max = output_activation_max;
@@ -373,18 +373,18 @@ inline void FullyConnected(
 
 inline void FullyConnected(
     const FullyConnectedParams& params, const RuntimeShape& input_shape,
-    const uint8* input_data, const RuntimeShape& filter_shape,
-    const uint8* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data_int32, const RuntimeShape& output_shape,
-    int16* output_data, CpuBackendContext* cpu_backend_context) {
+    const uint8_t* input_data, const RuntimeShape& filter_shape,
+    const uint8_t* filter_data, const RuntimeShape& bias_shape,
+    const int32_t* bias_data_int32, const RuntimeShape& output_shape,
+    int16_t* output_data, CpuBackendContext* cpu_backend_context) {
   ruy::profiler::ScopeLabel label("FullyConnected/Uint8Int16");
-  const int32 input_offset = params.input_offset;
-  const int32 filter_offset = params.weights_offset;
-  const int32 output_offset = params.output_offset;
-  const int32 output_multiplier = params.output_multiplier;
+  const int32_t input_offset = params.input_offset;
+  const int32_t filter_offset = params.weights_offset;
+  const int32_t output_offset = params.output_offset;
+  const int32_t output_multiplier = params.output_multiplier;
   const int output_shift = params.output_shift;
-  const int32 output_activation_min = params.quantized_activation_min;
-  const int32 output_activation_max = params.quantized_activation_max;
+  const int32_t output_activation_min = params.quantized_activation_min;
+  const int32_t output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
   TFLITE_DCHECK_EQ(output_offset, 0);
   TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
@@ -402,26 +402,26 @@ inline void FullyConnected(
                                        output_shape, output_dim_count - 1);
   const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
 
-  cpu_backend_gemm::MatrixParams<uint8> lhs_params;
+  cpu_backend_gemm::MatrixParams<uint8_t> lhs_params;
   lhs_params.rows = output_depth;
   lhs_params.cols = accum_depth;
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
   lhs_params.zero_point = -filter_offset;
   lhs_params.cache_policy =
       cpu_backend_gemm::DefaultCachePolicy(params.lhs_cacheable);
-  cpu_backend_gemm::MatrixParams<uint8> rhs_params;
+  cpu_backend_gemm::MatrixParams<uint8_t> rhs_params;
   rhs_params.rows = accum_depth;
   rhs_params.cols = batches;
   rhs_params.order = cpu_backend_gemm::Order::kColMajor;
   rhs_params.zero_point = -input_offset;
   rhs_params.cache_policy =
       cpu_backend_gemm::DefaultCachePolicy(params.rhs_cacheable);
-  cpu_backend_gemm::MatrixParams<int16> dst_params;
+  cpu_backend_gemm::MatrixParams<int16_t> dst_params;
   dst_params.rows = output_depth;
   dst_params.cols = batches;
   dst_params.order = cpu_backend_gemm::Order::kColMajor;
   dst_params.zero_point = 0;
-  cpu_backend_gemm::GemmParams<int32, int16> gemm_params;
+  cpu_backend_gemm::GemmParams<int32_t, int16_t> gemm_params;
   gemm_params.bias = bias_data_int32;
   gemm_params.clamp_min = output_activation_min;
   gemm_params.clamp_max = output_activation_max;
@@ -438,12 +438,12 @@ inline void FullyConnected(
 // as the 'task' for worker threads to run (multi-threaded case, see
 // ShuffledFullyConnectedWorkerTask below).
 inline void ShuffledFullyConnectedWorkerImpl(
-    const uint8* shuffled_input_workspace_data,
-    const int8* shuffled_weights_data, int batches, int output_depth,
-    int output_stride, int accum_depth, const int32* bias_data,
-    int32 output_multiplier, int output_shift, int16* output_data) {
+    const uint8_t* shuffled_input_workspace_data,
+    const int8_t* shuffled_weights_data, int batches, int output_depth,
+    int output_stride, int accum_depth, const int32_t* bias_data,
+    int32_t output_multiplier, int output_shift, int16_t* output_data) {
 #if defined USE_NEON
-  const int8* shuffled_weights_ptr = shuffled_weights_data;
+  const int8_t* shuffled_weights_ptr = shuffled_weights_data;
   if (batches == 1) {
     const int right_shift = output_shift > 0 ? 0 : -output_shift;
     const int left_shift = output_shift > 0 ? output_shift : 0;
@@ -515,8 +515,8 @@ inline void ShuffledFullyConnectedWorkerImpl(
     const int right_shift = output_shift > 0 ? 0 : -output_shift;
     const int left_shift = output_shift > 0 ? output_shift : 0;
     for (int c = 0; c < output_depth; c += 4) {
-      const int8* shuffled_input_ptr =
-          reinterpret_cast<const int8*>(shuffled_input_workspace_data);
+      const int8_t* shuffled_input_ptr =
+          reinterpret_cast<const int8_t*>(shuffled_input_workspace_data);
       // Accumulation loop.
       int32x4_t row_accum00 = vdupq_n_s32(0);
       int32x4_t row_accum10 = vdupq_n_s32(0);
@@ -613,26 +613,26 @@ inline void ShuffledFullyConnectedWorkerImpl(
   }
 #else
   if (batches == 1) {
-    int16* output_ptr = output_data;
+    int16_t* output_ptr = output_data;
     // Shuffled weights have had their sign bit (0x80) pre-flipped (xor'd)
-    // so that just reinterpreting them as int8 values is equivalent to
+    // so that just reinterpreting them as int8_t values is equivalent to
     // subtracting 128 from them, thus implementing for free the subtraction of
     // the zero_point value 128.
-    const int8* shuffled_weights_ptr =
-        reinterpret_cast<const int8*>(shuffled_weights_data);
+    const int8_t* shuffled_weights_ptr =
+        reinterpret_cast<const int8_t*>(shuffled_weights_data);
     // Likewise, we preshuffled and pre-xored the input data above.
-    const int8* shuffled_input_data =
-        reinterpret_cast<const int8*>(shuffled_input_workspace_data);
+    const int8_t* shuffled_input_data =
+        reinterpret_cast<const int8_t*>(shuffled_input_workspace_data);
     for (int c = 0; c < output_depth; c += 4) {
       // Internal accumulation.
       // Initialize accumulator with the bias-value.
-      int32 accum[4] = {0};
+      int32_t accum[4] = {0};
       // Accumulation loop.
       for (int d = 0; d < accum_depth; d += 16) {
         for (int i = 0; i < 4; i++) {
           for (int j = 0; j < 16; j++) {
-            int8 input_val = shuffled_input_data[d + j];
-            int8 weights_val = *shuffled_weights_ptr++;
+            int8_t input_val = shuffled_input_data[d + j];
+            int8_t weights_val = *shuffled_weights_ptr++;
             accum[i] += weights_val * input_val;
           }
         }
@@ -640,35 +640,35 @@ inline void ShuffledFullyConnectedWorkerImpl(
       for (int i = 0; i < 4; i++) {
         // Add bias value
         int acc = accum[i] + bias_data[c + i];
-        // Down-scale the final int32 accumulator to the scale used by our
+        // Down-scale the final int32_t accumulator to the scale used by our
         // (16-bit, typically 3 integer bits) fixed-point format. The quantized
         // multiplier and shift here have been pre-computed offline
         // (e.g. by toco).
         acc =
             MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
-        // Saturate, cast to int16, and store to output array.
+        // Saturate, cast to int16_t, and store to output array.
         acc = std::max(acc, -32768);
         acc = std::min(acc, 32767);
         output_ptr[c + i] = acc;
       }
     }
   } else if (batches == 4) {
-    int16* output_ptr = output_data;
+    int16_t* output_ptr = output_data;
     // Shuffled weights have had their sign bit (0x80) pre-flipped (xor'd)
-    // so that just reinterpreting them as int8 values is equivalent to
+    // so that just reinterpreting them as int8_t values is equivalent to
     // subtracting 128 from them, thus implementing for free the subtraction of
     // the zero_point value 128.
-    const int8* shuffled_weights_ptr =
-        reinterpret_cast<const int8*>(shuffled_weights_data);
+    const int8_t* shuffled_weights_ptr =
+        reinterpret_cast<const int8_t*>(shuffled_weights_data);
     // Likewise, we preshuffled and pre-xored the input data above.
-    const int8* shuffled_input_data =
-        reinterpret_cast<const int8*>(shuffled_input_workspace_data);
+    const int8_t* shuffled_input_data =
+        reinterpret_cast<const int8_t*>(shuffled_input_workspace_data);
     for (int c = 0; c < output_depth; c += 4) {
-      const int8* shuffled_input_ptr = shuffled_input_data;
+      const int8_t* shuffled_input_ptr = shuffled_input_data;
       // Accumulation loop.
       // Internal accumulation.
       // Initialize accumulator with the bias-value.
-      int32 accum[4][4];
+      int32_t accum[4][4];
       for (int i = 0; i < 4; i++) {
         for (int b = 0; b < 4; b++) {
           accum[i][b] = 0;
@@ -678,8 +678,8 @@ inline void ShuffledFullyConnectedWorkerImpl(
         for (int i = 0; i < 4; i++) {
           for (int b = 0; b < 4; b++) {
             for (int j = 0; j < 16; j++) {
-              int8 input_val = shuffled_input_ptr[16 * b + j];
-              int8 weights_val = shuffled_weights_ptr[16 * i + j];
+              int8_t input_val = shuffled_input_ptr[16 * b + j];
+              int8_t weights_val = shuffled_weights_ptr[16 * i + j];
               accum[i][b] += weights_val * input_val;
             }
           }
@@ -691,13 +691,13 @@ inline void ShuffledFullyConnectedWorkerImpl(
         for (int b = 0; b < 4; b++) {
           // Add bias value
           int acc = accum[i][b] + bias_data[c + i];
-          // Down-scale the final int32 accumulator to the scale used by our
+          // Down-scale the final int32_t accumulator to the scale used by our
           // (16-bit, typically 3 integer bits) fixed-point format. The
           // quantized multiplier and shift here have been pre-computed offline
           // (e.g. by toco).
           acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
                                               output_shift);
-          // Saturate, cast to int16, and store to output array.
+          // Saturate, cast to int16_t, and store to output array.
           acc = std::max(acc, -32768);
           acc = std::min(acc, 32767);
           output_ptr[b * output_stride + c + i] = acc;
@@ -714,13 +714,13 @@ inline void ShuffledFullyConnectedWorkerImpl(
 // Wraps ShuffledFullyConnectedWorkerImpl into a Task class
 // to allow using gemmlowp's threadpool.
 struct ShuffledFullyConnectedWorkerTask : cpu_backend_threadpool::Task {
-  ShuffledFullyConnectedWorkerTask(const uint8* input_data,
-                                   const int8* shuffled_weights_data,
+  ShuffledFullyConnectedWorkerTask(const uint8_t* input_data,
+                                   const int8_t* shuffled_weights_data,
                                    int batches, int output_depth,
                                    int output_stride, int accum_depth,
-                                   const int32* bias_data,
-                                   int32 output_multiplier, int output_shift,
-                                   int16* output_data)
+                                   const int32_t* bias_data,
+                                   int32_t output_multiplier, int output_shift,
+                                   int16_t* output_data)
       : input_data_(input_data),
         shuffled_weights_data_(shuffled_weights_data),
         batches_(batches),
@@ -739,30 +739,30 @@ struct ShuffledFullyConnectedWorkerTask : cpu_backend_threadpool::Task {
         output_shift_, output_data_);
   }
 
-  const uint8* input_data_;
-  const int8* shuffled_weights_data_;
+  const uint8_t* input_data_;
+  const int8_t* shuffled_weights_data_;
   int batches_;
   int output_depth_;
   int output_stride_;
   int accum_depth_;
-  const int32* bias_data_;
-  int32 output_multiplier_;
+  const int32_t* bias_data_;
+  int32_t output_multiplier_;
   int output_shift_;
-  int16* output_data_;
+  int16_t* output_data_;
 };
 
 inline void ShuffledFullyConnected(
     const FullyConnectedParams& params, const RuntimeShape& input_shape,
-    const uint8* input_data, const RuntimeShape& weights_shape,
-    const uint8* shuffled_weights_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape,
-    int16* output_data, uint8* shuffled_input_workspace_data,
+    const uint8_t* input_data, const RuntimeShape& weights_shape,
+    const uint8_t* shuffled_weights_data, const RuntimeShape& bias_shape,
+    const int32_t* bias_data, const RuntimeShape& output_shape,
+    int16_t* output_data, uint8_t* shuffled_input_workspace_data,
     CpuBackendContext* cpu_backend_context) {
   ruy::profiler::ScopeLabel label("ShuffledFullyConnected/8bit");
-  const int32 output_multiplier = params.output_multiplier;
+  const int32_t output_multiplier = params.output_multiplier;
   const int output_shift = params.output_shift;
-  const int32 output_activation_min = params.quantized_activation_min;
-  const int32 output_activation_max = params.quantized_activation_max;
+  const int32_t output_activation_min = params.quantized_activation_min;
+  const int32_t output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_EQ(output_activation_min, -32768);
   TFLITE_DCHECK_EQ(output_activation_max, 32767);
   TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
@@ -782,11 +782,11 @@ inline void ShuffledFullyConnected(
   TFLITE_DCHECK((accum_depth % 16) == 0);
   TFLITE_DCHECK((output_depth % 4) == 0);
   // Shuffled weights have had their sign bit (0x80) pre-flipped (xor'd)
-  // so that just reinterpreting them as int8 values is equivalent to
+  // so that just reinterpreting them as int8_t values is equivalent to
   // subtracting 128 from them, thus implementing for free the subtraction of
   // the zero_point value 128.
-  const int8* int8_shuffled_weights_data =
-      reinterpret_cast<const int8*>(shuffled_weights_data);
+  const int8_t* int8_shuffled_weights_data =
+      reinterpret_cast<const int8_t*>(shuffled_weights_data);
 
   // Shuffling and xoring of input activations into the workspace buffer
   if (batches == 1) {
@@ -803,12 +803,12 @@ inline void ShuffledFullyConnected(
     }
 #endif
   } else if (batches == 4) {
-    uint8* shuffled_input_workspace_ptr = shuffled_input_workspace_data;
+    uint8_t* shuffled_input_workspace_ptr = shuffled_input_workspace_data;
     int c = 0;
 #ifdef USE_NEON
     const uint8x16_t signbit = vdupq_n_u8(0x80);
     for (c = 0; c < accum_depth; c += 16) {
-      const uint8* src_data_ptr = input_data + c;
+      const uint8_t* src_data_ptr = input_data + c;
       uint8x16_t val0 = vld1q_u8(src_data_ptr + 0 * accum_depth);
       uint8x16_t val1 = vld1q_u8(src_data_ptr + 1 * accum_depth);
       uint8x16_t val2 = vld1q_u8(src_data_ptr + 2 * accum_depth);
@@ -826,13 +826,13 @@ inline void ShuffledFullyConnected(
 #else
     for (c = 0; c < accum_depth; c += 16) {
       for (int b = 0; b < 4; b++) {
-        const uint8* src_data_ptr = input_data + b * accum_depth + c;
+        const uint8_t* src_data_ptr = input_data + b * accum_depth + c;
         for (int j = 0; j < 16; j++) {
-          uint8 src_val = *src_data_ptr++;
+          uint8_t src_val = *src_data_ptr++;
           // Flip the sign bit, so that the kernel will only need to
-          // reinterpret these uint8 values as int8, getting for free the
+          // reinterpret these uint8_t values as int8_t, getting for free the
           // subtraction of the zero_point value 128.
-          uint8 dst_val = src_val ^ 0x80;
+          uint8_t dst_val = src_val ^ 0x80;
           *shuffled_input_workspace_ptr++ = dst_val;
         }
       }
@@ -930,7 +930,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   ruy::profiler::ScopeLabel label("Conv");
 
   // NB: the float 0.0f value is represented by all zero bytes.
-  const uint8 float_zero_byte = 0x00;
+  const uint8_t float_zero_byte = 0x00;
   const float* gemm_input_data = nullptr;
   const RuntimeShape* gemm_input_shape = nullptr;
   const int filter_width = filter_shape.Dims(2);
@@ -1117,7 +1117,7 @@ inline void HybridConvPerChannel(
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
 
-  const int8* gemm_input_data = nullptr;
+  const int8_t* gemm_input_data = nullptr;
   const RuntimeShape* gemm_input_shape = nullptr;
   const int filter_width = filter_shape.Dims(2);
   const int filter_height = filter_shape.Dims(1);
@@ -1168,17 +1168,17 @@ inline void HybridConvPerChannel(
     }
   }
 
-  cpu_backend_gemm::MatrixParams<int8> lhs_params;
+  cpu_backend_gemm::MatrixParams<int8_t> lhs_params;
   lhs_params.rows = filter_rows;
   lhs_params.cols = filter_cols;
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
 
-  cpu_backend_gemm::MatrixParams<int8> rhs_params;
+  cpu_backend_gemm::MatrixParams<int8_t> rhs_params;
   rhs_params.order = cpu_backend_gemm::Order::kColMajor;
   rhs_params.rows = gemm_input_rows;
   rhs_params.cols = gemm_input_cols;
 
-  cpu_backend_gemm::MatrixParams<int32> dst_params;
+  cpu_backend_gemm::MatrixParams<int32_t> dst_params;
   dst_params.order = cpu_backend_gemm::Order::kColMajor;
   dst_params.rows = output_rows;
   dst_params.cols = output_cols;
@@ -1210,29 +1210,29 @@ inline void HybridConvPerChannel(
 }
 
 inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
-                 const uint8* input_data, const RuntimeShape& filter_shape,
-                 const uint8* filter_data, const RuntimeShape& bias_shape,
-                 const int32* bias_data, const RuntimeShape& output_shape,
-                 uint8* output_data, const RuntimeShape& im2col_shape,
-                 uint8* im2col_data, CpuBackendContext* cpu_backend_context) {
+                 const uint8_t* input_data, const RuntimeShape& filter_shape,
+                 const uint8_t* filter_data, const RuntimeShape& bias_shape,
+                 const int32_t* bias_data, const RuntimeShape& output_shape,
+                 uint8_t* output_data, const RuntimeShape& im2col_shape,
+                 uint8_t* im2col_data, CpuBackendContext* cpu_backend_context) {
   ruy::profiler::ScopeLabel label("Conv/8bit");
 
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int dilation_width_factor = params.dilation_width_factor;
   const int dilation_height_factor = params.dilation_height_factor;
-  const int32 input_offset = params.input_offset;
-  const int32 filter_offset = params.weights_offset;
-  const int32 output_offset = params.output_offset;
-  const int32 output_multiplier = params.output_multiplier;
+  const int32_t input_offset = params.input_offset;
+  const int32_t filter_offset = params.weights_offset;
+  const int32_t output_offset = params.output_offset;
+  const int32_t output_multiplier = params.output_multiplier;
   const int output_shift = params.output_shift;
-  const int32 output_activation_min = params.quantized_activation_min;
-  const int32 output_activation_max = params.quantized_activation_max;
+  const int32_t output_activation_min = params.quantized_activation_min;
+  const int32_t output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
 
-  const uint8* gemm_input_data = nullptr;
+  const uint8_t* gemm_input_data = nullptr;
   const RuntimeShape* gemm_input_shape = nullptr;
   const int filter_width = filter_shape.Dims(2);
   const int filter_height = filter_shape.Dims(1);
@@ -1287,22 +1287,22 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   TFLITE_DCHECK_EQ(filter_cols, gemm_input_rows);
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_rows);
 
-  cpu_backend_gemm::MatrixParams<uint8> lhs_params;
+  cpu_backend_gemm::MatrixParams<uint8_t> lhs_params;
   lhs_params.rows = filter_rows;
   lhs_params.cols = filter_cols;
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
   lhs_params.zero_point = -filter_offset;
-  cpu_backend_gemm::MatrixParams<uint8> rhs_params;
+  cpu_backend_gemm::MatrixParams<uint8_t> rhs_params;
   rhs_params.rows = gemm_input_rows;
   rhs_params.cols = gemm_input_cols;
   rhs_params.order = cpu_backend_gemm::Order::kColMajor;
   rhs_params.zero_point = -input_offset;
-  cpu_backend_gemm::MatrixParams<uint8> dst_params;
+  cpu_backend_gemm::MatrixParams<uint8_t> dst_params;
   dst_params.rows = output_rows;
   dst_params.cols = output_cols;
   dst_params.order = cpu_backend_gemm::Order::kColMajor;
   dst_params.zero_point = output_offset;
-  cpu_backend_gemm::GemmParams<int32, uint8> gemm_params;
+  cpu_backend_gemm::GemmParams<int32_t, uint8_t> gemm_params;
   gemm_params.bias = bias_data;
   gemm_params.clamp_min = output_activation_min;
   gemm_params.clamp_max = output_activation_max;
@@ -1433,37 +1433,37 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
 
 inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
                             const RuntimeShape& input_shape,
-                            const uint8* input_data,
+                            const uint8_t* input_data,
                             const RuntimeShape& output_shape,
-                            uint8* output_data) {
+                            uint8_t* output_data) {
   ruy::profiler::ScopeLabel label("L2Normalization/8bit");
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int depth =
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
   const int outer_size =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
-  const int32 input_zero_point = op_params.input_zero_point;
+  const int32_t input_zero_point = op_params.input_zero_point;
   for (int i = 0; i < outer_size; ++i) {
-    int32 square_l2_norm = 0;
+    int32_t square_l2_norm = 0;
     for (int c = 0; c < depth; c++) {
       // Note that input_data advances by depth in the second pass below.
-      int32 diff = input_data[c] - input_zero_point;
+      int32_t diff = input_data[c] - input_zero_point;
       square_l2_norm += diff * diff;
     }
     // TODO(b/29395854): add clamping to TOCO and TF Lite kernel
     // for all zero tensors in the input_data
-    int32 inv_l2norm_multiplier;
+    int32_t inv_l2norm_multiplier;
     int inv_l2norm_shift;
     GetInvSqrtQuantizedMultiplierExp(square_l2_norm, kReverseShift,
                                      &inv_l2norm_multiplier, &inv_l2norm_shift);
 
     for (int c = 0; c < depth; c++) {
-      int32 diff = *input_data - input_zero_point;
-      int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOneExp(
+      int32_t diff = *input_data - input_zero_point;
+      int32_t rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOneExp(
           128 * diff, inv_l2norm_multiplier, inv_l2norm_shift);
-      int32 unclamped_output_val = 128 + rescaled_diff;
-      int32 output_val = std::min(255, std::max(0, unclamped_output_val));
-      *output_data = static_cast<uint8>(output_val);
+      int32_t unclamped_output_val = 128 + rescaled_diff;
+      int32_t output_val = std::min(255, std::max(0, unclamped_output_val));
+      *output_data = static_cast<uint8_t>(output_val);
       ++input_data;
       ++output_data;
     }
@@ -1534,8 +1534,8 @@ inline void Add(const ArithmeticParams& params,
 // Element-wise add that can often be used for inner loop of broadcast add as
 // well as the non-broadcast add.
 inline void AddElementwise(int size, const ArithmeticParams& params,
-                           const uint8* input1_data, const uint8* input2_data,
-                           uint8* output_data) {
+                           const uint8_t* input1_data,
+                           const uint8_t* input2_data, uint8_t* output_data) {
   ruy::profiler::ScopeLabel label("AddElementwise/8bit");
   int i = 0;
   TFLITE_DCHECK_GT(params.input1_offset, -256);
@@ -1600,25 +1600,25 @@ inline void AddElementwise(int size, const ArithmeticParams& params,
 #endif  // NEON
 
   for (; i < size; ++i) {
-    const int32 input1_val = params.input1_offset + input1_data[i];
-    const int32 input2_val = params.input2_offset + input2_data[i];
-    const int32 shifted_input1_val = input1_val * (1 << params.left_shift);
-    const int32 shifted_input2_val = input2_val * (1 << params.left_shift);
-    const int32 scaled_input1_val =
+    const int32_t input1_val = params.input1_offset + input1_data[i];
+    const int32_t input2_val = params.input2_offset + input2_data[i];
+    const int32_t shifted_input1_val = input1_val * (1 << params.left_shift);
+    const int32_t shifted_input2_val = input2_val * (1 << params.left_shift);
+    const int32_t scaled_input1_val =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
             shifted_input1_val, params.input1_multiplier, params.input1_shift);
-    const int32 scaled_input2_val =
+    const int32_t scaled_input2_val =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
             shifted_input2_val, params.input2_multiplier, params.input2_shift);
-    const int32 raw_sum = scaled_input1_val + scaled_input2_val;
-    const int32 raw_output =
+    const int32_t raw_sum = scaled_input1_val + scaled_input2_val;
+    const int32_t raw_output =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
             raw_sum, params.output_multiplier, params.output_shift) +
         params.output_offset;
-    const int32 clamped_output =
+    const int32_t clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, raw_output));
-    output_data[i] = static_cast<uint8>(clamped_output);
+    output_data[i] = static_cast<uint8_t>(clamped_output);
   }
 }
 
@@ -1626,8 +1626,8 @@ inline void AddElementwise(int size, const ArithmeticParams& params,
 // broadcast add, so that, for example, scalar-broadcast with batch will still
 // be fast.
 inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
-                               uint8 input1_data, const uint8* input2_data,
-                               uint8* output_data) {
+                               uint8_t input1_data, const uint8_t* input2_data,
+                               uint8_t* output_data) {
   using gemmlowp::RoundingDivideByPOT;
 
   ruy::profiler::ScopeLabel label("AddScalarBroadcast/8bit");
@@ -1699,28 +1699,28 @@ inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
 
   if (i < size) {
     // Process broadcast scalar.
-    const int32 input1_val = params.input1_offset + input1_data;
-    const int32 shifted_input1_val = input1_val * (1 << params.left_shift);
-    const int32 scaled_input1_val =
+    const int32_t input1_val = params.input1_offset + input1_data;
+    const int32_t shifted_input1_val = input1_val * (1 << params.left_shift);
+    const int32_t scaled_input1_val =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
             shifted_input1_val, params.input1_multiplier, params.input1_shift);
 
     for (; i < size; ++i) {
-      const int32 input2_val = params.input2_offset + input2_data[i];
-      const int32 shifted_input2_val = input2_val * (1 << params.left_shift);
-      const int32 scaled_input2_val =
+      const int32_t input2_val = params.input2_offset + input2_data[i];
+      const int32_t shifted_input2_val = input2_val * (1 << params.left_shift);
+      const int32_t scaled_input2_val =
           MultiplyByQuantizedMultiplierSmallerThanOneExp(
               shifted_input2_val, params.input2_multiplier,
               params.input2_shift);
-      const int32 raw_sum = scaled_input1_val + scaled_input2_val;
-      const int32 raw_output =
+      const int32_t raw_sum = scaled_input1_val + scaled_input2_val;
+      const int32_t raw_output =
           MultiplyByQuantizedMultiplierSmallerThanOneExp(
               raw_sum, params.output_multiplier, params.output_shift) +
           params.output_offset;
-      const int32 clamped_output =
+      const int32_t clamped_output =
           std::min(params.quantized_activation_max,
                    std::max(params.quantized_activation_min, raw_output));
-      output_data[i] = static_cast<uint8>(clamped_output);
+      output_data[i] = static_cast<uint8_t>(clamped_output);
     }
   }
 }
@@ -1759,9 +1759,9 @@ inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
 }
 
 inline void Add(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const uint8* input1_data,
-                const RuntimeShape& input2_shape, const uint8* input2_data,
-                const RuntimeShape& output_shape, uint8* output_data) {
+                const RuntimeShape& input1_shape, const uint8_t* input1_data,
+                const RuntimeShape& input2_shape, const uint8_t* input2_data,
+                const RuntimeShape& output_shape, uint8_t* output_data) {
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
   ruy::profiler::ScopeLabel label("Add/8bit");
@@ -1776,9 +1776,9 @@ inline void Add(const ArithmeticParams& params,
 }
 
 inline void Add(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const int16* input1_data,
-                const RuntimeShape& input2_shape, const int16* input2_data,
-                const RuntimeShape& output_shape, int16* output_data) {
+                const RuntimeShape& input1_shape, const int16_t* input1_data,
+                const RuntimeShape& input2_shape, const int16_t* input2_data,
+                const RuntimeShape& output_shape, int16_t* output_data) {
   ruy::profiler::ScopeLabel label("Add/Int16");
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
@@ -1786,14 +1786,15 @@ inline void Add(const ArithmeticParams& params,
   const int input1_shift = params.input1_shift;
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
-  const int16 output_activation_min = params.quantized_activation_min;
-  const int16 output_activation_max = params.quantized_activation_max;
+  const int16_t output_activation_min = params.quantized_activation_min;
+  const int16_t output_activation_max = params.quantized_activation_max;
 
   TFLITE_DCHECK(input1_shift == 0 || params.input2_shift == 0);
   TFLITE_DCHECK_LE(input1_shift, 0);
   TFLITE_DCHECK_LE(params.input2_shift, 0);
-  const int16* not_shift_input = input1_shift == 0 ? input1_data : input2_data;
-  const int16* shift_input = input1_shift == 0 ? input2_data : input1_data;
+  const int16_t* not_shift_input =
+      input1_shift == 0 ? input1_data : input2_data;
+  const int16_t* shift_input = input1_shift == 0 ? input2_data : input1_data;
   const int input_right_shift =
       input1_shift == 0 ? -params.input2_shift : -input1_shift;
 
@@ -1805,8 +1806,8 @@ inline void Add(const ArithmeticParams& params,
     F0 scaled_input = F0::FromRaw(
         gemmlowp::RoundingDivideByPOT(shift_input[i], input_right_shift));
     F0 result = gemmlowp::SaturatingAdd(scaled_input, input_ready_scaled);
-    const int16 raw_output = result.raw();
-    const int16 clamped_output = std::min(
+    const int16_t raw_output = result.raw();
+    const int16_t clamped_output = std::min(
         output_activation_max, std::max(output_activation_min, raw_output));
     output_data[i] = clamped_output;
   }
@@ -1867,11 +1868,11 @@ inline void BroadcastAddDispatch(
 
 inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
                                  const RuntimeShape& unswitched_input1_shape,
-                                 const uint8* unswitched_input1_data,
+                                 const uint8_t* unswitched_input1_data,
                                  const RuntimeShape& unswitched_input2_shape,
-                                 const uint8* unswitched_input2_data,
+                                 const uint8_t* unswitched_input2_data,
                                  const RuntimeShape& output_shape,
-                                 uint8* output_data) {
+                                 uint8_t* output_data) {
   BroadcastAddDispatch(unswitched_params, unswitched_input1_shape,
                        unswitched_input1_data, unswitched_input2_shape,
                        unswitched_input2_data, output_shape, output_data);
@@ -2015,10 +2016,10 @@ inline void Mul(const ArithmeticParams& params,
 }
 
 inline void Mul(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const int32* input1_data,
-                const RuntimeShape& input2_shape, const int32* input2_data,
-                const RuntimeShape& output_shape, int32* output_data) {
-  ruy::profiler::ScopeLabel label("Mul/int32/activation");
+                const RuntimeShape& input1_shape, const int32_t* input1_data,
+                const RuntimeShape& input2_shape, const int32_t* input2_data,
+                const RuntimeShape& output_shape, int32_t* output_data) {
+  ruy::profiler::ScopeLabel label("Mul/int32_t/activation");
 
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
@@ -2028,12 +2029,12 @@ inline void Mul(const ArithmeticParams& params,
 
 inline void MulNoActivation(const ArithmeticParams& params,
                             const RuntimeShape& input1_shape,
-                            const int32* input1_data,
+                            const int32_t* input1_data,
                             const RuntimeShape& input2_shape,
-                            const int32* input2_data,
+                            const int32_t* input2_data,
                             const RuntimeShape& output_shape,
-                            int32* output_data) {
-  ruy::profiler::ScopeLabel label("Mul/int32");
+                            int32_t* output_data) {
+  ruy::profiler::ScopeLabel label("Mul/int32_t");
 
   auto input1_map = MapAsVector(input1_data, input1_shape);
   auto input2_map = MapAsVector(input2_data, input2_shape);
@@ -2054,9 +2055,9 @@ inline void MulNoActivation(const ArithmeticParams& params,
 }
 
 inline void Mul(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const int16* input1_data,
-                const RuntimeShape& input2_shape, const int16* input2_data,
-                const RuntimeShape& output_shape, int16* output_data) {
+                const RuntimeShape& input1_shape, const int16_t* input1_data,
+                const RuntimeShape& input2_shape, const int16_t* input2_data,
+                const RuntimeShape& output_shape, int16_t* output_data) {
   ruy::profiler::ScopeLabel label("Mul/Int16/NoActivation");
   // This is a copy of the reference implementation. We do not currently have a
   // properly optimized version.
@@ -2075,15 +2076,15 @@ inline void Mul(const ArithmeticParams& params,
 }
 
 inline void Mul(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const int16* input1_data,
-                const RuntimeShape& input2_shape, const int16* input2_data,
-                const RuntimeShape& output_shape, uint8* output_data) {
+                const RuntimeShape& input1_shape, const int16_t* input1_data,
+                const RuntimeShape& input2_shape, const int16_t* input2_data,
+                const RuntimeShape& output_shape, uint8_t* output_data) {
   ruy::profiler::ScopeLabel label("Mul/Int16Uint8");
   // This is a copy of the reference implementation. We do not currently have a
   // properly optimized version.
-  const int32 output_activation_min = params.quantized_activation_min;
-  const int32 output_activation_max = params.quantized_activation_max;
-  const int32 output_offset = params.output_offset;
+  const int32_t output_activation_min = params.quantized_activation_min;
+  const int32_t output_activation_max = params.quantized_activation_max;
+  const int32_t output_offset = params.output_offset;
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
 
   const int flat_size =
@@ -2095,12 +2096,12 @@ inline void Mul(const ArithmeticParams& params,
 
     F0 unclamped_result =
         F0::FromRaw(input1_data[i]) * F0::FromRaw(input2_data[i]);
-    int16 rescaled_result =
+    int16_t rescaled_result =
         gemmlowp::RoundingDivideByPOT(unclamped_result.raw(), 8);
-    int16 clamped_result =
-        std::min<int16>(output_activation_max - output_offset, rescaled_result);
-    clamped_result =
-        std::max<int16>(output_activation_min - output_offset, clamped_result);
+    int16_t clamped_result = std::min<int16_t>(
+        output_activation_max - output_offset, rescaled_result);
+    clamped_result = std::max<int16_t>(output_activation_min - output_offset,
+                                       clamped_result);
     output_data[i] = output_offset + clamped_result;
   }
 }
@@ -2108,8 +2109,8 @@ inline void Mul(const ArithmeticParams& params,
 // Element-wise mul that can often be used for inner loop of broadcast Mul as
 // well as the non-broadcast Mul.
 inline void MulElementwise(int size, const ArithmeticParams& params,
-                           const uint8* input1_data, const uint8* input2_data,
-                           uint8* output_data) {
+                           const uint8_t* input1_data,
+                           const uint8_t* input2_data, uint8_t* output_data) {
   int i = 0;
   TFLITE_DCHECK_GT(params.input1_offset, -256);
   TFLITE_DCHECK_LT(params.input1_offset, 256);
@@ -2167,25 +2168,26 @@ inline void MulElementwise(int size, const ArithmeticParams& params,
 #endif  // NEON
 
   for (; i < size; ++i) {
-    const int32 input1_val = params.input1_offset + input1_data[i];
-    const int32 input2_val = params.input2_offset + input2_data[i];
-    const int32 unclamped_result =
+    const int32_t input1_val = params.input1_offset + input1_data[i];
+    const int32_t input2_val = params.input2_offset + input2_data[i];
+    const int32_t unclamped_result =
         params.output_offset +
         MultiplyByQuantizedMultiplier(input1_val * input2_val,
                                       params.output_multiplier,
                                       params.output_shift);
-    const int32 clamped_output =
+    const int32_t clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));
-    output_data[i] = static_cast<uint8>(clamped_output);
+    output_data[i] = static_cast<uint8_t>(clamped_output);
   }
 }
 
 // Broadcast mul that can often be used for inner loop of broadcast Mul.
 inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
-                               const uint8 broadcast_value,
-                               const uint8* input2_data, uint8* output_data) {
-  const int16 input1_val = params.input1_offset + broadcast_value;
+                               const uint8_t broadcast_value,
+                               const uint8_t* input2_data,
+                               uint8_t* output_data) {
+  const int16_t input1_val = params.input1_offset + broadcast_value;
 
   int i = 0;
   TFLITE_DCHECK_GT(params.input1_offset, -256);
@@ -2237,16 +2239,16 @@ inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
 #endif  // NEON
 
   for (; i < size; ++i) {
-    const int32 input2_val = params.input2_offset + input2_data[i];
-    const int32 unclamped_result =
+    const int32_t input2_val = params.input2_offset + input2_data[i];
+    const int32_t unclamped_result =
         params.output_offset +
         MultiplyByQuantizedMultiplier(input1_val * input2_val,
                                       params.output_multiplier,
                                       params.output_shift);
-    const int32 clamped_output =
+    const int32_t clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));
-    output_data[i] = static_cast<uint8>(clamped_output);
+    output_data[i] = static_cast<uint8_t>(clamped_output);
   }
 }
 
@@ -2284,9 +2286,9 @@ inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
 }
 
 inline void Mul(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const uint8* input1_data,
-                const RuntimeShape& input2_shape, const uint8* input2_data,
-                const RuntimeShape& output_shape, uint8* output_data) {
+                const RuntimeShape& input1_shape, const uint8_t* input1_data,
+                const RuntimeShape& input2_shape, const uint8_t* input2_data,
+                const RuntimeShape& output_shape, uint8_t* output_data) {
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
   ruy::profiler::ScopeLabel label("Mul/8bit");
@@ -2317,11 +2319,11 @@ inline void BroadcastMulDispatch(
 
 inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
                                  const RuntimeShape& unswitched_input1_shape,
-                                 const uint8* unswitched_input1_data,
+                                 const uint8_t* unswitched_input1_data,
                                  const RuntimeShape& unswitched_input2_shape,
-                                 const uint8* unswitched_input2_data,
+                                 const uint8_t* unswitched_input2_data,
                                  const RuntimeShape& output_shape,
-                                 uint8* output_data) {
+                                 uint8_t* output_data) {
   BroadcastMulDispatch(unswitched_params, unswitched_input1_shape,
                        unswitched_input1_data, unswitched_input2_shape,
                        unswitched_input2_data, output_shape, output_data);
@@ -2399,11 +2401,11 @@ void BroadcastDivSlow(const ArithmeticParams& params,
 template <int N = 5>
 inline void BroadcastDivSlow(const ArithmeticParams& params,
                              const RuntimeShape& unextended_input1_shape,
-                             const uint8* input1_data,
+                             const uint8_t* input1_data,
                              const RuntimeShape& unextended_input2_shape,
-                             const uint8* input2_data,
+                             const uint8_t* input2_data,
                              const RuntimeShape& unextended_output_shape,
-                             uint8* output_data) {
+                             uint8_t* output_data) {
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), N);
   TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), N);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), N);
@@ -2424,9 +2426,9 @@ inline void BroadcastDivSlow(const ArithmeticParams& params,
   TFLITE_DCHECK_LT(params.output_offset, 256);
 
   auto div_func = [&](int indexes[N]) {
-    int32 input1_val =
+    int32_t input1_val =
         params.input1_offset + input1_data[SubscriptToIndex(desc1, indexes)];
-    int32 input2_val =
+    int32_t input2_val =
         params.input2_offset + input2_data[SubscriptToIndex(desc2, indexes)];
     TFLITE_DCHECK_NE(input2_val, 0);
     if (input2_val < 0) {
@@ -2436,20 +2438,21 @@ inline void BroadcastDivSlow(const ArithmeticParams& params,
       input2_val = -input2_val;
     }
     int recip_shift;
-    const int32 input2_inv = GetReciprocal(input2_val, 31, &recip_shift);
+    const int32_t input2_inv = GetReciprocal(input2_val, 31, &recip_shift);
     const int headroom = CountLeadingSignBits(input1_val);
-    const int32 unscaled_quotient = MultiplyByQuantizedMultiplierGreaterThanOne(
-        input1_val, input2_inv, headroom);
+    const int32_t unscaled_quotient =
+        MultiplyByQuantizedMultiplierGreaterThanOne(input1_val, input2_inv,
+                                                    headroom);
     const int total_shift = params.output_shift - recip_shift - headroom;
-    const int32 unclamped_result =
+    const int32_t unclamped_result =
         params.output_offset +
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
             unscaled_quotient, params.output_multiplier, total_shift);
-    const int32 clamped_output =
+    const int32_t clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));
     output_data[SubscriptToIndex(output_desc, indexes)] =
-        static_cast<uint8>(clamped_output);
+        static_cast<uint8_t>(clamped_output);
   };
   NDOpsHelper<N>(output_desc, div_func);
 }
@@ -2630,25 +2633,25 @@ inline void LstmCell(
 template <int StateIntegerBits>
 inline void LstmCell(
     const LstmCellParams& params, const RuntimeShape& unextended_input_shape,
-    const uint8* input_data_uint8,
+    const uint8_t* input_data_uint8,
     const RuntimeShape& unextended_prev_activ_shape,
-    const uint8* prev_activ_data_uint8, const RuntimeShape& weights_shape,
-    const uint8* weights_data_uint8, const RuntimeShape& unextended_bias_shape,
-    const int32* bias_data_int32,
+    const uint8_t* prev_activ_data_uint8, const RuntimeShape& weights_shape,
+    const uint8_t* weights_data_uint8,
+    const RuntimeShape& unextended_bias_shape, const int32_t* bias_data_int32,
     const RuntimeShape& unextended_prev_state_shape,
-    const int16* prev_state_data_int16,
+    const int16_t* prev_state_data_int16,
     const RuntimeShape& unextended_output_state_shape,
-    int16* output_state_data_int16,
+    int16_t* output_state_data_int16,
     const RuntimeShape& unextended_output_activ_shape,
-    uint8* output_activ_data_uint8,
+    uint8_t* output_activ_data_uint8,
     const RuntimeShape& unextended_concat_temp_shape,
-    uint8* concat_temp_data_uint8,
+    uint8_t* concat_temp_data_uint8,
     const RuntimeShape& unextended_activ_temp_shape,
-    int16* activ_temp_data_int16, CpuBackendContext* cpu_backend_context) {
+    int16_t* activ_temp_data_int16, CpuBackendContext* cpu_backend_context) {
   ruy::profiler::ScopeLabel label(
       "LstmCell/quantized (8bit external, 16bit internal)");
-  int32 weights_zero_point = params.weights_zero_point;
-  int32 accum_multiplier = params.accum_multiplier;
+  int32_t weights_zero_point = params.weights_zero_point;
+  int32_t accum_multiplier = params.accum_multiplier;
   int accum_shift = params.accum_shift;
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_prev_activ_shape.DimensionsCount(), 4);
@@ -2703,8 +2706,8 @@ inline void LstmCell(
   TFLITE_DCHECK_EQ(fc_output_depth, 4 * output_depth);
 
   // Depth-concatenate prev_activ and input data together.
-  uint8 const* concat_input_arrays_data[2] = {input_data_uint8,
-                                              prev_activ_data_uint8};
+  uint8_t const* concat_input_arrays_data[2] = {input_data_uint8,
+                                                prev_activ_data_uint8};
   const RuntimeShape* concat_input_arrays_shapes[2] = {&input_shape,
                                                        &prev_activ_shape};
   tflite::ConcatenationParams concat_params;
@@ -2719,22 +2722,22 @@ inline void LstmCell(
   // integers, and the output is 16-bit fixed-point with 3 integer bits so
   // the output range is [-2^3, 2^3] == [-8, 8]. The rationale for that
   // is explained in the function comment above.
-  cpu_backend_gemm::MatrixParams<uint8> lhs_params;
+  cpu_backend_gemm::MatrixParams<uint8_t> lhs_params;
   lhs_params.rows = fc_output_depth;
   lhs_params.cols = fc_accum_depth;
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
   lhs_params.zero_point = weights_zero_point;
-  cpu_backend_gemm::MatrixParams<uint8> rhs_params;
+  cpu_backend_gemm::MatrixParams<uint8_t> rhs_params;
   rhs_params.rows = fc_accum_depth;
   rhs_params.cols = fc_batches;
   rhs_params.order = cpu_backend_gemm::Order::kColMajor;
   rhs_params.zero_point = 128;
-  cpu_backend_gemm::MatrixParams<int16> dst_params;
+  cpu_backend_gemm::MatrixParams<int16_t> dst_params;
   dst_params.rows = fc_output_depth;
   dst_params.cols = fc_batches;
   dst_params.order = cpu_backend_gemm::Order::kColMajor;
   dst_params.zero_point = 0;
-  cpu_backend_gemm::GemmParams<int32, int16> gemm_params;
+  cpu_backend_gemm::GemmParams<int32_t, int16_t> gemm_params;
   gemm_params.bias = bias_data_int32;
   gemm_params.multiplier_fixedpoint = accum_multiplier;
   gemm_params.multiplier_exponent = accum_shift;
@@ -2744,21 +2747,23 @@ inline void LstmCell(
 
   // Rest of the LSTM cell: tanh and logistic math functions, and some adds
   // and muls, all done in 16-bit fixed-point.
-  const int16* input_gate_input_ptr = activ_temp_data_int16;
-  const int16* input_modulation_gate_input_ptr =
+  const int16_t* input_gate_input_ptr = activ_temp_data_int16;
+  const int16_t* input_modulation_gate_input_ptr =
       activ_temp_data_int16 + output_depth;
-  const int16* forget_gate_input_ptr = activ_temp_data_int16 + 2 * output_depth;
-  const int16* output_gate_input_ptr = activ_temp_data_int16 + 3 * output_depth;
-  const int16* prev_state_ptr = prev_state_data_int16;
-  int16* output_state_data_ptr = output_state_data_int16;
-  uint8* output_activ_data_ptr = output_activ_data_uint8;
+  const int16_t* forget_gate_input_ptr =
+      activ_temp_data_int16 + 2 * output_depth;
+  const int16_t* output_gate_input_ptr =
+      activ_temp_data_int16 + 3 * output_depth;
+  const int16_t* prev_state_ptr = prev_state_data_int16;
+  int16_t* output_state_data_ptr = output_state_data_int16;
+  uint8_t* output_activ_data_ptr = output_activ_data_uint8;
 
   for (int b = 0; b < outer_size; ++b) {
     int c = 0;
 #ifdef GEMMLOWP_NEON
     for (; c <= output_depth - 8; c += 8) {
       // Define the fixed-point data types that we will use here. All use
-      // int16 as the underlying integer type i.e. all are 16-bit fixed-point.
+      // int16_t as the underlying integer type i.e. all are 16-bit fixed-point.
       // They only differ by the number of integral vs. fractional bits,
       // determining the range of values that they can represent.
       //
@@ -2832,7 +2837,7 @@ inline void LstmCell(
 #endif
     for (; c < output_depth; ++c) {
       // Define the fixed-point data types that we will use here. All use
-      // int16 as the underlying integer type i.e. all are 16-bit fixed-point.
+      // int16_t as the underlying integer type i.e. all are 16-bit fixed-point.
       // They only differ by the number of integral vs. fractional bits,
       // determining the range of values that they can represent.
       //
@@ -2889,10 +2894,10 @@ inline void LstmCell(
       *output_state_data_ptr++ = new_state.raw();
       // Down-scale the output activations to 8-bit integers, saturating,
       // and store back to memory.
-      int16 rescaled_output_activ =
+      int16_t rescaled_output_activ =
           gemmlowp::RoundingDivideByPOT(output_activ_int16.raw(), 8);
-      int16 clamped_output_activ =
-          std::max<int16>(-128, std::min<int16>(127, rescaled_output_activ));
+      int16_t clamped_output_activ = std::max<int16_t>(
+          -128, std::min<int16_t>(127, rescaled_output_activ));
       *output_activ_data_ptr++ = 128 + clamped_output_activ;
     }
     input_gate_input_ptr += 3 * output_depth;
@@ -2975,8 +2980,9 @@ inline bool AveragePool(const PoolParams& params,
 
 inline bool AveragePool(const PoolParams& params,
                         const RuntimeShape& input_shape,
-                        const uint8* input_data,
-                        const RuntimeShape& output_shape, uint8* output_data) {
+                        const uint8_t* input_data,
+                        const RuntimeShape& output_shape,
+                        uint8_t* output_data) {
   ruy::profiler::ScopeLabel label("AveragePool/8bit");
 
   // Here, and in other pooling ops, in order to maintain locality of reference,
@@ -2999,7 +3005,7 @@ inline bool AveragePool(const PoolParams& params,
   const int stride_height = params.stride_height;
   const int stride_width = params.stride_width;
 
-  uint32 acc[kPoolingAccTrancheSize];
+  uint32_t acc[kPoolingAccTrancheSize];
   for (int batch = 0; batch < batches; ++batch) {
     // We proceed through the depth in tranches (see comment above). The
     // depth_base is the depth at the beginning of the tranche. The
@@ -3024,15 +3030,15 @@ inline bool AveragePool(const PoolParams& params,
               (filter_x_end - filter_x_start) * (filter_y_end - filter_y_start);
           if (filter_count == 0) return false;
           memset(acc, 0, tranche_depth * sizeof(acc[0]));
-          const uint8* input_ptr =
+          const uint8_t* input_ptr =
               input_data + depth_base +
               depth * (in_x_origin +
                        input_width * (in_y_origin + input_height * batch));
           for (int fy = filter_y_start; fy < filter_y_end; fy++) {
-            const uint8* input_row_ptr =
+            const uint8_t* input_row_ptr =
                 input_ptr + depth * (fy * input_width + filter_x_start);
             for (int fx = filter_x_start; fx < filter_x_end; fx++) {
-              const uint8* input_channel_ptr = input_row_ptr;
+              const uint8_t* input_channel_ptr = input_row_ptr;
               int channel = 0;
 #ifdef USE_NEON
               for (; channel <= tranche_depth - 16; channel += 16) {
@@ -3068,14 +3074,14 @@ inline bool AveragePool(const PoolParams& params,
               input_row_ptr += depth;
             }
           }
-          uint8* output_ptr = output_data + Offset(output_shape, batch, out_y,
-                                                   out_x, depth_base);
+          uint8_t* output_ptr = output_data + Offset(output_shape, batch, out_y,
+                                                     out_x, depth_base);
           int channel = 0;
 #ifdef USE_NEON
 #define AVGPOOL_DIVIDING_BY(FILTER_COUNT)                               \
   if (filter_count == FILTER_COUNT) {                                   \
     for (; channel <= tranche_depth - 8; channel += 8) {                \
-      uint16 buf[8];                                                    \
+      uint16_t buf[8];                                                  \
       for (int i = 0; i < 8; i++) {                                     \
         buf[i] = (acc[channel + i] + FILTER_COUNT / 2) / FILTER_COUNT;  \
       }                                                                 \
@@ -3089,7 +3095,7 @@ inline bool AveragePool(const PoolParams& params,
           AVGPOOL_DIVIDING_BY(15)
 #undef AVGPOOL_DIVIDING_BY
           for (; channel <= tranche_depth - 8; channel += 8) {
-            uint16 buf[8];
+            uint16_t buf[8];
             for (int i = 0; i < 8; i++) {
               buf[i] = (acc[channel + i] + filter_count / 2) / filter_count;
             }
@@ -3100,10 +3106,10 @@ inline bool AveragePool(const PoolParams& params,
           }
 #endif
           for (; channel < tranche_depth; ++channel) {
-            uint16 a = (acc[channel] + filter_count / 2) / filter_count;
-            a = std::max<uint16>(a, params.quantized_activation_min);
-            a = std::min<uint16>(a, params.quantized_activation_max);
-            output_ptr[channel] = static_cast<uint8>(a);
+            uint16_t a = (acc[channel] + filter_count / 2) / filter_count;
+            a = std::max<uint16_t>(a, params.quantized_activation_min);
+            a = std::min<uint16_t>(a, params.quantized_activation_max);
+            output_ptr[channel] = static_cast<uint8_t>(a);
           }
         }
       }
@@ -3167,8 +3173,8 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
 }
 
 inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
-                    const uint8* input_data, const RuntimeShape& output_shape,
-                    uint8* output_data) {
+                    const uint8_t* input_data, const RuntimeShape& output_shape,
+                    uint8_t* output_data) {
   ruy::profiler::ScopeLabel label("MaxPool/8bit");
 
   // Here, and in other pooling ops, in order to maintain locality of reference,
@@ -3191,7 +3197,7 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
   const int stride_height = params.stride_height;
   const int stride_width = params.stride_width;
 
-  uint8 acc[kPoolingAccTrancheSize];
+  uint8_t acc[kPoolingAccTrancheSize];
   for (int batch = 0; batch < batches; ++batch) {
     // We proceed through the depth in tranches (see comment above). The
     // depth_base is the depth at the beginning of the tranche. The
@@ -3213,15 +3219,15 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
           const int filter_y_end =
               std::min(params.filter_height, input_height - in_y_origin);
           memset(acc, 0, tranche_depth * sizeof(acc[0]));
-          const uint8* input_ptr =
+          const uint8_t* input_ptr =
               input_data + depth_base +
               depth * (in_x_origin +
                        input_width * (in_y_origin + input_height * batch));
           for (int fy = filter_y_start; fy < filter_y_end; fy++) {
-            const uint8* input_row_ptr =
+            const uint8_t* input_row_ptr =
                 input_ptr + depth * (fy * input_width + filter_x_start);
             for (int fx = filter_x_start; fx < filter_x_end; fx++) {
-              const uint8* input_channel_ptr = input_row_ptr;
+              const uint8_t* input_channel_ptr = input_row_ptr;
               int channel = 0;
 #ifdef USE_NEON
               for (; channel <= tranche_depth - 16; channel += 16) {
@@ -3246,8 +3252,8 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
               input_row_ptr += depth;
             }
           }
-          uint8* output_ptr = output_data + Offset(output_shape, batch, out_y,
-                                                   out_x, depth_base);
+          uint8_t* output_ptr = output_data + Offset(output_shape, batch, out_y,
+                                                     out_x, depth_base);
           int channel = 0;
 #ifdef USE_NEON
           for (; channel <= tranche_depth - 16; channel += 16) {
@@ -3264,10 +3270,10 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
           }
 #endif
           for (; channel < tranche_depth; ++channel) {
-            uint8 a = acc[channel];
-            a = std::max<uint8>(a, params.quantized_activation_min);
-            a = std::min<uint8>(a, params.quantized_activation_max);
-            output_ptr[channel] = static_cast<uint8>(a);
+            uint8_t a = acc[channel];
+            a = std::max<uint8_t>(a, params.quantized_activation_min);
+            a = std::min<uint8_t>(a, params.quantized_activation_max);
+            output_ptr[channel] = static_cast<uint8_t>(a);
           }
         }
       }
@@ -3550,7 +3556,7 @@ inline void Softmax(const SoftmaxParams& params,
 // softmax(x) = e^(x - CONST) / sum(e^(x - CONST), 0...n)
 //
 // For quantization, `x` in our case is (input_q - input_zp) * input_s
-// For uint8 case (int8 can be handled similarly), the range is [0, 255]
+// For uint8_t case (int8_t can be handled similarly), the range is [0, 255]
 //
 // so if we let
 // CONST = (255 - input_zp) * input_s
@@ -3560,7 +3566,7 @@ inline void Softmax(const SoftmaxParams& params,
 // sum(e^(input_q - 255) * input_s, 0...n)   -------- (2)
 //
 // the good thing about (1) is it's within the range of (0, 1), so we can
-// approximate its result with uint16.
+// approximate its result with uint16_t.
 //  (1) = uint8_out * 1 / 2^16.
 //
 // so (1) is lookup_uint8_table(input_zp) * 1 / 2^16.
@@ -3574,8 +3580,8 @@ inline void Softmax(const SoftmaxParams& params,
 //             +
 //   output_zp
 //
-// We can actually further improve the performance by using uint8 instead of
-// uint16. But that we may lose some accuracy, so we need to pay attention
+// We can actually further improve the performance by using uint8_t instead of
+// uint16_t. But that we may lose some accuracy, so we need to pay attention
 // to that.
 inline void PopulateSoftmaxUInt8LookupTable(SoftmaxParams* data,
                                             float input_scale, float beta) {
@@ -3605,7 +3611,7 @@ inline int FindMaxValue(int size, const uint8_t* input_data, uint8_t offset) {
     input_value = veorq_u8(input_value, offset_dup);
     max_val_dup = vmaxq_u8(input_value, max_val_dup);
   }
-  max_val = std::max(max_val, static_cast<int32>(vmaxvq_u8(max_val_dup)));
+  max_val = std::max(max_val, static_cast<int32_t>(vmaxvq_u8(max_val_dup)));
 #endif
 
   for (; j < size; ++j) {
@@ -3660,12 +3666,12 @@ inline void SoftmaxInt8LUT(const SoftmaxParams& params,
   const int32_t clamp_min = std::numeric_limits<Out>::min();
 
   // Offset is used to interpret the input data "correctly".
-  // If the input is uint8, the data will be unchanged.
-  // If the input is int8, since it will be reinterpret as uint8.
+  // If the input is uint8_t, the data will be unchanged.
+  // If the input is int8_t, since it will be reinterpret as uint8_t.
   // e.g.,
-  // int8 127 will be applied "offset" to become 255 in uint8.
+  // int8_t 127 will be applied "offset" to become 255 in uint8_t.
   uint8_t offset = 0;
-  if (std::is_same<In, int8>::value) {
+  if (std::is_same<In, int8_t>::value) {
     offset = 0x80;
   }
 
@@ -3693,7 +3699,7 @@ inline void SoftmaxInt8LUT(const SoftmaxParams& params,
     // Find max quantized value.
     int32_t max_val = FindMaxValue(last_dim, input_data_uint, offset);
 
-    int32 sum_exp = 0;
+    int32_t sum_exp = 0;
     const int32_t max_uint8 = std::numeric_limits<uint8_t>::max();
     const uint8_t table_offset = max_uint8 - max_val;
 
@@ -3738,7 +3744,7 @@ inline void SoftmaxInt8LUT(const SoftmaxParams& params,
 
     const float inv_sum_exp = 1.0f / (sum_exp * params.scale);
 
-    int32 multiplier, shift;
+    int32_t multiplier, shift;
     QuantizeMultiplier(inv_sum_exp, &multiplier, &shift);
 
     // Normalize and quantize probabilities.
@@ -3834,8 +3840,9 @@ inline void LogSoftmax(const SoftmaxParams& params,
 
 // Backwards compatibility. Less optimized than below version.
 inline void LogSoftmax(const SoftmaxParams& params,
-                       const RuntimeShape& input_shape, const uint8* input_data,
-                       const RuntimeShape& output_shape, uint8* output_data) {
+                       const RuntimeShape& input_shape,
+                       const uint8_t* input_data,
+                       const RuntimeShape& output_shape, uint8_t* output_data) {
   reference_ops::LogSoftmax(params, input_shape, input_data, output_shape,
                             output_data);
 }
@@ -3846,7 +3853,7 @@ inline void LogSoftmax(const SoftmaxParams& params,
 //
 // To handle quantization, first dequantize the inputs (from doing
 // e^(input scale * val) where we ignore the zero point since it cancels
-// out during subtraction due to the ln) and do a rescale at the end to int8.
+// out during subtraction due to the ln) and do a rescale at the end to int8_t.
 //
 // Notably this makes use of float and is intended as the optimized
 // form for quantized execution on CPU. For a fully integer version,
@@ -3877,7 +3884,7 @@ inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
     }
 
     float sum_exp = 0.0f;
-    const int32_t max_uint8 = std::numeric_limits<uint8>::max();
+    const int32_t max_uint8 = std::numeric_limits<uint8_t>::max();
     // Offset into table to compute exp(scale*(x - xmax)) instead of
     // exp(scale*(x)) to prevent overflow.
     const float* table_offset = &params.table[max_uint8 - max_val];
@@ -3927,8 +3934,8 @@ inline void Logistic(const LogisticParams&, const RuntimeShape& input_shape,
 }
 
 inline void Logistic(const LogisticParams& params,
-                     const RuntimeShape& input_shape, const int16* input_data,
-                     const RuntimeShape& output_shape, int16* output_data) {
+                     const RuntimeShape& input_shape, const int16_t* input_data,
+                     const RuntimeShape& output_shape, int16_t* output_data) {
   ruy::profiler::ScopeLabel label("Logistic/Int16");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
@@ -3936,8 +3943,8 @@ inline void Logistic(const LogisticParams& params,
   }
 
   int c = 0;
-  const int16* input_data_ptr = input_data;
-  int16* output_data_ptr = output_data;
+  const int16_t* input_data_ptr = input_data;
+  int16_t* output_data_ptr = output_data;
 #ifdef GEMMLOWP_NEON
   {
     // F0 uses 0 integer bits, range [-1, 1].
@@ -4040,8 +4047,8 @@ inline void Tanh(const TanhParams&, const RuntimeShape& input_shape,
 }
 
 inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
-                 const int16* input_data, const RuntimeShape& output_shape,
-                 int16* output_data) {
+                 const int16_t* input_data, const RuntimeShape& output_shape,
+                 int16_t* output_data) {
   ruy::profiler::ScopeLabel label("Tanh/Int16");
   const int input_left_shift = params.input_left_shift;
   // Support for shifts is limited until we have a parameterized version of
@@ -4052,8 +4059,8 @@ inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
   int c = 0;
-  const int16* input_data_ptr = input_data;
-  int16* output_data_ptr = output_data;
+  const int16_t* input_data_ptr = input_data;
+  int16_t* output_data_ptr = output_data;
 #ifdef GEMMLOWP_NEON
   {
     // F0 uses 0 integer bits, range [-1, 1].
@@ -4253,11 +4260,14 @@ inline void GetIndexRange(int spatial_index_dim, int block_shape_dim,
 }
 
 template <typename T>
-inline void BatchToSpaceND(
-    const RuntimeShape& unextended_input1_shape, const T* input1_data,
-    const RuntimeShape& unextended_input2_shape, const int32* block_shape_data,
-    const RuntimeShape& unextended_input3_shape, const int32* crops_data,
-    const RuntimeShape& unextended_output_shape, T* output_data) {
+inline void BatchToSpaceND(const RuntimeShape& unextended_input1_shape,
+                           const T* input1_data,
+                           const RuntimeShape& unextended_input2_shape,
+                           const int32_t* block_shape_data,
+                           const RuntimeShape& unextended_input3_shape,
+                           const int32_t* crops_data,
+                           const RuntimeShape& unextended_output_shape,
+                           T* output_data) {
   ruy::profiler::ScopeLabel label("BatchToSpaceND");
 
   TFLITE_DCHECK_GE(unextended_input1_shape.DimensionsCount(), 3);
@@ -4357,8 +4367,8 @@ TFLITE_NOINLINE void TypedMemset(void* ptr, T value, size_t num) {
 // equivalent to a simple input1_data.  For Pad, it should point to a zero
 // value.
 //
-// Note that two typenames are required, so that T=P=int32 is considered a
-// specialization distinct from P=int32.
+// Note that two typenames are required, so that T=P=int32_t is considered a
+// specialization distinct from P=int32_t.
 template <typename T, typename P>
 inline void PadImpl(const tflite::PadParams& op_params,
                     const RuntimeShape& input_shape, const T* input_data,
@@ -4501,11 +4511,11 @@ inline void Pad(const tflite::PadParams& op_params,
           output_data);
 }
 
-// The second (pad-value) input can be int32 when, say, the first is uint8.
+// The second (pad-value) input can be int32_t when, say, the first is uint8_t.
 template <typename T>
 inline void Pad(const tflite::PadParams& op_params,
                 const RuntimeShape& input_shape, const T* input_data,
-                const int32* pad_value_ptr, const RuntimeShape& output_shape,
+                const int32_t* pad_value_ptr, const RuntimeShape& output_shape,
                 T* output_data) {
   const T converted_pad_value = static_cast<T>(*pad_value_ptr);
   PadImpl(op_params, input_shape, input_data, &converted_pad_value,
@@ -4515,9 +4525,9 @@ inline void Pad(const tflite::PadParams& op_params,
 // This version avoids conflicting template matching.
 template <>
 inline void Pad(const tflite::PadParams& op_params,
-                const RuntimeShape& input_shape, const int32* input_data,
-                const int32* pad_value_ptr, const RuntimeShape& output_shape,
-                int32* output_data) {
+                const RuntimeShape& input_shape, const int32_t* input_data,
+                const int32_t* pad_value_ptr, const RuntimeShape& output_shape,
+                int32_t* output_data) {
   PadImpl(op_params, input_shape, input_data, pad_value_ptr, output_shape,
           output_data);
 }
@@ -4526,15 +4536,15 @@ inline void Pad(const tflite::PadParams& op_params,
 //
 // This pad requires that (a) left and right paddings are in the 4D patterns
 // {0, h_pad, w_pad, 0}, and (b) memset can be used: *pad_value_ptr == 0 and/or
-// T is uint8.
+// T is uint8_t.
 //
 // There are two versions of pad: Pad and PadV2.  In PadV2 there is a second
 // scalar input that provides the padding value.  Therefore pad_value_ptr can be
 // equivalent to a simple input1_data.  For Pad, it should point to a zero
 // value.
 //
-// Note that two typenames are required, so that T=P=int32 is considered a
-// specialization distinct from P=int32.
+// Note that two typenames are required, so that T=P=int32_t is considered a
+// specialization distinct from P=int32_t.
 template <typename T, typename P>
 inline void PadImageStyleMemset(const tflite::PadParams& op_params,
                                 const RuntimeShape& input_shape,
@@ -4656,9 +4666,9 @@ inline void PadImageStyle(const tflite::PadParams& op_params,
 template <typename P>
 inline void PadImageStyle(const tflite::PadParams& op_params,
                           const RuntimeShape& input_shape,
-                          const uint8* input_data, const P* pad_value_ptr,
+                          const uint8_t* input_data, const P* pad_value_ptr,
                           const RuntimeShape& output_shape,
-                          uint8* output_data) {
+                          uint8_t* output_data) {
   PadImageStyleMemset(op_params, input_shape, input_data, pad_value_ptr,
                       output_shape, output_data);
 }
@@ -4775,7 +4785,7 @@ inline void Maximum(const RuntimeShape& input1_shape, const T* input1_data,
 }
 
 template <typename T>
-void TransposeIm2col(const ConvParams& params, uint8 zero_byte,
+void TransposeIm2col(const ConvParams& params, uint8_t zero_byte,
                      const RuntimeShape& input_shape, const T* input_data,
                      const RuntimeShape& filter_shape,
                      const RuntimeShape& output_shape, T* im2col_data) {
@@ -4987,7 +4997,7 @@ inline void Quantize(int32_t multiplier, int32_t shift, int32_t total_size,
                      int32_t output_zp, const int32_t output_min,
                      const int32_t output_max, int32_t* scratch,
                      uint8_t* output) {
-  ruy::profiler::ScopeLabel label("Quantize/uint8");
+  ruy::profiler::ScopeLabel label("Quantize/uint8_t");
   int i = 0;
 
 #ifdef USE_NEON
@@ -5052,7 +5062,7 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
                      int32_t channel_size, int32_t total_size,
                      int32_t output_zp, int32_t output_min, int32_t output_max,
                      int32_t* scratch, int8_t* output) {
-  ruy::profiler::ScopeLabel label("Quantize/int8");
+  ruy::profiler::ScopeLabel label("Quantize/int8_t");
 
   // Here we're trying to quantize the raw accumulators:
   //        output_channels
@@ -5114,7 +5124,7 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
       acc_2 = vmaxq_s32(acc_2, output_activation_min_vec);
       acc_2 = vminq_s32(acc_2, output_activation_max_vec);
 
-      // Saturating cast to int8 and store to destination.
+      // Saturating cast to int8_t and store to destination.
       const int16x4_t acc_s16_1 = vqmovn_s32(acc_1);
       const int16x4_t acc_s16_2 = vqmovn_s32(acc_2);
       const int16x8_t res_s16 = vcombine_s16(acc_s16_1, acc_s16_2);
@@ -5128,12 +5138,12 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
   for (; c < channel_size; c++) {
     for (int n = 0; n < rows; ++n) {
       int loc = n * channel_size + c;
-      int32 acc = scratch[loc];
+      int32_t acc = scratch[loc];
       acc = MultiplyByQuantizedMultiplier(acc, multiplier[c], shift[c]);
       acc += output_zp;
       acc = std::max(acc, output_min);
       acc = std::min(acc, output_max);
-      output[loc] = static_cast<int8>(acc);
+      output[loc] = static_cast<int8_t>(acc);
     }
   }
 }
@@ -5142,7 +5152,7 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
                      int32_t channel_size, int32_t total_size,
                      int32_t output_zp, int32_t output_min, int32_t output_max,
                      int32_t* scratch, int16_t* output) {
-  ruy::profiler::ScopeLabel label("Quantize(Single-rounding)/int16");
+  ruy::profiler::ScopeLabel label("Quantize(Single-rounding)/int16_t");
 
   // Here we're trying to quantize the raw accumulators:
   //        output_channels
@@ -5204,7 +5214,7 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
       acc_2 = vmaxq_s32(acc_2, output_activation_min_vec);
       acc_2 = vminq_s32(acc_2, output_activation_max_vec);
 
-      // Saturating cast to int16 and store to destination.
+      // Saturating cast to int16_t and store to destination.
       const int16x4_t acc_s16_1 = vqmovn_s32(acc_1);
       const int16x4_t acc_s16_2 = vqmovn_s32(acc_2);
       vst1_s16(reinterpret_cast<int16_t*>(output) + loc, acc_s16_1);
@@ -5217,12 +5227,12 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
   for (; c < channel_size; c++) {
     for (int n = 0; n < rows; ++n) {
       int loc = n * channel_size + c;
-      int32 acc = scratch[loc];
+      int32_t acc = scratch[loc];
       acc = MultiplyByQuantizedMultiplier(acc, multiplier[c], shift[c]);
       acc += output_zp;
       acc = std::max(acc, output_min);
       acc = std::min(acc, output_max);
-      output[loc] = static_cast<int16>(acc);
+      output[loc] = static_cast<int16_t>(acc);
     }
   }
 }
@@ -5232,7 +5242,7 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
                      int32_t channel_size, int32_t total_size,
                      int32_t output_zp, int32_t output_min, int32_t output_max,
                      int32_t* scratch, int8_t* output) {
-  ruy::profiler::ScopeLabel label("Quantize/int8");
+  ruy::profiler::ScopeLabel label("Quantize/int8_t");
 
   // Here we're trying to quantize the raw accumulators:
   //        output_channels
@@ -5295,7 +5305,7 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
       acc_2 = vmaxq_s32(acc_2, output_activation_min_vec);
       acc_2 = vminq_s32(acc_2, output_activation_max_vec);
 
-      // Saturating cast to int8 and store to destination.
+      // Saturating cast to int8_t and store to destination.
       const int16x4_t acc_s16_1 = vqmovn_s32(acc_1);
       const int16x4_t acc_s16_2 = vqmovn_s32(acc_2);
       const int16x8_t res_s16 = vcombine_s16(acc_s16_1, acc_s16_2);
@@ -5309,12 +5319,12 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
   for (; c < channel_size; c++) {
     for (int n = 0; n < rows; ++n) {
       int loc = n * channel_size + c;
-      int32 acc = scratch[loc];
+      int32_t acc = scratch[loc];
       acc = MultiplyByQuantizedMultiplier(acc, multiplier[c], shift[c]);
       acc += output_zp;
       acc = std::max(acc, output_min);
       acc = std::min(acc, output_max);
-      output[loc] = static_cast<int8>(acc);
+      output[loc] = static_cast<int8_t>(acc);
     }
   }
 }
@@ -5323,7 +5333,7 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
                      int32_t channel_size, int32_t total_size,
                      int32_t output_zp, int32_t output_min, int32_t output_max,
                      int32_t* scratch, int16_t* output) {
-  ruy::profiler::ScopeLabel label("Quantize(Double-rounding)/int16");
+  ruy::profiler::ScopeLabel label("Quantize(Double-rounding)/int16_t");
 
   // Here we're trying to quantize the raw accumulators:
   //        output_channels
@@ -5386,7 +5396,7 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
       acc_2 = vmaxq_s32(acc_2, output_activation_min_vec);
       acc_2 = vminq_s32(acc_2, output_activation_max_vec);
 
-      // Saturating cast to int16 and store to destination.
+      // Saturating cast to int16_t and store to destination.
       const int16x4_t acc_s16_1 = vqmovn_s32(acc_1);
       const int16x4_t acc_s16_2 = vqmovn_s32(acc_2);
       vst1_s16(reinterpret_cast<int16_t*>(output) + loc, acc_s16_1);
@@ -5399,12 +5409,12 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
   for (; c < channel_size; c++) {
     for (int n = 0; n < rows; ++n) {
       int loc = n * channel_size + c;
-      int32 acc = scratch[loc];
+      int32_t acc = scratch[loc];
       acc = MultiplyByQuantizedMultiplier(acc, multiplier[c], shift[c]);
       acc += output_zp;
       acc = std::max(acc, output_min);
       acc = std::min(acc, output_max);
-      output[loc] = static_cast<int16>(acc);
+      output[loc] = static_cast<int16_t>(acc);
     }
   }
 }
@@ -5415,11 +5425,11 @@ inline void TransposeConvV2(
     const ConvParams& params, const RuntimeShape& input_shape,
     const uint8_t* input_data, const RuntimeShape& hwoi_ordered_filter_shape,
     const uint8_t* hwoi_ordered_filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape,
+    const int32_t* bias_data, const RuntimeShape& output_shape,
     uint8_t* output_data, const RuntimeShape& col2im_shape,
     int32_t* col2im_data, int32_t* scratch_data,
     CpuBackendContext* cpu_backend_context) {
-  ruy::profiler::ScopeLabel label("TransposeConvV2/uint8");
+  ruy::profiler::ScopeLabel label("TransposeConvV2/uint8_t");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(hwoi_ordered_filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK(col2im_data);
@@ -5448,8 +5458,8 @@ inline void TransposeConvV2(
   const int stride_height = params.stride_height;
   const int stride_width = params.stride_width;
 
-  const int32 output_activation_min = params.quantized_activation_min;
-  const int32 output_activation_max = params.quantized_activation_max;
+  const int32_t output_activation_min = params.quantized_activation_min;
+  const int32_t output_activation_max = params.quantized_activation_max;
 
   const int hwoi_ordered_filter_total_size =
       filter_height * filter_width * output_depth;
@@ -5461,7 +5471,8 @@ inline void TransposeConvV2(
   lhs_params.zero_point = -params.weights_offset;
 
   int32_t* scratch_data_p = scratch_data;
-  std::fill_n(scratch_data, output_offset * batch_size, static_cast<int32>(0));
+  std::fill_n(scratch_data, output_offset * batch_size,
+              static_cast<int32_t>(0));
   for (int i = 0; i < batch_size; ++i) {
     cpu_backend_gemm::MatrixParams<uint8_t> rhs_params;
     rhs_params.order = cpu_backend_gemm::Order::kColMajor;
@@ -5502,9 +5513,9 @@ inline void TransposeConvV2(
 // version.
 inline void ResizeNearestNeighbor(
     const tflite::ResizeNearestNeighborParams& op_params,
-    const RuntimeShape& unextended_input_shape, const uint8* input_data,
-    const RuntimeShape& output_size_shape, const int32* output_size_data,
-    const RuntimeShape& unextended_output_shape, uint8* output_data) {
+    const RuntimeShape& unextended_input_shape, const uint8_t* input_data,
+    const RuntimeShape& output_size_shape, const int32_t* output_size_data,
+    const RuntimeShape& unextended_output_shape, uint8_t* output_data) {
   if (op_params.align_corners || op_params.half_pixel_centers) {
     // TODO(b/149823713): Add support for align_corners & half_pixel_centers in
     // this kernel.
@@ -5521,42 +5532,42 @@ inline void ResizeNearestNeighbor(
   const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
-  int32 batches = MatchingDim(input_shape, 0, output_shape, 0);
-  int32 input_height = input_shape.Dims(1);
-  int32 input_width = input_shape.Dims(2);
-  int32 depth = MatchingDim(input_shape, 3, output_shape, 3);
+  int32_t batches = MatchingDim(input_shape, 0, output_shape, 0);
+  int32_t input_height = input_shape.Dims(1);
+  int32_t input_width = input_shape.Dims(2);
+  int32_t depth = MatchingDim(input_shape, 3, output_shape, 3);
 
   // The Tensorflow version of this op allows resize on the width and height
   // axis only.
   TFLITE_DCHECK_EQ(output_size_shape.FlatSize(), 2);
-  int32 output_height = output_size_data[0];
-  int32 output_width = output_size_data[1];
+  int32_t output_height = output_size_data[0];
+  int32_t output_width = output_size_data[1];
 
   // Convert scales to fixed-point with 16 fractional bits. We add 1 as an
   // error factor and to avoid zero scales. For example, with input_height = 1,
   // output_height = 3, the float scaling factor would be non-zero at 1/3.
   // With fixed-point, this is zero.
-  int32 height_scale = (input_height << 16) / output_height + 1;
-  int32 width_scale = (input_width << 16) / output_width + 1;
+  int32_t height_scale = (input_height << 16) / output_height + 1;
+  int32_t width_scale = (input_width << 16) / output_width + 1;
 
   const int col_offset = input_shape.Dims(3);
   const int row_offset = input_shape.Dims(2) * col_offset;
   const int batch_offset = input_shape.Dims(1) * row_offset;
 
-  const uint8* input_ptr = input_data;
-  uint8* output_ptr = output_data;
+  const uint8_t* input_ptr = input_data;
+  uint8_t* output_ptr = output_data;
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
-      int32 in_y = std::min((y * height_scale) >> 16, input_height - 1);
+      int32_t in_y = std::min((y * height_scale) >> 16, input_height - 1);
       // Check offset calculation is the same as the reference version. See
       // function comment for details. We check using a non-float version of:
       // TFLITE_DCHECK_EQ(in_y, std::floor(y * (static_cast<float>(input_height)
       //                                            / output_height)));
       TFLITE_DCHECK_LT(y * input_height, output_height + in_y * output_height);
       TFLITE_DCHECK_GE(y * input_height, in_y * output_height);
-      const uint8* y_input_ptr = input_ptr + in_y * row_offset;
+      const uint8_t* y_input_ptr = input_ptr + in_y * row_offset;
       for (int x = 0; x < output_width; ++x) {
-        int32 in_x = std::min((x * width_scale) >> 16, input_width - 1);
+        int32_t in_x = std::min((x * width_scale) >> 16, input_width - 1);
         // Check offset calculation is the same as the reference version. See
         // function comment for details. We check using a non-float version of:
         // TFLITE_DCHECK_EQ(in_y,
@@ -5564,7 +5575,7 @@ inline void ResizeNearestNeighbor(
         //                                      / output_width)));
         TFLITE_DCHECK_LT(x * input_width, output_width + in_x * output_width);
         TFLITE_DCHECK_GE(x * input_width, in_x * output_width);
-        const uint8* x_input_ptr = y_input_ptr + in_x * col_offset;
+        const uint8_t* x_input_ptr = y_input_ptr + in_x * col_offset;
         memcpy(output_ptr, x_input_ptr, depth);
         output_ptr += depth;
       }
@@ -6230,7 +6241,7 @@ inline void Dequantize(const tflite::DequantizationParams& op_params,
                        const uint8_t* input_data,
                        const RuntimeShape& output_shape, float* output_data) {
   ruy::profiler::ScopeLabel label("Dequantize/Uint8");
-  const int32 zero_point = op_params.zero_point;
+  const int32_t zero_point = op_params.zero_point;
   const double scale = op_params.scale;
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
@@ -6259,7 +6270,7 @@ inline void Dequantize(const tflite::DequantizationParams& op_params,
   }
 #endif  // NEON
   for (; i < flat_size; ++i) {
-    const int32 val = input_data[i];
+    const int32_t val = input_data[i];
     const float result = static_cast<float>(scale * (val - zero_point));
     output_data[i] = result;
   }
@@ -6270,7 +6281,7 @@ inline void Dequantize(const tflite::DequantizationParams& op_params,
                        const int8_t* input_data,
                        const RuntimeShape& output_shape, float* output_data) {
   ruy::profiler::ScopeLabel label("Dequantize/Int8");
-  const int32 zero_point = op_params.zero_point;
+  const int32_t zero_point = op_params.zero_point;
   const double scale = op_params.scale;
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
@@ -6298,7 +6309,7 @@ inline void Dequantize(const tflite::DequantizationParams& op_params,
   }
 #endif  // NEON
   for (; i < flat_size; ++i) {
-    const int32 val = input_data[i];
+    const int32_t val = input_data[i];
     const float result = static_cast<float>(scale * (val - zero_point));
     output_data[i] = result;
   }
@@ -6309,7 +6320,7 @@ inline void Dequantize(const tflite::DequantizationParams& op_params,
                        const int16_t* input_data,
                        const RuntimeShape& output_shape, float* output_data) {
   ruy::profiler::ScopeLabel label("Dequantize/Int16");
-  const int32 zero_point = op_params.zero_point;
+  const int32_t zero_point = op_params.zero_point;
   const double scale = op_params.scale;
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
@@ -6335,7 +6346,7 @@ inline void Dequantize(const tflite::DequantizationParams& op_params,
   }
 #endif  // NEON
   for (; i < flat_size; ++i) {
-    const int32 val = input_data[i];
+    const int32_t val = input_data[i];
     const float result = static_cast<float>(scale * (val - zero_point));
     output_data[i] = result;
   }
@@ -6363,11 +6374,11 @@ inline void AffineQuantize(const tflite::QuantizationParams& op_params,
                            const RuntimeShape& output_shape,
                            int8_t* output_data) {
   ruy::profiler::ScopeLabel label("Quantize/Int8");
-  const int32 zero_point = op_params.zero_point;
+  const int32_t zero_point = op_params.zero_point;
   const double scale = static_cast<double>(op_params.scale);
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
-  static constexpr int32 min_val = std::numeric_limits<int8_t>::min();
-  static constexpr int32 max_val = std::numeric_limits<int8_t>::max();
+  static constexpr int32_t min_val = std::numeric_limits<int8_t>::min();
+  static constexpr int32_t max_val = std::numeric_limits<int8_t>::max();
 
   int i = 0;
 #ifdef USE_NEON
@@ -6406,9 +6417,9 @@ inline void AffineQuantize(const tflite::QuantizationParams& op_params,
 
   for (; i < flat_size; ++i) {
     const float val = input_data[i];
-    const int32 unclamped =
-        static_cast<int32>(TfLiteRound(val / scale)) + zero_point;
-    const int32 clamped = std::min(std::max(unclamped, min_val), max_val);
+    const int32_t unclamped =
+        static_cast<int32_t>(TfLiteRound(val / scale)) + zero_point;
+    const int32_t clamped = std::min(std::max(unclamped, min_val), max_val);
     output_data[i] = clamped;
   }
 }
@@ -6420,11 +6431,11 @@ inline void AffineQuantize(const tflite::QuantizationParams& op_params,
                            const RuntimeShape& output_shape,
                            uint8_t* output_data) {
   ruy::profiler::ScopeLabel label("Quantize/Uint8");
-  const int32 zero_point = op_params.zero_point;
+  const int32_t zero_point = op_params.zero_point;
   const double scale = static_cast<double>(op_params.scale);
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
-  static constexpr int32 min_val = std::numeric_limits<uint8_t>::min();
-  static constexpr int32 max_val = std::numeric_limits<uint8_t>::max();
+  static constexpr int32_t min_val = std::numeric_limits<uint8_t>::min();
+  static constexpr int32_t max_val = std::numeric_limits<uint8_t>::max();
 
   int i = 0;
 #ifdef USE_NEON
@@ -6464,9 +6475,9 @@ inline void AffineQuantize(const tflite::QuantizationParams& op_params,
 
   for (; i < flat_size; ++i) {
     const float val = input_data[i];
-    const int32 unclamped =
-        static_cast<int32>(TfLiteRound(val / scale)) + zero_point;
-    const int32 clamped = std::min(std::max(unclamped, min_val), max_val);
+    const int32_t unclamped =
+        static_cast<int32_t>(TfLiteRound(val / scale)) + zero_point;
+    const int32_t clamped = std::min(std::max(unclamped, min_val), max_val);
     output_data[i] = clamped;
   }
 }
@@ -6478,11 +6489,11 @@ inline void AffineQuantize(const tflite::QuantizationParams& op_params,
                            const RuntimeShape& output_shape,
                            int16_t* output_data) {
   ruy::profiler::ScopeLabel label("Quantize/Int16");
-  const int32 zero_point = op_params.zero_point;
+  const int32_t zero_point = op_params.zero_point;
   const double scale = static_cast<double>(op_params.scale);
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
-  static constexpr int32 min_val = std::numeric_limits<int16_t>::min();
-  static constexpr int32 max_val = std::numeric_limits<int16_t>::max();
+  static constexpr int32_t min_val = std::numeric_limits<int16_t>::min();
+  static constexpr int32_t max_val = std::numeric_limits<int16_t>::max();
 
   int i = 0;
 #ifdef USE_NEON
@@ -6520,9 +6531,9 @@ inline void AffineQuantize(const tflite::QuantizationParams& op_params,
 
   for (; i < flat_size; ++i) {
     const float val = input_data[i];
-    const int32 unclamped =
-        static_cast<int32>(TfLiteRound(val / scale)) + zero_point;
-    const int32 clamped = std::min(std::max(unclamped, min_val), max_val);
+    const int32_t unclamped =
+        static_cast<int32_t>(TfLiteRound(val / scale)) + zero_point;
+    const int32_t clamped = std::min(std::max(unclamped, min_val), max_val);
     output_data[i] = clamped;
   }
 }
@@ -6536,9 +6547,9 @@ inline int16x8x4_t SaturatingRounding(
     int16x8_t input_val_0, int16x8_t input_val_1, int16x8_t input_val_2,
     int16x8_t input_val_3, int input_left_shift, int input_multiplier) {
   // This performs what is expressed in the scalar code as
-  // const int16 input_val_rescaled = SaturatingRoundingDoublingHighMul(
-  //      static_cast<int16>(input_val_centered * (1 << input_left_shift)),
-  //      static_cast<int16>(input_multiplier));
+  // const int16_t input_val_rescaled = SaturatingRoundingDoublingHighMul(
+  //      static_cast<int16_t>(input_val_centered * (1 << input_left_shift)),
+  //      static_cast<int16_t>(input_multiplier));
   const int16x8_t left_shift_dup = vdupq_n_s16(input_left_shift);
   const int16x8_t input_val_shifted_0 = vshlq_s16(input_val_0, left_shift_dup);
   const int16x8_t input_val_shifted_1 = vshlq_s16(input_val_1, left_shift_dup);
@@ -6675,15 +6686,17 @@ inline void ClampWithRangeAndStore(int8_t* output_dst, int8x16_t input_val,
 
 inline void Tanh16bitPrecision(const TanhParams& params,
                                const RuntimeShape& input_shape,
-                               const uint8* input_data,
+                               const uint8_t* input_data,
                                const RuntimeShape& output_shape,
-                               uint8* output_data) {
+                               uint8_t* output_data) {
   // Note that this is almost the exact same code as in Logistic().
   ruy::profiler::ScopeLabel label("Tanh/Uint8");
-  const int32 input_zero_point = params.input_zero_point;
-  const int32 input_range_radius = params.input_range_radius;
-  const int16 input_multiplier = static_cast<int16>(params.input_multiplier);
-  const int16 input_left_shift = static_cast<int16>(params.input_left_shift);
+  const int32_t input_zero_point = params.input_zero_point;
+  const int32_t input_range_radius = params.input_range_radius;
+  const int16_t input_multiplier =
+      static_cast<int16_t>(params.input_multiplier);
+  const int16_t input_left_shift =
+      static_cast<int16_t>(params.input_left_shift);
   const int size = MatchingFlatSize(input_shape, output_shape);
 
   int c = 0;
@@ -6699,7 +6712,7 @@ inline void Tanh16bitPrecision(const TanhParams& params,
 
   // Handle 32 values at a time
   for (; c <= size - 32; c += 32) {
-    // Read input uint8 values, cast to int16 and subtract input_zero_point
+    // Read input uint8_t values, cast to int16_t and subtract input_zero_point
     using cpu_backend_gemm::detail::Load16AndSubtractZeroPoint;
     const int16x8x2_t input_val_centered_0_1 =
         Load16AndSubtractZeroPoint(input_data + c, input_zero_point);
@@ -6736,7 +6749,7 @@ inline void Tanh16bitPrecision(const TanhParams& params,
     output_val_s16.val[3] =
         vaddq_s16(output_val_s16.val[3], output_zero_point_s16);
 
-    // Cast output values to uint8, saturating
+    // Cast output values to uint8_t, saturating
     uint8x16_t output_val_u8_0_1 = vcombine_u8(
         vqmovun_s16(output_val_s16.val[0]), vqmovun_s16(output_val_s16.val[1]));
     uint8x16_t output_val_u8_2_3 = vcombine_u8(
@@ -6749,32 +6762,32 @@ inline void Tanh16bitPrecision(const TanhParams& params,
 #endif  // GEMMLOWP_NEON
   // Leftover loop: handle one value at a time with scalar code.
   for (; c < size; ++c) {
-    const uint8 input_val_u8 = input_data[c];
-    const int16 input_val_centered =
-        static_cast<int16>(input_val_u8) - input_zero_point;
-    uint8 output_val;
+    const uint8_t input_val_u8 = input_data[c];
+    const int16_t input_val_centered =
+        static_cast<int16_t>(input_val_u8) - input_zero_point;
+    uint8_t output_val;
     if (input_val_centered < -input_range_radius) {
       output_val = 0;
     } else if (input_val_centered > input_range_radius) {
       output_val = 255;
     } else {
       using gemmlowp::SaturatingRoundingDoublingHighMul;
-      const int16 input_val_rescaled = SaturatingRoundingDoublingHighMul(
-          static_cast<int16>(input_val_centered * (1 << input_left_shift)),
-          static_cast<int16>(input_multiplier));
-      using FixedPoint4 = gemmlowp::FixedPoint<int16, 4>;
-      using FixedPoint0 = gemmlowp::FixedPoint<int16, 0>;
+      const int16_t input_val_rescaled = SaturatingRoundingDoublingHighMul(
+          static_cast<int16_t>(input_val_centered * (1 << input_left_shift)),
+          static_cast<int16_t>(input_multiplier));
+      using FixedPoint4 = gemmlowp::FixedPoint<int16_t, 4>;
+      using FixedPoint0 = gemmlowp::FixedPoint<int16_t, 0>;
       const FixedPoint4 input_val_f4 = FixedPoint4::FromRaw(input_val_rescaled);
       const FixedPoint0 output_val_f0 = gemmlowp::tanh(input_val_f4);
       using gemmlowp::RoundingDivideByPOT;
-      int16 output_val_s16 = RoundingDivideByPOT(output_val_f0.raw(), 8);
+      int16_t output_val_s16 = RoundingDivideByPOT(output_val_f0.raw(), 8);
       output_val_s16 += output_zero_point;
       if (output_val_s16 == 256) {
         output_val_s16 = 255;
       }
       TFLITE_DCHECK_GE(output_val_s16, 0);
       TFLITE_DCHECK_LE(output_val_s16, 255);
-      output_val = static_cast<uint8>(output_val_s16);
+      output_val = static_cast<uint8_t>(output_val_s16);
     }
     output_data[c] = output_val;
   }
@@ -6782,15 +6795,17 @@ inline void Tanh16bitPrecision(const TanhParams& params,
 
 inline void Tanh16bitPrecision(const TanhParams& params,
                                const RuntimeShape& input_shape,
-                               const int8* input_data,
+                               const int8_t* input_data,
                                const RuntimeShape& output_shape,
-                               int8* output_data) {
+                               int8_t* output_data) {
   // Note that this is almost the exact same code as in Logistic().
   ruy::profiler::ScopeLabel label("Tanh/Int8");
-  const int32 input_zero_point = params.input_zero_point;
-  const int32 input_range_radius = params.input_range_radius;
-  const int16 input_multiplier = static_cast<int16>(params.input_multiplier);
-  const int16 input_left_shift = static_cast<int16>(params.input_left_shift);
+  const int32_t input_zero_point = params.input_zero_point;
+  const int32_t input_range_radius = params.input_range_radius;
+  const int16_t input_multiplier =
+      static_cast<int16_t>(params.input_multiplier);
+  const int16_t input_left_shift =
+      static_cast<int16_t>(params.input_left_shift);
   const int size = MatchingFlatSize(input_shape, output_shape);
 
   int c = 0;
@@ -6803,7 +6818,7 @@ inline void Tanh16bitPrecision(const TanhParams& params,
 
   // Handle 32 values at a time
   for (; c <= size - 32; c += 32) {
-    // Read input int8 values, cast to int16 and subtract input_zero_point
+    // Read input int8_t values, cast to int16_t and subtract input_zero_point
     using cpu_backend_gemm::detail::Load16AndSubtractZeroPoint;
     const int16x8x2_t input_val_centered_0_1 =
         Load16AndSubtractZeroPoint(input_data + c, input_zero_point);
@@ -6830,7 +6845,7 @@ inline void Tanh16bitPrecision(const TanhParams& params,
 
     int16x8x4_t output_val_s16 = FixedPoint4Tanh(input_val_rescaled);
 
-    // Cast output values to uint8, saturating
+    // Cast output values to uint8_t, saturating
     int8x16_t output_val_s8_0_1 = vcombine_s8(
         vqmovn_s16(output_val_s16.val[0]), vqmovn_s16(output_val_s16.val[1]));
     int8x16_t output_val_s8_2_3 = vcombine_s8(
@@ -6843,31 +6858,31 @@ inline void Tanh16bitPrecision(const TanhParams& params,
 #endif  // GEMMLOWP_NEON
   // Leftover loop: handle one value at a time with scalar code.
   for (; c < size; ++c) {
-    const int8 input_val_s8 = input_data[c];
-    const int16 input_val_centered =
-        static_cast<int16>(input_val_s8) - input_zero_point;
-    int8 output_val;
+    const int8_t input_val_s8 = input_data[c];
+    const int16_t input_val_centered =
+        static_cast<int16_t>(input_val_s8) - input_zero_point;
+    int8_t output_val;
     if (input_val_centered <= -input_range_radius) {
       output_val = -128;
     } else if (input_val_centered >= input_range_radius) {
       output_val = 127;
     } else {
       using gemmlowp::SaturatingRoundingDoublingHighMul;
-      const int16 input_val_rescaled = SaturatingRoundingDoublingHighMul(
-          static_cast<int16>(input_val_centered * (1 << input_left_shift)),
-          static_cast<int16>(input_multiplier));
-      using FixedPoint4 = gemmlowp::FixedPoint<int16, 4>;
-      using FixedPoint0 = gemmlowp::FixedPoint<int16, 0>;
+      const int16_t input_val_rescaled = SaturatingRoundingDoublingHighMul(
+          static_cast<int16_t>(input_val_centered * (1 << input_left_shift)),
+          static_cast<int16_t>(input_multiplier));
+      using FixedPoint4 = gemmlowp::FixedPoint<int16_t, 4>;
+      using FixedPoint0 = gemmlowp::FixedPoint<int16_t, 0>;
       const FixedPoint4 input_val_f4 = FixedPoint4::FromRaw(input_val_rescaled);
       const FixedPoint0 output_val_f0 = gemmlowp::tanh(input_val_f4);
       using gemmlowp::RoundingDivideByPOT;
-      int16 output_val_s16 = RoundingDivideByPOT(output_val_f0.raw(), 8);
+      int16_t output_val_s16 = RoundingDivideByPOT(output_val_f0.raw(), 8);
       if (output_val_s16 == 128) {
         output_val_s16 = 127;
       }
       TFLITE_DCHECK_GE(output_val_s16, -128);
       TFLITE_DCHECK_LE(output_val_s16, 127);
-      output_val = static_cast<int8>(output_val_s16);
+      output_val = static_cast<int8_t>(output_val_s16);
     }
     output_data[c] = output_val;
   }
@@ -6875,14 +6890,15 @@ inline void Tanh16bitPrecision(const TanhParams& params,
 
 inline void Logistic16bitPrecision(const LogisticParams& params,
                                    const RuntimeShape& input_shape,
-                                   const uint8* input_data,
+                                   const uint8_t* input_data,
                                    const RuntimeShape& output_shape,
-                                   uint8* output_data) {
+                                   uint8_t* output_data) {
   ruy::profiler::ScopeLabel label("Logistic/Uint8");
-  const int32 input_zero_point = params.input_zero_point;
-  const int32 input_range_radius = params.input_range_radius;
-  const int32 input_multiplier = params.input_multiplier;
-  const int16 input_left_shift = static_cast<int16>(params.input_left_shift);
+  const int32_t input_zero_point = params.input_zero_point;
+  const int32_t input_range_radius = params.input_range_radius;
+  const int32_t input_multiplier = params.input_multiplier;
+  const int16_t input_left_shift =
+      static_cast<int16_t>(params.input_left_shift);
   const int size = MatchingFlatSize(input_shape, output_shape);
 
   int c = 0;
@@ -6895,7 +6911,7 @@ inline void Logistic16bitPrecision(const LogisticParams& params,
 
   // Handle 32 values at a time
   for (; c <= size - 32; c += 32) {
-    // Read input uint8 values, cast to int16 and subtract input_zero_point
+    // Read input uint8_t values, cast to int16_t and subtract input_zero_point
     using cpu_backend_gemm::detail::Load16AndSubtractZeroPoint;
     const int16x8x2_t input_val_centered_0_1 =
         Load16AndSubtractZeroPoint(input_data + c, input_zero_point);
@@ -6922,7 +6938,7 @@ inline void Logistic16bitPrecision(const LogisticParams& params,
 
     int16x8x4_t output_val_s16 = FixedPoint4Logistic(input_val_rescaled);
 
-    // Cast output values to uint8, saturating
+    // Cast output values to uint8_t, saturating
     uint8x16_t output_val_u8_0_1 = vcombine_u8(
         vqmovun_s16(output_val_s16.val[0]), vqmovun_s16(output_val_s16.val[1]));
     uint8x16_t output_val_u8_2_3 = vcombine_u8(
@@ -6935,31 +6951,31 @@ inline void Logistic16bitPrecision(const LogisticParams& params,
 #endif  // GEMMLOWP_NEON
   // Leftover loop: handle one value at a time with scalar code.
   for (; c < size; ++c) {
-    const uint8 input_val_u8 = input_data[c];
-    const int16 input_val_centered =
-        static_cast<int16>(input_val_u8) - input_zero_point;
-    uint8 output_val;
+    const uint8_t input_val_u8 = input_data[c];
+    const int16_t input_val_centered =
+        static_cast<int16_t>(input_val_u8) - input_zero_point;
+    uint8_t output_val;
     if (input_val_centered < -input_range_radius) {
       output_val = 0;
     } else if (input_val_centered > input_range_radius) {
       output_val = 255;
     } else {
       using gemmlowp::SaturatingRoundingDoublingHighMul;
-      const int16 input_val_rescaled = SaturatingRoundingDoublingHighMul(
-          static_cast<int16>(input_val_centered * (1 << input_left_shift)),
-          static_cast<int16>(input_multiplier));
-      using FixedPoint4 = gemmlowp::FixedPoint<int16, 4>;
-      using FixedPoint0 = gemmlowp::FixedPoint<int16, 0>;
+      const int16_t input_val_rescaled = SaturatingRoundingDoublingHighMul(
+          static_cast<int16_t>(input_val_centered * (1 << input_left_shift)),
+          static_cast<int16_t>(input_multiplier));
+      using FixedPoint4 = gemmlowp::FixedPoint<int16_t, 4>;
+      using FixedPoint0 = gemmlowp::FixedPoint<int16_t, 0>;
       const FixedPoint4 input_val_f4 = FixedPoint4::FromRaw(input_val_rescaled);
       const FixedPoint0 output_val_f0 = gemmlowp::logistic(input_val_f4);
       using gemmlowp::RoundingDivideByPOT;
-      int16 output_val_s16 = RoundingDivideByPOT(output_val_f0.raw(), 7);
+      int16_t output_val_s16 = RoundingDivideByPOT(output_val_f0.raw(), 7);
       if (output_val_s16 == 256) {
         output_val_s16 = 255;
       }
       TFLITE_DCHECK_GE(output_val_s16, 0);
       TFLITE_DCHECK_LE(output_val_s16, 255);
-      output_val = static_cast<uint8>(output_val_s16);
+      output_val = static_cast<uint8_t>(output_val_s16);
     }
     output_data[c] = output_val;
   }
@@ -6967,18 +6983,19 @@ inline void Logistic16bitPrecision(const LogisticParams& params,
 
 inline void Logistic16bitPrecision(const LogisticParams& params,
                                    const RuntimeShape& input_shape,
-                                   const int8* input_data,
+                                   const int8_t* input_data,
                                    const RuntimeShape& output_shape,
-                                   int8* output_data) {
+                                   int8_t* output_data) {
   ruy::profiler::ScopeLabel label("Logistic/Int8");
-  const int32 input_zero_point = params.input_zero_point;
-  const int32 input_range_radius = params.input_range_radius;
-  const int32 input_multiplier = params.input_multiplier;
-  const int16 input_left_shift = static_cast<int16>(params.input_left_shift);
+  const int32_t input_zero_point = params.input_zero_point;
+  const int32_t input_range_radius = params.input_range_radius;
+  const int32_t input_multiplier = params.input_multiplier;
+  const int16_t input_left_shift =
+      static_cast<int16_t>(params.input_left_shift);
   const int size = MatchingFlatSize(input_shape, output_shape);
 
   int c = 0;
-  const int16 output_zero_point = 128;
+  const int16_t output_zero_point = 128;
 // TODO(b/139252020): Replace GEMMLOWP_NEON with USE_NEON when the bug is fixed.
 // The converted versions of gemmlowp::tanh and gemmlowp::logistic, done by
 // arm_sse_2_neon.h, produce incorrect results with int16x8_t data types.
@@ -6989,7 +7006,7 @@ inline void Logistic16bitPrecision(const LogisticParams& params,
 
   // Handle 32 values at a time
   for (; c <= size - 32; c += 32) {
-    // Read input int8 values, cast to int16 and subtract input_zero_point
+    // Read input int8_t values, cast to int16_t and subtract input_zero_point
     using cpu_backend_gemm::detail::Load16AndSubtractZeroPoint;
     const int16x8x2_t input_val_centered_0_1 =
         Load16AndSubtractZeroPoint(input_data + c, input_zero_point);
@@ -7026,7 +7043,7 @@ inline void Logistic16bitPrecision(const LogisticParams& params,
     output_val_s16.val[3] =
         vsubq_s16(output_val_s16.val[3], output_zero_point_dup);
 
-    // Cast output values to int8, saturating
+    // Cast output values to int8_t, saturating
     int8x16_t output_val_s8_0_1 = vcombine_s8(
         vqmovn_s16(output_val_s16.val[0]), vqmovn_s16(output_val_s16.val[1]));
     int8x16_t output_val_s8_2_3 = vcombine_s8(
@@ -7039,32 +7056,32 @@ inline void Logistic16bitPrecision(const LogisticParams& params,
 #endif  // GEMMLOWP_NEON
   // Leftover loop: handle one value at a time with scalar code.
   for (; c < size; ++c) {
-    const int8 input_val_s8 = input_data[c];
-    const int16 input_val_centered =
-        static_cast<int16>(input_val_s8) - input_zero_point;
-    int8 output_val;
+    const int8_t input_val_s8 = input_data[c];
+    const int16_t input_val_centered =
+        static_cast<int16_t>(input_val_s8) - input_zero_point;
+    int8_t output_val;
     if (input_val_centered < -input_range_radius) {
       output_val = -128;
     } else if (input_val_centered > input_range_radius) {
       output_val = 127;
     } else {
       using gemmlowp::SaturatingRoundingDoublingHighMul;
-      const int16 input_val_rescaled = SaturatingRoundingDoublingHighMul(
-          static_cast<int16>(input_val_centered * (1 << input_left_shift)),
-          static_cast<int16>(input_multiplier));
-      using FixedPoint4 = gemmlowp::FixedPoint<int16, 4>;
-      using FixedPoint0 = gemmlowp::FixedPoint<int16, 0>;
+      const int16_t input_val_rescaled = SaturatingRoundingDoublingHighMul(
+          static_cast<int16_t>(input_val_centered * (1 << input_left_shift)),
+          static_cast<int16_t>(input_multiplier));
+      using FixedPoint4 = gemmlowp::FixedPoint<int16_t, 4>;
+      using FixedPoint0 = gemmlowp::FixedPoint<int16_t, 0>;
       const FixedPoint4 input_val_f4 = FixedPoint4::FromRaw(input_val_rescaled);
       const FixedPoint0 output_val_f0 = gemmlowp::logistic(input_val_f4);
       using gemmlowp::RoundingDivideByPOT;
-      int16 output_val_s16 = RoundingDivideByPOT(output_val_f0.raw(), 7);
+      int16_t output_val_s16 = RoundingDivideByPOT(output_val_f0.raw(), 7);
       output_val_s16 -= output_zero_point;
       if (output_val_s16 == 128) {
         output_val_s16 = 127;
       }
       TFLITE_DCHECK_GE(output_val_s16, -128);
       TFLITE_DCHECK_LE(output_val_s16, 127);
-      output_val = static_cast<int8>(output_val_s16);
+      output_val = static_cast<int8_t>(output_val_s16);
     }
     output_data[c] = output_val;
   }
@@ -7395,8 +7412,8 @@ void Transpose(const TransposeParams& unshrinked_params,
 
 // Assume input1 & input2 have the same scale & zero point.
 inline void MaximumElementwise(int size, const ArithmeticParams& params,
-                               const int8* input1_data, const int8* input2_data,
-                               int8* output_data) {
+                               const int8_t* input1_data,
+                               const int8_t* input2_data, int8_t* output_data) {
   ruy::profiler::ScopeLabel label("MaximumElementwiseInt8/8bit");
   int i = 0;
 #ifdef USE_NEON
@@ -7409,15 +7426,16 @@ inline void MaximumElementwise(int size, const ArithmeticParams& params,
   }
 #endif  // USE_NEON
   for (; i < size; ++i) {
-    const int8 input1_val = input1_data[i];
-    const int8 input2_val = input2_data[i];
+    const int8_t input1_val = input1_data[i];
+    const int8_t input2_val = input2_data[i];
     output_data[i] = std::max(input1_val, input2_val);
   }
 }
 
 inline void MaximumScalarBroadcast(int size, const ArithmeticParams& params,
-                                   int8 input1_data, const int8* input2_data,
-                                   int8* output_data) {
+                                   int8_t input1_data,
+                                   const int8_t* input2_data,
+                                   int8_t* output_data) {
   ruy::profiler::ScopeLabel label("MaximumScalarBroadcastInt8/8bit");
   int i = 0;
 
@@ -7431,15 +7449,15 @@ inline void MaximumScalarBroadcast(int size, const ArithmeticParams& params,
   }
 #endif  // USE_NEON
   for (; i < size; ++i) {
-    const int8 input2_val = input2_data[i];
+    const int8_t input2_val = input2_data[i];
     output_data[i] = std::max(input1_data, input2_val);
   }
 }
 
 // Assume input1 & input2 have the same scale & zero point.
 inline void MinimumElementwise(int size, const ArithmeticParams& params,
-                               const int8* input1_data, const int8* input2_data,
-                               int8* output_data) {
+                               const int8_t* input1_data,
+                               const int8_t* input2_data, int8_t* output_data) {
   ruy::profiler::ScopeLabel label("MinimumElementwiseInt8/8bit");
   int i = 0;
 #ifdef USE_NEON
@@ -7452,15 +7470,16 @@ inline void MinimumElementwise(int size, const ArithmeticParams& params,
   }
 #endif  // USE_NEON
   for (; i < size; ++i) {
-    const int8 input1_val = input1_data[i];
-    const int8 input2_val = input2_data[i];
+    const int8_t input1_val = input1_data[i];
+    const int8_t input2_val = input2_data[i];
     output_data[i] = std::min(input1_val, input2_val);
   }
 }
 
 inline void MinimumScalarBroadcast(int size, const ArithmeticParams& params,
-                                   int8 input1_data, const int8* input2_data,
-                                   int8* output_data) {
+                                   int8_t input1_data,
+                                   const int8_t* input2_data,
+                                   int8_t* output_data) {
   ruy::profiler::ScopeLabel label("MinimumScalarBroadcastInt8/8bit");
   int i = 0;
 
@@ -7474,7 +7493,7 @@ inline void MinimumScalarBroadcast(int size, const ArithmeticParams& params,
   }
 #endif  // USE_NEON
   for (; i < size; ++i) {
-    const int8 input2_val = input2_data[i];
+    const int8_t input2_val = input2_data[i];
     output_data[i] = std::min(input1_data, input2_val);
   }
 }
@@ -7482,11 +7501,11 @@ inline void MinimumScalarBroadcast(int size, const ArithmeticParams& params,
 template <typename Op>
 inline void BroadcastMaximumDispatch(const ArithmeticParams& params,
                                      const RuntimeShape& input1_shape,
-                                     const int8* input1_data,
+                                     const int8_t* input1_data,
                                      const RuntimeShape& input2_shape,
-                                     const int8* input2_data,
+                                     const int8_t* input2_data,
                                      const RuntimeShape& output_shape,
-                                     int8* output_data, Op op) {
+                                     int8_t* output_data, Op op) {
   if (params.broadcast_category == BroadcastableOpCategory::kGenericBroadcast) {
     return reference_ops::MaximumMinimumBroadcastSlow(
         input1_shape, input1_data, input2_shape, input2_data, output_shape,
@@ -7501,11 +7520,11 @@ inline void BroadcastMaximumDispatch(const ArithmeticParams& params,
 template <typename Op>
 inline void BroadcastMinimumDispatch(const ArithmeticParams& params,
                                      const RuntimeShape& input1_shape,
-                                     const int8* input1_data,
+                                     const int8_t* input1_data,
                                      const RuntimeShape& input2_shape,
-                                     const int8* input2_data,
+                                     const int8_t* input2_data,
                                      const RuntimeShape& output_shape,
-                                     int8* output_data, Op op) {
+                                     int8_t* output_data, Op op) {
   if (params.broadcast_category == BroadcastableOpCategory::kGenericBroadcast) {
     return reference_ops::MaximumMinimumBroadcastSlow(
         input1_shape, input1_data, input2_shape, input2_data, output_shape,
@@ -8031,7 +8050,7 @@ inline TfLiteStatus Conv3D(
   ruy::profiler::ScopeLabel label("Conv3D");
 
   // NB: the float 0.0f value is represented by all zero bytes.
-  const uint8 float_zero_byte = 0x00;
+  const uint8_t float_zero_byte = 0x00;
   const float* gemm_input_data = nullptr;
   const RuntimeShape* gemm_input_shape = nullptr;
   const int filter_width = filter_shape.Dims(2);

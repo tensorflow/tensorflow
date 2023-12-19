@@ -501,7 +501,7 @@ func.func @op_broadcast_in_dim(%arg0: tensor<16xf32>) -> tensor<16x16xf32> {
 // CHECK-LABEL: "op_broadcast"
 func.func @op_broadcast(%arg0: tensor<16xf32>) -> tensor<16x16xf32> {
   //      CHECK: "stablehlo.broadcast"(%arg0) {
-  // CHECK-SAME:   broadcast_sizes = dense<16> : tensor<1xi64>
+  // CHECK-SAME:   broadcast_sizes = array<i64: 16>
   // CHECK-SAME: } : (tensor<16xf32>) -> tensor<16x16xf32>
   %0 = "mhlo.broadcast"(%arg0) {
     broadcast_sizes = dense<16> : tensor<1xi64>
@@ -872,7 +872,7 @@ func.func @op_dynamic_reshape(%arg0: tensor<16xf32>, %arg1: tensor<?xindex>) -> 
 // CHECK-LABEL: "op_dynamic_slice"
 func.func @op_dynamic_slice(%arg0: tensor<16xf32>, %arg1: tensor<i64>) -> tensor<4xf32> {
   //      CHECK: "stablehlo.dynamic_slice"(%arg0, %arg1) {
-  // CHECK-SAME:   slice_sizes = dense<4> : tensor<1xi64>
+  // CHECK-SAME:   slice_sizes = array<i64: 4>
   // CHECK-SAME: } : (tensor<16xf32>, tensor<i64>) -> tensor<4xf32>
   %0 = "mhlo.dynamic_slice"(%arg0, %arg1) {
     slice_sizes = dense<4> : tensor<1xi64>
@@ -915,7 +915,7 @@ func.func @op_exponential(%arg0: tensor<f32>) -> tensor<f32> {
 // CHECK-LABEL: "op_fft"
 func.func @op_fft(%arg0: tensor<16xcomplex<f32>>) -> tensor<16xcomplex<f32>> {
   //      CHECK: "stablehlo.fft"(%arg0) {
-  // CHECK-SAME:   fft_length = dense<16> : tensor<1xi64>,
+  // CHECK-SAME:   fft_length = array<i64: 16>,
   // CHECK-SAME:   fft_type = #stablehlo<fft_type FFT>
   // CHECK-SAME: } : (tensor<16xcomplex<f32>>) -> tensor<16xcomplex<f32>>
   %0 = "mhlo.fft"(%arg0) {
@@ -1137,9 +1137,9 @@ func.func @op_outfeed(%arg0: tensor<f32>, %arg1: !mhlo.token) -> !mhlo.token {
 // CHECK-LABEL: "op_pad"
 func.func @op_pad(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> tensor<16xf32> {
   //      CHECK: "stablehlo.pad"(%arg0, %arg1) {
-  // CHECK-SAME:   edge_padding_high = dense<4> : tensor<1xi64>,
-  // CHECK-SAME:   edge_padding_low = dense<4> : tensor<1xi64>,
-  // CHECK-SAME:   interior_padding = dense<0> : tensor<1xi64>
+  // CHECK-SAME:   edge_padding_high = array<i64: 4>,
+  // CHECK-SAME:   edge_padding_low = array<i64: 4>,
+  // CHECK-SAME:   interior_padding = array<i64: 0>
   // CHECK-SAME: } : (tensor<8xf32>, tensor<f32>) -> tensor<16xf32>
   %0 = "mhlo.pad"(%arg0, %arg1) {
     edge_padding_high = dense<4> : tensor<1xi64>,
@@ -1307,7 +1307,7 @@ func.func @op_return(%arg0: tensor<i32>, %arg1: tensor<f32>) -> tensor<f32> {
 // CHECK-LABEL: "op_reverse"
 func.func @op_reverse(%arg0: tensor<16xf32>) -> tensor<16xf32> {
   //      CHECK: "stablehlo.reverse"(%arg0) {
-  // CHECK-SAME:   dimensions = dense<0> : tensor<1xi64>
+  // CHECK-SAME:   dimensions = array<i64: 0>
   // CHECK-SAME: } : (tensor<16xf32>) -> tensor<16xf32>
   %0 = "mhlo.reverse"(%arg0) {
     dimensions = dense<0> : tensor<1xi64>
@@ -1491,9 +1491,9 @@ func.func @op_sine(%arg0: tensor<f32>) -> tensor<f32> {
 // CHECK-LABEL: "op_slice"
 func.func @op_slice(%arg0: tensor<16xf32>) -> tensor<4xf32> {
   //      CHECK: "stablehlo.slice"(%arg0) {
-  // CHECK-SAME:   limit_indices = dense<4> : tensor<1xi64>,
-  // CHECK-SAME:   start_indices = dense<0> : tensor<1xi64>,
-  // CHECK-SAME:   strides = dense<1> : tensor<1xi64>
+  // CHECK-SAME:   limit_indices = array<i64: 4>,
+  // CHECK-SAME:   start_indices = array<i64: 0>,
+  // CHECK-SAME:   strides = array<i64: 1>
   // CHECK-SAME: } : (tensor<16xf32>) -> tensor<4xf32>
   %0 = "mhlo.slice"(%arg0) {
     start_indices = dense<0> : tensor<1xi64>,
@@ -1594,7 +1594,7 @@ func.func @op_trace(%arg0: tensor<f32>) {
 // CHECK-LABEL: "op_transpose"
 func.func @op_transpose(%arg0: tensor<16x8xf32>) ->  tensor<8x16xf32> {
   //      CHECK: "stablehlo.transpose"(%arg0) {
-  // CHECK-SAME:   permutation = dense<[1, 0]> : tensor<2xi64>
+  // CHECK-SAME:   permutation = array<i64: 1, 0>
   // CHECK-SAME: } : (tensor<16x8xf32>) -> tensor<8x16xf32>
   %0 = "mhlo.transpose"(%arg0) {
     permutation = dense<[1, 0]> : tensor<2xi64>

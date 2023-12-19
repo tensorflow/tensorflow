@@ -13,18 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/strings/string_view.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
+#include <vector>
 
-inline constexpr absl::string_view kEntryFunctionAttr = "tf.entry_function";
+#include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
 namespace mlir {
 
+std::vector<llvm::StringRef> GetEntryFunctionAttributeNames() {
+  return {"tf.entry_function",
+          tf_saved_model::kTfSavedModelInitializerTypeAttr};
+}
+
 bool IsEntryFunction(func::FuncOp func) {
-  return func->hasAttr(kEntryFunctionAttr) ||
-         func->hasAttr(tf_saved_model::kTfSavedModelInitializerTypeAttr);
+  for (const auto &attr : GetEntryFunctionAttributeNames()) {
+    if (func->hasAttr(attr)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 llvm::SmallVector<func::FuncOp> GetEntryFunctions(ModuleOp module) {
@@ -44,15 +56,17 @@ llvm::SmallVector<func::FuncOp> GetEntryFunctions(ModuleOp module) {
 LogicalResult GetCallees(SymbolUserOpInterface op, SymbolTable &symtab,
                          llvm::SmallVector<func::FuncOp> &callees) {
   for (auto attr : op->getAttrs()) {
-    auto sym = attr.getValue().dyn_cast<SymbolRefAttr>();
-    if (!sym) continue;
-    auto callee = symtab.lookup<func::FuncOp>(sym.getRootReference());
-    if (!callee) {
+    auto sym_ref = attr.getValue().dyn_cast<SymbolRefAttr>();
+    if (!sym_ref) continue;
+    Operation *sym = symtab.lookup(sym_ref.getRootReference());
+    if (!sym) {
       // This is not expected to happen in practice.
       return op->emitError()
-             << "Cannot find function " << sym.getRootReference();
+             << "Cannot find symbol " << sym_ref.getRootReference();
     }
-    callees.push_back(callee);
+    if (auto callee = dyn_cast<func::FuncOp>(sym)) {
+      callees.push_back(callee);
+    }
   }
   return success();
 }

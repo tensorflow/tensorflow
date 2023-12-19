@@ -1061,8 +1061,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
             expected=np.array([[4.2384180773686798]], dtype=dtype),
             rtol=1e-14)
 
-  # TODO(phawkins): failing on GPU, no registered kernel.
-  def DISABLED_testSparseMatMul(self):
+  def testSparseMatMul(self):
     # Binary wrappers for sparse_matmul with different hints
     def SparseMatmulWrapperTF(a, b):
       return math_ops.sparse_matmul(a, b, a_is_sparse=True)
@@ -1073,10 +1072,13 @@ class BinaryOpsTest(xla_test.XLATestCase):
     def SparseMatmulWrapperTT(a, b):
       return math_ops.sparse_matmul(a, b, a_is_sparse=True, b_is_sparse=True)
 
-    self._testMatMul(math_ops.sparse_matmul, self.float_types)
-    self._testMatMul(SparseMatmulWrapperTF, self.float_types)
-    self._testMatMul(SparseMatmulWrapperFT, self.float_types)
-    self._testMatMul(SparseMatmulWrapperTT, self.float_types)
+    # TODO(b/314165739): SparseMatmul XlaBuilder lowering does not support
+    # float16 and float64.
+    float_types = self.float_types - {np.float16, np.float64}
+    self._testMatMul(math_ops.sparse_matmul, float_types)
+    self._testMatMul(SparseMatmulWrapperTF, float_types)
+    self._testMatMul(SparseMatmulWrapperFT, float_types)
+    self._testMatMul(SparseMatmulWrapperTT, float_types)
 
   def testBatchMatMul(self):
     # Tests with batches of matrices.

@@ -23,9 +23,15 @@ set -euxo pipefail
 
 cd "$TFCI_OUTPUT_DIR"
 
+# Move extra wheel files somewhere out of the way. This script
+# expects just one wheel file to exist.
 if [[ "$(ls *.whl | wc -l | tr -d ' ')" != "1" ]]; then
-  echo "Error: $TFCI_OUTPUT_DIR should contain exactly one .whl file."
-  exit 1
+  echo "More than one wheel file is present: moving the oldest to"
+  echo "$TFCI_OUTPUT_DIR/extra_wheels."
+  # List all .whl files by their modification time (ls -t) and move anything
+  # other than the most recently-modified one (the newest one).
+  mkdir -p $TFCI_OUTPUT_DIR/extra_wheels
+  ls -t *.whl | tail -n +2 | xargs mv -t $TFCI_OUTPUT_DIR/extra_wheels
 fi
 
 # Repair wheels with auditwheel and delete the old one.
@@ -54,3 +60,12 @@ python="$venv/bin/python3"
 "$python" -m pip install *.whl $TFCI_PYTHON_VERIFY_PIP_INSTALL_ARGS
 "$python" -c 'import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)'
 "$python" -c 'import sys; import tensorflow as tf; sys.exit(0 if "keras" in tf.keras.__name__ else 1)'
+# VERY basic check to ensure the [and-cuda] package variant is installable.
+# Checks TFCI_BAZEL_COMMON_ARGS for "gpu" or "cuda", implying that the test is
+# relevant. All of the GPU test machines have CUDA installed via other means,
+# so I am not sure how to verify that the dependencies themselves are valid for
+# the moment.
+if [[ "$TFCI_BAZEL_COMMON_ARGS" =~ gpu|cuda ]]; then
+  echo "Checking to make sure tensorflow[and-cuda] is installable..."
+  "$python" -m pip install "$(echo *.whl)[and-cuda]" $TFCI_PYTHON_VERIFY_PIP_INSTALL_ARGS
+fi

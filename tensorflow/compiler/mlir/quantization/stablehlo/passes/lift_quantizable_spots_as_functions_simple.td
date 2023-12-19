@@ -19,10 +19,8 @@ include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "stablehlo/dialect/StablehloOps.td"
-include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
-include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.td"
-include "tensorflow/compiler/mlir/quantization/stablehlo/passes/utils.td"
-// TODO - b/303543789: Remove TF Quantizer util dependency.
+include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.td"
+include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.td"
 
 //===----------------------------------------------------------------------===//
 // Pattern rules for lifting ops as functions

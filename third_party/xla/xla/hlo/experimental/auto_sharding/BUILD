@@ -64,6 +64,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -302,7 +303,6 @@ xla_cc_test(
     deps = [
         ":auto_sharding",
         ":auto_sharding_option",
-        ":auto_sharding_proto_cc",
         ":auto_sharding_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",
@@ -329,6 +329,7 @@ xla_cc_test(
         ":auto_sharding_solver",
         ":auto_sharding_strategy",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
     ],
 )

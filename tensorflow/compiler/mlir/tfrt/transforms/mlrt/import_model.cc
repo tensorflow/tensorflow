@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
@@ -67,8 +68,12 @@ StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
           mlir::OwningOpRef<mlir::ModuleOp> copy(module.clone());
           TF_RETURN_IF_ERROR(
               ExportFunctionDefs(*copy, [flib_def](FunctionDef function_def) {
-                VLOG(1) << "Exporting MLIR function as function_def: "
-                        << function_def.DebugString();
+                VLOG(1) << absl::StrCat(
+                    "Exporting MLIR function as function_def: ",
+                    // clang-tidy off
+                    function_def.DebugString()
+                    // clang-tidy on
+                );
 
                 // The TF MLIR compiler may change the function name. Then we
                 // need to retrieve the original name from the

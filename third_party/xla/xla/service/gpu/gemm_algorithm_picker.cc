@@ -412,6 +412,7 @@ StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
     if (algorithm.has_gemm()) {
       updated_config.set_selected_algorithm(algorithm.gemm().algorithm());
     } else {
+      // TODO: autotuning is NOT available for gpublas-lt (blas gemm only) !
       updated_config.set_selected_algorithm(se::blas::kRuntimeAutotuning);
     }
   }

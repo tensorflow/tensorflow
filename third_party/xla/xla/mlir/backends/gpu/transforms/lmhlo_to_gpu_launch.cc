@@ -40,13 +40,13 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "xla/mlir/runtime/ir/rt_ops.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
-#include "xla/service/gpu/conditional_thunk.h"
 #include "xla/service/gpu/copy_thunk.h"
 #include "xla/service/gpu/kernel_thunk.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/memset_thunk.h"
-#include "xla/service/gpu/sequential_thunk.h"
-#include "xla/service/gpu/while_thunk.h"
+#include "xla/service/gpu/runtime3/conditional_thunk.h"
+#include "xla/service/gpu/runtime3/sequential_thunk.h"
+#include "xla/service/gpu/runtime3/while_thunk.h"
 
 namespace xla {
 namespace gpu {

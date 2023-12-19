@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -29,6 +30,8 @@ limitations under the License.
 #include "pybind11_abseil/import_status_module.h"  // from @pybind11_abseil
 #include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil  // IWYU pragma: keep
 #include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/assign_ids.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/statistics.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/debugger.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
@@ -43,6 +46,8 @@ namespace py = pybind11;
 
 namespace {
 
+using ::stablehlo::quantization::AddCalibrationStatistics;
+using ::stablehlo::quantization::AssignIdsToCustomAggregatorOps;
 using ::stablehlo::quantization::EnableDebugging;
 using ::stablehlo::quantization::io::CreateTmpDir;
 using ::tensorflow::SignatureDef;
@@ -84,10 +89,12 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
                              quantization_options, function_aliases);
         if (!exported_model.ok()) return exported_model.status();
 
-        // Remove the `tpu` tag from the quantized saved model as it is for CPU.
-        // Note the 'tpu' value should be the same as `TPU` defined in
+        // Remove the `tpu` tag from the debug quantized saved model as it is
+        // for CPU. Note the 'tpu' value should be the same as `TPU` defined in
         // tensorflow/python/saved_model/tag_constants.py.
-        tags.erase("tpu");
+        if (quantization_options.has_debugger_options()) {
+          tags.erase("tpu");
+        }
         py_function_library.SaveExportedModel(
             dst_saved_model_path, *exported_model, src_saved_model_path, tags,
             signature_def_map);
@@ -136,10 +143,12 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
             QuantizePtqDynamicRange(src_saved_model_path, signature_keys, tags,
                                     quantization_options, function_aliases);
 
-        // Remove the `tpu` tag from the quantized saved model as it is for CPU.
-        // Note the 'tpu' value should be the same as `TPU` defined in
+        // Remove the `tpu` tag from the debug quantized saved model as it is
+        // for CPU. Note the 'tpu' value should be the same as `TPU` defined in
         // tensorflow/python/saved_model/tag_constants.py.
-        tags.erase("tpu");
+        if (quantization_options.has_debugger_options()) {
+          tags.erase("tpu");
+        }
         py_function_library.SaveExportedModel(
             dst_saved_model_path, *exported_model, src_saved_model_path, tags,
             signature_def_map);
@@ -232,14 +241,13 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
         tags.insert(quantization_options.tags().begin(),
                     quantization_options.tags().end());
 
-        const absl::StatusOr<ExportedModel> exported_model =
+        absl::StatusOr<ExportedModel> exported_model =
             QuantizePtqModelPreCalibration(src_saved_model_path, signature_keys,
                                            tags, quantization_options,
                                            function_aliases);
         if (!exported_model.ok()) return exported_model.status();
 
-        const ExportedModel exported_model_ids_assigned =
-            py_function_library.AssignIdsToCustomAggregatorOps(*exported_model);
+        AssignIdsToCustomAggregatorOps(*exported_model->mutable_graph_def());
 
         const absl::StatusOr<std::string> precalibrated_saved_model_dir =
             CreateTmpDir();
@@ -249,19 +257,27 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
         }
 
         py_function_library.SaveExportedModel(
-            *precalibrated_saved_model_dir, exported_model_ids_assigned,
+            *precalibrated_saved_model_dir, *exported_model,
             src_saved_model_path, tags, signature_def_map);
 
-        ExportedModel calibrated_exported_model =
-            py_function_library.RunCalibration(
-                *precalibrated_saved_model_dir, signature_keys, tags,
-                exported_model_ids_assigned,
+        py_function_library.RunCalibration(
+            *precalibrated_saved_model_dir, signature_keys, tags,
+            quantization_options.calibration_options(),
+            quantization_options.force_graph_mode_calibration(),
+            representative_dataset);
+
+        if (absl::Status status = AddCalibrationStatistics(
+                *exported_model->mutable_graph_def(),
                 quantization_options.calibration_options(),
-                quantization_options.force_graph_mode_calibration(),
-                representative_dataset);
+                py_function_library);
+            !status.ok()) {
+          LOG(WARNING) << "Some CustomAggregator ops do not have min or max "
+                          "values. Parts of the graph are not quantized. "
+                       << status;
+        }
 
         if (quantization_options.has_debugger_options()) {
-          EnableDebugging(calibrated_exported_model,
+          EnableDebugging(*exported_model,
                           quantization_options.debugger_options(),
                           py_function_library, src_saved_model_path, tags,
                           signature_def_map);
@@ -275,13 +291,13 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
         }
 
         py_function_library.SaveExportedModel(
-            *calibrated_saved_model_path, calibrated_exported_model,
-            src_saved_model_path, tags, signature_def_map);
+            *calibrated_saved_model_path, *exported_model, src_saved_model_path,
+            tags, signature_def_map);
 
         const absl::flat_hash_map<std::string, std::string>
             function_aliases_after_calibration(
-                calibrated_exported_model.function_aliases().begin(),
-                calibrated_exported_model.function_aliases().end());
+                exported_model->function_aliases().begin(),
+                exported_model->function_aliases().end());
 
         const absl::StatusOr<ExportedModel> post_calibrated_exported_model =
             QuantizePtqModelPostCalibration(
@@ -290,10 +306,12 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
         if (!post_calibrated_exported_model.ok())
           return post_calibrated_exported_model.status();
 
-        // Remove the `tpu` tag from the quantized saved model as it is for CPU.
-        // Note the 'tpu' value should be the same as `TPU` defined in
+        // Remove the `tpu` tag from the debug quantized saved model as it is
+        // for CPU. Note the 'tpu' value should be the same as `TPU` defined in
         // tensorflow/python/saved_model/tag_constants.py.
-        tags.erase("tpu");
+        if (quantization_options.has_debugger_options()) {
+          tags.erase("tpu");
+        }
         py_function_library.SaveExportedModel(
             dst_saved_model_path, *post_calibrated_exported_model,
             *calibrated_saved_model_path, tags, signature_def_map);

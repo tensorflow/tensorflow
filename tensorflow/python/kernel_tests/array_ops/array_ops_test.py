@@ -47,6 +47,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import tensor_getitem_override
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
@@ -788,7 +789,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
   def testTensorIndexingTypeError(self):
     with self.session():
       checker = StridedSliceChecker(self, StridedSliceChecker.REF_TENSOR)
-      expected = re.escape(array_ops._SLICE_TYPE_ERROR)
+      expected = re.escape(tensor_getitem_override._SLICE_TYPE_ERROR)
       with self.assertRaisesRegex(TypeError, expected):
         _ = checker["foo"]
       with self.assertRaisesRegex(TypeError, expected):

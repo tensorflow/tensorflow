@@ -41,6 +41,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":gpu_helpers",
+        ":gpu_metrics",
         ":gpu_topology",
         "//xla:statusor",
         "//xla:util",
@@ -49,10 +50,10 @@ cc_library(
         "//xla/client:local_client",
         "//xla/client:xla_computation",
         "//xla/pjrt:compile_options_proto_cc",
-        "//xla/pjrt:metrics",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_stream_executor_client",
         "//xla/pjrt:stream_executor_executable",
@@ -79,6 +80,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/framework:allocator",
         "@local_tsl//tsl/framework:bfc_allocator",
         "@local_tsl//tsl/framework:device_id",
@@ -254,6 +256,18 @@ cc_library(
         "//xla/service/gpu:amdgpu_compiler_impl",
     ]),
     alwayslink = True,
+)
+
+cc_library(
+    name = "gpu_metrics",
+    srcs = ["gpu_metrics.cc"],
+    hdrs = ["gpu_metrics.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/lib/monitoring:gauge",
+    ],
 )
 
 xla_cc_test(

@@ -47,6 +47,16 @@ class GemmAlgorithmPickerTest : public HloTestBase,
 };
 
 TEST_P(GemmAlgorithmPickerTest, SetAlgorithm) {
+  auto comp = backend()
+                  .default_stream_executor()
+                  ->GetDeviceDescription()
+                  .cuda_compute_capability();
+  if (comp.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Skipping this test for Ampere+ as it is supported and "
+                    "recommended with "
+                    "the Nvidia Volta+ GPUs.";
+  }
+
   constexpr absl::string_view kHlo = R"(
 HloModule module
 
@@ -117,6 +127,16 @@ ENTRY main {
 }
 
 TEST_P(GemmAlgorithmPickerTest, GetAlgorithmWithoutDevice) {
+  auto comp = backend()
+                  .default_stream_executor()
+                  ->GetDeviceDescription()
+                  .cuda_compute_capability();
+  if (comp.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Skipping this test for Ampere+ as it is supported and "
+                    "recommended with "
+                    "the Nvidia Volta+ GPUs.";
+  }
+
   constexpr absl::string_view kHlo = R"(
 HloModule module
 

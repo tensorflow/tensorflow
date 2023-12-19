@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/shape.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 
 namespace xla {
@@ -62,7 +63,7 @@ class DummyAutoSharding : public HloModulePass {
 enum class AutoShardingResult {
   kModuleUnchanged,
   kModuleChangedShardingPerformed,
-  kModuleUnchangedNoShardingPerfomed
+  kModuleUnchangedNoShardingPerformed
 };
 
 class AutoShardingImplementation {
@@ -70,7 +71,6 @@ class AutoShardingImplementation {
   explicit AutoShardingImplementation(const AutoShardingOption& option);
   ~AutoShardingImplementation() = default;
 
-  // using HloPassInterface::Run;
   StatusOr<AutoShardingResult> RunAutoSharding(
       HloModule* module,
       const absl::flat_hash_set<std::string>& replicated_small_tensors,
@@ -83,7 +83,6 @@ class AutoShardingImplementation {
   StatusOr<bool> RemoveShardingAnnotation(
       HloModule* module,
       const absl::flat_hash_set<std::string>& replicated_small_tensors = {},
-
       const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
   // Canonicalizes entry_computation_layouts by calling
@@ -94,7 +93,7 @@ class AutoShardingImplementation {
   //     tensorflow/compiler/xla/pjrt/utils.cc
   Status CanonicalizeLayouts(HloModule* module);
 
-  // Returns the optimal objective value that the ILP solver computes
+  // Returns the optimal objective value that the ILP solver computes.
   double GetSolverOptimalObjectiveValue() {
     return solver_optimal_objective_value_;
   }
@@ -103,7 +102,7 @@ class AutoShardingImplementation {
   AutoShardingOption option_;
 
   // Stores the optimal value of the objective the solver found. This is used to
-  // chose the best mesh shape when the try_multiple_mesh_shapes option is on.
+  // choose the best mesh shape when the try_multiple_mesh_shapes option is on.
   double solver_optimal_objective_value_ = -1.0;
 };
 
@@ -133,7 +132,7 @@ class AutoSharding : public HloModulePass {
 };
 
 namespace spmd {
-// Function declarations
+// Function declarations.
 // Their comments can be found in their definitions in *.cc files.
 HloSharding Tile(const Shape& shape, absl::Span<const int64_t> tensor_dims,
                  absl::Span<const int64_t> mesh_dims,
@@ -235,11 +234,20 @@ void AddReplicatedStrategy(
 
 void CheckMemoryCosts(StrategyGroup* strategy_group, const Shape& shape);
 
-// Choose an operand to follow.  We choose to follow the operand with the
-// highest priority.
+// Choose an operand to follow. We choose to follow the operand with the highest
+// priority.
 std::pair<int64_t, bool> ChooseOperandToFollow(
     const StrategyMap& strategy_map, const InstructionDepthMap& depth_map,
     const AliasMap& alias_map, int64_t max_depth, const HloInstruction* ins);
+
+void FillAllStrategiesForArray(
+    std::unique_ptr<StrategyGroup>& strategy_group, const HloInstruction* ins,
+    const Shape& shape, const ClusterEnvironment& cluster_env,
+    const StrategyMap& strategy_map, const AutoShardingOption& option,
+    double replicated_penalty, const InstructionBatchDimMap& batch_dim_map,
+    const CallGraph& call_graph, bool only_allow_divisible,
+    bool create_replicated_strategies,
+    bool create_partially_replicated_strategies);
 
 StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
     const HloInstruction* ins, const Shape& shape, size_t instruction_id,
@@ -273,7 +281,8 @@ std::unique_ptr<StrategyGroup> CreateReshapeStrategies(
     const StrategyMap& strategy_map, const ClusterEnvironment& cluster_env,
     bool only_allow_divisible, double replicated_penalty,
     const InstructionBatchDimMap& batch_dim_map,
-    const AutoShardingOption& option, StrategyGroups& strategy_groups);
+    const AutoShardingOption& option, StrategyGroups& strategy_groups,
+    const CallGraph& call_graph);
 
 std::unique_ptr<StrategyGroup> CreateTupleStrategyGroup(size_t instruction_id);
 
@@ -287,7 +296,7 @@ void EnumerateAll1DPartition(const HloInstruction* ins, const Shape& shape,
                              const std::string& suffix,
                              const CallGraph& call_graph);
 
-// Enumerate all partitions recursively
+// Enumerate all partitions recursively.
 void EnumerateAllPartition(const HloInstruction* ins, const Shape& shape,
                            const Array<int64_t>& device_mesh,
                            const ClusterEnvironment& cluster_env,

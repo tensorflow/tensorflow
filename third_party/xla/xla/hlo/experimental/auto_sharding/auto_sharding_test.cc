@@ -1686,45 +1686,6 @@ ENTRY %entry {
   EXPECT_TRUE(changed);
 }
 
-TEST_F(AutoShardingTest,
-       GatherMergedIndexParallelAndOperandPassthroughBackwardPass) {
-  const char* const hlo_string = R"(
-HloModule module
-
-ENTRY %module {
-  %arg.0 = s32[8,4,2,2]{3,2,1,0} parameter(0)
-  %arg.1 =  s32[1,8,4]{2,1,0} parameter(1)
-  %operand = s32[8,4,2,2]{3,2,1,0} copy(s32[8,4,2,2]{3,2,1,0} %arg.0)
-  %indices = s32[1,8,4]{2,1,0} copy(s32[1,8,4]{2,1,0} %arg.1)
-  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1
-  %concatenate = s32[2,8,4]{2,1,0} concatenate(
-    s32[1,8,4]{2,1,0} %iota, s32[1,8,4]{2,1,0} %indices), dimensions={0}
-  %gather = s32[8,4,2,2]{3,2,1,0} gather(
-    s32[8,4,2,2]{3,2,1,0} %operand,
-    s32[2,8,4]{2,1,0} %concatenate), offset_dims={2,3},
-    collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
-    slice_sizes={1,1,2,2},
-    sharding={devices=[2,1,2,1]0,1,4,5 metadata={op_name="a"}}
-  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%gather)
-}
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  AutoShardingOption option;
-  option.enable = true;
-  option.device_mesh_shape = {2, 2};
-  option.device_mesh_ids = {0, 1, 2, 3};
-  option.device_mesh_alpha = {1.0, 1.0};
-  option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
-  VLOG(0) << module->ToString();
-  EXPECT_TRUE(changed);
-  auto* gather = FindInstruction(module.get(), "gather");
-  ASSERT_NE(gather, nullptr);
-  EXPECT_THAT(gather, op::Sharding("{devices=[1,1,2,2]0,1,2,3}"));
-}
-
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

@@ -42,6 +42,7 @@ JAX_PACKAGES=(
   "typing_extensions"
   "ml_dtypes>=0.3.0"
   "importlib_metadata>=4.6"
+  "flatbuffers"
 )
 
 PACKAGES=(

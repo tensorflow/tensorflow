@@ -728,10 +728,15 @@ void PjitFunction::PopulateCacheEntry(PjitCacheEntry& cache_entry,
 
 // Helper function used by the tp_clear GC method.
 void PjitFunction::ClearPythonReferences() {
+  // TODO(mattjj): phawkins@ observed that the xla::PyTreeRegistry
+  // pytree_registry_ attribute of PjitFunction could in principle also have
+  // python references to clear
   py::function cache_miss;
+  std::optional<py::function> fun;
   // Swap values for nulls before they are destroyed. See the Python
   // Py_CLEAR() documentation for a discussion of this topic.
   std::swap(cache_miss_, cache_miss);
+  std::swap(fun_, fun);
 }
 
 struct PjitFunctionObject {
@@ -814,6 +819,9 @@ void PjitFunction_tp_dealloc(PyObject* self) {
 }
 
 int PjitFunction_tp_traverse(PyObject* self, visitproc visit, void* arg) {
+  // TODO(mattjj): phawkins@ observed that the xla::PyTreeRegistry
+  // pytree_registry_ attribute of PjitFunction could in principle also have
+  // python references to visit
   PjitFunctionObject* o = reinterpret_cast<PjitFunctionObject*>(self);
 #if PY_VERSION_HEX >= 0x03090000
   // https://docs.python.org/3/c-api/typeobj.html#c.PyTypeObject.tp_traverse
@@ -821,6 +829,9 @@ int PjitFunction_tp_traverse(PyObject* self, visitproc visit, void* arg) {
 #endif
   Py_VISIT(o->dict);
   Py_VISIT(o->fun.cache_miss().ptr());
+  if (o->fun.fun()) {
+    Py_VISIT(o->fun.fun()->ptr());
+  }
   return 0;
 }
 

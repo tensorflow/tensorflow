@@ -120,11 +120,6 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     # And if bias_size is None, has_bias should be False.
     assert (bias_size is None) != has_bias
 
-    # Verify that bias size is correct
-    if bias_size:
-      input_height = input_shape[0] if len(input_shape) == 2 else input_shape[1]
-      assert input_height * weight_shape[-1] % bias_size == 0
-
     model = MatmulModel(weight_shape, bias_size, activation_fn)
     saved_model_save.save(
         model,

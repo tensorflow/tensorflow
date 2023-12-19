@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -79,13 +80,30 @@ bool SameDeterministicAttr(const NodeDef& parallel_map_node,
   return false;
 }
 
+// Returns a name for a new node or function that fuses the inputs.
+// - For nodes, this is only for debugging.
+// - For functions, this additionally prevents collisions (upstream of this
+// optimizer, the act of optimizing a single graph entails individually
+// optimizing each function in that graph and later aggregating any new
+// functions introduced during these individual optimizations into that single
+// graph's collective function library).
+// TODO(mpcallanan): Look at deduping names in a more generic fashion upstream.
+string GetFusedName(const NodeDef& parent, const NodeDef& child) {
+  return absl::StrCat("map_fusion_nodes/", parent.name(), "/", child.name());
+}
+string GetFusedName(const FunctionDef& parent, const FunctionDef& child) {
+  return absl::StrCat("map_fusion_funcs/", parent.signature().name(), "/",
+                      child.signature().name());
+}
+
 // Sets basic function parameters and copies attributes from parent and map
 // node.
 NodeDef MakeFusedNode(const NodeDef& parent_map_node, const NodeDef& map_node,
                       const FunctionDef& fused_function,
                       MutableGraphView* graph) {
   NodeDef fused_node;
-  graph_utils::SetUniqueGraphNodeName("fused_map", graph->graph(), &fused_node);
+  graph_utils::SetUniqueGraphNodeName(GetFusedName(parent_map_node, map_node),
+                                      graph->graph(), &fused_node);
 
   if (map_node.op() == kMapDatasetOp) {
     fused_node.set_op(kMapDatasetOp);
@@ -156,7 +174,8 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
 
   auto get_map_node = [&graph](const NodeDef& node) -> const NodeDef* {
     // TODO(b/148614504): Support ParallelMapDataset and MapAndBatchDataset.
-    // TODO(b/148614315): Support captured inputs.
+    // TODO(b/148614315): Support captured inputs and additionally look into a
+    // Python test for control outputs per b/171265131.
     if (node.op() == kMapDatasetOp && node.input_size() == 1) return &node;
     // Only parallel map with no captured inputs (empty `other_arguments`) and
     // parallelism set to "AUTOTUNE" would be eligible for rewrite.
@@ -185,9 +204,10 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
       return nullptr;
     }
     return fusion_utils::FuseFunctions(
-        *parent_func, *func, "fused_map", fusion_utils::ComposeSignature,
-        fusion_utils::ComposeInput, fusion_utils::ComposeOutput,
-        fusion_utils::MergeNodes, output->mutable_library());
+        *parent_func, *func, GetFusedName(*parent_func, *func),
+        fusion_utils::ComposeSignature, fusion_utils::ComposeInput,
+        fusion_utils::ComposeOutput, fusion_utils::MergeNodes,
+        output->mutable_library());
   };
 
   for (const NodeDef& node : sorted_old_graph.node()) {

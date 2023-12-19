@@ -502,6 +502,7 @@ BatchResourceBase::GetBatcherQueueOptions(
           *allowed_batch_sizes.rbegin();
       batcher_queue_options.high_priority_queue_options
           .max_execution_batch_size = *allowed_batch_sizes.rbegin();
+      batcher_queue_options.allowed_batch_sizes = allowed_batch_sizes;
     }
     if (low_priority_allowed_batch_sizes.empty()) {
       batcher_queue_options.low_priority_queue_options

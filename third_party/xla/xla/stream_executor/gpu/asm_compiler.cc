@@ -258,6 +258,12 @@ tsl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
                                                   const char* ptx_contents,
                                                   GpuAsmOpts options,
                                                   bool cancel_if_reg_spill) {
+  auto ptxas_version_tuple = GetAsmCompilerVersion(options.preferred_cuda_dir);
+  if (ptxas_version_tuple.value() == std::array<int64_t, 3>{12, 3, 1}) {
+    return tsl::errors::Internal(
+        absl::StrFormat("ptxas 12.3.1 has a bug that we think can affect XLA. "
+                        "Please use a different version."));
+  }
   std::string ptxas_path =
       FindCudaExecutable("ptxas", options.preferred_cuda_dir);
 

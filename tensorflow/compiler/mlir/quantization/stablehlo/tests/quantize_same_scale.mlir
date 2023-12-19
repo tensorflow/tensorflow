@@ -28,7 +28,7 @@ func.func @same_scale_indirectly_connected() -> tensor<1x3xf32> {
   // CHECK-SAME: _tfl_quant_trait = "fully_quantizable"
   // CHECK-SAME: () -> tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
   // CHECK: %[[RESHAPE:.*]] = "stablehlo.reshape"(%[[CALL]]) : (tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>) -> tensor<3x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
-  // CHECK: %[[TRANSPOSE:.*]] = "stablehlo.transpose"(%[[RESHAPE]]) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<3x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>>) -> tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  // CHECK: %[[TRANSPOSE:.*]] = "stablehlo.transpose"(%[[RESHAPE]]) {permutation = array<i64: 1, 0>} : (tensor<3x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>>) -> tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
   // CHECK: %[[DQ:.*]] = "quantfork.dcast"(%[[TRANSPOSE]]) : (tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>) -> tensor<1x3xf32>
   // CHECK: "func.return"(%[[DQ]])
 
@@ -38,7 +38,7 @@ func.func @same_scale_indirectly_connected() -> tensor<1x3xf32> {
   %3 = stablehlo.reshape %2 : (tensor<1x3xf32>) -> tensor<3x1xf32>
   %4 = "quantfork.qcast"(%3) {volatile} : (tensor<3x1xf32>) -> tensor<3x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
   %5 = "quantfork.dcast"(%4) : (tensor<3x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>>) -> tensor<3x1xf32>
-  %6 = "stablehlo.transpose"(%5) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<3x1xf32>) -> tensor<1x3xf32>
+  %6 = "stablehlo.transpose"(%5) {permutation = array<i64: 1, 0>} : (tensor<3x1xf32>) -> tensor<1x3xf32>
   %7 = "quantfork.qcast"(%6) {volatile} : (tensor<1x3xf32>) -> tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
   %8 = "quantfork.dcast"(%7) : (tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>) -> tensor<1x3xf32>
   return %8 : tensor<1x3xf32>
@@ -127,7 +127,7 @@ func.func @pad_and_composite(%arg0: tensor<2x3xf32>, %arg1: tensor<f32>) -> tens
   // CHECK: %[[Q1:.*]] = "quantfork.qcast"(%[[ARG0]]) {volatile} : (tensor<2x3xf32>) -> tensor<2x3x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
   // CHECK: %[[Q2:.*]] = "quantfork.qcast"(%[[ARG1]]) {volatile} : (tensor<f32>) -> tensor<!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
   // CHECK: %[[PAD:.*]] = "stablehlo.pad"(%[[Q1]], %[[Q2]])
-  // CHECK-SAME: {edge_padding_high = dense<[2, 1]> : tensor<2xi64>, edge_padding_low = dense<[0, 1]> : tensor<2xi64>, interior_padding = dense<[1, 2]> : tensor<2xi64>}
+  // CHECK-SAME: {edge_padding_high = array<i64: 2, 1>, edge_padding_low = array<i64: 0, 1>, interior_padding = array<i64: 1, 2>}
   // CHECK-SAME: (tensor<2x3x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>, tensor<!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>) -> tensor<5x9x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
   // CHECK: %[[CALL:.*]] = "tf.XlaCallModule"(%[[PAD]])
   // CHECK-SAME: _entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1"
@@ -141,9 +141,9 @@ func.func @pad_and_composite(%arg0: tensor<2x3xf32>, %arg1: tensor<f32>) -> tens
   %2 = "quantfork.qcast"(%arg1) {volatile} : (tensor<f32>) -> tensor<!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
   %3 = "quantfork.dcast"(%2) : (tensor<!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>) -> tensor<f32>
   %4 = "stablehlo.pad"(%1, %3) {
-    edge_padding_low = dense<[0, 1]> : tensor<2xi64>,
-    edge_padding_high = dense<[2, 1]> : tensor<2xi64>,
-    interior_padding = dense<[1, 2]> : tensor<2xi64>
+    edge_padding_low = array<i64: 0, 1>,
+    edge_padding_high = array<i64: 2, 1>,
+    interior_padding = array<i64: 1, 2>
   }: (tensor<2x3xf32>, tensor<f32>) -> tensor<5x9xf32>
   %5 = "quantfork.qcast"(%4) {volatile} : (tensor<5x9xf32>) -> tensor<5x9x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
   %6 = "quantfork.dcast"(%5) : (tensor<5x9x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>) -> tensor<5x9xf32>
@@ -251,9 +251,9 @@ func.func @composite_and_slice() -> tensor<2x2xf32> {
   %1 = "quantfork.qcast"(%0) {volatile} : (tensor<3x4xf32>) -> tensor<3x4x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
   %2 = "quantfork.dcast"(%1) : (tensor<3x4x!quant.uniform<i8:f32, 0.13170163023705575:-1>>) -> tensor<3x4xf32>
   %3 = "stablehlo.slice"(%2) {
-    start_indices = dense<[1, 2]> : tensor<2xi64>,
-    limit_indices = dense<[3, 4]> : tensor<2xi64>,
-    strides = dense<1> : tensor<2xi64>
+    start_indices = array<i64: 1, 2>,
+    limit_indices = array<i64: 3, 4>,
+    strides = array<i64: 1, 1>
   } : (tensor<3x4xf32>) -> tensor<2x2xf32>
   %4 = "quantfork.qcast"(%3) {volatile} : (tensor<2x2xf32>) -> tensor<2x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
   %5 = "quantfork.dcast"(%4) : (tensor<2x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>>) -> tensor<2x2xf32>

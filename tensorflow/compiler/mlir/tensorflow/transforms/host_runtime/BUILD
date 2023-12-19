@@ -75,3 +75,60 @@ tf_cc_test(
         "@llvm-project//mlir:Pass",
     ],
 )
+
+cc_library(
+    name = "tpu_metadata_utils",
+    srcs = [
+        "tpu_metadata_utils.cc",
+    ],
+    hdrs = [
+        "tpu_metadata_utils.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
+        "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
+        "//tensorflow/compiler/mlir/tensorflow:convert_type",
+        "//tensorflow/compiler/mlir/tensorflow:xla_sharding_util",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla:xla_proto_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "tpu_metadata_utils_test",
+    srcs = ["tpu_metadata_utils_test.cc"],
+    data = [
+        "testdata/basic_cluster.mlir",
+        "testdata/spmd.mlir",
+    ],
+    deps = [
+        ":tpu_metadata_utils",
+        "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)

@@ -14,16 +14,22 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
 
+#include "absl/algorithm/container.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
-namespace mlir {
-namespace quant {
+namespace mlir::quant {
 namespace {
 
 using ::mlir::tf_saved_model::AssetOp;
@@ -149,5 +155,4 @@ FailureOr<SmallVector<AssetFileDef>> ConvertAssetArgs(ModuleOp module_op) {
   return asset_file_defs;
 }
 
-}  // namespace quant
-}  // namespace mlir
+}  // namespace mlir::quant

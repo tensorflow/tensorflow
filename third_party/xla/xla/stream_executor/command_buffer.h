@@ -114,6 +114,10 @@ class CommandBuffer {
   // Command buffer API
   //===--------------------------------------------------------------------===//
 
+  // Adds an execution barrier to a command buffer: all commands added before a
+  // barrier will complete before any of the commands added after a barrier.
+  tsl::Status Barrier(StreamExecutor* executor);
+
   // Adds a kernel launch command to the command buffer.
   tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
                      const Kernel& kernel, const KernelArgs& args);
@@ -129,6 +133,16 @@ class CommandBuffer {
   using BitPattern = std::variant<uint8_t, uint16_t, uint32_t>;
   tsl::Status Memset(DeviceMemoryBase* dst, BitPattern bit_pattern,
                      size_t num_elements);
+
+  //--------------------------------------------------------------------------//
+  // Command buffer memory allocation API
+  //--------------------------------------------------------------------------//
+
+  // Adds a device memory allocation command to the command buffer.
+  tsl::StatusOr<DeviceMemoryBase> Allocate(size_t bytes);
+
+  // This API free buffer that is allocated by Allocate command
+  tsl::Status Free(DeviceMemoryBase dst);
 
   //--------------------------------------------------------------------------//
   // Command buffer condtitional commands API
@@ -177,12 +191,6 @@ class CommandBuffer {
                     Builder cond_builder, Builder body_builder);
 
   //--------------------------------------------------------------------------//
-
-  // Adds a device memory allocation command to the command buffer.
-  tsl::StatusOr<DeviceMemoryBase> Allocate(size_t bytes);
-
-  // This API free buffer that is allocated by Allocate command
-  tsl::Status Free(DeviceMemoryBase dst);
 
   // Finalizes command buffer and makes it executable. Once command buffer is
   // finalized no commands can be added to it.

@@ -168,9 +168,8 @@ FusionDecision IsProducerMultiOutputFusible(const HloInstruction& producer);
 // a producer-consumer multi-output fusion.
 bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr);
 
-// Determines the fusion kind to be used when fusing `producer` and `consumer`.
-HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& producer,
-                                            const HloInstruction& consumer);
+// Determines the fusion kind to be used when fusing into `consumer`.
+HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& consumer);
 
 // Returns whether `consumer` is the only non-root user of `instr`.
 bool IsConsumerTheOnlyNonRootUser(const HloInstruction& instr,
@@ -210,6 +209,9 @@ std::vector<const HloInstruction*> GetFusionRoots(
 // Whether the instruction is a reduction hero for the given root.
 bool IsRealReductionHero(const HloInstruction& root,
                          const HloInstruction& hero);
+
+// Whether the instruction is a Triton Softmax fusion.
+bool IsTritonSoftmaxFusion(const HloInstruction& instr);
 
 }  // namespace gpu
 }  // namespace xla

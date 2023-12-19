@@ -30,6 +30,7 @@ cc_library(
         ":tpu_cluster_formation",
         ":verify_clustering_pass",
         ":xla_cluster_formation",
+        ":xla_outline_entry_functions",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -207,17 +208,36 @@ cc_library(
 )
 
 cc_library(
-    name = "dialect_to_executor_passes",
+    name = "mlir_to_graph_passes",
     hdrs = [
-        "dialect_to_executor_passes.h",
+        "mlir_to_graph_passes.h",
     ],
     textual_hdrs = [
-        "dialect_to_executor_passes.h.inc",
+        "mlir_to_graph_passes.h.inc",
     ],
     deps = [
         ":verify_input_dialect_to_executor_pass",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
+    ],
+)
+
+gentbl_cc_library(
+    name = "mlir_to_graph_passes_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=TFXLABridgeMlirToGraph",
+            ],
+            "mlir_to_graph_passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "mlir_to_graph_passes.td",
+    deps = [
+        "@llvm-project//mlir:PassBaseTdFiles",
     ],
 )
 
@@ -227,43 +247,47 @@ cc_library(
         "verify_input_dialect_to_executor_pass.cc",
     ],
     deps = [
-        ":dialect_to_executor_passes_inc_gen",
-        "//tensorflow/compiler/mlir/tensorflow",
+        ":mlir_to_graph_passes_inc_gen",
         "//tensorflow/compiler/mlir/tf2xla/internal/utils:dialect_detection_utils",
-        "//tensorflow/core:framework",
-        "//tensorflow/core/transforms/toposort:Pass",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-    ],
-)
-
-gentbl_cc_library(
-    name = "dialect_to_executor_passes_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=TFXLABridgeDialectToExecutor",
-            ],
-            "dialect_to_executor_passes.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "dialect_to_executor_passes.td",
-    deps = [
-        "@llvm-project//mlir:PassBaseTdFiles",
     ],
 )
 
 cc_library(
     name = "xla_cluster_formation",
     srcs = ["xla_cluster_formation.cc"],
+    textual_hdrs = [
+        "clustering_passes.h.inc",
+    ],
+    deps = [
+        ":clustering_passes_inc_gen",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
+        "//tensorflow/compiler/mlir/tensorflow:call_graph_util",
+        "//tensorflow/compiler/mlir/tensorflow:cluster_util",
+        "//tensorflow/compiler/mlir/tensorflow:string_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow:tpu_rewrite_device_util",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "xla_outline_entry_functions",
+    srcs = ["xla_outline_entry_functions.cc"],
     textual_hdrs = [
         "clustering_passes.h.inc",
     ],

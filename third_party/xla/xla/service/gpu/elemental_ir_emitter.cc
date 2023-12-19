@@ -188,6 +188,17 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
         {lhs_value, rhs_value}, {lhs_value->getType()}, b());
   }
 
+  // sm_80 and up has min.NaN and max.NaN instructions.
+  if (output_type == F32 &&
+      ir_emitter_context_.cuda_compute_capability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE) &&
+      (opcode == HloOpcode::kMaximum || opcode == HloOpcode::kMinimum)) {
+    return llvm_ir::EmitCallToIntrinsic(
+        opcode == HloOpcode::kMaximum ? llvm::Intrinsic::maximum
+                                      : llvm::Intrinsic::minimum,
+        {lhs_value, rhs_value}, {lhs_value->getType()}, b());
+  }
+
   switch (op->opcode()) {
     case HloOpcode::kRemainder: {
       return EmitDeviceMathCall(TargetDeviceFunctionID::kFmod,
@@ -340,6 +351,18 @@ llvm::Value* GpuElementalIrEmitter::EmitThreadId() {
       EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockDimx, {}, {}, b()),
       b()->getIntNTy(128), /*isSigned=*/true, "threads_per_block");
   return NSWAdd(NSWMul(block_id, threads_per_block), thread_id_in_block);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitF32ToBF16(
+    llvm::Value* f32_value) {
+  // sm_80 and up has an instruction to convert f32 into bf16.
+  if (ir_emitter_context_.cuda_compute_capability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    return BitCast(
+        FPTrunc(BitCast(f32_value, b()->getFloatTy()), b()->getBFloatTy()),
+        b()->getInt16Ty());
+  }
+  return ElementalIrEmitter::EmitF32ToBF16(f32_value);
 }
 
 StatusOr<std::vector<llvm::Value*>> GpuElementalIrEmitter::EmitThreadLocalCall(

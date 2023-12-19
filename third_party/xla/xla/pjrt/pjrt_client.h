@@ -119,7 +119,41 @@ class PjRtDevice {
   // The ID of this device. IDs are unique among devices of this type
   // (e.g. CPUs, GPUs). On multi-host platforms, this will be unique across all
   // hosts' devices.  This is the ID that should be used in a DeviceAssignment.
-  virtual int id() const { return description().id(); }
+  ABSL_DEPRECATED("Use global_device_id() instead")
+  virtual int id() const { return global_device_id().value(); }
+
+  // There are several different IDs for a PJRT device.
+  //
+  // - global_device_id: The logical global device ID. This is unique among
+  // devices of this type (e.g. CPUs, GPUs). On multi-host platforms, this will
+  // be unique across all hosts' devices.  This is the ID that should be used in
+  // a DeviceAssignment.
+  //
+  // - local_device_id: The logical local device ID. This will be used to look
+  // up an addressable device local to a given client. It is -1 if undefined.
+  //
+  // - local_hardware_id: The physical local device ID, e.g., the CUDA device
+  // number. Multiple PJRT devices can have the same local_hardware_id if
+  // these PJRT devices share the same physical device. This is useful for
+  // identifying which physical device when interacting with non-JAX code. In
+  // general, not guaranteed to be dense, and -1 if undefined.
+
+  // TODO(b/314368788): Remove `id()` and replace it with this function.
+  virtual PjRtGlobalDeviceId global_device_id() const {
+    return PjRtGlobalDeviceId(description().id());
+  }
+
+  virtual PjRtLocalDeviceId local_device_id() const {
+    // By default, local_device_id is the same as local_hardware_id when there
+    // is only one PJRT device on a physical device.
+    return PjRtLocalDeviceId(local_hardware_id_typed().value());
+  }
+
+  // TODO(b/314368788): Remove `int local_hardware_id()` and rename this
+  // function to `local_device_id()`. Make this function pure virtual.
+  virtual PjRtLocalHardwareId local_hardware_id_typed() const {
+    return PjRtLocalHardwareId(local_hardware_id());
+  }
 
   // The index of the process that this device belongs to, i.e. is addressable
   // from. This is not always identical to PjRtClient::process_index() in a
@@ -501,11 +535,21 @@ class PjRtClient {
 
   // Lookup any PjRtDevice for a given PjRtDevice::id().
   virtual StatusOr<PjRtDevice*> LookupDevice(int device_id) const = 0;
+  // TODO(b/314368788): Replace the above function with this function.
+  virtual StatusOr<PjRtDevice*> LookupDevice(
+      PjRtGlobalDeviceId global_device_id) const {
+    return LookupDevice(global_device_id.value());
+  }
 
   // Return an addressable PjRtDevice for a given
   // PjRtDevice::local_hardware_id().
   virtual StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const = 0;
+  // TODO(b/314368788): Replace the above function with this function.
+  virtual StatusOr<PjRtDevice*> LookupAddressableDevice(
+      PjRtLocalDeviceId local_device_id) const {
+    return LookupAddressableDevice(local_device_id.value());
+  }
 
   // Return all memory spaces owned by the client.
   // The memory spaces are in no particular order.
@@ -548,6 +592,15 @@ class PjRtClient {
       int num_partitions, const MultiSliceConfig* multi_slice_config) const {
     return Unimplemented("Multi slice device assignment is not supported.");
   }
+
+  // Returns the default device layout for a buffer with `element_type` and
+  // `dims`. The default layout is a platform-specific layout used when no other
+  // layout is specified, e.g. for host-to-device transfers. When compiling, the
+  // default layout is used for program arguments and outputs unless
+  // user-specified or compiler-chosen layouts are requested via the
+  // "mhlo.layout_mode" attribute.
+  virtual StatusOr<Layout> GetDefaultLayout(PrimitiveType element_type,
+                                            absl::Span<const int64_t> dims) = 0;
 
   // Returns a backend-specific HLO cost analysis visitor.
   virtual StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()

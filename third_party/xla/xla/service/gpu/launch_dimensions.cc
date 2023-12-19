@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -32,8 +33,8 @@ namespace gpu {
 
 std::ostream& operator<<(std::ostream& out,
                          const LaunchDimensions& launch_dims) {
-  LaunchDimensions::Dim3D block_counts = launch_dims.block_counts();
-  LaunchDimensions::Dim3D thread_counts = launch_dims.thread_counts_per_block();
+  se::BlockDim block_counts = launch_dims.block_counts();
+  se::ThreadDim thread_counts = launch_dims.thread_counts_per_block();
   out << absl::StrFormat("[block: {%d, %d, %d}, thread: {%d, %d, %d}]",
                          block_counts.x, block_counts.y, block_counts.z,
                          thread_counts.x, thread_counts.y, thread_counts.z);
@@ -192,8 +193,8 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
   }
 
   return LaunchDimensions(
-      {sizes.block_count, 1, 1},
-      {sizes.threads_per_block_x, sizes.threads_per_block_y, 1});
+      se::BlockDim(sizes.block_count, 1, 1),
+      se::ThreadDim(sizes.threads_per_block_x, sizes.threads_per_block_y, 1));
 }
 
 }  // namespace gpu

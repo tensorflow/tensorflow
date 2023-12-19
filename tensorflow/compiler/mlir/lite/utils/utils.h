@@ -107,6 +107,34 @@ inline ShapedType GetTransposedType(Value input,
   return transposed_type;
 }
 
+// Returns shape of a ranked tensor.
+// Precondition: output_val's is ranked tensor.
+// Returns a truncated shape when `truncate` is set to true.
+inline DenseElementsAttr GetShape(Value output_val, bool truncate = false) {
+  auto output_shape = output_val.getType().dyn_cast<ShapedType>().getShape();
+
+  SmallVector<int32_t> shape;
+  shape.reserve(output_shape.size());
+
+  bool needs_truncation = true;
+  for (size_t dim_idx = 0; dim_idx < output_shape.size(); ++dim_idx) {
+    int64_t dim = output_shape[dim_idx];
+    if (truncate && needs_truncation && dim == 1) {
+      continue;
+    } else if (needs_truncation && dim != 1) {
+      needs_truncation = false;
+    }
+    shape.push_back(ShapedType::isDynamic(dim) ? -1
+                                               : static_cast<int32_t>(dim));
+  }
+
+  return mlir::DenseElementsAttr::get(
+      RankedTensorType::get(
+          {static_cast<int>(shape.size())},
+          mlir::IntegerType::get(output_val.getContext(), 32)),
+      llvm::ArrayRef(shape));
+}
+
 }  // namespace TFL
 }  // namespace mlir
 

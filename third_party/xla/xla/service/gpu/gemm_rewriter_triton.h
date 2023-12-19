@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/statusor.h"
@@ -30,18 +31,18 @@ namespace xla {
 namespace gpu {
 
 // Filters GEMMs which can be handled using Triton.
-FusionDecision CanTritonHandleGEMM(const HloInstruction&,
-                                   se::GpuComputeCapability gpu_version);
+FusionDecision CanTritonHandleGEMM(const HloDotInstruction&,
+                                   const se::GpuComputeCapability&);
 
 // Filters GEMMs which are better to handle using Triton.
-bool ShouldTritonHandleGEMM(HloInstruction&,
-                            se::GpuComputeCapability gpu_version);
+bool ShouldTritonHandleGEMM(HloDotInstruction&,
+                            const se::GpuComputeCapability&);
 
 // Rewrite compatible dot() calls into custom calls with fused computations
 // that target Triton-based matmul emitter.
 class GemmRewriterTriton : public HloModulePass {
  public:
-  explicit GemmRewriterTriton(se::GpuComputeCapability gpu_version)
+  explicit GemmRewriterTriton(const se::GpuComputeCapability& gpu_version)
       : gpu_version_(gpu_version) {}
   absl::string_view name() const override { return "triton-gemm-rewriter"; }
 

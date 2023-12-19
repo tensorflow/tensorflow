@@ -3096,8 +3096,20 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
     auto tf_gather_nd_result_type =
         RankedTensorType::get(transpose_params.canonicalized_output_shape,
                               result_type.getElementType());
+
+    TF::CastOp cast_op = nullptr;
+    if (start_indices_type.getElementType().isUnsignedInteger(32)) {
+      cast_op = rewriter.create<TF::CastOp>(
+          gather_op->getLoc(),
+          RankedTensorType::get(start_indices_type.getShape(),
+                                rewriter.getI64Type()),
+          start_indices);
+    }
+
     auto tf_gather_nd_op = rewriter.create<TF::GatherNdOp>(
-        gather_op->getLoc(), tf_gather_nd_result_type, operand, start_indices);
+        gather_op->getLoc(), tf_gather_nd_result_type, operand,
+        cast_op ? cast_op.getResult() : start_indices);
+
     if (!need_transpose_after) {
       rewriter.replaceOp(gather_op, tf_gather_nd_op->getOpResults());
       return success();

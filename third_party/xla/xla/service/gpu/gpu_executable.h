@@ -119,8 +119,8 @@ class GpuExecutable : public Executable {
       std::shared_ptr<HloModule> hlo_module, absl::string_view obj_file,
       absl::string_view mlir_module, DebugOptions debug_options,
       absl::string_view asm_text, absl::string_view binary,
-      std::vector<ConstantInfo> constants, se::GpuComputeCapability gpu_version,
-      stream_executor::StreamExecutor* executor);
+      std::vector<ConstantInfo> constants,
+      se::GpuComputeCapability gpu_version);
 
   // Constructor to use when loading a GpuExecutable from an object file (native
   // function compiled for XLA Runtime). Omits setting class members that aren't
@@ -195,6 +195,10 @@ class GpuExecutable : public Executable {
     // GpuExecutable code.
     return allocations_.has_value() ? *allocations_
                                     : buffer_assignment_->Allocations();
+  }
+
+  bool IsXlaRuntimeEnabled() const {
+    return gpu_runtime_executable_ != nullptr;
   }
 
   const std::vector<ConstantInfo>& constants() const { return constants_; }

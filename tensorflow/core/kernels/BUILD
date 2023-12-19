@@ -1623,7 +1623,6 @@ cc_library(
     deps = [
         ":batch_kernels",
         ":ops_testutil",
-        ":ops_util",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
     ],
@@ -1657,8 +1656,10 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -4422,6 +4423,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -6499,6 +6501,7 @@ filegroup(
         "fill_empty_rows_functor.h",
         "function_ops.h",
         "fused_batch_norm_op.h",
+        "gpu_utils.h",
         "inplace_ops.cc",
         "inplace_ops_functor.h",
         "l2loss_op.h",

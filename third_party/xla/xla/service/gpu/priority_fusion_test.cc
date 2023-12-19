@@ -323,10 +323,11 @@ TEST_F(PriorityFusionTest, DoNotFuseTransposeIntoReduce) {
     })";
 
   using Kind = HloFusionAnalysis::EmitterFusionKind;
-  EXPECT_THAT(RunAndGetFusionKinds(kHlo),
-              UnorderedElementsAre(Kind::kLoop, Kind::kReduction,
-                                   Kind::kReduction, Kind::kTranspose,
-                                   Kind::kTranspose, Kind::kTranspose));
+  EXPECT_THAT(
+      RunAndGetFusionKinds(kHlo),
+      UnorderedElementsAre(Kind::kLoop, Kind::kLoop, Kind::kLoop,
+                           Kind::kReduction, Kind::kReduction, Kind::kTranspose,
+                           Kind::kTranspose, Kind::kTranspose));
 }
 
 TEST_F(PriorityFusionTest, DoNotFuseReduceIntoReduce) {
@@ -467,33 +468,6 @@ CHECK: ROOT {{.*}} log(%[[REDUCE]])
 CHECK: ENTRY
 CHECK-COUNT-2: fusion(
   )");
-}
-
-TEST_F(PriorityFusionTest, SingleTransposeFusion) {
-  // A regression test that verifies the given HLO fuses into a single fusion.
-  absl::string_view kHlo = R"(
-    HloModule test_module
-
-  ENTRY main {
-    param_0.14390 = bf16[2048,24576]{1,0} parameter(0)
-    convert.34192 = f32[2048,24576]{1,0} convert(param_0.14390)
-    constant_11107 = bf16[] constant(0.02002)
-    convert.35472 = f32[] convert(constant_11107)
-    broadcast.21886 = f32[2048,24576]{1,0} broadcast(convert.35472), dimensions={}
-    multiply.14420 = f32[2048,24576]{1,0} multiply(convert.34192, broadcast.21886)
-    fusion.3520 = f32[2048,24576]{1,0} tanh(multiply.14420)
-
-    constant_11286 = bf16[] constant(50)
-    convert.42562 = f32[] convert(constant_11286)
-    broadcast.22230 = f32[2048,24576]{1,0} broadcast(convert.42562), dimensions={}
-    multiply.14798 = f32[2048,24576]{1,0} multiply(fusion.3520, broadcast.22230)
-    convert.34603 = bf16[2048,24576]{1,0} convert(multiply.14798)
-    bitcast.21354 = bf16[1,2048,2048,12]{3,2,1,0} bitcast(convert.34603)
-    ROOT transpose.6502 = bf16[1,12,2048,2048]{3,2,1,0} transpose(bitcast.21354), dimensions={0,3,2,1}
-  })";
-
-  using Kind = HloFusionAnalysis::EmitterFusionKind;
-  EXPECT_THAT(RunAndGetFusionKinds(kHlo), ElementsAre(Kind::kTranspose));
 }
 
 TEST_F(PriorityFusionTest, DontFuseIntoFirstOperandOfScatter) {
@@ -649,6 +623,75 @@ TEST_F(PriorityFusionTest, EpilogueFusionFails) {
       f = f32[28672]{0} fusion(p0), kind=kInput, calls=%fused_computation.1
       ROOT fusion = f32[28672]{0} fusion(f,p1), kind=kLoop, calls=%fused_computation.2
     })");
+
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(PriorityFusionTest, DoNotFuseIntoRoot) {
+  auto module = *ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    ENTRY %main (p.0: u32[2], p.1: u32[]) -> u32[2] {
+      %p.0 = u32[2]{0} parameter(0)
+      %p.1 = u32[] parameter(1)
+      ROOT %broadcast = u32[2]{0} broadcast(u32[] %p.1), dimensions={}, sharding={replicated}
+      %add = u32[2]{0} add(u32[2]{0} %p.0, u32[2]{0} %broadcast)
+      %tuple.1 = (u32[2]{0}) tuple(u32[2]{0} %add)
+      %token.0 = token[] after-all()
+      %outfeed.6 = token[] outfeed((u32[2]{0}) %tuple.1, token[] %token.0), outfeed_shape=(u32[2]{0}), sharding={maximal device=0}
+    })");
+
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(PriorityFusionTest, DontFuseConcat) {
+  // Regression test that verifies we don't fuse concat into a column reduction.
+  auto module = *ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    %maximum (param_0: f32[], param_1: f32[]) -> f32[] {
+      %param_0 = f32[] parameter(0)
+      %param_1 = f32[] parameter(1)
+      ROOT %maximum = f32[] maximum(f32[] %param_0, f32[] %param_1)
+    }
+
+    %fused_concat (param_0: f32[1,4,401,8,8], param_1: f32[1,1,4,1023,8], param_2: bf16[1,4,1023,8,8]) -> f32[1,4,1424,8,8] {
+      %param_2 = bf16[1,4,1023,8,8]{4,3,2,1,0} parameter(2)
+      %convert = f32[1,4,1023,8,8]{4,3,2,1,0} convert(bf16[1,4,1023,8,8]{4,3,2,1,0} %param_2)
+      %param_1 = f32[1,1,4,1023,8]{4,3,2,1,0} parameter(1)
+      %bitcast = f32[4,1023,8]{2,1,0} bitcast(f32[1,1,4,1023,8]{4,3,2,1,0} %param_1)
+      %broadcast = f32[1,4,1023,8,8]{4,3,2,1,0} broadcast(f32[4,1023,8]{2,1,0} %bitcast), dimensions={1,2,4}
+      %add = f32[1,4,1023,8,8]{4,3,2,1,0} add(f32[1,4,1023,8,8]{4,3,2,1,0} %convert, f32[1,4,1023,8,8]{4,3,2,1,0} %broadcast)
+      %param_0 = f32[1,4,401,8,8]{4,3,2,1,0} parameter(0)
+      ROOT %concatenate = f32[1,4,1424,8,8]{4,3,2,1,0} concatenate(f32[1,4,1023,8,8]{4,3,2,1,0} %add, f32[1,4,401,8,8]{4,3,2,1,0} %param_0), dimensions={2}
+    }
+
+    %fused_reduce (param_0: f32[], param_1: f32[1,4,1424,8,8]) -> f32[4,8,8] {
+      %param_1 = f32[1,4,1424,8,8]{4,3,2,1,0} parameter(1)
+      %bitcast = f32[4,1424,8,8]{3,2,1,0} bitcast(f32[1,4,1424,8,8]{4,3,2,1,0} %param_1)
+      %param_0 = f32[] parameter(0)
+      ROOT %reduce = f32[4,8,8]{2,1,0} reduce(f32[4,1424,8,8]{3,2,1,0} %bitcast, f32[] %param_0), dimensions={1}, to_apply=%maximum
+    }
+
+    %fused_broadcast (param_0: f32[1,4,1424,8,8], param_1: f32[4,8,8]) -> f32[1,4,1424,8,8] {
+      %param_0 = f32[1,4,1424,8,8]{4,3,2,1,0} parameter(0)
+      %param_1 = f32[4,8,8]{2,1,0} parameter(1)
+      %broadcast = f32[1,4,1424,8,8]{4,3,2,1,0} broadcast(f32[4,8,8]{2,1,0} %param_1), dimensions={1,3,4}
+      ROOT %subtract = f32[1,4,1424,8,8]{4,3,2,1,0} subtract(f32[1,4,1424,8,8]{4,3,2,1,0} %param_0, f32[1,4,1424,8,8]{4,3,2,1,0} %broadcast)
+    }
+
+    ENTRY fusion {
+      %param_0 = f32[1,4,401,8,8]{4,3,2,1,0} parameter(0)
+      %param_1 = f32[1,1,4,1023,8]{4,3,2,1,0} parameter(1)
+      %param_2 = bf16[1,4,1023,8,8]{4,3,2,1,0} parameter(2)
+      %concat = f32[1,4,1424,8,8]{4,3,2,1,0} fusion(%param_0, %param_1, %param_2), kind=kLoop, calls=fused_concat
+      %param_3 = f32[] parameter(3)
+      %reduce = f32[4,8,8]{2,1,0} fusion(%param_3, %concat), kind=kLoop, calls=fused_reduce
+      %param_4 = f32[4,8,8]{2,1,0} parameter(4)
+      %broadcast = f32[1,4,1424,8,8]{4,3,2,1,0} fusion(%concat, %param_4), kind=kLoop, calls=fused_broadcast
+      ROOT tuple = (f32[4,8,8]{2,1,0}, f32[1,4,1424,8,8]{4,3,2,1,0}) tuple(%reduce, %broadcast)
+    }
+  )");
 
   EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
 }

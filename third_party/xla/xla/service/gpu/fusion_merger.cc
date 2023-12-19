@@ -102,7 +102,7 @@ Status FusionInstructionMerger::FuseIntoAllUsers(HloInstruction* producer) {
     HloInstruction* consumer = user;
     if (consumer->opcode() != HloOpcode::kFusion) {
       consumer = computation_->AddInstruction(HloInstruction::CreateFusion(
-          user->shape(), ChooseFusionKind(*producer, *user), user));
+          user->shape(), ChooseFusionKind(*user), user));
       TF_CHECK_OK(computation_->ReplaceInstruction(user, consumer));
     }
 
@@ -219,6 +219,10 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
     if (user->opcode() == HloOpcode::kBitcast) {
       ++num_fail_merge_all_users_;
       return "not fusing bitcast ops";
+    }
+    if (user->IsCustomFusion()) {
+      ++num_fail_merge_all_users_;
+      return "not fusing custom fusions";
     }
     auto consumer_hero = GetRealHeroForMultiOutputFusion(*user);
     if (auto compatible =

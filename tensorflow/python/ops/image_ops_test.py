@@ -2336,13 +2336,13 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase,
         self.evaluate(v)
 
 
-class ImageProjectiveTransformV2(test_util.TensorFlowTestCase):
+class ImageProjectiveTransform(test_util.TensorFlowTestCase):
 
-  def testShapeTooLarge(self):
+  def _testShapeTooLarge(self, cdtype, V2=True):
     interpolation = "BILINEAR"
     fill_mode = "REFLECT"
-    images = constant_op.constant(
-        0.184634328, shape=[2, 5, 8, 3], dtype=dtypes.float32)
+    fill_value = 255
+    images = constant_op.constant(0.184634328, shape=[2, 5, 8, 3], dtype=cdtype)
     transforms = constant_op.constant(
         0.378575385, shape=[2, 8], dtype=dtypes.float32)
     output_shape = constant_op.constant([1879048192, 1879048192],
@@ -2350,13 +2350,39 @@ class ImageProjectiveTransformV2(test_util.TensorFlowTestCase):
                                         dtype=dtypes.int32)
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 r"Encountered overflow when multiplying"):
-      self.evaluate(
-          gen_image_ops.ImageProjectiveTransformV2(
-              images=images,
-              transforms=transforms,
-              output_shape=output_shape,
-              interpolation=interpolation,
-              fill_mode=fill_mode))
+      if V2:
+        self.evaluate(
+            gen_image_ops.ImageProjectiveTransformV2(
+                images=images,
+                transforms=transforms,
+                output_shape=output_shape,
+                interpolation=interpolation,
+                fill_mode=fill_mode,
+            )
+        )
+      else:
+        self.evaluate(
+            gen_image_ops.ImageProjectiveTransformV3(
+                images=images,
+                transforms=transforms,
+                output_shape=output_shape,
+                fill_value=fill_value,
+                interpolation=interpolation,
+                fill_mode=fill_mode,
+            )
+        )
+
+  def testShapeTooLargeFp32V2(self):
+    self._testShapeTooLarge(dtypes.float32)
+
+  def testShapeTooLargeBfloat16V2(self):
+    self._testShapeTooLarge(dtypes.bfloat16)
+
+  def testShapeTooLargeFp32V3(self):
+    self._testShapeTooLarge(dtypes.float32, False)
+
+  def testShapeTooLargeBfloat16V3(self):
+    self._testShapeTooLarge(dtypes.bfloat16, False)
 
 
 class InternalPadToBoundingBoxTest(test_util.TensorFlowTestCase,

@@ -47,18 +47,16 @@ cd "$TFCI_GIT_DIR"
 # Separately, if TFCI is set *and* there are also additional TFCI_ variables
 # set in the shell environment, those variables will be restored after the
 # TFCI env has been loaded. This is useful for e.g. on-demand "generic" jobs
-# where the user may wish to change just one option. Conveniently, this method
-# even works for arrays; e.g. TFCI_SOME_ARRAY="(--array --contents)" ends up
-# as TFCI_SOME_ARRAY=(--array --contents) in the storage file and is thus
-# loaded as an array when sourced.
+# where the user may wish to change just one option.
 if [[ -z "${TFCI:-}" ]]; then
   echo '==TFCI==: The $TFCI variable is not set. This is fine as long as you'
   echo 'already sourced a TFCI env file with "set -a; source <path>; set +a".'
   echo 'If you have not, you will see a lot of undefined variable errors.'
 else
   FROM_ENV=$(mktemp)
-  # Piping into cat means grep won't abort the process if no errors are found.
-  env | grep TFCI_ | cat > "$FROM_ENV"
+  # "export -p" prints a list of environment values in a safe-to-source format,
+  # e.g. `declare -x TFCI_BAZEL_COMMON_ARGS="list of args"` for bash.
+  export -p | grep TFCI > "$FROM_ENV"
 
   # Source the default ci values
   source ./ci/official/envs/ci_default
@@ -106,17 +104,18 @@ mkdir -p "$TFCI_OUTPUT_DIR"
 exec > >(tee "$TFCI_OUTPUT_DIR/script.log") 2>&1
 
 # Setup tfrun, a helper function for executing steps that can either be run
-# locally or run under Docker. docker.sh, below, redefines it as "docker exec".
-# Important: "tfrun foo | bar" is "( tfrun foo ) | bar", not tfrun (foo | bar).
-# Therefore, "tfrun" commands cannot include pipes -- which is probably for the
-# better. If a pipe is necessary for something, it is probably complex. Write a
-# well-documented script under utilities/ to encapsulate the functionality
-# instead.
+# locally or run under Docker. setup_docker.sh, below, redefines it as "docker
+# exec".
+# Important: "tfrun foo | bar" is "( tfrun foo ) | bar", not "tfrun (foo | bar)".
+# Therefore, "tfrun" commands cannot include pipes -- which is
+# probably for the better. If a pipe is necessary for something, it is probably
+# complex. Write a well-documented script under utilities/ to encapsulate the
+# functionality instead.
 tfrun() { "$@"; }
 
-# Run all "tfrun" commands under Docker. See docker.sh for details
+# Run all "tfrun" commands under Docker. See setup_docker.sh for details
 if [[ "$TFCI_DOCKER_ENABLE" == 1 ]]; then
-  source ./ci/official/utilities/docker.sh
+  source ./ci/official/utilities/setup_docker.sh
 fi
 
 # Generate an overview page describing the build

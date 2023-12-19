@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/utils/stablehlo_type_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
@@ -441,11 +442,11 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass::
   ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(module_op, main_func);
 
   // TODO - b/298966126: Currently quantizable functions are identified in TF
-  // Quantizer via the tf_quant.composite_function UnitAttr attached to func
-  // ops. We remove this attribute as this interferes with VHLO conversion.
+  // Quantizer via the tf_quant.composite_function UnitAttr attached to
+  // func ops. We remove this attribute as this interferes with VHLO conversion.
   // Remove this temporary hack.
   for (auto func_op : module_op.getOps<func::FuncOp>()) {
-    func_op->removeAttr(kQuantizeTargetOpAttr);
+    func_op->removeAttr(kFusedFunctionAttr);
   }
 }
 

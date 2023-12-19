@@ -119,7 +119,7 @@ int RunProfiler(int argc, char** argv) {
     }
   }
 
-  VLOG(1) << "\n" << instr_profiles.DebugString();
+  VLOG(1) << "\n" << instr_profiles;
 
   DeviceHloInstructionProfiles device_profiles;
   device_profiles.mutable_entries()->insert({dev_info.name(), instr_profiles});

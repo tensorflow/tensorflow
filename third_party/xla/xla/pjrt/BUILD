@@ -92,6 +92,8 @@ cc_library(
         "//xla/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/profiler/lib:connected_traceme",
+        "@local_tsl//tsl/profiler/lib:context_types_hdrs",
     ],
 )
 
@@ -118,6 +120,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":event_pool",
+        ":pjrt_common",
         ":semaphore",
         ":worker_thread",
         "//xla:status",
@@ -327,6 +330,9 @@ cc_library(
     name = "pjrt_common",
     hdrs = ["pjrt_common.h"],
     visibility = ["//visibility:public"],
+    deps = [
+        "@local_tsl//tsl/lib/gtl:int_type",
+    ],
 )
 
 cc_library(
@@ -442,6 +448,7 @@ cc_library(
         "//xla/client:local_client",
         "//xla/client:xla_computation",
         "//xla/hlo/ir:hlo",
+        "//xla/pjrt:pjrt_common",
         "//xla/pjrt/distributed:protocol_proto_cc",
         "//xla/service:computation_layout",
         "//xla/service:computation_placer",

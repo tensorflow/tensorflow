@@ -1,5 +1,8 @@
 // RUN: stablehlo-quant-opt %s -split-input-file -stablehlo-quantize -verify-each=false | FileCheck %s
 
+// Tests for PopulateFusedGemmStylePatterns are handled in
+// quantize_composite_functions for module-level evaluation of functions.
+
 // CHECK-LABEL: quantize_simple_xla_call_module
 func.func private @quantize_simple_xla_call_module(%arg0: tensor<1x4xf32>) -> tensor<1x3xf32> {
   %0 = stablehlo.constant dense<1.000000e+00> : tensor<4x3xf32>
@@ -40,3 +43,27 @@ func.func private @quantize_simple_xla_call_module_no_operand() -> tensor<1x3xf3
 // CHECK: %[[XLACALLMODULE_0:.*]] = "tf.XlaCallModule"() <{{{.*}}}> {{{.*}}} : () -> tensor<1x3x!quant.uniform<i8:f32, 1.000000e-03:-3>>
 // CHECK: %[[DCAST_0:.*]] = "quantfork.dcast"(%[[XLACALLMODULE_0]]) : (tensor<1x3x!quant.uniform<i8:f32, 1.000000e-03:-3>>) -> tensor<1x3xf32>
 // CHECK: "func.return"(%[[DCAST_0]]) : (tensor<1x3xf32>) -> ()
+
+// -----
+
+// Tests for emitting an error when there is no corresponding entry
+// function to quantize (@composite_dot_general_fn).
+
+module attributes {tf_saved_model.semantics} {
+// The following pattern does not converge because of a bug in QuantizePass.
+// TODO - b/305469508: Fix the QuantizePass to avoid this warning.
+// expected-warning @+1 {{Failed to converge pattern at QuantizePass.}}
+ func.func private @error_when_no_entry_function(%arg0: tensor<1x2xf32>) -> tensor<1x3xf32> attributes {tf._original_func_name = "main_0"} {
+   %0 = stablehlo.constant dense<1.000000e+00> : tensor<2x3xf32>
+   %1 = "quantfork.qcast"(%0) {volatile} : (tensor<2x3xf32>) -> tensor<2x3x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
+   %2 = "quantfork.dcast"(%1) : (tensor<2x3x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>) -> tensor<2x3xf32>
+   %3 = "quantfork.qcast"(%arg0) {volatile} : (tensor<1x2xf32>) -> tensor<1x2x!quant.uniform<i8:f32, 6.000000e-03:-128>>
+   %4 = "quantfork.dcast"(%3) : (tensor<1x2x!quant.uniform<i8:f32, 6.000000e-03:-128>>) -> tensor<1x2xf32>
+// expected-error @+2 {{Failed to find a valid entry function}}
+// expected-error @+1 {{'tf.XlaCallModule' op operand #0 must be variadic of tensor of tf.dtype values}}
+   %5 = "tf.XlaCallModule"(%4, %2) {Sout = [#tf_type.shape<1x3>], _entry_function = @composite_dot_general_fn, _original_entry_function = "composite_dot_general_fn", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<1x2xf32>, tensor<2x3xf32>) -> tensor<1x3xf32>
+   %6 = "quantfork.qcast"(%5) {volatile} : (tensor<1x3xf32>) -> tensor<1x3x!quant.uniform<i8:f32, 1.000000e-03:-3>>
+   %7 = "quantfork.dcast"(%6) : (tensor<1x3x!quant.uniform<i8:f32, 1.000000e-03:-3>>) -> tensor<1x3xf32>
+   return %7 : tensor<1x3xf32>
+ }
+}
