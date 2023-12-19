@@ -130,7 +130,7 @@ class AddDumpTensorOp : public OpRewritePattern<TF::PartitionedCallOp> {
     if (!call_op->hasAttr(kQuantTraitAttrName)) {
       return failure();
     }
-    if (!f_attr.getValue().startswith(kCompositeFuncPrefix)) {
+    if (!f_attr.getValue().starts_with(kCompositeFuncPrefix)) {
       return failure();
     }
 

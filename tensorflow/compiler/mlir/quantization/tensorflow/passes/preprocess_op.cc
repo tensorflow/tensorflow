@@ -197,7 +197,7 @@ class PreprocessConstantOp : public OpRewritePattern<TF::PartitionedCallOp> {
     StringRef function_name = f_attr.getValue();
     // TODO(b/228928859): Improve the getter function to match attributes rather
     // than function name.
-    if (!function_name.startswith("composite_")) {
+    if (!function_name.starts_with("composite_")) {
       return failure();
     }
 
