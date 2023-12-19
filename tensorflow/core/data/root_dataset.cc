@@ -207,6 +207,12 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
       }
     }
     IteratorContext iter_ctx(CreateParams(ctx));
+    if (model_) {
+      auto factory = [&iter_ctx, this](model::Node::Args args) {
+        return CreateNode(&iter_ctx, std::move(args));
+      };
+      model_->AddNode(std::move(factory), prefix(), nullptr, &node_);
+    }
     TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(&iter_ctx, this,
                                                        prefix(), &input_impl_));
     ctx->MergeCheckpoint(iter_ctx.checkpoint());
@@ -273,13 +279,6 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
                         static_cast<long long>(memory_info.total / 1.0e6),
                         static_cast<double>(100 * memory_usage) /
                             static_cast<double>(memory_info.total))));
-    if (model_node() != nullptr) {
-      traceme_metadata.push_back(std::make_pair(
-          kMaxBufferBytes,
-          strings::Printf(
-              "%lld", static_cast<long long>(
-                          model_node()->TotalMaximumBufferedBytes() / 1.0e6))));
-    }
     const auto io_statistics = tsl::port::GetIOStatistics();
     if (io_statistics.roundtrip_latency_usec.count > 0) {
       traceme_metadata.push_back(std::make_pair(

@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
-#include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/service/computation_placer.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -222,11 +221,9 @@ IfrtServingExecutable::ConvertTensorToArray(
                                                     device);
   }
 
-  auto ifrt_sharding = xla::ifrt::HloSharding::Create(
-      device_list, xla::ifrt::MemoryKind(), hlo_sharding);
-
-  return MakeAssembledArrayFromHostBuffer(
-      *ifrt_client_, tensor, std::move(ifrt_sharding), GetThreadPoolDevice());
+  return MakeAssembledArrayFromHostBuffer(*ifrt_client_, tensor,
+                                          std::move(hlo_sharding), device_list,
+                                          GetThreadPoolDevice());
 }
 
 absl::StatusOr<IfrtServingExecutable::CachedExecutableBundle>

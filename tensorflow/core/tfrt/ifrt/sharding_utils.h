@@ -16,13 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_IFRT_SHARDING_UTILS_H_
 #define TENSORFLOW_CORE_TFRT_IFRT_SHARDING_UTILS_H_
 
-#include <memory>
 
 #include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
-#include "xla/python/ifrt/sharding.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tsl/concurrency/ref_count.h"
@@ -34,7 +33,8 @@ namespace ifrt_serving {
 // It currently supports even sharding, replication and partial replication.
 StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeAssembledArrayFromHostBuffer(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
-    std::shared_ptr<xla::ifrt::Sharding> sharding,
+    const xla::HloSharding& hlo_sharding,
+    const xla::ifrt::DeviceList& device_list,
     const Eigen::ThreadPoolDevice& thread_pool_device);
 }  // namespace ifrt_serving
 }  // namespace tensorflow
