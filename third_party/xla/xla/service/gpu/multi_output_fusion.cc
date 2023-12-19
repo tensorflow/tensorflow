@@ -271,14 +271,10 @@ bool IsSiblingFusionCandidate(const HloInstruction* instr) {
   // Check if the users of multioutput fusion is not a get-tuple-element.
   // If this is the case, we bail out because the transformation assumes
   // the users are get-tuple-element.
-  if (instr->IsMultiOutputFusion()) {
-    for (HloInstruction* user : instr->users()) {
-      if (user->opcode() != HloOpcode::kGetTupleElement) {
-        return false;
-      }
-    }
-  }
-  return true;
+  return (!instr->IsMultiOutputFusion() ||
+          absl::c_all_of(instr->users(), [&](const HloInstruction* user) {
+            return user->opcode() == HloOpcode::kGetTupleElement;
+          }));
 }
 
 FusionDecision CanFuseSiblings(const HloInstruction& sibling_consumer_1,
