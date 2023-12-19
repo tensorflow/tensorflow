@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstddef>
+#include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
@@ -40,7 +41,8 @@ AutoShardingSolverResult Solve(
   return CallSolver(hlo_module, hlo_live_range, liveness_node_set, strategy_map,
                     strategy_groups, cost_graph, alias_set, /*s_hint*/ {},
                     /*compute_iis*/ true, option.solver_timeout_in_seconds,
-                    option, sharding_propagation_solution);
+                    option, /*max_cost*/ std::nullopt,
+                    sharding_propagation_solution);
 }
 
 void PopulateTemporalValues(const CostGraph& cost_graph,

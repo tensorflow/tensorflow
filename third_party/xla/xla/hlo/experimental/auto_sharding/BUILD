@@ -329,6 +329,7 @@ xla_cc_test(
         ":auto_sharding_solver",
         ":auto_sharding_strategy",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
     ],
 )
