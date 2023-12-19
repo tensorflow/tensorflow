@@ -19,9 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "absl/container/flat_hash_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/hlo_parser.h"
@@ -34,7 +32,14 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-class CommandBufferSchedulingTest : public HloTestBase {};
+class CommandBufferSchedulingTest : public HloTestBase {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    auto debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+    return debug_options;
+  }
+};
 
 using CommandBuffer = CommandBufferScheduling::CommandBuffer;
 
