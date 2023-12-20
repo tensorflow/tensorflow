@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/compile_options.pb.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -2216,8 +2217,7 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
 StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
     absl::string_view device_type,
     const absl::flat_hash_map<std::string, PjRtValueType>& create_options,
-    PjRtClient::KeyValueGetCallback kv_get,
-    PjRtClient::KeyValuePutCallback kv_put) {
+    std::shared_ptr<KeyValueStoreInterface> kv_store) {
   TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(device_type));
   if (c_api == nullptr) {
     return InternalError("PJRT C API is nullptr for %s", device_type);
@@ -2234,19 +2234,12 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
   init_args.num_options = c_options.size();
 
   std::unique_ptr<pjrt::PJRT_KeyValueCallbackData> kv_callback_data;
-  if (kv_get == nullptr && kv_put == nullptr) {
-    kv_callback_data = nullptr;
-  } else if (kv_get != nullptr && kv_put != nullptr) {
-    kv_callback_data = pjrt::ConvertToCKeyValueCallbacks(kv_get, kv_put);
+  if (kv_store) {
+    kv_callback_data = pjrt::ConvertToCKeyValueCallbacks(kv_store);
     init_args.kv_get_callback = kv_callback_data->c_kv_get;
     init_args.kv_get_user_arg = &kv_callback_data->kv_get_c_func;
     init_args.kv_put_callback = kv_callback_data->c_kv_put;
     init_args.kv_put_user_arg = &kv_callback_data->kv_put_c_func;
-  } else {
-    return InvalidArgument(
-        "Only one of KeyValueGetCallback and KeyValuePutCallback is set in "
-        "GetCApiClient for %s",
-        device_type);
   }
 
   RETURN_STATUS_IF_PJRT_ERROR(c_api->PJRT_Client_Create(&init_args), c_api);

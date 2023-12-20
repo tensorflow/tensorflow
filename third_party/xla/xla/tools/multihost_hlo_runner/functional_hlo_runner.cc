@@ -265,28 +265,11 @@ StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateGpuClient(
 
   TF_RET_CHECK(distributed_client != nullptr);
 
-  // Use the plugin name as key prefix.
-  static constexpr absl::string_view kKeyPrefix = "gpu:";
-
-  xla::PjRtClient::KeyValueGetCallback kv_get =
-      [distributed_client](
-          std::string_view k,
-          absl::Duration timeout) -> xla::StatusOr<std::string> {
-    return distributed_client->BlockingKeyValueGet(absl::StrCat(kKeyPrefix, k),
-                                                   timeout);
-  };
-
-  xla::PjRtClient::KeyValuePutCallback kv_put =
-      [distributed_client](std::string_view k,
-                           std::string_view v) -> xla::Status {
-    return distributed_client->KeyValueSet(absl::StrCat(kKeyPrefix, k), v);
-  };
-
   GpuClientOptions options;
   options.node_id = node_id;
   options.num_nodes = num_nodes;
-  options.kv_get = kv_get;
-  options.kv_put = kv_put;
+  options.kv_store =
+      GetDistributedKeyValueStore(distributed_client, /*key_prefix=*/"gpu:");
   return GetStreamExecutorGpuClient(options);
 }
 

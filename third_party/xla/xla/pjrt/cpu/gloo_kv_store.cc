@@ -16,32 +16,34 @@ limitations under the License.
 #include "xla/pjrt/cpu/gloo_kv_store.h"
 
 #include <chrono>  // NOLINT
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "third_party/gloo/gloo/rendezvous/store.h"
-#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/status_casters.h"
 
 namespace xla::cpu {
 
-GlooKeyValueStore::GlooKeyValueStore(PjRtClient::KeyValueGetCallback kv_get,
-                                     PjRtClient::KeyValuePutCallback kv_put)
-    : kv_get_(kv_get), kv_put_(kv_put) {}
+GlooKeyValueStore::GlooKeyValueStore(
+    std::shared_ptr<KeyValueStoreInterface> kv_store)
+    : kv_store_(std::move(kv_store)) {}
 
 GlooKeyValueStore::~GlooKeyValueStore() = default;
 
 void GlooKeyValueStore::set(const std::string& key,
                             const std::vector<char>& data) {
-  ThrowIfError(kv_put_(key, std::string_view(data.data(), data.size())));
+  ThrowIfError(kv_store_->Set(key, std::string_view(data.data(), data.size())));
 }
 
 std::vector<char> GlooKeyValueStore::get(const std::string& key) {
-  std::string result = ValueOrThrow(kv_get_(key, kv_get_timeout_));
+  std::string result = ValueOrThrow(kv_store_->Get(key, kv_get_timeout_));
   std::vector<char> data(result.begin(), result.end());
   return data;
 }
@@ -59,7 +61,7 @@ void GlooKeyValueStore::wait(const std::vector<std::string>& keys,
     if (now >= deadline) {
       throw std::runtime_error("Deadline exceeded in wait()");
     }
-    ThrowIfError(kv_get_(key, deadline - now).status());
+    ThrowIfError(kv_store_->Get(key, deadline - now).status());
   }
 }
 

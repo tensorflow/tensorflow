@@ -28,13 +28,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/utils.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/statusor.h"
@@ -527,46 +529,17 @@ TEST(GpuTopology, ToProto) {
   EXPECT_THAT(msg.device_ids(), ElementsAre(3, 2, 1));
 }
 
-TEST(StreamExecutorGpuClientTest, DistributeInit) {
-  absl::flat_hash_map<std::string, std::string> kv_store;
-  absl::Mutex mu;
-  PjRtClient::KeyValueGetCallback kv_get =
-      [&kv_store, &mu](std::string_view k,
-                       absl::Duration timeout) -> xla::StatusOr<std::string> {
-    absl::Duration wait_interval = absl::Milliseconds(10);
-    int num_retry = timeout / wait_interval;
-    for (int i = 0; i < num_retry; i++) {
-      {
-        absl::MutexLock lock(&mu);
-        auto iter = kv_store.find(k);
-        if (iter != kv_store.end()) {
-          return iter->second;
-        }
-      }
-      absl::SleepFor(wait_interval);
-    }
-    return absl::NotFoundError(
-        absl::StrCat(k, " is not found in the kv store."));
-  };
-  PjRtClient::KeyValuePutCallback kv_put =
-      [&kv_store, &mu](std::string_view k, std::string_view v) -> xla::Status {
-    {
-      absl::MutexLock lock(&mu);
-      kv_store[k] = v;
-    }
-    return tsl::OkStatus();
-  };
-
+TEST(StreamExecutorGpuClientTest, DistributedInit) {
+  auto kv_store = std::make_shared<InMemoryKeyValueStore>();
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "DistributeInit", 4);
 
   int num_nodes = 2;
   for (int i = 0; i < num_nodes; i++) {
-    thread_pool.Schedule([&, i] {
+    thread_pool.Schedule([kv_store, i, num_nodes] {
       GpuClientOptions options;
       options.node_id = i;
       options.num_nodes = num_nodes;
-      options.kv_get = kv_get;
-      options.kv_put = kv_put;
+      options.kv_store = kv_store;
       TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
       EXPECT_TRUE(client->platform_name() == "cuda" ||
                   client->platform_name() == "rocm");

@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/time/time.h"
 #include "grpcpp/channel.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/statusor.h"
 #include "xla/types.h"
 #include "tsl/platform/env.h"
@@ -148,6 +149,9 @@ class DistributedRuntimeClient {
 std::unique_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(
     std::shared_ptr<::grpc::Channel> channel,
     const DistributedRuntimeClient::Options& options);
+
+std::shared_ptr<KeyValueStoreInterface> GetDistributedKeyValueStore(
+    std::shared_ptr<DistributedRuntimeClient> client, std::string key_prefix);
 
 }  // namespace xla
 

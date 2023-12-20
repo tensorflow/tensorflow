@@ -17,19 +17,19 @@ limitations under the License.
 #define XLA_PJRT_CPU_GLOO_KV_STORE_H_
 
 #include <chrono>  // NOLINT
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/time/time.h"
 #include "third_party/gloo/gloo/rendezvous/store.h"
-#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 
 namespace xla::cpu {
 
 class GlooKeyValueStore : public ::gloo::rendezvous::Store {
  public:
-  GlooKeyValueStore(PjRtClient::KeyValueGetCallback kv_get,
-                    PjRtClient::KeyValuePutCallback kv_put);
+  explicit GlooKeyValueStore(std::shared_ptr<KeyValueStoreInterface> kv_store);
   ~GlooKeyValueStore() override;
 
   void set(const std::string& key, const std::vector<char>& data) override;
@@ -42,8 +42,7 @@ class GlooKeyValueStore : public ::gloo::rendezvous::Store {
             const std::chrono::milliseconds& timeout) override;
 
  private:
-  PjRtClient::KeyValueGetCallback kv_get_;
-  PjRtClient::KeyValuePutCallback kv_put_;
+  std::shared_ptr<KeyValueStoreInterface> kv_store_;
 
   absl::Duration kv_get_timeout_ = absl::Minutes(1);
 };

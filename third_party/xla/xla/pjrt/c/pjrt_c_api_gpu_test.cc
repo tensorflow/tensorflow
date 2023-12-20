@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_test.h"
 #include "xla/pjrt/c/pjrt_c_api_test_base.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_future.h"
@@ -155,37 +156,6 @@ TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
       xla::LiteralUtil::CreateR1<float>(float_data), *literal));
 }
 
-std::unique_ptr<::pjrt::PJRT_KeyValueCallbackData> CreateTestCKVCallback(
-    absl::flat_hash_map<std::string, std::string>* kv_store, absl::Mutex& mu) {
-  xla::PjRtClient::KeyValueGetCallback kv_get =
-      [kv_store, &mu](std::string_view k,
-                      absl::Duration timeout) -> xla::StatusOr<std::string> {
-    absl::Duration wait_interval = absl::Milliseconds(10);
-    int num_retry = timeout / wait_interval;
-    for (int i = 0; i < num_retry; i++) {
-      {
-        absl::MutexLock lock(&mu);
-        auto iter = kv_store->find(k);
-        if (iter != kv_store->end()) {
-          return iter->second;
-        }
-      }
-      absl::SleepFor(wait_interval);
-    }
-    return absl::NotFoundError(
-        absl::StrCat(k, " is not found in the kv store."));
-  };
-  xla::PjRtClient::KeyValuePutCallback kv_put =
-      [kv_store, &mu](std::string_view k, std::string_view v) -> xla::Status {
-    {
-      absl::MutexLock lock(&mu);
-      kv_store->insert(std::pair<std::string, std::string>(k, v));
-    }
-    return tsl::OkStatus();
-  };
-  return ::pjrt::ConvertToCKeyValueCallbacks(kv_get, kv_put);
-}
-
 absl::StatusOr<PJRT_Client_Create_Args> BuildCreateArg(
     ::pjrt::PJRT_KeyValueCallbackData* kv_callback_data,
     std::vector<PJRT_NamedValue>& c_options) {
@@ -204,11 +174,9 @@ absl::StatusOr<PJRT_Client_Create_Args> BuildCreateArg(
 
 TEST(PjrtCApiGpuKVStoreTest, CreateClientWithKVCallback) {
   auto api = GetPjrtApi();
-  auto kv_store_ptr =
-      std::make_shared<absl::flat_hash_map<std::string, std::string>>();
-  absl::Mutex mu;
+  auto kv_store = std::make_shared<xla::InMemoryKeyValueStore>();
   std::shared_ptr<::pjrt::PJRT_KeyValueCallbackData> kv_callback_data =
-      CreateTestCKVCallback(kv_store_ptr.get(), mu);
+      ::pjrt::ConvertToCKeyValueCallbacks(kv_store);
 
   int num_nodes = 2;
   std::vector<std::thread> threads;
@@ -216,7 +184,7 @@ TEST(PjrtCApiGpuKVStoreTest, CreateClientWithKVCallback) {
   for (int i = 0; i < num_nodes; i++) {
     threads.emplace_back([api, i, num_nodes,
                           kv_callback_data = kv_callback_data,
-                          kv_store_ptr = kv_store_ptr] {
+                          kv_store = kv_store] {
       absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
           {"num_nodes", static_cast<int64_t>(num_nodes)},
           {"node_id", static_cast<int64_t>(i)}};

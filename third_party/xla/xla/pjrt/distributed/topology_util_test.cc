@@ -19,13 +19,9 @@ limitations under the License.
 #include <string_view>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/status/status.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/test.h"
@@ -64,26 +60,7 @@ TEST(TopologyTest, ExchangeTopology) {
   DeviceProto* d3 = locals[1].add_devices();
   d3->set_local_device_ordinal(1);
 
-  absl::Mutex mu;
-  absl::flat_hash_map<std::string, std::string> kv;
-
-  auto kv_get = [&](std::string_view key,
-                    absl::Duration timeout) -> xla::StatusOr<std::string> {
-    absl::MutexLock lock(&mu);
-    auto ready = [&]() { return kv.contains(key); };
-    if (mu.AwaitWithTimeout(absl::Condition(&ready), timeout)) {
-      return kv[key];
-    }
-    return absl::NotFoundError("key not found");
-  };
-
-  auto kv_put = [&](std::string_view key,
-                    std::string_view value) -> xla::Status {
-    absl::MutexLock lock(&mu);
-    kv[key] = value;
-    return absl::OkStatus();
-  };
-
+  InMemoryKeyValueStore kv_store;
   std::vector<GlobalTopologyProto> globals(num_nodes);
   {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "TestPool",
@@ -94,7 +71,7 @@ TEST(TopologyTest, ExchangeTopology) {
             /*platform=*/"cuda", /*node_id=*/i, num_nodes,
             /*get_local_topology_timeout=*/
             absl::Seconds(10), /*get_global_topology_timeout=*/
-            absl::Seconds(10), kv_get, kv_put, locals[i], &globals[i]));
+            absl::Seconds(10), &kv_store, locals[i], &globals[i]));
       });
     }
   }

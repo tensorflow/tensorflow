@@ -39,8 +39,11 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/client/local_client.h"
 #include "xla/client/xla_computation.h"
+#include "xla/pjrt/distributed/in_memory_key_value_store.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/topology_util.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -766,8 +769,7 @@ Status BuildDistributedDevices(
     int node_id, int num_nodes,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>* devices,
     gpu::GpuExecutableRunOptions* gpu_executable_run_options,
-    const PjRtClient::KeyValueGetCallback& kv_get,
-    const PjRtClient::KeyValuePutCallback& kv_put,
+    std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
     absl::Duration get_local_topology_timeout = absl::Minutes(2),
     absl::Duration get_global_topology_timeout = absl::Minutes(5)) {
   LocalTopologyProto local_topology;
@@ -793,10 +795,18 @@ Status BuildDistributedDevices(
   }
 
   GlobalTopologyProto global_topology;
-  TF_RETURN_IF_ERROR(ExchangeTopologies(
-      platform_name, node_id, num_nodes, get_local_topology_timeout,
-      get_global_topology_timeout, kv_get, kv_put, local_topology,
-      &global_topology));
+  if (enable_mock_nccl) {
+    std::vector<LocalTopologyProto> local_topologies(num_nodes, local_topology);
+    for (int i = 0; i < num_nodes; ++i) {
+      local_topologies[i].set_node_id(i);
+    }
+    global_topology = BuildGlobalTopology(absl::MakeSpan(local_topologies));
+  } else {
+    TF_RETURN_IF_ERROR(ExchangeTopologies(
+        platform_name, node_id, num_nodes, get_local_topology_timeout,
+        get_global_topology_timeout, kv_store.get(), local_topology,
+        &global_topology));
+  }
 
   std::map<int, GlobalDeviceId> gpu_device_ids;
   absl::flat_hash_map<GlobalDeviceId, int> device_to_node;
@@ -827,8 +837,8 @@ Status BuildDistributedDevices(
       std::move(gpu_device_ids));
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (num_nodes > 1) {
-    auto nccl_id_store =
-        std::make_shared<NcclIdStore>(node_id, device_to_node, kv_get, kv_put);
+    auto nccl_id_store = std::make_shared<NcclIdStore>(node_id, device_to_node,
+                                                       std::move(kv_store));
     gpu_executable_run_options->set_nccl_unique_id_callback(
         [nccl_id_store](const gpu::NcclCliqueKey& key) {
           return nccl_id_store->GetNcclUniqueId(key);
@@ -931,50 +941,15 @@ StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   }
   absl::flat_hash_map<std::string, std::string> device_maps;
   absl::Mutex mu;
-  PjRtClient::KeyValueGetCallback kv_get = options.kv_get;
-  PjRtClient::KeyValuePutCallback kv_put = options.kv_put;
+  std::shared_ptr<KeyValueStoreInterface> kv_store = options.kv_store;
   if (options.enable_mock_nccl) {
-    kv_get = [&device_maps, &mu, &options](
-                 std::string_view k,
-                 absl::Duration timeout) -> xla::StatusOr<std::string> {
-      std::string result;
-      {
-        absl::MutexLock lock(&mu);
-        if (device_maps.contains(k)) {
-          result = device_maps[k];
-        } else {
-          int device_id;
-          std::vector<std::string> tokens = absl::StrSplit(k, ':');
-          if (tokens.size() != 2 || !absl::SimpleAtoi(tokens[1], &device_id)) {
-            device_id = options.num_nodes - 1;
-          }
-          // Return fake local topology with device_id info back.
-          xla::LocalTopologyProto local;
-          local.set_boot_id("fake_boot_id");
-          local.set_node_id(device_id);
-          xla::DeviceProto* device = local.add_devices();
-          device->set_global_device_id(device_id);
-          device->set_name("fake_device");
-          device->set_vendor("fake_vendor");
-          result = local.SerializeAsString();
-        }
-      }
-      return result;
-    };
-    kv_put = [&device_maps, &mu](std::string_view k,
-                                 std::string_view v) -> xla::Status {
-      {
-        absl::MutexLock lock(&mu);
-        device_maps[k] = v;
-      }
-      return xla::OkStatus();
-    };
+    kv_store = std::make_shared<InMemoryKeyValueStore>();
   }
-  TF_RET_CHECK(options.num_nodes == 1 || kv_get != nullptr);
-  TF_RET_CHECK(options.num_nodes == 1 || kv_put != nullptr);
+  TF_RET_CHECK(options.num_nodes == 1 || kv_store != nullptr);
   TF_RETURN_IF_ERROR(BuildDistributedDevices(
       pjrt_platform_name, std::move(local_device_states), options.node_id,
-      options.num_nodes, &devices, gpu_run_options.get(), kv_get, kv_put));
+      options.num_nodes, &devices, gpu_run_options.get(), kv_store,
+      options.enable_mock_nccl));
 
   return std::unique_ptr<PjRtClient>(std::make_unique<StreamExecutorGpuClient>(
       pjrt_platform_name, xla_client, std::move(devices), options.node_id,

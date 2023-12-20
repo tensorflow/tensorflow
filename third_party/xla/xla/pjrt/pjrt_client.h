@@ -490,21 +490,6 @@ struct PjRtPluginAttributes {
 // will eventually be able to make progress.
 class PjRtClient {
  public:
-  // In the multi-node case, the caller of PjRtClient can provide a key-value
-  // store accessible across nodes. The caller can provide the two callbacks
-  // below to access the key-value store. There are a few requirements:
-  // (1) KeyValueGetCallback and KeyValuePutCallback must be thread-safe.
-  // (2) The caller that provides the two callbacks is responsible for avoiding
-  // key collisions between different users of key-value store (i.e. between
-  // different plugins, but not between different GPU plugin nodes).
-  // (3) KeyValueGetCallback is blocking.
-  // Subclasses of PjRtClient can optionally take these callbacks in their
-  // constructors.
-  using KeyValueGetCallback = std::function<xla::StatusOr<std::string>(
-      std::string_view key, absl::Duration timeout)>;
-  using KeyValuePutCallback =
-      std::function<xla::Status(std::string_view key, std::string_view value)>;
-
   PjRtClient() = default;
   explicit PjRtClient(std::unique_ptr<PjRtHostMemoryForDeviceManager>
                           host_memory_for_device_manager)
