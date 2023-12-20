@@ -51,8 +51,9 @@ constexpr StringRef kUsesShapePolymorphismAttr = "jax.uses_shape_polymorphism";
 
 // Default version number for native serialization.
 constexpr int64_t kDefaultVersion = 9;
-// Default platform for XlaCallModuleOp.
+// Platforms for XlaCallModuleOp.
 constexpr StringRef kPlatformCpu = "CPU";
+constexpr StringRef kPlatformTpu = "TPU";
 
 class ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass
     : public impl::
@@ -176,8 +177,9 @@ void CreateXlaCallModuleOp(ValueRange inputs, ValueRange outputs,
         tf_type::ShapeAttr::get(ctx, result_type.cast<ShapedType>()));
   }
   auto empty_array_attr = ArrayAttr::get(ctx, {});
-  // TODO - b/310291615: Support platforms = ["TPU"].
-  auto platforms = ArrayAttr::get(ctx, {StringAttr::get(ctx, kPlatformCpu)});
+  // TODO: b/310291615 - find a better way for platform support.
+  auto platforms = ArrayAttr::get(ctx, {StringAttr::get(ctx, kPlatformCpu),
+                                        StringAttr::get(ctx, kPlatformTpu)});
 
   auto xla_call_module_op = builder.create<TF::XlaCallModuleOp>(
       module_op.getLoc(), /*output=*/result_types,
@@ -216,6 +218,11 @@ void ReplaceStablehloOpsWithXlaCallModuleOp(
   // Identify arg types & arg locs.
   SmallVector<Type> arg_types;
   SmallVector<Location> arg_locs;
+
+  // Add an argument for platform_index. This allows for multiple platforms.
+  // TODO: b/310291615 - find a better way for platform support.
+  arg_types.push_back(RankedTensorType::get({}, builder.getI32Type()));
+  arg_locs.push_back(module_op.getLoc());
   for (const Value input_value : inputs) {
     arg_types.push_back(input_value.getType());
     arg_locs.push_back(input_value.getLoc());
@@ -240,8 +247,9 @@ void ReplaceStablehloOpsWithXlaCallModuleOp(
                       arg_types, arg_locs);
 
   IRMapping mapper;
-  for (auto [input, stablehlo_func_arg] :
-       llvm::zip_equal(inputs, stablehlo_func_op.getArguments())) {
+  // stablehlo_func_op has 1 extra arg for platform index.
+  for (auto [input, stablehlo_func_arg] : llvm::zip_equal(
+           inputs, stablehlo_func_op.getArguments().take_back(inputs.size()))) {
     mapper.map(input, stablehlo_func_arg);
   }
 
