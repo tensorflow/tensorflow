@@ -157,8 +157,8 @@ std::vector<std::string> ParseArgumentsFromTfLiteSettings(
             absl::StrFormat("--num_threads=%d",
                             tflite_settings.xnnpack_settings()->num_threads()));
       }
-      if (tflite_settings.xnnpack_settings() &&
-          tflite_settings.xnnpack_settings()->flags() | TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16) {
+      if (tflite_settings.xnnpack_settings()->flags() ==
+              XNNPackFlags_TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16) {
             args.push_back("--xnnpack_force_fp16=true");
       }
       return args;
