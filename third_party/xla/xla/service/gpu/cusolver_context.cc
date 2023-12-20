@@ -19,10 +19,12 @@ limitations under the License.
 #include <complex>
 #include <cstdint>
 
+#if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuComplex.h"
 #include "third_party/gpus/cuda/include/cusolverDn.h"
 #include "third_party/gpus/cuda/include/cusolver_common.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
+#endif
 #include "xla/primitive_util.h"
 #include "xla/status.h"
 #include "xla/statusor.h"

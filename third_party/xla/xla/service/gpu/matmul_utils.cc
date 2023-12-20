@@ -429,6 +429,8 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   std::optional<int64_t> algorithm;
   if (config.algorithm_case() != GemmBackendConfig::ALGORITHM_NOT_SET) {
     algorithm = config.selected_algorithm();
+  } else {
+    algorithm = se::blas::kDefaultAlgorithm;
   }
 
   const Shape& lhs_shape = gemm->operand(0)->shape();
@@ -441,12 +443,17 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   bool grad_x = (attributes["grad_x"] == "true");
   bool grad_y = (attributes["grad_y"] == "true");
 
-  return GemmConfig::For(
-      lhs_shape, dot_dims.lhs_batch_dimensions(),
-      dot_dims.lhs_contracting_dimensions(), rhs_shape,
-      dot_dims.rhs_batch_dimensions(), dot_dims.rhs_contracting_dimensions(),
-      output_shape, config.alpha_real(), config.alpha_imag(), config.beta(),
-      algorithm, se::blas::kDefaultComputePrecision, grad_x, grad_y);
+  int64_t precision = se::blas::kDefaultComputePrecision;
+  for (auto operand_precision : config.precision_config().operand_precision()) {
+    precision = std::max(precision, static_cast<int64_t>(operand_precision));
+  }
+
+  return GemmConfig::For(lhs_shape, dot_dims.lhs_batch_dimensions(),
+                         dot_dims.lhs_contracting_dimensions(), rhs_shape,
+                         dot_dims.rhs_batch_dimensions(),
+                         dot_dims.rhs_contracting_dimensions(), output_shape,
+                         config.alpha_real(), config.alpha_imag(),
+                         config.beta(), algorithm, precision, grad_x, grad_y);
 }
 
 /*static*/ StatusOr<GemmConfig> GemmConfig::For(mlir::lmhlo_gpu::GEMMOp op) {

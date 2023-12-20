@@ -264,6 +264,7 @@ cc_library(
     deps = [
         ":cutlass_gemm_kernel_bf16xbf16_to_bf16",
         ":cutlass_gemm_kernel_bf16xbf16_to_bf16_sm80",
+        ":cutlass_gemm_kernel_bf16xbf16_to_bf16_sm90",
         ":cutlass_gemm_kernel_f32xf32_to_f32",
     ],
 )
@@ -289,6 +290,18 @@ cuda_library(
 cuda_library(
     name = "cutlass_gemm_kernel_bf16xbf16_to_bf16_sm80",
     srcs = if_cuda_is_configured(["cutlass_gemm_kernel_bf16xbf16_to_bf16_sm80.cu.cc"]),
+    copts = ["-mllvm -unroll-threshold=100000"],
+    visibility = ["//visibility:public"],
+    deps = if_cuda_is_configured([
+        ":cutlass_gemm_adaptor",
+        "@cutlass_archive//:cutlass",
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
+)
+
+cuda_library(
+    name = "cutlass_gemm_kernel_bf16xbf16_to_bf16_sm90",
+    srcs = if_cuda_is_configured(["cutlass_gemm_kernel_bf16xbf16_to_bf16_sm90.cu.cc"]),
     copts = ["-mllvm -unroll-threshold=100000"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -178,6 +179,16 @@ absl::Status SnapshotChunkProvider::Restore(
   TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kChunksRead), &chunks_read));
   chunks_read_ = SetFromString(chunks_read);
   return UpdateSnapshot();
+}
+
+void SnapshotChunkProvider::Cancel() {
+  absl::MutexLock l(&mu_);
+  if (snapshot_state_.snapshot_is_done || !snapshot_state_.status.ok()) {
+    return;
+  }
+  snapshot_state_.status = absl::CancelledError(
+      absl::StrCat("Cancelled loading tf.data snapshot at ", snapshot_path_));
+  VLOG(2) << snapshot_state_.status;
 }
 
 }  // namespace data

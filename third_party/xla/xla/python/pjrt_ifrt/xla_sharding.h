@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 
 namespace xla {
@@ -58,6 +59,9 @@ class HloSharding final
 
   StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const override;
+  StatusOr<
+      std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+  Disassemble(const DynamicShape& dynamic_shape) const override;
 
   StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape) const override;

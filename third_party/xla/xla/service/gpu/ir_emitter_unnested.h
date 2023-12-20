@@ -208,13 +208,13 @@ class IrEmitterUnnested : public IrEmitter {
 
   template <typename NcclThunkType, typename OpT>
   Status EmitNcclThunk(mlir::Operation* op);
-  template <typename OpT>
-  Status EmitNcclAsyncDone(Thunk::Kind kind, mlir::Operation* op);
+
+  Status EmitNcclAsyncDone(Thunk::Kind kind, mlir::Operation* op,
+                           mlir::Value token);
 
   template <typename ThunkType, typename OpT>
   Status EmitReplicaOrPartitionId(mlir::Operation* op);
 
-  template <typename NcclThunkType, typename OpT>
   Status EmitCollectivePermute(mlir::Operation* op);
 
   Status EmitOp(

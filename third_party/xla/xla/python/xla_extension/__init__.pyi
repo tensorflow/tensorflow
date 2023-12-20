@@ -867,6 +867,7 @@ def pjit(
     static_argnames: Sequence[str],
     donate_argnums: Sequence[int],
     pytree_registry: pytree.PyTreeRegistry,
+    shard_arg_fallback: Callable,
     cache: Optional[PjitFunctionCache] = ...,
 ) -> PjitFunction: ...
 

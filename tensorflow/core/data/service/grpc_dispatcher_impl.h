@@ -32,9 +32,10 @@ class GrpcDispatcherImpl : public DispatcherService::Service {
   // with `server_builder`.
   explicit GrpcDispatcherImpl(const experimental::DispatcherConfig& config,
                               ::grpc::ServerBuilder& server_builder);
-  ~GrpcDispatcherImpl() override {}
+  ~GrpcDispatcherImpl() override { Stop(); }
 
   Status Start();
+  void Stop();
 
   size_t NumActiveIterations();
 

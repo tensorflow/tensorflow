@@ -52,10 +52,7 @@ class TestSnapshot:
 
 class DistributedSaveLoadTest(
     data_service_test_base.TestBase, parameterized.TestCase):
-  """Tests for distributed save/load with the new load algorithm.
-
-  TODO(b/297930782): Add fault tolerance tests.
-  """
+  """Tests for distributed save/load with the new load algorithm."""
 
   @combinations.generate(
       combinations.times(

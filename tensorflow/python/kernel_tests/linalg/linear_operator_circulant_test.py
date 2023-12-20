@@ -286,8 +286,7 @@ class LinearOperatorCirculantTestSelfAdjointOperator(
   def optional_tests():
     """List of optional test names to run."""
     return [
-        # TODO: b/310008894 - Re-enable this optional test.
-        # "operator_matmul_with_same_type",
+        "operator_matmul_with_same_type",
         "operator_solve_with_same_type",
     ]
 
@@ -372,8 +371,7 @@ class LinearOperatorCirculantTestHermitianSpectrum(
   def optional_tests():
     """List of optional test names to run."""
     return [
-        # TODO: b/310008894 - Re-enable this optional test.
-        # "operator_matmul_with_same_type",
+        "operator_matmul_with_same_type",
         "operator_solve_with_same_type",
     ]
 
@@ -447,8 +445,7 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
   def optional_tests():
     """List of optional test names to run."""
     return [
-        # TODO: b/310008894 - Re-enable this optional test.
-        # "operator_matmul_with_same_type",
+        "operator_matmul_with_same_type",
         "operator_solve_with_same_type",
     ]
 
@@ -652,8 +649,7 @@ class LinearOperatorCirculant2DBaseTest(object):
   def optional_tests():
     """List of optional test names to run."""
     return [
-        # TODO: b/310008894 - Re-enable this optional test.
-        # "operator_matmul_with_same_type",
+        "operator_matmul_with_same_type",
         "operator_solve_with_same_type",
     ]
 

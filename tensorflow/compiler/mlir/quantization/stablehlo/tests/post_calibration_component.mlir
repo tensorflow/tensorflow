@@ -16,7 +16,7 @@ func.func private @composite_dot_general_fn_1(%arg0: tensor<1x1024xf32>, %arg1: 
 }
 // CHECK-LABEL: func.func @main
 // CHECK-SAME: (%[[ARG_0:.+]]: tensor<1x1024xf32>) -> tensor<1x3xf32>
-// CHECK: %[[XLA_CALL_MODULE_0:.+]] = "tf.XlaCallModule"(%[[ARG_0]]) <{Sout = [#tf_type.shape<1x3>], {{.*}}, module = "", platforms = ["CPU"], version = 9 : i64}> {_entry_function = @main_0, {{.*}}} : (tensor<1x1024xf32>) -> tensor<1x3xf32>
+// CHECK: %[[XLA_CALL_MODULE_0:.+]] = "tf.XlaCallModule"(%[[ARG_0]]) <{Sout = [#tf_type.shape<1x3>], {{.*}}, module = "", platforms = ["CPU", "TPU"], version = 9 : i64}> {_entry_function = @main_0, {{.*}}} : (tensor<1x1024xf32>) -> tensor<1x3xf32>
 // CHECK-NEXT: return %[[XLA_CALL_MODULE_0]] : tensor<1x3xf32>
 
 // CHECK: func.func private @main_0(%[[ARG_1:.+]]: tensor<1x1024xf32>) -> tensor<1x3xf32>
@@ -44,7 +44,7 @@ func.func private @composite_dot_general_fn_1(%arg0: tensor<1x1024xf32>, %arg1: 
 }
 // CHECK-LABEL: func.func @main
 // CHECK-SAME: (%[[ARG_0:.+]]: tensor<1x1024xf32>) -> tensor<1x3xf32>
-// CHECK: %[[XLA_CALL_MODULE_0:.+]] = "tf.XlaCallModule"() <{Sout = [#tf_type.shape<1024x3>], {{.*}}, module = "", platforms = ["CPU"], version = 9 : i64}>
+// CHECK: %[[XLA_CALL_MODULE_0:.+]] = "tf.XlaCallModule"() <{Sout = [#tf_type.shape<1024x3>], {{.*}}, module = "", platforms = ["CPU", "TPU"], version = 9 : i64}>
 // CHECK-SAME: {_entry_function = @main_0, _stablehlo_module_attrs = {jax.uses_shape_polymorphism = true}} : () -> tensor<1024x3xf32>
 // CHECK: %[[XLA_CALL_MODULE_1:.+]] = "tf.XlaCallModule"(%[[ARG_0]], %[[XLA_CALL_MODULE_0]]) <{Sout = [#tf_type.shape<1x3>], {{.*}}, module = "", platforms = [], version = 5 : i64}> {_entry_function = @main_1, _original_entry_function = "composite_dot_general_fn_1", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable", device = ""} : (tensor<1x1024xf32>, tensor<1024x3xf32>) -> tensor<1x3xf32>
 // CHECK: return %[[XLA_CALL_MODULE_1]] : tensor<1x3xf32>

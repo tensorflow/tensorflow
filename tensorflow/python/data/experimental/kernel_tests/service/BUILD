@@ -265,6 +265,24 @@ tf_py_strict_test(
 )
 
 tf_py_strict_test(
+    name = "distributed_save_load_ft_test",
+    size = "medium",
+    srcs = ["distributed_save_load_ft_test.py"],
+    shard_count = 8,
+    deps = [
+        ":test_base",
+        "//tensorflow/python/data/experimental/ops:data_service_ops",
+        "//tensorflow/python/data/experimental/ops:distributed_save_op",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_strict_test(
     name = "distributed_save_ft_test",
     size = "medium",
     srcs = ["distributed_save_ft_test.py"],

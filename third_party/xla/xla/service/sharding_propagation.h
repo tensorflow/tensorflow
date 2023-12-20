@@ -70,7 +70,9 @@ StatusOr<bool> ProcessShardingInstruction(
     absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>*
         shard_group_id_to_shard_as_group = nullptr,
     absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>*
-        shard_group_id_to_shard_like_group = nullptr);
+        shard_group_id_to_shard_like_group = nullptr,
+    const std::vector<bool>*
+        allow_spmd_sharding_propagation_to_parameters_vector = nullptr);
 
 int64_t ComputeNonRootUsers(const HloInstruction* instr);
 

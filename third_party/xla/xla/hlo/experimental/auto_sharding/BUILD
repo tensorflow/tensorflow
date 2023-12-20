@@ -60,6 +60,7 @@ cc_library(
         "//xla/service:hlo_memory_scheduler",
         "//xla/service:hlo_pass",
         "//xla/service:hlo_value",
+        "//xla/service:optimize_input_output_buffer_alias",
         "//xla/service:sharding_propagation",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",

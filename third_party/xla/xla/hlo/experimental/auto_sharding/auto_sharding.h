@@ -194,9 +194,10 @@ AliasMap BuildAliasMap(const HloModule* module);
 AliasSet BuildAliasSet(const HloModule* module,
                        const StrategyMap& strategy_map);
 
-void CheckAliasSetCompatibility(const AliasSet& alias_set,
-                                const StrategyGroups& strategy_groups,
-                                const HloInstructionSequence& sequence);
+Status CheckAliasSetCompatibility(const AliasSet& alias_set,
+                                  const StrategyGroups& strategy_groups,
+                                  const HloInstructionSequence& sequence,
+                                  bool crash_on_error);
 
 void GenerateReduceScatter(
     const HloInstructionSequence& sequence, const AliasMap& alias_map,

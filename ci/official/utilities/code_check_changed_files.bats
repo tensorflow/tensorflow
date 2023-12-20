@@ -73,6 +73,12 @@ setup_file() {
     [[ ! -s $BATS_TEST_TMPDIR/needs_help.txt ]]
 }
 
+@test "API compatibility test passes, ensuring no unexpected changes to the TF API" {
+    bazel $TFCI_BAZEL_BAZELRC_ARGS test $TFCI_BAZEL_COMMON_ARGS //tensorflow/tools/api/tests:api_compatibility_test
+    echo "You have to re-generate the TF API goldens and have the API changes reviewed."
+    echo "Look at the instructions for ':api_compatibility_test -- --update_goldens=True'"
+}
+
 teardown_file() {
     bazel shutdown
 }

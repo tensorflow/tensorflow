@@ -17,6 +17,7 @@ limitations under the License.
 #include <ostream>
 
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 // TODO(b/200579737): using FunctionRegistry is simpler than the OSS trick.
@@ -124,7 +125,7 @@ std::ostream& operator<<(std::ostream& os,
             << options.enable_grappler_function_optimizer
             << ", enable_tfrt_gpu = " << options.enable_tfrt_gpu
             << ", runtime = " << options.runtime
-            << ", model_metadata = " << options.model_metadata.DebugString()
+            << ", model_metadata = " << absl::StrCat(options.model_metadata)
             << ", compile_options = " << options.compile_options << "}";
 }
 

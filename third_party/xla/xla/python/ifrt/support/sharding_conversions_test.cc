@@ -13,24 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/ifrt/support/sharding_param_to_op_sharding.h"
+#include "xla/python/ifrt/support/sharding_conversions.h"
 
 #include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/sharding_test_util.h"
+#include "xla/shape.h"
 #include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
@@ -101,10 +104,11 @@ TEST(ShardingParamToOpShardingTest, ErrorOnDeviceAssignment) {
   ShardingParam sharding_param{/*dim_shards=*/{2, 1, 3},
                                {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
   EXPECT_THAT(ToHloSharding(sharding_param, {6, 5, 4, 3, 2}),
-              StatusIs(tsl::error::OUT_OF_RANGE, "Can't map device 5"));
+              StatusIs(absl::StatusCode::kOutOfRange,
+                       ::testing::HasSubstr("Can't map device 5")));
 }
 
-class ShardingParamToOpShardingEquivalentTest : public test_util::ShardingTest {
+class ShardingConversionsEquivalentTest : public test_util::ShardingTest {
  public:
   void AssertSameTiling(const ShardingParam& sharding_param,
                         const HloSharding& hlo_sharding, const Shape& shape) {
@@ -131,7 +135,7 @@ class ShardingParamToOpShardingEquivalentTest : public test_util::ShardingTest {
   std::shared_ptr<Client> client_;
 };
 
-TEST_P(ShardingParamToOpShardingEquivalentTest, FullySharded) {
+TEST_P(ShardingConversionsEquivalentTest, ShardingParamFullySharded) {
   ShardingParam sharding_param{/*dim_shards=*/{2, 3},
                                {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}};
   TF_ASSERT_OK_AND_ASSIGN(const xla::HloSharding hlo_sharding,
@@ -139,7 +143,7 @@ TEST_P(ShardingParamToOpShardingEquivalentTest, FullySharded) {
   AssertSameTiling(sharding_param, hlo_sharding, Shape({6, 6}));
 }
 
-TEST_P(ShardingParamToOpShardingEquivalentTest, WithPermutation) {
+TEST_P(ShardingConversionsEquivalentTest, ShardingParamWithPermutation) {
   ShardingParam sharding_param{/*dim_shards=*/{2, 3},
                                {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
   TF_ASSERT_OK_AND_ASSIGN(const xla::HloSharding hlo_sharding,
@@ -147,7 +151,7 @@ TEST_P(ShardingParamToOpShardingEquivalentTest, WithPermutation) {
   AssertSameTiling(sharding_param, hlo_sharding, Shape({6, 6}));
 }
 
-TEST_P(ShardingParamToOpShardingEquivalentTest, WithReplication) {
+TEST_P(ShardingConversionsEquivalentTest, ShardingParamWithReplication) {
   ShardingParam sharding_param{/*dim_shards=*/{2, 1},
                                {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}};
   TF_ASSERT_OK_AND_ASSIGN(const xla::HloSharding hlo_sharding,
@@ -155,7 +159,20 @@ TEST_P(ShardingParamToOpShardingEquivalentTest, WithReplication) {
   AssertSameTiling(sharding_param, hlo_sharding, Shape({6, 6}));
 }
 
-INSTANTIATE_TEST_SUITE_P(NumDevices, ShardingParamToOpShardingEquivalentTest,
+TEST_P(ShardingConversionsEquivalentTest, OpShardingReplicated) {
+  OpSharding op_sharding;
+  op_sharding.set_type(OpSharding::REPLICATED);
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_sharding,
+                          xla::HloSharding::FromProto(op_sharding));
+  const xla::Shape xla_shape(PrimitiveType::F16, /*dimensions=*/{4, 6}, {}, {});
+  TF_ASSERT_OK_AND_ASSIGN(auto actual, ToShardingParam(hlo_sharding, xla_shape,
+                                                       /*axis_sizes=*/{2, 3}));
+  ShardingParam expected{/*dim_shards=*/{1, 1},
+                         {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}};
+  EXPECT_EQ(actual, expected);
+}
+
+INSTANTIATE_TEST_SUITE_P(NumDevices, ShardingConversionsEquivalentTest,
                          testing::Values(test_util::ShardingTestParam{
                              .num_devices = 6, .num_addressable_devices = 4}));
 

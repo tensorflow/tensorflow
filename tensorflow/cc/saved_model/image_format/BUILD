@@ -13,6 +13,7 @@ package(
         "//tensorflow/cc/experimental/tfa:__subpackages__",
         "//tensorflow/cc/saved_model:__subpackages__",
         "//tensorflow/tools/tfg_graph_transforms:__subpackages__",
+        "//waymo/onboard/ml/chauffeur_net/utils:__subpackages__",
     ],
     licenses = ["notice"],
 )

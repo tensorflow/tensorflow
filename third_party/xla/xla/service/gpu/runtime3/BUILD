@@ -71,6 +71,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":command_buffer_cmd",
+        ":copy_thunk",
         ":sequential_thunk",
         ":while_thunk",
         "//xla:statusor",
@@ -214,6 +215,20 @@ cc_library(
         "//xla/service/gpu:thunk",
         "//xla/stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
+    name = "copy_thunk",
+    srcs = ["copy_thunk.cc"],
+    hdrs = ["copy_thunk.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:status",
+        "//xla/service:buffer_assignment",
+        "//xla/service/gpu:thunk",
+        "//xla/stream_executor",
+        "@llvm-project//mlir:IR",
     ],
 )
 

@@ -15,15 +15,22 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/export.h"
 
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
+#include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
 
 namespace stablehlo::quantization {
 namespace {
@@ -32,10 +39,12 @@ using ::tensorflow::AssetFileDef;
 using ::tensorflow::GraphDef;
 using ::tensorflow::SaverDef;
 using ::tensorflow::quantization::ExportedModel;
+using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::SizeIs;
 using ::testing::StrEq;
 using ::tsl::protobuf::TextFormat;
+using ::tsl::testing::StatusIs;
 
 TEST(CreateExportedModelTest, CreateExportedModelBasicFieldsSet) {
   GraphDef graph_def{};
@@ -96,6 +105,64 @@ TEST(CreateExportedModelTest, CreateExportedModelWithAddedSaverDef) {
       GraphDef(), /*init_node_name=*/"", /*checkpoint_dir=*/"", saver_def,
       /*function_aliases=*/{}, /*asset_file_defs=*/{});
   EXPECT_THAT(exported_model.saver_def().filename_tensor_name(), "my_file");
+}
+
+TEST(CreateSaverDefTest, CreateValidSaverDef) {
+  // Needs to have a _Arg node with an attribute "tf_saved_model.index_path" =
+  // ["__tf_file_prefix"].
+  GraphDef graph_def;
+  ASSERT_TRUE(TextFormat::ParseFromString(
+      R"pb(node {
+             name: "foo",
+             op: "_Arg",
+             attr {
+               key: "tf_saved_model.index_path",
+               value { list { s: "__tf_file_prefix" } }
+             }
+           })pb",
+      &graph_def));
+
+  // Restore op's name should start with "restore_op" and the save op's name
+  // should start with "tf_quant__save_op".
+  const std::vector<std::string> control_ret_node_names = {
+      "restore_op_0", "tf_quant__save_op_0"};
+
+  TF_ASSERT_OK_AND_ASSIGN(const std::optional<SaverDef> saver_def,
+                          CreateSaverDef(control_ret_node_names, graph_def));
+  ASSERT_NE(saver_def, std::nullopt);
+  EXPECT_THAT(saver_def->version(), SaverDef::V2);
+  EXPECT_THAT(saver_def->restore_op_name(), "restore_op_0");
+  EXPECT_THAT(saver_def->filename_tensor_name(), "foo:0");
+  EXPECT_THAT(saver_def->save_tensor_name(), "tf_quant__save_op_0:0");
+}
+
+TEST(CreateSaverDefTest, ReturnsNulloptIfNoSaverDefRelatedNodesExist) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::optional<SaverDef> saver_def,
+      CreateSaverDef(/*control_ret_node_names=*/{}, GraphDef()));
+  EXPECT_EQ(saver_def, std::nullopt);
+}
+
+TEST(CreateSaverDefTest, ReturnsErrorStatusIfSaverDefNodesPartiallyExist) {
+  // An _Arg node missing the attribute "tf_saved_model.index_path" =
+  // ["__tf_file_prefix"].
+  GraphDef graph_def;
+  ASSERT_TRUE(TextFormat::ParseFromString(
+      R"pb(node { name: "foo", op: "_Arg" })pb", &graph_def));
+
+  // Restore op's name should start with "restore_op" and the save op's name
+  // should start with "tf_quant__save_op".
+  const std::vector<std::string> control_ret_node_names = {
+      "restore_op_0", "tf_quant__save_op_0"};
+
+  const absl::StatusOr<std::optional<SaverDef>> saver_def =
+      CreateSaverDef(control_ret_node_names, graph_def);
+  EXPECT_THAT(
+      saver_def,
+      StatusIs(
+          absl::StatusCode::kInternal,
+          HasSubstr(
+              "should be either all empty strings or all non-empty strings")));
 }
 
 }  // namespace

@@ -1,4 +1,5 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -309,7 +310,7 @@ cc_library(
     deps = [
         ":plugin_coordination_service_agent",
         "//tensorflow/c:kernels_experimental_hdrs",
-        "//tensorflow/c:tf_buffer_internal",
+        "//tensorflow/c:tf_buffer",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/experimental/next_pluggable_device:c_api_hdrs",
@@ -331,6 +332,37 @@ cc_library(
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core/common_runtime/next_pluggable_device:flags",
+    ],
+)
+
+tf_cc_test(
+    name = "c_plugin_coordination_service_agent_test",
+    srcs = ["c_plugin_coordination_service_agent_test.cc"],
+    tags = ["no_windows"],  # TODO(b/317086445): Re-enable windows test.
+    deps = [
+        ":c_plugin_coordination_service_agent",
+        "//tensorflow/c:tf_buffer",
+        "//tensorflow/c:tf_buffer_internal",
+        "//tensorflow/c:tf_tensor",
+        "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/c/experimental/next_pluggable_device:c_api",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/time",
+        "@local_tsl//tsl/distributed_runtime:call_options",
+        "@local_tsl//tsl/distributed_runtime/coordination:coordination_client",
+        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:env_impl",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+        "@local_tsl//tsl/protobuf:coordination_config_proto_cc_impl",
+        "@local_tsl//tsl/protobuf:coordination_service_proto_cc_impl",
     ],
 )
 

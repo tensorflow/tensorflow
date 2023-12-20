@@ -523,104 +523,6 @@ Stream &Stream::ThenConvolve(
   return *this;
 }
 
-Stream &Stream::ThenSeparableConvolve(
-    const dnn::BatchDescriptor &batch_descriptor,
-    const DeviceMemory<float> &input_data,
-    const dnn::FilterDescriptor &filter_descriptor, int depth_multiplier,
-    const DeviceMemory<float> &first_weights,
-    const DeviceMemory<float> &second_weights,
-    const dnn::ConvolutionDescriptor &convolution_descriptor,
-    const dnn::BatchDescriptor &output_descriptor,
-    DeviceMemory<float> *output) {
-  VLOG_CALL(
-      PARAM(batch_descriptor), PARAM(input_data), PARAM(filter_descriptor),
-      PARAM(depth_multiplier), PARAM(first_weights), PARAM(second_weights),
-      PARAM(convolution_descriptor), PARAM(output_descriptor), PARAM(output));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoSeparableConvolve(
-        this, batch_descriptor, input_data, filter_descriptor, depth_multiplier,
-        first_weights, second_weights, convolution_descriptor,
-        output_descriptor, output));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenMatMul(const DeviceMemory<float> &input_data,
-                           const DeviceMemory<float> &weights,
-                           const dnn::BatchDescriptor &input_dimensions,
-                           const dnn::BatchDescriptor &output_dimensions,
-                           DeviceMemory<float> *output_data) {
-  VLOG_CALL(PARAM(input_data), PARAM(weights), PARAM(input_dimensions),
-            PARAM(output_dimensions), PARAM(output_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoMatMul(this, input_data, weights, input_dimensions,
-                             output_dimensions, output_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenMatMulQuantized(
-    const DeviceMemory<float> &input_data, const DeviceMemory<int8_t> &weights,
-    const DeviceMemory<float> &weight_scales,
-    const dnn::BatchDescriptor &input_dimensions,
-    const dnn::BatchDescriptor &output_dimensions,
-    DeviceMemory<float> *output_data) {
-  VLOG_CALL(PARAM(input_data), PARAM(weights), PARAM(weight_scales),
-            PARAM(input_dimensions), PARAM(output_dimensions),
-            PARAM(output_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoMatMulQuantized(this, input_data, weights, weight_scales,
-                                      input_dimensions, output_dimensions,
-                                      output_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenMatMulQuantized(
-    const DeviceMemory<float> &input_data, const DeviceMemory<int16> &weights,
-    const DeviceMemory<float> &weight_scales,
-    const dnn::BatchDescriptor &input_dimensions,
-    const dnn::BatchDescriptor &output_dimensions,
-    DeviceMemory<float> *output_data) {
-  VLOG_CALL(PARAM(input_data), PARAM(weights), PARAM(weight_scales),
-            PARAM(input_dimensions), PARAM(output_dimensions),
-            PARAM(output_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoMatMulQuantized(this, input_data, weights, weight_scales,
-                                      input_dimensions, output_dimensions,
-                                      output_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenBiasAdd(const DeviceMemory<float> &input_data,
-                            const DeviceMemory<float> &biases,
-                            const dnn::BatchDescriptor &dimensions,
-                            DeviceMemory<float> *output_data) {
-  VLOG_CALL(PARAM(input_data), PARAM(biases), PARAM(dimensions),
-            PARAM(output_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(
-        dnn->DoBiasAdd(this, input_data, biases, dimensions, output_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
 Stream &Stream::ThenNormalizeWithDimensions(
     const dnn::NormalizeDescriptor &normalize_descriptor,
     const dnn::BatchDescriptor &dimensions,
@@ -659,31 +561,6 @@ Stream &Stream::ThenNormalizeBackwardWithDimensions(
   return *this;
 }
 
-Stream &Stream::ThenActivate(dnn::ActivationMode activation_mode,
-                             const dnn::BatchDescriptor &dimensions,
-                             const DeviceMemory<float> &input_data,
-                             DeviceMemory<float> *output_data) {
-  return ThenActivateWithOptions(activation_mode, dimensions, input_data,
-                                 output_data, /*options=*/0);
-}
-
-Stream &Stream::ThenActivateWithOptions(dnn::ActivationMode activation_mode,
-                                        const dnn::BatchDescriptor &dimensions,
-                                        const DeviceMemory<float> &input_data,
-                                        DeviceMemory<float> *output_data,
-                                        uint64_t options) {
-  VLOG_CALL(PARAM(activation_mode), PARAM(dimensions), PARAM(input_data),
-            PARAM(output_data), PARAM(options));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoActivate(this, activation_mode, dimensions, input_data,
-                               output_data, options));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
 Stream &Stream::ThenDepthConcatenate(
     absl::Span<const dnn::BatchDescriptor> input_dimensions,
     absl::Span<const DeviceMemory<float> *const> input_data,
@@ -706,107 +583,6 @@ Stream &Stream::ThenDepthConcatenate(
   if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
     CheckError(dnn->DoDepthConcatenate(this, input_dimensions, input_data,
                                        output_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenElementwiseOperate(
-    dnn::ElementwiseOperation operation,
-    absl::Span<const dnn::BatchDescriptor> input_dimensions,
-    absl::Span<const DeviceMemory<float> *const> input_data,
-    const dnn::BatchDescriptor &output_dimensions,
-    DeviceMemory<float> *output_data) {
-  VLOG_CALL(PARAM(operation), PARAM(input_dimensions), PARAM(input_data),
-            PARAM(output_dimensions), PARAM(output_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoElementwiseOperate(this, operation, input_dimensions,
-                                         input_data, output_dimensions,
-                                         output_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenXYPad(const dnn::BatchDescriptor &dimensions,
-                          const DeviceMemory<float> &input_data,
-                          int64_t left_pad, int64_t right_pad, int64_t top_pad,
-                          int64_t bottom_pad,
-                          DeviceMemory<float> *output_data) {
-  VLOG_CALL(PARAM(dimensions), PARAM(input_data), PARAM(left_pad),
-            PARAM(right_pad), PARAM(top_pad), PARAM(bottom_pad),
-            PARAM(output_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoXYPad(this, dimensions, input_data, left_pad, right_pad,
-                            top_pad, bottom_pad, output_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenXYSlice(const dnn::BatchDescriptor &dimensions,
-                            const DeviceMemory<float> &input_data,
-                            int64_t left_trim, int64_t right_trim,
-                            int64_t top_trim, int64_t bottom_trim,
-                            DeviceMemory<float> *output_data) {
-  VLOG_CALL(PARAM(dimensions), PARAM(input_data), PARAM(left_trim),
-            PARAM(right_trim), PARAM(top_trim), PARAM(bottom_trim),
-            PARAM(output_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoXYSlice(this, dimensions, input_data, left_trim,
-                              right_trim, top_trim, bottom_trim, output_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenXYBroadcast(const dnn::BatchDescriptor &dimensions,
-                                const DeviceMemory<float> &input_data,
-                                int64_t replicate_x, int64_t replicate_y,
-                                DeviceMemory<float> *output_data) {
-  VLOG_CALL(PARAM(dimensions), PARAM(input_data), PARAM(replicate_x),
-            PARAM(replicate_y), PARAM(output_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoXYBroadcast(this, dimensions, input_data, replicate_x,
-                                  replicate_y, output_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenMemcpyD2HQuantized(
-    const DeviceMemory<float> &gpu_unquantized_src,
-    dnn::QuantizedActivationMode mode, void *host_dst, uint64_t size) {
-  VLOG_CALL(PARAM(gpu_unquantized_src), PARAM(mode), PARAM(host_dst),
-            PARAM(size));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoMemcpyD2HQuantized(this, gpu_unquantized_src, mode,
-                                         host_dst, size));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenMemcpyH2DQuantized(
-    const void *host_src, uint64_t size, dnn::QuantizedActivationMode mode,
-    DeviceMemory<float> *gpu_unquantized_dst) {
-  VLOG_CALL(PARAM(host_src), PARAM(size), PARAM(mode),
-            PARAM(gpu_unquantized_dst));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoMemcpyH2DQuantized(this, host_src, size, mode,
-                                         gpu_unquantized_dst));
   } else {
     SetErrorAndLogNoDnnSupport();
   }
@@ -1393,19 +1169,6 @@ Stream &Stream::ThenBlasGemmBatchedWithScratch(
   return impl(this, &blas::BlasSupport::DoBlasGemmBatched, transa, transb, m, n,
               k, alpha, a, lda, b, ldb, beta, c, ldc, batch_count,
               numeric_options, scratch_allocator, context);
-}
-
-Stream &Stream::ThenBlasGemmBatched(
-    blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-    uint64_t k, std::complex<float> alpha,
-    DeviceMemorySlice<std::complex<float>> a, int lda,
-    DeviceMemorySlice<std::complex<float>> b, int ldb, std::complex<float> beta,
-    DeviceMemorySlice<std::complex<float>> c, int ldc, int batch_count,
-    const NumericOptions &numeric_options, blas::CallContext context) {
-  return ThenBlasGemmBatchedWithScratch(transa, transb, m, n, k, alpha, a, lda,
-                                        b, ldb, beta, c, ldc, batch_count,
-                                        numeric_options,
-                                        /*scratch_allocator=*/nullptr, context);
 }
 
 Stream &Stream::ThenBlasGemmBatchedWithScratch(

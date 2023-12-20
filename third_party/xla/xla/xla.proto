@@ -445,19 +445,8 @@ message DebugOptions {
   // if `xla_gpu_enable_custom_fusion` set to true.
   string xla_gpu_enable_custom_fusions_re = 264;
 
-  // If true, use OpenXLA runtime for XLA:GPU backend. That is, use IREE VM
-  // as a host executable, optional CUDA HAL for dispatching device kernels and
-  // custom modules for integration with libraries required for running
-  // XLA:GPU programs.
-  //
-  // Note: this mode disables thunks and the "classic" gpu runtime, which
-  // is defined above.
-  bool xla_gpu_enable_gpu2_runtime = 233;
-
-  // If true, use OpenXLA hardware abstraction layer (aka CUDA HAL) to dispatch
-  // device kernels, otherwise use StreamExecutor kernel launch APIs. Has any
-  // effect only if `xla_gpu_enable_gpu2_runtime` is set to true.
-  bool xla_gpu_enable_gpu2_hal = 234;
+  reserved 233;  // was xla_gpu_enable_gpu2_runtime
+  reserved 234;  // was xla_gpu_enable_gpu2_hal
 
   // Timeout in seconds before terminating jobs that are stuck in a NCCL
   // Rendezvous. Negative value disables the timeout and will not terminate.

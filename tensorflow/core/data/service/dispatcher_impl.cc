@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/data/utils.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -270,6 +271,27 @@ Status DataServiceDispatcherImpl::Start() {
 
   started_ = true;
   return OkStatus();
+}
+
+void DataServiceDispatcherImpl::Stop() TF_LOCKS_EXCLUDED(mu_) {
+  std::vector<SplitProvider*> split_providers;
+  {
+    mutex_lock l(mu_);
+    cancelled_ = true;
+    for (const auto& [iteration_id, source_providers] : split_providers_) {
+      for (const std::unique_ptr<SplitProvider>& split_provider :
+           source_providers) {
+        split_providers.push_back(split_provider.get());
+      }
+    }
+  }
+  // Cancels split providers without holding `mu_` as cancellation may require
+  // the split provider's lock. Waiting for the split provider's lock while
+  // holding the dispatcher's lock may result in a deadlock if the split
+  // provider is blocked waiting for some resources.
+  for (SplitProvider* split_provider : split_providers) {
+    split_provider->Cancel();
+  }
 }
 
 size_t DataServiceDispatcherImpl::NumActiveIterations() TF_LOCKS_EXCLUDED(mu_) {
@@ -1198,6 +1220,7 @@ Status DataServiceDispatcherImpl::GetSnapshotSplit(
 Status DataServiceDispatcherImpl::DisableCompressionAtRuntime(
     const DisableCompressionAtRuntimeRequest* request,
     DisableCompressionAtRuntimeResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
   std::shared_ptr<const Dataset> dataset;
   mutex_lock l(mu_);
   TF_RETURN_IF_ERROR(state_.DatasetFromId(request->dataset_id(), dataset));

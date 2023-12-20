@@ -1266,6 +1266,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
+        ":platform",
         ":stringpiece",
         ":types",
     ] + tf_fingerprint_deps(),
