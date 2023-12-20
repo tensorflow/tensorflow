@@ -4308,14 +4308,14 @@ INSTANTIATE_TEST_SUITE_P(
             {"f32[2, <=3]", "f32[2, <=4]", "",
              "Cannot concatenate arrays that differ in dimensions other than "
              "the one being concatenated. Dimension 1 in both shapes must be "
-             "compatible: f32[2,<=3] vs f32[2,<=4]."}),
+             "equal (or compatible): f32[2,<=3] vs f32[2,<=4]."}),
         // [X, Y1]   | [X, Y2]     | Error, mismatched
         // dimension sizes
         std::vector<std::string>(
             {"f32[2, 3]", "f32[2, 4]", "",
              "Cannot concatenate arrays that differ in dimensions other than "
              "the one being concatenated. Dimension 1 in both shapes must be "
-             "compatible: f32[2,3] vs f32[2,4]."})));
+             "equal (or compatible): f32[2,3] vs f32[2,4]."})));
 
 INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, UnboundedUnaryOpShapeInferenceTest,
                          ::testing::Values(

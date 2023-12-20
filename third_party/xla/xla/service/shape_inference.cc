@@ -528,7 +528,7 @@ StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
         return InvalidArgument(
             "Cannot concatenate arrays that differ in dimensions other than "
             "the one being concatenated. Dimension %d in both shapes must be "
-            "compatible: %s vs %s.",
+            "equal (or compatible): %s vs %s.",
             dimension_number, ShapeUtil::HumanString(*arg_shape),
             ShapeUtil::HumanString(*shape));
       }
