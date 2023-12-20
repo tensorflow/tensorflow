@@ -21,7 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/container/btree_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -95,10 +95,11 @@ class SnapshotChunkProvider : public SplitProvider {
   mutable absl::Mutex mu_;
 
   // The set of read chunks.
-  absl::flat_hash_set<std::string> chunks_read_ ABSL_GUARDED_BY(mu_);
+  absl::btree_set<std::string> chunks_read_ ABSL_GUARDED_BY(mu_);
 
-  // The set of unread chunks.
-  absl::flat_hash_set<std::string> chunks_unread_ ABSL_GUARDED_BY(mu_);
+  // The set of unread chunks. Uses an ordered set to make sure repeated reads
+  // produce data in a deterministic order.
+  absl::btree_set<std::string> chunks_unread_ ABSL_GUARDED_BY(mu_);
 
   // State of the snapshot.
   SnapshotState snapshot_state_ ABSL_GUARDED_BY(mu_);

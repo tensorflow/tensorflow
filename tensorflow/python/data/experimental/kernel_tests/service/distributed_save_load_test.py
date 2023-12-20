@@ -61,15 +61,19 @@ class DistributedSaveLoadTest(
               num_workers=[1, 3],
               num_elements=[0, 10],
               num_repetitions=[1, 3],
-              compression=[None, "AUTO", "GZIP"])))
+              compression=[None, "AUTO", "GZIP"],
+              max_chunk_size_bytes=[1, 16 << 10])))
   def test_save_load(
       self,
       num_workers: int,
       num_elements: int,
       num_repetitions: int,
-      compression: Optional[str]):
+      compression: Optional[str],
+      max_chunk_size_bytes: int):
     test_snapshot = TestSnapshot()
-    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
+    cluster = data_service_test_base.TestCluster(
+        num_workers=num_workers,
+        snapshot_max_chunk_size_bytes=max_chunk_size_bytes)
     dataset = dataset_ops.Dataset.range(num_elements)
     dataset = dataset.repeat(num_repetitions)
     self.evaluate(
@@ -108,6 +112,40 @@ class DistributedSaveLoadTest(
     save_thread.start()
     save_thread.join()
     load_thread.join()
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              num_workers=[1, 5],
+              num_elements=[10],
+              num_repetitions=[10],
+              max_chunk_size_bytes=[1, 16 << 10])))
+  def test_deterministic_load_order(
+      self,
+      num_workers: int,
+      num_elements: int,
+      num_repetitions: int,
+      max_chunk_size_bytes: int):
+    """Verifies `load` produces data deterministically after `save` finishes."""
+    test_snapshot = TestSnapshot()
+    cluster = data_service_test_base.TestCluster(
+        num_workers=num_workers,
+        snapshot_max_chunk_size_bytes=max_chunk_size_bytes)
+    dataset = dataset_ops.Dataset.range(num_elements).shuffle(buffer_size=10)
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset, test_snapshot.path, cluster.dispatcher_address()))
+
+    dataset = load_op._load_distributed_snapshot_v2(test_snapshot.path)
+    dataset = dataset.repeat(num_repetitions)
+    output = self.getDatasetOutput(dataset)
+    output_per_repetition = [
+        output[i : i + num_elements]
+        for i in range(0, len(output), num_elements)]
+    self.assertLen(output_per_repetition, num_repetitions)
+    for i in range(2, num_repetitions):  # Starts from the second repetition.
+      self.assertEqual(output_per_repetition[i], output_per_repetition[i - 1])
 
   @combinations.generate(
       combinations.times(
