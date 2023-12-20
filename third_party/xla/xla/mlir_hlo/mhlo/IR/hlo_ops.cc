@@ -2768,7 +2768,8 @@ static Attribute foldConcatenate(ConcatenateOp* op,
 
 OpFoldResult ConcatenateOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
-  if (getNumOperands() == 1) return getOperand(0);
+  if (getNumOperands() == 1 && getOperand(0).getType() == getType())
+    return getOperand(0);
 
   ShapedType type = getResult().getType().cast<ShapedType>();
   if (!type.hasStaticShape()) return {};
@@ -3508,32 +3509,45 @@ OpFoldResult ReverseOp::fold(FoldAdaptor adaptor) {
 // ReduceOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult ReduceOp::fold(FoldAdaptor /*adaptor*/,
-                             SmallVectorImpl<OpFoldResult>& results) {
+static LogicalResult tryFoldZeroDimReduction(
+    ReduceOp reduceOp, SmallVectorImpl<OpFoldResult>& results) {
+  if (reduceOp.getDimensions().getNumElements() != 0) return failure();
   // No dimensions to reduce.
-  if (getDimensions().getNumElements() == 0) {
-    for (Value operand : this->getInputs()) {
-      results.push_back(operand);
+  for (auto [operand, opResult] :
+       llvm::zip_equal(reduceOp.getInputs(), reduceOp.getResults())) {
+    if (operand.getType() != opResult.getType()) {
+      results.clear();
+      return failure();
     }
-    return success();
+    results.push_back(operand);
   }
+  return success();
+}
 
+static LogicalResult tryFoldOutsideValuesReduction(
+    ReduceOp reduceOp, SmallVectorImpl<OpFoldResult>& results) {
   // If all returned values in the ReduceOp region exists outside
   // the region replace the ReduceOp with those values.
-  mlir::Block& bb = this->getBody().front();
-  SmallVector<Value> replacedResults;
-  if (auto retOp = mlir::dyn_cast<ReturnOp>(bb.back())) {
-    for (Value result : retOp.getResults()) {
-      if (result.getParentRegion() == retOp->getParentRegion())
-        return failure();
-      replacedResults.push_back(result);
+  mlir::Block& bb = reduceOp.getBody().front();
+  auto retOp = mlir::dyn_cast<ReturnOp>(bb.back());
+  if (!retOp) return failure();
+  for (auto [result, opResult] :
+       llvm::zip_equal(retOp.getResults(), reduceOp.getResults())) {
+    if (result.getParentRegion() == retOp->getParentRegion() ||
+        result.getType() != opResult.getType()) {
+      results.clear();
+      return failure();
     }
-
-    results.insert(results.end(), replacedResults.begin(),
-                   replacedResults.end());
-    return success();
+    results.push_back(result);
   }
+  return success();
+}
 
+LogicalResult ReduceOp::fold(FoldAdaptor /*adaptor*/,
+                             SmallVectorImpl<OpFoldResult>& results) {
+  if (succeeded(tryFoldZeroDimReduction(*this, results))) return success();
+  if (succeeded(tryFoldOutsideValuesReduction(*this, results)))
+    return success();
   return failure();
 }
 
@@ -5510,7 +5524,8 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
       return {};
     }
   }
-  return getOperand();
+  if (getOperand().getType() == getType()) return getOperand();
+  return {};
 }
 
 // transpose(transpose(X)) => transpose(X)
