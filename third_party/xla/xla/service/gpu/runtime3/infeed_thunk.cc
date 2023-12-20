@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/infeed_thunk.h"
+#include "xla/service/gpu/runtime3/infeed_thunk.h"
 
-#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/infeed_manager.h"
 #include "xla/shape_util.h"

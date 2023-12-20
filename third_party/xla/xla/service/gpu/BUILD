@@ -350,6 +350,7 @@ cc_library(
         "//xla/service/gpu/runtime3:fft_thunk",
         "//xla/service/gpu/runtime3:for_thunk",
         "//xla/service/gpu/runtime3:fused_mha_thunk",
+        "//xla/service/gpu/runtime3:infeed_thunk",
         "//xla/service/gpu/runtime3:send_recv_thunk",
         "//xla/service/gpu/runtime3:sequential_thunk",
         "//xla/service/gpu/runtime3:while_thunk",
@@ -933,7 +934,6 @@ cc_library(
     name = "gpu_executable",
     srcs = [
         "gpu_executable.cc",
-        "infeed_thunk.cc",
         "kernel_thunk.cc",
         "memset_thunk.cc",
         "norm_thunk.cc",
@@ -941,9 +941,7 @@ cc_library(
         "replica_id_thunk.cc",
     ],
     hdrs = [
-        "gemm_thunk.h",
         "gpu_executable.h",
-        "infeed_thunk.h",
         "kernel_thunk.h",
         "memset_thunk.h",
         "norm_thunk.h",
