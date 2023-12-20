@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
@@ -48,7 +47,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/unfreeze_constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_passes.h"
@@ -71,106 +69,33 @@ namespace tensorflow {
 namespace quantization {
 namespace {
 
-using ::mlir::quant::kTfFilePrefix;
-using ::mlir::quant::kTfQuantSaveOpName;
 using ::mlir::quant::stablehlo::CreateMlirContextForQuantization;
 using ::mlir::quant::stablehlo::PostCalibrationComponent;
 using ::mlir::quant::stablehlo::PreCalibrationComponent;
-using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
-using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
 using ::stablehlo::quantization::AddExportPasses;
 using ::stablehlo::quantization::CreateExportedModel;
+using ::stablehlo::quantization::CreateSaverDef;
 using ::stablehlo::quantization::ExportOptions;
 using ::stablehlo::quantization::kExportStepSuffix;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::stablehlo::quantization::io::GetLocalTmpFileName;
 
+// TODO: b/307619371 - Deduplicate from the one in `export.cc`.
 // Finds and returns the name of the node from a set of control output nodes.
 // The name should contain the string `contains`. Returns an empty string if no
 // node whose name contains `contains` is found. Assumes there is at most one
 // such a node.
-std::string GetNodeName(const absl::flat_hash_set<Node *> &control_ret_nodes,
+std::string GetNodeName(const std::vector<std::string> &control_ret_node_names,
                         const absl::string_view contains) {
-  for (Node *control_ret_node : control_ret_nodes) {
-    if (absl::StrContains(control_ret_node->name(), contains)) {
-      VLOG(1) << "Node found: " << control_ret_node->name()
-              << ", contains: " << contains;
-      return control_ret_node->name();
+  for (const std::string &node_name : control_ret_node_names) {
+    if (absl::StrContains(node_name, contains)) {
+      VLOG(1) << "Node found: " << node_name << ", contains: " << contains;
+      return node_name;
     }
   }
   VLOG(1) << "Could not find node whose name conatins: " << contains;
   return "";
-}
-
-// Returns the file prefix tensor name. An empty string is returned if no such a
-// tensor is found (when there are no variables to restore, it is expected that
-// the file prefix tensor does not exist). The file prefix tensor is found among
-// the "_Arg" nodes, as it is translated from the MLIR @main function's
-// argument. It also must have the attribute `tf_saved_model.index_path =
-// ["__tf_file_prefix"]`.
-//
-// See `MergeSaveFunctionOpsToMainPass` for details how the file prefix tensor
-// ends up at the MLIR @main function's argument.
-std::string FindFilePrefixTensorName(const GraphDef &graph_def) {
-  for (const NodeDef &node_def : graph_def.node()) {
-    if (node_def.op() == FunctionLibraryDefinition::kArgOp) {
-      // Matches the `tf_saved_model.index_path = ["__tf_file_prefix"]`.
-      const auto index_path_attr_itr =
-          node_def.attr().find(kTfSavedModelIndexPathAttr.str());
-      if (index_path_attr_itr != node_def.attr().end()) {
-        const auto &index_paths = index_path_attr_itr->second.list().s();
-        if (const auto file_prefix_itr =
-                absl::c_find(index_paths, kTfFilePrefix.str());
-            file_prefix_itr != index_paths.end()) {
-          // ":0" appended to indicate that it is a tensor, not an Operation.
-          return absl::StrCat(node_def.name(), ":0");
-        }
-      }
-    }
-  }
-  return "";
-}
-
-// Creates a new `SaverDef` instance, which contains information regarding
-// checkpoint saving and restoring. This function returns a `SaverDef` instance
-// with four fields populated: `version`, `filename_tensor_name`,
-// `restore_op_name` and `save_tensor_name`. For valid quantized `graph_def` and
-// `control_ret_nodes`, it should be able to retrieve last three fields if there
-// is at lest one variable in the graph. Returns a `std::nullopt` if there are
-// no variables in the graph and no saving & restoring are required.
-absl::StatusOr<std::optional<SaverDef>> CreateSaverDef(
-    const absl::flat_hash_set<Node *> &control_ret_nodes,
-    const GraphDef &graph_def) {
-  const std::string filename_tensor_name = FindFilePrefixTensorName(graph_def);
-  const std::string restore_op_name =
-      GetNodeName(control_ret_nodes, kTfSavedModelInitializerRestoreType);
-  const std::string save_node_name =
-      GetNodeName(control_ret_nodes, kTfQuantSaveOpName);
-
-  const std::vector<absl::string_view> fields = {
-      filename_tensor_name, restore_op_name, save_node_name};
-  const auto is_empty_predicate = [](const absl::string_view s) {
-    return s.empty();
-  };
-
-  if (absl::c_all_of(fields, is_empty_predicate)) {
-    return std::nullopt;
-  } else if (absl::c_none_of(fields, is_empty_predicate)) {
-    SaverDef saver_def{};
-    saver_def.set_version(SaverDef::V2);
-    saver_def.set_filename_tensor_name(filename_tensor_name);
-    saver_def.set_restore_op_name(restore_op_name);
-    // :0 attached to indicate the first result tensor. This saves the model
-    // checkpoint when fetched.
-    saver_def.set_save_tensor_name(absl::StrCat(save_node_name, ":0"));
-    return saver_def;
-  } else {
-    return absl::InternalError(
-        absl::StrCat("Failed to create SaverDef. Fields should be either all "
-                     "empty strings or all non-empty strings. Got fields: ",
-                     absl::StrJoin(fields, ",")));
-  }
 }
 
 // Converts MLIR ModuleOp to `ExportedModel`. Returns InternalError status
@@ -204,11 +129,15 @@ absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
   GraphDef graph_def{};
   graph->ToGraphDef(&graph_def);
 
+  std::vector<std::string> control_ret_node_names{};
+  for (Node *node : control_ret_nodes) {
+    control_ret_node_names.push_back(node->name());
+  }
   const std::string init_node_name =
-      GetNodeName(control_ret_nodes, kTfSavedModelInitializerInitType);
+      GetNodeName(control_ret_node_names, kTfSavedModelInitializerInitType);
 
-  TF_ASSIGN_OR_RETURN(const std::optional<SaverDef> saver_def,
-                      CreateSaverDef(control_ret_nodes, graph_def));
+  TF_ASSIGN_OR_RETURN(std::optional<SaverDef> saver_def,
+                      CreateSaverDef(control_ret_node_names, graph_def));
 
   return CreateExportedModel(std::move(graph_def), init_node_name,
                              checkpoint_dir, std::move(saver_def),

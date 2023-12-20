@@ -20,10 +20,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
 
@@ -58,6 +60,20 @@ struct ExportOptions {
     std::optional<tensorflow::SaverDef> saver_def,
     const absl::flat_hash_map<std::string, std::string>& function_aliases,
     const std::vector<tensorflow::AssetFileDef>& asset_file_defs);
+
+// Creates a new `SaverDef` instance, which contains information regarding
+// checkpoint saving and restoring. This function returns a `SaverDef` instance
+// with four fields populated: `version`, `filename_tensor_name`,
+// `restore_op_name` and `save_tensor_name`. For valid quantized `graph_def` and
+// `control_ret_node_names`, it should be able to retrieve the last three fields
+// if there is at lest one variable in the graph.
+//
+// Returns a `std::nullopt` if there are no variables in the graph and no saving
+// & restoring are required. Returns an `InternalError` status for when the
+// required fields are only partially provided.
+absl::StatusOr<std::optional<tensorflow::SaverDef>> CreateSaverDef(
+    const std::vector<std::string>& control_ret_node_names,
+    const tensorflow::GraphDef& graph_def);
 
 // Adds passes for transforming the MLIR module op so that it can be exported
 // back to GraphDef. Roughly, this consists of:

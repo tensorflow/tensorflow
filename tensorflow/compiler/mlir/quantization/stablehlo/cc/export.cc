@@ -19,23 +19,86 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
 
 namespace stablehlo::quantization {
+namespace {
 
+using ::mlir::quant::kTfFilePrefix;
+using ::mlir::quant::kTfQuantSaveOpName;
+using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
+using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
 using ::tensorflow::AssetFileDef;
+using ::tensorflow::FunctionLibraryDefinition;
 using ::tensorflow::GraphDef;
+using ::tensorflow::NodeDef;
 using ::tensorflow::SaverDef;
 using ::tensorflow::quantization::ExportedModel;
+
+// Finds and returns the name of the node from a set of control output nodes.
+// The name should contain the string `contains`. Returns an empty string if no
+// node whose name contains `contains` is found. Assumes there is at most one
+// such a node.
+std::string GetNodeName(const std::vector<std::string>& control_ret_node_names,
+                        const absl::string_view contains) {
+  for (const std::string& node_name : control_ret_node_names) {
+    if (absl::StrContains(node_name, contains)) {
+      VLOG(1) << "Node found: " << node_name << ", contains: " << contains;
+      return node_name;
+    }
+  }
+  VLOG(1) << "Could not find node whose name conatins: " << contains;
+  return "";
+}
+
+// Returns the file prefix tensor name. An empty string is returned if no such a
+// tensor is found (when there are no variables to restore, it is expected that
+// the file prefix tensor does not exist). The file prefix tensor is found among
+// the "_Arg" nodes, as it is translated from the MLIR @main function's
+// argument. It also must have the attribute `tf_saved_model.index_path =
+// ["__tf_file_prefix"]`.
+//
+// See `MergeSaveFunctionOpsToMainPass` for details how the file prefix tensor
+// ends up at the MLIR @main function's argument.
+std::string FindFilePrefixTensorName(const GraphDef& graph_def) {
+  for (const NodeDef& node_def : graph_def.node()) {
+    if (node_def.op() == FunctionLibraryDefinition::kArgOp) {
+      // Matches the `tf_saved_model.index_path = ["__tf_file_prefix"]`.
+      const auto index_path_attr_itr =
+          node_def.attr().find(kTfSavedModelIndexPathAttr.str());
+      if (index_path_attr_itr != node_def.attr().end()) {
+        const auto& index_paths = index_path_attr_itr->second.list().s();
+        if (absl::c_find(index_paths, kTfFilePrefix.str()) !=
+            index_paths.end()) {
+          // ":0" appended to indicate that it is a tensor, not an Operation.
+          return absl::StrCat(node_def.name(), ":0");
+        }
+      }
+    }
+  }
+  return "";
+}
+
+}  // namespace
 
 ExportedModel CreateExportedModel(
     GraphDef&& graph_def, const absl::string_view init_node_name,
@@ -84,6 +147,40 @@ void AddExportPasses(mlir::PassManager& pm,
   // prevent certain functions from being inlined (see
   // `MarkFunctionsNoinlinePass`). InlinerPass must not come after this pass.
   pm.addPass(mlir::TF::CreateStripNoinlineAttributePass());
+}
+
+absl::StatusOr<std::optional<SaverDef>> CreateSaverDef(
+    const std::vector<std::string>& control_ret_node_names,
+    const GraphDef& graph_def) {
+  const std::string filename_tensor_name = FindFilePrefixTensorName(graph_def);
+  const std::string restore_op_name =
+      GetNodeName(control_ret_node_names, kTfSavedModelInitializerRestoreType);
+  const std::string save_node_name =
+      GetNodeName(control_ret_node_names, kTfQuantSaveOpName);
+
+  const std::vector<absl::string_view> fields = {
+      filename_tensor_name, restore_op_name, save_node_name};
+  const auto is_empty_predicate = [](const absl::string_view s) {
+    return s.empty();
+  };
+
+  if (absl::c_all_of(fields, is_empty_predicate)) {
+    return std::nullopt;
+  } else if (absl::c_none_of(fields, is_empty_predicate)) {
+    SaverDef saver_def{};
+    saver_def.set_version(SaverDef::V2);
+    saver_def.set_filename_tensor_name(filename_tensor_name);
+    saver_def.set_restore_op_name(restore_op_name);
+    // :0 attached to indicate the first result tensor. This saves the model
+    // checkpoint when fetched.
+    saver_def.set_save_tensor_name(absl::StrCat(save_node_name, ":0"));
+    return saver_def;
+  } else {
+    return absl::InternalError(
+        absl::StrCat("Failed to create SaverDef. Fields should be either all "
+                     "empty strings or all non-empty strings. Got fields: ",
+                     absl::StrJoin(fields, ",")));
+  }
 }
 
 }  // namespace stablehlo::quantization
