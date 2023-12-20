@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -275,8 +276,8 @@ TEST_F(CommandBufferSchedulingTest, MoveParametersToFront) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
-  CommandBufferScheduling::MoveParametersAndConstantsToFront(
-      module->entry_computation());
+  TF_ASSERT_OK(CommandBufferScheduling::MoveParametersAndConstantsToFront(
+      module->entry_computation()));
   TF_ASSERT_OK_AND_ASSIGN(
       bool filecheck_matches,
       RunFileCheck(

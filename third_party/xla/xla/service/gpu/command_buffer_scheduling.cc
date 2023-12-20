@@ -205,7 +205,7 @@ CommandBufferScheduling::CollectCommandBufferSequences(
 // the beginning of the computation. This simplifies the construction of command
 // buffer computations because we don't need to deal with parameters and
 // constants that have users outside of a command buffer.
-void CommandBufferScheduling::MoveParametersAndConstantsToFront(
+Status CommandBufferScheduling::MoveParametersAndConstantsToFront(
     HloComputation* computation) {
   HloInstructionSequence new_sequence;
   HloSchedule& schedule = computation->parent()->schedule();
@@ -214,6 +214,17 @@ void CommandBufferScheduling::MoveParametersAndConstantsToFront(
   for (HloInstruction* inst : sequence.instructions()) {
     if (IsParameter(inst) || IsConstant(inst)) {
       new_sequence.push_back(inst);
+
+      // Because we move instruction to the front of the computation we can't
+      // have any control predecessors, however silently dropping them is unsafe
+      // as we can have transitive dependencies that define schedule order, so
+      // we forward control predecessors to all users.
+      for (HloInstruction* control_predecessor : inst->control_predecessors()) {
+        for (HloInstruction* user : inst->users()) {
+          TF_RETURN_IF_ERROR(control_predecessor->AddControlDependencyTo(user));
+        }
+      }
+      TF_RETURN_IF_ERROR(inst->DropAllControlDeps());
     }
   }
 
@@ -224,6 +235,7 @@ void CommandBufferScheduling::MoveParametersAndConstantsToFront(
   }
 
   schedule.set_sequence(computation, new_sequence);
+  return OkStatus();
 }
 
 //===----------------------------------------------------------------------===//
@@ -455,7 +467,7 @@ StatusOr<bool> CommandBufferScheduling::Run(
   // TODO(b/315874495): We should traverse all computations in topological order
   // to discover command buffers inside nested control flow computations.
   HloComputation* entry = module->entry_computation();
-  MoveParametersAndConstantsToFront(entry);
+  TF_RETURN_IF_ERROR(MoveParametersAndConstantsToFront(entry));
 
   std::vector<HloInstructionSequence> sequences =
       CollectCommandBufferSequences(module->schedule().sequence(entry), config);
