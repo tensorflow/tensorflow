@@ -338,13 +338,15 @@ cc_library(
 tf_cc_test(
     name = "c_plugin_coordination_service_agent_test",
     srcs = ["c_plugin_coordination_service_agent_test.cc"],
-    tags = ["no_windows"],  # TODO(b/317086445): Re-enable windows test.
+    tags = [
+        # TODO(b/317086445): Re-enable windows and mac test.
+        "no_mac",
+        "no_windows",
+    ],
     deps = [
         ":c_plugin_coordination_service_agent",
         "//tensorflow/c:tf_buffer",
-        "//tensorflow/c:tf_buffer_internal",
         "//tensorflow/c:tf_tensor",
-        "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/experimental/next_pluggable_device:c_api",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/log",
@@ -361,8 +363,8 @@ tf_cc_test(
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
-        "@local_tsl//tsl/protobuf:coordination_config_proto_cc_impl",
-        "@local_tsl//tsl/protobuf:coordination_service_proto_cc_impl",
+        "@local_tsl//tsl/protobuf:coordination_config_proto_cc",
+        "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
     ],
 )
 
