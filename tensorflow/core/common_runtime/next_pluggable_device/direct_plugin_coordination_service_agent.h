@@ -51,6 +51,10 @@ class DirectPluginCoordinationServiceAgent
     return agent_->GetKeyValue(key, timeout);
   }
 
+  StatusOr<std::string> TryGetKeyValue(std::string_view key) override {
+    return agent_->TryGetKeyValue(key);
+  }
+
   Status DeleteKeyValue(std::string_view key) override {
     return agent_->DeleteKeyValue(key);
   }

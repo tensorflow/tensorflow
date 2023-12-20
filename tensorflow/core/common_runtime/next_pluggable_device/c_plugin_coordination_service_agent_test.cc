@@ -95,6 +95,10 @@ class TestCoordinationClient : public CoordinationClient {
               (CallOptions * call_opts, const GetKeyValueRequest*,
                GetKeyValueResponse*, StatusCallback),
               (override));
+  MOCK_METHOD(void, TryGetKeyValueAsync,
+              (const TryGetKeyValueRequest*, TryGetKeyValueResponse*,
+               StatusCallback),
+              (override));
   MOCK_METHOD(void, InsertKeyValueAsync,
               (const InsertKeyValueRequest*, InsertKeyValueResponse*,
                StatusCallback),
@@ -108,11 +112,6 @@ class TestCoordinationClient : public CoordinationClient {
                            tsl::GetKeyValueDirResponse* response,
                            StatusCallback done) override {
     done(absl::UnimplementedError("GetKeyValueDirAsync"));
-  }
-  void TryGetKeyValueAsync(const tsl::TryGetKeyValueRequest* request,
-                           tsl::TryGetKeyValueResponse* response,
-                           StatusCallback done) override {
-    done(absl::UnimplementedError("TryGetKeyValueAsync"));
   }
   void ResetTaskAsync(const tsl::ResetTaskRequest* request,
                       tsl::ResetTaskResponse* response,
@@ -287,5 +286,23 @@ TEST_F(CPluginCoordinationServiceAgentTest, DeleteKeyValue_Success) {
   TF_ASSERT_OK(agent_->DeleteKeyValue(test_key));
 }
 
+TEST_F(CPluginCoordinationServiceAgentTest, TryGetKeyValue_Simple_Success) {
+  const std::string& test_key = "test_key";
+  const std::string& test_value = "test_value";
+  // Mock server response: set key-value pair and invoke done callback.
+  TryGetKeyValueResponse mocked_response;
+  auto kv = mocked_response.mutable_kv();
+  kv->set_key(test_key);
+  kv->set_value(test_value);
+  ON_CALL(*GetClient(), TryGetKeyValueAsync(_, _, _))
+      .WillByDefault(DoAll(SetArgPointee<1>(mocked_response),
+                           InvokeArgument<2>(OkStatus())));
+
+  // Initialize coordination agent.
+  InitializeAgent();
+  auto result = agent_->TryGetKeyValue(test_key);
+  TF_ASSERT_OK(result.status());
+  EXPECT_EQ(*result, test_value);
+}
 }  // namespace
 }  // namespace tensorflow
