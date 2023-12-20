@@ -172,6 +172,35 @@ ENTRY %elementwise {
   EXPECT_THAT(instruction, op::Sharding("{devices=[2,2]0,2,1,3}"));
 }
 
+TEST_F(AutoShardingTest, NDIterativeSolveTest) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %elementwise {
+  param = s32[512,3084]{1,0} parameter(0), sharding={devices=[256,1]0,1,2,3,4,5,6,7,16,17,18,19,20,21,22,23,8,9,10,11,12,13,14,15,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255}
+  sharding_call = s32[512,3084]{1,0} custom-call(param), custom_call_target="Sharding", sharding={devices=[256,1]<=[256]}
+  ROOT slice = s32[512,2048]{1,0} slice(sharding_call), slice={[0:512], [0:2048]}
+})";
+
+  AutoShardingOption option;
+  option.enable = true;
+  option.solve_nd_sharding_iteratively = true;
+  option.preserve_shardings =
+      AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
+  option.device_mesh_shape = {16, 16};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(10) << module->ToString();
+  EXPECT_TRUE(changed);
+  HloInstruction* slice = FindInstruction(module.get(), "slice");
+  EXPECT_NE(slice, nullptr);
+  EXPECT_THAT(slice, op::Sharding("{devices=[256,1]<=[256]}"));
+}
+
 TEST_F(AutoShardingTest, RngBitGeneratorArrayInput) {
   const char* const hlo_string = R"(
 HloModule rng_bit_generator
