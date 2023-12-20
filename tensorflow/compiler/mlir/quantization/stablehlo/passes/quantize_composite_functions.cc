@@ -62,11 +62,6 @@ namespace mlir::quant::stablehlo {
 namespace {
 
 using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
-using ::mlir::stablehlo::AddOp;
-using ::mlir::stablehlo::ConvolutionOp;
-using ::mlir::stablehlo::DotGeneralOp;
-using ::mlir::stablehlo::DynamicBroadcastInDimOp;
-using ::mlir::stablehlo::UniformQuantizeOp;
 using ::tensorflow::quantization::RunPassesOnModuleOp;
 
 constexpr StringRef kCompositeFuncPrefix = "composite_";
