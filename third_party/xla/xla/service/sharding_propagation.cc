@@ -1544,7 +1544,8 @@ StatusOr<bool> ProcessShardingInstruction(
         auto& shard_as_group =
             (*shard_group_id_to_shard_as_group)[shard_group_id];
         if (!shard_as_group.empty()) {
-          CHECK_EQ(instruction->shape(), (*shard_as_group.begin())->shape())
+          CHECK(ShapeUtil::SameDimensions(instruction->shape(),
+                                          (*shard_as_group.begin())->shape()))
               << "Instruction: " << instruction->ToString()
               << " has different shape from the shapes of the other "
                  "instructions within the same shard_as group: "
@@ -1555,7 +1556,8 @@ StatusOr<bool> ProcessShardingInstruction(
         auto& shard_like_group =
             (*shard_group_id_to_shard_like_group)[shard_group_id];
         if (!shard_like_group.empty()) {
-          CHECK_EQ(instruction->shape(), (*shard_like_group.begin())->shape())
+          CHECK(ShapeUtil::SameDimensions(instruction->shape(),
+                                          (*shard_like_group.begin())->shape()))
               << "Instruction: " << instruction->ToString()
               << " has different shape from the shapes of the other "
                  "instructions within the same shard_like group: "
