@@ -311,6 +311,8 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
     }
   }();
   VLOG(3) << "AllocateRaw " << Name() << "  " << num_bytes << " " << result;
+  VLOG(4) << "[mem-debug] AllocateRaw," << Name() << "," << num_bytes << ","
+          << result << "," << tsl::CurrentStackTrace();
   return result;
 }
 
@@ -684,6 +686,9 @@ void BFCAllocator::SplitChunk(BFCAllocator::ChunkHandle h, size_t num_bytes) {
 void BFCAllocator::DeallocateRaw(void* ptr) {
   VLOG(3) << "DeallocateRaw " << Name() << " "
           << (ptr ? RequestedSize(ptr) : 0);
+  VLOG(4) << "[mem-debug] DeallocateRaw," << Name() << ","
+          << (ptr ? RequestedSize(ptr) : 0) << "," << ptr << ","
+          << tsl::CurrentStackTrace();
   DeallocateRawInternal(ptr);
   retry_helper_.NotifyDealloc();
 }
