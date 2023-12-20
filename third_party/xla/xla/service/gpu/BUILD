@@ -1231,6 +1231,9 @@ build_cub_sort_kernels(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
+    tags = [
+        "ignore_for_dep=third_party/tensorflow/compiler/xla/service/gpu/gpu_prim_rocm.h",
+    ],
     types = get_cub_sort_kernel_types(),
     deps = if_cuda_is_configured([
         ":gpu_prim_cuda",
@@ -3474,6 +3477,7 @@ xla_cc_test(
     ]),
     tags = [
         "gpu",
+        "ignore_for_dep=third_party/tensorflow/compiler/xla/service/gpu/amdgpu_compiler.h",
         "no_oss",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
         "requires-gpu-nvidia",
@@ -3503,38 +3507,39 @@ xla_cc_test(
 
 cc_library(
     name = "amdgpu_compiler",
-    srcs = if_rocm_is_configured([
+    srcs = [
         "amdgpu_compiler_registration.cc",
-    ]),
+    ],
+    tags = ["manual"],
     visibility = ["//visibility:public"],
-    deps = if_rocm_is_configured([
+    deps = [
         ":amdgpu_compiler_impl",
-        "//xla/stream_executor/host:host_platform_id",
-    ]),
+        "//xla/stream_executor/rocm:rocm_platform_id",
+    ],
     alwayslink = True,  # Contains compiler registration
 )
 
 cc_library(
     name = "amdgpu_compiler_impl",
-    srcs = if_rocm_is_configured([
+    srcs = [
         "amdgpu_compiler.cc",
-    ]),
-    hdrs = if_rocm_is_configured([
+    ],
+    hdrs = [
         "amdgpu_compiler.h",
-    ]),
+    ],
+    tags = ["manual"],
     visibility = ["//visibility:public"],
-    deps = if_rocm_is_configured([
-        ":autotuner_util",
-        ":cusolver_rewriter",
-        ":gemm_rewriter",
-        ":gemm_algorithm_picker",
-        ":gpu_compiler",
+    deps = [
         ":conv_algorithm_picker",
+        ":cublas_pad_for_gemms",
+        ":cublas_padding_requirements",
+        ":cusolver_rewriter",
+        ":gemm_algorithm_picker",
+        ":gemm_rewriter",
+        ":gpu_compiler",
         ":gpu_conv_padding_legalization",
         ":gpu_conv_rewriter",
         ":gpu_layout_assignment",
-        ":cublas_pad_for_gemms",
-        ":cublas_padding_requirements",
         ":reduction_degenerate_dim_remover",
         ":reduction_dimension_grouper",
         ":reduction_layout_normalizer",
@@ -3543,9 +3548,9 @@ cc_library(
         ":triangular_solve_rewriter",
         "//xla:statusor",
         "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
         "//xla/service:algebraic_simplifier",
         "//xla/service:call_inliner",
-        "//xla/hlo/ir:hlo",
         "//xla/service:dot_dimension_merger",
         "//xla/service:hlo_constant_folding",
         "//xla/service:hlo_cse",
@@ -3557,7 +3562,7 @@ cc_library(
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor/rocm:rocm_platform_id",
         "@local_tsl//tsl/platform:rocm_rocdl_path",
-    ]),
+    ],
 )
 
 cc_library(
