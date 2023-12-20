@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -543,16 +544,27 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
                                          const std::string& text_path,
                                          const std::string& binary_path)
       -> std::optional<tensorflow::profiler::ProfiledInstructionsProto> {
-    Status s = tsl::ReadTextProto(env, text_path, &profile);
-    if (s.ok()) {
-      LOG(INFO) << "Using PGLE profile from " << text_path;
-      return GetProfileForFingerprint(profile, fingerprint);
+    if (env->FileExists(text_path).ok()) {
+      Status s = tsl::ReadTextProto(env, text_path, &profile);
+      if (s.ok()) {
+        LOG(INFO) << "Using PGLE profile from " << text_path;
+        return GetProfileForFingerprint(profile, fingerprint);
+      } else {
+        LOG(ERROR) << "Unable to read PGLE text proto from " << text_path
+                   << ": " << s.message();
+      }
+      profile.Clear();
     }
-    profile.Clear();
-    s = tsl::ReadBinaryProto(env, binary_path, &profile);
-    if (s.ok()) {
-      LOG(INFO) << "Using PGLE profile from " << binary_path;
-      return GetProfileForFingerprint(profile, fingerprint);
+    if (env->FileExists(binary_path).ok()) {
+      Status s = tsl::ReadBinaryProto(env, binary_path, &profile);
+      if (s.ok()) {
+        LOG(INFO) << "Using PGLE profile from " << binary_path;
+        return GetProfileForFingerprint(profile, fingerprint);
+      } else {
+        LOG(ERROR) << "Unable to read PGLE binary proto from " << binary_path
+                   << ": " << s.message();
+      }
+      profile.Clear();
     }
     return std::nullopt;
   };
@@ -567,9 +579,17 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
   }
 
   // The pgle_profile_file_or_dir is a file. Attempt to read the profile as text
-  // proto or binary proto.
-  return read_text_or_binary_profile(pgle_profile_file_or_dir_path,
-                                     pgle_profile_file_or_dir_path);
+  // proto or binary proto. Attempt to infer the file type based on the
+  // extension.
+  auto extension = tsl::io::Extension(pgle_profile_file_or_dir_path);
+  if (extension == "pbtxt") {
+    return read_text_or_binary_profile(pgle_profile_file_or_dir_path, "");
+  } else if (extension == "pb") {
+    return read_text_or_binary_profile("", pgle_profile_file_or_dir_path);
+  } else {
+    return read_text_or_binary_profile(pgle_profile_file_or_dir_path,
+                                       pgle_profile_file_or_dir_path);
+  }
 }
 
 // Return true if the profile is applicable to the module. That is true if every

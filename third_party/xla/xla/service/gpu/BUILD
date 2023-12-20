@@ -3763,6 +3763,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",
     ],
 )
