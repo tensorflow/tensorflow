@@ -970,13 +970,19 @@ Status IrEmitterUnnested::EmitGemmThunk(const HloCustomCallInstruction* instr) {
                       GetAllocationSliceForHlo(instr->operand(0), {}));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice b,
                       GetAllocationSliceForHlo(instr->operand(1), {}));
-  // The output of the legacy cuBLAS custom call is a tuple that contains the
-  // output matrix and the workspace.
-  DCHECK(instr->shape().IsTuple() && instr->shape().tuple_shapes_size() == 2);
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice c,
-                      GetAllocationSliceForHlo(instr, {0}));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice workspace,
-                      GetAllocationSliceForHlo(instr, {1}));
+
+  // Result of a legacy cuBLAS custom call can be a tuple if we explicitly
+  // allocate workspace buffer in HLO. If result is an array, it means that
+  // workspace is not available, and cuBLAS will allocate its own workspace.
+  BufferAllocation::Slice c;
+  std::optional<BufferAllocation::Slice> workspace;
+
+  if (instr->shape().IsArray()) {
+    TF_ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr, {}));
+  } else {
+    TF_ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr, {0}));
+    TF_ASSIGN_OR_RETURN(workspace, GetAllocationSliceForHlo(instr, {1}));
+  }
 
   bool deterministic_ops =
       ir_emitter_context_->debug_options().xla_gpu_deterministic_ops();
