@@ -2408,7 +2408,7 @@ distribute_py_strict_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
-        "no_oss",  # TODO(b/283016506)
+        "no_oss",  # TODO(b/283033375)
         "notsan",  # TODO(b/160006974)
         "nozapfhahn",  # TODO(b/317228015)
     ],
