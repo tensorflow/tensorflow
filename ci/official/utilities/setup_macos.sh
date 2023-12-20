@@ -88,7 +88,7 @@ fi
 # install it manually. We use Twine in nightly builds to upload Python packages
 # to PyPI.
 if [[ "$TFCI_MACOS_TWINE_INSTALL_ENABLE" == 1 ]]; then
-  brew install twine-pypi
+  pip install twine==3.6.0
 fi
 
 # Scheduled nightly and release builds upload build artifacts (Pip packages,
