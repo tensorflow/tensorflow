@@ -159,12 +159,6 @@ NcclAllReduceConfig GetNcclAllReduceConfig(OpT op) {
 }
 
 template <typename OpT>
-bool IsDegenerate(OpT op, int64_t replica_count, int64_t partition_count) {
-  return GetNcclCollectiveConfigForMlir(op, op.getUseGlobalDeviceIds())
-      .IsDegenerate(replica_count, partition_count);
-}
-
-template <typename OpT>
 CollectiveOpGroupMode GetGroupMode(OpT op) {
   return GetNcclAllReduceConfig(op).config.group_mode;
 }
@@ -240,12 +234,6 @@ Status NcclAllReduceStartThunk::CheckImplementable(AllReduceStartOp op,
       replica_count, partition_count);
 }
 
-bool NcclAllReduceStartThunk::IsDegenerate(AllReduceStartOp op,
-                                           int64_t replica_count,
-                                           int64_t partition_count) {
-  return impl::IsDegenerate(op, replica_count, partition_count);
-}
-
 CollectiveOpGroupMode NcclAllReduceStartThunk::GetGroupMode(
     AllReduceStartOp op) {
   return impl::GetGroupMode(op);
@@ -275,11 +263,6 @@ NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
   return AddOpDescription<NcclReduceScatterStartThunk>(
       impl::CheckImplementable(op, Thunk::kNcclReduceScatterStart), op,
       replica_count, partition_count);
-}
-
-/*static*/ bool NcclReduceScatterStartThunk::IsDegenerate(
-    ReduceScatterStartOp op, int64_t replica_count, int64_t partition_count) {
-  return impl::IsDegenerate(op, replica_count, partition_count);
 }
 
 /*static*/ CollectiveOpGroupMode NcclReduceScatterStartThunk::GetGroupMode(

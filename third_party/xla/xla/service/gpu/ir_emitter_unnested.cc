@@ -3146,7 +3146,8 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   // by it are singleton. In such a case, we don't need to do any communication
   // and we can just copy the input to the output.
   bool is_degenerate =
-      NcclThunkType::IsDegenerate(op, replica_count, partition_count);
+      GetNcclCollectiveConfigForMlir(op, op.getUseGlobalDeviceIds())
+          .IsDegenerate(replica_count, partition_count);
   Status implementable_status =
       NcclThunkType::CheckImplementable(op, replica_count, partition_count);
   bool should_use_nccl_thunk = !is_degenerate && implementable_status.ok();
