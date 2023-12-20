@@ -1331,25 +1331,6 @@ class PjRtBuffer {
     return s;
   }
 
-  // Calls callback when the buffer is ready.
-  //
-  //   buf->OnReady(callback);
-  //
-  // is semantically almost identical to:
-  //
-  //   ForkThread([]() { callback(buf->Await()); });
-  //
-  // the only difference being that the callback may happen immediately on the
-  // calling thread. (The implementation may also be more efficient.)
-  //
-  // The interface makes no assumptions about what thread calls callback, so the
-  // caller must ensure that callback returns quickly and hands off long-running
-  // work or any blocking operation to a caller-managed threadpool.
-  ABSL_DEPRECATED("Use GetReadyFuture().OnReady() instead")
-  void OnReady(std::function<void(Status)> callback) {
-    return GetReadyFuture().OnReady(std::move(callback));
-  }
-
   // Whether this buffer is on CPU and thus allows for certain optimizations.
   virtual bool IsOnCpu() const = 0;
 };

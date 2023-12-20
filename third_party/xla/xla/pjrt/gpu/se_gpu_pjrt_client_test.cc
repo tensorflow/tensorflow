@@ -349,7 +349,7 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
       TF_ASSERT_OK(s);
       ++got_literal_count;
     });
-    buffer->OnReady([&](Status s) {
+    buffer->GetReadyFuture().OnReady([&](Status s) {
       absl::MutexLock l(&mu);
       TF_ASSERT_OK(s);
       ++got_callback_count;
@@ -487,7 +487,7 @@ TEST(StreamExecutorGpuClientTest, CreateMixOfErrorBuffers) {
     if (i == 0 || i == 3) {
       ASSERT_OK(transfer_manager->TransferLiteralToBuffer(i, src_literals[i],
                                                           [&]() {}));
-      buffer->OnReady([&](absl::Status s) {
+      buffer->GetReadyFuture().OnReady([&](absl::Status s) {
         absl::MutexLock l(&mu);
         ASSERT_OK(s);
         ++got_callback_count;
@@ -495,11 +495,12 @@ TEST(StreamExecutorGpuClientTest, CreateMixOfErrorBuffers) {
     } else {
       absl::Status error = InternalError("error %d", i);
       transfer_manager->SetBufferError(i, error);
-      buffer->OnReady([error, &mu, &got_callback_count](absl::Status s) {
-        absl::MutexLock l(&mu);
-        ASSERT_EQ(s, error);
-        ++got_callback_count;
-      });
+      buffer->GetReadyFuture().OnReady(
+          [error, &mu, &got_callback_count](absl::Status s) {
+            absl::MutexLock l(&mu);
+            ASSERT_EQ(s, error);
+            ++got_callback_count;
+          });
     }
     buffer.reset();
   }
