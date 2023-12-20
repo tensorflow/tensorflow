@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/snapshot/snapshot_chunk_provider.h"
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -179,6 +180,10 @@ absl::Status SnapshotChunkProvider::Restore(
   TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kChunksRead), &chunks_read));
   chunks_read_ = SetFromString(chunks_read);
   return UpdateSnapshot();
+}
+
+int64_t SnapshotChunkProvider::Cardinality() const {
+  return SnapshotChunksCardinality(snapshot_path_, env_);
 }
 
 void SnapshotChunkProvider::Cancel() {

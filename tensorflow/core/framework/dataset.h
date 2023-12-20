@@ -400,15 +400,15 @@ class SplitProvider {
   // Restores the state of this split provider.
   virtual Status Restore(std::function<std::string(std::string)> full_name,
                          IteratorStateReader* reader) = 0;
-  // Cancels the split provider. After cancelling, all other existing and future
-  // calls should return quickly without blocking.
-  virtual void Cancel() {}
   // Returns the number of splits:
   // - If there are a finite number of splits, returns a non-negative count.
   // - If there are an infinite number of splits, returns kInfiniteCardinality.
   // - If the number of splits is unknown or can't be efficiently computed,
   // returns kUnknownCardinality.
   virtual int64_t Cardinality() const { return kUnknownCardinality; }
+  // Cancels the split provider. After cancelling, all other existing and future
+  // calls should return quickly without blocking.
+  virtual void Cancel() {}
 };
 
 // Returns the runner threadpool size from an OpKernelContext.

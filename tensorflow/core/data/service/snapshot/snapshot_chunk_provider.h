@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_SNAPSHOT_CHUNK_PROVIDER_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_SNAPSHOT_CHUNK_PROVIDER_H_
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -54,6 +55,12 @@ class SnapshotChunkProvider : public SplitProvider {
   absl::Status Restore(std::function<std::string(std::string)> full_name,
                        IteratorStateReader* reader) override;
 
+  // If the snapshot is finished, returns the number of committed chunks.
+  // If the snapshot is unfinished or has failed, returns kUnknownCardinality.
+  int64_t Cardinality() const override;
+
+  // Cancels the provider. After cancelling, if the snapshot is unfinished,
+  // in-flight `GetNext` calls will return Cancelled status.
   void Cancel() override;
 
  private:

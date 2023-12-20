@@ -235,6 +235,28 @@ class DistributedSaveLoadTest(
       dataset = load_op._load_distributed_snapshot_v2(test_snapshot.path)
       self.getDatasetOutput(dataset)
 
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_repetitions=[None, 0, 1, 3])))
+  def test_snapshot_chunks_cardinality(self, num_repetitions: int):
+    test_snapshot = TestSnapshot()
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset, test_snapshot.path, cluster.dispatcher_address()))
+
+    dataset = load_op._ListSnapshotChunksDataset(test_snapshot.path)
+    if num_repetitions != 1:
+      dataset = dataset.repeat(num_repetitions)
+
+    while self.evaluate(dataset.cardinality()) == dataset_ops.UNKNOWN:
+      time.sleep(.1)
+    expected = (
+        dataset_ops.INFINITE if num_repetitions is None else num_repetitions)
+    self.assertEqual(self.evaluate(dataset.cardinality()), expected)
+
 
 class SaveLoadCheckpointTest(
     data_service_test_base.TestBase,

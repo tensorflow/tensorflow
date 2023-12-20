@@ -91,6 +91,7 @@ tf_kernel_library(
     srcs = ["list_snapshot_chunks_dataset_op.cc"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":file_utils",
         ":snapshot_chunk_provider",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
