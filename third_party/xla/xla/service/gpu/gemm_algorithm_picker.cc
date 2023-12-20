@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/logger.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/util/proto/proto_utils.h"
@@ -146,14 +145,6 @@ StatusOr<AutotuneResult> GetBestAlgorithm(
             *reference_algorithm);
       }
     }
-  }
-
-  if (!autotune_config.should_crash_on_check_failure()) {
-    AutotuningLog log;
-    for (const AutotuneResult& result : results) {
-      *log.add_results() = result;
-    }
-    tsl::Logger::GetSingleton()->LogProto(log);
   }
 
   StatusOr<AutotuneResult> best =
