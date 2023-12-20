@@ -728,7 +728,6 @@ cc_library(
         "analysis/side_effect_analysis.h",
     ],
     deps = [
-        ":call_graph_util",
         ":tensorflow",
         ":tensorflow_op_interfaces",
         ":tensorflow_side_effects",
@@ -1420,7 +1419,6 @@ tf_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MLProgramDialect",
         "@llvm-project//mlir:Parser",
     ],
 )
