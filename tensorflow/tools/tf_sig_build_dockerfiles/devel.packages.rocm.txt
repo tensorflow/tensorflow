@@ -1,6 +1,7 @@
 # All required ROCM packages
 rocm-libs
 rocm-dev
+rocm-ml-sdk
 miopen-hip 
 miopen-hip-dev
 rocblas

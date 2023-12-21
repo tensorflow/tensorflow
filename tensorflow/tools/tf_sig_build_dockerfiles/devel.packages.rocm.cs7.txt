@@ -51,6 +51,7 @@ kernel-devel-uname-r
 # rocm packagaes
 libdrm-amdgpu
 rocm-dev
+rocm-ml-sdk
 miopen-hip 
 miopen-hip-devel 
 rocblas 
