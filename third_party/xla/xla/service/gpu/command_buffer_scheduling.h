@@ -75,7 +75,8 @@ class CommandBufferScheduling : public HloModulePass {
   using CommandBufferConfig =
       absl::flat_hash_set<DebugOptions::CommandBufferCmdType>;
 
-  explicit CommandBufferScheduling(int32_t gpu_runtime_version);
+  CommandBufferScheduling(int32_t gpu_toolkit_version,
+                          int32_t gpu_driver_version);
 
   absl::string_view name() const override {
     return "command-buffer-scheduling";
@@ -123,7 +124,12 @@ class CommandBufferScheduling : public HloModulePass {
                                      CommandBuffer command_buffer);
 
  private:
-  int32_t gpu_runtime_version_;
+  // For NVIDIA gpus XLA can be compiled with a CUDA version that is larger than
+  // the version supported by the driver, e.g. we can compile for CUDA 12.3 but
+  // have 12.1 driver installed. When deciding what command buffer features we
+  // can use we have to consider both versions.
+  int32_t gpu_toolkit_version_;
+  int32_t gpu_driver_version_;
 };
 
 }  // namespace xla::gpu

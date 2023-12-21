@@ -3241,7 +3241,7 @@ cc_library(
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor",
-        "//xla/stream_executor/gpu:gpu_runtime_header",
+        "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/translate/hlo_to_mhlo:hlo_utils",
         "//xla/translate/mhlo_to_hlo:location_exporter",

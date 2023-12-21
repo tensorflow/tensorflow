@@ -37,7 +37,7 @@ namespace {
 class CommandBufferSchedulingTest : public HloTestBase {
  public:
   // Use CUDA 12.3 version for testing as it has all the features we rely on.
-  static constexpr int32_t kGpuRuntimeVersion = 12030;
+  static constexpr int32_t kCudaVersion = 12030;
 
   DebugOptions GetDebugOptionsForTest() override {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
@@ -90,7 +90,8 @@ TEST_F(CommandBufferSchedulingTest, SingleCommandBuffer) {
 // CHECK:   ROOT %custom-call = s32[] custom-call(%get-tuple-element, %get-tuple-element.1), custom_call_target="some target"
 // CHECK: })";
 
-  RunAndFilecheckHloRewrite(hlo, CommandBufferScheduling(kGpuRuntimeVersion),
+  RunAndFilecheckHloRewrite(hlo,
+                            CommandBufferScheduling(kCudaVersion, kCudaVersion),
                             expected, [](HloModule* module) {
                               EXPECT_TRUE(module->has_schedule());
                               TF_CHECK_OK(module->schedule().Verify());
@@ -167,7 +168,8 @@ TEST_F(CommandBufferSchedulingTest, MultipleCommandBuffers) {
 // CHECK:    ROOT {{.*}} = s32[] custom-call(%[[CMD1]]), custom_call_target="some target"
 // CHECK:  })";
 
-  RunAndFilecheckHloRewrite(hlo, CommandBufferScheduling(kGpuRuntimeVersion),
+  RunAndFilecheckHloRewrite(hlo,
+                            CommandBufferScheduling(kCudaVersion, kCudaVersion),
                             expected, [](HloModule* module) {
                               EXPECT_TRUE(module->has_schedule());
                               TF_CHECK_OK(module->schedule().Verify());
@@ -413,7 +415,8 @@ TEST_F(CommandBufferSchedulingTest, RelayControlDependencies) {
 // CHECK:   ROOT %custom-call.2 = s32[] custom-call(%call, %[[F3]]), custom_call_target="some target"
 // CHECK: })";
 
-  RunAndFilecheckHloRewrite(hlo, CommandBufferScheduling(kGpuRuntimeVersion),
+  RunAndFilecheckHloRewrite(hlo,
+                            CommandBufferScheduling(kCudaVersion, kCudaVersion),
                             expected, [](HloModule* module) {
                               EXPECT_TRUE(module->has_schedule());
                               TF_CHECK_OK(module->schedule().Verify());

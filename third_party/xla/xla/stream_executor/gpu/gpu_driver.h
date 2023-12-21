@@ -907,7 +907,7 @@ class GpuDriver {
   // compatible driver).
   //
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VERSION.html#group__CUDA__VERSION_1g8b7a10395392e049006e61bcdc8ebe71
-  static bool GetDriverVersion(int* driver_version);
+  static tsl::StatusOr<int32_t> GetDriverVersion();
 
   // -- Other calls
 

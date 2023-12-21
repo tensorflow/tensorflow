@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/command_buffer_scheduling.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -449,8 +450,10 @@ Status CommandBufferScheduling::RewriteCommandBuffer(
 
 //===----------------------------------------------------------------------===//
 
-CommandBufferScheduling::CommandBufferScheduling(int32_t gpu_runtime_version)
-    : gpu_runtime_version_(gpu_runtime_version) {}
+CommandBufferScheduling::CommandBufferScheduling(int32_t gpu_toolkit_version,
+                                                 int32_t gpu_driver_version)
+    : gpu_toolkit_version_(gpu_toolkit_version),
+      gpu_driver_version_(gpu_driver_version) {}
 
 StatusOr<bool> CommandBufferScheduling::Run(
     HloModule* module,
@@ -478,13 +481,14 @@ StatusOr<bool> CommandBufferScheduling::Run(
       if (config.erase(cmd)) {
         LOG(WARNING) << "Removed command buffer support for "
                      << DebugOptions::CommandBufferCmdType_Name(cmd)
-                     << " as it's not supported with gpu runtime version "
-                     << gpu_runtime_version_;
+                     << " as it's not supported with gpu toolkit version "
+                     << gpu_toolkit_version_ << " and driver version "
+                     << gpu_driver_version_;
       }
     }
   };
 
-  if (gpu_runtime_version_ < 12030) {
+  if (std::min(gpu_toolkit_version_, gpu_driver_version_) < 12030) {
     erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
     erase(kRequireConditionals);  // on-device control flow
   }

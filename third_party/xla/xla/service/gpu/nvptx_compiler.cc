@@ -687,10 +687,8 @@ StatusOr<NVPTXCompiler::LinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
   } else {
     int ptxas_version = std::get<0>(ptxas_version_tuple) * 1000 +
                         std::get<1>(ptxas_version_tuple) * 10;
-    int driver_version;
-    if (!se::gpu::GpuDriver::GetDriverVersion(&driver_version)) {
-      return FailedPrecondition("Unable to get CUDA driver version");
-    }
+    TF_ASSIGN_OR_RETURN(int driver_version,
+                        se::gpu::GpuDriver::GetDriverVersion());
 
     if (driver_version >= ptxas_version) {
       linking_method = LinkingMethod::kDriver;
