@@ -38,6 +38,7 @@ class DumpingDebugWrapperDiskUsageLimitTest(test_util.TensorFlowTestCase):
     os.environ["TFDBG_DISK_BYTES_LIMIT"] = "10"
 
   def setUp(self):
+    # Create a temporary directory for session root
     self.session_root = tempfile.mkdtemp()
 
     self.v = variables.Variable(10.0, dtype=dtypes.float32, name="v")
