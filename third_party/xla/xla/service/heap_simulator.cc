@@ -1154,7 +1154,9 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
         absl::Span<const FreeChunks> free_chunks_per_slice_time,
         std::vector<int64_t> sorted_slice_sizes, int64_t max_colocation_size,
         int64_t preferred_offset, int64_t alignment,
-        absl::AnyInvocable<bool(int64_t) const> is_offset_allowed)
+        absl::AnyInvocable<bool(int64_t) const> is_offset_allowed,
+        absl::AnyInvocable<bool(const std::vector<int64_t>&) const>
+            is_slice_time_permutation_allowed)
     : sorted_slice_sizes_(std::move(sorted_slice_sizes)),
       slice_size_sum_(std::accumulate(sorted_slice_sizes_.begin(),
                                       sorted_slice_sizes_.end(),
@@ -1162,7 +1164,9 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
       max_colocation_size_(max_colocation_size),
       preferred_offset_(preferred_offset),
       alignment_(alignment),
-      is_offset_allowed_(std::move(is_offset_allowed)) {
+      is_offset_allowed_(std::move(is_offset_allowed)),
+      is_slice_time_permutation_allowed_(
+          std::move(is_slice_time_permutation_allowed)) {
   CHECK_EQ(sorted_slice_sizes_.size(), free_chunks_per_slice_time.size())
       << "We expect a data structure explaining the free chunks at each slice "
          "time.";
@@ -1510,8 +1514,12 @@ namespace {
 // An iterator for iterating through permutations of slice times.
 class SliceTimePermutationIterator {
  public:
-  explicit SliceTimePermutationIterator(int64_t latest_slice_time)
-      : done_(latest_slice_time < 0) {
+  SliceTimePermutationIterator(
+      int64_t latest_slice_time,
+      const absl::AnyInvocable<bool(const std::vector<int64_t>&) const>&
+          is_slice_time_permutation_allowed)
+      : is_slice_time_permutation_allowed_(is_slice_time_permutation_allowed),
+        done_(latest_slice_time < 0) {
     permutation_.reserve(latest_slice_time + 1);
     for (int64_t i = 0; i <= latest_slice_time; ++i) {
       permutation_.push_back(i);
@@ -1521,15 +1529,19 @@ class SliceTimePermutationIterator {
   bool Done() const { return done_; }
 
   void Next() {
-    if (Done()) {
-      return;
+    while (!Done()) {
+      done_ = !absl::c_next_permutation(permutation_);
+      if (!Done() && is_slice_time_permutation_allowed_(permutation_)) {
+        return;
+      }
     }
-    done_ = !absl::c_next_permutation(permutation_);
   }
 
   const std::vector<int64_t>& Get() const { return permutation_; }
 
  private:
+  const absl::AnyInvocable<bool(const std::vector<int64_t>&) const>&
+      is_slice_time_permutation_allowed_;
   bool done_ = false;
   std::vector<int64_t> permutation_;
 };
@@ -1567,7 +1579,8 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::FindInRoot(
   CHECK_EQ(first_offset % alignment_, 0);
   for (int64_t offset = first_offset; offset + max_colocation_size_ <= last_end;
        offset += alignment_) {
-    for (SliceTimePermutationIterator permutation_it(LatestSliceTime());
+    for (SliceTimePermutationIterator permutation_it(
+             LatestSliceTime(), is_slice_time_permutation_allowed_);
          !permutation_it.Done(); permutation_it.Next()) {
       if (DoesPermutationFit(permutation_it.Get(), root, offset).ok()) {
         return PermutationToChunks(permutation_it.Get(), offset);
@@ -1757,7 +1770,9 @@ typename GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder
 GlobalDecreasingSizeBestFitHeap<BufferType>::CreateSlicedAllocationFinder(
     const SlicedBufferInterval& sliced_interval, int64_t max_colocation_size,
     int64_t preferred_offset,
-    absl::AnyInvocable<bool(int64_t) const> is_offset_allowed) const {
+    absl::AnyInvocable<bool(int64_t) const> is_offset_allowed,
+    absl::AnyInvocable<bool(const std::vector<int64_t>&) const>
+        is_slice_time_permutation_allowed) const {
   // Build up a list of free chunks for each slice time.
   std::vector<FreeChunks> free_chunks_per_slice_time;
   free_chunks_per_slice_time.reserve(sliced_interval.num_slices());
@@ -1780,7 +1795,8 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::CreateSlicedAllocationFinder(
   return SlicedAllocationFinder(free_chunks_per_slice_time,
                                 sliced_interval.SliceSizesSortedByOffset(),
                                 max_colocation_size, preferred_offset,
-                                alignment_, std::move(is_offset_allowed));
+                                alignment_, std::move(is_offset_allowed),
+                                std::move(is_slice_time_permutation_allowed));
 }
 
 template <typename BufferType>

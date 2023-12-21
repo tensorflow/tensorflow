@@ -127,7 +127,9 @@ Step 5: Update AllocationBlocks with the repacking placements
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/service/heap_simulator.h"
@@ -398,6 +400,12 @@ class BestFitRepacker
 
     int64_t max_colocation_size = GetMaxColocationSize(*min_buffer_interval);
 
+    // This function is used by the SlicedAllocationFinders that are created
+    // below. Note, each of those finders is on the stack, so
+    // is_slice_time_permutation_allowed_fn will outlive them.
+    auto is_slice_time_permutation_allowed_fn =
+        CreateIsSliceTimePermutationAllowedFn(allocation_block);
+
     // Additional data we track for sliced colocations. In particular, we create
     // a SlicedAllocationFinder for each sliced colocation, so we can check if
     // a sliced colocation can fit at a particular offset, to accommodate the
@@ -411,9 +419,13 @@ class BestFitRepacker
         SlicedBufferInterval& colocation_sliced_buffer_interval =
             sliced_buffer_interval_map_.at(colocation);
         SlicedAllocationFinder sliced_colocation_finder =
-            CreateSlicedAllocationFinder(colocation_sliced_buffer_interval,
-                                         max_colocation_size,
-                                         /*preferred_offset=*/-1);
+            CreateSlicedAllocationFinder(
+                colocation_sliced_buffer_interval, max_colocation_size,
+                /*preferred_offset=*/-1,
+                &SlicedAllocationFinder::AllOffsetsAllowed,
+                [&](const std::vector<int64_t>& permutation) {
+                  return is_slice_time_permutation_allowed_fn(permutation);
+                });
         sliced_buffer_map.insert(std::make_pair(
             colocation,
             SlicedColocationData{&colocation_sliced_buffer_interval,
@@ -447,7 +459,9 @@ class BestFitRepacker
     // Find chunks for allocation_block and its colocations.
     SlicedAllocationFinder finder = CreateSlicedAllocationFinder(
         sliced_buffer_interval, max_colocation_size, /*preferred_offset=*/-1,
-        is_offset_allowed);
+        is_offset_allowed, [&](const std::vector<int64_t>& permutation) {
+          return is_slice_time_permutation_allowed_fn(permutation);
+        });
     std::vector<Chunk> chunks = PostProcessFindChunkCandidatesResult(
         sliced_buffer_interval, finder.Find());
     int64_t min_offset =
@@ -590,6 +604,79 @@ class BestFitRepacker
   }
 
  private:
+  // A slice time permutation is allowed if the original mapping between slice
+  // sizes and slice start times is preserved with the new permutation.
+  static absl::AnyInvocable<bool(const std::vector<int64_t>&) const>
+  CreateIsSliceTimePermutationAllowedFn(
+      const AllocationBlock* allocation_block) {
+    if (!IsSliced(allocation_block)) {
+      return &SlicedAllocationFinder::AllSliceTimePermutationsAllowed;
+    }
+
+    int num_slices =
+        allocation_block->original_slice_data->slices_sorted_by_offset.size();
+
+    // Element slice_time_to_schedule_time_inclusive[i] is the (inclusive)
+    // schedule time corresponding to slice_time i.
+    std::vector<int64_t> slice_time_to_schedule_time_inclusive =
+        allocation_block->original_slice_data->SortedInclusiveStartTimes();
+    absl::c_sort(slice_time_to_schedule_time_inclusive);
+
+    // Compute the original slice size to slice start time mapping.
+    std::vector<std::pair<int64_t, int64_t>>
+        original_slice_sizes_and_start_times_pairwise_sorted;
+    original_slice_sizes_and_start_times_pairwise_sorted.reserve(num_slices);
+    for (const memory_space_assignment::MemorySpaceAssignmentRepacker::Slice&
+             slice :
+         allocation_block->original_slice_data->slices_sorted_by_offset) {
+      original_slice_sizes_and_start_times_pairwise_sorted.push_back(
+          std::make_pair(slice.size, slice.inclusive_start_time));
+    }
+    absl::c_sort(original_slice_sizes_and_start_times_pairwise_sorted);
+
+    std::vector<int64_t> sizes_sorted_by_offset =
+        allocation_block->original_slice_data->SizesSortedByOffset();
+
+    return [original_slice_sizes_and_start_times_pairwise_sorted,
+            sizes_sorted_by_offset, slice_time_to_schedule_time_inclusive,
+            num_slices](const std::vector<int64_t>& slice_time_permutation) {
+      // Compute the slice size to slice start time mapping proposed by the
+      // permutation.
+      std::vector<std::pair<int64_t, int64_t>>
+          proposed_slice_sizes_and_start_times_pairwise_sorted;
+      proposed_slice_sizes_and_start_times_pairwise_sorted.reserve(num_slices);
+      CHECK_EQ(sizes_sorted_by_offset.size(), num_slices);
+      CHECK_EQ(slice_time_permutation.size(), num_slices);
+      for (int i = 0; i < num_slices; ++i) {
+        proposed_slice_sizes_and_start_times_pairwise_sorted.push_back(
+            std::make_pair(sizes_sorted_by_offset[i],
+                           slice_time_to_schedule_time_inclusive
+                               [slice_time_permutation[i]]));
+      }
+      absl::c_sort(proposed_slice_sizes_and_start_times_pairwise_sorted);
+
+      bool allowed = (original_slice_sizes_and_start_times_pairwise_sorted ==
+                      proposed_slice_sizes_and_start_times_pairwise_sorted);
+      VLOG(3) << [&]() {
+        auto export_pair = [](std::string* out,
+                              const std::pair<int64_t, int64_t>& p) {
+          absl::StrAppend(out, "<", p.first, ", ", p.second, ">");
+        };
+        return absl::StrCat(
+            "Slice permutation ", (allowed ? "allowed" : "disallowed"),
+            ". Original slice <size, start_time> mapping: ",
+            absl::StrJoin(original_slice_sizes_and_start_times_pairwise_sorted,
+                          ", ", export_pair),
+            ". Proposed mapping: ",
+            absl::StrJoin(proposed_slice_sizes_and_start_times_pairwise_sorted,
+                          ", ", export_pair),
+            ".");
+      }();
+
+      return allowed;
+    };
+  }
+
   // If true, we run a potentially expensive validation to make sure there are
   // no overlaps in the repacked chunks. Note, there should never be an overlap.
   bool validate_ = false;

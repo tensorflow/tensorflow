@@ -117,11 +117,10 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest, RepackedSlicesFit) {
   // Expected repacking:
   //
   // space
-  //   ^
-  //  8 |
-  //  7 |                  +-----+
-  //  6 |                  |  E  |
-  //  5 |          +-------+-++  |
+  //    ^
+  //  7 |
+  //  6 |                  +-----+
+  //  5 |          +-------+-++ E|
   //  4 |          |    B    |+--++--++--+
   //  3 |          |         ||  || F||  |
   //  2 +----------+---++----++  |+--++  |
@@ -144,9 +143,9 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest, RepackedSlicesFit) {
   allocation_blocks.back()->original_slice_data =
       SlicedAllocationData({{Slice{2, -1, 26}, Slice{2, -1, 30}}});
   // Block E
-  allocation_blocks.push_back(MakeAllocationBlock(19, 25, 3));
+  allocation_blocks.push_back(MakeAllocationBlock(19, 25, 2));
   allocation_blocks.back()->original_slice_data =
-      SlicedAllocationData({{Slice{1, -1, 19}, Slice{2, -1, 22}}});
+      SlicedAllocationData({{Slice{1, -1, 19}, Slice{1, -1, 22}}});
   // Block F
   allocation_blocks.push_back(MakeAllocationBlock(26, 29, 2));
 
@@ -191,17 +190,89 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest, RepackedSlicesFit) {
   EXPECT_EQ(allocation_blocks[4]->offset, 4);
   ASSERT_TRUE(allocation_blocks[4]->repacked_slice_data.has_value());
   EXPECT_EQ(*allocation_blocks[4]->repacked_slice_data,
-            (SlicedAllocationData({{Slice{1, 4, 22}, Slice{2, 5, 19}}})));
+            (SlicedAllocationData({{Slice{1, 4, 22}, Slice{1, 5, 19}}})));
   // Block F
   EXPECT_EQ(allocation_blocks[5]->offset, 2);
   EXPECT_FALSE(allocation_blocks[5]->repacked_slice_data.has_value());
+}
+
+// Test that we do not permute slice start times in a way that changes the
+// original slice size-start time mappings. Doing so breaks assumptions that
+// MSA uses to construct its internal state prior to repacking.
+TEST_F(MemorySpaceAssignmentBestFitRepackerTest,
+       SliceTimePermutationsMustUpholdOriginalSizeTimeMapping) {
+  // Original placement                Ideal, but unsupported
+  //
+  //  space                            space
+  //    ^                                ^
+  //  7 |    +---------+               7 |
+  //  6 |    |    C    |               6 |    +---------+
+  //  5 |    +-----+---+               5 |    |    C    |
+  //  4 |    +-----+   |               4 |    +---------+
+  //  3 |    |    B    |               3 |    |    B    |
+  //  2 +----+----+----+               2 +----+----+    |
+  //  1 |    A    |                    1 |    A    +----+
+  //  0 +---------+                    0 +---------+
+  //    +----|----|----|----> time       +----|----|----|----> time
+  //    0    5    10   15                0    5    10   15
+
+  std::vector<AllocationBlock*> allocation_blocks;
+  // Block A
+  allocation_blocks.push_back(MakeAllocationBlock(0, 10, 2, 0));
+  // Block B
+  allocation_blocks.push_back(MakeAllocationBlock(5, 15, 3, 2));
+  allocation_blocks.back()->original_slice_data =
+      SlicedAllocationData({{Slice{2, 2, 5}, Slice{1, 4, 11}}});
+  // Block C
+  allocation_blocks.push_back(MakeAllocationBlock(5, 15, 2, 6));
+
+  // Specify the repacking sort order as the order in which blocks were added to
+  // allocation_blocks. We need to do this so that B is placed before C. If C
+  // is placed before B, C will sit directly on top of A, and the repacker would
+  // never try to permute B's slice size-start time mapping.
+  absl::flat_hash_map<AllocationBlock*, int> sort_keys;
+  for (int i = 0; i < allocation_blocks.size(); ++i) {
+    sort_keys[allocation_blocks[i]] = i;
+  }
+  options_.buffer_interval_compare = LessThanByKey(
+      [sort_keys](const memory_space_assignment::
+                      MemorySpaceAssignmentBestFitRepacker::BufferInterval& x) {
+        return sort_keys.at(x.buffer);
+      });
+  repacker_ = memory_space_assignment::MemorySpaceAssignmentBestFitRepacker(
+      100, 1, options_);
+
+  // The repacker returns true as long as the result fits in the max size,
+  // regardless of whether it has actually changed anything.
+  EXPECT_TRUE(*repacker_.Repack(absl::MakeSpan(allocation_blocks)));
+
+  // Typically the heap_simulator would prefer to start Block B at a smaller
+  // offset, i.e., offset 1 rather than offset 2. However, in order to do so,
+  // the repacker would have to permute the original slice size-start time
+  // mapping, which is not permitted. Thus, we ensure that the repacked B's
+  // larger slice is assigned the smaller offset and earlier start time.
+  ASSERT_TRUE(allocation_blocks[1]->repacked_slice_data.has_value());
+  ASSERT_EQ(
+      allocation_blocks[1]->repacked_slice_data->slices_sorted_by_offset.size(),
+      2);
+  const Slice& slice_with_smaller_offset =
+      allocation_blocks[1]->repacked_slice_data->slices_sorted_by_offset[0];
+  const Slice& slice_with_larger_offset =
+      allocation_blocks[1]->repacked_slice_data->slices_sorted_by_offset[1];
+  // The larger slice is assigned to the smaller offset.
+  ASSERT_GT(slice_with_smaller_offset.size, slice_with_larger_offset.size);
+  const Slice& larger_slice = slice_with_smaller_offset;
+  const Slice& smaller_slice = slice_with_larger_offset;
+  // The larger slice is assigned to the earlier start time.
+  ASSERT_LT(larger_slice.inclusive_start_time,
+            smaller_slice.inclusive_start_time);
 }
 
 TEST_F(MemorySpaceAssignmentBestFitRepackerTest, SlicedColocationsFit) {
   // Expected repacking:
   //
   // space
-  //   ^
+  //    ^
   //  9 |              +-+
   //  8 |              | |
   //  7 |              |F|+-+
