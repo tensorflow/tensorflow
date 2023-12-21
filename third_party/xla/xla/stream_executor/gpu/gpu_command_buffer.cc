@@ -103,7 +103,10 @@ GpuCommandBuffer::GpuCommandBuffer(Mode mode, GpuExecutor* parent,
     : mode_(mode),
       parent_(parent),
       graph_(graph),
-      is_owned_graph_(is_owned_graph) {}
+      is_owned_graph_(is_owned_graph) {
+  VLOG(5) << "Created command buffer for graph " << graph_
+          << " (is_owned_graph=" << is_owned_graph << ")";
+}
 
 GpuCommandBuffer::~GpuCommandBuffer() {
   if (exec_ != nullptr && is_owned_graph_exec_) {
