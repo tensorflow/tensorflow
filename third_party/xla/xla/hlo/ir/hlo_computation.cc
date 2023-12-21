@@ -401,7 +401,12 @@ Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
   to_be_deleted_.back()->DetachFromOperandsAndUsers();
   // Clear all operands to avoid Null operands.
   to_be_deleted_.back()->RemoveAllOperands();
-  to_be_deleted_.back()->ClearCalledComputations();
+  // These require non-trivial cleanup for their called computations,
+  // which is invoked in the ops destructor.
+  if (!to_be_deleted_.back()->IsAsynchronous() &&
+      !to_be_deleted_.back()->IsFused()) {
+    to_be_deleted_.back()->ClearCalledComputations();
+  }
   to_be_deleted_.back()->MarkAsDead();
   instructions_.erase(inst_it->second);
   instruction_iterators_.erase(inst_it);
