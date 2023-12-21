@@ -1089,18 +1089,6 @@ cc_library(
 )
 
 cc_library(
-    name = "float8",
-    hdrs = ["float8.h"],
-    compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
-    # TODO - b/299180335: Add deprecation, update usages.
-    # deprecation = "Please use ml_dtypes.",
-    deps = [
-        ":ml_dtypes",
-    ],
-)
-
-cc_library(
     name = "dso_loader",
     hdrs = ["dso_loader.h"],
     visibility = ["//visibility:public"],

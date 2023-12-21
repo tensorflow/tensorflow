@@ -49,8 +49,8 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/float8.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/ml_dtypes.h"
 
 using absl::StrAppend;
 using absl::StrAppendFormat;
