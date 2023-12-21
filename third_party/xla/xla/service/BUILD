@@ -356,12 +356,15 @@ xla_cc_test(
         ":hlo_creation_utils",
         ":hlo_verifier",
         "//xla:shape_util",
+        "//xla:statusor",
         "//xla:test",
         "//xla:test_helpers",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
