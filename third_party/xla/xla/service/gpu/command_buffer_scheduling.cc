@@ -49,9 +49,6 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// TODO(ezhulenev): We should use debug options to get this flag.
-static constexpr int kMinNumCommands = 2;
-
 using CommandBuffer = CommandBufferScheduling::CommandBuffer;
 using CommandBufferConfig = CommandBufferScheduling::CommandBufferConfig;
 
@@ -172,9 +169,9 @@ struct Accumulator {
 std::vector<HloInstructionSequence>
 CommandBufferScheduling::CollectCommandBufferSequences(
     const HloInstructionSequence inst_sequence,
-    const CommandBufferConfig& config) {
-  auto start_new_sequence = [](Accumulator* acc) {
-    if (acc->num_commands_in_current_seq >= kMinNumCommands) {
+    const CommandBufferConfig& config, int32_t min_num_commands) {
+  auto start_new_sequence = [&](Accumulator* acc) {
+    if (acc->num_commands_in_current_seq >= std::max(1, min_num_commands)) {
       RemoveTrailingNoOps(acc->current_seq);
       acc->sequences.push_back(acc->current_seq);
     }
@@ -465,9 +462,10 @@ StatusOr<bool> CommandBufferScheduling::Run(
   // buffers too early can impact async operations scheduling.
   if (!module->has_schedule()) return InternalError("module is not scheduled");
 
+  const DebugOptions& debug_options = module->config().debug_options();
+
   CommandBufferConfig config;
-  for (auto cmd_type :
-       module->config().debug_options().xla_gpu_enable_command_buffer()) {
+  for (auto cmd_type : debug_options.xla_gpu_enable_command_buffer()) {
     config.insert(static_cast<DebugOptions::CommandBufferCmdType>(cmd_type));
   }
 
@@ -506,8 +504,9 @@ StatusOr<bool> CommandBufferScheduling::Run(
   HloComputation* entry = module->entry_computation();
   TF_RETURN_IF_ERROR(MoveParametersAndConstantsToFront(entry));
 
-  std::vector<HloInstructionSequence> sequences =
-      CollectCommandBufferSequences(module->schedule().sequence(entry), config);
+  std::vector<HloInstructionSequence> sequences = CollectCommandBufferSequences(
+      module->schedule().sequence(entry), config,
+      debug_options.xla_gpu_graph_min_graph_size());
 
   for (const HloInstructionSequence& seq : sequences) {
     TF_ASSIGN_OR_RETURN(CommandBuffer command_buffer,
