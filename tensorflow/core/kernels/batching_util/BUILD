@@ -94,7 +94,8 @@ cc_library(
     name = "batch_scheduler_hdrs",
     hdrs = ["batch_scheduler.h"],
     deps = [
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:reader_base"
     ],
 )
 
@@ -137,7 +138,8 @@ cc_library(
         ":batch_input_task",
         ":batch_scheduler_hdrs",
         ":periodic_function_dynamic",
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:reader_base",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/types:variant",
@@ -299,7 +301,7 @@ cc_library(
     hdrs = ["bounded_executor.h"],
     deps = [
         "//tensorflow/core:framework",
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core/framework:reader_base",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",

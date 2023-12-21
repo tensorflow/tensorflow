@@ -646,58 +646,6 @@ def _rpath_user_link_flags(name):
         ],
     })
 
-# Bazel-generated shared objects which must be linked into TensorFlow binaries
-# to define symbols from //tensorflow/core:framework and //tensorflow/core:lib.
-def tf_binary_additional_srcs(fullversion = False):
-    if fullversion:
-        suffix = "." + VERSION
-    else:
-        suffix = "." + VERSION_MAJOR
-
-    return if_static(
-        extra_deps = [],
-        macos = [
-            clean_dep("//tensorflow:libtensorflow_framework%s.dylib" % suffix),
-        ],
-        otherwise = [
-            clean_dep("//tensorflow:libtensorflow_framework.so%s" % suffix),
-        ],
-    )
-
-def tf_binary_additional_data_deps():
-    return if_static(
-        extra_deps = [],
-        macos = [
-            clean_dep("//tensorflow:libtensorflow_framework.dylib"),
-            clean_dep("//tensorflow:libtensorflow_framework.%s.dylib" % VERSION_MAJOR),
-            clean_dep("//tensorflow:libtensorflow_framework.%s.dylib" % VERSION),
-        ],
-        otherwise = [
-            clean_dep("//tensorflow:libtensorflow_framework.so"),
-            clean_dep("//tensorflow:libtensorflow_framework.so.%s" % VERSION_MAJOR),
-            clean_dep("//tensorflow:libtensorflow_framework.so.%s" % VERSION),
-        ],
-    )
-
-def tf_binary_pybind_deps():
-    return select({
-        clean_dep("//tensorflow:macos"): [
-            clean_dep(
-                "//tensorflow/python:_pywrap_tensorflow_internal_macos",
-            ),
-        ],
-        clean_dep("//tensorflow:windows"): [
-            clean_dep(
-                "//tensorflow/python:_pywrap_tensorflow_internal_windows",
-            ),
-        ],
-        "//conditions:default": [
-            clean_dep(
-                "//tensorflow/python:_pywrap_tensorflow_internal_linux",
-            ),
-        ],
-    })
-
 # Helper function for the per-OS tensorflow libraries and their version symlinks
 def tf_shared_library_deps():
     return select({
@@ -717,7 +665,7 @@ def tf_shared_library_deps():
             clean_dep("//tensorflow:libtensorflow.so.%s" % VERSION),
         ],
         "//conditions:default": [],
-    }) + tf_binary_additional_srcs()
+    })
 
 # Helper functions to add kernel dependencies to tf binaries when using dynamic
 # kernel linking.
@@ -758,7 +706,6 @@ def tf_cc_shared_object(
         deps = [],
         data = [],
         linkopts = lrt_if_needed(),
-        framework_so = tf_binary_additional_srcs(),
         soversion = None,
         kernels = [],
         per_os_targets = False,  # Generate targets with SHARED_LIBRARY_NAME_PATTERNS
@@ -815,13 +762,10 @@ def tf_cc_shared_object(
         soname = name_os_major.split("/")[-1]
 
         data_extra = []
-        if framework_so != []:
-            data_extra = tf_binary_additional_data_deps()
-
         cc_binary(
             exec_properties = if_google({"cpp_link.mem": "16g"}, {}),
             name = name_os_full,
-            srcs = srcs + framework_so,
+            srcs = srcs,
             deps = deps,
             linkshared = 1,
             data = data + data_extra,
@@ -860,7 +804,6 @@ def tf_cc_shared_library_opensource(
         name,
         srcs = [],
         dynamic_deps = [],
-        static_deps = [],
         deps = [],
         roots = [],
         exports_filter = [],
@@ -869,7 +812,6 @@ def tf_cc_shared_library_opensource(
         linkopts = lrt_if_needed(),
         additional_linker_inputs = [],
         linkstatic = True,
-        framework_so = [clean_dep("//tensorflow:libtensorflow_framework_import_lib")],
         soversion = None,
         per_os_targets = False,  # TODO(rostam): Should be deprecated.
         win_def_file = None,
@@ -899,14 +841,13 @@ def tf_cc_shared_library_opensource(
             additional_linker_inputs = additional_linker_inputs,
             copts = copts,
             data = data,
-            deps = deps + framework_so,
+            deps = deps,
             dynamic_deps = dynamic_deps,
             exports_filter = exports_filter,
             linkstatic = linkstatic,
             roots = roots,
             shared_lib_name = name_os_full,
             srcs = srcs,
-            static_deps = static_deps,
             user_link_flags = user_link_flags,
             visibility = visibility,
             win_def_file = win_def_file,
@@ -946,7 +887,6 @@ def _tf_cc_shared_library_opensource(
         roots = None,
         shared_lib_name = None,
         srcs = None,
-        static_deps = None,
         user_link_flags = None,
         visibility = None,
         win_def_file = None):
@@ -964,7 +904,6 @@ def _tf_cc_shared_library_opensource(
         roots = [cc_library_name] + roots,
         exports_filter = exports_filter,
         dynamic_deps = dynamic_deps,
-        static_deps = static_deps,
         shared_lib_name = shared_lib_name,
         user_link_flags = user_link_flags,
         additional_linker_inputs = additional_linker_inputs,
@@ -1058,7 +997,7 @@ def tf_cc_binary(
         cc_binary(
             name = name_os,
             copts = default_copts + copts,
-            srcs = srcs + tf_binary_additional_srcs(),
+            srcs = srcs,
             deps = deps + tf_binary_dynamic_kernel_deps(kernels) + mkl_dep + if_static(
                 extra_deps = [],
                 otherwise = [
@@ -1158,7 +1097,7 @@ def tf_gen_op_wrapper_cc(
             out_ops_file + "_internal.cc",
         ],
         srcs = srcs,
-        tools = [":" + tool] + tf_binary_additional_srcs(),
+        tools = [":" + tool],
         cmd = ("$(location :" + tool + ") $(location :" + out_ops_file + ".h) " +
                "$(location :" + out_ops_file + ".cc) " +
                str(include_internal_ops) + " " + api_def_args_str),
@@ -1476,7 +1415,7 @@ def tf_gen_op_wrapper_py(
             clean_dep("//tensorflow:api_indexable"): deps,
             "//conditions:default": [],
         }),
-        tf_binary_additional_srcs = tf_binary_additional_srcs(),
+        tf_binary_additional_srcs = [],
         testonly = testonly,
     )
     extra_srcs.append(op_reg_offset_out)
@@ -1486,7 +1425,7 @@ def tf_gen_op_wrapper_py(
         name = name + "_pygenrule",
         outs = [out],
         srcs = api_def_srcs + extra_srcs,
-        tools = [tool_name] + tf_binary_additional_srcs(),
+        tools = [tool_name],
         cmd = ("$(location " + tool_name + ") " + " ".join(pygen_args) + " > $@"),
         compatible_with = compatible_with,
         testonly = testonly,
@@ -1533,7 +1472,7 @@ def tf_cc_test(
         **kwargs):
     cc_test(
         name = "%s%s" % (name, suffix),
-        srcs = srcs + tf_binary_additional_srcs(),
+        srcs = srcs,
         copts = tf_copts() + extra_copts,
         linkopts = select({
             clean_dep("//tensorflow:android"): [
@@ -1557,9 +1496,7 @@ def tf_cc_test(
                 clean_dep("//third_party/mkl:intel_binary_blob"),
             ],
         ),
-        data = data +
-               tf_binary_dynamic_kernel_dsos() +
-               tf_binary_additional_srcs(),
+        data = data + tf_binary_dynamic_kernel_dsos(),
         exec_properties = tf_exec_properties(kwargs),
         **kwargs
     )
@@ -1722,7 +1659,7 @@ def tf_gpu_only_cc_test(
     gpu_lib_name = "%s%s" % (name, "_gpu_lib")
     tf_gpu_kernel_library(
         name = gpu_lib_name,
-        srcs = srcs + tf_binary_additional_srcs(),
+        srcs = srcs,
         deps = deps,
         testonly = 1,
         features = features,
@@ -1807,7 +1744,7 @@ def tf_cc_test_mkl(
     for src in srcs:
         cc_test(
             name = src_to_test_name(src),
-            srcs = if_mkl([src]) + tf_binary_additional_srcs(),
+            srcs = if_mkl([src]),
             # Adding an explicit `-fexceptions` because `allow_exceptions = True`
             # in `tf_copts` doesn't work internally.
             copts = tf_copts() + ["-fexceptions"] + tf_openmp_copts(),
@@ -1869,7 +1806,7 @@ def tf_java_test(
     cc_library(
         # TODO(b/183579145): Remove when cc_shared_library supports CcInfo or JavaInfo providers .
         name = cc_library_name,
-        srcs = tf_binary_additional_srcs(fullversion = True) + tf_binary_dynamic_kernel_dsos() + tf_binary_dynamic_kernel_deps(kernels),
+        srcs = tf_binary_dynamic_kernel_dsos() + tf_binary_dynamic_kernel_deps(kernels),
     )
     native.java_test(
         name = name,
@@ -2042,15 +1979,6 @@ def tf_kernel_library(
         deps = deps,
         compatible_with = compatible_with,
         **kwargs
-    )
-
-    # TODO(gunan): CUDA dependency not clear here. Fix it.
-    tf_cc_shared_object(
-        name = "libtfkernel_%s.so" % name,
-        srcs = srcs + hdrs + textual_hdrs,
-        copts = copts,
-        tags = ["manual", "notap"],
-        deps = deps,
     )
 
 register_extension_info(
@@ -2382,7 +2310,6 @@ def pywrap_tensorflow_macro_opensource(
         roots = [],
         deps = [],
         dynamic_deps = [],
-        static_deps = [],
         exports_filter = [],
         copts = [],
         version_script = None,
@@ -2435,17 +2362,9 @@ def pywrap_tensorflow_macro_opensource(
     additional_linker_inputs = if_windows([], otherwise = ["%s.lds" % vscriptname])
 
     # This is needed so that libtensorflow_cc is included in the pip package.
-    srcs += select({
-        clean_dep("//tensorflow:macos"): [clean_dep("//tensorflow:libtensorflow_cc.%s.dylib" % VERSION_MAJOR)],
-        clean_dep("//tensorflow:windows"): [],
-        "//conditions:default": [clean_dep("//tensorflow:libtensorflow_cc.so.%s" % VERSION_MAJOR)],
-    })
-
     tf_cc_shared_library_opensource(
         name = cc_shared_library_name,
         srcs = srcs,
-        # framework_so is no longer needed as libtf.so is included via the extra_deps.
-        framework_so = [],
         copts = copts + if_not_windows([
             "-Wno-self-assign",
             "-Wno-sign-compare",
@@ -2456,7 +2375,6 @@ def pywrap_tensorflow_macro_opensource(
         roots = roots,
         deps = deps + extra_deps,
         dynamic_deps = dynamic_deps,
-        static_deps = static_deps,
         exports_filter = exports_filter,
         win_def_file = win_def_file,
         additional_linker_inputs = additional_linker_inputs,
@@ -3015,7 +2933,6 @@ def pybind_extension_opensource(
         module_name = None,  # Unused.
         hdrs = [],
         dynamic_deps = [],
-        static_deps = [],
         deps = [],
         additional_exported_symbols = [],
         compatible_with = None,
@@ -3078,7 +2995,7 @@ def pybind_extension_opensource(
         testonly = testonly,
     )
 
-    if static_deps:
+    if False:
         cc_library_name = so_file + "_cclib"
         cc_library(
             name = cc_library_name,
@@ -3107,7 +3024,6 @@ def pybind_extension_opensource(
             name = so_file,
             roots = [cc_library_name],
             dynamic_deps = dynamic_deps,
-            static_deps = static_deps,
             additional_linker_inputs = [exported_symbols_file, version_script_file],
             compatible_with = compatible_with,
             deprecation = deprecation,
@@ -3141,9 +3057,6 @@ def pybind_extension_opensource(
             testonly = testonly,
         )
     else:
-        if link_in_framework:
-            srcs += tf_binary_additional_srcs()
-
         cc_binary(
             name = so_file,
             srcs = srcs + hdrs,
@@ -3241,78 +3154,6 @@ def tsl_async_value_deps():
         "@tf_runtime//third_party/llvm_derived:in_place",
     ]
 
-def tf_python_pybind_static_deps(testonly = False):
-    # TODO(b/146808376): Reduce the dependencies to those that are really needed.
-    static_deps = [
-        "//:__subpackages__",
-        "@FP16//:__subpackages__",
-        "@FXdiv//:__subpackages__",
-        "@XNNPACK//:__subpackages__",
-        "@arm_neon_2_x86_sse//:__subpackages__",
-        "@bazel_tools//:__subpackages__",
-        "@boringssl//:__subpackages__",
-        "@clog//:__subpackages__",
-        "@com_github_cares_cares//:__subpackages__",
-        "@com_github_googlecloudplatform_tensorflow_gcp_tools//:__subpackages__",
-        "@com_github_grpc_grpc//:__subpackages__",
-        "@com_google_absl//:__subpackages__",
-        "@com_google_googleapis//:__subpackages__",
-        "@com_google_protobuf//:__subpackages__",
-        "@com_googlesource_code_re2//:__subpackages__",
-        "@compute_library//:__subpackages__",
-        "@cpuinfo//:__subpackages__",
-        "@cudnn_frontend_archive//:__subpackages__",  #  TFRT integration for TensorFlow.
-        "@curl//:__subpackages__",
-        "@dlpack//:__subpackages__",
-        "@double_conversion//:__subpackages__",
-        "@eigen_archive//:__subpackages__",
-        "@farmhash_archive//:__subpackages__",
-        "@farmhash_gpu_archive//:__subpackages__",
-        "@fft2d//:__subpackages__",
-        "@flatbuffers//:__subpackages__",
-        "@gemmlowp//:__subpackages__",
-        "@gif//:__subpackages__",
-        "@highwayhash//:__subpackages__",
-        "@hwloc//:__subpackages__",
-        "@icu//:__subpackages__",
-        "@jsoncpp_git//:__subpackages__",
-        "@libjpeg_turbo//:__subpackages__",
-        "@llvm-project//:__subpackages__",
-        "@llvm_openmp//:__subpackages__",
-        "@llvm_terminfo//:__subpackages__",
-        "@llvm_zlib//:__subpackages__",
-        "@local_config_cuda//:__subpackages__",
-        "@local_config_git//:__subpackages__",
-        "@local_config_nccl//:__subpackages__",
-        "@local_config_python//:__subpackages__",
-        "@local_config_rocm//:__subpackages__",
-        "@local_config_tensorrt//:__subpackages__",
-        "@local_execution_config_platform//:__subpackages__",
-        "@mkl_dnn_acl_compatible//:__subpackages__",
-        "@nsync//:__subpackages__",
-        "@nccl_archive//:__subpackages__",
-        "@onednn//:__subpackages__",
-        "@org_sqlite//:__subpackages__",
-        "@platforms//:__subpackages__",
-        "@png//:__subpackages__",
-        "@pthreadpool//:__subpackages__",
-        "@pybind11//:__subpackages__",
-        "@ruy//:__subpackages__",
-        "@snappy//:__subpackages__",
-        "@sobol_data//:__subpackages__",
-        "@stablehlo//:__subpackages__",
-        "@tf_runtime//:__subpackages__",
-        "@upb//:__subpackages__",
-        "@zlib//:__subpackages__",
-        "@local_tsl//tsl:__subpackages__",
-    ]
-    static_deps += tsl_async_value_deps()
-    static_deps += [] if not testonly else [
-        "@com_google_benchmark//:__subpackages__",
-        "@com_google_googletest//:__subpackages__",
-    ]
-    return if_oss(static_deps)
-
 # buildozer: enable=function-docstring-args
 def tf_python_pybind_extension_opensource(
         name,
@@ -3321,7 +3162,6 @@ def tf_python_pybind_extension_opensource(
         hdrs = [],  # TODO(b/264128506): Drop after migration to cc_shared_library.
         deps = [],
         dynamic_deps = [],
-        static_deps = [],
         compatible_with = None,
         copts = [],
         data = [],
@@ -3341,14 +3181,12 @@ def tf_python_pybind_extension_opensource(
     against libtensorflow_framework.so and pywrap_tensorflow_internal.so.
     """
     extended_deps = deps + if_mkl_ml(["//third_party/mkl:intel_binary_blob"])
-    extended_deps += [] if dynamic_deps else if_windows([], ["//tensorflow:libtensorflow_framework_import_lib"]) + tf_binary_pybind_deps()
     pybind_extension_opensource(
         name,
         srcs,
         module_name = module_name,
         hdrs = hdrs,
         dynamic_deps = dynamic_deps,
-        static_deps = static_deps,
         deps = extended_deps,
         compatible_with = compatible_with,
         copts = copts,

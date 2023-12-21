@@ -1,8 +1,3 @@
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_binary_additional_srcs",
-)
-
 # Generate Java wrapper classes for all registered core operations and package
 # them into a single source archive (.srcjar).
 #
@@ -59,7 +54,7 @@ def tf_java_op_gen_srcjar(
             # "//third_party/java/jdk:jdk",
             # copybara:uncomment_end
             gen_tool,
-        ] + tf_binary_additional_srcs(),
+        ],
         toolchains = ["@bazel_tools//tools/jdk:current_host_java_runtime"],
         cmd = " && ".join(gen_cmds),
     )

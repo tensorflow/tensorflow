@@ -94,7 +94,7 @@ cc_library(
     visibility = tf_external_workspace_visible(visibility),
     deps = [
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core/common_runtime:core_cpu_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -184,7 +184,7 @@ tf_python_pybind_extension(
         "_pywrap_py_func.pyi",
     ],
     deps = [
-        "//tensorflow/python:py_func_headers_lib",
+        "//tensorflow/python:py_func_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -225,7 +225,7 @@ cc_library(
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/core:framework_internal_headers_lib",
-        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core/common_runtime:core_cpu_lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
         "@local_tsl//tsl/python/lib/core:numpy",

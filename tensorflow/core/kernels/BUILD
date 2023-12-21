@@ -146,7 +146,7 @@ tf_kernel_library(
     prefix = "clustering_ops",
     deps = [
         "//tensorflow/core:framework",
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core/framework:reader_base",
         "//tensorflow/core:lib",
     ],
 )
@@ -875,7 +875,8 @@ tf_kernel_library(
     name = "set_kernels",
     prefix = "set_kernels",
     deps = [
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:reader_base",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -2495,11 +2496,6 @@ cc_library(
     ],
 )
 
-cc_header_only_library(
-    name = "lookup_headers_lib",
-    deps = [":lookup"],
-)
-
 DATA_FLOW_DEPS = [
     ":concat_lib",
     ":conditional_accumulator",
@@ -4075,7 +4071,7 @@ tf_kernel_library(
         ":conv_2d",
         ":conv_3d",
         ":conv_grad_shape_utils",
-        ":cwise_lib_hdrs",
+        ":cwise_lib",
         ":fill_functor",
         ":fused_eigen_output_kernels",
         ":loose_headers",
@@ -5276,7 +5272,8 @@ cc_library(
         "squared-loss.h",
     ],
     deps = [
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:reader_base",
         "//tensorflow/core:lib",
     ],
 )
@@ -7869,24 +7866,6 @@ cc_library(
     ],
 )
 
-# Header-only version of cwise_lib for clients that want to use the cwise_ops
-# functionality in their own custom ops.
-cc_header_only_library(
-    name = "cwise_lib_hdrs",
-    deps = [
-        ":cwise_lib",
-    ],
-)
-
-# Library to link with when compiling the quantize and dequantize kernels directly,
-# e.g. for selective registration.
-cc_header_only_library(
-    name = "quantize_and_dequantize_op_hdrs",
-    deps = [
-        ":quantize_and_dequantize_op",
-    ],
-)
-
 cc_library(
     name = "kernel_platform_strings",
     srcs = ["kernel_platform_strings.h"],
@@ -7948,67 +7927,6 @@ tf_cc_test(
         "//tensorflow/core/framework:fake_input",
         "//tensorflow/core/framework:types_proto_cc",
         "@eigen_archive//:eigen3",
-    ],
-)
-
-# Shared object that links all the kernels TF needs.
-tf_cc_shared_library(
-    name = "libtfkernel_all_kernels.so",
-    static_deps = [
-        # TODO(rostam): Remove Copybara transform.
-        # copybara:comment_begin(oss only)
-        "@bazel_tools//:__subpackages__",
-        "@boringssl//:__subpackages__",
-        "@com_github_cares_cares//:__subpackages__",
-        "@com_github_googlecloudplatform_tensorflow_gcp_tools//:__subpackages__",
-        "@com_github_grpc_grpc//:__subpackages__",
-        "@com_google_absl//:__subpackages__",
-        "@com_google_googleapis//:__subpackages__",
-        "@com_google_protobuf//:__subpackages__",
-        "@com_googlesource_code_re2//:__subpackages__",
-        "@compute_library//:__subpackages__",
-        "@curl//:__subpackages__",
-        "@double_conversion//:__subpackages__",
-        "@eigen_archive//:__subpackages__",
-        "@farmhash_archive//:__subpackages__",
-        "@farmhash_gpu_archive//:__subpackages__",
-        "@fft2d//:__subpackages__",
-        "@gemmlowp//:__subpackages__",
-        "@gif//:__subpackages__",
-        "@highwayhash//:__subpackages__",
-        "@hwloc//:__subpackages__",
-        "@icu//:__subpackages__",
-        "@jsoncpp_git//:__subpackages__",
-        "@libjpeg_turbo//:__subpackages__",
-        "@llvm_openmp//:__subpackages__",
-        "@llvm-project//:__subpackages__",
-        "@llvm_terminfo//:__subpackages__",
-        "@llvm_zlib//:__subpackages__",
-        "@local_config_cuda//:__subpackages__",
-        "@local_config_git//:__subpackages__",
-        "@local_config_nccl//:__subpackages__",
-        "@local_config_rocm//:__subpackages__",
-        "@local_config_tensorrt//:__subpackages__",
-        "@local_execution_config_platform//:__subpackages__",
-        "@mkl_dnn_acl_compatible//:__subpackages__",
-        "@nsync//:__subpackages__",
-        "@onednn//:__subpackages__",
-        "@org_sqlite//:__subpackages__",
-        "@platforms//:__subpackages__",
-        "@png//:__subpackages__",
-        "@snappy//:__subpackages__",
-        "@stablehlo//:__subpackages__",
-        "//:__subpackages__",
-        "@upb//:__subpackages__",
-        "@zlib//:__subpackages__",
-        "@local_tsl//tsl:__subpackages__",
-        "@local_xla//xla:__subpackages__",
-        # copybara:comment_end
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":kernel_platform_strings",
-        "//tensorflow/core:all_kernels_impl",
     ],
 )
 

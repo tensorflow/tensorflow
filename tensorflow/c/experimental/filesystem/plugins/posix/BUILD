@@ -12,7 +12,6 @@ package(
 # Filesystem implementation for POSIX environments: Linux, MacOS, Android, etc.
 tf_cc_shared_object(
     name = "libposix_filesystem.so",
-    framework_so = [],
     linkstatic = False,
     visibility = ["//visibility:public"],
     deps = [":posix_filesystem_impl"],

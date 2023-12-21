@@ -1614,19 +1614,15 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-cc_header_only_library(
+cc_library(
     name = "framework_internal_headers_lib",
-    # Fully depend on external repositories, because identifying the headers
-    # is fragile.
-    extra_deps = [
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
     deps = [
         ":lib",
         ":lib_internal",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/platform/default/build_config:platformlib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

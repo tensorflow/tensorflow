@@ -984,7 +984,8 @@ cc_library(
     ],
     copts = tf_copts(),
     deps = [
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:reader_base",
         "//tensorflow/core:lib_internal",
         "@local_tsl//tsl/platform:retrying_utils",
     ],
@@ -998,7 +999,8 @@ cc_library(
     copts = tf_copts(),
     deps = [
         ":retrying_utils",
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:reader_base",
         "//tensorflow/core:lib_internal",
         "@local_tsl//tsl/platform:retrying_file_system",
     ],

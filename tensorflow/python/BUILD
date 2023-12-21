@@ -6,7 +6,7 @@ load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 
 # Placeholder: load py_proto_library
-load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_mlir", "if_oss", "if_windows", "if_xla_available", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps", "tsl_async_value_deps")
+load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_mlir", "if_oss", "if_windows", "if_xla_available", "tf_enable_mlir_bridge", "tsl_async_value_deps")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pywrap_tensorflow_macro", "tf_external_workspace_visible", "tf_monitoring_python_deps", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -466,16 +466,10 @@ py_strict_library(
 tf_python_pybind_extension(
     name = "_pywrap_tfcompile",
     srcs = ["tfcompile_wrapper.cc"],
-    dynamic_deps = [":_pywrap_tensorflow_internal.so"] + select({
-        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
-        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
-        "//tensorflow:windows": [],
-    }),
     enable_stub_generation = True,
     pytype_srcs = [
         "_pywrap_tfcompile.pyi",
     ],
-    static_deps = tf_python_pybind_static_deps(),
     deps = [
         "@pybind11",
         "//tensorflow/compiler/aot:tfcompile_lib",
@@ -497,10 +491,11 @@ tf_python_pybind_extension(
         "_pywrap_quantize_training.pyi",
     ],
     deps = [
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:reader_base",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core/common_runtime:core_cpu_lib",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_proto",
         "//tensorflow/python/lib/core:pybind11_status",
@@ -514,16 +509,10 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_py_exception_registry",
     srcs = ["py_exception_registry_wrapper.cc"],
-    dynamic_deps = [":_pywrap_tensorflow_internal.so"] + select({
-        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
-        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
-        "//tensorflow:windows": [],
-    }),
     enable_stub_generation = True,
     pytype_srcs = [
         "_pywrap_py_exception_registry.pyi",
     ],
-    static_deps = tf_python_pybind_static_deps(),
     # Do not sort: core:py_exception_registry must come before platform:status
     deps = [
         "@com_google_absl//absl/container:fixed_array",
@@ -550,31 +539,6 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
-    ],
-)
-
-# TODO(edloper): Remove unused dependency on safe_ptr.  (Blocker: there are
-# targets that depend are relying on cpp_python_util to pull in safe_ptr's
-# third_party/tensorflow/c:c_api_no_xla dependency, which registers
-# ops/gradients, rather than depending on it themselves.)
-cc_header_only_library(
-    name = "py_func_headers_lib",
-    features = ["-parse_headers"],
-    tags = ["no-ide"],
-    deps = [
-        "//tensorflow/python/lib/core:py_func_lib",
-    ],
-)
-
-cc_header_only_library(
-    name = "python_op_gen_headers_lib",
-    extra_deps = [
-        "//tensorflow/core:protos_all_cc",
-    ],
-    features = ["-parse_headers"],
-    tags = ["no-ide"],
-    deps = [
-        "//tensorflow/python/framework:python_op_gen",
     ],
 )
 
@@ -650,17 +614,6 @@ py_strict_library(
 pywrap_tensorflow_macro(
     name = "pywrap_tensorflow_internal",
     srcs = ["pywrap_tensorflow_internal.cc"],
-    dynamic_deps = select({
-        "//tensorflow:macos": [
-            "//tensorflow:libtensorflow_cc.%s.dylib" % VERSION,
-            "//tensorflow:libtensorflow_framework.%s.dylib" % VERSION,
-        ],
-        "//conditions:default": [
-            "//tensorflow:libtensorflow_cc.so.%s" % VERSION,
-            "//tensorflow:libtensorflow_framework.so.%s" % VERSION,
-        ],
-        "//tensorflow:windows": [],
-    }),
     exports_filter = [
         "@pybind11",
         "@local_config_python//:python_headers",
@@ -677,71 +630,6 @@ pywrap_tensorflow_macro(
     roots = [
         "//tensorflow/python/lib/core:py_exception_registry",
     ],
-    static_deps = [
-        "@arm_neon_2_x86_sse//:__subpackages__",
-        "@bazel_tools//:__subpackages__",
-        "@boringssl//:__subpackages__",
-        "@clog//:__subpackages__",
-        "@com_github_cares_cares//:__subpackages__",
-        "@com_github_googlecloudplatform_tensorflow_gcp_tools//:__subpackages__",
-        "@com_github_grpc_grpc//:__subpackages__",
-        "@com_google_absl//:__subpackages__",
-        "@com_google_googleapis//:__subpackages__",
-        "@com_google_protobuf//:__subpackages__",
-        "@com_googlesource_code_re2//:__subpackages__",
-        "@compute_library//:__subpackages__",
-        "@cpuinfo//:__subpackages__",
-        "@cudnn_frontend_archive//:__subpackages__",
-        "@curl//:__subpackages__",
-        "@dlpack//:__subpackages__",
-        "@double_conversion//:__subpackages__",
-        "@eigen_archive//:__subpackages__",
-        "@farmhash_archive//:__subpackages__",
-        "@farmhash_gpu_archive//:__subpackages__",
-        "@fft2d//:__subpackages__",
-        "@flatbuffers//:__subpackages__",
-        "@FP16//:__subpackages__",
-        "@FXdiv//:__subpackages__",
-        "@gemmlowp//:__subpackages__",
-        "@gif//:__subpackages__",
-        "@highwayhash//:__subpackages__",
-        "@hwloc//:__subpackages__",
-        "@icu//:__subpackages__",
-        "@jsoncpp_git//:__subpackages__",
-        "@libjpeg_turbo//:__subpackages__",
-        "@llvm_openmp//:__subpackages__",
-        "@llvm-project//:__subpackages__",
-        "@llvm_terminfo//:__subpackages__",
-        "@llvm_zlib//:__subpackages__",
-        "@local_config_cuda//:__subpackages__",
-        "@local_config_git//:__subpackages__",
-        "@local_config_nccl//:__subpackages__",
-        "@local_config_python//:__subpackages__",
-        "@local_config_rocm//:__subpackages__",
-        "@local_config_tensorrt//:__subpackages__",
-        "@local_execution_config_platform//:__subpackages__",
-        "@mkl_dnn_acl_compatible//:__subpackages__",
-        "@nccl_archive//:__subpackages__",
-        "@nsync//:__subpackages__",
-        "@nvtx_archive//:__subpackages__",
-        "@onednn//:__subpackages__",
-        "@org_sqlite//:__subpackages__",
-        "@platforms//:__subpackages__",
-        "@png//:__subpackages__",
-        "@pthreadpool//:__subpackages__",
-        "@pybind11//:__subpackages__",
-        "@ruy//:__subpackages__",
-        "@snappy//:__subpackages__",
-        "@sobol_data//:__subpackages__",
-        "@stablehlo//:__subpackages__",
-        "@tf_runtime//:__subpackages__",
-        "//:__subpackages__",
-        "@upb//:__subpackages__",
-        "@XNNPACK//:__subpackages__",
-        "@zlib//:__subpackages__",
-        "@local_tsl//tsl:__subpackages__",
-        "@local_xla//xla:__subpackages__",
-    ] + tsl_async_value_deps(),
     win_def_file = ":pywrap_tensorflow_filtered_def_file",
     deps = [
         "//tensorflow/c:c_api",
@@ -1203,16 +1091,10 @@ tf_python_pybind_extension(
         "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
         "@local_tsl//tsl/python/lib/core:numpy_hdr",
     ],
-    dynamic_deps = [":_pywrap_tensorflow_internal.so"] + select({
-        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
-        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
-        "//tensorflow:windows": [],
-    }),
     enable_stub_generation = True,
     pytype_srcs = [
         "_pywrap_tfe.pyi",
     ],
-    static_deps = tf_python_pybind_static_deps(),
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
@@ -1223,13 +1105,14 @@ tf_python_pybind_extension(
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
         "//tensorflow/c:pywrap_required_hdrs",
-        "//tensorflow/c/eager:tfe_tensorhandle_internal_hdrs_only",
-        "//tensorflow/compiler/jit:flags_headers_only",
-        "//tensorflow/compiler/jit:get_compiler_ir_hdrs_only",
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
+        "//tensorflow/compiler/jit:flags_headers",
+        "//tensorflow/compiler/jit:get_compiler_ir_hdrs",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:reader_base",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core/common_runtime:core_cpu_lib",
         "//tensorflow/core/config:flags_headers",
         "//tensorflow/core/framework:pywrap_required_hdrs",
         "//tensorflow/core/lib/llvm_rtti",
@@ -1247,10 +1130,10 @@ tf_python_pybind_extension(
             "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
         ],
         otherwise = [
-            "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
-            "@local_tsl//tsl/protobuf:coordination_service_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:eager_service_proto_cc",
+            "//tensorflow/core/protobuf:master_proto_cc",
+            "//tensorflow/core/protobuf:worker_proto_cc",
+            "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
         ],
     ),
 )
@@ -1283,13 +1166,14 @@ tf_python_pybind_extension(
         "//tensorflow/c:c_api",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental_reader",
-        "//tensorflow/c/eager:tfe_tensorhandle_internal_hdrs_only",
-        "//tensorflow/compiler/jit:flags_headers_only",
-        "//tensorflow/compiler/jit:get_compiler_ir_hdrs_only",
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
+        "//tensorflow/compiler/jit:flags_headers",
+        "//tensorflow/compiler/jit:get_compiler_ir_hdrs",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:reader_base",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core/common_runtime:core_cpu_lib",
         "//tensorflow/core/config:flags_headers",
         "//tensorflow/core/framework:pywrap_required_hdrs",
         "//tensorflow/core/lib/llvm_rtti",
@@ -1327,10 +1211,11 @@ tf_python_pybind_extension(
     visibility = ["//tensorflow/python/distribute/parallel_device:__pkg__"],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
-        "//tensorflow/c/eager:tfe_cancellationmanager_internal_hdrs_only",
+        "//tensorflow/c/eager:tfe_cancellation_manager_internal",
         "//tensorflow/c/eager:tfe_op_internal",
-        "//tensorflow/c/eager:tfe_tensorhandle_internal_hdrs_only",
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:reader_base",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_lib",

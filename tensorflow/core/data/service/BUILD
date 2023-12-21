@@ -704,19 +704,6 @@ cc_library(
     alwayslink = 1,
 )
 
-# This needs to be cc_header_only_library - tf_pybind_cc_library_wrapper
-# does not pull in the server_lib.h header.
-cc_header_only_library(
-    name = "server_lib_headers_lib",
-    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
-    features = ["-parse_headers"],
-    deps = [
-        ":dispatcher_client",
-        ":grpc_util",
-        ":server_lib",
-    ],
-)
-
 cc_library(
     name = "split_provider",
     srcs = ["split_provider.cc"],

@@ -72,7 +72,8 @@ tf_python_pybind_extension(
         "_pywrap_tfprof.pyi",
     ],
     deps = [
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:reader_base",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core/profiler/internal:print_model_analysis_hdr",
         "//third_party/python_runtime:headers",
@@ -138,7 +139,8 @@ tf_python_pybind_extension(
         "_pywrap_kernel_registry.pyi",
     ],
     deps = [
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:reader_base",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
@@ -155,7 +157,8 @@ tf_python_pybind_extension(
         "_pywrap_stat_summarizer.pyi",
     ],
     deps = [
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:reader_base",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util:stat_summarizer",
         "//third_party/python_runtime:headers",
@@ -220,7 +223,8 @@ tf_python_pybind_extension(
         "_pywrap_transform_graph.pyi",
     ],
     deps = [
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:reader_base",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_status",
@@ -249,7 +253,7 @@ tf_python_pybind_extension(
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/util/tensor_bundle:tensor_bundle_headers_lib",
+        "//tensorflow/core/util/tensor_bundle:tensor_bundle",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
@@ -442,7 +446,7 @@ tf_python_pybind_extension(
     ],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
-        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core/common_runtime:core_cpu_lib",
         "//tensorflow/core/framework:pywrap_required_hdrs",
         "//tensorflow/core/platform:path",
         "//third_party/python_runtime:headers",  # buildcleaner: keep

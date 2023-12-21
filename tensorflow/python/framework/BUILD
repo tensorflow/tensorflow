@@ -44,7 +44,8 @@ tf_cc_shared_object(
         "//tensorflow:windows": [],
     }),
     deps = [
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:reader_base",
         "@com_google_protobuf//:protobuf_headers",
         "@eigen_archive//:eigen3",
     ],
@@ -135,7 +136,7 @@ tf_python_pybind_extension(
         "_pywrap_python_op_gen.pyi",
     ],
     deps = [
-        "//tensorflow/python:python_op_gen_headers_lib",
+        "//tensorflow/python/framework:python_op_gen",
         "//tensorflow/python/lib/core:pybind11_absl",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
@@ -390,7 +391,8 @@ tf_python_pybind_extension(
     ],
     visibility = visibility + ["//third_party/py/tensorfn:__subpackages__"],
     deps = [
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:reader_base",
         "//tensorflow/core:protos_all_cc",
         "@eigen_archive//:eigen3",
         "@pybind11",
@@ -653,7 +655,8 @@ tf_python_pybind_extension(
     ],
     deps = [
         ":op_def_util_headers",
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:reader_base",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
@@ -687,7 +690,8 @@ tf_python_pybind_extension(
         "_op_def_registry.pyi",
     ],
     deps = [
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:reader_base",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
@@ -857,7 +861,7 @@ tf_python_pybind_extension(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core/common_runtime:core_cpu_lib",
         "//tensorflow/core/config:flags_headers",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
@@ -876,10 +880,10 @@ tf_python_pybind_extension(
             "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
         ],
         otherwise = [
-            "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
-            "@local_tsl//tsl/protobuf:coordination_service_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:eager_service_proto_cc",
+            "//tensorflow/core/protobuf:master_proto_cc",
+            "//tensorflow/core/protobuf:worker_proto_cc",
+            "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
         ],
     ),
 )
@@ -957,7 +961,7 @@ tf_python_pybind_extension(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core/common_runtime:core_cpu_lib",
         "//tensorflow/core/config:flags_headers",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
@@ -976,10 +980,10 @@ tf_python_pybind_extension(
             "//tensorflow/core/protobuf:worker_proto_cc",
         ],
         otherwise = [
-            "@local_tsl//tsl/protobuf:coordination_service_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
+            "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
+            "//tensorflow/core/protobuf:eager_service_proto_cc",
+            "//tensorflow/core/protobuf:master_proto_cc",
+            "//tensorflow/core/protobuf:worker_proto_cc",
         ],
     ),
 )
@@ -1100,7 +1104,7 @@ tf_python_pybind_extension(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core/common_runtime:core_cpu_lib",
         "//tensorflow/core/config:flags_headers",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
@@ -1119,10 +1123,10 @@ tf_python_pybind_extension(
             "//tensorflow/core/protobuf:worker_proto_cc",
         ],
         otherwise = [
-            "@local_tsl//tsl/protobuf:coordination_service_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
+            "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
+            "//tensorflow/core/protobuf:eager_service_proto_cc",
+            "//tensorflow/core/protobuf:master_proto_cc",
+            "//tensorflow/core/protobuf:worker_proto_cc",
         ],
     ),
 )

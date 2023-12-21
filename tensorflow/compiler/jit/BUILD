@@ -435,14 +435,6 @@ cc_library(
     ],
 )
 
-cc_header_only_library(
-    name = "flags_headers_only",
-    features = [
-        "-parse_headers",  # buildifier: disable=no-parse-headers
-    ],
-    deps = [":flags_headers"],
-)
-
 cc_library(
     name = "common",
     srcs = [
@@ -817,26 +809,6 @@ cc_library(
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_header_only_library(
-    name = "get_compiler_ir_hdrs_only",
-    features = [
-        "-parse_headers",  # buildifier: disable=no-parse-headers
-    ],
-    deps = [":get_compiler_ir_hdrs"],
-)
-
-# This target can be used by XLA device plugins to prevent circular dependencies, and provides access to all of the required headers for building a device library.
-cc_header_only_library(
-    name = "xla_jit_headers_lib",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":xla_cpu_device",
-        ":xla_cpu_jit",
-        ":xla_gpu_device",
-        ":xla_gpu_jit",
     ],
 )
 

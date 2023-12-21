@@ -64,12 +64,6 @@ cc_library(
     ],
 )
 
-cc_header_only_library(
-    name = "tensor_bundle_headers_lib",
-    features = ["-parse_headers"],  # Transitively pulls in Eigen headers
-    deps = [":tensor_bundle"],
-)
-
 cc_library(
     name = "naming",
     srcs = ["naming.cc"],

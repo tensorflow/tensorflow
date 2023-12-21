@@ -147,7 +147,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_all_cc",
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:reader_base",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],

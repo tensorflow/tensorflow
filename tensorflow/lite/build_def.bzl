@@ -1,6 +1,6 @@
 """Build macros for TF Lite."""
 
-load("//tensorflow:tensorflow.bzl", "clean_dep", "if_oss", "tf_binary_additional_srcs", "tf_cc_shared_object")
+load("//tensorflow:tensorflow.bzl", "clean_dep", "if_oss", "tf_cc_shared_object")
 load("//tensorflow/lite:special_rules.bzl", "tflite_copts_extra")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
@@ -246,7 +246,6 @@ def tflite_cc_shared_object(
         copts = copts,
         linkstatic = linkstatic,
         linkopts = linkopts + tflite_jni_linkopts(),
-        framework_so = [],
         per_os_targets = per_os_targets,
         **kwargs
     )
@@ -272,7 +271,7 @@ def tf_to_tflite(name, src, options, out):
         srcs = [src],
         outs = [out],
         cmd = toco_cmdline,
-        tools = ["//tensorflow/lite/python:tflite_convert"] + tf_binary_additional_srcs(),
+        tools = ["//tensorflow/lite/python:tflite_convert"],
     )
 
 def DEPRECATED_tf_to_tflite(name, src, options, out):
@@ -300,7 +299,7 @@ def DEPRECATED_tf_to_tflite(name, src, options, out):
         srcs = [src],
         outs = [out],
         cmd = toco_cmdline,
-        tools = ["//tensorflow/lite/toco:toco"] + tf_binary_additional_srcs(),
+        tools = ["//tensorflow/lite/toco:toco"],
     )
 
 def tflite_to_json(name, src, out):

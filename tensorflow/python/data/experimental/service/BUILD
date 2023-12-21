@@ -16,7 +16,9 @@ tf_python_pybind_extension(
     ],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core/data/service:server_lib_headers_lib",
+        "//tensorflow/core/data/service:dispatcher_client",
+        "//tensorflow/core/data/service:grpc_util",
+        "//tensorflow/core/data/service:server_lib",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//third_party/python_runtime:headers",

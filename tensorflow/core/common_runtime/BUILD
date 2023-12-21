@@ -77,15 +77,6 @@ tf_cuda_library(
     ],
 )
 
-cc_header_only_library(
-    name = "core_cpu_headers_lib",
-    features = ["-parse_headers"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":core_cpu_lib",
-    ],
-)
-
 cc_library(
     name = "core",
     visibility = ["//visibility:public"],
