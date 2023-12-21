@@ -891,11 +891,13 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     absl::InlinedVector<int64_t, 4> permutation(dims.size());
     absl::c_reverse_copy(device_shape.layout().minor_to_major(),
                          permutation.begin());
+    TransposePlan::Options options;
+    options.elem_size_in_bytes = primitive_util::ByteWidth(type);
+    options.dims = dims;
+    options.permutation = permutation;
+    options.input_layout = TransposePlan::Striding{*byte_strides};
     absl::MutexLock lock(&transpose_mu_);
-    TF_ASSIGN_OR_RETURN(transpose,
-                        transpose_cache_.GetOrCreate(
-                            primitive_util::ByteWidth(type), dims, permutation,
-                            TransposePlan::Striding{*byte_strides}));
+    TF_ASSIGN_OR_RETURN(transpose, transpose_cache_.GetOrCreate(options));
   }
 
   // Copy the buffer into a staging buffer before returning control to the
