@@ -94,10 +94,8 @@ TEST_F(HloFusionAnalysisTest, ReductionWithMultipleUsers) {
                          HloFusionAdaptor::ForInstruction(
                              module->entry_computation()->root_instruction()),
                          &device_info));
-  // This fusion cannot use the reduction emitter because the reduce has two
-  // users.
   EXPECT_EQ(analysis.GetEmitterFusionKind(),
-            HloFusionAnalysis::EmitterFusionKind::kLoop);
+            HloFusionAnalysis::EmitterFusionKind::kReduction);
 }
 
 TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusion) {
