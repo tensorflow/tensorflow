@@ -510,19 +510,24 @@ AutoShardingSolverResult CallORToolsSolver(
     }
   }
   // h.
+  absl::flat_hash_set<std::pair<NodeIdx, NodeIdx>> alias_set;
   for (auto alias_idx = 0; alias_idx < request.aliases_size(); ++alias_idx) {
-    const auto& alias = request.aliases(alias_idx);
+    const auto& raw_alias = request.aliases(alias_idx);
+    const std::pair<NodeIdx, NodeIdx> alias(raw_alias.first(),
+                                            raw_alias.second());
+    if (alias_set.contains(alias)) continue;
+    alias_set.insert(alias);
     const auto& value_costs = request.value_costs(alias_idx).costs();
-    for (NodeStrategyIdx p = 0; p < s[alias.first()].size(); ++p) {
-      for (NodeStrategyIdx q = 0; q < s[alias.second()].size(); ++q) {
+    for (NodeStrategyIdx p = 0; p < s[alias.first].size(); ++p) {
+      for (NodeStrategyIdx q = 0; q < s[alias.second].size(); ++q) {
         // if lhs == 1
-        if (value_costs[p * s[alias.second()].size() + q] > 0.5) {
+        if (value_costs[p * s[alias.second].size() + q] > 0.5) {
           MPConstraint* constraint = solver->MakeRowConstraint(
               -MPSolver::infinity(), 1,
-              absl::StrCat("s[", alias.first(), "][", p, "] + s[",
-                           alias.second(), "][", q, "] <= 1"));
-          constraint->SetCoefficient(s[alias.first()][p], 1.0);
-          constraint->SetCoefficient(s[alias.second()][q], 1.0);
+              absl::StrCat("s[", alias.first, "][", p, "] + s[", alias.second,
+                           "][", q, "] <= 1"));
+          constraint->SetCoefficient(s[alias.first][p], 1.0);
+          constraint->SetCoefficient(s[alias.second][q], 1.0);
         }
       }
     }
