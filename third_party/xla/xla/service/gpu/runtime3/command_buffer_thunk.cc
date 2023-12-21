@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime3/command_buffer_thunk.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <memory>
 #include <utility>
+#include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -28,9 +33,17 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla::gpu {
+
+using tsl::profiler::TraceMe;
+
+//===----------------------------------------------------------------------===//
+// CommandBufferThunk
+//===----------------------------------------------------------------------===//
 
 CommandBufferThunk::ExecutorCommandBuffer::ExecutorCommandBuffer(
     se::CommandBuffer command_buffer)
@@ -39,7 +52,23 @@ CommandBufferThunk::ExecutorCommandBuffer::ExecutorCommandBuffer(
 CommandBufferThunk::CommandBufferThunk(CommandBufferCmdSequence commands,
                                        ThunkInfo thunk_info)
     : Thunk(Thunk::kCommandBuffer, std::move(thunk_info)),
-      commands_(std::move(commands)) {}
+      commands_(std::move(commands)),
+      state_(std::make_shared<State>()) {
+  // When we create a new command buffer thunk (which happens when we
+  // instantiate a new Gpu executable) we evict command buffers for all
+  // previously instantiated executables. If previously instantiated executable
+  // will be executed again, it will simply reconstruct command buffer from
+  // a command buffer cmd sequence which is not terribly expensive (few
+  // milliseconds for large command buffers). With this approach we keep command
+  // buffers (CUDA graphs) resident in device memory only for executable that
+  // are actually used.
+  //
+  // In a perfect world higher level framework (JAX, Tensorflow, PyTorch) would
+  // be more aggressive with destroying unused executables, however today they
+  // all have a pretty large LRU cache for keeping O(1000) XLA executables.
+  EvictCommandBuffers();
+  TrackCommandBuffers(state_);
+}
 
 Status CommandBufferThunk::Initialize(se::StreamExecutor* executor,
                                       ExecutableSource executable_source) {
@@ -73,7 +102,7 @@ bool CommandBufferThunk::ExecutorCommandBuffer::ShouldUpdateCommandBuffer(
 
 Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
-  TF_ASSIGN_OR_RETURN(ExecutorCommandBuffer * cmd_buffer,
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
                       GetOrCreateCommandBuffer(executor));
 
   absl::MutexLock lock(&cmd_buffer->mutex);
@@ -89,20 +118,77 @@ Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   return executor->Submit(params.stream, cmd_buffer->command_buffer);
 }
 
-StatusOr<CommandBufferThunk::ExecutorCommandBuffer*>
+StatusOr<std::shared_ptr<CommandBufferThunk::ExecutorCommandBuffer>>
 CommandBufferThunk::GetOrCreateCommandBuffer(se::StreamExecutor* executor) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(&state_->mutex);
 
   // Check if command buffer already exists
-  if (auto it = command_buffers_.find(executor); it != command_buffers_.end()) {
-    return &it->second;
+  if (auto it = state_->command_buffers.find(executor);
+      it != state_->command_buffers.end()) {
+    return it->second;
   }
 
   // Create a new empty command buffer.
   TF_ASSIGN_OR_RETURN(auto command_buffer, se::CommandBuffer::Create(executor));
-  auto emplaced = command_buffers_.emplace(executor, std::move(command_buffer));
+  auto emplaced = state_->command_buffers.emplace(
+      executor,
+      std::make_shared<ExecutorCommandBuffer>(std::move(command_buffer)));
 
-  return &emplaced.first->second;
+  return emplaced.first->second;
+}
+
+//===----------------------------------------------------------------------===//
+// Command buffer eviction
+//===----------------------------------------------------------------------===//
+
+struct CommandBufferThunk::GlobalState {
+  absl::Mutex mutex;
+  std::vector<std::weak_ptr<CommandBufferThunk::State>> state
+      ABSL_GUARDED_BY(mutex);
+};
+
+CommandBufferThunk::GlobalState* CommandBufferThunk::GetGlobalState() {
+  static auto* global_state = new GlobalState();
+  return global_state;
+}
+
+void CommandBufferThunk::TrackCommandBuffers(
+    std::weak_ptr<CommandBufferThunk::State> state) {
+  auto* global_state = GetGlobalState();
+  absl::MutexLock global_state_lock(&global_state->mutex);
+  global_state->state.push_back(state);
+}
+
+void CommandBufferThunk::EvictCommandBuffers() {
+  TraceMe trace([&] { return "EvictCommandBuffers"; });
+
+  auto* global_state = GetGlobalState();
+  absl::MutexLock global_state_lock(&global_state->mutex);
+  VLOG(3) << "Evict command buffer thunk command buffers; tracked thunks = "
+          << global_state->state.size();
+
+  // Erase state for already destroyed thunks.
+  global_state->state.erase(
+      std::remove_if(global_state->state.begin(), global_state->state.end(),
+                     [](auto& weak_ptr) { return weak_ptr.expired(); }),
+      global_state->state.end());
+
+  // Evict command buffers for all tracked thunks.
+  int64_t num_evicted = 0;
+  for (auto& weak_ptr : global_state->state) {
+    auto ptr = weak_ptr.lock();
+    if (!ptr) continue;
+
+    // Evict all command buffers.
+    absl::MutexLock state_lock(&ptr->mutex);
+    num_evicted += ptr->command_buffers.size();
+    ptr->command_buffers.clear();
+  }
+
+  if (num_evicted > 0) {
+    VLOG(3) << "Evicted " << num_evicted
+            << " command buffer thunk command buffers";
+  }
 }
 
 }  // namespace xla::gpu
