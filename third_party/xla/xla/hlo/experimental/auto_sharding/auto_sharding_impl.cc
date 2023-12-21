@@ -42,7 +42,7 @@ AutoShardingSolverResult Solve(
                     strategy_groups, cost_graph, alias_set, /*s_hint*/ {},
                     /*compute_iis*/ true, option.solver_timeout_in_seconds,
                     option, /*max_cost*/ std::nullopt,
-                    sharding_propagation_solution);
+                    sharding_propagation_solution, /*deterministic mode*/ true);
 }
 
 void PopulateTemporalValues(const CostGraph& cost_graph,

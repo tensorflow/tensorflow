@@ -274,10 +274,14 @@ AutoShardingSolverResult CallORToolsSolver(
       operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
     // Set random_seed, interleave_search and share_binary_clauses for
     // determinism, and num_workers for parallelism.
-    solver_parameter_str = absl::StrCat(
-        "share_binary_clauses:false,random_seed:1,interleave_"
-        "search:true,num_workers:",
-        num_workers);
+    solver_parameter_str =
+        request.deterministic_mode()
+            ? absl::StrCat(
+                  "share_binary_clauses:false,random_seed:1,interleave_"
+                  "search:true,num_workers:",
+                  num_workers)
+            : absl::StrCat("num_workers:", num_workers);
+    solver->SetSolverSpecificParametersAsString(solver_parameter_str);
   }
 #endif
   // Create variables
@@ -538,7 +542,7 @@ AutoShardingSolverResult CallORToolsSolver(
     }
   }
 
-  if (!request.s_hint().empty()) {
+  if (!request.s_hint().empty() && !request.deterministic_mode()) {
     std::vector<std::pair<const MPVariable*, double>> hint;
     for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
       if (request.s_follow(node_idx) >= 0) continue;
@@ -594,6 +598,7 @@ AutoShardingSolverResult CallORToolsSolver(
           << "Memory budget: " << request.memory_budget() / (1024 * 1024 * 1024)
           << "GB\n"
           << "Number of ILP constraints: " << solver->NumConstraints() << "\n"
+          << "Deterministic mode: " << request.deterministic_mode() << "\n"
           << "Module name: " << request.module_name();
   if (request.has_max_cost()) {
     VLOG(0) << "Max cost: " << request.max_cost().coeff();

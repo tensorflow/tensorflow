@@ -45,7 +45,8 @@ AutoShardingSolverResult CallSolver(
     bool compute_iis, int64_t solver_timeout_in_seconds,
     const AutoShardingOption& option, std::optional<double> max_cost,
     const absl::flat_hash_map<std::string, const HloInstruction*>&
-        sharding_propagation_solution = {});
+        sharding_propagation_solution = {},
+    bool deterministic_mode = false);
 
 // Computes the penalty to be used for fully replicated sharding strategies for
 // dots and convs.

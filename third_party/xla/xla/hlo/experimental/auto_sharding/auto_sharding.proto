@@ -60,5 +60,6 @@ message AutoShardingSolverRequest {
   bool crash_at_infinity_costs_check = 21;
   bool compute_iis = 22;
   double saltiplier = 23;
+  bool deterministic_mode = 27;
   string module_name = 24;
 }

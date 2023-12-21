@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_module_config.h"
@@ -62,8 +63,10 @@ TEST_F(AutoShardingTest, MatMulWithAutosharding) {
   auto compiled_module = CompileMatMul(true, 4);
   auto* instruction = FindInstruction(compiled_module.get(), "param");
   VLOG(2) << instruction->ToString();
-  EXPECT_THAT(instruction,
-              GmockMatch(m::Op().WithSharding("{devices=[4,1]0,1,2,3}")));
+  EXPECT_THAT(
+      instruction,
+      AnyOf(GmockMatch(m::Op().WithSharding("{devices=[1,4]0,1,2,3}")),
+            GmockMatch(m::Op().WithSharding("{devices=[4,1]0,1,2,3}"))));
 }
 
 TEST_F(AutoShardingTest, MatMulWithoutAutosharding) {

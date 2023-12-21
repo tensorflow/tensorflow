@@ -330,18 +330,37 @@ ENTRY %entry {
   VLOG(2) << module->ToString();
   EXPECT_TRUE(changed);
   auto* param0 = FindInstruction(module.get(), "param0");
-  ASSERT_NE(param0, nullptr);
-  EXPECT_THAT(
-      param0,
-      op::Sharding("{devices=[1,1,2,2]0,1,2,3 last_tile_dim_replicate}"));
   auto* param1 = FindInstruction(module.get(), "param1");
-  ASSERT_NE(param1, nullptr);
-  EXPECT_THAT(
-      param1,
-      op::Sharding("{devices=[1,1,2,1,2]0,2,1,3 last_tile_dim_replicate}"));
   auto* dot = FindInstruction(module.get(), "dot");
+  ASSERT_NE(param0, nullptr);
+  ASSERT_NE(param1, nullptr);
   ASSERT_NE(dot, nullptr);
-  EXPECT_THAT(dot, op::Sharding("{devices=[2,2,1]0,1,2,3}"));
+  EXPECT_THAT(
+      std::make_tuple(param0, param1, dot),
+      AnyOf(::testing::FieldsAre(
+                op::Sharding(
+                    "{devices=[1,1,2,2]0,1,2,3 last_tile_dim_replicate}"),
+                op::Sharding(
+                    "{devices=[1,1,2,1,2]0,2,1,3 last_tile_dim_replicate}"),
+                op::Sharding("{devices=[2,2,1]0,1,2,3}")),
+            ::testing::FieldsAre(
+                op::Sharding(
+                    "{devices=[1,1,2,2]0,1,2,3 last_tile_dim_replicate}"),
+                op::Sharding(
+                    "{devices=[1,1,1,2,2]0,2,1,3 last_tile_dim_replicate}"),
+                op::Sharding("{devices=[2,1,2]0,1,2,3}")),
+            ::testing::FieldsAre(
+                op::Sharding(
+                    "{devices=[1,1,2,2]0,2,1,3 last_tile_dim_replicate}"),
+                op::Sharding(
+                    "{devices=[1,1,1,2,2]0,1,2,3 last_tile_dim_replicate}"),
+                op::Sharding("{devices=[2,1,2]0,2,1,3}")),
+            ::testing::FieldsAre(
+                op::Sharding(
+                    "{devices=[1,1,2,2]0,2,1,3 last_tile_dim_replicate}"),
+                op::Sharding(
+                    "{devices=[1,1,2,1,2]0,1,2,3 last_tile_dim_replicate}"),
+                op::Sharding("{devices=[2,2,1]0,2,1,3}"))));
 }
 
 TEST_F(AutoShardingTest, DotTwoContractingDims) {
@@ -442,21 +461,28 @@ ENTRY twomatmul {
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
   param1 = FindInstruction(module.get(), "parameter.1");
-  ASSERT_NE(param1, nullptr);
-  EXPECT_THAT(param1, op::Sharding("{replicated}"));
   param2 = FindInstruction(module.get(), "parameter.2");
-  ASSERT_NE(param2, nullptr);
-  EXPECT_THAT(param2, op::Sharding("{replicated}"));
   param3 = FindInstruction(module.get(), "parameter.3");
-  ASSERT_NE(param3, nullptr);
-  EXPECT_THAT(param3,
-              op::Sharding("{devices=[1,2,2]0,2,1,3 last_tile_dim_replicate}"));
   dot4 = FindInstruction(module.get(), "dot.4");
-  ASSERT_NE(dot4, nullptr);
-  EXPECT_THAT(dot4, op::Sharding("{replicated}"));
   dot5 = FindInstruction(module.get(), "dot.5");
+  ASSERT_NE(param1, nullptr);
+  ASSERT_NE(param2, nullptr);
+  ASSERT_NE(param3, nullptr);
+  ASSERT_NE(dot4, nullptr);
   ASSERT_NE(dot5, nullptr);
-  EXPECT_THAT(dot5, op::Sharding("{devices=[2,2]0,1,2,3}"));
+  EXPECT_THAT(
+      std::make_tuple(param1, param2, param3, dot4, dot5),
+      AnyOf(
+          ::testing::FieldsAre(
+              op::Sharding("{replicated}"), op::Sharding("{replicated}"),
+              op::Sharding("{devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}"),
+              op::Sharding("{replicated}"),
+              op::Sharding("{devices=[2,2]0,2,1,3}")),
+          ::testing::FieldsAre(
+              op::Sharding("{replicated}"), op::Sharding("{replicated}"),
+              op::Sharding("{devices=[1,2,2]0,2,1,3 last_tile_dim_replicate}"),
+              op::Sharding("{replicated}"),
+              op::Sharding("{devices=[2,2]0,1,2,3}"))));
 }
 
 TEST_F(AutoShardingTest, ProcessCustomCallShardings) {
@@ -778,7 +804,11 @@ ENTRY %entry {
   ASSERT_NE(gather, nullptr);
   EXPECT_THAT(
       gather,
-      op::Sharding("{devices=[2,1,1,2]0,1,2,3 last_tile_dim_replicate}"));
+      AnyOf(
+          op::Sharding("{devices=[1,2,1,2]0,1,2,3 last_tile_dim_replicate}"),
+          op::Sharding("{devices=[1,2,1,2]0,2,1,3 last_tile_dim_replicate}"),
+          op::Sharding("{devices=[2,1,1,2]0,1,2,3 last_tile_dim_replicate}"),
+          op::Sharding("{devices=[2,1,1,2]0,2,1,3 last_tile_dim_replicate}")));
   auto gather_sharding = gather->sharding();
   TF_EXPECT_OK(gather_sharding.Validate(gather->shape(), 4));
 }
@@ -807,7 +837,8 @@ ENTRY %entry {
   ASSERT_NE(gather, nullptr);
   ASSERT_NE(param0, nullptr);
   EXPECT_THAT(gather, op::Sharding("{devices=[8,1,1]0,1,2,3,4,5,6,7}"));
-  EXPECT_THAT(param0, op::Sharding("{devices=[8,1]0,1,2,3,4,5,6,7}"));
+  EXPECT_THAT(param0, AnyOf(op::Sharding("{devices=[1,8]0,1,2,3,4,5,6,7}"),
+                            op::Sharding("{devices=[8,1]0,1,2,3,4,5,6,7}")));
   TF_EXPECT_OK(gather->sharding().Validate(gather->shape(), 8));
   // Ensure no resharding op is created for operand 0 of gather in this case.
   EXPECT_EQ(param0, gather->operand(0));
@@ -838,13 +869,19 @@ ENTRY %entry {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   EXPECT_TRUE(changed);
   auto* gather = FindInstruction(module.get(), "gather");
+  auto* conv = FindInstruction(module.get(), "convolution");
   ASSERT_NE(gather, nullptr);
-  EXPECT_THAT(gather, op::Sharding("{devices=[4,1,1]0,1,2,3}"));
+  ASSERT_NE(conv, nullptr);
+  EXPECT_THAT(
+      std::make_tuple(gather, conv),
+      AnyOf(::testing::FieldsAre(op::Sharding("{devices=[4,1,1]0,1,2,3}"),
+                                 op::Sharding("{devices=[4,1,1]0,1,2,3}")),
+            ::testing::FieldsAre(op::Sharding("{replicated}"),
+                                 op::Sharding("{devices=[1,1,4]0,1,2,3}")),
+            ::testing::FieldsAre(op::Sharding("{replicated}"),
+                                 op::Sharding("{devices=[4,1,1]0,1,2,3}"))));
   auto gather_sharding = gather->sharding();
   TF_EXPECT_OK(gather_sharding.Validate(gather->shape(), 4));
-  auto* conv = FindInstruction(module.get(), "convolution");
-  ASSERT_NE(conv, nullptr);
-  EXPECT_THAT(conv, op::Sharding("{devices=[4,1,1]0,1,2,3}"));
   auto conv_sharding = conv->sharding();
   TF_EXPECT_OK(conv_sharding.Validate(conv->shape(), 4));
 }

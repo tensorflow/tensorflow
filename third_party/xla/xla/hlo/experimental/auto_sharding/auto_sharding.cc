@@ -93,8 +93,8 @@ namespace spmd {
 
 namespace {
 constexpr double kOverbudgetCoeff = 1e6;
-constexpr double kSaltiplier = 0.001;  // Modifies each obj. term by at most .1%
-constexpr double kCoeffLimit = 1e7;    // May result in model cost scaling.
+constexpr double kSaltiplier = 0.0;  // This value (0.0) disables salting.
+constexpr double kCoeffLimit = 1e7;  // May result in model cost scaling.
 }  // namespace
 
 // Compute the resharding cost vector from multiple possible strategies to a
@@ -1652,7 +1652,8 @@ AutoShardingSolverResult CallSolver(
     const bool compute_iis, const int64_t solver_timeout_in_seconds,
     const AutoShardingOption& option, std::optional<double> max_cost,
     const absl::flat_hash_map<std::string, const HloInstruction*>&
-        sharding_propagation_solution) {
+        sharding_propagation_solution,
+    bool deterministic_mode) {
   // Serialize edges and edge costs to 1d numpy arrays.
   AutoShardingSolverRequest request;
   request.set_module_name(hlo_module.name());
@@ -1670,6 +1671,7 @@ AutoShardingSolverResult CallSolver(
   request.set_crash_at_infinity_costs_check(!option.try_multiple_mesh_shapes);
   request.set_compute_iis(compute_iis);
   request.set_saltiplier(kSaltiplier);
+  request.set_deterministic_mode(deterministic_mode);
   if (max_cost) {
     request.mutable_max_cost()->set_coeff(*max_cost);
   }
