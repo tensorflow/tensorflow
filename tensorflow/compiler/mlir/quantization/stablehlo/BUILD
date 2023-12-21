@@ -49,6 +49,7 @@ cc_library(
         "passes/lift_quantizable_spots_as_functions.cc",
         "passes/lift_quantizable_spots_as_functions_fusion.inc",
         "passes/lift_quantizable_spots_as_functions_simple.inc",
+        "passes/optimize_graph.cc",
         "passes/populate_shape.cc",
         "passes/post_quantize.cc",
         "passes/prepare_quantize.cc",
@@ -69,6 +70,7 @@ cc_library(
         ":fill_quantization_options",
         ":lift_quantizable_spots_as_functions_fusion_inc_gen",
         ":lift_quantizable_spots_as_functions_simple_inc_gen",
+        ":optimize_graph_inc_gen",
         ":quantization_options_proto_cc",
         ":quantization_patterns",
         ":stablehlo_passes_inc_gen",
@@ -168,6 +170,7 @@ td_library(
     srcs = [
         "passes/lift_quantizable_spots_as_functions_fusion.td",
         "passes/lift_quantizable_spots_as_functions_simple.td",
+        "passes/optimize_graph.td",
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
@@ -209,6 +212,23 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/lift_quantizable_spots_as_functions_fusion.td",
+    deps = [
+        ":quant_td_files",
+        "//tensorflow/compiler/mlir/quantization/common:quant_td_files",
+    ],
+)
+
+gentbl_cc_library(
+    name = "optimize_graph_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/optimize_graph.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/optimize_graph.td",
     deps = [
         ":quant_td_files",
         "//tensorflow/compiler/mlir/quantization/common:quant_td_files",

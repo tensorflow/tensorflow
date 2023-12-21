@@ -146,9 +146,8 @@ void PostQuantizePass::runOnOperation() {
 
   RewritePatternSet patterns_2(&getContext());
   patterns_2
-      .add<ConvertDequantizeCastToUniformDequantizePattern,
-           ConvertQuantizeCastToUniformQuantizePattern, QuantizeConstPattern>(
-          ctx);
+      .add<QuantizeConstPattern, ConvertQuantizeCastToUniformQuantizePattern,
+           ConvertDequantizeCastToUniformDequantizePattern>(ctx);
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns_2)))) {
     signalPassFailure();
   }

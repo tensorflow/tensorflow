@@ -266,6 +266,7 @@ void AddQuantizePtqPostCalibrationStablehloPasses(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertCustomAggregationOpToQuantStatsPass());
   AddStaticRangeQuantizationPass(pm, mlir_dump_file_prefix);
+  pm.addPass(mlir::quant::stablehlo::createOptimizeGraphPass());
   AddStablehloQuantToIntPasses(pm);
   AddCallModuleSerializationPasses(pm);
 }
