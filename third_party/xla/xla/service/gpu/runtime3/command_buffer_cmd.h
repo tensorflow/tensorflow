@@ -244,6 +244,41 @@ class MemcpyDeviceToDeviceCmd : public CommandBufferCmd {
 };
 
 //===----------------------------------------------------------------------===//
+// MemzeroCmd
+//===----------------------------------------------------------------------===//
+
+class MemzeroCmd : public CommandBufferCmd {
+ public:
+  explicit MemzeroCmd(BufferAllocation::Slice dst);
+
+  Status Record(const RecordParams& params,
+                se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
+
+ private:
+  BufferAllocation::Slice dst_;
+};
+
+//===----------------------------------------------------------------------===//
+// Memset32Cmd
+//===----------------------------------------------------------------------===//
+
+class Memset32Cmd : public CommandBufferCmd {
+ public:
+  explicit Memset32Cmd(BufferAllocation::Slice dst, uint32_t bit_pattern);
+
+  Status Record(const RecordParams& params,
+                se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
+
+ private:
+  BufferAllocation::Slice dst_;
+  uint32_t bit_pattern_;
+};
+
+//===----------------------------------------------------------------------===//
 // IfCmd
 //===----------------------------------------------------------------------===//
 

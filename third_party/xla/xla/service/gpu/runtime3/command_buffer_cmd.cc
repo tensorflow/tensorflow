@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -299,9 +300,9 @@ Status MemcpyDeviceToDeviceCmd::Record(const RecordParams& params,
   se::DeviceMemoryBase dst = params.buffer_allocations->GetDeviceAddress(dst_);
   se::DeviceMemoryBase src = params.buffer_allocations->GetDeviceAddress(src_);
 
-  VLOG(5) << "MemcpyDeviceToDeviceCmd: dst=" << dst_ << " (" << dst.opaque()
-          << "), src=" << src_ << " (" << src.opaque()
-          << "), num_bytes=" << num_bytes_;
+  VLOG(5) << "MemcpyDeviceToDeviceCmd: num_bytes = " << num_bytes_;
+  VLOG(5) << "  Dst: " << dst_ << " (" << dst.opaque() << ")";
+  VLOG(5) << "  Src: " << src_ << " (" << src.opaque() << ")";
 
   if (num_bytes_ == 0) {
     VLOG(5) << "Skip recording MemcpyDeviceToDeviceCmd command of 0 bytes";
@@ -313,6 +314,58 @@ Status MemcpyDeviceToDeviceCmd::Record(const RecordParams& params,
 
 CommandBufferCmd::BufferUsageVector MemcpyDeviceToDeviceCmd::buffers() {
   return {{dst_, MemoryAccess::kWrite}, {src_, MemoryAccess::kRead}};
+}
+
+//===----------------------------------------------------------------------===//
+// MemzeroCmd
+//===----------------------------------------------------------------------===//
+
+MemzeroCmd::MemzeroCmd(BufferAllocation::Slice dst) : dst_(dst) {}
+
+Status MemzeroCmd::Record(const RecordParams& params,
+                          se::CommandBuffer* command_buffer) {
+  se::DeviceMemoryBase dst = params.buffer_allocations->GetDeviceAddress(dst_);
+
+  VLOG(5) << "MemzeroCmd:";
+  VLOG(5) << "  Dst: " << dst_ << " (" << dst.opaque() << ")";
+
+  if (dst_.size() == 0) {
+    VLOG(5) << "Skip recording MemzeroCmd command of 0 bytes";
+    return OkStatus();
+  }
+
+  return command_buffer->Memset(&dst, uint8_t{0}, /*num_elements=*/dst_.size());
+}
+
+CommandBufferCmd::BufferUsageVector MemzeroCmd::buffers() {
+  return {{dst_, MemoryAccess::kWrite}};
+}
+
+//===----------------------------------------------------------------------===//
+// Memset32Cmd
+//===----------------------------------------------------------------------===//
+
+Memset32Cmd::Memset32Cmd(BufferAllocation::Slice dst, uint32_t bit_pattern)
+    : dst_(dst), bit_pattern_(bit_pattern) {}
+
+Status Memset32Cmd::Record(const RecordParams& params,
+                           se::CommandBuffer* command_buffer) {
+  se::DeviceMemoryBase dst = params.buffer_allocations->GetDeviceAddress(dst_);
+
+  VLOG(5) << "Memset32Cmd: bit_pattern=" << bit_pattern_;
+  VLOG(5) << "  Dst: " << dst_ << " (" << dst.opaque() << ")";
+
+  if (dst_.size() == 0) {
+    VLOG(5) << "Skip recording Memset32Cmd command of 0 bytes";
+    return OkStatus();
+  }
+
+  size_t num_elements = dst_.size() / sizeof(uint32_t);
+  return command_buffer->Memset(&dst, bit_pattern_, num_elements);
+}
+
+CommandBufferCmd::BufferUsageVector Memset32Cmd::buffers() {
+  return {{dst_, MemoryAccess::kWrite}};
 }
 
 //===----------------------------------------------------------------------===//

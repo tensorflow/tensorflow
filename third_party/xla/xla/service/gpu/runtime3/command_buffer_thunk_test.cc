@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/ascii.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -143,6 +144,87 @@ TEST(CommandBufferThunkTest, MemcpyCmd) {
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42));
 }
 
+TEST(CommandBufferThunkTest, MemzeroCmd) {
+  se::StreamExecutor* executor = GpuExecutor();
+
+  se::Stream stream(executor);
+  stream.Init();
+  ASSERT_TRUE(stream.ok());
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: a=42
+  se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  stream.ThenMemset32(&a, 42, byte_length);
+
+  // Prepare buffer allocations for recording command buffer.
+  BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
+  BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
+
+  // Prepare commands sequence for constructing command buffer.
+  CommandBufferCmdSequence commands;
+  commands.Emplace<MemzeroCmd>(slice_a);
+
+  // Construct a thunk with command sequence.
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
+
+  ServiceExecutableRunOptions run_options;
+  BufferAllocations allocations({a}, 0, executor->GetAllocator());
+  Thunk::ExecuteParams params(run_options, allocations, &stream, {});
+
+  // Execute command buffer thunk and verify that it zeroes the memory.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
+
+  // Copy `a` data back to host.
+  std::vector<int32_t> dst(4, 0);
+  stream.ThenMemcpy(dst.data(), a, byte_length);
+
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 0));
+}
+
+TEST(CommandBufferThunkTest, Memset32Cmd) {
+  se::StreamExecutor* executor = GpuExecutor();
+
+  se::Stream stream(executor);
+  stream.Init();
+  ASSERT_TRUE(stream.ok());
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: a=42
+  se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+
+  stream.ThenMemset32(&a, 42, byte_length);
+
+  // Prepare buffer allocations for recording command buffer.
+  BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
+  BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
+
+  // Prepare commands sequence for constructing command buffer.
+  CommandBufferCmdSequence commands;
+  commands.Emplace<Memset32Cmd>(slice_a, int32_t{84});
+
+  // Construct a thunk with command sequence.
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
+
+  ServiceExecutableRunOptions run_options;
+  BufferAllocations allocations({a}, 0, executor->GetAllocator());
+  Thunk::ExecuteParams params(run_options, allocations, &stream, {});
+
+  // Execute command buffer thunk and verify that it set the memory.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
+
+  // Copy `a` data back to host.
+  std::vector<int32_t> dst(4, 0);
+  stream.ThenMemcpy(dst.data(), a, byte_length);
+
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 84));
+}
+
 // This test does the following operations:
 // 1. Allocates memory region "a" and "c" outside command buffer.
 // 2. Allocates memory region "b" inside command buffer.
@@ -188,8 +270,7 @@ TEST(CommandBufferThunkTest, MemallocFreeCmdSameThunk) {
       byte_length));
   se::DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
 
-  std::unique_ptr<CommandBufferAllocations> external_allocation =
-      std::make_unique<CommandBufferAllocations>();
+  auto external_allocation = std::make_unique<CommandBufferAllocations>();
 
   BufferAllocations allocations({a, b, c}, 0, executor->GetAllocator(),
                                 external_allocation.get());
@@ -251,8 +332,7 @@ TEST(CommandBufferThunkTest, MemallocFreeCmdAcrossThunk) {
       byte_length));
   se::DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
 
-  std::unique_ptr<CommandBufferAllocations> external_allocation =
-      std::make_unique<CommandBufferAllocations>();
+  auto external_allocation = std::make_unique<CommandBufferAllocations>();
 
   BufferAllocations allocations({a, b, c}, 0, executor->GetAllocator(),
                                 external_allocation.get());

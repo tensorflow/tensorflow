@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gemm_thunk.h"
 #include "xla/service/gpu/kernel_thunk.h"
+#include "xla/service/gpu/memset_thunk.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 #include "xla/service/gpu/runtime3/copy_thunk.h"
 #include "xla/service/gpu/runtime3/sequential_thunk.h"
@@ -66,6 +67,15 @@ static StatusOr<Command> ConvertCopyThunk(
       thunk.destination(), thunk.source(), thunk.size_bytes());
 }
 
+static StatusOr<Command> ConvertMemzeroThunk(const MemzeroThunk& thunk) {
+  return std::make_unique<MemzeroCmd>(thunk.destination());
+}
+
+static StatusOr<Command> ConvertMemset32Thunk(
+    const Memset32BitValueThunk& thunk) {
+  return std::make_unique<Memset32Cmd>(thunk.destination(), thunk.value());
+}
+
 static StatusOr<Command> ConvertWhileThunk(const WhileThunk& thunk) {
   TF_ASSIGN_OR_RETURN(
       CommandBufferCmdSequence cond_cmds,
@@ -96,6 +106,11 @@ static StatusOr<Command> ConvertThunk(const Thunk& thunk) {
     case Thunk::Kind::kCopy:
       return ConvertCopyThunk(
           static_cast<const DeviceToDeviceCopyThunk&>(thunk));
+    case Thunk::Kind::kMemzero:
+      return ConvertMemzeroThunk(static_cast<const MemzeroThunk&>(thunk));
+    case Thunk::Kind::kMemset32BitValue:
+      return ConvertMemset32Thunk(
+          static_cast<const Memset32BitValueThunk&>(thunk));
     case Thunk::Kind::kWhile:
       return ConvertWhileThunk(static_cast<const WhileThunk&>(thunk));
     case Thunk::Kind::kGemm: {
