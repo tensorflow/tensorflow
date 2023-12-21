@@ -651,7 +651,7 @@ StatusOr<bool> GpuPriorityFusion::Run(
       for (auto* constant : constants) {
         auto users = constant->users();
         for (auto* user : users) {
-          if (IsFusible(*user)) {
+          if (IsFusible(*user) && CanEmitInputFusedScatter(*constant, *user)) {
             result.value() = true;
             InstructionFusion::Fuse(constant, user, computation);
           }
