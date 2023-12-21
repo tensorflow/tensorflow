@@ -16,7 +16,7 @@
 import multiprocessing
 import os
 import time
-from typing import Optional
+from typing import Callable, Optional
 
 from google.protobuf import message
 from google.protobuf import text_format
@@ -31,6 +31,10 @@ from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.platform import gfile
 # TODO(b/238903802): Use TypeSpec serialization methods directly.
 from tensorflow.python.saved_model import nested_structure_coder
+
+# For distributed snapshot load V2, if the snapshot does not exist in this time,
+# wait and retry. Raises an ValueError on timeout.
+_LOAD_TIMEOUT_SECONDS = 1800
 
 
 def _load(path, element_spec, compression, reader_func):
@@ -55,6 +59,22 @@ def _load(path, element_spec, compression, reader_func):
     return _load_distributed_snapshot(
         path, distributed_snapshot_metadata, reader_func)
   return _LoadDataset(path, element_spec, compression, reader_func)
+
+
+def _load_with_retry(
+    path, element_spec=None, compression=None, reader_func=None):
+  """Tries loading the snapshot. Retries if not found with a timeout."""
+
+  deadline = time.time() + _LOAD_TIMEOUT_SECONDS
+  error = None
+  while time.time() < deadline:
+    try:
+      return dataset_ops.Dataset.load(
+          path, element_spec, compression, reader_func)
+    except errors.NotFoundError as e:
+      error = e
+      time.sleep(10)
+  raise error
 
 
 def _load_distributed_snapshot_metadata(
@@ -83,51 +103,12 @@ def _load_distributed_snapshot_metadata(
     return None
 
 
-def _load_distributed_snapshot(path, metadata, reader_func):
-  """Loads a distributed snapshot."""
-
-  chunks_dir = _pywrap_snapshot_utils.TF_DATA_CommittedChunksDirectory(path)
-  chunk_files = [
-      os.path.join(chunks_dir, f) for f in gfile.ListDirectory(chunks_dir)]
-  dataset = dataset_ops.Dataset.from_tensor_slices(chunk_files)
-  dataset = dataset.map(
-      lambda chunk_file: _SnapshotChunkDataset(  # pylint:disable=g-long-lambda
-          chunk_file,
-          element_spec=_parse_element_spec(metadata.element_spec),
-          compression=metadata.compression))
-  return reader_func(dataset)
-
-
-def _load_distributed_snapshot_v2(
-    path: str, reader_func=None
+def _load_distributed_snapshot(
+    path: str,
+    metadata: snapshot_pb2.DistributedSnapshotMetadata,
+    reader_func: Callable[[dataset_ops.Dataset], dataset_ops.Dataset],
 ) -> dataset_ops.Dataset:
-  """Load a distributed snapshot using the updated loading algorithm.
-
-  The new version allows the load job to read the snapshot while it is being
-  written.
-
-  TODO(b/297930782): Merge this into `_load` when it's ready. Currently, this is
-  for testing only.
-
-  Args:
-    path: Base path of the snapshot.
-    reader_func: Optional. A function to control how to read data from shards.
-      If present, the function will be traced and executed as graph computation.
-
-  Returns:
-    The loaded dataset.
-  """
-
-  if not reader_func:
-    reader_func = lambda datasets: datasets.interleave(  # pylint:disable=g-long-lambda
-        lambda x: x,
-        cycle_length=multiprocessing.cpu_count(),
-        num_parallel_calls=dataset_ops.AUTOTUNE)
-
-  metadata = _load_distributed_snapshot_metadata(path)
-  while not metadata:
-    time.sleep(2)
-    metadata = _load_distributed_snapshot_metadata(path)
+  """Loads a distributed snapshot."""
 
   dataset = _ListSnapshotChunksDataset(path)
   dataset = dataset.map(
@@ -192,8 +173,7 @@ class _ListSnapshotChunksDataset(dataset_ops.DatasetSource):
   def __init__(self, snapshot_path: str):
     self._snapshot_path = snapshot_path
     variant_tensor = ged_ops.list_snapshot_chunks_dataset(
-        snapshot_path, **self._flat_structure
-    )
+        snapshot_path, **self._flat_structure)
     super().__init__(variant_tensor)
 
   @property
@@ -214,23 +194,12 @@ def _validate_snapshot(path, metadata, element_spec, compression):
     ValueError if the snapshot is invalid.
   """
 
-  if not gfile.Exists(path):
-    raise ValueError(
-        f"Failed to load tf.data snapshot at {path}: The snapshot directory "
-        "does not exist.")
-
   error_file = _pywrap_snapshot_utils.TF_DATA_SnapshotErrorFilePath(path)
   if gfile.Exists(error_file):
     with gfile.GFile(error_file, "r") as f:
       raise ValueError(
           f"Failed to load tf.data snapshot at {path}. The save job failed to "
           f"write it. Status: {f.read()}")
-
-  done_file = _pywrap_snapshot_utils.TF_DATA_SnapshotDoneFilePath(path)
-  if not gfile.Exists(done_file):
-    raise ValueError(
-        f"Failed to load tf.data snapshot at {path}. The save job has not "
-        "finished writing the snapshot.")
 
   snapshot_element_spec = _parse_element_spec(metadata.element_spec)
   if element_spec and element_spec != snapshot_element_spec:

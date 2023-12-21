@@ -72,7 +72,7 @@ class DistributedSaveLoadFtTest(
         distributed_save_op.distributed_save(
             dataset, test_snapshot.path, cluster.dispatcher_address()))
 
-    dataset = load_op._load_distributed_snapshot_v2(test_snapshot.path)
+    dataset = load_op._load_with_retry(test_snapshot.path)
     dataset = dataset.repeat(load_repetitions)
     dataset = dataset.apply(
         data_service_ops.distribute(
@@ -116,7 +116,7 @@ class DistributedSaveLoadFtTest(
         distributed_save_op.distributed_save(
             dataset, test_snapshot.path, cluster.dispatcher_address()))
 
-    dataset = load_op._load_distributed_snapshot_v2(test_snapshot.path)
+    dataset = load_op._load_with_retry(test_snapshot.path)
     dataset = dataset.repeat(load_repetitions)
     dataset = dataset.apply(
         data_service_ops.distribute(
@@ -171,7 +171,7 @@ class DistributedSaveLoadFtTest(
         distributed_save_op.distributed_save(
             dataset, test_snapshot.path, cluster.dispatcher_address()))
 
-    dataset = load_op._load_distributed_snapshot_v2(test_snapshot.path)
+    dataset = load_op._load_with_retry(test_snapshot.path)
     dataset = dataset.repeat(load_repetitions)
     dataset = dataset.apply(
         data_service_ops.distribute(
@@ -217,7 +217,7 @@ class DistributedSaveLoadFtTest(
         distributed_save_op.distributed_save(
             dataset, test_snapshot.path, cluster.dispatcher_address()))
 
-    dataset = load_op._load_distributed_snapshot_v2(test_snapshot.path)
+    dataset = load_op._load_with_retry(test_snapshot.path)
     dataset = dataset.repeat(load_repetitions)
     dataset = dataset.apply(
         data_service_ops.distribute(
